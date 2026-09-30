@@ -1,0 +1,5 @@
+$ ls shell/e2e-oidc ; grep -ril 'copilot\|mcp' shell/e2e-oidc
+rc=1 0s
+auth-oidc.spec.ts
+
+--stderr--

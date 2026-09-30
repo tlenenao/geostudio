@@ -1,0 +1,64 @@
+# Catalogue des agents d'audit (spec 2026-09-29 §4). id = préfixe d'id des findings.
+# mode : mock = auth mock (mockuser admin) ; oidc = personas Keycloak ; none = pas de stack.
+# Champs optionnels : env_note (ajouté au bloc Environnement), stack_exception (dérogation à la règle 6).
+agents:
+  - {id: j01, group: A, title: "Visiteur anonyme", mode: oidc, budget_tests: 30,
+     env_note: "Tu es un visiteur anonyme : tu ne te connectes JAMAIS (n'appelle pas `loginOidc`, n'utilise aucun persona). En auth mock le shell serait toujours connecté en `mockuser` admin, donc l'anonymat ne s'y simule pas ; en OIDC, une page ouverte sans login est réellement anonyme. Ne teste que ce qu'un visiteur non connecté voit ou peut faire.",
+     scope: ["catalogue public, recherche, facettes, tri", "site /sites/{slug}, fiche dataset publique", "embed /embed/:token", "SEO : sitemap.xml, robots.txt, aperçu social", "lien de partage à échéance (sans jamais te connecter)"]}
+  - {id: j02, group: A, title: "Lecteur connecté", mode: oidc, budget_tests: 30,
+     scope: ["connexion OIDC (persona reader), recherche sémantique", "fiche dataset, carte en lecture, popups, pièces jointes", "bookmarks (création, ouverture, partage)", "notifications in-app", "ce qu'un lecteur NE doit PAS voir ni pouvoir faire"]}
+  - {id: j03, group: A, title: "Créateur de carte", mode: oidc, budget_tests: 40,
+     scope: ["import (GeoJSON, CSV, GPKG, Shapefile, XLSX, KML, GeoParquet) → collection → carte", "symbologie (catégoriel/continu/classé, icônes, étiquettes)", "popups CEL, mesure/croquis, terrain 3D, tilesets 3D", "publication et historique de versions/rollback", "erreurs d'import : fichier vide, CRS absent, gros fichier, quota"]}
+  - {id: j04, group: A, title: "Créateur d'app / dashboard", mode: oidc, budget_tests: 40,
+     scope: ["AppBuilder : widgets, pages, conteneurs, variables typées, expressions CEL", "actions composées, visibleWhen, filtres inter-widgets, cross-filter", "undo/redo, suppression de widget avec purge de câblage, garde de brouillon non enregistré", "formulaires depuis le schéma de collection, widgetCarte multi-couches", "runtime vs preview vs edit : divergences de comportement"]}
+  - {id: j05, group: A, title: "Analyste", mode: oidc, budget_tests: 35,
+     scope: ["SQL Lab (CodeMirror, erreurs DuckDB, sandbox, résultats volumineux)", "requête visuelle Filtrer→Joindre→Résumer", "agrégats, grains temporels, contexte global temps×emprise", "exports CSV/XLSX/GeoJSON/GPKG", "génération de requête en langage naturel (copilote) avec revue humaine"]}
+  - {id: j06, group: A, title: "Data engineer (pipelines)", mode: oidc, budget_tests: 40,
+     scope: ["pipeline builder : palette (57 op), connexion de nœuds, undo/redo, zones annotées", "aperçu, exécution, détail par run, planification cron, webhook entrant", "connecteurs et coffre de secrets (REST, Postgres, Snowflake, BigQuery, blob…)", "reader.file/writer.file derrière leur flag", "erreurs : secret absent, SSRF, schéma qui change, plafonds"]}
+  - {id: j07, group: A, title: "Data steward (moissonnage et métadonnées)", mode: oidc, budget_tests: 30,
+     scope: ["sources de moissonnage (STAC, ArcGIS FS, WMS/WFS/WMTS, CSW, CKAN) : création, sondage, erreurs", "API STAC native, export DCAT-AP, pagination", "licences et métadonnées ouvertes par collection/item", "masquage de champ sensible par collection", "collection cassée : dégradation gracieuse"]}
+  - {id: j08, group: A, title: "Admin de tenant", mode: oidc, budget_tests: 35,
+     scope: ["utilisateurs (rôle par ligne, recherche, pagination), rôles sur mesure et 18 privilèges", "quotas de stockage visibles et bloquants", "conformité RGPD : anonymisation d'utilisateur (PAS purge de tenant), reçus", "usage (/tasks), collections admin, extensions", "SettingsNav : les 7 destinations admin selon les privilèges"]}
+  - {id: j09, group: A, title: "Ops / instance", mode: oidc, budget_tests: 25,
+     scope: ["passerelle /admin/martin|titiler|grafana (jeton de lancement, cookie)", "jobs : libellés, statuts, reprise, troncature MVT", "notifications, alertes (AlertRule webhook/email), rapports planifiés", "état d'instance, santé des services, page infrastructure"]}
+  - {id: j10, group: A, title: "Sites, storytelling, export d'apps", mode: oidc, budget_tests: 30,
+     scope: ["sites et portails : widgets de contenu, fiche dataset, édition d'item Site", "storytelling (mode story), PageManager", "export d'apps : Statique, Connecté, Autoporté", "rapports PDF (printLayout, ReportSchedule) si CORE_EXPORT_ENABLED"]}
+  - {id: j11, group: A, title: "Copilote IA et MCP", mode: oidc, budget_tests: 25,
+     scope: ["copilote du builder (6 outils allowlistés, historique)", "MCP : /mcp OAuth 2.1+PKCE, outils, permissions de l'utilisateur, audit", "parité REST ↔ MCP observable depuis le shell", "comportement sans CORE_LLM_PROVIDER : message d'indisponibilité"]}
+  - {id: j12, group: A, title: "Terrain : mobile et tactile", mode: oidc, budget_tests: 30,
+     scope: ["viewports 360/768/900/1280, TriptychLayout étroit/large", "carte tactile (tap, pinch), popups, mesure au doigt", "navigation clavier virtuel, zones de tap ≥ 44 px", "prefers-reduced-motion, thème clair/sombre"]}
+  - {id: j13, group: A, title: "Partage et permissions", mode: oidc, budget_tests: 40,
+     scope: ["partage d'items et groupes, publication, liens à échéance", "matrice rôle × action (admin/creator/analyst/reader) sur chaque type d'item", "tentatives d'accès direct par URL / id d'un autre utilisateur (IDOR côté UI)", "garde côté serveur vs masquage côté UI : cohérence"]}
+  - {id: t01, group: B, title: "Accessibilité", mode: oidc, budget_tests: 40,
+     scope: ["axe-core sur toutes les routes du shell (pas seulement les 9 déjà couvertes)", "parcours clavier complet : focus visible, ordre, pièges, Drawer/Dialog/Popover", "labels, erreurs de formulaire, aria-expanded/aria-controls sur panneaux", "contrastes AA en clair et sombre"]}
+  - {id: t02, group: B, title: "Résilience et erreurs", mode: oidc, budget_tests: 40,
+     stack_exception: "Par exception à la règle 6, tu peux exécuter `docker stop` puis `docker start` sur les SEULS services `worker` et `martin` (jamais un autre service, jamais `docker compose down`, jamais de volume). Protocole écrit, pour chaque service : (1) `docker stop <service>` ; (2) observe la dégradation dans le shell/l'API ; (3) `docker start <service>` (le même) ; (4) confirme qu'il est de nouveau `healthy` (`docker compose ps <service>` affiche `(healthy)`) AVANT de passer à la suite ou de terminer. Ne laisse jamais un service arrêté en fin de session.",
+     scope: ["401/403/404/409/422/429/500 sur chaque famille d'appel (page.route pour injecter)", "réseau coupé et retour, CoreUnreachableError, bannière de connectivité", "quotas atteints, rate limit, timeouts 15 s", "double soumission, retours arrière, onglets multiples", "docker stop/start ciblé de `worker` et `martin` (protocole ci-dessus) : dégradations visibles"]}
+  - {id: t03, group: B, title: "Performance perçue", mode: oidc, budget_tests: 25,
+     scope: ["taille de bundle et découpage par route", "LCP/CLS sur catalogue, carte, builder (mesures réelles)", "jeux de données de 50k à 500k entités sur carte et tableau", "boucles de sondage (notifications 45 s) et fuites au démontage"]}
+  - {id: t04, group: B, title: "Cohérence visuelle et i18n", mode: oidc, budget_tests: 30,
+     scope: ["tokens sémantiques : aucune couleur/taille brute résiduelle", "français en dur hors i18n, pluriels, formats de date/nombre", "captures comparées entre pages similaires (espacements, hauteurs h-9, Button vs <button>)", "états vides/chargement/erreur uniformes"]}
+  - {id: c01, group: C, title: "Authz, RLS, IDOR (code)", mode: none, budget_tests: 0,
+     scope: ["chaque route de core/app/**/routes.py : garde can()/require_privilege effectivement appelée (suivre le chemin d'exécution, pas grep)", "RLS PostGIS, rls_scope, MVT, OGC API Features, STAC, DCAT", "MCP : permissions de l'utilisateur, audit, outils d'écriture", "liens de partage/embed : portée recoupée avec les droits réels"]}
+  - {id: c02, group: C, title: "Correctness backend (code)", mode: none, budget_tests: 0,
+     scope: ["gestion d'erreurs, transactions, commits partiels, TOCTOU", "jobs procrastinate : idempotence, reprise, écriture best-effort séparée", "concurrence asyncio/sync, ressources non fermées", "validateurs REST vs MCP (save_app_config saute des validateurs, REV-174)"]}
+  - {id: c03, group: C, title: "Migrations et données (code)", mode: none, budget_tests: 0,
+     scope: ["core/alembic/versions : upgrade/downgrade sur base NON vide", "migrations sans test round-trip (0029, 0030, 0031, 0034, 0037…)", "tenant_id et audit_log sur toute écriture", "index manquants, contraintes, cascades"]}
+  - {id: c04, group: C, title: "Qualité du shell (code)", mode: none, budget_tests: 0,
+     scope: ["shell/src : code mort, duplication, types lâches, any, casts", "toFrontLayer() : champs de config qui ne round-trippent pas (piège n°5)", "ItemClient comme seul sas vers le cœur", "composants > 500 lignes, hooks instables, fuites d'effets"]}
+  - {id: c05, group: C, title: "Qualité des tests (code)", mode: none, budget_tests: 0,
+     scope: ["tests flaky connus et candidats, mocks E2E périmés (shell/e2e/mocks.ts)", "trous de couverture par module (pytest coverage.xml, vitest)", "assertions qui ne prouvent rien (durée pour la concurrence, piège n°7)", "skips silencieux (tests postgis sans CORE_TEST_DATABASE_URL)"]}
+  - {id: c06, group: C, title: "CI, déploiement, ops (code)", mode: none, budget_tests: 0,
+     scope: [".github/workflows/*, protection de branche, publication d'images", "docker-compose*.yml par valeur : variable câblée dans le bon service (piège n°2)", "deploy/** : backup/restore, install.sh, Proxmox, OCI, Ansible", "secrets, images non épinglées, healthchecks"]}
+  - {id: c07, group: C, title: "Dérive doc et inventaire (code)", mode: none, budget_tests: 0,
+     scope: ["CLAUDE.md §Livré vs code réel (piège n°12)", "docs/revue/inventaire-fonctionnalites.jsonl vs routes/outils/pages réels", "backlog REV-nnn et GAP-nn : états contredits par le code", "OpenAPI/types TS générés à jour (piège n°1)"]}
+  - {id: c08, group: C, title: "Parité REST / MCP / ItemClient (code)", mode: none, budget_tests: 0,
+     scope: ["chaque capacité REST a-t-elle son outil MCP et sa méthode ItemClient ?", "schémas AppConfig/MapConfig : une seule source de vérité", "services partagés REST↔MCP : divergences de validation", "erreurs RFC 7807 propagées de bout en bout"]}
+  - {id: c09, group: C, title: "Performance backend (code)", mode: none, budget_tests: 0,
+     scope: ["N+1 SQL, index absents, requêtes sans pagination", "DuckDB : plafonds, matérialisation, sandbox SQL", "tuiles MVT (plafond 5000 lignes), agrégats, lakehouse CDC", "balayages cron : batching, verrous"]}
+  - {id: d01, group: D, title: "Benchmark produit", mode: none, budget_tests: 0,
+     scope: ["comparer GeoStudio à Felt, ArcGIS (Online/Experience Builder), QGIS Server, Kepler.gl/CARTO, FME", "sources : docs/vision/*, inventaire-fonctionnalites.jsonl, sites publics des concurrents (WebSearch)", "produire des findings kind=feature|gap avec evidence doc-read, effort estimé, différenciateur produit (horizontal, parité connecteurs)", "ne rien proposer qui contredise les 40 arbitrages de la feuille de route §8"]}
+  - {id: v01, group: V, title: "Vérificateur S1/S2", mode: oidc, budget_tests: 0,
+     scope: ["rejouer 100 % des findings S1/S2 confidence=verified par leur champ `repro`, tel quel, sur la stack déjà réinitialisée par l'orchestrateur (tu ne fais aucun reset)", "verdict par finding : confirmed | not-reproduced | changed, avec la sortie brute", "écrire un findings.jsonl de statut (mêmes règles de format), id préfixé v01"]}
+  - {id: k01, group: K, title: "Consolidateur", mode: none, budget_tests: 0,
+     scope: ["lire merged.jsonl (sortie de `audit_findings.py dedup`) et les verdicts de v01", "produire PLAN-CONSOLIDE.md : état des lieux par parcours, matrice de couverture, 30 tâches en 6 phases de 5, traçabilité S1/S2", "chaque tâche : findings couverts, fichiers/lignes, effort, dépendances, test d'acceptation"]}

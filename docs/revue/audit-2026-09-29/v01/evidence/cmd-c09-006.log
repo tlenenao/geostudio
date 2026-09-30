@@ -1,0 +1,5 @@
+$ cd core && PYTHONPATH=. uv run python -c "from sqlalchemy import select; from sqlalchemy.dialects import postgresql; from app.items.models import Item; print('items.embedding' in str(select(Item).compile(dialect=postgresql.dialect())))"
+rc=0 0s
+True
+
+--stderr--

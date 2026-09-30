@@ -1,0 +1,5 @@
+$ bash -c 'cd $(mktemp -d); printf "K=\n" > .env; v="ab&cd/ef"; sed -i.bak "s|^K=.*|K=${v}|" .env; cat .env'
+rc=0 0s
+K=abK=cd/ef
+
+--stderr--

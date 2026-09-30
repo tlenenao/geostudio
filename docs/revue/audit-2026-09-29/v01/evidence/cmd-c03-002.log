@@ -1,0 +1,67 @@
+$ cd core && CORE_SECRETS_MASTER_KEY=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8= CORE_ENV=development PYTHONPATH=. uv run pytest ../docs/revue/audit-2026-09-29/c03/probes/test_c03_probe.py -s -q -p no:cacheprovider --rootdir=. -o addopts="" -k 0030_downgrade
+rc=1 4s
+{"timestamp": "2026-09-30T08:09:41", "level": "INFO", "logger": "procrastinate.blueprints", "message": "Adding tasks from blueprint", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:41", "level": "INFO", "logger": "procrastinate.periodic", "message": "Registering task app.alerts.jobs.sweep_alert_rules_task with periodic id '' to run periodically with cron */5 * * * *", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:42", "level": "INFO", "logger": "procrastinate.periodic", "message": "Registering task app.appexport.jobs.sweep_appexport_jobs_task with periodic id '' to run periodically with cron */5 * * * *", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:42", "level": "INFO", "logger": "procrastinate.periodic", "message": "Registering task app.ingestion.tasks.sweep_ingestion_jobs_task with periodic id '' to run periodically with cron */15 * * * *", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:42", "level": "INFO", "logger": "procrastinate.periodic", "message": "Registering task app.harvest.jobs.run_harvest_sweep_task with periodic id '' to run periodically with cron */15 * * * *", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:42", "level": "INFO", "logger": "procrastinate.periodic", "message": "Registering task app.pipelines.jobs.run_pipeline_sweep_task with periodic id '' to run periodically with cron */5 * * * *", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:43", "level": "INFO", "logger": "alembic.runtime.plugins", "message": "setup plugin alembic.autogenerate.schemas", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:43", "level": "INFO", "logger": "alembic.runtime.plugins", "message": "setup plugin alembic.autogenerate.tables", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:43", "level": "INFO", "logger": "alembic.runtime.plugins", "message": "setup plugin alembic.autogenerate.types", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:43", "level": "INFO", "logger": "alembic.runtime.plugins", "message": "setup plugin alembic.autogenerate.constraints", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:43", "level": "INFO", "logger": "alembic.runtime.plugins", "message": "setup plugin alembic.autogenerate.defaults", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:43", "level": "INFO", "logger": "alembic.runtime.plugins", "message": "setup plugin alembic.autogenerate.comments", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:43", "level": "INFO", "logger": "alembic.runtime.plugins", "message": "setup plugin alembic.autogenerate.checkconstraint_byname", "trace_id": null, "span_id": null}
+after downgrade reader -> (0, 0)
+after downgrade+upgrade reader -> creator
+F
+=================================== FAILURES ===================================
+__________________ test_0030_downgrade_maps_reader_to_creator __________________
+
+    def test_0030_downgrade_maps_reader_to_creator():
+        m = _load_0030()
+        eng = create_engine("sqlite://")
+        with eng.begin() as c:
+            c.execute(text("CREATE TABLE tenants (id TEXT PRIMARY KEY)"))
+            c.execute(text("CREATE TABLE roles (id TEXT PRIMARY KEY, tenant_id TEXT, name TEXT, slug TEXT, is_built_in BOOLEAN, privileges TEXT, created_at TIMESTAMP, updated_at TIMESTAMP)"))
+            c.execute(text("CREATE TABLE users (id TEXT PRIMARY KEY, tenant_id TEXT, is_admin BOOLEAN, is_analyst BOOLEAN, role_id TEXT)"))
+            c.execute(text("INSERT INTO tenants VALUES ('t1')"))
+            m.seed_built_in_roles(c)
+            reader_id = c.execute(text("SELECT id FROM roles WHERE slug='reader'")).scalar()
+            c.execute(text("INSERT INTO users VALUES ('u-reader','t1',0,0,:r)"), {"r": reader_id})
+            m.migrate_roles_to_booleans(c)
+            row = c.execute(text("SELECT is_admin, is_analyst FROM users WHERE id='u-reader'")).one()
+            print("after downgrade reader ->", tuple(row))
+            # ré-upgrade : quel rôle reçoit l'ancien Lecteur ?
+            c.execute(text("UPDATE users SET role_id=NULL"))
+            m.migrate_users_to_roles(c)
+            slug = c.execute(text("SELECT r.slug FROM users u JOIN roles r ON r.id=u.role_id WHERE u.id='u-reader'")).scalar()
+            print("after downgrade+upgrade reader ->", slug)
+>           assert slug == "reader", f"reader devient {slug}"
+E           AssertionError: reader devient creator
+E           assert 'creator' == 'reader'
+E             
+E             - reader
+E             + creator
+
+../docs/revue/audit-2026-09-29/c03/probes/test_c03_probe.py:69: AssertionError
+------------------------------ Captured log call -------------------------------
+INFO     alembic.runtime.plugins:plugins.py:37 setup plugin alembic.autogenerate.schemas
+INFO     alembic.runtime.plugins:plugins.py:37 setup plugin alembic.autogenerate.tables
+INFO     alembic.runtime.plugins:plugins.py:37 setup plugin alembic.autogenerate.types
+INFO     alembic.runtime.plugins:plugins.py:37 setup plugin alembic.autogenerate.constraints
+INFO     alembic.runtime.plugins:plugins.py:37 setup plugin alembic.autogenerate.defaults
+INFO     alembic.runtime.plugins:plugins.py:37 setup plugin alembic.autogenerate.comments
+INFO     alembic.runtime.plugins:plugins.py:37 setup plugin alembic.autogenerate.checkconstraint_byname
+=============================== warnings summary ===============================
+.venv/lib/python3.14/site-packages/fastapi/testclient.py:1
+  /home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED ::test_0030_downgrade_maps_reader_to_creator - AssertionError: reader ...
+1 failed, 2 deselected, 1 warning in 2.23s
+
+--stderr--

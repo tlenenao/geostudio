@@ -1,0 +1,137 @@
+
+Running 4 tests using 1 worker
+
+  ✘  1 e2e/journeys/v01/t02/api-errors.spec.ts:231:3 › t02 API : écritures concurrentes › t02-003 : une écriture fondée sur une version périmée est refusée (409/412) (311ms)
+  ✘  2 e2e/journeys/v01/t02/api-errors.spec.ts:251:3 › t02 API : écritures concurrentes › t02-004 : la création d'un item met réellement en file le calcul d'embedding (2.4s)
+  ✘  3 e2e/journeys/v01/t02/api-errors.spec.ts:273:3 › t02 API : surface d'enregistrement de collections › t02-005 : GET /collections/candidates n'expose aucune table étrangère au produit (711ms)
+  ✘  4 e2e/journeys/v01/t02/connectivity.spec.ts:302:3 › t02 UI : enregistrement d'une app › t02-003 : enregistrer depuis un onglet périmé n'écrase pas la modification d'un autre onglet (7.1s)
+
+
+  1) e2e/journeys/v01/t02/api-errors.spec.ts:231:3 › t02 API : écritures concurrentes › t02-003 : une écriture fondée sur une version périmée est refusée (409/412) 
+
+    Error: expect(received).toContain(expected) // indexOf
+
+    Expected value: 200
+    Received array: [409, 412, 428]
+
+      245 |     });
+      246 |     expect(baseVersion).toBeLessThan(a.body.version);
+    > 247 |     expect([409, 412, 428]).toContain(b.status);
+          |                             ^
+      248 |   });
+      249 |
+      250 |   // Finding t02-004 : l'écriture d'un item/collection défère un calcul d'embedding dont l'échec est avalé.
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/t02/api-errors.spec.ts:247:29
+
+    Error Context: test-results/v01-t02-api-errors-t02-API-27ec4-érimée-est-refusée-409-412-/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-t02-api-errors-t02-API-27ec4-érimée-est-refusée-409-412-/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-t02-api-errors-t02-API-27ec4-érimée-est-refusée-409-412-/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) e2e/journeys/v01/t02/api-errors.spec.ts:251:3 › t02 API : écritures concurrentes › t02-004 : la création d'un item met réellement en file le calcul d'embedding 
+
+    Error: expect(received).toBeGreaterThan(expected)
+
+    Expected: > 9
+    Received:   9
+
+      265 |     const logs = docker("logs", "--since", "20s", "geostudio-core-1");
+      266 |     expect(logs).not.toContain(`échec de l'enqueue du job d'embedding pour l'item ${itemId}`);
+    > 267 |     expect(after).toBeGreaterThan(before);
+          |                   ^
+      268 |   });
+      269 | });
+      270 |
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/t02/api-errors.spec.ts:267:19
+
+    Error Context: test-results/v01-t02-api-errors-t02-API-2cc4e--file-le-calcul-d-embedding/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-t02-api-errors-t02-API-2cc4e--file-le-calcul-d-embedding/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-t02-api-errors-t02-API-2cc4e--file-le-calcul-d-embedding/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) e2e/journeys/v01/t02/api-errors.spec.ts:273:3 › t02 API : surface d'enregistrement de collections › t02-005 : GET /collections/candidates n'expose aucune table étrangère au produit 
+
+    Error: expect(received).toEqual(expected) // deep equality
+
+    - Expected  -  1
+    + Received  + 13
+
+    - Array []
+    + Array [
+    +   "client",
+    +   "client_initial_access",
+    +   "client_scope",
+    +   "client_session",
+    +   "credential",
+    +   "procrastinate_events",
+    +   "procrastinate_jobs",
+    +   "procrastinate_periodic_defers",
+    +   "procrastinate_workers",
+    +   "realm",
+    +   "user_entity",
+    + ]
+
+      281 |         .map((c) => c.tableName as string)
+      282 |         .filter((n) => /^(user_entity|credential|realm|client|procrastinate_)/.test(n));
+    > 283 |       expect(foreign).toEqual([]);
+          |                       ^
+      284 |     },
+      285 |   );
+      286 | });
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/t02/api-errors.spec.ts:283:23
+
+    Error Context: test-results/v01-t02-api-errors-t02-API-ff795--table-étrangère-au-produit/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-t02-api-errors-t02-API-ff795--table-étrangère-au-produit/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-t02-api-errors-t02-API-ff795--table-étrangère-au-produit/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  4) e2e/journeys/v01/t02/connectivity.spec.ts:302:3 › t02 UI : enregistrement d'une app › t02-003 : enregistrer depuis un onglet périmé n'écrase pas la modification d'un autre onglet 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: "#ec52a3"
+    Received: undefined
+
+      313 |       await s.page.waitForTimeout(1500);
+      314 |       const after = await api.get(`/v1/configs/by-item/${appId}`);
+    > 315 |       expect(after.body.config.theme?.primary).toBe(marker);
+          |                                                ^
+      316 |     },
+      317 |   );
+      318 | });
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/t02/connectivity.spec.ts:315:48
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/v01-t02-connectivity-t02-U-ab978-ification-d-un-autre-onglet/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/v01-t02-connectivity-t02-U-ab978-ification-d-un-autre-onglet/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-t02-connectivity-t02-U-ab978-ification-d-un-autre-onglet/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-t02-connectivity-t02-U-ab978-ification-d-un-autre-onglet/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  4 failed
+    e2e/journeys/v01/t02/api-errors.spec.ts:231:3 › t02 API : écritures concurrentes › t02-003 : une écriture fondée sur une version périmée est refusée (409/412) 
+    e2e/journeys/v01/t02/api-errors.spec.ts:251:3 › t02 API : écritures concurrentes › t02-004 : la création d'un item met réellement en file le calcul d'embedding 
+    e2e/journeys/v01/t02/api-errors.spec.ts:273:3 › t02 API : surface d'enregistrement de collections › t02-005 : GET /collections/candidates n'expose aucune table étrangère au produit 
+    e2e/journeys/v01/t02/connectivity.spec.ts:302:3 › t02 UI : enregistrement d'une app › t02-003 : enregistrer depuis un onglet périmé n'écrase pas la modification d'un autre onglet 

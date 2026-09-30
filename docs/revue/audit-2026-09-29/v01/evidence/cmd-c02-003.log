@@ -1,0 +1,24 @@
+$ cd core && PYTHONPATH=. uv run python ../docs/revue/audit-2026-09-29/c02/repro/queues_vs_workers.py
+rc=0 2s
+{"timestamp": "2026-09-30T08:09:07", "level": "INFO", "logger": "procrastinate.blueprints", "message": "Adding tasks from blueprint", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:08", "level": "INFO", "logger": "procrastinate.periodic", "message": "Registering task app.ingestion.tasks.sweep_ingestion_jobs_task with periodic id '' to run periodically with cron */15 * * * *", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:08", "level": "INFO", "logger": "procrastinate.periodic", "message": "Registering task app.cdc.jobs.run_compaction_cycle_task with periodic id '' to run periodically with cron */10 * * * *", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:08", "level": "INFO", "logger": "procrastinate.periodic", "message": "Registering task app.harvest.jobs.run_harvest_sweep_task with periodic id '' to run periodically with cron */15 * * * *", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:09", "level": "INFO", "logger": "procrastinate.periodic", "message": "Registering task app.pipelines.jobs.run_pipeline_sweep_task with periodic id '' to run periodically with cron */5 * * * *", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:09", "level": "INFO", "logger": "procrastinate.periodic", "message": "Registering task app.alerts.jobs.sweep_alert_rules_task with periodic id '' to run periodically with cron */5 * * * *", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:09", "level": "INFO", "logger": "procrastinate.periodic", "message": "Registering task app.appexport.jobs.sweep_appexport_jobs_task with periodic id '' to run periodically with cron */5 * * * *", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:09", "level": "INFO", "logger": "procrastinate.periodic", "message": "Registering task app.reports.jobs.sweep_report_schedules_task with periodic id '' to run periodically with cron */5 * * * *", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:09", "level": "INFO", "logger": "procrastinate.periodic", "message": "Registering task app.security.jobs.refresh_csp_dynamic_conf_task with periodic id '' to run periodically with cron */5 * * * *", "trace_id": null, "span_id": null}
+consumed by compose workers: ['appexport', 'cdc', 'etl', 'export', 'ingestion', 'search', 'terrain3d', 'tileset3d']
+appexport  OK              ['app.appexport.jobs.build_app_export_task', 'app.appexport.jobs.sweep_appexport_jobs_task']
+builtin    NEVER CONSUMED  ['procrastinate.builtin_tasks.remove_old_jobs']
+cdc        OK              ['app.cdc.jobs.run_compaction_cycle_task']
+etl        OK              ['app.alerts.jobs.evaluate_alert_task', 'app.alerts.jobs.sweep_alert_rules_task', 'app.pipelines.jobs.run_pipeline_sweep_task', 'app.pipelines.jobs.run_pipeline_task', 'app.reports.jobs.sweep_report_schedules_task', 'app.security.jobs.refresh_csp_dynamic_conf_task']
+export     OK              ['app.export.jobs.render_export_task']
+harvest    NEVER CONSUMED  ['app.harvest.jobs.run_harvest_sweep_task', 'app.harvest.jobs.run_harvest_task']
+ingestion  OK              ['app.ingestion.tasks.run_ingestion_task', 'app.ingestion.tasks.sweep_ingestion_jobs_task']
+search     OK              ['app.collections.jobs.embed_collection_task', 'app.items.jobs.embed_item_task']
+terrain3d  OK              ['app.terrain3d.jobs.convert_terrain3d_task']
+tileset3d  OK              ['app.tileset3d.jobs.finalize_tileset3d_task']
+
+--stderr--

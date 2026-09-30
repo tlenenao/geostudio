@@ -47,6 +47,12 @@ def _conninfo() -> str:
     return database_url.replace("postgresql+psycopg://", "postgresql://")
 
 
+# PgBouncer en pool transaction (docker-compose.yml, POOL_MODE=transaction) :
+# l'autoprepare de psycopg3 nomme des statements côté serveur qui entrent en
+# collision d'un backend à l'autre. Même raison et même remède que
+# app/db.py (connect_args["prepare_threshold"] = None).
+CONNECTION_KWARGS: dict[str, object] = {"prepare_threshold": None}
+
 app = procrastinate.App(
     # PsycopgConnector (async), pas SyncPsycopgConnector : le CLI procrastinate
     # refuse tout connecteur qui n'est pas une sous-classe de BaseAsyncConnector
@@ -56,7 +62,7 @@ app = procrastinate.App(
     # utilisable en synchrone par `.defer(...)` dans les routes FastAPI (non
     # async) : tant qu'il n'est pas ouvert explicitement en async, il crée un
     # SyncPsycopgConnector interne à la demande (get_sync_connector()).
-    connector=procrastinate.PsycopgConnector(conninfo=_conninfo()),
+    connector=procrastinate.PsycopgConnector(conninfo=_conninfo(), kwargs=dict(CONNECTION_KWARGS)),
     import_paths=[
         "app.ingestion.tasks",
         "app.items.jobs",

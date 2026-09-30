@@ -1,0 +1,6 @@
+$ cd core && PYTHONPATH=. uv run pytest -c pyproject.toml --rootdir . ../docs/revue/audit-2026-09-29/c01/poc/test_c01_authz_poc.py::test_user_manager_can_grant_himself_the_administrator_role -q -p no:cacheprovider --basetemp=/tmp/claude-1000/-home-lenen-projets-geostudio/a96ae62e-4a84-43cb-bccb-ec452ff1b7d6/scratchpad/pt
+rc=0 4s
+.                                                                        [100%]
+1 passed in 2.36s
+
+--stderr--

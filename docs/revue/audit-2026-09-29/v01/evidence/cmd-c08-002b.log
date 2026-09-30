@@ -1,0 +1,2 @@
+bogusTop kept: False
+layer: {'id': 'l', 'title': 't', 'visible': True, 'kind': 'vector', 'symbology': {'whatever': 1}}

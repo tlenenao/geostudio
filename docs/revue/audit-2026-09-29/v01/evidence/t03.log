@@ -1,0 +1,228 @@
+
+Running 5 tests using 1 worker
+
+  ✘  1 e2e/journeys/v01/t03/bigdata.spec.ts:136:3 › t03 API sur 50 000 et 500 000 entités › t03-008 : exporter les 50 000 entités d'une collection (CSV) (447ms)
+  ✘  2 e2e/journeys/v01/t03/bigdata.spec.ts:247:3 › t03 carte et tableau sur gros volumes (navigateur) › t03-011 : le tableau signale le total réel ou la troncature (500k) (6.0s)
+  ✘  3 e2e/journeys/v01/t03/bundle.spec.ts:97:3 › t03 bundle et livraison statique › t03-005 : le catalogue ne charge pas MapLibre à l'ouverture (3.8s)
+T03 leak {"base":{"heapMb":13.6,"nodes":2837,"listeners":385},"end":{"heapMb":23.1,"nodes":10429,"listeners":1009},"heapMb":9.5,"nodes":7592,"listeners":624,"glCreated":16,"glLost":16,"intervalsLive":3,"canvasesOnCatalogue":1}
+  ✘  4 e2e/journeys/v01/t03/polling.spec.ts:177:3 › t03 sondages et démontage › t03-012 : ouvrir/fermer l'éditeur de carte ne retient ni nœuds DOM ni écouteurs (47.3s)
+T03 catalogue-4g LCP=4724ms(h3) FCP=1884ms CLS=0.009 longTasks=2/112ms shell=816Ko req=51
+  ✘  5 e2e/journeys/v01/t03/vitals.spec.ts:144:3 › t03 LCP / CLS › t03-005 : catalogue à froid sous 4G lente + CPU x4 : LCP sous 4 s (16.2s)
+
+
+  1) e2e/journeys/v01/t03/bigdata.spec.ts:136:3 › t03 API sur 50 000 et 500 000 entités › t03-008 : exporter les 50 000 entités d'une collection (CSV) 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 413
+
+      136 |   test("t03-008 : exporter les 50 000 entités d'une collection (CSV)", async () => {
+      137 |     const r = await timed("creator", `/v1/collections/${s50.collectionId}/export/items?format=csv`);
+    > 138 |     expect(r.status).toBe(200);
+          |                      ^
+      139 |     expect(r.text().split("\n").length).toBeGreaterThan(50_000);
+      140 |   });
+      141 | });
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/t03/bigdata.spec.ts:138:22
+
+    Error Context: test-results/v01-t03-bigdata-t03-API-su-ef2d5-tités-d-une-collection-CSV-/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-t03-bigdata-t03-API-su-ef2d5-tités-d-une-collection-CSV-/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-t03-bigdata-t03-API-su-ef2d5-tités-d-une-collection-CSV-/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) e2e/journeys/v01/t03/bigdata.spec.ts:247:3 › t03 carte et tableau sur gros volumes (navigateur) › t03-011 : le tableau signale le total réel ou la troncature (500k) 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      259 |     const pages = Number(/\/ (\d+)/.exec(pager)?.[1] ?? "0");
+      260 |     const mentionsLimit = (await page.getByText(/limit|tronqu|premiers|sur 500/i).count()) > 0;
+    > 261 |     expect(pages * 25 >= 500_000 || mentionsLimit).toBe(true);
+          |                                                    ^
+      262 |   });
+      263 | });
+      264 |
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/t03/bigdata.spec.ts:261:52
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/v01-t03-bigdata-t03-carte--b8e14-réel-ou-la-troncature-500k-/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/v01-t03-bigdata-t03-carte--b8e14-réel-ou-la-troncature-500k-/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-t03-bigdata-t03-carte--b8e14-réel-ou-la-troncature-500k-/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-t03-bigdata-t03-carte--b8e14-réel-ou-la-troncature-500k-/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) e2e/journeys/v01/t03/bundle.spec.ts:97:3 › t03 bundle et livraison statique › t03-005 : le catalogue ne charge pas MapLibre à l'ouverture 
+
+    Error: expect(received).not.toMatch(expected)
+
+    Expected pattern: not /vendor-map/
+    Received string:      "http://localhost:8180/resources/r7nmz/common/keycloak/node_modules/@patternfly/patternfly/patternfly.min.css
+    http://localhost:8300/assets/vendor-map-H66NfBHh.js
+    http://localhost:8180/resources/r7nmz/common/keycloak/node_modules/patternfly/dist/css/patternfly-additions.min.css
+    http://localhost:8180/resources/r7nmz/common/keycloak/node_modules/patternfly/dist/css/patternfly.min.css
+    http://localhost:8300/assets/index-D4ouuh33.js
+    http://localhost:8180/resources/r7nmz/login/keycloak/img/keycloak-bg.png
+    http://localhost:8180/resources/r7nmz/common/keycloak/node_modules/patternfly/dist/fonts/fontawesome-webfont.woff2?v=4.7.0
+    http://localhost:8180/resources/r7nmz/common/keycloak/node_modules/patternfly/dist/fonts/OpenSans-Light-webfont.woff2
+    http://localhost:8180/resources/r7nmz/common/keycloak/node_modules/patternfly/dist/fonts/OpenSans-Regular-webfont.woff2
+    http://localhost:8300/assets/utils-CPsO5Hd1.js
+    http://localhost:8300/assets/i18n-CDtZArtn.js
+    http://localhost:8300/assets/ibm-plex-mono-latin-400-normal-DMJ8VG8y.woff2
+    http://localhost:8300/assets/vendor-map-CKRTiAqP.css
+    http://localhost:8180/resources/r7nmz/login/keycloak/css/login.css
+    https://demotiles.maplibre.org/style.json
+    http://localhost:8300/assets/index-CNeLGxBE.css
+    http://localhost:8180/resources/r7nmz/login/keycloak/js/menu-button-links.js
+    http://localhost:8300/assets/es2015-D09xV8yR.js
+    http://localhost:8180/realms/geostudio/protocol/openid-connect/auth?client_id=geostudio-shell&redirect_uri=http%3A%2F%2Flocalhost%3A8300%2F&response_type=code&scope=openid+profile+email&state=fe6b56c00476478eb38bc8586439eddf&code_challenge=EA6zpuJALn1B9lL71oTjL9rhUAlMeLeR9N2uY8jDweQ&code_challenge_method=S256
+    http://localhost:8180/realms/geostudio/.well-known/openid-configuration
+    http://localhost:8180/realms/geostudio/.well-known/openid-configuration
+    http://localhost:8200/v1/items?scope=all&page=1&pageSize=12&sort=date_desc
+    http://localhost:8180/realms/geostudio/protocol/openid-connect/token
+    http://localhost:8300/assets/jsx-runtime-aXhPGVX4.js
+    http://localhost:8300/assets/CatalogPage-CLodRFto.js
+    http://localhost:8200/v1/notifications?page=1&pageSize=20
+    http://localhost:8300/assets/useFocusRestoreOnClose-BdsY7Py6.js
+    http://localhost:8180/resources/r7nmz/login/keycloak/js/authChecker.js
+    http://localhost:8300/assets/ItemActions-CzG0GXje.js
+    http://localhost:8300/
+    http://localhost:8300/?state=fe6b56c00476478eb38bc8586439eddf&session_state=f584f4d6-1920-4b4e-b5b1-63b101aa89c2&iss=http%3A%2F%2Flocalhost%3A8180%2Frealms%2Fgeostudio&code=ffc3292c-13f0-4b50-9215-9e36a4caa3c7.f584f4d6-1920-4b4e-b5b1-63b101aa89c2.f4680c49-56bd-45b5-a163-49a6edc31509
+    http://localhost:8300/assets/ItemCard-CJv8Wdpi.js
+    https://demotiles.maplibre.org/tiles/tiles.json
+    http://localhost:8300/assets/dist-0yjjBYb7.js
+    http://localhost:8300/assets/TriptychLayout-CSlH2Sz0.js
+    http://localhost:8300/assets/ConfirmDialog-DQJGmBiR.js
+    http://localhost:8300/assets/Dialog-B5Nkw0fS.js
+    http://localhost:8180/resources/r7nmz/login/keycloak/js/passwordVisibility.js
+    http://localhost:8180/resources/r7nmz/common/keycloak/lib/pficon/pficon.css
+    http://localhost:8300/assets/EmptyState-BzsujV4r.js
+    http://localhost:8200/v1/me
+    http://localhost:8200/v1/me
+    http://localhost:8300/assets/dist-Dfl5GGsY.js
+    http://localhost:8300/assets/resourceTypes-BSKLKNYn.js
+    http://localhost:8300/assets/Locked-j8kI7Z_g.js
+    http://localhost:8300/env-config.js
+    http://localhost:8300/assets/Panel-RPgcauts.js
+    http://localhost:8300/assets/maplibreWorkerSetup-CluoqWpD.js
+    http://localhost:8300/assets/Gate-CF4komO4.js
+    http://localhost:8200/v1/instance
+    http://localhost:8200/v1/instance
+    http://localhost:8200/v1/items/facets?scope=all
+    http://localhost:8200/v1/notifications/unread-count
+    http://localhost:8200/v1/notifications/preference
+    http://localhost:8300/assets/index-D4ouuh33.js
+    http://localhost:8300/assets/jsx-runtime-aXhPGVX4.js
+    http://localhost:8300/assets/i18n-CDtZArtn.js
+    http://localhost:8300/assets/utils-CPsO5Hd1.js
+    http://localhost:8300/assets/dist-Dfl5GGsY.js
+    http://localhost:8300/assets/dist-0yjjBYb7.js
+    http://localhost:8300/assets/es2015-D09xV8yR.js
+    http://localhost:8300/assets/useFocusRestoreOnClose-BdsY7Py6.js
+    http://localhost:8300/assets/index-CNeLGxBE.css
+    http://localhost:8300/env-config.js"
+
+      100 |     await page.waitForTimeout(2500);
+      101 |     const s = await log.stop();
+    > 102 |     expect(s.byUrl.map((r) => r.url).join("\n")).not.toMatch(/vendor-map/);
+          |                                                      ^
+      103 |   });
+      104 |
+      105 |   // Aucun Cache-Control sur /assets/* : chaque visite revalide (If-None-Match) les
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/t03/bundle.spec.ts:102:54
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/v01-t03-bundle-t03-bundle--81707--pas-MapLibre-à-l-ouverture/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/v01-t03-bundle-t03-bundle--81707--pas-MapLibre-à-l-ouverture/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-t03-bundle-t03-bundle--81707--pas-MapLibre-à-l-ouverture/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-t03-bundle-t03-bundle--81707--pas-MapLibre-à-l-ouverture/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  4) e2e/journeys/v01/t03/polling.spec.ts:177:3 › t03 sondages et démontage › t03-012 : ouvrir/fermer l'éditeur de carte ne retient ni nœuds DOM ni écouteurs 
+
+    Error: expect(received).toBeLessThan(expected)
+
+    Expected: < 400
+    Received:   7592
+
+      161 |     console.log("T03 leak", JSON.stringify({ base, end, ...d }));
+      162 |     expect(d.heapMb).toBeLessThan(15);
+    > 163 |     expect(d.nodes).toBeLessThan(400);
+          |                     ^
+      164 |     expect(d.listeners).toBeLessThan(200);
+      165 |     expect(d.glLost).toBeGreaterThanOrEqual(d.glCreated - 1);
+      166 |     expect(d.intervalsLive).toBeLessThan(6);
+        at leak (/home/lenen/projets/geostudio/shell/e2e/journeys/v01/t03/polling.spec.ts:163:21)
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/t03/polling.spec.ts:180:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/v01-t03-polling-t03-sondag-b8b26-t-ni-nœuds-DOM-ni-écouteurs/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/v01-t03-polling-t03-sondag-b8b26-t-ni-nœuds-DOM-ni-écouteurs/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-t03-polling-t03-sondag-b8b26-t-ni-nœuds-DOM-ni-écouteurs/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-t03-polling-t03-sondag-b8b26-t-ni-nœuds-DOM-ni-écouteurs/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  5) e2e/journeys/v01/t03/vitals.spec.ts:144:3 › t03 LCP / CLS › t03-005 : catalogue à froid sous 4G lente + CPU x4 : LCP sous 4 s 
+
+    Error: expect(received).toBeLessThan(expected)
+
+    Expected: < 4000
+    Received:   4724
+
+      150 |     const r = await coldLoad(page, "/", 6000);
+      151 |     note(testInfo, "catalogue-4g", r);
+    > 152 |     expect(r.v.lcp as number).toBeLessThan(4000);
+          |                               ^
+      153 |   });
+      154 |
+      155 |   test("éditeur de carte (vide) : prêt en moins de 3 s, CLS < 0,1", async ({ page }, testInfo) => {
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/t03/vitals.spec.ts:152:31
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/v01-t03-vitals-t03-LCP-CLS-65ab7-G-lente-CPU-x4-LCP-sous-4-s/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/v01-t03-vitals-t03-LCP-CLS-65ab7-G-lente-CPU-x4-LCP-sous-4-s/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-t03-vitals-t03-LCP-CLS-65ab7-G-lente-CPU-x4-LCP-sous-4-s/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-t03-vitals-t03-LCP-CLS-65ab7-G-lente-CPU-x4-LCP-sous-4-s/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  5 failed
+    e2e/journeys/v01/t03/bigdata.spec.ts:136:3 › t03 API sur 50 000 et 500 000 entités › t03-008 : exporter les 50 000 entités d'une collection (CSV) 
+    e2e/journeys/v01/t03/bigdata.spec.ts:247:3 › t03 carte et tableau sur gros volumes (navigateur) › t03-011 : le tableau signale le total réel ou la troncature (500k) 
+    e2e/journeys/v01/t03/bundle.spec.ts:97:3 › t03 bundle et livraison statique › t03-005 : le catalogue ne charge pas MapLibre à l'ouverture 
+    e2e/journeys/v01/t03/polling.spec.ts:177:3 › t03 sondages et démontage › t03-012 : ouvrir/fermer l'éditeur de carte ne retient ni nœuds DOM ni écouteurs 
+    e2e/journeys/v01/t03/vitals.spec.ts:144:3 › t03 LCP / CLS › t03-005 : catalogue à froid sous 4G lente + CPU x4 : LCP sous 4 s 

@@ -1,0 +1,64 @@
+
+Running 2 tests using 1 worker
+
+  ✘  1 e2e/journeys/v01/j10/export-core.spec.ts:57:3 › j10 export d'apps : capacité éteinte › j10-007 : le gel d'export statique n'embarque pas les champs sensibles (2.6s)
+  ✘  2 e2e/journeys/v01/j10/site-api.spec.ts:122:3 › j10 sites : API › j10-001 : la config publique d'une alerte publiée ne divulgue pas ses canaux (675ms)
+
+
+  1) e2e/journeys/v01/j10/export-core.spec.ts:57:3 › j10 export d'apps : capacité éteinte › j10-007 : le gel d'export statique n'embarque pas les champs sensibles 
+
+    Error: expect(received).not.toContain(expected) // indexOf
+
+    Expected substring: not "TOPSECRET-42"
+    Received string:        "{\"timestamp\": \"2026-09-30T06:03:52\", \"level\": \"INFO\", \"logger\": \"procrastinate.blueprints\", \"message\": \"Adding tasks from blueprint\", \"trace_id\": null, \"span_id\": null}
+    FROZEN=[{\"id\": \"d\", \"type\": \"static\", \"service\": \"core\", \"layer\": \"query_2adae3883873\", \"datasetId\": null, \"query\": {\"records\": [{\"type\": \"Feature\", \"id\": 1, \"geometry\": {\"type\": \"Point\", \"coordinates\": [1, 45]}, \"properties\": {\"nom\": \"pub\", \"secret\": \"TOPSECRET-42\"}}]}}]
+    "
+
+       98 |       ].join("\n"),
+       99 |     );
+    > 100 |     expect(out).not.toContain("TOPSECRET-42");
+          |                     ^
+      101 |   });
+      102 | });
+      103 |
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j10/export-core.spec.ts:100:21
+
+    Error Context: test-results/v01-j10-export-core-j10-ex-dfeb6-ue-pas-les-champs-sensibles/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j10-export-core-j10-ex-dfeb6-ue-pas-les-champs-sensibles/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j10-export-core-j10-ex-dfeb6-ue-pas-les-champs-sensibles/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) e2e/journeys/v01/j10/site-api.spec.ts:122:3 › j10 sites : API › j10-001 : la config publique d'une alerte publiée ne divulgue pas ses canaux 
+
+    Error: expect(received).not.toContain(expected) // indexOf
+
+    Expected substring: not "SECRETTOKEN123"
+    Received string:        "{\"id\":\"f833e45380e841b1b686d7a864c0963f\",\"kind\":\"alert\",\"itemId\":\"6075c1e179724cc09a73e2c7ee73d0bc\",\"version\":1,\"config\":{\"version\":1,\"itemId\":null,\"kind\":\"alert\",\"theme\":{},\"dataSources\":[],\"layout\":null,\"messages\":[],\"pages\":[],\"navigationMode\":\"tabs\",\"interactions\":null,\"variables\":[],\"map\":null,\"dataset\":null,\"bookmark\":null,\"pipeline\":null,\"alert\":{\"datasetItemId\":\"bf084ae5fbb74ff7b31feacaec34d3d3\",\"query\":{\"groupBy\":null,\"split\":null,\"agg\":\"count\",\"field\":null,\"p\":null,\"measures\":null,\"filters\":{},\"bbox\":null,\"geomIntersects\":null,\"bucket\":null,\"bins\":null,\"sample\":null},\"condition\":{\"expr\":\"value > 2\"},\"refreshPolicy\":{\"enabled\":false,\"cron\":\"*/5 * * * *\"},\"channels\":[{\"kind\":\"webhook\",\"url\":\"https://hooks.example.com/SECRETTOKEN123\"}],\"messageTemplate\":\"Alert {ruleName}: value={value} ({state})\"},\"report\":null,\"tileset3d\":null,\"terrain3d\":null,\"printLayout\":null}}"
+
+      139 |     await creator.send("PATCH", `/v1/items/${a.body.itemId}`, { isPublished: true });
+      140 |     const pub = await anon(`/v1/public/configs/by-item/${a.body.itemId}`);
+    > 141 |     expect(JSON.stringify(pub.body)).not.toContain("SECRETTOKEN123");
+          |                                          ^
+      142 |   });
+      143 |
+      144 |   // FINDING j10-004 : la liste publique et le widget galerie exposent tous les
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j10/site-api.spec.ts:141:42
+
+    Error Context: test-results/v01-j10-site-api-j10-sites-bb3f1--ne-divulgue-pas-ses-canaux/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j10-site-api-j10-sites-bb3f1--ne-divulgue-pas-ses-canaux/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j10-site-api-j10-sites-bb3f1--ne-divulgue-pas-ses-canaux/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2 failed
+    e2e/journeys/v01/j10/export-core.spec.ts:57:3 › j10 export d'apps : capacité éteinte › j10-007 : le gel d'export statique n'embarque pas les champs sensibles 
+    e2e/journeys/v01/j10/site-api.spec.ts:122:3 › j10 sites : API › j10-001 : la config publique d'une alerte publiée ne divulgue pas ses canaux 

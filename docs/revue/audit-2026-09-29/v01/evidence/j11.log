@@ -1,0 +1,116 @@
+
+Running 3 tests using 1 worker
+
+  ✘  1 e2e/journeys/v01/j11/copilot-server.spec.ts:63:3 › j11 copilote : routeur /copilot/turn (sonde dans le conteneur) › j11-005 : une panne du fournisseur LLM répond 502/504 et non 500 (9ms)
+  ✘  2 e2e/journeys/v01/j11/copilot-ui.spec.ts:132:3 › j11 copilote : builder avec cœur simulé sur /copilot/turn › j11-007 : la réponse du copilote est appliquée au brouillon sans perdre le brouillon en cours (11.9s)
+  ✘  3 e2e/journeys/v01/j11/copilot-ui.spec.ts:193:3 › j11 copilote : SQL Lab › j11-007 : le brouillon SQL proposé reste dans l'éditeur et n'est jamais exécuté sans clic (11.5s)
+
+
+  1) e2e/journeys/v01/j11/copilot-server.spec.ts:63:3 › j11 copilote : routeur /copilot/turn (sonde dans le conteneur) › j11-005 : une panne du fournisseur LLM répond 502/504 et non 500 
+
+    Error: llm_http_429
+
+    expect(received).toContain(expected) // indexOf
+
+    Expected value: 500
+    Received array: [502, 503, 504]
+
+      69 |       "llm_bad_payload",
+      70 |     ]) {
+    > 71 |       expect([502, 503, 504], k).toContain(probe[k][0]);
+         |                                  ^
+      72 |     }
+      73 |   });
+      74 |
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j11/copilot-server.spec.ts:71:34
+
+    Error Context: test-results/v01-j11-copilot-server-j11-46936-M-répond-502-504-et-non-500/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j11-copilot-server-j11-46936-M-répond-502-504-et-non-500/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j11-copilot-server-j11-46936-M-répond-502-504-et-non-500/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) e2e/journeys/v01/j11/copilot-ui.spec.ts:132:3 › j11 copilote : builder avec cœur simulé sur /copilot/turn › j11-007 : la réponse du copilote est appliquée au brouillon sans perdre le brouillon en cours 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByText('Fait.')
+    Expected: visible
+    Timeout: 10000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for getByText('Fait.')
+
+
+      148 |     await expect(page.getByRole("button", { name: /^Sélectionner widget-/ })).toHaveCount(1);
+      149 |     await ask(page, "Ajoute un indicateur");
+    > 150 |     await expect(page.getByText("Fait.")).toBeVisible();
+          |                                           ^
+      151 |     await expect(page.getByRole("button", { name: /^Sélectionner widget-/ })).toHaveCount(2);
+      152 |     await expect(page.getByText("Action inconnue ignorée : save_app_config")).toBeVisible();
+      153 |   });
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j11/copilot-ui.spec.ts:150:43
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/v01-j11-copilot-ui-j11-cop-93f77-erdre-le-brouillon-en-cours/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/v01-j11-copilot-ui-j11-cop-93f77-erdre-le-brouillon-en-cours/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j11-copilot-ui-j11-cop-93f77-erdre-le-brouillon-en-cours/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j11-copilot-ui-j11-cop-93f77-erdre-le-brouillon-en-cours/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) e2e/journeys/v01/j11/copilot-ui.spec.ts:193:3 › j11 copilote : SQL Lab › j11-007 : le brouillon SQL proposé reste dans l'éditeur et n'est jamais exécuté sans clic 
+
+    Error: expect(locator).toHaveText(expected) failed
+
+    Locator:  getByLabel('Requête SQL')
+    Expected: "SELECT 1 AS un"
+    Received: ""
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toHaveText" with timeout 10000ms
+      - waiting for getByLabel('Requête SQL')
+        23 × locator resolved to <div translate="no" role="textbox" autocorrect="off" spellcheck="false" class="cm-content" data-language="sql" autocapitalize="off" aria-multiline="true" contenteditable="true" aria-label="Requête SQL" writingsuggestions="false">…</div>
+           - unexpected value ""
+
+
+      209 |     await spaGoto(page, "/analytics/sql");
+      210 |     await ask(page, "un");
+    > 211 |     await expect(page.getByLabel("Requête SQL")).toHaveText("SELECT 1 AS un");
+          |                                                  ^
+      212 |     expect(executed).toBe(false);
+      213 |     expect(turns[0].body.surface).toBe("sql_lab");
+      214 |     expect(turns[0].body.itemId).toBeUndefined();
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j11/copilot-ui.spec.ts:211:50
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/v01-j11-copilot-ui-j11-cop-05535-st-jamais-exécuté-sans-clic/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/v01-j11-copilot-ui-j11-cop-05535-st-jamais-exécuté-sans-clic/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j11-copilot-ui-j11-cop-05535-st-jamais-exécuté-sans-clic/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j11-copilot-ui-j11-cop-05535-st-jamais-exécuté-sans-clic/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3 failed
+    e2e/journeys/v01/j11/copilot-server.spec.ts:63:3 › j11 copilote : routeur /copilot/turn (sonde dans le conteneur) › j11-005 : une panne du fournisseur LLM répond 502/504 et non 500 
+    e2e/journeys/v01/j11/copilot-ui.spec.ts:132:3 › j11 copilote : builder avec cœur simulé sur /copilot/turn › j11-007 : la réponse du copilote est appliquée au brouillon sans perdre le brouillon en cours 
+    e2e/journeys/v01/j11/copilot-ui.spec.ts:193:3 › j11 copilote : SQL Lab › j11-007 : le brouillon SQL proposé reste dans l'éditeur et n'est jamais exécuté sans clic 

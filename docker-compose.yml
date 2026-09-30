@@ -669,7 +669,7 @@ services:
       GF_SERVER_ROOT_URL: https://${DOMAIN}/admin/grafana/
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
     ports:
-      - "3001:3000"
+      - "${GRAFANA_HOST_PORT:-3001}:3000"
       - "4317:4317"
       - "4318:4318"
     volumes:

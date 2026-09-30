@@ -4,3 +4,4 @@ coverage
 src/api/generated
 test-results
 playwright-report
+e2e/journeys/*/fixtures/

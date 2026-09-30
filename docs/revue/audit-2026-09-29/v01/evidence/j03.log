@@ -1,0 +1,222 @@
+
+Running 7 tests using 1 worker
+
+  ✘  1 e2e/journeys/v01/j03/import-api.spec.ts:19:3 › j03 import — défauts bloquants du chemin nominal › j03-001 : POST /uploads répond 201 et défère le job d'ingestion (873ms)
+  ✘  2 e2e/journeys/v01/j03/import-api.spec.ts:43:3 › j03 import — défauts bloquants du chemin nominal › j03-003 : un job dont la mise en file a échoué n'est pas laissé « pending » indéfiniment (1.3s)
+  ✘  3 e2e/journeys/v01/j03/map-api.spec.ts:39:3 › j03 carte importée — contenu de la config générée › j03-008 : la couche d'une carte importée charge toutes les entités (250 attendues) (54ms)
+  ✘  4 e2e/journeys/v01/j03/map-api.spec.ts:93:3 › j03 carte — versions et rollback › j03-011 : la config de carte est validée côté serveur (centre, zoom, opacité, URLs) (137ms)
+  ✘  5 e2e/journeys/v01/j03/map-api.spec.ts:150:3 › j03 carte — publication et droits › j03-012 : une carte publiée dont la collection reste privée est signalée ou publie ses données (72ms)
+  ✘  6 e2e/journeys/v01/j03/map-ui.spec.ts:134:3 › j03 éditeur de carte — symbologie, popups, terrain › j03-013 : sur une collection privée, « Champ couleur » propose les champs de la couche importée (5.8s)
+  ✓  7 e2e/journeys/v01/j03/map-ui.spec.ts:143:3 › j03 éditeur de carte — symbologie, popups, terrain › témoin j03-013 : sur une collection publique la même liste de champs se charge (5.6s)
+
+
+  1) e2e/journeys/v01/j03/import-api.spec.ts:19:3 › j03 import — défauts bloquants du chemin nominal › j03-001 : POST /uploads répond 201 et défère le job d'ingestion 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 201
+    Received: 500
+
+      27 |       false,
+      28 |     );
+    > 29 |     expect(res.create.status).toBe(201);
+         |                               ^
+      30 |     expect(res.job?.status).toBe("done");
+      31 |   });
+      32 |
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j03/import-api.spec.ts:29:31
+
+    Error Context: test-results/v01-j03-import-api-j03-imp-2b002-t-défère-le-job-d-ingestion/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j03-import-api-j03-imp-2b002-t-défère-le-job-d-ingestion/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j03-import-api-j03-imp-2b002-t-défère-le-job-d-ingestion/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) e2e/journeys/v01/j03/import-api.spec.ts:43:3 › j03 import — défauts bloquants du chemin nominal › j03-003 : un job dont la mise en file a échoué n'est pas laissé « pending » indéfiniment 
+
+    Error: expect(received).not.toBe(expected) // Object.is equality
+
+    Expected: not "pending"
+
+      55 |     await new Promise((r) => setTimeout(r, 1000));
+      56 |     const st = await creator.get(`/v1/uploads/${job}`);
+    > 57 |     expect(st.body.status).not.toBe("pending");
+         |                                ^
+      58 |   });
+      59 | });
+      60 |
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j03/import-api.spec.ts:57:32
+
+    Error Context: test-results/v01-j03-import-api-j03-imp-7659b-sé-«-pending-»-indéfiniment/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j03-import-api-j03-imp-7659b-sé-«-pending-»-indéfiniment/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j03-import-api-j03-imp-7659b-sé-«-pending-»-indéfiniment/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) e2e/journeys/v01/j03/map-api.spec.ts:39:3 › j03 carte importée — contenu de la config générée › j03-008 : la couche d'une carte importée charge toutes les entités (250 attendues) 
+
+    Error: expect(received).toHaveLength(expected)
+
+    Expected length: 250
+    Received length: 100
+    Received array:  [{"geometry": {"coordinates": [2, 46], "type": "Point"}, "id": 1, "properties": {"i": 0}, "type": "Feature"}, {"geometry": {"coordinates": [2.01, 46.005], "type": "Point"}, "id": 2, "properties": {"i": 1}, "type": "Feature"}, {"geometry": {"coordinates": [2.02, 46.01], "type": "Point"}, "id": 3, "properties": {"i": 2}, "type": "Feature"}, {"geometry": {"coordinates": [2.03, 46.015], "type": "Point"}, "id": 4, "properties": {"i": 3}, "type": "Feature"}, {"geometry": {"coordinates": [2.04, 46.02], "type": "Point"}, "id": 5, "properties": {"i": 4}, "type": "Feature"}, {"geometry": {"coordinates": [2.05, 46.025], "type": "Point"}, "id": 6, "properties": {"i": 5}, "type": "Feature"}, {"geometry": {"coordinates": [2.06, 46.03], "type": "Point"}, "id": 7, "properties": {"i": 6}, "type": "Feature"}, {"geometry": {"coordinates": [2.07, 46.035], "type": "Point"}, "id": 8, "properties": {"i": 7}, "type": "Feature"}, {"geometry": {"coordinates": [2.08, 46.04], "type": "Point"}, "id": 9, "properties": {"i": 8}, "type": "Feature"}, {"geometry": {"coordinates": [2.09, 46.045], "type": "Point"}, "id": 10, "properties": {"i": 9}, "type": "Feature"}, …]
+
+      43 |     if (layer.kind === "feature") {
+      44 |       const r = await creator.get(new URL(layer.url).pathname + new URL(layer.url).search);
+    > 45 |       expect(r.body.features).toHaveLength(250);
+         |                               ^
+      46 |     } else {
+      47 |       expect(layer.kind).toBe("vector"); // couche MVT : pas de plafond de page
+      48 |     }
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j03/map-api.spec.ts:45:31
+
+    Error Context: test-results/v01-j03-map-api-j03-carte--6d559--les-entités-250-attendues-/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j03-map-api-j03-carte--6d559--les-entités-250-attendues-/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j03-map-api-j03-carte--6d559--les-entités-250-attendues-/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  4) e2e/journeys/v01/j03/map-api.spec.ts:93:3 › j03 carte — versions et rollback › j03-011 : la config de carte est validée côté serveur (centre, zoom, opacité, URLs) 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 422
+    Received: 200
+
+      100 |       return put(creator, seed.pointsItem, m);
+      101 |     };
+    > 102 |     expect.soft((await bad((m) => (m.view.center = [2, 999]))).status).toBe(422);
+          |                                                                        ^
+      103 |     expect.soft((await bad((m) => (m.view.zoom = 99))).status).toBe(422);
+      104 |     expect.soft((await bad((m) => (m.layers[0].opacity = 5))).status).toBe(422);
+      105 |     expect
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j03/map-api.spec.ts:102:72
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 422
+    Received: 200
+
+      101 |     };
+      102 |     expect.soft((await bad((m) => (m.view.center = [2, 999]))).status).toBe(422);
+    > 103 |     expect.soft((await bad((m) => (m.view.zoom = 99))).status).toBe(422);
+          |                                                                ^
+      104 |     expect.soft((await bad((m) => (m.layers[0].opacity = 5))).status).toBe(422);
+      105 |     expect
+      106 |       .soft(
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j03/map-api.spec.ts:103:64
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 422
+    Received: 200
+
+      102 |     expect.soft((await bad((m) => (m.view.center = [2, 999]))).status).toBe(422);
+      103 |     expect.soft((await bad((m) => (m.view.zoom = 99))).status).toBe(422);
+    > 104 |     expect.soft((await bad((m) => (m.layers[0].opacity = 5))).status).toBe(422);
+          |                                                                       ^
+      105 |     expect
+      106 |       .soft(
+      107 |         (
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j03/map-api.spec.ts:104:71
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 422
+    Received: 200
+
+      111 |         ).status,
+      112 |       )
+    > 113 |       .toBe(422);
+          |        ^
+      114 |     // restaure une config saine
+      115 |     await put(creator, seed.pointsItem, cfg.config.map);
+      116 |   });
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j03/map-api.spec.ts:113:8
+
+    Error Context: test-results/v01-j03-map-api-j03-carte--c0ecf-r-centre-zoom-opacité-URLs-/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j03-map-api-j03-carte--c0ecf-r-centre-zoom-opacité-URLs-/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j03-map-api-j03-carte--c0ecf-r-centre-zoom-opacité-URLs-/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  5) e2e/journeys/v01/j03/map-api.spec.ts:150:3 › j03 carte — publication et droits › j03-012 : une carte publiée dont la collection reste privée est signalée ou publie ses données 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 404
+
+      155 |     try {
+      156 |       const r = await reader.get(`/v1/collections/${big.collectionId}/items?limit=1`);
+    > 157 |       expect(r.status).toBe(200);
+          |                        ^
+      158 |     } finally {
+      159 |       await creator.send("PATCH", `/v1/items/${pk}`, { isPublished: false });
+      160 |     }
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j03/map-api.spec.ts:157:24
+
+    Error Context: test-results/v01-j03-map-api-j03-carte--bb44e-nalée-ou-publie-ses-données/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j03-map-api-j03-carte--bb44e-nalée-ou-publie-ses-données/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j03-map-api-j03-carte--bb44e-nalée-ou-publie-ses-données/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  6) e2e/journeys/v01/j03/map-ui.spec.ts:134:3 › j03 éditeur de carte — symbologie, popups, terrain › j03-013 : sur une collection privée, « Champ couleur » propose les champs de la couche importée 
+
+    Error: expect(received).toBeGreaterThanOrEqual(expected)
+
+    Expected: >= 4
+    Received:    0
+
+      138 |     // 404 sur une collection privée → liste de champs vide, symbologie par champ inutilisable.
+      139 |     await openMap(page, seed.pointsItem);
+    > 140 |     expect(await fieldOptions(page, "Champ couleur")).toBeGreaterThanOrEqual(4);
+          |                                                       ^
+      141 |   });
+      142 |
+      143 |   test("témoin j03-013 : sur une collection publique la même liste de champs se charge", async ({
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j03/map-ui.spec.ts:140:55
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/v01-j03-map-ui-j03-éditeur-87559-hamps-de-la-couche-importée/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/v01-j03-map-ui-j03-éditeur-87559-hamps-de-la-couche-importée/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j03-map-ui-j03-éditeur-87559-hamps-de-la-couche-importée/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j03-map-ui-j03-éditeur-87559-hamps-de-la-couche-importée/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  6 failed
+    e2e/journeys/v01/j03/import-api.spec.ts:19:3 › j03 import — défauts bloquants du chemin nominal › j03-001 : POST /uploads répond 201 et défère le job d'ingestion 
+    e2e/journeys/v01/j03/import-api.spec.ts:43:3 › j03 import — défauts bloquants du chemin nominal › j03-003 : un job dont la mise en file a échoué n'est pas laissé « pending » indéfiniment 
+    e2e/journeys/v01/j03/map-api.spec.ts:39:3 › j03 carte importée — contenu de la config générée › j03-008 : la couche d'une carte importée charge toutes les entités (250 attendues) 
+    e2e/journeys/v01/j03/map-api.spec.ts:93:3 › j03 carte — versions et rollback › j03-011 : la config de carte est validée côté serveur (centre, zoom, opacité, URLs) 
+    e2e/journeys/v01/j03/map-api.spec.ts:150:3 › j03 carte — publication et droits › j03-012 : une carte publiée dont la collection reste privée est signalée ou publie ses données 
+    e2e/journeys/v01/j03/map-ui.spec.ts:134:3 › j03 éditeur de carte — symbologie, popups, terrain › j03-013 : sur une collection privée, « Champ couleur » propose les champs de la couche importée 
+  1 passed (1.3m)

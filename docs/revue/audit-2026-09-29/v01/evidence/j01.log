@@ -1,0 +1,41 @@
+
+Running 3 tests using 1 worker
+
+  ✓  1 e2e/journeys/v01/j01/anonymous.spec.ts:21:3 › j01 visiteur anonyme — shell › catalogue : / redirige vers Keycloak (pas de catalogue public) (410ms)
+  ✘  2 e2e/journeys/v01/j01/anonymous.spec.ts:28:3 › j01 visiteur anonyme — shell › j01-001 : un visiteur anonyme peut parcourir un catalogue public sans login (3.3s)
+  ✓  3 e2e/journeys/v01/j01/anonymous.spec.ts:96:3 › j01 visiteur anonyme — shell › j01-004 : les lignes d'une collection publique se lisent en anonyme (pas de 500) (67ms)
+
+
+  1) e2e/journeys/v01/j01/anonymous.spec.ts:28:3 › j01 visiteur anonyme — shell › j01-001 : un visiteur anonyme peut parcourir un catalogue public sans login 
+
+    Error: expect(received).not.toMatch(expected)
+
+    Expected pattern: not /\/realms\/geostudio\/protocol\/openid-connect\/auth/
+    Received string:      "http://localhost:8180/realms/geostudio/protocol/openid-connect/auth?client_id=geostudio-shell&redirect_uri=http%3A%2F%2Flocalhost%3A8300%2F&response_type=code&scope=openid+profile+email&state=75404ea04af54d69b701604ac9e64d4c&code_challenge=vWzm8qsPGR6WqVY0QpQGHg6zv_VlXGaYbJiaeyQf58M&code_challenge_method=S256"
+
+      31 |     await page.goto("/");
+      32 |     await page.waitForTimeout(3000);
+    > 33 |     expect(page.url()).not.toMatch(KEYCLOAK_AUTH);
+         |                            ^
+      34 |   });
+      35 |
+      36 |   for (const path of ["/items/abc", "/maps/abc", "/admin/users", "/settings", "/tasks"]) {
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j01/anonymous.spec.ts:33:28
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/v01-j01-anonymous-j01-visi-55c09-catalogue-public-sans-login/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/v01-j01-anonymous-j01-visi-55c09-catalogue-public-sans-login/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j01-anonymous-j01-visi-55c09-catalogue-public-sans-login/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j01-anonymous-j01-visi-55c09-catalogue-public-sans-login/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    e2e/journeys/v01/j01/anonymous.spec.ts:28:3 › j01 visiteur anonyme — shell › j01-001 : un visiteur anonyme peut parcourir un catalogue public sans login 
+  2 passed (5.5s)

@@ -1,0 +1,89 @@
+
+Running 3 tests using 1 worker
+
+  ✘  1 e2e/journeys/v01/j09/alerts-api.spec.ts:69:3 › j09 AlertRule : évaluation et historique › j09-001 : POST /alerts/{id}/evaluate répond 202 (102ms)
+  ✘  2 e2e/journeys/v01/j09/alerts-api.spec.ts:118:3 › j09 AlertRule : évaluation et historique › j09-013 : une règle count sur un dataset vide s'évalue à 0 au lieu de finir en erreur (6.0s)
+  ✘  3 e2e/journeys/v01/j09/alerts-api.spec.ts:146:3 › j09 AlertRule : évaluation et historique › j09-003 : un échec de notification est visible dans l'historique d'évaluation (7.1s)
+
+
+  1) e2e/journeys/v01/j09/alerts-api.spec.ts:69:3 › j09 AlertRule : évaluation et historique › j09-001 : POST /alerts/{id}/evaluate répond 202 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 202
+    Received: 500
+
+      70 |     const id = await mkRule("evaluate-route");
+      71 |     const r = await creator.send("POST", `/v1/alerts/${id}/evaluate`);
+    > 72 |     expect(r.status).toBe(202);
+         |                      ^
+      73 |   });
+      74 |
+      75 |   // Bug confirmé : voir docs/revue/audit-2026-09-29/j09/findings.jsonl
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j09/alerts-api.spec.ts:72:22
+
+    Error Context: test-results/v01-j09-alerts-api-j09-Ale-c3aa9-erts-id-evaluate-répond-202/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j09-alerts-api-j09-Ale-c3aa9-erts-id-evaluate-répond-202/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j09-alerts-api-j09-Ale-c3aa9-erts-id-evaluate-répond-202/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) e2e/journeys/v01/j09/alerts-api.spec.ts:118:3 › j09 AlertRule : évaluation et historique › j09-013 : une règle count sur un dataset vide s'évalue à 0 au lieu de finir en erreur 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: "firing"
+    Received: "error"
+
+      139 |     deferEvaluation(ev);
+      140 |     const done = await waitEvaluation(creator, id, ev);
+    > 141 |     expect(done.state).toBe("firing");
+          |                        ^
+      142 |     expect(done.value).toBe(0);
+      143 |   });
+      144 |
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j09/alerts-api.spec.ts:141:24
+
+    Error Context: test-results/v01-j09-alerts-api-j09-Ale-8e58e--au-lieu-de-finir-en-erreur/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j09-alerts-api-j09-Ale-8e58e--au-lieu-de-finir-en-erreur/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j09-alerts-api-j09-Ale-8e58e--au-lieu-de-finir-en-erreur/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) e2e/journeys/v01/j09/alerts-api.spec.ts:146:3 › j09 AlertRule : évaluation et historique › j09-003 : un échec de notification est visible dans l'historique d'évaluation 
+
+    Error: expect(received).not.toBeNull()
+
+    Received: null
+
+      151 |     // Le canal a échoué (audit_log) mais l'API d'historique n'expose rien à l'auteur de la règle.
+      152 |     expect(notifyRows(id)[0].success).toBe(false);
+    > 153 |     expect(done.error).not.toBeNull();
+          |                            ^
+      154 |   });
+      155 |
+      156 |   // Bug confirmé : voir docs/revue/audit-2026-09-29/j09/findings.jsonl
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j09/alerts-api.spec.ts:153:28
+
+    Error Context: test-results/v01-j09-alerts-api-j09-Ale-7fb45-s-l-historique-d-évaluation/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j09-alerts-api-j09-Ale-7fb45-s-l-historique-d-évaluation/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j09-alerts-api-j09-Ale-7fb45-s-l-historique-d-évaluation/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3 failed
+    e2e/journeys/v01/j09/alerts-api.spec.ts:69:3 › j09 AlertRule : évaluation et historique › j09-001 : POST /alerts/{id}/evaluate répond 202 
+    e2e/journeys/v01/j09/alerts-api.spec.ts:118:3 › j09 AlertRule : évaluation et historique › j09-013 : une règle count sur un dataset vide s'évalue à 0 au lieu de finir en erreur 
+    e2e/journeys/v01/j09/alerts-api.spec.ts:146:3 › j09 AlertRule : évaluation et historique › j09-003 : un échec de notification est visible dans l'historique d'évaluation 
