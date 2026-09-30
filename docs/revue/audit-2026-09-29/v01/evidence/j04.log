@@ -1,0 +1,179 @@
+
+Running 5 tests using 1 worker
+
+  ✘  1 e2e/journeys/v01/j04/builder-ui.spec.ts:126:3 › j04 App Builder — édition › j04-003 : fermer l'onglet (beforeunload) avec un brouillon non enregistré prévient de la perte (5.5s)
+  ✘  2 e2e/journeys/v01/j04/form-map.spec.ts:68:3 › j04 formulaire, carte, story › j04-010 : un refus serveur portant sur un champ absent du formulaire est signalé à l'utilisateur (18.0s)
+  ✘  3 e2e/journeys/v01/j04/keyboard.spec.ts:18:3 › j04 raccourcis clavier du builder › j04-011 : Retour arrière dans un menu déroulant du panneau ne supprime pas le widget sélectionné (15.7s)
+  ✘  4 e2e/journeys/v01/j04/rights-history.spec.ts:83:3 › j04 droits, historique, concurrence › j04-008 : deux sessions d'édition concurrentes — la seconde sauvegarde est refusée ou fusionnée (pas d'écrasement silencieux) (925ms)
+j04-001 ids reçus du cœur: [null,null] actions restantes après 1 retrait: 0
+  ✘  5 e2e/journeys/v01/j04/wiring-ui.spec.ts:36:3 › j04 câblage, variables, actions › j04-001 : après enregistrement et rechargement, deux actions restent indépendantes (id conservé) (11.5s)
+
+
+  1) e2e/journeys/v01/j04/builder-ui.spec.ts:126:3 › j04 App Builder — édition › j04-003 : fermer l'onglet (beforeunload) avec un brouillon non enregistré prévient de la perte 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      143 |         return e.defaultPrevented;
+      144 |       });
+    > 145 |       expect(prevented || dialogSeen).toBe(true);
+          |                                       ^
+      146 |     },
+      147 |   );
+      148 |
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j04/builder-ui.spec.ts:145:39
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/v01-j04-builder-ui-j04-App-7eaa2-gistré-prévient-de-la-perte/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/v01-j04-builder-ui-j04-App-7eaa2-gistré-prévient-de-la-perte/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j04-builder-ui-j04-App-7eaa2-gistré-prévient-de-la-perte/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j04-builder-ui-j04-App-7eaa2-gistré-prévient-de-la-perte/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) e2e/journeys/v01/j04/form-map.spec.ts:68:3 › j04 formulaire, carte, story › j04-010 : un refus serveur portant sur un champ absent du formulaire est signalé à l'utilisateur 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByRole('alert')
+    Expected: visible
+    Timeout: 10000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for getByRole('alert')
+
+
+       97 |       await page.waitForTimeout(2500);
+       98 |       // Observé : POST -> 400 (erreur sur tenant_id), aucun message, la saisie « Delta » reste sans retour.
+    >  99 |       await expect(page.getByRole("alert")).toBeVisible();
+          |                                             ^
+      100 |     },
+      101 |   );
+      102 |
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j04/form-map.spec.ts:99:45
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/v01-j04-form-map-j04-formu-e216e-est-signalé-à-l-utilisateur/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/v01-j04-form-map-j04-formu-e216e-est-signalé-à-l-utilisateur/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j04-form-map-j04-formu-e216e-est-signalé-à-l-utilisateur/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j04-form-map-j04-formu-e216e-est-signalé-à-l-utilisateur/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) e2e/journeys/v01/j04/keyboard.spec.ts:18:3 › j04 raccourcis clavier du builder › j04-011 : Retour arrière dans un menu déroulant du panneau ne supprime pas le widget sélectionné 
+
+    Error: expect(locator).toHaveCount(expected) failed
+
+    Locator:  getByRole('button', { name: 'Sélectionner widget-a' })
+    Expected: 1
+    Received: 0
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toHaveCount" with timeout 10000ms
+      - waiting for getByRole('button', { name: 'Sélectionner widget-a' })
+        24 × locator resolved to 0 elements
+           - unexpected value "0"
+
+
+      25 |       await page.getByLabel("Widget émetteur").focus();
+      26 |       await page.keyboard.press("Backspace");
+    > 27 |       await expect(page.getByRole("button", { name: "Sélectionner widget-a" })).toHaveCount(1);
+         |                                                                                 ^
+      28 |     },
+      29 |   );
+      30 |
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j04/keyboard.spec.ts:27:81
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/v01-j04-keyboard-j04-racco-8858a-e-pas-le-widget-sélectionné/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/v01-j04-keyboard-j04-racco-8858a-e-pas-le-widget-sélectionné/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j04-keyboard-j04-racco-8858a-e-pas-le-widget-sélectionné/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j04-keyboard-j04-racco-8858a-e-pas-le-widget-sélectionné/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  4) e2e/journeys/v01/j04/rights-history.spec.ts:83:3 › j04 droits, historique, concurrence › j04-008 : deux sessions d'édition concurrentes — la seconde sauvegarde est refusée ou fusionnée (pas d'écrasement silencieux) 
+
+    Error: expect(received).toBeGreaterThanOrEqual(expected)
+
+    Expected: >= 409
+    Received:    200
+
+      94 |       expect(ra.status).toBe(200);
+      95 |       // Attendu : 409/412 sur la version périmée. Observé : 200 et l'édition A est perdue.
+    > 96 |       expect(rb.status).toBeGreaterThanOrEqual(409);
+         |                         ^
+      97 |     },
+      98 |   );
+      99 |
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j04/rights-history.spec.ts:96:25
+
+    Error Context: test-results/v01-j04-rights-history-j04-d3068-as-d-écrasement-silencieux-/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j04-rights-history-j04-d3068-as-d-écrasement-silencieux-/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j04-rights-history-j04-d3068-as-d-écrasement-silencieux-/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  5) e2e/journeys/v01/j04/wiring-ui.spec.ts:36:3 › j04 câblage, variables, actions › j04-001 : après enregistrement et rechargement, deux actions restent indépendantes (id conservé) 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 1
+    Received: 0
+
+      71 |         remaining,
+      72 |       );
+    > 73 |       expect(remaining).toBe(1);
+         |                         ^
+      74 |       expect(ids.every((x: unknown) => typeof x === "string" && x.length > 0)).toBe(true);
+      75 |     },
+      76 |   );
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j04/wiring-ui.spec.ts:73:25
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/v01-j04-wiring-ui-j04-câbl-8468b--indépendantes-id-conservé-/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/v01-j04-wiring-ui-j04-câbl-8468b--indépendantes-id-conservé-/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j04-wiring-ui-j04-câbl-8468b--indépendantes-id-conservé-/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j04-wiring-ui-j04-câbl-8468b--indépendantes-id-conservé-/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  5 failed
+    e2e/journeys/v01/j04/builder-ui.spec.ts:126:3 › j04 App Builder — édition › j04-003 : fermer l'onglet (beforeunload) avec un brouillon non enregistré prévient de la perte 
+    e2e/journeys/v01/j04/form-map.spec.ts:68:3 › j04 formulaire, carte, story › j04-010 : un refus serveur portant sur un champ absent du formulaire est signalé à l'utilisateur 
+    e2e/journeys/v01/j04/keyboard.spec.ts:18:3 › j04 raccourcis clavier du builder › j04-011 : Retour arrière dans un menu déroulant du panneau ne supprime pas le widget sélectionné 
+    e2e/journeys/v01/j04/rights-history.spec.ts:83:3 › j04 droits, historique, concurrence › j04-008 : deux sessions d'édition concurrentes — la seconde sauvegarde est refusée ou fusionnée (pas d'écrasement silencieux) 
+    e2e/journeys/v01/j04/wiring-ui.spec.ts:36:3 › j04 câblage, variables, actions › j04-001 : après enregistrement et rechargement, deux actions restent indépendantes (id conservé) 

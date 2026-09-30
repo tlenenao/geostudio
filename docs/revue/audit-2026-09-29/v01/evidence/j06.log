@@ -1,0 +1,120 @@
+
+Running 5 tests using 1 worker
+
+  ✓  1 e2e/journeys/v01/j06/etl-disabled-api.spec.ts:38:3 › j06 ETL désactivé — API › les routes pipelines ne sont pas montées (404) (68ms)
+  ✘  2 e2e/journeys/v01/j06/graph-and-egress.spec.ts:46:3 › j06 validation de graphe à l'enregistrement › j06-002 : un writer sans arête entrante est rejeté à l'enregistrement (1.6s)
+  ✘  3 e2e/journeys/v01/j06/graph-and-egress.spec.ts:50:3 › j06 validation de graphe à l'enregistrement › j06-002 : un transform sans arête entrante est rejeté à l'enregistrement (1.4s)
+  ✘  4 e2e/journeys/v01/j06/graph-and-egress.spec.ts:54:3 › j06 validation de graphe à l'enregistrement › j06-002 : une arête entrante sur un reader est rejetée à l'enregistrement (1.4s)
+  ✘  5 e2e/journeys/v01/j06/graph-and-egress.spec.ts:63:3 › j06 validation de graphe à l'enregistrement › j06-002 : une arête sortante d'un writer est rejetée à l'enregistrement (1.5s)
+
+
+  1) e2e/journeys/v01/j06/graph-and-egress.spec.ts:46:3 › j06 validation de graphe à l'enregistrement › j06-002 : un writer sans arête entrante est rejeté à l'enregistrement 
+
+    Error: expect(received).toMatch(expected)
+
+    Expected pattern: /^REJECTED/
+    Received string:  "ACCEPTED"
+
+      45 |   // Finding j06-002 : run_pipeline fait `assert pred_id is not None` sur ces graphes.
+      46 |   test("j06-002 : un writer sans arête entrante est rejeté à l'enregistrement", () => {
+    > 47 |     expect(graph("[R,W]", "[]")).toMatch(/^REJECTED/);
+         |                                  ^
+      48 |   });
+      49 |
+      50 |   test("j06-002 : un transform sans arête entrante est rejeté à l'enregistrement", () => {
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j06/graph-and-egress.spec.ts:47:34
+
+    Error Context: test-results/v01-j06-graph-and-egress-j-a3bd1-t-rejeté-à-l-enregistrement/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j06-graph-and-egress-j-a3bd1-t-rejeté-à-l-enregistrement/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j06-graph-and-egress-j-a3bd1-t-rejeté-à-l-enregistrement/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) e2e/journeys/v01/j06/graph-and-egress.spec.ts:50:3 › j06 validation de graphe à l'enregistrement › j06-002 : un transform sans arête entrante est rejeté à l'enregistrement 
+
+    Error: expect(received).toMatch(expected)
+
+    Expected pattern: /^REJECTED/
+    Received string:  "ACCEPTED"
+
+      49 |
+      50 |   test("j06-002 : un transform sans arête entrante est rejeté à l'enregistrement", () => {
+    > 51 |     expect(graph("[R,F,W]", '[{"id":"e","from":"r","to":"w"}]')).toMatch(/^REJECTED/);
+         |                                                                  ^
+      52 |   });
+      53 |
+      54 |   test("j06-002 : une arête entrante sur un reader est rejetée à l'enregistrement", () => {
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j06/graph-and-egress.spec.ts:51:66
+
+    Error Context: test-results/v01-j06-graph-and-egress-j-de7fb-t-rejeté-à-l-enregistrement/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j06-graph-and-egress-j-de7fb-t-rejeté-à-l-enregistrement/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j06-graph-and-egress-j-de7fb-t-rejeté-à-l-enregistrement/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) e2e/journeys/v01/j06/graph-and-egress.spec.ts:54:3 › j06 validation de graphe à l'enregistrement › j06-002 : une arête entrante sur un reader est rejetée à l'enregistrement 
+
+    Error: expect(received).toMatch(expected)
+
+    Expected pattern: /^REJECTED/
+    Received string:  "ACCEPTED"
+
+      58 |         '[{"id":"e","from":"r","to":"r2"},{"id":"e2","from":"r2","to":"w"}]',
+      59 |       ),
+    > 60 |     ).toMatch(/^REJECTED/);
+         |       ^
+      61 |   });
+      62 |
+      63 |   test("j06-002 : une arête sortante d'un writer est rejetée à l'enregistrement", () => {
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j06/graph-and-egress.spec.ts:60:7
+
+    Error Context: test-results/v01-j06-graph-and-egress-j-c0022--rejetée-à-l-enregistrement/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j06-graph-and-egress-j-c0022--rejetée-à-l-enregistrement/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j06-graph-and-egress-j-c0022--rejetée-à-l-enregistrement/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  4) e2e/journeys/v01/j06/graph-and-egress.spec.ts:63:3 › j06 validation de graphe à l'enregistrement › j06-002 : une arête sortante d'un writer est rejetée à l'enregistrement 
+
+    Error: expect(received).toMatch(expected)
+
+    Expected pattern: /^REJECTED/
+    Received string:  "ACCEPTED"
+
+      67 |         '[{"id":"e","from":"r","to":"w"},{"id":"e2","from":"w","to":"w2"}]',
+      68 |       ),
+    > 69 |     ).toMatch(/^REJECTED/);
+         |       ^
+      70 |   });
+      71 | });
+      72 |
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j06/graph-and-egress.spec.ts:69:7
+
+    Error Context: test-results/v01-j06-graph-and-egress-j-c9314--rejetée-à-l-enregistrement/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j06-graph-and-egress-j-c9314--rejetée-à-l-enregistrement/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j06-graph-and-egress-j-c9314--rejetée-à-l-enregistrement/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  4 failed
+    e2e/journeys/v01/j06/graph-and-egress.spec.ts:46:3 › j06 validation de graphe à l'enregistrement › j06-002 : un writer sans arête entrante est rejeté à l'enregistrement 
+    e2e/journeys/v01/j06/graph-and-egress.spec.ts:50:3 › j06 validation de graphe à l'enregistrement › j06-002 : un transform sans arête entrante est rejeté à l'enregistrement 
+    e2e/journeys/v01/j06/graph-and-egress.spec.ts:54:3 › j06 validation de graphe à l'enregistrement › j06-002 : une arête entrante sur un reader est rejetée à l'enregistrement 
+    e2e/journeys/v01/j06/graph-and-egress.spec.ts:63:3 › j06 validation de graphe à l'enregistrement › j06-002 : une arête sortante d'un writer est rejetée à l'enregistrement 
+  1 passed (9.4s)

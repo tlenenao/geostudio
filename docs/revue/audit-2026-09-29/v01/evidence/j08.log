@@ -1,0 +1,66 @@
+
+Running 2 tests using 1 worker
+
+  ✘  1 e2e/journeys/v01/j08/admin-ui.spec.ts:49:3 › j08 SettingsNav et droits d'accès › j08-002 : l'Administrateur atteint l'anonymisation depuis la navigation (2.1s)
+  ✘  2 e2e/journeys/v01/j08/compliance-usage-api.spec.ts:87:3 › j08 conformité — anonymisation › j08-001 : après anonymisation, une reconnexion ne recrée pas un compte nominatif (4.0s)
+
+
+  1) e2e/journeys/v01/j08/admin-ui.spec.ts:49:3 › j08 SettingsNav et droits d'accès › j08-002 : l'Administrateur atteint l'anonymisation depuis la navigation 
+
+    Error: expect(received).toContain(expected) // indexOf
+
+    Expected value: "Conformité (RGPD) →"
+    Received array: ["Général →", "Extensions →", "Outils d'infrastructure →", "Rôles et privilèges →", "Utilisateurs →", "Collections →", "Moissonnage →"]
+
+      52 |     await openAs(page, "admin");
+      53 |     await go(page, "/settings");
+    > 54 |     expect(await navLinks(page)).toContain("Conformité (RGPD) →");
+         |                                  ^
+      55 |   });
+      56 |
+      57 |   test("lecteur : navigation réduite à Général, pages d'administration et tâches refusées", async ({
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j08/admin-ui.spec.ts:54:34
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/v01-j08-admin-ui-j08-Setti-431be-sation-depuis-la-navigation/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/v01-j08-admin-ui-j08-Setti-431be-sation-depuis-la-navigation/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j08-admin-ui-j08-Setti-431be-sation-depuis-la-navigation/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j08-admin-ui-j08-Setti-431be-sation-depuis-la-navigation/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) e2e/journeys/v01/j08/compliance-usage-api.spec.ts:87:3 › j08 conformité — anonymisation › j08-001 : après anonymisation, une reconnexion ne recrée pas un compte nominatif 
+
+    Error: expect(received).toBeGreaterThanOrEqual(expected)
+
+    Expected: >= 400
+    Received:    200
+
+      89 |     expect((await admin.send("POST", `/v1/compliance/users/${u.id}/erase`)).status).toBe(204);
+      90 |     const again = await u.api.get("/v1/me");
+    > 91 |     expect(again.status).toBeGreaterThanOrEqual(400);
+         |                          ^
+      92 |     const n = psql(
+      93 |       `SELECT count(*) FROM users WHERE username='${u.username}' AND erased_at IS NULL`,
+      94 |     );
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j08/compliance-usage-api.spec.ts:91:26
+
+    Error Context: test-results/v01-j08-compliance-usage-a-8540c-rée-pas-un-compte-nominatif/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j08-compliance-usage-a-8540c-rée-pas-un-compte-nominatif/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j08-compliance-usage-a-8540c-rée-pas-un-compte-nominatif/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2 failed
+    e2e/journeys/v01/j08/admin-ui.spec.ts:49:3 › j08 SettingsNav et droits d'accès › j08-002 : l'Administrateur atteint l'anonymisation depuis la navigation 
+    e2e/journeys/v01/j08/compliance-usage-api.spec.ts:87:3 › j08 conformité — anonymisation › j08-001 : après anonymisation, une reconnexion ne recrée pas un compte nominatif 

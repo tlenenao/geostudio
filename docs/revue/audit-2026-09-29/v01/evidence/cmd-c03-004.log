@@ -1,0 +1,18 @@
+$ cd core && PYTHONPATH=. uv run python ../docs/revue/audit-2026-09-29/c03/probes/index_plans.py
+rc=0 3s
+{"timestamp": "2026-09-30T08:09:45", "level": "INFO", "logger": "procrastinate.blueprints", "message": "Adding tasks from blueprint", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:45", "level": "INFO", "logger": "procrastinate.periodic", "message": "Registering task app.alerts.jobs.sweep_alert_rules_task with periodic id '' to run periodically with cron */5 * * * *", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:45", "level": "INFO", "logger": "procrastinate.periodic", "message": "Registering task app.appexport.jobs.sweep_appexport_jobs_task with periodic id '' to run periodically with cron */5 * * * *", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:45", "level": "INFO", "logger": "procrastinate.periodic", "message": "Registering task app.ingestion.tasks.sweep_ingestion_jobs_task with periodic id '' to run periodically with cron */15 * * * *", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:45", "level": "INFO", "logger": "procrastinate.periodic", "message": "Registering task app.harvest.jobs.run_harvest_sweep_task with periodic id '' to run periodically with cron */15 * * * *", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:46", "level": "INFO", "logger": "procrastinate.periodic", "message": "Registering task app.pipelines.jobs.run_pipeline_sweep_task with periodic id '' to run periodically with cron */5 * * * *", "trace_id": null, "span_id": null}
+audit_log (usage.summarize): SCAN audit_log
+config_revisions (_latest_revision): SCAN config_revisions | USE TEMP B-TREE FOR ORDER BY
+configs (get_config_by_item): SCAN configs
+report_runs (get_latest_run): SEARCH report_runs USING INDEX ix_report_runs_tenant_id (tenant_id=?) | USE TEMP B-TREE FOR ORDER BY
+pipeline_runs (témoin SP-49): SEARCH pipeline_runs USING INDEX ix_pipeline_runs_pipeline (pipeline_item_id=? AND tenant_id=?)
+group_members (groups of user): SCAN group_members
+config_revisions cols: ['id', 'tenant_id', 'config_id', 'version', 'data', 'created_at']
+config_revisions index_list: []
+
+--stderr--

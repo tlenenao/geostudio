@@ -1,0 +1,201 @@
+
+Running 6 tests using 1 worker
+
+  ✘  1 e2e/journeys/v01/j12/layout.spec.ts:43:3 › j12 chrome sur téléphone (360 px) › j12-002 : l'en-tête tient dans 360 px (Notifications et Compte atteignables sans défilement horizontal) (3.5s)
+  ✘  2 e2e/journeys/v01/j12/layout.spec.ts:161:3 › j12 carte : hauteur de la mise en page large › j12-003 : à 1280×800 l'éditeur de carte ne dépasse pas la hauteur de la fenêtre (6.6s)
+  ✘  3 e2e/journeys/v01/j12/map-touch.spec.ts:39:3 › j12 carte : rendu et worker › j12-001 : le worker MapLibre est servi avec un type MIME JavaScript (71ms)
+  ✘  4 e2e/journeys/v01/j12/map-touch.spec.ts:48:3 › j12 carte : rendu et worker › j12-001 : sans contournement, la couche vectorielle de la carte est rendue (10.3s)
+  ✘  5 e2e/journeys/v01/j12/map-touch.spec.ts:89:3 › j12 carte tactile : popups › j12-005 : le bouton Fermer du popup offre une cible d'au moins 24×24 px (7.4s)
+  ✘  6 e2e/journeys/v01/j12/map-touch.spec.ts:175:3 › j12 carte tactile : mesure et croquis au doigt › j12-009 : le tracé libre au doigt pose une forme au lieu de déplacer la carte (18.4s)
+
+
+  1) e2e/journeys/v01/j12/layout.spec.ts:43:3 › j12 chrome sur téléphone (360 px) › j12-002 : l'en-tête tient dans 360 px (Notifications et Compte atteignables sans défilement horizontal) 
+
+    Error: expect(received).toBeLessThanOrEqual(expected)
+
+    Expected: <= 360
+    Received:    516.890625
+
+      47 |     await go(page, "/", 1500);
+      48 |     const acc = await page.getByRole("button", { name: "Compte" }).boundingBox();
+    > 49 |     expect(acc!.x + acc!.width).toBeLessThanOrEqual(360);
+         |                                 ^
+      50 |     const sw = await page.evaluate(() => document.documentElement.scrollWidth);
+      51 |     expect(sw).toBeLessThanOrEqual(360);
+      52 |   });
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j12/layout.spec.ts:49:33
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/v01-j12-layout-j12-chrome--60936-sans-défilement-horizontal-/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/v01-j12-layout-j12-chrome--60936-sans-défilement-horizontal-/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j12-layout-j12-chrome--60936-sans-défilement-horizontal-/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j12-layout-j12-chrome--60936-sans-défilement-horizontal-/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) e2e/journeys/v01/j12/layout.spec.ts:161:3 › j12 carte : hauteur de la mise en page large › j12-003 : à 1280×800 l'éditeur de carte ne dépasse pas la hauteur de la fenêtre 
+
+    Error: expect(received).toBeLessThanOrEqual(expected)
+
+    Expected: <= 802
+    Received:    3555
+
+      168 |     await go(page, `/maps/${m.pk}`, 4000);
+      169 |     const h = await page.evaluate(() => document.documentElement.scrollHeight);
+    > 170 |     expect(h).toBeLessThanOrEqual(800 + 2);
+          |               ^
+      171 |   });
+      172 | });
+      173 |
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j12/layout.spec.ts:170:15
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/v01-j12-layout-j12-carte-h-ce045-as-la-hauteur-de-la-fenêtre/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/v01-j12-layout-j12-carte-h-ce045-as-la-hauteur-de-la-fenêtre/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j12-layout-j12-carte-h-ce045-as-la-hauteur-de-la-fenêtre/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j12-layout-j12-carte-h-ce045-as-la-hauteur-de-la-fenêtre/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) e2e/journeys/v01/j12/map-touch.spec.ts:39:3 › j12 carte : rendu et worker › j12-001 : le worker MapLibre est servi avec un type MIME JavaScript 
+
+    Error: expect(received).toMatch(expected)
+
+    Expected pattern: /javascript/
+    Received string:  "application/octet-stream"
+
+      42 |     const r = await request.get(`${SHELL_URL}/assets/maplibre-gl-worker.mjs`);
+      43 |     expect(r.status()).toBe(200);
+    > 44 |     expect(r.headers()["content-type"]).toMatch(/javascript/);
+         |                                         ^
+      45 |   });
+      46 |
+      47 |   // Finding j12-001 (même cause : le worker ne démarre pas, les tuiles restent « loading »).
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j12/map-touch.spec.ts:44:41
+
+    Error Context: test-results/v01-j12-map-touch-j12-cart-d96a2-vec-un-type-MIME-JavaScript/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j12-map-touch-j12-cart-d96a2-vec-un-type-MIME-JavaScript/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j12-map-touch-j12-cart-d96a2-vec-un-type-MIME-JavaScript/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  4) e2e/journeys/v01/j12/map-touch.spec.ts:48:3 › j12 carte : rendu et worker › j12-001 : sans contournement, la couche vectorielle de la carte est rendue 
+
+    Error: expect(received).toBeGreaterThan(expected)
+
+    Expected: > 0
+    Received:   0
+
+      57 |       "return m.queryRenderedFeatures({layers:['j12-pts']}).length;",
+      58 |     );
+    > 59 |     expect(n).toBeGreaterThan(0);
+         |               ^
+      60 |   });
+      61 |
+      62 |   test("avec le type MIME rétabli, la carte charge ses tuiles et affiche les 12 points", async ({
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j12/map-touch.spec.ts:59:15
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/v01-j12-map-touch-j12-cart-8c4c9-elle-de-la-carte-est-rendue/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/v01-j12-map-touch-j12-cart-8c4c9-elle-de-la-carte-est-rendue/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j12-map-touch-j12-cart-8c4c9-elle-de-la-carte-est-rendue/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j12-map-touch-j12-cart-8c4c9-elle-de-la-carte-est-rendue/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  5) e2e/journeys/v01/j12/map-touch.spec.ts:89:3 › j12 carte tactile : popups › j12-005 : le bouton Fermer du popup offre une cible d'au moins 24×24 px 
+
+    Error: expect(received).toBeGreaterThanOrEqual(expected)
+
+    Expected: >= 24
+    Received:    18.0625
+
+       97 |       .getByRole("button", { name: "Fermer" })
+       98 |       .boundingBox();
+    >  99 |     expect(box!.width).toBeGreaterThanOrEqual(24);
+          |                        ^
+      100 |     expect(box!.height).toBeGreaterThanOrEqual(24);
+      101 |   });
+      102 |
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j12/map-touch.spec.ts:99:24
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/v01-j12-map-touch-j12-cart-7d147-e-cible-d-au-moins-24×24-px/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/v01-j12-map-touch-j12-cart-7d147-e-cible-d-au-moins-24×24-px/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j12-map-touch-j12-cart-7d147-e-cible-d-au-moins-24×24-px/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j12-map-touch-j12-cart-7d147-e-cible-d-au-moins-24×24-px/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  6) e2e/journeys/v01/j12/map-touch.spec.ts:175:3 › j12 carte tactile : mesure et croquis au doigt › j12-009 : le tracé libre au doigt pose une forme au lieu de déplacer la carte 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByText(/1 tracé/i)
+    Expected: visible
+    Timeout: 10000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for getByText(/1 tracé/i)
+
+
+      180 |     await page.getByRole("button", { name: "Tracé libre" }).tap();
+      181 |     await touchGesture(page, [{ x: 100, y: 500 }], [{ x: 250, y: 560 }], 12);
+    > 182 |     await expect(page.getByText(/1 tracé/i)).toBeVisible();
+          |                                              ^
+      183 |   });
+      184 | });
+      185 |
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j12/map-touch.spec.ts:182:46
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/v01-j12-map-touch-j12-cart-66568-u-lieu-de-déplacer-la-carte/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/v01-j12-map-touch-j12-cart-66568-u-lieu-de-déplacer-la-carte/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j12-map-touch-j12-cart-66568-u-lieu-de-déplacer-la-carte/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j12-map-touch-j12-cart-66568-u-lieu-de-déplacer-la-carte/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  6 failed
+    e2e/journeys/v01/j12/layout.spec.ts:43:3 › j12 chrome sur téléphone (360 px) › j12-002 : l'en-tête tient dans 360 px (Notifications et Compte atteignables sans défilement horizontal) 
+    e2e/journeys/v01/j12/layout.spec.ts:161:3 › j12 carte : hauteur de la mise en page large › j12-003 : à 1280×800 l'éditeur de carte ne dépasse pas la hauteur de la fenêtre 
+    e2e/journeys/v01/j12/map-touch.spec.ts:39:3 › j12 carte : rendu et worker › j12-001 : le worker MapLibre est servi avec un type MIME JavaScript 
+    e2e/journeys/v01/j12/map-touch.spec.ts:48:3 › j12 carte : rendu et worker › j12-001 : sans contournement, la couche vectorielle de la carte est rendue 
+    e2e/journeys/v01/j12/map-touch.spec.ts:89:3 › j12 carte tactile : popups › j12-005 : le bouton Fermer du popup offre une cible d'au moins 24×24 px 
+    e2e/journeys/v01/j12/map-touch.spec.ts:175:3 › j12 carte tactile : mesure et croquis au doigt › j12-009 : le tracé libre au doigt pose une forme au lieu de déplacer la carte 

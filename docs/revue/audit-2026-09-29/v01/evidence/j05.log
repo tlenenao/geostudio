@@ -1,0 +1,152 @@
+
+Running 3 tests using 1 worker
+
+  ✘  1 e2e/journeys/v01/j05/aggregate-api.spec.ts:128:3 › j05 agrégats — API › j05-002 : un agrégat filtré par emprise ou intersection d'une collection importée répond 200 (140ms)
+  ✘  2 e2e/journeys/v01/j05/export-api.spec.ts:75:3 › j05 exports — API › j05-009 : un texte commençant par « = » ou « @ » n'est jamais exporté comme formule (248ms)
+  ✘  3 e2e/journeys/v01/j05/sql-api.spec.ts:146:3 › j05 SQL Lab — API › j05-001 : SQL Lab lit une collection à géométrie importée (374ms)
+
+
+  1) e2e/journeys/v01/j05/aggregate-api.spec.ts:128:3 › j05 agrégats — API › j05-002 : un agrégat filtré par emprise ou intersection d'une collection importée répond 200 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 500
+
+      131 |       bbox: [0, 40, 5, 50],
+      132 |     });
+    > 133 |     expect(bbox.status).toBe(200);
+          |                         ^
+      134 |     const inter = await aggregate(analyst, seed.eventsCollection, {
+      135 |       agg: "count",
+      136 |       geomIntersects: {
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j05/aggregate-api.spec.ts:133:25
+
+    Error Context: test-results/v01-j05-aggregate-api-j05--6e106-lection-importée-répond-200/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j05-aggregate-api-j05--6e106-lection-importée-répond-200/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j05-aggregate-api-j05--6e106-lection-importée-répond-200/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) e2e/journeys/v01/j05/export-api.spec.ts:75:3 › j05 exports — API › j05-009 : un texte commençant par « = » ou « @ » n'est jamais exporté comme formule 
+
+    Error: expect(received).not.toMatch(expected)
+
+    Expected pattern: not /(^|,)"?=1\+1/m
+    Received string:      "nom,cat,zone,date,note,montant
+    E0,a,z1,2025-01-15T10:00:00Z,\"=1+1,\"\"cité\"\"
+    ligne2\",
+    E1,b,z2,2025-02-15T10:00:00Z,@SUM(A1),10
+    E2,c,z3,2025-03-15T10:00:00Z,n2,20
+    E3,a,z1,2025-04-15T10:00:00Z,n3,30
+    E4,b,z2,2025-05-15T10:00:00Z,n4,40
+    E5,c,z3,2025-06-15T10:00:00Z,n5,50
+    E6,a,z1,2025-07-15T10:00:00Z,n6,60
+    E7,b,z2,2025-08-15T10:00:00Z,n7,
+    E8,c,z3,2025-09-15T10:00:00Z,n8,80
+    E9,,z1,2025-10-15T10:00:00Z,n9,90
+    E10,b,z2,2025-11-15T10:00:00Z,n10,100
+    E11,c,z3,2025-12-15T10:00:00Z,n11,110
+    E12,a,z1,2025-01-15T10:00:00Z,n12,120
+    E13,b,z2,2025-02-15T10:00:00Z,n13,130
+    E14,c,z3,2025-03-15T10:00:00Z,n14,
+    E15,a,z1,2025-04-15T10:00:00Z,n15,150
+    E16,b,z2,2025-05-15T10:00:00Z,n16,160
+    E17,c,z3,2025-06-15T10:00:00Z,n17,170
+    E18,a,z1,2025-07-15T10:00:00Z,n18,180
+    E19,,z2,2025-08-15T10:00:00Z,n19,190
+    E20,c,z3,2025-09-15T10:00:00Z,n20,200
+    E21,a,z1,2025-10-15T10:00:00Z,n21,
+    E22,b,z2,2025-11-15T10:00:00Z,n22,220
+    E23,c,z3,2025-12-15T10:00:00Z,n23,230
+    E24,a,z1,2025-01-15T10:00:00Z,n24,240
+    E25,b,z2,2025-02-15T10:00:00Z,n25,250
+    E26,c,z3,2025-03-15T10:00:00Z,n26,260
+    E27,a,z1,2025-04-15T10:00:00Z,n27,270
+    E28,b,z2,2025-05-15T10:00:00Z,n28,
+    E29,,z3,2025-06-15T10:00:00Z,n29,290
+    E30,a,z1,2026-07-15T10:00:00Z,n30,300
+    E31,b,z2,2026-08-15T10:00:00Z,n31,310
+    E32,c,z3,2026-09-15T10:00:00Z,n32,320
+    E33,a,z1,2026-10-15T10:00:00Z,n33,330
+    E34,b,z2,2026-11-15T10:00:00Z,n34,340
+    E35,c,z3,2026-12-15T10:00:00Z,n35,
+    E36,a,z1,2026-01-15T10:00:00Z,n36,360
+    E37,b,z2,2026-02-15T10:00:00Z,n37,370
+    E38,c,z3,2026-03-15T10:00:00Z,n38,380
+    E39,,z1,2026-04-15T10:00:00Z,n39,390
+    E40,b,z2,2026-05-15T10:00:00Z,n40,400
+    E41,c,z3,2026-06-15T10:00:00Z,n41,410
+    E42,a,z1,2026-07-15T10:00:00Z,n42,
+    E43,b,z2,2026-08-15T10:00:00Z,n43,430
+    E44,c,z3,2026-09-15T10:00:00Z,n44,440
+    E45,a,z1,2026-10-15T10:00:00Z,n45,450
+    E46,b,z2,2026-11-15T10:00:00Z,n46,460
+    E47,c,z3,2026-12-15T10:00:00Z,n47,470
+    E48,a,z1,2026-01-15T10:00:00Z,n48,480
+    E49,,z2,2026-02-15T10:00:00Z,n49,
+    E50,c,z3,2026-03-15T10:00:00Z,n50,500
+    E51,a,z1,2026-04-15T10:00:00Z,n51,510
+    E52,b,z2,2026-05-15T10:00:00Z,n52,520
+    E53,c,z3,2026-06-15T10:00:00Z,n53,530
+    E54,a,z1,2026-07-15T10:00:00Z,n54,540
+    E55,b,z2,2026-08-15T10:00:00Z,n55,550
+    E56,c,z3,2026-09-15T10:00:00Z,n56,
+    E57,a,z1,2026-10-15T10:00:00Z,n57,570
+    E58,b,z2,2026-11-15T10:00:00Z,n58,580
+    E59,,z3,2026-12-15T10:00:00Z,n59,590
+    "
+
+      76 |     const path = `/v1/collections/${seed.eventsCollection}/export/items`;
+      77 |     const csv = await download("analyst", "GET", `${path}?format=csv`);
+    > 78 |     expect(csv.buf.toString()).not.toMatch(/(^|,)"?=1\+1/m);
+         |                                    ^
+      79 |     expect(csv.buf.toString()).not.toMatch(/(^|,)@SUM/m);
+      80 |     const xlsx = await download("analyst", "GET", `${path}?format=xlsx`);
+      81 |     expect(xlsxSheetXml(xlsx.buf)).not.toContain("<f>");
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j05/export-api.spec.ts:78:36
+
+    Error Context: test-results/v01-j05-export-api-j05-exp-43e39-amais-exporté-comme-formule/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j05-export-api-j05-exp-43e39-amais-exporté-comme-formule/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j05-export-api-j05-exp-43e39-amais-exporté-comme-formule/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) e2e/journeys/v01/j05/sql-api.spec.ts:146:3 › j05 SQL Lab — API › j05-001 : SQL Lab lit une collection à géométrie importée 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 400
+
+      146 |   test("j05-001 : SQL Lab lit une collection à géométrie importée", async () => {
+      147 |     const r = await sql(analyst, `select count(*) from ${seed.eventsCollection}`);
+    > 148 |     expect(r.status).toBe(200);
+          |                      ^
+      149 |     expect(r.body.rows[0][0]).toBe(60);
+      150 |   });
+      151 |
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j05/sql-api.spec.ts:148:22
+
+    Error Context: test-results/v01-j05-sql-api-j05-SQL-La-13cb2-ection-à-géométrie-importée/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j05-sql-api-j05-SQL-La-13cb2-ection-à-géométrie-importée/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j05-sql-api-j05-SQL-La-13cb2-ection-à-géométrie-importée/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3 failed
+    e2e/journeys/v01/j05/aggregate-api.spec.ts:128:3 › j05 agrégats — API › j05-002 : un agrégat filtré par emprise ou intersection d'une collection importée répond 200 
+    e2e/journeys/v01/j05/export-api.spec.ts:75:3 › j05 exports — API › j05-009 : un texte commençant par « = » ou « @ » n'est jamais exporté comme formule 
+    e2e/journeys/v01/j05/sql-api.spec.ts:146:3 › j05 SQL Lab — API › j05-001 : SQL Lab lit une collection à géométrie importée 

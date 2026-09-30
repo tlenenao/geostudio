@@ -1,0 +1,5 @@
+$ cd core && uv run python -c "import procrastinate.worker as w; print(w.WORKER_CONCURRENCY)" ; grep -rn 'PROCRASTINATE_WORKER_CONCURRENCY' .. --include=*.yml --include=*.env* | head
+rc=0 1s
+1
+
+--stderr--

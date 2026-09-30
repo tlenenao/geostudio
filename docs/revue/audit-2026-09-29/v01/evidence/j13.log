@@ -1,0 +1,163 @@
+
+Running 10 tests using 1 worker
+
+  ✘   1 e2e/journeys/v01/j13/sharing-api.spec.ts:130:3 › j13 rôle de partage viewer / editor › j13-002 : un Lecteur éditeur par groupe ne peut ni publier (anonyme), ni rendre public, ni créer de lien (118ms)
+  ✓   2 e2e/journeys/v01/j13/sharing-api.spec.ts:147:3 › j13 rôle de partage viewer / editor › constat j13-002 : le Lecteur éditeur publie l'app, qui devient lisible par un anonyme (157ms)
+  ✘   3 e2e/journeys/v01/j13/sharing-api.spec.ts:201:3 › j13 groupes de partage › j13-004 : le créateur d'un groupe peut lister ses membres, en retirer un et supprimer le groupe (41ms)
+  ✓   4 e2e/journeys/v01/j13/sharing-api.spec.ts:209:3 › j13 groupes de partage › constat j13-004 : un membre ajouté par erreur ne peut être retiré que par… rien (routes absentes) (108ms)
+  ✘   5 e2e/journeys/v01/j13/sharing-api.spec.ts:258:3 › j13 partage d'une carte et de ses données › j13-008 : un membre du groupe à qui l'on partage une carte lit aussi les entités de sa couche (160ms)
+  ✓   6 e2e/journeys/v01/j13/sharing-api.spec.ts:267:3 › j13 partage d'une carte et de ses données › constat j13-008 : config lisible, collection 404 tant que le propriétaire ne la partage pas à part (API seule) (200ms)
+  ✘   7 e2e/journeys/v01/j13/sharing-api.spec.ts:344:3 › j13 liens de partage à échéance › j13-001 : le propriétaire crée un lien de partage (201) et un anonyme le résout (53ms)
+  ✓   8 e2e/journeys/v01/j13/sharing-api.spec.ts:351:3 › j13 liens de partage à échéance › constat j13-001 : POST share-links répond 500 sans laisser de lien en base (67ms)
+  ✘   9 e2e/journeys/v01/j13/sharing-ui.spec.ts:66:3 › j13 panneau de partage (propriétaire) › j13-001 : « Créer un lien » affiche un lien utilisable (14.6s)
+  ✓  10 e2e/journeys/v01/j13/sharing-ui.spec.ts:74:3 › j13 panneau de partage (propriétaire) › constat j13-001 : « Créer un lien » échoue avec un message générique (4.5s)
+
+
+  1) e2e/journeys/v01/j13/sharing-api.spec.ts:130:3 › j13 rôle de partage viewer / editor › j13-002 : un Lecteur éditeur par groupe ne peut ni publier (anonyme), ni rendre public, ni créer de lien 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 403
+    Received: 200
+
+      136 |       403,
+      137 |     );
+    > 138 |     expect((await reader.send("PATCH", `/v1/items/${it.pk}`, { isPublished: true })).status).toBe(
+          |                                                                                              ^
+      139 |       403,
+      140 |     );
+      141 |     expect(await anon(`/v1/public/configs/by-item/${it.pk}`)).toBe(404);
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j13/sharing-api.spec.ts:138:94
+
+    Error Context: test-results/v01-j13-sharing-api-j13-rô-cefaa-dre-public-ni-créer-de-lien/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j13-sharing-api-j13-rô-cefaa-dre-public-ni-créer-de-lien/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j13-sharing-api-j13-rô-cefaa-dre-public-ni-créer-de-lien/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) e2e/journeys/v01/j13/sharing-api.spec.ts:201:3 › j13 groupes de partage › j13-004 : le créateur d'un groupe peut lister ses membres, en retirer un et supprimer le groupe 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 404
+
+      202 |     const g = await mkGroup(creator, `${TAG}-gmgmt`, [readerId]);
+      203 |     const members = await creator.get(`/v1/groups/${g}/members`);
+    > 204 |     expect(members.status).toBe(200);
+          |                            ^
+      205 |     expect((await creator.send("DELETE", `/v1/groups/${g}/members/${readerId}`)).status).toBe(204);
+      206 |     expect((await creator.send("DELETE", `/v1/groups/${g}`)).status).toBe(204);
+      207 |   });
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j13/sharing-api.spec.ts:204:28
+
+    Error Context: test-results/v01-j13-sharing-api-j13-gr-d4902-r-un-et-supprimer-le-groupe/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j13-sharing-api-j13-gr-d4902-r-un-et-supprimer-le-groupe/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j13-sharing-api-j13-gr-d4902-r-un-et-supprimer-le-groupe/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) e2e/journeys/v01/j13/sharing-api.spec.ts:258:3 › j13 partage d'une carte et de ses données › j13-008 : un membre du groupe à qui l'on partage une carte lit aussi les entités de sa couche 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 404
+
+      262 |     expect(await share(creator, m.pk, [{ groupId: g, role: "viewer" }])).toBe(204);
+      263 |     expect((await reader.get(`/v1/configs/by-item/${m.pk}`)).status).toBe(200);
+    > 264 |     expect((await reader.get(`/v1/collections/${col}/items`)).status).toBe(200);
+          |                                                                       ^
+      265 |   });
+      266 |
+      267 |   test("constat j13-008 : config lisible, collection 404 tant que le propriétaire ne la partage pas à part (API seule)", async () => {
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j13/sharing-api.spec.ts:264:71
+
+    Error Context: test-results/v01-j13-sharing-api-j13-pa-42ce9-si-les-entités-de-sa-couche/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j13-sharing-api-j13-pa-42ce9-si-les-entités-de-sa-couche/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j13-sharing-api-j13-pa-42ce9-si-les-entités-de-sa-couche/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  4) e2e/journeys/v01/j13/sharing-api.spec.ts:344:3 › j13 liens de partage à échéance › j13-001 : le propriétaire crée un lien de partage (201) et un anonyme le résout 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 201
+    Received: 500
+
+      345 |     const it = await mkItem(creator, `${TAG}-link`);
+      346 |     const r = await creator.send("POST", `/v1/items/${it.pk}/share-links`, { ttlDays: 7 });
+    > 347 |     expect(r.status).toBe(201);
+          |                      ^
+      348 |     expect(await anon(`/v1/share-links/${r.body.token}`)).toBe(200);
+      349 |   });
+      350 |
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j13/sharing-api.spec.ts:347:22
+
+    Error Context: test-results/v01-j13-sharing-api-j13-li-b540f-201-et-un-anonyme-le-résout/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j13-sharing-api-j13-li-b540f-201-et-un-anonyme-le-résout/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j13-sharing-api-j13-li-b540f-201-et-un-anonyme-le-résout/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  5) e2e/journeys/v01/j13/sharing-ui.spec.ts:66:3 › j13 panneau de partage (propriétaire) › j13-001 : « Créer un lien » affiche un lien utilisable 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByText('Lien créé :')
+    Expected: visible
+    Timeout: 10000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for getByText('Lien créé :')
+
+
+      69 |     await go(page, `/items/${it.pk}?panel=share`, 2500);
+      70 |     await page.getByRole("button", { name: "Créer un lien" }).click();
+    > 71 |     await expect(page.getByText("Lien créé :")).toBeVisible();
+         |                                                 ^
+      72 |   });
+      73 |
+      74 |   test("constat j13-001 : « Créer un lien » échoue avec un message générique", async ({ page }) => {
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j13/sharing-ui.spec.ts:71:49
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/v01-j13-sharing-ui-j13-pan-ff445--affiche-un-lien-utilisable/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/v01-j13-sharing-ui-j13-pan-ff445--affiche-un-lien-utilisable/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j13-sharing-ui-j13-pan-ff445--affiche-un-lien-utilisable/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j13-sharing-ui-j13-pan-ff445--affiche-un-lien-utilisable/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  5 failed
+    e2e/journeys/v01/j13/sharing-api.spec.ts:130:3 › j13 rôle de partage viewer / editor › j13-002 : un Lecteur éditeur par groupe ne peut ni publier (anonyme), ni rendre public, ni créer de lien 
+    e2e/journeys/v01/j13/sharing-api.spec.ts:201:3 › j13 groupes de partage › j13-004 : le créateur d'un groupe peut lister ses membres, en retirer un et supprimer le groupe 
+    e2e/journeys/v01/j13/sharing-api.spec.ts:258:3 › j13 partage d'une carte et de ses données › j13-008 : un membre du groupe à qui l'on partage une carte lit aussi les entités de sa couche 
+    e2e/journeys/v01/j13/sharing-api.spec.ts:344:3 › j13 liens de partage à échéance › j13-001 : le propriétaire crée un lien de partage (201) et un anonyme le résout 
+    e2e/journeys/v01/j13/sharing-ui.spec.ts:66:3 › j13 panneau de partage (propriétaire) › j13-001 : « Créer un lien » affiche un lien utilisable 
+  5 passed (27.1s)

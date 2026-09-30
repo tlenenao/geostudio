@@ -1,0 +1,5 @@
+$ cd core && PYTHONPATH=. uv run python -c "import duckdb;print(duckdb.connect(':memory:').execute(\"select current_setting('memory_limit'),current_setting('threads')\").fetchone())" ; grep -n 'memory_limit\|Timer\|interrupt' app/analytics/duckdb_conn.py app/analytics/aggregate.py
+rc=1 0s
+('12.4 GiB', 8)
+
+--stderr--

@@ -1,0 +1,183 @@
+
+Running 5 tests using 1 worker
+
+  ✘  1 e2e/journeys/v01/t01/axe.spec.ts:139:3 › axe-core : thème sombre › t01-005 : les formulaires des éditeurs sont lisibles en sombre (contraste) (15.3s)
+  ✘  2 e2e/journeys/v01/t01/axe.spec.ts:158:3 › axe-core : thème sombre › t01-006 : les routes publiques (fiche dataset) sont lisibles en sombre (3.5s)
+  ✘  3 e2e/journeys/v01/t01/axe.spec.ts:165:3 › axe-core : thème sombre › t01-006b : l'état « Accès refusé » d'une app est lisible en sombre (5.5s)
+  ✘  4 e2e/journeys/v01/t01/dialogs.spec.ts:67:3 › dialogues, menus et popovers (creator) › t01-009 : le menu « Actions » d'une carte expose menu/aria-expanded (2.2s)
+  ✘  5 e2e/journeys/v01/t01/structure.spec.ts:66:3 › structure des pages (creator) › t01-004 : le titre du document change à chaque route (6.2s)
+
+
+  1) e2e/journeys/v01/t01/axe.spec.ts:139:3 › axe-core : thème sombre › t01-005 : les formulaires des éditeurs sont lisibles en sombre (contraste) 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: ""
+    Received: "/reports/new: 4 nœuds, ex. .gap-4.flex-col > label:nth-child(2)
+    /datasets/visual-query/new: 2 nœuds, ex. label:nth-child(2)
+    /apps/f1613fe96038493580691a6d359b6c69/edit: 62 nœuds, ex. .truncate
+    /maps/6e6524a5920b403aaa8f3487696386d7: 15 nœuds, ex. .gap-4 > label
+    /datasets/abe4c33e833642ff9e55bae288183ebe/edit: 12 nœuds, ex. tr:nth-child(1) > .font-mono"
+
+      153 |       if (v.length) bad.push(`${r}: ${v[0].nodes.length} nœuds, ex. ${v[0].nodes[0].target}`);
+      154 |     }
+    > 155 |     expect(bad.join("\n")).toBe("");
+          |                            ^
+      156 |   });
+      157 |
+      158 |   bug("t01-006 : les routes publiques (fiche dataset) sont lisibles en sombre", async () => {
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/t01/axe.spec.ts:155:28
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/v01-t01-axe-axe-core-thème-e0b17-sibles-en-sombre-contraste-/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/v01-t01-axe-axe-core-thème-e0b17-sibles-en-sombre-contraste-/error-context.md
+
+    Error Context: test-results/v01-t01-axe-axe-core-thème-e0b17-sibles-en-sombre-contraste-/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-t01-axe-axe-core-thème-e0b17-sibles-en-sombre-contraste-/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-t01-axe-axe-core-thème-e0b17-sibles-en-sombre-contraste-/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) e2e/journeys/v01/t01/axe.spec.ts:158:3 › axe-core : thème sombre › t01-006 : les routes publiques (fiche dataset) sont lisibles en sombre 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: ""
+    Received: "color-contrast (serious) x6: h1"
+
+      160 |     await go(s.page, `/public/datasets/${seed.collectionId}`, 3000);
+      161 |     const v = (await axe(s.page, ["color-contrast"])).filter((x) => x.id === "color-contrast");
+    > 162 |     expect(fmt(v)).toBe("");
+          |                    ^
+      163 |   });
+      164 |
+      165 |   bug("t01-006b : l'état « Accès refusé » d'une app est lisible en sombre", async () => {
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/t01/axe.spec.ts:162:20
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/v01-t01-axe-axe-core-thème-90267-set-sont-lisibles-en-sombre/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/v01-t01-axe-axe-core-thème-90267-set-sont-lisibles-en-sombre/error-context.md
+
+    Error Context: test-results/v01-t01-axe-axe-core-thème-90267-set-sont-lisibles-en-sombre/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-t01-axe-axe-core-thème-90267-set-sont-lisibles-en-sombre/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-t01-axe-axe-core-thème-90267-set-sont-lisibles-en-sombre/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) e2e/journeys/v01/t01/axe.spec.ts:165:3 › axe-core : thème sombre › t01-006b : l'état « Accès refusé » d'une app est lisible en sombre 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: ""
+    Received: "color-contrast (serious) x1: p"
+
+      169 |       await go(r.page, `/apps/${seed.appId}`, 3000);
+      170 |       const v = (await axe(r.page, ["color-contrast"])).filter((x) => x.id === "color-contrast");
+    > 171 |       expect(fmt(v)).toBe("");
+          |                      ^
+      172 |     } finally {
+      173 |       await r.ctx.close();
+      174 |     }
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/t01/axe.spec.ts:171:22
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/v01-t01-axe-axe-core-thème-f0e3e-e-app-est-lisible-en-sombre/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/v01-t01-axe-axe-core-thème-f0e3e-e-app-est-lisible-en-sombre/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/v01-t01-axe-axe-core-thème-f0e3e-e-app-est-lisible-en-sombre/error-context.md
+
+    Error Context: test-results/v01-t01-axe-axe-core-thème-f0e3e-e-app-est-lisible-en-sombre/error-context.md
+
+    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-t01-axe-axe-core-thème-f0e3e-e-app-est-lisible-en-sombre/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-t01-axe-axe-core-thème-f0e3e-e-app-est-lisible-en-sombre/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  4) e2e/journeys/v01/t01/dialogs.spec.ts:67:3 › dialogues, menus et popovers (creator) › t01-009 : le menu « Actions » d'une carte expose menu/aria-expanded 
+
+    Error: expect(received).not.toBeNull()
+
+    Received: null
+
+      73 |       expanded: e.getAttribute("aria-expanded"),
+      74 |     }));
+    > 75 |     expect(attrs.popup).not.toBeNull();
+         |                             ^
+      76 |     expect(attrs.expanded).toBe("true");
+      77 |     expect(await s.page.locator("[role=menu]").count()).toBeGreaterThan(0);
+      78 |   });
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/t01/dialogs.spec.ts:75:29
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/v01-t01-dialogs-dialogues--cc369-e-expose-menu-aria-expanded/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/v01-t01-dialogs-dialogues--cc369-e-expose-menu-aria-expanded/error-context.md
+
+    Error Context: test-results/v01-t01-dialogs-dialogues--cc369-e-expose-menu-aria-expanded/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-t01-dialogs-dialogues--cc369-e-expose-menu-aria-expanded/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-t01-dialogs-dialogues--cc369-e-expose-menu-aria-expanded/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  5) e2e/journeys/v01/t01/structure.spec.ts:66:3 › structure des pages (creator) › t01-004 : le titre du document change à chaque route 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 4
+    Received: 1
+
+      71 |       titles.add(await s.page.title());
+      72 |     }
+    > 73 |     expect(titles.size).toBe(4);
+         |                         ^
+      74 |   });
+      75 |
+      76 |   bug("t01-013 : les boutons d'une carte du catalogue ont un nom unique", async () => {
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/t01/structure.spec.ts:73:25
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/v01-t01-structure-structur-993ab-ument-change-à-chaque-route/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/v01-t01-structure-structur-993ab-ument-change-à-chaque-route/error-context.md
+
+    Error Context: test-results/v01-t01-structure-structur-993ab-ument-change-à-chaque-route/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-t01-structure-structur-993ab-ument-change-à-chaque-route/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-t01-structure-structur-993ab-ument-change-à-chaque-route/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  5 failed
+    e2e/journeys/v01/t01/axe.spec.ts:139:3 › axe-core : thème sombre › t01-005 : les formulaires des éditeurs sont lisibles en sombre (contraste) 
+    e2e/journeys/v01/t01/axe.spec.ts:158:3 › axe-core : thème sombre › t01-006 : les routes publiques (fiche dataset) sont lisibles en sombre 
+    e2e/journeys/v01/t01/axe.spec.ts:165:3 › axe-core : thème sombre › t01-006b : l'état « Accès refusé » d'une app est lisible en sombre 
+    e2e/journeys/v01/t01/dialogs.spec.ts:67:3 › dialogues, menus et popovers (creator) › t01-009 : le menu « Actions » d'une carte expose menu/aria-expanded 
+    e2e/journeys/v01/t01/structure.spec.ts:66:3 › structure des pages (creator) › t01-004 : le titre du document change à chaque route 

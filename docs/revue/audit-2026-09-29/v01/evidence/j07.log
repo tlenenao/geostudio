@@ -1,0 +1,173 @@
+
+Running 5 tests using 1 worker
+
+  ✘  1 e2e/journeys/v01/j07/harvest-api.spec.ts:210:3 › j07 moissonnage — défauts constatés › j07-002 : POST /harvest/sources/{id}/run répond 202 (265ms)
+  ✘  2 e2e/journeys/v01/j07/harvest-api.spec.ts:231:3 › j07 moissonnage — défauts constatés › j07-006 : une source en erreur avec intervalle 1440 min n'est pas re-lancée à chaque balayage (4.5s)
+  ✘  3 e2e/journeys/v01/j07/harvest-ui.spec.ts:102:3 › j07 moissonnage — défauts constatés (UI) › j07-003 : « Moissonner maintenant » confirme le lancement ou signale l'échec (6.7s)
+  ✘  4 e2e/journeys/v01/j07/harvest-ui.spec.ts:115:3 › j07 moissonnage — défauts constatés (UI) › j07-017 : la table affiche la raison de l'échec d'une source (16.0s)
+  ✘  5 e2e/journeys/v01/j07/stac-dcat-api.spec.ts:184:3 › j07 collection cassée — dégradation gracieuse › j07-008 : une collection cassée ne fait pas échouer /stac/search pour toutes les autres (355ms)
+
+
+  1) e2e/journeys/v01/j07/harvest-api.spec.ts:210:3 › j07 moissonnage — défauts constatés › j07-002 : POST /harvest/sources/{id}/run répond 202 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 202
+    Received: 500
+
+      211 |     const src = await createSource(admin, { type: "stac", url: `https://x.invalid/${tag}-run` });
+      212 |     const r = await admin.send("POST", `/v1/harvest/sources/${src.id}/run`);
+    > 213 |     expect(r.status).toBe(202);
+          |                      ^
+      214 |   });
+      215 |
+      216 |   // Finding j07-004 : aucune validation d'URL à la création.
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j07/harvest-api.spec.ts:213:22
+
+    Error Context: test-results/v01-j07-harvest-api-j07-mo-8e7d1-t-sources-id-run-répond-202/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j07-harvest-api-j07-mo-8e7d1-t-sources-id-run-répond-202/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j07-harvest-api-j07-mo-8e7d1-t-sources-id-run-répond-202/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) e2e/journeys/v01/j07/harvest-api.spec.ts:231:3 › j07 moissonnage — défauts constatés › j07-006 : une source en erreur avec intervalle 1440 min n'est pas re-lancée à chaque balayage 
+
+    Error: last_run_at doit être posé même en erreur pour respecter l'intervalle
+
+    expect(received).not.toBe(expected) // Object.is equality
+
+    Expected: not ""
+
+      240 |       lastRun,
+      241 |       "last_run_at doit être posé même en erreur pour respecter l'intervalle",
+    > 242 |     ).not.toBe("");
+          |           ^
+      243 |   });
+      244 |
+      245 |   // Finding j07-007 : la suppression d'une source laisse ses items « external » orphelins.
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j07/harvest-api.spec.ts:242:11
+
+    Error Context: test-results/v01-j07-harvest-api-j07-mo-f8ea3-re-lancée-à-chaque-balayage/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j07-harvest-api-j07-mo-f8ea3-re-lancée-à-chaque-balayage/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j07-harvest-api-j07-mo-f8ea3-re-lancée-à-chaque-balayage/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) e2e/journeys/v01/j07/harvest-ui.spec.ts:102:3 › j07 moissonnage — défauts constatés (UI) › j07-003 : « Moissonner maintenant » confirme le lancement ou signale l'échec 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByRole('alert').or(getByRole('status')).first()
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for getByRole('alert').or(getByRole('status')).first()
+
+
+      107 |     await openHarvest(page);
+      108 |     await row(page, url).getByRole("button", { name: "Moissonner maintenant" }).click();
+    > 109 |     await expect(page.getByRole("alert").or(page.getByRole("status")).first()).toBeVisible({
+          |                                                                                ^
+      110 |       timeout: 5_000,
+      111 |     });
+      112 |   });
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j07/harvest-ui.spec.ts:109:80
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/v01-j07-harvest-ui-j07-moi-1997d-ancement-ou-signale-l-échec/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/v01-j07-harvest-ui-j07-moi-1997d-ancement-ou-signale-l-échec/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j07-harvest-ui-j07-moi-1997d-ancement-ou-signale-l-échec/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j07-harvest-ui-j07-moi-1997d-ancement-ou-signale-l-échec/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  4) e2e/journeys/v01/j07/harvest-ui.spec.ts:115:3 › j07 moissonnage — défauts constatés (UI) › j07-017 : la table affiche la raison de l'échec d'une source 
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: getByRole('row').filter({ hasText: 'http://127.0.0.1:8200/v1/stac?aud-j07-munp61az-ui-err' })
+    Expected substring: "cible réseau interne bloquée"
+    Received string:    "stachttp://127.0.0.1:8200/v1/stac?aud-j07-munp61az-ui-errreferenceOuierrorMoissonner maintenantÉditerSupprimer"
+    Timeout: 10000ms
+
+    Call log:
+      - Expect "toContainText" with timeout 10000ms
+      - waiting for getByRole('row').filter({ hasText: 'http://127.0.0.1:8200/v1/stac?aud-j07-munp61az-ui-err' })
+        24 × locator resolved to <tr class="border-b border-rule-2">…</tr>
+           - unexpected value "stachttp://127.0.0.1:8200/v1/stac?aud-j07-munp61az-ui-errreferenceOuierrorMoissonner maintenantÉditerSupprimer"
+
+
+      119 |     await openHarvest(page);
+      120 |     await expect(row(page, url)).toContainText("error");
+    > 121 |     await expect(row(page, url)).toContainText("cible réseau interne bloquée");
+          |                                  ^
+      122 |   });
+      123 |
+      124 |   // Finding j07-018 : impossible de revenir à « manuel uniquement » (intervalle vide ignoré à l'édition).
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j07/harvest-ui.spec.ts:121:34
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/v01-j07-harvest-ui-j07-moi-eec8e-son-de-l-échec-d-une-source/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/v01-j07-harvest-ui-j07-moi-eec8e-son-de-l-échec-d-une-source/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j07-harvest-ui-j07-moi-eec8e-son-de-l-échec-d-une-source/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j07-harvest-ui-j07-moi-eec8e-son-de-l-échec-d-une-source/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  5) e2e/journeys/v01/j07/stac-dcat-api.spec.ts:184:3 › j07 collection cassée — dégradation gracieuse › j07-008 : une collection cassée ne fait pas échouer /stac/search pour toutes les autres 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 500
+
+      185 |     await withBrokenCollection(async () => {
+      186 |       const r = await anon("/v1/stac/search?limit=1000");
+    > 187 |       expect(r.status).toBe(200);
+          |                        ^
+      188 |     });
+      189 |   });
+      190 |
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j07/stac-dcat-api.spec.ts:187:24
+        at withBrokenCollection (/home/lenen/projets/geostudio/shell/e2e/journeys/v01/j07/stac-dcat-api.spec.ts:166:7)
+        at /home/lenen/projets/geostudio/shell/e2e/journeys/v01/j07/stac-dcat-api.spec.ts:185:5
+
+    Error Context: test-results/v01-j07-stac-dcat-api-j07--b3967-arch-pour-toutes-les-autres/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/v01-j07-stac-dcat-api-j07--b3967-arch-pour-toutes-les-autres/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/v01-j07-stac-dcat-api-j07--b3967-arch-pour-toutes-les-autres/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  5 failed
+    e2e/journeys/v01/j07/harvest-api.spec.ts:210:3 › j07 moissonnage — défauts constatés › j07-002 : POST /harvest/sources/{id}/run répond 202 
+    e2e/journeys/v01/j07/harvest-api.spec.ts:231:3 › j07 moissonnage — défauts constatés › j07-006 : une source en erreur avec intervalle 1440 min n'est pas re-lancée à chaque balayage 
+    e2e/journeys/v01/j07/harvest-ui.spec.ts:102:3 › j07 moissonnage — défauts constatés (UI) › j07-003 : « Moissonner maintenant » confirme le lancement ou signale l'échec 
+    e2e/journeys/v01/j07/harvest-ui.spec.ts:115:3 › j07 moissonnage — défauts constatés (UI) › j07-017 : la table affiche la raison de l'échec d'une source 
+    e2e/journeys/v01/j07/stac-dcat-api.spec.ts:184:3 › j07 collection cassée — dégradation gracieuse › j07-008 : une collection cassée ne fait pas échouer /stac/search pour toutes les autres 

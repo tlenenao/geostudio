@@ -1,0 +1,13 @@
+$ cd core && CORE_TEST_DATABASE_URL= uv run pytest tests/test_collections_spatial_index.py tests/test_migration_0035_indexes.py tests/test_ingestion_importer_perf.py -q -rs --no-cov
+rc=0 2s
+sss.sss                                                                  [100%]
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_collections_spatial_index.py:34: CORE_TEST_DATABASE_URL non défini — test postgis skippé
+SKIPPED [1] tests/test_collections_spatial_index.py:52: CORE_TEST_DATABASE_URL non défini — test postgis skippé
+SKIPPED [1] tests/test_collections_spatial_index.py:61: CORE_TEST_DATABASE_URL non défini — test postgis skippé
+SKIPPED [1] tests/test_collections_spatial_index.py:101: CORE_TEST_DATABASE_URL non défini — test postgis skippé
+SKIPPED [1] tests/test_migration_0035_indexes.py:64: CORE_TEST_DATABASE_URL non défini — test postgis skippé
+SKIPPED [1] tests/test_ingestion_importer_perf.py:81: CORE_TEST_DATABASE_URL non défini — test postgis skippé
+1 passed, 6 skipped in 0.88s
+
+--stderr--

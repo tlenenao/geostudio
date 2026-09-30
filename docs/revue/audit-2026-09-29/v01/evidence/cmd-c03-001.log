@@ -1,0 +1,1140 @@
+$ cd core && CORE_SECRETS_MASTER_KEY=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8= CORE_ENV=development PYTHONPATH=. uv run pytest ../docs/revue/audit-2026-09-29/c03/probes/test_c03_probe.py -s -q -p no:cacheprovider --rootdir=. -o addopts="" -k delete_pipeline_item
+rc=1 6s
+{"timestamp": "2026-09-30T08:09:36", "level": "INFO", "logger": "procrastinate.blueprints", "message": "Adding tasks from blueprint", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:36", "level": "INFO", "logger": "procrastinate.periodic", "message": "Registering task app.alerts.jobs.sweep_alert_rules_task with periodic id '' to run periodically with cron */5 * * * *", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:36", "level": "INFO", "logger": "procrastinate.periodic", "message": "Registering task app.appexport.jobs.sweep_appexport_jobs_task with periodic id '' to run periodically with cron */5 * * * *", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:36", "level": "INFO", "logger": "procrastinate.periodic", "message": "Registering task app.ingestion.tasks.sweep_ingestion_jobs_task with periodic id '' to run periodically with cron */15 * * * *", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:36", "level": "INFO", "logger": "procrastinate.periodic", "message": "Registering task app.harvest.jobs.run_harvest_sweep_task with periodic id '' to run periodically with cron */15 * * * *", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:37", "level": "INFO", "logger": "procrastinate.periodic", "message": "Registering task app.pipelines.jobs.run_pipeline_sweep_task with periodic id '' to run periodically with cron */5 * * * *", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:37", "level": "WARNING", "logger": "opentelemetry.instrumentation.instrumentor", "message": "Attempting to instrument while already instrumented", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:37", "level": "ERROR", "logger": "app.items.repository", "message": "\u00e9chec de l'enqueue du job d'embedding pour l'item 2ffb9106846d41c6bf46c0ef7658d32f (l'\u00e9criture n'est pas affect\u00e9e ; l'embedding restera NULL jusqu'au prochain write)", "trace_id": null, "span_id": null, "exception": "Traceback (most recent call last):\n  File \"/home/lenen/projets/geostudio/core/app/items/repository.py\", line 64, in _enqueue_embedding\n    embed_item_task.defer(item_id=item_id, tenant_id=tenant_id)\n    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/procrastinate/tasks.py\", line 185, in defer\n    return self.configure().defer(**task_kwargs)\n           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/procrastinate/jobs.py\", line 224, in defer\n    job = self.job_manager.defer_job(job=job, connection=self.connection)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/procrastinate/manager.py\", line 103, in defer_job\n    return self.batch_defer_jobs(jobs=[job], connection=connection)[0]\n           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/procrastinate/manager.py\", line 119, in batch_defer_jobs\n    results = self.connector.get_sync_connector().execute_query_all(\n        **self._defer_jobs_query_kwargs(jobs=jobs)\n    )\n  File \"/usr/lib/python3.14/contextlib.py\", line 85, in inner\n    return func(*args, **kwds)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/procrastinate/sync_psycopg_connector.py\", line 201, in execute_query_all\n    with self._get_cursor() as cursor:\n         ~~~~~~~~~~~~~~~~^^\n  File \"/usr/lib/python3.14/contextlib.py\", line 141, in __enter__\n    return next(self.gen)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/procrastinate/sync_psycopg_connector.py\", line 164, in _get_cursor\n    else self.pool.connection()\n         ^^^^^^^^^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/procrastinate/sync_psycopg_connector.py\", line 97, in pool\n    raise exceptions.AppNotOpen\nprocrastinate.exceptions.AppNotOpen: \nApp was not open. Procrastinate App needs to be opened using:\n\n- ``app.open()``,\n- ``await app.open_async()``,\n- ``with app.open():``,\n- ``async with app.open_async():``.\n"}
+{"timestamp": "2026-09-30T08:09:37", "level": "ERROR", "logger": "app.errors", "message": "unhandled exception on /v1/items/2ffb9106846d41c6bf46c0ef7658d32f", "trace_id": "bd38a4443f68cf214ff89632847b1ced", "span_id": "8d186890cb291c1a", "exception": "Traceback (most recent call last):\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py\", line 1969, in _exec_single_context\n    self.dialect.do_execute(\n    ~~~~~~~~~~~~~~~~~~~~~~~^\n        cursor, str_statement, effective_parameters, context\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/default.py\", line 952, in do_execute\n    cursor.execute(statement, parameters)\n    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^\nsqlite3.IntegrityError: FOREIGN KEY constraint failed\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/errors.py\", line 164, in __call__\n    await self.app(scope, receive, _send)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/opentelemetry/instrumentation/fastapi/__init__.py\", line 305, in __call__\n    await self.app(scope, receive, send)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/uvicorn/middleware/proxy_headers.py\", line 62, in __call__\n    return await self.app(scope, receive, send)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/base.py\", line 193, in __call__\n    response = await self.dispatch_func(request, call_next)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lenen/projets/geostudio/core/app/main.py\", line 235, in rate_limit_guard\n    return await call_next(request)\n           ^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/base.py\", line 168, in call_next\n    raise app_exc from app_exc.__cause__ or app_exc.__context__\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/base.py\", line 144, in coro\n    await self.app(scope, receive_or_disconnect, send_no_error)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/base.py\", line 193, in __call__\n    response = await self.dispatch_func(request, call_next)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lenen/projets/geostudio/core/app/main.py\", line 207, in read_only_guard\n    return await call_next(request)\n           ^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/base.py\", line 168, in call_next\n    raise app_exc from app_exc.__cause__ or app_exc.__context__\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/base.py\", line 144, in coro\n    await self.app(scope, receive_or_disconnect, send_no_error)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/exceptions.py\", line 63, in __call__\n    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/_exception_handler.py\", line 53, in wrapped_app\n    raise exc\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/_exception_handler.py\", line 42, in wrapped_app\n    await app(scope, receive, sender)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/middleware/asyncexitstack.py\", line 18, in __call__\n    await self.app(scope, receive, send)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/routing.py\", line 660, in __call__\n    await self.middleware_stack(scope, receive, send)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py\", line 2531, in app\n    await route.handle(scope, receive, send)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py\", line 1700, in handle\n    await self.original_router.handle(scope, receive, send)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py\", line 2586, in handle\n    await included_router._handle_selected(scope, receive, send)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py\", line 1711, in _handle_selected\n    await route.handle(scope, receive, send)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py\", line 1700, in handle\n    await self.original_router.handle(scope, receive, send)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py\", line 2586, in handle\n    await included_router._handle_selected(scope, receive, send)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py\", line 1720, in _handle_selected\n    await original_route.handle(scope, receive, send)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py\", line 1239, in handle\n    await app(scope, receive, send)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py\", line 150, in app\n    await wrap_app_handling_exceptions(app, request)(scope, receive, send)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/_exception_handler.py\", line 53, in wrapped_app\n    raise exc\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/_exception_handler.py\", line 42, in wrapped_app\n    await app(scope, receive, sender)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py\", line 136, in app\n    response = await f(request)\n               ^^^^^^^^^^^^^^^^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py\", line 690, in app\n    raw_response = await run_endpoint_function(\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    ...<3 lines>...\n    )\n    ^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py\", line 346, in run_endpoint_function\n    return await run_in_threadpool(dependant.call, **values)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/concurrency.py\", line 34, in run_in_threadpool\n    return await anyio.to_thread.run_sync(func)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/anyio/to_thread.py\", line 65, in run_sync\n    return await get_async_backend().run_sync_in_worker_thread(\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n        func, args, abandon_on_cancel=abandon_on_cancel, limiter=limiter\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/anyio/_backends/_asyncio.py\", line 2641, in run_sync_in_worker_thread\n    return await future\n           ^^^^^^^^^^^^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/anyio/_backends/_asyncio.py\", line 1033, in run\n    result = context.run(func, *args)\n  File \"/home/lenen/projets/geostudio/core/app/configs/routes.py\", line 492, in delete_item\n    _delete_config_and_item(session, result.id, item_id, user.tenant_id)\n    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lenen/projets/geostudio/core/app/configs/routes.py\", line 88, in _delete_config_and_item\n    session.execute(delete(Item).where(Item.id == item_id, Item.tenant_id == tenant_id))\n    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/orm/session.py\", line 2373, in execute\n    return self._execute_internal(\n           ~~~~~~~~~~~~~~~~~~~~~~^\n        statement,\n        ^^^^^^^^^^\n    ...<4 lines>...\n        _add_event=_add_event,\n        ^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/orm/session.py\", line 2271, in _execute_internal\n    result: Result[Any] = compile_state_cls.orm_execute_statement(\n                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^\n        self,\n        ^^^^^\n    ...<4 lines>...\n        conn,\n        ^^^^^\n    )\n    ^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/orm/bulk_persistence.py\", line 2033, in orm_execute_statement\n    return super().orm_execute_statement(\n           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^\n        session, statement, params, execution_options, bind_arguments, conn\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/orm/context.py\", line 306, in orm_execute_statement\n    result = conn.execute(\n        statement, params or {}, execution_options=execution_options\n    )\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py\", line 1421, in execute\n    return meth(\n        self,\n        distilled_parameters,\n        execution_options or NO_OPTIONS,\n    )\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/sql/elements.py\", line 526, in _execute_on_connection\n    return connection._execute_clauseelement(\n           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^\n        self, distilled_params, execution_options\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py\", line 1643, in _execute_clauseelement\n    ret = self._execute_context(\n        dialect,\n    ...<8 lines>...\n        cache_hit=cache_hit,\n    )\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py\", line 1848, in _execute_context\n    return self._exec_single_context(\n           ~~~~~~~~~~~~~~~~~~~~~~~~~^\n        dialect, context, statement, parameters\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py\", line 1988, in _exec_single_context\n    self._handle_dbapi_exception(\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^\n        e, str_statement, effective_parameters, cursor, context\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py\", line 2365, in _handle_dbapi_exception\n    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py\", line 1969, in _exec_single_context\n    self.dialect.do_execute(\n    ~~~~~~~~~~~~~~~~~~~~~~~^\n        cursor, str_statement, effective_parameters, context\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/default.py\", line 952, in do_execute\n    cursor.execute(statement, parameters)\n    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^\nsqlalchemy.exc.IntegrityError: (sqlite3.IntegrityError) FOREIGN KEY constraint failed\n[SQL: DELETE FROM items WHERE items.id = ? AND items.tenant_id = ?]\n[parameters: ('2ffb9106846d41c6bf46c0ef7658d32f', 'default')]\n(Background on this error at: https://sqlalche.me/e/20/gkpj)"}
+DELETE raised (run): IntegrityError (sqlite3.IntegrityError) FOREIGN KEY constraint failed
+F{"timestamp": "2026-09-30T08:09:38", "level": "WARNING", "logger": "opentelemetry.instrumentation.instrumentor", "message": "Attempting to instrument while already instrumented", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:38", "level": "ERROR", "logger": "app.items.repository", "message": "\u00e9chec de l'enqueue du job d'embedding pour l'item 5dd1284caf9e445fa199d43e78587317 (l'\u00e9criture n'est pas affect\u00e9e ; l'embedding restera NULL jusqu'au prochain write)", "trace_id": null, "span_id": null, "exception": "Traceback (most recent call last):\n  File \"/home/lenen/projets/geostudio/core/app/items/repository.py\", line 64, in _enqueue_embedding\n    embed_item_task.defer(item_id=item_id, tenant_id=tenant_id)\n    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/procrastinate/tasks.py\", line 185, in defer\n    return self.configure().defer(**task_kwargs)\n           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/procrastinate/jobs.py\", line 224, in defer\n    job = self.job_manager.defer_job(job=job, connection=self.connection)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/procrastinate/manager.py\", line 103, in defer_job\n    return self.batch_defer_jobs(jobs=[job], connection=connection)[0]\n           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/procrastinate/manager.py\", line 119, in batch_defer_jobs\n    results = self.connector.get_sync_connector().execute_query_all(\n        **self._defer_jobs_query_kwargs(jobs=jobs)\n    )\n  File \"/usr/lib/python3.14/contextlib.py\", line 85, in inner\n    return func(*args, **kwds)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/procrastinate/sync_psycopg_connector.py\", line 201, in execute_query_all\n    with self._get_cursor() as cursor:\n         ~~~~~~~~~~~~~~~~^^\n  File \"/usr/lib/python3.14/contextlib.py\", line 141, in __enter__\n    return next(self.gen)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/procrastinate/sync_psycopg_connector.py\", line 164, in _get_cursor\n    else self.pool.connection()\n         ^^^^^^^^^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/procrastinate/sync_psycopg_connector.py\", line 97, in pool\n    raise exceptions.AppNotOpen\nprocrastinate.exceptions.AppNotOpen: \nApp was not open. Procrastinate App needs to be opened using:\n\n- ``app.open()``,\n- ``await app.open_async()``,\n- ``with app.open():``,\n- ``async with app.open_async():``.\n"}
+{"timestamp": "2026-09-30T08:09:38", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/v1/pipelines/5dd1284caf9e445fa199d43e78587317/webhook-tokens \"HTTP/1.1 201 Created\"", "trace_id": null, "span_id": null}
+{"timestamp": "2026-09-30T08:09:38", "level": "ERROR", "logger": "app.errors", "message": "unhandled exception on /v1/items/5dd1284caf9e445fa199d43e78587317", "trace_id": "e7aaa254f7b470127acb9e5bc240fff9", "span_id": "49292e5e67c79129", "exception": "Traceback (most recent call last):\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py\", line 1969, in _exec_single_context\n    self.dialect.do_execute(\n    ~~~~~~~~~~~~~~~~~~~~~~~^\n        cursor, str_statement, effective_parameters, context\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/default.py\", line 952, in do_execute\n    cursor.execute(statement, parameters)\n    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^\nsqlite3.IntegrityError: FOREIGN KEY constraint failed\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/errors.py\", line 164, in __call__\n    await self.app(scope, receive, _send)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/opentelemetry/instrumentation/fastapi/__init__.py\", line 305, in __call__\n    await self.app(scope, receive, send)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/uvicorn/middleware/proxy_headers.py\", line 62, in __call__\n    return await self.app(scope, receive, send)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/base.py\", line 193, in __call__\n    response = await self.dispatch_func(request, call_next)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lenen/projets/geostudio/core/app/main.py\", line 235, in rate_limit_guard\n    return await call_next(request)\n           ^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/base.py\", line 168, in call_next\n    raise app_exc from app_exc.__cause__ or app_exc.__context__\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/base.py\", line 144, in coro\n    await self.app(scope, receive_or_disconnect, send_no_error)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/base.py\", line 193, in __call__\n    response = await self.dispatch_func(request, call_next)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lenen/projets/geostudio/core/app/main.py\", line 207, in read_only_guard\n    return await call_next(request)\n           ^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/base.py\", line 168, in call_next\n    raise app_exc from app_exc.__cause__ or app_exc.__context__\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/base.py\", line 144, in coro\n    await self.app(scope, receive_or_disconnect, send_no_error)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/exceptions.py\", line 63, in __call__\n    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/_exception_handler.py\", line 53, in wrapped_app\n    raise exc\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/_exception_handler.py\", line 42, in wrapped_app\n    await app(scope, receive, sender)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/middleware/asyncexitstack.py\", line 18, in __call__\n    await self.app(scope, receive, send)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/routing.py\", line 660, in __call__\n    await self.middleware_stack(scope, receive, send)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py\", line 2531, in app\n    await route.handle(scope, receive, send)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py\", line 1700, in handle\n    await self.original_router.handle(scope, receive, send)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py\", line 2586, in handle\n    await included_router._handle_selected(scope, receive, send)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py\", line 1711, in _handle_selected\n    await route.handle(scope, receive, send)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py\", line 1700, in handle\n    await self.original_router.handle(scope, receive, send)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py\", line 2586, in handle\n    await included_router._handle_selected(scope, receive, send)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py\", line 1720, in _handle_selected\n    await original_route.handle(scope, receive, send)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py\", line 1239, in handle\n    await app(scope, receive, send)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py\", line 150, in app\n    await wrap_app_handling_exceptions(app, request)(scope, receive, send)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/_exception_handler.py\", line 53, in wrapped_app\n    raise exc\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/_exception_handler.py\", line 42, in wrapped_app\n    await app(scope, receive, sender)\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py\", line 136, in app\n    response = await f(request)\n               ^^^^^^^^^^^^^^^^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py\", line 690, in app\n    raw_response = await run_endpoint_function(\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    ...<3 lines>...\n    )\n    ^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py\", line 346, in run_endpoint_function\n    return await run_in_threadpool(dependant.call, **values)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/concurrency.py\", line 34, in run_in_threadpool\n    return await anyio.to_thread.run_sync(func)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/anyio/to_thread.py\", line 65, in run_sync\n    return await get_async_backend().run_sync_in_worker_thread(\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n        func, args, abandon_on_cancel=abandon_on_cancel, limiter=limiter\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/anyio/_backends/_asyncio.py\", line 2641, in run_sync_in_worker_thread\n    return await future\n           ^^^^^^^^^^^^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/anyio/_backends/_asyncio.py\", line 1033, in run\n    result = context.run(func, *args)\n  File \"/home/lenen/projets/geostudio/core/app/configs/routes.py\", line 492, in delete_item\n    _delete_config_and_item(session, result.id, item_id, user.tenant_id)\n    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lenen/projets/geostudio/core/app/configs/routes.py\", line 88, in _delete_config_and_item\n    session.execute(delete(Item).where(Item.id == item_id, Item.tenant_id == tenant_id))\n    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/orm/session.py\", line 2373, in execute\n    return self._execute_internal(\n           ~~~~~~~~~~~~~~~~~~~~~~^\n        statement,\n        ^^^^^^^^^^\n    ...<4 lines>...\n        _add_event=_add_event,\n        ^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/orm/session.py\", line 2271, in _execute_internal\n    result: Result[Any] = compile_state_cls.orm_execute_statement(\n                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^\n        self,\n        ^^^^^\n    ...<4 lines>...\n        conn,\n        ^^^^^\n    )\n    ^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/orm/bulk_persistence.py\", line 2033, in orm_execute_statement\n    return super().orm_execute_statement(\n           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^\n        session, statement, params, execution_options, bind_arguments, conn\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/orm/context.py\", line 306, in orm_execute_statement\n    result = conn.execute(\n        statement, params or {}, execution_options=execution_options\n    )\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py\", line 1421, in execute\n    return meth(\n        self,\n        distilled_parameters,\n        execution_options or NO_OPTIONS,\n    )\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/sql/elements.py\", line 526, in _execute_on_connection\n    return connection._execute_clauseelement(\n           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^\n        self, distilled_params, execution_options\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py\", line 1643, in _execute_clauseelement\n    ret = self._execute_context(\n        dialect,\n    ...<8 lines>...\n        cache_hit=cache_hit,\n    )\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py\", line 1848, in _execute_context\n    return self._exec_single_context(\n           ~~~~~~~~~~~~~~~~~~~~~~~~~^\n        dialect, context, statement, parameters\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py\", line 1988, in _exec_single_context\n    self._handle_dbapi_exception(\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^\n        e, str_statement, effective_parameters, cursor, context\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py\", line 2365, in _handle_dbapi_exception\n    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py\", line 1969, in _exec_single_context\n    self.dialect.do_execute(\n    ~~~~~~~~~~~~~~~~~~~~~~~^\n        cursor, str_statement, effective_parameters, context\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/default.py\", line 952, in do_execute\n    cursor.execute(statement, parameters)\n    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^\nsqlalchemy.exc.IntegrityError: (sqlite3.IntegrityError) FOREIGN KEY constraint failed\n[SQL: DELETE FROM items WHERE items.id = ? AND items.tenant_id = ?]\n[parameters: ('5dd1284caf9e445fa199d43e78587317', 'default')]\n(Background on this error at: https://sqlalche.me/e/20/gkpj)"}
+DELETE raised (token): IntegrityError (sqlite3.IntegrityError) FOREIGN KEY constraint failed
+F
+=================================== FAILURES ===================================
+_____________________ test_delete_pipeline_item_with_a_run _____________________
+
+self = <sqlalchemy.engine.base.Connection object at 0x7e10000e48c0>
+dialect = <sqlalchemy.dialects.sqlite.pysqlite.SQLiteDialect_pysqlite object at 0x7e1058120550>
+context = <sqlalchemy.dialects.sqlite.base.SQLiteExecutionContext object at 0x7e1000a20c50>
+statement = <sqlalchemy.dialects.sqlite.base.SQLiteCompiler object at 0x7e10000e0f50>
+parameters = [('2ffb9106846d41c6bf46c0ef7658d32f', 'default')]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Any]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        if self._has_events or self.engine._has_events:
+            for fn in self.dispatch.before_cursor_execute:
+                str_statement, effective_parameters = fn(
+                    self,
+                    cursor,
+                    str_statement,
+                    effective_parameters,
+                    context,
+                    context.executemany,
+                )
+    
+        if self._echo:
+            self._log_info(str_statement)
+    
+            stats = context._get_cache_stats()
+    
+            if not self.engine.hide_parameters:
+                self._log_info(
+                    "[%s] %r",
+                    stats,
+                    sql_util._repr_params(
+                        effective_parameters,
+                        batches=10,
+                        ismulti=context.executemany,
+                    ),
+                )
+            else:
+                self._log_info(
+                    "[%s] [SQL parameters hidden due to hide_parameters=True]",
+                    stats,
+                )
+    
+        evt_handled: bool = False
+        try:
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:1969: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <sqlalchemy.dialects.sqlite.pysqlite.SQLiteDialect_pysqlite object at 0x7e1058120550>
+cursor = <sqlite3.Cursor object at 0x7e10000f31c0>
+statement = 'DELETE FROM items WHERE items.id = ? AND items.tenant_id = ?'
+parameters = ('2ffb9106846d41c6bf46c0ef7658d32f', 'default')
+context = <sqlalchemy.dialects.sqlite.base.SQLiteExecutionContext object at 0x7e1000a20c50>
+
+    def do_execute(self, cursor, statement, parameters, context=None):
+>       cursor.execute(statement, parameters)
+E       sqlite3.IntegrityError: FOREIGN KEY constraint failed
+
+.venv/lib/python3.14/site-packages/sqlalchemy/engine/default.py:952: IntegrityError
+
+The above exception was the direct cause of the following exception:
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7e105810c8a0>
+
+    def test_delete_pipeline_item_with_a_run(monkeypatch):
+        client = _make_app(monkeypatch, etl_enabled=True)
+        item_id = _seed_webhook_pipeline(client)
+        _promote_owner_to_admin(client)
+        with client.session_factory() as s:
+            pipelines_repo.create_run(s, tenant_id=client.tenant.id, pipeline_item_id=item_id)
+            s.commit()
+        try:
+>           r = client.delete(f"/v1/items/{item_id}")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+../docs/revue/audit-2026-09-29/c03/probes/test_c03_probe.py:22: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+.venv/lib/python3.14/site-packages/starlette/testclient.py:644: in delete
+    return super().delete(
+.venv/lib/python3.14/site-packages/httpx/_client.py:1251: in delete
+    return self.request(
+.venv/lib/python3.14/site-packages/starlette/testclient.py:454: in request
+    return super().request(
+.venv/lib/python3.14/site-packages/httpx/_client.py:825: in request
+    return self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.14/site-packages/httpx/_client.py:914: in send
+    response = self._send_handling_auth(
+.venv/lib/python3.14/site-packages/httpx/_client.py:942: in _send_handling_auth
+    response = self._send_handling_redirects(
+.venv/lib/python3.14/site-packages/httpx/_client.py:979: in _send_handling_redirects
+    response = self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.14/site-packages/httpx/_client.py:1014: in _send_single_request
+    response = transport.handle_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.14/site-packages/starlette/testclient.py:356: in handle_request
+    raise exc
+.venv/lib/python3.14/site-packages/starlette/testclient.py:353: in handle_request
+    portal.call(self.app, scope, receive, send)
+.venv/lib/python3.14/site-packages/anyio/from_thread.py:338: in call
+    return cast(T_Retval, self.start_task_soon(func, *args).result())
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/concurrent/futures/_base.py:450: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/concurrent/futures/_base.py:395: in __get_result
+    raise self._exception
+.venv/lib/python3.14/site-packages/anyio/from_thread.py:263: in _call_func
+    retval = await retval_or_awaitable
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.14/site-packages/fastapi/applications.py:1163: in __call__
+    await super().__call__(scope, receive, send)
+.venv/lib/python3.14/site-packages/starlette/applications.py:90: in __call__
+    await self.middleware_stack(scope, receive, send)
+.venv/lib/python3.14/site-packages/starlette/middleware/errors.py:186: in __call__
+    raise exc
+.venv/lib/python3.14/site-packages/starlette/middleware/errors.py:164: in __call__
+    await self.app(scope, receive, _send)
+.venv/lib/python3.14/site-packages/opentelemetry/instrumentation/asgi/__init__.py:806: in __call__
+    await self.app(scope, otel_receive, otel_send)
+.venv/lib/python3.14/site-packages/starlette/middleware/errors.py:186: in __call__
+    raise exc
+.venv/lib/python3.14/site-packages/starlette/middleware/errors.py:164: in __call__
+    await self.app(scope, receive, _send)
+.venv/lib/python3.14/site-packages/opentelemetry/instrumentation/fastapi/__init__.py:305: in __call__
+    await self.app(scope, receive, send)
+.venv/lib/python3.14/site-packages/uvicorn/middleware/proxy_headers.py:62: in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.14/site-packages/starlette/middleware/base.py:193: in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/main.py:235: in rate_limit_guard
+    return await call_next(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.14/site-packages/starlette/middleware/base.py:168: in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+.venv/lib/python3.14/site-packages/starlette/middleware/base.py:144: in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+.venv/lib/python3.14/site-packages/starlette/middleware/base.py:193: in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/main.py:207: in read_only_guard
+    return await call_next(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.14/site-packages/starlette/middleware/base.py:168: in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+.venv/lib/python3.14/site-packages/starlette/middleware/base.py:144: in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+.venv/lib/python3.14/site-packages/starlette/middleware/exceptions.py:63: in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+.venv/lib/python3.14/site-packages/starlette/_exception_handler.py:53: in wrapped_app
+    raise exc
+.venv/lib/python3.14/site-packages/starlette/_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+.venv/lib/python3.14/site-packages/fastapi/middleware/asyncexitstack.py:18: in __call__
+    await self.app(scope, receive, send)
+.venv/lib/python3.14/site-packages/starlette/routing.py:660: in __call__
+    await self.middleware_stack(scope, receive, send)
+.venv/lib/python3.14/site-packages/fastapi/routing.py:2531: in app
+    await route.handle(scope, receive, send)
+.venv/lib/python3.14/site-packages/fastapi/routing.py:1700: in handle
+    await self.original_router.handle(scope, receive, send)
+.venv/lib/python3.14/site-packages/fastapi/routing.py:2586: in handle
+    await included_router._handle_selected(scope, receive, send)
+.venv/lib/python3.14/site-packages/fastapi/routing.py:1711: in _handle_selected
+    await route.handle(scope, receive, send)
+.venv/lib/python3.14/site-packages/fastapi/routing.py:1700: in handle
+    await self.original_router.handle(scope, receive, send)
+.venv/lib/python3.14/site-packages/fastapi/routing.py:2586: in handle
+    await included_router._handle_selected(scope, receive, send)
+.venv/lib/python3.14/site-packages/fastapi/routing.py:1720: in _handle_selected
+    await original_route.handle(scope, receive, send)
+.venv/lib/python3.14/site-packages/fastapi/routing.py:1239: in handle
+    await app(scope, receive, send)
+.venv/lib/python3.14/site-packages/fastapi/routing.py:150: in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+.venv/lib/python3.14/site-packages/starlette/_exception_handler.py:53: in wrapped_app
+    raise exc
+.venv/lib/python3.14/site-packages/starlette/_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+.venv/lib/python3.14/site-packages/fastapi/routing.py:136: in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+.venv/lib/python3.14/site-packages/fastapi/routing.py:690: in app
+    raw_response = await run_endpoint_function(
+.venv/lib/python3.14/site-packages/fastapi/routing.py:346: in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.14/site-packages/starlette/concurrency.py:34: in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.14/site-packages/anyio/to_thread.py:65: in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+.venv/lib/python3.14/site-packages/anyio/_backends/_asyncio.py:2641: in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+.venv/lib/python3.14/site-packages/anyio/_backends/_asyncio.py:1033: in run
+    result = context.run(func, *args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+app/configs/routes.py:492: in delete_item
+    _delete_config_and_item(session, result.id, item_id, user.tenant_id)
+app/configs/routes.py:88: in _delete_config_and_item
+    session.execute(delete(Item).where(Item.id == item_id, Item.tenant_id == tenant_id))
+.venv/lib/python3.14/site-packages/sqlalchemy/orm/session.py:2373: in execute
+    return self._execute_internal(
+.venv/lib/python3.14/site-packages/sqlalchemy/orm/session.py:2271: in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+.venv/lib/python3.14/site-packages/sqlalchemy/orm/bulk_persistence.py:2033: in orm_execute_statement
+    return super().orm_execute_statement(
+.venv/lib/python3.14/site-packages/sqlalchemy/orm/context.py:306: in orm_execute_statement
+    result = conn.execute(
+.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:1421: in execute
+    return meth(
+.venv/lib/python3.14/site-packages/sqlalchemy/sql/elements.py:526: in _execute_on_connection
+    return connection._execute_clauseelement(
+.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:1643: in _execute_clauseelement
+    ret = self._execute_context(
+.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:1848: in _execute_context
+    return self._exec_single_context(
+.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:1988: in _exec_single_context
+    self._handle_dbapi_exception(
+.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:2365: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:1969: in _exec_single_context
+    self.dialect.do_execute(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <sqlalchemy.dialects.sqlite.pysqlite.SQLiteDialect_pysqlite object at 0x7e1058120550>
+cursor = <sqlite3.Cursor object at 0x7e10000f31c0>
+statement = 'DELETE FROM items WHERE items.id = ? AND items.tenant_id = ?'
+parameters = ('2ffb9106846d41c6bf46c0ef7658d32f', 'default')
+context = <sqlalchemy.dialects.sqlite.base.SQLiteExecutionContext object at 0x7e1000a20c50>
+
+    def do_execute(self, cursor, statement, parameters, context=None):
+>       cursor.execute(statement, parameters)
+E       sqlalchemy.exc.IntegrityError: (sqlite3.IntegrityError) FOREIGN KEY constraint failed
+E       [SQL: DELETE FROM items WHERE items.id = ? AND items.tenant_id = ?]
+E       [parameters: ('2ffb9106846d41c6bf46c0ef7658d32f', 'default')]
+E       (Background on this error at: https://sqlalche.me/e/20/gkpj)
+
+.venv/lib/python3.14/site-packages/sqlalchemy/engine/default.py:952: IntegrityError
+------------------------------ Captured log call -------------------------------
+WARNING  opentelemetry.instrumentation.instrumentor:instrumentor.py:92 Attempting to instrument while already instrumented
+ERROR    app.items.repository:repository.py:66 échec de l'enqueue du job d'embedding pour l'item 2ffb9106846d41c6bf46c0ef7658d32f (l'écriture n'est pas affectée ; l'embedding restera NULL jusqu'au prochain write)
+Traceback (most recent call last):
+  File "/home/lenen/projets/geostudio/core/app/items/repository.py", line 64, in _enqueue_embedding
+    embed_item_task.defer(item_id=item_id, tenant_id=tenant_id)
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/procrastinate/tasks.py", line 185, in defer
+    return self.configure().defer(**task_kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/procrastinate/jobs.py", line 224, in defer
+    job = self.job_manager.defer_job(job=job, connection=self.connection)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/procrastinate/manager.py", line 103, in defer_job
+    return self.batch_defer_jobs(jobs=[job], connection=connection)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/procrastinate/manager.py", line 119, in batch_defer_jobs
+    results = self.connector.get_sync_connector().execute_query_all(
+        **self._defer_jobs_query_kwargs(jobs=jobs)
+    )
+  File "/usr/lib/python3.14/contextlib.py", line 85, in inner
+    return func(*args, **kwds)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/procrastinate/sync_psycopg_connector.py", line 201, in execute_query_all
+    with self._get_cursor() as cursor:
+         ~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/contextlib.py", line 141, in __enter__
+    return next(self.gen)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/procrastinate/sync_psycopg_connector.py", line 164, in _get_cursor
+    else self.pool.connection()
+         ^^^^^^^^^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/procrastinate/sync_psycopg_connector.py", line 97, in pool
+    raise exceptions.AppNotOpen
+procrastinate.exceptions.AppNotOpen: 
+App was not open. Procrastinate App needs to be opened using:
+
+- ``app.open()``,
+- ``await app.open_async()``,
+- ``with app.open():``,
+- ``async with app.open_async():``.
+
+ERROR    app.errors:main.py:175 unhandled exception on /v1/items/2ffb9106846d41c6bf46c0ef7658d32f
+Traceback (most recent call last):
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+sqlite3.IntegrityError: FOREIGN KEY constraint failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/opentelemetry/instrumentation/fastapi/__init__.py", line 305, in __call__
+    await self.app(scope, receive, send)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/uvicorn/middleware/proxy_headers.py", line 62, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 193, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lenen/projets/geostudio/core/app/main.py", line 235, in rate_limit_guard
+    return await call_next(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 193, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lenen/projets/geostudio/core/app/main.py", line 207, in read_only_guard
+    return await call_next(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 2531, in app
+    await route.handle(scope, receive, send)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 1700, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 2586, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 1711, in _handle_selected
+    await route.handle(scope, receive, send)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 1700, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 2586, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 1720, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 1239, in handle
+    await app(scope, receive, send)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 150, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 136, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 690, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 346, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/concurrency.py", line 34, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/anyio/to_thread.py", line 65, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        func, args, abandon_on_cancel=abandon_on_cancel, limiter=limiter
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/anyio/_backends/_asyncio.py", line 2641, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/anyio/_backends/_asyncio.py", line 1033, in run
+    result = context.run(func, *args)
+  File "/home/lenen/projets/geostudio/core/app/configs/routes.py", line 492, in delete_item
+    _delete_config_and_item(session, result.id, item_id, user.tenant_id)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lenen/projets/geostudio/core/app/configs/routes.py", line 88, in _delete_config_and_item
+    session.execute(delete(Item).where(Item.id == item_id, Item.tenant_id == tenant_id))
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/orm/session.py", line 2373, in execute
+    return self._execute_internal(
+           ~~~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+    ...<4 lines>...
+        _add_event=_add_event,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/orm/session.py", line 2271, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self,
+        ^^^^^
+    ...<4 lines>...
+        conn,
+        ^^^^^
+    )
+    ^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/orm/bulk_persistence.py", line 2033, in orm_execute_statement
+    return super().orm_execute_statement(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        session, statement, params, execution_options, bind_arguments, conn
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/orm/context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+        statement, params or {}, execution_options=execution_options
+    )
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 1421, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 1643, in _execute_clauseelement
+    ret = self._execute_context(
+        dialect,
+    ...<8 lines>...
+        cache_hit=cache_hit,
+    )
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 1848, in _execute_context
+    return self._exec_single_context(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        dialect, context, statement, parameters
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 1988, in _exec_single_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e, str_statement, effective_parameters, cursor, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 2365, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+sqlalchemy.exc.IntegrityError: (sqlite3.IntegrityError) FOREIGN KEY constraint failed
+[SQL: DELETE FROM items WHERE items.id = ? AND items.tenant_id = ?]
+[parameters: ('2ffb9106846d41c6bf46c0ef7658d32f', 'default')]
+(Background on this error at: https://sqlalche.me/e/20/gkpj)
+________________ test_delete_pipeline_item_with_a_webhook_token ________________
+
+self = <sqlalchemy.engine.base.Connection object at 0x7e0ffad0f2f0>
+dialect = <sqlalchemy.dialects.sqlite.pysqlite.SQLiteDialect_pysqlite object at 0x7e10000b4e10>
+context = <sqlalchemy.dialects.sqlite.base.SQLiteExecutionContext object at 0x7e0ffac607d0>
+statement = <sqlalchemy.dialects.sqlite.base.SQLiteCompiler object at 0x7e0ffad19f50>
+parameters = [('5dd1284caf9e445fa199d43e78587317', 'default')]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Any]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        if self._has_events or self.engine._has_events:
+            for fn in self.dispatch.before_cursor_execute:
+                str_statement, effective_parameters = fn(
+                    self,
+                    cursor,
+                    str_statement,
+                    effective_parameters,
+                    context,
+                    context.executemany,
+                )
+    
+        if self._echo:
+            self._log_info(str_statement)
+    
+            stats = context._get_cache_stats()
+    
+            if not self.engine.hide_parameters:
+                self._log_info(
+                    "[%s] %r",
+                    stats,
+                    sql_util._repr_params(
+                        effective_parameters,
+                        batches=10,
+                        ismulti=context.executemany,
+                    ),
+                )
+            else:
+                self._log_info(
+                    "[%s] [SQL parameters hidden due to hide_parameters=True]",
+                    stats,
+                )
+    
+        evt_handled: bool = False
+        try:
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:1969: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <sqlalchemy.dialects.sqlite.pysqlite.SQLiteDialect_pysqlite object at 0x7e10000b4e10>
+cursor = <sqlite3.Cursor object at 0x7e0ffad25bc0>
+statement = 'DELETE FROM items WHERE items.id = ? AND items.tenant_id = ?'
+parameters = ('5dd1284caf9e445fa199d43e78587317', 'default')
+context = <sqlalchemy.dialects.sqlite.base.SQLiteExecutionContext object at 0x7e0ffac607d0>
+
+    def do_execute(self, cursor, statement, parameters, context=None):
+>       cursor.execute(statement, parameters)
+E       sqlite3.IntegrityError: FOREIGN KEY constraint failed
+
+.venv/lib/python3.14/site-packages/sqlalchemy/engine/default.py:952: IntegrityError
+
+The above exception was the direct cause of the following exception:
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7e10009ea190>
+
+    def test_delete_pipeline_item_with_a_webhook_token(monkeypatch):
+        client = _make_app(monkeypatch, etl_enabled=True)
+        item_id = _seed_webhook_pipeline(client)
+        _promote_owner_to_admin(client)
+        assert client.post(f"/v1/pipelines/{item_id}/webhook-tokens").status_code in (200, 201)
+        try:
+>           r = client.delete(f"/v1/items/{item_id}")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+../docs/revue/audit-2026-09-29/c03/probes/test_c03_probe.py:35: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+.venv/lib/python3.14/site-packages/starlette/testclient.py:644: in delete
+    return super().delete(
+.venv/lib/python3.14/site-packages/httpx/_client.py:1251: in delete
+    return self.request(
+.venv/lib/python3.14/site-packages/starlette/testclient.py:454: in request
+    return super().request(
+.venv/lib/python3.14/site-packages/httpx/_client.py:825: in request
+    return self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.14/site-packages/httpx/_client.py:914: in send
+    response = self._send_handling_auth(
+.venv/lib/python3.14/site-packages/httpx/_client.py:942: in _send_handling_auth
+    response = self._send_handling_redirects(
+.venv/lib/python3.14/site-packages/httpx/_client.py:979: in _send_handling_redirects
+    response = self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.14/site-packages/httpx/_client.py:1014: in _send_single_request
+    response = transport.handle_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.14/site-packages/starlette/testclient.py:356: in handle_request
+    raise exc
+.venv/lib/python3.14/site-packages/starlette/testclient.py:353: in handle_request
+    portal.call(self.app, scope, receive, send)
+.venv/lib/python3.14/site-packages/anyio/from_thread.py:338: in call
+    return cast(T_Retval, self.start_task_soon(func, *args).result())
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/concurrent/futures/_base.py:450: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/concurrent/futures/_base.py:395: in __get_result
+    raise self._exception
+.venv/lib/python3.14/site-packages/anyio/from_thread.py:263: in _call_func
+    retval = await retval_or_awaitable
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.14/site-packages/fastapi/applications.py:1163: in __call__
+    await super().__call__(scope, receive, send)
+.venv/lib/python3.14/site-packages/starlette/applications.py:90: in __call__
+    await self.middleware_stack(scope, receive, send)
+.venv/lib/python3.14/site-packages/starlette/middleware/errors.py:186: in __call__
+    raise exc
+.venv/lib/python3.14/site-packages/starlette/middleware/errors.py:164: in __call__
+    await self.app(scope, receive, _send)
+.venv/lib/python3.14/site-packages/opentelemetry/instrumentation/asgi/__init__.py:806: in __call__
+    await self.app(scope, otel_receive, otel_send)
+.venv/lib/python3.14/site-packages/starlette/middleware/errors.py:186: in __call__
+    raise exc
+.venv/lib/python3.14/site-packages/starlette/middleware/errors.py:164: in __call__
+    await self.app(scope, receive, _send)
+.venv/lib/python3.14/site-packages/opentelemetry/instrumentation/fastapi/__init__.py:305: in __call__
+    await self.app(scope, receive, send)
+.venv/lib/python3.14/site-packages/uvicorn/middleware/proxy_headers.py:62: in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.14/site-packages/starlette/middleware/base.py:193: in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/main.py:235: in rate_limit_guard
+    return await call_next(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.14/site-packages/starlette/middleware/base.py:168: in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+.venv/lib/python3.14/site-packages/starlette/middleware/base.py:144: in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+.venv/lib/python3.14/site-packages/starlette/middleware/base.py:193: in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/main.py:207: in read_only_guard
+    return await call_next(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.14/site-packages/starlette/middleware/base.py:168: in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+.venv/lib/python3.14/site-packages/starlette/middleware/base.py:144: in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+.venv/lib/python3.14/site-packages/starlette/middleware/exceptions.py:63: in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+.venv/lib/python3.14/site-packages/starlette/_exception_handler.py:53: in wrapped_app
+    raise exc
+.venv/lib/python3.14/site-packages/starlette/_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+.venv/lib/python3.14/site-packages/fastapi/middleware/asyncexitstack.py:18: in __call__
+    await self.app(scope, receive, send)
+.venv/lib/python3.14/site-packages/starlette/routing.py:660: in __call__
+    await self.middleware_stack(scope, receive, send)
+.venv/lib/python3.14/site-packages/fastapi/routing.py:2531: in app
+    await route.handle(scope, receive, send)
+.venv/lib/python3.14/site-packages/fastapi/routing.py:1700: in handle
+    await self.original_router.handle(scope, receive, send)
+.venv/lib/python3.14/site-packages/fastapi/routing.py:2586: in handle
+    await included_router._handle_selected(scope, receive, send)
+.venv/lib/python3.14/site-packages/fastapi/routing.py:1711: in _handle_selected
+    await route.handle(scope, receive, send)
+.venv/lib/python3.14/site-packages/fastapi/routing.py:1700: in handle
+    await self.original_router.handle(scope, receive, send)
+.venv/lib/python3.14/site-packages/fastapi/routing.py:2586: in handle
+    await included_router._handle_selected(scope, receive, send)
+.venv/lib/python3.14/site-packages/fastapi/routing.py:1720: in _handle_selected
+    await original_route.handle(scope, receive, send)
+.venv/lib/python3.14/site-packages/fastapi/routing.py:1239: in handle
+    await app(scope, receive, send)
+.venv/lib/python3.14/site-packages/fastapi/routing.py:150: in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+.venv/lib/python3.14/site-packages/starlette/_exception_handler.py:53: in wrapped_app
+    raise exc
+.venv/lib/python3.14/site-packages/starlette/_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+.venv/lib/python3.14/site-packages/fastapi/routing.py:136: in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+.venv/lib/python3.14/site-packages/fastapi/routing.py:690: in app
+    raw_response = await run_endpoint_function(
+.venv/lib/python3.14/site-packages/fastapi/routing.py:346: in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.14/site-packages/starlette/concurrency.py:34: in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.14/site-packages/anyio/to_thread.py:65: in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+.venv/lib/python3.14/site-packages/anyio/_backends/_asyncio.py:2641: in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+.venv/lib/python3.14/site-packages/anyio/_backends/_asyncio.py:1033: in run
+    result = context.run(func, *args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+app/configs/routes.py:492: in delete_item
+    _delete_config_and_item(session, result.id, item_id, user.tenant_id)
+app/configs/routes.py:88: in _delete_config_and_item
+    session.execute(delete(Item).where(Item.id == item_id, Item.tenant_id == tenant_id))
+.venv/lib/python3.14/site-packages/sqlalchemy/orm/session.py:2373: in execute
+    return self._execute_internal(
+.venv/lib/python3.14/site-packages/sqlalchemy/orm/session.py:2271: in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+.venv/lib/python3.14/site-packages/sqlalchemy/orm/bulk_persistence.py:2033: in orm_execute_statement
+    return super().orm_execute_statement(
+.venv/lib/python3.14/site-packages/sqlalchemy/orm/context.py:306: in orm_execute_statement
+    result = conn.execute(
+.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:1421: in execute
+    return meth(
+.venv/lib/python3.14/site-packages/sqlalchemy/sql/elements.py:526: in _execute_on_connection
+    return connection._execute_clauseelement(
+.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:1643: in _execute_clauseelement
+    ret = self._execute_context(
+.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:1848: in _execute_context
+    return self._exec_single_context(
+.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:1988: in _exec_single_context
+    self._handle_dbapi_exception(
+.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:2365: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:1969: in _exec_single_context
+    self.dialect.do_execute(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <sqlalchemy.dialects.sqlite.pysqlite.SQLiteDialect_pysqlite object at 0x7e10000b4e10>
+cursor = <sqlite3.Cursor object at 0x7e0ffad25bc0>
+statement = 'DELETE FROM items WHERE items.id = ? AND items.tenant_id = ?'
+parameters = ('5dd1284caf9e445fa199d43e78587317', 'default')
+context = <sqlalchemy.dialects.sqlite.base.SQLiteExecutionContext object at 0x7e0ffac607d0>
+
+    def do_execute(self, cursor, statement, parameters, context=None):
+>       cursor.execute(statement, parameters)
+E       sqlalchemy.exc.IntegrityError: (sqlite3.IntegrityError) FOREIGN KEY constraint failed
+E       [SQL: DELETE FROM items WHERE items.id = ? AND items.tenant_id = ?]
+E       [parameters: ('5dd1284caf9e445fa199d43e78587317', 'default')]
+E       (Background on this error at: https://sqlalche.me/e/20/gkpj)
+
+.venv/lib/python3.14/site-packages/sqlalchemy/engine/default.py:952: IntegrityError
+------------------------------ Captured log call -------------------------------
+WARNING  opentelemetry.instrumentation.instrumentor:instrumentor.py:92 Attempting to instrument while already instrumented
+ERROR    app.items.repository:repository.py:66 échec de l'enqueue du job d'embedding pour l'item 5dd1284caf9e445fa199d43e78587317 (l'écriture n'est pas affectée ; l'embedding restera NULL jusqu'au prochain write)
+Traceback (most recent call last):
+  File "/home/lenen/projets/geostudio/core/app/items/repository.py", line 64, in _enqueue_embedding
+    embed_item_task.defer(item_id=item_id, tenant_id=tenant_id)
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/procrastinate/tasks.py", line 185, in defer
+    return self.configure().defer(**task_kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/procrastinate/jobs.py", line 224, in defer
+    job = self.job_manager.defer_job(job=job, connection=self.connection)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/procrastinate/manager.py", line 103, in defer_job
+    return self.batch_defer_jobs(jobs=[job], connection=connection)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/procrastinate/manager.py", line 119, in batch_defer_jobs
+    results = self.connector.get_sync_connector().execute_query_all(
+        **self._defer_jobs_query_kwargs(jobs=jobs)
+    )
+  File "/usr/lib/python3.14/contextlib.py", line 85, in inner
+    return func(*args, **kwds)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/procrastinate/sync_psycopg_connector.py", line 201, in execute_query_all
+    with self._get_cursor() as cursor:
+         ~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/contextlib.py", line 141, in __enter__
+    return next(self.gen)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/procrastinate/sync_psycopg_connector.py", line 164, in _get_cursor
+    else self.pool.connection()
+         ^^^^^^^^^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/procrastinate/sync_psycopg_connector.py", line 97, in pool
+    raise exceptions.AppNotOpen
+procrastinate.exceptions.AppNotOpen: 
+App was not open. Procrastinate App needs to be opened using:
+
+- ``app.open()``,
+- ``await app.open_async()``,
+- ``with app.open():``,
+- ``async with app.open_async():``.
+
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/v1/pipelines/5dd1284caf9e445fa199d43e78587317/webhook-tokens "HTTP/1.1 201 Created"
+ERROR    app.errors:main.py:175 unhandled exception on /v1/items/5dd1284caf9e445fa199d43e78587317
+Traceback (most recent call last):
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+sqlite3.IntegrityError: FOREIGN KEY constraint failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/opentelemetry/instrumentation/fastapi/__init__.py", line 305, in __call__
+    await self.app(scope, receive, send)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/uvicorn/middleware/proxy_headers.py", line 62, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 193, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lenen/projets/geostudio/core/app/main.py", line 235, in rate_limit_guard
+    return await call_next(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 193, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lenen/projets/geostudio/core/app/main.py", line 207, in read_only_guard
+    return await call_next(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 2531, in app
+    await route.handle(scope, receive, send)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 1700, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 2586, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 1711, in _handle_selected
+    await route.handle(scope, receive, send)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 1700, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 2586, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 1720, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 1239, in handle
+    await app(scope, receive, send)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 150, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 136, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 690, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 346, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/starlette/concurrency.py", line 34, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/anyio/to_thread.py", line 65, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        func, args, abandon_on_cancel=abandon_on_cancel, limiter=limiter
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/anyio/_backends/_asyncio.py", line 2641, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/anyio/_backends/_asyncio.py", line 1033, in run
+    result = context.run(func, *args)
+  File "/home/lenen/projets/geostudio/core/app/configs/routes.py", line 492, in delete_item
+    _delete_config_and_item(session, result.id, item_id, user.tenant_id)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lenen/projets/geostudio/core/app/configs/routes.py", line 88, in _delete_config_and_item
+    session.execute(delete(Item).where(Item.id == item_id, Item.tenant_id == tenant_id))
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/orm/session.py", line 2373, in execute
+    return self._execute_internal(
+           ~~~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+    ...<4 lines>...
+        _add_event=_add_event,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/orm/session.py", line 2271, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self,
+        ^^^^^
+    ...<4 lines>...
+        conn,
+        ^^^^^
+    )
+    ^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/orm/bulk_persistence.py", line 2033, in orm_execute_statement
+    return super().orm_execute_statement(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        session, statement, params, execution_options, bind_arguments, conn
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/orm/context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+        statement, params or {}, execution_options=execution_options
+    )
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 1421, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 1643, in _execute_clauseelement
+    ret = self._execute_context(
+        dialect,
+    ...<8 lines>...
+        cache_hit=cache_hit,
+    )
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 1848, in _execute_context
+    return self._exec_single_context(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        dialect, context, statement, parameters
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 1988, in _exec_single_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e, str_statement, effective_parameters, cursor, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 2365, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+sqlalchemy.exc.IntegrityError: (sqlite3.IntegrityError) FOREIGN KEY constraint failed
+[SQL: DELETE FROM items WHERE items.id = ? AND items.tenant_id = ?]
+[parameters: ('5dd1284caf9e445fa199d43e78587317', 'default')]
+(Background on this error at: https://sqlalche.me/e/20/gkpj)
+=============================== warnings summary ===============================
+.venv/lib/python3.14/site-packages/fastapi/testclient.py:1
+  /home/lenen/projets/geostudio/core/.venv/lib/python3.14/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED ::test_delete_pipeline_item_with_a_run - sqlalchemy.exc.IntegrityError...
+FAILED ::test_delete_pipeline_item_with_a_webhook_token - sqlalchemy.exc.Inte...
+2 failed, 1 deselected, 1 warning in 4.03s
+
+--stderr--
