@@ -24,7 +24,7 @@ export default defineConfig({
       // émulation tactile/viewport mais on force chromium, seul navigateur
       // disponible.
       use: { ...devices["iPhone 13"], defaultBrowserType: "chromium", hasTouch: true },
-      testMatch: /map-touch\.spec\.ts/,
+      testMatch: /e2e\/map-touch\.spec\.ts$/, // pas e2e/journeys/j12/map-touch.spec.ts (suite d'audit, config dédiée)
     },
   ],
   webServer: [
