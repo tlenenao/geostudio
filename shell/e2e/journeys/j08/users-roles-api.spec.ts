@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
+import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { stamp } from "../_fixtures/env";
 import { apiFor, makeUser, roleIdBySlug, type Api, type Throwaway } from "./helpers";
@@ -76,7 +77,7 @@ test.describe("j08 utilisateurs — API", () => {
   });
 
   // Finding j08-003 : paramètres de pagination hors bornes → 500 au lieu de 422.
-  test.fixme("j08-003 : page=0 ou pageSize négatif → 4xx, jamais 500", async () => {
+  bug("j08-003 : page=0 ou pageSize négatif → 4xx, jamais 500", async () => {
     for (const path of [
       "/v1/users?page=0",
       "/v1/users?pageSize=-1",
@@ -158,7 +159,7 @@ test.describe("j08 rôles — API", () => {
   });
 
   // Finding j08-005 : aucune validation du nom ni des privilèges dupliqués.
-  test.fixme("j08-005 : nom vide, blanc, doublon ou homonyme d'un rôle prédéfini refusés", async () => {
+  bug("j08-005 : nom vide, blanc, doublon ou homonyme d'un rôle prédéfini refusés", async () => {
     const name = `${tag}-dup`;
     await customRole(name, ["tasks.view", "tasks.view"]);
     const bad = [
@@ -177,7 +178,7 @@ test.describe("j08 rôles — API", () => {
   });
 
   // Finding j08-007 : admin.roles.manage seul suffit à s'octroyer n'importe quel privilège.
-  test.fixme("j08-007 : un titulaire de admin.roles.manage seul ne peut pas s'auto-élever", async () => {
+  bug("j08-007 : un titulaire de admin.roles.manage seul ne peut pas s'auto-élever", async () => {
     const role = await customRole(`${tag}-esc`, ["admin.roles.manage"]);
     const u = await makeUser(`${tag}-esc`);
     await assign(u, role.id);

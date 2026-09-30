@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- sortie JSON de la sonde, forme libre */
+import { bug } from "../_fixtures/verify";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -60,7 +61,7 @@ test.describe("j11 copilote : routeur /copilot/turn (sonde dans le conteneur)", 
 
   // FINDING j11-005 : seule EgressBlockedError est traduite ; un 429/5xx du fournisseur,
   // un délai dépassé ou une réponse mal formée remontent en 500 opaque.
-  test.fixme("j11-005 : une panne du fournisseur LLM répond 502/504 et non 500", async () => {
+  bug("j11-005 : une panne du fournisseur LLM répond 502/504 et non 500", async () => {
     for (const k of [
       "llm_http_429",
       "llm_http_500",

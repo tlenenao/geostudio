@@ -1,3 +1,4 @@
+import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { stamp } from "../_fixtures/env";
@@ -60,7 +61,7 @@ test.describe("j10b tileset3d / terrain3d (capacités allumées)", () => {
   // FINDING j10b-012 : les routes d'upload 3D appellent ensure_uploads_bucket
   // (put_bucket_cors NotImplemented sur MinIO) : 500, donc aucun tileset ni
   // terrain ne peut être téléversé (même racine que j10b-002 / j03-002).
-  test.fixme("j10b-012 : POST /v1/tileset3d/uploads crée un envoi multipart (201)", async () => {
+  bug("j10b-012 : POST /v1/tileset3d/uploads crée un envoi multipart (201)", async () => {
     const r = await creator.send("POST", "/v1/tileset3d/uploads", {
       filename: "t.zip",
       title: `${tag}-up`,

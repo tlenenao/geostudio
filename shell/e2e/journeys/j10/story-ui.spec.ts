@@ -1,3 +1,4 @@
+import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { stamp } from "../_fixtures/env";
 import { apiFor, storyConfig } from "./seed";
@@ -48,14 +49,15 @@ test.describe("j10 storytelling", () => {
 
   // FINDING j10-002 : /apps/:pk/:pageId avec un pageId inconnu retombe sur le
   // layout de la config mais affiche « Chapitre 0 / 3 » (findIndex = -1).
-  test.fixme("j10-002 : un identifiant de chapitre inconnu affiche « Chapitre 0 / 3 »", async ({
-    page,
-  }) => {
-    await openAs(page, "creator");
-    await spaGoto(page, `/apps/${pk}/inconnu`);
-    await page.getByRole("button", { name: /suivant/i }).waitFor();
-    await expect(page.getByText("Chapitre 0 / 3")).toHaveCount(0);
-  });
+  bug(
+    "j10-002 : un identifiant de chapitre inconnu affiche « Chapitre 0 / 3 »",
+    async ({ page }) => {
+      await openAs(page, "creator");
+      await spaGoto(page, `/apps/${pk}/inconnu`);
+      await page.getByRole("button", { name: /suivant/i }).waitFor();
+      await expect(page.getByText("Chapitre 0 / 3")).toHaveCount(0);
+    },
+  );
 
   test("un lecteur sans droit sur une story non publiée voit un refus", async ({ page }) => {
     await openAs(page, "reader");

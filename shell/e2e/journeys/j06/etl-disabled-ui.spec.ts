@@ -1,3 +1,4 @@
+import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { openAs, spaGoto } from "./helpers";
 
@@ -55,18 +56,14 @@ test.describe("j06 ETL désactivé — shell (créateur)", () => {
   });
 
   // Finding j06-009 : le message final expose le nom d'une variable d'environnement serveur.
-  test.fixme("j06-009 : le message d'indisponibilité ne cite pas CORE_ETL_ENABLED", async ({
-    page,
-  }) => {
+  bug("j06-009 : le message d'indisponibilité ne cite pas CORE_ETL_ENABLED", async ({ page }) => {
     await spaGoto(page, "/pipelines/new");
     await expect(page.getByRole("status")).toContainText("Non activé");
     await expect(page.getByRole("status")).not.toContainText("CORE_ETL_ENABLED");
   });
 
   // Finding j06-010 : entrée verrouillée = <span aria-disabled> + title natif seulement.
-  test.fixme("j06-010 : l'entrée verrouillée est atteignable au clavier et décrite", async ({
-    page,
-  }) => {
+  bug("j06-010 : l'entrée verrouillée est atteignable au clavier et décrite", async ({ page }) => {
     const item = page.getByRole("navigation", { name: "Domaines" }).getByText("Automatisation");
     const focusable = await item.evaluate((e) => (e as HTMLElement).tabIndex >= 0);
     const described = await item.evaluate(
@@ -76,9 +73,7 @@ test.describe("j06 ETL désactivé — shell (créateur)", () => {
   });
 
   // Finding j06-011 : la palette ⌘K propose le domaine verrouillé et y navigue.
-  test.fixme("j06-011 : la palette de commandes n'offre pas le domaine verrouillé", async ({
-    page,
-  }) => {
+  bug("j06-011 : la palette de commandes n'offre pas le domaine verrouillé", async ({ page }) => {
     await page.keyboard.press("Control+k");
     await expect(page.getByRole("dialog", { name: "Palette de commandes" })).toBeVisible();
     await expect(

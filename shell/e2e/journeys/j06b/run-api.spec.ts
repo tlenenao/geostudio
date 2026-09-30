@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
+import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { apiFor, type Api, getGeoSeed } from "./seeds";
 import { stamp } from "../_fixtures/env";
@@ -44,7 +45,7 @@ const filter = (expr: string, id = "f"): PNode => ({
 
 test.describe("j06b exécution de pipelines", () => {
   // Finding j06b-001 (racine j03-001) : defer() hors app.open() → 500 alors que le run est créé.
-  test.fixme("j06b-001 : POST /pipelines/{id}/run répond 202 avec le runId", async () => {
+  bug("j06b-001 : POST /pipelines/{id}/run répond 202 avec le runId", async () => {
     const p = await createPipeline(
       creator,
       `${tag}-run202`,
@@ -57,7 +58,7 @@ test.describe("j06b exécution de pipelines", () => {
   });
 
   // Finding j06b-002 (miroir pipeline de j05-001) : reader.collection lit `geom`, le GeoParquet porte `geometry`.
-  test.fixme("j06b-002 : reader.collection lit une collection à géométrie importée", async () => {
+  bug("j06b-002 : reader.collection lit une collection à géométrie importée", async () => {
     const geo = await getGeoSeed();
     const p = await createPipeline(
       creator,
@@ -101,7 +102,7 @@ test.describe("j06b exécution de pipelines", () => {
   });
 
   // Finding j06b-004 : la clé de writer.export n'est ni préfixée par le tenant ni restreinte.
-  test.fixme("j06b-004 : writer.export n'écrase pas un objet étranger du bucket des exports", async () => {
+  bug("j06b-004 : writer.export n'écrase pas un objet étranger du bucket des exports", async () => {
     const victim = `renders/${tag}-victim.txt`;
     s3Put(victim, "ORIGINAL");
     const p = await createPipeline(
@@ -136,32 +137,38 @@ test.describe("j06b exécution de pipelines", () => {
   });
 
   // Finding j06b-007 : l'erreur d'exécution est le texte brut de DuckDB (SQL interne, noms de vues).
-  test.fixme("j06b-007 : l'erreur d'un run échoué est un message métier, pas du SQL DuckDB brut", async () => {
-    const col = await createPlainCollection(creator, `${tag}-rawerr`, [["a", 1]]);
-    const p = await createPipeline(
-      creator,
-      `${tag}-rawerr`,
-      [reader(col), filter("colonne_inconnue > 5"), exportWriter(`j06b/${tag}-rawerr.csv`)],
-      [edge("r", "f"), edge("f", "w")],
-    );
-    const fin = await runAndWait(p.itemId!);
-    expect(fin.status).toBe("failed");
-    expect(fin.error).not.toMatch(/erreur interne|LINE 1|node_f|Binder Error/);
-  });
+  bug(
+    "j06b-007 : l'erreur d'un run échoué est un message métier, pas du SQL DuckDB brut",
+    async () => {
+      const col = await createPlainCollection(creator, `${tag}-rawerr`, [["a", 1]]);
+      const p = await createPipeline(
+        creator,
+        `${tag}-rawerr`,
+        [reader(col), filter("colonne_inconnue > 5"), exportWriter(`j06b/${tag}-rawerr.csv`)],
+        [edge("r", "f"), edge("f", "w")],
+      );
+      const fin = await runAndWait(p.itemId!);
+      expect(fin.status).toBe("failed");
+      expect(fin.error).not.toMatch(/erreur interne|LINE 1|node_f|Binder Error/);
+    },
+  );
 
   // Finding j06b-008 : une colonne ajoutée à la table (DBA) n'existe pas dans le GeoParquet → reader en échec.
-  test.fixme("j06b-008 : colonne ajoutée après l'écriture du GeoParquet → le run ne casse pas", async () => {
-    const col = await createPlainCollection(creator, `${tag}-add`, [["a", 1]]);
-    psql(`ALTER TABLE "${col}" ADD COLUMN extra text`);
-    const p = await createPipeline(
-      creator,
-      `${tag}-add`,
-      [reader(col), exportWriter(`j06b/${tag}-add.csv`)],
-      [edge("r", "w")],
-    );
-    const fin = await runAndWait(p.itemId!);
-    expect(fin.status, fin.error).toBe("succeeded");
-  });
+  bug(
+    "j06b-008 : colonne ajoutée après l'écriture du GeoParquet → le run ne casse pas",
+    async () => {
+      const col = await createPlainCollection(creator, `${tag}-add`, [["a", 1]]);
+      psql(`ALTER TABLE "${col}" ADD COLUMN extra text`);
+      const p = await createPipeline(
+        creator,
+        `${tag}-add`,
+        [reader(col), exportWriter(`j06b/${tag}-add.csv`)],
+        [edge("r", "w")],
+      );
+      const fin = await runAndWait(p.itemId!);
+      expect(fin.status, fin.error).toBe("succeeded");
+    },
+  );
 
   test("échecs de run lisibles : secret absent, SSRF 169.254.169.254, reader.file (flag éteint)", async () => {
     const W = exportWriter(`j06b/${tag}-fail.csv`);
@@ -206,33 +213,36 @@ test.describe("j06b exécution de pipelines", () => {
   });
 
   // Finding j06b-005 : le service `worker` n'a pas CORE_SECRETS_MASTER_KEY (docker-compose.yml, bloc worker).
-  test.fixme("j06b-005 : un run dont un reader référence un secret valide déchiffre ce secret dans le worker", async () => {
-    const secretName = `${tag}-bearer`;
-    const s = await creator.send("POST", "/v1/secrets", {
-      name: secretName,
-      payload: { kind: "bearer_token", token: "tok-j06b" },
-    });
-    expect(s.status).toBe(201);
-    const p = await createPipeline(
-      creator,
-      `${tag}-secret`,
-      [
-        {
-          id: "r",
-          kind: "reader",
-          op: "reader.connector.rest",
-          params: { baseUrl: "https://example.org", secretName },
-        },
-        exportWriter(`j06b/${tag}-secret.csv`),
-      ],
-      [edge("r", "w")],
-    );
-    const fin = await runAndWait(p.itemId!);
-    expect(fin.error ?? "").not.toContain("CORE_SECRETS_MASTER_KEY");
-  });
+  bug(
+    "j06b-005 : un run dont un reader référence un secret valide déchiffre ce secret dans le worker",
+    async () => {
+      const secretName = `${tag}-bearer`;
+      const s = await creator.send("POST", "/v1/secrets", {
+        name: secretName,
+        payload: { kind: "bearer_token", token: "tok-j06b" },
+      });
+      expect(s.status).toBe(201);
+      const p = await createPipeline(
+        creator,
+        `${tag}-secret`,
+        [
+          {
+            id: "r",
+            kind: "reader",
+            op: "reader.connector.rest",
+            params: { baseUrl: "https://example.org", secretName },
+          },
+          exportWriter(`j06b/${tag}-secret.csv`),
+        ],
+        [edge("r", "w")],
+      );
+      const fin = await runAndWait(p.itemId!);
+      expect(fin.error ?? "").not.toContain("CORE_SECRETS_MASTER_KEY");
+    },
+  );
 
   // Confirme j06-015 : deux /run successifs créent deux runs simultanés du même pipeline.
-  test.fixme("j06b-006 : un second /run pendant qu'un run est en cours est refusé (409)", async () => {
+  bug("j06b-006 : un second /run pendant qu'un run est en cours est refusé (409)", async () => {
     const p = await createPipeline(
       creator,
       `${tag}-double`,

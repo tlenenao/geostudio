@@ -210,7 +210,7 @@ export async function focusDesc(page: Page): Promise<string> {
 
 // Les tests qui révèlent un bug sont `test.fixme` (résultat : ignorés) ; T01_VERIFY=1 les rejoue
 // pour prouver qu'ils échouent bien sur l'assertion visée.
-export const bug = process.env.T01_VERIFY ? test : test.fixme;
+export const bug = process.env.AUDIT_VERIFY || process.env.T01_VERIFY ? test : test.fixme;
 
 export interface Session {
   ctx: BrowserContext;

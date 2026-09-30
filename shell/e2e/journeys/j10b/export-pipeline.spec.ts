@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
+import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { spawnSync } from "node:child_process";
 import { stamp } from "../_fixtures/env";
@@ -31,7 +32,7 @@ function grep(dir: string, needle: string): string {
 test.describe("j10b export d'apps : pipeline API -> job -> zip", () => {
   // FINDING j10b-001 : POST /v1/app-exports répond 500 (AppNotOpen sur .defer())
   // après avoir committé le job : il reste « pending » pour toujours.
-  test.fixme("j10b-001 : POST /v1/app-exports met le job en file (202)", async () => {
+  bug("j10b-001 : POST /v1/app-exports met le job en file (202)", async () => {
     const id = await createApp(creator, `${tag}-q`, appConfig());
     const r = await creator.send("POST", "/v1/app-exports", { itemId: id, mode: "static" });
     expect(r.status).toBe(202);
@@ -44,7 +45,7 @@ test.describe("j10b export d'apps : pipeline API -> job -> zip", () => {
   // FINDING j10b-002 : ensure_uploads_bucket() appelle put_bucket_cors, que
   // MinIO ne supporte pas (NotImplemented) : même avec la file rejouée à la
   // main, chaque job d'export d'app finit en erreur (racine de j03-002).
-  test.fixme("j10b-002 : le worker termine un export sans échouer sur PutBucketCors", async () => {
+  bug("j10b-002 : le worker termine un export sans échouer sur PutBucketCors", async () => {
     const id = await createApp(creator, `${tag}-cors`, appConfig());
     const run = await runExport(creator, id, "static", false);
     expect(run.result?.status).toBe("done");
@@ -107,66 +108,79 @@ test.describe("j10b export d'apps : pipeline API -> job -> zip", () => {
 
   // Confirme j10-009 (probable en 1re passe) : variableInput est un widget
   // intégré (SP-52) mais absent de l'allowlist du garde.
-  test.fixme("j10b-003 : widget intégré variableInput accepté en export statique (confirme j10-009)", async () => {
-    const id = await createApp(
-      creator,
-      `${tag}-vi`,
-      appConfig([{ id: "v", widget: "variableInput", x: 0, y: 0, w: 4, h: 2, props: {} }]),
-    );
-    const run = await runExport(creator, id, "static");
-    expect(run.result?.status).toBe("done");
-  });
+  bug(
+    "j10b-003 : widget intégré variableInput accepté en export statique (confirme j10-009)",
+    async () => {
+      const id = await createApp(
+        creator,
+        `${tag}-vi`,
+        appConfig([{ id: "v", widget: "variableInput", x: 0, y: 0, w: 4, h: 2, props: {} }]),
+      );
+      const run = await runExport(creator, id, "static");
+      expect(run.result?.status).toBe("done");
+    },
+  );
 
   // Confirme j10-008 : la garde ne parcourt pas les widgets imbriqués.
-  test.fixme("j10b-004 : widget tiers imbriqué dans tabs refusé en statique (confirme j10-008)", async () => {
-    const id = await createApp(
-      creator,
-      `${tag}-nest`,
-      appConfig([
-        {
-          id: "tabs",
-          widget: "tabs",
-          x: 0,
-          y: 0,
-          w: 12,
-          h: 6,
-          props: {
-            tabs: [
-              {
-                id: "t1",
-                label: "A",
-                items: [{ id: "g", widget: "acme-gauge", x: 0, y: 0, w: 4, h: 2, props: {} }],
-              },
-            ],
+  bug(
+    "j10b-004 : widget tiers imbriqué dans tabs refusé en statique (confirme j10-008)",
+    async () => {
+      const id = await createApp(
+        creator,
+        `${tag}-nest`,
+        appConfig([
+          {
+            id: "tabs",
+            widget: "tabs",
+            x: 0,
+            y: 0,
+            w: 12,
+            h: 6,
+            props: {
+              tabs: [
+                {
+                  id: "t1",
+                  label: "A",
+                  items: [{ id: "g", widget: "acme-gauge", x: 0, y: 0, w: 4, h: 2, props: {} }],
+                },
+              ],
+            },
           },
-        },
-      ]),
-    );
-    const run = await runExport(creator, id, "static");
-    expect(run.result?.status).toBe("error");
-  });
+        ]),
+      );
+      const run = await runExport(creator, id, "static");
+      expect(run.result?.status).toBe("error");
+    },
+  );
 
   // Confirme j10-010 : troncature silencieuse à 50 000 enregistrements.
-  test.fixme("j10b-005 : le gel signale une collection de plus de 50 000 lignes (confirme j10-010)", async () => {
-    const col = await makeCollection(creator, `${tag}-big`, { pub: true, rows: 50_001 });
-    const id = await createApp(creator, `${tag}-bigapp`, tableApp(col.id, ["nom"]));
-    const run = await runExport(creator, id, "static");
-    const n = readBundleFile(run, "geostudio-app-config.json").dataSources[0].query.records.length;
-    expect(n).toBe(50_001);
-  });
+  bug(
+    "j10b-005 : le gel signale une collection de plus de 50 000 lignes (confirme j10-010)",
+    async () => {
+      const col = await makeCollection(creator, `${tag}-big`, { pub: true, rows: 50_001 });
+      const id = await createApp(creator, `${tag}-bigapp`, tableApp(col.id, ["nom"]));
+      const run = await runExport(creator, id, "static");
+      const n = readBundleFile(run, "geostudio-app-config.json").dataSources[0].query.records
+        .length;
+      expect(n).toBe(50_001);
+    },
+  );
 
   // Confirme j10-007 de bout en bout (job réel + zip), modes static et standalone.
-  test.fixme("j10b-006 : les champs sensibles ne sont pas écrits dans les bundles (confirme j10-007)", async () => {
-    const col = await makeCollection(creator, `${tag}-sens`, { pub: true, sensitive: true });
-    const anon = await fetch(`http://localhost:8200/v1/collections/${col.id}/items`);
-    expect(JSON.stringify(await anon.json())).not.toContain("TOPSECRET-42");
-    const id = await createApp(creator, `${tag}-sensapp`, tableApp(col.id));
-    for (const mode of ["static", "standalone"]) {
-      const run = await runExport(creator, id, mode);
-      expect(run.result?.status, mode).toBe("done");
-      expect(grep(run.dir!, "TOPSECRET-42"), mode).toBe("");
-    }
-  });
+  bug(
+    "j10b-006 : les champs sensibles ne sont pas écrits dans les bundles (confirme j10-007)",
+    async () => {
+      const col = await makeCollection(creator, `${tag}-sens`, { pub: true, sensitive: true });
+      const anon = await fetch(`http://localhost:8200/v1/collections/${col.id}/items`);
+      expect(JSON.stringify(await anon.json())).not.toContain("TOPSECRET-42");
+      const id = await createApp(creator, `${tag}-sensapp`, tableApp(col.id));
+      for (const mode of ["static", "standalone"]) {
+        const run = await runExport(creator, id, mode);
+        expect(run.result?.status, mode).toBe("done");
+        expect(grep(run.dir!, "TOPSECRET-42"), mode).toBe("");
+      }
+    },
+  );
 
   test("droits : un lecteur ne peut exporter ni lire le job d'un item privé (404)", async () => {
     const id = await createApp(creator, `${tag}-own`, appConfig());
@@ -188,7 +202,7 @@ test.describe("j10b export d'apps : pipeline API -> job -> zip", () => {
 
   // FINDING j10b-007 : aucun contrôle du kind : n'importe quel item lisible
   // (site, alerte, pipeline…) est « exporté » en bundle d'app.
-  test.fixme("j10b-007 : l'export refuse un item qui n'est pas une app", async () => {
+  bug("j10b-007 : l'export refuse un item qui n'est pas une app", async () => {
     const r = await creator.send("POST", "/v1/configs", {
       title: `${tag}-site`,
       config: { version: 1, kind: "site", layout: { type: "grid", items: [] } },

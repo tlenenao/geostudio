@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
+import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { CORE_URL, stamp } from "../_fixtures/env";
 import { apiFor, getPublicSeed, psql, type Api, type PublicSeed } from "./helpers";
@@ -181,30 +182,36 @@ test.describe("j07 collection cassée — dégradation gracieuse", () => {
   });
 
   // Findings j07-008 et j07-009.
-  test.fixme("j07-008 : une collection cassée ne fait pas échouer /stac/search pour toutes les autres", async () => {
-    await withBrokenCollection(async () => {
-      const r = await anon("/v1/stac/search?limit=1000");
-      expect(r.status).toBe(200);
-    });
-  });
+  bug(
+    "j07-008 : une collection cassée ne fait pas échouer /stac/search pour toutes les autres",
+    async () => {
+      await withBrokenCollection(async () => {
+        const r = await anon("/v1/stac/search?limit=1000");
+        expect(r.status).toBe(200);
+      });
+    },
+  );
 
-  test.fixme("j07-009 : une collection cassée répond une erreur claire (pas 500) sur STAC et OGC items", async () => {
-    await withBrokenCollection(async (id) => {
-      for (const p of [
-        `/v1/stac/collections/${id}`,
-        `/v1/stac/collections/${id}/items`,
-        `/v1/collections/${id}/items`,
-      ]) {
-        const r = await anon(p);
-        expect(r.status, p).not.toBe(500);
-      }
-    });
-  });
+  bug(
+    "j07-009 : une collection cassée répond une erreur claire (pas 500) sur STAC et OGC items",
+    async () => {
+      await withBrokenCollection(async (id) => {
+        for (const p of [
+          `/v1/stac/collections/${id}`,
+          `/v1/stac/collections/${id}/items`,
+          `/v1/collections/${id}/items`,
+        ]) {
+          const r = await anon(p);
+          expect(r.status, p).not.toBe(500);
+        }
+      });
+    },
+  );
 });
 
 test.describe("j07 STAC — défauts constatés", () => {
   // Finding j07-010 : datetime invalide → 500.
-  test.fixme("j07-010 : un paramètre datetime invalide répond 400", async () => {
+  bug("j07-010 : un paramètre datetime invalide répond 400", async () => {
     expect((await anon("/v1/stac/search?datetime=garbage")).status).toBe(400);
     const post = await anon("/v1/stac/search", {
       method: "POST",
@@ -216,7 +223,7 @@ test.describe("j07 STAC — défauts constatés", () => {
 
   // Finding j07-011 : le filtre datetime ignore l'emprise temporelle déclarée et la propriété
   // datetime des items est la date de mise à jour de la collection.
-  test.fixme("j07-011 : datetime cohérent avec l'emprise temporelle déclarée (2020)", async () => {
+  bug("j07-011 : datetime cohérent avec l'emprise temporelle déclarée (2020)", async () => {
     const r = await anon(
       `/v1/stac/search?collections=${seed.collectionId}&datetime=2020-06-01T00:00:00Z/2020-06-30T00:00:00Z`,
     );
@@ -226,26 +233,29 @@ test.describe("j07 STAC — défauts constatés", () => {
   });
 
   // Finding j07-012 : licence « other » invalide en STAC 1.0 et licenseUri non exposée.
-  test.fixme("j07-012 : une collection sans licence connue n'expose pas license=other et publie le lien de licence", async () => {
-    const made = await creator.send("POST", "/v1/collections/empty", {
-      title: `${tag}-other`,
-      columns: [{ name: "nom", sqlType: "text" }],
-      geometryType: "Point",
-      srid: 4326,
-    });
-    const id = made.body.id as string;
-    await creator.send("PATCH", `/v1/collections/${id}`, {
-      isPublic: true,
-      license: "other",
-      licenseUri: "https://example.org/ma-licence",
-    });
-    const c = await anon(`/v1/stac/collections/${id}`);
-    expect(["proprietary", "various"]).toContain(c.body.license);
-    expect(c.body.links.some((l: any) => l.rel === "license")).toBe(true);
-  });
+  bug(
+    "j07-012 : une collection sans licence connue n'expose pas license=other et publie le lien de licence",
+    async () => {
+      const made = await creator.send("POST", "/v1/collections/empty", {
+        title: `${tag}-other`,
+        columns: [{ name: "nom", sqlType: "text" }],
+        geometryType: "Point",
+        srid: 4326,
+      });
+      const id = made.body.id as string;
+      await creator.send("PATCH", `/v1/collections/${id}`, {
+        isPublic: true,
+        license: "other",
+        licenseUri: "https://example.org/ma-licence",
+      });
+      const c = await anon(`/v1/stac/collections/${id}`);
+      expect(["proprietary", "various"]).toContain(c.body.license);
+      expect(c.body.links.some((l: any) => l.rel === "license")).toBe(true);
+    },
+  );
 
   // Finding j07-013 : jeton de pagination invalide ignoré silencieusement.
-  test.fixme("j07-013 : un jeton de pagination invalide est refusé (400)", async () => {
+  bug("j07-013 : un jeton de pagination invalide est refusé (400)", async () => {
     const r = await anon(`/v1/stac/search?collections=${seed.collectionId}&token=@@@`);
     expect(r.status).toBe(400);
   });

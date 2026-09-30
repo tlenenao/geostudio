@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
+import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { apiFor, ingest, type Api } from "./api";
 import { getSeed, mapConfig, type Seed } from "./seed";
@@ -36,30 +37,39 @@ const put = (api: Api, pk: string, map: unknown) =>
   api.send("PUT", `/v1/configs/by-item/${pk}`, { version: 1, kind: "map", map, printLayout: null });
 
 test.describe("j03 carte importée — contenu de la config générée", () => {
-  test.fixme("j03-008 : la couche d'une carte importée charge toutes les entités (250 attendues)", async () => {
-    // Défaut j03-008 : couche « feature » sur /collections/{id}/items sans limit → 100 entités max.
-    const cfg = await mapConfig(creator, big.itemId);
-    const layer = cfg.config.map.layers[0];
-    if (layer.kind === "feature") {
-      const r = await creator.get(new URL(layer.url).pathname + new URL(layer.url).search);
-      expect(r.body.features).toHaveLength(250);
-    } else {
-      expect(layer.kind).toBe("vector"); // couche MVT : pas de plafond de page
-    }
-  });
+  bug(
+    "j03-008 : la couche d'une carte importée charge toutes les entités (250 attendues)",
+    async () => {
+      // Défaut j03-008 : couche « feature » sur /collections/{id}/items sans limit → 100 entités max.
+      const cfg = await mapConfig(creator, big.itemId);
+      const layer = cfg.config.map.layers[0];
+      if (layer.kind === "feature") {
+        const r = await creator.get(new URL(layer.url).pathname + new URL(layer.url).search);
+        expect(r.body.features).toHaveLength(250);
+      } else {
+        expect(layer.kind).toBe("vector"); // couche MVT : pas de plafond de page
+      }
+    },
+  );
 
-  test.fixme("j03-009 : la carte importée porte une emprise (item.bbox) exploitable par le catalogue et par « Ajuster à l'emprise »", async () => {
-    // Défaut j03-009 : recompute_item_bbox ignore les couches sans collectionId → bbox null.
-    const item = (await creator.get(`/v1/items/${seed.pointsItem}`)).body;
-    expect(item.bbox).not.toBeNull();
-  });
+  bug(
+    "j03-009 : la carte importée porte une emprise (item.bbox) exploitable par le catalogue et par « Ajuster à l'emprise »",
+    async () => {
+      // Défaut j03-009 : recompute_item_bbox ignore les couches sans collectionId → bbox null.
+      const item = (await creator.get(`/v1/items/${seed.pointsItem}`)).body;
+      expect(item.bbox).not.toBeNull();
+    },
+  );
 
-  test.fixme("j03-010 : la couche de points importée déclare un rendu « points » (renderAs/geometryKind)", async () => {
-    // Défaut j03-010 (probable) : renderAs absent → MapView retombe sur « fill », invisible pour des Point.
-    const cfg = await mapConfig(creator, seed.pointsItem);
-    const layer = cfg.config.map.layers[0];
-    expect(layer.renderAs === "circle" || layer.kind === "vector").toBe(true);
-  });
+  bug(
+    "j03-010 : la couche de points importée déclare un rendu « points » (renderAs/geometryKind)",
+    async () => {
+      // Défaut j03-010 (probable) : renderAs absent → MapView retombe sur « fill », invisible pour des Point.
+      const cfg = await mapConfig(creator, seed.pointsItem);
+      const layer = cfg.config.map.layers[0];
+      expect(layer.renderAs === "circle" || layer.kind === "vector").toBe(true);
+    },
+  );
 });
 
 test.describe("j03 carte — versions et rollback", () => {
@@ -90,30 +100,33 @@ test.describe("j03 carte — versions et rollback", () => {
     expect([403, 404]).toContain(d.status);
   });
 
-  test.fixme("j03-011 : la config de carte est validée côté serveur (centre, zoom, opacité, URLs)", async () => {
-    // Défaut j03-011 : MapView/MapLayer sans contraintes — lat 999, zoom 99, opacité 5, url javascript:
-    // sont acceptés (200) et rendront la carte inutilisable pour tout lecteur.
-    const cfg = await mapConfig(creator, seed.pointsItem);
-    const bad = (mut: (m: any) => void) => {
-      const m = JSON.parse(JSON.stringify(cfg.config.map));
-      mut(m);
-      return put(creator, seed.pointsItem, m);
-    };
-    expect.soft((await bad((m) => (m.view.center = [2, 999]))).status).toBe(422);
-    expect.soft((await bad((m) => (m.view.zoom = 99))).status).toBe(422);
-    expect.soft((await bad((m) => (m.layers[0].opacity = 5))).status).toBe(422);
-    expect
-      .soft(
-        (
-          await bad((m) =>
-            m.layers.push({ id: "x", title: "x", kind: "feature", url: "javascript:1" }),
-          )
-        ).status,
-      )
-      .toBe(422);
-    // restaure une config saine
-    await put(creator, seed.pointsItem, cfg.config.map);
-  });
+  bug(
+    "j03-011 : la config de carte est validée côté serveur (centre, zoom, opacité, URLs)",
+    async () => {
+      // Défaut j03-011 : MapView/MapLayer sans contraintes — lat 999, zoom 99, opacité 5, url javascript:
+      // sont acceptés (200) et rendront la carte inutilisable pour tout lecteur.
+      const cfg = await mapConfig(creator, seed.pointsItem);
+      const bad = (mut: (m: any) => void) => {
+        const m = JSON.parse(JSON.stringify(cfg.config.map));
+        mut(m);
+        return put(creator, seed.pointsItem, m);
+      };
+      expect.soft((await bad((m) => (m.view.center = [2, 999]))).status).toBe(422);
+      expect.soft((await bad((m) => (m.view.zoom = 99))).status).toBe(422);
+      expect.soft((await bad((m) => (m.layers[0].opacity = 5))).status).toBe(422);
+      expect
+        .soft(
+          (
+            await bad((m) =>
+              m.layers.push({ id: "x", title: "x", kind: "feature", url: "javascript:1" }),
+            )
+          ).status,
+        )
+        .toBe(422);
+      // restaure une config saine
+      await put(creator, seed.pointsItem, cfg.config.map);
+    },
+  );
 });
 
 test.describe("j03 carte — publication et droits", () => {
@@ -147,16 +160,19 @@ test.describe("j03 carte — publication et droits", () => {
     await creator.send("PATCH", `/v1/items/${pk}`, { isPublished: false });
   });
 
-  test.fixme("j03-012 : une carte publiée dont la collection reste privée est signalée ou publie ses données", async () => {
-    // Défaut j03-012 : après « Publier », lecteur et anonyme reçoivent 404 sur /collections/{id}/items :
-    // la carte publique est vide, sans aucun avertissement à la publication.
-    const pk = big.itemId;
-    await creator.send("PATCH", `/v1/items/${pk}`, { isPublished: true });
-    try {
-      const r = await reader.get(`/v1/collections/${big.collectionId}/items?limit=1`);
-      expect(r.status).toBe(200);
-    } finally {
-      await creator.send("PATCH", `/v1/items/${pk}`, { isPublished: false });
-    }
-  });
+  bug(
+    "j03-012 : une carte publiée dont la collection reste privée est signalée ou publie ses données",
+    async () => {
+      // Défaut j03-012 : après « Publier », lecteur et anonyme reçoivent 404 sur /collections/{id}/items :
+      // la carte publique est vide, sans aucun avertissement à la publication.
+      const pk = big.itemId;
+      await creator.send("PATCH", `/v1/items/${pk}`, { isPublished: true });
+      try {
+        const r = await reader.get(`/v1/collections/${big.collectionId}/items?limit=1`);
+        expect(r.status).toBe(200);
+      } finally {
+        await creator.send("PATCH", `/v1/items/${pk}`, { isPublished: false });
+      }
+    },
+  );
 });

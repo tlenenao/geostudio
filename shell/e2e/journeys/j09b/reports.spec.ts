@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
+import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -192,11 +193,14 @@ test("rendu abouti simulé : webhook et e-mail livrés, notif in-app, API des ru
 // Finding j09b-011 : le lien de téléchargement posé dans le webhook et l'e-mail est signé sur
 // l'hôte interne du stockage (S3_ENDPOINT_URL, http://minio:9000) : inutilisable pour le
 // destinataire d'un e-mail ou d'un webhook externe (7 jours de validité, mais nom d'hôte interne).
-test.fixme("j09b-011 : le lien du rapport envoyé par webhook/e-mail est joignable hors du réseau Docker", async () => {
-  const hooks = recvLog("http").filter((h) => h.body.includes(reportC));
-  const url = new URL(JSON.parse(hooks[0].body).resultUrl);
-  expect(url.hostname).not.toMatch(/^(minio|localhost|127\.|10\.|172\.|192\.168\.)/);
-});
+bug(
+  "j09b-011 : le lien du rapport envoyé par webhook/e-mail est joignable hors du réseau Docker",
+  async () => {
+    const hooks = recvLog("http").filter((h) => h.body.includes(reportC));
+    const url = new URL(JSON.parse(hooks[0].body).resultUrl);
+    expect(url.hostname).not.toMatch(/^(minio|localhost|127\.|10\.|172\.|192\.168\.)/);
+  },
+);
 
 test.describe("balayage réel du worker", () => {
   let repA: string;
@@ -233,16 +237,22 @@ test.describe("balayage réel du worker", () => {
   // le passe qu'à core et export-worker) : is_export_enabled() y est faux, donc CHAQUE rapport
   // planifié échoue au déclenchement avec « export capability disabled on this instance » alors
   // que l'export est allumé sur l'instance. Aucun rapport planifié ne s'exécute jamais.
-  test.fixme("j09b-001 : un rapport planifié est déclenché par le worker (un rendu est mis en file)", async () => {
-    const r = q(`SELECT count(export_job_id) FROM report_runs WHERE report_item_id='${repA}'`);
-    expect(Number(r)).toBeGreaterThanOrEqual(1);
-  });
+  bug(
+    "j09b-001 : un rapport planifié est déclenché par le worker (un rendu est mis en file)",
+    async () => {
+      const r = q(`SELECT count(export_job_id) FROM report_runs WHERE report_item_id='${repA}'`);
+      expect(Number(r)).toBeGreaterThanOrEqual(1);
+    },
+  );
 
   // Finding j09b-013 : comme pour les pipelines (j06b-013), un rapport sans run antérieur est
   // dû au premier balayage quel que soit son cron (« 0 3 1 1 * » = 1er janvier, 3 h).
-  test.fixme("j09b-013 : un rapport au cron « 0 3 1 1 * » n'est pas déclenché au premier balayage", async () => {
-    expect(Number(q(`SELECT count(*) FROM report_runs WHERE report_item_id='${repB}'`))).toBe(0);
-  });
+  bug(
+    "j09b-013 : un rapport au cron « 0 3 1 1 * » n'est pas déclenché au premier balayage",
+    async () => {
+      expect(Number(q(`SELECT count(*) FROM report_runs WHERE report_item_id='${repB}'`))).toBe(0);
+    },
+  );
 });
 
 test("chaîne complète hors balayage du worker (déclenchement exécuté avec l'env du cœur) : run + export_jobs + tâche de rendu, puis notification du résultat réel", async () => {

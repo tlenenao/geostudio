@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
+import { bug } from "../_fixtures/verify";
 import { expect, test } from "@playwright/test";
 import { aggregate, apiFor, sql, type Api } from "./helpers";
 import { getSeed, type Seed } from "./seed";
@@ -143,26 +144,26 @@ test.describe("j05 SQL Lab — API", () => {
   });
 
   // Finding j05-001 : le GeoParquet nomme la colonne « geometry », la table PostGIS « geom ».
-  test.fixme("j05-001 : SQL Lab lit une collection à géométrie importée", async () => {
+  bug("j05-001 : SQL Lab lit une collection à géométrie importée", async () => {
     const r = await sql(analyst, `select count(*) from ${seed.eventsCollection}`);
     expect(r.status).toBe(200);
     expect(r.body.rows[0][0]).toBe(60);
   });
 
   // Finding j05-008 : inf/NaN ne sont pas sérialisables en JSON -> 500.
-  test.fixme("j05-008 : une division par zéro (inf) est rendue sans erreur serveur", async () => {
+  bug("j05-008 : une division par zéro (inf) est rendue sans erreur serveur", async () => {
     const r = await sql(analyst, "select 1/0 as x");
     expect(r.status).toBeLessThan(500);
   });
 
   // Finding j05-012 : les colonnes date/timestamptz sont exposées en VARCHAR par le lac.
-  test.fixme("j05-012 : une colonne timestamptz reste un TIMESTAMP dans SQL Lab", async () => {
+  bug("j05-012 : une colonne timestamptz reste un TIMESTAMP dans SQL Lab", async () => {
     const r = await sql(analyst, `select typeof(d) from ${seed.ventes} limit 1`);
     expect(r.body.rows[0][0]).toMatch(/TIMESTAMP/);
   });
 
   // Finding j05-020 : une collection non encore répliquée dans le lac.
-  test.fixme("j05-020 : agrégat sur une collection non répliquée signale l'attente", async () => {
+  bug("j05-020 : agrégat sur une collection non répliquée signale l'attente", async () => {
     test.setTimeout(60_000);
     const creator = await apiFor("creator");
     const created = await creator.send("POST", "/v1/collections/empty", {

@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
+import { bug } from "../_fixtures/verify";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -131,7 +132,7 @@ print(json.dumps(out))
 
   // Finding j05b-005 : AppNotOpen (comme j03-001) sur POST /v1/export : la ligne export_jobs est
   // commitée « pending » puis le différé échoue en 500 ; le job ne s'exécutera jamais.
-  test.fixme("j05b-005 : POST /v1/export valide répond 202 et le job quitte l'état pending", async () => {
+  bug("j05b-005 : POST /v1/export valide répond 202 et le job quitte l'état pending", async () => {
     test.setTimeout(60_000);
     const creator = await apiFor("creator");
     const r = await creator.send("POST", "/v1/export", { itemId: seed.eventsItem, format: "png" });
@@ -144,34 +145,37 @@ print(json.dumps(out))
   // Finding j05b-006 : le job déféré à la main s'exécute mais échoue après 30 s avec une trace
   // Playwright brute (le shell embarque VITE_CORE_URL=http://localhost:8200, injoignable depuis
   // export-worker, contrainte documentée dans .env.example mais sans détection ni message).
-  test.fixme("j05b-006 : un export qui ne peut pas joindre le cœur échoue vite avec un message exploitable", async () => {
-    test.setTimeout(150_000);
-    const creator = await apiFor("creator");
-    const before = new Set(psql("SELECT id FROM export_jobs").split("\n"));
-    await creator.send("POST", "/v1/export", { itemId: seed.eventsItem, format: "png" });
-    const id = psql("SELECT id FROM export_jobs ORDER BY created_at DESC LIMIT 1").trim();
-    expect(before.has(id)).toBe(false);
-    execFileSync(
-      "docker",
-      [
-        "exec",
-        "geostudio-export-worker-1",
-        "python",
-        "-c",
-        "import sys\nfrom app.jobs import app\nfrom app.export.jobs import render_export_task\nwith app.open():\n render_export_task.defer(job_id=sys.argv[1],tenant_id='default')",
-        id,
-      ],
-      { stdio: ["ignore", "ignore", "pipe"] },
-    );
-    let job: any;
-    for (let k = 0; k < 40; k++) {
-      await new Promise((res) => setTimeout(res, 3000));
-      job = (await creator.get(`/v1/export/jobs/${id}`)).body;
-      if (job.status === "done" || job.status === "error") break;
-    }
-    expect(job.status).toBe("done");
-    expect(job.error ?? "").not.toMatch(/wait_for_selector|Call log/);
-  });
+  bug(
+    "j05b-006 : un export qui ne peut pas joindre le cœur échoue vite avec un message exploitable",
+    async () => {
+      test.setTimeout(150_000);
+      const creator = await apiFor("creator");
+      const before = new Set(psql("SELECT id FROM export_jobs").split("\n"));
+      await creator.send("POST", "/v1/export", { itemId: seed.eventsItem, format: "png" });
+      const id = psql("SELECT id FROM export_jobs ORDER BY created_at DESC LIMIT 1").trim();
+      expect(before.has(id)).toBe(false);
+      execFileSync(
+        "docker",
+        [
+          "exec",
+          "geostudio-export-worker-1",
+          "python",
+          "-c",
+          "import sys\nfrom app.jobs import app\nfrom app.export.jobs import render_export_task\nwith app.open():\n render_export_task.defer(job_id=sys.argv[1],tenant_id='default')",
+          id,
+        ],
+        { stdio: ["ignore", "ignore", "pipe"] },
+      );
+      let job: any;
+      for (let k = 0; k < 40; k++) {
+        await new Promise((res) => setTimeout(res, 3000));
+        job = (await creator.get(`/v1/export/jobs/${id}`)).body;
+        if (job.status === "done" || job.status === "error") break;
+      }
+      expect(job.status).toBe("done");
+      expect(job.error ?? "").not.toMatch(/wait_for_selector|Call log/);
+    },
+  );
 
   test("GET /v1/export/jobs/{id} : invisible pour un lecteur sans accès à l'item, 404 sur id inconnu", async () => {
     const creator = await apiFor("creator");

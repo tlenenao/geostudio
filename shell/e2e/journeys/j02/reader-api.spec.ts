@@ -1,3 +1,4 @@
+import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { getSeed } from "./seed";
 
@@ -100,7 +101,7 @@ test.describe("j02 lecteur — API : visibilité et droits", () => {
   });
 
   // j02-001 : un `scope` inconnu supprime tout le filtre de visibilité.
-  test.fixme("j02-001 : un scope inconnu ne doit pas exposer les items privés d'autrui", async () => {
+  bug("j02-001 : un scope inconnu ne doit pas exposer les items privés d'autrui", async () => {
     const s = await getSeed();
     for (const scope of ["bogus", "", "owned"]) {
       const page = await s.reader.get(`/v1/items?scope=${scope}&pageSize=200`);
@@ -113,13 +114,16 @@ test.describe("j02 lecteur — API : visibilité et droits", () => {
   });
 
   // j02-005 : GET /groups liste tout le tenant et GET /items/{id}/sharing n'exige que `read`.
-  test.fixme("j02-005 : un lecteur ne lit ni les groupes d'autrui ni l'ACL d'un item qu'il ne peut pas partager", async () => {
-    const s = await getSeed();
-    await s.creator.send("POST", "/v1/groups", { name: `${s.tag}-groupe-secret` });
-    const groups = await s.reader.get("/v1/groups");
-    const names: string[] = groups.body.map((g: { name: string }) => g.name);
-    expect(names).not.toContain(`${s.tag}-groupe-secret`);
-    const acl = await s.reader.get(`/v1/items/${s.sharedMap}/sharing`);
-    expect(acl.status).toBe(403);
-  });
+  bug(
+    "j02-005 : un lecteur ne lit ni les groupes d'autrui ni l'ACL d'un item qu'il ne peut pas partager",
+    async () => {
+      const s = await getSeed();
+      await s.creator.send("POST", "/v1/groups", { name: `${s.tag}-groupe-secret` });
+      const groups = await s.reader.get("/v1/groups");
+      const names: string[] = groups.body.map((g: { name: string }) => g.name);
+      expect(names).not.toContain(`${s.tag}-groupe-secret`);
+      const acl = await s.reader.get(`/v1/items/${s.sharedMap}/sharing`);
+      expect(acl.status).toBe(403);
+    },
+  );
 });

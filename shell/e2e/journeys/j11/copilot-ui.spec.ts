@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
+import { bug } from "../_fixtures/verify";
 import { test, expect, type Page } from "@playwright/test";
 import { type PersonaName } from "../_fixtures/env";
 import { openAs, spaGoto } from "../j06/helpers";
@@ -86,14 +87,15 @@ test.describe("j11 copilote : capacité éteinte côté UI", () => {
 
   // FINDING j11-006 : aucun texte ne dit que le copilote existe mais n'est pas configuré ;
   // la fonction est simplement invisible, l'utilisateur ne peut pas la découvrir.
-  test.fixme("j11-006 : le builder explique que le copilote est indisponible quand aucun fournisseur LLM n'est configuré", async ({
-    page,
-  }) => {
-    const seed = await getSeed();
-    await openBuilder(page, "creator", seed.appPk);
-    await expect(page.getByRole("button", { name: "Enregistrer" })).toBeVisible();
-    await expect(page.getByText(/copilote.*(indisponible|non configuré)/i)).toBeVisible();
-  });
+  bug(
+    "j11-006 : le builder explique que le copilote est indisponible quand aucun fournisseur LLM n'est configuré",
+    async ({ page }) => {
+      const seed = await getSeed();
+      await openBuilder(page, "creator", seed.appPk);
+      await expect(page.getByRole("button", { name: "Enregistrer" })).toBeVisible();
+      await expect(page.getByText(/copilote.*(indisponible|non configuré)/i)).toBeVisible();
+    },
+  );
 });
 
 test.describe("j11 copilote : builder avec cœur simulé sur /copilot/turn", () => {
@@ -129,28 +131,29 @@ test.describe("j11 copilote : builder avec cœur simulé sur /copilot/turn", () 
   // passe alors isLoading=true, RequireAuth rend « Connexion… » et démonte tout le shell.
   // Le brouillon non enregistré, la pile d'annulation, la conversation et la réponse du tour
   // (clientOps) sont perdus ; le mode mock (E2E historiques) contourne ce chemin.
-  test.fixme("j11-007 : la réponse du copilote est appliquée au brouillon sans perdre le brouillon en cours", async ({
-    page,
-  }) => {
-    const pk = await newApp("creator", "aud-j11-ui-2");
-    await enableCopilot(page);
-    await stubTurn(page, () => ({
-      json: {
-        reply: "Fait.",
-        clientOps: [
-          { op: "addWidget", args: { type: "indicator" } },
-          { op: "save_app_config", args: {} },
-        ],
-      },
-    }));
-    await openBuilder(page, "creator", pk);
-    await page.getByRole("button", { name: "Texte" }).click();
-    await expect(page.getByRole("button", { name: /^Sélectionner widget-/ })).toHaveCount(1);
-    await ask(page, "Ajoute un indicateur");
-    await expect(page.getByText("Fait.")).toBeVisible();
-    await expect(page.getByRole("button", { name: /^Sélectionner widget-/ })).toHaveCount(2);
-    await expect(page.getByText("Action inconnue ignorée : save_app_config")).toBeVisible();
-  });
+  bug(
+    "j11-007 : la réponse du copilote est appliquée au brouillon sans perdre le brouillon en cours",
+    async ({ page }) => {
+      const pk = await newApp("creator", "aud-j11-ui-2");
+      await enableCopilot(page);
+      await stubTurn(page, () => ({
+        json: {
+          reply: "Fait.",
+          clientOps: [
+            { op: "addWidget", args: { type: "indicator" } },
+            { op: "save_app_config", args: {} },
+          ],
+        },
+      }));
+      await openBuilder(page, "creator", pk);
+      await page.getByRole("button", { name: "Texte" }).click();
+      await expect(page.getByRole("button", { name: /^Sélectionner widget-/ })).toHaveCount(1);
+      await ask(page, "Ajoute un indicateur");
+      await expect(page.getByText("Fait.")).toBeVisible();
+      await expect(page.getByRole("button", { name: /^Sélectionner widget-/ })).toHaveCount(2);
+      await expect(page.getByText("Action inconnue ignorée : save_app_config")).toBeVisible();
+    },
+  );
 
   test("l'échange est consigné dans l'historique localStorage même si le panneau est remonté", async ({
     page,
@@ -175,44 +178,46 @@ test.describe("j11 copilote : builder avec cœur simulé sur /copilot/turn", () 
 
   // FINDING j11-010 : un lecteur (Enregistrer désactivé) peut néanmoins utiliser le copilote
   // et modifier le brouillon local ; le panneau n'est pas mis en lecture seule.
-  test.fixme("j11-010 : un lecteur sur une app partagée ne peut pas utiliser le copilote d'édition", async ({
-    page,
-  }) => {
-    const pk = await newApp("creator", "aud-j11-ui-7", true);
-    await enableCopilot(page);
-    await stubTurn(page, () => ({ json: { reply: "ajouté", clientOps: [] } }));
-    await openBuilder(page, "reader", pk);
-    await expect(page.getByRole("button", { name: "Enregistrer" })).toBeDisabled();
-    await expect(page.getByLabel("Message au copilote")).toBeDisabled();
-  });
+  bug(
+    "j11-010 : un lecteur sur une app partagée ne peut pas utiliser le copilote d'édition",
+    async ({ page }) => {
+      const pk = await newApp("creator", "aud-j11-ui-7", true);
+      await enableCopilot(page);
+      await stubTurn(page, () => ({ json: { reply: "ajouté", clientOps: [] } }));
+      await openBuilder(page, "reader", pk);
+      await expect(page.getByRole("button", { name: "Enregistrer" })).toBeDisabled();
+      await expect(page.getByLabel("Message au copilote")).toBeDisabled();
+    },
+  );
 });
 
 test.describe("j11 copilote : SQL Lab", () => {
   // Même racine que j11-007 : le remontage consécutif à signinSilent efface le brouillon SQL
   // que le tour vient d'insérer.
-  test.fixme("j11-007 : le brouillon SQL proposé reste dans l'éditeur et n'est jamais exécuté sans clic", async ({
-    page,
-  }) => {
-    await enableCopilot(page);
-    let executed = false;
-    await page.route("**/v1/analytics/sql", async (route) => {
-      executed = true;
-      await route.continue();
-    });
-    const turns = await stubTurn(page, () => ({
-      json: {
-        reply: "Voici un brouillon.",
-        clientOps: [{ op: "applySqlDraft", args: { sql: "SELECT 1 AS un" } }],
-      },
-    }));
-    await openAs(page, "analyst");
-    await spaGoto(page, "/analytics/sql");
-    await ask(page, "un");
-    await expect(page.getByLabel("Requête SQL")).toHaveText("SELECT 1 AS un");
-    expect(executed).toBe(false);
-    expect(turns[0].body.surface).toBe("sql_lab");
-    expect(turns[0].body.itemId).toBeUndefined();
-    expect(Array.isArray(turns[0].body.currentConfig.collections)).toBe(true);
-    await expect(page.getByText("Brouillon SQL inséré.")).toBeVisible();
-  });
+  bug(
+    "j11-007 : le brouillon SQL proposé reste dans l'éditeur et n'est jamais exécuté sans clic",
+    async ({ page }) => {
+      await enableCopilot(page);
+      let executed = false;
+      await page.route("**/v1/analytics/sql", async (route) => {
+        executed = true;
+        await route.continue();
+      });
+      const turns = await stubTurn(page, () => ({
+        json: {
+          reply: "Voici un brouillon.",
+          clientOps: [{ op: "applySqlDraft", args: { sql: "SELECT 1 AS un" } }],
+        },
+      }));
+      await openAs(page, "analyst");
+      await spaGoto(page, "/analytics/sql");
+      await ask(page, "un");
+      await expect(page.getByLabel("Requête SQL")).toHaveText("SELECT 1 AS un");
+      expect(executed).toBe(false);
+      expect(turns[0].body.surface).toBe("sql_lab");
+      expect(turns[0].body.itemId).toBeUndefined();
+      expect(Array.isArray(turns[0].body.currentConfig.collections)).toBe(true);
+      await expect(page.getByText("Brouillon SQL inséré.")).toBeVisible();
+    },
+  );
 });

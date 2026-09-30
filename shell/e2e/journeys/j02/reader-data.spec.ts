@@ -1,3 +1,4 @@
+import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { getSeed } from "./seed";
 
@@ -57,7 +58,7 @@ test.describe("j02 lecteur — recherche, pièces jointes, écriture de données
   });
 
   // j02-002 : le présigné d'upload appelle put_bucket_cors, non implémenté par le MinIO reconstruit.
-  test.fixme("j02-002 : le propriétaire peut obtenir une URL présignée de pièce jointe", async () => {
+  bug("j02-002 : le propriétaire peut obtenir une URL présignée de pièce jointe", async () => {
     const s = await getSeed();
     const presign = await s.creator.send(
       "POST",
@@ -78,7 +79,7 @@ test.describe("j02 lecteur — recherche, pièces jointes, écriture de données
   });
 
   // j02-003 : une collection créée vide refuse toute entité (tenant_id « requis »).
-  test.fixme("j02-003 : une collection créée vide accepte une première entité via OGC API", async () => {
+  bug("j02-003 : une collection créée vide accepte une première entité via OGC API", async () => {
     const s = await getSeed();
     const col = await s.creator.send("POST", "/v1/collections/empty", {
       title: `${s.tag}-vide`,

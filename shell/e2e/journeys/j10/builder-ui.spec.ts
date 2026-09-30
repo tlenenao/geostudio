@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
+import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { stamp } from "../_fixtures/env";
 import { openAs, spaGoto } from "../j06/helpers";
@@ -51,17 +52,18 @@ test.describe("j10 builder : mode story et pages", () => {
   // FINDING j10-006 : Message n'a pas de champ `id` côté cœur, il est perdu à
   // l'enregistrement ; au rechargement toutes les actions ont id undefined, donc
   // retirer une action d'entrée de chapitre les retire toutes.
-  test.fixme("j10-006 : retirer une action d'entrée de chapitre ne retire que celle-ci", async ({
-    page,
-  }) => {
-    const pk = await twoActionStory(`${tag}-b3`);
-    await openAs(page, "creator");
-    await spaGoto(page, `/apps/${pk}/edit`);
-    const removes = page.getByRole("button", { name: /Retirer l'action/ });
-    await expect(removes).toHaveCount(2);
-    await removes.first().click();
-    await expect(page.getByRole("button", { name: /Retirer l'action/ })).toHaveCount(1);
-  });
+  bug(
+    "j10-006 : retirer une action d'entrée de chapitre ne retire que celle-ci",
+    async ({ page }) => {
+      const pk = await twoActionStory(`${tag}-b3`);
+      await openAs(page, "creator");
+      await spaGoto(page, `/apps/${pk}/edit`);
+      const removes = page.getByRole("button", { name: /Retirer l'action/ });
+      await expect(removes).toHaveCount(2);
+      await removes.first().click();
+      await expect(page.getByRole("button", { name: /Retirer l'action/ })).toHaveCount(1);
+    },
+  );
 
   test("un lecteur qui ouvre le builder d'un site publié voit le bouton Enregistrer désactivé", async ({
     page,

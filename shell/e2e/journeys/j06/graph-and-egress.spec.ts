@@ -1,3 +1,4 @@
+import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { corePython } from "./helpers";
 
@@ -43,15 +44,15 @@ test.describe("j06 validation de graphe à l'enregistrement", () => {
   });
 
   // Finding j06-002 : run_pipeline fait `assert pred_id is not None` sur ces graphes.
-  test.fixme("j06-002 : un writer sans arête entrante est rejeté à l'enregistrement", () => {
+  bug("j06-002 : un writer sans arête entrante est rejeté à l'enregistrement", () => {
     expect(graph("[R,W]", "[]")).toMatch(/^REJECTED/);
   });
 
-  test.fixme("j06-002 : un transform sans arête entrante est rejeté à l'enregistrement", () => {
+  bug("j06-002 : un transform sans arête entrante est rejeté à l'enregistrement", () => {
     expect(graph("[R,F,W]", '[{"id":"e","from":"r","to":"w"}]')).toMatch(/^REJECTED/);
   });
 
-  test.fixme("j06-002 : une arête entrante sur un reader est rejetée à l'enregistrement", () => {
+  bug("j06-002 : une arête entrante sur un reader est rejetée à l'enregistrement", () => {
     expect(
       graph(
         '[R,W,{**R,"id":"r2"}]',
@@ -60,7 +61,7 @@ test.describe("j06 validation de graphe à l'enregistrement", () => {
     ).toMatch(/^REJECTED/);
   });
 
-  test.fixme("j06-002 : une arête sortante d'un writer est rejetée à l'enregistrement", () => {
+  bug("j06-002 : une arête sortante d'un writer est rejetée à l'enregistrement", () => {
     expect(
       graph(
         '[R,W,{**W,"id":"w2"}]',
@@ -101,11 +102,11 @@ test.describe("j06 garde d'egress SSRF de reader.connector.rest", () => {
   }
 
   // Finding j06-003 : 100.64.0.0/10 (CGNAT, métadonnées Alibaba en 100.100.100.200) et fec0::/10 passent.
-  test.fixme("j06-003 : bloque 100.100.100.200 (CGNAT / métadonnées Alibaba)", () => {
+  bug("j06-003 : bloque 100.100.100.200 (CGNAT / métadonnées Alibaba)", () => {
     expect(egress("http://100.100.100.200/")).toBe("BLOCKED");
   });
 
-  test.fixme("j06-003 : bloque [fec0::1] (site-local IPv6 déprécié)", () => {
+  bug("j06-003 : bloque [fec0::1] (site-local IPv6 déprécié)", () => {
     expect(egress("http://[fec0::1]/")).toBe("BLOCKED");
   });
 });

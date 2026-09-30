@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
+import { bug } from "../_fixtures/verify";
 import { test, expect, type Page } from "@playwright/test";
 import { stamp } from "../_fixtures/env";
 import { openAs } from "../j06/helpers";
@@ -46,13 +47,14 @@ test.describe("j08 SettingsNav et droits d'accès", () => {
   });
 
   // Finding j08-002 : l'écran d'anonymisation exige compliance.manage, absent de l'Administrateur.
-  test.fixme("j08-002 : l'Administrateur atteint l'anonymisation depuis la navigation", async ({
-    page,
-  }) => {
-    await openAs(page, "admin");
-    await go(page, "/settings");
-    expect(await navLinks(page)).toContain("Conformité (RGPD) →");
-  });
+  bug(
+    "j08-002 : l'Administrateur atteint l'anonymisation depuis la navigation",
+    async ({ page }) => {
+      await openAs(page, "admin");
+      await go(page, "/settings");
+      expect(await navLinks(page)).toContain("Conformité (RGPD) →");
+    },
+  );
 
   test("lecteur : navigation réduite à Général, pages d'administration et tâches refusées", async ({
     page,
@@ -111,9 +113,7 @@ test.describe("j08 utilisateurs — UI", () => {
   });
 
   // Finding j08-006 : aucune action d'anonymisation depuis la liste des utilisateurs.
-  test.fixme("j08-006 : chaque ligne d'utilisateur propose d'anonymiser le compte", async ({
-    page,
-  }) => {
+  bug("j08-006 : chaque ligne d'utilisateur propose d'anonymiser le compte", async ({ page }) => {
     const u = await makeUser(`${tag}-pick`);
     await openAs(page, "admin");
     await go(page, "/admin/users");
@@ -159,20 +159,21 @@ test.describe("j08 rôles — UI", () => {
   });
 
   // Finding j08-011 : le 409 « N utilisateur(s) ont ce rôle » est réduit à un échec générique.
-  test.fixme("j08-011 : supprimer un rôle encore attribué explique combien d'utilisateurs le portent", async ({
-    page,
-  }) => {
-    const name = `${tag}-held-ui`;
-    const role = (await admin.send("POST", "/v1/roles", { name, privileges: [] })).body;
-    const u = await makeUser(`${tag}-held-ui`);
-    await admin.send("PATCH", `/v1/users/${u.id}`, { roleId: role.id });
-    await openAs(page, "admin");
-    await go(page, "/admin/roles");
-    const row = page.getByRole("row").filter({ hasText: name });
-    await row.getByRole("button", { name: "Supprimer" }).click();
-    await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
-    await expect(page.getByText(/Encore attribué à 1 utilisateur/)).toBeVisible();
-  });
+  bug(
+    "j08-011 : supprimer un rôle encore attribué explique combien d'utilisateurs le portent",
+    async ({ page }) => {
+      const name = `${tag}-held-ui`;
+      const role = (await admin.send("POST", "/v1/roles", { name, privileges: [] })).body;
+      const u = await makeUser(`${tag}-held-ui`);
+      await admin.send("PATCH", `/v1/users/${u.id}`, { roleId: role.id });
+      await openAs(page, "admin");
+      await go(page, "/admin/roles");
+      const row = page.getByRole("row").filter({ hasText: name });
+      await row.getByRole("button", { name: "Supprimer" }).click();
+      await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
+      await expect(page.getByText(/Encore attribué à 1 utilisateur/)).toBeVisible();
+    },
+  );
 });
 
 test.describe("j08 conformité — UI", () => {
@@ -228,19 +229,20 @@ test.describe("j08 tâches et extensions — UI", () => {
   });
 
   // Finding j08-012 : titre « Mes tâches » mais le tableau liste tout le tenant, sans colonne acteur.
-  test.fixme("j08-012 : pour tasks.view_all, le journal indique l'utilisateur de chaque action", async ({
-    page,
-  }) => {
-    const other = (await admin.get("/v1/users?q=audit-creator")).body.users[0].id;
-    psql(
-      `INSERT INTO audit_log (tenant_id, actor_id, actor_kind, action, object_type, object_id, payload, created_at) VALUES ('default','${other}','user','pipeline.run','item','${tag}-ui','{}',now())`,
-    );
-    await openAs(page, "admin");
-    await go(page, "/tasks");
-    await expect(page.getByText("Usage de la plateforme")).toBeVisible();
-    await expect(page.getByRole("cell", { name: `item/${tag}-ui` })).toBeVisible();
-    await expect(page.getByRole("columnheader", { name: "Utilisateur" })).toBeVisible();
-  });
+  bug(
+    "j08-012 : pour tasks.view_all, le journal indique l'utilisateur de chaque action",
+    async ({ page }) => {
+      const other = (await admin.get("/v1/users?q=audit-creator")).body.users[0].id;
+      psql(
+        `INSERT INTO audit_log (tenant_id, actor_id, actor_kind, action, object_type, object_id, payload, created_at) VALUES ('default','${other}','user','pipeline.run','item','${tag}-ui','{}',now())`,
+      );
+      await openAs(page, "admin");
+      await go(page, "/tasks");
+      await expect(page.getByText("Usage de la plateforme")).toBeVisible();
+      await expect(page.getByRole("cell", { name: `item/${tag}-ui` })).toBeVisible();
+      await expect(page.getByRole("columnheader", { name: "Utilisateur" })).toBeVisible();
+    },
+  );
 
   test("extensions : liste et bascule d'activation persistée côté cœur", async ({ page }) => {
     const id = `${tag}-ext`;
@@ -274,14 +276,15 @@ test.describe("j08 tâches et extensions — UI", () => {
   });
 
   // Finding j08-009 : impossible d'enregistrer ou de retirer une extension depuis l'admin.
-  test.fixme("j08-009 : l'administration des extensions permet d'en enregistrer et d'en retirer", async ({
-    page,
-  }) => {
-    await openAs(page, "admin");
-    await go(page, "/admin/extensions");
-    await expect(
-      page.getByRole("button", { name: /Ajouter|Enregistrer une extension/ }),
-    ).toBeVisible();
-    await expect(page.getByRole("button", { name: /Supprimer|Retirer/ }).first()).toBeVisible();
-  });
+  bug(
+    "j08-009 : l'administration des extensions permet d'en enregistrer et d'en retirer",
+    async ({ page }) => {
+      await openAs(page, "admin");
+      await go(page, "/admin/extensions");
+      await expect(
+        page.getByRole("button", { name: /Ajouter|Enregistrer une extension/ }),
+      ).toBeVisible();
+      await expect(page.getByRole("button", { name: /Supprimer|Retirer/ }).first()).toBeVisible();
+    },
+  );
 });

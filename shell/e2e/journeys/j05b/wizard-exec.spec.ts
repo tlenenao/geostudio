@@ -1,3 +1,4 @@
+import { bug } from "../_fixtures/verify";
 import { expect, test } from "@playwright/test";
 import { loginOidc, stamp } from "../_fixtures/env";
 import { fillWizard, getSeed, psql, rowsOf, submitWizard, type Seed } from "./helpers";
@@ -49,24 +50,25 @@ test.describe("j05b requête visuelle — exécution réelle (ETL allumé)", () 
   // Finding j05b-001 : le POST /run du wizard répond 500 (AppNotOpen, j06b-001) après avoir créé
   // collection + dataset + pipeline ; l'utilisateur voit « internal server error » et un nouvel
   // essai crée un second jeu d'objets identiques.
-  test.fixme("j05b-001 : un échec du lancement ne laisse ni objets orphelins ni doublon au nouvel essai", async ({
-    page,
-  }) => {
-    test.setTimeout(120_000);
-    const title = stamp("j05b");
-    await loginOidc(page, "creator");
-    await page.waitForTimeout(800);
-    await fillWizard(page, { title, base: seed.ventes });
-    const create = page.getByRole("button", { name: "Créer", exact: true });
-    await create.click();
-    await expect(page.getByRole("alert")).toBeVisible();
-    await create.click();
-    await page.waitForTimeout(3000);
-    const n = psql_count(
-      `SELECT count(*) FROM items WHERE resource_type='pipeline' AND title='Requête — ${title}'`,
-    );
-    expect(n).toBeLessThanOrEqual(1);
-  });
+  bug(
+    "j05b-001 : un échec du lancement ne laisse ni objets orphelins ni doublon au nouvel essai",
+    async ({ page }) => {
+      test.setTimeout(120_000);
+      const title = stamp("j05b");
+      await loginOidc(page, "creator");
+      await page.waitForTimeout(800);
+      await fillWizard(page, { title, base: seed.ventes });
+      const create = page.getByRole("button", { name: "Créer", exact: true });
+      await create.click();
+      await expect(page.getByRole("alert")).toBeVisible();
+      await create.click();
+      await page.waitForTimeout(3000);
+      const n = psql_count(
+        `SELECT count(*) FROM items WHERE resource_type='pipeline' AND title='Requête — ${title}'`,
+      );
+      expect(n).toBeLessThanOrEqual(1);
+    },
+  );
 
   test("Jointure interne puis gauche : lignes et colonnes de sortie", async ({ page }) => {
     test.setTimeout(240_000);

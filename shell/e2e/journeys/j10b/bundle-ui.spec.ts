@@ -1,3 +1,4 @@
+import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import type { Server } from "node:http";
@@ -142,9 +143,7 @@ test.describe("j10b bundles exportés ouverts dans un navigateur", () => {
   // FINDINGS j10b-010 (routes sans /v1 : le client du shell appelle /v1/...) et
   // j10b-011 (le mini-serveur interroge la colonne « geom », le parquet écrit
   // « geometry » : GET .../items = 500). Runtime courant = volume appexport-runtime.
-  test.fixme("j10b-010 : l'app autoportée affiche ses données dans le navigateur", async ({
-    page,
-  }) => {
+  bug("j10b-010 : l'app autoportée affiche ses données dans le navigateur", async ({ page }) => {
     const col = await makeCollection(creator, `${tag}-ui6`, { pub: true, rows: 2 });
     const id = await createApp(creator, `${tag}-ui-sa2`, tableApp(col.id, ["nom"]));
     const run = await runExport(creator, id, "standalone");
@@ -154,7 +153,7 @@ test.describe("j10b bundles exportés ouverts dans un navigateur", () => {
     });
   });
 
-  test.fixme("j10b-011 : GET /collections/{id}/items du mini-serveur répond 200", async () => {
+  bug("j10b-011 : GET /collections/{id}/items du mini-serveur répond 200", async () => {
     const col = await makeCollection(creator, `${tag}-ui7`, { pub: true, rows: 2 });
     const id = await createApp(creator, `${tag}-ui-sa3`, tableApp(col.id, ["nom"]));
     const run = await runExport(creator, id, "standalone");
@@ -221,14 +220,17 @@ test.describe("j10b CORS étroit du mode Connecté", () => {
 
 test.describe("j10b téléchargement et builder", () => {
   // FINDING j10b-008 : resultUrl est présigné sur l'hôte interne du stockage.
-  test.fixme("j10b-008 : l'URL de téléchargement du bundle est joignable depuis un navigateur", async () => {
-    const id = await createApp(creator, `${tag}-dl`, appConfig());
-    const run = await runExport(creator, id, "static");
-    const job = await creator.get(`/v1/app-exports/jobs/${run.jobId}`);
-    expect(job.body.status).toBe("done");
-    const r = await fetch(job.body.resultUrl);
-    expect(r.status).toBe(200);
-  });
+  bug(
+    "j10b-008 : l'URL de téléchargement du bundle est joignable depuis un navigateur",
+    async () => {
+      const id = await createApp(creator, `${tag}-dl`, appConfig());
+      const run = await runExport(creator, id, "static");
+      const job = await creator.get(`/v1/app-exports/jobs/${run.jobId}`);
+      expect(job.body.status).toBe("done");
+      const r = await fetch(job.body.resultUrl);
+      expect(r.status).toBe(200);
+    },
+  );
 
   test("builder : un widget formulaire déclenche l'avertissement d'écriture avant l'export", async ({
     page,

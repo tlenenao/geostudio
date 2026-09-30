@@ -1,3 +1,4 @@
+import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { stamp } from "../_fixtures/env";
 import {
@@ -110,7 +111,7 @@ test("au quota de collections, POST /collections/empty répond 409", async () =>
 });
 
 // Finding j08b-001 : POST /collections (enregistrement d'une table existante) ne vérifie pas le quota.
-test.fixme("j08b-001 : enregistrer une table existante respecte le quota de collections", async () => {
+bug("j08b-001 : enregistrer une table existante respecte le quota de collections", async () => {
   const t = `audj08b_reg_${Date.now().toString(36)}`;
   psql(`CREATE TABLE public.${t} (id serial primary key, geom geometry(Point,4326))`);
   const r = await admin.send("POST", "/v1/collections", { tableName: t, title: `${tag}-reg` });
@@ -118,7 +119,7 @@ test.fixme("j08b-001 : enregistrer une table existante respecte le quota de coll
 });
 
 // Finding j08b-003 : l'objet déjà téléversé est compté deux fois (dans l'usage ET dans additional_bytes).
-test.fixme("j08b-003 : un fichier de 3 Ko tient dans 5 Ko de marge de stockage", async () => {
+bug("j08b-003 : un fichier de 3 Ko tient dans 5 Ko de marge de stockage", async () => {
   const pre = (await admin.get("/v1/admin/usage")).body.storageBytes;
   const fileSize = Buffer.byteLength(csvOfSize(3000));
   // Marge réelle suffisante : pre + fileSize <= limite tant que pre <= base + 5000 - fileSize.
@@ -153,18 +154,21 @@ test("storage : un import plus gros que la limite est refusé en 409 avant créa
 });
 
 // Finding j08b-002 : un import refusé par le quota laisse son objet compté dans l'usage.
-test.fixme("j08b-002 : après un refus de quota, le stockage compté revient à sa valeur d'avant", async () => {
-  const before = (await admin.get("/v1/admin/usage")).body.storageBytes;
-  const key = putObject("S3_UPLOADS_BUCKET", "overflow2.csv", 9000);
-  keys.push(key);
-  const r = await creator.send("POST", "/v1/uploads", {
-    key,
-    filename: "overflow2.csv",
-    collectionTitle: `${tag}-overflow2`,
-    latField: "lat",
-    lonField: "lon",
-  });
-  expect(r.status).toBe(409);
-  const after = (await admin.get("/v1/admin/usage")).body.storageBytes;
-  expect(after).toBe(before);
-});
+bug(
+  "j08b-002 : après un refus de quota, le stockage compté revient à sa valeur d'avant",
+  async () => {
+    const before = (await admin.get("/v1/admin/usage")).body.storageBytes;
+    const key = putObject("S3_UPLOADS_BUCKET", "overflow2.csv", 9000);
+    keys.push(key);
+    const r = await creator.send("POST", "/v1/uploads", {
+      key,
+      filename: "overflow2.csv",
+      collectionTitle: `${tag}-overflow2`,
+      latField: "lat",
+      lonField: "lon",
+    });
+    expect(r.status).toBe(409);
+    const after = (await admin.get("/v1/admin/usage")).body.storageBytes;
+    expect(after).toBe(before);
+  },
+);

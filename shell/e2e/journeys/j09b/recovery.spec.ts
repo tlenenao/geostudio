@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
+import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -130,17 +131,20 @@ test("pipeline et alerte : un run 'running' / une évaluation 'pending' périmé
 
 // Finding j09b-009 : le balayage ne ferme pas la ligne périmée, il en crée une nouvelle : le run
 // zombie reste 'running' (et l'évaluation 'pending') à jamais dans l'historique affiché.
-test.fixme("j09b-009 : le run 'running' périmé d'un pipeline et l'évaluation 'pending' périmée d'une alerte sont clos en erreur à la reprise", async () => {
-  await expect
-    .poll(() => status("pipeline_runs", ids.pipeRun), { timeout: 420_000, intervals: [10_000] })
-    .toMatch(/^error\|/);
-  await expect
-    .poll(() => status("alert_evaluations", ids.evalPending), {
-      timeout: 420_000,
-      intervals: [10_000],
-    })
-    .toMatch(/^error\|/);
-});
+bug(
+  "j09b-009 : le run 'running' périmé d'un pipeline et l'évaluation 'pending' périmée d'une alerte sont clos en erreur à la reprise",
+  async () => {
+    await expect
+      .poll(() => status("pipeline_runs", ids.pipeRun), { timeout: 420_000, intervals: [10_000] })
+      .toMatch(/^error\|/);
+    await expect
+      .poll(() => status("alert_evaluations", ids.evalPending), {
+        timeout: 420_000,
+        intervals: [10_000],
+      })
+      .toMatch(/^error\|/);
+  },
+);
 
 test("ingestion_jobs 'running' depuis 2 h : le balayage */15 le passe en erreur et notifie le créateur", async () => {
   await expect
@@ -159,12 +163,15 @@ test("ingestion_jobs 'running' depuis 2 h : le balayage */15 le passe en erreur 
 // Finding j09b-010 : seuls les jobs 'running' sont repris ; un job resté 'pending' (file jamais
 // consommée, déféré perdu, POST en 500 après commit) n'est jamais clos et reste « en attente »
 // indéfiniment, pour les trois types de jobs.
-test.fixme("j09b-010 : des jobs 'pending' vieux de 2 h (export, appexport, ingestion) finissent clos en erreur", async () => {
-  const states = () =>
-    [
-      status("export_jobs", ids.exportPending),
-      status("app_export_jobs", ids.appPending),
-      status("ingestion_jobs", ids.ingPending),
-    ].map((s) => s.split("|")[0]);
-  expect(states()).not.toContain("pending");
-});
+bug(
+  "j09b-010 : des jobs 'pending' vieux de 2 h (export, appexport, ingestion) finissent clos en erreur",
+  async () => {
+    const states = () =>
+      [
+        status("export_jobs", ids.exportPending),
+        status("app_export_jobs", ids.appPending),
+        status("ingestion_jobs", ids.ingPending),
+      ].map((s) => s.split("|")[0]);
+    expect(states()).not.toContain("pending");
+  },
+);

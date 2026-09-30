@@ -1,3 +1,4 @@
+import { bug } from "../_fixtures/verify";
 import { test, expect, type Page } from "@playwright/test";
 import { stamp } from "../_fixtures/env";
 import { openAs, spaGoto } from "../j06/helpers";
@@ -99,20 +100,21 @@ test.describe("j07 moissonnage — écran d'administration", () => {
 
 test.describe("j07 moissonnage — défauts constatés (UI)", () => {
   // Finding j07-003 : « Moissonner maintenant » n'affiche aucun retour, même quand la requête échoue.
-  test.fixme("j07-003 : « Moissonner maintenant » confirme le lancement ou signale l'échec", async ({
-    page,
-  }) => {
-    const url = `https://example.invalid/${tag}-run-ui`;
-    await createSource(admin, { type: "stac", url });
-    await openHarvest(page);
-    await row(page, url).getByRole("button", { name: "Moissonner maintenant" }).click();
-    await expect(page.getByRole("alert").or(page.getByRole("status")).first()).toBeVisible({
-      timeout: 5_000,
-    });
-  });
+  bug(
+    "j07-003 : « Moissonner maintenant » confirme le lancement ou signale l'échec",
+    async ({ page }) => {
+      const url = `https://example.invalid/${tag}-run-ui`;
+      await createSource(admin, { type: "stac", url });
+      await openHarvest(page);
+      await row(page, url).getByRole("button", { name: "Moissonner maintenant" }).click();
+      await expect(page.getByRole("alert").or(page.getByRole("status")).first()).toBeVisible({
+        timeout: 5_000,
+      });
+    },
+  );
 
   // Finding j07-017 : la raison d'un échec (lastError) et la date de dernier passage ne sont jamais affichées.
-  test.fixme("j07-017 : la table affiche la raison de l'échec d'une source", async ({ page }) => {
+  bug("j07-017 : la table affiche la raison de l'échec d'une source", async ({ page }) => {
     const url = `http://127.0.0.1:8200/v1/stac?${tag}-ui-err`;
     const src = await createSource(admin, { type: "stac", url });
     runHarvestInWorker(src.id);
@@ -122,19 +124,20 @@ test.describe("j07 moissonnage — défauts constatés (UI)", () => {
   });
 
   // Finding j07-018 : impossible de revenir à « manuel uniquement » (intervalle vide ignoré à l'édition).
-  test.fixme("j07-018 : vider l'intervalle dans le panneau d'édition supprime la planification", async ({
-    page,
-  }) => {
-    const url = `https://example.invalid/${tag}-ui-interval`;
-    await createSource(admin, { type: "stac", url, intervalMinutes: 60 });
-    await openHarvest(page);
-    await row(page, url).getByRole("button", { name: "Éditer" }).click();
-    const panel = page.getByRole("region", { name: `Éditer ${url}` });
-    await panel.getByLabel("Intervalle de rafraîchissement (minutes)").fill("");
-    await panel.getByRole("button", { name: "Enregistrer" }).click();
-    await expect(panel).toHaveCount(0);
-    const list = await admin.get("/v1/harvest/sources");
-    const s = list.body.sources.find((x: { url: string }) => x.url === url);
-    expect(s.intervalMinutes).toBeNull();
-  });
+  bug(
+    "j07-018 : vider l'intervalle dans le panneau d'édition supprime la planification",
+    async ({ page }) => {
+      const url = `https://example.invalid/${tag}-ui-interval`;
+      await createSource(admin, { type: "stac", url, intervalMinutes: 60 });
+      await openHarvest(page);
+      await row(page, url).getByRole("button", { name: "Éditer" }).click();
+      const panel = page.getByRole("region", { name: `Éditer ${url}` });
+      await panel.getByLabel("Intervalle de rafraîchissement (minutes)").fill("");
+      await panel.getByRole("button", { name: "Enregistrer" }).click();
+      await expect(panel).toHaveCount(0);
+      const list = await admin.get("/v1/harvest/sources");
+      const s = list.body.sources.find((x: { url: string }) => x.url === url);
+      expect(s.intervalMinutes).toBeNull();
+    },
+  );
 });

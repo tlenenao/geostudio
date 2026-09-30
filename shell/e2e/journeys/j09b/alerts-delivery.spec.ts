@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
+import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import {
   HOOK,
@@ -119,7 +120,7 @@ test("webhook : firing livre un JSON complet (audité), pas de renotification sa
 
 // Finding j09b-003 : aucun secret partagé ni signature sur le webhook, le récepteur ne peut pas
 // authentifier l'émetteur.
-test.fixme("j09b-003 : le webhook porte une signature vérifiable (en-tête HMAC)", async () => {
+bug("j09b-003 : le webhook porte une signature vérifiable (en-tête HMAC)", async () => {
   const title = `${tag}-hook-sign`;
   const id = await mkRule(creator, datasetId, title, {
     channels: [{ kind: "webhook", url: `${HOOK}/hook` }],
@@ -133,7 +134,7 @@ test.fixme("j09b-003 : le webhook porte une signature vérifiable (en-tête HMAC
 
 // Finding j09b-004 : une livraison échouée (cible 5xx) n'est jamais rejouée : la transition a
 // été « consommée » et les évaluations suivantes (même état) ne renotifient pas.
-test.fixme("j09b-004 : une notification webhook échouée est rejouée à l'évaluation suivante", async () => {
+bug("j09b-004 : une notification webhook échouée est rejouée à l'évaluation suivante", async () => {
   const title = `${tag}-hook-fail`;
   const id = await mkRule(creator, datasetId, title, {
     channels: [{ kind: "webhook", url: `${HOOK}/fail` }],
@@ -178,16 +179,19 @@ test("webhook : une redirection vers 169.254.169.254 est bloquée sur le saut ; 
 
 // Finding j09b-002 : le service `worker` n'a pas CORE_SECRETS_MASTER_KEY (docker-compose.yml ne la
 // passe qu'au cœur) : le secret SMTP ne peut pas être déchiffré, aucun e-mail d'alerte n'est livré.
-test.fixme("j09b-002 : le worker réel livre l'e-mail d'une alerte (secret SMTP déchiffrable)", async () => {
-  const title = `${tag}-mail-worker`;
-  const id = await mkRule(creator, datasetId, title, {
-    channels: [{ kind: "email", to: "ops@audit.test", smtpSecretName: smtpName }],
-  });
-  const e = await newEvaluation(creator, id);
-  deferEvaluation(e);
-  await waitEvaluation(creator, id, e);
-  expect(recvLog("smtp").filter((m) => m.data.includes(title))).toHaveLength(1);
-});
+bug(
+  "j09b-002 : le worker réel livre l'e-mail d'une alerte (secret SMTP déchiffrable)",
+  async () => {
+    const title = `${tag}-mail-worker`;
+    const id = await mkRule(creator, datasetId, title, {
+      channels: [{ kind: "email", to: "ops@audit.test", smtpSecretName: smtpName }],
+    });
+    const e = await newEvaluation(creator, id);
+    deferEvaluation(e);
+    await waitEvaluation(creator, id, e);
+    expect(recvLog("smtp").filter((m) => m.data.includes(title))).toHaveLength(1);
+  },
+);
 
 test("e-mail : livré au SMTP authentifié (expéditeur, destinataire, sujet, corps) ; identifiants refusés -> échec audité sans fuite du mot de passe", async () => {
   const title = `${tag}-mail-now`;
@@ -221,7 +225,7 @@ test("e-mail : livré au SMTP authentifié (expéditeur, destinataire, sujet, co
 });
 
 // Finding j09b-005 : smtp.starttls() sans contexte ne vérifie ni la chaîne ni le nom d'hôte.
-test.fixme("j09b-005 : STARTTLS refuse un certificat auto-signé au mauvais nom d'hôte", async () => {
+bug("j09b-005 : STARTTLS refuse un certificat auto-signé au mauvais nom d'hôte", async () => {
   const name = `${tag}-smtp-tls`;
   expect(await smtpSecret(admin, name, { port: 2526, useTls: true })).toBe(201);
   const title = `${tag}-mail-tls`;
@@ -238,18 +242,23 @@ test.fixme("j09b-005 : STARTTLS refuse un certificat auto-signé au mauvais nom 
 // Finding j09b-006 : le secret SMTP est résolu par nom dans le tenant, sans contrôle de
 // propriété ni de privilège : un Créateur sans droit sur le coffre envoie des e-mails avec le
 // compte SMTP de l'administrateur, à n'importe quel destinataire.
-test.fixme("j09b-006 : un Créateur ne peut pas utiliser le secret SMTP d'un autre pour envoyer", async () => {
-  const title = `${tag}-mail-relay`;
-  const id = await mkRule(creator, datasetId, title, {
-    channels: [{ kind: "email", to: "victime@autre-domaine.test", smtpSecretName: smtpName }],
-    messageTemplate: "Hameçonnage : {ruleName}",
-  });
-  const e = await newEvaluation(creator, id);
-  runnerEvaluate(e);
-  await waitEvaluation(creator, id, e);
-  const sent = recvLog("smtp").filter((m) => m.rcpt.join().includes("victime@autre-domaine.test"));
-  expect(sent).toHaveLength(0);
-});
+bug(
+  "j09b-006 : un Créateur ne peut pas utiliser le secret SMTP d'un autre pour envoyer",
+  async () => {
+    const title = `${tag}-mail-relay`;
+    const id = await mkRule(creator, datasetId, title, {
+      channels: [{ kind: "email", to: "victime@autre-domaine.test", smtpSecretName: smtpName }],
+      messageTemplate: "Hameçonnage : {ruleName}",
+    });
+    const e = await newEvaluation(creator, id);
+    runnerEvaluate(e);
+    await waitEvaluation(creator, id, e);
+    const sent = recvLog("smtp").filter((m) =>
+      m.rcpt.join().includes("victime@autre-domaine.test"),
+    );
+    expect(sent).toHaveLength(0);
+  },
+);
 
 test("balayage périodique réel : le worker évalue seul la règle planifiée (firing) sans intervention", async () => {
   test.setTimeout(480_000);

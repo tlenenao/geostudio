@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON-RPC/REST du cœur, forme libre */
+import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { CORE_URL } from "../_fixtures/env";
 import { apiFor, getSeed, jwtClaims, McpClient, mcpToken, psql } from "./mcp";
@@ -196,82 +197,94 @@ test.describe("j11 MCP : permissions de l'utilisateur et parité REST", () => {
 test.describe("j11 MCP : défauts constatés", () => {
   // FINDING j11-002 : une valeur hors bornes atteint PostgreSQL et l'erreur
   // brute (SQL complet, nom de table physique, paramètres) est renvoyée à l'agent.
-  test.fixme("j11-002 : query_features avec limit négatif renvoie une erreur d'outil propre, sans SQL", async () => {
-    const seed = await getSeed();
-    const mcp = await McpClient.as("creator");
-    const r = await mcp.call("query_features", { collectionId: seed.collectionId, limit: -1 });
-    expect(r.isError).toBe(true);
-    expect(r.text).not.toMatch(/SELECT|psycopg|FROM public\./);
-    expect(r.text).not.toContain(seed.tableName);
-  });
+  bug(
+    "j11-002 : query_features avec limit négatif renvoie une erreur d'outil propre, sans SQL",
+    async () => {
+      const seed = await getSeed();
+      const mcp = await McpClient.as("creator");
+      const r = await mcp.call("query_features", { collectionId: seed.collectionId, limit: -1 });
+      expect(r.isError).toBe(true);
+      expect(r.text).not.toMatch(/SELECT|psycopg|FROM public\./);
+      expect(r.text).not.toContain(seed.tableName);
+    },
+  );
 
   // FINDING j11-001 : CORE_LLM_PROVIDER vaut "" sur cette stack ; is_copilot_enabled()
   // le traite comme éteint mais get_llm_provider() lève « unknown CORE_LLM_PROVIDER: ».
-  test.fixme("j11-001 : generate_sql_query sans fournisseur LLM répond un message d'indisponibilité lisible", async () => {
-    const seed = await getSeed();
-    const mcp = await McpClient.as("analyst");
-    const r = await mcp.call("generate_sql_query", {
-      collectionId: seed.collectionId,
-      question: "total par nom",
-    });
-    expect(r.isError).toBe(true);
-    expect(r.text).not.toContain("unknown CORE_LLM_PROVIDER");
-    expect(r.text.toLowerCase()).toMatch(/indisponible|non configur|unavailable|not configured/);
-  });
+  bug(
+    "j11-001 : generate_sql_query sans fournisseur LLM répond un message d'indisponibilité lisible",
+    async () => {
+      const seed = await getSeed();
+      const mcp = await McpClient.as("analyst");
+      const r = await mcp.call("generate_sql_query", {
+        collectionId: seed.collectionId,
+        question: "total par nom",
+      });
+      expect(r.isError).toBe(true);
+      expect(r.text).not.toContain("unknown CORE_LLM_PROVIDER");
+      expect(r.text.toLowerCase()).toMatch(/indisponible|non configur|unavailable|not configured/);
+    },
+  );
 
   // FINDING j11-003 : run_alert_rule commite une évaluation « pending » puis échoue au
   // defer (AppNotOpen, cf. j09-001) ; l'évaluation orpheline masque ensuite tout nouveau
   // déclenchement (202 created:false, aucun job déféré) pendant la fenêtre de reprise.
-  test.fixme("j11-003 : après un échec de defer, un nouveau déclenchement ne réutilise pas une évaluation orpheline", async () => {
-    const seed = await getSeed();
-    const mcp = await McpClient.as("creator");
-    const made = await mcp.call("create_alert_rule", {
-      title: `${seed.tag}-alert`,
-      datasetItemId: seed.datasetPk,
-      query: { agg: "count" },
-      condition: { expr: "value > 2" },
-      refreshPolicy: { enabled: false, cron: "*/5 * * * *" },
-      channels: [{ kind: "webhook", url: "http://127.0.0.1:9/hook" }],
-    });
-    expect(made.isError).toBe(false);
-    const pk = made.json.pk as string;
-    const first = await mcp.call("run_alert_rule", { alertRuleId: pk });
-    const jobsBefore = Number(
-      psql(
-        `SELECT count(*) FROM procrastinate_jobs WHERE task_name LIKE '%evaluate_alert%' AND args->>'tenant_id'='default'`,
-      ).trim(),
-    );
-    const second = await (await apiFor("creator")).send("POST", `/v1/alerts/${pk}/evaluate`);
-    const jobsAfter = Number(
-      psql(
-        `SELECT count(*) FROM procrastinate_jobs WHERE task_name LIKE '%evaluate_alert%' AND args->>'tenant_id'='default'`,
-      ).trim(),
-    );
-    // Soit le premier appel a réussi, soit le second doit réessayer réellement.
-    if (first.isError) {
-      expect(second.body.created).toBe(true);
-      expect(jobsAfter).toBeGreaterThan(jobsBefore);
-    }
-  });
+  bug(
+    "j11-003 : après un échec de defer, un nouveau déclenchement ne réutilise pas une évaluation orpheline",
+    async () => {
+      const seed = await getSeed();
+      const mcp = await McpClient.as("creator");
+      const made = await mcp.call("create_alert_rule", {
+        title: `${seed.tag}-alert`,
+        datasetItemId: seed.datasetPk,
+        query: { agg: "count" },
+        condition: { expr: "value > 2" },
+        refreshPolicy: { enabled: false, cron: "*/5 * * * *" },
+        channels: [{ kind: "webhook", url: "http://127.0.0.1:9/hook" }],
+      });
+      expect(made.isError).toBe(false);
+      const pk = made.json.pk as string;
+      const first = await mcp.call("run_alert_rule", { alertRuleId: pk });
+      const jobsBefore = Number(
+        psql(
+          `SELECT count(*) FROM procrastinate_jobs WHERE task_name LIKE '%evaluate_alert%' AND args->>'tenant_id'='default'`,
+        ).trim(),
+      );
+      const second = await (await apiFor("creator")).send("POST", `/v1/alerts/${pk}/evaluate`);
+      const jobsAfter = Number(
+        psql(
+          `SELECT count(*) FROM procrastinate_jobs WHERE task_name LIKE '%evaluate_alert%' AND args->>'tenant_id'='default'`,
+        ).trim(),
+      );
+      // Soit le premier appel a réussi, soit le second doit réessayer réellement.
+      if (first.isError) {
+        expect(second.body.created).toBe(true);
+        expect(jobsAfter).toBeGreaterThan(jobsBefore);
+      }
+    },
+  );
 
   // FINDING j11-004 : POST /mcp partage le budget « llm » (20 requêtes/60 s/jeton) ; une
   // poignée de main (initialize + initialized + tools/list) en coûte 3, un tour de copilote
   // ouvre une session neuve, donc ~6 tours par minute épuisent le jeton (429).
-  test.fixme("j11-004 : 7 tours de copilote successifs (poignée de main + 1 appel d'outil) ne sont pas limités", async () => {
-    const token = await mcpToken("reader");
-    const statuses: number[] = [];
-    for (let turn = 0; turn < 7; turn++) {
-      const c = new McpClient(token);
-      const init = await c.post("initialize", {
-        protocolVersion: "2025-06-18",
-        capabilities: {},
-        clientInfo: { name: "geostudio-copilot", version: "0" },
-      });
-      statuses.push(init.status);
-      statuses.push((await c.post("notifications/initialized", {}, true)).status);
-      statuses.push((await c.post("tools/list")).status);
-      statuses.push((await c.post("tools/call", { name: "whoami", arguments: {} })).status);
-    }
-    expect(statuses.filter((s) => s === 429)).toEqual([]);
-  });
+  bug(
+    "j11-004 : 7 tours de copilote successifs (poignée de main + 1 appel d'outil) ne sont pas limités",
+    async () => {
+      const token = await mcpToken("reader");
+      const statuses: number[] = [];
+      for (let turn = 0; turn < 7; turn++) {
+        const c = new McpClient(token);
+        const init = await c.post("initialize", {
+          protocolVersion: "2025-06-18",
+          capabilities: {},
+          clientInfo: { name: "geostudio-copilot", version: "0" },
+        });
+        statuses.push(init.status);
+        statuses.push((await c.post("notifications/initialized", {}, true)).status);
+        statuses.push((await c.post("tools/list")).status);
+        statuses.push((await c.post("tools/call", { name: "whoami", arguments: {} })).status);
+      }
+      expect(statuses.filter((s) => s === 429)).toEqual([]);
+    },
+  );
 });

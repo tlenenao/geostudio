@@ -62,5 +62,5 @@ export const widgetBtn = (page: Page) =>
 import { test as baseTest } from "@playwright/test";
 // Tests qui révèlent un bug : `test.fixme` par défaut ; J04_VERIFY=1 les exécute pour rejouer la preuve.
 export const fixme: typeof baseTest.fixme = (
-  process.env.J04_VERIFY ? baseTest : baseTest.fixme
+  process.env.AUDIT_VERIFY || process.env.J04_VERIFY ? baseTest : baseTest.fixme
 ) as never;

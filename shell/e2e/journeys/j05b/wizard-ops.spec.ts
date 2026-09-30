@@ -1,3 +1,4 @@
+import { bug } from "../_fixtures/verify";
 import { expect, test } from "@playwright/test";
 import { loginOidc, stamp } from "../_fixtures/env";
 import { fillWizard, getSeed, psql, rowsOf, submitWizard, type Seed } from "./helpers";
@@ -11,17 +12,18 @@ test.beforeAll(async () => {
 test.describe("j05b requête visuelle — opérateurs, métriques, schéma", () => {
   // Finding j05b-002 : la collection de sortie créée par l'assistant (POST /collections/empty)
   // refuse toute écriture par writer.dataset (tenant_id « required »), cf. j02-003.
-  test.fixme("j05b-002 : Créer produit un dataset rempli sans contournement SQL de la table de sortie", async ({
-    page,
-  }) => {
-    test.setTimeout(240_000);
-    const title = stamp("j05b");
-    await loginOidc(page, "creator");
-    await page.waitForTimeout(800);
-    await fillWizard(page, { title, base: seed.ventes });
-    const res = await submitWizard(page, title, { patch: false });
-    expect(res.run.status).toBe("succeeded");
-  });
+  bug(
+    "j05b-002 : Créer produit un dataset rempli sans contournement SQL de la table de sortie",
+    async ({ page }) => {
+      test.setTimeout(240_000);
+      const title = stamp("j05b");
+      await loginOidc(page, "creator");
+      await page.waitForTimeout(800);
+      await fillWizard(page, { title, base: seed.ventes });
+      const res = await submitWizard(page, title, { patch: false });
+      expect(res.run.status).toBe("succeeded");
+    },
+  );
 
   test("« contient » : enrobé de %, mais sensible à la casse et jokers non échappés", async ({
     page,
@@ -48,21 +50,22 @@ test.describe("j05b requête visuelle — opérateurs, métriques, schéma", () 
 
   // Finding j05b-003 : constaté ci-dessus (casse + jokers) ; le test correspond au comportement
   // attendu par l'auteur. Confirme j05-023 (hypothèse de 1re passe, à nuancer : l'enrobage % existe).
-  test.fixme("j05b-003 : « contient » ignore la casse et traite % et _ comme des caractères littéraux", async ({
-    page,
-  }) => {
-    test.setTimeout(240_000);
-    await loginOidc(page, "creator");
-    await page.waitForTimeout(800);
-    const title = stamp("j05b");
-    await fillWizard(page, {
-      title,
-      base: seed.ventes,
-      filters: [{ column: "note", op: "contains", value: "_" }],
-    });
-    const r = await submitWizard(page, title);
-    expect(Number(rowsOf(r.outCollection, "count(*)", "1")[0][0])).toBe(0);
-  });
+  bug(
+    "j05b-003 : « contient » ignore la casse et traite % et _ comme des caractères littéraux",
+    async ({ page }) => {
+      test.setTimeout(240_000);
+      await loginOidc(page, "creator");
+      await page.waitForTimeout(800);
+      const title = stamp("j05b");
+      await fillWizard(page, {
+        title,
+        base: seed.ventes,
+        filters: [{ column: "note", op: "contains", value: "_" }],
+      });
+      const r = await submitWizard(page, title);
+      expect(Number(rowsOf(r.outCollection, "count(*)", "1")[0][0])).toBe(0);
+    },
+  );
 
   test("filtre sur colonne date (timestamptz) et sur colonne numérique", async ({ page }) => {
     test.setTimeout(300_000);

@@ -1,3 +1,4 @@
+import { bug } from "../_fixtures/verify";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -72,17 +73,20 @@ test.describe("j05 exports — API", () => {
   });
 
   // Finding j05-009 : cellules « =… » / « @… » écrites telles quelles (CSV) ou comme formule (XLSX).
-  test.fixme("j05-009 : un texte commençant par « = » ou « @ » n'est jamais exporté comme formule", async () => {
-    const path = `/v1/collections/${seed.eventsCollection}/export/items`;
-    const csv = await download("analyst", "GET", `${path}?format=csv`);
-    expect(csv.buf.toString()).not.toMatch(/(^|,)"?=1\+1/m);
-    expect(csv.buf.toString()).not.toMatch(/(^|,)@SUM/m);
-    const xlsx = await download("analyst", "GET", `${path}?format=xlsx`);
-    expect(xlsxSheetXml(xlsx.buf)).not.toContain("<f>");
-  });
+  bug(
+    "j05-009 : un texte commençant par « = » ou « @ » n'est jamais exporté comme formule",
+    async () => {
+      const path = `/v1/collections/${seed.eventsCollection}/export/items`;
+      const csv = await download("analyst", "GET", `${path}?format=csv`);
+      expect(csv.buf.toString()).not.toMatch(/(^|,)"?=1\+1/m);
+      expect(csv.buf.toString()).not.toMatch(/(^|,)@SUM/m);
+      const xlsx = await download("analyst", "GET", `${path}?format=xlsx`);
+      expect(xlsxSheetXml(xlsx.buf)).not.toContain("<f>");
+    },
+  );
 
   // Finding j05-010 : 0 octet sans en-tête quand l'agrégat ne retourne aucune ligne.
-  test.fixme("j05-010 : l'export d'un agrégat vide contient au moins la ligne d'en-tête", async () => {
+  bug("j05-010 : l'export d'un agrégat vide contient au moins la ligne d'en-tête", async () => {
     const r = await download(
       "analyst",
       "POST",

@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
+import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { stamp } from "../_fixtures/env";
 import { apiFor, meId, openAs, psql, type Api } from "./helpers";
@@ -67,7 +68,7 @@ test.describe("j09 notifications : API", () => {
   });
 
   // Bug confirmé : voir docs/revue/audit-2026-09-29/j09/findings.jsonl
-  test.fixme("j09-005 : une pagination invalide (page=0) est refusée en 422, jamais en 500", async () => {
+  bug("j09-005 : une pagination invalide (page=0) est refusée en 422, jamais en 500", async () => {
     const r = await reader.get("/v1/notifications?page=0");
     expect(r.status).toBe(422);
   });
@@ -94,32 +95,34 @@ test.describe("j09 notifications : cloche du shell", () => {
   });
 
   // Bug confirmé : voir docs/revue/audit-2026-09-29/j09/findings.jsonl
-  test.fixme("j09-006 : le sélecteur de préférence a un nom accessible distinct de celui de la cloche", async ({
-    page,
-  }) => {
-    seed([{ key: "ok", kind: "ingestion", status: "success", title: `${tag}-ok` }]);
-    await openAs(page, "reader");
-    await page.getByRole("button", { name: "Notifications" }).click();
-    const name = await page.getByRole("combobox").first().getAttribute("aria-label");
-    expect(name).not.toBe("Notifications");
-  });
+  bug(
+    "j09-006 : le sélecteur de préférence a un nom accessible distinct de celui de la cloche",
+    async ({ page }) => {
+      seed([{ key: "ok", kind: "ingestion", status: "success", title: `${tag}-ok` }]);
+      await openAs(page, "reader");
+      await page.getByRole("button", { name: "Notifications" }).click();
+      const name = await page.getByRole("combobox").first().getAttribute("aria-label");
+      expect(name).not.toBe("Notifications");
+    },
+  );
 
   // Bug confirmé : voir docs/revue/audit-2026-09-29/j09/findings.jsonl
-  test.fixme("j09-007 : au-delà de 20 notifications, les plus anciennes restent accessibles", async ({
-    page,
-  }) => {
-    seed(
-      Array.from({ length: 25 }, (_, i) => ({
-        key: `n${i}`,
-        kind: "ingestion",
-        status: "success",
-        title: `${tag}-n${i}`,
-      })),
-    );
-    await reader.send("PATCH", "/v1/notifications/preference", { value: "all" });
-    await openAs(page, "reader");
-    await page.getByRole("button", { name: /Notifications/ }).click();
-    await expect(page.getByText(`${tag}-n0`)).toBeVisible();
-    await expect(page.getByText(`${tag}-n24`)).toBeVisible();
-  });
+  bug(
+    "j09-007 : au-delà de 20 notifications, les plus anciennes restent accessibles",
+    async ({ page }) => {
+      seed(
+        Array.from({ length: 25 }, (_, i) => ({
+          key: `n${i}`,
+          kind: "ingestion",
+          status: "success",
+          title: `${tag}-n${i}`,
+        })),
+      );
+      await reader.send("PATCH", "/v1/notifications/preference", { value: "all" });
+      await openAs(page, "reader");
+      await page.getByRole("button", { name: /Notifications/ }).click();
+      await expect(page.getByText(`${tag}-n0`)).toBeVisible();
+      await expect(page.getByText(`${tag}-n24`)).toBeVisible();
+    },
+  );
 });

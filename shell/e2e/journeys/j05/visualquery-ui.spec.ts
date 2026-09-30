@@ -1,3 +1,4 @@
+import { bug } from "../_fixtures/verify";
 import { expect, test } from "@playwright/test";
 import { loginOidc } from "../_fixtures/env";
 import { spaGo } from "../j04/helpers";
@@ -37,12 +38,13 @@ test.describe("j05 requête visuelle — UI", () => {
   });
 
   // Finding j05-022 : la route n'a aucun RequirePrivilege, seul le bouton final est gardé.
-  test.fixme("j05-022 : un Lecteur ne peut pas ouvrir l'assistant de requête visuelle par URL", async ({
-    page,
-  }) => {
-    await loginOidc(page, "reader");
-    await page.waitForTimeout(800);
-    await spaGo(page, "/datasets/visual-query/new", 2500);
-    await expect(page.getByLabel("Collection de base")).toHaveCount(0);
-  });
+  bug(
+    "j05-022 : un Lecteur ne peut pas ouvrir l'assistant de requête visuelle par URL",
+    async ({ page }) => {
+      await loginOidc(page, "reader");
+      await page.waitForTimeout(800);
+      await spaGo(page, "/datasets/visual-query/new", 2500);
+      await expect(page.getByLabel("Collection de base")).toHaveCount(0);
+    },
+  );
 });

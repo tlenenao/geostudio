@@ -10,7 +10,7 @@ export type { A11ySeed };
 
 // Les tests qui révèlent un bug sont `test.fixme` (ignorés) ; T04_VERIFY=1 les rejoue
 // pour prouver qu'ils échouent bien sur l'assertion visée.
-export const bug = process.env.T04_VERIFY ? test : test.fixme;
+export const bug = process.env.AUDIT_VERIFY || process.env.T04_VERIFY ? test : test.fixme;
 
 export interface Session {
   ctx: BrowserContext;

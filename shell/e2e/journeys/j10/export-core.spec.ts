@@ -1,3 +1,4 @@
+import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { stamp } from "../_fixtures/env";
 import { corePython } from "../j06/helpers";
@@ -54,7 +55,7 @@ test.describe("j10 export d'apps : capacité éteinte", () => {
   // table avec rls_scope() non masqué : une collection publique dont des champs
   // sont sensibles les embarque en clair dans le bundle. Exécuté ici en
   // appelant directement freeze_config dans le conteneur cœur (la route est éteinte).
-  test.fixme("j10-007 : le gel d'export statique n'embarque pas les champs sensibles", async () => {
+  bug("j10-007 : le gel d'export statique n'embarque pas les champs sensibles", async () => {
     const c = await creator.send("POST", "/v1/collections/empty", {
       title: `${tag}-sens`,
       columns: [

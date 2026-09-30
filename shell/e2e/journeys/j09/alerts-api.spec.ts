@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
+import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import {
   alertConfig,
@@ -66,14 +67,14 @@ test.describe("j09 AlertRule : évaluation et historique", () => {
   });
 
   // Bug confirmé : voir docs/revue/audit-2026-09-29/j09/findings.jsonl
-  test.fixme("j09-001 : POST /alerts/{id}/evaluate répond 202", async () => {
+  bug("j09-001 : POST /alerts/{id}/evaluate répond 202", async () => {
     const id = await mkRule("evaluate-route");
     const r = await creator.send("POST", `/v1/alerts/${id}/evaluate`);
     expect(r.status).toBe(202);
   });
 
   // Bug confirmé : voir docs/revue/audit-2026-09-29/j09/findings.jsonl
-  test.fixme("j09-002 : une évaluation créée par la route REST quitte l'état pending", async () => {
+  bug("j09-002 : une évaluation créée par la route REST quitte l'état pending", async () => {
     const id = await mkRule("orphan");
     await creator.send("POST", `/v1/alerts/${id}/evaluate`);
     await new Promise((res) => setTimeout(res, 15_000));
@@ -115,35 +116,38 @@ test.describe("j09 AlertRule : évaluation et historique", () => {
   });
 
   // Bug confirmé : voir docs/revue/audit-2026-09-29/j09/findings.jsonl
-  test.fixme("j09-013 : une règle count sur un dataset vide s'évalue à 0 au lieu de finir en erreur", async () => {
-    const empty = await creator.send("POST", "/v1/collections/empty", {
-      title: `${tag}-vide`,
-      columns: [{ name: "nom", sqlType: "text" }],
-      geometryType: "Point",
-      srid: 4326,
-    });
-    const ds = await creator.send("POST", "/v1/configs", {
-      title: `${tag}-ds-vide`,
-      config: {
-        version: 1,
-        kind: "dataset",
-        dataset: { source: "collection", collectionId: empty.body.id },
-      },
-    });
-    const rule = await creator.send("POST", "/v1/configs", {
-      title: `${tag}-regle-vide`,
-      config: alertConfig(ds.body.itemId, { condition: { expr: "value < 1" } }),
-    });
-    const id = rule.body.itemId as string;
-    const ev = await pendingEvaluation(id);
-    deferEvaluation(ev);
-    const done = await waitEvaluation(creator, id, ev);
-    expect(done.state).toBe("firing");
-    expect(done.value).toBe(0);
-  });
+  bug(
+    "j09-013 : une règle count sur un dataset vide s'évalue à 0 au lieu de finir en erreur",
+    async () => {
+      const empty = await creator.send("POST", "/v1/collections/empty", {
+        title: `${tag}-vide`,
+        columns: [{ name: "nom", sqlType: "text" }],
+        geometryType: "Point",
+        srid: 4326,
+      });
+      const ds = await creator.send("POST", "/v1/configs", {
+        title: `${tag}-ds-vide`,
+        config: {
+          version: 1,
+          kind: "dataset",
+          dataset: { source: "collection", collectionId: empty.body.id },
+        },
+      });
+      const rule = await creator.send("POST", "/v1/configs", {
+        title: `${tag}-regle-vide`,
+        config: alertConfig(ds.body.itemId, { condition: { expr: "value < 1" } }),
+      });
+      const id = rule.body.itemId as string;
+      const ev = await pendingEvaluation(id);
+      deferEvaluation(ev);
+      const done = await waitEvaluation(creator, id, ev);
+      expect(done.state).toBe("firing");
+      expect(done.value).toBe(0);
+    },
+  );
 
   // Bug confirmé : voir docs/revue/audit-2026-09-29/j09/findings.jsonl
-  test.fixme("j09-003 : un échec de notification est visible dans l'historique d'évaluation", async () => {
+  bug("j09-003 : un échec de notification est visible dans l'historique d'évaluation", async () => {
     const id = await mkRule("silent-failure");
     const ev = await pendingEvaluation(id);
     deferEvaluation(ev);
@@ -154,7 +158,7 @@ test.describe("j09 AlertRule : évaluation et historique", () => {
   });
 
   // Bug confirmé : voir docs/revue/audit-2026-09-29/j09/findings.jsonl
-  test.fixme("j09-004 : une première évaluation à l'état ok n'envoie pas de notification", async () => {
+  bug("j09-004 : une première évaluation à l'état ok n'envoie pas de notification", async () => {
     const id = await mkRule("first-ok", { condition: { expr: "value > 100" } });
     const ev = await pendingEvaluation(id);
     deferEvaluation(ev);

@@ -1,3 +1,4 @@
+import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { apiFor } from "../j03/api";
 import { stamp } from "../_fixtures/env";
@@ -16,7 +17,7 @@ import {
 // ensureExportsBucket()).
 test.describe("j06b writer.export sur stack neuve", () => {
   // Finding j06b-003 : writer.export ne crée pas le bucket → NoSuchBucket au premier run.
-  test.fixme("j06b-003 : le premier run d'un writer.export réussit sur un MinIO neuf", async () => {
+  bug("j06b-003 : le premier run d'un writer.export réussit sur un MinIO neuf", async () => {
     const creator = await apiFor("creator");
     const seed = await getPlainSeed();
     const p = await createPipeline(

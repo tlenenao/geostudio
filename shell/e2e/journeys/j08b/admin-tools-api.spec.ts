@@ -1,3 +1,4 @@
+import { bug } from "../_fixtures/verify";
 import { test, expect, request } from "@playwright/test";
 import { stamp } from "../_fixtures/env";
 import { CORE_URL, apiFor, makeUser, roleIdBySlug, simulateLockout, type Api } from "./helpers";
@@ -98,14 +99,14 @@ test("révocation : retirer settings.instance.manage à un porteur invalide imm�
 });
 
 // Finding j08b-005 : la page racine de Titiler (derrière la passerelle) répond 500.
-test.fixme("j08b-005 : /admin/titiler/ derrière la passerelle répond 200", async () => {
+bug("j08b-005 : /admin/titiler/ derrière la passerelle répond 200", async () => {
   const s = await session("titiler");
   expect((await gateway("/admin/titiler/", s.cookie)).status).toBe(200);
 });
 
 // Finding j08b-006 : l'URL de lancement (CORE_BASE_URL) puis la redirection relative /admin/<outil>/
 // retombent sur le cœur (:8200) qui ne sert pas /admin : 404 dans le compose de dev.
-test.fixme("j08b-006 : suivre l'URL de lancement aboutit à l'outil, pas à un 404 du cœur", async () => {
+bug("j08b-006 : suivre l'URL de lancement aboutit à l'outil, pas à un 404 du cœur", async () => {
   const launch = await admin.send("POST", "/v1/admin-tools/launch/grafana");
   const r = await fetch(launch.body.url, { redirect: "manual" });
   const target = new URL(r.headers.get("location") ?? "", launch.body.url).toString();
@@ -117,7 +118,7 @@ test.fixme("j08b-006 : suivre l'URL de lancement aboutit à l'outil, pas à un 4
 
 // Finding j08b-004 : un compte anonymisé garde son rôle et compte comme titulaire : la garde
 // anti-lockout ne se déclenche plus et le dernier administrateur actif peut être anonymisé.
-test.fixme("j08b-004 : le dernier administrateur actif ne peut pas être anonymisé", async () => {
+bug("j08b-004 : le dernier administrateur actif ne peut pas être anonymisé", async () => {
   const out = simulateLockout(`audj08bs${Date.now().toString(36)}`);
   expect(out.erase_a2_ok).toBe(true);
   expect(out.erase_last_active_admin).toBe("refused");

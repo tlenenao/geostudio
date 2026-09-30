@@ -1,3 +1,4 @@
+import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { apiFor, fixture, ingest, type Api } from "./api";
 import { psql } from "../j02/helpers";
@@ -16,7 +17,7 @@ test.beforeAll(async () => {
 });
 
 test.describe("j03 import — défauts bloquants du chemin nominal", () => {
-  test.fixme("j03-001 : POST /uploads répond 201 et défère le job d'ingestion", async () => {
+  bug("j03-001 : POST /uploads répond 201 et défère le job d'ingestion", async () => {
     // Défaut j03-001 : procrastinate.exceptions.AppNotOpen → 500 après commit du job.
     const res = await ingest(
       creator,
@@ -30,7 +31,7 @@ test.describe("j03 import — défauts bloquants du chemin nominal", () => {
     expect(res.job?.status).toBe("done");
   });
 
-  test.fixme("j03-002 : POST /uploads/presign répond 200 avec une URL d'envoi", async () => {
+  bug("j03-002 : POST /uploads/presign répond 200 avec une URL d'envoi", async () => {
     // Défaut j03-002 (déjà relevé par j02-002) : put_bucket_cors NotImplemented côté MinIO → 500.
     const r = await creator.send("POST", "/v1/uploads/presign", {
       filename: "a.geojson",
@@ -40,22 +41,25 @@ test.describe("j03 import — défauts bloquants du chemin nominal", () => {
     expect(r.body.uploadUrl).toMatch(/^http/);
   });
 
-  test.fixme("j03-003 : un job dont la mise en file a échoué n'est pas laissé « pending » indéfiniment", async () => {
-    // Défaut j03-003 : POST /uploads commite le job puis échoue (j03-001) ; reclaim_stuck_jobs ne
-    // balaie que « running », le job reste « pending » et le shell le sonde sans fin.
-    const key = `default/zombie-${Date.now()}-a.geojson`;
-    await creator.send("POST", "/v1/uploads", {
-      key,
-      filename: "a.geojson",
-      collectionTitle: "aud-j03 zombie",
-    });
-    const job = psql(`SELECT id FROM ingestion_jobs WHERE source_key='${key}'`).trim();
-    // Simule le passage du balayage périodique (ancienneté > seuil) : le job doit alors être en erreur.
-    psql(`UPDATE ingestion_jobs SET updated_at = now() - interval '2 hours' WHERE id='${job}'`);
-    await new Promise((r) => setTimeout(r, 1000));
-    const st = await creator.get(`/v1/uploads/${job}`);
-    expect(st.body.status).not.toBe("pending");
-  });
+  bug(
+    "j03-003 : un job dont la mise en file a échoué n'est pas laissé « pending » indéfiniment",
+    async () => {
+      // Défaut j03-003 : POST /uploads commite le job puis échoue (j03-001) ; reclaim_stuck_jobs ne
+      // balaie que « running », le job reste « pending » et le shell le sonde sans fin.
+      const key = `default/zombie-${Date.now()}-a.geojson`;
+      await creator.send("POST", "/v1/uploads", {
+        key,
+        filename: "a.geojson",
+        collectionTitle: "aud-j03 zombie",
+      });
+      const job = psql(`SELECT id FROM ingestion_jobs WHERE source_key='${key}'`).trim();
+      // Simule le passage du balayage périodique (ancienneté > seuil) : le job doit alors être en erreur.
+      psql(`UPDATE ingestion_jobs SET updated_at = now() - interval '2 hours' WHERE id='${job}'`);
+      await new Promise((r) => setTimeout(r, 1000));
+      const st = await creator.get(`/v1/uploads/${job}`);
+      expect(st.body.status).not.toBe("pending");
+    },
+  );
 });
 
 test.describe("j03 import — formats nominaux", () => {
@@ -112,17 +116,20 @@ test.describe("j03 import — formats nominaux", () => {
     }
   });
 
-  test.fixme("j03-021 : une collection tabulaire importée (sans géométrie) est atteignable depuis le catalogue du créateur", async () => {
-    // Défaut j03-021 : run_import ne crée ni Map ni item « dataset » quand geometryMode=none (itemId null) ;
-    // le Créateur n'a pas admin.collections.manage et l'import le renvoie sur « / » : la collection n'a
-    // aucune entrée dans « Données » (0 item dataset) — seul le sélecteur de couches la révèle.
-    const res = await ingest(creator, "nogeom.csv", fixture("nogeom.csv"), {
-      geometryMode: "none",
-    });
-    expect(res.job.status).toBe("done");
-    const mine = (await creator.get("/v1/items?type=dataset&scope=mine&pageSize=100")).body;
-    expect(mine.total).toBeGreaterThan(0);
-  });
+  bug(
+    "j03-021 : une collection tabulaire importée (sans géométrie) est atteignable depuis le catalogue du créateur",
+    async () => {
+      // Défaut j03-021 : run_import ne crée ni Map ni item « dataset » quand geometryMode=none (itemId null) ;
+      // le Créateur n'a pas admin.collections.manage et l'import le renvoie sur « / » : la collection n'a
+      // aucune entrée dans « Données » (0 item dataset) — seul le sélecteur de couches la révèle.
+      const res = await ingest(creator, "nogeom.csv", fixture("nogeom.csv"), {
+        geometryMode: "none",
+      });
+      expect(res.job.status).toBe("done");
+      const mine = (await creator.get("/v1/items?type=dataset&scope=mine&pageSize=100")).body;
+      expect(mine.total).toBeGreaterThan(0);
+    },
+  );
 });
 
 test.describe("j03 import — erreurs", () => {
@@ -147,7 +154,7 @@ test.describe("j03 import — erreurs", () => {
     expect(csv.job.errorMessage).toMatch(/lat\/lon/);
   });
 
-  test.fixme("j03-004 : latitude hors [-90, 90] dans un CSV est refusée", async () => {
+  bug("j03-004 : latitude hors [-90, 90] dans un CSV est refusée", async () => {
     // Défaut j03-004 : POINT(2.1 146.1) est stocké dans geometry(Point,4326), centre de carte lat 96.15.
     const res = await ingest(creator, "badcoords.csv", fixture("badcoords.csv"), {
       latField: "latitude",
@@ -156,22 +163,28 @@ test.describe("j03 import — erreurs", () => {
     expect(res.job.status).toBe("error");
   });
 
-  test.fixme("j03-005 : un CSV « ; » avec virgule décimale est importé ou reçoit un message exploitable", async () => {
-    // Défaut j03-005 : message « précisez-les » alors que le shell ne peut pas proposer de colonnes
-    // (ImportFileButton découpe l'en-tête sur « , » uniquement) ; aucun moyen de terminer l'import.
-    const res = await ingest(creator, "semi.csv", fixture("semi.csv"), {
-      latField: "lat",
-      lonField: "lon",
-    });
-    expect(res.job.status).toBe("done");
-  });
+  bug(
+    "j03-005 : un CSV « ; » avec virgule décimale est importé ou reçoit un message exploitable",
+    async () => {
+      // Défaut j03-005 : message « précisez-les » alors que le shell ne peut pas proposer de colonnes
+      // (ImportFileButton découpe l'en-tête sur « , » uniquement) ; aucun moyen de terminer l'import.
+      const res = await ingest(creator, "semi.csv", fixture("semi.csv"), {
+        latField: "lat",
+        lonField: "lon",
+      });
+      expect(res.job.status).toBe("done");
+    },
+  );
 
-  test.fixme("j03-006 : le message d'erreur d'un zip illisible ne fuit ni chemin temporaire ni jargon GDAL", async () => {
-    // Défaut j03-006 : « '/vsizip//tmp/tmpXXXX.zip' not recognized as being in a supported file format… ».
-    const res = await ingest(creator, "empty.zip", fixture("empty.zip"));
-    expect(res.job.status).toBe("error");
-    expect(res.job.errorMessage).not.toMatch(/\/tmp\/|\/vsizip|driver explicitly/);
-  });
+  bug(
+    "j03-006 : le message d'erreur d'un zip illisible ne fuit ni chemin temporaire ni jargon GDAL",
+    async () => {
+      // Défaut j03-006 : « '/vsizip//tmp/tmpXXXX.zip' not recognized as being in a supported file format… ».
+      const res = await ingest(creator, "empty.zip", fixture("empty.zip"));
+      expect(res.job.status).toBe("error");
+      expect(res.job.errorMessage).not.toMatch(/\/tmp\/|\/vsizip|driver explicitly/);
+    },
+  );
 });
 
 test.describe("j03 import — droits", () => {
@@ -195,15 +208,18 @@ test.describe("j03 import — droits", () => {
     expect(i.status).toBe(404);
   });
 
-  test.fixme("j03-007 : le présigné d'upload est réservé à data.manage (le lecteur reçoit 403)", async () => {
-    // Défaut j03-007 (code-read) : presign_upload n'appelle aucun require_privilege ; un lecteur obtient
-    // une URL PUT vers le bucket d'imports dès que j03-002 est corrigé. Aujourd'hui : 500 pour tous.
-    const r = await reader.send("POST", "/v1/uploads/presign", {
-      filename: "a.geojson",
-      contentType: "application/geo+json",
-    });
-    expect(r.status).toBe(403);
-  });
+  bug(
+    "j03-007 : le présigné d'upload est réservé à data.manage (le lecteur reçoit 403)",
+    async () => {
+      // Défaut j03-007 (code-read) : presign_upload n'appelle aucun require_privilege ; un lecteur obtient
+      // une URL PUT vers le bucket d'imports dès que j03-002 est corrigé. Aujourd'hui : 500 pour tous.
+      const r = await reader.send("POST", "/v1/uploads/presign", {
+        filename: "a.geojson",
+        contentType: "application/geo+json",
+      });
+      expect(r.status).toBe(403);
+    },
+  );
 });
 
 test.describe("j03 import — volumétrie", () => {

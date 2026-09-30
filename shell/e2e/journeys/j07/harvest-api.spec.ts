@@ -1,3 +1,4 @@
+import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { CORE_URL, stamp } from "../_fixtures/env";
 import {
@@ -201,26 +202,32 @@ test.describe("j07 moissonnage — exécution", () => {
 
 test.describe("j07 moissonnage — défauts constatés", () => {
   // Finding j07-001 : la file `harvest` n'est consommée par aucun worker du compose.
-  test.fixme("j07-001 : un job de moissonnage déféré est consommé par le worker (file `harvest`)", async () => {
-    const src = await createSource(admin, { type: "stac", url: `https://x.invalid/${tag}-queue` });
-    expect(await deferHarvestAndPoll(src.id)).not.toBe("todo");
-  });
+  bug(
+    "j07-001 : un job de moissonnage déféré est consommé par le worker (file `harvest`)",
+    async () => {
+      const src = await createSource(admin, {
+        type: "stac",
+        url: `https://x.invalid/${tag}-queue`,
+      });
+      expect(await deferHarvestAndPoll(src.id)).not.toBe("todo");
+    },
+  );
 
   // Finding j07-002 : POST …/run répond 500 (procrastinate AppNotOpen), comme j03-001 pour les imports.
-  test.fixme("j07-002 : POST /harvest/sources/{id}/run répond 202", async () => {
+  bug("j07-002 : POST /harvest/sources/{id}/run répond 202", async () => {
     const src = await createSource(admin, { type: "stac", url: `https://x.invalid/${tag}-run` });
     const r = await admin.send("POST", `/v1/harvest/sources/${src.id}/run`);
     expect(r.status).toBe(202);
   });
 
   // Finding j07-004 : aucune validation d'URL à la création.
-  test.fixme("j07-004 : une URL qui n'est pas http(s) est refusée à la création (422)", async () => {
+  bug("j07-004 : une URL qui n'est pas http(s) est refusée à la création (422)", async () => {
     const r = await admin.send("POST", "/v1/harvest/sources", { type: "wms", url: "pas une url" });
     expect(r.status).toBe(422);
   });
 
   // Finding j07-005 : doublons de source non détectés.
-  test.fixme("j07-005 : créer deux fois la même source (type+URL) est refusé (409)", async () => {
+  bug("j07-005 : créer deux fois la même source (type+URL) est refusé (409)", async () => {
     const url = `https://x.invalid/${tag}-dup`;
     await createSource(admin, { type: "stac", url });
     const r = await admin.send("POST", "/v1/harvest/sources", { type: "stac", url });
@@ -228,35 +235,41 @@ test.describe("j07 moissonnage — défauts constatés", () => {
   });
 
   // Finding j07-006 : une source en erreur reste « due » à chaque balayage, malgré son intervalle.
-  test.fixme("j07-006 : une source en erreur avec intervalle 1440 min n'est pas re-lancée à chaque balayage", async () => {
-    const src = await createSource(admin, {
-      type: "stac",
-      url: `http://127.0.0.1:1/${tag}-due`,
-      intervalMinutes: 1440,
-    });
-    runHarvestInWorker(src.id);
-    const lastRun = psql(`SELECT last_run_at FROM harvest_sources WHERE id='${src.id}'`).trim();
-    expect(
-      lastRun,
-      "last_run_at doit être posé même en erreur pour respecter l'intervalle",
-    ).not.toBe("");
-  });
+  bug(
+    "j07-006 : une source en erreur avec intervalle 1440 min n'est pas re-lancée à chaque balayage",
+    async () => {
+      const src = await createSource(admin, {
+        type: "stac",
+        url: `http://127.0.0.1:1/${tag}-due`,
+        intervalMinutes: 1440,
+      });
+      runHarvestInWorker(src.id);
+      const lastRun = psql(`SELECT last_run_at FROM harvest_sources WHERE id='${src.id}'`).trim();
+      expect(
+        lastRun,
+        "last_run_at doit être posé même en erreur pour respecter l'intervalle",
+      ).not.toBe("");
+    },
+  );
 
   // Finding j07-007 : la suppression d'une source laisse ses items « external » orphelins.
-  test.fixme("j07-007 : supprimer une source retire ou signale les items qu'elle avait créés", async () => {
-    const src = await createSource(admin, {
-      type: "stac",
-      url: "https://earth-search.aws.element84.com/v1",
-    });
-    runHarvestInWorker(src.id);
-    const ids = psql(`SELECT item_id FROM harvest_records WHERE source_id='${src.id}'`)
-      .trim()
-      .split("\n")
-      .filter(Boolean);
-    test.skip(ids.length === 0, "moissonnage réel indisponible");
-    await admin.send("DELETE", `/v1/harvest/sources/${src.id}`);
-    const list = ids.map((i) => `'${i}'`).join(",");
-    const left = Number(psql(`SELECT count(*) FROM items WHERE id IN (${list})`).trim());
-    expect(left).toBe(0);
-  });
+  bug(
+    "j07-007 : supprimer une source retire ou signale les items qu'elle avait créés",
+    async () => {
+      const src = await createSource(admin, {
+        type: "stac",
+        url: "https://earth-search.aws.element84.com/v1",
+      });
+      runHarvestInWorker(src.id);
+      const ids = psql(`SELECT item_id FROM harvest_records WHERE source_id='${src.id}'`)
+        .trim()
+        .split("\n")
+        .filter(Boolean);
+      test.skip(ids.length === 0, "moissonnage réel indisponible");
+      await admin.send("DELETE", `/v1/harvest/sources/${src.id}`);
+      const list = ids.map((i) => `'${i}'`).join(",");
+      const left = Number(psql(`SELECT count(*) FROM items WHERE id IN (${list})`).trim());
+      expect(left).toBe(0);
+    },
+  );
 });

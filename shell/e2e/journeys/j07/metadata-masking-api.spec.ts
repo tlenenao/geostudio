@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
+import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { CORE_URL, stamp } from "../_fixtures/env";
 import { apiFor, getPublicSeed, psql, type Api, type PublicSeed } from "./helpers";
@@ -124,19 +125,22 @@ test.describe("j07 métadonnées ouvertes — collection", () => {
   });
 
   // Finding j07-014 : PATCH ne valide ni l'ordre des bornes temporelles ni le schéma de licenseUri.
-  test.fixme("j07-014 : temporalEnd antérieure à temporalStart et licenseUri non http(s) sont refusées (422)", async () => {
-    const { id } = await newCollection(`${tag}-meta-bad`);
-    const order = await creator.send("PATCH", `/v1/collections/${id}`, {
-      temporalStart: "2021-01-01",
-      temporalEnd: "2020-01-01",
-    });
-    expect(order.status).toBe(422);
-    const uri = await creator.send("PATCH", `/v1/collections/${id}`, {
-      license: "other",
-      licenseUri: "javascript:alert(1)",
-    });
-    expect(uri.status).toBe(422);
-  });
+  bug(
+    "j07-014 : temporalEnd antérieure à temporalStart et licenseUri non http(s) sont refusées (422)",
+    async () => {
+      const { id } = await newCollection(`${tag}-meta-bad`);
+      const order = await creator.send("PATCH", `/v1/collections/${id}`, {
+        temporalStart: "2021-01-01",
+        temporalEnd: "2020-01-01",
+      });
+      expect(order.status).toBe(422);
+      const uri = await creator.send("PATCH", `/v1/collections/${id}`, {
+        license: "other",
+        licenseUri: "javascript:alert(1)",
+      });
+      expect(uri.status).toBe(422);
+    },
+  );
 });
 
 test.describe("j07 masquage de champ sensible", () => {
@@ -213,16 +217,22 @@ test.describe("j07 masquage de champ sensible", () => {
   });
 
   // Finding j07-015 : le schéma et la fiche collection exposent les noms des champs masqués.
-  test.fixme("j07-015 : le schéma servi à un lecteur ou un anonyme ne liste pas le champ sensible", async () => {
-    const anon = await anonGet(`/v1/collections/${seed.collectionId}/schema`);
-    expect(anon.body.fields.map((f: any) => f.name)).not.toContain("pop");
-    const rd = await reader.get(`/v1/collections/${seed.collectionId}`);
-    expect(rd.body.sensitiveFields).toEqual([]);
-  });
+  bug(
+    "j07-015 : le schéma servi à un lecteur ou un anonyme ne liste pas le champ sensible",
+    async () => {
+      const anon = await anonGet(`/v1/collections/${seed.collectionId}/schema`);
+      expect(anon.body.fields.map((f: any) => f.name)).not.toContain("pop");
+      const rd = await reader.get(`/v1/collections/${seed.collectionId}`);
+      expect(rd.body.sensitiveFields).toEqual([]);
+    },
+  );
 
   // Finding j07-016 : le propriétaire lui-même ne voit pas ses champs sensibles.
-  test.fixme("j07-016 : le créateur propriétaire de la collection peut lire ses propres champs sensibles", async () => {
-    const own = await creator.get(`/v1/collections/${seed.collectionId}/items/2`);
-    expect(own.body.properties).toHaveProperty("pop");
-  });
+  bug(
+    "j07-016 : le créateur propriétaire de la collection peut lire ses propres champs sensibles",
+    async () => {
+      const own = await creator.get(`/v1/collections/${seed.collectionId}/items/2`);
+      expect(own.body.properties).toHaveProperty("pop");
+    },
+  );
 });

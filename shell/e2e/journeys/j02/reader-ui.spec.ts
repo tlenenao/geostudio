@@ -1,3 +1,4 @@
+import { bug } from "../_fixtures/verify";
 import { test, expect, type Page } from "@playwright/test";
 import { getSeed } from "./seed";
 import { loginOidc, SHELL_URL } from "../_fixtures/env";
@@ -59,14 +60,15 @@ test.describe("j02 lecteur — catalogue, fiches, éditeurs", () => {
   });
 
   // j02-012 : la recherche hybride renvoie toujours des candidats, même pour une requête absurde.
-  test.fixme("j02-012 : une requête sans aucun rapport avec le catalogue ne renvoie aucun résultat", async ({
-    page,
-  }) => {
-    await asReader(page);
-    await searchCatalog(page, "zzz-introuvable-j02-xyz");
-    await expect(page.getByRole("button", { name: "Ouvrir" })).toHaveCount(0);
-    await expect(page.getByText("Aucun résultat").first()).toBeVisible();
-  });
+  bug(
+    "j02-012 : une requête sans aucun rapport avec le catalogue ne renvoie aucun résultat",
+    async ({ page }) => {
+      await asReader(page);
+      await searchCatalog(page, "zzz-introuvable-j02-xyz");
+      await expect(page.getByRole("button", { name: "Ouvrir" })).toHaveCount(0);
+      await expect(page.getByText("Aucun résultat").first()).toBeVisible();
+    },
+  );
 
   test("un item privé ouvert par URL affiche « Élément introuvable » (aucune fuite)", async ({
     page,
@@ -92,29 +94,31 @@ test.describe("j02 lecteur — catalogue, fiches, éditeurs", () => {
   });
 
   // j02-007 : la fiche dataset ne montre ni licence, ni mots-clés, ni colonnes, ni volume.
-  test.fixme("j02-007 : la fiche dataset expose licence, mots-clés et colonnes au lecteur", async ({
-    page,
-  }) => {
-    const s = await getSeed();
-    await asReader(page);
-    await spaGo(page, `/items/${s.sharedDataset}`);
-    const body = page.locator("body");
-    await expect(body).toContainText("cadastre");
-    await expect(body).toContainText(/Creative Commons Attribution 4.0|CC-BY/);
-    await expect(body).toContainText("surface");
-  });
+  bug(
+    "j02-007 : la fiche dataset expose licence, mots-clés et colonnes au lecteur",
+    async ({ page }) => {
+      const s = await getSeed();
+      await asReader(page);
+      await spaGo(page, `/items/${s.sharedDataset}`);
+      const body = page.locator("body");
+      await expect(body).toContainText("cadastre");
+      await expect(body).toContainText(/Creative Commons Attribution 4.0|CC-BY/);
+      await expect(body).toContainText("surface");
+    },
+  );
 
   // j02-008 : ouvrir une app depuis le catalogue envoie le lecteur dans le builder.
-  test.fixme("j02-008 : « Ouvrir » sur une app mène un lecteur à la vue d'usage, pas au builder", async ({
-    page,
-  }) => {
-    const s = await getSeed();
-    await asReader(page);
-    await searchCatalog(page, `${s.tag}-app-auto`);
-    await openCard(page, `${s.tag}-app-auto`);
-    await page.waitForTimeout(2500);
-    expect(page.url()).not.toMatch(/\/edit(\?|$)/);
-  });
+  bug(
+    "j02-008 : « Ouvrir » sur une app mène un lecteur à la vue d'usage, pas au builder",
+    async ({ page }) => {
+      const s = await getSeed();
+      await asReader(page);
+      await searchCatalog(page, `${s.tag}-app-auto`);
+      await openCard(page, `${s.tag}-app-auto`);
+      await page.waitForTimeout(2500);
+      expect(page.url()).not.toMatch(/\/edit(\?|$)/);
+    },
+  );
 
   test("éditeur de carte en lecture seule : Enregistrer est désactivé et expliqué", async ({
     page,
@@ -130,7 +134,7 @@ test.describe("j02 lecteur — catalogue, fiches, éditeurs", () => {
   });
 
   // j02-009 : le canevas de la carte prend la hauteur du panneau de gauche, pas celle de l'écran.
-  test.fixme("j02-009 : le canevas de la carte tient dans la fenêtre", async ({ page }) => {
+  bug("j02-009 : le canevas de la carte tient dans la fenêtre", async ({ page }) => {
     const s = await getSeed();
     await page.setViewportSize({ width: 1280, height: 720 });
     await asReader(page);
@@ -143,9 +147,7 @@ test.describe("j02 lecteur — catalogue, fiches, éditeurs", () => {
 
 test.describe("j02 lecteur — liens directs, runtime, bookmarks", () => {
   // j02-004 : un rechargement (ou un lien) perd la destination après le retour Keycloak.
-  test.fixme("j02-004 : un lien direct vers une fiche survit à la reconnexion OIDC", async ({
-    page,
-  }) => {
+  bug("j02-004 : un lien direct vers une fiche survit à la reconnexion OIDC", async ({ page }) => {
     const s = await getSeed();
     await asReader(page);
     await page.goto(`/items/${s.sharedMap}`);
@@ -154,25 +156,25 @@ test.describe("j02 lecteur — liens directs, runtime, bookmarks", () => {
   });
 
   // j02-010 : /apps/:pk est hors RequireAuth, un rechargement part sans jeton → 401 « Accès refusé ».
-  test.fixme("j02-010 : recharger (ou ouvrir sans session) une app en mode usage affiche l'app ou la connexion, pas « Accès refusé »", async ({
-    page,
-    browser,
-  }) => {
-    const s = await getSeed();
-    await asReader(page);
-    await spaGo(page, `/apps/${s.sharedApp}/p1`, 3000);
-    await expect(page.getByText("Bonjour lecteur")).toBeVisible();
-    await page.reload();
-    await expect(page.getByText("Bonjour lecteur")).toBeVisible({ timeout: 15_000 });
-    // 2e volet : sans aucune session, le lien ne renvoie pas vers la connexion.
-    const ctx = await browser.newContext({ baseURL: SHELL_URL });
-    const cold = await ctx.newPage();
-    await cold.goto(`/apps/${s.sharedApp}/p1`);
-    await cold.waitForTimeout(4000);
-    const onLogin = /openid-connect\/auth/.test(cold.url());
-    await ctx.close();
-    expect(onLogin, "lien d'app sans session : redirection vers Keycloak attendue").toBe(true);
-  });
+  bug(
+    "j02-010 : recharger (ou ouvrir sans session) une app en mode usage affiche l'app ou la connexion, pas « Accès refusé »",
+    async ({ page, browser }) => {
+      const s = await getSeed();
+      await asReader(page);
+      await spaGo(page, `/apps/${s.sharedApp}/p1`, 3000);
+      await expect(page.getByText("Bonjour lecteur")).toBeVisible();
+      await page.reload();
+      await expect(page.getByText("Bonjour lecteur")).toBeVisible({ timeout: 15_000 });
+      // 2e volet : sans aucune session, le lien ne renvoie pas vers la connexion.
+      const ctx = await browser.newContext({ baseURL: SHELL_URL });
+      const cold = await ctx.newPage();
+      await cold.goto(`/apps/${s.sharedApp}/p1`);
+      await cold.waitForTimeout(4000);
+      const onLogin = /openid-connect\/auth/.test(cold.url());
+      await ctx.close();
+      expect(onLogin, "lien d'app sans session : redirection vers Keycloak attendue").toBe(true);
+    },
+  );
 
   test("bookmark : « Ouvrir » rejoue l'app, la page et le contexte (?ctx=)", async ({ page }) => {
     const s = await getSeed();
@@ -198,13 +200,14 @@ test.describe("j02 lecteur — liens directs, runtime, bookmarks", () => {
   });
 
   // j02-011 : le bouton « Enregistrer la vue » est proposé au lecteur alors que le cœur refuse (analytics.view).
-  test.fixme("j02-011 : un lecteur ne se voit pas proposer « Enregistrer la vue » qui échouera", async ({
-    page,
-  }) => {
-    const s = await getSeed();
-    await asReader(page);
-    await spaGo(page, `/apps/${s.autoApp}/p1`, 3000);
-    await expect(page.getByText("Bonjour lecteur")).toBeVisible();
-    await expect(page.getByRole("button", { name: /Enregistrer la vue/ })).toHaveCount(0);
-  });
+  bug(
+    "j02-011 : un lecteur ne se voit pas proposer « Enregistrer la vue » qui échouera",
+    async ({ page }) => {
+      const s = await getSeed();
+      await asReader(page);
+      await spaGo(page, `/apps/${s.autoApp}/p1`, 3000);
+      await expect(page.getByText("Bonjour lecteur")).toBeVisible();
+      await expect(page.getByRole("button", { name: /Enregistrer la vue/ })).toHaveCount(0);
+    },
+  );
 });

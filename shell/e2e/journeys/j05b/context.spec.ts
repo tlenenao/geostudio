@@ -1,3 +1,4 @@
+import { bug } from "../_fixtures/verify";
 import { expect, test } from "@playwright/test";
 import { loginOidc, stamp } from "../_fixtures/env";
 import { spaGo } from "../j04/helpers";
@@ -104,19 +105,20 @@ test.describe("j05b contexte analytique global (temps × emprise) — exécution
   });
 
   // Finding j05b-007 : confirme j05-024 par exécution (même défaut que j05-003, sur /items).
-  test.fixme("j05b-007 : plage temporelle à bornes « YYYY-MM-DD » identiques : retient les lignes du jour", async ({
-    page,
-  }) => {
-    test.setTimeout(120_000);
-    const seen = await itemsRequests(page, {
-      timeRange: { from: "2026-03-15", to: "2026-03-15" },
-      extent: null,
-      crossFilter: {},
-    });
-    // Seed : date = <année>-<mois>-15T10:00:00Z ; 2026-03-15 -> i = 32 (un seul) ; attendu >= 1.
-    const filtered = seen.find((r) => r.url.includes("d__gte="));
-    expect(filtered?.n).toBeGreaterThan(0);
-  });
+  bug(
+    "j05b-007 : plage temporelle à bornes « YYYY-MM-DD » identiques : retient les lignes du jour",
+    async ({ page }) => {
+      test.setTimeout(120_000);
+      const seen = await itemsRequests(page, {
+        timeRange: { from: "2026-03-15", to: "2026-03-15" },
+        extent: null,
+        crossFilter: {},
+      });
+      // Seed : date = <année>-<mois>-15T10:00:00Z ; 2026-03-15 -> i = 32 (un seul) ; attendu >= 1.
+      const filtered = seen.find((r) => r.url.includes("d__gte="));
+      expect(filtered?.n).toBeGreaterThan(0);
+    },
+  );
 
   test("contexte ?ctx= illisible : l'app s'affiche sans filtre (pas d'écran blanc)", async ({
     page,

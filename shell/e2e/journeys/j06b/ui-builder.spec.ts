@@ -1,3 +1,4 @@
+import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { apiFor } from "./seeds";
 import { stamp } from "../_fixtures/env";
@@ -110,9 +111,7 @@ test.describe("j06b builder de pipeline (UI réelle)", () => {
 
   // Findings j06b-001 (run depuis l'UI), j06b-014 (recherche sans résultat), j06b-015 (format),
   // j06b-016 (commande webhook affichée) : assertions souples, un seul parcours.
-  test.fixme("j06b-001 / j06b-014 / j06b-015 / j06b-016 : finitions du builder", async ({
-    page,
-  }) => {
+  bug("j06b-001 / j06b-014 / j06b-015 / j06b-016 : finitions du builder", async ({ page }) => {
     ensureExportsBucket();
     const seed = await getPlainSeed();
     const creator = await apiFor("creator");

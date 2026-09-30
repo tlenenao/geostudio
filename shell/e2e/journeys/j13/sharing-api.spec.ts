@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
+import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import {
   anon,
@@ -127,22 +128,26 @@ test.describe("j13 rôle de partage viewer / editor", () => {
 
   // Finding j13-002 : la garde de privilège ne couvre que l'écriture de config ;
   // un Lecteur (0 privilège) éditeur par groupe publie, rend public et re-partage.
-  test.fixme("j13-002 : un Lecteur éditeur par groupe ne peut ni publier (anonyme), ni rendre public, ni créer de lien", async () => {
-    const it = await mkItem(creator, `${TAG}-editor-reader`);
-    const g = await mkGroup(creator, `${TAG}-ge`, [readerId]);
-    expect(await share(creator, it.pk, [{ groupId: g, role: "editor" }])).toBe(204);
-    // Contrôle : l'écriture de config, elle, est bien refusée au Lecteur.
-    expect((await reader.send("PUT", `/v1/configs/by-item/${it.pk}`, appConfig())).status).toBe(
-      403,
-    );
-    expect((await reader.send("PATCH", `/v1/items/${it.pk}`, { isPublished: true })).status).toBe(
-      403,
-    );
-    expect(await anon(`/v1/public/configs/by-item/${it.pk}`)).toBe(404);
-    expect(
-      (await reader.send("PUT", `/v1/items/${it.pk}/sharing`, { public: true, groups: [] })).status,
-    ).toBe(403);
-  });
+  bug(
+    "j13-002 : un Lecteur éditeur par groupe ne peut ni publier (anonyme), ni rendre public, ni créer de lien",
+    async () => {
+      const it = await mkItem(creator, `${TAG}-editor-reader`);
+      const g = await mkGroup(creator, `${TAG}-ge`, [readerId]);
+      expect(await share(creator, it.pk, [{ groupId: g, role: "editor" }])).toBe(204);
+      // Contrôle : l'écriture de config, elle, est bien refusée au Lecteur.
+      expect((await reader.send("PUT", `/v1/configs/by-item/${it.pk}`, appConfig())).status).toBe(
+        403,
+      );
+      expect((await reader.send("PATCH", `/v1/items/${it.pk}`, { isPublished: true })).status).toBe(
+        403,
+      );
+      expect(await anon(`/v1/public/configs/by-item/${it.pk}`)).toBe(404);
+      expect(
+        (await reader.send("PUT", `/v1/items/${it.pk}/sharing`, { public: true, groups: [] }))
+          .status,
+      ).toBe(403);
+    },
+  );
 
   test("constat j13-002 : le Lecteur éditeur publie l'app, qui devient lisible par un anonyme", async () => {
     const it = await mkItem(creator, `${TAG}-editor-reader-obs`);
@@ -198,13 +203,18 @@ test.describe("j13 groupes de partage", () => {
 
   // Finding j13-004 : aucune route pour retirer un membre, lister les membres,
   // renommer ou supprimer un groupe.
-  test.fixme("j13-004 : le créateur d'un groupe peut lister ses membres, en retirer un et supprimer le groupe", async () => {
-    const g = await mkGroup(creator, `${TAG}-gmgmt`, [readerId]);
-    const members = await creator.get(`/v1/groups/${g}/members`);
-    expect(members.status).toBe(200);
-    expect((await creator.send("DELETE", `/v1/groups/${g}/members/${readerId}`)).status).toBe(204);
-    expect((await creator.send("DELETE", `/v1/groups/${g}`)).status).toBe(204);
-  });
+  bug(
+    "j13-004 : le créateur d'un groupe peut lister ses membres, en retirer un et supprimer le groupe",
+    async () => {
+      const g = await mkGroup(creator, `${TAG}-gmgmt`, [readerId]);
+      const members = await creator.get(`/v1/groups/${g}/members`);
+      expect(members.status).toBe(200);
+      expect((await creator.send("DELETE", `/v1/groups/${g}/members/${readerId}`)).status).toBe(
+        204,
+      );
+      expect((await creator.send("DELETE", `/v1/groups/${g}`)).status).toBe(204);
+    },
+  );
 
   test("constat j13-004 : un membre ajouté par erreur ne peut être retiré que par… rien (routes absentes)", async () => {
     const it = await mkItem(creator, `${TAG}-stuck`);
@@ -255,14 +265,17 @@ test.describe("j13 « public » vs « publié »", () => {
 
 test.describe("j13 partage d'une carte et de ses données", () => {
   // Finding j13-008 : partager une carte à un groupe ne donne pas accès à sa collection.
-  test.fixme("j13-008 : un membre du groupe à qui l'on partage une carte lit aussi les entités de sa couche", async () => {
-    const col = await mkCollection(creator, `${TAG}-mapcol`);
-    const m = await mkItem(creator, `${TAG}-sharedmap`, mapConfigOn(col));
-    const g = await mkGroup(creator, `${TAG}-gmap`, [readerId]);
-    expect(await share(creator, m.pk, [{ groupId: g, role: "viewer" }])).toBe(204);
-    expect((await reader.get(`/v1/configs/by-item/${m.pk}`)).status).toBe(200);
-    expect((await reader.get(`/v1/collections/${col}/items`)).status).toBe(200);
-  });
+  bug(
+    "j13-008 : un membre du groupe à qui l'on partage une carte lit aussi les entités de sa couche",
+    async () => {
+      const col = await mkCollection(creator, `${TAG}-mapcol`);
+      const m = await mkItem(creator, `${TAG}-sharedmap`, mapConfigOn(col));
+      const g = await mkGroup(creator, `${TAG}-gmap`, [readerId]);
+      expect(await share(creator, m.pk, [{ groupId: g, role: "viewer" }])).toBe(204);
+      expect((await reader.get(`/v1/configs/by-item/${m.pk}`)).status).toBe(200);
+      expect((await reader.get(`/v1/collections/${col}/items`)).status).toBe(200);
+    },
+  );
 
   test("constat j13-008 : config lisible, collection 404 tant que le propriétaire ne la partage pas à part (API seule)", async () => {
     const col = await mkCollection(creator, `${TAG}-mapcol2`);
@@ -282,18 +295,21 @@ test.describe("j13 partage d'une carte et de ses données", () => {
 
 test.describe("j13 suppression et références", () => {
   // Finding j13-003 : DELETE /configs/{id} ne vérifie pas les références inverses.
-  test.fixme("j13-003 : supprimer un dataset référencé par une alerte est refusé (409) sur les trois routes de suppression", async () => {
-    const col = await mkCollection(creator, `${TAG}-refcol`);
-    const d = await mkItem(creator, `${TAG}-refds`, {
-      version: 1,
-      kind: "dataset",
-      dataset: { source: "collection", collectionId: col },
-    });
-    await mkItem(creator, `${TAG}-refalert`, alertOn(d.pk));
-    expect((await creator.send("DELETE", `/v1/items/${d.pk}`)).status).toBe(409);
-    expect((await creator.send("DELETE", `/v1/configs/by-item/${d.pk}`)).status).toBe(409);
-    expect((await creator.send("DELETE", `/v1/configs/${d.configId}`)).status).toBe(409);
-  });
+  bug(
+    "j13-003 : supprimer un dataset référencé par une alerte est refusé (409) sur les trois routes de suppression",
+    async () => {
+      const col = await mkCollection(creator, `${TAG}-refcol`);
+      const d = await mkItem(creator, `${TAG}-refds`, {
+        version: 1,
+        kind: "dataset",
+        dataset: { source: "collection", collectionId: col },
+      });
+      await mkItem(creator, `${TAG}-refalert`, alertOn(d.pk));
+      expect((await creator.send("DELETE", `/v1/items/${d.pk}`)).status).toBe(409);
+      expect((await creator.send("DELETE", `/v1/configs/by-item/${d.pk}`)).status).toBe(409);
+      expect((await creator.send("DELETE", `/v1/configs/${d.configId}`)).status).toBe(409);
+    },
+  );
 
   test("constat j13-003 : DELETE /configs/{id} supprime le dataset référencé (204) et laisse l'alerte orpheline", async () => {
     const col = await mkCollection(creator, `${TAG}-refcol2`);
@@ -314,15 +330,18 @@ test.describe("j13 suppression et références", () => {
 
 test.describe("j13 administration et modération", () => {
   // Finding j13-009 : l'Administrateur ne voit ni ne modère les items privés d'autrui.
-  test.fixme("j13-009 : l'Administrateur peut dépublier un item publié par un autre utilisateur", async () => {
-    const it = await mkItem(creator, `${TAG}-moderate`);
-    expect((await creator.send("PATCH", `/v1/items/${it.pk}`, { isPublished: true })).status).toBe(
-      200,
-    );
-    expect((await admin.send("PATCH", `/v1/items/${it.pk}`, { isPublished: false })).status).toBe(
-      200,
-    );
-  });
+  bug(
+    "j13-009 : l'Administrateur peut dépublier un item publié par un autre utilisateur",
+    async () => {
+      const it = await mkItem(creator, `${TAG}-moderate`);
+      expect(
+        (await creator.send("PATCH", `/v1/items/${it.pk}`, { isPublished: true })).status,
+      ).toBe(200);
+      expect((await admin.send("PATCH", `/v1/items/${it.pk}`, { isPublished: false })).status).toBe(
+        200,
+      );
+    },
+  );
 
   test("constat j13-009 : Administrateur 403 sur la dépublication, 404 sur un item privé d'autrui", async () => {
     const pub = await mkItem(creator, `${TAG}-moderate-obs`);
@@ -341,12 +360,15 @@ test.describe("j13 administration et modération", () => {
 
 test.describe("j13 liens de partage à échéance", () => {
   // Finding j13-001 : CORE_SHARE_LINK_TOKEN_SECRET vide (jamais généré) → 500.
-  test.fixme("j13-001 : le propriétaire crée un lien de partage (201) et un anonyme le résout", async () => {
-    const it = await mkItem(creator, `${TAG}-link`);
-    const r = await creator.send("POST", `/v1/items/${it.pk}/share-links`, { ttlDays: 7 });
-    expect(r.status).toBe(201);
-    expect(await anon(`/v1/share-links/${r.body.token}`)).toBe(200);
-  });
+  bug(
+    "j13-001 : le propriétaire crée un lien de partage (201) et un anonyme le résout",
+    async () => {
+      const it = await mkItem(creator, `${TAG}-link`);
+      const r = await creator.send("POST", `/v1/items/${it.pk}/share-links`, { ttlDays: 7 });
+      expect(r.status).toBe(201);
+      expect(await anon(`/v1/share-links/${r.body.token}`)).toBe(200);
+    },
+  );
 
   test("constat j13-001 : POST share-links répond 500 sans laisser de lien en base", async () => {
     const it = await mkItem(creator, `${TAG}-link-obs`);

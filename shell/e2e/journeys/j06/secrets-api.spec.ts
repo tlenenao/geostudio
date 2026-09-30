@@ -1,3 +1,4 @@
+import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { stamp, CORE_URL } from "../_fixtures/env";
 import { apiFor, type Api } from "../j03/api";
@@ -147,7 +148,7 @@ test.describe("j06 coffre de secrets — erreurs et droits", () => {
 test.describe("j06 coffre de secrets — défauts constatés", () => {
   // Finding j06-006 : impossible de faire tourner un secret sans le supprimer, ce qui
   // casse les références par nom (pipelines, moissonnage, alertes SMTP).
-  test.fixme("j06-006 : un secret peut être mis à jour en place (rotation)", async () => {
+  bug("j06-006 : un secret peut être mis à jour en place (rotation)", async () => {
     const c = await creator.send("POST", "/v1/secrets", bearer(`${tag}-rot`));
     const r = await creator.send(
       "PUT",
@@ -158,15 +159,18 @@ test.describe("j06 coffre de secrets — défauts constatés", () => {
   });
 
   // Finding j06-005 : aucune notion de propriétaire, tout Créateur gère tous les secrets du tenant.
-  test.fixme("j06-005 : un Créateur ne peut pas supprimer le secret créé par l'administrateur", async () => {
-    const c = await admin.send("POST", "/v1/secrets", bearer(`${tag}-admin-owned`));
-    expect(c.status).toBe(201);
-    const r = await creator.send("DELETE", `/v1/secrets/${c.body.id}`);
-    expect(r.status).toBe(403);
-  });
+  bug(
+    "j06-005 : un Créateur ne peut pas supprimer le secret créé par l'administrateur",
+    async () => {
+      const c = await admin.send("POST", "/v1/secrets", bearer(`${tag}-admin-owned`));
+      expect(c.status).toBe(201);
+      const r = await creator.send("DELETE", `/v1/secrets/${c.body.id}`);
+      expect(r.status).toBe(403);
+    },
+  );
 
   // Finding j06-007 : la 422 FastAPI par défaut renvoie le corps fautif dans `input`.
-  test.fixme("j06-007 : une 422 sur POST /secrets ne renvoie pas la valeur du secret", async () => {
+  bug("j06-007 : une 422 sur POST /secrets ne renvoie pas la valeur du secret", async () => {
     const r = await creator.send("POST", "/v1/secrets", {
       payload: { kind: "bearer_token", token: "ECHO-SECRET-VALUE" },
     });
@@ -175,13 +179,13 @@ test.describe("j06 coffre de secrets — défauts constatés", () => {
   });
 
   // Finding j06-008 : aucun contrôle de contenu (jeton vide, DSN vide).
-  test.fixme("j06-008 : un secret dont la valeur est vide est refusé", async () => {
+  bug("j06-008 : un secret dont la valeur est vide est refusé", async () => {
     const r = await creator.send("POST", "/v1/secrets", bearer(`${tag}-vide`, ""));
     expect(r.status).toBe(422);
   });
 
   // Finding j06-004 : un DSN vers un hôte interne est accepté d'un Créateur (aucune garde d'egress).
-  test.fixme("j06-004 : un DSN postgres vers un hôte interne du compose est refusé", async () => {
+  bug("j06-004 : un DSN postgres vers un hôte interne du compose est refusé", async () => {
     const r = await creator.send("POST", "/v1/secrets", {
       name: `${tag}-dsn-interne`,
       payload: { kind: "postgres_dsn", dsn: "postgresql://gis:x@postgis:5432/gis" },

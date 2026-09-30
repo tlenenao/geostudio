@@ -1,3 +1,4 @@
+import { bug } from "../_fixtures/verify";
 import { test, expect, type Page } from "@playwright/test";
 import { SHELL_URL } from "../_fixtures/env";
 import {
@@ -36,28 +37,30 @@ async function screenOf(page: Page, lng: number, lat: number): Promise<{ x: numb
 
 test.describe("j12 carte : rendu et worker", () => {
   // Finding j12-001 : nginx sert le worker MapLibre en application/octet-stream.
-  test.fixme("j12-001 : le worker MapLibre est servi avec un type MIME JavaScript", async ({
-    request,
-  }) => {
-    const r = await request.get(`${SHELL_URL}/assets/maplibre-gl-worker.mjs`);
-    expect(r.status()).toBe(200);
-    expect(r.headers()["content-type"]).toMatch(/javascript/);
-  });
+  bug(
+    "j12-001 : le worker MapLibre est servi avec un type MIME JavaScript",
+    async ({ request }) => {
+      const r = await request.get(`${SHELL_URL}/assets/maplibre-gl-worker.mjs`);
+      expect(r.status()).toBe(200);
+      expect(r.headers()["content-type"]).toMatch(/javascript/);
+    },
+  );
 
   // Finding j12-001 (même cause : le worker ne démarre pas, les tuiles restent « loading »).
-  test.fixme("j12-001 : sans contournement, la couche vectorielle de la carte est rendue", async ({
-    page,
-  }) => {
-    const m = await getMapSeed();
-    await stubBasemap(page);
-    await openAs(page, "creator");
-    await go(page, `/maps/${m.pk}`, 8000);
-    const n = await evalMap<number>(
-      page,
-      "return m.queryRenderedFeatures({layers:['j12-pts']}).length;",
-    );
-    expect(n).toBeGreaterThan(0);
-  });
+  bug(
+    "j12-001 : sans contournement, la couche vectorielle de la carte est rendue",
+    async ({ page }) => {
+      const m = await getMapSeed();
+      await stubBasemap(page);
+      await openAs(page, "creator");
+      await go(page, `/maps/${m.pk}`, 8000);
+      const n = await evalMap<number>(
+        page,
+        "return m.queryRenderedFeatures({layers:['j12-pts']}).length;",
+      );
+      expect(n).toBeGreaterThan(0);
+    },
+  );
 
   test("avec le type MIME rétabli, la carte charge ses tuiles et affiche les 12 points", async ({
     page,
@@ -86,40 +89,42 @@ test.describe("j12 carte tactile : popups", () => {
   });
 
   // Finding j12-005 : le bouton Fermer du popup fait 18×16 px.
-  test.fixme("j12-005 : le bouton Fermer du popup offre une cible d'au moins 24×24 px", async ({
-    page,
-  }) => {
-    await openMap(page);
-    const p = await screenOf(page, 2.5, 46.25);
-    await page.touchscreen.tap(p.x, p.y);
-    const box = await page
-      .getByRole("dialog", { name: "Attributs de l'entité" })
-      .getByRole("button", { name: "Fermer" })
-      .boundingBox();
-    expect(box!.width).toBeGreaterThanOrEqual(24);
-    expect(box!.height).toBeGreaterThanOrEqual(24);
-  });
+  bug(
+    "j12-005 : le bouton Fermer du popup offre une cible d'au moins 24×24 px",
+    async ({ page }) => {
+      await openMap(page);
+      const p = await screenOf(page, 2.5, 46.25);
+      await page.touchscreen.tap(p.x, p.y);
+      const box = await page
+        .getByRole("dialog", { name: "Attributs de l'entité" })
+        .getByRole("button", { name: "Fermer" })
+        .boundingBox();
+      expect(box!.width).toBeGreaterThanOrEqual(24);
+      expect(box!.height).toBeGreaterThanOrEqual(24);
+    },
+  );
 
   // Finding j12-011 : le popup n'est pas ramené dans la carte près d'un bord.
-  test.fixme("j12-011 : un popup ouvert sur une entité au bord droit reste entièrement dans la fenêtre", async ({
-    page,
-  }) => {
-    await openMap(page);
-    const target = await screenOf(page, 2.9, 46.45);
-    const dx = target.x - 350;
-    await evalMap(
-      page,
-      `m.jumpTo({ center: m.unproject([m.project(m.getCenter()).x + ${dx}, m.project(m.getCenter()).y]) });`,
-    );
-    await page.waitForTimeout(1200);
-    const edge = await screenOf(page, 2.9, 46.45);
-    await page.touchscreen.tap(edge.x, edge.y);
-    const dialog = page.getByRole("dialog", { name: "Attributs de l'entité" });
-    await expect(dialog).toBeVisible();
-    const box = await dialog.boundingBox();
-    expect(box!.x).toBeGreaterThanOrEqual(0);
-    expect(box!.x + box!.width).toBeLessThanOrEqual(360);
-  });
+  bug(
+    "j12-011 : un popup ouvert sur une entité au bord droit reste entièrement dans la fenêtre",
+    async ({ page }) => {
+      await openMap(page);
+      const target = await screenOf(page, 2.9, 46.45);
+      const dx = target.x - 350;
+      await evalMap(
+        page,
+        `m.jumpTo({ center: m.unproject([m.project(m.getCenter()).x + ${dx}, m.project(m.getCenter()).y]) });`,
+      );
+      await page.waitForTimeout(1200);
+      const edge = await screenOf(page, 2.9, 46.45);
+      await page.touchscreen.tap(edge.x, edge.y);
+      const dialog = page.getByRole("dialog", { name: "Attributs de l'entité" });
+      await expect(dialog).toBeVisible();
+      const box = await dialog.boundingBox();
+      expect(box!.x).toBeGreaterThanOrEqual(0);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(360);
+    },
+  );
 });
 
 test.describe("j12 carte tactile : gestes", () => {
@@ -172,15 +177,16 @@ test.describe("j12 carte tactile : mesure et croquis au doigt", () => {
   });
 
   // Finding j12-009 : le tracé libre n'écoute que les événements souris.
-  test.fixme("j12-009 : le tracé libre au doigt pose une forme au lieu de déplacer la carte", async ({
-    page,
-  }) => {
-    await openMap(page);
-    await page.getByRole("button", { name: "Croquis" }).tap();
-    await page.getByRole("button", { name: "Tracé libre" }).tap();
-    await touchGesture(page, [{ x: 100, y: 500 }], [{ x: 250, y: 560 }], 12);
-    await expect(page.getByText(/1 tracé/i)).toBeVisible();
-  });
+  bug(
+    "j12-009 : le tracé libre au doigt pose une forme au lieu de déplacer la carte",
+    async ({ page }) => {
+      await openMap(page);
+      await page.getByRole("button", { name: "Croquis" }).tap();
+      await page.getByRole("button", { name: "Tracé libre" }).tap();
+      await touchGesture(page, [{ x: 100, y: 500 }], [{ x: 250, y: 560 }], 12);
+      await expect(page.getByText(/1 tracé/i)).toBeVisible();
+    },
+  );
 });
 
 test.describe("j12 carte : mouvement réduit et lecteur", () => {

@@ -1,3 +1,4 @@
+import { bug } from "../_fixtures/verify";
 import { test, expect, type Page } from "@playwright/test";
 import { loginOidc } from "../_fixtures/env";
 import { spaGo } from "../j02/helpers";
@@ -66,19 +67,20 @@ test.describe("j03 import par le tiroir « Importer un fichier »", () => {
     });
   });
 
-  test.fixme("j03-002 : importer un GeoJSON par l'UI aboutit à l'ouverture de la carte /maps/{id}", async ({
-    page,
-  }) => {
-    // Bloqué par j03-002 (présigné 500) puis j03-001 (POST /uploads 500) ; sans CORS bucket MinIO le PUT
-    // navigateur échouerait aussi. Attendu : navigation vers /maps/<id>.
-    await asCreator(page);
-    await page.getByRole("button", { name: "Importer un fichier" }).click();
-    const dialog = page.getByRole("dialog");
-    await dialog.getByLabel("Fichier à importer").setInputFiles(join(FX, "points.geojson"));
-    await dialog.getByLabel("Titre de la collection").fill("aud-j03 import ui ok");
-    await dialog.getByRole("button", { name: "Importer", exact: true }).click();
-    await expect(page).toHaveURL(/\/maps\/[0-9a-f]{32}/, { timeout: 60_000 });
-  });
+  bug(
+    "j03-002 : importer un GeoJSON par l'UI aboutit à l'ouverture de la carte /maps/{id}",
+    async ({ page }) => {
+      // Bloqué par j03-002 (présigné 500) puis j03-001 (POST /uploads 500) ; sans CORS bucket MinIO le PUT
+      // navigateur échouerait aussi. Attendu : navigation vers /maps/<id>.
+      await asCreator(page);
+      await page.getByRole("button", { name: "Importer un fichier" }).click();
+      const dialog = page.getByRole("dialog");
+      await dialog.getByLabel("Fichier à importer").setInputFiles(join(FX, "points.geojson"));
+      await dialog.getByLabel("Titre de la collection").fill("aud-j03 import ui ok");
+      await dialog.getByRole("button", { name: "Importer", exact: true }).click();
+      await expect(page).toHaveURL(/\/maps\/[0-9a-f]{32}/, { timeout: 60_000 });
+    },
+  );
 
   test("un CSV sans colonnes lat/lon reconnues propose le choix des colonnes avant l'envoi", async ({
     page,
@@ -91,20 +93,21 @@ test.describe("j03 import par le tiroir « Importer un fichier »", () => {
     await expect(dialog.getByLabel("Colonne longitude")).toBeVisible();
   });
 
-  test.fixme("j03-005 : un CSV séparé par « ; » propose ses vraies colonnes (nom, lat, lon) au choix", async ({
-    page,
-  }) => {
-    // Défaut j03-005 : l'en-tête est découpé sur « , » : une seule « colonne » « nom;lat;lon ».
-    await asCreator(page);
-    await page.getByRole("button", { name: "Importer un fichier" }).click();
-    const dialog = page.getByRole("dialog");
-    await dialog.getByLabel("Fichier à importer").setInputFiles(join(FX, "semi.csv"));
-    const latOptions = await dialog
-      .getByLabel("Colonne latitude")
-      .locator("option")
-      .allInnerTexts();
-    expect(latOptions).toContain("lat");
-  });
+  bug(
+    "j03-005 : un CSV séparé par « ; » propose ses vraies colonnes (nom, lat, lon) au choix",
+    async ({ page }) => {
+      // Défaut j03-005 : l'en-tête est découpé sur « , » : une seule « colonne » « nom;lat;lon ».
+      await asCreator(page);
+      await page.getByRole("button", { name: "Importer un fichier" }).click();
+      const dialog = page.getByRole("dialog");
+      await dialog.getByLabel("Fichier à importer").setInputFiles(join(FX, "semi.csv"));
+      const latOptions = await dialog
+        .getByLabel("Colonne latitude")
+        .locator("option")
+        .allInnerTexts();
+      expect(latOptions).toContain("lat");
+    },
+  );
 });
 
 test.describe("j03 éditeur de carte — symbologie, popups, terrain", () => {
@@ -118,27 +121,29 @@ test.describe("j03 éditeur de carte — symbologie, popups, terrain", () => {
     await expect(page.getByLabel("Activer le terrain 3D")).toBeVisible();
   });
 
-  test.fixme("j03-016 : l'éditeur de carte tient dans la fenêtre (pas de défilement de page)", async ({
-    page,
-  }) => {
-    // Défaut j03-016 : à 1400x900 la page défile (scrollHeight ≈ 1619) — la colonne « Couches » (liste
-    // de toutes les collections + formulaires d'ajout) étire tout l'éditeur, la carte fait ~1585 px de haut.
-    await openMap(page, seed.pointsItem);
-    const { scrollHeight, innerHeight } = await page.evaluate(() => ({
-      scrollHeight: document.scrollingElement!.scrollHeight,
-      innerHeight: window.innerHeight,
-    }));
-    expect(scrollHeight).toBeLessThanOrEqual(innerHeight + 2);
-  });
+  bug(
+    "j03-016 : l'éditeur de carte tient dans la fenêtre (pas de défilement de page)",
+    async ({ page }) => {
+      // Défaut j03-016 : à 1400x900 la page défile (scrollHeight ≈ 1619) — la colonne « Couches » (liste
+      // de toutes les collections + formulaires d'ajout) étire tout l'éditeur, la carte fait ~1585 px de haut.
+      await openMap(page, seed.pointsItem);
+      const { scrollHeight, innerHeight } = await page.evaluate(() => ({
+        scrollHeight: document.scrollingElement!.scrollHeight,
+        innerHeight: window.innerHeight,
+      }));
+      expect(scrollHeight).toBeLessThanOrEqual(innerHeight + 2);
+    },
+  );
 
-  test.fixme("j03-013 : sur une collection privée, « Champ couleur » propose les champs de la couche importée", async ({
-    page,
-  }) => {
-    // Défaut j03-013 : geojsonIntrospect.fetchFeatureCollection fait un fetch() nu (sans jeton) :
-    // 404 sur une collection privée → liste de champs vide, symbologie par champ inutilisable.
-    await openMap(page, seed.pointsItem);
-    expect(await fieldOptions(page, "Champ couleur")).toBeGreaterThanOrEqual(4);
-  });
+  bug(
+    "j03-013 : sur une collection privée, « Champ couleur » propose les champs de la couche importée",
+    async ({ page }) => {
+      // Défaut j03-013 : geojsonIntrospect.fetchFeatureCollection fait un fetch() nu (sans jeton) :
+      // 404 sur une collection privée → liste de champs vide, symbologie par champ inutilisable.
+      await openMap(page, seed.pointsItem);
+      expect(await fieldOptions(page, "Champ couleur")).toBeGreaterThanOrEqual(4);
+    },
+  );
 
   test("témoin j03-013 : sur une collection publique la même liste de champs se charge", async ({
     page,
@@ -171,9 +176,7 @@ test.describe("j03 éditeur de carte — symbologie, popups, terrain", () => {
     await expect(page.getByText("DEM hébergé")).toHaveCount(0);
   });
 
-  test.fixme("j03-014 : le champ d'exagération du terrain est libellé en français", async ({
-    page,
-  }) => {
+  bug("j03-014 : le champ d'exagération du terrain est libellé en français", async ({ page }) => {
     // Défaut j03-014 : libellé « Exaggeration » en dur (TerrainPanel.tsx) et aria « Exaggeration du terrain ».
     await openMap(page, pub.itemId);
     await page.getByLabel("Activer le terrain 3D").check();
@@ -182,22 +185,23 @@ test.describe("j03 éditeur de carte — symbologie, popups, terrain", () => {
 });
 
 test.describe("j03 sauvegarde, historique, publication", () => {
-  test.fixme("j03-015 : après Enregistrer, le panneau Historique liste aussitôt la nouvelle version comme courante", async ({
-    page,
-  }) => {
-    // Défaut j03-015 : ConfigHistoryPanel ne charge qu'au montage et après restauration, jamais après
-    // une sauvegarde : il affiche encore « Version N (courante) » alors que le serveur est en N+1.
-    await openMap(page, pub.itemId);
-    const before = await mapConfig(creator, pub.itemId);
-    await page.getByRole("slider", { name: "Opacité" }).first().press("ArrowLeft");
-    await page.getByRole("button", { name: "Enregistrer" }).click();
-    await expect
-      .poll(async () => (await mapConfig(creator, pub.itemId)).version, { timeout: 15_000 })
-      .toBeGreaterThan(before.version);
-    await expect(page.getByText(new RegExp(`Version ${before.version + 1} —`))).toBeVisible({
-      timeout: 5_000,
-    });
-  });
+  bug(
+    "j03-015 : après Enregistrer, le panneau Historique liste aussitôt la nouvelle version comme courante",
+    async ({ page }) => {
+      // Défaut j03-015 : ConfigHistoryPanel ne charge qu'au montage et après restauration, jamais après
+      // une sauvegarde : il affiche encore « Version N (courante) » alors que le serveur est en N+1.
+      await openMap(page, pub.itemId);
+      const before = await mapConfig(creator, pub.itemId);
+      await page.getByRole("slider", { name: "Opacité" }).first().press("ArrowLeft");
+      await page.getByRole("button", { name: "Enregistrer" }).click();
+      await expect
+        .poll(async () => (await mapConfig(creator, pub.itemId)).version, { timeout: 15_000 })
+        .toBeGreaterThan(before.version);
+      await expect(page.getByText(new RegExp(`Version ${before.version + 1} —`))).toBeVisible({
+        timeout: 5_000,
+      });
+    },
+  );
 
   test("modifier l'opacité, Enregistrer, recharger, « Restaurer » la version précédente réécrit la config", async ({
     page,

@@ -1,3 +1,4 @@
+import { bug } from "../_fixtures/verify";
 import { test, expect, type Page } from "@playwright/test";
 import { CORE_URL, SHELL_URL } from "../_fixtures/env";
 
@@ -25,13 +26,14 @@ test.describe("j01 visiteur anonyme — shell", () => {
   });
 
   // j01-001 : /v1/public/items existe mais aucune page shell ne l'expose.
-  test.fixme("j01-001 : un visiteur anonyme peut parcourir un catalogue public sans login", async ({
-    page,
-  }) => {
-    await page.goto("/");
-    await page.waitForTimeout(3000);
-    expect(page.url()).not.toMatch(KEYCLOAK_AUTH);
-  });
+  bug(
+    "j01-001 : un visiteur anonyme peut parcourir un catalogue public sans login",
+    async ({ page }) => {
+      await page.goto("/");
+      await page.waitForTimeout(3000);
+      expect(page.url()).not.toMatch(KEYCLOAK_AUTH);
+    },
+  );
 
   for (const path of ["/items/abc", "/maps/abc", "/admin/users", "/settings", "/tasks"]) {
     test(`route protégée ${path} : redirection vers Keycloak`, async ({ page }) => {
@@ -53,7 +55,7 @@ test.describe("j01 visiteur anonyme — shell", () => {
   });
 
   // j01-002 : soft-404 — la page introuvable garde un titre générique et n'a pas de noindex.
-  test.fixme("j01-002 : la page site introuvable est marquée noindex", async ({ page }) => {
+  bug("j01-002 : la page site introuvable est marquée noindex", async ({ page }) => {
     await page.goto("/sites/aud-j01-inexistant");
     await expect(page.getByRole("alert")).toBeVisible();
     const robots = (await page.locator('meta[name="robots"]').count()) ? "x" : "";
@@ -78,13 +80,14 @@ test.describe("j01 visiteur anonyme — shell", () => {
   });
 
   // j01-003 : la page dataset publique n'a ni titre de document ni méta description.
-  test.fixme("j01-003 : la page dataset publique définit un titre et une description SEO", async ({
-    page,
-  }) => {
-    await page.goto("/public/datasets/incidents");
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Incidents");
-    await expect(page).toHaveTitle(/Incidents/);
-  });
+  bug(
+    "j01-003 : la page dataset publique définit un titre et une description SEO",
+    async ({ page }) => {
+      await page.goto("/public/datasets/incidents");
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Incidents");
+      await expect(page).toHaveTitle(/Incidents/);
+    },
+  );
 
   // j01-004 : lecture des lignes d'une collection publique par un anonyme.
   test("dataset public 'incidents' : en-tête rendu, sans redirection login", async ({ page }) => {
@@ -93,12 +96,13 @@ test.describe("j01 visiteur anonyme — shell", () => {
     expect(page.url()).not.toMatch(KEYCLOAK_AUTH);
   });
 
-  test.fixme("j01-004 : les lignes d'une collection publique se lisent en anonyme (pas de 500)", async ({
-    request,
-  }) => {
-    const r = await request.get(`${CORE_URL}/v1/collections/incidents/items`);
-    expect(r.status()).toBe(200);
-  });
+  bug(
+    "j01-004 : les lignes d'une collection publique se lisent en anonyme (pas de 500)",
+    async ({ request }) => {
+      const r = await request.get(`${CORE_URL}/v1/collections/incidents/items`);
+      expect(r.status()).toBe(200);
+    },
+  );
 
   test("embed : jeton invalide → message expiré/révoqué", async ({ page }) => {
     await page.goto("/embed/jeton-bidon");
@@ -158,9 +162,7 @@ test.describe("j01 visiteur anonyme — API publique", () => {
   });
 
   // j01-005 : erreur de validation non RFC 7807.
-  test.fixme("j01-005 : une erreur de validation renvoie un problème RFC 7807", async ({
-    request,
-  }) => {
+  bug("j01-005 : une erreur de validation renvoie un problème RFC 7807", async ({ request }) => {
     const r = await request.get(`${CORE_URL}/v1/public/items?pageSize=0`);
     expect(r.status()).toBe(422);
     expect(r.headers()["content-type"]).toContain("application/problem+json");
@@ -204,7 +206,7 @@ test.describe("j01 visiteur anonyme — API publique", () => {
   });
 
   // j01-006 : HEAD refusé sur sitemap/robots.
-  test.fixme("j01-006 : HEAD /sitemap.xml et /robots.txt répondent 200", async ({ request }) => {
+  bug("j01-006 : HEAD /sitemap.xml et /robots.txt répondent 200", async ({ request }) => {
     for (const p of ["sitemap.xml", "robots.txt"]) {
       const r = await request.head(`${CORE_URL}/v1/public/${p}`);
       expect(r.status(), p).toBe(200);

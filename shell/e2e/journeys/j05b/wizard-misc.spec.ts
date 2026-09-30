@@ -1,3 +1,4 @@
+import { bug } from "../_fixtures/verify";
 import { expect, test } from "@playwright/test";
 import { loginOidc, stamp } from "../_fixtures/env";
 import { spaGo } from "../j04/helpers";
@@ -12,21 +13,22 @@ test.beforeAll(async () => {
 test.describe("j05b requête visuelle — géométrie, réouverture, droits", () => {
   // Finding j05b-004 : reader.collection ne sait pas relire une collection à géométrie (j06b-002) ;
   // l'assistant propose pourtant toute collection de la liste et le run échoue avec une erreur brute.
-  test.fixme("j05b-004 : une requête visuelle sur une collection à géométrie s'exécute", async ({
-    page,
-  }) => {
-    test.setTimeout(240_000);
-    const title = stamp("j05b");
-    await loginOidc(page, "creator");
-    await page.waitForTimeout(800);
-    await fillWizard(page, {
-      title,
-      base: seed.eventsCollection,
-      filters: [{ column: "cat", op: "eq", value: "a" }],
-    });
-    const r = await submitWizard(page, title);
-    expect(r.run.status).toBe("succeeded");
-  });
+  bug(
+    "j05b-004 : une requête visuelle sur une collection à géométrie s'exécute",
+    async ({ page }) => {
+      test.setTimeout(240_000);
+      const title = stamp("j05b");
+      await loginOidc(page, "creator");
+      await page.waitForTimeout(800);
+      await fillWizard(page, {
+        title,
+        base: seed.eventsCollection,
+        filters: [{ column: "cat", op: "eq", value: "a" }],
+      });
+      const r = await submitWizard(page, title);
+      expect(r.run.status).toBe("succeeded");
+    },
+  );
 
   test("Modifier la requête : l'état (filtre, jointure, résumé, centile) est restitué", async ({
     page,

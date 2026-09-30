@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
+import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { stamp } from "../_fixtures/env";
 import { putUpload } from "../j03/api";
@@ -84,19 +85,22 @@ test.describe("j08 conformité — anonymisation", () => {
   });
 
   // Finding j08-001 : l'anonymisation est annulée par la reconnexion Keycloak.
-  test.fixme("j08-001 : après anonymisation, une reconnexion ne recrée pas un compte nominatif", async () => {
-    const u = await makeUser(`${tag}-relogin`);
-    expect((await admin.send("POST", `/v1/compliance/users/${u.id}/erase`)).status).toBe(204);
-    const again = await u.api.get("/v1/me");
-    expect(again.status).toBeGreaterThanOrEqual(400);
-    const n = psql(
-      `SELECT count(*) FROM users WHERE username='${u.username}' AND erased_at IS NULL`,
-    );
-    expect(Number(n.trim())).toBe(0);
-  });
+  bug(
+    "j08-001 : après anonymisation, une reconnexion ne recrée pas un compte nominatif",
+    async () => {
+      const u = await makeUser(`${tag}-relogin`);
+      expect((await admin.send("POST", `/v1/compliance/users/${u.id}/erase`)).status).toBe(204);
+      const again = await u.api.get("/v1/me");
+      expect(again.status).toBeGreaterThanOrEqual(400);
+      const n = psql(
+        `SELECT count(*) FROM users WHERE username='${u.username}' AND erased_at IS NULL`,
+      );
+      expect(Number(n.trim())).toBe(0);
+    },
+  );
 
   // Finding j08-013 : un compte anonymisé reste dans la liste, sans indicateur.
-  test.fixme("j08-013 : la liste des utilisateurs distingue les comptes anonymisés", async () => {
+  bug("j08-013 : la liste des utilisateurs distingue les comptes anonymisés", async () => {
     const u = await makeUser(`${tag}-flag`);
     await admin.send("POST", `/v1/compliance/users/${u.id}/erase`);
     const listed = await admin.get(`/v1/users?q=efface-${u.id.slice(0, 8)}`);
@@ -144,7 +148,7 @@ test.describe("j08 usage (/tasks) — API", () => {
   });
 
   // Finding j08-004 : paramètres de fenêtre invalides → 500.
-  test.fixme("j08-004 : since illisible ou limit négatif → 4xx, jamais 500", async () => {
+  bug("j08-004 : since illisible ou limit négatif → 4xx, jamais 500", async () => {
     for (const q of ["since=pas-une-date", "until=32/13/2026", "limit=-1"]) {
       const r = await admin.get(`/v1/usage/summary?${q}`);
       expect(r.status, q).toBeGreaterThanOrEqual(400);
