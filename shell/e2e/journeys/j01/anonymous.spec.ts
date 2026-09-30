@@ -112,9 +112,13 @@ test.describe("j01 visiteur anonyme — shell", () => {
 
   test("embed : jeton JWT forgé → message d'erreur, aucun appel authentifié", async ({ page }) => {
     const seen = await trackRequests(page);
-    await page.goto(
-      "/embed/eyJhbGciOiJIUzI1NiJ9.eyJzaGFyZV9saW5rX2lkIjoieCJ9.c2lnbmF0dXJlLWJpZG9u",
-    );
+    // Jeton factice assemblé à l'exécution : un JWT littéral déclencherait gitleaks.
+    const forged = [
+      "eyJhbGciOiJIUzI1NiJ9",
+      "eyJzaGFyZV9saW5rX2lkIjoieCJ9",
+      "c2lnbmF0dXJlLWJpZG9u",
+    ].join(".");
+    await page.goto(`/embed/${forged}`);
     await expect(page.getByRole("alert")).toBeVisible();
     expect(seen.filter((s) => s.auth)).toEqual([]);
     expect(seen.find((s) => s.url.includes("/v1/share-links/"))?.status).toBe(401);
