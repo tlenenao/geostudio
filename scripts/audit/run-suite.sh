@@ -14,7 +14,7 @@
 #              preuve : ils doivent échouer tant que le bug existe ; après
 #              correctif, remplacer `bug(` par `test(` et ils doivent passer).
 #
-# Résultats : shell/test-results/audit-suite/<horodatage>/{<dossier>.json,summary.md}
+# Résultats : .audit-results/<horodatage>/{<dossier>.json,summary.md}
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 LANE=all; VERIFY=""; WORKERS=3; ONLY=""
@@ -28,8 +28,8 @@ esac; done
 
 PARALLEL="j01 j02 j03 j04 j05 j05b j06 j06b j07 j10 j10b j12 t01 t01b t04"
 SERIAL="j08 j08b j09 j09b j11 j13 t02 t03 t03b"
-OUT="shell/test-results/audit-suite/$(date +%Y%m%d-%H%M%S)"
-mkdir -p "$OUT"
+OUT=".audit-results/$(date +%Y%m%d-%H%M%S)"
+mkdir -p "$OUT"; OUT="$(cd "$OUT" && pwd)"
 
 # Garde : la suite suppose les flags d'audit allumés, sinon des dizaines de
 # tests échouent pour une raison d'environnement et non de produit.
@@ -43,9 +43,9 @@ preflight() {
 run_dir() { # run_dir dossier workers
   local d="$1" w="$2"
   [ -d "shell/e2e/journeys/$d" ] || { echo "$d : dossier absent, ignoré"; return; }
-  ( cd shell && AUDIT_AUTH=oidc AUDIT_VERIFY="$VERIFY" PLAYWRIGHT_JSON_OUTPUT_NAME="../$OUT/$d.json" \
+  ( cd shell && AUDIT_AUTH=oidc AUDIT_VERIFY="$VERIFY" PLAYWRIGHT_JSON_OUTPUT_NAME="$OUT/$d.json" \
       npx playwright test -c playwright.journeys.config.ts "e2e/journeys/$d" --workers="$w" --reporter=list,json \
-      > "../$OUT/$d.log" 2>&1 ); echo "$d : code $?"
+      > "$OUT/$d.log" 2>&1 ); echo "$d : code $?"
 }
 
 want() { [ -z "$ONLY" ] && return 0; for x in $ONLY; do [ "$x" = "$1" ] && return 0; done; return 1; }

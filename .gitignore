@@ -9,3 +9,4 @@ deploy/oci/ansible/inventory.ini
 deploy/oci/ansible/group_vars/vault.yml
 test-results/
 .audit-snapshot/
+.audit-results/

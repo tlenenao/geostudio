@@ -26,7 +26,7 @@ scripts/audit/run-suite.sh --only "j01 j05"      # sous-ensemble
 scripts/audit/run-suite.sh --verify              # exécute aussi les tests bug()
 ```
 
-Résultats : `shell/test-results/audit-suite/<horodatage>/summary.md` (+ un JSON et un log par dossier).
+Résultats : `.audit-results/<horodatage>/summary.md` (+ un JSON et un log par dossier).
 
 ## Les deux voies
 
