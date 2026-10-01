@@ -639,9 +639,17 @@ def put_feature(
     introspect=Depends(get_introspector),
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
+    masked: bool = Depends(get_masked_for_user),
 ):
     col = _get_writable(session, user, collection_id)
-    info = _validated(introspect, session, col, payload)
+    # GAP-22 : le PUT remplace tout — sans ça, un utilisateur masqué mettrait à
+    # NULL les colonnes sensibles qu'il n'a jamais vues. Retirées de `info`,
+    # elles ne sont ni validées ni écrites (donc conservées en base).
+    info = introspect(session, col.table_name)
+    if masked:
+        info = hide_sensitive_columns(info, col.sensitive_fields)
+    if errors := validate_feature(info, payload):
+        raise _validation_error(errors)
     with rls(session, col.tenant_id):
         ok = repo.replace_feature(
             session,

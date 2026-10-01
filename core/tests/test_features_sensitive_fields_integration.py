@@ -141,3 +141,35 @@ def test_sensitive_field_absent_from_list_and_export_without_privilege(pg_app):
     _as(app, admin)
     listed_admin = client.get("/v1/collections/demo_employees/items").json()
     assert listed_admin["features"][0]["properties"]["salary"] == 45000
+
+
+def test_put_without_privilege_keeps_sensitive_columns(pg_app):
+    # c01-004 : un PUT d'utilisateur masqué ne doit jamais mettre à NULL une
+    # colonne sensible qu'il n'a ni vue ni envoyée.
+    from app.collections.models import Collection
+
+    client, app, admin, limited = pg_app
+    _as(app, admin)
+    client.post("/v1/collections", json={"tableName": "demo_employees"})
+    client.patch(
+        "/v1/collections/demo_employees", json={"sensitiveFields": ["salary"], "isPublic": True}
+    )
+    r = client.post(
+        "/v1/collections/demo_employees/items",
+        json={"type": "Feature", "properties": {"nom": "Dupont", "salary": 45000}},
+    )
+    fid = r.json()["id"]
+    # limited n'a l'écriture que s'il est propriétaire
+    with next(app.dependency_overrides[db.get_session]()) as s:
+        s.get(Collection, "demo_employees").owner_id = limited.id
+        s.commit()
+    _as(app, limited)
+    r = client.put(
+        f"/v1/collections/demo_employees/items/{fid}",
+        json={"type": "Feature", "properties": {"nom": "Durand"}},
+    )
+    assert r.status_code == 204, r.text
+    _as(app, admin)
+    props = client.get(f"/v1/collections/demo_employees/items/{fid}").json()["properties"]
+    assert props["nom"] == "Durand"
+    assert props["salary"] == 45000

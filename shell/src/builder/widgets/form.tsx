@@ -522,8 +522,10 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
   const fields = ((props.fields as FormField[] | undefined) ?? [])
     .filter((f) => !f.hidden && f.type !== "unsupported" && f.type !== "list")
     .sort((a, b) => a.order - b.order);
+  // Les colonnes `list` (non éditables ici) sont renvoyées telles que chargées :
+  // le PUT remplace tout, les omettre les mettrait à NULL (c01-004).
   const allFields = ((props.fields as FormField[] | undefined) ?? []).filter(
-    (f) => f.type !== "unsupported" && f.type !== "list",
+    (f) => f.type !== "unsupported",
   );
   const geometryType = props.geometryType as string | null | undefined;
   const [lon, setLon] = useState<string>("");
