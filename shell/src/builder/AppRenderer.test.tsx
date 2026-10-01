@@ -736,6 +736,16 @@ test("story mode shows a progress bar and prev/next; prev is disabled on the fir
   expect(screen.getByRole("button", { name: "Suivant" })).toBeEnabled();
 });
 
+test("un identifiant de page inconnu retombe sur le premier chapitre (P10.12, P10.15)", () => {
+  registerFlyTarget();
+  render(<AppRenderer config={storyConfig()} mode="runtime" pageId="inconnu" />, {
+    wrapper: Wrapper,
+  });
+  expect(screen.getByText("Chapitre 1 / 2")).toBeInTheDocument();
+  expect(screen.getByText("Chapitre un")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Précédent" })).toBeDisabled();
+});
+
 test("story mode dispatches the active page's onEnter to its widget on entry", () => {
   flySpy.mockClear();
   registerFlyTarget();

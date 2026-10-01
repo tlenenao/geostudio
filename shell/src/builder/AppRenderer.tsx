@@ -130,7 +130,11 @@ export function AppRenderer({
   // (editor page selector, runtime route) or updates this local fallback.
   const pages = useMemo(() => getPages(config), [config]);
   const [internalPageId, setInternalPageId] = useState<string | null>(null);
-  const activePageId = pageId ?? internalPageId ?? pages[0].id;
+  // P10.12/P10.15 : un identifiant de page inconnu (URL périmée, page retirée) retombe
+  // explicitement sur la première page — « Chapitre 1 / N » en story, jamais « 0 / N ».
+  const requestedPageId = pageId ?? internalPageId;
+  const activePageId =
+    requestedPageId && pages.some((p) => p.id === requestedPageId) ? requestedPageId : pages[0].id;
   const activeLayout = getPageLayout(config, activePageId);
 
   function handleNavigate(nextPageId: string) {
