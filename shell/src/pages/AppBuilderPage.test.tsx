@@ -15,7 +15,6 @@ import { getWidget, registerWidget } from "../builder/registry";
 import { AppBuilderPage } from "./AppBuilderPage";
 import type { AuthState } from "../auth/useAuth";
 import { t } from "../i18n";
-import { ApiError } from "../api/ApiError";
 
 const authState: AuthState = {
   isLoading: false,
