@@ -666,6 +666,10 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
           byField[fe.field] = fe.message;
         });
         setServerErrors(byField);
+        // P10.02 : une erreur sur un champ absent du formulaire (tenant_id,
+        // champ masqué, géométrie…) n'a aucun emplacement visible : message générique.
+        const shown = new Set(fields.map((f) => f.name));
+        if (err.errors.some((fe) => !shown.has(fe.field))) setGenericError(true);
       } else {
         setGenericError(true);
       }

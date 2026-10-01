@@ -554,6 +554,21 @@ test("a 400 response maps field errors onto the matching inputs", async () => {
   expect(failed).toHaveBeenCalled();
 });
 
+test("a 400 on a field absent from the form shows the generic alert (P10.02)", async () => {
+  const createFeature = vi
+    .fn()
+    .mockRejectedValue(
+      new FeatureValidationError([
+        { field: "tenant_id", code: "missing_required", message: "'tenant_id' is required" },
+      ]),
+    );
+  renderConnectedForm({ client: { createFeature } });
+  await userEvent.type(screen.getByLabelText("Titre"), "Fuite d'eau");
+  await userEvent.selectOptions(screen.getByLabelText("Gravité"), "haute");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  expect(await screen.findByText("Échec de l'enregistrement.")).toBeInTheDocument();
+});
+
 test("a generic write failure shows a fallback message without crashing", async () => {
   const createFeature = vi.fn().mockRejectedValue(new Error("collection is not editable"));
   renderConnectedForm({ client: { createFeature } });
