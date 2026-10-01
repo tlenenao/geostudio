@@ -162,17 +162,20 @@ test.describe("j11 copilote : builder avec cœur simulé sur /copilot/turn", () 
     await enableCopilot(page);
     await stubTurn(page, () => ({ json: { reply: "ok", clientOps: [] } }));
     await openBuilder(page, "creator", pk);
-    await page.evaluate((k) => localStorage.removeItem(k), HISTORY_KEY);
+    // P07.07/08 : clé suffixée du compte et de l'item (geostudio.copilot.history.<sub>.<item>).
+    const readHistory = () =>
+      page.evaluate((prefix) => {
+        const k = Object.keys(localStorage).find((x) => x.startsWith(prefix));
+        return JSON.parse((k && localStorage.getItem(k)) || "[]");
+      }, HISTORY_KEY);
+    await page.evaluate((prefix) => {
+      for (const k of Object.keys(localStorage)) {
+        if (k.startsWith(prefix)) localStorage.removeItem(k);
+      }
+    }, HISTORY_KEY);
     await ask(page, "premier");
-    await expect
-      .poll(() =>
-        page.evaluate((k) => JSON.parse(localStorage.getItem(k) ?? "[]").length, HISTORY_KEY),
-      )
-      .toBe(1);
-    const stored = await page.evaluate(
-      (k) => JSON.parse(localStorage.getItem(k) ?? "[]"),
-      HISTORY_KEY,
-    );
+    await expect.poll(async () => (await readHistory()).length).toBe(1);
+    const stored = await readHistory();
     expect(stored[0]).toMatchObject({ message: "premier", opsCount: 0, status: "ok" });
   });
 

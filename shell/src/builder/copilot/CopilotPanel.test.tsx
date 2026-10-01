@@ -53,8 +53,8 @@ describe("CopilotPanel", () => {
     await userEvent.type(screen.getByLabelText("Message au copilote"), "Ajoute un widget texte");
     await userEvent.click(screen.getByRole("button", { name: "Envoyer" }));
 
-    await waitFor(() => expect(readCopilotHistory()).toHaveLength(1));
-    expect(readCopilotHistory()[0]).toMatchObject({
+    await waitFor(() => expect(readCopilotHistory("1")).toHaveLength(1));
+    expect(readCopilotHistory("1")[0]).toMatchObject({
       message: "Ajoute un widget texte",
       opsCount: 1,
       status: "ok",
@@ -69,8 +69,8 @@ describe("CopilotPanel", () => {
     await userEvent.type(screen.getByLabelText("Message au copilote"), "Explique ce dataset");
     await userEvent.click(screen.getByRole("button", { name: "Envoyer" }));
 
-    await waitFor(() => expect(readCopilotHistory()).toHaveLength(1));
-    expect(readCopilotHistory()[0]).toMatchObject({
+    await waitFor(() => expect(readCopilotHistory("1")).toHaveLength(1));
+    expect(readCopilotHistory("1")[0]).toMatchObject({
       message: "Explique ce dataset",
       opsCount: 0,
       status: "error",

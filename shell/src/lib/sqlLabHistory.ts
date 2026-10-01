@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
+import { userKey } from "./userStorage";
+
 export type SqlHistoryEntry = {
   id: string;
   sql: string;
@@ -7,12 +9,12 @@ export type SqlHistoryEntry = {
   rowCount?: number;
 };
 
-const STORAGE_KEY = "geostudio.sqlLab.history";
+const BASE_KEY = "geostudio.sqlLab.history";
 const MAX_ENTRIES = 20;
 
 export function readSqlHistory(): SqlHistoryEntry[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(userKey(BASE_KEY));
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? (parsed as SqlHistoryEntry[]) : [];
@@ -25,7 +27,7 @@ export function appendSqlHistory(entry: Omit<SqlHistoryEntry, "id">): SqlHistory
   const withId: SqlHistoryEntry = { ...entry, id: crypto.randomUUID() };
   const next = [withId, ...readSqlHistory()].slice(0, MAX_ENTRIES);
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    localStorage.setItem(userKey(BASE_KEY), JSON.stringify(next));
   } catch {
     // localStorage indisponible (navigation privée, quota dépassé) —
     // l'historique dégrade silencieusement, l'exécution de la requête

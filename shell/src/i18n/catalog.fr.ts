@@ -1151,6 +1151,7 @@ export const fr = {
   "copilot.requestFailed": "Échec de la requête au copilote.",
   "copilot.messageAria": "Message au copilote",
   "copilot.send": "Envoyer",
+  "copilot.pastExchanges": "Échanges précédents ({count})",
 
   // PipelineCanvas (builder/pipeline)
   "pipelineCanvas.runningAria": "Exécution en cours",

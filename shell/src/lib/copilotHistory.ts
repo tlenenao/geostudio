@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
+import { userKey } from "./userStorage";
+
 export type CopilotHistoryEntry = {
   id: string;
   message: string;
@@ -7,12 +9,12 @@ export type CopilotHistoryEntry = {
   executedAt: string;
 };
 
-const STORAGE_KEY = "geostudio.copilot.history";
+const BASE_KEY = "geostudio.copilot.history";
 const MAX_ENTRIES = 20;
 
-export function readCopilotHistory(): CopilotHistoryEntry[] {
+export function readCopilotHistory(itemId = ""): CopilotHistoryEntry[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(userKey(BASE_KEY, itemId));
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? (parsed as CopilotHistoryEntry[]) : [];
@@ -23,15 +25,16 @@ export function readCopilotHistory(): CopilotHistoryEntry[] {
 
 export function appendCopilotHistory(
   entry: Omit<CopilotHistoryEntry, "id" | "executedAt">,
+  itemId = "",
 ): CopilotHistoryEntry[] {
   const withMeta: CopilotHistoryEntry = {
     ...entry,
     id: crypto.randomUUID(),
     executedAt: new Date().toISOString(),
   };
-  const next = [withMeta, ...readCopilotHistory()].slice(0, MAX_ENTRIES);
+  const next = [withMeta, ...readCopilotHistory(itemId)].slice(0, MAX_ENTRIES);
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    localStorage.setItem(userKey(BASE_KEY, itemId), JSON.stringify(next));
   } catch {
     // localStorage indisponible (navigation privée, quota dépassé) —
     // l'historique dégrade silencieusement, même patron que

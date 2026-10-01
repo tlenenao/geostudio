@@ -9,7 +9,7 @@ describe("sqlLabHistory", () => {
   });
 
   test("readSqlHistory returns an empty list when the stored value is corrupted JSON", () => {
-    localStorage.setItem("geostudio.sqlLab.history", "{not json");
+    localStorage.setItem("geostudio.sqlLab.history.anonymous", "{not json");
     expect(readSqlHistory()).toEqual([]);
   });
 

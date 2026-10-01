@@ -194,7 +194,7 @@ test("enregistre l'historique au succès et recharge une requête passée au cli
 
 test("restaure la requête sélectionnée dans l'historique via l'URL", async () => {
   localStorage.setItem(
-    "geostudio.sqlLab.history",
+    "geostudio.sqlLab.history.anonymous",
     JSON.stringify([
       { id: "h1", sql: "select 2", executedAt: "2026-09-26T00:00:00Z", status: "ok", rowCount: 1 },
     ]),
@@ -205,7 +205,7 @@ test("restaure la requête sélectionnée dans l'historique via l'URL", async ()
 
 test("ignore un historyId inconnu dans l'URL sans planter, et laisse le SQL inchangé", async () => {
   localStorage.setItem(
-    "geostudio.sqlLab.history",
+    "geostudio.sqlLab.history.anonymous",
     JSON.stringify([
       { id: "h1", sql: "select 2", executedAt: "2026-09-26T00:00:00Z", status: "ok", rowCount: 1 },
     ]),
