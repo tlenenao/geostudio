@@ -736,6 +736,106 @@ def test_run_pipeline_writes_into_target_collection(pg_engine, monkeypatch, tmp_
 
 
 @pytest.mark.postgis
+def test_run_pipeline_writes_into_provisioned_empty_collection(pg_engine, monkeypatch, tmp_path):
+    # P10.04 / j05b-002 : la sortie de l'assistant de requête visuelle est une
+    # collection provisionnée (tenant_id NOT NULL sans défaut), jamais la
+    # table faite main (tenant_id nullable) des tests voisins.
+    from app.collections.introspection_pg import introspect_table
+    from app.collections.provisioning import create_empty_collection
+    from app.collections.schemas import EmptyCollectionColumn
+    from app.configs.schemas import PipelinePayload
+
+    Base.metadata.create_all(pg_engine)
+    Session = make_session_factory(pg_engine)
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        target = create_empty_collection(
+            s,
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            title="Sortie",
+            columns=[
+                EmptyCollectionColumn(name="region", sqlType="text"),
+                EmptyCollectionColumn(name="pop", sqlType="integer"),
+            ],
+            geometry_type="Point",
+            srid=4326,
+            introspect=introspect_table,
+            apply_ddl=apply_collection_ddl,
+        )
+        s.commit()
+        table = target.table_name
+        _write_partition(
+            tmp_path,
+            tenant_id=tenant.id,
+            rows=[_row(1, "Nord", 10, x=1.0, y=45.0), _row(2, "Sud", 5, x=2.0, y=46.0)],
+        )
+        monkeypatch.setattr(
+            runtime,
+            "_table_info_for_collection",
+            lambda session, collection_id: (
+                _table_info_for(collection_id)
+                if collection_id == "villes"
+                else introspect_table(session, collection_id)
+            ),
+        )
+        monkeypatch.setattr(
+            runtime,
+            "_require_readable_collection_id",
+            lambda session, *, tenant_id, user, collection_id: collection_id,
+        )
+        payload = PipelinePayload.model_validate(
+            {
+                "nodes": [
+                    {
+                        "id": "r1",
+                        "kind": "reader",
+                        "op": "reader.collection",
+                        "params": {"collectionId": "villes"},
+                    },
+                    {
+                        "id": "w1",
+                        "kind": "writer",
+                        "op": "writer.collection",
+                        "params": {"collectionId": target.id},
+                    },
+                ],
+                "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+            }
+        )
+        runtime.run_pipeline(
+            s,
+            payload=payload,
+            tenant_id=tenant.id,
+            user=user,
+            endpoint_url="http://localhost:9000",
+            access_key="x",
+            secret_key="y",
+            base_uri=str(tmp_path),
+        )
+        s.commit()
+        assert s.execute(text(f'SELECT count(*) FROM "{table}"')).scalar() == 2
+        assert s.execute(text(f'SELECT DISTINCT tenant_id FROM "{table}"')).scalar() == tenant.id
+
+    with pg_engine.begin() as conn:
+        conn.execute(text(f'DROP TABLE "{table}"'))
+        conn.execute(
+            text(
+                "TRUNCATE items, configs, config_revisions, collections, "
+                "audit_log, users, tenants CASCADE"
+            )
+        )
+
+
 def test_run_pipeline_writer_collection_mode_replace_purges_before_each_run(
     pg_engine, monkeypatch, tmp_path
 ):

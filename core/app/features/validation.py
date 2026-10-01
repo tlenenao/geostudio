@@ -69,7 +69,7 @@ def validate_feature(info: TableInfo, feature: dict) -> list[dict]:
             errors.append(_err(name, "invalid_type", f"expected {col.type}"))
 
     for col in info.columns:
-        if col.required and props.get(col.name) is None:
+        if col.required and col.name not in reserved and props.get(col.name) is None:
             errors.append(_err(col.name, "missing_required", f"'{col.name}' is required"))
 
     geometry = feature.get("geometry")

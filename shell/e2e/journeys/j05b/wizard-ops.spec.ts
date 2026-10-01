@@ -10,20 +10,18 @@ test.beforeAll(async () => {
 });
 
 test.describe("j05b requête visuelle — opérateurs, métriques, schéma", () => {
-  // Finding j05b-002 : la collection de sortie créée par l'assistant (POST /collections/empty)
-  // refuse toute écriture par writer.dataset (tenant_id « required »), cf. j02-003.
-  bug(
-    "j05b-002 : Créer produit un dataset rempli sans contournement SQL de la table de sortie",
-    async ({ page }) => {
-      test.setTimeout(240_000);
-      const title = stamp("j05b");
-      await loginOidc(page, "creator");
-      await page.waitForTimeout(800);
-      await fillWizard(page, { title, base: seed.ventes });
-      const res = await submitWizard(page, title, { patch: false });
-      expect(res.run.status).toBe("succeeded");
-    },
-  );
+  // j05b-002 (corrigé, P10.04) : la sortie de l'assistant (POST /collections/empty) est écrite sans contournement SQL.
+  test("j05b-002 : Créer produit un dataset rempli sans contournement SQL de la table de sortie", async ({
+    page,
+  }) => {
+    test.setTimeout(240_000);
+    const title = stamp("j05b");
+    await loginOidc(page, "creator");
+    await page.waitForTimeout(800);
+    await fillWizard(page, { title, base: seed.ventes });
+    const res = await submitWizard(page, title);
+    expect(res.run.status).toBe("succeeded");
+  });
 
   test("« contient » : enrobé de %, mais sensible à la casse et jokers non échappés", async ({
     page,

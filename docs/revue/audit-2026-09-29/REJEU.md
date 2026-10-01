@@ -51,5 +51,4 @@ ignoré par défaut, exécuté avec `AUDIT_VERIFY=1` (`--verify`).
 ## Contournements à retirer après les correctifs
 
 Ils masquent un bug et feraient passer (ou casser) un test pour une mauvaise raison :
-`stubMap` (worker MapLibre servi en octet-stream, j12-001) ; `ALTER TABLE … SET DEFAULT` sur la sortie de requête visuelle
-(j05b-002) ; second cœur `:8201` pour les quotas (j08b, à remplacer une fois les limites réglables).
+`stubMap` (worker MapLibre servi en octet-stream, j12-001) ; second cœur `:8201` pour les quotas (j08b, à remplacer une fois les limites réglables).

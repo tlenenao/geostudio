@@ -65,6 +65,20 @@ def test_creates_a_readable_empty_collection_for_a_regular_non_admin_user(pg_app
     assert pg_app.get(f"/v1/collections/{body['id']}").status_code == 200
 
 
+def test_items_can_be_written_into_a_fresh_empty_collection(pg_app):
+    # P10.04 : tenant_id (NOT NULL sans défaut) est une colonne réservée,
+    # jamais exigée comme propriété par validate_feature.
+    cid = pg_app.post(
+        "/v1/collections/empty",
+        json={"title": "Sortie", "columns": [{"name": "commune", "sqlType": "text"}]},
+    ).json()["id"]
+    resp = pg_app.post(
+        f"/v1/collections/{cid}/items",
+        json={"type": "Feature", "properties": {"commune": "Tulle"}, "geometry": None},
+    )
+    assert resp.status_code == 201, resp.text
+
+
 def test_rate_limited_after_budget_exhausted(pg_app):
     # Budget "collections_empty" = 5/60s (limiter.py) — la 6e création en
     # boucle serrée doit être coupée, DDL réel ou pas.
