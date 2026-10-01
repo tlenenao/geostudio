@@ -160,7 +160,12 @@ export function AppBuilderPage({ pk }: { pk: string }) {
         target instanceof HTMLTextAreaElement ||
         (target instanceof HTMLElement && target.isContentEditable);
       if (isTextField) return;
+      // P10.03/05 : Suppr/Retour arrière ne suppriment que depuis le canevas (ou le body),
+      // jamais depuis un contrôle d'un panneau (select, bouton, case…), ni en aperçu.
+      const onCanvas =
+        !target || target === document.body || !!mainRef.current?.contains(target as Node);
       if ((e.key === "Delete" || e.key === "Backspace") && selectedId) {
+        if (mode !== "edit" || !onCanvas) return;
         e.preventDefault();
         removeSelected();
         return;
@@ -176,7 +181,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
     // (redéfinie identiquement à chaque rendu, capture les mêmes dépendances que le reste
     // du composant) — l'ajouter au tableau ne changerait rien.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [undo, redo, selectedId]);
+  }, [undo, redo, selectedId, mode]);
 
   const pages = useMemo(() => (draft ? getPages(draft) : []), [draft]);
   // Validate activePageId against the current draft's pages rather than

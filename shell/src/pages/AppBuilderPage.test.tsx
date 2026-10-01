@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import * as ToastPrimitive from "@radix-ui/react-toast";
 import { useState } from "react";
 import { createMemoryRouter, Link, RouterProvider, useSearchParams } from "react-router-dom";
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { AppConfig, Item, ItemClient } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { OWNER_PERMISSIONS, READ_ONLY_PERMISSIONS } from "../auth/permissions";
@@ -645,6 +645,38 @@ test("Backspace with a widget selected removes it, ignored while typing", async 
   await userEvent.click(await screen.findByRole("button", { name: "Sélectionner widget-w1" }));
   await userEvent.keyboard("{Backspace}");
   expect(screen.queryByRole("button", { name: "Sélectionner widget-w1" })).not.toBeInTheDocument();
+});
+
+describe("raccourcis de suppression (P10.03/05)", () => {
+  const withItem: AppConfig = {
+    kind: "app",
+    theme: {},
+    dataSources: [],
+    messages: [],
+    layout: {
+      type: "grid",
+      breakpoints: {},
+      items: [{ id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Hi" } }],
+    },
+  };
+
+  test("Retour arrière dans un select du panneau ne supprime pas le widget", async () => {
+    renderPage({ getAppConfig: vi.fn().mockResolvedValue(withItem) });
+    await userEvent.click(await screen.findByRole("button", { name: "Sélectionner widget-w1" }));
+    screen.getByLabelText("Widget émetteur").focus();
+    await userEvent.keyboard("{Backspace}");
+    expect(screen.getByRole("button", { name: "Sélectionner widget-w1" })).toBeInTheDocument();
+  });
+
+  test("Suppr en mode Aperçu ne supprime pas le widget resté sélectionné", async () => {
+    renderPage({ getAppConfig: vi.fn().mockResolvedValue(withItem) });
+    await userEvent.click(await screen.findByRole("button", { name: "Sélectionner widget-w1" }));
+    await userEvent.click(screen.getByRole("button", { name: "Aperçu" }));
+    document.body.focus();
+    await userEvent.keyboard("{Delete}");
+    await userEvent.click(screen.getByRole("button", { name: "Édition" }));
+    expect(screen.getByRole("button", { name: "Sélectionner widget-w1" })).toBeInTheDocument();
+  });
 });
 
 test("removing a widget prunes any ActionsPanel message wired to it", async () => {
