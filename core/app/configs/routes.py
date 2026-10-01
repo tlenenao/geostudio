@@ -325,6 +325,7 @@ def delete_config(
     # Lecteur (0 privilège) à qui une map est partagée en editor détruisait
     # donc une map qu'il n'a pas le droit d'éditer.
     _require_privilege_for_kind(session, user, result.config)
+    _require_no_reverse_references(session, tenant_id=user.tenant_id, item_id=result.itemId)
 
     _delete_config_and_item(session, config_id, result.itemId, user.tenant_id)
     write_audit(
