@@ -59,6 +59,14 @@ PRIVILEGE_METADATA: dict[Privilege, tuple[str, str]] = {
     Privilege.DATA_VIEW_SENSITIVE: ("data", "roles.privilege.dataViewSensitive"),
 }
 
+# c01-010 : privilèges catalogués mais volontairement SANS garde serveur — ils
+# ne pilotent que la navigation du shell (capabilities.ts). L'accès aux données
+# reste décidé par can() sur chaque objet (partage, publication) : exiger
+# data.view côté cœur couperait aux Lecteurs les données qui leur sont
+# partagées. Toute entrée ici doit être justifiée ; test_roles_privileges.py
+# échoue pour un privilège sans garde ET absent de cette liste.
+NAVIGATION_ONLY_PRIVILEGES: frozenset[Privilege] = frozenset({Privilege.DATA_VIEW})
+
 ALL_PRIVILEGE_VALUES: list[str] = [p.value for p in Privilege]
 
 BUILT_IN_ROLE_NAMES: dict[str, str] = {
