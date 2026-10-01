@@ -44,9 +44,14 @@ def jobs_backlog() -> dict | None:
         with session_factory()() as session:
             n, oldest = session.execute(
                 text(
-                    "SELECT COUNT(*), EXTRACT(EPOCH FROM now() - MIN(scheduled_at)) "
-                    "FROM procrastinate_jobs WHERE status = 'todo' "
-                    "AND (scheduled_at IS NULL OR scheduled_at <= now())"
+                    # scheduled_at est NULL pour un defer() immédiat : l'âge se lit alors
+                    # sur l'événement « deferred » (un seul par job).
+                    "SELECT COUNT(*), "
+                    "EXTRACT(EPOCH FROM now() - MIN(COALESCE(j.scheduled_at, e.at))) "
+                    "FROM procrastinate_jobs j LEFT JOIN procrastinate_events e "
+                    "ON e.job_id = j.id AND e.type = 'deferred' "
+                    "WHERE j.status = 'todo' "
+                    "AND (j.scheduled_at IS NULL OR j.scheduled_at <= now())"
                 )
             ).one()
     except Exception:
