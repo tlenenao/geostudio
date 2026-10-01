@@ -22,6 +22,9 @@ class _FakeS3Client:
     def __init__(self, objects: dict[str, bytes]):
         self._objects = objects
 
+    def head_object(self, Bucket, Key):  # noqa: N803 - signature boto3
+        return {"ContentLength": len(self._objects[Key])}
+
     def get_object(self, Bucket, Key):  # noqa: N803 - signature boto3
         class _Body:
             def __init__(self, data: bytes):

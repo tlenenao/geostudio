@@ -32,9 +32,11 @@ from app.ingestion.schemas import (
     PresignResponse,
 )
 from app.ingestion.storage import (
+    ObjectTooLarge,
     download_object,
     ensure_uploads_bucket,
     generate_presigned_put_url,
+    max_upload_bytes,
 )
 from app.ingestion.tasks import run_ingestion_task
 from app.quotas.service import check_storage_quota_or_raise
@@ -93,7 +95,9 @@ def inspect_upload(
     if not body.key.startswith(f"{user.tenant_id}/"):
         raise HTTPException(status_code=400, detail="invalid upload key")
     try:
-        content = download_object(s3, bucket=bucket, key=body.key)
+        content = download_object(s3, bucket=bucket, key=body.key, max_bytes=max_upload_bytes())
+    except ObjectTooLarge as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
     except ClientError as exc:
         raise HTTPException(status_code=404, detail="objet introuvable") from exc
     if body.filename.lower().endswith(".xlsx"):

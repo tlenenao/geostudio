@@ -15,7 +15,12 @@ from app.ingestion import repository as ingestion_repo
 from app.ingestion.importer import run_import
 from app.ingestion.models import IngestionJob
 from app.ingestion.parsers import IngestionParseError
-from app.ingestion.storage import download_object, make_s3_client
+from app.ingestion.storage import (
+    ObjectTooLarge,
+    download_object,
+    make_s3_client,
+    max_upload_bytes,
+)
 from app.jobs import app
 from app.jobs.common import notify_best_effort, session_factory
 
@@ -104,7 +109,9 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
             )
 
         s3 = _make_s3_client_from_env()
-        content = download_object(s3, bucket=_uploads_bucket(), key=source_key)
+        content = download_object(
+            s3, bucket=_uploads_bucket(), key=source_key, max_bytes=max_upload_bytes()
+        )
         with request_scoped_session(factory) as session:
             result = run_import(
                 session,
@@ -134,7 +141,7 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
             item_id=result.item_id,
             collection_title=collection_title,
         )
-    except IngestionParseError as exc:
+    except (IngestionParseError, ObjectTooLarge) as exc:
         with request_scoped_session(factory) as session:
             ingestion_repo.mark_error(session, job_id=job_id, error_message=str(exc))
         _notify(

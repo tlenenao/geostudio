@@ -99,6 +99,18 @@ def generate_presigned_get_url(client, *, bucket: str, key: str, expires_in: int
     )
 
 
-def download_object(client, *, bucket: str, key: str) -> bytes:
+class ObjectTooLarge(Exception):
+    """Objet plus gros que le plafond de lecture (chargé entièrement en mémoire)."""
+
+
+def max_upload_bytes() -> int:
+    return int(os.environ.get("CORE_UPLOAD_MAX_BYTES") or 512 * 1024 * 1024)
+
+
+def download_object(client, *, bucket: str, key: str, max_bytes: int | None = None) -> bytes:
+    if max_bytes is not None:
+        size = client.head_object(Bucket=bucket, Key=key)["ContentLength"]
+        if size > max_bytes:
+            raise ObjectTooLarge(f"fichier trop volumineux ({size} > {max_bytes} octets)")
     obj = client.get_object(Bucket=bucket, Key=key)
     return obj["Body"].read()
