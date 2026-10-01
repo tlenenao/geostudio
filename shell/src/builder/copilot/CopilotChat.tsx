@@ -15,6 +15,19 @@ import { t } from "../../i18n";
 import { Button } from "../../ui/kit/Button";
 import { useMcpToken } from "./useMcpToken";
 
+// Bornes du cœur (core/app/copilot/routes.py : MAX_MESSAGE_CHARS,
+// MAX_HISTORY_MESSAGES, MAX_HISTORY_MESSAGE_CHARS) — au-delà, 422 (P07.04).
+export const MAX_MESSAGE_CHARS = 4_000;
+export const MAX_HISTORY_MESSAGES = 40;
+const MAX_HISTORY_MESSAGE_CHARS = 8_000;
+
+/** Fenêtre glissante de l'historique envoyé au cœur. */
+export function boundHistory(history: CopilotMessage[]): CopilotMessage[] {
+  return history
+    .slice(-MAX_HISTORY_MESSAGES)
+    .map((m) => ({ ...m, content: m.content.slice(0, MAX_HISTORY_MESSAGE_CHARS) }));
+}
+
 export function CopilotChat({
   itemId,
   surface,
@@ -64,7 +77,7 @@ export function CopilotChat({
       const mcpToken = await getMcpToken();
       const result = await client.copilotTurn(itemId, {
         message,
-        history: priorHistory,
+        history: boundHistory(priorHistory),
         mcpToken,
         currentConfig: contextPayloadRef.current,
         clientTools,
@@ -110,6 +123,7 @@ export function CopilotChat({
           aria-label={t("copilot.messageAria")}
           className="min-h-16 rounded-md border border-rule bg-surface p-2 text-sm text-ink"
           value={input}
+          maxLength={MAX_MESSAGE_CHARS}
           onChange={(e) => setInput(e.target.value)}
         />
       </label>
