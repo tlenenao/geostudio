@@ -163,8 +163,9 @@ def test_user_manager_can_grant_himself_the_administrator_role(env):
     _as(app, um)
     before = client.get("/v1/me").json()["privileges"]
     assert before == [Privilege.ADMIN_USERS_MANAGE.value]
+    # INVERSÉ par P12.01 (plafond de privilèges) : l'auto-promotion est refusée.
     r = client.patch(f"/v1/users/{um.id}", json={"roleId": env["admin_role_id"]})
-    assert r.status_code == 200
+    assert r.status_code == 403
     from app.users.models import User
 
     with env["Session"]() as s:
@@ -172,8 +173,7 @@ def test_user_manager_can_grant_himself_the_administrator_role(env):
         s.expunge(fresh)
     _as(app, fresh)  # utilisateur relu en base après le PATCH
     after = client.get("/v1/me").json()["privileges"]
-    assert Privilege.ADMIN_ROLES_MANAGE.value in after
-    assert Privilege.DATA_VIEW_SENSITIVE.value in after
+    assert after == [Privilege.ADMIN_USERS_MANAGE.value]
 
 
 # --- c01-005 : un lien de partage survit à la perte de droits de son créateur ---
