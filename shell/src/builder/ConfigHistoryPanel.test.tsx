@@ -156,3 +156,29 @@ test("restaurer invalide le cache de la config, quelle que soit la page qui mont
   }
   expect(queryClient.getQueryState(["items", { type: "app" }])?.isInvalidated).toBe(false);
 });
+
+test("relit les versions quand la config de l'item est rafraîchie après une sauvegarde (P09.08)", async () => {
+  const listConfigRevisions = vi
+    .fn()
+    .mockResolvedValueOnce([{ version: 1, createdAt: "2026-08-01T10:00:00" }])
+    .mockResolvedValue([
+      { version: 1, createdAt: "2026-08-01T10:00:00" },
+      { version: 2, createdAt: "2026-08-02T11:00:00" },
+    ]);
+  const queryClient = new QueryClient();
+  render(
+    <QueryClientProvider client={queryClient}>
+      <ItemClientProvider client={{ listConfigRevisions } as unknown as ItemClient}>
+        <ConfigHistoryPanel pk="app-1" currentVersion={null} onRestored={vi.fn()} />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  expect(await screen.findAllByRole("listitem")).toHaveLength(1);
+
+  // ce que fait useSaveApp : la clé de requête de l'item est invalidée puis
+  // refetchée avec succès
+  await queryClient.fetchQuery({ queryKey: ["app", "app-1"], queryFn: async () => ({}) });
+
+  await waitFor(() => expect(screen.getAllByRole("listitem")).toHaveLength(2));
+  expect(screen.getAllByRole("listitem")[0]).toHaveTextContent("Version 2");
+});
