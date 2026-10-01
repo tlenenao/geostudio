@@ -27,7 +27,7 @@ async function initialFiles(request: any): Promise<{ manifest: any; files: strin
 }
 
 test.describe("t03 bundle et livraison statique", () => {
-  test("charge initiale JS/CSS dans le seuil de 695 Ko, marge mesurée", async ({
+  test("charge initiale JS/CSS dans le seuil (.bundle-size-threshold), marge mesurée", async ({
     request,
   }, testInfo) => {
     const { files } = await initialFiles(request);
@@ -48,7 +48,7 @@ test.describe("t03 bundle et livraison statique", () => {
     expect(raw / 1024).toBeLessThanOrEqual(threshold);
   });
 
-  // Le seuil (695 Ko) est réglé à 0,1 Ko du mesuré (694,9 Ko) : plus aucune marge.
+  // Le seuil (730 Ko) garde ~5 % de marge sur le mesuré (694,8 Ko).
   bug("t03-006 : la charge initiale garde 5 % de marge sous le seuil", async ({ request }) => {
     const { files } = await initialFiles(request);
     let raw = 0;
