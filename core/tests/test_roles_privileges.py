@@ -37,3 +37,13 @@ def test_every_privilege_is_enforced_server_side_or_declared_navigation_only_c01
         if not re.search(rf"Privilege\.{p.name}\b", source) and f'"{p.value}"' not in source
     }
     assert unguarded == NAVIGATION_ONLY_PRIVILEGES
+
+
+def test_reader_is_read_only_and_cannot_create_bookmarks_j02_015():
+    """Décision produit explicite (cf. BUILT_IN_ROLE_PRIVILEGES) : un Lecteur ne
+    crée aucune config, bookmark compris ; l'inverse doit être une décision
+    consciente qui met ce test à jour."""
+    from app.roles.kind_registry import privilege_for_kind
+
+    assert BUILT_IN_ROLE_PRIVILEGES["reader"] == []
+    assert privilege_for_kind("bookmark") == Privilege.ANALYTICS_VIEW.value

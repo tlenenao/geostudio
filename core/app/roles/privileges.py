@@ -102,5 +102,10 @@ BUILT_IN_ROLE_PRIVILEGES: dict[str, list[str]] = {
         Privilege.ANALYTICS_SQL_LAB_ACCESS.value,
         Privilege.TASKS_VIEW.value,
     ],
+    # j02-015, décision produit : le Lecteur est strictement en lecture seule —
+    # il ne crée pas de bookmark (kind "bookmark" = analytics.view,
+    # roles/kind_registry.py) ; il ouvre et retrouve les vues qu'on lui partage.
+    # Lui donner analytics.view ouvrirait aussi le domaine Analytique : un
+    # privilège dédié (bookmarks.create) reste à créer si le besoin se confirme.
     "reader": [],
 }
