@@ -376,6 +376,27 @@ describe("VisualQueryWizardPage", () => {
     expect(client.createDatasetItem).not.toHaveBeenCalled();
   });
 
+  test("j05b-001 : un lancement en échec se rattrape sans recréer collection/dataset/pipeline", async () => {
+    const client = renderWizard({
+      runPipeline: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("internal server error"))
+        .mockResolvedValue({ runId: "run-1" }),
+    });
+    await screen.findByRole("option", { name: "Incidents" });
+    await userEvent.selectOptions(screen.getByLabelText("Collection de base"), "incidents");
+    await screen.findByText("Filtrer");
+    await userEvent.click(screen.getByRole("button", { name: "Créer" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("internal server error");
+    await userEvent.click(screen.getByRole("button", { name: "Créer" }));
+
+    await waitFor(() => expect(client.runPipeline).toHaveBeenCalledTimes(2));
+    expect(client.runPipeline).toHaveBeenLastCalledWith("pipeline-1");
+    expect(client.createEmptyCollection).toHaveBeenCalledTimes(1);
+    expect(client.createDatasetItem).toHaveBeenCalledTimes(1);
+    expect(client.createPipelineItem).toHaveBeenCalledTimes(1);
+  });
+
   test('attend le run par son propre poll (sans clic manuel), même si le premier statut est "running"', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     let call = 0;

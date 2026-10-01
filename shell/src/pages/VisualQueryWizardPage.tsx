@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../auth/useAuth";
@@ -77,6 +77,10 @@ export function VisualQueryWizardPage({
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [createdPipelinePk, setCreatedPipelinePk] = useState<string | null>(null);
+  // Objets déjà créés par une tentative précédente (j05b-001) : un échec de
+  // lancement se rattrape en réutilisant collection/dataset/pipeline, sans
+  // orphelins ni doublons au clic suivant.
+  const createdRef = useRef<{ collectionId?: string; datasetPk?: string; pipelinePk?: string }>({});
   const [createdDatasetPk, setCreatedDatasetPk] = useState<string | null>(null);
   const [unrecognizedShape, setUnrecognizedShape] = useState(false);
   const [existingOutput, setExistingOutput] = useState<{
@@ -281,20 +285,27 @@ export function VisualQueryWizardPage({
         // baseSchema est garanti défini ici (contrôle en tête de fonction),
         // donc inferredOutput (calculé à partir de baseSchema) l'est aussi.
         const inferred = inferredOutput!;
-        const { id: newCollectionId } = await client.createEmptyCollection({
-          title: t("visualQuery.datasetTitleTemplate", { title }),
-          columns: inferred.columns.map((c) => ({ name: c.name, sqlType: c.sqlType })),
-          geometryType: inferred.geometryType,
-          srid: inferred.srid,
-        });
-        outputCollectionId = newCollectionId;
-        const datasetItem = await client.createDatasetItem({
-          title,
-          owner: username ?? "",
-          source: "collection",
-          collectionId: outputCollectionId,
-        });
-        datasetPk = datasetItem.pk;
+        const created = createdRef.current;
+        if (!created.collectionId) {
+          const { id } = await client.createEmptyCollection({
+            title: t("visualQuery.datasetTitleTemplate", { title }),
+            columns: inferred.columns.map((c) => ({ name: c.name, sqlType: c.sqlType })),
+            geometryType: inferred.geometryType,
+            srid: inferred.srid,
+          });
+          created.collectionId = id;
+        }
+        outputCollectionId = created.collectionId;
+        if (!created.datasetPk) {
+          const datasetItem = await client.createDatasetItem({
+            title,
+            owner: username ?? "",
+            source: "collection",
+            collectionId: outputCollectionId,
+          });
+          created.datasetPk = datasetItem.pk;
+        }
+        datasetPk = created.datasetPk;
         const pipeline = compileVisualQueryToPipeline(
           state,
           baseSchema,
@@ -302,18 +313,23 @@ export function VisualQueryWizardPage({
           outputCollectionId,
           datasetPk,
         );
-        const pipelineItem = await client.createPipelineItem({
-          title: t("visualQuery.pipelineTitleTemplate", { title }),
-          owner: username ?? "",
-          pipeline,
-        });
-        pipelinePkToRun = pipelineItem.pk;
-        await client.saveDatasetConfig(datasetPk, {
-          source: "collection",
-          collectionId: outputCollectionId,
-          columns: {},
-          sourcePipelineId: pipelinePkToRun,
-        });
+        if (!created.pipelinePk) {
+          const pipelineItem = await client.createPipelineItem({
+            title: t("visualQuery.pipelineTitleTemplate", { title }),
+            owner: username ?? "",
+            pipeline,
+          });
+          created.pipelinePk = pipelineItem.pk;
+          await client.saveDatasetConfig(datasetPk, {
+            source: "collection",
+            collectionId: outputCollectionId,
+            columns: {},
+            sourcePipelineId: created.pipelinePk,
+          });
+        } else {
+          await client.savePipelineConfig(created.pipelinePk, pipeline);
+        }
+        pipelinePkToRun = created.pipelinePk;
       }
 
       await client.runPipeline(pipelinePkToRun);
