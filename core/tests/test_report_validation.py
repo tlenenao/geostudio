@@ -125,6 +125,58 @@ def test_accepts_readable_bookmark():
         validate_report_payload(s, config, user=user)  # no raise
 
 
+def test_rejects_bookmark_whose_target_app_the_editor_cannot_read():
+    # c01-014 : bookmark lisible (public), app cible privée d'un autre utilisateur.
+    from app.configs import repository as configs_repo
+
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        users = {
+            name: get_or_create_user(
+                s,
+                tenant_id=tenant.id,
+                oidc_sub=name,
+                username=name,
+                email=None,
+                first_name="",
+                last_name="",
+            )
+            for name in ("alice", "bob")
+        }
+        app_item = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=users["bob"].id, resource_type="app", title="Secret"
+        )
+        bookmark = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=users["bob"].id, resource_type="bookmark", title="V"
+        )
+        configs_repo.create_config(
+            s,
+            BuilderConfig.model_validate(
+                {
+                    "kind": "bookmark",
+                    "bookmark": {
+                        "appId": app_item.id,
+                        "pageId": "p",
+                        "timeRange": None,
+                        "extent": None,
+                        "crossFilter": {},
+                    },
+                }
+            ),
+            item_id=bookmark.id,
+            tenant_id=tenant.id,
+        )
+        items_repo.set_is_public(s, tenant_id=tenant.id, item_id=bookmark.id, is_public=True)
+        s.commit()
+        config = _report_config(bookmark.id)
+        validate_report_payload(s, config, user=users["bob"])  # le propriétaire passe
+        with pytest.raises(HTTPException) as exc:
+            validate_report_payload(s, config, user=users["alice"])
+        assert exc.value.status_code == 422
+        assert "target app not readable" in exc.value.detail
+
+
 # --- Garde de capacité export sur POST/PUT /configs (revue finale SP-17b, I3) ---
 # Sur une instance sans capacité export (défaut), un ReportSchedule pouvait
 # être créé mais son rendu restait "pending" à jamais : rien ne dépile la file
