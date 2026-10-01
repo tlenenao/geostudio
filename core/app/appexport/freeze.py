@@ -15,6 +15,7 @@ incorrect selon l'état résiduel de la session — même piège déjà document
 par app/mcp/tools.py:266-267, reproduit ici à l'identique."""
 
 from app.collections import repository as collections_repo
+from app.collections.introspection import hide_sensitive_columns
 from app.collections.introspection_pg import introspect_table
 from app.configs.schemas import BuilderConfig, DataSource
 from app.features.repository import select_features
@@ -37,11 +38,15 @@ def freeze_config(
         col = collections_repo.get_collection(
             session, tenant_id=tenant_id, collection_id=source.layer
         )
-        info = introspect_table(session, col.table_name)
+        # GAP-22 : un export est distribué hors du cœur, sans identité de lecteur —
+        # toujours masqué, comme un lecteur sans data.view_sensitive.
+        info = hide_sensitive_columns(
+            introspect_table(session, col.table_name), col.sensitive_fields
+        )
         records: list[dict] = []
         offset = 0
         page_size = 1000
-        with rls_scope(session, tenant_id):
+        with rls_scope(session, tenant_id, masked=True):
             # <= : lit une page de plus pour distinguer « exactement N » de « tronqué ».
             while len(records) <= max_records_per_source:
                 page = select_features(

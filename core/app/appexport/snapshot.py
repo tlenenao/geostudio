@@ -27,6 +27,7 @@ from shapely.geometry import shape as shapely_shape
 from app.appexport.manifest import CollectionSnapshotEntry, write_manifest
 from app.cdc.parquet_writer import ChangeRow, write_geoparquet
 from app.collections import repository as collections_repo
+from app.collections.introspection import hide_sensitive_columns
 from app.collections.introspection_pg import introspect_table
 from app.collections.schema_json import table_info_to_schema
 from app.configs.schemas import BuilderConfig
@@ -56,7 +57,7 @@ def _collection_json(col, *, feature_count: int) -> dict:
 def _fetch_rows(session, *, tenant_id: str, info, max_records: int) -> list[ChangeRow]:
     rows: list[ChangeRow] = []
     offset = 0
-    with rls_scope(session, tenant_id):
+    with rls_scope(session, tenant_id, masked=True):
         while len(rows) <= max_records:
             page = select_features(
                 session,
@@ -112,7 +113,11 @@ def write_snapshot(
         col = collections_repo.get_collection(
             session, tenant_id=tenant_id, collection_id=collection_id
         )
-        info = introspect_table(session, col.table_name)
+        # GAP-22 : un export est distribué hors du cœur, sans identité de lecteur —
+        # toujours masqué, comme un lecteur sans data.view_sensitive.
+        info = hide_sensitive_columns(
+            introspect_table(session, col.table_name), col.sensitive_fields
+        )
         rows = _fetch_rows(
             session, tenant_id=tenant_id, info=info, max_records=max_records_per_source
         )
