@@ -126,7 +126,9 @@ def list_users(
 ) -> tuple[list[User], int]:
     base = select(User).where(User.tenant_id == tenant_id)
     if q:
-        base = base.where(User.username.ilike(f"%{q}%"))
+        # j08-014 : % _ et \ recherchés littéralement, pas comme jokers.
+        like = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        base = base.where(User.username.ilike(f"%{like}%", escape="\\"))
     total = session.scalar(select(func.count()).select_from(base.subquery()))
     users = list(
         session.scalars(

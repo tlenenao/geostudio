@@ -289,3 +289,23 @@ def test_list_users_query_count_does_not_grow_with_page_size(small, large):
         f"le nombre de requêtes croît avec le nombre d'utilisateurs : {counts} — "
         "c'est un N+1, probablement get_role() appelé ligne par ligne"
     )
+
+
+def test_list_users_search_treats_wildcards_literally_j08_014(env):
+    app, client, Session, admin, _regular, _roles = env
+    with Session() as s:
+        get_or_create_user(
+            s,
+            tenant_id=admin.tenant_id,
+            oidc_sub="u1",
+            username="a_b",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        s.commit()
+    _as(app, admin)
+    assert client.get("/v1/users?q=%25").json()["total"] == 0
+    assert {u["username"] for u in client.get("/v1/users?q=_").json()["users"]} == {"a_b"}
+    assert client.get("/v1/users?q=a_b").json()["total"] == 1
+    assert client.get("/v1/users?q=axb").json()["total"] == 0
