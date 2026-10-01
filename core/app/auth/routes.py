@@ -20,7 +20,7 @@ from app.auth.dependency import (
     is_tileset3d_enabled,
 )
 from app.db import get_session
-from app.roles.guards import require_privilege
+from app.roles.guards import require_privilege, require_privileges_within_ceiling
 from app.roles.privileges import Privilege
 from app.roles.repository import count_users_with_privileges, get_role, roles_for_ids
 from app.tenants.models import Tenant
@@ -153,6 +153,7 @@ def patch_user(
     new_role = get_role(session, tenant_id=user.tenant_id, role_id=body.roleId)
     if new_role is None:
         raise HTTPException(status_code=400, detail="role not found")
+    require_privileges_within_ceiling(session, user, new_role.privileges)
     needed = [Privilege.ADMIN_USERS_MANAGE.value, Privilege.ADMIN_ROLES_MANAGE.value]
     current_role = get_role(session, tenant_id=user.tenant_id, role_id=target.role_id)
     # Évalué privilège par privilège (SP-42/F-securite-autorisation-07) : une

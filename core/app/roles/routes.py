@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
 from app.db import get_session
-from app.roles.guards import require_privilege
+from app.roles.guards import require_privilege, require_privileges_within_ceiling
 from app.roles.models import Role
 from app.roles.privileges import ALL_PRIVILEGE_VALUES, Privilege
 from app.roles.repository import (
@@ -64,6 +64,7 @@ def post_role(
     unknown = set(body.privileges) - set(ALL_PRIVILEGE_VALUES)
     if unknown:
         raise HTTPException(status_code=400, detail=f"unknown privileges: {sorted(unknown)}")
+    require_privileges_within_ceiling(session, user, body.privileges)
     role = create_role(
         session, tenant_id=user.tenant_id, name=body.name, privileges=body.privileges
     )
@@ -97,6 +98,7 @@ def patch_role(
         unknown = set(body.privileges) - set(ALL_PRIVILEGE_VALUES)
         if unknown:
             raise HTTPException(status_code=400, detail=f"unknown privileges: {sorted(unknown)}")
+        require_privileges_within_ceiling(session, user, body.privileges)
         # Évalué privilège par privilège (SP-42/F-securite-autorisation-07) :
         # cf. le même correctif sur PATCH /users/{id} (app/auth/routes.py) —
         # une précondition en conjonction sur les DEUX privilèges anti-lockout
