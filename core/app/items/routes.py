@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import os
+from typing import Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy.orm import Session
@@ -64,7 +65,7 @@ def _parse_bbox(raw: str | None) -> tuple[float, float, float, float] | None:
 def list_items(
     q: str | None = None,
     type: str | None = None,
-    scope: str = "all",
+    scope: Literal["all", "mine", "shared", "public"] = "all",
     page: int = Query(1, ge=1),
     # Pas de borne haute : shell/src/api/itemClient.ts appelle déjà cette
     # route avec pageSize=200 (sélecteurs de sources tileset3d/terrain3d) —
@@ -99,7 +100,7 @@ def list_items(
 def get_item_facets(
     q: str | None = None,
     type: str | None = None,
-    scope: str = "all",
+    scope: Literal["all", "mine", "shared", "public"] = "all",
     owner: str | None = None,
     session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
