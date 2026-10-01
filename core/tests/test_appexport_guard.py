@@ -299,6 +299,16 @@ def test_builtin_widgets_only_is_allowed_in_standalone_mode():
     assert result.allowed is True
 
 
+def test_non_app_kind_is_blocked():
+    # j10b-007 : la tâche refuse aussi un kind non exportable (garde = dernier rempart).
+    Session = _session()
+    with Session() as s:
+        config = _app_config(data_sources=[]).model_copy(update={"kind": "site"})
+        result = check_export_guard(s, tenant_id="t1", config=config, mode="static")
+    assert result.allowed is False
+    assert any("site" in r for r in result.reasons)
+
+
 # --- P11.04/05 (j10b-003, j10b-004) ---
 
 

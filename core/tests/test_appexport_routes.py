@@ -119,6 +119,34 @@ def test_post_app_export_denies_user_without_read_access(env):
     assert response.status_code == 404
 
 
+def test_post_app_export_rejects_non_app_kind(env):
+    # j10b-007 : un item « site » n'est pas exportable en bundle d'app.
+    make_client, owner, _stranger, _item_id, Session = env
+    with Session() as s:
+        site = create_item(
+            s, tenant_id=owner.tenant_id, owner_id=owner.id, resource_type="site", title="S"
+        )
+        configs_repo.create_config(
+            s,
+            BuilderConfig(
+                kind="site",
+                dataSources=[],
+                pages=[],
+                layout={"type": "grid", "breakpoints": {}, "items": []},
+            ),
+            site.id,
+            tenant_id=owner.tenant_id,
+        )
+        s.commit()
+        site_id = site.id
+    client, calls = make_client()
+    client.app.dependency_overrides[get_current_user] = lambda: owner
+    client.app.dependency_overrides[get_current_user_optional] = lambda: owner
+    response = client.post("/v1/app-exports", json={"itemId": site_id, "mode": "static"})
+    assert response.status_code == 422
+    assert calls == []
+
+
 def test_post_app_export_rejects_invalid_mode(env):
     make_client, owner, _stranger, item_id, _Session = env
     client, _calls = make_client()

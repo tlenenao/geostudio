@@ -10,9 +10,11 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.appexport import repository as appexport_repo
+from app.appexport.guard import EXPORTABLE_KINDS
 from app.appexport.jobs import build_app_export_task
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
+from app.configs import repository as configs_repo
 from app.db import get_session
 from app.ingestion.routes import get_s3_client
 from app.ingestion.storage import generate_presigned_get_url
@@ -72,6 +74,12 @@ def create_app_export_route(
             status_code=422, detail=f"mode must be one of {sorted(_SUPPORTED_MODES)}"
         )
     _require_export_read_access(session, user=user, item_id=body.itemId)
+    config_read = configs_repo.get_config_by_item(session, body.itemId)
+    if config_read is not None and config_read.config.kind not in EXPORTABLE_KINDS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"item kind '{config_read.config.kind}' is not exportable (app/dashboard only)",
+        )
     job = appexport_repo.create_job(
         session, tenant_id=user.tenant_id, item_id=body.itemId, user_id=user.id, mode=body.mode
     )

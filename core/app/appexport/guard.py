@@ -57,6 +57,10 @@ _SUPPORTED_WIDGET_TYPES = frozenset(
     }
 )
 
+# Seuls ces kinds sont des apps rendues par AppRenderer (j10b-007) : un site,
+# une alerte ou un pipeline exportés donneraient un bundle sans sens.
+EXPORTABLE_KINDS = frozenset({"app", "dashboard"})
+
 _STRICT_WIDGET_MODES = frozenset({"static", "standalone"})
 
 
@@ -105,6 +109,9 @@ def check_export_guard(
     mode: str,
 ) -> ExportGuardResult:
     reasons: list[str] = []
+
+    if config.kind not in EXPORTABLE_KINDS:
+        reasons.append(f"un item de kind '{config.kind}' n'est pas exportable (app/dashboard)")
 
     for source in config.dataSources:
         if source.type == "static":
