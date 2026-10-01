@@ -2,7 +2,7 @@ import { bug } from "../_fixtures/verify";
 import AxeBuilder from "@axe-core/playwright";
 import { test, expect } from "@playwright/test";
 import { apiFor } from "../j03/api";
-import { getMapSeed, go, openAs, smallTargets, stubMap, VIEWPORTS } from "./helpers";
+import { getMapSeed, go, openAs, smallTargets, stubBasemap, VIEWPORTS } from "./helpers";
 
 test.setTimeout(120_000);
 
@@ -163,7 +163,7 @@ test.describe("j12 carte : hauteur de la mise en page large", () => {
   bug(
     "j12-003 : à 1280×800 l'éditeur de carte ne dépasse pas la hauteur de la fenêtre",
     async ({ page }) => {
-      await stubMap(page);
+      await stubBasemap(page);
       const m = await getMapSeed();
       await page.setViewportSize(VIEWPORTS.desktop);
       await openAs(page, "creator");

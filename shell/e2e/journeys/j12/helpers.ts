@@ -168,24 +168,6 @@ export const FIND_MAP = `(() => {
   return null;
 })()`;
 
-// Rétablit le type MIME JavaScript des workers MapLibre (nginx sert `.mjs` en
-// application/octet-stream + nosniff : le worker de module ne démarre jamais, cf. j12-001).
-// Sans ce contournement AUCUNE tuile ni GeoJSON n'est jamais rendu(e).
-export async function fixWorkerMime(page: Page): Promise<void> {
-  await page.route(/maplibre-gl-(worker|shared)\.mjs/, async (r) => {
-    const resp = await r.fetch();
-    await r.fulfill({
-      response: resp,
-      headers: { ...resp.headers(), "content-type": "text/javascript" },
-    });
-  });
-}
-
-export async function stubMap(page: Page): Promise<void> {
-  await stubBasemap(page);
-  await fixWorkerMime(page);
-}
-
 export function evalMap<T>(page: Page, body: string): Promise<T> {
   return page.evaluate(`(() => { const m = ${FIND_MAP}; ${body} })()`) as Promise<T>;
 }

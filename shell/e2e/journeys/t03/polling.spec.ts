@@ -3,7 +3,7 @@ import { bug } from "../_fixtures/verify";
 import { test, expect, type Page } from "@playwright/test";
 import { loginOidc, stamp } from "../_fixtures/env";
 import { spaGo } from "../j02/helpers";
-import { apiFor, createMap, stubMapEnv } from "./helpers";
+import { apiFor, createMap, stubBasemap } from "./helpers";
 
 const POLL_URL = /\/v1\/notifications\/unread-count/;
 
@@ -93,7 +93,7 @@ test.describe("t03 sondages et démontage", () => {
     test.setTimeout(240_000);
     const creator = await apiFor("creator");
     const pk = await createMap(creator, `${stamp("t03")}-carte-fuite`, null);
-    await stubMapEnv(page);
+    await stubBasemap(page);
     await page.addInitScript(() => {
       const w = window as any;
       w.__gl = { created: 0, lost: 0, intervals: 0, cleared: 0 };

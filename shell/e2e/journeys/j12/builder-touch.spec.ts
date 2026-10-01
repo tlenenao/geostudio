@@ -2,7 +2,7 @@ import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { apiFor } from "../j03/api";
 import { createSite, getDatasetSeed, richItem, siteConfig } from "../j10/seed";
-import { getMapSeed, getTwoColApp, go, openAs, stubMap, VIEWPORTS } from "./helpers";
+import { getMapSeed, getTwoColApp, go, openAs, stubBasemap, VIEWPORTS } from "./helpers";
 
 test.setTimeout(120_000);
 test.use({ viewport: VIEWPORTS.phone, hasTouch: true });
@@ -65,7 +65,7 @@ test.describe("j12 éditeur de carte sur téléphone", () => {
     "j12-007 : les boutons monter/descendre/masquer/supprimer d'une couche font au moins 24×24 px",
     async ({ page }) => {
       const m = await getMapSeed();
-      await stubMap(page);
+      await stubBasemap(page);
       await openAs(page, "creator");
       await go(page, `/maps/${m.pk}`, 4000);
       await page.getByRole("tab", { name: "Couches" }).tap();

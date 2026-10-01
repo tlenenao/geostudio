@@ -5,7 +5,7 @@ import { CORE_URL, loginOidc, stamp } from "../_fixtures/env";
 import { spaGo } from "../j02/helpers";
 import { FIND_MAP } from "../j12/helpers";
 import { token } from "../j03/api";
-import { apiFor, createMap, getBigSeed, stubMapEnv, type BigSeed } from "./helpers";
+import { apiFor, createMap, getBigSeed, stubBasemap, type BigSeed } from "./helpers";
 
 // Jeux de données créés par POST /v1/collections/empty puis INSERT ... generate_series
 // dans la table de la collection (le présigné d'upload répond 500, j03-001).
@@ -148,7 +148,7 @@ test.describe("t03 carte et tableau sur gros volumes (navigateur)", () => {
     test.setTimeout(120_000);
     const creator = await apiFor("creator");
     const pk = await createMap(creator, `${stamp("t03")}-carte-500k`, s500.collectionId);
-    await stubMapEnv(page);
+    await stubBasemap(page);
     await loginOidc(page, "creator");
     await spaGo(page, `/maps/${pk}`, 4000);
     const r = await page.evaluate(async (find) => {
@@ -195,7 +195,7 @@ test.describe("t03 carte et tableau sur gros volumes (navigateur)", () => {
   bug("t03-009 : la densité rendue à z5 distingue 50k de 500k entités", async ({ page }) => {
     test.setTimeout(120_000);
     const creator = await apiFor("creator");
-    await stubMapEnv(page);
+    await stubBasemap(page);
     await loginOidc(page, "creator");
     const rendered: Record<string, number> = {};
     for (const [name, seed] of [
@@ -221,7 +221,7 @@ test.describe("t03 carte et tableau sur gros volumes (navigateur)", () => {
       test.setTimeout(90_000);
       const creator = await apiFor("creator");
       const pk = await createMap(creator, `${stamp("t03")}-badge`, s500.collectionId);
-      await stubMapEnv(page);
+      await stubBasemap(page);
       await loginOidc(page, "creator");
       await spaGo(page, `/maps/${pk}`, 4000);
       await expect(page.getByText("Tuile tronquée").first()).toBeVisible();

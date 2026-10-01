@@ -6,9 +6,9 @@ import { join } from "node:path";
 import { CORE_URL, stamp } from "../_fixtures/env";
 import { apiFor, type Api } from "../j03/api";
 import { psql } from "../j02/helpers";
-import { stubBasemap, fixWorkerMime } from "../j12/helpers";
+import { stubBasemap } from "../j12/helpers";
 
-export { apiFor, psql, stubBasemap, fixWorkerMime };
+export { apiFor, psql, stubBasemap };
 
 // Emprise France métropolitaine (lon -5..8, lat 42..51) : les points générés
 // couvrent un cadre réaliste pour une carte de zoom 5 à 12.
@@ -159,11 +159,6 @@ export async function resourceStats(page: Page): Promise<{
       files: js.map((e) => e.name.split("/").pop() ?? e.name),
     };
   });
-}
-
-export async function stubMapEnv(page: Page): Promise<void> {
-  await stubBasemap(page);
-  await fixWorkerMime(page);
 }
 
 export interface NetLog {
