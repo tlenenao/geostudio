@@ -4,6 +4,7 @@ import { DataSourceSelect } from "../DataSourceSelect";
 import { useSetCrossFilter } from "../AnalyticsContext";
 import { buildPivotGrid } from "./pivotTable";
 import { ExplorerMenu } from "./ExplorerMenu";
+import { SourceMissing } from "./SourceMissing";
 import { t } from "../../i18n";
 
 const labelCls = "flex flex-col gap-1";
@@ -82,6 +83,7 @@ export function registerPivotWidget(): void {
       const colsField = String(encodings.columns ?? "");
       const dataSourceId = String(props.dataSourceId ?? "");
 
+      if (!data && props.dataSourceId) return <SourceMissing />;
       if (!data || data.loading)
         return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.loading")}</p>;
       if (data.error) return <p className="text-xs text-danger">{t("common.dataError")}</p>;

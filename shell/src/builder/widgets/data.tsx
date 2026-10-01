@@ -12,6 +12,7 @@ import type { CollectionFieldType, DataRecord } from "../../api/types";
 import type { WidgetContext } from "../registry";
 import { ExplorerMenu } from "./ExplorerMenu";
 import { DataTable } from "../../ui/kit/DataTable";
+import { SourceMissing } from "./SourceMissing";
 import { t } from "../../i18n";
 
 type CalculatedColumn = { label: string; expr: string };
@@ -105,6 +106,7 @@ export function registerDataWidgets(): void {
         if (dsId) setFilter(dsId, (payload as Record<string, unknown>) ?? {});
       });
       const data = ctx.data;
+      if (!data && props.dataSourceId) return <SourceMissing />;
       if (!data || data.loading)
         return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.loading")}</p>;
       if (data.error) return <p className="text-xs text-danger">{t("common.dataError")}</p>;
@@ -281,6 +283,7 @@ export function registerDataWidgets(): void {
       const fieldTypes = new Map(
         (schemaQuery.data?.fields ?? []).map((f) => [f.name, f.type] as const),
       );
+      if (!data && props.dataSourceId) return <SourceMissing />;
       if (!data || data.loading)
         return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.loading")}</p>;
       if (data.error) return <p className="text-xs text-danger">{t("common.dataError")}</p>;

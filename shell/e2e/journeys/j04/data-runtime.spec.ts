@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { getSeed, baseApp, grid } from "./seed";
-import { openBuilder, openRuntime, fixme } from "./helpers";
+import { openBuilder, openRuntime } from "./helpers";
 
 test.setTimeout(90_000);
 
@@ -52,23 +52,21 @@ test.describe("j04 sources de données et widgets de données au runtime", () =>
     await expect(page.getByText(/Chargement/)).toHaveCount(0);
   });
 
-  // finding j04-006
-  fixme(
-    "j04-006 : un widget dont dataSourceId ne référence aucune source affiche un état explicite, pas « Chargement… » indéfiniment",
-    async ({ page }) => {
-      const s = await getSeed();
-      const id = await s.mkApp(
-        "table-dangling",
-        baseApp({
-          dataSources: [],
-          layout: grid([table("s-supprimee")]),
-        }),
-      );
-      await openRuntime(page, `/apps/${id}`);
-      await page.waitForTimeout(4000);
-      await expect(page.getByText(/Chargement/)).toHaveCount(0);
-    },
-  );
+  test("j04-006 : un widget dont dataSourceId ne référence aucune source affiche un état explicite, pas « Chargement… » indéfiniment", async ({
+    page,
+  }) => {
+    const s = await getSeed();
+    const id = await s.mkApp(
+      "table-dangling",
+      baseApp({
+        dataSources: [],
+        layout: grid([table("s-supprimee")]),
+      }),
+    );
+    await openRuntime(page, `/apps/${id}`);
+    await page.waitForTimeout(4000);
+    await expect(page.getByText(/Chargement/)).toHaveCount(0);
+  });
 
   test("retirer une source de données signale ou délie les widgets qui l'utilisent (comportement conforme)", async ({
     page,

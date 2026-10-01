@@ -311,6 +311,7 @@ export const fr = {
   // génériques de données répétés à l'identique par presque tous les widgets.
   "common.dataError": "Erreur de données",
   "common.noData": "Aucune donnée",
+  "common.sourceMissing": "Source de données introuvable",
 
   // AppBuilderPage
   "appBuilder.notFound": "Application introuvable.",
