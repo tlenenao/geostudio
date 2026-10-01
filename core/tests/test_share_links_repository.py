@@ -65,7 +65,9 @@ def test_create_list_revoke_share_link(session, tenant, user, item):
     links = sharing_repo.list_share_links(session, tenant_id=tenant.id, item_id=item.id)
     assert [row.id for row in links] == [link.id]
 
-    ok = sharing_repo.revoke_share_link(session, tenant_id=tenant.id, link_id=link.id)
+    ok = sharing_repo.revoke_share_link(
+        session, tenant_id=tenant.id, item_id=item.id, link_id=link.id
+    )
     session.commit()
     assert ok is True
 
@@ -74,7 +76,9 @@ def test_create_list_revoke_share_link(session, tenant, user, item):
 
 
 def test_revoke_unknown_link_returns_false(session, tenant):
-    ok = sharing_repo.revoke_share_link(session, tenant_id=tenant.id, link_id="nope")
+    ok = sharing_repo.revoke_share_link(
+        session, tenant_id=tenant.id, item_id="no-item", link_id="nope"
+    )
     assert ok is False
 
 
@@ -104,7 +108,7 @@ def test_resolve_rejects_revoked_link_even_before_token_expiry(session, tenant, 
         is not None
     )
 
-    sharing_repo.revoke_share_link(session, tenant_id=tenant.id, link_id=link.id)
+    sharing_repo.revoke_share_link(session, tenant_id=tenant.id, item_id=item.id, link_id=link.id)
     session.commit()
 
     assert sharing_repo.get_active_share_link(session, tenant_id=tenant.id, link_id=link.id) is None

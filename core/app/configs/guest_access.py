@@ -39,6 +39,7 @@ from app.configs import repository as configs_repo
 from app.db import get_session
 from app.items import repository as items_repo
 from app.sharing import repository as sharing_repo
+from app.sharing.authorization import can
 from app.sharing.share_links import (
     ShareLinkTokenClaims,
     ShareLinkTokenError,
@@ -69,6 +70,10 @@ def resolve_guest_scope(
 ) -> GuestActor | None:
     facts = items_repo.get_access_facts(session, tenant_id=claims.tenant_id, item_id=claims.item_id)
     if facts is None:
+        return None
+    # c01-005 : la délégation ne survit pas à la perte de droits du créateur
+    # du lien sur l'item racine (retrait du partage, rétrogradation).
+    if not can(session, user_id=created_by, action="share", item=facts):
         return None
     root = configs_repo.get_config_by_item(session, claims.item_id)
     if root is None or root.kind not in ("app", "dashboard"):

@@ -10,7 +10,13 @@ from app.auth.dependency import get_current_user
 from app.db import get_session
 from app.items import repository as repo
 from app.items.schemas import ItemFacets, ItemPage, ItemRead, ItemUpdatePatch
-from app.items.service import get_item_service, get_sharing_service, set_sharing_service
+from app.items.service import (
+    get_item_service,
+    get_sharing_service,
+    link_creator_can_still_share,
+    require_kind_privilege,
+    set_sharing_service,
+)
 from app.items.slug import InvalidSlugError, SlugCollisionError
 from app.items.storage import InMemoryThumbnailStore, ThumbnailStore
 from app.sharing import repository as sharing_repo
@@ -140,6 +146,7 @@ def update_item(
         raise HTTPException(status_code=404, detail="item not found")
     if not can(session, user_id=user.id, action="write", item=facts):
         raise HTTPException(status_code=403, detail="not allowed to modify this item")
+    require_kind_privilege(session, user, facts)
 
     try:
         result = repo.update_item(
@@ -194,6 +201,7 @@ def upload_thumbnail(
         raise HTTPException(status_code=404, detail="item not found")
     if not can(session, user_id=user.id, action="write", item=facts):
         raise HTTPException(status_code=403, detail="not allowed to modify this item")
+    require_kind_privilege(session, user, facts)
 
     content_type = file.content_type or "application/octet-stream"
     if not content_type.startswith("image/"):
@@ -255,6 +263,7 @@ def _require_share_access(session: Session, *, item_id: str, user: User):
         raise HTTPException(status_code=404, detail="item not found")
     if not can(session, user_id=user.id, action="share", item=facts):
         raise HTTPException(status_code=403, detail="not allowed to share this item")
+    require_kind_privilege(session, user, facts)
 
 
 @router.post(
@@ -295,12 +304,12 @@ def create_share_link_route(
         object_id=link.id,
         payload={"itemId": item_id, "ttlDays": body.ttlDays},
     )
-    base_url = os.environ.get("CORE_BASE_URL", "http://localhost:8200")
-    # GET /share-links/{token} (plus bas, même routeur) est nesté sous /v1
-    # (SP-57b) — ce champ url est le lien partageable renvoyé à l'appelant,
-    # doit donc être dereferenceable tel quel.
+    # j13-011 : le lien partageable est une PAGE du shell (route publique
+    # /embed/:token, domaine public PUBLIC_BASE_URL), pas l'URL JSON de l'API
+    # (GET /v1/share-links/{token}, que le shell appelle lui-même).
+    base_url = os.environ.get("PUBLIC_BASE_URL", "http://localhost:8300").rstrip("/")
     return ShareLinkCreated(
-        url=f"{base_url}/v1/share-links/{token}",
+        url=f"{base_url}/embed/{token}",
         expiresAt=link.expires_at.isoformat(),
         token=token,
     )
@@ -314,9 +323,14 @@ def list_share_links_route(
 ) -> list[ShareLinkListItem]:
     _require_share_access(session, item_id=item_id, user=user)
     links = sharing_repo.list_share_links(session, tenant_id=user.tenant_id, item_id=item_id)
+    names = sharing_repo.usernames_by_id(session, user_ids=list({ln.created_by for ln in links}))
     return [
         ShareLinkListItem(
-            id=link.id, expiresAt=link.expires_at.isoformat(), revoked=link.revoked_at is not None
+            id=link.id,
+            expiresAt=link.expires_at.isoformat(),
+            revoked=link.revoked_at is not None,
+            createdAt=link.created_at.isoformat(),
+            createdBy=names.get(link.created_by, ""),
         )
         for link in links
     ]
@@ -330,7 +344,9 @@ def revoke_share_link_route(
     user: User = Depends(get_current_user),
 ) -> Response:
     _require_share_access(session, item_id=item_id, user=user)
-    ok = sharing_repo.revoke_share_link(session, tenant_id=user.tenant_id, link_id=link_id)
+    ok = sharing_repo.revoke_share_link(
+        session, tenant_id=user.tenant_id, item_id=item_id, link_id=link_id
+    )
     if not ok:
         raise HTTPException(status_code=404, detail="share link not found")
     write_audit(
@@ -364,6 +380,12 @@ def resolve_share_link_route(
         session, tenant_id=claims.tenant_id, link_id=claims.share_link_id
     )
     if link is None:
+        raise HTTPException(status_code=401, detail="invalid or expired share link")
+    facts = repo.get_access_facts(session, tenant_id=claims.tenant_id, item_id=claims.item_id)
+    # c01-005 : même recoupement que configs.guest_access.resolve_guest_scope.
+    if facts is None or not link_creator_can_still_share(
+        session, created_by=link.created_by, facts=facts
+    ):
         raise HTTPException(status_code=401, detail="invalid or expired share link")
     item = repo.get_item(
         session, tenant_id=claims.tenant_id, item_id=claims.item_id, current_user_id=None

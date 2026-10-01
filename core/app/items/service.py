@@ -14,10 +14,29 @@ from sqlalchemy.orm import Session
 from app.audit.writer import write_audit
 from app.items import repository as repo
 from app.items.schemas import ItemRead
+from app.roles.guards import require_privilege
+from app.roles.kind_registry import privilege_for_kind
 from app.sharing import repository as sharing_repo
-from app.sharing.authorization import can
+from app.sharing.authorization import ItemAccessFacts, can
 from app.sharing.schemas import GroupShare, Sharing
 from app.users.models import User
+
+
+def require_kind_privilege(session: Session, user: User, facts: ItemAccessFacts) -> None:
+    """P14.01 (j13-002) : publier, renommer, partager ou créer un lien exige,
+    en plus du rôle de partage (decide()), le privilège du kind — comme
+    l'écriture de config (configs.routes._require_privilege_for_kind). Un
+    Lecteur membre d'un groupe « editor » n'obtient plus ces droits."""
+    require_privilege(session, user, privilege_for_kind(facts.resource_type or ""))
+
+
+def link_creator_can_still_share(
+    session: Session, *, created_by: str, facts: ItemAccessFacts
+) -> bool:
+    """c01-005 : un lien de partage ne vaut que tant que son créateur peut
+    encore partager l'item racine (même recoupement que
+    configs.guest_access.resolve_guest_scope)."""
+    return can(session, user_id=created_by, action="share", item=facts)
 
 
 def get_item_service(session: Session, *, item_id: str, user: User) -> ItemRead:
@@ -40,6 +59,7 @@ def get_sharing_service(session: Session, *, item_id: str, user: User) -> Sharin
         raise HTTPException(status_code=404, detail="item not found")
     if not can(session, user_id=user.id, action="share", item=facts):
         raise HTTPException(status_code=403, detail="not allowed to share this item")
+    require_kind_privilege(session, user, facts)
     shares = sharing_repo.list_shares(session, item_id=item_id)
     return Sharing(
         public=facts.is_public,
@@ -64,6 +84,7 @@ def set_sharing_service(
         raise HTTPException(status_code=404, detail="item not found")
     if not can(session, user_id=user.id, action="share", item=facts):
         raise HTTPException(status_code=403, detail="not allowed to share this item")
+    require_kind_privilege(session, user, facts)
 
     ok = sharing_repo.replace_shares(
         session,

@@ -71,7 +71,7 @@ def test_create_share_link_requires_write_access(client):
     response = client.post(f"/v1/items/{client.item_id}/share-links", json={"ttlDays": 7})
     assert response.status_code == 201
     body = response.json()
-    assert "/share-links/" in body["url"]
+    assert "/embed/" in body["url"]
     assert "expiresAt" in body
 
 
@@ -165,7 +165,7 @@ def test_create_share_link_response_includes_the_raw_token(client):
     response = client.post(f"/v1/items/{client.item_id}/share-links", json={"ttlDays": 7})
     body = response.json()
     assert body["token"]
-    assert body["url"].endswith(f"/share-links/{body['token']}")
+    assert body["url"].endswith(f"/embed/{body['token']}")
 
 
 def test_create_share_link_returns_503_when_the_secret_is_empty(client, monkeypatch):

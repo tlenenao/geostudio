@@ -3,7 +3,7 @@ import hashlib
 import uuid
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -122,6 +122,27 @@ def set_user_role(
 
 
 _USER_SORTS = {"username": User.username, "email": User.email, "createdAt": User.created_at}
+
+
+def search_directory(session: Session, *, tenant_id: str, q: str, limit: int = 20) -> list[User]:
+    """Annuaire minimal pour l'ajout de membre (j13-005) : utilisateurs actifs
+    du tenant dont le nom ou l'e-mail contient `q` (littéralement)."""
+    like = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+    return list(
+        session.scalars(
+            select(User)
+            .where(
+                User.tenant_id == tenant_id,
+                User.erased_at.is_(None),
+                or_(
+                    User.username.ilike(like, escape="\\"),
+                    User.email.ilike(like, escape="\\"),
+                ),
+            )
+            .order_by(User.username)
+            .limit(limit)
+        ).all()
+    )
 
 
 def list_users(

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -25,7 +25,7 @@ from app.roles.privileges import Privilege
 from app.roles.repository import count_users_with_privileges, get_role, roles_for_ids
 from app.tenants.models import Tenant
 from app.users.models import User
-from app.users.repository import list_users, set_user_role
+from app.users.repository import list_users, search_directory, set_user_role
 
 router = APIRouter()
 
@@ -121,6 +121,22 @@ def _user_json(user: User, role_slug: str) -> dict[str, Any]:
         "createdAt": user.created_at.isoformat(),
         "erasedAt": user.erased_at.isoformat() if user.erased_at else None,
     }
+
+
+@router.get("/users/directory")
+def get_users_directory(
+    q: str = Query(min_length=2, max_length=100),
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session, scope="function"),
+) -> list[dict[str, Any]]:
+    """j13-005 : annuaire restreint (id, nom, e-mail — ni rôle ni statut) pour
+    ajouter un membre à un groupe ; réservé à qui gère le catalogue, donc à qui
+    peut créer des groupes. Déclaré avant toute route `/users/{id}` GET."""
+    require_privilege(session, user, Privilege.CATALOG_MANAGE.value)
+    return [
+        {"id": u.id, "username": u.username, "email": u.email}
+        for u in search_directory(session, tenant_id=user.tenant_id, q=q)
+    ]
 
 
 @router.get("/users")
