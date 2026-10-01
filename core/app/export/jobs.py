@@ -7,6 +7,9 @@ en "running" (même critère qu'app.pipelines.jobs.run_pipeline_task)."""
 
 import logging
 import os
+import re
+import urllib.error
+import urllib.request
 from urllib.parse import quote
 
 from app.auth.dependency import is_export_enabled
@@ -90,6 +93,33 @@ def s3_client_from_env():
         access_key=os.environ["S3_ACCESS_KEY"],
         secret_key=os.environ["S3_SECRET_KEY"],
     )
+
+
+def core_unreachable_error(shell_base_url: str) -> str | None:
+    """Message explicite si le cœur que la page rendue appellera (VITE_CORE_URL
+    publié par le shell dans env-config.js) n'est pas joignable depuis ce
+    conteneur — sinon l'export attend 30 s puis échoue en `wait_for_selector`
+    (j05b-006). None = joignable, ou impossible à vérifier (le rendu tranchera)."""
+    try:
+        with urllib.request.urlopen(f"{shell_base_url}/env-config.js", timeout=5) as r:
+            match = re.search(r'VITE_CORE_URL:\s*"([^"]+)"', r.read().decode())
+    except (OSError, ValueError):
+        return None
+    if not match:
+        return None
+    core_url = match.group(1).rstrip("/")
+    try:
+        urllib.request.urlopen(f"{core_url}/health", timeout=5).close()
+    except urllib.error.HTTPError as exc:
+        exc.close()
+        return None  # le cœur a répondu : joignable
+    except (OSError, ValueError) as exc:
+        return (
+            f"le cœur ({core_url}), que la page d'export appelle (VITE_CORE_URL du shell), "
+            f"n'est pas joignable depuis export-worker : {exc}. Définir VITE_CORE_URL sur une "
+            "URL atteignable à la fois du navigateur et d'export-worker (cf. .env.example)."
+        )
+    return None
 
 
 def _launch_and_navigate(url: str) -> RenderPage:
@@ -183,6 +213,9 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
         target_url = f"{base}?exportToken={token}&exportRender=1"
         if ctx:
             target_url = f"{target_url}&ctx={ctx}"
+
+        if (reason := core_unreachable_error(os.environ["SHELL_BASE_URL"])) is not None:
+            raise RuntimeError(reason)
 
         browser_page = _launch_and_navigate(target_url)
         try:
