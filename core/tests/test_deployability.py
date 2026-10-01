@@ -2075,3 +2075,24 @@ def test_every_empty_default_secret_is_generated_by_bootstrap_env():
     bootstrap = BOOTSTRAP_ENV_SH.read_text()
     missing = sorted(v for v in empty_default if v not in bootstrap)
     assert not missing, f"secrets à défaut vide non générés par bootstrap-env.sh : {missing}"
+
+
+def test_release_tag_images_and_deployed_revision_move_together():
+    """P08.01 : le playbook clone le tag `geostudio_version` (pas `main`), le
+    passe à l'installeur, les group_vars suivent GEOSTUDIO_VERSION de
+    .env.example, et release.yml refuse un tag qui n'a pas bumpé cette valeur."""
+    env_version = re.search(r"^GEOSTUDIO_VERSION=(\S+)$", ENV_EXAMPLE.read_text(), re.MULTILINE)
+    assert env_version, ".env.example doit fixer GEOSTUDIO_VERSION"
+    for target in ("oci", "proxmox"):
+        gv = yaml.safe_load((REPO / f"deploy/{target}/ansible/group_vars/all.yml").read_text())
+        assert gv["geostudio_version"] == env_version.group(1), target
+    playbook = (REPO / "deploy/ansible/playbook.yml").read_text()
+    assert 'version: "{{ geostudio_version }}"' in playbook
+    assert "version: main" not in playbook
+    assert 'GEOSTUDIO_VERSION: "{{ geostudio_version }}"' in playbook
+    doc = yaml.safe_load(RELEASE.read_text())
+    for job in ("test-gate", "test-gate-arm64"):
+        assert doc["jobs"][job]["needs"] == "verify-tag", job
+    steps = " ".join(s.get("run", "") for s in doc["jobs"]["verify-tag"]["steps"])
+    assert "GEOSTUDIO_VERSION" in steps and "merge-base --is-ancestor" in steps
+    assert "ci.yml" in steps

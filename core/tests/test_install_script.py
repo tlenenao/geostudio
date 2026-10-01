@@ -487,3 +487,29 @@ def test_install_generates_empty_hmac_secrets_in_an_existing_env_and_keeps_set_o
     assert len(values["CORE_EXPORT_TOKEN_SECRET"]) >= 32
     assert len(values["CORE_SHARE_LINK_TOKEN_SECRET"]) >= 32
     assert values["CORE_ADMIN_TOOLS_TOKEN_SECRET"] == "deja-pose"
+
+
+def test_install_pins_the_image_tag_passed_by_the_caller(install_workdir, fake_bin_path):
+    """P08.01 : GEOSTUDIO_VERSION (le tag que le playbook vient de checkout)
+    l'emporte sur la valeur de .env ; `latest` est signalé."""
+    result, _ = _run_install(
+        install_workdir, fake_bin_path, extra_env={"GEOSTUDIO_VERSION": "v9.9.9"}
+    )
+    assert result.returncode == 0, result.stderr
+    assert "GEOSTUDIO_VERSION=v9.9.9" in (install_workdir / ".env").read_text().splitlines()
+    result, _ = _run_install(
+        install_workdir, fake_bin_path, extra_env={"GEOSTUDIO_VERSION": "latest"}
+    )
+    assert "non reproductibles" in result.stderr
+
+
+def test_install_never_passes_the_keycloak_admin_password_as_an_argument(
+    install_workdir, fake_bin_path
+):
+    """P08.04 : visible dans `ps` / l'audit Docker sinon ; le mot de passe passe par stdin."""
+    env_path = install_workdir / ".env"
+    env_path.write_text(env_path.read_text() + "KC_PASSWORD=kcpw-marker-123\n")
+    result, log = _run_install(install_workdir, fake_bin_path)
+    assert result.returncode == 0, result.stderr
+    assert "config credentials" in log
+    assert "kcpw-marker-123" not in log
