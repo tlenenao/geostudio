@@ -250,3 +250,24 @@ def test_get_extensions_all_true_shown_to_custom_role_with_extensions_manage(env
         _as(app, custom_user)
         all_listed = client.get("/v1/extensions?all=true").json()["extensions"]
         assert [e["id"] for e in all_listed] == ["acme.gauge"]
+
+
+def test_delete_extension_requires_privilege_is_audited_and_404s_when_unknown_j08_009(env):
+    from sqlalchemy import select
+
+    from app.audit.models import AuditLog
+
+    app, client, Session, admin, regular = env
+    _as(app, admin)
+    assert client.post("/v1/extensions", json=GAUGE_BODY).status_code == 201
+
+    _as(app, regular)
+    assert client.delete("/v1/extensions/acme.gauge").status_code == 403
+
+    _as(app, admin)
+    assert client.delete("/v1/extensions/nope").status_code == 404
+    assert client.delete("/v1/extensions/acme.gauge").status_code == 204
+    assert client.get("/v1/extensions?all=true").json() == {"extensions": []}
+    with Session() as s:
+        actions = s.scalars(select(AuditLog.action).where(AuditLog.object_id == "acme.gauge")).all()
+    assert "extension.delete" in actions

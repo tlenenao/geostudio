@@ -58,3 +58,8 @@ def list_extensions(
     if not include_disabled:
         stmt = stmt.where(Extension.enabled.is_(True))
     return list(session.scalars(stmt.order_by(Extension.label)).all())
+
+
+def delete_extension(session: Session, ext: Extension) -> None:
+    session.delete(ext)
+    session.flush()

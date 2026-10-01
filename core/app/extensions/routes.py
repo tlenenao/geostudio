@@ -95,6 +95,29 @@ def patch_extension(
     return _extension_json(ext)
 
 
+@router.delete("/extensions/{extension_id}", status_code=204)
+def delete_extension(
+    extension_id: str,
+    user=Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> None:
+    require_privilege(session, user, Privilege.ADMIN_EXTENSIONS_MANAGE.value)
+    ext = repo.get_extension(session, tenant_id=user.tenant_id, extension_id=extension_id)
+    if not ext:
+        raise HTTPException(status_code=404, detail="extension not found")
+    repo.delete_extension(session, ext)
+    write_audit(
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="extension.delete",
+        object_type="extension",
+        object_id=extension_id,
+        payload={"moduleUrl": ext.module_url},
+    )
+
+
 @router.get("/extensions")
 def list_extensions(
     all: bool = False,
