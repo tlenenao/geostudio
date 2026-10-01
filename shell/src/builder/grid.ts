@@ -42,6 +42,33 @@ export function moveItemAt(
   return { ...item, layouts: { ...item.layouts, [bp]: { ...cur, x, y } } };
 }
 
+// Resize an item within a breakpoint (same lg/override rule as moveItemAt). Width is
+// clamped to the grid (x + w <= GRID_COLS), height to >= 1.
+export function resizeItemAt(
+  item: WidgetItem,
+  bp: Breakpoint,
+  dwCells: number,
+  dhCells: number,
+): WidgetItem {
+  const cur = posFor(item, bp);
+  const w = Math.max(1, Math.min(GRID_COLS - cur.x, cur.w + dwCells));
+  const h = Math.max(1, cur.h + dhCells);
+  if (bp === "lg") return { ...item, w, h };
+  return { ...item, layouts: { ...item.layouts, [bp]: { ...cur, w, h } } };
+}
+
+// Copy of an item with a fresh id, placed below all existing items.
+export function duplicateItem(item: WidgetItem, items: WidgetItem[]): WidgetItem {
+  const { x, y } = nextFreePosition(items);
+  return {
+    ...structuredClone(item),
+    id: crypto.randomUUID(),
+    x,
+    y,
+    layouts: undefined,
+  };
+}
+
 // Position for a newly added widget: stack it below all existing items (at
 // the base/`lg` breakpoint) so it never overlaps a widget already on the
 // canvas. Without this, every new item would default to (0, 0) and sit on

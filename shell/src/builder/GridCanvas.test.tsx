@@ -120,3 +120,26 @@ test("clicking the canvas backdrop is a no-op when not editable", async () => {
   await userEvent.click(container.firstChild as Element);
   expect(onSelect).not.toHaveBeenCalled();
 });
+
+test("les poignées de taille et de duplication appellent leurs callbacks (P10.10)", async () => {
+  const onResizeItem = vi.fn();
+  const onDuplicateItem = vi.fn();
+  renderCanvas({ selectedId: "a", onResizeItem, onDuplicateItem });
+  await userEvent.click(screen.getByRole("button", { name: "Élargir widget-a" }));
+  await userEvent.click(screen.getByRole("button", { name: "Rétrécir widget-a" }));
+  await userEvent.click(screen.getByRole("button", { name: "Agrandir en hauteur widget-a" }));
+  await userEvent.click(screen.getByRole("button", { name: "Réduire en hauteur widget-a" }));
+  await userEvent.click(screen.getByRole("button", { name: "Dupliquer widget-a" }));
+  expect(onResizeItem.mock.calls).toEqual([
+    ["a", 1, 0],
+    ["a", -1, 0],
+    ["a", 0, 1],
+    ["a", 0, -1],
+  ]);
+  expect(onDuplicateItem).toHaveBeenCalledWith("a");
+});
+
+test("sans callbacks de taille, aucune poignée de taille n'est rendue", () => {
+  renderCanvas({ selectedId: "a" });
+  expect(screen.queryByRole("button", { name: "Élargir widget-a" })).not.toBeInTheDocument();
+});

@@ -11,6 +11,8 @@ export function GridCanvas({
   onSelect,
   onMoveItem,
   onRemoveItem,
+  onResizeItem,
+  onDuplicateItem,
   renderItem,
 }: {
   items: WidgetItem[];
@@ -20,6 +22,8 @@ export function GridCanvas({
   onSelect: (id: string | null) => void;
   onMoveItem: (id: string, dxCells: number, dyCells: number) => void;
   onRemoveItem: (id: string) => void;
+  onResizeItem?: (id: string, dwCells: number, dhCells: number) => void;
+  onDuplicateItem?: (id: string) => void;
   renderItem: (item: WidgetItem) => ReactNode;
 }) {
   return (
@@ -112,6 +116,67 @@ export function GridCanvas({
                 >
                   ↑
                 </button>
+                {onResizeItem && (
+                  <>
+                    <button
+                      type="button"
+                      aria-label={`Élargir widget-${item.id}`}
+                      className="bg-accent px-1 text-xs text-surface"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onResizeItem(item.id, 1, 0);
+                      }}
+                    >
+                      ↔+
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Rétrécir widget-${item.id}`}
+                      className="bg-accent px-1 text-xs text-surface"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onResizeItem(item.id, -1, 0);
+                      }}
+                    >
+                      ↔−
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Agrandir en hauteur widget-${item.id}`}
+                      className="bg-accent px-1 text-xs text-surface"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onResizeItem(item.id, 0, 1);
+                      }}
+                    >
+                      ↕+
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Réduire en hauteur widget-${item.id}`}
+                      className="bg-accent px-1 text-xs text-surface"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onResizeItem(item.id, 0, -1);
+                      }}
+                    >
+                      ↕−
+                    </button>
+                  </>
+                )}
+                {onDuplicateItem && (
+                  <button
+                    type="button"
+                    aria-label={`Dupliquer widget-${item.id}`}
+                    className="bg-accent px-1 text-xs text-surface"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDuplicateItem(item.id);
+                    }}
+                  >
+                    ⧉
+                  </button>
+                )}
                 <button
                   type="button"
                   aria-label={`Supprimer widget-${item.id}`}

@@ -4,7 +4,13 @@ import type { AppConfig, RenderMode, Variable } from "../api/types";
 import { t } from "../i18n";
 import { GridCanvas } from "./GridCanvas";
 import { WidgetHost } from "./WidgetHost";
-import { moveItemAt, breakpointForWidth, type Breakpoint } from "./grid";
+import {
+  duplicateItem,
+  moveItemAt,
+  resizeItemAt,
+  breakpointForWidth,
+  type Breakpoint,
+} from "./grid";
 import { getPages, getPageLayout, setPageLayout } from "./pages";
 import { pruneMessagesForIds } from "./actionMessages";
 import { DataProvider } from "./DataContext";
@@ -160,6 +166,28 @@ export function AppRenderer({
     onChange(setPageLayout(config, activePageId, { ...activeLayout, items }));
   }
 
+  function handleResize(id: string, dw: number, dh: number) {
+    if (!onChange) return;
+    const items = activeLayout.items.map((it) =>
+      it.id === id ? resizeItemAt(it, bp, dw, dh) : it,
+    );
+    onChange(setPageLayout(config, activePageId, { ...activeLayout, items }));
+  }
+
+  function handleDuplicate(id: string) {
+    if (!onChange) return;
+    const src = activeLayout.items.find((it) => it.id === id);
+    if (!src) return;
+    const copy = duplicateItem(src, activeLayout.items);
+    onChange(
+      setPageLayout(config, activePageId, {
+        ...activeLayout,
+        items: [...activeLayout.items, copy],
+      }),
+    );
+    onSelect?.(copy.id);
+  }
+
   function handleRemove(id: string) {
     if (!onChange) return;
     const items = activeLayout.items.filter((it) => it.id !== id);
@@ -220,6 +248,8 @@ export function AppRenderer({
                     onSelect={(id) => onSelect?.(id)}
                     onMoveItem={handleMove}
                     onRemoveItem={handleRemove}
+                    onResizeItem={handleResize}
+                    onDuplicateItem={handleDuplicate}
                     renderItem={(item) => (
                       <WidgetHost
                         item={item}
