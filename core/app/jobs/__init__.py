@@ -97,6 +97,11 @@ def open_sync_defer() -> Iterator[None]:
     # ponytail: pose le pool sur `_pool`/`_pool_args` (privés procrastinate) —
     # `open(pool=...)` marquerait le pool « externe » et `close()` ne le
     # libérerait plus ; à revoir à chaque montée de version de procrastinate."""
+    if not os.environ.get("DATABASE_URL", "").startswith("postgresql"):
+        # Process sans base Postgres (tests unitaires SQLite) : ouvrir un pool vers un
+        # conninfo inutilisable ferait attendre chaque `defer` 30 s au lieu d'échouer.
+        yield
+        return
     connector = app.connector.get_sync_connector()
     pool = psycopg_pool.ConnectionPool(
         **connector._pool_args,  # type: ignore[attr-defined]

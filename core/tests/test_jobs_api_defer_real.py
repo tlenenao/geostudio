@@ -23,7 +23,9 @@ from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
 
-def test_post_uploads_inserts_a_real_procrastinate_job(pg_engine_with_procrastinate_schema):
+def test_post_uploads_inserts_a_real_procrastinate_job(
+    monkeypatch, pg_engine_with_procrastinate_schema
+):
     engine = pg_engine_with_procrastinate_schema
     core_table_names()
     Base.metadata.create_all(engine)
@@ -45,6 +47,7 @@ def test_post_uploads_inserts_a_real_procrastinate_job(pg_engine_with_procrastin
     with engine.begin() as conn:
         conn.execute(text("DELETE FROM procrastinate_jobs"))
 
+    monkeypatch.setenv("DATABASE_URL", os.environ["CORE_TEST_DATABASE_URL"])
     conninfo = os.environ["CORE_TEST_DATABASE_URL"].replace(
         "postgresql+psycopg://", "postgresql://"
     )
