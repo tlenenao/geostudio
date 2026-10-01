@@ -18,7 +18,6 @@ irrévocablement son oidc_sub (il ne peut plus jamais se reconnecter sous
 cette identité), ce qui aurait le même effet qu'une rétrogradation de rôle
 que ce garde-fou existant empêche déjà par ailleurs."""
 
-import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import delete
@@ -29,6 +28,7 @@ from app.notifications.models import Notification
 from app.roles.repository import count_users_with_privileges, get_role
 from app.sharing.models import GroupMember
 from app.users.models import User
+from app.users.repository import erased_sub
 
 # Même liste que app/auth/routes.py::patch_user (PATCH /users/{id}) — pas
 # importée de là (module de routes, pas une source de vérité partagée) ;
@@ -76,7 +76,7 @@ def anonymize_user(
     user.email = None
     user.first_name = ""
     user.last_name = ""
-    user.oidc_sub = f"erased:{uuid.uuid4()}"
+    user.oidc_sub = erased_sub(user.oidc_sub)
     user.erased_at = datetime.now(UTC)
 
     session.execute(delete(Notification).where(Notification.recipient_user_id == user_id))

@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
+import hashlib
 import uuid
 
+from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -8,6 +10,14 @@ from sqlalchemy.orm import Session
 from app.db import retry_on_sqlite_row_corruption
 from app.roles.repository import ensure_built_in_roles
 from app.users.models import User
+
+
+def erased_sub(oidc_sub: str) -> str:
+    """Tombstone déterministe (j08-001) : le sub effacé devient le hachage du
+    sub d'origine, que get_or_create_user recalcule pour refuser la recréation
+    du compte au prochain jeton valide (le sub Keycloak est un UUID aléatoire :
+    pas de remontée possible, pas de colonne ni de migration dédiée)."""
+    return "erased:" + hashlib.sha256(oidc_sub.encode()).hexdigest()
 
 
 def get_or_create_user(
@@ -30,6 +40,13 @@ def get_or_create_user(
     )
     just_created = False
     if user is None:
+        tombstone = session.scalar(
+            select(User.id).where(
+                User.tenant_id == tenant_id, User.oidc_sub == erased_sub(oidc_sub)
+            )
+        )
+        if tombstone is not None:
+            raise HTTPException(status_code=403, detail="this account has been erased")
         if bootstrap_admin:
             initial_role = roles["admin"]
         elif bootstrap_analyst:

@@ -288,3 +288,28 @@ def test_anonymize_user_allows_erasing_a_non_privileged_user(env):
     with Session() as s:
         anonymize_user(s, tenant_id=tenant_id, user_id=target_id)  # ne lève pas
         s.commit()
+
+
+def test_erased_account_is_not_recreated_on_next_login_j08_001(env):
+    from fastapi import HTTPException
+
+    from app.users.models import User
+    from app.users.repository import get_or_create_user
+
+    Session, tenant_id, target_id, _admin_id, _roles = env
+    with Session() as s:
+        anonymize_user(s, tenant_id=tenant_id, user_id=target_id)
+        s.commit()
+    with Session() as s:
+        with pytest.raises(HTTPException) as exc:
+            get_or_create_user(
+                s,
+                tenant_id=tenant_id,
+                oidc_sub="target-sub",
+                username="target",
+                email="t@example.org",
+                first_name="T",
+                last_name="T",
+            )
+        assert exc.value.status_code == 403
+        assert s.query(User).filter(User.username == "target").count() == 0
