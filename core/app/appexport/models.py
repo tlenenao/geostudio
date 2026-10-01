@@ -26,7 +26,7 @@ class AppExportJob(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
-    item_id: Mapped[str] = mapped_column(ForeignKey("items.id"), nullable=False)
+    item_id: Mapped[str] = mapped_column(ForeignKey("items.id", ondelete="CASCADE"), nullable=False)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     mode: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[str] = mapped_column(

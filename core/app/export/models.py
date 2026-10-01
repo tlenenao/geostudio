@@ -21,7 +21,7 @@ class ExportJob(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
-    item_id: Mapped[str] = mapped_column(ForeignKey("items.id"), nullable=False)
+    item_id: Mapped[str] = mapped_column(ForeignKey("items.id", ondelete="CASCADE"), nullable=False)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     format: Mapped[str] = mapped_column(String, nullable=False)
     # Nullable, additive (SP-17b) : None préserve le comportement actuel du
