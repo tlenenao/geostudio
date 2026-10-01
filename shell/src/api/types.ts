@@ -99,6 +99,12 @@ export type UserSummary = {
   id: string;
   username: string;
   roleSlug: string;
+  email?: string | null;
+  firstName?: string;
+  lastName?: string;
+  createdAt?: string;
+  /** Horodatage ISO de l'anonymisation ; absent/null = compte actif. */
+  erasedAt?: string | null;
 };
 
 export type PurgeReceipt = {

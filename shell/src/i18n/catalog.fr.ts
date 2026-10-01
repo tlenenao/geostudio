@@ -403,6 +403,11 @@ export const fr = {
   "compliance.eraseButton": "Anonymiser ce compte",
   "compliance.eraseSuccess": "Compte anonymisé.",
   "compliance.eraseError": "Échec de l'anonymisation.",
+  "compliance.eraseNotFound": "Utilisateur introuvable dans ce tenant.",
+  "compliance.eraseAlreadyErased": "Ce compte est déjà anonymisé.",
+  "compliance.eraseLastHolder":
+    "Impossible : ce compte est le dernier titulaire d'un privilège de gestion des utilisateurs ou des rôles.",
+  "compliance.eraseForbidden": "Droits insuffisants pour anonymiser ce compte.",
   "compliance.purgeRequestError": "Échec du déclenchement de la purge.",
   "compliance.purgeSectionTitle": "Purger toutes les données du tenant",
   "compliance.purgeWarningBefore": "Supprime",
@@ -583,6 +588,13 @@ export const fr = {
   "usersAdmin.roleColumn": "Rôle",
   "usersAdmin.roleAria": "Rôle de {username}",
   "usersAdmin.detail": "Détail",
+  "usersAdmin.actionsColumn": "Actions",
+  "usersAdmin.eraseButton": "Anonymiser",
+  "usersAdmin.eraseAria": "Anonymiser {username}",
+  "usersAdmin.erasedBadge": "Compte anonymisé",
+  "usersAdmin.eraseConfirmTitle": "Anonymiser le compte",
+  "usersAdmin.eraseConfirmMessage":
+    "Anonymiser définitivement le compte « {username} » ? Son nom, son e-mail et son identité de connexion seront effacés ; cette action est irréversible.",
   "usersAdmin.demotionProtectionText":
     "Le dernier titulaire de la gestion des rôles et des utilisateurs ne peut pas être rétrogradé : la tentative échoue pour préserver au moins un compte capable d'administrer le tenant.",
   "usersAdmin.empty": "Aucun utilisateur ne correspond à cette recherche",
