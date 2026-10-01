@@ -67,8 +67,19 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     if op.get_bind().dialect.name == "postgresql":
-        op.execute("DROP OWNED BY gis_rls")
-        op.execute("DROP ROLE IF EXISTS gis_rls")
+        conn = op.get_bind()
+        # P09.09 (c03-008) : un rôle est global au cluster. DROP OWNED BY lève
+        # si le rôle a disparu, DROP ROLE si une AUTRE base du cluster lui a
+        # encore accordé des privilèges — chaque instruction a son savepoint
+        # (même patron que 0042.downgrade) pour ne pas empoisonner la
+        # transaction de migration ; seule compte l'absence de privilèges
+        # gis_rls dans CETTE base.
+        for stmt in ("DROP OWNED BY gis_rls", "DROP ROLE IF EXISTS gis_rls"):
+            try:
+                with conn.begin_nested():
+                    conn.execute(sa.text(stmt))
+            except sa.exc.DBAPIError:
+                pass
     op.drop_table("collection_shares")
     op.drop_table("collections")
     op.drop_column("users", "is_admin")

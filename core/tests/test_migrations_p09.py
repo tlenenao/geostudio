@@ -145,3 +145,35 @@ def test_0043_cascades_history_and_nulls_harvest_link_both_ways(throwaway_databa
     assert _scalar(url, "SELECT count(*) FROM pipeline_runs") == 0
     assert _scalar(url, "SELECT count(*) FROM export_jobs") == 0
     assert _scalar(url, "SELECT item_id FROM harvest_records WHERE id = 'h1'") is None
+
+
+def test_0008_downgrade_tolerates_a_role_still_granted_elsewhere(throwaway_database_url):
+    # Le rôle gis_rls est global au cluster : un downgrade de 0008 ne doit pas
+    # échouer parce que le DROP ROLE est refusé — on le provoque en rendant le
+    # rôle propriétaire d'un objet d'une AUTRE base.
+    url = throwaway_database_url
+    base_url = os.environ["CORE_TEST_DATABASE_URL"]
+    command.upgrade(_cfg(), "0008")
+    other = f"p09_other_{uuid.uuid4().hex[:8]}"
+    admin = sa.create_engine(base_url, isolation_level="AUTOCOMMIT")
+    with admin.connect() as conn:
+        conn.execute(sa.text(f'CREATE DATABASE "{other}"'))
+    other_url = re.sub(r"/[^/?]+(\?.*)?$", rf"/{other}\1", base_url)
+    try:
+        o = sa.create_engine(other_url, isolation_level="AUTOCOMMIT")
+        with o.connect() as conn:
+            conn.execute(sa.text("CREATE TABLE held (id int)"))
+            conn.execute(sa.text("GRANT SELECT ON held TO gis_rls"))
+        o.dispose()
+        command.downgrade(_cfg(), "0007")
+        assert (
+            _scalar(
+                url,
+                "SELECT count(*) FROM information_schema.tables WHERE table_name = 'collections'",
+            )
+            == 0
+        )
+    finally:
+        with admin.connect() as conn:
+            conn.execute(sa.text(f'DROP DATABASE IF EXISTS "{other}" WITH (FORCE)'))
+        admin.dispose()
