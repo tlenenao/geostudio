@@ -1,0 +1,16 @@
+# Contexte racine (deploy/appexport-standalone, deploy/appexport-runtime-builder) :
+# sans ce fichier, un shell/node_modules local (répertoire ou symlink) est
+# envoyé puis `COPY shell/ .` échoue (« cannot replace to directory … node_modules
+# with file ») ou écrase l'`npm ci` de l'image. Les builds core/ et shell/ ont
+# leur propre .dockerignore.
+.git
+.claude
+.codegraph
+.superpowers
+**/node_modules
+**/.venv
+**/dist
+**/dist-export
+**/coverage
+**/__pycache__
+**/.pytest_cache
