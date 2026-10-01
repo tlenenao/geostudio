@@ -137,7 +137,7 @@ def _require_kind_matches_existing(existing_kind: str, submitted_kind: str) -> N
 @router.post("/configs", response_model=ConfigRead, status_code=status.HTTP_201_CREATED)
 def create_config(
     request: CreateConfigRequest,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> ConfigRead:
     created = create_config_service(
@@ -169,7 +169,7 @@ def create_config(
 @router.get("/configs/{config_id}", response_model=ConfigRead)
 def get_config(
     config_id: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> ConfigRead:
     result = repo.get_config(session, config_id)
@@ -183,7 +183,7 @@ def get_config(
 def update_config(
     config_id: str,
     config: BuilderConfig,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> ConfigRead:
     existing = repo.get_config(session, config_id)
@@ -222,7 +222,7 @@ def update_config(
 @router.get("/configs/{config_id}/revisions", response_model=list[RevisionInfo])
 def list_revisions(
     config_id: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> list[RevisionInfo]:
     existing = repo.get_config(session, config_id)
@@ -236,7 +236,7 @@ def list_revisions(
 def rollback_config(
     config_id: str,
     request: RollbackRequest,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> ConfigRead:
     existing = repo.get_config(session, config_id)
@@ -311,7 +311,7 @@ def rollback_config(
 @router.delete("/configs/{config_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_config(
     config_id: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> Response:
     result = repo.get_config(session, config_id)
@@ -354,7 +354,7 @@ def delete_config(
 def get_config_by_item(
     item_id: str,
     mode: str | None = None,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User | None = Depends(get_current_user_optional),
     guest: GuestActor | None = Depends(get_share_link_actor),
 ) -> ConfigRead:
@@ -398,7 +398,7 @@ def get_config_by_item(
 def update_config_by_item(
     item_id: str,
     config: BuilderConfig,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> ConfigRead:
     _require_access(session, user=user, item_id=item_id, action="write")
@@ -436,7 +436,7 @@ def update_config_by_item(
 @router.delete("/configs/by-item/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_config_by_item(
     item_id: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> Response:
     _require_access(session, user=user, item_id=item_id, action="delete")
@@ -474,7 +474,7 @@ def delete_config_by_item(
 @router.delete("/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_item(
     item_id: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> Response:
     # Lives here, not in app/items/routes.py: deleting an item must also clear

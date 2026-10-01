@@ -38,7 +38,8 @@ def _role_json(role: Role) -> RoleRead:
 
 @router.get("/roles/catalog", response_model=list[PrivilegeCatalogEntry])
 def get_roles_catalog(
-    user: User = Depends(get_current_user), session: Session = Depends(get_session)
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session, scope="function"),
 ) -> list[PrivilegeCatalogEntry]:
     require_privilege(session, user, Privilege.ADMIN_ROLES_MANAGE.value)
     return [PrivilegeCatalogEntry(**entry) for entry in get_privilege_catalog()]
@@ -46,7 +47,8 @@ def get_roles_catalog(
 
 @router.get("/roles", response_model=list[RoleRead])
 def get_roles(
-    user: User = Depends(get_current_user), session: Session = Depends(get_session)
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session, scope="function"),
 ) -> list[RoleRead]:
     require_privilege(session, user, Privilege.ADMIN_ROLES_MANAGE.value)
     return [_role_json(r) for r in list_roles(session, tenant_id=user.tenant_id)]
@@ -56,7 +58,7 @@ def get_roles(
 def post_role(
     body: RoleCreate,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> RoleRead:
     require_privilege(session, user, Privilege.ADMIN_ROLES_MANAGE.value)
     unknown = set(body.privileges) - set(ALL_PRIVILEGE_VALUES)
@@ -83,7 +85,7 @@ def patch_role(
     role_id: str,
     body: RolePatch,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> RoleRead:
     require_privilege(session, user, Privilege.ADMIN_ROLES_MANAGE.value)
     role = get_role(session, tenant_id=user.tenant_id, role_id=role_id)
@@ -140,7 +142,7 @@ def patch_role(
 def delete_role_route(
     role_id: str,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> None:
     require_privilege(session, user, Privilege.ADMIN_ROLES_MANAGE.value)
     role = get_role(session, tenant_id=user.tenant_id, role_id=role_id)

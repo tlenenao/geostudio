@@ -57,7 +57,7 @@ def list_public_items(
     # l'absence de borne BASSE, pas l'absence de borne haute — ne pas en
     # ajouter une non demandée par la trouvaille.
     pageSize: int = Query(12, ge=1),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> ItemPage:
     return items_repo.list_published_items(
         session,
@@ -69,7 +69,9 @@ def list_public_items(
 
 
 @router.get("/items/{item_id}", response_model=ItemRead)
-def get_public_item(item_id: str, session: Session = Depends(get_session)) -> ItemRead:
+def get_public_item(
+    item_id: str, session: Session = Depends(get_session, scope="function")
+) -> ItemRead:
     result = items_repo.get_published_item(session, item_id=item_id, tenant_id=DEFAULT_TENANT_SLUG)
     if result is None:
         raise HTTPException(status_code=404, detail="item not found")
@@ -77,7 +79,9 @@ def get_public_item(item_id: str, session: Session = Depends(get_session)) -> It
 
 
 @router.get("/sites/{slug}", response_model=ItemRead)
-def get_public_site(slug: str, session: Session = Depends(get_session)) -> ItemRead:
+def get_public_site(
+    slug: str, session: Session = Depends(get_session, scope="function")
+) -> ItemRead:
     result = items_repo.get_published_site_by_slug(session, slug=slug)
     if result is None:
         raise HTTPException(status_code=404, detail="site not found")
@@ -85,7 +89,7 @@ def get_public_site(slug: str, session: Session = Depends(get_session)) -> ItemR
 
 
 @router.get("/sitemap.xml", response_class=Response)
-def public_sitemap(session: Session = Depends(get_session)) -> Response:
+def public_sitemap(session: Session = Depends(get_session, scope="function")) -> Response:
     page = items_repo.list_published_items(
         session, resource_type="site", page=1, page_size=_SITEMAP_PAGE_SIZE
     )
@@ -104,7 +108,9 @@ def public_robots() -> Response:
 
 
 @router.get("/sites/{slug}/social-preview", response_class=Response)
-def public_site_social_preview(slug: str, session: Session = Depends(get_session)) -> Response:
+def public_site_social_preview(
+    slug: str, session: Session = Depends(get_session, scope="function")
+) -> Response:
     item = items_repo.get_published_site_by_slug(session, slug=slug)
     if item is None:
         raise HTTPException(status_code=404, detail="site not found")
@@ -114,7 +120,9 @@ def public_site_social_preview(slug: str, session: Session = Depends(get_session
 
 
 @router.get("/configs/by-item/{item_id}", response_model=ConfigRead)
-def get_public_config_by_item(item_id: str, session: Session = Depends(get_session)) -> ConfigRead:
+def get_public_config_by_item(
+    item_id: str, session: Session = Depends(get_session, scope="function")
+) -> ConfigRead:
     item = items_repo.get_published_item(session, item_id=item_id, tenant_id=DEFAULT_TENANT_SLUG)
     if item is None:
         raise HTTPException(status_code=404, detail="item not found")

@@ -58,7 +58,7 @@ def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests
 @router.post("/terrain3d/uploads/presign", response_model=Terrain3DPresignResponse)
 def presign_terrain3d_upload(
     body: Terrain3DPresignRequest,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
     s3=Depends(get_s3_client),
     bucket: str = Depends(get_terrain3d_bucket),
@@ -84,7 +84,7 @@ def presign_terrain3d_upload(
 @router.post("/terrain3d/uploads", response_model=Terrain3DUploadCreated, status_code=201)
 def create_terrain3d_upload(
     body: Terrain3DUploadCreate,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
     defer_task: Callable[[str, str], None] = Depends(get_task_deferrer),
     s3=Depends(get_s3_client),
@@ -142,7 +142,7 @@ def create_terrain3d_upload(
 @router.get("/terrain3d/uploads/{job_id}", response_model=Terrain3DJobStatus)
 def get_terrain3d_upload_job(
     job_id: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> Terrain3DJobStatus:
     job = repo.get_job(session, tenant_id=user.tenant_id, job_id=job_id)
@@ -164,7 +164,7 @@ def read_terrain3d_tile(
     z: int,
     x: int,
     y: int,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
     bucket: str = Depends(get_terrain3d_bucket),
     titiler_url: str = Depends(get_titiler_url),

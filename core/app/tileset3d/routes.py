@@ -93,7 +93,7 @@ def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests
 @router.post("/tileset3d/uploads", response_model=Tileset3DUploadCreated, status_code=201)
 def create_tileset3d_upload(
     body: Tileset3DUploadCreate,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
     s3=Depends(get_s3_client),
     bucket: str = Depends(get_tileset3d_bucket),
@@ -144,7 +144,7 @@ def create_tileset3d_upload(
 def presign_tileset3d_part(
     job_id: str,
     part_number: int,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
     s3=Depends(get_s3_client),
     bucket: str = Depends(get_tileset3d_bucket),
@@ -172,7 +172,7 @@ def presign_tileset3d_part(
 def complete_tileset3d_upload(
     job_id: str,
     body: Tileset3DCompleteRequest,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
     s3=Depends(get_s3_client),
     bucket: str = Depends(get_tileset3d_bucket),
@@ -234,7 +234,7 @@ def complete_tileset3d_upload(
 @router.get("/tileset3d/uploads/{job_id}", response_model=Tileset3DJobStatus)
 def get_tileset3d_upload_job(
     job_id: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> Tileset3DJobStatus:
     job = repo.get_job(session, tenant_id=user.tenant_id, job_id=job_id)
@@ -250,7 +250,7 @@ def get_tileset3d_upload_job(
 def read_tileset3d_entry(
     item_id: str,
     path: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
     s3=Depends(get_s3_client),
     bucket: str = Depends(get_tileset3d_bucket),

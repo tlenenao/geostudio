@@ -75,7 +75,7 @@ class MeResponse(BaseModel):
 def get_me(
     request: Request,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> MeResponse:
     tenant = session.get(Tenant, user.tenant_id)
     role = get_role(session, tenant_id=user.tenant_id, role_id=user.role_id)
@@ -120,7 +120,7 @@ def get_users(
     pageSize: int = 50,
     q: str | None = None,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> dict[str, Any]:
     require_privilege(session, user, Privilege.ADMIN_USERS_MANAGE.value)
     users, total = list_users(session, tenant_id=user.tenant_id, page=page, page_size=pageSize, q=q)
@@ -142,7 +142,7 @@ def patch_user(
     user_id: str,
     body: UserRolePatch,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> dict[str, Any]:
     require_privilege(session, user, Privilege.ADMIN_USERS_MANAGE.value)
     target = session.scalar(

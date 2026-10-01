@@ -33,7 +33,7 @@ def _extension_json(ext) -> dict:
 def register_extension(
     body: ExtensionCreate,
     user=Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ):
     require_privilege(session, user, Privilege.ADMIN_EXTENSIONS_MANAGE.value)
     if repo.get_extension(session, tenant_id=user.tenant_id, extension_id=body.id):
@@ -70,7 +70,7 @@ def patch_extension(
     extension_id: str,
     body: ExtensionPatch,
     user=Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ):
     require_privilege(session, user, Privilege.ADMIN_EXTENSIONS_MANAGE.value)
     ext = repo.get_extension(session, tenant_id=user.tenant_id, extension_id=extension_id)
@@ -99,7 +99,7 @@ def patch_extension(
 def list_extensions(
     all: bool = False,
     user=Depends(get_current_user_optional),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ):
     tenant_id = user.tenant_id if user else get_or_create_default_tenant(session).id
     include_disabled = bool(

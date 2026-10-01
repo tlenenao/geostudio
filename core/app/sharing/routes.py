@@ -29,7 +29,7 @@ class AddMemberRequest(BaseModel):
 
 @router.get("/groups", response_model=list[GroupRead])
 def list_groups(
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> list[GroupRead]:
     # REV-009 : décision explicite (le backlog demandait de trancher) — GET
@@ -47,7 +47,7 @@ def list_groups(
 @router.post("/groups", response_model=GroupRead, status_code=status.HTTP_201_CREATED)
 def create_group(
     body: CreateGroupRequest,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> GroupRead:
     # REV-009 : cette route ne consultait jusqu'ici que get_current_user —
@@ -74,7 +74,7 @@ def create_group(
 def add_member(
     group_id: str,
     body: AddMemberRequest,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> Response:
     ok = repo.add_member(

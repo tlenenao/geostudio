@@ -270,7 +270,7 @@ def get_readable_collection(
 def register_collection(
     body: CollectionCreate,
     user=Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     introspect: Introspector = Depends(get_introspector),
     apply_ddl: Callable = Depends(get_ddl_applier),
     count_features=Depends(get_feature_counter),
@@ -340,7 +340,7 @@ def register_collection(
 def create_empty_collection_route(
     body: EmptyCollectionCreate,
     user=Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     introspect: Introspector = Depends(get_introspector),
     apply_ddl: Callable = Depends(get_ddl_applier),
 ):
@@ -384,7 +384,7 @@ def list_collections(
     limit: int = Query(DEFAULT_LIMIT, ge=1),
     offset: int = Query(0, ge=0),
     user=Depends(get_current_user_optional),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ):
     from app.tenants.repository import get_or_create_default_tenant
     from app.users.models import User
@@ -430,7 +430,7 @@ def list_collections(
 @router.get("/collections/candidates")
 def list_candidate_tables(
     user=Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     list_tables: Callable[[Session], list[str]] = Depends(get_table_lister),
     introspect: Introspector = Depends(get_introspector),
 ):
@@ -472,7 +472,7 @@ def get_collection(
     request: Request,
     user=Depends(get_current_user_optional),
     guest: GuestActor | None = Depends(get_share_link_actor),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     introspect: Introspector = Depends(get_introspector),
     extent_provider=Depends(get_extent_provider),
 ):
@@ -520,7 +520,7 @@ def get_collection_schema(
     collection_id: str,
     user=Depends(get_current_user_optional),
     guest: GuestActor | None = Depends(get_share_link_actor),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     introspect: Introspector = Depends(get_introspector),
 ):
     can_manage_collections = bool(
@@ -601,7 +601,7 @@ def patch_collection(
     collection_id: str,
     body: CollectionPatch,
     user=Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     introspect: Introspector = Depends(get_introspector),
 ):
     can_manage_collections = has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
@@ -688,7 +688,7 @@ def patch_collection(
 def unregister_collection(
     collection_id: str,
     user=Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     s3=Depends(get_s3_client),
 ):
     can_manage_collections = has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
@@ -755,7 +755,7 @@ def _require_share(session, user, col) -> None:
 def get_sharing(
     collection_id: str,
     user=Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ):
     can_manage_collections = has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
     col = get_readable_collection(
@@ -774,7 +774,7 @@ def put_sharing(
     collection_id: str,
     body: Sharing,
     user=Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ):
     can_manage_collections = has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
     col = get_readable_collection(

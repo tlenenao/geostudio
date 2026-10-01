@@ -69,7 +69,7 @@ def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests
 @router.post("/export", response_model=CreateExportResponse, status_code=202)
 def create_export_route(
     body: CreateExportRequest,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
     defer_task: Callable[[str, str], None] = Depends(get_task_deferrer),
 ) -> CreateExportResponse:
@@ -98,7 +98,7 @@ def create_export_route(
 @router.get("/export/jobs/{job_id}", response_model=ExportJobStatus)
 def get_export_job_route(
     job_id: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
     s3=Depends(get_s3_client),
     bucket: str = Depends(get_exports_bucket),

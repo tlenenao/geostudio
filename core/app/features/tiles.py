@@ -135,7 +135,7 @@ def get_collection_tile(
     y: int,
     user=Depends(get_current_user_optional),
     guest: GuestActor | None = Depends(get_share_link_actor),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     introspect=Depends(get_introspector),
     rls=Depends(get_rls_scope),
     masked=Depends(get_masked_for_user),

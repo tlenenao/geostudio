@@ -76,7 +76,7 @@ def list_items(
     owner: str | None = None,
     keyword: list[str] | None = Query(default=None),
     bbox: str | None = None,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> ItemPage:
     return repo.list_items(
@@ -101,7 +101,7 @@ def get_item_facets(
     type: str | None = None,
     scope: str = "all",
     owner: str | None = None,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> ItemFacets:
     # Déclaré AVANT /items/{item_id} : sinon FastAPI matcherait "facets"
@@ -121,7 +121,7 @@ def get_item_facets(
 @router.get("/items/{item_id}", response_model=ItemRead)
 def get_item(
     item_id: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> ItemRead:
     return get_item_service(session, item_id=item_id, user=user)
@@ -131,7 +131,7 @@ def get_item(
 def update_item(
     item_id: str,
     patch: ItemUpdatePatch,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> ItemRead:
     facts = repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
@@ -184,7 +184,7 @@ def update_item(
 def upload_thumbnail(
     item_id: str,
     file: UploadFile = File(...),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
     store: ThumbnailStore = Depends(get_thumbnail_store),
 ) -> Response:
@@ -210,7 +210,7 @@ def upload_thumbnail(
 @router.get("/items/{item_id}/thumbnail")
 def read_thumbnail(
     item_id: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
     store: ThumbnailStore = Depends(get_thumbnail_store),
 ) -> Response:
@@ -227,7 +227,7 @@ def read_thumbnail(
 @router.get("/items/{item_id}/sharing", response_model=Sharing)
 def get_sharing(
     item_id: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> Sharing:
     return get_sharing_service(session, item_id=item_id, user=user)
@@ -237,7 +237,7 @@ def get_sharing(
 def set_sharing(
     item_id: str,
     body: Sharing,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> Response:
     set_sharing_service(session, item_id=item_id, user=user, sharing=body)
@@ -264,7 +264,7 @@ def _require_share_access(session: Session, *, item_id: str, user: User):
 def create_share_link_route(
     item_id: str,
     body: CreateShareLinkRequest,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> ShareLinkCreated:
     _require_share_access(session, item_id=item_id, user=user)
@@ -308,7 +308,7 @@ def create_share_link_route(
 @router.get("/items/{item_id}/share-links", response_model=list[ShareLinkListItem])
 def list_share_links_route(
     item_id: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> list[ShareLinkListItem]:
     _require_share_access(session, item_id=item_id, user=user)
@@ -325,7 +325,7 @@ def list_share_links_route(
 def revoke_share_link_route(
     item_id: str,
     link_id: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> Response:
     _require_share_access(session, item_id=item_id, user=user)
@@ -348,7 +348,7 @@ def revoke_share_link_route(
 @router.get("/share-links/{token}", response_model=ResolvedShareLink)
 def resolve_share_link_route(
     token: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> ResolvedShareLink:
     """Résolution PUBLIQUE (aucune dépendance get_current_user) : le jeton
     porte à lui seul le droit d'accès à cet item précis, en lecture seule.

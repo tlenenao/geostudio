@@ -31,7 +31,7 @@ def list_usage_tasks(
     pageSize: int = 50,
     actorId: str | None = None,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> UsageTaskPage:
     require_any_privilege(
         session, user, [Privilege.TASKS_VIEW.value, Privilege.TASKS_VIEW_ALL.value]
@@ -72,7 +72,7 @@ def get_usage_summary(
     until: str | None = None,
     limit: int = 10,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> UsageSummaryRead:
     require_privilege(session, user, Privilege.TASKS_VIEW_ALL.value)
     until_dt = datetime.fromisoformat(until) if until else datetime.now(UTC)

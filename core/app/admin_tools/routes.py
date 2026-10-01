@@ -43,7 +43,7 @@ class LaunchAdminToolResponse(BaseModel):
 def launch_admin_tool(
     tool: ToolName,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> LaunchAdminToolResponse:
     require_privilege(session, user, Privilege.SETTINGS_INSTANCE_MANAGE.value)
     base = os.environ.get("CORE_BASE_URL", "http://localhost:8200")
@@ -81,7 +81,7 @@ def bootstrap_admin_tool_session(tool: ToolName, _at: str) -> Response:
 @router.get("/admin-tools/verify")
 def verify_admin_tool_session(
     gs_admin_session: str | None = Cookie(default=None),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> Response:
     if gs_admin_session is None:
         raise HTTPException(status_code=403, detail="no admin session")

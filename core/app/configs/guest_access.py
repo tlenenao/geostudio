@@ -114,7 +114,7 @@ def resolve_guest_scope(
 
 def get_share_link_actor(
     x_share_link_token: str | None = Header(default=None, alias="X-Share-Link-Token"),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> GuestActor | None:
     """Dépendance FastAPI additive — ne lève jamais, quel que soit le jeton
     (absent, invalide, révoqué) : elle ne fait que produire (ou non) un

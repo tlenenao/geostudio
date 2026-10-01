@@ -43,7 +43,7 @@ def _to_response(secret: ConnectorSecret) -> ConnectorSecretOut:
 def create_secret_route(
     body: SecretCreate,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> ConnectorSecretOut:
     require_any_privilege(
         session,
@@ -93,7 +93,7 @@ def create_secret_route(
 @router.get("/secrets")
 def list_secrets_route(
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> list[ConnectorSecretOut]:
     require_any_privilege(
         session,
@@ -107,7 +107,7 @@ def list_secrets_route(
 def delete_secret_route(
     secret_id: str,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> None:
     require_any_privilege(
         session,

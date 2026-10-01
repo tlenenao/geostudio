@@ -158,7 +158,7 @@ def inspect_upload(
 @router.post("/uploads", response_model=IngestionJobCreated, status_code=201)
 def create_upload_job(
     body: IngestionJobCreate,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
     defer_task: Callable[[str, str], None] = Depends(get_task_deferrer),
     s3=Depends(get_s3_client),
@@ -229,7 +229,7 @@ def create_upload_job(
 @router.get("/uploads/{job_id}", response_model=IngestionJobStatus)
 def get_upload_job(
     job_id: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> IngestionJobStatus:
     job = repo.get_job(session, tenant_id=user.tenant_id, job_id=job_id)
