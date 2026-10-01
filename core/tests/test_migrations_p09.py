@@ -147,6 +147,49 @@ def test_0043_cascades_history_and_nulls_harvest_link_both_ways(throwaway_databa
     assert _scalar(url, "SELECT item_id FROM harvest_records WHERE id = 'h1'") is None
 
 
+def test_destructive_downgrades_are_refused_while_rows_exist(throwaway_database_url, monkeypatch):
+    url = throwaway_database_url
+    monkeypatch.delenv("GEOSTUDIO_ALLOW_DESTRUCTIVE_DOWNGRADE", raising=False)
+    command.upgrade(_cfg(), "0042")
+    eng = sa.create_engine(url)
+    with eng.begin() as conn:
+        _seed_base(conn)
+        conn.execute(
+            sa.text(
+                "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
+                "description, pk_column, is_public, editable, sensitive_fields, created_at, "
+                "updated_at) VALUES ('c1','t1','u1','villes','V','','id',false,true,"
+                "'[\"name\"]',now(),now())"
+            )
+        )
+        conn.execute(
+            sa.text(
+                "INSERT INTO purge_receipts (id, tenant_slug, requested_by_user_id, "
+                "requested_at, counts) VALUES ('p1','gone','u1',now(),'{}')"
+            )
+        )
+    eng.dispose()
+
+    # 0042 : champ sensible masqué => refus, rien n'est détruit
+    with pytest.raises(RuntimeError, match="champs sensibles"):
+        command.downgrade(_cfg(), "0041")
+    assert _scalar(url, "SELECT sensitive_fields::text FROM collections") == '["name"]'
+
+    # marquage levé => 0042 repasse ; 0039 refuse tant que la preuve existe
+    eng = sa.create_engine(url)
+    with eng.begin() as conn:
+        conn.execute(sa.text("UPDATE collections SET sensitive_fields = '[]'"))
+    eng.dispose()
+    with pytest.raises(RuntimeError, match="purge_receipts"):
+        command.downgrade(_cfg(), "0038")
+    assert _scalar(url, "SELECT count(*) FROM purge_receipts") == 1
+
+    # accord explicite : le downgrade passe, puis la chaîne remonte à head
+    monkeypatch.setenv("GEOSTUDIO_ALLOW_DESTRUCTIVE_DOWNGRADE", "1")
+    command.downgrade(_cfg(), "0038")
+    command.upgrade(_cfg(), "head")
+
+
 def test_0008_downgrade_tolerates_a_role_still_granted_elsewhere(throwaway_database_url):
     # Le rôle gis_rls est global au cluster : un downgrade de 0008 ne doit pas
     # échouer parce que le DROP ROLE est refusé — on le provoque en rendant le

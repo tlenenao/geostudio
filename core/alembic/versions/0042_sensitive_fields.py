@@ -12,6 +12,8 @@ mergé dans dev pendant que cette branche restait ouverte — CLAUDE.md piège
 n°9, collision de numéro de migration entre sessions concurrentes.
 """
 
+import os
+
 import sqlalchemy as sa
 
 from alembic import op
@@ -65,7 +67,33 @@ def upgrade() -> None:
         )
 
 
+ALLOW_ENV = "GEOSTUDIO_ALLOW_DESTRUCTIVE_DOWNGRADE"
+
+
+def _refuse_if_data(what: str, count: int) -> None:
+    # P09.10 (c03-009) : ce downgrade détruit un état de conformité. Il échoue
+    # tant que des lignes existent, sauf accord explicite (restaurer une
+    # sauvegarde est le chemin normal, cf. deploy/backup).
+    if count and os.environ.get(ALLOW_ENV) != "1":
+        raise RuntimeError(
+            f"downgrade refusé : {count} {what} seraient détruit(e)s. "
+            f"Restaurez une sauvegarde, ou exportez ces données puis relancez avec {ALLOW_ENV}=1."
+        )
+
+
 def downgrade() -> None:
+    # Colonne JSON : comparaison en texte, portable (SQLite/Postgres).
+    _refuse_if_data(
+        "collection(s) avec des champs sensibles masqués",
+        op.get_bind()
+        .execute(
+            sa.text(
+                "SELECT count(*) FROM collections "
+                "WHERE CAST(sensitive_fields AS TEXT) NOT IN ('[]', 'null')"
+            )
+        )
+        .scalar_one(),
+    )
     if op.get_bind().dialect.name == "postgresql":
         conn = op.get_bind()
         # Revue finale de branche (Finding I2) : `DROP OWNED BY` tournait
