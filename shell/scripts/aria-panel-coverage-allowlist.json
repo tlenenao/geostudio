@@ -21,7 +21,7 @@
   },
   {
     "file": "src/pages/AppRuntimePage.tsx",
-    "line": 183,
+    "line": 202,
     "reason": "Faux positif de l'heuristique : setSaveDialogOpen(true) ouvre <Dialog> (ui/kit/Dialog, role=\"dialog\", boîte modale) — pas un panneau en ligne, la convention CLAUDE.md ne s'applique pas à ce patron. Ligne décalée de 170 à 183 par les tâches Vague C sur ce fichier (câblage printLayout.showLegend, migration ui/kit), aucun changement du déclencheur lui-même — vérifié en clôture de Vague C."
   },
   {

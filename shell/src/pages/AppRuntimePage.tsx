@@ -12,6 +12,7 @@ import { registerCounterWcExampleWidget } from "../builder/examples/counterWidge
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useActiveExtensions, useCreateBookmark } from "../api/hooks";
 import { registerExtensionWidget } from "../builder/extensions/registerExtensionWidget";
+import { ApiError } from "../api/ApiError";
 import { useAuth } from "../auth/useAuth";
 import { Button } from "../ui/kit/Button";
 import { Dialog } from "../ui/kit/Dialog";
@@ -26,7 +27,20 @@ registerCounterExampleWidget();
 registerCounterWcExampleWidget();
 
 export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) {
-  const itemQuery = useItem(pk);
+  // P07.03 : la route /apps/:pk est hors RequireAuth (lecture publique
+  // possible) ; au rechargement le jeton OIDC n'est pas encore là. On
+  // attend l'auth avant toute requête, puis un 401 sans session mène à la
+  // connexion (returnTo conservé) au lieu de « Accès refusé ».
+  const { username, isLoading: authLoading, isAuthenticated, signIn } = useAuth();
+  const itemQuery = useItem(pk, { enabled: !authLoading });
+  const needsSignIn =
+    !authLoading &&
+    !isAuthenticated &&
+    itemQuery.error instanceof ApiError &&
+    itemQuery.error.status === 401;
+  useEffect(() => {
+    if (needsSignIn) signIn();
+  }, [needsSignIn, signIn]);
   const query = useAppConfig(pk, { enabled: itemQuery.isSuccess, mode: "runtime" });
   const navigate = useNavigate();
   const isExportRender = useIsExportRender();
@@ -112,7 +126,6 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
     useState<AnalyticsContextState>(initialAnalyticsContext);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [viewTitle, setViewTitle] = useState("");
-  const { username } = useAuth();
   const createBookmark = useCreateBookmark();
 
   function handleAnalyticsContextChangeAndTrack(state: AnalyticsContextState) {
@@ -139,7 +152,13 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
     }
   }
 
-  if (itemQuery.isLoading || (itemQuery.isSuccess && query.isLoading) || !extensionsRegistered) {
+  if (
+    authLoading ||
+    needsSignIn ||
+    itemQuery.isLoading ||
+    (itemQuery.isSuccess && query.isLoading) ||
+    !extensionsRegistered
+  ) {
     return <p role="status">{t("common.loading")}</p>;
   }
   if (itemQuery.isError) {
