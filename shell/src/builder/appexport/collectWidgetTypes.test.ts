@@ -64,4 +64,12 @@ describe("collectWidgetTypes", () => {
     } as unknown as AppConfig;
     expect(collectWidgetTypes(legacyConfig)).toEqual(new Set(["form"]));
   });
+
+  it("finds widgets nested in tabs/modal/drawer props", () => {
+    const c = config([["tabs"]]);
+    c.pages![0].layout.items[0].props = {
+      tabs: [{ id: "t", label: "T", items: [{ id: "i", widget: "acme-gauge", props: {} }] }],
+    };
+    expect(collectWidgetTypes(c)).toEqual(new Set(["tabs", "acme-gauge"]));
+  });
 });

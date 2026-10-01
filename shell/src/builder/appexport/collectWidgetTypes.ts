@@ -1,8 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
-// Scan top-level uniquement (pas de récursion dans tabs/modal/drawer — leur
-// contenu vit dans LayoutItem.props: dict côté serveur, invisible à un scan
-// typé ; cf. plan §Global Constraints, gap documenté non bloquant).
+// Parcourt aussi les widgets imbriqués (tabs/modal/drawer : leur contenu vit
+// dans LayoutItem.props) — miroir de core/app/appexport/guard.py (j10b-004).
 import type { AppConfig } from "../../api/types";
+
+function nested(value: unknown, types: Set<string>): void {
+  if (Array.isArray(value)) {
+    for (const v of value) nested(v, types);
+  } else if (value && typeof value === "object") {
+    const rec = value as Record<string, unknown>;
+    if (typeof rec.widget === "string") types.add(rec.widget);
+    for (const v of Object.values(rec)) nested(v, types);
+  }
+}
 
 export function collectWidgetTypes(config: AppConfig): Set<string> {
   const types = new Set<string>();
@@ -12,10 +21,12 @@ export function collectWidgetTypes(config: AppConfig): Set<string> {
   // (the common case) isn't invisible to this scan.
   for (const item of config.layout?.items ?? []) {
     types.add(item.widget);
+    nested(item.props, types);
   }
   for (const page of config.pages ?? []) {
     for (const item of page.layout.items) {
       types.add(item.widget);
+      nested(item.props, types);
     }
   }
   return types;
