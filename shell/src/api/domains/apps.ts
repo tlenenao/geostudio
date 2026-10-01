@@ -28,6 +28,7 @@ export function createAppsMethods(base: ItemClientBase): AppsMethods {
     async getAppConfig(pk: string, mode?: "runtime"): Promise<AppConfig> {
       const qs = mode ? `?mode=${mode}` : "";
       const data = await request<{
+        version?: number;
         config?: {
           kind?: "app" | "dashboard";
           theme?: Theme;
@@ -54,6 +55,7 @@ export function createAppsMethods(base: ItemClientBase): AppsMethods {
         navigationMode: c.navigationMode,
         interactions: c.interactions,
         printLayout: c.printLayout ?? null,
+        baseVersion: data.version,
       };
     },
 
@@ -86,20 +88,27 @@ export function createAppsMethods(base: ItemClientBase): AppsMethods {
       };
     },
 
-    async saveAppConfig(pk: string, config: AppConfig): Promise<void> {
-      await request<void>("PUT", `/configs/by-item/${pk}`, {
-        version: 1,
-        kind: config.kind,
-        theme: config.theme,
-        dataSources: config.dataSources,
-        messages: config.messages,
-        pages: config.pages,
-        variables: config.variables,
-        layout: config.layout,
-        navigationMode: config.navigationMode,
-        interactions: config.interactions,
-        printLayout: config.printLayout ?? null,
-      });
+    async saveAppConfig(pk: string, config: AppConfig): Promise<number | undefined> {
+      const saved = await request<{ version?: number }>(
+        "PUT",
+        `/configs/by-item/${pk}`,
+        {
+          version: 1,
+          kind: config.kind,
+          theme: config.theme,
+          dataSources: config.dataSources,
+          messages: config.messages,
+          pages: config.pages,
+          variables: config.variables,
+          layout: config.layout,
+          navigationMode: config.navigationMode,
+          interactions: config.interactions,
+          printLayout: config.printLayout ?? null,
+        },
+        undefined,
+        config.baseVersion === undefined ? undefined : { "If-Match": `"${config.baseVersion}"` },
+      );
+      return saved?.version;
     },
 
     async copilotTurn(itemId, payload): Promise<CopilotTurnResult> {

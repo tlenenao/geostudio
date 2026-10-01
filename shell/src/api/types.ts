@@ -573,7 +573,8 @@ export interface ItemClient {
   saveDatasetConfig(pk: string, config: DatasetConfig): Promise<void>;
   getAppConfig(pk: string, mode?: "runtime"): Promise<AppConfig>;
   getPublicAppConfig(pk: string): Promise<AppConfig>;
-  saveAppConfig(pk: string, config: AppConfig): Promise<void>;
+  // Retourne la nouvelle version serveur (absente si le cœur ne la renvoie pas).
+  saveAppConfig(pk: string, config: AppConfig): Promise<number | undefined>;
   // GAP-38 : schéma JSON de BuilderConfig, factorisé côté cœur derrière
   // app_config_json_schema() — même source que la ressource MCP
   // schema://app-config (garanti identique par un test dédié côté cœur).
@@ -1022,6 +1023,10 @@ export type AppConfig = {
   navigationMode?: "tabs" | "story";
   interactions?: "auto" | "manual"; // absent = "manual"
   printLayout?: PrintLayoutConfig | null;
+  // Version serveur lue au chargement (P09.05) : renvoyée en `If-Match` à
+  // l'enregistrement pour que le cœur refuse (412) une écriture périmée.
+  // Jamais persistée dans le corps de la config.
+  baseVersion?: number;
 };
 
 export type PipelineNodeKind = "reader" | "transform" | "writer";

@@ -183,7 +183,13 @@ export type ItemClientBase = {
   coreUrl: string;
   getToken: () => string | undefined;
   getShareLinkToken?: () => string | undefined;
-  request<T>(method: string, path: string, body?: unknown, timeoutMs?: number): Promise<T>;
+  request<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    timeoutMs?: number,
+    extraHeaders?: Record<string, string>,
+  ): Promise<T>;
   resolveDataset(pk: string): Promise<ResolvedDataset>;
   datasetCache: Map<string, ResolvedDataset>;
   // GAP-65 (2/3) : pk === undefined vide tout le cache, sinon une seule
@@ -270,10 +276,11 @@ export function createBase(opts: {
     path: string,
     body?: unknown,
     timeoutMs?: number,
+    extraHeaders?: Record<string, string>,
   ): Promise<T> {
     const shareToken = getShareLinkToken?.();
     const send = (token: string | undefined) => {
-      const headers: Record<string, string> = {};
+      const headers: Record<string, string> = { ...extraHeaders };
       if (token) headers.Authorization = `Bearer ${token}`;
       if (shareToken) headers["X-Share-Link-Token"] = shareToken;
       if (body !== undefined) headers["Content-Type"] = "application/json";

@@ -14,6 +14,7 @@ import { getWidget, registerWidget } from "../builder/registry";
 import { AppBuilderPage } from "./AppBuilderPage";
 import type { AuthState } from "../auth/useAuth";
 import { t } from "../i18n";
+import { ApiError } from "../api/ApiError";
 
 const authState: AuthState = {
   isLoading: false,
@@ -179,6 +180,38 @@ test("adds a widget from the palette and saves the config", async () => {
   const saved = saveAppConfig.mock.calls[0][1] as AppConfig;
   expect(saved.layout.items).toHaveLength(1);
   expect(saved.layout.items[0].widget).toBe("text");
+});
+
+test("sends the loaded version on save and keeps the one returned (P09.05)", async () => {
+  const saveAppConfig = vi.fn().mockResolvedValueOnce(4).mockResolvedValueOnce(5);
+  renderPage({
+    getAppConfig: vi.fn().mockResolvedValue({ ...config, baseVersion: 3 }),
+    saveAppConfig,
+  });
+  await screen.findByRole("button", { name: "Texte" });
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveAppConfig).toHaveBeenCalledTimes(1));
+  expect((saveAppConfig.mock.calls[0][1] as AppConfig).baseVersion).toBe(3);
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveAppConfig).toHaveBeenCalledTimes(2));
+  expect((saveAppConfig.mock.calls[1][1] as AppConfig).baseVersion).toBe(4);
+});
+
+test("shows a conflict message and reloads the latest version on a 412 (P09.05)", async () => {
+  const saveAppConfig = vi.fn().mockRejectedValue(new ApiError(412, { detail: "stale" }));
+  const getAppConfig = vi
+    .fn()
+    .mockResolvedValueOnce({ ...config, baseVersion: 1 })
+    .mockResolvedValue({ ...config, baseVersion: 7 });
+  renderPage({ getAppConfig, saveAppConfig });
+  await screen.findByRole("button", { name: "Texte" });
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await screen.findByText(t("appBuilder.conflict"));
+  await userEvent.click(screen.getByRole("button", { name: t("appBuilder.conflictReload") }));
+  await waitFor(() => expect(screen.queryByText(t("appBuilder.conflict"))).toBeNull());
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveAppConfig).toHaveBeenCalledTimes(2));
+  expect((saveAppConfig.mock.calls[1][1] as AppConfig).baseVersion).toBe(7);
 });
 
 test("toggles interactions on and saves it with the app config", async () => {

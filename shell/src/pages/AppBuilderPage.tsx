@@ -46,6 +46,7 @@ import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { useAuth } from "../auth/useAuth";
 import { useDirtyGuard } from "../lib/useDirtyGuard";
 import { t } from "../i18n";
+import { ApiError } from "../api/ApiError";
 
 registerBuiltinWidgets();
 registerCounterExampleWidget();
@@ -111,6 +112,8 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   // de redirtification immédiate après un succès de sauvegarde.
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const hasSeededRef = useRef(false);
+  const baseVersionRef = useRef<number | undefined>(undefined);
+  const versionInitRef = useRef(false);
   useEffect(() => {
     if (draft === null) return;
     if (!hasSeededRef.current) {
@@ -120,6 +123,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
     setHasUnsavedChanges(true);
   }, [draft]);
   const { ConfirmLeaveDialog } = useDirtyGuard(hasUnsavedChanges);
+  const isConflict = save.error instanceof ApiError && save.error.status === 412;
 
   const extensionsQuery = useActiveExtensions();
   const [extensionsRegistered, setExtensionsRegistered] = useState(false);
@@ -139,6 +143,13 @@ export function AppBuilderPage({ pk }: { pk: string }) {
     // seedDraft (not setDraft) — this is the session's starting point, not
     // an edit, and must not create an undo step (SP-19).
     if (query.data) seedDraft(query.data);
+    // P09.05 : la version de base est celle du chargement initial, jamais
+    // celle d'un refetch (un autre onglet a pu enregistrer entre-temps — c'est
+    // précisément le conflit que le cœur doit détecter).
+    if (query.data && !versionInitRef.current) {
+      versionInitRef.current = true;
+      baseVersionRef.current = query.data.baseVersion;
+    }
   }, [query.data, seedDraft]);
 
   useEffect(() => {
@@ -557,6 +568,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                       // resetDraft, pas setDraft : la pile undo ne peut pas défaire
                       // une écriture serveur (cf. useUndoableDraft.resetDraft).
                       resetDraft(restored);
+                      baseVersionRef.current = restored.baseVersion;
                     }}
                   />
                 </div>
@@ -587,7 +599,15 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                     className="w-fit"
                     disabled={save.isPending || expressionErrors.length > 0 || readOnly}
                     onClick={() =>
-                      save.mutate(draft, { onSuccess: () => setHasUnsavedChanges(false) })
+                      save.mutate(
+                        { ...draft, baseVersion: baseVersionRef.current },
+                        {
+                          onSuccess: (version) => {
+                            baseVersionRef.current = version;
+                            setHasUnsavedChanges(false);
+                          },
+                        },
+                      )
                     }
                   >
                     {t("appBuilder.save")}
@@ -602,10 +622,29 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                       {expressionErrors[0]}
                     </span>
                   )}
-                  {save.isError && (
+                  {save.isError && !isConflict && (
                     <span role="alert" className="text-sm text-danger">
                       {t("actions.saveFailed")}
                     </span>
+                  )}
+                  {isConflict && (
+                    <div role="alert" className="flex flex-col gap-1 text-sm text-danger">
+                      <span>{t("appBuilder.conflict")}</span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-fit"
+                        onClick={() =>
+                          void client.getAppConfig(pk).then((latest) => {
+                            resetDraft(latest);
+                            baseVersionRef.current = latest.baseVersion;
+                            save.reset();
+                          })
+                        }
+                      >
+                        {t("appBuilder.conflictReload")}
+                      </Button>
+                    </div>
                   )}
                 </div>
               </aside>

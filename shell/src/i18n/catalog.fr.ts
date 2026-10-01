@@ -341,6 +341,9 @@ export const fr = {
   "appBuilder.exportStandaloneLabel": "Export standalone",
   "appBuilder.copilotLabel": "Copilote",
   "appBuilder.save": "Enregistrer",
+  "appBuilder.conflict":
+    "Cette application a été modifiée ailleurs depuis votre ouverture : votre enregistrement a été refusé pour ne pas écraser ces changements.",
+  "appBuilder.conflictReload": "Recharger la dernière version",
   "appBuilder.expressionErrorAria": "Erreur de condition d'affichage",
 
   // Motif partagé : bouton d'enregistrement générique.

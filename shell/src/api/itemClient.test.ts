@@ -1753,6 +1753,33 @@ test("saveAppConfig PUTs the app config by item", async () => {
   expect(body.layout.type).toBe("grid");
 });
 
+test("saveAppConfig sends the loaded version as If-Match and returns the new one (P09.05)", async () => {
+  let ifMatch: string | null = "unset";
+  server.use(
+    http.get("https://core.test/v1/configs/by-item/5", () =>
+      HttpResponse.json({
+        id: "cfg-5",
+        itemId: "5",
+        kind: "app",
+        version: 3,
+        config: { kind: "app", layout: { type: "grid", breakpoints: {}, items: [] } },
+      }),
+    ),
+    http.put("https://core.test/v1/configs/by-item/5", async ({ request }) => {
+      ifMatch = request.headers.get("If-Match");
+      return HttpResponse.json({ id: "cfg-5", itemId: "5", kind: "app", version: 4 });
+    }),
+  );
+  const client = makeClient();
+  const loaded = await client.getAppConfig("5");
+  expect(loaded.baseVersion).toBe(3);
+  expect(await client.saveAppConfig("5", loaded)).toBe(4);
+  expect(ifMatch).toBe('"3"');
+  // client historique (aucune version connue) : pas d'en-tête
+  await client.saveAppConfig("5", { ...loaded, baseVersion: undefined });
+  expect(ifMatch).toBeNull();
+});
+
 test("getAppConfig/saveAppConfig round-trip interactions", async () => {
   server.use(
     http.get("https://core.test/v1/configs/by-item/9", () =>
