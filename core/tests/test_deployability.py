@@ -2096,3 +2096,17 @@ def test_release_tag_images_and_deployed_revision_move_together():
     steps = " ".join(s.get("run", "") for s in doc["jobs"]["verify-tag"]["steps"])
     assert "GEOSTUDIO_VERSION" in steps and "merge-base --is-ancestor" in steps
     assert "ci.yml" in steps
+
+
+def test_prod_traefik_reaches_docker_only_through_a_read_only_socket_proxy():
+    """P08.07 : seul le proxy monte docker.sock ; Traefik pointe dessus, le
+    proxy n'ouvre que CONTAINERS (jamais POST/EXEC/IMAGES) et ne publie rien."""
+    svcs = services(PROD)
+    traefik = svcs["traefik"]
+    assert not any("docker.sock" in str(v) for v in traefik["volumes"])
+    assert "--providers.docker.endpoint=tcp://docker-socket-proxy:2375" in traefik["command"]
+    proxy = svcs["docker-socket-proxy"]
+    assert not proxy.get("ports")
+    env = {k: str(v) for k, v in proxy["environment"].items()}
+    assert env["CONTAINERS"] == "1" and env["POST"] == "0"
+    assert not {"EXEC", "IMAGES", "VOLUMES", "NETWORKS", "SERVICES"} & env.keys()

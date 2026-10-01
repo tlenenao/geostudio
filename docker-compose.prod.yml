@@ -286,18 +286,37 @@ services:
     # `docker compose config` réel).
     command:
       - --providers.docker=true
+      # P08.07 : Traefik ne monte plus docker.sock (même :ro, l'API Docker
+      # reste pilotable : compromission de Traefik = contrôle de l'hôte) ; il
+      # passe par un proxy qui n'expose que GET /containers et /events.
+      - --providers.docker.endpoint=tcp://docker-socket-proxy:2375
       - --providers.docker.exposedbydefault=false
       - --providers.file.directory=/csp-dynamic
       - --providers.file.watch=true
       - --entrypoints.web.address=:80
+    depends_on:
+      - docker-socket-proxy
     ports: !reset []
     # volumes: !override remplace intégralement la liste de base (pas de
     # fusion) — csp-dynamic-conf doit donc être redéclaré ici explicitement,
     # sinon traefik (prod) perdrait silencieusement l'accès au fragment de
     # CSP calculée que worker écrit (même piège que command: ci-dessus).
     volumes: !override
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - csp-dynamic-conf:/csp-dynamic
+
+  docker-socket-proxy:
+    # Seul porteur de docker.sock en prod. Défauts de l'image (vérifiés par
+    # `docker image inspect`, 0.3.0) : tout à 0 sauf EVENTS/PING/VERSION ;
+    # CONTAINERS=1 est le strict nécessaire au provider Docker de Traefik.
+    # Aucun port publié : joignable sur gis-net uniquement.
+    image: tecnativa/docker-socket-proxy:0.3.0
+    environment:
+      CONTAINERS: "1"
+      POST: "0"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [gis-net]
+    restart: unless-stopped
 
   tunnel:
     image: tailscale/tailscale:v1.102.3
