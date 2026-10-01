@@ -12,10 +12,12 @@ ENV VITE_CORE_URL=$VITE_CORE_URL \
     VITE_OIDC_AUTHORITY=$VITE_OIDC_AUTHORITY \
     VITE_OIDC_CLIENT_ID=$VITE_OIDC_CLIENT_ID \
     VITE_OIDC_REDIRECT_URI=$VITE_OIDC_REDIRECT_URI
-RUN npm run build
+# Ni manifeste de build ni fixtures E2E (public/fixtures) dans l'image servie.
+RUN npm run build && rm -rf dist/.vite dist/fixtures
 
 FROM nginx:1.27-alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx-security-headers.conf /etc/nginx/snippets/security-headers.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY env-config.template.js /usr/share/nginx/html/env-config.template.js
 COPY docker-entrypoint.d/40-render-runtime-config.sh /docker-entrypoint.d/40-render-runtime-config.sh

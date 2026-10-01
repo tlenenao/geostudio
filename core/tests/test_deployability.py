@@ -1622,6 +1622,30 @@ def test_shell_nginx_conf_no_longer_hardcodes_its_own_csp():
     assert "Content-Security-Policy" not in content
 
 
+def test_shell_nginx_serves_mjs_cache_and_404_for_assets():
+    """RC-4 (P04) : sans type `.mjs`, le worker MapLibre part en
+    application/octet-stream + nosniff et ne démarre jamais (j12-001) ; sans
+    `try_files =404` sous /assets/, un chunk périmé répond index.html en 200
+    (t03-003) ; manifeste et fixtures E2E ne doivent pas être servis (t03-004).
+    Vérifié empiriquement sur l'image construite (curl) ; ce test garde la
+    configuration statique contre toute régression."""
+    conf = (REPO / "shell/nginx.conf").read_text()
+    assert "include /etc/nginx/mime.types;" in conf
+    assert "text/javascript mjs;" in conf
+    gzip_types = next(ln for ln in conf.splitlines() if "gzip_types" in ln)
+    assert "text/javascript" in gzip_types
+    assets = conf.split("location /assets/ {")[1].split("}")[0]
+    assert "try_files $uri =404;" in assets
+    immutable = next(ln for ln in assets.splitlines() if "immutable" in ln)
+    assert "max-age=31536000, immutable" in immutable
+    assert "always" not in immutable, "un 404 ne doit pas porter Cache-Control: immutable"
+    assert 'Cache-Control "no-cache"' in conf
+    # un add_header de location masque ceux du server : réinclure les en-têtes de sécurité
+    snippet = "include /etc/nginx/snippets/security-headers.conf;"
+    assert conf.count(snippet) == conf.count("add_header Cache-Control") + 1
+    assert "rm -rf dist/.vite dist/fixtures" in (REPO / "shell/Dockerfile").read_text()
+
+
 def test_core_env_vars_extractor_has_not_silently_regressed_to_empty():
     """REV-076/F-tests-04 : core_env_vars() est la clé de voûte de
     test_every_core_env_var_is_wired_to_a_service — si elle régressait vers
