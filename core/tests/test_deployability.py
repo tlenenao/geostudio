@@ -2058,3 +2058,20 @@ def test_public_s3_endpoint_wired_wherever_links_are_signed():
         assert "S3_PUBLIC_ENDPOINT_URL" in services_[name]["environment"], name
     assert "MINIO_API_CORS_ALLOW_ORIGIN" in services_["minio"]["environment"]
     assert {"S3_PUBLIC_ENDPOINT_URL", "MINIO_CORS_ALLOW_ORIGIN"} <= documented_env_vars()
+
+
+def test_every_empty_default_secret_is_generated_by_bootstrap_env():
+    """P08 / RC-3 : un `*_SECRET: ${X:-}` du compose (défaut vide) lu par une
+    route active doit être généré par scripts/bootstrap-env.sh, sinon la
+    capacité (liens de partage, export d'app, passerelle admin) est morte sur
+    toute installation standard (j13-001)."""
+    text = BASE.read_text() + PROD.read_text()
+    empty_default = set(re.findall(r"^\s*(\w+_SECRET):\s*\$\{\1:-\}", text, re.MULTILINE))
+    assert {
+        "CORE_EXPORT_TOKEN_SECRET",
+        "CORE_SHARE_LINK_TOKEN_SECRET",
+        "CORE_ADMIN_TOOLS_TOKEN_SECRET",
+    } <= empty_default
+    bootstrap = BOOTSTRAP_ENV_SH.read_text()
+    missing = sorted(v for v in empty_default if v not in bootstrap)
+    assert not missing, f"secrets à défaut vide non générés par bootstrap-env.sh : {missing}"

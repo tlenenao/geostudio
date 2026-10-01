@@ -25,6 +25,7 @@ from app.sharing.share_links import (
     ShareLinkTokenError,
     decode_share_link_token,
     mint_share_link_token,
+    share_link_secret_configured,
 )
 from app.users.models import User
 
@@ -267,6 +268,11 @@ def create_share_link_route(
     user: User = Depends(get_current_user),
 ) -> ShareLinkCreated:
     _require_share_access(session, item_id=item_id, user=user)
+    if not share_link_secret_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="share links unavailable: CORE_SHARE_LINK_TOKEN_SECRET is not configured",
+        )
     ttl_seconds = body.ttlDays * 86400
     link = sharing_repo.create_share_link(
         session,

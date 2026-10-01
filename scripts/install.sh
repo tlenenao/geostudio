@@ -177,14 +177,33 @@ set_env_var() {
   # `sed` pur remplacement resterait un no-op silencieux dans ce cas
   # (trouvé en revue finale, contre-exemple réel sur ce poste).
   if grep -q "^${1}=" .env; then
-    sed -i.bak "s|^${1}=.*|${1}=${2}|" .env
-    rm -f .env.bak
+    # awk + ENVIRON, jamais sed : la valeur (secret S3, TS_AUTHKEY…) peut
+    # contenir `&`, `\`, `|` ou `/`, que sed interprète dans le remplacement
+    # (P08.02). `cat >` préserve le mode/propriétaire de .env.
+    NAME="$1" VALUE="$2" awk 'BEGIN { n = ENVIRON["NAME"] "="; v = ENVIRON["VALUE"] }
+      index($0, n) == 1 { print n v; next } { print }' .env >.env.new
+    cat .env.new >.env
+    rm -f .env.new
   else
     printf '%s=%s\n' "${1}" "${2}" >>.env
   fi
 }
 
 ensure_env_file
+
+ensure_hmac_secrets() {
+  # Secrets HMAC des jetons (export, lien de partage, passerelle admin) : un
+  # .env antérieur à bootstrap-env.sh les a vides (défaut compose `:-`) ;
+  # les générer ici sans toucher à une valeur déjà posée (P08.06).
+  local var
+  for var in CORE_EXPORT_TOKEN_SECRET CORE_SHARE_LINK_TOKEN_SECRET CORE_ADMIN_TOOLS_TOKEN_SECRET; do
+    if ! grep -Eq "^${var}=.+" .env; then
+      set_env_var "$var" "$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 40)"
+    fi
+  done
+}
+
+ensure_hmac_secrets
 
 configure_otel_export() {
   # docker-compose.yml exporte inconditionnellement core/worker/cdc-worker

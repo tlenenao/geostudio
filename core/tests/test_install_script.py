@@ -460,3 +460,30 @@ def test_install_exports_the_discovered_public_host_before_launching_the_stack(
     env_lines = (install_workdir / ".env").read_text().splitlines()
     assert "GEOSTUDIO_PUBLIC_HOST=discovered.tailc68a0c.ts.net" in env_lines
     assert "up GEOSTUDIO_PUBLIC_HOST=discovered.tailc68a0c.ts.net" in log
+
+
+def test_install_writes_env_values_literally_whatever_their_content(install_workdir, fake_bin_path):
+    """P08.02 : `sed "s|^K=.*|K=${v}|"` interprétait `&`, `\\1`, `|` de la valeur
+    (clé Tailscale, secret S3) ; l'écriture doit être littérale."""
+    tricky = "ab&cd/ef\\1|gh$x"
+    result, _ = _run_install(install_workdir, fake_bin_path, extra_env={"TS_AUTHKEY": tricky})
+    assert result.returncode == 0, result.stderr
+    assert f"TS_AUTHKEY={tricky}" in (install_workdir / ".env").read_text().splitlines()
+
+
+def test_install_generates_empty_hmac_secrets_in_an_existing_env_and_keeps_set_ones(
+    install_workdir, fake_bin_path
+):
+    """P08.06 : un .env antérieur à bootstrap-env.sh a les secrets HMAC vides
+    (défaut compose `:-`) -> liens de partage / export / passerelle admin morts."""
+    env_path = install_workdir / ".env"
+    text = env_path.read_text().replace(
+        "CORE_ADMIN_TOOLS_TOKEN_SECRET=\n", "CORE_ADMIN_TOOLS_TOKEN_SECRET=deja-pose\n"
+    )
+    env_path.write_text(text)
+    result, _ = _run_install(install_workdir, fake_bin_path)
+    assert result.returncode == 0, result.stderr
+    values = dict(line.split("=", 1) for line in env_path.read_text().splitlines() if "=" in line)
+    assert len(values["CORE_EXPORT_TOKEN_SECRET"]) >= 32
+    assert len(values["CORE_SHARE_LINK_TOKEN_SECRET"]) >= 32
+    assert values["CORE_ADMIN_TOOLS_TOKEN_SECRET"] == "deja-pose"

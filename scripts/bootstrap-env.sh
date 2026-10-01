@@ -14,7 +14,11 @@ gen() {
   echo
 }
 
-for var in PG_PASSWORD MINIO_PASSWORD KC_PASSWORD; do
+# Les 3 secrets HMAC de jetons sont vides par défaut dans le compose (`:-`) :
+# sans génération ici, export d'app, liens de partage et passerelle admin
+# sont inutilisables (P08.06).
+for var in PG_PASSWORD MINIO_PASSWORD KC_PASSWORD CORE_EXPORT_TOKEN_SECRET \
+  CORE_SHARE_LINK_TOKEN_SECRET CORE_ADMIN_TOOLS_TOKEN_SECRET; do
   value="$(gen)"
   sed -i.bak "s|^${var}=.*|${var}=${value}|" .env
 done

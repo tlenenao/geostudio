@@ -30,7 +30,10 @@ class ExportTokenClaims:
 
 
 def _secret() -> str:
-    return os.environ["CORE_EXPORT_TOKEN_SECRET"]
+    secret = os.environ.get("CORE_EXPORT_TOKEN_SECRET")
+    if not secret:  # absent OU vide : une clé HMAC vide est forgeable (P08.06)
+        raise KeyError("CORE_EXPORT_TOKEN_SECRET")
+    return secret
 
 
 def mint_export_token(*, tenant_id: str, user_id: str, job_id: str, ttl_seconds: int = 120) -> str:

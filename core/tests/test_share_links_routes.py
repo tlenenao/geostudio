@@ -166,3 +166,11 @@ def test_create_share_link_response_includes_the_raw_token(client):
     body = response.json()
     assert body["token"]
     assert body["url"].endswith(f"/share-links/{body['token']}")
+
+
+def test_create_share_link_returns_503_when_the_secret_is_empty(client, monkeypatch):
+    # P08.06 : défaut compose `${…:-}` = chaîne vide, pas absence.
+    monkeypatch.setenv("CORE_SHARE_LINK_TOKEN_SECRET", "")
+    response = client.post(f"/v1/items/{client.item_id}/share-links", json={"ttlDays": 7})
+    assert response.status_code == 503
+    assert "CORE_SHARE_LINK_TOKEN_SECRET" in response.json()["detail"]
