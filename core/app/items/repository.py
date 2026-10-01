@@ -347,6 +347,8 @@ def _visible_items_base_query(
                 shared_exists,
             )
         )
+    else:
+        raise ValueError(f"scope inconnu: {scope!r}")
     return query
 
 
@@ -528,6 +530,10 @@ def get_facets(
     return ItemFacets(owners=owners, keywords=keywords)
 
 
+# Kinds destinés au public : jamais alert/pipeline/report/etc. (config sensible).
+PUBLIC_KINDS = ("site", "app", "dashboard", "map", "dataset")
+
+
 def list_published_items(
     session: Session,
     *,
@@ -544,7 +550,11 @@ def list_published_items(
     query = (
         select(Item, User.username)
         .join(User, User.id == Item.owner_id)
-        .where(Item.tenant_id == tenant_id, Item.is_published.is_(True))
+        .where(
+            Item.tenant_id == tenant_id,
+            Item.is_published.is_(True),
+            Item.resource_type.in_(PUBLIC_KINDS),
+        )
     )
     if resource_type:
         query = query.where(Item.resource_type == resource_type)
@@ -641,7 +651,12 @@ def get_published_item(
     row = session.execute(
         select(Item, User.username)
         .join(User, User.id == Item.owner_id)
-        .where(Item.id == item_id, Item.tenant_id == tenant_id, Item.is_published.is_(True))
+        .where(
+            Item.id == item_id,
+            Item.tenant_id == tenant_id,
+            Item.is_published.is_(True),
+            Item.resource_type.in_(PUBLIC_KINDS),
+        )
     ).first()
     if row is None:
         return None

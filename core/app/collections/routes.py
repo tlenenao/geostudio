@@ -57,6 +57,114 @@ POSTGIS_SYSTEM_TABLES = frozenset(
 )
 
 
+# Tables de la file de jobs et de Keycloak (même schéma/base que le cœur) :
+# jamais registrables (t02-005).
+_KEYCLOAK_TABLES = frozenset(
+    [
+        "admin_event_entity",
+        "associated_policy",
+        "authentication_execution",
+        "authentication_flow",
+        "authenticator_config",
+        "broker_link",
+        "client",
+        "client_attributes",
+        "client_auth_flow_bindings",
+        "client_initial_access",
+        "client_node_registrations",
+        "client_scope",
+        "client_scope_attributes",
+        "client_scope_client",
+        "client_scope_role_mapping",
+        "client_session",
+        "client_session_auth_status",
+        "client_session_note",
+        "client_session_prot_mapper",
+        "client_session_role",
+        "client_user_session_note",
+        "component",
+        "component_config",
+        "composite_role",
+        "credential",
+        "databasechangelog",
+        "databasechangeloglock",
+        "default_client_scope",
+        "event_entity",
+        "fed_user_attribute",
+        "fed_user_consent",
+        "fed_user_consent_cl_scope",
+        "fed_user_credential",
+        "fed_user_group_membership",
+        "fed_user_required_action",
+        "fed_user_role_mapping",
+        "federated_identity",
+        "federated_user",
+        "group_attribute",
+        "group_role_mapping",
+        "identity_provider",
+        "identity_provider_config",
+        "identity_provider_mapper",
+        "idp_mapper_config",
+        "jgroups_ping",
+        "keycloak_group",
+        "keycloak_role",
+        "migration_model",
+        "offline_client_session",
+        "offline_user_session",
+        "org",
+        "org_domain",
+        "policy_config",
+        "protocol_mapper",
+        "protocol_mapper_config",
+        "realm",
+        "realm_attribute",
+        "realm_default_groups",
+        "realm_enabled_event_types",
+        "realm_events_listeners",
+        "realm_localizations",
+        "realm_required_credential",
+        "realm_smtp_config",
+        "realm_supported_locales",
+        "redirect_uris",
+        "required_action_config",
+        "required_action_provider",
+        "resource_attribute",
+        "resource_policy",
+        "resource_scope",
+        "resource_server",
+        "resource_server_perm_ticket",
+        "resource_server_policy",
+        "resource_server_resource",
+        "resource_server_scope",
+        "resource_uris",
+        "revoked_token",
+        "role_attribute",
+        "scope_mapping",
+        "scope_policy",
+        "user_attribute",
+        "user_consent",
+        "user_consent_client_scope",
+        "user_entity",
+        "user_federation_config",
+        "user_federation_mapper",
+        "user_federation_mapper_config",
+        "user_federation_provider",
+        "user_group_membership",
+        "user_required_action",
+        "user_role_mapping",
+        "user_session",
+        "user_session_note",
+        "username_login_failure",
+        "web_origins",
+    ]
+)
+
+
+def _is_system_table(name: str) -> bool:
+    n = name.lower()
+    return n in _KEYCLOAK_TABLES or n.startswith("procrastinate_")
+
+
 def _core_tables() -> frozenset[str]:
     # Calculé à la requête, jamais à l'import : au moment où main.py importe ce
     # module, app.items/app.configs ne sont pas encore importés et
@@ -276,7 +384,7 @@ def register_collection(
     count_features=Depends(get_feature_counter),
 ):
     require_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
-    if body.tableName in _core_tables():
+    if body.tableName in _core_tables() or _is_system_table(body.tableName):
         raise HTTPException(status_code=400, detail="core table cannot be registered")
     if repo.get_collection(session, tenant_id=user.tenant_id, collection_id=body.tableName):
         raise HTTPException(status_code=409, detail="table already registered")
@@ -438,7 +546,7 @@ def list_candidate_tables(
     core = _core_tables()
     candidates = []
     for table_name in list_tables(session):
-        if table_name in core:
+        if table_name in core or _is_system_table(table_name):
             continue
         # REV-011 : exclusion cross-tenant (pas seulement tenant-scopée) —
         # une table déjà enregistrée par N'IMPORTE QUEL tenant percuterait la
