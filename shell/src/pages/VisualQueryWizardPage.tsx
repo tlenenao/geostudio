@@ -320,15 +320,16 @@ export function VisualQueryWizardPage({
             pipeline,
           });
           created.pipelinePk = pipelineItem.pk;
-          await client.saveDatasetConfig(datasetPk, {
-            source: "collection",
-            collectionId: outputCollectionId,
-            columns: {},
-            sourcePipelineId: created.pipelinePk,
-          });
         } else {
           await client.savePipelineConfig(created.pipelinePk, pipeline);
         }
+        // Hors du if : si cette liaison échoue, le clic suivant la rejoue (idempotent).
+        await client.saveDatasetConfig(datasetPk, {
+          source: "collection",
+          collectionId: outputCollectionId,
+          columns: {},
+          sourcePipelineId: created.pipelinePk,
+        });
         pipelinePkToRun = created.pipelinePk;
       }
 

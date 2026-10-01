@@ -397,6 +397,25 @@ describe("VisualQueryWizardPage", () => {
     expect(client.createPipelineItem).toHaveBeenCalledTimes(1);
   });
 
+  test("un échec de liaison dataset→pipeline est rejoué au clic suivant (pas de dataset orphelin)", async () => {
+    const client = renderWizard({
+      saveDatasetConfig: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("boom"))
+        .mockResolvedValue(undefined),
+    });
+    await screen.findByRole("option", { name: "Incidents" });
+    await userEvent.selectOptions(screen.getByLabelText("Collection de base"), "incidents");
+    await screen.findByText("Filtrer");
+    await userEvent.click(screen.getByRole("button", { name: "Créer" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("boom");
+    await userEvent.click(screen.getByRole("button", { name: "Créer" }));
+
+    await waitFor(() => expect(client.runPipeline).toHaveBeenCalledTimes(1));
+    expect(client.saveDatasetConfig).toHaveBeenCalledTimes(2);
+    expect(client.createPipelineItem).toHaveBeenCalledTimes(1);
+  });
+
   test('attend le run par son propre poll (sans clic manuel), même si le premier statut est "running"', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     let call = 0;
