@@ -52,3 +52,14 @@ def test_invalid_if_match_is_a_400(client):
     created = client.post("/v1/configs", json={"title": "Carte", "config": _MAP}).json()
     r = client.put(f"/v1/configs/{created['id']}", json=_MAP, headers={"If-Match": "abc"})
     assert r.status_code == 400
+
+
+def test_oversized_config_body_is_refused_before_being_read(client):
+    # P09.07 (t02-001) : plafond de corps sur l'API JSON des configs.
+    big = {"title": "x" * (6 * 1024 * 1024), "config": _MAP}
+    assert client.post("/v1/configs", json=big).status_code == 413
+    created = client.post("/v1/configs", json={"title": "Carte", "config": _MAP}).json()
+    assert client.put(f"/v1/configs/{created['id']}", json=big).status_code == 413
+    # corps chunked (sans Content-Length) : refusé, sinon le plafond se contourne
+    chunked = client.post("/v1/configs", content=iter([b'{"title":"x"}']))
+    assert chunked.status_code == 411

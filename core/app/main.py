@@ -67,6 +67,8 @@ from app.terrain3d import routes as terrain3d_routes
 from app.tileset3d import routes as tileset3d_routes
 from app.usage import routes as usage_routes
 
+MAX_CONFIG_BODY_BYTES = 5 * 1024 * 1024
+_CONFIG_WRITE_PATH_RE = re.compile(r"^/v1/configs(/[^/]+){0,2}$")
 _AGGREGATE_PATH_RE = re.compile(r"^/v1/collections/[^/]+/aggregate$")
 _EXPORT_PATH_RE = re.compile(
     r"^/v1/(collections/[^/]+|datasets/[^/]+/arcgis)/export(/items)?$"
@@ -206,6 +208,33 @@ def create_app() -> FastAPI:
                     "title": HTTPStatus(403).phrase,
                     "status": 403,
                     "detail": "Mode démo : lecture seule, écritures désactivées.",
+                },
+            )
+        return await call_next(request)
+
+    @app.middleware("http")
+    async def config_body_limit(request: Request, call_next):
+        # P09.07 (t02-001) : une config JSON n'a aucune raison de dépasser
+        # quelques Mo ; sans plafond, un créateur sature la base (une révision
+        # par écriture), la mémoire d'uvicorn et l'historique. Rejet AVANT
+        # lecture du corps, sur Content-Length (411 si absent : un corps
+        # chunked contournerait le plafond).
+        if request.method in {"POST", "PUT"} and _CONFIG_WRITE_PATH_RE.match(request.url.path):
+            length = request.headers.get("content-length")
+            if length is None or not length.isdigit():
+                status, detail = 411, "Content-Length required"
+            elif int(length) > MAX_CONFIG_BODY_BYTES:
+                status, detail = 413, f"config too large (max {MAX_CONFIG_BODY_BYTES} bytes)"
+            else:
+                return await call_next(request)
+            return JSONResponse(
+                status_code=status,
+                media_type="application/problem+json",
+                content={
+                    "type": "about:blank",
+                    "title": HTTPStatus(status).phrase,
+                    "status": status,
+                    "detail": detail,
                 },
             )
         return await call_next(request)
