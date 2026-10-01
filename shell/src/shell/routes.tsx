@@ -346,7 +346,7 @@ function routeElements() {
           path="/admin/compliance"
           element={
             <RequirePrivilege
-              privilege="compliance.manage"
+              privilege={["admin.users.manage", "compliance.manage"]}
               deniedMessage={t("routes.complianceOnly")}
             >
               <ComplianceAdminPage />

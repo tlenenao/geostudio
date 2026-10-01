@@ -138,3 +138,12 @@ test("permet de naviguer d'une page admin à une autre sans repasser par /admin/
     "/admin/users",
   );
 });
+
+test("le lien Conformité est visible avec admin.users.manage seul (j08-002)", async () => {
+  mockMe(["admin.users.manage"]);
+  renderNav();
+  expect(await screen.findByRole("link", { name: "Conformité (RGPD) →" })).toHaveAttribute(
+    "href",
+    "/admin/compliance",
+  );
+});
