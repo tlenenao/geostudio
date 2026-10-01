@@ -95,6 +95,9 @@ def migrate_users_to_roles(conn) -> None:
         )
 
 
+_DOWNGRADABLE_SLUGS = {"admin", "creator", "analyst"}
+
+
 def migrate_roles_to_booleans(conn) -> None:
     """Inverse de migrate_users_to_roles, pour downgrade() — limite acceptée
     (design §2) : un rôle sur mesure créé après l'upgrade n'a pas d'équivalent
@@ -103,6 +106,16 @@ def migrate_roles_to_booleans(conn) -> None:
         row[0]: row[1] for row in conn.execute(text("SELECT id, slug FROM roles")).all()
     }
     users = conn.execute(text("SELECT id, role_id FROM users")).all()
+    # c03-002 : avant 0030, (False, False) = Créateur. Rétrograder un Lecteur
+    # ou un porteur de rôle sur mesure le promouvrait au ré-upgrade : on
+    # refuse plutôt que d'élever silencieusement des privilèges.
+    stranded = [u for u, r in users if role_slug_by_id.get(r, "") not in _DOWNGRADABLE_SLUGS]
+    if stranded:
+        raise RuntimeError(
+            f"downgrade 0030 refusé : {len(stranded)} utilisateur(s) sur le rôle reader ou un "
+            "rôle sur mesure n'ont pas d'équivalent booléen (ils deviendraient Créateur). "
+            "Réaffectez-les à Administrateur/Créateur/Analyste avant de rétrograder."
+        )
     for user_id, role_id in users:
         slug = role_slug_by_id.get(role_id, "")
         conn.execute(

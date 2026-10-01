@@ -169,3 +169,33 @@ def test_seed_migrate_and_revert_on_a_non_empty_database(pg_engine):
             # de portée session (SQLAlchemy ignore une colonne DB non
             # mappée ; Base.metadata.create_all() n'est de toute façon
             # jamais destructif sur une table déjà présente).
+
+
+def test_downgrade_refuses_reader_and_custom_role_holders_c03_002():
+    """Un aller-retour downgrade/upgrade ne doit jamais élever un Lecteur en
+    Créateur : le downgrade refuse explicitement (SQLite, sans Postgres)."""
+    import pytest
+    from sqlalchemy import create_engine
+
+    mod = _import_0030()
+    eng = create_engine("sqlite://")
+    with eng.begin() as c:
+        c.execute(text("CREATE TABLE tenants (id TEXT PRIMARY KEY)"))
+        c.execute(
+            text(
+                "CREATE TABLE roles (id TEXT PRIMARY KEY, tenant_id TEXT, name TEXT, slug TEXT, "
+                "is_built_in BOOLEAN, privileges TEXT, created_at TIMESTAMP, updated_at TIMESTAMP)"
+            )
+        )
+        c.execute(
+            text(
+                "CREATE TABLE users (id TEXT PRIMARY KEY, tenant_id TEXT, is_admin BOOLEAN, "
+                "is_analyst BOOLEAN, role_id TEXT)"
+            )
+        )
+        c.execute(text("INSERT INTO tenants VALUES ('t1')"))
+        mod.seed_built_in_roles(c)
+        reader_id = c.execute(text("SELECT id FROM roles WHERE slug='reader'")).scalar()
+        c.execute(text("INSERT INTO users VALUES ('u','t1',0,0,:r)"), {"r": reader_id})
+        with pytest.raises(RuntimeError, match="downgrade 0030 refusé"):
+            mod.migrate_roles_to_booleans(c)
