@@ -208,6 +208,9 @@ test("SP-55 : dessiner un rectangle sur CatalogSpatialFilter filtre le catalogue
     }),
   );
   render(<CatalogPage onOpenItem={() => {}} />, { wrapper });
+  // t03-005 : la carte n'est ni chargée ni montée avant l'action explicite.
+  expect(mapInstances.length).toBe(0);
+  await userEvent.click(screen.getByRole("button", { name: "Afficher la carte" }));
   await waitFor(() => expect(mapInstances.length).toBeGreaterThan(0));
   const map = mapInstances[0];
 

@@ -106,6 +106,8 @@ export const fr = {
   "catalog.ownerLabel": "Propriétaire",
   "catalog.keywordsLabel": "Mots-clés",
   "catalog.spatialSearchLabel": "Recherche spatiale",
+  "catalog.spatialShow": "Afficher la carte",
+  "catalog.spatialHide": "Masquer la carte",
   "catalog.loadError": "Erreur de chargement.",
   "catalog.emptyFilteredDescription": "Aucun élément ne correspond à ces filtres.",
   "catalog.emptyFilteredTitle": "Aucun résultat",

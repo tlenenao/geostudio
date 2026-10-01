@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useItemFacets, useItems, useMe } from "../api/hooks";
 import type { ItemScope, ItemSort, ResourceType } from "../api/types";
@@ -13,7 +13,14 @@ import { EmptyState } from "../ui/kit/EmptyState";
 import { NewItemButton } from "../shell/NewItemButton";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { plural, t } from "../i18n";
-import { CatalogSpatialFilter, type Bbox } from "./CatalogSpatialFilter";
+import { LoadingState } from "../ui/kit/LoadingState";
+import type { Bbox } from "./CatalogSpatialFilter";
+
+// La carte du filtre spatial embarque maplibre-gl (vendor-map, ~284 Ko gzip) :
+// chargée seulement à l'ouverture du panneau, pas au premier rendu (t03-005, LCP).
+const CatalogSpatialFilter = lazy(() =>
+  import("./CatalogSpatialFilter").then((m) => ({ default: m.CatalogSpatialFilter })),
+);
 
 const PAGE_SIZE = 12;
 const SCOPE_LABELS: Record<ItemScope, string> = {
@@ -67,6 +74,7 @@ export function CatalogPage({
   const [ownerFilter, setOwnerFilter] = useState("");
   const [selectedKeywords, setSelectedKeywords] = useState<string[]>([]);
   const [spatialBbox, setSpatialBbox] = useState<Bbox | null>(null);
+  const [spatialOpen, setSpatialOpen] = useState(false);
   const [page, setPage] = useState(1);
   // SP-30a review finale : la page n'était pas réinitialisée en changeant de
   // domaine via DomainBar (?type= change sans démontage de CatalogPage) —
@@ -238,12 +246,32 @@ export function CatalogPage({
               )}
               <div className="flex flex-col gap-1 text-sm text-ink">
                 {t("catalog.spatialSearchLabel")}
-                <CatalogSpatialFilter
-                  onChange={(bbox) => {
-                    setSpatialBbox(bbox);
-                    setPage(1);
+                <Button
+                  variant="outline"
+                  aria-expanded={spatialOpen}
+                  aria-controls="catalog-spatial-filter"
+                  onClick={() => {
+                    if (spatialOpen) {
+                      setSpatialBbox(null);
+                      setPage(1);
+                    }
+                    setSpatialOpen(!spatialOpen);
                   }}
-                />
+                >
+                  {spatialOpen ? t("catalog.spatialHide") : t("catalog.spatialShow")}
+                </Button>
+                {spatialOpen && (
+                  <div id="catalog-spatial-filter">
+                    <Suspense fallback={<LoadingState />}>
+                      <CatalogSpatialFilter
+                        onChange={(bbox) => {
+                          setSpatialBbox(bbox);
+                          setPage(1);
+                        }}
+                      />
+                    </Suspense>
+                  </div>
+                )}
               </div>
             </div>
           ),

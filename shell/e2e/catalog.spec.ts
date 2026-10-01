@@ -191,6 +191,7 @@ test("SP-55 : dessine un rectangle et ne garde que les items dont la bbox inters
   await expect(page.getByRole("heading", { name: "Alpha" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Beta" })).toBeVisible();
 
+  await page.getByRole("button", { name: "Afficher la carte" }).click();
   const canvas = page
     .locator('[aria-label="Dessiner un rectangle de recherche spatiale"] canvas')
     .first();
