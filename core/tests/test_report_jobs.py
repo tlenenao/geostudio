@@ -5,8 +5,10 @@ the sweep. The notify half lives in test_report_jobs.py's sibling tests
 below; the periodic-task-level commit-before-defer proof lives in
 test_report_sweep.py (mirrors test_alert_sweep.py/test_pipeline_sweep.py)."""
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
-from sqlalchemy import select
+from sqlalchemy import event, select
 
 from app.alerts.notify import NotifyError
 from app.audit.models import AuditLog
@@ -15,6 +17,7 @@ from app.configs.schemas import BuilderConfig
 from app.db import init_db, make_engine, make_session_factory
 from app.export import repository as export_repo
 from app.items import repository as items_repo
+from app.items.models import Item
 from app.notifications import repository as notifications_repo
 from app.notifications.models import Notification
 from app.reports import jobs as report_jobs
@@ -35,6 +38,19 @@ def _make_session():
     engine = make_engine("sqlite+pysqlite:///:memory:")
     init_db(engine)
     return make_session_factory(engine)
+
+
+@pytest.fixture(autouse=True)
+def _items_created_long_ago():
+    """Sans run antérieur la cadence part de la création de l'item (j09b-013) : ces tests
+    veulent des rapports déjà dus, donc créés il y a plus d'une semaine."""
+
+    def _backdate(mapper, connection, target):
+        target.created_at = datetime.now(UTC) - timedelta(days=8)
+
+    event.listen(Item, "before_insert", _backdate)
+    yield
+    event.remove(Item, "before_insert", _backdate)
 
 
 def _seed_bookmark(session, *, tenant_id, owner_id, app_id="app-1", page_id="page-1") -> str:

@@ -17,6 +17,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, aliased
 
 from app.configs import repository as configs_repo
+from app.items.models import Item
 from app.reports.models import ReportRun
 
 
@@ -136,14 +137,17 @@ def list_due_reports(session: Session) -> list[tuple[str, str]]:
         for item_id, tenant_id, config in configs_repo.list_configs_by_kind(session, kind="report")
         if config.report is not None and config.report.refreshPolicy.enabled
     ]
-    latest_by_item = get_latest_runs_for_items(session, item_ids=[c[0] for c in candidates])
+    item_ids = [c[0] for c in candidates]
+    latest_by_item = get_latest_runs_for_items(session, item_ids=item_ids)
+    # Sans run antérieur, la cadence se mesure depuis la création du rapport (j09b-013) :
+    # un cron annuel ne se déclenche pas au premier balayage venu.
+    created_by_item = dict(
+        session.execute(select(Item.id, Item.created_at).where(Item.id.in_(item_ids))).all()
+    )
     for item_id, tenant_id, config in candidates:
         policy = config.report.refreshPolicy
         latest = latest_by_item.get(item_id)
-        if latest is None:
-            due.append((item_id, tenant_id))
-            continue
-        created_at = latest.created_at
+        created_at = latest.created_at if latest is not None else created_by_item[item_id]
         if created_at.tzinfo is None:
             created_at = created_at.replace(tzinfo=UTC)
         next_tick = croniter.croniter(policy.cron, created_at).get_next(datetime)
