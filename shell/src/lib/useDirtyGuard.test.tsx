@@ -111,4 +111,29 @@ describe("useDirtyGuard", () => {
     const dialogAfterRerender = screen.getByRole("dialog");
     expect(dialogAfterRerender).toBe(dialogBeforeRerender);
   });
+
+  it("pose un beforeunload tant que le brouillon est sale, et le retire sinon (P09.06)", () => {
+    function Harness({ dirty }: { dirty: boolean }) {
+      useDirtyGuard(dirty);
+      return null;
+    }
+    const mount = (dirty: boolean) => {
+      const router = createMemoryRouter([{ path: "/", element: <Harness dirty={dirty} /> }]);
+      return render(<RouterProvider router={router} />);
+    };
+    const fire = () => {
+      const event = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+
+    const dirty = mount(true);
+    expect(fire()).toBe(true);
+    dirty.unmount();
+    expect(fire()).toBe(false);
+
+    const clean = mount(false);
+    expect(fire()).toBe(false);
+    clean.unmount();
+  });
 });
