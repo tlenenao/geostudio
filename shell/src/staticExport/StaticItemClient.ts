@@ -117,6 +117,21 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async addGroupMember(..._args: unknown[]) {
       return unsupported();
     },
+    async listGroupMembers(..._args: unknown[]) {
+      return unsupported();
+    },
+    async removeGroupMember(..._args: unknown[]) {
+      return unsupported();
+    },
+    async renameGroup(..._args: unknown[]) {
+      return unsupported();
+    },
+    async deleteGroup(..._args: unknown[]) {
+      return unsupported();
+    },
+    async searchUserDirectory(..._args: unknown[]) {
+      return unsupported();
+    },
     async getSharing(..._args: unknown[]) {
       return unsupported();
     },

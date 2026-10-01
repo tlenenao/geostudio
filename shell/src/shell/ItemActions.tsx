@@ -5,12 +5,15 @@ import { useDeleteItem, useInstanceInfo, useUpdateItem } from "../api/hooks";
 import type { Item } from "../api/types";
 import { Button } from "../ui/kit/Button";
 import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
+import { PublishDialog } from "./PublishDialog";
 import { Gate } from "../auth/Gate";
 import { Locked } from "../auth/Locked";
 import { hasPermission } from "../auth/permissions";
 import { t } from "../i18n";
 
-type MenuState = "closed" | "open" | "delete";
+type MenuState = "closed" | "open" | "delete" | "publish";
+
+const REFERENCING_KINDS = new Set(["map", "app", "dashboard"]);
 
 export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () => void }) {
   const navigate = useNavigate();
@@ -24,6 +27,16 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
   const exportEnabled = useInstanceInfo().data?.exportEnabled === true;
 
   async function togglePublish() {
+    // j03-012 : publier une carte/app passe par un dialogue qui signale les
+    // collections lues encore privées ; dépublier reste direct.
+    if (!item.isPublished && REFERENCING_KINDS.has(item.resourceType)) {
+      setMenu("publish");
+      return;
+    }
+    await doTogglePublish();
+  }
+
+  async function doTogglePublish() {
     try {
       await publish.mutateAsync({ isPublished: !item.isPublished });
       setMenu("closed");
@@ -126,6 +139,13 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
         </div>
       )}
 
+      <PublishDialog
+        item={item}
+        open={menu === "publish"}
+        pending={publish.isPending}
+        onPublish={() => void doTogglePublish()}
+        onCancel={() => setMenu("closed")}
+      />
       <ConfirmDialog
         open={menu === "delete"}
         title={t("actions.deleteTitle")}
@@ -140,7 +160,7 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
           {t("actions.deleteFailed")}
         </p>
       )}
-      {publish.isError && menu === "open" && (
+      {publish.isError && (menu === "open" || menu === "publish") && (
         <p role="alert" className="mt-2 text-sm text-danger">
           {t("actions.publishFailed")}
         </p>

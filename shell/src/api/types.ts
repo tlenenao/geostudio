@@ -237,7 +237,18 @@ export type UpdatePatch = {
   language?: string;
 };
 
-export type Group = { id: string; title: string };
+// canManage : l'appelant est créateur du groupe ou administrateur des
+// utilisateurs (membres, renommage, suppression) — calculé par le cœur (j13-006).
+export type Group = { id: string; title: string; createdBy?: string; canManage?: boolean };
+export type GroupMember = { userId: string; username: string; email: string | null };
+export type DirectoryUser = { id: string; username: string; email: string | null };
+export type ShareLinkInfo = {
+  id: string;
+  expiresAt: string;
+  revoked: boolean;
+  createdAt?: string;
+  createdBy?: string;
+};
 export type ShareRole = "viewer" | "editor";
 export type Sharing = {
   public: boolean;
@@ -490,6 +501,13 @@ export interface ItemClient {
   // plutôt que masqué).
   createGroup(name: string): Promise<Group>;
   addGroupMember(groupId: string, userId: string): Promise<void>;
+  // j13-004 : gestion d'un groupe par son créateur (ou un administrateur).
+  listGroupMembers(groupId: string): Promise<GroupMember[]>;
+  removeGroupMember(groupId: string, userId: string): Promise<void>;
+  renameGroup(groupId: string, name: string): Promise<Group>;
+  deleteGroup(groupId: string): Promise<void>;
+  // j13-005 : annuaire restreint (catalog.manage) pour ajouter un membre.
+  searchUserDirectory(q: string): Promise<DirectoryUser[]>;
   getSharing(pk: string): Promise<Sharing>;
   setSharing(pk: string, sharing: Sharing): Promise<void>;
   // GAP-12 (chantier 4.23) : lien de partage à échéance, révocable — distinct
@@ -498,7 +516,7 @@ export interface ItemClient {
     itemId: string,
     ttlDays: number,
   ): Promise<{ url: string; expiresAt: string; token: string }>;
-  listShareLinks(itemId: string): Promise<{ id: string; expiresAt: string; revoked: boolean }[]>;
+  listShareLinks(itemId: string): Promise<ShareLinkInfo[]>;
   revokeShareLink(itemId: string, linkId: string): Promise<void>;
   listLayerSources(params?: { q?: string }): Promise<LayerSource[]>;
   sampleCollectionField(collectionId: string, field: string, limit: number): Promise<number[]>;

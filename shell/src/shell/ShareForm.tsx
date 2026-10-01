@@ -3,17 +3,27 @@ import { useEffect, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import {
   useAddGroupMember,
+  useCollectionSharing,
   useCreateGroup,
   useCreateShareLink,
+  useDeleteGroup,
+  useGroupMembers,
   useGroups,
+  useRemoveGroupMember,
+  useRenameGroup,
   useRevokeShareLink,
+  useSetCollectionSharing,
   useSetSharing,
   useShareLinks,
   useSharing,
+  useUserDirectory,
 } from "../api/hooks";
-import type { Item, ShareRole } from "../api/types";
+import type { Group, Item, ShareLinkInfo, ShareRole } from "../api/types";
 import { Button } from "../ui/kit/Button";
+import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
+import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { t } from "../i18n";
+import { useReferencedCollectionIds } from "./referencedCollections";
 
 const MAX_SHARE_LINK_TTL_DAYS = 30;
 
@@ -36,6 +46,16 @@ async function copyToClipboard(text: string): Promise<void> {
   document.body.removeChild(el);
 }
 
+// Le cœur sérialise des datetimes UTC naïfs (sans fuseau) : sans « Z », le
+// navigateur les lirait en heure locale.
+function parseUtc(iso: string): Date {
+  return new Date(/[zZ]|[+-]\d\d:\d\d$/.test(iso) ? iso : `${iso}Z`);
+}
+
+function formatUtc(iso: string): string {
+  return parseUtc(iso).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
+}
+
 // GAP-12 (chantier 4.23) : section distincte du partage groupe/rôle plat
 // ci-dessus — un lien de partage est présenté à un tiers externe, révocable
 // à tout moment. La consommation anonyme du lien (côté visiteur sans
@@ -49,6 +69,43 @@ function ShareLinksPanel({ itemId }: { itemId: string }) {
   const [lastCreatedUrl, setLastCreatedUrl] = useState<string | null>(null);
   const [lastCreatedToken, setLastCreatedToken] = useState<string | null>(null);
   const [copiedField, setCopiedField] = useState<"link" | "embed" | null>(null);
+
+  const links = linksQuery.data ?? [];
+  const isInactive = (link: ShareLinkInfo) =>
+    link.revoked || parseUtc(link.expiresAt).getTime() < Date.now();
+  const active = links.filter((l) => !isInactive(l));
+  const inactive = links.filter(isInactive);
+
+  function renderLink(link: ShareLinkInfo) {
+    const status = link.revoked
+      ? t("shareForm.linkStatusRevoked")
+      : isInactive(link)
+        ? t("shareForm.linkStatusExpired")
+        : t("shareForm.linkStatusActive");
+    return (
+      <li key={link.id} className="flex items-center justify-between gap-2">
+        <span>
+          {t("shareForm.linkSummaryTemplate", {
+            createdAt: link.createdAt ? formatUtc(link.createdAt) : "—",
+            createdBy: link.createdBy || "—",
+            status,
+            expiresAt: formatUtc(link.expiresAt),
+          })}
+        </span>
+        {!link.revoked && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={revokeLink.isPending}
+            onClick={() => revokeLink.mutate(link.id)}
+          >
+            {t("shareForm.revokeButton")}
+          </Button>
+        )}
+      </li>
+    );
+  }
 
   function handleCopy(field: "link" | "embed", text: string) {
     void copyToClipboard(text);
@@ -78,39 +135,14 @@ function ShareLinksPanel({ itemId }: { itemId: string }) {
           {t("shareForm.linksLoadError")}
         </p>
       )}
-      {linksQuery.data && linksQuery.data.length > 0 && (
-        <ul className="flex flex-col gap-1 text-xs">
-          {linksQuery.data.map((link) => {
-            const expired = new Date(link.expiresAt).getTime() < Date.now();
-            const status = link.revoked
-              ? t("shareForm.linkStatusRevoked")
-              : expired
-                ? t("shareForm.linkStatusExpired")
-                : t("shareForm.linkStatusActive");
-            return (
-              <li key={link.id} className="flex items-center justify-between gap-2">
-                <span>
-                  {t("shareForm.linkSummaryTemplate", {
-                    id: link.id,
-                    status,
-                    expiresAt: link.expiresAt,
-                  })}
-                </span>
-                {!link.revoked && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={revokeLink.isPending}
-                    onClick={() => revokeLink.mutate(link.id)}
-                  >
-                    {t("shareForm.revokeButton")}
-                  </Button>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+      {active.length > 0 && (
+        <ul className="flex flex-col gap-1 text-xs">{active.map(renderLink)}</ul>
+      )}
+      {inactive.length > 0 && (
+        <details className="text-xs text-ink-2">
+          <summary>{t("shareForm.inactiveLinks", { count: inactive.length })}</summary>
+          <ul className="flex flex-col gap-1">{inactive.map(renderLink)}</ul>
+        </details>
       )}
       <div className="flex items-center gap-2">
         <label className="flex items-center gap-1 text-xs text-ink">
@@ -193,21 +225,18 @@ function ShareLinksPanel({ itemId }: { itemId: string }) {
   );
 }
 
-// GAP-42/65 : formulaire d'ajout de groupe + contrôle d'ajout de membre par
-// groupe. L'API AddMemberRequest attend un userId exact (un UUID), pas un
-// nom — GET /users est admin-only (ADMIN_USERS_MANAGE), indisponible à un
-// partageur ordinaire (spec §1.2) : pas de recherche par nom possible ici,
-// l'aide contextuelle le dit explicitement plutôt que de le masquer.
+// j13-005 : ajout de membre par recherche dans l'annuaire restreint du tenant
+// (GET /users/directory, catalog.manage) — plus d'UUID à connaître.
 function AddGroupMemberControl({ groupId, groupTitle }: { groupId: string; groupTitle: string }) {
-  const [userId, setUserId] = useState("");
+  const [q, setQ] = useState("");
+  const directory = useUserDirectory(q.trim());
   const addGroupMember = useAddGroupMember();
 
-  async function handleAdd() {
+  async function handleAdd(userId: string) {
     addGroupMember.reset();
-    if (!userId.trim()) return;
     try {
-      await addGroupMember.mutateAsync({ groupId, userId: userId.trim() });
-      setUserId("");
+      await addGroupMember.mutateAsync({ groupId, userId });
+      setQ("");
     } catch {
       /* surfaced via addGroupMember.isError/error */
     }
@@ -215,30 +244,182 @@ function AddGroupMemberControl({ groupId, groupTitle }: { groupId: string; group
 
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-2">
-        <input
-          type="text"
-          aria-label={t("shareForm.memberIdAria", { group: groupTitle })}
-          placeholder={t("shareForm.memberIdPlaceholder")}
-          className="h-8 flex-1 rounded-md border border-rule bg-surface px-2 text-xs text-ink"
-          value={userId}
-          onChange={(e) => setUserId(e.target.value)}
-        />
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={!userId.trim() || addGroupMember.isPending}
-          onClick={() => void handleAdd()}
-        >
-          {t("shareForm.addMemberButton", { group: groupTitle })}
-        </Button>
-      </div>
+      <input
+        type="search"
+        aria-label={t("shareForm.memberSearchAria", { group: groupTitle })}
+        placeholder={t("shareForm.memberSearchPlaceholder")}
+        className="h-8 rounded-md border border-rule bg-surface px-2 text-xs text-ink"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+      />
+      {directory.data && directory.data.length === 0 && (
+        <p className="text-xs text-ink-2">{t("shareForm.memberSearchEmpty")}</p>
+      )}
+      {directory.data && directory.data.length > 0 && (
+        <ul className="flex flex-col gap-1">
+          {directory.data.map((u) => (
+            <li key={u.id}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={addGroupMember.isPending}
+                aria-label={t("shareForm.addMemberButton", {
+                  group: `${u.username} → ${groupTitle}`,
+                })}
+                onClick={() => void handleAdd(u.id)}
+              >
+                {u.username}
+                {u.email ? ` (${u.email})` : ""}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
       {addGroupMember.isError && (
         <p role="alert" className="text-xs text-danger">
           {addGroupMember.error instanceof Error
             ? addGroupMember.error.message
             : t("shareForm.addMemberFailedGeneric")}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// j13-004 : membres (retrait), renommage et suppression d'un groupe — réservés
+// à son créateur ou à un administrateur (Group.canManage, calculé par le cœur).
+function GroupManageControl({ group }: { group: Group }) {
+  const members = useGroupMembers(group.id);
+  const removeMember = useRemoveGroupMember(group.id);
+  const rename = useRenameGroup(group.id);
+  const remove = useDeleteGroup(group.id);
+  const [name, setName] = useState(group.title);
+  const [confirming, setConfirming] = useState(false);
+  const { triggerProps } = usePanelTrigger(confirming);
+  const failed = removeMember.isError || rename.isError || remove.isError;
+
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="text-xs font-medium text-ink-2">
+        {t("shareForm.membersTitle", { group: group.title })}
+      </p>
+      {members.data && members.data.length === 0 && (
+        <p className="text-xs text-ink-2">{t("shareForm.membersEmpty")}</p>
+      )}
+      <ul className="flex flex-col gap-1">
+        {members.data?.map((m) => (
+          <li key={m.userId} className="flex items-center justify-between gap-2 text-xs">
+            <span>{m.username}</span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={removeMember.isPending}
+              aria-label={t("shareForm.removeMemberButton", {
+                user: m.username,
+                group: group.title,
+              })}
+              onClick={() => removeMember.mutate(m.userId)}
+            >
+              {t("shareForm.revokeButton")}
+            </Button>
+          </li>
+        ))}
+      </ul>
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          aria-label={t("shareForm.renameGroupAria", { group: group.title })}
+          className="h-8 flex-1 rounded-md border border-rule bg-surface px-2 text-xs text-ink"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={!name.trim() || name.trim() === group.title || rename.isPending}
+          aria-label={t("shareForm.renameGroupButton", { group: group.title })}
+          onClick={() => rename.mutate(name.trim())}
+        >
+          {t("shareForm.renameGroupButton", { group: "" }).trim()}
+        </Button>
+        <Button
+          type="button"
+          variant="danger"
+          size="sm"
+          {...triggerProps}
+          aria-label={t("shareForm.deleteGroupButton", { group: group.title })}
+          onClick={() => setConfirming(true)}
+        >
+          {t("actions.delete")}
+        </Button>
+      </div>
+      {failed && (
+        <p role="alert" className="text-xs text-danger">
+          {t("shareForm.groupActionFailed")}
+        </p>
+      )}
+      <ConfirmDialog
+        open={confirming}
+        title={t("shareForm.deleteGroupTitle")}
+        message={t("shareForm.deleteGroupMessage", { group: group.title })}
+        confirmLabel={t("actions.delete")}
+        pending={remove.isPending}
+        onConfirm={() => remove.mutate(undefined, { onSuccess: () => setConfirming(false) })}
+        onCancel={() => setConfirming(false)}
+      />
+    </div>
+  );
+}
+
+// j13-008 : partager une carte/app avec un groupe ne partage pas les données
+// qu'elle lit — la collection reste illisible au membre (carte vide). Signale
+// chaque collection lue non partagée avec les groupes cochés et propose de la
+// partager (lecture) avec eux, si l'appelant en a le droit (sinon : rien).
+function UnsharedSource({
+  collectionId,
+  selectedGroups,
+  groups,
+}: {
+  collectionId: string;
+  selectedGroups: string[];
+  groups: Group[];
+}) {
+  const sharing = useCollectionSharing(collectionId);
+  const setSharing = useSetCollectionSharing(collectionId);
+  if (!sharing.data) return null;
+  const shared = new Set(sharing.data.groups.map((g) => g.groupId));
+  const missing = selectedGroups.filter((id) => !shared.has(id));
+  if (missing.length === 0) return null;
+  const names = missing.map((id) => groups.find((g) => g.id === id)?.title ?? id).join(", ");
+  const current = sharing.data;
+  return (
+    <div className="flex flex-col gap-1 text-xs text-ink-2">
+      <p role="status">
+        {t("shareForm.unsharedSource", { collection: collectionId, groups: names })}
+      </p>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={setSharing.isPending}
+        onClick={() =>
+          setSharing.mutate({
+            ...current,
+            groups: [
+              ...current.groups,
+              ...missing.map((groupId) => ({ groupId, role: "viewer" as ShareRole })),
+            ],
+          })
+        }
+      >
+        {t("shareForm.shareSourceButton", { collection: collectionId })}
+      </Button>
+      {setSharing.isError && (
+        <p role="alert" className="text-danger">
+          {t("shareForm.shareSourceFailed")}
         </p>
       )}
     </div>
@@ -254,6 +435,7 @@ export function ShareForm({ item, onDone }: { item: Item; onDone: () => void }) 
   const [isPublic, setIsPublic] = useState(false);
   const [roles, setRoles] = useState<Record<string, ShareRole | undefined>>({});
   const [newGroupName, setNewGroupName] = useState("");
+  const referencedCollections = useReferencedCollectionIds(item);
 
   useEffect(() => {
     if (!sharingQuery.data) return;
@@ -314,6 +496,9 @@ export function ShareForm({ item, onDone }: { item: Item; onDone: () => void }) 
             />
             {t("sharePanel.publicLabel")}
           </label>
+          <p className="text-xs text-ink-2">
+            {item.isPublished ? t("shareForm.publishedYes") : t("shareForm.publishedNo")}
+          </p>
 
           <div className="flex flex-col gap-3">
             {groupsQuery.data.map((g) => (
@@ -346,10 +531,26 @@ export function ShareForm({ item, onDone }: { item: Item; onDone: () => void }) 
                     <option value="editor">{t("sharePanel.roleEditor")}</option>
                   </select>
                 </div>
-                <AddGroupMemberControl groupId={g.id} groupTitle={g.title} />
+                {g.canManage && (
+                  <>
+                    <GroupManageControl group={g} />
+                    <AddGroupMemberControl groupId={g.id} groupTitle={g.title} />
+                  </>
+                )}
               </div>
             ))}
           </div>
+
+          {referencedCollections.map((id) => (
+            <UnsharedSource
+              key={id}
+              collectionId={id}
+              groups={groupsQuery.data}
+              selectedGroups={Object.entries(roles)
+                .filter(([, role]) => role)
+                .map(([groupId]) => groupId)}
+            />
+          ))}
 
           <div className="flex flex-col gap-1 border-t border-rule pt-2">
             <p className="text-xs font-medium text-ink-2">{t("shareForm.createGroupHelp")}</p>

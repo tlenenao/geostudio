@@ -122,10 +122,53 @@ test("toggles publication from the menu", async () => {
   await userEvent.click(screen.getByRole("button", { name: /actions/i }));
   const publish = screen.getByRole("button", { name: "Publier" });
   await userEvent.click(publish);
-  await waitFor(() =>
-    expect(screen.queryByRole("button", { name: "Publier" })).not.toBeInTheDocument(),
+  // j03-012 : une app passe par le dialogue de publication (aucune collection
+  // lue ici : un seul bouton de confirmation).
+  const dialog = await screen.findByRole("dialog");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Publier" }));
+  await waitFor(() => expect(capturedBody).toEqual({ isPublished: true }));
+});
+
+test("publier une app qui lit une collection privée propose de la publier aussi", async () => {
+  const puts: unknown[] = [];
+  let patched: unknown;
+  server.use(
+    http.get("https://core.test/v1/configs/by-item/7", () =>
+      HttpResponse.json({
+        version: 1,
+        config: {
+          kind: "app",
+          layout: { type: "grid", items: [] },
+          dataSources: [{ id: "ds", type: "features", layer: "coll-1" }],
+        },
+      }),
+    ),
+    http.get("https://core.test/v1/collections/coll-1/sharing", () =>
+      HttpResponse.json({ public: false, groups: [] }),
+    ),
+    http.put("https://core.test/v1/collections/coll-1/sharing", async ({ request }) => {
+      puts.push(await request.json());
+      return new HttpResponse(null, { status: 204 });
+    }),
+    http.patch("https://core.test/v1/items/:pk", async ({ request }) => {
+      patched = await request.json();
+      return HttpResponse.json({ ...item, isPublished: true });
+    }),
   );
-  expect(capturedBody).toEqual({ isPublished: true });
+  render(
+    <Harness>
+      <ItemActions item={item} />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: /actions/i }));
+  await userEvent.click(screen.getByRole("button", { name: "Publier" }));
+  const dialog = await screen.findByRole("dialog");
+  expect(await within(dialog).findByText("coll-1")).toBeInTheDocument();
+  await userEvent.click(
+    within(dialog).getByRole("button", { name: "Publier aussi les collections" }),
+  );
+  await waitFor(() => expect(patched).toEqual({ isPublished: true }));
+  expect(puts).toEqual([{ public: true, groups: [] }]);
 });
 
 // Revue finale SP-17b (I3) : la création d'un ReportSchedule est refusée en
