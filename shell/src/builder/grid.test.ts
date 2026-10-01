@@ -2,6 +2,7 @@
 import { expect, test } from "vitest";
 import {
   posFor,
+  positionsFor,
   styleForPos,
   moveItemAt,
   resizeItemAt,
@@ -85,4 +86,15 @@ test("duplicateItem copies with a new id, below existing items, without override
   expect(copy.id).not.toBe("a");
   expect(copy).toMatchObject({ widget: "text", x: 0, y: 5, w: 4, h: 2 });
   expect(copy.layouts).toBeUndefined();
+});
+
+test("positionsFor stacks items full width at sm unless they have an explicit sm layout (P10.16)", () => {
+  const a = { id: "a", widget: "text", x: 6, y: 0, w: 6, h: 3, props: {} };
+  const b = { id: "b", widget: "text", x: 0, y: 0, w: 6, h: 2, props: {} };
+  const c = { ...baseItem, id: "c", layouts: { sm: { x: 1, y: 9, w: 3, h: 1 } } };
+  const sm = positionsFor([a, b, c], "sm");
+  expect(sm.get("b")).toEqual({ x: 0, y: 0, w: 12, h: 2 });
+  expect(sm.get("a")).toEqual({ x: 0, y: 2, w: 12, h: 3 });
+  expect(sm.get("c")).toEqual({ x: 1, y: 9, w: 3, h: 1 });
+  expect(positionsFor([a, b], "md").get("a")).toEqual({ x: 6, y: 0, w: 6, h: 3 });
 });

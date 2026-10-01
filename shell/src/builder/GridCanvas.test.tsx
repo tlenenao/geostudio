@@ -143,3 +143,15 @@ test("sans callbacks de taille, aucune poignée de taille n'est rendue", () => {
   renderCanvas({ selectedId: "a" });
   expect(screen.queryByRole("button", { name: "Élargir widget-a" })).not.toBeInTheDocument();
 });
+
+test("à sm, deux widgets 6/12 sans layouts.sm s'empilent pleine largeur (P10.16)", () => {
+  const two: WidgetItem[] = [
+    { id: "a", widget: "text", x: 0, y: 0, w: 6, h: 2, props: {} },
+    { id: "b", widget: "text", x: 6, y: 0, w: 6, h: 2, props: {} },
+  ];
+  const { container } = renderCanvas({ items: two, breakpoint: "sm", editable: false });
+  const cells = [...container.querySelectorAll<HTMLElement>("[data-col]")];
+  expect(cells.map((c) => c.dataset.col)).toEqual(["0", "0"]);
+  expect(cells.map((c) => c.dataset.row)).toEqual(["0", "2"]);
+  expect(cells[0].style.gridColumn).toBe("1 / span 12");
+});

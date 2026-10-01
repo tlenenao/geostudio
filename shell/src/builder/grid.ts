@@ -19,6 +19,25 @@ export function posFor(item: WidgetItem, bp: Breakpoint): Pos {
   return item.layouts?.[bp] ?? basePos(item);
 }
 
+// Effective positions of all items at a breakpoint. At `sm`, items without an explicit
+// `layouts.sm` stack full width (reading order: y, then x) instead of staying side by
+// side on a phone; items with an explicit override keep it.
+export function positionsFor(items: WidgetItem[], bp: Breakpoint): Map<string, Pos> {
+  const out = new Map<string, Pos>();
+  if (bp !== "sm") {
+    for (const it of items) out.set(it.id, posFor(it, bp));
+    return out;
+  }
+  let y = 0;
+  const auto = items.filter((it) => !it.layouts?.sm).sort((a, b) => a.y - b.y || a.x - b.x);
+  for (const it of items) if (it.layouts?.sm) out.set(it.id, it.layouts.sm);
+  for (const it of auto) {
+    out.set(it.id, { x: 0, y, w: GRID_COLS, h: it.h });
+    y += it.h;
+  }
+  return out;
+}
+
 export function styleForPos(pos: Pos): CSSProperties {
   return {
     gridColumn: `${pos.x + 1} / span ${pos.w}`,

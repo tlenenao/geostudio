@@ -9,7 +9,7 @@ test.use({ viewport: VIEWPORTS.phone, hasTouch: true });
 
 test.describe("j12 runtime d'app sur téléphone", () => {
   // Finding j12-012 : les widgets restent côte à côte à 360 px.
-  bug("j12-012 : deux widgets 6/12 s'empilent (≥ 300 px chacun) à 360 px", async ({ page }) => {
+  test("j12-012 : deux widgets 6/12 s'empilent (≥ 300 px chacun) à 360 px", async ({ page }) => {
     const app = await getTwoColApp();
     await openAs(page, "creator");
     await go(page, `/apps/${app}`, 3000);
