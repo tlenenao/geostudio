@@ -777,6 +777,9 @@ export const fr = {
   // d'ouverture d'item (distinct de locked.* : garde de route entière, pas
   // une action sur un item déjà ouvert)
   "routes.analystOnly": "Accès réservé aux analystes.",
+  "routes.automationOnly": "Accès réservé à l'automatisation (privilège automation.manage requis).",
+  "routes.visualQueryOnly":
+    "La requête visuelle produit un dataset : elle exige les privilèges automation.manage et data.manage.",
   "routes.adminOnly": "Accès réservé aux administrateurs.",
   "routes.rolesOnly": "Accès réservé à la gestion des rôles.",
   "routes.usersOnly": "Accès réservé à la gestion des utilisateurs.",
