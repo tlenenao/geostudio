@@ -1686,6 +1686,27 @@ test("getAppConfig reads the app config (kind/theme/layout)", async () => {
   expect(cfg.layout.items[0]).toMatchObject({ id: "w1", widget: "text" });
 });
 
+test("getAppConfig donne un id distinct aux messages hérités sans id (P10.01)", async () => {
+  const m = { from: "f", event: "changed", action: "set" };
+  server.use(
+    http.get("https://core.test/v1/configs/by-item/5", () =>
+      HttpResponse.json({
+        config: {
+          kind: "app",
+          messages: [
+            { ...m, id: null, to: "var:a" },
+            { ...m, to: "var:b" },
+            { ...m, id: "kept", to: "var:c" },
+          ],
+          layout: { type: "grid", breakpoints: {}, items: [] },
+        },
+      }),
+    ),
+  );
+  const cfg = await makeClient().getAppConfig("5");
+  expect(cfg.messages.map((x) => x.id)).toEqual(["msg-0", "msg-1", "kept"]);
+});
+
 test("getAppConfig throws when the config has no layout", async () => {
   server.use(
     http.get("https://core.test/v1/configs/by-item/5", () =>

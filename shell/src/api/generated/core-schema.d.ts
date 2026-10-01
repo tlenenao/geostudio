@@ -2812,6 +2812,8 @@ export interface components {
             event: string;
             /** From */
             from: string;
+            /** Id */
+            id?: string | null;
             /** Payload */
             payload?: {
                 [key: string]: unknown;

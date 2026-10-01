@@ -48,7 +48,8 @@ export function createAppsMethods(base: ItemClientBase): AppsMethods {
         kind: c.kind ?? "app",
         theme: c.theme ?? {},
         dataSources: c.dataSources ?? [],
-        messages: c.messages ?? [],
+        // Configs enregistrées avant P10.01 : le cœur renvoie id null/absent.
+        messages: (c.messages ?? []).map((m, i) => (m.id ? m : { ...m, id: `msg-${i}` })),
         pages: c.pages,
         variables: c.variables,
         layout: c.layout,
