@@ -18,7 +18,7 @@ import os
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi import APIRouter, FastAPI, HTTPException, Query, Request, Response
 from fastapi.staticfiles import StaticFiles
 
 from app.analytics.aggregate import (
@@ -36,6 +36,9 @@ RUNTIME_DIR = Path(os.environ.get("APPEXPORT_STANDALONE_RUNTIME_DIR", "/runtime"
 _MANIFEST_BY_ID = {e.id: e for e in read_manifest(str(DATA_DIR / "manifest.json"))}
 
 app = FastAPI()
+# Le runtime shell appelle `${coreUrl}/v1` (shell/src/api/base.ts, SP-57b) : les
+# routes de données vivent sous /v1 ; les fichiers de bootstrap restent à la racine.
+v1 = APIRouter(prefix="/v1")
 
 
 def _snapshot_base_uri() -> str:
@@ -69,12 +72,12 @@ def geostudio_app_config():
     return Response(content=path.read_bytes(), media_type="application/json")
 
 
-@app.get("/collections")
+@v1.get("/collections")
 def list_collections():
     return {"collections": [e.collection_json for e in _MANIFEST_BY_ID.values()]}
 
 
-@app.get("/collections/{collection_id}")
+@v1.get("/collections/{collection_id}")
 def get_collection(collection_id: str, request: Request):
     entry = _get_entry(collection_id)
     base = str(request.base_url).rstrip("/")
@@ -82,22 +85,22 @@ def get_collection(collection_id: str, request: Request):
     body["itemType"] = "feature"
     body["extent"] = None
     body["links"] = [
-        {"rel": "self", "type": "application/json", "href": f"{base}/collections/{entry.id}"},
+        {"rel": "self", "type": "application/json", "href": f"{base}/v1/collections/{entry.id}"},
         {
             "rel": "items",
             "type": "application/geo+json",
-            "href": f"{base}/collections/{entry.id}/items",
+            "href": f"{base}/v1/collections/{entry.id}/items",
         },
     ]
     return body
 
 
-@app.get("/collections/{collection_id}/schema")
+@v1.get("/collections/{collection_id}/schema")
 def get_schema(collection_id: str):
     return _get_entry(collection_id).schema_json
 
 
-@app.get("/collections/{collection_id}/items")
+@v1.get("/collections/{collection_id}/items")
 def list_items(
     collection_id: str,
     request: Request,
@@ -133,7 +136,7 @@ def list_items(
     }
 
 
-@app.get("/collections/{collection_id}/items/{fid}")
+@v1.get("/collections/{collection_id}/items/{fid}")
 def get_single_item(collection_id: str, fid: str):
     entry = _get_entry(collection_id)
     conn = open_local_connection()
@@ -153,7 +156,7 @@ def get_single_item(collection_id: str, fid: str):
     return feature
 
 
-@app.post("/collections/{collection_id}/aggregate")
+@v1.post("/collections/{collection_id}/aggregate")
 def aggregate(collection_id: str, body: AggregateRequestBody):
     entry = _get_entry(collection_id)
     conn = open_local_connection()
@@ -179,6 +182,9 @@ def aggregate(collection_id: str, body: AggregateRequestBody):
     finally:
         conn.close()
     return {"categoryKey": category_key, "rows": rows}
+
+
+app.include_router(v1)
 
 
 # Doit rester la DERNIÈRE route enregistrée : Starlette matche dans l'ordre

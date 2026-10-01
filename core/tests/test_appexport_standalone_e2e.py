@@ -91,7 +91,8 @@ def test_cold_started_container_serves_app_and_snapshot(pg_session, standalone_i
     s.execute(
         text(
             "CREATE TABLE t_standalone_e2e "
-            "(id serial PRIMARY KEY, tenant_id text NOT NULL, name text)"
+            "(id serial PRIMARY KEY, tenant_id text NOT NULL, name text, "
+            "geom geometry(Point, 4326))"
         )
     )
     s.commit()
@@ -118,14 +119,19 @@ def test_cold_started_container_serves_app_and_snapshot(pg_session, standalone_i
         description="",
         is_public=True,
         pk_column="id",
-        geometry_column=None,
-        geometry_type=None,
-        srid=None,
+        geometry_column="geom",
+        geometry_type="Point",
+        srid=4326,
     )
     s.commit()
     info = introspect_table(s, col.table_name)
     with rls_scope(s, tenant.id):
-        insert_feature(s, info, properties={"name": "Alpha"}, geometry=None)
+        insert_feature(
+            s,
+            info,
+            properties={"name": "Alpha"},
+            geometry={"type": "Point", "coordinates": [2.5, 48.5]},
+        )
     s.commit()
 
     config = BuilderConfig(
@@ -203,13 +209,20 @@ def test_cold_started_container_serves_app_and_snapshot(pg_session, standalone_i
         assert config_resp.status_code == 200
         assert config_resp.json()["kind"] == "app"
 
-        items_resp = requests.get(f"{base}/collections/{col.id}/items", timeout=5)
+        items_resp = requests.get(f"{base}/v1/collections/{col.id}/items", timeout=5)
         assert items_resp.status_code == 200
         names = [f["properties"]["name"] for f in items_resp.json()["features"]]
         assert names == ["Alpha"]
+        # j10b-011 : la géométrie survit (colonne Parquet `geometry`, pas `geom`).
+        assert items_resp.json()["features"][0]["geometry"] == {
+            "type": "Point",
+            "coordinates": [2.5, 48.5],
+        }
+        # j10b-010 : les routes de données ne vivent QUE sous /v1.
+        assert "features" not in requests.get(f"{base}/collections/{col.id}/items", timeout=5).text
 
         agg_resp = requests.post(
-            f"{base}/collections/{col.id}/aggregate", json={"agg": "count"}, timeout=5
+            f"{base}/v1/collections/{col.id}/aggregate", json={"agg": "count"}, timeout=5
         )
         assert agg_resp.status_code == 200
         assert agg_resp.json()["rows"][0]["value"] == 1

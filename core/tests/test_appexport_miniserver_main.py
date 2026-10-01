@@ -103,14 +103,14 @@ def test_geostudio_connection_echoes_request_origin(tmp_path, monkeypatch):
 
 def test_list_collections_returns_manifest_entries(tmp_path, monkeypatch):
     client = _client(tmp_path, monkeypatch)
-    response = client.get("/collections")
+    response = client.get("/v1/collections")
     assert response.status_code == 200
     assert [c["id"] for c in response.json()["collections"]] == ["col1"]
 
 
 def test_get_collection_includes_links(tmp_path, monkeypatch):
     client = _client(tmp_path, monkeypatch)
-    response = client.get("/collections/col1")
+    response = client.get("/v1/collections/col1")
     assert response.status_code == 200
     body = response.json()
     assert body["itemType"] == "feature"
@@ -119,19 +119,19 @@ def test_get_collection_includes_links(tmp_path, monkeypatch):
 
 def test_get_collection_missing_is_404(tmp_path, monkeypatch):
     client = _client(tmp_path, monkeypatch)
-    assert client.get("/collections/ghost").status_code == 404
+    assert client.get("/v1/collections/ghost").status_code == 404
 
 
 def test_get_schema_returns_manifest_schema(tmp_path, monkeypatch):
     client = _client(tmp_path, monkeypatch)
-    response = client.get("/collections/col1/schema")
+    response = client.get("/v1/collections/col1/schema")
     assert response.status_code == 200
     assert response.json()["pk"] == "id"
 
 
 def test_list_items_reads_snapshot(tmp_path, monkeypatch):
     client = _client(tmp_path, monkeypatch)
-    response = client.get("/collections/col1/items")
+    response = client.get("/v1/collections/col1/items")
     assert response.status_code == 200
     body = response.json()
     assert body["type"] == "FeatureCollection"
@@ -140,26 +140,26 @@ def test_list_items_reads_snapshot(tmp_path, monkeypatch):
 
 def test_get_single_item(tmp_path, monkeypatch):
     client = _client(tmp_path, monkeypatch)
-    response = client.get("/collections/col1/items/1")
+    response = client.get("/v1/collections/col1/items/1")
     assert response.status_code == 200
     assert response.json()["properties"]["name"] == "Alpha"
 
 
 def test_get_single_item_missing_is_404(tmp_path, monkeypatch):
     client = _client(tmp_path, monkeypatch)
-    assert client.get("/collections/col1/items/999").status_code == 404
+    assert client.get("/v1/collections/col1/items/999").status_code == 404
 
 
 def test_aggregate_counts_rows(tmp_path, monkeypatch):
     client = _client(tmp_path, monkeypatch)
-    response = client.post("/collections/col1/aggregate", json={"agg": "count"})
+    response = client.post("/v1/collections/col1/aggregate", json={"agg": "count"})
     assert response.status_code == 200
     assert response.json()["rows"][0]["value"] == 1
 
 
 def test_aggregate_unknown_collection_is_404(tmp_path, monkeypatch):
     client = _client(tmp_path, monkeypatch)
-    response = client.post("/collections/ghost/aggregate", json={"agg": "count"})
+    response = client.post("/v1/collections/ghost/aggregate", json={"agg": "count"})
     assert response.status_code == 404
 
 
@@ -175,5 +175,5 @@ def test_list_items_bbox_on_non_spatial_collection_is_400(tmp_path, monkeypatch)
     # so a bbox query against it must surface as a clean 400 (MissingGeometryColumn
     # from app.appexport.miniserver.items), not propagate as an unhandled 500.
     client = _client(tmp_path, monkeypatch)
-    response = client.get("/collections/col1/items", params={"bbox": "0,0,1,1"})
+    response = client.get("/v1/collections/col1/items", params={"bbox": "0,0,1,1"})
     assert response.status_code == 400
