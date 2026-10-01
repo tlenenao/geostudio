@@ -137,6 +137,12 @@ export function AppExportPanel({ itemId, config }: { itemId: string; config: App
           {t("appExport.downloadBundle")}
         </a>
       )}
+      {job?.status === "done" && job.error && (
+        // Terminé avec avertissement (ex. troncature à 50 000 enregistrements).
+        <p role="status" className="text-sm text-ink-2">
+          {job.error}
+        </p>
+      )}
       {(error || job?.status === "error") && (
         <p role="alert" className="text-sm text-danger">
           {error ?? job?.error ?? t("appExport.exportFailed")}

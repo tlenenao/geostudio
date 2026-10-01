@@ -141,6 +141,18 @@ def test_features_source_is_frozen_into_static_records(pg_session):
     names = sorted(r["properties"]["name"] for r in out.query["records"])
     assert names == ["Alpha", "Beta"]
 
+    # j10b-005 : exactement N lignes = pas de troncature ; N+1 = avertissement.
+    warnings: list[str] = []
+    freeze_config(
+        s, tenant_id=tenant.id, config=config, max_records_per_source=2, warnings=warnings
+    )
+    assert warnings == []
+    frozen = freeze_config(
+        s, tenant_id=tenant.id, config=config, max_records_per_source=1, warnings=warnings
+    )
+    assert len(frozen.dataSources[0].query["records"]) == 1
+    assert len(warnings) == 1 and "tronquée" in warnings[0]
+
 
 def test_config_shape_is_otherwise_unchanged(pg_session):
     config = _app_config([])

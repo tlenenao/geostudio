@@ -27,6 +27,7 @@ def freeze_config(
     tenant_id: str,
     config: BuilderConfig,
     max_records_per_source: int = 50_000,
+    warnings: list[str] | None = None,
 ) -> BuilderConfig:
     frozen_sources: list[DataSource] = []
     for source in config.dataSources:
@@ -41,7 +42,8 @@ def freeze_config(
         offset = 0
         page_size = 1000
         with rls_scope(session, tenant_id):
-            while len(records) < max_records_per_source:
+            # <= : lit une page de plus pour distinguer « exactement N » de « tronqué ».
+            while len(records) <= max_records_per_source:
                 page = select_features(
                     session,
                     info,
@@ -55,6 +57,10 @@ def freeze_config(
                 if len(page.features) < page_size:
                     break
                 offset += page_size
+        if len(records) > max_records_per_source and warnings is not None:
+            warnings.append(
+                f"source '{source.id}' tronquée à {max_records_per_source} enregistrements"
+            )
         frozen_sources.append(
             DataSource(
                 id=source.id,

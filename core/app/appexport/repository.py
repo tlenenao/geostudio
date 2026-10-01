@@ -57,14 +57,28 @@ def mark_running(session: Session, *, job_id: str) -> None:
 
 
 def mark_done(
-    session: Session, *, job_id: str, result_key: str, byte_size: int | None = None
+    session: Session,
+    *,
+    job_id: str,
+    result_key: str,
+    byte_size: int | None = None,
+    warning: str | None = None,
 ) -> None:
+    # `warning` (ex. troncature, j10b-005) est stocké dans `error` : un job
+    # « done » avec `error` renseigné = terminé avec avertissement (aucune
+    # migration ; le shell l'affiche à côté du lien de téléchargement).
     # c02-006 : UPDATE conditionnel — un job déjà clos (réclamé en erreur par le
     # balayage) ne repasse jamais « done ».
     session.execute(
         update(AppExportJob)
         .where(AppExportJob.id == job_id, AppExportJob.status.notin_(_TERMINAL))
-        .values(status="done", result_key=result_key, byte_size=byte_size, finished_at=_now())
+        .values(
+            status="done",
+            result_key=result_key,
+            byte_size=byte_size,
+            error=warning,
+            finished_at=_now(),
+        )
     )
     session.flush()
 

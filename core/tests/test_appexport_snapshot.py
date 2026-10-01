@@ -118,6 +118,29 @@ def test_features_source_is_written_as_geoparquet(pg_session, tmp_path):
             DataSource(id="s1", type="features", service="core", layer=col.id, query={}),
         ]
     )
+    # j10b-005 : N+1 lignes → avertissement et featureCount plafonné ; N → rien.
+    warnings: list[str] = []
+    capped = write_snapshot(
+        s,
+        tenant_id=tenant.id,
+        config=config,
+        snapshot_dir=str(tmp_path / "capped"),
+        max_records_per_source=1,
+        warnings=warnings,
+    )
+    assert capped[0].collection_json["featureCount"] == 1
+    assert len(warnings) == 1 and "tronquée" in warnings[0]
+    warnings.clear()
+    write_snapshot(
+        s,
+        tenant_id=tenant.id,
+        config=config,
+        snapshot_dir=str(tmp_path / "exact"),
+        max_records_per_source=2,
+        warnings=warnings,
+    )
+    assert warnings == []
+
     entries = write_snapshot(s, tenant_id=tenant.id, config=config, snapshot_dir=str(tmp_path))
 
     assert len(entries) == 1
