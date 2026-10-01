@@ -96,12 +96,14 @@ export function DataSourcePanel({
   sources,
   onChange,
   onPromote,
+  sourceLabel = (s) => s.layer || s.id,
   promotingId,
 }: {
   sources: DataSource[];
   onChange: (sources: DataSource[]) => void;
   onPromote?: (id: string) => void;
   promotingId?: string | null;
+  sourceLabel?: (s: DataSource) => string;
 }) {
   function add() {
     onChange([
@@ -144,7 +146,7 @@ export function DataSourcePanel({
               </select>
               <button
                 type="button"
-                aria-label={t("dataSourcePanel.removeSourceAria", { label: s.layer || s.id })}
+                aria-label={t("dataSourcePanel.removeSourceAria", { label: sourceLabel(s) })}
                 className="text-xs text-danger"
                 onClick={() => remove(s.id)}
               >

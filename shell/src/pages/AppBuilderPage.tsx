@@ -23,6 +23,7 @@ import { PrintLayoutPanel } from "../builder/print/PrintLayoutPanel";
 import { AppRenderer } from "../builder/AppRenderer";
 import { NavigationPanel } from "../builder/NavigationPanel";
 import { DataSourcePanel } from "../builder/DataSourcePanel";
+import { useSourceLabel } from "../builder/useSourceLabel";
 import { DataSourcesEditProvider } from "../builder/DataSourcesEditContext";
 import { PageManager } from "../builder/PageManager";
 import { WidgetPalette } from "../builder/WidgetPalette";
@@ -55,6 +56,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const query = useAppConfig(pk);
   const save = useSaveApp(pk);
   const itemQuery = useItem(pk);
+  const sourceLabel = useSourceLabel(true);
   // SP-42/F-shell-pages-04 : cf. commentaire jumeau sur DatasetEditPage.tsx —
   // même doctrine, même résidu documenté (permissions.write incomplet vs
   // garde de privilège de domaine).
@@ -527,6 +529,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                   onChange={setSources}
                   onPromote={(id) => void promoteSource(id)}
                   promotingId={promotingId}
+                  sourceLabel={sourceLabel}
                 />
                 {createDataset.isError && (
                   <p role="alert" className="text-xs text-danger">

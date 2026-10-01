@@ -93,6 +93,24 @@ test("picking a shared dataset not yet inline calls onAdd then onChange with the
   expect(onChange).toHaveBeenCalledWith(added!.id);
 });
 
+test("une source inline est libellée par le titre de sa collection (P10.13)", async () => {
+  server.use(
+    http.get("https://core.test/v1/collections", () =>
+      HttpResponse.json({ collections: [{ id: "query_0edaceaa9d3b", title: "Ventes 2026" }] }),
+    ),
+  );
+  const inline: DataSource[] = [
+    { id: "s1", type: "features", service: "core", layer: "query_0edaceaa9d3b", query: {} },
+  ];
+  render(
+    <DataSourcesEditProvider onAdd={() => {}}>
+      <DataSourceSelect value="s1" dataSources={inline} onChange={vi.fn()} />
+    </DataSourcesEditProvider>,
+    { wrapper },
+  );
+  expect(await screen.findByRole("option", { name: "Ventes 2026" })).toBeInTheDocument();
+});
+
 test("a shared dataset already referenced inline is not listed twice", async () => {
   server.use(
     http.get("https://core.test/v1/items*", () =>
