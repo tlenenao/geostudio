@@ -2,7 +2,7 @@
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.ingestion.models import IngestionJob
@@ -12,6 +12,7 @@ from app.ingestion.models import IngestionJob
 # (_RUNNING_RECLAIM_MINUTES/_PENDING_RECLAIM_MINUTES) — cohérence transverse
 # déjà établie dans ce dépôt pour cette notion de « probablement planté ».
 _RUNNING_RECLAIM_MINUTES = 60
+_TERMINAL = ("done", "error")
 
 
 def create_job(
@@ -68,21 +69,22 @@ def mark_running(session: Session, *, job_id: str) -> None:
 
 
 def mark_done(session: Session, *, job_id: str, collection_id: str, item_id: str | None) -> None:
-    job = session.get(IngestionJob, job_id)
-    if job is None:
-        return
-    job.status = "done"
-    job.collection_id = collection_id
-    job.item_id = item_id
+    # c02-006 : UPDATE conditionnel — un job déjà clos (réclamé en erreur par le
+    # balayage) ne repasse jamais « done ».
+    session.execute(
+        update(IngestionJob)
+        .where(IngestionJob.id == job_id, IngestionJob.status.notin_(_TERMINAL))
+        .values(status="done", collection_id=collection_id, item_id=item_id)
+    )
     session.flush()
 
 
 def mark_error(session: Session, *, job_id: str, error_message: str) -> None:
-    job = session.get(IngestionJob, job_id)
-    if job is None:
-        return
-    job.status = "error"
-    job.error_message = error_message
+    session.execute(
+        update(IngestionJob)
+        .where(IngestionJob.id == job_id, IngestionJob.status.notin_(_TERMINAL))
+        .values(status="error", error_message=error_message)
+    )
     session.flush()
 
 
@@ -117,8 +119,12 @@ def reclaim_stuck_jobs(
             continue
         # P01.04 : un job « pending » ancien n'a jamais été pris en charge
         # (defer perdu, file non consommée) — même clôture que « running ».
-        job.status = "error"
-        job.error_message = "ingestion timed out (worker crashed or hung)"
-        reclaimed.append(job.id)
+        claimed = session.execute(
+            update(IngestionJob)
+            .where(IngestionJob.id == job.id, IngestionJob.status == job.status)
+            .values(status="error", error_message="ingestion timed out (worker crashed or hung)")
+        )
+        if claimed.rowcount:  # type: ignore[attr-defined]
+            reclaimed.append(job.id)
     session.flush()
     return reclaimed

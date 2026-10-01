@@ -91,3 +91,34 @@ def test_old_queued_pipeline_run_is_reclaimed_and_recent_is_not():
     session.refresh(old)
     session.refresh(recent)
     assert (old.status, recent.status) == ("failed", "queued")
+
+
+def test_mark_done_does_not_resurrect_a_reclaimed_job():
+    """c02-006 : un worker encore vivant ne repasse pas « done » un job déjà réclamé."""
+    session, tenant, user, item = _env()
+    ing = ingestion_repo.create_job(
+        session,
+        tenant_id=tenant.id,
+        created_by=user.id,
+        source_key="k",
+        filename="f",
+        collection_title="V",
+        lat_field=None,
+        lon_field=None,
+    )
+    exp = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png"
+    )
+    app_exp = appexport_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, mode="static"
+    )
+    ing.updated_at = exp.created_at = app_exp.created_at = OLD
+    session.commit()
+    ingestion_repo.reclaim_stuck_jobs(session)
+    export_repo.reclaim_stuck_jobs(session)
+    appexport_repo.reclaim_stuck_jobs(session)
+    ingestion_repo.mark_done(session, job_id=ing.id, collection_id="c", item_id="i")
+    export_repo.mark_done(session, job_id=exp.id, result_key="k")
+    appexport_repo.mark_done(session, job_id=app_exp.id, result_key="k")
+    session.commit()
+    assert (ing.status, exp.status, app_exp.status) == ("error", "error", "error")
