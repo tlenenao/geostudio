@@ -111,7 +111,12 @@ class UserRolePatch(BaseModel):
 
 
 def _user_json(user: User, role_slug: str) -> dict[str, Any]:
-    return {"id": user.id, "username": user.username, "roleSlug": role_slug}
+    return {
+        "id": user.id,
+        "username": user.username,
+        "roleSlug": role_slug,
+        "erasedAt": user.erased_at.isoformat() if user.erased_at else None,
+    }
 
 
 @router.get("/users")
@@ -150,6 +155,8 @@ def patch_user(
     )
     if target is None:
         raise HTTPException(status_code=404, detail="user not found")
+    if target.erased_at is not None:
+        raise HTTPException(status_code=409, detail="user already erased")
     new_role = get_role(session, tenant_id=user.tenant_id, role_id=body.roleId)
     if new_role is None:
         raise HTTPException(status_code=400, detail="role not found")

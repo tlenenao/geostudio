@@ -41,7 +41,11 @@ def count_collections_for_tenant(session: Session, tenant_id: str) -> int:
 
 def count_users_for_tenant(session: Session, tenant_id: str) -> int:
     return (
-        session.scalar(select(func.count()).select_from(User).where(User.tenant_id == tenant_id))
+        session.scalar(
+            select(func.count())
+            .select_from(User)
+            .where(User.tenant_id == tenant_id, User.erased_at.is_(None))
+        )
         or 0
     )
 

@@ -309,3 +309,18 @@ def test_list_users_search_treats_wildcards_literally_j08_014(env):
     assert {u["username"] for u in client.get("/v1/users?q=_").json()["users"]} == {"a_b"}
     assert client.get("/v1/users?q=a_b").json()["total"] == 1
     assert client.get("/v1/users?q=axb").json()["total"] == 0
+
+
+def test_list_users_exposes_erased_at_j08_013(env):
+    from app.compliance.service import anonymize_user
+
+    app, client, Session, admin, regular, _roles = env
+    with Session() as s:
+        anonymize_user(s, tenant_id=admin.tenant_id, user_id=regular.id, actor_id=admin.id)
+        s.commit()
+    _as(app, admin)
+    by_id = {u["id"]: u for u in client.get("/v1/users").json()["users"]}
+    assert by_id[regular.id]["erasedAt"] is not None
+    assert by_id[admin.id]["erasedAt"] is None
+    resp = client.patch(f"/v1/users/{regular.id}", json={"roleId": _roles["reader"]})
+    assert resp.status_code == 409
