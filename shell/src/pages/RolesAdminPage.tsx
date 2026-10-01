@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useMemo, useState } from "react";
 import { useDeleteRole, useRoles } from "../api/hooks";
+import { ApiError } from "../api/ApiError";
 import type { Role } from "../api/types";
 import { Button } from "../ui/kit/Button";
 import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
@@ -51,9 +52,19 @@ export function RolesAdminPage() {
       if (editing?.id === deleting.id) setEditing(null);
       setDeleting(null);
     } catch {
-      // surfaced via deleteRole.isError
+      // Ferme la boîte (modale) pour laisser voir l'alerte ci-dessous.
+      setDeleting(null);
     }
   }
+
+  // j08-011 : 409 « N user(s) still have this role » → message avec le compte.
+  const blockedCount =
+    deleteRole.error instanceof ApiError && deleteRole.error.status === 409
+      ? Number.parseInt(deleteRole.error.detail ?? "", 10)
+      : Number.NaN;
+  const deleteErrorMessage = Number.isNaN(blockedCount)
+    ? t("roles.deleteError")
+    : t("roles.deleteBlockedByUsage", { count: blockedCount });
 
   return (
     <div className="-m-6 flex flex-1 flex-col overflow-hidden">
@@ -88,7 +99,7 @@ export function RolesAdminPage() {
               )}
               {deleteRole.isError && (
                 <p role="alert" className="text-sm text-danger">
-                  {t("roles.deleteError")}
+                  {deleteErrorMessage}
                 </p>
               )}
               {rolesQuery.data && rolesQuery.data.length === 0 && (

@@ -210,3 +210,26 @@ test("affiche un état vide quand aucun rôle personnalisé n'existe", async () 
   expect(await screen.findByText("Aucun rôle personnalisé pour l'instant")).toBeInTheDocument();
   expect(screen.queryByRole("table")).not.toBeInTheDocument();
 });
+
+test("supprimer un rôle encore attribué affiche le nombre d'utilisateurs bloquants (j08-011)", async () => {
+  server.use(
+    http.get("https://core.test/v1/roles/catalog", () => HttpResponse.json(CATALOG)),
+    http.get("https://core.test/v1/roles", () =>
+      HttpResponse.json([
+        { id: "role-1", name: "Alpha", slug: "alpha", isBuiltIn: false, privileges: [] },
+      ]),
+    ),
+    http.delete("https://core.test/v1/roles/role-1", () =>
+      HttpResponse.json(
+        { title: "Conflict", status: 409, detail: "3 user(s) still have this role" },
+        { status: 409, headers: { "Content-Type": "application/problem+json" } },
+      ),
+    ),
+  );
+  render(<Harness />);
+  const row = (await screen.findByText("Alpha")).closest("tr") as HTMLElement;
+  await userEvent.click(within(row).getByRole("button", { name: /supprimer/i }));
+  const dialog = await screen.findByRole("dialog");
+  await userEvent.click(within(dialog).getByRole("button", { name: /supprimer/i }));
+  expect(await screen.findByText("Encore attribué à 3 utilisateur(s).")).toBeInTheDocument();
+});
