@@ -47,6 +47,7 @@ from app.ingestion import routes as ingestion_routes
 from app.instance import routes as instance_routes
 from app.items import routes as items_routes
 from app.jobs import open_sync_defer
+from app.jobs.engine import jobs_backlog
 from app.mapicons import routes as mapicons_routes
 from app.mcp.server import create_mcp_server
 from app.notifications import routes as notifications_routes
@@ -393,8 +394,10 @@ def create_app() -> FastAPI:
         )
 
     @app.get("/health")
-    def health() -> dict[str, str]:
-        return {"status": "ok"}
+    def health() -> dict:
+        # `status` reste la liveness (healthcheck compose) ; `jobsBacklog` rend
+        # un worker arrêté visible (t02-013/j09-014) sans jamais faire échouer la sonde.
+        return {"status": "ok", "jobsBacklog": jobs_backlog()}
 
     # Mounted last: streamable_http_app() already bakes in its own full
     # paths ("/mcp", "/.well-known/oauth-protected-resource/mcp") rather
