@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import pytest
+from shapely import wkb as shapely_wkb
+from shapely.geometry import Point
 
 from app.analytics.duckdb_conn import open_local_connection
 from app.appexport.miniserver.items import MissingGeometryColumn, get_feature, select_features
@@ -121,6 +123,51 @@ def test_get_feature_returns_single_row(tmp_path):
     finally:
         conn.close()
     assert feature["properties"]["name"] == "Beta"
+
+
+def test_select_features_reads_geometry_of_an_imported_collection(tmp_path):
+    # RC-5, lecteur jumeau d'analytics.aggregate : le snapshot écrit la colonne
+    # `geometry`, une collection importée a geometry_column="geom".
+    row = ChangeRow(
+        op="insert",
+        lsn=0,
+        ts=0.0,
+        pk_column="id",
+        pk_value=1,
+        columns={"name": "Alpha"},
+        geometry_column="geom",
+        geometry_wkb_hex=shapely_wkb.dumps(Point(2.5, 48.5), hex=True),
+    )
+    part = tmp_path / "tenant_id=t1" / "collection_id=col1" / "dt=snapshot"
+    part.mkdir(parents=True)
+    write_geoparquet([row], srid=4326, path=str(part / "data.parquet"))
+    info = TableInfo(
+        table_name="t_x",
+        pk_column="id",
+        geometry_column="geom",
+        geometry_type="Point",
+        srid=4326,
+        columns=[
+            ColumnInfo(name="id", type="integer", required=True),
+            ColumnInfo(name="name", type="string", required=False),
+        ],
+    )
+    conn = open_local_connection()
+    try:
+        page = select_features(
+            conn,
+            base_uri=str(tmp_path),
+            tenant_id="t1",
+            collection_id="col1",
+            table_info=info,
+            limit=10,
+            offset=0,
+            bbox=(2.0, 48.0, 3.0, 49.0),
+        )
+    finally:
+        conn.close()
+    assert page.number_matched == 1
+    assert page.features[0]["geometry"]["coordinates"] == [2.5, 48.5]
 
 
 def test_get_feature_missing_returns_none(tmp_path):
