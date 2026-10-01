@@ -254,6 +254,15 @@ describe("EditCollectionPanel — champs sensibles (GAP-22)", () => {
       expect.objectContaining({ sensitiveFields: ["gravite"] }),
     );
   });
+
+  it("n'envoie pas sensitiveFields quand il est inchangé (GAP-22, c01-001)", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue(undefined);
+    mockUseUpdateCollection.mockReturnValue({ mutateAsync, isPending: false, isError: false });
+    render(<EditCollectionPanel collection={baseCollection} onClose={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+    expect(mutateAsync).toHaveBeenCalledTimes(1);
+    expect(mutateAsync.mock.calls[0][0]).not.toHaveProperty("sensitiveFields");
+  });
 });
 
 describe("EditCollectionPanel — métadonnées ouvertes (SP-41)", () => {

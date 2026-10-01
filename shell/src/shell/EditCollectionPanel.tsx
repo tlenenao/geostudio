@@ -70,6 +70,9 @@ export function EditCollectionPanel({
     (f) => f.type !== "attachment",
   );
 
+  const sameFields = (a: string[], b: string[]) =>
+    a.length === b.length && a.every((f) => b.includes(f));
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     try {
@@ -79,7 +82,11 @@ export function EditCollectionPanel({
         isPublic,
         editable,
         attachmentFields,
-        sensitiveFields,
+        // Omis tant qu'inchangés : un éditeur sans data.view_sensitive reçoit une
+        // liste vide du cœur (GAP-22) et ne doit pas la renvoyer comme « effacement ».
+        ...(sameFields(sensitiveFields, collection.sensitiveFields ?? [])
+          ? {}
+          : { sensitiveFields }),
         license: license === UNSET ? "" : license,
         licenseUri,
         producer,
