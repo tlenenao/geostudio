@@ -208,12 +208,30 @@ def find_referencing_config_kinds(
     return found
 
 
+class StaleConfigVersion(Exception):
+    """L'écrivain a lu une version qui n'est plus la courante (P09.04)."""
+
+    def __init__(self, current: int) -> None:
+        super().__init__(f"stale version: current is {current}")
+        self.current = current
+
+
 def update_config(
-    session: Session, config_id: str, config: BuilderConfig, *, tenant_id: str
+    session: Session,
+    config_id: str,
+    config: BuilderConfig,
+    *,
+    tenant_id: str,
+    expected_version: int | None = None,
 ) -> ConfigRead | None:
-    record = session.get(Config, config_id)
+    # Verrou de ligne : deux PUT concurrents se sérialisent, le second voit
+    # la version du premier (sans effet sous SQLite). `expected_version` None
+    # = écriture sans garde (MCP, runtime de pipeline, clients historiques).
+    record = session.get(Config, config_id, with_for_update=True)
     if record is None:
         return None
+    if expected_version is not None and expected_version != record.current_version:
+        raise StaleConfigVersion(record.current_version)
     new_version = record.current_version + 1
     revision = ConfigRevision(
         tenant_id=tenant_id,

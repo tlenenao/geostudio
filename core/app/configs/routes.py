@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from opentelemetry import metrics
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -53,6 +53,40 @@ class CreateConfigRequest(BaseModel):
 
 class RollbackRequest(BaseModel):
     version: int
+
+
+def _parse_if_match(value: str | None) -> int | None:
+    """`If-Match: "3"` (ou `W/"3"`, ou `3`) = version lue par le client ;
+    absent ou `*` = pas de garde (clients historiques)."""
+    if value is None or value.strip() == "*":
+        return None
+    try:
+        return int(value.strip().removeprefix("W/").strip('"'))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid If-Match version") from None
+
+
+def _update_guarded(
+    session: Session,
+    config_id: str,
+    config: BuilderConfig,
+    *,
+    tenant_id: str,
+    if_match: str | None,
+) -> ConfigRead | None:
+    try:
+        return repo.update_config(
+            session,
+            config_id,
+            config,
+            tenant_id=tenant_id,
+            expected_version=_parse_if_match(if_match),
+        )
+    except repo.StaleConfigVersion as exc:
+        raise HTTPException(
+            status_code=412,
+            detail=f"stale version: the config is now at version {exc.current}",
+        ) from None
 
 
 def _require_access(session: Session, *, user: User, item_id: str, action: str) -> None:
@@ -185,6 +219,7 @@ def update_config(
     config: BuilderConfig,
     session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
+    if_match: str | None = Header(default=None),
 ) -> ConfigRead:
     existing = repo.get_config(session, config_id)
     if existing is None or existing.itemId is None:
@@ -203,7 +238,9 @@ def update_config(
     _validate_tileset3d_payload(session, config, user=user)
     _validate_terrain3d_payload(session, config, user=user)
 
-    result = repo.update_config(session, config_id, config, tenant_id=user.tenant_id)
+    result = _update_guarded(
+        session, config_id, config, tenant_id=user.tenant_id, if_match=if_match
+    )
     if result is None:
         raise HTTPException(status_code=404, detail="config not found")
     write_audit(
@@ -401,6 +438,7 @@ def update_config_by_item(
     config: BuilderConfig,
     session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
+    if_match: str | None = Header(default=None),
 ) -> ConfigRead:
     _require_access(session, user=user, item_id=item_id, action="write")
     existing = repo.get_config_by_item(session, item_id)
@@ -418,7 +456,9 @@ def update_config_by_item(
     _validate_report_payload(session, config, user=user)
     _validate_tileset3d_payload(session, config, user=user)
     _validate_terrain3d_payload(session, config, user=user)
-    result = repo.update_config(session, existing.id, config, tenant_id=user.tenant_id)
+    result = _update_guarded(
+        session, existing.id, config, tenant_id=user.tenant_id, if_match=if_match
+    )
     if result is None:
         raise HTTPException(status_code=404, detail="config not found")
     write_audit(
