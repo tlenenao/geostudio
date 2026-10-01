@@ -46,7 +46,7 @@ from app.harvest import routes as harvest_routes
 from app.ingestion import routes as ingestion_routes
 from app.instance import routes as instance_routes
 from app.items import routes as items_routes
-from app.jobs import app as jobs_app
+from app.jobs import open_sync_defer
 from app.mapicons import routes as mapicons_routes
 from app.mcp.server import create_mcp_server
 from app.notifications import routes as notifications_routes
@@ -136,16 +136,10 @@ def create_app() -> FastAPI:
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):
-        # RC-1 : les routes (sync, threadpool) appellent `task.defer(...)`, qui
-        # exige un connecteur SYNC ouvert — sans cela `AppNotOpen` (500) après
-        # un commit déjà fait. Le worker, lui, ouvre l'App via le CLI.
-        sync_connector = jobs_app.connector.get_sync_connector()
-        sync_connector.open()  # type: ignore[attr-defined]
-        try:
+        # RC-1 : les `.defer()` synchrones des routes exigent un connecteur ouvert.
+        with open_sync_defer():
             async with mcp_server.session_manager.run():
                 yield
-        finally:
-            sync_connector.close()  # type: ignore[attr-defined]
 
     app = FastAPI(title="GeoStudio Builder Service", version="0.1.0", lifespan=lifespan)
     observability.instrument_app(app)

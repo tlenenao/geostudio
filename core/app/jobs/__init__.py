@@ -18,9 +18,12 @@ importe ces chemins lui-même, paresseusement, via `App.perform_import_paths()`
 au démarrage du worker (et de `configure_task`) — voir
 `tests/test_jobs.py::test_import_paths_registers_all_domain_tasks`."""
 
+import contextlib
 import os
+from collections.abc import Iterator
 
 import procrastinate
+import psycopg_pool
 
 from app import observability
 
@@ -81,3 +84,28 @@ app = procrastinate.App(
     ],
     worker_defaults={"worker_middleware": [observability.otel_worker_middleware]},
 )
+
+
+@contextlib.contextmanager
+def open_sync_defer() -> Iterator[None]:
+    """Ouvre le connecteur SYNC de `app` pour les `task.defer(...)` des routes
+    FastAPI (threadpool) — sans cela `AppNotOpen` (RC-1). Pool ouvert SANS
+    attendre (`wait=False`, contrairement à `SyncPsycopgConnector.open()` qui
+    bloque 30 s puis lève) : une base momentanément injoignable au démarrage
+    ne bloque ni ne fait tomber l'API, les `defer` échouent seulement le temps
+    de l'indisponibilité. Le worker, lui, ouvre l'App via le CLI procrastinate.
+    # ponytail: pose le pool sur `_pool`/`_pool_args` (privés procrastinate) —
+    # `open(pool=...)` marquerait le pool « externe » et `close()` ne le
+    # libérerait plus ; à revoir à chaque montée de version de procrastinate."""
+    connector = app.connector.get_sync_connector()
+    pool = psycopg_pool.ConnectionPool(
+        **connector._pool_args,  # type: ignore[attr-defined]
+        open=False,
+        check=psycopg_pool.ConnectionPool.check_connection,
+    )
+    pool.open()
+    connector._pool = pool  # type: ignore[attr-defined]
+    try:
+        yield
+    finally:
+        connector.close()  # type: ignore[attr-defined]
