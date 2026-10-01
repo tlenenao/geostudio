@@ -41,3 +41,21 @@ production ») est documentée pour ce dépôt dans `CLAUDE.md`, piège n°2.
 
 Voir aussi le runbook
 [`docs/runbooks/2026-09-05-activer-brute-force-protection-keycloak-existant.md`](../../docs/runbooks/2026-09-05-activer-brute-force-protection-keycloak-existant.md).
+
+## Enregistrement dynamique de clients (DCR) : surface d'onboarding MCP
+
+`POST /realms/geostudio/clients-registrations/openid-connect` est ouvert
+**volontairement** : c'est ce qui permet à un client MCP (Claude, un client
+OAuth 2.1 + PKCE) de s'enregistrer seul. Un client ainsi créé reçoit
+l'audience `geostudio-mcp` (jeton accepté par `/mcp`, refusé par l'API REST).
+
+Il est cadré par la politique **Trusted Hosts** (anonyme) du realm :
+`client-uris-must-match=true`, les `redirect_uris` demandées doivent pointer
+un hôte de la liste (`localhost`, `127.0.0.1`, `claude.ai`) — vérifié contre
+Keycloak 24.0.5 : `localhost` et `claude.ai` donnent 201, un hôte tiers 403.
+S'ajoutent *Max Clients* (200) et *Consent Required*. Pour autoriser un autre
+client MCP : *Realm settings → Client registration → Client registration
+policies → Anonymous access policies → Trusted Hosts* (ou modifier
+`geostudio-realm.json`). Comme pour tout réglage du realm, ce fichier ne
+s'applique qu'à une installation neuve (cf. section précédente) : sur une
+instance existante, ajouter la politique à la main dans la console.

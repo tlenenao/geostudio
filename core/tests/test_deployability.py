@@ -2110,3 +2110,17 @@ def test_prod_traefik_reaches_docker_only_through_a_read_only_socket_proxy():
     env = {k: str(v) for k, v in proxy["environment"].items()}
     assert env["CONTAINERS"] == "1" and env["POST"] == "0"
     assert not {"EXEC", "IMAGES", "VOLUMES", "NETWORKS", "SERVICES"} & env.keys()
+
+
+def test_keycloak_realm_scopes_dynamic_client_registration_with_trusted_hosts():
+    """P08.08 : DCR anonyme cadré (hôtes des redirect_uris) et documenté."""
+    realm = json.loads(KEYCLOAK_REALM_JSON.read_text())
+    policies = realm["components"][
+        "org.keycloak.services.clientregistration.policy.ClientRegistrationPolicy"
+    ]
+    trusted = [
+        p for p in policies if p["providerId"] == "trusted-hosts" and p["subType"] == "anonymous"
+    ]
+    assert len(trusted) == 1
+    assert trusted[0]["config"]["client-uris-must-match"] == ["true"]
+    assert "Trusted Hosts" in (REPO / "deploy/keycloak/README.md").read_text()

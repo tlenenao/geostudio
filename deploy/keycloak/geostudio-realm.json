@@ -1457,6 +1457,26 @@
   "components": {
     "org.keycloak.services.clientregistration.policy.ClientRegistrationPolicy": [
       {
+        "id": "5d0f5b57-6c1b-4a38-9f0e-3b2a7c9d1e44",
+        "name": "Trusted Hosts",
+        "providerId": "trusted-hosts",
+        "subType": "anonymous",
+        "subComponents": {},
+        "config": {
+          "host-sending-registration-request-must-match": [
+            "false"
+          ],
+          "client-uris-must-match": [
+            "true"
+          ],
+          "trusted-hosts": [
+            "localhost",
+            "127.0.0.1",
+            "claude.ai"
+          ]
+        }
+      },
+      {
         "id": "8c636099-949e-4ef5-a5b7-3b815a412711",
         "name": "Allowed Client Scopes",
         "providerId": "allowed-client-templates",
