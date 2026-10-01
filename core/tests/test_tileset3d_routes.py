@@ -254,6 +254,37 @@ def test_complete_upload_rejects_empty_parts_list(env):
     assert r.status_code == 422
 
 
+def test_get_upload_job_404_for_a_job_owned_by_another_user(env):
+    # c01-012 : le statut d'un job n'est lisible que par son initiateur.
+    client, Session, tenant, _alice, *_ = env
+    with Session() as s:
+        bob = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="b",
+            username="bob",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        roles = ensure_built_in_roles(s, tenant_id=tenant.id)
+        set_user_role(
+            s,
+            tenant_id=tenant.id,
+            user_id=bob.id,
+            role_id=roles["reader"].id,
+            role_slug="reader",
+        )
+        bob.role_id = roles["reader"].id
+        s.commit()
+    job_id = client.post(
+        "/v1/tileset3d/uploads", json={"filename": "city.zip", "title": "Ville"}
+    ).json()["jobId"]
+    assert client.get(f"/v1/tileset3d/uploads/{job_id}").status_code == 200
+    client.app.dependency_overrides[get_current_user] = lambda: bob
+    assert client.get(f"/v1/tileset3d/uploads/{job_id}").status_code == 404
+
+
 def test_get_upload_job_404_for_unknown_job(env):
     client, *_ = env
     r = client.get("/v1/tileset3d/uploads/does-not-exist")

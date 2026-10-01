@@ -23,8 +23,9 @@ from app.ingestion.routes import get_s3_client
 from app.ingestion.storage import ensure_uploads_bucket
 from app.items import repository as items_repo
 from app.quotas.service import check_storage_quota_or_raise
-from app.roles.guards import require_privilege
+from app.roles.guards import has_privilege, require_privilege
 from app.roles.kind_registry import privilege_for_kind
+from app.roles.privileges import Privilege
 from app.sharing.authorization import can
 from app.tileset3d import repository as repo
 from app.tileset3d.schemas import (
@@ -244,7 +245,10 @@ def get_tileset3d_upload_job(
     user: User = Depends(get_current_user),
 ) -> Tileset3DJobStatus:
     job = repo.get_job(session, tenant_id=user.tenant_id, job_id=job_id)
-    if job is None:
+    # Lisible par son initiateur ou un porteur de data.manage (patron d'ingestion, c01-012).
+    if job is None or (
+        job.created_by != user.id and not has_privilege(session, user, Privilege.DATA_MANAGE.value)
+    ):
         raise HTTPException(status_code=404, detail="job not found")
     return Tileset3DJobStatus(status=job.status, errorMessage=job.error_message, itemId=job.item_id)
 

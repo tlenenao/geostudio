@@ -25,6 +25,8 @@ from app.export.jobs import render_export_task
 from app.ingestion.routes import get_s3_client
 from app.ingestion.storage import generate_presigned_get_url
 from app.items import repository as items_repo
+from app.roles.guards import has_privilege
+from app.roles.privileges import Privilege
 from app.sharing.authorization import can
 from app.users.models import User
 
@@ -102,7 +104,9 @@ def get_export_job_route(
     bucket: str = Depends(get_exports_bucket),
 ) -> ExportJobStatus:
     job = export_repo.get_job(session, tenant_id=user.tenant_id, job_id=job_id)
-    if job is None:
+    if job is None or (
+        job.user_id != user.id and not has_privilege(session, user, Privilege.DATA_MANAGE.value)
+    ):
         raise HTTPException(status_code=404, detail="export job not found")
     _require_export_read_access(session, user=user, item_id=job.item_id)
     result_url = None
