@@ -241,6 +241,10 @@ export function createBase(opts: {
   coreUrl: string;
   getToken: () => string | undefined;
   getShareLinkToken?: () => string | undefined;
+  // P07.06 : appelé sur un 401 d'une requête authentifiée. Renvoie un jeton
+  // frais (renouvellement silencieux) ; undefined = session perdue (l'appelant
+  // a alors déjà déclenché la reconnexion). La requête n'est rejouée qu'une fois.
+  onUnauthorized?: () => Promise<string | undefined>;
 }): ItemClientBase {
   // SP-57b : point unique de redéfinition — l'API du cœur est versionnée
   // sous /v1 (health/mcp exceptés, jamais atteints par ce client). Tous les
@@ -250,7 +254,16 @@ export function createBase(opts: {
   // features.ts) lisent ce champ déjà versionné — aucun besoin d'éditer ces
   // fichiers individuellement (cf. spec SP-57b §1.3/§2.4).
   const coreUrl = `${opts.coreUrl}/v1`;
-  const { getToken, getShareLinkToken } = opts;
+  const { getToken, getShareLinkToken, onUnauthorized } = opts;
+  // Un seul renouvellement à la fois : N requêtes parallèles en 401 partagent
+  // la même promesse.
+  let renewing: Promise<string | undefined> | null = null;
+  function renewOnce(): Promise<string | undefined> {
+    renewing ??= onUnauthorized!().finally(() => {
+      renewing = null;
+    });
+    return renewing;
+  }
 
   async function request<T>(
     method: string,
@@ -258,21 +271,28 @@ export function createBase(opts: {
     body?: unknown,
     timeoutMs?: number,
   ): Promise<T> {
-    const token = getToken();
     const shareToken = getShareLinkToken?.();
-    const headers: Record<string, string> = {};
-    if (token) headers.Authorization = `Bearer ${token}`;
-    if (shareToken) headers["X-Share-Link-Token"] = shareToken;
-    if (body !== undefined) headers["Content-Type"] = "application/json";
-    const res = await fetchWithTimeout(
-      `${coreUrl}${path}`,
-      {
-        method,
-        headers,
-        body: body !== undefined ? JSON.stringify(body) : undefined,
-      },
-      timeoutMs,
-    );
+    const send = (token: string | undefined) => {
+      const headers: Record<string, string> = {};
+      if (token) headers.Authorization = `Bearer ${token}`;
+      if (shareToken) headers["X-Share-Link-Token"] = shareToken;
+      if (body !== undefined) headers["Content-Type"] = "application/json";
+      return fetchWithTimeout(
+        `${coreUrl}${path}`,
+        {
+          method,
+          headers,
+          body: body !== undefined ? JSON.stringify(body) : undefined,
+        },
+        timeoutMs,
+      );
+    };
+    const token = getToken();
+    let res = await send(token);
+    if (res.status === 401 && token && onUnauthorized) {
+      const fresh = await renewOnce();
+      if (fresh) res = await send(fresh);
+    }
     if (!res.ok) {
       throw await parseErrorResponse(res);
     }
