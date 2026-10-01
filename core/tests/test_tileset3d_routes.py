@@ -175,6 +175,19 @@ def test_presign_part_returns_upload_url(env):
     assert "uploadUrl" in r.json()
 
 
+def test_presign_part_url_is_signed_on_the_public_host(env, monkeypatch):
+    # RC-13 : l'URL de part part du navigateur — jamais l'hôte interne (minio:9000).
+    monkeypatch.setenv("S3_PUBLIC_ENDPOINT_URL", "https://files.example.org")
+    monkeypatch.setenv("S3_ACCESS_KEY", "ak")
+    monkeypatch.setenv("S3_SECRET_KEY", "sk")
+    client, *_ = env
+    job_id = client.post(
+        "/v1/tileset3d/uploads", json={"filename": "city.zip", "title": "Ville"}
+    ).json()["jobId"]
+    r = client.post(f"/v1/tileset3d/uploads/{job_id}/parts/1/presign")
+    assert r.json()["uploadUrl"].startswith("https://files.example.org/")
+
+
 def test_presign_part_refuses_a_reader_with_no_privilege(env):
     # REV-002 : cette route ne consultait jusqu'ici que get_current_user —
     # aucun privilège — alors que create_tileset3d_upload/

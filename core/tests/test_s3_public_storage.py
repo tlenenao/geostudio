@@ -12,6 +12,7 @@ from botocore.exceptions import ClientError
 from app.ingestion.storage import (
     ensure_uploads_bucket,
     generate_presigned_get_url,
+    generate_presigned_part_url,
     generate_presigned_put_url,
     make_s3_client,
 )
@@ -53,6 +54,18 @@ def test_presigned_urls_use_public_endpoint_when_set(monkeypatch):
     )
     put = generate_presigned_put_url(internal, bucket="b", key="k", content_type="text/csv")
     assert put.startswith("https://files.example.org/b/k?")
+    assert internal.presigned == 0
+
+
+def test_presigned_part_url_uses_public_endpoint_when_set(monkeypatch):
+    # Jumelle du PUT/GET : l'envoi multipart 3D part du navigateur, lui aussi.
+    monkeypatch.setenv("S3_PUBLIC_ENDPOINT_URL", "https://files.example.org")
+    monkeypatch.setenv("S3_ACCESS_KEY", "ak")
+    monkeypatch.setenv("S3_SECRET_KEY", "sk")
+    internal = _Client()
+    url = generate_presigned_part_url(internal, bucket="b", key="k", upload_id="u", part_number=2)
+    assert url.startswith("https://files.example.org/b/k?")
+    assert "partNumber=2" in url and "uploadId=u" in url
     assert internal.presigned == 0
 
 

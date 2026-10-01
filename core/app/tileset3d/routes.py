@@ -20,7 +20,7 @@ from app.auth.dependency import get_current_user, is_quotas_enabled
 from app.configs import repository as configs_repo
 from app.db import get_session
 from app.ingestion.routes import get_s3_client
-from app.ingestion.storage import ensure_uploads_bucket
+from app.ingestion.storage import ensure_uploads_bucket, generate_presigned_part_url
 from app.items import repository as items_repo
 from app.quotas.service import check_storage_quota_or_raise
 from app.roles.guards import has_privilege, require_privilege
@@ -162,15 +162,8 @@ def presign_tileset3d_part(
     job = repo.get_job(session, tenant_id=user.tenant_id, job_id=job_id)
     if job is None or job.created_by != user.id:
         raise HTTPException(status_code=404, detail="job not found")
-    url = s3.generate_presigned_url(
-        "upload_part",
-        Params={
-            "Bucket": bucket,
-            "Key": job.source_key,
-            "PartNumber": part_number,
-            "UploadId": job.upload_id,
-        },
-        ExpiresIn=900,
+    url = generate_presigned_part_url(
+        s3, bucket=bucket, key=job.source_key, upload_id=job.upload_id, part_number=part_number
     )
     return Tileset3DPartPresignResponse(uploadUrl=url)
 

@@ -99,6 +99,16 @@ def generate_presigned_get_url(client, *, bucket: str, key: str, expires_in: int
     )
 
 
+def generate_presigned_part_url(
+    client, *, bucket: str, key: str, upload_id: str, part_number: int, expires_in: int = 900
+) -> str:
+    return _signing_client(client).generate_presigned_url(
+        "upload_part",
+        Params={"Bucket": bucket, "Key": key, "PartNumber": part_number, "UploadId": upload_id},
+        ExpiresIn=expires_in,
+    )
+
+
 class ObjectTooLarge(Exception):
     """Objet plus gros que le plafond de lecture (chargé entièrement en mémoire)."""
 
