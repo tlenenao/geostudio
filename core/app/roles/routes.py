@@ -36,6 +36,17 @@ def _role_json(role: Role) -> RoleRead:
     )
 
 
+def _require_free_name(
+    session: Session, tenant_id: str, name: str, *, except_role_id: str | None = None
+) -> None:
+    """j08-005 : unique (insensible à la casse) dans le tenant — les rôles
+    prédéfinis y sont des lignes, « Administrateur » n'est donc pas usurpable."""
+    wanted = name.casefold()
+    for r in list_roles(session, tenant_id=tenant_id):
+        if r.id != except_role_id and r.name.casefold() == wanted:
+            raise HTTPException(status_code=409, detail="a role with this name already exists")
+
+
 @router.get("/roles/catalog", response_model=list[PrivilegeCatalogEntry])
 def get_roles_catalog(
     user: User = Depends(get_current_user),
@@ -65,6 +76,7 @@ def post_role(
     if unknown:
         raise HTTPException(status_code=400, detail=f"unknown privileges: {sorted(unknown)}")
     require_privileges_within_ceiling(session, user, body.privileges)
+    _require_free_name(session, user.tenant_id, body.name)
     role = create_role(
         session, tenant_id=user.tenant_id, name=body.name, privileges=body.privileges
     )
@@ -94,6 +106,8 @@ def patch_role(
         raise HTTPException(status_code=404, detail="role not found")
     if role.is_built_in:
         raise HTTPException(status_code=400, detail="a built-in role cannot be edited")
+    if body.name is not None:
+        _require_free_name(session, user.tenant_id, body.name, except_role_id=role.id)
     if body.privileges is not None:
         unknown = set(body.privileges) - set(ALL_PRIVILEGE_VALUES)
         if unknown:

@@ -252,3 +252,26 @@ def test_privilege_ceiling_on_role_creation_edit_and_assignment_c01_002(env):
     # attribution d'un rôle dans le plafond
     r = client.patch(f"/v1/users/{regular.id}", json={"roleId": role_ids["reader"]})
     assert r.status_code == 200
+
+
+def test_role_name_is_validated_and_unique_and_privileges_deduped_j08_005(env):
+    app, client, admin, _regular, _roles = env
+    _as(app, admin)
+    for bad in ("", "   ", "x" * 81):
+        assert client.post("/v1/roles", json={"name": bad, "privileges": []}).status_code == 422
+    # usurpation d'un rôle prédéfini, insensible à la casse
+    assert (
+        client.post("/v1/roles", json={"name": " administrateur ", "privileges": []}).status_code
+        == 409
+    )
+    created = client.post(
+        "/v1/roles",
+        json={"name": " Support ", "privileges": ["data.view", "data.view"]},
+    ).json()
+    assert created["name"] == "Support"
+    assert created["privileges"] == ["data.view"]
+    assert client.post("/v1/roles", json={"name": "SUPPORT", "privileges": []}).status_code == 409
+    # renommer en soi-même reste permis, en un nom pris non
+    own = client.patch(f"/v1/roles/{created['id']}", json={"name": "support"})
+    assert own.status_code == 200
+    assert client.patch(f"/v1/roles/{created['id']}", json={"name": "Lecteur"}).status_code == 409
