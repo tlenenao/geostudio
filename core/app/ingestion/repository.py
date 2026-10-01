@@ -104,7 +104,7 @@ def reclaim_stuck_jobs(
     tenants, pas par tenant."""
     threshold = datetime.now(UTC) - timedelta(minutes=older_than_minutes)
     rows = (
-        session.execute(select(IngestionJob).where(IngestionJob.status == "running"))
+        session.execute(select(IngestionJob).where(IngestionJob.status.in_(("pending", "running"))))
         .scalars()
         .all()
     )
@@ -115,6 +115,8 @@ def reclaim_stuck_jobs(
             updated_at = updated_at.replace(tzinfo=UTC)
         if updated_at >= threshold:
             continue
+        # P01.04 : un job « pending » ancien n'a jamais été pris en charge
+        # (defer perdu, file non consommée) — même clôture que « running ».
         job.status = "error"
         job.error_message = "ingestion timed out (worker crashed or hung)"
         reclaimed.append(job.id)

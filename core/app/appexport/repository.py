@@ -83,13 +83,15 @@ def reclaim_stuck_jobs(
 ) -> list[str]:
     threshold = _now() - timedelta(minutes=older_than_minutes)
     rows = (
-        session.execute(select(AppExportJob).where(AppExportJob.status == "running"))
+        session.execute(select(AppExportJob).where(AppExportJob.status.in_(("pending", "running"))))
         .scalars()
         .all()
     )
     reclaimed: list[str] = []
     for job in rows:
-        started_at = job.started_at
+        # P01.04 : « pending » (jamais démarré : defer perdu, file non
+        # consommée) s'ancre sur created_at, « running » sur started_at.
+        started_at = job.started_at if job.status == "running" else job.created_at
         if started_at is None:
             continue
         if started_at.tzinfo is None:

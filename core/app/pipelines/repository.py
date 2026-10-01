@@ -3,7 +3,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import croniter
-from sqlalchemy import func, select, update
+from sqlalchemy import case, func, select, update
 from sqlalchemy.orm import Session, aliased
 
 from app.configs import repository as configs_repo
@@ -129,24 +129,31 @@ def mark_failed(session: Session, *, run_id: str, error: str) -> None:
     session.flush()
 
 
-def fail_stale_runs(session: Session, *, pipeline_item_id: str) -> int:
-    """Clôt en erreur les runs encore queued/running d'un pipeline que le
-    balayage vient de juger périmés (c02-005) : sans cela l'ancien run
-    restait « running » à jamais à côté du nouveau. UPDATE conditionnel sur
-    le statut (un run terminé entre-temps n'est pas touché).
-    # ponytail: pas de heartbeat — un run réellement vivant de plus de
-    # _RUNNING_RECLAIM_MINUTES est aussi clos ; heartbeat/verrou par
-    # pipeline si des pipelines légitimes dépassent ce délai."""
+def reclaim_stuck_runs(
+    session: Session, *, older_than_minutes: int = _RUNNING_RECLAIM_MINUTES
+) -> int:
+    """Clôt en erreur les runs « queued » (jamais pris en charge : defer perdu,
+    file non consommée — P01.04) ou « running » (ancrés sur started_at —
+    c02-005 : sans cela l'ancien run restait zombie à côté du nouveau) plus
+    vieux que le seuil. Cross-tenant, appelée par le balayage cron. UPDATE
+    conditionnel sur le statut : un run terminé entre-temps n'est pas touché.
+    # ponytail: pas de heartbeat — un run vivant de plus de
+    # _RUNNING_RECLAIM_MINUTES est aussi clos ; heartbeat si des pipelines
+    # légitimes dépassent ce délai."""
+    threshold = _now() - timedelta(minutes=older_than_minutes)
+    anchor = case(
+        (PipelineRun.status == "running", PipelineRun.started_at), else_=PipelineRun.created_at
+    )
     result = session.execute(
         update(PipelineRun)
         .where(
-            PipelineRun.pipeline_item_id == pipeline_item_id,
             PipelineRun.status.in_(("queued", "running")),
+            func.coalesce(anchor, PipelineRun.created_at) < threshold,
         )
         .values(
             status="failed",
             finished_at=_now(),
-            error="run périmé : repris par le balayage de planification",
+            error="run périmé : jamais terminé, clos par le balayage de planification",
         )
     )
     return int(result.rowcount or 0)  # type: ignore[attr-defined]

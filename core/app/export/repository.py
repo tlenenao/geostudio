@@ -103,10 +103,16 @@ def reclaim_stuck_jobs(
     n'existait (stale depuis le câblage, cf. aussi le docstring périmé
     équivalent dans tests/test_export_repository.py)."""
     threshold = _now() - timedelta(minutes=older_than_minutes)
-    rows = session.execute(select(ExportJob).where(ExportJob.status == "running")).scalars().all()
+    rows = (
+        session.execute(select(ExportJob).where(ExportJob.status.in_(("pending", "running"))))
+        .scalars()
+        .all()
+    )
     reclaimed: list[str] = []
     for job in rows:
-        started_at = job.started_at
+        # P01.04 : « pending » (jamais démarré : defer perdu, file non
+        # consommée) s'ancre sur created_at, « running » sur started_at.
+        started_at = job.started_at if job.status == "running" else job.created_at
         if started_at is None:
             continue
         if started_at.tzinfo is None:

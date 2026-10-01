@@ -278,9 +278,9 @@ def run_pipeline_sweep_task(timestamp: int) -> None:
         return
     factory = _session_factory()
     with request_scoped_session(factory) as session:
+        pipelines_repo.reclaim_stuck_runs(session)
         due = pipelines_repo.list_due_pipelines(session)
         for item_id, tenant_id in due:
-            pipelines_repo.fail_stale_runs(session, pipeline_item_id=item_id)
             run = pipelines_repo.create_run(session, tenant_id=tenant_id, pipeline_item_id=item_id)
             # Commit avant de déférer, même raison que routes.py/mcp/tools.py
             # (create_run puis defer) : un worker pourrait ramasser la tâche
