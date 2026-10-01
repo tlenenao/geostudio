@@ -32,13 +32,9 @@ def list_groups(
     session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> list[GroupRead]:
-    # REV-009 : décision explicite (le backlog demandait de trancher) — GET
-    # /groups reste une liste de TOUT le tenant, pas seulement les groupes
-    # dont l'appelant est créateur/membre. C'est déjà le contrat actuel
-    # (repo.list_groups filtre uniquement par tenant_id) et le seul
-    # consommateur de production (ShareForm.tsx, sélection de groupe pour un
-    # partage) a besoin de voir tous les groupes du tenant pour y ajouter un
-    # item/une collection — restreindre à créateur/membre casserait ce flux.
+    # j02-005 : liste de tout le tenant, réservée à qui gère le catalogue
+    # (consommateur : ShareForm, créateurs/admins) — un Lecteur n'y accède plus.
+    require_privilege(session, user, Privilege.CATALOG_MANAGE.value)
     return [
         GroupRead(id=g.id, name=g.name) for g in repo.list_groups(session, tenant_id=user.tenant_id)
     ]

@@ -38,6 +38,8 @@ def get_sharing_service(session: Session, *, item_id: str, user: User) -> Sharin
     facts = repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
     if facts is None or not can(session, user_id=user.id, action="read", item=facts):
         raise HTTPException(status_code=404, detail="item not found")
+    if not can(session, user_id=user.id, action="share", item=facts):
+        raise HTTPException(status_code=403, detail="not allowed to share this item")
     shares = sharing_repo.list_shares(session, item_id=item_id)
     return Sharing(
         public=facts.is_public,

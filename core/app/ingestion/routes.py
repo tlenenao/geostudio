@@ -76,9 +76,11 @@ def get_task_deferrer() -> Callable[[str, str], None]:
 def presign_upload(
     body: PresignRequest,
     user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
     s3=Depends(get_s3_client),
     bucket: str = Depends(get_uploads_bucket),
 ) -> PresignResponse:
+    require_privilege(session, user, Privilege.DATA_MANAGE.value)
     ensure_uploads_bucket(s3, bucket)
     key = f"{user.tenant_id}/{uuid.uuid4().hex}-{body.filename}"
     url = generate_presigned_put_url(s3, bucket=bucket, key=key, content_type=body.contentType)
@@ -89,9 +91,11 @@ def presign_upload(
 def inspect_upload(
     body: InspectRequest,
     user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
     s3=Depends(get_s3_client),
     bucket: str = Depends(get_uploads_bucket),
 ) -> InspectResponse:
+    require_privilege(session, user, Privilege.DATA_MANAGE.value)
     if not body.key.startswith(f"{user.tenant_id}/"):
         raise HTTPException(status_code=400, detail="invalid upload key")
     try:
