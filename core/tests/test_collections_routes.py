@@ -983,3 +983,44 @@ def test_patch_collection_can_clear_a_declared_temporal_extent(env):
     final_res = client.get("/v1/collections/incidents")
     assert final_res.json()["temporalStart"] is None
     assert final_res.json()["temporalEnd"] is None
+
+
+def _owned_by_regular_with_sensitive(env):
+    """Collection `incidents` marquée sensible sur `titre`, dont `regular` (sans
+    data.view_sensitive ni admin.collections.manage) devient propriétaire."""
+    from app.collections.models import Collection
+
+    app, client, Session, admin, regular, _ddl = env
+    _as(app, admin)
+    client.post("/v1/collections", json={"tableName": "incidents"})
+    client.patch("/v1/collections/incidents", json={"sensitiveFields": ["titre"]})
+    with Session() as s:
+        s.get(Collection, "incidents").owner_id = regular.id
+        s.commit()
+    return app, client, admin, regular
+
+
+def test_owner_without_privilege_cannot_change_sensitive_fields(env):
+    # c01-001 (P15.01) : seul `write` ne suffit pas à lever le masquage GAP-22.
+    app, client, admin, regular = _owned_by_regular_with_sensitive(env)
+    _as(app, regular)
+    r = client.patch("/v1/collections/incidents", json={"sensitiveFields": []})
+    assert r.status_code == 403
+    # une valeur inchangée (formulaire de métadonnées complet) reste acceptée
+    r = client.patch("/v1/collections/incidents", json={"title": "T", "sensitiveFields": ["titre"]})
+    assert r.status_code == 200
+    _as(app, admin)
+    assert client.get("/v1/collections/incidents").json()["sensitiveFields"] == ["titre"]
+
+
+def test_sensitive_fields_hidden_from_fiche_and_schema_without_privilege(env):
+    # j07-015 (P15.04)
+    app, client, admin, regular = _owned_by_regular_with_sensitive(env)
+    _as(app, admin)
+    assert client.get("/v1/collections/incidents").json()["sensitiveFields"] == ["titre"]
+    assert "titre" in client.get("/v1/collections/incidents/schema").text
+    _as(app, regular)
+    assert client.get("/v1/collections/incidents").json()["sensitiveFields"] == []
+    assert "titre" not in client.get("/v1/collections/incidents/schema").text
+    listed = client.get("/v1/collections").json()["collections"]
+    assert all(c["sensitiveFields"] == [] for c in listed)

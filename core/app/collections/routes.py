@@ -17,6 +17,7 @@ from app.collections.introspection import (
     Introspector,
     TableNotFound,
     UnsupportedTable,
+    hide_sensitive_columns,
 )
 from app.collections.provisioning import create_empty_collection
 from app.collections.publication import remove_table_from_publication
@@ -259,7 +260,18 @@ def get_feature_counter():
     return counter
 
 
-def _collection_json(col, permissions, owner: str | None = None) -> dict:
+def _may_see_sensitive(session, user) -> bool:
+    """GAP-22 : qui voit la liste des champs sensibles (fiche, schéma) et peut
+    la modifier — data.view_sensitive ou admin.collections.manage."""
+    return user is not None and (
+        has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)
+        or has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+    )
+
+
+def _collection_json(
+    col, permissions, owner: str | None = None, *, reveal_sensitive: bool = False
+) -> dict:
     return {
         "id": col.id,
         "title": col.title,
@@ -274,7 +286,7 @@ def _collection_json(col, permissions, owner: str | None = None) -> dict:
         "featureCount": col.feature_count,
         "owner": owner,
         "attachmentFields": col.attachment_fields,
-        "sensitiveFields": col.sensitive_fields,
+        "sensitiveFields": col.sensitive_fields if reveal_sensitive else [],
         "license": col.license,
         "licenseUri": col.license_uri,
         "producer": col.producer,
@@ -441,7 +453,7 @@ def register_collection(
         can_manage_collections=can_manage_collections,
         collections=[col],
     )[col.id]
-    return _collection_json(col, permissions)
+    return _collection_json(col, permissions, reveal_sensitive=True)
 
 
 @router.post("/collections/empty", status_code=201)
@@ -483,7 +495,7 @@ def create_empty_collection_route(
         can_manage_collections=can_manage_collections,
         collections=[col],
     )[col.id]
-    return _collection_json(col, permissions)
+    return _collection_json(col, permissions, reveal_sensitive=True)
 
 
 @router.get("/collections")
@@ -525,9 +537,15 @@ def list_collections(
         can_manage_collections=can_manage_collections,
         collections=cols_page,
     )
+    reveal_sensitive = _may_see_sensitive(session, user)
     return {
         "collections": [
-            _collection_json(c, permissions_by_id[c.id], owner=owners.get(c.owner_id))
+            _collection_json(
+                c,
+                permissions_by_id[c.id],
+                owner=owners.get(c.owner_id),
+                reveal_sensitive=reveal_sensitive,
+            )
             for c in cols_page
         ],
         "numberMatched": total,
@@ -598,7 +616,7 @@ def get_collection(
         can_manage_collections=can_manage_collections,
         collections=[col],
     )[col.id]
-    body = _collection_json(col, permissions)
+    body = _collection_json(col, permissions, reveal_sensitive=_may_see_sensitive(session, user))
     body["itemType"] = "feature"
     # request.base_url ne porte jamais /v1 (juste scheme://host/) — ce
     # routeur est nesté sous /v1 (SP-57b), l'ajouter explicitement ici.
@@ -643,6 +661,8 @@ def get_collection_schema(
         raise HTTPException(status_code=404, detail="backing table not found") from exc
     except UnsupportedTable as exc:
         raise HTTPException(status_code=409, detail=exc.reason) from exc
+    if not _may_see_sensitive(session, user):
+        info = hide_sensitive_columns(info, col.sensitive_fields)
     return table_info_to_schema(info, attachment_fields=col.attachment_fields)
 
 
@@ -731,6 +751,15 @@ def patch_collection(
         raise HTTPException(status_code=403, detail="write access required")
     if body.attachmentFields is not None:
         _reject_attachment_field_collisions(session, col, body.attachmentFields, introspect)
+    if (
+        body.sensitiveFields is not None
+        and body.sensitiveFields != col.sensitive_fields
+        and not _may_see_sensitive(session, user)
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="data.view_sensitive or admin.collections.manage required for sensitiveFields",
+        )
     if body.sensitiveFields is not None:
         _reject_invalid_sensitive_fields(session, col, body.sensitiveFields, introspect)
     text_changed = (body.title is not None and body.title != col.title) or (
@@ -789,7 +818,7 @@ def patch_collection(
         can_manage_collections=can_manage_collections,
         collections=[col],
     )[col.id]
-    return _collection_json(col, permissions)
+    return _collection_json(col, permissions, reveal_sensitive=_may_see_sensitive(session, user))
 
 
 @router.delete("/collections/{collection_id}", status_code=204)
