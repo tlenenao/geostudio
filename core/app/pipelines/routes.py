@@ -70,7 +70,7 @@ def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests
 
 
 @router.get("/pipelines/ops")
-def get_pipeline_ops() -> dict:
+def get_pipeline_ops(user: User = Depends(get_current_user)) -> dict:
     return ops_catalog()
 
 
