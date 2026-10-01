@@ -38,7 +38,12 @@ from app.analytics.duckdb_conn import open_connection
 from app.audit.writer import write_audit
 from app.auth.dependency import is_pipeline_file_io_enabled
 from app.collections import repository as collections_repo
-from app.collections.introspection import TableInfo, TableNotFound, UnsupportedTable
+from app.collections.introspection import (
+    TableInfo,
+    TableNotFound,
+    UnsupportedTable,
+    hide_sensitive_columns,
+)
 from app.collections.introspection_pg import introspect_table
 from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig, DatasetPayload, PipelineNode, PipelinePayload
@@ -76,7 +81,7 @@ from app.pipelines.ops.schemas import (
     WriterExportParams,
     WriterFileParams,
 )
-from app.roles.guards import require_privilege
+from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
 from app.sharing.authorization import can
 from app.users.models import User
@@ -143,6 +148,29 @@ def _require_readable_collection_id(
     ):
         raise PipelineRuntimeError(f"collection '{collection_id}' not found")
     return collection.table_name
+
+
+def _masked_fields(
+    session: Session, *, tenant_id: str, user: User, collection_id: str
+) -> frozenset[str]:
+    """GAP-22 : champs sensibles que `user` ne peut pas lire — le lac GeoParquet
+    n'a pas de RLS par colonne, donc un reader.collection les laisserait fuiter
+    vers l'aperçu ou un writer."""
+    collection = collections_repo.get_collection(
+        session, tenant_id=tenant_id, collection_id=collection_id
+    )
+    if collection is None or has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value):
+        return frozenset()
+    return frozenset(collection.sensitive_fields)
+
+
+def _readable_table_info(
+    session: Session, *, tenant_id: str, user: User, collection_id: str, table_name: str
+) -> TableInfo:
+    """TableInfo d'une collection lue par un reader/une jointure, sans les
+    colonnes sensibles que `user` ne peut pas lire."""
+    masked = _masked_fields(session, tenant_id=tenant_id, user=user, collection_id=collection_id)
+    return hide_sensitive_columns(_table_info_for_collection(session, table_name), sorted(masked))
 
 
 def _require_writable_collection(
@@ -245,7 +273,9 @@ def _read_collection(
         user=user,
         collection_id=p.collectionId,
     )
-    table_info = _table_info_for_collection(session, table_name)
+    table_info = _readable_table_info(
+        session, tenant_id=tenant_id, user=user, collection_id=p.collectionId, table_name=table_name
+    )
     _materialize_reader(
         conn,
         view_name=view_name,
@@ -628,7 +658,13 @@ def _prepare(
             user=user,
             collection_id=p.withCollectionId,
         )
-        table_info = _table_info_for_collection(session, table_name)
+        table_info = _readable_table_info(
+            session,
+            tenant_id=tenant_id,
+            user=user,
+            collection_id=p.withCollectionId,
+            table_name=table_name,
+        )
         join_view = f"node_{node.id}__join"
         _materialize_reader(
             conn,

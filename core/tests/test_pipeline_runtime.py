@@ -26,6 +26,16 @@ from app.users.repository import get_or_create_user
 
 pytestmark = []
 
+_REAL_MASKED_FIELDS = runtime._masked_fields
+
+
+@pytest.fixture(autouse=True)
+def _no_masking_by_default(monkeypatch):
+    # La plupart des tests appellent le runtime avec session=None/user=None ;
+    # le masquage GAP-22 (test dédié en fin de fichier) rétablit la vraie fonction.
+    monkeypatch.setattr(runtime, "_masked_fields", lambda *a, **k: frozenset())
+
+
 TABLE_INFO = TableInfo(
     table_name="villes",
     pk_column="id",
@@ -2916,3 +2926,62 @@ def test_writer_export_rejects_unsafe_key(key):
     with pytest.raises(ValidationError):
         WriterExportParams(format="csv", key=key)
     assert WriterExportParams(format="csv", key="out/a.csv").key == "out/a.csv"
+
+
+def test_reader_collection_drops_sensitive_columns_without_privilege(tmp_path, monkeypatch):
+    # RC-8 / GAP-22 : le lac n'a pas de RLS par colonne — le reader doit les exclure.
+    import duckdb
+
+    from app.collections.repository import create_collection
+
+    monkeypatch.setattr(runtime, "_masked_fields", _REAL_MASKED_FIELDS)
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with make_session_factory(engine)() as s:
+        tenant = get_or_create_default_tenant(s)
+        owner = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="r",
+            username="regular",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        col = create_collection(
+            s,
+            tenant_id=tenant.id,
+            owner_id=owner.id,
+            table_name="villes",
+            title="V",
+            description="",
+            is_public=True,
+            pk_column="id",
+            geometry_column="geometry",
+            geometry_type="Point",
+            srid=4326,
+        )
+        col.sensitive_fields = ["pop"]
+        s.flush()
+        masked = runtime._masked_fields(s, tenant_id=tenant.id, user=owner, collection_id="villes")
+        assert masked == frozenset({"pop"})
+
+        _write_partition(tmp_path, tenant_id=tenant.id, rows=[_row(1, "Nord", 10)])
+        monkeypatch.setattr(
+            runtime,
+            "_table_info_for_collection",
+            lambda session, collection_id: _table_info_for(collection_id),
+        )
+        conn = duckdb.connect(":memory:")
+        runtime._read_collection(
+            conn,
+            session=s,
+            tenant_id=tenant.id,
+            node_id="r1",
+            params={"collectionId": "villes"},
+            view_name="r1",
+            user=owner,
+            base_uri=str(tmp_path),
+        )
+        cols = [r[0] for r in conn.execute("DESCRIBE r1").fetchall()]
+        assert "region" in cols and "pop" not in cols
