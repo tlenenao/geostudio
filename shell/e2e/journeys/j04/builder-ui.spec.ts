@@ -30,17 +30,15 @@ test.describe("j04 App Builder — édition", () => {
     await expect(page.getByText("Bonjour j04")).toBeVisible();
   });
 
-  // finding j04-002
-  fixme(
-    "j04-002 : la palette n'expose que des widgets de production (pas d'exemples SDK)",
-    async ({ page }) => {
-      const s = await getSeed();
-      await openBuilder(page, s.emptyApp);
-      // Le shell enregistre les widgets de démonstration dans la palette de tout créateur.
-      const names = await page.locator("button", { hasText: /Compteur/ }).allInnerTexts();
-      expect(names).toEqual([]);
-    },
-  );
+  test("j04-002 : la palette n'expose que des widgets de production (pas d'exemples SDK)", async ({
+    page,
+  }) => {
+    const s = await getSeed();
+    await openBuilder(page, s.emptyApp);
+    // Le shell enregistre les widgets de démonstration dans la palette de tout créateur.
+    const names = await page.locator("button", { hasText: /Compteur/ }).allInnerTexts();
+    expect(names).toEqual([]);
+  });
 
   test("undo/redo : boutons et clavier restaurent l'état, Annuler désactivé à l'origine", async ({
     page,

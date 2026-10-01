@@ -30,8 +30,7 @@ import { PropsPanel } from "../builder/PropsPanel";
 import { ThemePanel } from "../builder/ThemePanel";
 import { VariablesPanel } from "../builder/VariablesPanel";
 import { registerBuiltinWidgets } from "../builder/widgets";
-import { registerCounterExampleWidget } from "../builder/examples/counterWidget";
-import { registerCounterWcExampleWidget } from "../builder/examples/counterWidgetWc";
+import { registerExampleWidgets } from "../builder/examples";
 import { useActiveExtensions } from "../api/hooks";
 import { registerExtensionWidget } from "../builder/extensions/registerExtensionWidget";
 import { getWidget } from "../builder/registry";
@@ -49,8 +48,7 @@ import { t } from "../i18n";
 import { ApiError } from "../api/ApiError";
 
 registerBuiltinWidgets();
-registerCounterExampleWidget();
-registerCounterWcExampleWidget();
+registerExampleWidgets();
 
 export function AppBuilderPage({ pk }: { pk: string }) {
   const client = useItemClient();

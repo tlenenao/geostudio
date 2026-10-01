@@ -7,8 +7,7 @@ import { getPageLayout } from "../builder/pages";
 import type { MapLayer } from "../api/types";
 import { decodeAnalyticsContext, encodeAnalyticsContext } from "../lib/analyticsContextUrl";
 import { registerBuiltinWidgets } from "../builder/widgets";
-import { registerCounterExampleWidget } from "../builder/examples/counterWidget";
-import { registerCounterWcExampleWidget } from "../builder/examples/counterWidgetWc";
+import { registerExampleWidgets } from "../builder/examples";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useActiveExtensions, useCreateBookmark } from "../api/hooks";
 import { registerExtensionWidget } from "../builder/extensions/registerExtensionWidget";
@@ -23,8 +22,7 @@ import { ExportPanel } from "../builder/print/ExportPanel";
 import { t } from "../i18n";
 
 registerBuiltinWidgets();
-registerCounterExampleWidget();
-registerCounterWcExampleWidget();
+registerExampleWidgets();
 
 export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) {
   // P07.03 : la route /apps/:pk est hors RequireAuth (lecture publique
