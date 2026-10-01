@@ -1,13 +1,63 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useAllExtensions, useInstanceInfo, useSetExtensionEnabled } from "../api/hooks";
+import { useState } from "react";
+import {
+  useAllExtensions,
+  useCreateExtension,
+  useDeleteExtension,
+  useInstanceInfo,
+  useSetExtensionEnabled,
+} from "../api/hooks";
+import type { AdminExtension } from "../api/types";
 import { SettingsNav } from "../shell/chrome/SettingsNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
+import { Button } from "../ui/kit/Button";
+import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
+import { EmptyState } from "../ui/kit/EmptyState";
+import { Input } from "../ui/kit/Input";
 import { LoadingState } from "../ui/kit/LoadingState";
+
+function RegisterForm({ disabled }: { disabled: boolean }) {
+  const create = useCreateExtension();
+  const [form, setForm] = useState({ id: "", tag: "", label: "", moduleUrl: "" });
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm({ ...form, [k]: e.target.value });
+  const valid = Object.values(form).every((v) => v.trim() !== "");
+  return (
+    <form
+      className="flex flex-col gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        create.mutate(
+          { ...form, defaultSize: { w: 2, h: 2 } },
+          { onSuccess: () => setForm({ id: "", tag: "", label: "", moduleUrl: "" }) },
+        );
+      }}
+    >
+      <h2 className="text-base font-semibold text-ink">{t("extensions.registerTitle")}</h2>
+      {(["id", "tag", "label", "moduleUrl"] as const).map((k) => (
+        <label key={k} className="flex flex-col gap-1 text-sm text-ink">
+          {t(`extensions.field${k[0].toUpperCase()}${k.slice(1)}` as "extensions.fieldId")}
+          <Input value={form[k]} onChange={set(k)} disabled={disabled} />
+        </label>
+      ))}
+      {create.isError && (
+        <p role="alert" className="text-sm text-danger">
+          {t("extensions.registerError")}
+        </p>
+      )}
+      <Button type="submit" size="sm" disabled={!valid || disabled || create.isPending}>
+        {t("extensions.registerButton")}
+      </Button>
+    </form>
+  );
+}
 
 export function AdminExtensionsPage() {
   const extensionsQuery = useAllExtensions();
   const setEnabled = useSetExtensionEnabled();
+  const deleteExt = useDeleteExtension();
+  const [toDelete, setToDelete] = useState<AdminExtension | null>(null);
   const instanceQuery = useInstanceInfo();
   const readOnly = instanceQuery.data?.readOnly === true;
 
@@ -36,7 +86,18 @@ export function AdminExtensionsPage() {
                   {t("extensions.updateError")}
                 </p>
               )}
-              {extensionsQuery.data && (
+              {deleteExt.isError && (
+                <p role="alert" className="text-sm text-danger">
+                  {t("extensions.deleteError")}
+                </p>
+              )}
+              {extensionsQuery.data && extensionsQuery.data.length === 0 && (
+                <EmptyState
+                  title={t("extensions.emptyTitle")}
+                  description={t("extensions.emptyDescription")}
+                />
+              )}
+              {extensionsQuery.data && extensionsQuery.data.length > 0 && (
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="border-b border-rule">
@@ -44,6 +105,7 @@ export function AdminExtensionsPage() {
                       <th className="py-2 text-ink">{t("extensions.columnTag")}</th>
                       <th className="py-2 text-ink">{t("extensions.columnModule")}</th>
                       <th className="py-2 text-ink">{t("extensions.columnActive")}</th>
+                      <th className="py-2 text-ink">{t("extensions.columnActions")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -63,11 +125,35 @@ export function AdminExtensionsPage() {
                             }
                           />
                         </td>
+                        <td className="py-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            aria-label={t("extensions.deleteAria", { label: ext.label })}
+                            disabled={readOnly}
+                            onClick={() => setToDelete(ext)}
+                          >
+                            {t("extensions.deleteButton")}
+                          </Button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               )}
+              <RegisterForm disabled={readOnly} />
+              <ConfirmDialog
+                open={toDelete !== null}
+                title={t("extensions.deleteTitle")}
+                message={toDelete ? t("extensions.deleteMessage", { label: toDelete.label }) : ""}
+                confirmLabel={t("extensions.deleteButton")}
+                pending={deleteExt.isPending}
+                onCancel={() => setToDelete(null)}
+                onConfirm={() => {
+                  if (toDelete)
+                    deleteExt.mutate(toDelete.type, { onSettled: () => setToDelete(null) });
+                }}
+              />
             </div>
           ),
         }}

@@ -2,6 +2,7 @@
 import type {
   AdminExtension,
   AdminToolName,
+  ExtensionCreateInput,
   ExtensionManifest,
   HarvestSource,
   HarvestSourceCreateInput,
@@ -15,6 +16,8 @@ type ExtensionsAdminToolsMethods = Pick<
   | "listActiveExtensions"
   | "listAllExtensions"
   | "setExtensionEnabled"
+  | "createExtension"
+  | "deleteExtension"
   | "launchAdminTool"
   | "listHarvestSources"
   | "createHarvestSource"
@@ -96,6 +99,14 @@ export function createExtensionsAdminToolsMethods(
 
     async setExtensionEnabled(id: string, enabled: boolean): Promise<void> {
       await request<void>("PATCH", `/extensions/${id}`, { enabled });
+    },
+
+    async createExtension(input: ExtensionCreateInput): Promise<void> {
+      await request<void>("POST", `/extensions`, input);
+    },
+
+    async deleteExtension(id: string): Promise<void> {
+      await request<void>("DELETE", `/extensions/${encodeURIComponent(id)}`);
     },
 
     async launchAdminTool(tool: AdminToolName): Promise<{ url: string }> {

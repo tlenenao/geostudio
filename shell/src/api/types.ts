@@ -513,6 +513,8 @@ export interface ItemClient {
   listActiveExtensions(): Promise<ExtensionManifest[]>;
   listAllExtensions(): Promise<AdminExtension[]>;
   setExtensionEnabled(id: string, enabled: boolean): Promise<void>;
+  createExtension(input: ExtensionCreateInput): Promise<void>;
+  deleteExtension(id: string): Promise<void>;
   getMetadataCatalog(): Promise<MetadataCatalog>;
   listCollections(params?: { q?: string } & PageParams): Promise<CollectionAdmin[]>;
   listCandidateTables(): Promise<CandidateTable[]>;
@@ -872,6 +874,14 @@ export type ExtensionManifest = {
   defaultSize: { w: number; h: number };
   permissions?: { collections: string[] | "all" };
   moduleUrl: string;
+};
+
+export type ExtensionCreateInput = {
+  id: string;
+  tag: string;
+  label: string;
+  moduleUrl: string;
+  defaultSize: { w: number; h: number };
 };
 
 export type AdminExtension = ExtensionManifest & { enabled: boolean };

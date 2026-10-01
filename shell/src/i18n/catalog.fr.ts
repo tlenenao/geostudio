@@ -245,6 +245,22 @@ export const fr = {
   "extensions.columnActive": "Actif",
   "extensions.activeAria": "Actif : {label}",
   "extensions.detail": "Détail",
+  "extensions.emptyTitle": "Aucune extension enregistrée.",
+  "extensions.emptyDescription": "Enregistrez un widget tiers avec le formulaire ci-dessous.",
+  "extensions.registerTitle": "Enregistrer une extension",
+  "extensions.fieldId": "Identifiant",
+  "extensions.fieldTag": "Balise",
+  "extensions.fieldLabel": "Étiquette",
+  "extensions.fieldModuleUrl": "URL du module (https)",
+  "extensions.registerButton": "Enregistrer",
+  "extensions.registerError": "Échec de l'enregistrement de l'extension.",
+  "extensions.columnActions": "Actions",
+  "extensions.deleteButton": "Supprimer",
+  "extensions.deleteAria": "Supprimer : {label}",
+  "extensions.deleteTitle": "Supprimer l'extension",
+  "extensions.deleteMessage":
+    "L'extension « {label} » sera retirée du catalogue. Les apps qui l'utilisent ne l'afficheront plus.",
+  "extensions.deleteError": "Échec de la suppression de l'extension.",
 
   // Motif de navigation partagé (lien de retour au catalogue depuis un écran
   // d'administration/édition en triptyque) — réutilisé par plusieurs pages.
