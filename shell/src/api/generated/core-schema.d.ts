@@ -5761,7 +5761,7 @@ export interface operations {
             query?: {
                 q?: string | null;
                 type?: string | null;
-                scope?: string;
+                scope?: "all" | "mine" | "shared" | "public";
                 page?: number;
                 pageSize?: number;
                 sort?: string | null;
@@ -5802,7 +5802,7 @@ export interface operations {
             query?: {
                 q?: string | null;
                 type?: string | null;
-                scope?: string;
+                scope?: "all" | "mine" | "shared" | "public";
                 owner?: string | null;
             };
             header?: {

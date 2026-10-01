@@ -1766,6 +1766,7 @@
           },
           "moduleUrl": {
             "minLength": 1,
+            "pattern": "^https://[^\\s]+$",
             "title": "Moduleurl",
             "type": "string"
           },
@@ -1785,6 +1786,7 @@
           },
           "tag": {
             "minLength": 1,
+            "pattern": "^[a-z][a-z0-9._]*-[a-z0-9._-]*$",
             "title": "Tag",
             "type": "string"
           }
@@ -1853,6 +1855,7 @@
           "label": {
             "anyOf": [
               {
+                "minLength": 1,
                 "type": "string"
               },
               {
@@ -1864,6 +1867,8 @@
           "moduleUrl": {
             "anyOf": [
               {
+                "minLength": 1,
+                "pattern": "^https://[^\\s]+$",
                 "type": "string"
               },
               {
@@ -1899,6 +1904,8 @@
           "tag": {
             "anyOf": [
               {
+                "minLength": 1,
+                "pattern": "^[a-z][a-z0-9._]*-[a-z0-9._-]*$",
                 "type": "string"
               },
               {
@@ -1968,10 +1975,12 @@
       "ExtensionSize": {
         "properties": {
           "h": {
+            "exclusiveMinimum": 0.0,
             "title": "H",
             "type": "integer"
           },
           "w": {
+            "exclusiveMinimum": 0.0,
             "title": "W",
             "type": "integer"
           }
@@ -8857,6 +8866,12 @@
             "required": false,
             "schema": {
               "default": "all",
+              "enum": [
+                "all",
+                "mine",
+                "shared",
+                "public"
+              ],
               "title": "Scope",
               "type": "string"
             }
@@ -9028,6 +9043,12 @@
             "required": false,
             "schema": {
               "default": "all",
+              "enum": [
+                "all",
+                "mine",
+                "shared",
+                "public"
+              ],
               "title": "Scope",
               "type": "string"
             }
