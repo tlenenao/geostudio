@@ -15,9 +15,19 @@ deploy/appexport-standalone/Dockerfile, qui n'installe ni psycopg ni
 psycopg2-binary)."""
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 
 from app.collections.introspection import ColumnInfo, TableInfo
+
+# Incrémenter à tout changement NON additif du format (j10b-009). Un mini-serveur
+# plus ancien que le bundle refuse de démarrer avec un message clair au lieu de
+# planter sur un champ inconnu ; l'image du compose est par ailleurs épinglée à
+# la version du cœur exportateur (bundler.py).
+MANIFEST_FORMAT_VERSION = 1
+
+
+class UnsupportedManifestVersion(Exception):
+    pass
 
 
 @dataclass(frozen=True)
@@ -31,6 +41,7 @@ class CollectionSnapshotEntry:
 
 def write_manifest(entries: list[CollectionSnapshotEntry], path: str) -> None:
     payload = {
+        "formatVersion": MANIFEST_FORMAT_VERSION,
         "collections": [
             {
                 "id": e.id,
@@ -47,7 +58,7 @@ def write_manifest(entries: list[CollectionSnapshotEntry], path: str) -> None:
                 },
             }
             for e in entries
-        ]
+        ],
     }
     with open(path, "w", encoding="utf-8") as f:
         json.dump(payload, f)
@@ -56,6 +67,14 @@ def write_manifest(entries: list[CollectionSnapshotEntry], path: str) -> None:
 def read_manifest(path: str) -> list[CollectionSnapshotEntry]:
     with open(path, encoding="utf-8") as f:
         payload = json.load(f)
+    version = payload.get("formatVersion", 1)
+    if version > MANIFEST_FORMAT_VERSION:
+        raise UnsupportedManifestVersion(
+            f"manifest.json de format v{version}, cette image ne comprend que "
+            f"v{MANIFEST_FORMAT_VERSION} : utilisez l'image du compose généré avec le bundle "
+            "(ghcr.io/tlenenao/geostudio-appexport-standalone au tag de la version exportatrice)."
+        )
+    column_keys = {f.name for f in fields(ColumnInfo)}
     entries: list[CollectionSnapshotEntry] = []
     for raw in payload["collections"]:
         ti = raw["tableInfo"]
@@ -65,7 +84,11 @@ def read_manifest(path: str) -> list[CollectionSnapshotEntry]:
             geometry_column=ti["geometryColumn"],
             geometry_type=ti["geometryType"],
             srid=ti["srid"],
-            columns=[ColumnInfo(**c) for c in ti["columns"]],
+            # Tolère les clés inconnues (champ ajouté par un cœur plus récent).
+            columns=[
+                ColumnInfo(**{k: v for k, v in c.items() if k in column_keys})
+                for c in ti["columns"]
+            ],
         )
         entries.append(
             CollectionSnapshotEntry(

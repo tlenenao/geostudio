@@ -230,6 +230,9 @@ services:
       # .env.prod si l'allowlist calculée s'avère avoir un faux positif
       # imprévu.
       CORE_CSP_MODE: ${CORE_CSP_MODE:-enforce}
+      # P11.03 (j10b-009) : le compose des bundles autoportés épingle l'image
+      # du mini-serveur à la version du cœur qui exporte (app/appexport/bundler.py).
+      GEOSTUDIO_VERSION: ${GEOSTUDIO_VERSION:-latest}
 
   cdc-worker:
     image: ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}

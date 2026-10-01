@@ -87,7 +87,8 @@ def _write_snapshot_fixture(tmp_path):
     return snapshot_src
 
 
-def test_standalone_bundle_contains_data_manifest_and_compose(tmp_path):
+def test_standalone_bundle_contains_data_manifest_and_compose(tmp_path, monkeypatch):
+    monkeypatch.delenv("GEOSTUDIO_VERSION", raising=False)
     snapshot_src = _write_snapshot_fixture(tmp_path)
 
     zip_bytes = build_standalone_bundle_zip(_config(), snapshot_dir=str(snapshot_src))
@@ -106,6 +107,16 @@ def test_standalone_bundle_contains_data_manifest_and_compose(tmp_path):
         compose = zf.read("docker-compose.yml").decode("utf-8")
         assert "ghcr.io/tlenenao/geostudio-appexport-standalone:latest" in compose
         assert "./data:/data:ro" in compose
+
+
+def test_standalone_compose_pins_image_to_exporting_core_version(tmp_path, monkeypatch):
+    # j10b-009 : l'image suit la version du cœur qui a produit le bundle.
+    monkeypatch.setenv("GEOSTUDIO_VERSION", "v1.2.3")
+    snapshot_src = _write_snapshot_fixture(tmp_path)
+    zip_bytes = build_standalone_bundle_zip(_config(), snapshot_dir=str(snapshot_src))
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        compose = zf.read("docker-compose.yml").decode("utf-8")
+    assert "geostudio-appexport-standalone:v1.2.3" in compose
 
 
 def test_standalone_bundle_with_empty_snapshot_dir(tmp_path):
