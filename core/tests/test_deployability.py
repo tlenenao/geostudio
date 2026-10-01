@@ -429,11 +429,6 @@ ENV_WIRING_EXEMPTIONS = {
     # dans le zip — pas celui de ce dépôt.
     "APPEXPORT_STANDALONE_DATA_DIR",
     "APPEXPORT_STANDALONE_RUNTIME_DIR",
-    # Capacité réservée au futur sidecar desktop (design desktop-etl §3) :
-    # jamais réglée par un service du compose de ce dépôt, désactivée par
-    # défaut. Le sidecar la positionne dans son propre environnement (hors
-    # périmètre). Lue par app/auth/dependency.py pour l'introspection.
-    "CORE_PIPELINE_FILE_IO_ENABLED",
 }
 
 
@@ -1933,3 +1928,96 @@ def test_every_caller_of_build_and_push_grants_at_least_its_permissions():
             f"{caller_path.name} n'accorde pas assez de permissions au job "
             f"build-and-push de {BUILD_AND_PUSH.name} : manque {shortfall}"
         )
+
+
+# ─── Câblage du worker (RC-2, P02) ───────────────────────────────────────
+_WORKER_Q_RE = re.compile(r"procrastinate\s+--app\s+app\.jobs\.app\s+worker\b[^\"]*?-q\s+([a-z0-9,]+)")
+
+
+def _task_decorators() -> list[tuple[pathlib.Path, str, dict]]:
+    """(module, nom de fonction, kwargs littéraux) de chaque `@app.task(...)`
+    de `core/app/` ; `periodic=True` si la fonction porte aussi `@app.periodic`."""
+    found = []
+    for module in CORE_APP.rglob("*.py"):
+        for node in ast.walk(ast.parse(module.read_text())):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            kwargs, periodic = None, False
+            for dec in node.decorator_list:
+                if not isinstance(dec, ast.Call) or not isinstance(dec.func, ast.Attribute):
+                    continue
+                if dec.func.attr == "task":
+                    kwargs = {k.arg: ast.literal_eval(k.value) for k in dec.keywords}
+                elif dec.func.attr == "periodic":
+                    periodic = True
+            if kwargs is not None:
+                found.append((module, node.name, {**kwargs, "periodic": periodic}))
+    return found
+
+
+def _consumed_queues(*compose_paths: pathlib.Path) -> set[str]:
+    consumed: set[str] = set()
+    for path in compose_paths:
+        for service in services(path).values():
+            command = service.get("command")
+            if isinstance(command, list):
+                command = " ".join(command)
+            for m in _WORKER_Q_RE.finditer(command if isinstance(command, str) else ""):
+                consumed |= set(m.group(1).split(","))
+    return consumed
+
+
+def test_every_declared_queue_is_consumed_by_a_deployed_worker():
+    """c02-003 : la file `harvest` n'avait aucun consommateur — le
+    moissonnage restait `pending` pour toujours."""
+    declared = {kw["queue"] for _, _, kw in _task_decorators() if "queue" in kw}
+    missing = declared - _consumed_queues(BASE)
+    assert not missing, f"files déclarées par une tâche mais sur aucun `-q` du compose : {sorted(missing)}"
+
+
+def test_every_task_module_is_registered_in_the_worker_import_paths():
+    """c02-004 : `app.compliance.jobs` absent d'`import_paths` — la tâche
+    était déférable par l'API mais inconnue du worker."""
+    tree = ast.parse((CORE_APP / "jobs/__init__.py").read_text())
+    registered = {
+        elt.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.keyword) and node.arg == "import_paths"
+        for elt in node.value.elts
+    }
+    modules = {
+        ".".join(m.relative_to(CORE_APP.parent).with_suffix("").parts)
+        for m, _, _ in _task_decorators()
+    }
+    assert not modules - registered, f"modules de tâches hors import_paths : {sorted(modules - registered)}"
+
+
+def test_worker_environment_mirrors_core_for_task_flags():
+    """j06b-005 : un run de connecteur à secret, un e-mail d'alerte, un
+    rapport planifié tournent dans `worker` — qui ne recevait pas ces
+    variables, que `core` a."""
+    worker_env = services(BASE)["worker"]["environment"]
+    for var in (
+        "CORE_SECRETS_MASTER_KEY",
+        "CORE_EXPORT_ENABLED",
+        "CORE_READ_ONLY_MODE",
+        "CORE_PIPELINE_FILE_IO_ENABLED",
+    ):
+        assert var in worker_env, f"`worker` ne reçoit pas {var}"
+
+
+def test_worker_runs_jobs_concurrently():
+    """c09-001/t03b-002 : concurrence 1 = un run long bloque tous les jobs."""
+    command = services(BASE)["worker"]["command"]
+    assert re.search(r"worker\s+(-c|--concurrency)\s+\S+", command), "worker sans `-c`"
+
+
+def test_periodic_tasks_carry_a_queueing_lock():
+    """c09-002 : sans `queueing_lock`, un tick en retard s'empile derrière
+    le précédent (les ticks périodiques s'accumulent sous charge)."""
+    unlocked = [
+        f"{m.name}:{n}"
+        for m, n, kw in _task_decorators()
+        if kw["periodic"] and not kw.get("queueing_lock")
+    ]
+    assert not unlocked, f"tâches périodiques sans queueing_lock : {unlocked}"

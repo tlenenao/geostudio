@@ -437,7 +437,8 @@ services:
     # app.jobs.app") avant même d'atteindre le connecteur.
     command: >
       sh -c "python -m scripts.ensure_procrastinate_schema &&
-             python -m procrastinate --app app.jobs.app worker -q ingestion,search,cdc,etl,tileset3d,terrain3d,appexport"
+             python -m procrastinate --app app.jobs.app worker -c ${CORE_WORKER_CONCURRENCY:-4}
+             -q ingestion,search,cdc,etl,tileset3d,terrain3d,appexport,harvest"
     environment:
       DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
       S3_ENDPOINT_URL: http://minio:9000
@@ -457,6 +458,15 @@ services:
       # (file `etl`). Une valeur divergente entre les deux services produit
       # une capacité à moitié allumée — précédent SP-17a.
       CORE_ETL_ENABLED: ${CORE_ETL_ENABLED:-false}
+      # Parité d'environnement core/worker (RC-2, P02.04) : lues par les
+      # tâches de CE process — coffre de secrets (runs de connecteur,
+      # secret d'alerte), rapports planifiés/exports (`CORE_EXPORT_ENABLED`),
+      # garde d'écriture du mode démo, E/S fichier des pipelines. Même
+      # valeur que `core` ; test_deployability.py compare les deux.
+      CORE_SECRETS_MASTER_KEY: ${CORE_SECRETS_MASTER_KEY}
+      CORE_EXPORT_ENABLED: ${CORE_EXPORT_ENABLED:-false}
+      CORE_READ_ONLY_MODE: ${CORE_READ_ONLY_MODE:-false}
+      CORE_PIPELINE_FILE_IO_ENABLED: ${CORE_PIPELINE_FILE_IO_ENABLED:-false}
       # Miroir des défauts du service `core` ci-dessus (mêmes commentaires) :
       # `fake`/`text-embedding-3-small`, pas une substitution à défaut vide,
       # pour ne pas diverger d'un défaut applicatif qui marchait avant le
