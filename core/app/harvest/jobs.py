@@ -6,20 +6,19 @@ raison de import_paths). Court-circuite en mode lecture seule/démo (SP-9) :
 mutation hors requête HTTP, invisible au middleware ASGI read_only_guard."""
 
 import logging
-import os
 
 from app.auth.dependency import is_read_only_mode
-from app.db import make_engine, make_session_factory, request_scoped_session
+from app.db import request_scoped_session
 from app.harvest import repository as harvest_repo
 from app.harvest import service
 from app.jobs import app
+from app.jobs.engine import session_factory as common_session_factory
 
 logger = logging.getLogger(__name__)
 
 
 def _session_factory():
-    engine = make_engine(os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:"))
-    return make_session_factory(engine)
+    return common_session_factory()
 
 
 @app.task(queue="harvest")

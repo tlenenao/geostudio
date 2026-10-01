@@ -6,13 +6,13 @@ l'écriture sur un fournisseur d'embeddings lent/indisponible). Échec
 (dégradation gracieuse, spec §Pipeline d'embedding)."""
 
 import logging
-import os
 
 from sqlalchemy import select
 
-from app.db import make_engine, make_session_factory, request_scoped_session
+from app.db import request_scoped_session
 from app.items.models import Item
 from app.jobs import app
+from app.jobs.engine import session_factory as common_session_factory
 from app.search.providers import get_embedding_provider
 
 logger = logging.getLogger(__name__)
@@ -24,8 +24,7 @@ def _embed_text(item: Item) -> str:
 
 @app.task(queue="search")
 def embed_item_task(item_id: str, tenant_id: str) -> None:
-    engine = make_engine(os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:"))
-    session_factory = make_session_factory(engine)
+    session_factory = common_session_factory()
     try:
         with request_scoped_session(session_factory) as session:
             item = session.scalar(
