@@ -718,6 +718,46 @@ test("removing a widget prunes any ActionsPanel message wired to it", async () =
   expect(saved.messages).toEqual([]);
 });
 
+test("removing a page prunes messages wired to its widgets after confirmation (P10.07)", async () => {
+  const gridOf = (items: AppConfig["layout"]["items"]) => ({
+    type: "grid" as const,
+    breakpoints: {},
+    items,
+  });
+  const page2Items = [
+    { id: "f2", widget: "filter", x: 0, y: 0, w: 4, h: 2, props: {} },
+    { id: "t2", widget: "text", x: 4, y: 0, w: 4, h: 2, props: { text: "T" } },
+  ];
+  const withPages: AppConfig = {
+    kind: "app",
+    theme: {},
+    dataSources: [],
+    variables: [{ id: "v1", name: "v", type: "string", initialValue: "" }],
+    messages: [{ id: "m1", from: "f2", event: "changed", to: "var:v1", action: "set" }],
+    pages: [
+      { id: "p1", name: "P1", layout: gridOf([]), onEnter: [] },
+      { id: "p2", name: "P2", layout: gridOf(page2Items), onEnter: [] },
+    ],
+    layout: gridOf([]),
+  };
+  const saveAppConfig = vi.fn().mockResolvedValue(undefined);
+  renderPage({ getAppConfig: vi.fn().mockResolvedValue(withPages), saveAppConfig });
+
+  await userEvent.click(await screen.findByRole("button", { name: "Retirer la page p2" }));
+  // Rien n'est retiré avant la confirmation.
+  expect(
+    screen.getByRole("button", { name: "Ouvrir la page p2", hidden: true }),
+  ).toBeInTheDocument();
+  await userEvent.click(
+    within(await screen.findByRole("dialog")).getByRole("button", { name: "Supprimer" }),
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveAppConfig).toHaveBeenCalled());
+  const saved = saveAppConfig.mock.calls[0][1] as AppConfig;
+  expect(saved.messages).toEqual([]);
+  expect(saved.pages).toHaveLength(1);
+});
+
 test("removing a variable prunes any ActionsPanel message wired to it", async () => {
   // Même limite que le test jumeau de suppression de widget : la disparition
   // visuelle dans ActionsPanel ne prouve pas la purge de `config.messages`

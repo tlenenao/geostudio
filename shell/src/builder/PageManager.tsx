@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
+import { useState } from "react";
 import type { Page } from "../api/types";
+import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
 import { t } from "../i18n";
 
 export function PageManager({
@@ -13,6 +15,7 @@ export function PageManager({
   onChange: (pages: Page[]) => void;
   onSelectPage: (pageId: string) => void;
 }) {
+  const [removing, setRemoving] = useState<Page | null>(null);
   function addPage() {
     const newPage: Page = {
       id: crypto.randomUUID(),
@@ -40,64 +43,79 @@ export function PageManager({
     onChange(next);
   }
   return (
-    <ul className="flex flex-col gap-1">
-      {pages.map((p, i) => (
-        <li
-          key={p.id}
-          className={`flex items-center gap-1 rounded border p-1 text-xs ${p.id === activePageId ? "border-accent" : "border-rule"}`}
-        >
+    <>
+      <ul className="flex flex-col gap-1">
+        {pages.map((p, i) => (
+          <li
+            key={p.id}
+            className={`flex items-center gap-1 rounded border p-1 text-xs ${p.id === activePageId ? "border-accent" : "border-rule"}`}
+          >
+            <button
+              type="button"
+              aria-label={t("pageManager.openAria", { id: p.id })}
+              className="flex-1 truncate text-left"
+              onClick={() => onSelectPage(p.id)}
+            >
+              {p.name}
+            </button>
+            <input
+              aria-label={t("pageManager.renameAria", { id: p.id })}
+              className="w-16 rounded border border-rule px-1"
+              value={p.name}
+              onChange={(e) => rename(p.id, e.target.value)}
+            />
+            <button
+              type="button"
+              aria-label={t("pageManager.moveUpAria", { id: p.id })}
+              disabled={i === 0}
+              className="disabled:opacity-30"
+              onClick={() => move(p.id, -1)}
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              aria-label={t("pageManager.moveDownAria", { id: p.id })}
+              disabled={i === pages.length - 1}
+              className="disabled:opacity-30"
+              onClick={() => move(p.id, 1)}
+            >
+              ↓
+            </button>
+            <button
+              type="button"
+              aria-label={t("pageManager.removeAria", { id: p.id })}
+              disabled={pages.length <= 1}
+              className="text-danger disabled:opacity-30"
+              onClick={() => setRemoving(p)}
+            >
+              ✕
+            </button>
+          </li>
+        ))}
+        <li>
           <button
             type="button"
-            aria-label={t("pageManager.openAria", { id: p.id })}
-            className="flex-1 truncate text-left"
-            onClick={() => onSelectPage(p.id)}
+            className="rounded border border-rule px-2 py-1 hover:bg-sunken"
+            onClick={addPage}
           >
-            {p.name}
-          </button>
-          <input
-            aria-label={t("pageManager.renameAria", { id: p.id })}
-            className="w-16 rounded border border-rule px-1"
-            value={p.name}
-            onChange={(e) => rename(p.id, e.target.value)}
-          />
-          <button
-            type="button"
-            aria-label={t("pageManager.moveUpAria", { id: p.id })}
-            disabled={i === 0}
-            className="disabled:opacity-30"
-            onClick={() => move(p.id, -1)}
-          >
-            ↑
-          </button>
-          <button
-            type="button"
-            aria-label={t("pageManager.moveDownAria", { id: p.id })}
-            disabled={i === pages.length - 1}
-            className="disabled:opacity-30"
-            onClick={() => move(p.id, 1)}
-          >
-            ↓
-          </button>
-          <button
-            type="button"
-            aria-label={t("pageManager.removeAria", { id: p.id })}
-            disabled={pages.length <= 1}
-            className="text-danger disabled:opacity-30"
-            onClick={() => remove(p.id)}
-          >
-            ✕
+            {t("pageManager.addButton")}
           </button>
         </li>
-      ))}
-      <li>
-        <button
-          type="button"
-          className="rounded border border-rule px-2 py-1 hover:bg-sunken"
-          onClick={addPage}
-        >
-          {t("pageManager.addButton")}
-        </button>
-      </li>
-    </ul>
+      </ul>
+      <ConfirmDialog
+        open={!!removing}
+        title={t("pageManager.removeTitle")}
+        message={
+          removing ? t("pageManager.removeMessage", { name: removing.name || removing.id }) : ""
+        }
+        confirmLabel={t("actions.delete")}
+        onCancel={() => setRemoving(null)}
+        onConfirm={() => {
+          if (removing) remove(removing.id);
+          setRemoving(null);
+        }}
+      />
+    </>
   );
 }

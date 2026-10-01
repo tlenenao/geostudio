@@ -1585,6 +1585,9 @@ export const fr = {
   "pageManager.moveUpAria": "Monter la page {id}",
   "pageManager.moveDownAria": "Descendre la page {id}",
   "pageManager.removeAria": "Retirer la page {id}",
+  "pageManager.removeTitle": "Retirer la page",
+  "pageManager.removeMessage":
+    "Retirer la page « {name} » et ses widgets ? Les actions câblées vers eux seront aussi supprimées.",
   "pageManager.addButton": "Ajouter une page",
 
   // PropsPanel (builder)

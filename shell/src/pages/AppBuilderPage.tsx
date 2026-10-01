@@ -351,7 +351,20 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const setTheme = (theme: typeof draft.theme) => setDraft((d) => (d ? { ...d, theme } : d));
 
   const setPages = (nextPages: typeof pages) =>
-    setDraft((d) => (d ? { ...d, pages: nextPages, layout: nextPages[0]?.layout ?? d.layout } : d));
+    setDraft((d) => {
+      if (!d) return d;
+      // P10.07 : une page retirée emporte ses widgets — leurs messages câblés sont purgés.
+      const kept = new Set(nextPages.map((p) => p.id));
+      const removedIds = getPages(d)
+        .filter((p) => !kept.has(p.id))
+        .flatMap((p) => p.layout.items.map((i) => i.id));
+      return {
+        ...d,
+        pages: nextPages,
+        layout: nextPages[0]?.layout ?? d.layout,
+        messages: pruneMessagesForIds(d.messages, removedIds),
+      };
+    });
 
   const setNavigationMode = (navigationMode: "tabs" | "story") =>
     setDraft((d) => (d ? { ...d, navigationMode } : d));

@@ -32,48 +32,46 @@ async function wire(page: import("@playwright/test").Page, target: string) {
 }
 
 test.describe("j04 câblage, variables, actions", () => {
-  // finding j04-001
-  fixme(
-    "j04-001 : après enregistrement et rechargement, deux actions restent indépendantes (id conservé)",
-    async ({ page }) => {
-      const s = await getSeed();
-      const id = await s.mkApp(
-        "msg-ids",
-        baseApp({
-          layout: grid([filter("f", "message")]),
-          variables: [
-            { id: "v1", name: "un", type: "string", initialValue: "" },
-            { id: "v2", name: "deux", type: "string", initialValue: "" },
-          ],
-        }),
-      );
-      await openBuilder(page, id);
-      await wire(page, "Variable : un");
-      await wire(page, "Variable : deux");
-      await expect(page.getByRole("button", { name: /^Retirer l'action/ })).toHaveCount(2);
-      await page.getByRole("button", { name: "Enregistrer" }).click();
-      await page.waitForTimeout(1500);
-      // Message n'a pas de champ `id` côté cœur : les ids sont perdus à l'enregistrement.
-      const saved = await s.creator.get(`/v1/configs/by-item/${id}`);
-      await spaGo(page, `/`, 1500);
-      await spaGo(page, `/apps/${id}/edit`, 2500);
-      await expect(page.getByRole("button", { name: /^Retirer l'action/ })).toHaveCount(2);
-      await page
-        .getByRole("button", { name: /^Retirer l'action/ })
-        .first()
-        .click();
-      const remaining = await page.getByRole("button", { name: /^Retirer l'action/ }).count();
-      const ids = saved.body.config.messages.map((m: { id?: string }) => m.id);
-      console.log(
-        "j04-001 ids reçus du cœur:",
-        JSON.stringify(ids),
-        "actions restantes après 1 retrait:",
-        remaining,
-      );
-      expect(remaining).toBe(1);
-      expect(ids.every((x: unknown) => typeof x === "string" && x.length > 0)).toBe(true);
-    },
-  );
+  test("j04-001 : après enregistrement et rechargement, deux actions restent indépendantes (id conservé)", async ({
+    page,
+  }) => {
+    const s = await getSeed();
+    const id = await s.mkApp(
+      "msg-ids",
+      baseApp({
+        layout: grid([filter("f", "message")]),
+        variables: [
+          { id: "v1", name: "un", type: "string", initialValue: "" },
+          { id: "v2", name: "deux", type: "string", initialValue: "" },
+        ],
+      }),
+    );
+    await openBuilder(page, id);
+    await wire(page, "Variable : un");
+    await wire(page, "Variable : deux");
+    await expect(page.getByRole("button", { name: /^Retirer l'action/ })).toHaveCount(2);
+    await page.getByRole("button", { name: "Enregistrer" }).click();
+    await page.waitForTimeout(1500);
+    // Message n'a pas de champ `id` côté cœur : les ids sont perdus à l'enregistrement.
+    const saved = await s.creator.get(`/v1/configs/by-item/${id}`);
+    await spaGo(page, `/`, 1500);
+    await spaGo(page, `/apps/${id}/edit`, 2500);
+    await expect(page.getByRole("button", { name: /^Retirer l'action/ })).toHaveCount(2);
+    await page
+      .getByRole("button", { name: /^Retirer l'action/ })
+      .first()
+      .click();
+    const remaining = await page.getByRole("button", { name: /^Retirer l'action/ }).count();
+    const ids = saved.body.config.messages.map((m: { id?: string }) => m.id);
+    console.log(
+      "j04-001 ids reçus du cœur:",
+      JSON.stringify(ids),
+      "actions restantes après 1 retrait:",
+      remaining,
+    );
+    expect(remaining).toBe(1);
+    expect(ids.every((x: unknown) => typeof x === "string" && x.length > 0)).toBe(true);
+  });
 
   test("le câblage Filtre → variable met à jour un Texte au runtime", async ({ page }) => {
     const s = await getSeed();
@@ -170,36 +168,35 @@ test.describe("j04 câblage, variables, actions", () => {
     },
   );
 
-  // finding j04-004
-  fixme(
-    "j04-004 : supprimer une page purge les actions câblées vers ses widgets",
-    async ({ page }) => {
-      const s = await getSeed();
-      const id = await s.mkApp(
-        "page-del",
-        baseApp({
-          layout: grid([text("a", "A", 0)]),
-          pages: [
-            { id: "p1", name: "P1", layout: grid([text("a", "A", 0)]), onEnter: [] },
-            {
-              id: "p2",
-              name: "P2",
-              layout: grid([filter("f2", "x"), text("t2", "T2")]),
-              onEnter: [],
-            },
-          ],
-          variables: [{ id: "v1", name: "v", type: "string", initialValue: "" }],
-          messages: [{ id: "m1", from: "f2", event: "changed", to: "var:v1", action: "set" }],
-        }),
-      );
-      await openBuilder(page, id);
-      await page.getByRole("button", { name: /^Retirer la page p2/ }).click();
-      await page.getByRole("button", { name: "Enregistrer" }).click();
-      await page.waitForTimeout(1500);
-      const saved = await s.creator.get(`/v1/configs/by-item/${id}`);
-      expect(saved.body.config.messages).toHaveLength(0);
-    },
-  );
+  test("j04-004 : supprimer une page purge les actions câblées vers ses widgets", async ({
+    page,
+  }) => {
+    const s = await getSeed();
+    const id = await s.mkApp(
+      "page-del",
+      baseApp({
+        layout: grid([text("a", "A", 0)]),
+        pages: [
+          { id: "p1", name: "P1", layout: grid([text("a", "A", 0)]), onEnter: [] },
+          {
+            id: "p2",
+            name: "P2",
+            layout: grid([filter("f2", "x"), text("t2", "T2")]),
+            onEnter: [],
+          },
+        ],
+        variables: [{ id: "v1", name: "v", type: "string", initialValue: "" }],
+        messages: [{ id: "m1", from: "f2", event: "changed", to: "var:v1", action: "set" }],
+      }),
+    );
+    await openBuilder(page, id);
+    await page.getByRole("button", { name: /^Retirer la page p2/ }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
+    await page.getByRole("button", { name: "Enregistrer" }).click();
+    await page.waitForTimeout(1500);
+    const saved = await s.creator.get(`/v1/configs/by-item/${id}`);
+    expect(saved.body.config.messages).toHaveLength(0);
+  });
 
   test("pages : ajouter, renommer, monter, retirer ; la dernière page ne peut pas être retirée", async ({
     page,
@@ -224,6 +221,7 @@ test.describe("j04 câblage, variables, actions", () => {
       .getByRole("button", { name: /^Retirer la page/ })
       .first()
       .click();
+    await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
     await expect(page.getByRole("button", { name: /^Ouvrir la page/ })).toHaveCount(1);
   });
 
