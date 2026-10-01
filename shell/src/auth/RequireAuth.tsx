@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { t } from "../i18n";
 import { useAuth } from "./useAuth";
@@ -7,6 +7,11 @@ import { useAuth } from "./useAuth";
 export function RequireAuth({ children }: { children: React.ReactNode }) {
   const { isLoading, isAuthenticated, error, signIn } = useAuth();
   const [searchParams] = useSearchParams();
+  // P07.01 : un signinSilent() (jeton MCP, renouvellement) repasse
+  // isLoading à true (et peut poser `error`) alors que la session est
+  // vivante ; démonter les enfants perdrait le brouillon et la pile d'undo.
+  const wasAuthenticated = useRef(false);
+  if (isAuthenticated) wasAuthenticated.current = true;
   // The Playwright export worker (Task 6, core/app/export/jobs.py) navigates
   // straight to a protected route carrying ?exportToken=... instead of a
   // real Keycloak session — redirecting it to signIn() would break every
@@ -22,6 +27,10 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
   }, [isLoading, isAuthenticated, error, hasExportToken, signIn]);
 
   if (hasExportToken) {
+    return <>{children}</>;
+  }
+
+  if (wasAuthenticated.current && isAuthenticated) {
     return <>{children}</>;
   }
 
