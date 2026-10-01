@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { getSeed, baseApp, grid } from "./seed";
-import { openBuilder, openRuntime, spaGo, fixme } from "./helpers";
+import { openBuilder, openRuntime, spaGo } from "./helpers";
 
 test.setTimeout(90_000);
 
@@ -132,7 +132,7 @@ test.describe("j04 câblage, variables, actions", () => {
     });
   });
 
-  test("variables : deux variables de même nom sont acceptées sans avertissement (collision de valeurs)", async ({
+  test("variables : deux variables de même nom sont refusées avec un avertissement (j04-014)", async ({
     page,
   }) => {
     const s = await getSeed();
@@ -142,31 +142,26 @@ test.describe("j04 câblage, variables, actions", () => {
     const inputs = page.getByLabel(/^Renommer la variable/);
     await inputs.nth(0).fill("x");
     await inputs.nth(1).fill("x");
-    // Attendu : un avertissement (rôle alert) ou refus ; observé : aucun.
-    await page.waitForTimeout(500);
-    await expect(page.getByRole("alert")).toHaveCount(0);
-    expect(await page.getByRole("button", { name: "Enregistrer" }).isEnabled()).toBe(true);
+    await expect(page.getByRole("alert")).toHaveCount(1);
   });
 
-  // finding j04-005
-  fixme(
-    "j04-005 : Annuler (undo) d'un renommage de variable met à jour le champ de nom affiché",
-    async ({ page }) => {
-      const s = await getSeed();
-      const id = await s.mkApp(
-        "var-undo",
-        baseApp({
-          variables: [{ id: "v1", name: "origine", type: "string", initialValue: "" }],
-        }),
-      );
-      await openBuilder(page, id);
-      const input = page.getByLabel(/^Renommer la variable/);
-      await input.fill("modifie");
-      await page.waitForTimeout(600);
-      await page.getByRole("button", { name: "Annuler", exact: true }).click();
-      await expect(input).toHaveValue("origine");
-    },
-  );
+  test("j04-005 : Annuler (undo) d'un renommage de variable met à jour le champ de nom affiché", async ({
+    page,
+  }) => {
+    const s = await getSeed();
+    const id = await s.mkApp(
+      "var-undo",
+      baseApp({
+        variables: [{ id: "v1", name: "origine", type: "string", initialValue: "" }],
+      }),
+    );
+    await openBuilder(page, id);
+    const input = page.getByLabel(/^Renommer la variable/);
+    await input.fill("modifie");
+    await page.waitForTimeout(600);
+    await page.getByRole("button", { name: "Annuler", exact: true }).click();
+    await expect(input).toHaveValue("origine");
+  });
 
   test("j04-004 : supprimer une page purge les actions câblées vers ses widgets", async ({
     page,

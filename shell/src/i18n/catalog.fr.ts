@@ -1633,6 +1633,9 @@ export const fr = {
   "variablesPanel.initialValueAria": "Valeur initiale de la variable {id}",
   "variablesPanel.definedByWiring": "Définie par câblage d'action",
   "variablesPanel.removeAria": "Retirer la variable {id}",
+  "variablesPanel.nameEmpty": "Le nom ne peut pas être vide.",
+  "variablesPanel.nameInvalid": "Lettres, chiffres et _ uniquement, sans commencer par un chiffre.",
+  "variablesPanel.nameDuplicate": "Une autre variable porte déjà ce nom.",
   "variablesPanel.addButton": "Ajouter une variable",
 
   // WidgetHost (builder)

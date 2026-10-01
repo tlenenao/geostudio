@@ -400,7 +400,7 @@ test("adds a variable and wires a Filtre action to it, then persists both", asyn
   await userEvent.selectOptions(screen.getByLabelText("Événement"), "changed");
   await userEvent.selectOptions(
     targetSelect,
-    within(targetSelect).getByRole("option", { name: "Variable : Variable 1" }),
+    within(targetSelect).getByRole("option", { name: "Variable : variable_1" }),
   );
   await userEvent.selectOptions(screen.getByLabelText("Action"), "set");
   await userEvent.click(screen.getByRole("button", { name: "Ajouter une action" }));
