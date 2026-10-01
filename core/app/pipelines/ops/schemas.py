@@ -19,7 +19,7 @@ expressions."""
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class ReaderCollectionParams(BaseModel):
@@ -65,6 +65,15 @@ class WriterCollectionParams(BaseModel):
 class WriterExportParams(BaseModel):
     format: Literal["geojson", "csv"]
     key: str
+
+    @field_validator("key")
+    @classmethod
+    def _key_is_relative(cls, v: str) -> str:
+        # Pas de chemin absolu, de remontée ni de segment vide (j06b-004).
+        parts = v.split("/")
+        if not v or "\\" in v or any(seg in ("", ".", "..") for seg in parts):
+            raise ValueError("key must be a relative path without '..' or empty segments")
+        return v
 
 
 class TransformBufferParams(BaseModel):

@@ -45,6 +45,7 @@ from app.configs.schemas import BuilderConfig, DatasetPayload, PipelineNode, Pip
 from app.features.repository import delete_all_features, insert_feature
 from app.features.rls import rls_scope
 from app.features.validation import validate_feature
+from app.ingestion.storage import ensure_uploads_bucket
 from app.items import repository as items_repo
 from app.pipelines import compiler, connector_runtime
 from app.pipelines.errors import PipelineRuntimeError  # noqa: F401 (réexporté pour compatibilité)
@@ -1017,7 +1018,13 @@ def _write_dataset(
 
 
 def _write_export(
-    conn, s3_client, exports_bucket: str, *, node: PipelineNode, view_by_node: dict
+    conn,
+    s3_client,
+    exports_bucket: str,
+    *,
+    node: PipelineNode,
+    view_by_node: dict,
+    tenant_id: str,
 ) -> NodeStat:
     p = WriterExportParams.model_validate(node.params)
     input_view = view_by_node[node.id]
@@ -1055,7 +1062,11 @@ def _write_export(
                 geometry = json.loads(geometry_json) if geometry_json is not None else None
             features.append({"type": "Feature", "properties": properties, "geometry": geometry})
         body = json.dumps({"type": "FeatureCollection", "features": features}).encode("utf-8")
-    s3_client.put_object(Bucket=exports_bucket, Key=p.key, Body=body)
+    # Bucket absent sur un MinIO neuf (j06b-003) ; clé forcée sous le préfixe du
+    # tenant (j06b-004) : un Créateur n'écrase plus renders/… ni l'export d'un autre.
+    # ponytail: préfixe tenant seul, pas par pipeline (run_pipeline ignore l'id du pipeline).
+    ensure_uploads_bucket(s3_client, exports_bucket)
+    s3_client.put_object(Bucket=exports_bucket, Key=f"{tenant_id}/pipelines/{p.key}", Body=body)
     return NodeStat(node.id, node.op, len(rows))
 
 
@@ -1149,7 +1160,12 @@ def run_pipeline(
             if node.op == "writer.export":
                 assert s3_client is not None and exports_bucket is not None
                 stat = writer_fn(
-                    conn, s3_client, exports_bucket, node=node, view_by_node=view_by_node
+                    conn,
+                    s3_client,
+                    exports_bucket,
+                    node=node,
+                    view_by_node=view_by_node,
+                    tenant_id=tenant_id,
                 )
             elif node.op == "writer.file":
                 stat = writer_fn(

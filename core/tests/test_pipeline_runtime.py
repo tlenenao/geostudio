@@ -82,6 +82,13 @@ class _FakeS3:
 
     def __init__(self):
         self.calls: list[dict] = []
+        self.buckets: list[str] = []
+
+    def create_bucket(self, *, Bucket):
+        self.buckets.append(Bucket)
+
+    def put_bucket_cors(self, **_):
+        pass
 
     def put_object(self, *, Bucket, Key, Body):
         self.calls.append({"Bucket": Bucket, "Key": Key, "Body": Body})
@@ -373,6 +380,9 @@ def test_write_export_geojson_serializes_geometry(tmp_path, monkeypatch):
 
     assert any(stat.op == "writer.export" and stat.rowCount == 1 for stat in stats)
     assert len(fake_s3.calls) == 1
+    # j06b-003/004 : bucket créé à la demande, clé sous le préfixe du tenant
+    assert fake_s3.buckets == ["exports"]
+    assert fake_s3.calls[0]["Key"].startswith("t1/pipelines/")
     body = fake_s3.calls[0]["Body"]
     parsed = json.loads(body)  # ne doit pas lever (bytes non sérialisables pré-fix)
     assert parsed["type"] == "FeatureCollection"
@@ -2795,3 +2805,14 @@ def test_execute_transform_chain_invokes_on_node_complete_per_node(tmp_path, mon
         on_node_complete=lambda stat: seen.append(stat.nodeId),
     )
     assert seen == ["r1", "t1"]  # writer node (w1) is handled by run_pipeline, not this function
+
+
+@pytest.mark.parametrize("key", ["", "/etc/x", "../x", "a/../b", "a//b", "a\\b", "./a"])
+def test_writer_export_rejects_unsafe_key(key):
+    from pydantic import ValidationError
+
+    from app.pipelines.ops.schemas import WriterExportParams
+
+    with pytest.raises(ValidationError):
+        WriterExportParams(format="csv", key=key)
+    assert WriterExportParams(format="csv", key="out/a.csv").key == "out/a.csv"
