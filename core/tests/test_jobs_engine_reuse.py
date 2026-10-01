@@ -9,6 +9,14 @@ def test_session_factory_reuses_one_engine_per_url(monkeypatch, tmp_path):
     assert session_factory().kw["bind"] is session_factory().kw["bind"]
 
 
+def test_postgres_engine_pings_before_reuse():
+    # L'Engine mis en cache survit à un redémarrage de pgbouncer/postgres : sans
+    # pre_ping, la première tâche suivante échouerait sur une connexion morte.
+    from app.db import make_engine
+
+    assert make_engine("postgresql+psycopg://u:p@localhost/db").pool._pre_ping is True
+
+
 def test_in_memory_sqlite_stays_a_fresh_database_per_call(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "sqlite+pysqlite:///:memory:")
     assert session_factory().kw["bind"] is not session_factory().kw["bind"]
