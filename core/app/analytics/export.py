@@ -42,6 +42,14 @@ def _json_default(value: object) -> str | None:
     raise TypeError(f"unserializable value of type {type(value).__name__}")
 
 
+def _neutralize(value: object) -> object:
+    """Injection de formule (CSV/XLSX) : une chaîne commençant par = + - @ ou
+    tab/CR est préfixée d'une apostrophe pour être lue comme du texte."""
+    if isinstance(value, str) and value.startswith(("=", "+", "-", "@", "\t", "\r")):
+        return "'" + value
+    return value
+
+
 def _xlsx_cell_value(value: object) -> object:
     """Coercition avant écriture d'une cellule (rows_to_xlsx) : openpyxl gère
     nativement str/int/float/bool/None/date/Decimal/datetime naïf, mais
@@ -56,7 +64,7 @@ def _xlsx_cell_value(value: object) -> object:
         return str(value)
     if isinstance(value, (bytes, memoryview)):
         return None
-    return value
+    return _neutralize(value)
 
 
 def export_filename(title: str, *, format: str) -> str:
@@ -70,9 +78,10 @@ def rows_to_csv(rows: list[dict[str, Any]]) -> bytes:
     if not rows:
         return b""
     buf = StringIO()
-    writer = DictWriter(buf, fieldnames=list(rows[0].keys()))
-    writer.writeheader()
-    writer.writerows(rows)
+    fields = list(rows[0].keys())
+    writer = DictWriter(buf, fieldnames=fields)
+    writer.writerow({f: _neutralize(f) for f in fields})
+    writer.writerows({k: _neutralize(v) for k, v in row.items()} for row in rows)
     return buf.getvalue().encode("utf-8")
 
 
@@ -81,7 +90,7 @@ def rows_to_xlsx(rows: list[dict[str, Any]]) -> bytes:
     ws = wb.active
     if rows:
         headers = list(rows[0].keys())
-        ws.append(headers)
+        ws.append([_neutralize(h) for h in headers])
         for row in rows:
             ws.append([_xlsx_cell_value(row.get(h)) for h in headers])
     buf = BytesIO()
