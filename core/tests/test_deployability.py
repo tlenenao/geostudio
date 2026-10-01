@@ -2045,3 +2045,16 @@ def test_periodic_tasks_carry_a_queueing_lock():
         if kw["periodic"] and not kw.get("queueing_lock")
     ]
     assert not unlocked, f"tâches périodiques sans queueing_lock : {unlocked}"
+
+
+def test_public_s3_endpoint_wired_wherever_links_are_signed():
+    """RC-13 : dès qu'un export (rapports/export classique, export d'app) est
+    allumable, `core` et `worker` — qui signent les liens remis au navigateur
+    ou à un destinataire externe — reçoivent S3_PUBLIC_ENDPOINT_URL ; sinon les
+    liens sont signés sur http://minio:9000. Et MinIO porte son CORS global
+    (RC-3 : pas d'API PutBucketCors)."""
+    services_ = services(BASE)
+    for name in ("core", "worker", "export-worker"):
+        assert "S3_PUBLIC_ENDPOINT_URL" in services_[name]["environment"], name
+    assert "MINIO_API_CORS_ALLOW_ORIGIN" in services_["minio"]["environment"]
+    assert {"S3_PUBLIC_ENDPOINT_URL", "MINIO_CORS_ALLOW_ORIGIN"} <= documented_env_vars()

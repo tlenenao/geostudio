@@ -94,8 +94,12 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}
+      # CORS global : le MinIO reconstruit n'implémente pas PutBucketCors
+      # (NotImplemented, RC-3) ; l'upload présigné vient du navigateur.
+      MINIO_API_CORS_ALLOW_ORIGIN: ${MINIO_CORS_ALLOW_ORIGIN:-*}
     volumes: [minio-data:/data]
     ports:
+      - "9000:9000"
       - "9001:9001"
     command: server /data --console-address ":9001"
     networks: [gis-net]
@@ -352,6 +356,9 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_SERVICE_NAME: geostudio-core
       S3_ENDPOINT_URL: http://minio:9000
+      # Hôte public du stockage pour les liens signés remis à un navigateur ou à un
+      # destinataire externe (RC-13) ; vide = hôte interne (liens injoignables hors Docker).
+      S3_PUBLIC_ENDPOINT_URL: ${S3_PUBLIC_ENDPOINT_URL:-}
       S3_ACCESS_KEY: ${MINIO_USER}
       S3_SECRET_KEY: ${MINIO_PASSWORD}
       S3_THUMBNAILS_BUCKET: geostudio-thumbnails
@@ -442,6 +449,9 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
       S3_ENDPOINT_URL: http://minio:9000
+      # Hôte public du stockage pour les liens signés remis à un navigateur ou à un
+      # destinataire externe (RC-13) ; vide = hôte interne (liens injoignables hors Docker).
+      S3_PUBLIC_ENDPOINT_URL: ${S3_PUBLIC_ENDPOINT_URL:-}
       S3_ACCESS_KEY: ${MINIO_USER}
       S3_SECRET_KEY: ${MINIO_PASSWORD}
       S3_UPLOADS_BUCKET: geostudio-uploads
@@ -581,6 +591,9 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
       S3_ENDPOINT_URL: http://minio:9000
+      # Hôte public du stockage pour les liens signés remis à un navigateur ou à un
+      # destinataire externe (RC-13) ; vide = hôte interne (liens injoignables hors Docker).
+      S3_PUBLIC_ENDPOINT_URL: ${S3_PUBLIC_ENDPOINT_URL:-}
       S3_ACCESS_KEY: ${MINIO_USER}
       S3_SECRET_KEY: ${MINIO_PASSWORD}
       S3_EXPORTS_BUCKET: geostudio-exports
