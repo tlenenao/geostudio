@@ -27,7 +27,12 @@ from app.harvest import repository as harvest_repo
 from app.harvest import routes as harvest_routes
 from app.harvest.egress import EgressBlockedError
 from app.items import repository as items_repo
-from app.mcp.tools.identity import require_access, require_collection_read, resolve_actor
+from app.mcp.tools.identity import (
+    require_access,
+    require_collection_read,
+    resolve_actor,
+    visible_table_info,
+)
 from app.roles.guards import has_privilege
 from app.roles.privileges import Privilege
 from app.sharing.authorization import can
@@ -197,7 +202,7 @@ def register(server: FastMCP, session_factory) -> None:
                     raise ValueError("collection backing table not found") from exc
                 except UnsupportedTable as exc:
                     raise ValueError(exc.reason) from exc
-                schema = table_info_to_schema(info)
+                schema = table_info_to_schema(visible_table_info(session, user, col, info))
                 fields = [{"name": f["name"], "type": f["type"]} for f in schema["fields"]]
                 return {**base, "fields": fields}
 

@@ -48,3 +48,24 @@ def test_get_masked_for_user_reflects_privilege():
         assert get_masked_for_user(user=admin, session=s) is False
         # regular (rôle par défaut "creator", ne porte pas data.view_sensitive) -> masqué
         assert get_masked_for_user(user=regular, session=s) is True
+
+        # schéma servi par l'MCP (LLM, formulaire généré) : même verdict
+        from types import SimpleNamespace
+
+        from app.collections.introspection import ColumnInfo, TableInfo
+        from app.mcp.tools.identity import visible_table_info
+
+        info = TableInfo(
+            table_name="t",
+            pk_column="id",
+            geometry_column=None,
+            geometry_type=None,
+            srid=None,
+            columns=[ColumnInfo("nom", "string", True), ColumnInfo("salary", "integer", False)],
+        )
+        col = SimpleNamespace(sensitive_fields=["salary"])
+        assert [c.name for c in visible_table_info(s, admin, col, info).columns] == [
+            "nom",
+            "salary",
+        ]
+        assert [c.name for c in visible_table_info(s, regular, col, info).columns] == ["nom"]
