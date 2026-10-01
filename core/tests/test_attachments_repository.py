@@ -248,3 +248,23 @@ def test_delete_swallows_s3_client_error_and_still_removes_the_row(env):
         )
         is None
     )
+
+
+def test_s3_object_survives_a_rollback_of_the_row_deletion(env):
+    # c02-011 : la suppression S3 n'a lieu qu'après le commit en base.
+    session, tenant, user = env
+    a = _create(session, tenant_id=tenant.id, created_by=user.id)
+    session.commit()
+    s3 = _FakeS3Client()
+    attachments_repo.delete_attachment(
+        session,
+        s3,
+        "geostudio-attachments",
+        tenant_id=tenant.id,
+        collection_id="col1",
+        fid="f1",
+        attachment_id=a.id,
+    )
+    assert s3.deleted == []  # pas avant le commit
+    session.rollback()
+    assert s3.deleted == []
