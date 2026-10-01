@@ -23,6 +23,7 @@ import { PrintLayoutPanel } from "../builder/print/PrintLayoutPanel";
 import { AppRenderer } from "../builder/AppRenderer";
 import { NavigationPanel } from "../builder/NavigationPanel";
 import { DataSourcePanel } from "../builder/DataSourcePanel";
+import { apiErrorMessage } from "../api/apiErrorMessage";
 import { useSourceLabel } from "../builder/useSourceLabel";
 import { DataSourcesEditProvider } from "../builder/DataSourcesEditContext";
 import { PageManager } from "../builder/PageManager";
@@ -643,7 +644,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                   )}
                   {save.isError && !isConflict && (
                     <span role="alert" className="text-sm text-danger">
-                      {t("actions.saveFailed")}
+                      {apiErrorMessage(save.error, t("actions.saveFailed"))}
                     </span>
                   )}
                   {isConflict && (

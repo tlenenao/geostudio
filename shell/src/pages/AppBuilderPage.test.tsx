@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { ApiError } from "../api/ApiError";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -716,6 +717,26 @@ test("removing a widget prunes any ActionsPanel message wired to it", async () =
   await waitFor(() => expect(saveAppConfig).toHaveBeenCalled());
   const saved = saveAppConfig.mock.calls[0][1] as AppConfig;
   expect(saved.messages).toEqual([]);
+});
+
+test.each([
+  [new ApiError(400, { detail: "configuration invalide : widget w1" }), "configuration invalide"],
+  [new ApiError(429, { detail: "Trop de requêtes.", retryAfter: 12 }), "Réessayez dans 12 s."],
+  [new Error("boom"), "Échec de l'enregistrement."],
+])("un échec d'enregistrement affiche le message du cœur (P10.14)", async (error, expected) => {
+  const cfg: AppConfig = {
+    kind: "app",
+    theme: {},
+    dataSources: [],
+    messages: [],
+    layout: { type: "grid", breakpoints: {}, items: [] },
+  };
+  renderPage({
+    getAppConfig: vi.fn().mockResolvedValue(cfg),
+    saveAppConfig: vi.fn().mockRejectedValue(error),
+  });
+  await userEvent.click(await screen.findByRole("button", { name: "Enregistrer" }));
+  expect(await screen.findByText(new RegExp(expected))).toBeInTheDocument();
 });
 
 test("removing a page prunes messages wired to its widgets after confirmation (P10.07)", async () => {
