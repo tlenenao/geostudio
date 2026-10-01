@@ -231,3 +231,45 @@ def test_sweep_short_circuits_when_etl_disabled(monkeypatch):
     pipeline_jobs.run_pipeline_sweep_task(timestamp=0)
 
     assert deferred == []
+
+
+def test_sweep_fails_the_stale_running_run_it_replaces(monkeypatch):
+    """c02-005 : le run « running » périmé ne reste pas zombie à côté du nouveau."""
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import select
+
+    from app.pipelines.models import PipelineRun
+
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        item_id = _seed_due_pipeline(s, tenant_id=tenant.id, owner_id=user.id)
+        old = pipelines_repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_id)
+        old.status = "running"
+        old.started_at = old.created_at = datetime.now(UTC) - timedelta(hours=3)
+        old_id = old.id
+        s.commit()
+
+    monkeypatch.setattr(pipeline_jobs.run_pipeline_task, "defer", lambda **kw: None)
+    monkeypatch.setattr(pipeline_jobs, "_session_factory", lambda: Session)
+    monkeypatch.setattr(pipeline_jobs, "is_read_only_mode", lambda: False)
+    monkeypatch.setattr(pipeline_jobs, "is_etl_enabled", lambda: True)
+
+    pipeline_jobs.run_pipeline_sweep_task(timestamp=0)
+
+    with Session() as s:
+        runs = {r.id: r for r in s.scalars(select(PipelineRun))}
+    assert len(runs) == 2
+    assert runs[old_id].status == "failed"
+    assert runs[old_id].finished_at is not None
+    assert sorted(r.status for r in runs.values()) == ["failed", "queued"]
