@@ -167,7 +167,7 @@ def build_app_export_task(job_id: str, tenant_id: str) -> None:
 
 
 @app.periodic(cron="*/5 * * * *")
-@app.task(queue="appexport")
+@app.task(queue="appexport", queueing_lock="sweep_appexport_jobs_task")
 def sweep_appexport_jobs_task(timestamp: int) -> None:
     """Réclame les appexport_jobs restés "running" (export-worker/process
     tué en cours de zip) : appexport_repo.reclaim_stuck_jobs existait déjà

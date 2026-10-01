@@ -171,7 +171,7 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
 
 
 @app.periodic(cron="*/15 * * * *")
-@app.task(queue="ingestion")
+@app.task(queue="ingestion", queueing_lock="sweep_ingestion_jobs_task")
 def sweep_ingestion_jobs_task(timestamp: int) -> None:
     """Réclame les ingestion_jobs restés "running" (worker tué en cours
     d'import, aucun autre mécanisme ne les détectait avant — GAP-56.3,

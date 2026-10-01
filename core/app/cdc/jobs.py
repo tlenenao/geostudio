@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 @app.periodic(cron="*/10 * * * *")
-@app.task(queue="cdc")
+@app.task(queue="cdc", queueing_lock="run_compaction_cycle_task")
 def run_compaction_cycle_task(timestamp: int) -> None:
     bucket = os.environ.get("S3_CDC_BUCKET", "geostudio-cdc")
     client = storage.make_s3_client(

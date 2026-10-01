@@ -269,7 +269,7 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
 
 
 @app.periodic(cron="*/5 * * * *")
-@app.task(queue="etl")
+@app.task(queue="etl", queueing_lock="run_pipeline_sweep_task")
 def run_pipeline_sweep_task(timestamp: int) -> None:
     if is_read_only_mode():
         logger.info("mode lecture seule : balayage de planification de pipelines ignoré")

@@ -467,7 +467,7 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
 
 
 @app.periodic(cron="*/5 * * * *")
-@app.task(queue="etl")
+@app.task(queue="etl", queueing_lock="sweep_alert_rules_task")
 def sweep_alert_rules_task(timestamp: int) -> None:
     if is_read_only_mode():
         logger.info("mode lecture seule : balayage d'alertes ignoré")

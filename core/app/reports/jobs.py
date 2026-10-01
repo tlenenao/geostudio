@@ -447,7 +447,7 @@ def _notify_pending_reports(session_factory) -> None:
 
 
 @app.periodic(cron="*/5 * * * *")
-@app.task(queue="etl")
+@app.task(queue="etl", queueing_lock="sweep_report_schedules_task")
 def sweep_report_schedules_task(timestamp: int) -> None:
     if is_read_only_mode():
         logger.info("mode lecture seule : balayage de rapports planifiés ignoré")

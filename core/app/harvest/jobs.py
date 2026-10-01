@@ -39,7 +39,7 @@ def run_harvest_task(source_id: str, tenant_id: str) -> None:
 
 
 @app.periodic(cron="*/15 * * * *")
-@app.task(queue="harvest")
+@app.task(queue="harvest", queueing_lock="run_harvest_sweep_task")
 def run_harvest_sweep_task(timestamp: int) -> None:
     if is_read_only_mode():
         logger.info("mode lecture seule : balayage de moissonnage ignoré")

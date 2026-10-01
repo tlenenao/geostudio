@@ -28,7 +28,7 @@ CSP_DYNAMIC_CONF_PATH = "/csp-dynamic/dynamic-conf.yml"
 
 
 @app.periodic(cron="*/5 * * * *")
-@app.task(queue="etl")
+@app.task(queue="etl", queueing_lock="refresh_csp_dynamic_conf_task")
 def refresh_csp_dynamic_conf_task(timestamp: int) -> None:
     mode = os.environ.get("CORE_CSP_MODE", "report-only")
     factory = _session_factory()
