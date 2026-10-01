@@ -3491,6 +3491,8 @@ export interface components {
             action: string;
             /** Actorid */
             actorId: string | null;
+            /** Actorusername */
+            actorUsername?: string | null;
             /** Createdat */
             createdAt: string;
             /** Id */
@@ -7578,6 +7580,9 @@ export interface operations {
                 page?: number;
                 pageSize?: number;
                 q?: string | null;
+                roleId?: string | null;
+                sort?: "username" | "email" | "createdAt";
+                desc?: boolean;
             };
             header?: {
                 authorization?: string;

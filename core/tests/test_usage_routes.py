@@ -114,6 +114,7 @@ def test_tasks_view_all_holder_sees_every_actor(env):
     resp = client.get("/v1/usage/tasks")
     assert resp.status_code == 200
     assert resp.json()["total"] == 2
+    assert {t["actorUsername"] for t in resp.json()["tasks"]} == {"creator", "admin"}
 
 
 def test_no_tasks_privilege_is_rejected(env):

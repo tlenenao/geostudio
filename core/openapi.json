@@ -4316,6 +4316,8 @@
       "RoleCreate": {
         "properties": {
           "name": {
+            "maxLength": 80,
+            "minLength": 1,
             "title": "Name",
             "type": "string"
           },
@@ -4339,6 +4341,8 @@
           "name": {
             "anyOf": [
               {
+                "maxLength": 80,
+                "minLength": 1,
                 "type": "string"
               },
               {
@@ -5041,6 +5045,17 @@
               }
             ],
             "title": "Actorid"
+          },
+          "actorUsername": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actorusername"
           },
           "createdAt": {
             "title": "Createdat",
@@ -11805,6 +11820,47 @@
                 }
               ],
               "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "roleId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Roleid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "username",
+              "enum": [
+                "username",
+                "email",
+                "createdAt"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "desc",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Desc",
+              "type": "boolean"
             }
           },
           {

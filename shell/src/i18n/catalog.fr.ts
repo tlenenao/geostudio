@@ -52,6 +52,8 @@ export const fr = {
   // tableau de bord de supervision temps réel des jobs (SP-47 §7)
   "usage.detail": "Détail",
   "usage.myTasks": "Mes tâches récentes",
+  "usage.tenantTasks": "Tâches du tenant",
+  "usage.columnActor": "Utilisateur",
   "usage.noTasks": "Aucune tâche récente.",
   "usage.columnAction": "Action",
   "usage.columnResource": "Ressource",

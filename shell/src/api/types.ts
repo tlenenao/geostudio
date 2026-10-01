@@ -127,6 +127,7 @@ export type NotificationPreferenceValue = "all" | "failuresOnly" | "none";
 export type UsageTask = {
   id: number;
   actorId: string | null;
+  actorUsername?: string | null;
   action: string;
   objectType: string;
   objectId: string;
