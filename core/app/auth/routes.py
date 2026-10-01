@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -115,6 +115,10 @@ def _user_json(user: User, role_slug: str) -> dict[str, Any]:
         "id": user.id,
         "username": user.username,
         "roleSlug": role_slug,
+        "email": user.email,
+        "firstName": user.first_name,
+        "lastName": user.last_name,
+        "createdAt": user.created_at.isoformat(),
         "erasedAt": user.erased_at.isoformat() if user.erased_at else None,
     }
 
@@ -124,11 +128,23 @@ def get_users(
     page: int = 1,
     pageSize: int = 50,
     q: str | None = None,
+    roleId: str | None = None,
+    sort: Literal["username", "email", "createdAt"] = "username",
+    desc: bool = False,
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session, scope="function"),
 ) -> dict[str, Any]:
     require_privilege(session, user, Privilege.ADMIN_USERS_MANAGE.value)
-    users, total = list_users(session, tenant_id=user.tenant_id, page=page, page_size=pageSize, q=q)
+    users, total = list_users(
+        session,
+        tenant_id=user.tenant_id,
+        page=page,
+        page_size=pageSize,
+        q=q,
+        role_id=roleId,
+        sort=sort,
+        desc=desc,
+    )
     # REV-085 : une seule requête pour l'ensemble des role_id de la page,
     # au lieu d'un get_role() par utilisateur (même patron que
     # roles_for_items/get_access_facts_by_ids).

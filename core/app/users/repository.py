@@ -121,18 +121,31 @@ def set_user_role(
     return user
 
 
+_USER_SORTS = {"username": User.username, "email": User.email, "createdAt": User.created_at}
+
+
 def list_users(
-    session: Session, *, tenant_id: str, page: int, page_size: int, q: str | None = None
+    session: Session,
+    *,
+    tenant_id: str,
+    page: int,
+    page_size: int,
+    q: str | None = None,
+    role_id: str | None = None,
+    sort: str = "username",
+    desc: bool = False,
 ) -> tuple[list[User], int]:
     base = select(User).where(User.tenant_id == tenant_id)
     if q:
         # j08-014 : % _ et \ recherchés littéralement, pas comme jokers.
         like = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         base = base.where(User.username.ilike(f"%{like}%", escape="\\"))
+    if role_id:
+        base = base.where(User.role_id == role_id)
     total = session.scalar(select(func.count()).select_from(base.subquery()))
+    column = _USER_SORTS[sort]
+    order = [column.desc() if desc else column.asc(), User.id]
     users = list(
-        session.scalars(
-            base.order_by(User.username).offset((page - 1) * page_size).limit(page_size)
-        ).all()
+        session.scalars(base.order_by(*order).offset((page - 1) * page_size).limit(page_size)).all()
     )
     return users, total

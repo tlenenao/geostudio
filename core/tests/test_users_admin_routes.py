@@ -324,3 +324,29 @@ def test_list_users_exposes_erased_at_j08_013(env):
     assert by_id[admin.id]["erasedAt"] is None
     resp = client.patch(f"/v1/users/{regular.id}", json={"roleId": _roles["reader"]})
     assert resp.status_code == 409
+
+
+def test_list_users_exposes_profile_and_sorts_filters_server_side_j08_018(env):
+    app, client, Session, admin, regular, roles = env
+    with Session() as s:
+        get_or_create_user(
+            s,
+            tenant_id=admin.tenant_id,
+            oidc_sub="z",
+            username="zed",
+            email="a@x.org",
+            first_name="Zed",
+            last_name="Z",
+        )
+        s.commit()
+    _as(app, admin)
+    body = client.get("/v1/users?sort=username&desc=true").json()
+    assert [u["username"] for u in body["users"]] == ["zed", "regular", "admin"]
+    zed = body["users"][0]
+    assert (zed["email"], zed["firstName"], zed["lastName"]) == ("a@x.org", "Zed", "Z")
+    assert zed["createdAt"]
+    by_email = client.get("/v1/users?sort=email").json()["users"]
+    assert by_email[-1]["username"] == "zed" or by_email[0]["email"] is None
+    only_admin = client.get(f"/v1/users?roleId={roles['admin']}").json()
+    assert only_admin["total"] == 1 and only_admin["users"][0]["username"] == "admin"
+    assert client.get("/v1/users?sort=password").status_code == 422
