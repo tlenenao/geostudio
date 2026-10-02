@@ -56,6 +56,16 @@ def test_health_reports_backlog_age_of_a_job_deferred_without_schedule(
     assert 590 <= backlog["oldestTodoAgeSeconds"] <= 700
 
 
+def test_health_caches_the_backlog_query(monkeypatch):
+    # /health est anonyme : le COUNT SQL ne doit pas partir à chaque appel.
+    calls = []
+    monkeypatch.setattr("app.main.jobs_backlog", lambda: calls.append(1) or {"todo": 0})
+    client = TestClient(create_app())
+    for _ in range(3):
+        assert client.get("/health").json()["jobsBacklog"] == {"todo": 0}
+    assert len(calls) == 1
+
+
 def test_health_backlog_is_null_when_queue_unreadable(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "sqlite+pysqlite:///:memory:")
     res = TestClient(create_app()).get("/health")

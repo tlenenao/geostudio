@@ -2,6 +2,7 @@
 import contextlib
 import os
 import re
+import time
 from collections.abc import Iterator
 from http import HTTPStatus
 
@@ -422,11 +423,19 @@ def create_app() -> FastAPI:
             secret_key=s3_secret_key,
         )
 
+    health_cache: dict = {"at": float("-inf"), "value": None}
+
     @app.get("/health")
     def health() -> dict:
         # `status` reste la liveness (healthcheck compose) ; `jobsBacklog` rend
         # un worker arrêté visible (t02-013/j09-014) sans jamais faire échouer la sonde.
-        return {"status": "ok", "jobsBacklog": jobs_backlog()}
+        # Route non authentifiée : le COUNT SQL est mis en cache 5 s (par app) pour
+        # qu'un appelant anonyme ne puisse pas le déclencher à chaque requête.
+        now = time.monotonic()
+        if now - health_cache["at"] > 5.0:
+            health_cache["value"] = jobs_backlog()
+            health_cache["at"] = now
+        return {"status": "ok", "jobsBacklog": health_cache["value"]}
 
     # Mounted last: streamable_http_app() already bakes in its own full
     # paths ("/mcp", "/.well-known/oauth-protected-resource/mcp") rather
