@@ -10805,6 +10805,7 @@
             "required": false,
             "schema": {
               "default": 12,
+              "maximum": 100,
               "minimum": 1,
               "title": "Pagesize",
               "type": "integer"

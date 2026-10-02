@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 import procrastinate
 from opentelemetry import metrics
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 
 from app.items.models import Item
 from app.items.schemas import (
@@ -344,6 +344,7 @@ def _visible_items_base_query(
         select(Item, User.username)
         .join(User, User.id == Item.owner_id)
         .where(Item.tenant_id == tenant_id)
+        .options(defer(Item.embedding))  # jamais lu par _to_read (P24.05)
     )
     if resource_type:
         query = query.where(Item.resource_type == resource_type)
@@ -540,11 +541,12 @@ def get_facets(
         like = f"%{q}%"
         query = query.where(or_(Item.title.ilike(like), Item.abstract.ilike(like)))
 
-    rows = session.execute(query).all()
-    owner_counts = Counter(owner_username for _item, owner_username in rows)
+    # Colonnes owner/keywords seules (P24.07) : ni embedding ni documents.
+    rows = session.execute(query.with_only_columns(User.username, Item.keywords)).all()
+    owner_counts = Counter(owner_username for owner_username, _kw in rows)
     keyword_counts: Counter[str] = Counter()
-    for item, _owner_username in rows:
-        keyword_counts.update(item.keywords or [])
+    for _owner_username, kws in rows:
+        keyword_counts.update(kws or [])
 
     owners = [
         OwnerFacet(username=username, count=count)
@@ -586,16 +588,32 @@ def list_published_items(
     if resource_type:
         query = query.where(Item.resource_type == resource_type)
 
-    rows = session.execute(query.order_by(Item.created_at.desc())).all()
-    # Tag filter done in Python, not as a DB-side JSON-contains predicate:
-    # portable across SQLite (tests) and Postgres (prod) without a
-    # dialect-specific operator. Small scale (published items of one
-    # tenant), so recomputing `total` post-filter is cheap.
+    order = Item.created_at.desc()
     if tag:
-        rows = [row for row in rows if tag in (row[0].keywords or [])]
-
-    total = len(rows)
-    page_rows = rows[(page - 1) * page_size : (page - 1) * page_size + page_size]
+        # Tag en Python (colonne JSON générique, pas d'opérateur portable
+        # SQLite/Postgres) mais sur (id, keywords) seulement : on ne charge
+        # les lignes complètes que pour la page demandée (P24.05).
+        tagged = session.execute(
+            query.with_only_columns(Item.id, Item.keywords).order_by(order)
+        ).all()
+        ids = [i for i, kw in tagged if tag in (kw or [])]
+        total = len(ids)
+        page_ids = ids[(page - 1) * page_size : (page - 1) * page_size + page_size]
+        by_id = {
+            item.id: (item, owner)
+            for item, owner in session.execute(
+                query.where(Item.id.in_(page_ids)).options(defer(Item.embedding))
+            ).all()
+        }
+        page_rows = [by_id[i] for i in page_ids if i in by_id]
+    else:
+        total = session.scalar(select(func.count()).select_from(query.subquery())) or 0
+        page_rows = session.execute(
+            query.order_by(order)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+            .options(defer(Item.embedding))
+        ).all()
     items = [_to_read(item, owner_username) for item, owner_username in page_rows]
     return ItemPage(items=items, total=total, page=page, pageSize=page_size)
 

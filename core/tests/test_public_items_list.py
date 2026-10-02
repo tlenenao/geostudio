@@ -223,3 +223,9 @@ def test_never_exposes_a_sensitive_field(client):
         # updatedAt, pas une donnée sensible propre à /items.
         "bbox",
     }
+
+
+def test_page_size_above_cap_is_rejected(client):
+    # P24.05 : route anonyme bornée.
+    assert client.get("/v1/public/items?pageSize=101").status_code == 422
+    assert client.get("/v1/public/items?pageSize=100").status_code == 200
