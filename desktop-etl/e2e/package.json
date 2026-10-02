@@ -3,11 +3,19 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "scripts": { "test": "wdio run wdio.conf.js" },
-  "dependencies": { "@wdio/cli": "^9.19.0" },
+  "scripts": {
+    "test": "wdio run wdio.conf.js"
+  },
+  "dependencies": {
+    "@wdio/cli": "^9.19.0"
+  },
   "devDependencies": {
     "@wdio/local-runner": "^9.19.0",
     "@wdio/mocha-framework": "^9.19.0",
     "@wdio/spec-reporter": "^9.19.0"
+  },
+  "overrides": {
+    "basic-ftp": "^6.2.1",
+    "serialize-javascript": "^7.0.5"
   }
 }
