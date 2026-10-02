@@ -21,6 +21,7 @@ export function RolesAdminPage() {
   const [editing, setEditing] = useState<Role | null>(null);
   const [deleting, setDeleting] = useState<Role | null>(null);
   const editPanel = usePanelTrigger(editing !== null);
+  const createPanel = usePanelTrigger(creating);
   const [sortKey, setSortKey] = useState<string | undefined>(undefined);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
@@ -83,6 +84,7 @@ export function RolesAdminPage() {
                 <h1 className="text-lg font-bold text-ink">{t("roles.title")}</h1>
                 <Button
                   size="sm"
+                  {...createPanel.triggerProps}
                   onClick={() => {
                     setEditing(null);
                     setCreating(true);
@@ -175,7 +177,11 @@ export function RolesAdminPage() {
           label: t("roles.detail"),
           content: (
             <div className="flex flex-col gap-3 p-3">
-              {creating && <CreateRolePanel onClose={() => setCreating(false)} />}
+              {creating && (
+                <div id={createPanel.panelId}>
+                  <CreateRolePanel onClose={() => setCreating(false)} />
+                </div>
+              )}
               {editing && (
                 // id seul (pas role="region") : EditRolePanel rend déjà un
                 // <section aria-label=…>, région implicite nommée — même
