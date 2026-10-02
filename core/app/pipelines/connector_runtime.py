@@ -49,6 +49,7 @@ from app.analytics.sql_sandbox import SqlSandboxError, parse_ast, validate_selec
 from app.pipelines.egress import (
     EgressBlockedError,
     assert_dsn_egress_allowed,
+    assert_egress_allowed,
     build_guarded_session,
 )
 from app.pipelines.ops.schemas import (
@@ -627,6 +628,8 @@ def materialize_blob_connector(
         )
 
     if payload.kind == "s3_credentials":
+        if payload.endpointUrl:  # endpoint S3 compatible = cible réseau libre (P16.02)
+            assert_egress_allowed(payload.endpointUrl)
         credentials = AwsCredentials(
             aws_access_key_id=payload.awsAccessKeyId,
             aws_secret_access_key=payload.awsSecretAccessKey,

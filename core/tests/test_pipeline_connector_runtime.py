@@ -1025,6 +1025,7 @@ def test_materialize_blob_connector_builds_aws_credentials_and_splits_path(
     )
     captured: dict = {}
     _patch_blob_internals(monkeypatch, captured)
+    monkeypatch.setattr("socket.getaddrinfo", lambda *a, **k: [(2, 1, 6, "", ("93.184.216.34", 0))])
 
     params = ReaderConnectorBlobParams(
         secretName="s3-secret", path="s3://bucket/prefix/data.csv", format="csv"
@@ -1045,6 +1046,36 @@ def test_materialize_blob_connector_builds_aws_credentials_and_splits_path(
     assert creds.aws_access_key_id == "AKIA123"
     assert creds.aws_secret_access_key == "shh"
     assert creds.endpoint_url == "http://minio.local:9000"
+
+
+def test_materialize_blob_connector_blocks_internal_s3_endpoint(
+    monkeypatch, conn, session, tenant, user
+):
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="s3-internal",
+        kind="s3_credentials",
+        payload={
+            "kind": "s3_credentials",
+            "awsAccessKeyId": "AKIA123",
+            "awsSecretAccessKey": "shh",
+            "endpointUrl": "http://169.254.169.254",
+        },
+    )
+    _patch_blob_internals(monkeypatch, {})
+    params = ReaderConnectorBlobParams(
+        secretName="s3-internal", path="s3://bucket/data.csv", format="csv"
+    )
+    with pytest.raises(connector_runtime.EgressBlockedError):
+        connector_runtime.materialize_blob_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
+            node_id="b3x",
+            params=params,
+            view_name="node_b3x",
+        )
 
 
 def test_materialize_blob_connector_builds_azure_credentials(
