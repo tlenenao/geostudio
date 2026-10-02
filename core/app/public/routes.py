@@ -15,11 +15,9 @@ from app.tenants.repository import DEFAULT_TENANT_SLUG
 
 router = APIRouter(prefix="/public")
 
-# Volontairement large (pas de nouvelle fonction dédiée) : list_published_items
-# charge déjà TOUTES les lignes visibles avant de trancher en Python (spec
-# SP-55 §3.2) — un sitemap veut l'intégralité du catalogue, pas une page.
-# Cohérent avec l'hypothèse d'échelle documentée à cet endroit (petite
-# échelle, catalogue d'un tenant).
+# Volontairement large (pas de nouvelle fonction dédiée) : un sitemap veut
+# l'intégralité du catalogue, pas une page. Appel interne : la borne
+# pageSize<=100 ne vaut que pour la route anonyme /items.
 _SITEMAP_PAGE_SIZE = 100_000
 
 

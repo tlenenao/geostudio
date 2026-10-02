@@ -84,7 +84,7 @@ export function registerGalleryWidget(): void {
       const client = useItemClient();
       const type = props.type ? String(props.type) : undefined;
       const tag = props.tag ? String(props.tag) : undefined;
-      const limit = Number(props.limit ?? 12);
+      const limit = Math.min(Number(props.limit ?? 12), 100); // borne serveur (P24.05)
       const columns = Number(props.columns ?? 3);
       const query = useQuery({
         queryKey: ["public-gallery", type, tag, limit],

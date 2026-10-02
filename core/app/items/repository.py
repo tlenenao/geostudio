@@ -588,13 +588,14 @@ def list_published_items(
     if resource_type:
         query = query.where(Item.resource_type == resource_type)
 
-    order = Item.created_at.desc()
+    # id en départage : OFFSET SQL instable sinon sur created_at égaux (P24.05).
+    order = (Item.created_at.desc(), Item.id)
     if tag:
         # Tag en Python (colonne JSON générique, pas d'opérateur portable
         # SQLite/Postgres) mais sur (id, keywords) seulement : on ne charge
         # les lignes complètes que pour la page demandée (P24.05).
         tagged = session.execute(
-            query.with_only_columns(Item.id, Item.keywords).order_by(order)
+            query.with_only_columns(Item.id, Item.keywords).order_by(*order)
         ).all()
         ids = [i for i, kw in tagged if tag in (kw or [])]
         total = len(ids)
@@ -609,7 +610,7 @@ def list_published_items(
     else:
         total = session.scalar(select(func.count()).select_from(query.subquery())) or 0
         page_rows = session.execute(
-            query.order_by(order)
+            query.order_by(*order)
             .offset((page - 1) * page_size)
             .limit(page_size)
             .options(defer(Item.embedding))
