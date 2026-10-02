@@ -391,3 +391,27 @@ test("an unmatched, node-level error still renders in the bottom fallback list",
     screen.getByText("transform.join : requiert une arête primaire entrante."),
   ).toBeInTheDocument();
 });
+
+// j06b-015 : sans valeur enregistrée ni défaut, le select montre une option vide
+// (jamais la 1re option comme si elle était posée).
+test("an enum field without a stored value or default shows an empty option selected", () => {
+  const node: PipelineNode = {
+    id: "w1",
+    kind: "writer",
+    op: "writer.export",
+    x: 0,
+    y: 0,
+    params: {},
+  };
+  const opEntry: PipelineOpEntry = {
+    kind: "writer",
+    paramsSchema: {
+      properties: { format: { type: "string", enum: ["csv", "geojson"] } },
+      required: ["format"],
+    },
+  };
+  renderInspector(node, opEntry);
+  const select = screen.getByLabelText("format") as HTMLSelectElement;
+  expect(select.value).toBe("");
+  expect(Array.from(select.options).map((o) => o.value)).toEqual(["", "csv", "geojson"]);
+});

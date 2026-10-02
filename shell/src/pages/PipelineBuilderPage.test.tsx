@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, Link, RouterProvider, useParams } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -1235,6 +1235,37 @@ test("le round-trip de création (pk=null -> Enregistrer -> redirection) n'affic
     license: "",
     language: "fr",
   } satisfies Item);
+  // React Flow ne rend les nœuds qu'une fois mesurés : stubs locaux (cf.
+  // PipelineCanvas.test.tsx), retirés en fin de test.
+  Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, value: 160 });
+  Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, value: 48 });
+  class SizedResizeObserver {
+    constructor(private readonly callback: ResizeObserverCallback) {}
+    observe(target: Element) {
+      const size = [{ inlineSize: 160, blockSize: 48 }];
+      this.callback(
+        [
+          {
+            target,
+            contentRect: { width: 160, height: 48 },
+            borderBoxSize: size,
+            contentBoxSize: size,
+            devicePixelContentBoxSize: size,
+          } as unknown as ResizeObserverEntry,
+        ],
+        this as unknown as ResizeObserver,
+      );
+    }
+    unobserve() {}
+    disconnect() {}
+  }
+  vi.stubGlobal("ResizeObserver", SizedResizeObserver);
+  vi.stubGlobal(
+    "DOMMatrixReadOnly",
+    class {
+      m22 = 1;
+    },
+  );
   renderNewPipelineRoutes({
     createPipelineItem,
     getPipelineOps: () => Promise.resolve(MINIMAL_CATALOG),
@@ -1243,11 +1274,19 @@ test("le round-trip de création (pk=null -> Enregistrer -> redirection) n'affic
   await waitFor(() => expect(screen.getByText("reader.x")).toBeInTheDocument());
   await userEvent.click(screen.getByRole("button", { name: "reader.x" }));
   await userEvent.click(screen.getByRole("button", { name: "writer.x" }));
+  // j06-002 : un writer sans entrée n'est plus enregistrable — on relie les deux
+  // nœuds via l'affordance de connexion au clic.
+  fireEvent.click(screen.getByRole("button", { name: "Connecter depuis reader.x" }));
+  fireEvent.click(screen.getAllByText("writer.x").at(-1)!);
   await waitFor(() => expect(screen.getByRole("button", { name: "Enregistrer" })).toBeEnabled());
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
 
   await waitFor(() => expect(createPipelineItem).toHaveBeenCalled());
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  // Démonte avant de retirer les stubs : React Flow mesure encore ses nœuds sinon.
+  cleanup();
+  Reflect.deleteProperty(HTMLElement.prototype, "offsetWidth");
+  Reflect.deleteProperty(HTMLElement.prototype, "offsetHeight");
 });
 
 // D55 : le canevas de pipeline n'appliquait pas réellement la lecture seule —

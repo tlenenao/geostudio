@@ -81,24 +81,20 @@ test.describe("j06b webhook entrant", () => {
   });
 
   // Finding j06b-011 : la clé du limiteur est l'en-tête Authorization brut → jeton variable = budget neuf.
-  bug(
-    "j06b-011 : 60 essais avec des jetons faux DIFFÉRENTS sont limités (429), comme avec le même jeton",
-    async () => {
-      const a = await mk("wh-rl");
-      const same: number[] = [];
-      for (let i = 0; i < 35; i++) same.push((await trigger(a.itemId!, `meme-${tag}`)).status);
-      expect(same.filter((c) => c === 429).length).toBeGreaterThanOrEqual(1); // contrôle : passe
-      const vary: number[] = [];
-      for (let i = 0; i < 60; i++)
-        vary.push((await trigger(a.itemId!, `${tag}-essai-${i}`)).status);
-      expect(vary.filter((c) => c === 429).length).toBeGreaterThanOrEqual(1);
-    },
-  );
+  test("j06b-011 : 60 essais avec des jetons faux DIFFÉRENTS sont limités (429), comme avec le même jeton", async () => {
+    const a = await mk("wh-rl");
+    const same: number[] = [];
+    for (let i = 0; i < 35; i++) same.push((await trigger(a.itemId!, `meme-${tag}`)).status);
+    expect(same.filter((c) => c === 429).length).toBeGreaterThanOrEqual(1); // contrôle : passe
+    const vary: number[] = [];
+    for (let i = 0; i < 60; i++) vary.push((await trigger(a.itemId!, `${tag}-essai-${i}`)).status);
+    expect(vary.filter((c) => c === 429).length).toBeGreaterThanOrEqual(1);
+  });
 });
 
 test.describe("j06b planification cron", () => {
   // Finding j06b-012 : croniter accepte 6 champs (secondes) ; la politique enregistrée « chaque seconde » est valide.
-  bug("j06b-012 : un cron à 6 champs (secondes) est refusé à l'enregistrement", async () => {
+  test("j06b-012 : un cron à 6 champs (secondes) est refusé à l'enregistrement", async () => {
     const p = await mk("cron6", { refreshPolicy: { enabled: true, cron: "* * * * * *" } });
     expect(p.status).toBe(422);
   });

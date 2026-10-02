@@ -68,6 +68,16 @@ export function validatePipelineGraphLocally(
       graphErrors.push(`Un nœud ne peut avoir qu'une seule arête secondaire entrante (${nodeId}).`);
   }
 
+  // j06-002 : miroir de _check_topology (cœur) — formes que l'exécution ne sait pas traiter.
+  const kindById = new Map(nodes.map((n) => [n.id, n.kind]));
+  for (const e of edges) {
+    if (kindById.get(e.to) === "reader")
+      graphErrors.push(`La source ${e.to} ne peut pas avoir d'arête entrante.`);
+    if (kindById.get(e.from) === "writer")
+      graphErrors.push(`L'écriture ${e.from} ne peut pas avoir d'arête sortante.`);
+    if (e.role === "secondary" && kindById.get(e.to) === "writer")
+      graphErrors.push(`L'écriture ${e.to} n'accepte pas d'arête secondaire.`);
+  }
   if (hasCycle(nodes, edges)) {
     graphErrors.push("Le graphe contient un cycle.");
   }
@@ -84,6 +94,10 @@ export function validatePipelineGraphLocally(
       : [`Opération inconnue : ${node.op}.`];
     const hasSecondaryEdge = edges.some((e) => e.to === node.id && e.role === "secondary");
     const hasPrimaryEdge = edges.some((e) => e.to === node.id && e.role !== "secondary");
+    // j06-002 : erreur portée par le nœud (badge + inspecteur), pas une bannière de graphe.
+    if (node.kind !== "reader" && !edges.some((e) => e.to === node.id)) {
+      errors.push("n'a pas d'entrée : reliez-le à un nœud amont.");
+    }
     if (entry) {
       if (entry.acceptsSecondaryInput) {
         const withCollectionId = node.params.withCollectionId;

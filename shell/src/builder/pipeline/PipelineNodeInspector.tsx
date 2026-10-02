@@ -183,6 +183,9 @@ export function PipelineNodeInspector({
             onChange={(e) => setField(name, e.target.value)}
             disabled={readOnly}
           >
+            {/* j06b-015 : sans valeur ni défaut, une option vide visible — sinon le
+                navigateur affiche la 1re option alors que rien n'est enregistré. */}
+            {(params[name] ?? prop.default) === undefined && <option value="">—</option>}
             {prop.enum.map((v) => (
               <option key={v} value={v}>
                 {v}

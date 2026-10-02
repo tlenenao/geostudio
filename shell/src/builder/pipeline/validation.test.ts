@@ -217,3 +217,47 @@ test("fieldErrorsFor guards against field-name prefix collisions", () => {
   const errors = ["collectionId est requis."];
   expect(fieldErrorsFor("collection", errors)).toEqual([]);
 });
+
+// j06-002 : formes de graphe que le cœur rejette (422) et que l'exécution ne sait pas traiter.
+test.each([
+  [
+    "an incoming edge on a reader",
+    [reader("r1"), reader("r2"), writer("w1")],
+    [
+      { id: "e1", from: "r1", to: "r2" },
+      { id: "e2", from: "r2", to: "w1" },
+    ],
+    /source r2 ne peut pas/,
+  ],
+  [
+    "an outgoing edge from a writer",
+    [reader("r1"), writer("w1"), writer("w2")],
+    [
+      { id: "e1", from: "r1", to: "w1" },
+      { id: "e2", from: "w1", to: "w2" },
+    ],
+    /écriture w1 ne peut pas/,
+  ],
+  [
+    "a secondary edge on a writer",
+    [reader("r1"), reader("r2"), writer("w1")],
+    [
+      { id: "e1", from: "r1", to: "w1" },
+      { id: "e2", from: "r2", to: "w1", role: "secondary" },
+    ],
+    /n'accepte pas d'arête secondaire/,
+  ],
+] as [string, PipelineNode[], PipelineEdge[], RegExp][])(
+  "%s is a graph error",
+  (_label, nodes, edges, message) => {
+    const result = validatePipelineGraphLocally(nodes, edges, CATALOG);
+    expect(result.graphErrors.some((e) => message.test(e))).toBe(true);
+    expect(isPipelineValid(result)).toBe(false);
+  },
+);
+
+test("a writer without incoming edge is flagged on that node", () => {
+  const result = validatePipelineGraphLocally([reader("r1"), writer("w1")], [], CATALOG);
+  expect(result.nodeErrors.w1.some((e) => /n'a pas d'entrée/.test(e))).toBe(true);
+  expect(isPipelineValid(result)).toBe(false);
+});

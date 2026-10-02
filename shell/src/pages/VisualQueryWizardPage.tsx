@@ -201,6 +201,17 @@ export function VisualQueryWizardPage({
   // garde `!existingOutput` bloque bien la mutation (pas d'écrasement
   // possible ici, contrairement à Pipeline/Rapport), mais rien n'explique
   // pourquoi le bouton reste désactivé.
+  // j06-012 : même garde de tête de page que PipelineBuilderPage — un état
+  // d'indisponibilité, pas un formulaire qu'on remplit pour rien.
+  if (instanceQuery.isLoading) return <p role="status">{t("common.loading")}</p>;
+  if (!etlEnabled) {
+    return (
+      <p role="status" className="text-sm text-ink-2">
+        {t("pipelineBuilder.etlDisabled")}
+      </p>
+    );
+  }
+
   if (pipelinePk !== null && existingPipelineQuery.isError) {
     return (
       <p role="alert" className="text-sm text-danger">

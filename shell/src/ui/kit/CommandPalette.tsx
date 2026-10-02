@@ -54,7 +54,9 @@ export function CommandPalette({
 
   const items = useMemo<CommandItem[]>(() => {
     const out: CommandItem[] = [];
-    for (const { domain } of navigableDomains(profile)) {
+    for (const { domain, state } of navigableDomains(profile)) {
+      // j06-011 : un domaine verrouillé (grisé dans la barre) ne s'ouvre pas non plus ici.
+      if (state === "locked") continue;
       out.push({
         id: `domain:${domain.id}`,
         label: t(domain.labelKey),

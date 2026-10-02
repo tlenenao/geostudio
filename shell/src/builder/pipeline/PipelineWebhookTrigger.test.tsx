@@ -81,3 +81,22 @@ test("l'URL de déclenchement complète est affichée après génération", asyn
   await screen.findByText("abc");
   expect(screen.getByText(/\/pipelines\/p1\/trigger/)).toBeInTheDocument();
 });
+
+// j06b-016 : la commande affichée porte l'URL réelle du cœur (avec /v1), pas le
+// littéral {coreBaseUrl}.
+test("la commande de déclenchement affiche l'URL réelle du cœur", async () => {
+  const createPipelineWebhookToken = vi
+    .fn()
+    .mockResolvedValue({ id: "t1", token: "clear-value", createdAt: "2026-09-05T00:00:00Z" });
+  renderTrigger({
+    createPipelineWebhookToken,
+    getCoreUrl: () => "https://core.example/v1",
+  });
+
+  fireEvent.click(await screen.findByText("Générer un jeton"));
+  await screen.findByText("clear-value");
+  expect(
+    screen.getByText(/POST https:\/\/core\.example\/v1\/pipelines\/p1\/trigger/),
+  ).toBeInTheDocument();
+  expect(screen.queryByText(/\{coreBaseUrl\}/)).toBeNull();
+});

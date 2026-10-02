@@ -5,6 +5,7 @@ import {
   usePipelineWebhookTokens,
   useRevokePipelineWebhookToken,
 } from "../../api/domains/pipelines.hooks";
+import { useItemClient } from "../../api/hooks";
 import { t } from "../../i18n";
 import { Button } from "../../ui/kit/Button";
 
@@ -13,6 +14,11 @@ import { Button } from "../../ui/kit/Button";
 // GET /pipelines/{id}/webhook-tokens (liste) ni le cœur en général ne le
 // rendent plus jamais ensuite (même discipline que le coffre de secrets).
 export function PipelineWebhookTrigger({ pipelineId }: { pipelineId: string }) {
+  const client = useItemClient();
+  // j06b-016 : URL réelle du cœur (getCoreUrl porte déjà le préfixe /v1) ;
+  // un VITE_CORE_URL relatif ("/api") est complété par l'origine courante.
+  const rawCoreUrl = client.getCoreUrl?.() ?? "";
+  const coreBaseUrl = rawCoreUrl.startsWith("/") ? window.location.origin + rawCoreUrl : rawCoreUrl;
   const tokensQuery = usePipelineWebhookTokens(pipelineId);
   const createToken = useCreatePipelineWebhookToken(pipelineId);
   const revokeToken = useRevokePipelineWebhookToken(pipelineId);
@@ -60,6 +66,7 @@ export function PipelineWebhookTrigger({ pipelineId }: { pipelineId: string }) {
           <p className="text-danger">{t("pipelineWebhook.tokenWarning")}</p>
           <p className="font-mono text-ink-2">
             {t("pipelineWebhook.triggerCommandTemplate", {
+              coreBaseUrl,
               id: pipelineId,
               token: justCreated.token,
             })}

@@ -79,4 +79,28 @@ describe("CommandPalette", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(navigateMock).not.toHaveBeenCalled();
   });
+
+  // j06-011 : la palette respecte le verrou de la barre de domaines.
+  it("n'offre pas un domaine verrouillé (ETL coupé) mais l'offre quand il est actif", async () => {
+    const automation = { ...profile, privileges: new Set(["automation.manage"]) };
+    const { rerender } = render(
+      <MemoryRouter>
+        <CommandPalette open onOpenChange={vi.fn()} profile={automation} />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByText("Automatisation")).not.toBeInTheDocument();
+    rerender(
+      <MemoryRouter>
+        <CommandPalette
+          open
+          onOpenChange={vi.fn()}
+          profile={{
+            ...automation,
+            capabilities: { ...automation.capabilities, etlEnabled: true },
+          }}
+        />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText("Automatisation")).toBeInTheDocument();
+  });
 });

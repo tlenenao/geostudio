@@ -555,7 +555,7 @@ describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)
     ).toBeInTheDocument();
   });
 
-  test("I2 : instance sans etlEnabled désactive Mettre à jour et affiche le message", async () => {
+  test("j06-012 : instance sans etlEnabled affiche l'indisponibilité en tête de page, sans formulaire", async () => {
     renderWizardEdit({
       getInstanceInfo: () =>
         Promise.resolve({
@@ -570,16 +570,11 @@ describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)
           quotasEnabled: false,
         }),
     });
-    await screen.findByText("Modifier la requête");
-    await waitFor(() =>
-      expect(screen.getByLabelText("Collection de base")).toHaveValue("incidents"),
-    );
-    await screen.findByDisplayValue("Ma requête existante");
-    const button = await screen.findByRole("button", { name: "Mettre à jour" });
-    expect(button).toBeDisabled();
     expect(
-      screen.getByText("Non activé sur cette instance (CORE_ETL_ENABLED)."),
+      await screen.findByText("Non activé sur cette instance (CORE_ETL_ENABLED)."),
     ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Collection de base")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mettre à jour" })).not.toBeInTheDocument();
   });
 
   test("« Mettre à jour » réutilise le pipeline/collection/dataset existants au lieu d'en recréer trois", async () => {
@@ -851,7 +846,7 @@ describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)
       getInstanceInfo: () =>
         Promise.resolve({
           readOnly: false,
-          etlEnabled: false,
+          etlEnabled: true,
           exportEnabled: false,
           appExportEnabled: false,
           tileset3dEnabled: false,

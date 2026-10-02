@@ -73,7 +73,7 @@ test.describe("j06 ETL désactivé — shell (créateur)", () => {
   });
 
   // Finding j06-011 : la palette ⌘K propose le domaine verrouillé et y navigue.
-  bug("j06-011 : la palette de commandes n'offre pas le domaine verrouillé", async ({ page }) => {
+  test("j06-011 : la palette de commandes n'offre pas le domaine verrouillé", async ({ page }) => {
     await page.keyboard.press("Control+k");
     await expect(page.getByRole("dialog", { name: "Palette de commandes" })).toBeVisible();
     await expect(

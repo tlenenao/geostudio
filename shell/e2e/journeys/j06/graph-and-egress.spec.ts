@@ -1,4 +1,3 @@
-import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { corePython } from "./helpers";
 
@@ -17,7 +16,7 @@ nodes=${nodesJs}
 edges=${edgesJs}
 try:
     p=PipelinePayload.model_validate({"nodes":nodes,"edges":edges})
-    _check_acyclic(p.nodes,p.edges); _check_topology(p.edges)
+    _check_acyclic(p.nodes,p.edges); _check_topology(p.nodes,p.edges)
     print("ACCEPTED")
 except Exception as e:
     print("REJECTED", str(e)[:100])
@@ -44,15 +43,15 @@ test.describe("j06 validation de graphe à l'enregistrement", () => {
   });
 
   // Finding j06-002 : run_pipeline fait `assert pred_id is not None` sur ces graphes.
-  bug("j06-002 : un writer sans arête entrante est rejeté à l'enregistrement", () => {
+  test("j06-002 : un writer sans arête entrante est rejeté à l'enregistrement", () => {
     expect(graph("[R,W]", "[]")).toMatch(/^REJECTED/);
   });
 
-  bug("j06-002 : un transform sans arête entrante est rejeté à l'enregistrement", () => {
+  test("j06-002 : un transform sans arête entrante est rejeté à l'enregistrement", () => {
     expect(graph("[R,F,W]", '[{"id":"e","from":"r","to":"w"}]')).toMatch(/^REJECTED/);
   });
 
-  bug("j06-002 : une arête entrante sur un reader est rejetée à l'enregistrement", () => {
+  test("j06-002 : une arête entrante sur un reader est rejetée à l'enregistrement", () => {
     expect(
       graph(
         '[R,W,{**R,"id":"r2"}]',
@@ -61,7 +60,7 @@ test.describe("j06 validation de graphe à l'enregistrement", () => {
     ).toMatch(/^REJECTED/);
   });
 
-  bug("j06-002 : une arête sortante d'un writer est rejetée à l'enregistrement", () => {
+  test("j06-002 : une arête sortante d'un writer est rejetée à l'enregistrement", () => {
     expect(
       graph(
         '[R,W,{**W,"id":"w2"}]',
