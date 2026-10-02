@@ -1,4 +1,3 @@
-import { bug } from "../_fixtures/verify";
 import { test, expect, type Page } from "@playwright/test";
 import { stamp } from "../_fixtures/env";
 import { openAs, spaGoto } from "../j06/helpers";
@@ -94,23 +93,22 @@ test.describe("j07 collections — édition des métadonnées", () => {
   });
 
   // Finding j07-019 : l'URI de licence obsolète est renvoyée alors que la licence n'est plus « Autre ».
-  bug(
-    "j07-019 : changer la licence « Autre » vers une licence du catalogue efface l'ancienne URI",
-    async ({ page }) => {
-      const { id, title } = await makeCollection("ui-stale-uri");
-      await creator.send("PATCH", `/v1/collections/${id}`, {
-        license: "other",
-        licenseUri: "https://example.org/ancienne",
-      });
-      await openEditor(page, title);
-      const panel = page.getByRole("region", { name: `Éditer ${title}` });
-      await panel.getByRole("tab", { name: "Métadonnées ouvertes" }).click();
-      await panel.getByRole("combobox", { name: "Licence" }).click();
-      await page.getByRole("option", { name: /Licence Ouverte/ }).click();
-      await panel.getByRole("button", { name: "Enregistrer" }).click();
-      await expect(panel).toHaveCount(0);
-      const c = await admin.get(`/v1/collections/${id}`);
-      expect(c.body.licenseUri).toBe("");
-    },
-  );
+  test("j07-019 : changer la licence « Autre » vers une licence du catalogue efface l'ancienne URI", async ({
+    page,
+  }) => {
+    const { id, title } = await makeCollection("ui-stale-uri");
+    await creator.send("PATCH", `/v1/collections/${id}`, {
+      license: "other",
+      licenseUri: "https://example.org/ancienne",
+    });
+    await openEditor(page, title);
+    const panel = page.getByRole("region", { name: `Éditer ${title}` });
+    await panel.getByRole("tab", { name: "Métadonnées ouvertes" }).click();
+    await panel.getByRole("combobox", { name: "Licence" }).click();
+    await page.getByRole("option", { name: /Licence Ouverte/ }).click();
+    await panel.getByRole("button", { name: "Enregistrer" }).click();
+    await expect(panel).toHaveCount(0);
+    const c = await admin.get(`/v1/collections/${id}`);
+    expect(c.body.licenseUri).toBe("");
+  });
 });

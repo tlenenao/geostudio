@@ -125,22 +125,19 @@ test.describe("j07 métadonnées ouvertes — collection", () => {
   });
 
   // Finding j07-014 : PATCH ne valide ni l'ordre des bornes temporelles ni le schéma de licenseUri.
-  bug(
-    "j07-014 : temporalEnd antérieure à temporalStart et licenseUri non http(s) sont refusées (422)",
-    async () => {
-      const { id } = await newCollection(`${tag}-meta-bad`);
-      const order = await creator.send("PATCH", `/v1/collections/${id}`, {
-        temporalStart: "2021-01-01",
-        temporalEnd: "2020-01-01",
-      });
-      expect(order.status).toBe(422);
-      const uri = await creator.send("PATCH", `/v1/collections/${id}`, {
-        license: "other",
-        licenseUri: "javascript:alert(1)",
-      });
-      expect(uri.status).toBe(422);
-    },
-  );
+  test("j07-014 : temporalEnd antérieure à temporalStart et licenseUri non http(s) sont refusées (422)", async () => {
+    const { id } = await newCollection(`${tag}-meta-bad`);
+    const order = await creator.send("PATCH", `/v1/collections/${id}`, {
+      temporalStart: "2021-01-01",
+      temporalEnd: "2020-01-01",
+    });
+    expect(order.status).toBe(422);
+    const uri = await creator.send("PATCH", `/v1/collections/${id}`, {
+      license: "other",
+      licenseUri: "javascript:alert(1)",
+    });
+    expect(uri.status).toBe(422);
+  });
 });
 
 test.describe("j07 masquage de champ sensible", () => {
