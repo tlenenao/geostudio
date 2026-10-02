@@ -19,7 +19,7 @@ const OPERATOR_TO_SQL: Record<FilterOperator, string> = {
   gte: ">=",
   lt: "<",
   lte: "<=",
-  contains: "LIKE",
+  contains: "ILIKE",
 };
 const SQL_TO_OPERATOR: Record<string, FilterOperator> = {
   "=": "eq",
@@ -28,11 +28,14 @@ const SQL_TO_OPERATOR: Record<string, FilterOperator> = {
   ">=": "gte",
   "<": "lt",
   "<=": "lte",
-  LIKE: "contains",
+  ILIKE: "contains",
+  LIKE: "contains", // pipelines enregistrés avant P25.13
 };
 
 function formatValue(row: FilterRow, fieldType: CollectionFieldType): string {
-  if (row.operator === "contains") return quoteSqlLiteral(`%${row.value}%`);
+  // P25.13 : insensible à la casse (ILIKE), % et _ saisis restent littéraux.
+  if (row.operator === "contains")
+    return `${quoteSqlLiteral(`%${row.value.replace(/[\\%_]/g, "\\$&")}%`)} ESCAPE '\\'`;
   switch (fieldType) {
     case "integer":
     case "number":
@@ -80,16 +83,19 @@ export function decompileSqlToFilterRows(expr: string): FilterRow[] | null {
   const clauses = expr.split(" AND ");
   const rows: FilterRow[] = [];
   for (const clause of clauses) {
-    const match = clause.match(/^"((?:[^"]|"")+)" (=|!=|>=|<=|>|<|LIKE) (.+)$/);
+    const match = clause.match(/^"((?:[^"]|"")+)" (=|!=|>=|<=|>|<|ILIKE|LIKE) (.+)$/);
     if (!match) return null;
     const [, rawColumn, sqlOp, rawValue] = match;
     const column = rawColumn.replace(/""/g, '"');
     const operator = SQL_TO_OPERATOR[sqlOp];
     let value: string;
     if (operator === "contains") {
-      const litMatch = rawValue.match(/^'%(.*)%'$/);
+      const escaped = rawValue.match(/^'%(.*)%' ESCAPE '\\'$/);
+      const legacy = escaped ? null : rawValue.match(/^'%(.*)%'$/);
+      const litMatch = escaped ?? legacy;
       if (!litMatch) return null;
       value = litMatch[1].replace(/''/g, "'");
+      if (escaped) value = value.replace(/\\([\\%_])/g, "$1");
     } else if (rawValue === "TRUE" || rawValue === "FALSE") {
       value = rawValue === "TRUE" ? "true" : "false";
     } else if (rawValue.startsWith("'")) {

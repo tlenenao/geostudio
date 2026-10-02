@@ -3,11 +3,12 @@ import { HelpCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import CodeMirror from "@uiw/react-codemirror";
+import CodeMirror, { Prec, keymap } from "@uiw/react-codemirror";
+import { acceptCompletion } from "@codemirror/autocomplete";
 // Alias `sqlLang` : le fichier a déjà une variable d'état locale `sql` (le
 // texte de la requête) — l'import du snippet du brief, nommé `sql` sans
 // alias, entre en collision de nom avec elle.
-import { sql as sqlLang, SQLite } from "@codemirror/lang-sql";
+import { sql as sqlLang, SQLite, type SQLNamespace } from "@codemirror/lang-sql";
 import { EditorView } from "@codemirror/view";
 import { useCollectionsAdmin, useInstanceInfo } from "../api/hooks";
 import { useItemClient } from "../api/ItemClientProvider";
@@ -28,6 +29,38 @@ import { Panel } from "../ui/kit/Panel";
 import { EmptyState } from "../ui/kit/EmptyState";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
+
+// P25.14 : toutes les collections interrogeables sont proposées à la saisie
+// (titre en détail), colonnes ajoutées dès que leur schéma est connu.
+export function buildSqlSchema(
+  collections: { id: string; title: string }[],
+  columnsById: Record<string, string[]>,
+): Record<string, SQLNamespace> {
+  const schema: Record<string, SQLNamespace> = {};
+  for (const [id, columns] of Object.entries(columnsById)) schema[id] = columns;
+  for (const c of collections) {
+    schema[c.id] = {
+      self: { label: c.id, type: "table", detail: c.title },
+      children: columnsById[c.id] ?? [],
+    };
+  }
+  return schema;
+}
+
+// P25.16 : Entrée insère une nouvelle ligne même quand la liste de complétion
+// est ouverte (elle validait le mot-clé « catalog ») ; Tab accepte la complétion.
+const sqlEditorKeys = Prec.highest(
+  keymap.of([
+    {
+      key: "Enter",
+      run: (view) => {
+        view.dispatch(view.state.replaceSelection("\n"), { scrollIntoView: true });
+        return true;
+      },
+    },
+    { key: "Tab", run: acceptCompletion },
+  ]),
+);
 
 type SqlResult = { columns: string[]; rows: unknown[][]; truncated: boolean };
 
@@ -181,7 +214,11 @@ export function SqlLabPage() {
                   value={sql}
                   height="8rem"
                   extensions={[
-                    sqlLang({ dialect: SQLite, schema: schemaByCollection }),
+                    sqlLang({
+                      dialect: SQLite,
+                      schema: buildSqlSchema(collectionsQuery.data ?? [], schemaByCollection),
+                    }),
+                    sqlEditorKeys,
                     // `aria-label` passé directement à <CodeMirror> atterrit
                     // sur le conteneur englobant, pas sur le
                     // `role="textbox"` (div `.cm-content` contenteditable)
@@ -238,7 +275,11 @@ export function SqlLabPage() {
                         <tr key={i}>
                           {row.map((cell, j) => (
                             <td key={j} className="border-b border-rule-2 p-1 text-ink">
-                              {cell === null || cell === undefined ? "" : String(cell)}
+                              {cell === null || cell === undefined ? (
+                                <span className="italic text-ink-2">{t("sqlLab.nullCell")}</span>
+                              ) : (
+                                String(cell)
+                              )}
                             </td>
                           ))}
                         </tr>

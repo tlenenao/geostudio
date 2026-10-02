@@ -9,7 +9,7 @@ import { server } from "../test/msw/server";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { enableMockAuth } from "../auth/useAuth";
-import { SqlLabPage } from "./SqlLabPage";
+import { SqlLabPage, buildSqlSchema } from "./SqlLabPage";
 
 // Le panneau copilote (SqlLabCopilotPanel → CopilotChat → useMcpToken)
 // bascule sur un jeton MCP factice en mode mock plutôt que d'exiger un
@@ -442,4 +442,33 @@ test("transmet au copilote la liste des collections visibles dans le contexte", 
     sql: "",
     collections: [{ id: "parcs", title: "Parcs urbains" }],
   });
+});
+
+test("P25.15 : NULL se distingue d'une chaîne vide dans le résultat", async () => {
+  server.use(
+    http.post("https://core.test/v1/analytics/sql", () =>
+      HttpResponse.json({ columns: ["a", "b"], rows: [[null, ""]], truncated: false }),
+    ),
+  );
+  render(<Harness />);
+  const editor = await screen.findByRole("textbox", { name: "Requête SQL" });
+  await userEvent.type(editor, "select 1");
+  await userEvent.click(screen.getByRole("button", { name: "Exécuter" }));
+  expect(await screen.findByText("NULL")).toBeInTheDocument();
+  expect(screen.getAllByRole("cell").map((c) => c.textContent)).toEqual(["NULL", ""]);
+});
+
+test("P25.14 : buildSqlSchema liste chaque collection avec son titre, colonnes si connues", () => {
+  const schema = buildSqlSchema(
+    [
+      { id: "ingest_a", title: "Parcs" },
+      { id: "ingest_b", title: "Rues" },
+    ],
+    { ingest_a: ["nom"] },
+  );
+  expect(schema.ingest_a).toEqual({
+    self: { label: "ingest_a", type: "table", detail: "Parcs" },
+    children: ["nom"],
+  });
+  expect(Object.keys(schema)).toEqual(["ingest_a", "ingest_b"]);
 });

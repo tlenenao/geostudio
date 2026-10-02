@@ -609,6 +609,7 @@ export const fr = {
   "sqlLab.sqlQueryLabel": "Requête SQL",
   "sqlLab.runButton": "Exécuter",
   "sqlLab.truncatedMessage": "Résultat tronqué aux {n} premières lignes.",
+  "sqlLab.nullCell": "NULL",
   "sqlLab.historyLabel": "Historique",
   "sqlLab.emptyHistory": "Aucune requête exécutée pour l'instant.",
   "sqlLab.errorLineLabel": "Ligne {line} : ",
