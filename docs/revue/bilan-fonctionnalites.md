@@ -147,7 +147,6 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | Builder — Widgets | Edition de geometrie Point dans le widget Formulaire | `builder-widgets-edition-de-geometrie-point-dans-le-widget-formulaire` | 95.8 | = | moyenne (amorcée) | 93.0 | — | — | 100.0 |
 | Builder — Widgets | Erreurs de validation serveur par champ sur le Formulaire | `builder-widgets-erreurs-de-validation-serveur-par-champ-sur-le-formulaire` | 95.8 | = | moyenne (amorcée) | 93.0 | — | — | 100.0 |
 | Builder — Widgets | Overrides de champ (ordre par glisser-deposer, masquage, requis, contraintes) | `builder-widgets-overrides-de-champ-ordre-par-glisser-deposer-masquage-requis-con` | 95.8 | = | moyenne (amorcée) | 93.0 | — | — | 100.0 |
-| auth | Promotion automatique en Administrateur ou Analyste par sub OIDC (CORE_ADMIN_SUBS / CORE_ANALYST_SUBS) | `auth-promotion-automatique-en-administrateur-ou-analyste-par-sub-oidc-core-admin` | 95.9 | = | moyenne (amorcée) | 93.2 | — | — | 100.0 |
 | Builder — Runtime | Editeur d'actions a l'entree de chapitre limite a un payload de centrage carte | `builder-runtime-editeur-d-actions-a-l-entree-de-chapitre-limite-a-un-payload-de-` | 95.9 | = | moyenne (amorcée) | 93.2 | — | — | 100.0 |
 | Fédération des données | Fraîcheur quasi temps réel des données pour l'analytique (capture de réplication logique Postgres → GeoParquet) | `federation-des-donnees-fraicheur-quasi-temps-reel-des-donnees-pour-l-analytique-` | 97.3 | = | haute (amorcée) | 95.5 | — | — | 100.0 |
 | Builder — Widgets | Widget Modale (conteneur, ouverture/fermeture par action) | `builder-widgets-widget-modale-conteneur-ouverture-fermeture-par-action` | 96.0 | = | moyenne (amorcée) | 93.3 | — | — | 100.0 |
@@ -199,6 +198,7 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | Collections | Modifier une collection (titre, publication, métadonnées ouvertes, champs pièces jointes) | `collections-modifier-une-collection-titre-publication-metadonnees-ouvertes-champ` | 98.3 | = | moyenne (amorcée) | 94.4 | 100.0 | 100.0 | 100.0 |
 | Collections | Supprimer une collection | `collections-supprimer-une-collection` | 98.3 | = | moyenne (amorcée) | 94.4 | 100.0 | 100.0 | 100.0 |
 | Carte | Ajout d'une couche par URL GeoJSON externe | `carte-ajout-d-une-couche-par-url-geojson-externe` | 98.9 | = | haute (amorcée) | 98.2 | — | — | 100.0 |
+| auth | Promotion automatique en Administrateur ou Analyste par sub OIDC (CORE_ADMIN_SUBS / CORE_ANALYST_SUBS) | `auth-promotion-automatique-en-administrateur-ou-analyste-par-sub-oidc-core-admin` | 98.4 | +2.5 | moyenne (amorcée) | 97.3 | — | — | 100.0 |
 | Catalogue/Items | Permissions calculées par item (une seule porte, read/write/delete/share) | `catalogue-items-permissions-calculees-par-item-une-seule-porte-read-write-delete` | 98.9 | = | haute (amorcée) | 98.2 | — | — | 100.0 |
 | Configs/AppConfig | Bâtir une app/dashboard/site no-code (pages, layout en grille, messages) | `configs-appconfig-batir-une-app-dashboard-site-no-code-pages-layout-en-grille-me` | 99.0 | = | haute (amorcée) | 97.4 | 100.0 | — | 100.0 |
 | Builder — Donnees | Panneau des sources de donnees (features/statistics/static) | `builder-donnees-panneau-des-sources-de-donnees-features-statistics-static` | 99.0 | = | haute (amorcée) | 98.3 | — | — | 100.0 |
@@ -271,7 +271,7 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | audit | Consulter le journal d'audit des actions sensibles | `audit-consulter-le-journal-d-audit-des-actions-sensibles` | 100.0 | = | haute (amorcée) | 100.0 | — | — | 100.0 |
 | auth | Accès anonyme en lecture aux items/collections publics | `auth-acces-anonyme-en-lecture-aux-items-collections-publics` | 100.0 | = | haute (amorcée) | 100.0 | — | — | 100.0 |
 | auth | Authentification OIDC (Keycloak) avec provisioning JIT du compte, et mode mock réservé au développement | `auth-authentification-oidc-keycloak-avec-provisioning-jit-du-compte-et-mode-mock` | 100.0 | = | haute (amorcée) | 100.0 | — | — | 100.0 |
-| auth | Déconnexion | `auth-deconnexion` | 100.0 | +12.0 | moyenne (amorcée) | 100.0 | — | — | 100.0 |
+| auth | Déconnexion | `auth-deconnexion` | 100.0 | = | moyenne (amorcée) | 100.0 | — | — | 100.0 |
 | auth | Garde : refus de démarrer en mode mock d'authentification hors développement | `auth-garde-refus-de-demarrer-en-mode-mock-d-authentification-hors-developpement` | 100.0 | = | haute (amorcée) | 100.0 | — | — | 100.0 |
 | auth | Jeton d'export à usage interne pour le rendu authentifié du worker Playwright | `auth-jeton-d-export-a-usage-interne-pour-le-rendu-authentifie-du-worker-playwrig` | 100.0 | = | moyenne (amorcée) | 100.0 | — | — | 100.0 |
 | Automatisation | Lister les pièces jointes d'une entité via un agent MCP | `automatisation-lister-les-pieces-jointes-d-une-entite-via-un-agent-mcp` | 100.0 | = | moyenne (amorcée) | 100.0 | 100.0 | — | 100.0 |
