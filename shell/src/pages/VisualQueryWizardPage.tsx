@@ -80,7 +80,13 @@ export function VisualQueryWizardPage({
   // Objets déjà créés par une tentative précédente (j05b-001) : un échec de
   // lancement se rattrape en réutilisant collection/dataset/pipeline, sans
   // orphelins ni doublons au clic suivant.
-  const createdRef = useRef<{ collectionId?: string; datasetPk?: string; pipelinePk?: string }>({});
+  const createdRef = useRef<{
+    collectionId?: string;
+    // Signature du schéma avec lequel la collection a été créée (P01.08).
+    schemaSig?: string;
+    datasetPk?: string;
+    pipelinePk?: string;
+  }>({});
   const [createdDatasetPk, setCreatedDatasetPk] = useState<string | null>(null);
   const [unrecognizedShape, setUnrecognizedShape] = useState(false);
   const [existingOutput, setExistingOutput] = useState<{
@@ -286,6 +292,15 @@ export function VisualQueryWizardPage({
         // donc inferredOutput (calculé à partir de baseSchema) l'est aussi.
         const inferred = inferredOutput!;
         const created = createdRef.current;
+        const sig = JSON.stringify([inferred.columns, inferred.geometryType, inferred.srid]);
+        if (created.collectionId && created.schemaSig !== sig) {
+          // P01.08 : le schéma a changé depuis la collection créée au clic
+          // précédent — la réutiliser garderait ses anciennes colonnes. On en
+          // crée une neuve ; dataset et pipeline sont re-liés plus bas.
+          const stale = created.collectionId;
+          created.collectionId = undefined;
+          await client.deleteCollection(stale).catch(() => undefined);
+        }
         if (!created.collectionId) {
           const { id } = await client.createEmptyCollection({
             title: t("visualQuery.datasetTitleTemplate", { title }),
@@ -294,6 +309,7 @@ export function VisualQueryWizardPage({
             srid: inferred.srid,
           });
           created.collectionId = id;
+          created.schemaSig = sig;
         }
         outputCollectionId = created.collectionId;
         if (!created.datasetPk) {
