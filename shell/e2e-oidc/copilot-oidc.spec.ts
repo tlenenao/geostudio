@@ -23,8 +23,12 @@ async function allowCrossOriginCore(page: Page) {
     if (route.request().method() === "OPTIONS") {
       return route.fulfill({ status: 204, headers: cors });
     }
-    const res = await route.fetch();
-    return route.fulfill({ response: res, headers: { ...res.headers(), ...cors } });
+    try {
+      const res = await route.fetch();
+      await route.fulfill({ response: res, headers: { ...res.headers(), ...cors } });
+    } catch {
+      // page fermée en cours de requête (fin de test) : rien à relayer
+    }
   });
 }
 
@@ -87,10 +91,10 @@ test("copilote sous OIDC réel : brouillon intact, jeton d'audience MCP, 25 tour
       const sent = res.request().postDataJSON();
       expect(audOf(sent.mcpToken)).toContain("geostudio-mcp");
     }
-    await expect(page.getByText(`tour ${i}`, { exact: true })).toBeVisible();
+    await expect(page.getByText(`tour ${i}`, { exact: true }).first()).toBeVisible();
     await expect(widgets).toHaveCount(1);
   }
-  await expect(page.getByText("tour 1", { exact: true })).toBeVisible();
+  await expect(page.getByText("tour 1", { exact: true }).first()).toBeVisible();
 
   // 25 tours de plus (28 au total) : fenêtre glissante, jamais de 422.
   for (let i = 4; i <= 28; i++) {

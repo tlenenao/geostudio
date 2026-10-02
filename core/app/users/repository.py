@@ -76,7 +76,10 @@ def get_or_create_user(
             user = new_user
             just_created = True
         except IntegrityError:
-            session.expunge(new_user)
+            # Le rollback du savepoint a déjà expulsé new_user de la session
+            # (InvalidRequestError « not present in this Session » sinon).
+            if new_user in session:
+                session.expunge(new_user)
             user = retry_on_sqlite_row_corruption(
                 lambda: session.scalar(
                     select(User).where(User.tenant_id == tenant_id, User.oidc_sub == oidc_sub)
