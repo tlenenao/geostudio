@@ -95,6 +95,10 @@ def test_non_global_addresses_blocked(url):
         "postgresql://u:p@db.example/db?host=10.0.0.1",
         "postgresql://u:p@db.example/db?hostaddr=192.168.0.9,8.8.8.8",
         "mssql+pymssql://u:p@[::1]:1433/db",
+        # hôte passé par un paramètre de pilote plutôt que par l'URL
+        "mssql+pymssql://u:p@/db?server=127.0.0.1",
+        "oracle+oracledb://u:p@/?dsn=127.0.0.1:1521/x",
+        "mssql+pyodbc://u:p@/db?odbc_connect=SERVER%3D127.0.0.1",
     ],
 )
 def test_dsn_with_internal_host_blocked(dsn, monkeypatch):

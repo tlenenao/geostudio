@@ -76,6 +76,10 @@ def assert_dsn_egress_allowed(dsn: str) -> None:
     """Même garde pour l'hôte d'un DSN SQLAlchemy (P16.02) — hôte de l'URL
     et paramètres libpq `host`/`hostaddr` (peuvent être multiples)."""
     url = make_url(dsn)
+    # Paramètres de pilote qui désignent un hôte hors de l'URL (mssql/oracle) :
+    # non analysables de façon fiable (descripteur TNS, chaîne ODBC) → refusés.
+    if {"server", "dsn", "odbc_connect", "hostname", "address"} & set(url.query):
+        raise EgressBlockedError("DSN : hôte porté par un paramètre de pilote, refusé")
     hosts = [url.host or ""]
     for key in ("host", "hostaddr"):
         val = url.query.get(key, ())
