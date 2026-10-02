@@ -1402,7 +1402,12 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put?: never;
+        /**
+         * Update Secret Route
+         * @description Remplace la valeur en place (P16.05) : nom et kind inchangés, donc
+         *     les configs qui citent le secret par son nom continuent de marcher.
+         */
+        put: operations["update_secret_route_v1_secrets__secret_id__put"];
         post?: never;
         /** Delete Secret Route */
         delete: operations["delete_secret_route_v1_secrets__secret_id__delete"];
@@ -3400,6 +3405,11 @@ export interface components {
         SecretCreate: {
             /** Name */
             name: string;
+            /** Payload */
+            payload: components["schemas"]["ApiKeyPayload"] | components["schemas"]["BearerTokenPayload"] | components["schemas"]["BasicAuthPayload"] | components["schemas"]["OAuth2ClientCredentialsPayload"] | components["schemas"]["PostgresDsnPayload"] | components["schemas"]["SmtpCredentialsPayload"] | components["schemas"]["SnowflakeDsnPayload"] | components["schemas"]["BigQueryDsnPayload"] | components["schemas"]["MssqlDsnPayload"] | components["schemas"]["OracleDsnPayload"] | components["schemas"]["S3CredentialsPayload"] | components["schemas"]["AzureBlobCredentialsPayload"] | components["schemas"]["GcsCredentialsPayload"];
+        };
+        /** SecretUpdate */
+        SecretUpdate: {
             /** Payload */
             payload: components["schemas"]["ApiKeyPayload"] | components["schemas"]["BearerTokenPayload"] | components["schemas"]["BasicAuthPayload"] | components["schemas"]["OAuth2ClientCredentialsPayload"] | components["schemas"]["PostgresDsnPayload"] | components["schemas"]["SmtpCredentialsPayload"] | components["schemas"]["SnowflakeDsnPayload"] | components["schemas"]["BigQueryDsnPayload"] | components["schemas"]["MssqlDsnPayload"] | components["schemas"]["OracleDsnPayload"] | components["schemas"]["S3CredentialsPayload"] | components["schemas"]["AzureBlobCredentialsPayload"] | components["schemas"]["GcsCredentialsPayload"];
         };
@@ -7269,6 +7279,43 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectorSecretOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_secret_route_v1_secrets__secret_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                secret_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
