@@ -118,7 +118,16 @@ export type PurgeReceipt = {
 
 export type NotificationSummary = {
   id: string;
-  kind: "ingestion" | "pipeline" | "export" | "appexport" | "report";
+  kind:
+    | "ingestion"
+    | "pipeline"
+    | "export"
+    | "appexport"
+    | "report"
+    | "alert"
+    | "harvest"
+    | "tileset3d"
+    | "terrain3d";
   status: "success" | "failure";
   itemId: string | null;
   itemResourceType: ResourceType | null;
@@ -1132,7 +1141,8 @@ export interface AlertCondition {
 }
 
 export type AlertChannel =
-  { kind: "webhook"; url: string } | { kind: "email"; to: string; smtpSecretName: string };
+  | { kind: "webhook"; url: string; signingSecretName?: string }
+  | { kind: "email"; to: string; smtpSecretName: string };
 
 export interface AlertRulePayload {
   datasetItemId: string;
@@ -1157,6 +1167,9 @@ export interface AlertEvaluation {
   state: "pending" | "ok" | "firing" | "error";
   transitioned: boolean;
   error: string | null;
+  // P20.01 : livraison de la notification (null = aucune tentative)
+  notifyStatus?: "delivered" | "failed" | null;
+  notifyError?: string | null;
   createdAt: string;
 }
 

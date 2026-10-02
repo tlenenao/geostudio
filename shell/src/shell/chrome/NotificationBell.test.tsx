@@ -276,3 +276,42 @@ test(
   },
   OPEN_TIMEOUT,
 );
+
+test(
+  "noms accessibles distincts, non-lue mise en évidence, « Charger plus » atteint les plus anciennes",
+  async () => {
+    const make = (i: number, readAt: string | null) => ({
+      id: `n${i}`,
+      kind: "alert",
+      status: "failure",
+      itemId: null,
+      itemResourceType: null,
+      itemTitle: `Notif ${i}`,
+      errorMessage: null,
+      createdAt: "2026-09-04T10:00:00Z",
+      readAt,
+    });
+    server.use(
+      http.get("https://core.test/v1/notifications/unread-count", () =>
+        HttpResponse.json({ count: 1 }),
+      ),
+      http.get("https://core.test/v1/notifications", ({ request }) => {
+        const size = Number(new URL(request.url).searchParams.get("pageSize"));
+        const all = Array.from({ length: 25 }, (_, i) => make(i, i === 0 ? null : "x"));
+        return HttpResponse.json({ notifications: all.slice(0, size), total: 25 });
+      }),
+    );
+    render(<Harness />);
+    await userEvent.click(await screen.findByRole("button", { name: "Notifications" }));
+    expect(await screen.findByLabelText("Notifications", { exact: true })).toBeInTheDocument();
+    expect(
+      screen.getByRole("combobox", { name: "Préférence de notification" }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("Notif 0")).toHaveClass("font-semibold");
+    expect(screen.getByText("Notif 1")).not.toHaveClass("font-semibold");
+    expect(screen.queryByText("Notif 24")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Charger plus" }));
+    expect(await screen.findByText("Notif 24")).toBeInTheDocument();
+  },
+  OPEN_TIMEOUT,
+);

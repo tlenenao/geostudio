@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { Bell } from "lucide-react";
+import { useState } from "react";
 import {
   useMarkAllNotificationsRead,
   useMarkNotificationRead,
@@ -15,12 +16,19 @@ import { t } from "../../i18n";
 import type { MessageKey } from "../../i18n";
 import { useOpenItem } from "../useOpenItem";
 
+// j09-007 : « Charger plus » agrandit la page (pas de page++ : la liste reste unique).
+const PAGE_SIZE = 20;
+
 const KIND_LABEL_KEYS: Record<NotificationSummary["kind"], MessageKey> = {
   ingestion: "notifications.kindIngestion",
   pipeline: "notifications.kindPipeline",
   export: "notifications.kindExport",
   appexport: "notifications.kindAppexport",
   report: "notifications.kindReport",
+  alert: "notifications.kindAlert",
+  harvest: "notifications.kindHarvest",
+  tileset3d: "notifications.kindTileset3d",
+  terrain3d: "notifications.kindTerrain3d",
 };
 
 const PREFERENCE_LABEL_KEYS: Record<NotificationPreferenceValue, MessageKey> = {
@@ -32,6 +40,7 @@ const PREFERENCE_LABEL_KEYS: Record<NotificationPreferenceValue, MessageKey> = {
 function NotificationRow({ notification }: { notification: NotificationSummary }) {
   const { onOpenItem } = useOpenItem();
   const markRead = useMarkNotificationRead();
+  const unread = notification.readAt === null;
 
   const content = (
     <div className="flex flex-col gap-0.5">
@@ -45,7 +54,13 @@ function NotificationRow({ notification }: { notification: NotificationSummary }
           )}
         </Badge>
       </div>
-      <span className="text-sm text-ink">
+      <span className={`text-sm text-ink ${unread ? "font-semibold" : ""}`}>
+        {unread && (
+          <>
+            <span aria-hidden="true" className="mr-1 inline-block h-2 w-2 rounded-full bg-accent" />
+            <span className="sr-only">{t("notifications.unread")}. </span>
+          </>
+        )}
         {notification.itemTitle || t("notifications.deletedItem")}
       </span>
       {notification.errorMessage && (
@@ -83,7 +98,8 @@ function NotificationRow({ notification }: { notification: NotificationSummary }
 
 export function NotificationBell() {
   const unreadQuery = useUnreadNotificationCount();
-  const notificationsQuery = useNotifications({ page: 1, pageSize: 20 });
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  const notificationsQuery = useNotifications({ page: 1, pageSize });
   const preferenceQuery = useNotificationPreference();
   const updatePreference = useUpdateNotificationPreference();
   const markAllRead = useMarkAllNotificationsRead();
@@ -91,7 +107,7 @@ export function NotificationBell() {
 
   return (
     <Popover
-      aria-label={t("notifications.bell")}
+      aria-label={t("notifications.panel")}
       trigger={
         <button aria-label={t("notifications.bell")} className="relative rounded-full p-2">
           <Bell className="h-4 w-4" />
@@ -107,7 +123,7 @@ export function NotificationBell() {
         <div className="flex flex-col gap-1">
           <div className="flex items-center justify-between gap-2">
             <select
-              aria-label={t("notifications.bell")}
+              aria-label={t("notifications.preference")}
               className="rounded border border-rule bg-surface px-1 py-0.5 text-xs text-ink"
               value={preferenceQuery.data ?? "all"}
               onChange={(e) =>
@@ -147,6 +163,15 @@ export function NotificationBell() {
           {notificationsQuery.data?.notifications.map((n) => (
             <NotificationRow key={n.id} notification={n} />
           ))}
+          {(notificationsQuery.data?.total ?? 0) >
+            (notificationsQuery.data?.notifications.length ?? 0) && (
+            <button
+              className="self-start text-xs text-ink-2 hover:text-ink"
+              onClick={() => setPageSize((n) => n + PAGE_SIZE)}
+            >
+              {t("notifications.loadMore")}
+            </button>
+          )}
         </div>
       </div>
     </Popover>

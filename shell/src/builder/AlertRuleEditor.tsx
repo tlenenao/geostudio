@@ -7,7 +7,8 @@ import {
   useEvaluateAlertRule,
 } from "../api/hooks";
 import type { AlertChannel, AlertRuleSummary } from "../api/types";
-import { t } from "../i18n";
+import { apiErrorMessage } from "../api/apiErrorMessage";
+import { t, type MessageKey } from "../i18n";
 import { PipelineScheduleEditor } from "./pipeline/PipelineScheduleEditor";
 import { SecretParamSelect } from "./pipeline/SecretParamSelect";
 import type { PipelineRefreshPolicy } from "../api/types";
@@ -34,7 +35,11 @@ function AlertRuleRow({ rule }: { rule: AlertRuleSummary }) {
         <span>{rule.title}</span>
         <div className="flex items-center gap-2">
           <span className={latest?.state === "firing" ? "font-semibold text-danger" : "text-ink-2"}>
-            {latest ? latest.state : "—"}
+            {latest
+              ? t(
+                  `alertRule.state${latest.state[0].toUpperCase()}${latest.state.slice(1)}` as MessageKey,
+                )
+              : "—"}
           </span>
           <Button
             type="button"
@@ -47,6 +52,32 @@ function AlertRuleRow({ rule }: { rule: AlertRuleSummary }) {
           </Button>
         </div>
       </div>
+      {latest && (
+        <p className="text-ink-2">
+          {latest.value !== null && `${t("alertRule.value", { value: latest.value })} · `}
+          {new Date(latest.createdAt).toLocaleString()}
+        </p>
+      )}
+      {latest?.error && (
+        <p className="text-danger" data-testid="alert-latest-error">
+          {latest.error}
+        </p>
+      )}
+      {latest?.notifyStatus === "failed" && (
+        <p className="text-danger">
+          {t("alertRule.notifyFailed", { reason: latest.notifyError ?? "" })}
+        </p>
+      )}
+      {evaluateNow.isError && (
+        <p role="alert" className="text-danger">
+          {apiErrorMessage(evaluateNow.error, t("alertRule.evaluateError"))}
+        </p>
+      )}
+      {evaluateNow.isSuccess && (
+        <p role="status" className="text-ink-2">
+          {t("alertRule.evaluateStarted")}
+        </p>
+      )}
       {evaluations.length >= limit && (
         <Button
           type="button"
@@ -160,15 +191,27 @@ export function AlertRuleEditor({
           </select>
         </label>
         {channel.kind === "webhook" && (
-          <label className="flex flex-col gap-1">
-            {t("alertRule.webhookUrlLabel")}
-            <input
-              aria-label={t("alertRule.webhookUrlLabel")}
-              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
-              value={channel.url}
-              onChange={(e) => setChannel({ kind: "webhook", url: e.target.value })}
+          <>
+            <label className="flex flex-col gap-1">
+              {t("alertRule.webhookUrlLabel")}
+              <input
+                aria-label={t("alertRule.webhookUrlLabel")}
+                className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+                value={channel.url}
+                onChange={(e) => setChannel({ ...channel, url: e.target.value })}
+              />
+            </label>
+            <span>{t("alertRule.signingSecretLabel")}</span>
+            <SecretParamSelect
+              ariaLabel={t("alertRule.signingSecretLabel")}
+              kindFilter="bearer_token"
+              value={channel.signingSecretName ?? ""}
+              onChange={(v) => {
+                const { signingSecretName: _drop, ...rest } = channel;
+                setChannel(v ? { ...rest, signingSecretName: v } : rest);
+              }}
             />
-          </label>
+          </>
         )}
         {channel.kind === "email" && (
           <>

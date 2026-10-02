@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useItemClient as useItemClientInternal } from "../ItemClientProvider";
 import type { NotificationPreferenceValue } from "../types";
 
@@ -8,6 +8,7 @@ export function useNotifications(params: { page: number; pageSize: number }) {
   return useQuery({
     queryKey: ["notifications", params],
     queryFn: () => client.listNotifications(params),
+    placeholderData: keepPreviousData, // « Charger plus » : pas de flash de liste vide
   });
 }
 
