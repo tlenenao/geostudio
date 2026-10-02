@@ -7524,3 +7524,151 @@ surface déjà livrée.
   resté non tracké depuis son écriture), `docs/revue/2026-09-04-backlog.md`
   (REV-255/256/257) et `docs/revue/historique-sante.jsonl` (sous-produit
   de `--write`), en plus des 5 fichiers de correctifs E2E/unit ci-dessus.
+
+## Audit pré-release 2026-09-29 — paquets P01 à P15 (clos 2026-10-02)
+
+Plan : `docs/revue/audit-2026-09-29/PLAN-CONSOLIDE.md` (386 tâches en 36
+paquets, 14 causes racines RC-1..RC-14). Exécuté sur `dev` : P01 à P15, ~120
+commits (`git log origin/main..dev`). **P16 à P36 non lancés.** Ids de
+findings (`c01-002`, `j05-012`…) : dossiers `docs/revue/audit-2026-09-29/`.
+Récit relu contre le code et les messages de commit (piège n°12).
+
+### P01-P05 — socle d'exécution (RC-1 à RC-5)
+
+- **P01 (jobs, RC-1)** : le `lifespan` ouvre le connecteur procrastinate
+  (ouverture non bloquante, pas de pool de defer hors Postgres) — jusque-là
+  tout `.defer()` synchrone de l'API levait `AppNotOpen` (import, moissonnage,
+  alertes, runs, exports). Image `core` installée depuis `uv.lock` (P01.02) ;
+  le balayage clôt le run de pipeline périmé qu'il remplace (P01.03) et les
+  jobs `pending`/`queued` jamais pris en charge (P01.04) ; transitions de
+  statut en `UPDATE` conditionnel (P01.05) ; un `Engine` par process worker
+  (P01.06) ; `/health` expose `jobsBacklog` (P01.07) ; le wizard de requête
+  rejoue la liaison dataset→pipeline sans doublon (P01.08). Contournement
+  « defer rejoué à la main » retiré de `REJEU.md`.
+- **P02 (worker, RC-2)** : worker consomme aussi `harvest`, concurrence 4
+  (`CORE_WORKER_CONCURRENCY`), parité d'env avec `core`, `app.compliance.jobs`
+  ajouté aux `import_paths`, `queueing_lock` sur les 8 tâches périodiques ;
+  règles de déployabilité associées (c02-003, c09-001/002, j06b-005).
+- **P03 (S3, RC-3/13)** : CORS MinIO via `MINIO_API_CORS_ALLOW_ORIGIN`, port
+  9000, `S3_PUBLIC_ENDPOINT_URL` sur core/worker/export-worker (hôte de
+  signature des liens présignés) ; `put_bucket_cors` non implémenté = non
+  fatal ; `writer.export` crée son bucket et force la clé sous le préfixe du
+  tenant ; plafond `CORE_UPLOAD_MAX_BYTES` (512 Mio) par `head_object` ;
+  jobs d'upload/export lisibles par leur seul initiateur ; suppression S3 d'une
+  pièce jointe après le commit. Routeur Traefik prod `minio-s3` (hostname
+  `S3_PUBLIC_HOST`) ajouté en toute fin de chantier (98d0897e).
+- **P04 (shell servi, RC-4)** : nginx sert `.mjs` en `text/javascript`, cache
+  immuable des assets hachés, 404 sur `/assets/*` absent, image épurée ;
+  carte du filtre spatial du catalogue chargée à l'ouverture (vendor-map hors
+  chemin critique) ; seuil de bundle 730 Ko (marge ~5 %) ; contournements
+  `fixWorkerMime`/`stubMap` retirés des parcours E2E.
+- **P05 (lac, RC-5)** : `lake_geometry_rename()` unique, lu depuis
+  `table_info.geometry_column` (`geom` d'une collection importée) pour SQL Lab,
+  agrégats, requête visuelle, `reader.collection` ; dates typées à la
+  matérialisation SQL Lab.
+- **Revue finale P01–P05 : 6 Important**, tous corrigés — âge de file de
+  `/health` nul (un `defer()` immédiat laisse `scheduled_at` NULL, un worker
+  arrêté restait invisible) ; lecteur jumeau `analytics.aggregate` oublié par
+  P05 (miniserveur/`geometry`) ; garde de lecture jumelle des app-exports
+  (`/export`, `/uploads`, `/tileset3d/uploads`) ; URL de part multipart 3D
+  encore sur `minio:9000` (jumelle de `generate_presigned_*`) ; `pool_pre_ping`
+  absent sur l'`Engine` unique (P01.06) qui devait survivre à un redémarrage
+  de pgbouncer ; wizard orphelin (collection non recréée si le schéma change
+  après échec). Un correctif ultérieur : `/health` anonyme met son `COUNT` en
+  cache 5 s.
+- **Non-faits P01-P05** : P02.06 (passe d'audit avec ETL activé = consigne
+  d'audit, pas du code) ; P03.05 partiel (plafond fait, lecture partielle
+  pour l'inspection non faite : xlsx/parquet exigent le fichier entier) ;
+  P04.05 (seuil relevé avec marge, mais `index.js` non allégé) ; P04.06 LCP
+  jamais mesuré (seul le chemin critique est allégé) ; P04.07 (filet E2E de
+  rendu canvas) non fait ; orphelins S3 (échec après upload, suppression
+  ratée) : aucun commit au 2026-10-02.
+
+### P06-P11 — exécution, session, installation, intégrité, export
+
+- **P06** : export-worker (pool transaction), erreur explicite si le cœur est
+  injoignable depuis lui, premier run de rapport calé sur le prochain tick,
+  modifier un rapport exige de pouvoir lire l'app rendue ; mini-serveur
+  autoporté lit `geometry` (RC-5).
+- **P07** : renouvellement silencieux sans démonter le shell, `returnTo`
+  conservé (et refusant `\` et caractères de contrôle, `safeReturnTo`, trouvé
+  en revue finale), route d'usage d'app attend l'auth, copilote borné (40
+  messages / 4000 car.), 401 → renouvellement partagé puis `signIn()`,
+  historiques SQL Lab/copilote cloisonnés par compte ; spec
+  `e2e-oidc/copilot-oidc.spec.ts` (LLM `fake`).
+- **P08** : tag d'images et révision solidaires (playbook checkout du tag),
+  `release.yml` job `verify-tag` (version == tag, commit sur `main`, `ci.yml`
+  vert), `set_env_var` littéral (awk), 3 secrets HMAC générés à l'install
+  (clé vide = absente, lien de partage sans secret → 503), secret kcadm en
+  stdin, `docker-socket-proxy` en lecture seule devant Traefik, DCR Keycloak
+  cadré par Trusted Hosts (vérifié contre Keycloak 24.0.5 : localhost/claude.ai
+  201, hôte tiers 403).
+- **P09** : écriture annoncée seulement après commit effectif (écouteur
+  `after_commit`, pas de changement de `get_session`), suppression par id avec
+  garde de références inverses, FK `ON DELETE` (migration 0043), `If-Match`
+  → 412 sur écriture de config + builder d'app qui envoie la version lue,
+  `beforeunload`, plafond 5 Mo (413) sur les écritures de config puis sur le
+  dépôt (MCP, pipelines, jobs), historique de versions rafraîchi, downgrades
+  0008/0039/0042 sûrs. Test de verrou de ligne face à deux écrivains.
+- **P10** : 16 défauts du builder d'app (id d'action conservé, suppression
+  clavier bornée au canevas, widgets d'exemple hors prod, undo de variable,
+  confirmation de page, redimensionner/dupliquer, libellés de source, repli
+  sur page/chapitre inconnu, empilement mobile) ; `validate_feature` n'exige
+  plus `tenant_id`.
+- **P11** : mini-serveur autoporté sous `/v1` avec géométrie, garde d'export
+  complète (`variableInput`, widgets imbriqués), seuls `app`/`dashboard`
+  exportables, troncature à 50 000 signalée, image autoportée épinglée à la
+  version du cœur + manifeste versionné, `.dockerignore` racine.
+
+### P12-P15 — autorisation (RC-7, RC-8)
+
+- **P12** : plafond « ≤ mes privilèges » à l'attribution/édition de rôle
+  (PoC c01-002 inversé en test), downgrade 0030 sans promotion, compte
+  anonymisé non recréé au login suivant (tombstone `erased:` + sha256 du
+  `oidc_sub`), anonymisation atteignable par l'admin seul (`compliance.manage`
+  réservé à la purge), nom de rôle borné/unique, liste d'utilisateurs
+  enrichie (tri/filtre serveur, `erased`), `%`/`_` littéraux, suppression de
+  rôle annonçant le nombre d'utilisateurs, retrait audité d'une extension,
+  routes pipeline/requête visuelle sous privilège. Décisions documentées dans
+  `app/roles/privileges.py` : `data.view` navigationnel (P12.09, test de garde
+  sur tout privilège), le Lecteur ne crée pas de bookmark (P12.10).
+- **P13** : scope inconnu → 422, tables Keycloak/procrastinate hors registre
+  de collections, formules neutralisées dans CSV/XLSX, MVT `private` + `Vary`,
+  validation d'extension (https, tag, tailles), présigné/inspection réservés
+  à `data.manage`.
+- **P14** : publier/renommer/partager exigent le privilège du kind en plus du
+  rôle d'item (REST et MCP), lien de partage éteint quand son créateur perd le
+  droit, CRUD de groupe réservé au créateur/admin, `GET /users/directory`,
+  révocation bornée à l'item ; shell : partage par annuaire, publication
+  guidée.
+- **P15** : `sensitiveFields` non modifiable ni lisible sans
+  `data.view_sensitive`/`admin.collections.manage`, `PUT` d'entité ne met plus
+  à NULL colonnes masquées/listes, export d'app, `reader.collection`/jointures
+  de pipeline et schéma MCP excluent les champs sensibles — **ferme les 2
+  bypass documentés de GAP-22** (pipelines, appexport).
+- **Revue finale P06–P15 : 2 Important**, corrigés — partage cassé pour
+  l'Analyste (le garde `catalog.manage` le laissait sans groupes ni annuaire,
+  alors qu'il partage ses bookmarks via `analytics.view` : liste des groupes et
+  annuaire ouverts à qui peut partager un kind) ; `safeReturnTo` laissait
+  passer l'antislash.
+
+### Écarts assumés et non-faits (P06-P15)
+
+- **P08.05** : la protection de branche `main` est un réglage GitHub (hors
+  dépôt), à faire par le propriétaire ; `verify-tag` ne le remplace pas. Le
+  tag `v0.1.0` existant n'a ni image `minio` ni `titiler` : nouvelle release
+  nécessaire. La politique Trusted Hosts Keycloak est resynchronisée à
+  l'install ; sur les instances existantes elle est à ajouter à la main ;
+  les Trusted Hosts côté MCP restent à arbitrer.
+- **P09** : `If-Match` seulement sur le builder d'app (pas carte, dataset,
+  pipeline, rapport ; ni MCP ni écritures de pipeline).
+- **P12.09/P12.10** : décisions produit documentées, pas de code ;
+  **P14.12** rôle « gestionnaire » (décision produit + migration), **P14.14**
+  (parcours d'audit lien à échéance), **P15.05** (propriétaire/champs
+  sensibles : décision produit) non faits.
+- Specs `e2e/journeys/` et `e2e-oidc/copilot-oidc.spec.ts` jamais exécutées
+  contre la stack réelle (stack Keycloak/compose requise). `VITE_CORE_URL`
+  relatif non traité. Tombstone RGPD par hash de `oidc_sub` : pseudonyme
+  déterministe, pas une anonymisation irréversible.
+- Backlog : reliquats en `REV-266` à `REV-272`. GAP-22 : note ajoutée (2
+  bypass fermés). Bilan de fonctionnalités régénéré par un autre agent.
