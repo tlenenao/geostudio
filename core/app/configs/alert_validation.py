@@ -22,6 +22,14 @@ def validate_alert_payload(session: Session, config: BuilderConfig, *, user: Use
     payload = config.alert
     assert payload is not None  # guaranteed by BuilderConfig._require_kind_payload
 
+    if len(payload.refreshPolicy.cron.split()) != 5:
+        # REV-275 : jumelle de P18.08 — le balayage tourne toutes les 5 min, un cron
+        # à 6 champs n'a aucun sens. Écriture seulement (configs existantes relisibles).
+        raise HTTPException(
+            status_code=422,
+            detail=f"cron must have exactly 5 fields: {payload.refreshPolicy.cron!r}",
+        )
+
     facts = items_repo.get_access_facts(
         session, tenant_id=user.tenant_id, item_id=payload.datasetItemId
     )
