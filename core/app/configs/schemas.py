@@ -2,7 +2,7 @@
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel as _PydanticBaseModel
-from pydantic import ConfigDict, Field, model_validator
+from pydantic import ConfigDict, Field, ValidationInfo, model_validator
 
 from app.analytics.aggregate import (
     AggregateRequestBody,
@@ -13,12 +13,23 @@ from app.configs.alert_condition import validate_condition_expr
 
 
 class BaseModel(_PydanticBaseModel):
-    """Base des documents de config : une clé inconnue est rejetée (422) au lieu
-    d'être supprimée en silence (c08-002). Les bornes de valeur, elles, vivent
-    dans app.configs.document_validation (écriture seulement) : une contrainte
-    dans le modèle rendrait illisible toute config déjà enregistrée."""
+    """Base des documents de config : à l'ÉCRITURE (corps de requête, MCP), une
+    clé inconnue est rejetée (422) au lieu d'être supprimée en silence
+    (c08-002). À la RELECTURE d'une config stockée (repository, rollback,
+    balayages cron), `context={"lenient": True}` la tolère : une clé retirée ou
+    ajoutée depuis l'écriture ne doit jamais rendre une config illisible. Les
+    bornes de valeur vivent dans app.configs.document_validation."""
 
-    model_config = ConfigDict(extra="forbid")
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_unknown_keys(cls, data: Any, info: ValidationInfo) -> Any:
+        if isinstance(data, dict) and not (info.context or {}).get("lenient"):
+            known = set(cls.model_fields)
+            for f in cls.model_fields.values():
+                known |= {a for a in (f.alias, f.validation_alias) if isinstance(a, str)}
+            if extra := sorted(str(k) for k in data if k not in known):
+                raise ValueError(f"unknown keys: {', '.join(extra)}")
+        return data
 
 
 class DataSource(BaseModel):

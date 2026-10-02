@@ -3,6 +3,7 @@
 l'écriture, pagination/fenêtres bornées (jamais 500)."""
 
 import copy
+import os
 
 import pytest
 from fastapi.testclient import TestClient
@@ -128,3 +129,26 @@ def test_bad_pagination_is_422_never_500(client, path):
 def test_usage_summary_inverted_window_is_400(client):
     r = client.get("/v1/usage/summary?since=2026-02-01&until=2026-01-01")
     assert r.status_code in (400, 403)  # 403 si l'utilisateur mock n'a pas tasks.view_all
+
+
+def test_stored_config_with_unknown_key_stays_readable(client):
+    """Le rejet des clés inconnues est une règle d'ÉCRITURE : une config déjà
+    stockée avec une clé retirée/ajoutée depuis doit rester lisible (GET,
+    rollback, balayages cron)."""
+    from sqlalchemy.orm.attributes import flag_modified
+
+    from app.configs import repository as repo
+    from app.configs.models import ConfigRevision
+    from app.db import make_session_factory
+
+    created = _post(client, _MAP).json()
+    with make_session_factory(make_engine(os.environ["DATABASE_URL"]))() as s:
+        rev = s.query(ConfigRevision).filter_by(config_id=created["id"]).one()
+        rev.data = {**rev.data, "legacyTop": 1}
+        rev.data["map"]["layers"][0]["legacyKey"] = True
+        flag_modified(rev, "data")
+        s.commit()
+        assert [c for _, _, c in repo.list_configs_by_kind(s, "map")]
+    assert client.get(f"/v1/configs/by-item/{created['itemId']}").status_code == 200
+    assert client.get(f"/v1/configs/{created['id']}").status_code == 200
+    assert _post(client, {**_MAP, "legacyTop": 1}).status_code == 422  # écriture toujours stricte

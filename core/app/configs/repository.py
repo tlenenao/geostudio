@@ -34,7 +34,7 @@ def _to_read(config: Config, revision: ConfigRevision) -> ConfigRead:
         kind=config.kind,
         itemId=config.item_id,
         version=revision.version,
-        config=BuilderConfig.model_validate(revision.data),
+        config=BuilderConfig.model_validate(revision.data, context=_LENIENT),
     )
 
 
@@ -105,6 +105,9 @@ def get_config_by_item(session: Session, item_id: str) -> ConfigRead | None:
     return _to_read(record, revision)
 
 
+_LENIENT = {"lenient": True}  # relecture: tolère les clés inconnues (cf. schemas.BaseModel)
+
+
 def list_configs_by_kind(session: Session, kind: str) -> list[tuple[str, str, BuilderConfig]]:
     """Scan cross-tenant (pas de filtre tenant_id) — réservé aux tâches
     système (balayage périodique, SP-15h), jamais exposé via une route :
@@ -119,7 +122,7 @@ def list_configs_by_kind(session: Session, kind: str) -> list[tuple[str, str, Bu
         if revision is None:
             continue
         try:
-            config = BuilderConfig.model_validate(revision.data)
+            config = BuilderConfig.model_validate(revision.data, context=_LENIENT)
         except ValidationError:
             # Une config stockée corrompue (édition manuelle en base,
             # durcissement de schéma depuis l'écriture) ne doit jamais faire
@@ -155,7 +158,7 @@ def list_configs_by_kind_and_tenant(
         if revision is None:
             continue
         try:
-            config = BuilderConfig.model_validate(revision.data)
+            config = BuilderConfig.model_validate(revision.data, context=_LENIENT)
         except ValidationError:
             # Même discipline que list_configs_by_kind : une config stockée
             # corrompue est journalisée et ignorée plutôt que de faire
@@ -295,7 +298,7 @@ def rollback_config(
     if record.item_id is not None:
         item = session.get(Item, record.item_id)
         if item is not None:
-            restored_config = BuilderConfig.model_validate(source.data)
+            restored_config = BuilderConfig.model_validate(source.data, context=_LENIENT)
             recompute_item_bbox(session, item=item, config=restored_config, tenant_id=tenant_id)
     return _to_read(record, revision)
 
@@ -311,7 +314,7 @@ def get_revision_config(session: Session, config_id: str, version: int) -> Build
     )
     if source is None:
         return None
-    return BuilderConfig.model_validate(source.data)
+    return BuilderConfig.model_validate(source.data, context=_LENIENT)
 
 
 def delete_config(session: Session, config_id: str) -> bool:
