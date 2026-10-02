@@ -149,7 +149,6 @@ def select_features(
 ) -> FeaturePage:
     t = quote_ident(session, info.table_name)
     where, params = _where(session, info, bbox, geom_intersects, filters)
-    matched = session.execute(text(f"SELECT count(*) FROM public.{t}{where}"), params).scalar()
     rows = session.execute(
         text(
             f"SELECT {_select_list(session, info)} FROM public.{t}{where} "
@@ -158,6 +157,13 @@ def select_features(
         {**params, "__l": limit, "__o": offset},
     ).all()
     features = [_row_to_feature(info, r) for r in rows]
+    if len(rows) < limit and (rows or offset == 0):
+        # Page courte : le total est connu sans count(*) (P24.09). Exact, pas
+        # une estimation. ponytail: page pleine = count(*) exact ; keyset sur la
+        # PK si l'offset profond devient le goulot.
+        matched = offset + len(rows)
+    else:
+        matched = session.execute(text(f"SELECT count(*) FROM public.{t}{where}"), params).scalar()
     return FeaturePage(features=features, number_matched=matched, number_returned=len(features))
 
 
