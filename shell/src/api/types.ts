@@ -194,6 +194,19 @@ export type InstanceInfo = {
   quotasEnabled: boolean;
 };
 
+export type ProbeStatus = { ok: boolean; error?: string };
+export type InstanceStatus = {
+  checkedAt: string;
+  minioConsolePublished: boolean;
+  postgres: ProbeStatus;
+  s3: ProbeStatus;
+  cdc: ProbeStatus & { slotActive?: boolean };
+  jobs: ProbeStatus & {
+    queues?: { queue: string; status: string; count: number }[];
+    stalled?: number;
+  };
+};
+
 export type AdminToolName = "martin" | "titiler" | "grafana";
 
 export type CopilotMessage = { role: "user" | "assistant"; content: string };
@@ -546,6 +559,7 @@ export interface ItemClient {
   deleteHarvestSource(id: string): Promise<void>;
   runHarvestSource(id: string): Promise<void>;
   launchAdminTool(tool: AdminToolName): Promise<{ url: string }>;
+  getInstanceStatus(): Promise<InstanceStatus>;
   getCollectionSharing(id: string): Promise<Sharing>;
   setCollectionSharing(id: string, sharing: Sharing): Promise<void>;
   createMapItem(input: { title: string; owner: string }): Promise<Item>;

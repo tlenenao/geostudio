@@ -7,6 +7,7 @@ import type {
   HarvestSource,
   HarvestSourceCreateInput,
   HarvestSourcePatchInput,
+  InstanceStatus,
   ItemClient,
 } from "../types";
 import type { ItemClientBase } from "../base";
@@ -19,6 +20,7 @@ type ExtensionsAdminToolsMethods = Pick<
   | "createExtension"
   | "deleteExtension"
   | "launchAdminTool"
+  | "getInstanceStatus"
   | "listHarvestSources"
   | "createHarvestSource"
   | "updateHarvestSource"
@@ -105,6 +107,10 @@ export function createExtensionsAdminToolsMethods(
 
     async launchAdminTool(tool: AdminToolName): Promise<{ url: string }> {
       return request<{ url: string }>("POST", `/admin-tools/launch/${tool}`);
+    },
+
+    async getInstanceStatus(): Promise<InstanceStatus> {
+      return request<InstanceStatus>("GET", "/instance/status");
     },
 
     async listHarvestSources(): Promise<HarvestSource[]> {

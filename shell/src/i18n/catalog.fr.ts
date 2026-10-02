@@ -311,6 +311,12 @@ export const fr = {
   "infrastructure.minioConsole": "Console MinIO",
   "infrastructure.minioNote":
     "— accès direct, non protégé par ce garde-fou ; fonctionne seulement si le port 9001 est exposé sur cet hôte.",
+  "infrastructure.newTab": "(s'ouvre dans un nouvel onglet)",
+  "infrastructure.statusHeading": "État de l'instance",
+  "infrastructure.statusOk": "opérationnel",
+  "infrastructure.statusDown": "en échec",
+  "infrastructure.statusJobs": "File de jobs",
+  "infrastructure.statusJobsDetail": "{pending} en attente ou en cours, {stalled} bloqué(s)",
   "infrastructure.launchError": "Échec de l'ouverture de l'outil.",
   "infrastructure.detail": "Détail",
   "infrastructure.usageHeading": "Utilisation",

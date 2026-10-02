@@ -41,12 +41,26 @@ function Harness() {
   );
 }
 
+const okProbe = { ok: true };
+const statusBody = (minioConsolePublished: boolean) => ({
+  checkedAt: "2026-10-02T10:00:00Z",
+  minioConsolePublished,
+  postgres: okProbe,
+  s3: okProbe,
+  cdc: { ok: true, slotActive: true },
+  jobs: { ok: true, queues: [], stalled: 0 },
+});
+const minioPublished = (published: boolean) =>
+  http.get("https://core.test/v1/instance/status", () => HttpResponse.json(statusBody(published)));
+
 test("affiche les trois boutons protégés et le lien MinIO quand la capacité est active", async () => {
   server.use(
     http.get("https://core.test/v1/instance", () => HttpResponse.json({ adminToolsEnabled: true })),
+    minioPublished(true),
   );
   render(<Harness />);
   await screen.findByRole("button", { name: "Martin" });
+  await screen.findByRole("link", { name: /MinIO/ });
   expect(screen.getByRole("button", { name: "Titiler" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Grafana" })).toBeInTheDocument();
   const minioLink = screen.getByRole("link", { name: /MinIO/ });
@@ -58,6 +72,7 @@ test("masque les trois boutons protégés quand la capacité est désactivée, g
     http.get("https://core.test/v1/instance", () =>
       HttpResponse.json({ adminToolsEnabled: false }),
     ),
+    minioPublished(true),
   );
   render(<Harness />);
   await screen.findByRole("link", { name: /MinIO/ });
@@ -105,4 +120,52 @@ test("cliquer sur Martin appelle launch et ouvre l'URL retournée dans un nouvel
       "noopener",
     ),
   );
+});
+
+test("masque le lien MinIO quand le port n'est pas publié", async () => {
+  server.use(
+    http.get("https://core.test/v1/instance", () => HttpResponse.json({ adminToolsEnabled: true })),
+    minioPublished(false),
+  );
+  render(<Harness />);
+  await screen.findByRole("button", { name: "Martin" });
+  await screen.findByText(/PostgreSQL/);
+  expect(screen.queryByRole("link", { name: /MinIO/ })).not.toBeInTheDocument();
+});
+
+test("le lien MinIO annonce l'ouverture dans un nouvel onglet", async () => {
+  server.use(
+    http.get("https://core.test/v1/instance", () =>
+      HttpResponse.json({ adminToolsEnabled: false }),
+    ),
+    minioPublished(true),
+  );
+  render(<Harness />);
+  expect(await screen.findByRole("link", { name: /nouvel onglet/ })).toBeInTheDocument();
+});
+
+test("affiche l'état de l'instance (santé, file de jobs)", async () => {
+  server.use(
+    http.get("https://core.test/v1/instance", () => HttpResponse.json({})),
+    http.get("https://core.test/v1/instance/status", () =>
+      HttpResponse.json({
+        checkedAt: "2026-10-02T10:00:00Z",
+        minioConsolePublished: false,
+        postgres: { ok: true },
+        s3: { ok: false, error: "EndpointConnectionError" },
+        cdc: { ok: true, slotActive: true },
+        jobs: {
+          ok: true,
+          queues: [{ queue: "default", status: "todo", count: 4 }],
+          stalled: 1,
+        },
+      }),
+    ),
+  );
+  render(<Harness />);
+  expect(await screen.findByText(/PostgreSQL : opérationnel/)).toBeInTheDocument();
+  expect(screen.getByText(/S3 : en échec/)).toBeInTheDocument();
+  expect(
+    screen.getByText(/File de jobs : en échec \(4 en attente ou en cours, 1 bloqué/),
+  ).toBeInTheDocument();
 });

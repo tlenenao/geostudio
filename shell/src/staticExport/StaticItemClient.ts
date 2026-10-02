@@ -219,6 +219,9 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async runHarvestSource(..._args: unknown[]) {
       return unsupported();
     },
+    async getInstanceStatus(..._args: unknown[]) {
+      return unsupported();
+    },
     async launchAdminTool(..._args: unknown[]) {
       return unsupported();
     },

@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { AdminToolName } from "../api/types";
-import { useInstanceInfo, useLaunchAdminTool, useQuotaUsage } from "../api/hooks";
+import {
+  useInstanceInfo,
+  useInstanceStatus,
+  useLaunchAdminTool,
+  useQuotaUsage,
+} from "../api/hooks";
 import { Button } from "../ui/kit/Button";
 import { SettingsNav } from "../shell/chrome/SettingsNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
@@ -12,6 +17,15 @@ const PROTECTED_TOOLS: { tool: AdminToolName; label: string }[] = [
   { tool: "grafana", label: "Grafana" },
 ];
 
+function Probe({ label, ok, detail }: { label: string; ok: boolean; detail?: string }) {
+  return (
+    <li>
+      {label} : {ok ? t("infrastructure.statusOk") : t("infrastructure.statusDown")}
+      {detail ? ` (${detail})` : ""}
+    </li>
+  );
+}
+
 function minioUrl(): string {
   return `${window.location.protocol}//${window.location.hostname}:9001`;
 }
@@ -21,6 +35,11 @@ export function AdminInfrastructurePage() {
   const launch = useLaunchAdminTool();
   const adminToolsEnabled = instanceQuery.data?.adminToolsEnabled === true;
   const usageQuery = useQuotaUsage();
+  const statusQuery = useInstanceStatus();
+  const status = statusQuery.data;
+  const backlog = (status?.jobs.queues ?? [])
+    .filter((q) => q.status === "todo" || q.status === "doing")
+    .reduce((n, q) => n + q.count, 0);
   const usage = usageQuery.data;
 
   function formatBytes(bytes: number): string {
@@ -52,6 +71,7 @@ export function AdminInfrastructurePage() {
                       key={tool}
                       variant="outline"
                       disabled={launch.isPending}
+                      title={t("infrastructure.newTab")}
                       onClick={() => {
                         launch.mutateAsync(tool).then(
                           ({ url }) => {
@@ -66,24 +86,49 @@ export function AdminInfrastructurePage() {
                   ))}
                 </div>
               )}
-              <p className="text-sm text-ink-2">
-                <a
-                  href={minioUrl()}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  // Lien intégré dans une phrase (`link-in-text-block`,
-                  // trouvé par l'échantillon a11y élargi REV-178) :
-                  // `hover:underline` seul ne distingue le lien du texte
-                  // environnant qu'au survol, et le contraste de
-                  // `text-accent` sur ce fond est insuffisant (1.49:1) pour
-                  // s'en remettre à la seule couleur. Soulignement
-                  // permanent, même patron que ReportRunPanel.tsx.
-                  className="text-accent underline"
-                >
-                  {t("infrastructure.minioConsole")}
-                </a>{" "}
-                {t("infrastructure.minioNote")}
-              </p>
+              {status && (
+                <div className="flex flex-col gap-1 text-sm text-ink-2">
+                  <p className="font-medium text-ink">{t("infrastructure.statusHeading")}</p>
+                  <ul>
+                    <Probe label="PostgreSQL" ok={status.postgres.ok} />
+                    <Probe label="S3" ok={status.s3.ok} />
+                    <Probe label="CDC" ok={status.cdc.ok && status.cdc.slotActive === true} />
+                    <Probe
+                      label={t("infrastructure.statusJobs")}
+                      ok={status.jobs.ok && !status.jobs.stalled}
+                      detail={
+                        status.jobs.ok
+                          ? t("infrastructure.statusJobsDetail", {
+                              pending: backlog,
+                              stalled: status.jobs.stalled ?? 0,
+                            })
+                          : undefined
+                      }
+                    />
+                  </ul>
+                </div>
+              )}
+              {status?.minioConsolePublished && (
+                <p className="text-sm text-ink-2">
+                  <a
+                    href={minioUrl()}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    // Lien intégré dans une phrase (`link-in-text-block`,
+                    // trouvé par l'échantillon a11y élargi REV-178) :
+                    // `hover:underline` seul ne distingue le lien du texte
+                    // environnant qu'au survol, et le contraste de
+                    // `text-accent` sur ce fond est insuffisant (1.49:1) pour
+                    // s'en remettre à la seule couleur. Soulignement
+                    // permanent, même patron que ReportRunPanel.tsx.
+                    className="text-accent underline"
+                  >
+                    {t("infrastructure.minioConsole")}
+                    <span className="sr-only"> {t("infrastructure.newTab")}</span>
+                  </a>{" "}
+                  {t("infrastructure.minioNote")}
+                </p>
+              )}
               {usage && (
                 <div className="flex flex-col gap-1 text-sm text-ink-2">
                   <p className="font-medium text-ink">{t("infrastructure.usageHeading")}</p>

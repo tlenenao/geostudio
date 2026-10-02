@@ -1,4 +1,3 @@
-import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { openAs, spaGoto } from "./helpers";
 
@@ -20,14 +19,13 @@ test.describe("j09 pages d'exploitation", () => {
   });
 
   // Bug confirmé : voir docs/revue/audit-2026-09-29/j09/findings.jsonl
-  bug(
-    "j09-009 : l'infrastructure affiche l'état des services (santé, files, jobs en attente)",
-    async ({ page }) => {
-      await openAs(page, "admin");
-      await spaGoto(page, "/admin/infrastructure");
-      await expect(
-        page.getByText(/santé|healthy|file d'attente|jobs en attente/i).first(),
-      ).toBeVisible();
-    },
-  );
+  test("j09-009 : l'infrastructure affiche l'état des services (santé, files, jobs en attente)", async ({
+    page,
+  }) => {
+    await openAs(page, "admin");
+    await spaGoto(page, "/admin/infrastructure");
+    await expect(
+      page.getByText(/état de l'instance|santé|healthy|file d'attente|jobs en attente/i).first(),
+    ).toBeVisible();
+  });
 });

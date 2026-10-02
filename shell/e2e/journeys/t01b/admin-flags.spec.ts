@@ -89,21 +89,20 @@ test.describe("t01b administration : conformité, infrastructure, usage", () => 
   });
 
   // t01b-011 : finding. Liens/boutons qui ouvrent un nouvel onglet sans le dire.
-  bug(
-    "t01b-011 : la console MinIO (target=_blank) annonce l'ouverture dans un nouvel onglet",
-    async ({ browser }) => {
-      const { ctx, page } = await session(browser, "admin");
-      await go(page, "/admin/infrastructure", 2500);
-      const link = page.getByRole("link", { name: /Console MinIO/ });
-      await expect(link).toHaveAttribute("target", "_blank");
-      const name = await link.evaluate(
-        (a) =>
-          `${a.getAttribute("aria-label") ?? ""} ${a.textContent ?? ""} ${a.getAttribute("title") ?? ""}`,
-      );
-      expect(name).toMatch(/nouvel onglet|nouvelle fen/i);
-      await ctx.close();
-    },
-  );
+  test("t01b-011 : la console MinIO (target=_blank) annonce l'ouverture dans un nouvel onglet", async ({
+    browser,
+  }) => {
+    const { ctx, page } = await session(browser, "admin");
+    await go(page, "/admin/infrastructure", 2500);
+    const link = page.getByRole("link", { name: /Console MinIO/ });
+    await expect(link).toHaveAttribute("target", "_blank");
+    const name = await link.evaluate(
+      (a) =>
+        `${a.getAttribute("aria-label") ?? ""} ${a.textContent ?? ""} ${a.getAttribute("title") ?? ""}`,
+    );
+    expect(name).toMatch(/nouvel onglet|nouvelle fen/i);
+    await ctx.close();
+  });
 
   test("/tasks (usage) : axe propre, tri au clavier sur l'en-tête (aria-sort) et synthèse de la plateforme", async ({
     browser,
