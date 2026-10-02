@@ -113,13 +113,19 @@ def list_configs_by_kind(session: Session, kind: str) -> list[tuple[str, str, Bu
     système (balayage périodique, SP-15h), jamais exposé via une route :
     contrairement à ConfigRead (response_model public), le tuple retourné
     porte tenant_id en clair."""
-    records = session.scalars(select(Config).where(Config.kind == kind)).all()
+    # Une seule requête (P24.06) : révision courante par jointure, plus de N+1.
+    rows = session.execute(
+        select(Config, ConfigRevision)
+        .join(
+            ConfigRevision,
+            (ConfigRevision.config_id == Config.id)
+            & (ConfigRevision.version == Config.current_version),
+        )
+        .where(Config.kind == kind)
+    ).all()
     result: list[tuple[str, str, BuilderConfig]] = []
-    for record in records:
+    for record, revision in rows:
         if record.item_id is None:
-            continue
-        revision = _latest_revision(session, record.id)
-        if revision is None:
             continue
         try:
             config = BuilderConfig.model_validate(revision.data, context=_LENIENT)
@@ -147,15 +153,18 @@ def list_configs_by_kind_and_tenant(
     route (le filtre tenant_id est appliqué en SQL, jamais après coup en
     mémoire) : contrairement à sa sœur cross-tenant, aucune ligne d'un autre
     tenant n'est jamais chargée par le process."""
-    records = session.scalars(
-        select(Config).where(Config.kind == kind, Config.tenant_id == tenant_id)
+    rows = session.execute(
+        select(Config, ConfigRevision)
+        .join(
+            ConfigRevision,
+            (ConfigRevision.config_id == Config.id)
+            & (ConfigRevision.version == Config.current_version),
+        )
+        .where(Config.kind == kind, Config.tenant_id == tenant_id)
     ).all()
     result: list[tuple[str, BuilderConfig]] = []
-    for record in records:
+    for record, revision in rows:
         if record.item_id is None:
-            continue
-        revision = _latest_revision(session, record.id)
-        if revision is None:
             continue
         try:
             config = BuilderConfig.model_validate(revision.data, context=_LENIENT)
