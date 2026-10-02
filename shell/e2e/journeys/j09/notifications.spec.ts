@@ -94,35 +94,31 @@ test.describe("j09 notifications : cloche du shell", () => {
     await expect(bell).not.toContainText("2");
   });
 
-  // Bug confirmé : voir docs/revue/audit-2026-09-29/j09/findings.jsonl
-  bug(
-    "j09-006 : le sélecteur de préférence a un nom accessible distinct de celui de la cloche",
-    async ({ page }) => {
-      seed([{ key: "ok", kind: "ingestion", status: "success", title: `${tag}-ok` }]);
-      await openAs(page, "reader");
-      await page.getByRole("button", { name: "Notifications" }).click();
-      const name = await page.getByRole("combobox").first().getAttribute("aria-label");
-      expect(name).not.toBe("Notifications");
-    },
-  );
+  test("j09-006 : le sélecteur de préférence a un nom accessible distinct de celui de la cloche", async ({
+    page,
+  }) => {
+    seed([{ key: "ok", kind: "ingestion", status: "success", title: `${tag}-ok` }]);
+    await openAs(page, "reader");
+    await page.getByRole("button", { name: "Notifications" }).click();
+    const name = await page.getByRole("combobox").first().getAttribute("aria-label");
+    expect(name).not.toBe("Notifications");
+  });
 
-  // Bug confirmé : voir docs/revue/audit-2026-09-29/j09/findings.jsonl
-  bug(
-    "j09-007 : au-delà de 20 notifications, les plus anciennes restent accessibles",
-    async ({ page }) => {
-      seed(
-        Array.from({ length: 25 }, (_, i) => ({
-          key: `n${i}`,
-          kind: "ingestion",
-          status: "success",
-          title: `${tag}-n${i}`,
-        })),
-      );
-      await reader.send("PATCH", "/v1/notifications/preference", { value: "all" });
-      await openAs(page, "reader");
-      await page.getByRole("button", { name: /Notifications/ }).click();
-      await expect(page.getByText(`${tag}-n0`)).toBeVisible();
-      await expect(page.getByText(`${tag}-n24`)).toBeVisible();
-    },
-  );
+  test("j09-007 : au-delà de 20 notifications, les plus anciennes restent accessibles", async ({
+    page,
+  }) => {
+    seed(
+      Array.from({ length: 25 }, (_, i) => ({
+        key: `n${i}`,
+        kind: "ingestion",
+        status: "success",
+        title: `${tag}-n${i}`,
+      })),
+    );
+    await reader.send("PATCH", "/v1/notifications/preference", { value: "all" });
+    await openAs(page, "reader");
+    await page.getByRole("button", { name: /Notifications/ }).click();
+    await expect(page.getByText(`${tag}-n0`)).toBeVisible();
+    await expect(page.getByText(`${tag}-n24`)).toBeVisible();
+  });
 });

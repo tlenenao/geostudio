@@ -120,21 +120,34 @@ test("webhook : firing livre un JSON complet (audité), pas de renotification sa
 
 // Finding j09b-003 : aucun secret partagé ni signature sur le webhook, le récepteur ne peut pas
 // authentifier l'émetteur.
-bug("j09b-003 : le webhook porte une signature vérifiable (en-tête HMAC)", async () => {
+test("j09b-003 : le webhook porte une signature vérifiable (en-tête HMAC)", async () => {
   const title = `${tag}-hook-sign`;
+  const secretName = `${tag}-sign-key`;
+  expect(
+    (
+      await admin.send("POST", "/v1/secrets", {
+        name: secretName,
+        payload: { kind: "bearer_token", token: "signing-key" },
+      })
+    ).status,
+  ).toBe(201);
   const id = await mkRule(creator, datasetId, title, {
-    channels: [{ kind: "webhook", url: `${HOOK}/hook` }],
+    channels: [{ kind: "webhook", url: `${HOOK}/hook`, signingSecretName: secretName }],
   });
   const evalId = await newEvaluation(creator, id);
   runnerEvaluate(evalId);
   await waitEvaluation(creator, id, evalId);
-  const headers = Object.keys(hooksFor(title)[0].headers).map((h) => h.toLowerCase());
-  expect(headers.some((h) => /signature|hmac|authorization|x-geostudio/.test(h))).toBe(true);
+  const hook = hooksFor(title)[0];
+  const sig = Object.entries(hook.headers).find(
+    ([h]) => h.toLowerCase() === "x-geostudio-signature",
+  )?.[1] as string;
+  const { createHmac } = await import("node:crypto");
+  expect(sig).toBe(`sha256=${createHmac("sha256", "signing-key").update(hook.body).digest("hex")}`);
 });
 
 // Finding j09b-004 : une livraison échouée (cible 5xx) n'est jamais rejouée : la transition a
 // été « consommée » et les évaluations suivantes (même état) ne renotifient pas.
-bug("j09b-004 : une notification webhook échouée est rejouée à l'évaluation suivante", async () => {
+test("j09b-004 : une notification webhook échouée est rejouée à l'évaluation suivante", async () => {
   const title = `${tag}-hook-fail`;
   const id = await mkRule(creator, datasetId, title, {
     channels: [{ kind: "webhook", url: `${HOOK}/fail` }],

@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
-import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { CORE_URL } from "../_fixtures/env";
 import {
@@ -35,26 +34,22 @@ test.describe("j09 journal des tâches (/usage)", () => {
     expect((await admin.get("/v1/usage/summary")).status).toBe(200);
   });
 
-  // Bug confirmé : voir docs/revue/audit-2026-09-29/j09/findings.jsonl
-  bug(
-    "j09-008 : le propriétaire d'une règle d'alerte retrouve ses évaluations dans son journal de tâches",
-    async () => {
-      const s = await getAlertSeed();
-      const r = await s.creator.send("POST", "/v1/configs", {
-        title: `${s.tag}-usage`,
-        config: alertConfig(s.datasetId),
-      });
-      const id = r.body.itemId as string;
-      await s.creator.send("POST", `/v1/alerts/${id}/evaluate`);
-      const list = await s.creator.get(`/v1/alerts/${id}/evaluations`);
-      const evalId = list.body[0].id as string;
-      deferEvaluation(evalId);
-      await waitEvaluation(s.creator, id, evalId);
-      const mine = await s.creator.get("/v1/usage/tasks?pageSize=200");
-      const rows = mine.body.tasks.filter((t: any) => t.objectId === id);
-      expect(rows.map((t: any) => t.action)).toContain("alert.evaluate");
-    },
-  );
+  test("j09-008 : le propriétaire d'une règle d'alerte retrouve ses évaluations dans son journal de tâches", async () => {
+    const s = await getAlertSeed();
+    const r = await s.creator.send("POST", "/v1/configs", {
+      title: `${s.tag}-usage`,
+      config: alertConfig(s.datasetId),
+    });
+    const id = r.body.itemId as string;
+    await s.creator.send("POST", `/v1/alerts/${id}/evaluate`);
+    const list = await s.creator.get(`/v1/alerts/${id}/evaluations`);
+    const evalId = list.body[0].id as string;
+    deferEvaluation(evalId);
+    await waitEvaluation(s.creator, id, evalId);
+    const mine = await s.creator.get("/v1/usage/tasks?pageSize=200");
+    const rows = mine.body.tasks.filter((t: any) => t.objectId === id);
+    expect(rows.map((t: any) => t.action)).toContain("alert.evaluate");
+  });
 });
 
 test.describe("j09 instance et passerelle /admin-tools", () => {
