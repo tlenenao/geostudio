@@ -107,7 +107,7 @@ def test_collections_list_shows_registered(env):
     body = client.get("/v1/stac/collections").json()
     ids = [c["id"] for c in body["collections"]]
     assert "incidents" in ids
-    assert body["collections"][0]["license"] == "other"
+    assert body["collections"][0]["license"] == "proprietary"
 
 
 def test_stac_collections_list_is_paginated(env):

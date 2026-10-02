@@ -80,7 +80,7 @@ def test_full_stac_navigation(pg_app):
     assert "https://api.stacspec.org/v1.0.0/item-search" in landing["conformsTo"]
 
     col = client.get("/v1/stac/collections/stac_roads").json()
-    assert col["type"] == "Collection" and col["license"] == "other"
+    assert col["type"] == "Collection" and col["license"] == "proprietary"
     bbox = col["extent"]["spatial"]["bbox"][0]
     assert bbox[0] == pytest.approx(1.0, abs=0.5) and bbox[2] == pytest.approx(3.0, abs=0.5)
     assert col["extent"]["temporal"]["interval"][0][1] is None

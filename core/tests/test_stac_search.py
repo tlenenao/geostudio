@@ -163,3 +163,81 @@ def test_search_post_accepts_valid_bbox(env):
     app, client = env
     resp = client.post("/v1/stac/search", json={"bbox": [0, 40, 2, 46], "collections": ["roads"]})
     assert resp.status_code == 200
+
+
+def test_search_skips_broken_collection(env, monkeypatch):
+    # P19.03 / j07-008 : une table disparue ne fait plus échouer toute la recherche.
+    app, client = env
+    monkeypatch.delitem(INFOS, "roads")
+    resp = client.get("/v1/stac/search?limit=1000")
+    assert resp.status_code == 200
+    assert {f["collection"] for f in resp.json()["features"]} == {"rivers"}
+
+
+def test_broken_collection_gives_stable_errors_not_500(env, monkeypatch):
+    # P19.08 / j07-009 : STAC collection dégradée, items en 404 explicite.
+    app, client = env
+    monkeypatch.delitem(INFOS, "roads")
+    assert client.get("/v1/stac/collections/roads").status_code == 200
+    for path in ("/v1/stac/collections/roads/items", "/v1/collections/roads/items"):
+        r = client.get(path)
+        assert r.status_code == 404, path
+        assert r.json()["detail"] == "backing table not found"
+
+
+def test_search_invalid_datetime_and_token_are_400(env):
+    # P19.09 / j07-010 et P19.12 / j07-013
+    app, client = env
+    r = client.get("/v1/stac/search?datetime=garbage")
+    assert r.status_code == 400 and "RFC 3339" in r.json()["detail"]
+    assert client.post("/v1/stac/search", json={"datetime": "nope"}).status_code == 400
+    assert client.get("/v1/stac/search?token=@@@").status_code == 400
+
+
+def test_search_datetime_follows_declared_temporal_extent(env):
+    # P19.10 / j07-011
+    app, client = env
+    patch = client.patch(
+        "/v1/collections/roads", json={"temporalStart": "2020-01-01", "temporalEnd": "2020-12-31"}
+    )
+    assert patch.status_code == 200
+    june = "datetime=2020-06-01T00:00:00Z/2020-06-30T00:00:00Z"
+    cols = {f["collection"] for f in client.get(f"/v1/stac/search?{june}").json()["features"]}
+    assert cols == {"roads"}
+    later = client.get("/v1/stac/search?datetime=2021-06-01T00:00:00Z/..").json()["features"]
+    assert {f["collection"] for f in later} == {"rivers"}
+    props = client.get("/v1/stac/collections/roads/items").json()["features"][0]["properties"]
+    assert props["datetime"].startswith("2020-01-01")
+    assert props["end_datetime"].startswith("2020-12-31")
+
+
+def test_collection_license_other_is_proprietary_with_license_link(env):
+    # P19.11 / j07-012
+    app, client = env
+    client.patch(
+        "/v1/collections/roads", json={"license": "other", "licenseUri": "https://e.org/l"}
+    )
+    doc = client.get("/v1/stac/collections/roads").json()
+    assert doc["license"] == "proprietary"
+    assert {"rel": "license", "href": "https://e.org/l"} in doc["links"]
+
+
+def test_collection_patch_validates_dates_and_uris_on_write_only(env):
+    # P19.13 / j07-014
+    app, client = env
+    bad_order = client.patch(
+        "/v1/collections/roads", json={"temporalStart": "2021-01-01", "temporalEnd": "2020-01-01"}
+    )
+    assert bad_order.status_code == 422
+    client.patch("/v1/collections/roads", json={"temporalStart": "2021-01-01"})
+    assert (
+        client.patch("/v1/collections/roads", json={"temporalEnd": "2020-01-01"}).status_code == 422
+    )
+    for body in ({"licenseUri": "javascript:alert(1)"}, {"contact": "pas un contact"}):
+        assert client.patch("/v1/collections/roads", json=body).status_code == 422, body
+    ok = client.patch(
+        "/v1/collections/roads",
+        json={"licenseUri": "https://e.org/l", "contact": "a@b.fr", "temporalEnd": "2021-06-01"},
+    )
+    assert ok.status_code == 200
+    assert client.patch("/v1/collections/roads", json={"licenseUri": ""}).status_code == 200

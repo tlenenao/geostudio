@@ -762,6 +762,12 @@ def patch_collection(
         )
     if body.sensitiveFields is not None:
         _reject_invalid_sensitive_fields(session, col, body.sensitiveFields, introspect)
+    eff_start = (
+        body.temporalStart if "temporalStart" in body.model_fields_set else col.temporal_start
+    )
+    eff_end = body.temporalEnd if "temporalEnd" in body.model_fields_set else col.temporal_end
+    if eff_start and eff_end and eff_end < eff_start:
+        raise HTTPException(status_code=422, detail="temporalEnd must not precede temporalStart")
     text_changed = (body.title is not None and body.title != col.title) or (
         body.description is not None and body.description != col.description
     )

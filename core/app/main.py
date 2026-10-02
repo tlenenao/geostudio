@@ -34,6 +34,7 @@ from app.auth.dependency import (
 from app.catalog import routes as catalog_routes
 from app.collections import dataset_validation as collections_dataset_validation  # noqa: F401
 from app.collections import routes as collections_routes
+from app.collections.introspection import TableNotFound, UnsupportedTable
 from app.compliance import routes as compliance_routes
 from app.configs import routes as configs_routes
 from app.copilot import routes as copilot_routes
@@ -183,6 +184,19 @@ def create_app() -> FastAPI:
                 "status": exc.status_code,
                 "detail": exc.detail if isinstance(exc.detail, str) else "request failed",
             },
+        )
+
+    @app.exception_handler(TableNotFound)
+    async def _table_not_found_handler(request: Request, exc: TableNotFound):
+        # j07-009 : table d'une collection disparue -> 404 stable, jamais 500.
+        return await _http_exception_handler(
+            request, HTTPException(status_code=404, detail="backing table not found")
+        )
+
+    @app.exception_handler(UnsupportedTable)
+    async def _unsupported_table_handler(request: Request, exc: UnsupportedTable):
+        return await _http_exception_handler(
+            request, HTTPException(status_code=409, detail=exc.reason)
         )
 
     @app.exception_handler(Exception)
