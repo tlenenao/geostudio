@@ -7581,8 +7581,9 @@ Récit relu contre le code et les messages de commit (piège n°12).
   pour l'inspection non faite : xlsx/parquet exigent le fichier entier) ;
   P04.05 (seuil relevé avec marge, mais `index.js` non allégé) ; P04.06 LCP
   jamais mesuré (seul le chemin critique est allégé) ; P04.07 (filet E2E de
-  rendu canvas) non fait ; orphelins S3 (échec après upload, suppression
-  ratée) : aucun commit au 2026-10-02.
+  rendu canvas) non fait ; orphelins S3 : balayage quotidien livré ensuite
+  (`app/compliance/orphans.py`, `ab43e52f`) pour les buckets exports/appexports,
+  reste ouvert (REV-268 partiel) pour un échec après upload ailleurs.
 
 ### P06-P11 — exécution, session, installation, intégrité, export
 

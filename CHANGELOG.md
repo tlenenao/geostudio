@@ -98,7 +98,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     published `v0.1.0` has no `minio`/`titiler` image: cut a new release.
   - Database: migration 0043 adds `ON DELETE` to the foreign keys on `items`
     (deleting an item with history now succeeds); writes to a config
-    (`PUT /configs/...`) honour `If-Match` and answer 412 on a stale version
+    (`PUT /v1/configs/{id}` and `PUT /v1/configs/by-item/{id}`) honour `If-Match` and answer 412 on a stale version
     (app builder only for now); config write bodies are capped at 5 MB (413).
   - Self-contained export: the bundled mini-server answers under `/v1` and the
     image is pinned to the core version that produced the bundle.
