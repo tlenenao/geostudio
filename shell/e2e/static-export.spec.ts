@@ -19,7 +19,7 @@ const DIST_EXPORT = fileURLToPath(new URL("../dist-export", import.meta.url));
 function distFile(urlPath: string): string {
   const root = path.resolve(DIST_EXPORT);
   const full = path.resolve(root, urlPath.replace(/^\//, ""));
-  if (full !== root && !full.startsWith(root + path.sep)) throw new Error("path escape");
+  if (!full.startsWith(root + path.sep)) throw new Error("path escape");
   return full;
 }
 const FROZEN_CONFIG = {
