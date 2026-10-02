@@ -12211,7 +12211,7 @@
     },
     "/v1/users/directory": {
       "get": {
-        "description": "j13-005 : annuaire restreint (id, nom, e-mail \u2014 ni r\u00f4le ni statut) pour\najouter un membre \u00e0 un groupe ; r\u00e9serv\u00e9 \u00e0 qui g\u00e8re le catalogue, donc \u00e0 qui\npeut cr\u00e9er des groupes. D\u00e9clar\u00e9 avant toute route `/users/{id}` GET.",
+        "description": "j13-005 : annuaire restreint (id, nom, e-mail \u2014 ni r\u00f4le ni statut) pour\najouter un membre \u00e0 un groupe ; r\u00e9serv\u00e9 \u00e0 qui peut partager un kind, donc \u00e0 qui\npeut cr\u00e9er des groupes. D\u00e9clar\u00e9 avant toute route `/users/{id}` GET.",
         "operationId": "get_users_directory_v1_users_directory_get",
         "parameters": [
           {

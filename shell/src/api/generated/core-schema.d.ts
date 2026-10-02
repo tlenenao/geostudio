@@ -1684,7 +1684,7 @@ export interface paths {
         /**
          * Get Users Directory
          * @description j13-005 : annuaire restreint (id, nom, e-mail — ni rôle ni statut) pour
-         *     ajouter un membre à un groupe ; réservé à qui gère le catalogue, donc à qui
+         *     ajouter un membre à un groupe ; réservé à qui peut partager un kind, donc à qui
          *     peut créer des groupes. Déclaré avant toute route `/users/{id}` GET.
          */
         get: operations["get_users_directory_v1_users_directory_get"];
