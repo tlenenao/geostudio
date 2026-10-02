@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import io
+import json
 import zipfile
 
 from app.appexport.bundler import build_bundle_zip, build_standalone_bundle_zip
@@ -64,7 +65,7 @@ def test_bundle_includes_connection_json_when_provided(tmp_path):
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
         assert "geostudio-connection.json" in zf.namelist()
         payload = zf.read("geostudio-connection.json").decode("utf-8")
-        assert '"coreUrl"' in payload and "https://core.example.org" in payload
+        assert json.loads(payload)["coreUrl"] == "https://core.example.org"
 
 
 def test_bundle_omits_connection_json_by_default(tmp_path):

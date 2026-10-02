@@ -85,10 +85,10 @@ def test_compute_csp_allowlist_aggregates_the_three_sources():
 
         allowlist = compute_csp_allowlist(s)
 
-    assert "https://tiles.example.com" in allowlist.img_hosts
-    assert "https://tiles.example.com" in allowlist.connect_hosts
-    assert "https://dem.example.com" in allowlist.img_hosts
-    assert "https://cdn.example.com" in allowlist.script_hosts
+    assert {"https://tiles.example.com"} <= allowlist.img_hosts
+    assert {"https://tiles.example.com"} <= allowlist.connect_hosts
+    assert {"https://dem.example.com"} <= allowlist.img_hosts
+    assert {"https://cdn.example.com"} <= allowlist.script_hosts
     # non-régression : un hôte d'extension ne doit jamais apparaître dans
     # img_hosts/connect_hosts, ni un hôte de tuile dans script_hosts.
     assert "https://cdn.example.com" not in allowlist.img_hosts

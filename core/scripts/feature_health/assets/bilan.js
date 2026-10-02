@@ -54,7 +54,7 @@
   function healthBadge(v){
     if (v === null || v === undefined) return '<span style="color:var(--ink-3)">—</span>';
     var lvl = healthLevel(v);
-    return '<span class="note-badge lvl-' + lvl + ' tabular">' + v.toFixed(1) + '</span>';
+    return '<span class="note-badge lvl-' + lvl + ' tabular">' + esc(v.toFixed(1)) + '</span>';
   }
   function priorityBadge(p, source){
     var cls = PRIORITY_CLASS[p] || "pri-lo";
@@ -72,13 +72,13 @@
     var color = delta > 0 ? "var(--note-good)" : "var(--note-low)";
     var arrow = delta > 0 ? "↑" : "↓";
     return '<span class="tabular" style="color:' + color + ';font-weight:600">' +
-      arrow + " " + sign + delta.toFixed(1) + "</span>";
+      arrow + " " + sign + esc(delta.toFixed(1)) + "</span>";
   }
   function subCell(score){
     if (!score || score.valeur === null || score.valeur === undefined) {
       return '<span style="color:var(--ink-3)">—</span>';
     }
-    return '<span class="tabular">' + score.valeur.toFixed(1) + "</span>";
+    return '<span class="tabular">' + esc(score.valeur.toFixed(1)) + "</span>";
   }
 
   /* ==================================================================
@@ -92,7 +92,7 @@
     var bar = document.getElementById("stackBar");
     bar.innerHTML = HEALTH_BRACKET_ORDER.map(function(k){
       var pct = total ? (globalBuckets[k] / total * 100) : 0;
-      return '<span style="width:' + pct.toFixed(3) + '%;background:' + healthColor(k) + '" title="' +
+      return '<span style="width:' + esc(pct.toFixed(3)) + '%;background:' + healthColor(k) + '" title="' +
              HEALTH_BRACKET_LABEL[k] + " — " + globalBuckets[k] + '"></span>';
     }).join("");
   }
@@ -139,7 +139,7 @@
       var bars = HEALTH_BRACKET_ORDER.map(function(k){
         if (!c[k]) return "";
         var pct = c[k] / c.total * 100;
-        return '<span style="width:' + pct.toFixed(2) + '%;background:' + healthColor(k) + '" title="' +
+        return '<span style="width:' + esc(pct.toFixed(2)) + '%;background:' + healthColor(k) + '" title="' +
                HEALTH_BRACKET_LABEL[k] + " " + c[k] + '"></span>';
       }).join("");
       return '<button type="button" class="fam-row" data-dom="' + esc(d) + '">' +
@@ -302,7 +302,7 @@
     var hasValue = value !== null && value !== undefined;
     var pct = hasValue ? value : 0;
     var color = hasValue ? healthColor(healthLevel(value)) : "var(--ink-3)";
-    var valueText = hasValue ? value.toFixed(1) : "n/a";
+    var valueText = hasValue ? esc(value.toFixed(1)) : "n/a";
     var evidence = (score && score.preuve) || {};
     var evKeys = Object.keys(evidence);
     var evHtml = evKeys.length
@@ -314,7 +314,7 @@
         '<li style="color:var(--ink-3)">aucune preuve — sous-score non applicable</li></ul>';
     return '<div class="crit-row"><span>' + esc(SUBSCORE_LABEL[name]) + '</span>' +
       '<span class="cval tabular">' + valueText + '</span>' +
-      '<span class="cbar"><span style="width:' + pct + '%;background:' + color + '"></span></span></div>' + evHtml;
+      '<span class="cbar"><span style="width:' + esc(pct) + '%;background:' + color + '"></span></span></div>' + evHtml;
   }
 
   function listBlock(label, items){

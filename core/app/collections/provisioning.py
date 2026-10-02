@@ -22,6 +22,32 @@ from app.collections.models import Collection
 from app.collections.schemas import EmptyCollectionColumn
 from app.sql_ident import quote_ident
 
+# Valeurs figées côté serveur : rien de saisi n'atteint le DDL (la saisie ne
+# sert que de clé de recherche).
+_SQL_TYPES = {
+    t: t
+    for t in (
+        "text",
+        "integer",
+        "bigint",
+        "double precision",
+        "boolean",
+        "date",
+        "timestamptz",
+        "text[]",
+        "integer[]",
+        "bigint[]",
+        "double precision[]",
+        "boolean[]",
+        "date[]",
+        "timestamptz[]",
+    )
+}
+_GEOMETRY_TYPES = {
+    g: g
+    for g in ("Point", "MultiPoint", "LineString", "MultiLineString", "Polygon", "MultiPolygon")
+}
+
 
 def create_empty_collection(
     session: Session,
@@ -45,12 +71,12 @@ def create_empty_collection(
 ) -> Collection:
     table_name = f"query_{uuid.uuid4().hex[:12]}"
     t = quote_ident(session, table_name)
-    col_defs = ", ".join(f"{quote_ident(session, c.name)} {c.sqlType}" for c in columns)
+    col_defs = ", ".join(f"{quote_ident(session, c.name)} {_SQL_TYPES[c.sqlType]}" for c in columns)
     create_sql = f"CREATE TABLE public.{t} (id serial PRIMARY KEY, tenant_id text NOT NULL"
     if col_defs:
         create_sql += f", {col_defs}"
     if geometry_type is not None:
-        create_sql += f", geom geometry({geometry_type}, {srid or 4326})"
+        create_sql += f", geom geometry({_GEOMETRY_TYPES[geometry_type]}, {int(srid or 4326)})"
     create_sql += ")"
     session.execute(text(create_sql))
 

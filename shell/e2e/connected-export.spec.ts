@@ -17,6 +17,13 @@ import { fileURLToPath } from "node:url";
 
 const DIST_EXPORT = fileURLToPath(new URL("../dist-export", import.meta.url));
 
+// Refuse toute sortie de DIST_EXPORT (../) : le serveur de test ne sert que le bundle.
+function distFile(urlPath: string): string {
+  const root = path.resolve(DIST_EXPORT);
+  const full = path.resolve(root, urlPath.replace(/^\//, ""));
+  if (!full.startsWith(root + path.sep)) throw new Error("path escape");
+  return full;
+}
 const CONNECTED_CONFIG = {
   kind: "app",
   theme: {},
@@ -105,7 +112,7 @@ test("connected export bundle renders live data from a real cross-origin core, w
     }
     const filePath = reqUrl === "/" ? "/index.export.html" : reqUrl;
     try {
-      const body = await readFile(path.join(DIST_EXPORT, filePath.replace(/^\//, "")));
+      const body = await readFile(distFile(filePath));
       const contentType = filePath.endsWith(".js")
         ? "application/javascript"
         : filePath.endsWith(".css")

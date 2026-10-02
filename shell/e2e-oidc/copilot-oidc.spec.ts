@@ -9,7 +9,31 @@ const ALICE = { username: "alice", password: "Demo1234!" };
 
 test.setTimeout(240_000);
 
+// En prod le shell et le cœur sont servis sous la même origine (Traefik) ; le
+// job CI n'a pas Traefik : le navigateur appelle le cœur (:8200) depuis :8300 et
+// le cœur n'expose volontairement aucun CORS global. On le simule côté test.
+async function allowCrossOriginCore(page: Page) {
+  const cors = {
+    "access-control-allow-origin": "http://localhost:8300",
+    "access-control-allow-headers": "authorization, content-type, if-match",
+    "access-control-allow-methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    "access-control-expose-headers": "etag, location",
+  };
+  await page.route(/:8200\/v1\//, async (route) => {
+    if (route.request().method() === "OPTIONS") {
+      return route.fulfill({ status: 204, headers: cors });
+    }
+    try {
+      const res = await route.fetch();
+      await route.fulfill({ response: res, headers: { ...res.headers(), ...cors } });
+    } catch {
+      // page fermée en cours de requête (fin de test) : rien à relayer
+    }
+  });
+}
+
 async function login(page: Page): Promise<{ authorization: string; coreUrl: string }> {
+  await allowCrossOriginCore(page);
   // Le jeton REST vit en mémoire : on le récupère sur le premier appel au cœur.
   const bearer = page.waitForRequest(
     (r) => /\/v1\//.test(r.url()) && Boolean(r.headers().authorization),
@@ -67,10 +91,10 @@ test("copilote sous OIDC réel : brouillon intact, jeton d'audience MCP, 25 tour
       const sent = res.request().postDataJSON();
       expect(audOf(sent.mcpToken)).toContain("geostudio-mcp");
     }
-    await expect(page.getByText(`tour ${i}`, { exact: true })).toBeVisible();
+    await expect(page.getByText(`tour ${i}`, { exact: true }).first()).toBeVisible();
     await expect(widgets).toHaveCount(1);
   }
-  await expect(page.getByText("tour 1", { exact: true })).toBeVisible();
+  await expect(page.getByText("tour 1", { exact: true }).first()).toBeVisible();
 
   // 25 tours de plus (28 au total) : fenêtre glissante, jamais de 422.
   for (let i = 4; i <= 28; i++) {

@@ -92,3 +92,14 @@ paths = [
 regexes = [
   '''MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCzr''',
 ]
+
+[[allowlists]]
+description = "Faux positif `generic-api-key` sur `KC_PASSWORD=kcpw-marker-123` (core/tests/test_install_script.py, P08.04) : marqueur de test factice qui sert à vérifier que le mot de passe ne fuit pas dans `ps`/l'audit Docker, jamais un identifiant réel. Bloc séparé et `condition = \"AND\"` (même patron que les blocs ci-dessus) : `paths` seul exempterait la règle sur tout le fichier."
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = [
+  '''^core/tests/test_install_script\.py$''',
+]
+regexes = [
+  '''kcpw-marker-123''',
+]
