@@ -242,23 +242,18 @@ bug("j09b-005 : STARTTLS refuse un certificat auto-signé au mauvais nom d'hôte
 // Finding j09b-006 : le secret SMTP est résolu par nom dans le tenant, sans contrôle de
 // propriété ni de privilège : un Créateur sans droit sur le coffre envoie des e-mails avec le
 // compte SMTP de l'administrateur, à n'importe quel destinataire.
-bug(
-  "j09b-006 : un Créateur ne peut pas utiliser le secret SMTP d'un autre pour envoyer",
-  async () => {
-    const title = `${tag}-mail-relay`;
-    const id = await mkRule(creator, datasetId, title, {
-      channels: [{ kind: "email", to: "victime@autre-domaine.test", smtpSecretName: smtpName }],
-      messageTemplate: "Hameçonnage : {ruleName}",
-    });
-    const e = await newEvaluation(creator, id);
-    runnerEvaluate(e);
-    await waitEvaluation(creator, id, e);
-    const sent = recvLog("smtp").filter((m) =>
-      m.rcpt.join().includes("victime@autre-domaine.test"),
-    );
-    expect(sent).toHaveLength(0);
-  },
-);
+test("j09b-006 : un Créateur ne peut pas utiliser le secret SMTP d'un autre pour envoyer", async () => {
+  const title = `${tag}-mail-relay`;
+  const id = await mkRule(creator, datasetId, title, {
+    channels: [{ kind: "email", to: "victime@autre-domaine.test", smtpSecretName: smtpName }],
+    messageTemplate: "Hameçonnage : {ruleName}",
+  });
+  const e = await newEvaluation(creator, id);
+  runnerEvaluate(e);
+  await waitEvaluation(creator, id, e);
+  const sent = recvLog("smtp").filter((m) => m.rcpt.join().includes("victime@autre-domaine.test"));
+  expect(sent).toHaveLength(0);
+});
 
 test("balayage périodique réel : le worker évalue seul la règle planifiée (firing) sans intervention", async () => {
   test.setTimeout(480_000);

@@ -117,32 +117,29 @@ test.describe("j06b aperçu, historique des runs, catalogue", () => {
   // Confirme j06-004 par exécution : l'aperçu s'exécute dans le cœur (qui a la clé de secrets) et
   // le DSN d'un secret Créateur atteint le Postgres interne du compose (échec d'authentification
   // renvoyé par postgis, pas un refus d'egress).
-  bug(
-    "j06b-010 : l'aperçu d'un reader postgres ne joint pas le Postgres interne du compose",
-    async () => {
-      const secretName = `${tag}-dsn-interne`;
-      const s = await creator.send("POST", "/v1/secrets", {
-        name: secretName,
-        payload: { kind: "postgres_dsn", dsn: "postgresql://gis:mauvais@postgis:5432/gis" },
-      });
-      expect(s.status).toBe(201);
-      const r = await creator.send("POST", `/v1/pipelines/${pipe}/preview?upTo=r`, {
-        pipeline: {
-          nodes: [
-            {
-              id: "r",
-              kind: "reader",
-              op: "reader.connector.postgres",
-              params: { secretName, query: "SELECT 1 AS un" },
-            },
-            exportWriter("x.csv"),
-          ],
-          edges: [edge("r", "w")],
-        },
-      });
-      expect(JSON.stringify(r.body)).not.toMatch(/authentication failed|password/i);
-    },
-  );
+  test("j06b-010 : l'aperçu d'un reader postgres ne joint pas le Postgres interne du compose", async () => {
+    const secretName = `${tag}-dsn-interne`;
+    const s = await creator.send("POST", "/v1/secrets", {
+      name: secretName,
+      payload: { kind: "postgres_dsn", dsn: "postgresql://gis:mauvais@postgis:5432/gis" },
+    });
+    expect(s.status).toBe(201);
+    const r = await creator.send("POST", `/v1/pipelines/${pipe}/preview?upTo=r`, {
+      pipeline: {
+        nodes: [
+          {
+            id: "r",
+            kind: "reader",
+            op: "reader.connector.postgres",
+            params: { secretName, query: "SELECT 1 AS un" },
+          },
+          exportWriter("x.csv"),
+        ],
+        edges: [edge("r", "w")],
+      },
+    });
+    expect(JSON.stringify(r.body)).not.toMatch(/authentication failed|password/i);
+  });
 
   // Finding j06b-009 : le catalogue n'exige aucune authentification (route sans get_current_user).
   bug("j06b-009 : GET /pipelines/ops exige une session", async () => {

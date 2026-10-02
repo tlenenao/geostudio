@@ -102,11 +102,11 @@ test.describe("j06 garde d'egress SSRF de reader.connector.rest", () => {
   }
 
   // Finding j06-003 : 100.64.0.0/10 (CGNAT, métadonnées Alibaba en 100.100.100.200) et fec0::/10 passent.
-  bug("j06-003 : bloque 100.100.100.200 (CGNAT / métadonnées Alibaba)", () => {
+  test("j06-003 : bloque 100.100.100.200 (CGNAT / métadonnées Alibaba)", () => {
     expect(egress("http://100.100.100.200/")).toBe("BLOCKED");
   });
 
-  bug("j06-003 : bloque [fec0::1] (site-local IPv6 déprécié)", () => {
+  test("j06-003 : bloque [fec0::1] (site-local IPv6 déprécié)", () => {
     expect(egress("http://[fec0::1]/")).toBe("BLOCKED");
   });
 });
