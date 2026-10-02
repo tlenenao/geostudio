@@ -50,7 +50,10 @@ _WEBHOOK_TRIGGER_RE = re.compile(r"^/v1/pipelines/[^/]+/trigger$")
 # de app.main pour le groupe "jobs" plutôt que de le redéfinir ici.
 _BUDGETS = {
     "sql": 10,
-    "llm": 20,
+    # Un tour de copilote coûte >= 4 requêtes (le tour + initialize/initialized/
+    # list_tools en loopback /mcp, même clé Authorization) : 20 plafonnait à 5
+    # tours/min puis 429 -> 502 (vu par l'e2e-oidc, 28 tours). 120 = ~30 tours/min.
+    "llm": 120,
     "jobs": 15,
     "harvest": 10,
     "collections_empty": 5,
