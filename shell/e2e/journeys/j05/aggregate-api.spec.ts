@@ -99,7 +99,7 @@ test.describe("j05 agrégats — API", () => {
   });
 
   // Finding j05-004 : aucune clause ORDER BY, les buckets sortent dans un ordre de hachage.
-  bug("j05-004 : les buckets temporels sont rendus en ordre chronologique", async () => {
+  test("j05-004 : les buckets temporels sont rendus en ordre chronologique", async () => {
     const r = await aggregate(analyst, seed.ventes, {
       groupBy: "d",
       bucket: "month",
@@ -110,7 +110,7 @@ test.describe("j05 agrégats — API", () => {
   });
 
   // Finding j05-005 : str(None) côté cœur -> la chaîne « None » pour un groupe NULL.
-  bug("j05-005 : un groupe NULL est rendu null, jamais la chaîne « None »", async () => {
+  test("j05-005 : un groupe NULL est rendu null, jamais la chaîne « None »", async () => {
     const r = await aggregate(analyst, seed.ventes, { groupBy: "cat", agg: "count" });
     expect(r.body.rows.map((x: any) => x.cat)).not.toContain("None");
   });
@@ -157,7 +157,7 @@ test.describe("j05 agrégats — API", () => {
   );
 
   // Finding j05-006 : erreur de conversion DuckDB non mappée en 400.
-  bug("j05-006 : un filtre numérique non convertible répond 400", async () => {
+  test("j05-006 : un filtre numérique non convertible répond 400", async () => {
     const r = await aggregate(analyst, seed.ventes, {
       agg: "count",
       filters: { montant__gte: "abc" },
@@ -166,7 +166,7 @@ test.describe("j05 agrégats — API", () => {
   });
 
   // Finding j05-007 : aucune ligne quand le filtre ne retient rien, même pour count.
-  bug("j05-007 : count sans groupBy sur un filtre vide renvoie 0", async () => {
+  test("j05-007 : count sans groupBy sur un filtre vide renvoie 0", async () => {
     const r = await aggregate(analyst, seed.ventes, { agg: "count", filters: { cat: "zz" } });
     expect(r.body.rows[0]?.value).toBe(0);
   });

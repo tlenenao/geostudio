@@ -151,7 +151,7 @@ test.describe("j05 SQL Lab — API", () => {
   });
 
   // Finding j05-008 : inf/NaN ne sont pas sérialisables en JSON -> 500.
-  bug("j05-008 : une division par zéro (inf) est rendue sans erreur serveur", async () => {
+  test("j05-008 : une division par zéro (inf) est rendue sans erreur serveur", async () => {
     const r = await sql(analyst, "select 1/0 as x");
     expect(r.status).toBeLessThan(500);
   });
@@ -163,7 +163,7 @@ test.describe("j05 SQL Lab — API", () => {
   });
 
   // Finding j05-020 : une collection non encore répliquée dans le lac.
-  bug("j05-020 : agrégat sur une collection non répliquée signale l'attente", async () => {
+  test("j05-020 : agrégat sur une collection non répliquée signale l'attente", async () => {
     test.setTimeout(60_000);
     const creator = await apiFor("creator");
     const created = await creator.send("POST", "/v1/collections/empty", {

@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
 import { test, expect } from "@playwright/test";
-import { bug } from "../_fixtures/verify";
 import { getBigSeed, getPlainBig, psql, timed, apiFor, type BigSeed } from "./helpers";
 
 let s500k: BigSeed;
@@ -114,21 +113,20 @@ test.describe("t03b requêtes DuckDB / agrégats sur 500 000 entités (CDC actif
     expect(lag).toBeLessThan(45_000);
   });
 
-  bug(
-    "t03b-004 : un insert en masse est visible dans les agrégats sans attendre un balayage différé",
-    async () => {
-      // Comparaison PG (vérité) vs agrégat : juste après l'INSERT, le compte agrégé doit
-      // égaler le compte SQL (ou l'API doit signaler la fraîcheur des données).
-      const creator = await apiFor("creator");
-      const table = psql(`SELECT table_name FROM collections WHERE id='${plain50k.id}'`).trim();
-      psql(
-        `INSERT INTO public."${table}" (tenant_id, nom, cat, val) SELECT 'default','imm-'||g,'ci',1 FROM generate_series(1,5) g`,
-      );
-      const truth = Number(psql(`SELECT count(*) FROM public."${table}"`).trim());
-      const r = await creator.send("POST", `/v1/collections/${plain50k.id}/aggregate`, {
-        measures: [{ agg: "count", label: "n" }],
-      });
-      expect(r.body.rows[0].n).toBe(truth);
-    },
-  );
+  test("t03b-004 : un insert en masse est visible dans les agrégats sans attendre un balayage différé", async () => {
+    // Comparaison PG (vérité) vs agrégat : juste après l'INSERT, le compte agrégé doit
+    // égaler le compte SQL (ou l'API doit signaler la fraîcheur des données).
+    const creator = await apiFor("creator");
+    const table = psql(`SELECT table_name FROM collections WHERE id='${plain50k.id}'`).trim();
+    psql(
+      `INSERT INTO public."${table}" (tenant_id, nom, cat, val) SELECT 'default','imm-'||g,'ci',1 FROM generate_series(1,5) g`,
+    );
+    const truth = Number(psql(`SELECT count(*) FROM public."${table}"`).trim());
+    const r = await creator.send("POST", `/v1/collections/${plain50k.id}/aggregate`, {
+      measures: [{ agg: "count", label: "n" }],
+    });
+    // P25.11 : le lac peut retarder (flush CDC ~30 s) — la réponse le dit via asOf/pending.
+    const signalsAge = typeof r.body.asOf === "string" || r.body.pending === true;
+    expect(r.body.rows[0].n === truth || signalsAge).toBe(true);
+  });
 });

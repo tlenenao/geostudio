@@ -86,7 +86,7 @@ test.describe("j05 exports — API", () => {
   );
 
   // Finding j05-010 : 0 octet sans en-tête quand l'agrégat ne retourne aucune ligne.
-  bug("j05-010 : l'export d'un agrégat vide contient au moins la ligne d'en-tête", async () => {
+  test("j05-010 : l'export d'un agrégat vide contient au moins la ligne d'en-tête", async () => {
     const r = await download(
       "analyst",
       "POST",
