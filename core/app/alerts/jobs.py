@@ -11,6 +11,8 @@ Constraints)."""
 import logging
 import os
 
+from sqlalchemy import select
+
 from app.alerts import repository as alerts_repo
 from app.alerts.notify import NotifyError, send_email, send_webhook
 from app.analytics.aggregate import (
@@ -29,8 +31,9 @@ from app.configs.alert_condition import evaluate_condition
 from app.configs.schemas import AlertChannelEmail, AlertChannelWebhook, AlertRulePayload
 from app.db import request_scoped_session
 from app.items import repository as items_repo
+from app.items.models import Item
 from app.jobs import app
-from app.jobs.common import resolve_owner_user
+from app.jobs.common import notify_best_effort, resolve_owner_user
 from app.jobs.common import session_factory as _session_factory
 from app.roles.guards import has_privilege
 from app.roles.privileges import Privilege
@@ -48,10 +51,10 @@ class AlertEvaluationError(Exception):
 _TERMINAL_STATES = {"ok", "firing", "error"}
 
 
-def _previous_terminal_state(evaluations, *, current_evaluation_id: str) -> str | None:
+def _previous_terminal_evaluation(evaluations, *, current_evaluation_id: str):
     """Walk `evaluations` (most-recent-first, per list_evaluations) past the
     current evaluation AND any other leading "pending" rows, returning the
-    first terminal-state (ok/firing/error) row's state.
+    first terminal-state (ok/firing/error) row.
 
     Two distinct evaluations can legitimately be "pending" at once: the
     current one being processed right now (committed before deferring, see
@@ -63,15 +66,42 @@ def _previous_terminal_state(evaluations, *, current_evaluation_id: str) -> str 
     even when the rule's actual state never changed.
 
     Returns None if the rule has no prior terminal evaluation at all (first
-    real run) — the caller treats that the same as any other transition.
-    """
+    real run)."""
     for evaluation in evaluations:
         if evaluation.id == current_evaluation_id:
             continue
         if evaluation.state not in _TERMINAL_STATES:
             continue
-        return evaluation.state
+        return evaluation
     return None
+
+
+def _previous_terminal_state(evaluations, *, current_evaluation_id: str) -> str | None:
+    previous = _previous_terminal_evaluation(
+        evaluations, current_evaluation_id=current_evaluation_id
+    )
+    return previous.state if previous is not None else None
+
+
+# P20.03 : une livraison échouée est retentée à l'évaluation suivante (même
+# état), au plus _MAX_NOTIFY_RETRIES fois d'affilée.
+# ponytail: renvoie sur TOUS les canaux (y compris ceux déjà livrés) ; un
+# suivi par canal si les doublons gênent.
+_MAX_NOTIFY_RETRIES = 5
+
+
+def _should_retry_notification(evaluations, *, current_evaluation_id: str, new_state: str) -> bool:
+    terminal = [
+        e for e in evaluations if e.id != current_evaluation_id and e.state in _TERMINAL_STATES
+    ]
+    if not terminal or terminal[0].state != new_state:
+        return False
+    consecutive = 0
+    for e in terminal:
+        if e.notify_status != "failed":
+            break
+        consecutive += 1
+    return 0 < consecutive <= _MAX_NOTIFY_RETRIES
 
 
 def _analytics_base_uri() -> str:
@@ -112,6 +142,9 @@ def _owner_user(session, *, tenant_id: str, item_id: str) -> User:
         return resolve_owner_user(session, tenant_id=tenant_id, item_id=item_id)
     except LookupError as exc:
         raise AlertEvaluationError(str(exc)) from exc
+
+
+_ZERO_ON_EMPTY_AGGS = frozenset({"count", "countDistinct", "sum"})
 
 
 def _measure_value(session, *, user: User, payload: AlertRulePayload) -> float:
@@ -185,6 +218,10 @@ def _measure_value(session, *, user: User, payload: AlertRulePayload) -> float:
     finally:
         conn.close()
 
+    if not rows and _measures_for(payload.query)[0].agg in _ZERO_ON_EMPTY_AGGS:
+        # P20.02 (j09-013) : collection sans aucun fichier GeoParquet -> pas de
+        # ligne, mais « zéro ligne » compte 0 / somme 0, pas une erreur.
+        return 0.0
     if len(rows) != 1:
         raise AlertEvaluationError(
             f"alert query must reduce to exactly one row (got {len(rows)}) — "
@@ -236,8 +273,12 @@ def _notify(
     rule_name: str,
     value: float,
     state: str,
-) -> None:
+    actor_id: str | None = None,
+) -> tuple[str, str | None]:
+    """Retourne (notify_status, notify_error) : "delivered" si tous les canaux
+    ont livré, sinon "failed" + motifs joints (P20.01/03)."""
     message = _render_message(payload, rule_name=rule_name, value=value, state=state)
+    failures: list[str] = []
     for channel in payload.channels:
         success = False
         error_detail = None
@@ -245,6 +286,9 @@ def _notify(
             if isinstance(channel, AlertChannelWebhook):
                 send_webhook(
                     channel,
+                    session=session,
+                    tenant_id=tenant_id,
+                    item_id=item_id,
                     payload={
                         "ruleName": rule_name,
                         "state": state,
@@ -264,11 +308,12 @@ def _notify(
             success = True
         except NotifyError as exc:
             error_detail = str(exc)
+            failures.append(f"{channel.kind}: {exc}")
             logger.warning("alert notification failed for rule %s: %s", item_id, exc)
         write_audit(
             session,
             tenant_id=tenant_id,
-            actor_id=None,
+            actor_id=actor_id,
             actor_kind="agent",
             action="alert.notify",
             object_type="item",
@@ -280,10 +325,17 @@ def _notify(
                 "error": error_detail,
             },
         )
+    if failures:
+        return "failed", "; ".join(failures)
+    return "delivered", None
 
 
 @app.task(queue="etl")
 def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
+    if is_read_only_mode():
+        # c02-008 : mode lecture seule/démo — même court-circuit que le balayage.
+        logger.info("mode lecture seule : évaluation d'alerte %s ignorée", evaluation_id)
+        return
     factory = _session_factory()
 
     with request_scoped_session(factory) as session:
@@ -294,6 +346,11 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
             logger.error("alert evaluation %s introuvable (tenant %s)", evaluation_id, tenant_id)
             return
         item_id = evaluation.alert_rule_item_id
+        # P20.06 : les audits d'évaluation/notification portent le propriétaire de la
+        # règle (actor_kind reste "agent"), pour que « Mes tâches » les retrouve.
+        owner_id = session.scalar(
+            select(Item.owner_id).where(Item.id == item_id, Item.tenant_id == tenant_id)
+        )
 
     with request_scoped_session(factory) as session:
         try:
@@ -327,10 +384,15 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
                 session, tenant_id=tenant_id, alert_rule_item_id=item_id
             )
             previous_state = _previous_terminal_state(history, current_evaluation_id=evaluation_id)
-            # A rule with no prior real (terminal) evaluation always counts
-            # as a transition into its first observed state — same "first
-            # run notifies" semantics as any freshly-created alert.
-            transitioned = previous_state is None or previous_state != new_state
+            # P20.05 : la première observation à « ok » est silencieuse ; la première
+            # à « firing » notifie, comme tout changement d'état ensuite.
+            transitioned = (
+                new_state == "firing" if previous_state is None else previous_state != new_state
+            )
+            # P20.03 : même état que l'évaluation précédente dont la livraison a échoué.
+            retry = not transitioned and _should_retry_notification(
+                history, current_evaluation_id=evaluation_id, new_state=new_state
+            )
 
             alerts_repo.mark_evaluated(
                 session,
@@ -342,7 +404,7 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
             write_audit(
                 session,
                 tenant_id=tenant_id,
-                actor_id=None,
+                actor_id=owner_id,
                 actor_kind="agent",
                 action="alert.evaluate",
                 object_type="item",
@@ -361,7 +423,7 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
             write_audit(
                 session,
                 tenant_id=tenant_id,
-                actor_id=None,
+                actor_id=owner_id,
                 actor_kind="agent",
                 action="alert.evaluate",
                 object_type="item",
@@ -403,7 +465,7 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
             write_audit(
                 session,
                 tenant_id=tenant_id,
-                actor_id=None,
+                actor_id=owner_id,
                 actor_kind="agent",
                 action="alert.evaluate",
                 object_type="item",
@@ -426,11 +488,13 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
         # NEXT tick see "error" as the previous state, re-derive
         # transitioned=True, and re-notify every channel indefinitely,
         # including ones that already succeeded.
-        if transitioned:
+        if transitioned or retry:
             item = items_repo.get_item(session, tenant_id=tenant_id, item_id=item_id)
             rule_name = item.title if item else item_id
+            notify_status: str | None
+            notify_error: str | None
             try:
-                _notify(
+                notify_status, notify_error = _notify(
                     session,
                     tenant_id=tenant_id,
                     item_id=item_id,
@@ -438,6 +502,7 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
                     rule_name=rule_name,
                     value=value,
                     state=new_state,
+                    actor_id=owner_id,
                 )
             except Exception as exc:
                 # _notify itself already catches NotifyError per-channel and
@@ -450,10 +515,11 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
                 logger.exception(
                     "alert notification pipeline %s : erreur inattendue", evaluation_id
                 )
+                notify_status, notify_error = "failed", f"erreur interne : {exc}"
                 write_audit(
                     session,
                     tenant_id=tenant_id,
-                    actor_id=None,
+                    actor_id=owner_id,
                     actor_kind="agent",
                     action="alert.notify",
                     object_type="item",
@@ -462,8 +528,26 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
                         "channel": None,
                         "state": new_state,
                         "success": False,
-                        "error": f"erreur interne : {exc}",
+                        "error": notify_error,
                     },
+                )
+            alerts_repo.mark_notified(
+                session, evaluation_id=evaluation_id, status=notify_status, error=notify_error
+            )
+            # P20.12 : notification in-app au propriétaire (alerte déclenchée ou
+            # livraison en échec) — session dédiée, jamais celle de l'évaluation.
+            if owner_id is not None and (notify_status == "failed" or new_state == "firing"):
+                notify_best_effort(
+                    _session_factory(),
+                    tenant_id=tenant_id,
+                    recipient_user_id=owner_id,
+                    kind="alert",
+                    status="failure",
+                    item_id=item_id,
+                    item_resource_type="alert",
+                    item_title=rule_name,
+                    error=notify_error
+                    or _render_message(payload, rule_name=rule_name, value=value, state=new_state),
                 )
 
 

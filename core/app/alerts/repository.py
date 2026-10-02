@@ -52,6 +52,17 @@ def mark_evaluated(
     session.flush()
 
 
+def mark_notified(
+    session: Session, *, evaluation_id: str, status: str, error: str | None = None
+) -> None:
+    evaluation = session.get(AlertEvaluation, evaluation_id)
+    if evaluation is None:
+        return
+    evaluation.notify_status = status
+    evaluation.notify_error = error
+    session.flush()
+
+
 def get_latest_evaluations_for_items(
     session: Session, *, item_ids: list[str]
 ) -> dict[str, AlertEvaluation]:

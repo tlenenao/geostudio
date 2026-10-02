@@ -214,3 +214,41 @@ def test_send_email_refuses_secret_the_rule_owner_cannot_use(smtp_secret_session
                     body="b",
                 )
         mock_smtp_cls.assert_not_called()
+
+
+def test_send_webhook_signs_the_exact_body_with_the_channel_secret(monkeypatch):
+    # P20.04 (j09b-003)
+    import hashlib
+    import hmac
+
+    from app.alerts import notify
+    from app.secrets.schemas import BearerTokenPayload
+
+    monkeypatch.setattr(socket, "getaddrinfo", _fake_getaddrinfo_public)
+    monkeypatch.setattr(notify, "_owner_user", lambda *a, **k: object())
+    monkeypatch.setattr(
+        notify.secrets_repo,
+        "get_secret_payload",
+        lambda *a, **k: BearerTokenPayload(token="s3cr3t"),
+    )
+    channel = AlertChannelWebhook(url="https://example.test/hook", signingSecretName="sig")
+    mock_session = MagicMock()
+    mock_session.post.return_value = MagicMock(status_code=200, raise_for_status=lambda: None)
+    with patch("app.alerts.notify.build_guarded_session", return_value=mock_session):
+        send_webhook(
+            channel, payload={"state": "firing"}, session=MagicMock(), tenant_id="t", item_id="i"
+        )
+    kwargs = mock_session.post.call_args.kwargs
+    expected = hmac.new(b"s3cr3t", kwargs["data"], hashlib.sha256).hexdigest()
+    assert kwargs["headers"]["X-GeoStudio-Signature"] == f"sha256={expected}"
+
+
+def test_send_webhook_fails_when_the_signing_secret_is_unusable(monkeypatch):
+    from app.alerts import notify
+
+    monkeypatch.setattr(socket, "getaddrinfo", _fake_getaddrinfo_public)
+    monkeypatch.setattr(notify, "_owner_user", lambda *a, **k: object())
+    monkeypatch.setattr(notify.secrets_repo, "get_secret_payload", lambda *a, **k: None)
+    channel = AlertChannelWebhook(url="https://example.test/hook", signingSecretName="sig")
+    with pytest.raises(NotifyError, match="signing secret"):
+        send_webhook(channel, payload={}, session=MagicMock(), tenant_id="t", item_id="i")

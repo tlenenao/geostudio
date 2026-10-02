@@ -220,3 +220,47 @@ def test_0008_downgrade_tolerates_a_role_still_granted_elsewhere(throwaway_datab
         with admin.connect() as conn:
             conn.execute(sa.text(f'DROP DATABASE IF EXISTS "{other}" WITH (FORCE)'))
         admin.dispose()
+
+
+def test_0044_adds_notify_columns_on_a_non_empty_table_both_ways(throwaway_database_url):
+    """P20 : statut de livraison d'une évaluation d'alerte (base non vide)."""
+    url = throwaway_database_url
+    command.upgrade(_cfg(), "0043")
+    eng = sa.create_engine(url)
+    with eng.begin() as conn:
+        _seed_base(conn)
+        conn.execute(
+            sa.text(
+                "INSERT INTO items (id, tenant_id, owner_id, resource_type, title, keywords, "
+                "created_at, updated_at) VALUES ('a1','t1','u1','alert','A','[]',now(),now())"
+            )
+        )
+        conn.execute(
+            sa.text(
+                "INSERT INTO alert_evaluations (id, tenant_id, alert_rule_item_id, state, "
+                "transitioned, created_at) VALUES ('ev1','t1','a1','firing',true,now())"
+            )
+        )
+    eng.dispose()
+
+    command.upgrade(_cfg(), "0044")
+    assert _scalar(url, "SELECT notify_status FROM alert_evaluations WHERE id='ev1'") is None
+    eng = sa.create_engine(url)
+    with eng.begin() as conn:
+        conn.execute(
+            sa.text(
+                "UPDATE alert_evaluations SET notify_status='failed', notify_error='500' "
+                "WHERE id='ev1'"
+            )
+        )
+    eng.dispose()
+    assert _scalar(url, "SELECT notify_error FROM alert_evaluations WHERE id='ev1'") == "500"
+
+    command.downgrade(_cfg(), "0043")
+    assert _scalar(url, "SELECT count(*) FROM alert_evaluations") == 1
+    cols = _scalar(
+        url,
+        "SELECT count(*) FROM information_schema.columns WHERE table_name='alert_evaluations' "
+        "AND column_name IN ('notify_status','notify_error')",
+    )
+    assert cols == 0

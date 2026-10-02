@@ -222,3 +222,20 @@ def test_evaluate_alert_now_reuses_a_recent_pending_evaluation(monkeypatch, tmp_
     # Aucun second job déféré : la "pending" existante est réutilisée telle
     # quelle, pas dupliquée.
     assert deferred == []
+
+
+def test_evaluation_status_exposes_delivery_failure(monkeypatch):
+    # P20.01 : champs additifs notifyStatus/notifyError dans l'historique
+    from app.alerts.routes import EvaluationStatus
+
+    s = EvaluationStatus(
+        id="e",
+        value=1.0,
+        state="firing",
+        transitioned=True,
+        error=None,
+        notifyStatus="failed",
+        notifyError="webhook: 500",
+        createdAt="2026-10-02T00:00:00",
+    )
+    assert s.model_dump()["notifyStatus"] == "failed"

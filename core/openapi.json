@@ -253,6 +253,17 @@
             "title": "Kind",
             "type": "string"
           },
+          "signingSecretName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signingsecretname"
+          },
           "url": {
             "title": "Url",
             "type": "string"
@@ -1698,6 +1709,28 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "notifyError": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notifyerror"
+          },
+          "notifyStatus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notifystatus"
           },
           "state": {
             "title": "State",

@@ -159,7 +159,9 @@ def env(pg_engine, monkeypatch, tmp_path):
 def test_evaluate_alert_task_transitions_ok_to_firing_and_notifies(env, monkeypatch):
     app, Session, tenant, alert_item_id = env
     sent = []
-    monkeypatch.setattr(alert_jobs, "send_webhook", lambda channel, payload: sent.append(payload))
+    monkeypatch.setattr(
+        alert_jobs, "send_webhook", lambda channel, payload, **_kw: sent.append(payload)
+    )
 
     with Session() as s:
         evaluation = alerts_repo.create_evaluation(
@@ -185,7 +187,9 @@ def test_evaluate_alert_task_transitions_ok_to_firing_and_notifies(env, monkeypa
 def test_evaluate_alert_task_does_not_renotify_while_state_is_stable(env, monkeypatch):
     _, Session, tenant, alert_item_id = env
     sent = []
-    monkeypatch.setattr(alert_jobs, "send_webhook", lambda channel, payload: sent.append(payload))
+    monkeypatch.setattr(
+        alert_jobs, "send_webhook", lambda channel, payload, **_kw: sent.append(payload)
+    )
 
     for _ in range(2):
         with Session() as s:
@@ -436,7 +440,9 @@ def test_notify_failure_does_not_overwrite_measured_state_or_cause_renotify(env,
     monkeypatch.setattr(
         alert_jobs,
         "send_webhook",
-        lambda channel, payload: (_ for _ in ()).throw(ValueError("boom, not a NotifyError")),
+        lambda channel, payload, **_kw: (_ for _ in ()).throw(
+            ValueError("boom, not a NotifyError")
+        ),
     )
 
     with Session() as s:
@@ -467,9 +473,10 @@ def test_notify_failure_does_not_overwrite_measured_state_or_cause_renotify(env,
         assert notify_rows[0].payload["success"] is False
 
     # Second tick: state is still "firing" (webhook keeps failing the same
-    # way) — this must NOT be treated as a fresh transition, i.e. no second
-    # notification attempt, because the previous state was correctly
-    # recorded as "firing" and not corrupted to "error".
+    # way) — this must NOT be treated as a fresh transition (the previous
+    # state was correctly recorded as "firing", not corrupted to "error"),
+    # but since P20.03 the failed delivery is RETRIED once (retry, not
+    # transition).
     with Session() as s:
         evaluation = alerts_repo.create_evaluation(
             s, tenant_id=tenant.id, alert_rule_item_id=alert_item_id
@@ -486,14 +493,15 @@ def test_notify_failure_does_not_overwrite_measured_state_or_cause_renotify(env,
             s, tenant_id=tenant.id, alert_rule_item_id=alert_item_id
         )
         assert latest.state == "firing"
-        assert latest.transitioned is False  # stable repeat, no re-notify attempt
+        assert latest.transitioned is False  # stable repeat, not a transition
+        assert latest.notify_status == "failed"  # P20.03 : retry attempted, still failing
 
         notify_rows = s.scalars(
             select(AuditLog).where(
                 AuditLog.action == "alert.notify", AuditLog.object_id == alert_item_id
             )
         ).all()
-        assert len(notify_rows) == 1  # unchanged — no second attempt was made
+        assert len(notify_rows) == 2  # P20.03 : the failed delivery was retried
 
 
 def test_evaluate_alert_task_writes_audit_log_on_unexpected_error(env, monkeypatch):
@@ -825,3 +833,114 @@ def test_evaluate_alert_task_reads_sensitive_column_for_owner_with_privilege(
             assert latest.value == 45000.0
     finally:
         _teardown_sensitive_alert(pg_engine)
+
+
+def _run_eval(env_tuple, *, fresh_connector=True):
+    _, Session, tenant, alert_item_id = env_tuple
+    with Session() as s:
+        evaluation = alerts_repo.create_evaluation(
+            s, tenant_id=tenant.id, alert_rule_item_id=alert_item_id
+        )
+        s.commit()
+        evaluation_id = evaluation.id
+    with alert_jobs.app.replace_connector(testing.InMemoryConnector()) as app:
+        alert_jobs.evaluate_alert_task.defer(evaluation_id=evaluation_id, tenant_id=tenant.id)
+        app.run_worker(wait=False, queues=["etl"])
+    with Session() as s:
+        return alerts_repo.get_evaluation(s, tenant_id=tenant.id, evaluation_id=evaluation_id)
+
+
+def _set_expr(env_tuple, expr):
+    _, Session, tenant, alert_item_id = env_tuple
+    with Session() as s:
+        cfg = configs_repo.get_config_by_item(s, alert_item_id)
+        body = cfg.config.model_dump()
+        body["alert"]["condition"] = {"expr": expr}
+        configs_repo.update_config(
+            s, cfg.id, BuilderConfig.model_validate(body), tenant_id=tenant.id
+        )
+        s.commit()
+
+
+def test_first_observation_ok_is_silent_but_first_firing_notifies(env, monkeypatch):
+    # P20.05 (j09-004)
+    sent = []
+    monkeypatch.setattr(
+        alert_jobs, "send_webhook", lambda channel, payload, **_kw: sent.append(payload)
+    )
+    _set_expr(env, "value > 100")
+    first = _run_eval(env)
+    assert first.state == "ok" and first.transitioned is False and first.notify_status is None
+    assert sent == []
+    _set_expr(env, "value > 2")
+    second = _run_eval(env)
+    assert second.state == "firing" and second.transitioned is True
+    assert second.notify_status == "delivered"
+    assert len(sent) == 1
+
+
+def test_failed_delivery_is_exposed_retried_then_stops_once_delivered(env, monkeypatch):
+    # P20.01 + P20.03 (j09-003, j09b-004)
+    calls = []
+
+    def flaky(channel, payload, **_kw):
+        calls.append(payload)
+        if len(calls) < 3:
+            raise alert_jobs.NotifyError("webhook delivery failed: 500")
+
+    monkeypatch.setattr(alert_jobs, "send_webhook", flaky)
+    e1 = _run_eval(env)
+    assert e1.notify_status == "failed" and "500" in e1.notify_error
+    e2 = _run_eval(env)  # même état : retentée
+    assert e2.transitioned is False and e2.notify_status == "failed"
+    e3 = _run_eval(env)
+    assert e3.notify_status == "delivered" and e3.notify_error is None
+    e4 = _run_eval(env)  # livrée : plus de renvoi
+    assert e4.notify_status is None
+    assert len(calls) == 3
+
+
+def test_retry_is_bounded(env, monkeypatch):
+    calls = []
+
+    def always_fail(channel, payload, **_kw):
+        calls.append(1)
+        raise alert_jobs.NotifyError("down")
+
+    monkeypatch.setattr(alert_jobs, "send_webhook", always_fail)
+    for _ in range(alert_jobs._MAX_NOTIFY_RETRIES + 3):
+        _run_eval(env)
+    assert len(calls) == alert_jobs._MAX_NOTIFY_RETRIES + 1
+
+
+def test_count_on_a_collection_without_data_evaluates_to_zero(env, monkeypatch, tmp_path_factory):
+    # P20.02 (j09-013)
+    monkeypatch.setenv("S3_CDC_BUCKET_BASE_URI", str(tmp_path_factory.mktemp("empty-lake")))
+    monkeypatch.setattr(alert_jobs, "send_webhook", lambda *a, **k: None)
+    _set_expr(env, "value < 1")
+    ev = _run_eval(env)
+    assert ev.state == "firing" and ev.value == 0.0 and ev.error is None
+
+
+def test_audits_carry_the_owner_and_firing_notifies_in_app(env, monkeypatch):
+    # P20.06 (j09-008) + P20.12 (j09-015)
+    from app.notifications.models import Notification
+
+    _, Session, tenant, alert_item_id = env
+    monkeypatch.setattr(alert_jobs, "send_webhook", lambda *a, **k: None)
+    _run_eval(env)
+    with Session() as s:
+        owner_id = s.execute(
+            text("SELECT owner_id FROM items WHERE id = :i"), {"i": alert_item_id}
+        ).scalar_one()
+        actors = set(
+            s.scalars(
+                select(AuditLog.actor_id).where(
+                    AuditLog.object_id == alert_item_id,
+                    AuditLog.action.in_(["alert.evaluate", "alert.notify"]),
+                )
+            )
+        )
+        assert actors == {owner_id}
+        notif = s.scalars(select(Notification).where(Notification.kind == "alert")).one()
+        assert notif.recipient_user_id == owner_id and notif.item_id == alert_item_id

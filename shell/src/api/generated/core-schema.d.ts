@@ -1840,6 +1840,8 @@ export interface components {
              * @enum {string}
              */
             kind: "webhook";
+            /** Signingsecretname */
+            signingSecretName?: string | null;
             /** Url */
             url: string;
         };
@@ -2361,6 +2363,10 @@ export interface components {
             error: string | null;
             /** Id */
             id: string;
+            /** Notifyerror */
+            notifyError?: string | null;
+            /** Notifystatus */
+            notifyStatus?: string | null;
             /** State */
             state: string;
             /** Transitioned */

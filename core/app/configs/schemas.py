@@ -316,6 +316,10 @@ class AlertCondition(BaseModel):
 class AlertChannelWebhook(BaseModel):
     kind: Literal["webhook"] = "webhook"
     url: str
+    # P20.04 : secret `bearer_token` du coffre servant de clé HMAC-SHA256 ;
+    # l'en-tête X-GeoStudio-Signature permet au récepteur d'authentifier
+    # l'émetteur. Absent = livraison non signée (comportement historique).
+    signingSecretName: str | None = None
 
 
 class AlertChannelEmail(BaseModel):

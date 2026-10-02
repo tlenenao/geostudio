@@ -37,4 +37,7 @@ class AlertEvaluation(Base):
         Boolean, nullable=False, default=False, server_default=sa.false()
     )
     error: Mapped[str | None] = mapped_column(String, nullable=True)
+    # P20.01/03 : None = aucune notification tentée ; "delivered" | "failed".
+    notify_status: Mapped[str | None] = mapped_column(String, nullable=True)
+    notify_error: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
