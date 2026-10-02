@@ -9,7 +9,27 @@ const ALICE = { username: "alice", password: "Demo1234!" };
 
 test.setTimeout(240_000);
 
+// En prod le shell et le cœur sont servis sous la même origine (Traefik) ; le
+// job CI n'a pas Traefik : le navigateur appelle le cœur (:8200) depuis :8300 et
+// le cœur n'expose volontairement aucun CORS global. On le simule côté test.
+async function allowCrossOriginCore(page: Page) {
+  const cors = {
+    "access-control-allow-origin": "http://localhost:8300",
+    "access-control-allow-headers": "authorization, content-type, if-match",
+    "access-control-allow-methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    "access-control-expose-headers": "etag, location",
+  };
+  await page.route(/:8200\/v1\//, async (route) => {
+    if (route.request().method() === "OPTIONS") {
+      return route.fulfill({ status: 204, headers: cors });
+    }
+    const res = await route.fetch();
+    return route.fulfill({ response: res, headers: { ...res.headers(), ...cors } });
+  });
+}
+
 async function login(page: Page): Promise<{ authorization: string; coreUrl: string }> {
+  await allowCrossOriginCore(page);
   // Le jeton REST vit en mémoire : on le récupère sur le premier appel au cœur.
   const bearer = page.waitForRequest(
     (r) => /\/v1\//.test(r.url()) && Boolean(r.headers().authorization),
