@@ -1,6 +1,6 @@
 # Bilan de fonctionnalités — GeoStudio
 
-**Généré le 2026-10-02** par `uv run python scripts/feature_health_cli.py --repo .. --write`. **Ne pas éditer à la main** : ce fichier est regénéré à chaque clôture de SP.
+**Généré le 2026-10-03** par `uv run python scripts/feature_health_cli.py --repo .. --write`. **Ne pas éditer à la main** : ce fichier est regénéré à chaque clôture de SP.
 
 308 fonctionnalités — santé médiane 98.6 sur 308 mesurables.
 
@@ -146,7 +146,7 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | tenants | Provisionnement d'un tenant unique par défaut (multi-tenant non exposé à l'utilisateur) | `tenants-provisionnement-d-un-tenant-unique-par-defaut-multi-tenant-non-expose-a-` | 86.4 | = | basse (amorcée) | 77.3 | — | — | 100.0 |
 | Features (OGC API) | Créer/modifier/supprimer une entité (OGC Part 4) | `features-ogc-api-creer-modifier-supprimer-une-entite-ogc-part-4` | 95.5 | = | haute (amorcée) | 85.0 | 100.0 | 100.0 | 100.0 |
 | Conformité | Purger un tenant (suppression complète et irréversible) | `conformite-purger-un-tenant-suppression-complete-et-irreversible` | 93.5 | = | moyenne | 78.2 | 100.0 | 100.0 | 100.0 |
-| Fédération des données | Moissonnage : créer/lister/éditer/supprimer une source externe (STAC, ArcGIS FS, WMS, WFS, WMTS, CSW, OGC API - Records, CKAN) | `federation-des-donnees-moissonnage-creer-lister-editer-supprimer-une-source-exte` | 93.5 | +0.2 | moyenne (amorcée) | 84.9 | 100.0 | 92.3 | 100.0 |
+| Fédération des données | Moissonnage : créer/lister/éditer/supprimer une source externe (STAC, ArcGIS FS, WMS, WFS, WMTS, CSW, OGC API - Records, CKAN) | `federation-des-donnees-moissonnage-creer-lister-editer-supprimer-une-source-exte` | 93.5 | = | moyenne (amorcée) | 84.9 | 100.0 | 92.3 | 100.0 |
 | Builder — Widgets | Formulaire en lecture seule si permission insuffisante ou instance en mode demo | `builder-widgets-formulaire-en-lecture-seule-si-permission-insuffisante-ou-instan` | 95.8 | = | haute (amorcée) | 92.9 | — | — | 100.0 |
 | Builder — Widgets | Widget Formulaire genere depuis le schema de collection | `builder-widgets-widget-formulaire-genere-depuis-le-schema-de-collection` | 95.8 | = | haute (amorcée) | 92.9 | — | — | 100.0 |
 | Carte | Gestion des couches (réordonnancement, visibilité, suppression) | `carte-gestion-des-couches-reordonnancement-visibilite-suppression` | 95.8 | = | haute (amorcée) | 93.0 | — | — | 100.0 |
