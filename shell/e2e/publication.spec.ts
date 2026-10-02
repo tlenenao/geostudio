@@ -18,6 +18,10 @@ test("publishing an item, capturing a thumbnail, and the runtime route still wor
   await page.goto("/items/9");
   await page.getByRole("button", { name: "Actions" }).click();
   await page.getByRole("button", { name: "Publier" }).click();
+  await page
+    .getByRole("dialog", { name: "Publier" })
+    .getByRole("button", { name: "Publier" })
+    .click();
   await expect(page.getByRole("button", { name: "Actions" })).toBeVisible();
   await page.getByRole("button", { name: "Actions" }).click();
   await expect(page.getByRole("button", { name: "Dépublier" })).toBeVisible();
