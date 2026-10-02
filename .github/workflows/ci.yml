@@ -279,11 +279,6 @@ jobs:
   feature-health:
     runs-on: ubuntu-latest
     needs: [core, shell]
-    # contents: write uniquement pour le commit bot de l'étape d'auto-fix
-    # ci-dessous (push dev/main seulement) ; défaut du dépôt = read
-    # (default_workflow_permissions), donc sans ceci `git push` échouerait.
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -304,49 +299,33 @@ jobs:
         working-directory: core
         env:
           PYTHONPATH: .
-      # Auto-fix : la fraîcheur des rendus committés dérive dès qu'un commit
-      # normal (pas seulement une clôture de SP) touche core/app, shell/src
-      # ou l'inventaire — la discipline manuelle documentée en CLAUDE.md a
-      # déjà été oubliée ≥6 fois (commits « docs: regenerate feature-health
-      # bilan... »). Plutôt qu'un rappel de plus, on régénère et on commit
-      # automatiquement sur push (jamais sur pull_request : la PR dev→main
-      # doit rester gardée par --check-fresh ci-dessous, avant fusion).
-      # Idempotent par construction : si déjà frais, aucun commit n'est créé
-      # ; le garde `[ci-bot]` évite en plus de re-déclencher cette étape sur
-      # son propre commit.
-      - name: Auto-régénère le bilan si périmé (push uniquement)
-        if: github.event_name == 'push' && !contains(github.event.head_commit.message, '[ci-bot]')
-        env:
-          PYTHONPATH: .
-        run: |
-          set -e
-          cd core
-          if uv run python scripts/feature_health_cli.py --repo .. --check-fresh; then
-            echo "Bilan déjà à jour, rien à committer."
-            exit 0
-          fi
-          uv run python scripts/feature_health_cli.py --repo .. --write
-          cd ..
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/revue/bilan-fonctionnalites.md docs/revue/bilan-fonctionnalites.html docs/revue/historique-sante.jsonl
-          if git diff --cached --quiet; then
-            echo "Aucun changement après régénération (inattendu) — rien à committer."
-            exit 0
-          fi
-          git commit -m "chore(revue): régénère automatiquement le bilan de fonctionnalités [ci-bot]"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
-      # REV-181 : garde-fou de fraîcheur — les rendus committés
-      # (docs/revue/bilan-fonctionnalites.{html,md}) doivent avoir été
-      # régénérés après le dernier changement de code/inventaire. --check
-      # (ci-dessus) ne calcule que les planchers de santé/priorité ; ce mode
-      # est différent, il diffe les rendus recalculés en mémoire contre les
-      # fichiers committés. Sur push, l'étape d'auto-fix précédente l'a déjà
-      # satisfait ; ce step reste le seul gate pour pull_request.
-      - run: uv run python scripts/feature_health_cli.py --repo .. --check-fresh
+      # Fraîcheur des rendus committés (docs/revue/bilan-fonctionnalites.*) :
+      # l'ancien dispositif (commit bot sur chaque push + diff octet-à-octet
+      # bloquant sur la PR) ne pouvait pas converger — le bot committait un
+      # cran en retard, ses commits n'avaient pas de CI (`action_required`),
+      # le journal grossissait de 308 lignes par push, et le diff sur la
+      # PR dev->main échouait à chaque commit. Désormais : les planchers
+      # (--check ci-dessus) restent LE garde-fou bloquant ; le bilan frais de
+      # CE run est publié en artefact (toujours exact, zéro commit) ; le
+      # snapshot committé est régénéré à la clôture d'un SP (CLAUDE.md) et
+      # sa péremption n'est plus qu'un avertissement.
+      - name: Rendus committés périmés ? (avertissement, non bloquant)
+        continue-on-error: true
+        run: uv run python scripts/feature_health_cli.py --repo .. --check-fresh
         working-directory: core
         env:
           PYTHONPATH: .
+      - name: Génère le bilan frais de ce run
+        run: uv run python scripts/feature_health_cli.py --repo .. --write
+        working-directory: core
+        env:
+          PYTHONPATH: .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bilan-fonctionnalites
+          path: |
+            docs/revue/bilan-fonctionnalites.html
+            docs/revue/bilan-fonctionnalites.md
 
   commitlint:
     # REV-070 : miroir CI du hook local `commitlint` (commit-msg,

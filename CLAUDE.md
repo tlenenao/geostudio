@@ -209,7 +209,10 @@ cd ../shell && npm run gen:api-types     # → src/api/generated/core-schema.d.t
 cd core && PYTHONPATH=. uv run python scripts/feature_health_cli.py --repo .. --write
 # --check (sans --write) est la porte CI : sort en erreur si une surface
 # n'est pas inventoriée ou si la santé médiane passe sous le plancher mesuré
-# (core/scripts/feature_health_thresholds.json).
+# (core/scripts/feature_health_thresholds.json). La fraîcheur des rendus
+# committés n'est plus bloquante (plus de commit bot ni de diff sur la PR) :
+# le job CI publie le bilan frais en artefact `bilan-fonctionnalites` et
+# avertit si le snapshot committé est périmé — le régénérer à la clôture d'un SP.
 
 # garde-fou de taille CLAUDE.md (§ Livré) — câblé en pre-commit et en CI
 python3 scripts/check_claude_md_size.py CLAUDE.md .claude-md-size-threshold
