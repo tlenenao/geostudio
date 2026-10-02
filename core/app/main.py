@@ -263,6 +263,8 @@ def create_app() -> FastAPI:
             caller_key_value = caller_key(
                 request.headers.get("authorization"),
                 request.client.host if request.client else None,
+                group,
+                request.url.path,
             )
             if not rate_limiter.allow(caller_key_value, group):
                 return JSONResponse(

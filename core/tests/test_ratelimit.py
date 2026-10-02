@@ -205,3 +205,12 @@ def test_expired_bucket_is_pruned_from_hits(monkeypatch):
         limiter.allow("fresh-caller", "harvest")
 
     assert ("stale-caller", "harvest") not in limiter._hits
+
+
+def test_webhook_trigger_key_ignores_presented_token():
+    # j06b-011 : varier le jeton ne doit pas changer le seau.
+    path = "/v1/pipelines/p1/trigger"
+    a = caller_key("Bearer a", "1.2.3.4", "webhook-trigger", path)
+    assert a == caller_key("Bearer b", "1.2.3.4", "webhook-trigger", path)
+    assert a != caller_key("Bearer a", "1.2.3.4", "webhook-trigger", "/v1/pipelines/p2/trigger")
+    assert a != caller_key("Bearer a", "5.6.7.8", "webhook-trigger", path)
