@@ -75,6 +75,7 @@ export function EditCollectionPanel({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    const effectiveLicenseUri = license === "other" ? licenseUri : "";
     try {
       await updateCollection.mutateAsync({
         title,
@@ -88,9 +89,15 @@ export function EditCollectionPanel({
           ? {}
           : { sensitiveFields }),
         license: license === UNSET ? "" : license,
-        licenseUri,
+        // j07-019 : l'URI n'a de sens que pour la licence « other ».
+        // licenseUri/contact omis tant qu'inchangés : le cœur les valide à
+        // l'écriture, une valeur historique non conforme ne doit pas bloquer
+        // l'enregistrement d'un autre champ.
+        ...(effectiveLicenseUri !== collection.licenseUri
+          ? { licenseUri: effectiveLicenseUri }
+          : {}),
         producer,
-        contact,
+        ...(contact !== collection.contact ? { contact } : {}),
         updateFrequency: updateFrequency === UNSET ? "" : updateFrequency,
         lineage,
         language,

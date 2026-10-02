@@ -998,6 +998,8 @@ export type HarvestSource = {
   lastRunAt: string | null;
   lastStatus: HarvestSourceStatus;
   lastError: string | null;
+  recordCount?: number;
+  staleCount?: number;
 };
 
 export type HarvestSourceCreateInput = {
@@ -1012,7 +1014,7 @@ export type HarvestSourcePatchInput = {
   url?: string;
   mode?: HarvestSourceMode;
   enabled?: boolean;
-  intervalMinutes?: number;
+  intervalMinutes?: number | null;
 };
 
 export type DataRecord = {

@@ -594,3 +594,67 @@ test("affiche un état vide quand aucune source de moissonnage n'existe", async 
   expect(await screen.findByText("Aucune source de moissonnage configurée")).toBeInTheDocument();
   expect(screen.queryByRole("table")).not.toBeInTheDocument();
 });
+
+const failedSource = {
+  id: "src-1",
+  type: "stac",
+  url: "https://a",
+  mode: "reference",
+  enabled: true,
+  intervalMinutes: 60,
+  lastRunAt: "2026-10-01T10:00:00Z",
+  lastStatus: "error",
+  lastError: "cible réseau interne bloquée",
+  recordCount: 3,
+  staleCount: 1,
+};
+
+test("shows the failure reason, last run date and record counts (j07-017, j07-020)", async () => {
+  server.use(
+    http.get("https://core.test/v1/harvest/sources", () =>
+      HttpResponse.json({ sources: [failedSource] }),
+    ),
+  );
+  render(<Harness />);
+  expect(await screen.findByText("cible réseau interne bloquée")).toBeInTheDocument();
+  expect(screen.getByText("3 (1 obsolète(s))")).toBeInTheDocument();
+  expect(screen.queryByText("Jamais")).not.toBeInTheDocument();
+});
+
+test("announces the outcome of a manual run (j07-003)", async () => {
+  let fail = true;
+  server.use(
+    http.get("https://core.test/v1/harvest/sources", () =>
+      HttpResponse.json({ sources: [failedSource] }),
+    ),
+    http.post("https://core.test/v1/harvest/sources/src-1/run", () =>
+      fail
+        ? HttpResponse.json({ detail: "boom" }, { status: 500 })
+        : HttpResponse.json({ status: "queued" }, { status: 202 }),
+    ),
+  );
+  render(<Harness />);
+  await userEvent.click(await screen.findByRole("button", { name: "Moissonner maintenant" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Échec du lancement");
+  fail = false;
+  await userEvent.click(screen.getByRole("button", { name: "Moissonner maintenant" }));
+  expect(await screen.findByRole("status")).toHaveTextContent("mis en file");
+});
+
+test("clearing the interval sends null (j07-018)", async () => {
+  let patched: unknown;
+  server.use(
+    http.get("https://core.test/v1/harvest/sources", () =>
+      HttpResponse.json({ sources: [failedSource] }),
+    ),
+    http.patch("https://core.test/v1/harvest/sources/src-1", async ({ request }) => {
+      patched = await request.json();
+      return HttpResponse.json({ ...failedSource, intervalMinutes: null });
+    }),
+  );
+  render(<Harness />);
+  await userEvent.click(await screen.findByRole("button", { name: "Éditer" }));
+  await userEvent.clear(await screen.findByLabelText("Intervalle de rafraîchissement (minutes)"));
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(patched).toMatchObject({ intervalMinutes: null }));
+});

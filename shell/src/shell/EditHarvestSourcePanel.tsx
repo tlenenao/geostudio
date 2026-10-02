@@ -28,7 +28,12 @@ export function EditHarvestSourcePanel({
       await updateSource.mutateAsync({
         url,
         enabled,
-        ...(intervalMinutes ? { intervalMinutes: Number(intervalMinutes) } : {}),
+        // j07-018 : champ vidé = retrait de la planification (null), pas omission.
+        ...(intervalMinutes
+          ? { intervalMinutes: Number(intervalMinutes) }
+          : source.intervalMinutes != null
+            ? { intervalMinutes: null }
+            : {}),
       });
       onClose();
     } catch {

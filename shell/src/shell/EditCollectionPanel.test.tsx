@@ -383,4 +383,27 @@ describe("EditCollectionPanel — métadonnées ouvertes (SP-41)", () => {
       }),
     );
   });
+
+  it("n'envoie plus l'URI de licence quand la licence n'est plus « other » (j07-019) ni un contact inchangé", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue(undefined);
+    mockUseUpdateCollection.mockReturnValue({ mutateAsync, isPending: false, isError: false });
+    render(
+      <EditCollectionPanel
+        collection={{
+          ...baseCollection,
+          license: "other",
+          licenseUri: "https://example.org/ancienne",
+          contact: "Service SIG",
+        }}
+        onClose={vi.fn()}
+      />,
+    );
+    await userEvent.click(screen.getByRole("tab", { name: "Métadonnées ouvertes" }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Licence" }));
+    await userEvent.click(await screen.findByRole("option", { name: /Licence Ouverte/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+    const payload = mutateAsync.mock.calls[0][0];
+    expect(payload.licenseUri).toBe("");
+    expect(payload).not.toHaveProperty("contact");
+  });
 });

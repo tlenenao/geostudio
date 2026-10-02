@@ -122,6 +122,16 @@ export function HarvestSourcesAdminPage() {
                   {t("harvest.deleteError")}
                 </p>
               )}
+              {runSource.isError && (
+                <p role="alert" className="text-sm text-danger">
+                  {t("harvest.runFailed")}
+                </p>
+              )}
+              {runSource.isSuccess && (
+                <p role="status" className="text-sm text-ink">
+                  {t("harvest.runQueued")}
+                </p>
+              )}
               {sourcesQuery.data && sourcesQuery.data.length === 0 && (
                 <EmptyState title={t("harvest.empty")} />
               )}
@@ -154,7 +164,39 @@ export function HarvestSourcesAdminPage() {
                     {
                       key: "lastStatus",
                       label: t("harvest.columnLastStatus"),
-                      render: (source: HarvestSource) => source.lastStatus ?? "—",
+                      render: (source: HarvestSource) => (
+                        <div className="flex flex-col">
+                          <span>{source.lastStatus ?? "—"}</span>
+                          {source.lastError && (
+                            <span
+                              className="max-w-xs truncate text-xs text-danger"
+                              title={source.lastError}
+                            >
+                              {source.lastError}
+                            </span>
+                          )}
+                        </div>
+                      ),
+                    },
+                    {
+                      key: "lastRunAt",
+                      label: t("harvest.columnLastRun"),
+                      render: (source: HarvestSource) =>
+                        source.lastRunAt
+                          ? new Date(source.lastRunAt).toLocaleString("fr-FR")
+                          : t("harvest.neverRun"),
+                    },
+                    {
+                      key: "recordCount",
+                      label: t("harvest.columnRecords"),
+                      render: (source: HarvestSource) => (
+                        <span>
+                          {source.recordCount ?? 0}
+                          {source.staleCount
+                            ? ` (${t("harvest.recordsStale", { count: source.staleCount })})`
+                            : ""}
+                        </span>
+                      ),
                     },
                     {
                       key: "actions",

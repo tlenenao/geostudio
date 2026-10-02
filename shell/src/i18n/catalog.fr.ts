@@ -489,6 +489,12 @@ export const fr = {
   "harvest.deleteMessage":
     "Supprimer la source « {url} » ? Les items/collections déjà produits survivent.",
   "harvest.empty": "Aucune source de moissonnage configurée",
+  "harvest.columnLastRun": "Dernier passage",
+  "harvest.columnRecords": "Enregistrements",
+  "harvest.recordsStale": "{count} obsolète(s)",
+  "harvest.neverRun": "Jamais",
+  "harvest.runQueued": "Moissonnage mis en file d'attente.",
+  "harvest.runFailed": "Échec du lancement du moissonnage.",
 
   // ItemDetailPage
   "itemDetail.notFound": "Élément introuvable.",
