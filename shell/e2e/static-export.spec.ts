@@ -15,6 +15,13 @@ import { fileURLToPath } from "node:url";
 // e2e/external-widget-server.mjs pour dériver un chemin absolu en ESM.
 const DIST_EXPORT = fileURLToPath(new URL("../dist-export", import.meta.url));
 
+// Refuse toute sortie de DIST_EXPORT (../) : le serveur de test ne sert que le bundle.
+function distFile(urlPath: string): string {
+  const root = path.resolve(DIST_EXPORT);
+  const full = path.resolve(root, urlPath.replace(/^\//, ""));
+  if (full !== root && !full.startsWith(root + path.sep)) throw new Error("path escape");
+  return full;
+}
 const FROZEN_CONFIG = {
   kind: "app",
   theme: {},
@@ -67,7 +74,7 @@ async function startStaticServer(prefix = ""): Promise<{ server: Server; url: st
     }
     const filePath = withoutPrefix === "/" || !withoutPrefix ? "/index.export.html" : withoutPrefix;
     try {
-      const body = await readFile(path.join(DIST_EXPORT, filePath.replace(/^\//, "")));
+      const body = await readFile(distFile(filePath));
       const contentType = filePath.endsWith(".js")
         ? "application/javascript"
         : filePath.endsWith(".css")
@@ -204,7 +211,7 @@ test("static export bundle can navigate between pages", async ({ page }) => {
     }
     const filePath = req.url === "/" || !req.url ? "/index.export.html" : req.url;
     try {
-      const body = await readFile(path.join(DIST_EXPORT, filePath.replace(/^\//, "")));
+      const body = await readFile(distFile(filePath));
       const contentType = filePath.endsWith(".js")
         ? "application/javascript"
         : filePath.endsWith(".css")

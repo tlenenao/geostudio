@@ -31,6 +31,8 @@ from app.users.models import User
 router = APIRouter()
 
 ToolName = Literal["martin", "titiler", "grafana"]
+# Cibles de redirection figées : jamais construites depuis la saisie.
+_ADMIN_PATHS: dict[str, str] = {t: f"/admin/{t}/" for t in ("martin", "titiler", "grafana")}
 _SESSION_COOKIE = "gs_admin_session"
 _SESSION_MAX_AGE_SECONDS = 1800
 
@@ -65,7 +67,7 @@ def bootstrap_admin_tool_session(tool: ToolName, _at: str) -> Response:
     if claims.tool != tool:
         raise HTTPException(status_code=401, detail="invalid launch token")
     session_token = mint_session_token(sub=claims.sub)
-    response = RedirectResponse(url=f"/admin/{tool}/", status_code=302)
+    response = RedirectResponse(url=_ADMIN_PATHS[tool], status_code=302)
     response.set_cookie(
         key=_SESSION_COOKIE,
         value=session_token,

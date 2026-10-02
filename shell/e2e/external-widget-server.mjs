@@ -6,7 +6,7 @@
 // import() — not the same-origin fixture path used by extension-widget.spec.ts.
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
-import { extname, join } from "node:path";
+import { extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("../../examples/external-widget/", import.meta.url));
@@ -20,6 +20,10 @@ const CONTENT_TYPES = {
 createServer(async (req, res) => {
   const path = (req.url ?? "/").split("?")[0];
   const filePath = join(ROOT, path === "/" ? "widget.js" : path);
+  if (!resolve(filePath).startsWith(resolve(ROOT) + sep)) {
+    res.writeHead(403).end();
+    return;
+  }
   try {
     const body = await readFile(filePath);
     res.writeHead(200, {
