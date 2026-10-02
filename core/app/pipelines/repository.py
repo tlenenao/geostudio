@@ -106,6 +106,10 @@ def mark_running(session: Session, *, run_id: str) -> None:
         return
     run.status = "running"
     run.started_at = _now()
+    # Un run déjà clos par reclaim_stuck_runs puis réellement pris en charge
+    # ne doit pas garder son « run périmé » ni son finished_at.
+    run.finished_at = None
+    run.error = None
     session.flush()
 
 
@@ -114,6 +118,7 @@ def mark_succeeded(session: Session, *, run_id: str, node_stats: dict) -> None:
     if run is None:
         return
     run.status = "succeeded"
+    run.error = None  # run vivant clos à tort par reclaim_stuck_runs : la fin réelle prime
     run.finished_at = _now()
     run.node_stats = node_stats
     session.flush()

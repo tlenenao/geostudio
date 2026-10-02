@@ -164,6 +164,29 @@ def test_mark_running_then_succeeded():
         assert fetched.finished_at is not None
 
 
+def test_a_reclaimed_run_that_really_finishes_loses_its_stale_error():
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        item_id = _make_pipeline_item(s, tenant_id=tenant.id)
+        s.commit()
+        run = repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_id)
+        repo.mark_running(s, run_id=run.id)
+        run.started_at = datetime.now(UTC) - timedelta(hours=3)
+        s.commit()
+        assert repo.reclaim_stuck_runs(s) == 1
+        s.commit()
+        assert repo.get_run(s, tenant_id=tenant.id, run_id=run.id).error is not None
+        repo.mark_succeeded(s, run_id=run.id, node_stats={})
+        s.commit()
+        fetched = repo.get_run(s, tenant_id=tenant.id, run_id=run.id)
+        assert (fetched.status, fetched.error) == ("succeeded", None)
+        repo.mark_running(s, run_id=run.id)
+        s.commit()
+        fetched = repo.get_run(s, tenant_id=tenant.id, run_id=run.id)
+        assert (fetched.status, fetched.error, fetched.finished_at) == ("running", None, None)
+
+
 def test_mark_failed_records_error():
     Session = _make_session()
     with Session() as s:
