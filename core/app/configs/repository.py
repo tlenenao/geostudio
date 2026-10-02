@@ -46,9 +46,20 @@ def _latest_revision(session: Session, config_id: str) -> ConfigRevision | None:
     )
 
 
+MAX_CONFIG_BYTES = 5 * 1024 * 1024
+
+
+def _enforce_size_cap(config: BuilderConfig) -> None:
+    """Plafond commun à tous les écrivains (REST, MCP, runtime de pipeline, jobs) :
+    le middleware HTTP ne couvre que POST/PUT /v1/configs."""
+    if len(config.model_dump_json(by_alias=True)) > MAX_CONFIG_BYTES:
+        raise ValueError(f"config too large (max {MAX_CONFIG_BYTES} bytes)")
+
+
 def create_config(
     session: Session, config: BuilderConfig, item_id: str | None, *, tenant_id: str
 ) -> ConfigRead:
+    _enforce_size_cap(config)
     config_id = uuid.uuid4().hex
     record = Config(
         id=config_id,
@@ -227,6 +238,7 @@ def update_config(
     # Verrou de ligne : deux PUT concurrents se sérialisent, le second voit
     # la version du premier (sans effet sous SQLite). `expected_version` None
     # = écriture sans garde (MCP, runtime de pipeline, clients historiques).
+    _enforce_size_cap(config)
     record = session.get(Config, config_id, with_for_update=True)
     if record is None:
         return None
