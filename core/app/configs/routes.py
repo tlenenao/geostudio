@@ -10,6 +10,7 @@ from app.configs import repository as repo
 from app.configs.alert_validation import validate_alert_payload as _validate_alert_payload
 from app.configs.bookmark_validation import validate_bookmark_payload as _validate_bookmark_payload
 from app.configs.dataset_validation import validate_dataset_payload as _validate_dataset_payload
+from app.configs.document_validation import validate_document
 from app.configs.guest_access import GuestActor, authorize_guest_item_read, get_share_link_actor
 from app.configs.pipeline_validation import validate_pipeline_payload as _validate_pipeline_payload
 from app.configs.report_validation import validate_report_payload as _validate_report_payload
@@ -229,6 +230,7 @@ def update_config(
     _require_privilege_for_kind(session, user, config)
     _require_etl_enabled_for_pipeline(config)
     _require_export_enabled_for_report(config)
+    validate_document(config)
     _validate_extension_scope(session, config, tenant_id=user.tenant_id)
     _validate_dataset_payload(session, config, user=user)
     _validate_bookmark_payload(session, config, user=user)
@@ -448,6 +450,7 @@ def update_config_by_item(
     _require_privilege_for_kind(session, user, config)
     _require_etl_enabled_for_pipeline(config)
     _require_export_enabled_for_report(config)
+    validate_document(config)
     _validate_extension_scope(session, config, tenant_id=user.tenant_id)
     _validate_dataset_payload(session, config, user=user)
     _validate_bookmark_payload(session, config, user=user)

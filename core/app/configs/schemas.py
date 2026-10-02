@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel as _PydanticBaseModel
+from pydantic import ConfigDict, Field, model_validator
 
 from app.analytics.aggregate import (
     AggregateRequestBody,
@@ -9,6 +10,15 @@ from app.analytics.aggregate import (
     _validate_p,
 )
 from app.configs.alert_condition import validate_condition_expr
+
+
+class BaseModel(_PydanticBaseModel):
+    """Base des documents de config : une clé inconnue est rejetée (422) au lieu
+    d'être supprimée en silence (c08-002). Les bornes de valeur, elles, vivent
+    dans app.configs.document_validation (écriture seulement) : une contrainte
+    dans le modèle rendrait illisible toute config déjà enregistrée."""
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class DataSource(BaseModel):

@@ -33,6 +33,7 @@ from app.configs import repository as repo
 from app.configs.alert_validation import validate_alert_payload
 from app.configs.bookmark_validation import validate_bookmark_payload
 from app.configs.dataset_validation import validate_dataset_payload
+from app.configs.document_validation import validate_document
 from app.configs.extension_permissions import (
     ExtensionPermissionError,
     validate_extension_permissions,
@@ -110,6 +111,7 @@ def create_config_service(
         check_quota_or_raise(session, tenant_id=user.tenant_id, kind="items")
     _require_etl_enabled_for_pipeline(config)
     _require_export_enabled_for_report(config)
+    validate_document(config)
     _validate_extension_scope(session, config, tenant_id=user.tenant_id)
     validate_dataset_payload(session, config, user=user)
     validate_bookmark_payload(session, config, user=user)
