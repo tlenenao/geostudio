@@ -31,7 +31,7 @@ export function createLayersMethods(base: ItemClientBase): LayersMethods {
   const {
     request,
     coreUrl,
-    getToken,
+    authFetch,
     fetchCoreCollections,
     fetchExternalRasterSources,
     fetchHostedTileset3dSources,
@@ -140,11 +140,8 @@ export function createLayersMethods(base: ItemClientBase): LayersMethods {
     },
 
     async listFeatureLayers(params: { q?: string } = {}): Promise<FeatureLayerSource[]> {
-      const token = getToken();
       const query = params.q ? `?q=${encodeURIComponent(params.q)}` : "";
-      const res = await fetch(`${coreUrl}/harvest/feature-layers${query}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await authFetch(`${coreUrl}/harvest/feature-layers${query}`);
       if (!res.ok) throw new Error(`Request failed: ${res.status} /harvest/feature-layers`);
       const data = (await res.json()) as { layers?: FeatureLayerSource[] };
       return data.layers ?? [];
@@ -167,14 +164,12 @@ export function createLayersMethods(base: ItemClientBase): LayersMethods {
       // Multipart, patron copié de uploadThumbnail : `request()` sérialise en
       // JSON, donc fetch direct. On ne pose PAS Content-Type à la main — la
       // plateforme ajoute le boundary.
-      const token = getToken();
       const form = new FormData();
       form.append("file", file);
       form.append("title", title);
       form.append("category", category);
-      const res = await fetch(`${coreUrl}/map-icons`, {
+      const res = await authFetch(`${coreUrl}/map-icons`, {
         method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: form,
       });
       if (!res.ok) {
@@ -209,10 +204,7 @@ export function createLayersMethods(base: ItemClientBase): LayersMethods {
     async fetchMapIconBlob(iconId: string) {
       // `request()` fait toujours res.json() : cette route renvoie des
       // octets, donc fetch direct, avec le même en-tête d'autorisation.
-      const token = getToken();
-      const res = await fetch(`${coreUrl}/map-icons/${encodeURIComponent(iconId)}/file`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await authFetch(`${coreUrl}/map-icons/${encodeURIComponent(iconId)}/file`);
       if (!res.ok) throw new Error(`Request failed: ${res.status} GET /map-icons/${iconId}/file`);
       return res.blob();
     },

@@ -29,13 +29,10 @@ type ExtensionsAdminToolsMethods = Pick<
 export function createExtensionsAdminToolsMethods(
   base: ItemClientBase,
 ): ExtensionsAdminToolsMethods {
-  const { request, coreUrl, getToken } = base;
+  const { request, coreUrl, authFetch } = base;
   return {
     async listActiveExtensions(): Promise<ExtensionManifest[]> {
-      const token = getToken();
-      const res = await fetch(`${coreUrl}/extensions`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await authFetch(`${coreUrl}/extensions`);
       if (!res.ok) throw new Error(`Request failed: ${res.status} /extensions`);
       const data = (await res.json()) as {
         extensions?: Array<{
@@ -64,10 +61,7 @@ export function createExtensionsAdminToolsMethods(
     },
 
     async listAllExtensions(): Promise<AdminExtension[]> {
-      const token = getToken();
-      const res = await fetch(`${coreUrl}/extensions?all=true`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await authFetch(`${coreUrl}/extensions?all=true`);
       if (!res.ok) throw new Error(`Request failed: ${res.status} /extensions`);
       const data = (await res.json()) as {
         extensions?: Array<{

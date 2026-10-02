@@ -63,7 +63,7 @@ function toGroup(g: GroupWire): Group {
 }
 
 export function createItemsMethods(base: ItemClientBase): ItemsMethods {
-  const { request, coreUrl, getToken } = base;
+  const { request, coreUrl, authFetch } = base;
   return {
     async listItems(params: ListItemsParams = {}): Promise<ItemPage> {
       const q = new URLSearchParams();
@@ -170,12 +170,10 @@ export function createItemsMethods(base: ItemClientBase): ItemsMethods {
     },
 
     async uploadThumbnail(pk: string, file: File): Promise<void> {
-      const token = getToken();
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch(`${coreUrl}/items/${pk}/thumbnail`, {
+      const res = await authFetch(`${coreUrl}/items/${pk}/thumbnail`, {
         method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: form,
       });
       if (!res.ok) {
@@ -184,11 +182,7 @@ export function createItemsMethods(base: ItemClientBase): ItemsMethods {
     },
 
     async deleteItem(pk: string): Promise<void> {
-      const token = getToken();
-      const res = await fetch(`${coreUrl}/configs/by-item/${pk}`, {
-        method: "DELETE",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await authFetch(`${coreUrl}/configs/by-item/${pk}`, { method: "DELETE" });
       if (!res.ok && res.status !== 404) {
         if (res.status === 409) {
           const data = (await res.json().catch(() => null)) as { detail?: unknown } | null;

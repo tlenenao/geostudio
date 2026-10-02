@@ -190,6 +190,11 @@ export type ItemClientBase = {
     timeoutMs?: number,
     extraHeaders?: Record<string, string>,
   ): Promise<T>;
+  // P07.06 : fetch authentifié (Authorization + renouvellement silencieux sur
+  // 401, rejeu unique) pour les sites qui ne passent pas par request().
+  authFetch(url: string, init?: RequestInit, timeoutMs?: number): Promise<Response>;
+  // Renouvellement partagé (undefined = pas de renouvellement possible).
+  renewToken?: () => Promise<string | undefined>;
   resolveDataset(pk: string): Promise<ResolvedDataset>;
   datasetCache: Map<string, ResolvedDataset>;
   // GAP-65 (2/3) : pk === undefined vide tout le cache, sinon une seule
@@ -223,18 +228,26 @@ export async function requestBlob(
   path: string,
   body?: unknown,
   getShareLinkToken?: () => string | undefined,
+  renewToken?: () => Promise<string | undefined>,
 ): Promise<{ blob: Blob; filename: string }> {
   const token = getToken();
   const shareToken = getShareLinkToken?.();
-  const headers: Record<string, string> = {};
-  if (token) headers.Authorization = `Bearer ${token}`;
-  else if (shareToken) headers["X-Share-Link-Token"] = shareToken;
-  if (body !== undefined) headers["Content-Type"] = "application/json";
-  const res = await fetchWithTimeout(`${coreUrl}${path}`, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  const send = (tok: string | undefined) => {
+    const headers: Record<string, string> = {};
+    if (tok) headers.Authorization = `Bearer ${tok}`;
+    else if (shareToken) headers["X-Share-Link-Token"] = shareToken;
+    if (body !== undefined) headers["Content-Type"] = "application/json";
+    return fetchWithTimeout(`${coreUrl}${path}`, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  };
+  let res = await send(token);
+  if (res.status === 401 && token && renewToken) {
+    const fresh = await renewToken();
+    if (fresh) res = await send(fresh);
+  }
   if (!res.ok) throw await parseErrorResponse(res);
   const disposition = res.headers.get("Content-Disposition") ?? "";
   const match = /filename="([^"]+)"/.exec(disposition);
@@ -269,6 +282,25 @@ export function createBase(opts: {
       renewing = null;
     });
     return renewing;
+  }
+
+  async function authFetch(
+    url: string,
+    init: RequestInit = {},
+    timeoutMs?: number,
+  ): Promise<Response> {
+    const send = (tok: string | undefined) => {
+      const headers = new Headers(init.headers);
+      if (tok) headers.set("Authorization", `Bearer ${tok}`);
+      return fetchWithTimeout(url, { ...init, headers }, timeoutMs);
+    };
+    const token = getToken();
+    let res = await send(token);
+    if (res.status === 401 && token && onUnauthorized) {
+      const fresh = await renewOnce();
+      if (fresh) res = await send(fresh);
+    }
+    return res;
   }
 
   async function request<T>(
@@ -364,12 +396,10 @@ export function createBase(opts: {
   }
 
   async function fetchGeoJsonFeatures(url: string): Promise<DataRecord[]> {
-    const token = getToken();
     const shareToken = getShareLinkToken?.();
     const headers: Record<string, string> = {};
-    if (token) headers.Authorization = `Bearer ${token}`;
     if (shareToken) headers["X-Share-Link-Token"] = shareToken;
-    const res = await fetchWithTimeout(url, { headers });
+    const res = await authFetch(url, { headers });
     if (!res.ok) throw new Error(`Request failed: ${res.status} features`);
     const data = (await res.json()) as {
       features?: {
@@ -386,11 +416,8 @@ export function createBase(opts: {
   }
 
   async function fetchCoreCollections(q?: string): Promise<LayerSource[]> {
-    const token = getToken();
     const query = q ? `?q=${encodeURIComponent(q)}` : "";
-    const res = await fetchWithTimeout(`${coreUrl}/collections${query}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
+    const res = await authFetch(`${coreUrl}/collections${query}`);
     if (!res.ok) throw new Error(`Request failed: ${res.status} /collections`);
     const data = (await res.json()) as {
       collections?: {
@@ -416,11 +443,8 @@ export function createBase(opts: {
   }
 
   async function fetchExternalRasterSources(q?: string): Promise<LayerSource[]> {
-    const token = getToken();
     const query = q ? `?q=${encodeURIComponent(q)}` : "";
-    const res = await fetchWithTimeout(`${coreUrl}/harvest/layers${query}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
+    const res = await authFetch(`${coreUrl}/harvest/layers${query}`);
     if (!res.ok) throw new Error(`Request failed: ${res.status} /harvest/layers`);
     const data = (await res.json()) as {
       layers?: { id: string; title: string; kind: "raster"; tilesUrl: string }[];
@@ -437,10 +461,7 @@ export function createBase(opts: {
   async function fetchHostedTileset3dSources(q?: string): Promise<LayerSource[]> {
     const query = new URLSearchParams({ type: "tileset3d", pageSize: "200" });
     if (q) query.set("q", q);
-    const token = getToken();
-    const res = await fetchWithTimeout(`${coreUrl}/items?${query.toString()}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
+    const res = await authFetch(`${coreUrl}/items?${query.toString()}`);
     if (!res.ok) throw new Error(`Request failed: ${res.status} /items`);
     const data = (await res.json()) as { items?: { pk: string; title: string }[] };
     return (data.items ?? []).map((item) => ({
@@ -455,10 +476,7 @@ export function createBase(opts: {
   async function fetchHostedTerrain3dSources(q?: string): Promise<{ id: string; title: string }[]> {
     const query = new URLSearchParams({ type: "terrain3d", pageSize: "200" });
     if (q) query.set("q", q);
-    const token = getToken();
-    const res = await fetchWithTimeout(`${coreUrl}/items?${query.toString()}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
+    const res = await authFetch(`${coreUrl}/items?${query.toString()}`);
     if (!res.ok) throw new Error(`Request failed: ${res.status} /items`);
     const data = (await res.json()) as { items?: { pk: string; title: string }[] };
     return (data.items ?? []).map((item) => ({ id: item.pk, title: item.title }));
@@ -469,6 +487,8 @@ export function createBase(opts: {
     getToken,
     getShareLinkToken,
     request,
+    authFetch,
+    renewToken: onUnauthorized ? renewOnce : undefined,
     resolveDataset,
     datasetCache,
     invalidateDatasetCache,
