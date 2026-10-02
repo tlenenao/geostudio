@@ -11,6 +11,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app import db, observability
@@ -167,14 +168,34 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def _request_validation_handler(request: Request, exc: RequestValidationError):
-        errors = exc.errors()
-        if "/secrets" in request.url.path:
-            # P16.06 : jamais de valeur de payload (secret) dans la réponse 422.
-            errors = [{k: v for k, v in e.items() if k not in {"input", "ctx"}} for e in errors]
-        return JSONResponse(status_code=422, content={"detail": jsonable_encoder(errors)})
+        # P21.02/05 : 422 en RFC 7807, `errors[] {field, code, message}` comme
+        # ValidationHTTPException. Jamais `input`/`ctx` (P16.06 : un secret
+        # soumis ne doit pas être renvoyé) : on ne recopie que loc/type/msg.
+        errors = [
+            {
+                "field": ".".join(str(p) for p in e.get("loc", ()) if p != "body"),
+                "code": e.get("type", "invalid"),
+                "message": e.get("msg", ""),
+            }
+            for e in exc.errors()
+        ]
+        detail = "; ".join(
+            f"{e['field']}: {e['message']}" if e["field"] else e["message"] for e in errors
+        )
+        return JSONResponse(
+            status_code=422,
+            media_type="application/problem+json",
+            content={
+                "type": "about:blank",
+                "title": HTTPStatus(422).phrase,
+                "status": 422,
+                "detail": detail or "validation failed",
+                "errors": jsonable_encoder(errors),
+            },
+        )
 
-    @app.exception_handler(HTTPException)
-    async def _http_exception_handler(request: Request, exc: HTTPException):
+    @app.exception_handler(StarletteHTTPException)
+    async def _http_exception_handler(request: Request, exc: StarletteHTTPException):
         return JSONResponse(
             status_code=exc.status_code,
             media_type="application/problem+json",
@@ -475,7 +496,11 @@ def create_app() -> FastAPI:
     # matches routes in registration order and a root Mount matches any
     # path as a prefix, so it must come after every app-specific route
     # above or it would shadow them (e.g. swallow "/health").
-    app.mount("/", mcp_server.streamable_http_app())
+    mcp_app = mcp_server.streamable_http_app()
+    # Le montage racine attrape aussi toute route inconnue : sans handler propre,
+    # son 404 sort en text/plain hors RFC 7807 (P21.02).
+    mcp_app.add_exception_handler(StarletteHTTPException, _http_exception_handler)
+    app.mount("/", mcp_app)
 
     # GAP-61.a : sans cette couche, request.client reflète l'IP du
     # conteneur Traefik (seul point d'entrée réseau vers ce service — `core`
