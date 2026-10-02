@@ -411,3 +411,15 @@ def test_single_day_range_on_a_timestamptz_column_keeps_that_day(
             filters={"at__gte": "2026-03-15", "at__lte": "2026-03-15"},
         )
     assert [f["id"] for f in page.features] == [1]
+
+
+def test_impossible_day_bound_is_a_filter_error_not_a_db_error(
+    pg_incidents, pg_engine, pg_session_factory
+):
+    with pg_engine.begin() as conn:
+        conn.execute(text("ALTER TABLE t_feat ADD COLUMN at timestamptz"))
+    with pg_session_factory() as session:
+        info = introspect_table(session, "t_feat")
+    with pg_session_factory() as session, rls_scope(session, "default"):
+        with pytest.raises(FilterError):
+            select_features(session, info, limit=10, offset=0, filters={"at__lte": "2026-13-45"})

@@ -1821,6 +1821,26 @@ export interface components {
             /** Split */
             split?: string | null;
         };
+        /**
+         * AggregateResponse
+         * @description Contrat de POST /collections/{id}/aggregate (P25.10/11) : asOf = dernier
+         *     flush CDC présent dans le lac, pending = lac pas encore alimenté.
+         */
+        AggregateResponse: {
+            /** Asof */
+            asOf?: string | null;
+            /** Categorykey */
+            categoryKey: string | string[];
+            /**
+             * Pending
+             * @default false
+             */
+            pending: boolean;
+            /** Rows */
+            rows: {
+                [key: string]: unknown;
+            }[];
+        };
         /** AlertChannelEmail */
         AlertChannelEmail: {
             /**
@@ -4123,7 +4143,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["AggregateResponse"];
                 };
             };
             /** @description Validation Error */

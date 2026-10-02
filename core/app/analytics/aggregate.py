@@ -59,6 +59,16 @@ class UnknownAggregateField(Exception):
         super().__init__(message)
 
 
+class AggregateResponse(BaseModel):
+    """Contrat de POST /collections/{id}/aggregate (P25.10/11) : asOf = dernier
+    flush CDC présent dans le lac, pending = lac pas encore alimenté."""
+
+    categoryKey: str | list[str]
+    rows: list[dict[str, Any]]
+    asOf: str | None = None
+    pending: bool = False
+
+
 # P25.01 : plafond de groupes d'un agrégat (au-delà : 400, jamais une réponse
 # tronquée en silence ni une explosion mémoire).
 MAX_GROUPS = 10_000
@@ -574,11 +584,12 @@ def lake_as_of(
         return None
     glob = f"{base_uri}/tenant_id={tenant_id}/collection_id={collection_id}/dt=*/*.parquet"
     try:
-        row = conn.execute(
-            f"SELECT max(_ts) FROM read_parquet({_sql_lit(glob)}, "
-            f"hive_partitioning=true, union_by_name=true)"
-        ).fetchone()
-    except duckdb.Error:
+        with statement_timeout(conn):  # même budget que l'agrégat lui-même
+            row = conn.execute(
+                f"SELECT max(_ts) FROM read_parquet({_sql_lit(glob)}, "
+                f"hive_partitioning=true, union_by_name=true)"
+            ).fetchone()
+    except (duckdb.Error, StatementTimeout):
         return None
     if not row or row[0] is None:
         return None

@@ -154,3 +154,35 @@ def test_shell_contains_filter_form_is_case_insensitive_with_literal_wildcards()
     q = "select ? ILIKE ? ESCAPE '\\'"
     assert c.execute(q, ["N1_x", "%n1\\_%"]).fetchone()[0] is True
     assert c.execute(q, ["abc", "%\\_%"]).fetchone()[0] is False
+
+
+class _Spy:
+    """Proxy de connexion DuckDB (l'objet C n'est pas patchable) : trace le SQL."""
+
+    def __init__(self, conn):
+        self._c, self.sql = conn, []
+
+    def execute(self, sql, *a, **k):
+        self.sql.append(sql)
+        self._c.execute(sql, *a, **k)
+        return self
+
+    def __getattr__(self, name):
+        return getattr(self._c, name)
+
+
+def test_group_cap_is_pushed_into_sql_limit(tmp_path, conn, monkeypatch):
+    """Le plafond borne le fetch (LIMIT), pas seulement un contrôle a posteriori."""
+    _lake(tmp_path, SMALL)
+    monkeypatch.setattr(aggregate, "MAX_GROUPS", 2)
+    spy = _Spy(conn)
+    with pytest.raises(UnknownAggregateField, match="too many groups"):
+        _agg(spy, tmp_path, groupBy="montant")
+    assert any(q.rstrip().endswith("LIMIT 3") for q in spy.sql)
+
+
+def test_lake_as_of_times_out_to_none(tmp_path, conn, monkeypatch):
+    _lake(tmp_path, SMALL)
+    monkeypatch.setenv("CORE_DUCKDB_STATEMENT_TIMEOUT_S", "0")
+    # budget épuisé : jamais d'exception, juste « inconnu »
+    assert lake_as_of(conn, str(tmp_path), "t1", "c1") in (None, "1970-01-01T00:00:05+00:00")

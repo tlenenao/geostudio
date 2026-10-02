@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.analytics.aggregate import (
     AggregateRequestBody,
+    AggregateResponse,
     UnknownAggregateField,
     aggregate_columns,
     lake_as_of,
@@ -266,7 +267,7 @@ def get_analytics_base_uri():  # overridé en test (pointe un répertoire tmp_pa
     return f"s3://{bucket}/cdc"
 
 
-@router.post("/collections/{collection_id}/aggregate")
+@router.post("/collections/{collection_id}/aggregate", response_model=AggregateResponse)
 def aggregate_features(
     collection_id: str,
     body: AggregateRequestBody,
@@ -305,7 +306,7 @@ def aggregate_features(
         as_of = lake_as_of(conn, base_uri, col.tenant_id, col.id)
     finally:
         conn.close()
-    return {"categoryKey": category_key, "rows": rows, "asOf": as_of, "pending": as_of is None}
+    return AggregateResponse(categoryKey=category_key, rows=rows, asOf=as_of, pending=as_of is None)
 
 
 EXPORT_FORMATS_AGGREGATE = {"csv", "xlsx"}

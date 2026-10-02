@@ -221,6 +221,55 @@
         "title": "AggregateRequestBody",
         "type": "object"
       },
+      "AggregateResponse": {
+        "description": "Contrat de POST /collections/{id}/aggregate (P25.10/11) : asOf = dernier\nflush CDC pr\u00e9sent dans le lac, pending = lac pas encore aliment\u00e9.",
+        "properties": {
+          "asOf": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asof"
+          },
+          "categoryKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ],
+            "title": "Categorykey"
+          },
+          "pending": {
+            "default": false,
+            "title": "Pending",
+            "type": "boolean"
+          },
+          "rows": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "categoryKey",
+          "rows"
+        ],
+        "title": "AggregateResponse",
+        "type": "object"
+      },
       "AlertChannelEmail": {
         "properties": {
           "kind": {
@@ -6063,7 +6112,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/AggregateResponse"
+                }
               }
             },
             "description": "Successful Response"

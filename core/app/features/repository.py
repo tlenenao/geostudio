@@ -9,6 +9,7 @@ validation.py) : jamais écrites ici."""
 import json
 import re
 from dataclasses import dataclass
+from datetime import date
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -90,6 +91,10 @@ def _where(session: Session, info: TableInfo, bbox, geom_intersects, filters):
             elif suffix == "__lte" and col.type == "datetime" and _DATE_ONLY.match(raw):
                 # P25.12 : borne haute « YYYY-MM-DD » = tout ce jour (sinon la
                 # comparaison tombe à minuit et exclut les événements du jour).
+                try:
+                    date.fromisoformat(raw)  # « 2026-13-45 » : 400, pas une DataError 500
+                except ValueError:
+                    raise FilterError(name, f"cannot parse '{raw}' as datetime") from None
                 clauses.append(f"{ident} < CAST(:f{i} AS timestamptz) + INTERVAL '1 day'")
                 params[f"f{i}"] = raw
             elif suffix in _RANGE_OPS:
