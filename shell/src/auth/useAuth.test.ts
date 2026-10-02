@@ -9,6 +9,7 @@ const oidc: {
   error: Error | undefined;
   signinRedirect: ReturnType<typeof vi.fn>;
   signoutRedirect: ReturnType<typeof vi.fn>;
+  signinSilent: ReturnType<typeof vi.fn>;
 } = {
   isLoading: false,
   isAuthenticated: false,
@@ -16,6 +17,7 @@ const oidc: {
   error: undefined,
   signinRedirect: vi.fn(),
   signoutRedirect: vi.fn(),
+  signinSilent: vi.fn(),
 };
 vi.mock("react-oidc-context", () => ({ useAuth: () => oidc }));
 
@@ -26,6 +28,7 @@ beforeEach(() => {
   oidc.error = undefined;
   oidc.signinRedirect.mockReset();
   oidc.signoutRedirect.mockReset();
+  oidc.signinSilent.mockReset();
 });
 
 describe("useAuth (real OIDC mode)", () => {
@@ -63,6 +66,17 @@ describe("useAuth (real OIDC mode)", () => {
     const { result } = renderHook(() => useAuth());
     result.current.signOut();
     expect(oidc.signoutRedirect).toHaveBeenCalledTimes(1);
+  });
+
+  it("renewToken renvoie le jeton du signinSilent, ou undefined s'il échoue", async () => {
+    const { useAuth } = await import("./useAuth");
+    const { result } = renderHook(() => useAuth());
+    oidc.signinSilent.mockResolvedValueOnce({ access_token: "tok-2" });
+    expect(await result.current.renewToken?.()).toBe("tok-2");
+    oidc.signinSilent.mockResolvedValueOnce(null);
+    expect(await result.current.renewToken?.()).toBeUndefined();
+    oidc.signinSilent.mockRejectedValueOnce(new Error("iframe timeout"));
+    expect(await result.current.renewToken?.()).toBeUndefined();
   });
 });
 

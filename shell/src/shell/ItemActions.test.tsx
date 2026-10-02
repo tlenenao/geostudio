@@ -274,3 +274,50 @@ describe("ItemActions et les droits", () => {
     }
   });
 });
+
+test("publier un item sans référence de données envoie le PATCH sans dialogue", async () => {
+  let capturedBody: unknown;
+  server.use(
+    http.patch("https://core.test/v1/items/:pk", async ({ request }) => {
+      capturedBody = await request.json();
+      return HttpResponse.json({ ...item, resourceType: "dataset", isPublished: true });
+    }),
+  );
+  render(
+    <Harness>
+      <ItemActions item={{ ...item, resourceType: "dataset" }} />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: /actions/i }));
+  await userEvent.click(screen.getByRole("button", { name: "Publier" }));
+  await waitFor(() => expect(capturedBody).toEqual({ isPublished: true }));
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+test("« Programmer un rapport » ouvre /reports/new quand l'export est actif", async () => {
+  server.use(
+    http.get("https://core.test/v1/instance", () =>
+      HttpResponse.json({ readOnly: false, etlEnabled: false, exportEnabled: true }),
+    ),
+  );
+  const client = createItemClient({ coreUrl: "https://core.test", getToken: () => "t" });
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <MemoryRouter initialEntries={["/"]}>
+      <QueryClientProvider client={queryClient}>
+        <ItemClientProvider client={client}>
+          <Routes>
+            <Route
+              path="/"
+              element={<ItemActions item={{ ...item, resourceType: "bookmark" }} />}
+            />
+            <Route path="/reports/new" element={<p>Nouveau rapport</p>} />
+          </Routes>
+        </ItemClientProvider>
+      </QueryClientProvider>
+    </MemoryRouter>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: /actions/i }));
+  await userEvent.click(await screen.findByRole("button", { name: /programmer un rapport/i }));
+  expect(await screen.findByText("Nouveau rapport")).toBeInTheDocument();
+});
