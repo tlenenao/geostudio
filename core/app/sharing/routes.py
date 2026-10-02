@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
 from app.db import get_session
-from app.roles.guards import has_privilege, require_privilege
+from app.roles.guards import has_privilege, require_privilege, require_sharing_privilege
 from app.roles.privileges import Privilege
 from app.sharing import repository as repo
 from app.users.models import User
@@ -59,9 +59,9 @@ def list_groups(
     session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> list[GroupRead]:
-    # j02-005 : liste de tout le tenant, réservée à qui gère le catalogue
-    # (consommateur : ShareForm, créateurs/admins) — un Lecteur n'y accède plus.
-    require_privilege(session, user, Privilege.CATALOG_MANAGE.value)
+    # j02-005 : liste de tout le tenant, réservée à qui peut partager un kind
+    # (consommateur : ShareForm) — un Lecteur n'y accède plus.
+    require_sharing_privilege(session, user)
     as_admin = _is_group_admin(session, user)
     return [
         _group_read(g, user=user, as_admin=as_admin)

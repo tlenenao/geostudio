@@ -15,7 +15,7 @@ from app.db import request_scoped_session
 from app.items.service import get_sharing_service, set_sharing_service
 from app.mcp.tools.identity import http_exception_to_value_error, resolve_actor
 from app.mcp.tools.write_tools import write_tool
-from app.roles.guards import has_privilege, require_privilege
+from app.roles.guards import has_privilege, require_privilege, require_sharing_privilege
 from app.roles.privileges import Privilege
 from app.sharing import repository as sharing_repo
 from app.sharing.schemas import Sharing
@@ -33,9 +33,9 @@ def register(server: FastMCP, session_factory) -> None:
         access_token = get_access_token()
         with request_scoped_session(session_factory) as session:
             user = resolve_actor(session, access_token)
-            # Jumelle de GET /groups (j02-005/P13) : catalog.manage.
+            # Jumelle de GET /groups (j02-005/P13).
             try:
-                require_privilege(session, user, Privilege.CATALOG_MANAGE.value)
+                require_sharing_privilege(session, user)
             except HTTPException as exc:
                 raise http_exception_to_value_error(exc) from exc
             return [

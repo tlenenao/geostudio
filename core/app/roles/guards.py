@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app.roles.kind_registry import sharing_privileges
 from app.roles.repository import get_role
 from app.users.models import User
 
@@ -46,3 +47,9 @@ def require_privileges_within_ceiling(
         raise HTTPException(
             status_code=403, detail=f"cannot grant privileges you do not hold: {beyond}"
         )
+
+
+def require_sharing_privilege(session: Session, user: User) -> None:
+    """Garde des lectures d'appoint du partage (liste de groupes, annuaire) :
+    qui détient le privilège d'au moins un kind peut ouvrir ShareForm."""
+    require_any_privilege(session, user, sharing_privileges())

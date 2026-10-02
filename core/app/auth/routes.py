@@ -20,7 +20,11 @@ from app.auth.dependency import (
     is_tileset3d_enabled,
 )
 from app.db import get_session
-from app.roles.guards import require_privilege, require_privileges_within_ceiling
+from app.roles.guards import (
+    require_privilege,
+    require_privileges_within_ceiling,
+    require_sharing_privilege,
+)
 from app.roles.privileges import Privilege
 from app.roles.repository import count_users_with_privileges, get_role, roles_for_ids
 from app.tenants.models import Tenant
@@ -130,9 +134,9 @@ def get_users_directory(
     session: Session = Depends(get_session, scope="function"),
 ) -> list[dict[str, Any]]:
     """j13-005 : annuaire restreint (id, nom, e-mail — ni rôle ni statut) pour
-    ajouter un membre à un groupe ; réservé à qui gère le catalogue, donc à qui
+    ajouter un membre à un groupe ; réservé à qui peut partager un kind, donc à qui
     peut créer des groupes. Déclaré avant toute route `/users/{id}` GET."""
-    require_privilege(session, user, Privilege.CATALOG_MANAGE.value)
+    require_sharing_privilege(session, user)
     return [
         {"id": u.id, "username": u.username, "email": u.email}
         for u in search_directory(session, tenant_id=user.tenant_id, q=q)

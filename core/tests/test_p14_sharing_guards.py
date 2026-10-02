@@ -254,6 +254,23 @@ def test_directory_search_is_for_catalog_managers_and_exposes_no_role(env):
     assert c.get("/v1/users/directory", params={"q": "oth"}).status_code == 403
 
 
+def test_analyst_who_can_share_a_bookmark_can_list_groups_and_search_directory(env):
+    # Revue finale : GET /groups exigeait catalog.manage alors que le partage
+    # d'un item exige le privilège de son kind (bookmark = analytics.view,
+    # Analyste sans catalog.manage) -> ShareForm (qui exige les groupes
+    # chargés) restait en échec pour qui a pourtant le droit de partager.
+    with env["Session"]() as s:
+        t = get_or_create_default_tenant(s)
+        analyst = _user(s, t.id, "analyst1", "analyst")
+        s.commit()
+    app, c = env["app"], env["client"]
+    _as(app, analyst)
+    assert c.get("/v1/groups").status_code == 200
+    assert c.get("/v1/users/directory", params={"q": "oth"}).status_code == 200
+    _as(app, env["reader"])
+    assert c.get("/v1/groups").status_code == 403
+
+
 # --- P14.10/P14.11 (j13-011/012) : lien vers une page du shell, liste lisible ---
 
 
