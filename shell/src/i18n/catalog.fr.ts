@@ -1260,6 +1260,9 @@ export const fr = {
   "pipelineRun.runFailed": "Échec du lancement du pipeline.",
   "pipelineRun.running": "Exécution…",
   "pipelineRun.runButton": "Exécuter",
+  "pipelineRun.cancelButton": "Annuler le run",
+  "pipelineRun.cancelFailed": "Échec de l'annulation du run.",
+  "pipelineRun.rowsProgress": "{rows} lignes traitées",
   // GET /pipelines/{id}/runs pagine déjà côté cœur (limit/offset, SP-50) —
   // ce bouton évite de tronquer silencieusement l'historique au-delà de la
   // limite par défaut du cœur (100).
@@ -1940,6 +1943,7 @@ export const fr = {
   "jobStatus.failed": "Échoué",
   "jobStatus.error": "Échoué",
   "jobStatus.cancelled": "Annulé",
+  "jobStatus.cancelRequested": "Annulation demandée",
   "jobStatus.unknown": "Inconnu",
 
   // useDirtyGuard (SP-B6b) — garde de navigation in-app sur brouillon non

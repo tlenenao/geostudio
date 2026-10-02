@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { t } from "../i18n";
+import { t, type MessageKey } from "../i18n";
 
 // Vocabulaire d'état de job partagé entre PipelineRunPanel (PipelineRunStatus
 // = "queued"|"running"|"succeeded"|"failed", shell/src/api/types.ts:1150) et
@@ -24,6 +24,7 @@ const KNOWN_STATUSES = [
   "failed",
   "error",
   "cancelled",
+  "cancel_requested",
   "unknown",
 ] as const;
 type KnownStatus = (typeof KNOWN_STATUSES)[number];
@@ -34,5 +35,8 @@ function isKnownStatus(status: string): status is KnownStatus {
 
 export function jobStatusLabel(status: string): string {
   if (!isKnownStatus(status)) return status;
-  return t(`jobStatus.${status}`);
+  // "cancel_requested" (snake_case côté cœur) -> clé jobStatus.cancelRequested.
+  return t(
+    `jobStatus.${status.replace(/_(\w)/g, (_, c: string) => c.toUpperCase())}` as MessageKey,
+  );
 }

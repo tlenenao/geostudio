@@ -583,6 +583,8 @@ export interface ItemClient {
   getPipelineNextRun(cron: string): Promise<{ nextRun: string }>;
   runPipeline(pk: string): Promise<{ runId: string }>;
   getPipelineRuns(pk: string, params?: PageParams): Promise<PipelineRun[]>;
+  // t03b-009 : absent côté sidecar desktop / export statique (pas d'annulation).
+  cancelPipelineRun?(pk: string, runId: string): Promise<PipelineRun>;
   listPipelineWebhookTokens(pk: string): Promise<PipelineWebhookToken[]>;
   createPipelineWebhookToken(pk: string): Promise<{ id: string; token: string; createdAt: string }>;
   revokePipelineWebhookToken(pk: string, tokenId: string): Promise<void>;
@@ -1213,7 +1215,8 @@ export type AppExportJobStatus = {
   error: string | null;
 };
 
-export type PipelineRunStatus = "queued" | "running" | "succeeded" | "failed";
+export type PipelineRunStatus =
+  "queued" | "running" | "succeeded" | "failed" | "cancel_requested" | "cancelled";
 
 export type PipelineNodeStat = { nodeId: string; op: string; rowCount: number | null };
 

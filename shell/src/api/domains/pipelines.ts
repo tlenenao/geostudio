@@ -20,6 +20,7 @@ type PipelinesMethods = Pick<
   | "getPipelineNextRun"
   | "runPipeline"
   | "getPipelineRuns"
+  | "cancelPipelineRun"
   | "previewPipeline"
   | "listPipelineWebhookTokens"
   | "createPipelineWebhookToken"
@@ -97,6 +98,10 @@ export function createPipelinesMethods(base: ItemClientBase): PipelinesMethods {
       if (params?.offset !== undefined) query.set("offset", String(params.offset));
       const qs = query.toString();
       return request<PipelineRun[]>("GET", `/pipelines/${pk}/runs${qs ? `?${qs}` : ""}`);
+    },
+
+    async cancelPipelineRun(pk: string, runId: string): Promise<PipelineRun> {
+      return request<PipelineRun>("POST", `/pipelines/${pk}/runs/${runId}/cancel`);
     },
 
     async previewPipeline(

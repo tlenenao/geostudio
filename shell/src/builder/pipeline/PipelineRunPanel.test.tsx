@@ -334,3 +334,41 @@ test("shows no duration for a run still in progress", async () => {
   await waitFor(() => expect(screen.getByText("En cours")).toBeInTheDocument());
   expect(screen.queryByText(/^\d+ s$/)).not.toBeInTheDocument();
 });
+
+// t03b-009 : progression par lot visible et annulation d'un run actif.
+test("un run en cours montre sa progression en lignes et peut être annulé", async () => {
+  const cancelPipelineRun = vi.fn().mockResolvedValue({});
+  renderPanel({
+    cancelPipelineRun,
+    getPipelineRuns: vi.fn().mockResolvedValue([
+      {
+        id: "run-9",
+        status: "running",
+        startedAt: "2026-08-06T10:00:00Z",
+        finishedAt: null,
+        error: null,
+        nodeStats: { w1: { nodeId: "w1", op: "writer.collection", rowCount: 4000 } },
+      },
+    ]),
+  });
+  expect(await screen.findByText("4000 lignes traitées")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Annuler le run" }));
+  expect(cancelPipelineRun).toHaveBeenCalledWith("p-1", "run-9");
+});
+
+test("sans cancelPipelineRun (sidecar desktop), aucun bouton d'annulation", async () => {
+  renderPanel({
+    getPipelineRuns: vi.fn().mockResolvedValue([
+      {
+        id: "run-9",
+        status: "running",
+        startedAt: "2026-08-06T10:00:00Z",
+        finishedAt: null,
+        error: null,
+        nodeStats: {},
+      },
+    ]),
+  });
+  await screen.findByText("En cours");
+  expect(screen.queryByRole("button", { name: "Annuler le run" })).not.toBeInTheDocument();
+});

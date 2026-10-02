@@ -25,6 +25,7 @@ import type {
   PipelineNode,
   PipelineNodeStat,
   PipelineOpsCatalog,
+  PipelineRunStatus,
 } from "../../api/types";
 import { genEdgeId, hasIncomingEdge, topologicalOrder, wouldCreateCycle } from "./graphOps";
 import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
@@ -298,7 +299,7 @@ function PipelineCanvasInner({
   onInsertOnEdge: (edgeId: string, op: string) => void;
   opsCatalog: PipelineOpsCatalog;
   nodeStats?: Record<string, PipelineNodeStat>;
-  runStatus?: "queued" | "running" | "succeeded" | "failed";
+  runStatus?: PipelineRunStatus;
   nodeErrors?: Record<string, string[]>;
   notes: PipelineCanvasNote[];
   onNotesChange: (notes: PipelineCanvasNote[]) => void;

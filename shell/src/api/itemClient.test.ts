@@ -3290,6 +3290,16 @@ test("runPipeline posts with no body and returns the runId", async () => {
   expect(result).toEqual({ runId: "run-1" });
 });
 
+test("cancelPipelineRun posts to the run's cancel route", async () => {
+  server.use(
+    http.post("https://core.test/v1/pipelines/p-5/runs/run-1/cancel", () =>
+      HttpResponse.json({ id: "run-1", status: "cancel_requested" }),
+    ),
+  );
+  const result = await makeClient().cancelPipelineRun?.("p-5", "run-1");
+  expect(result?.status).toBe("cancel_requested");
+});
+
 test("getPipelineRuns returns the run history", async () => {
   const runs = [
     {
