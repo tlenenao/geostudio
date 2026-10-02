@@ -185,7 +185,9 @@ def complete_tileset3d_upload(
     # convert_tileset3d_task, celui qui crée la config).
     require_privilege(session, user, privilege_for_kind("tileset3d"))
     job = repo.get_job(session, tenant_id=user.tenant_id, job_id=job_id)
-    if job is None:
+    # Même contrôle d'initiateur que presign_tileset3d_part : sinon un autre
+    # utilisateur du tenant finaliserait (et déférerait) le job d'autrui.
+    if job is None or job.created_by != user.id:
         raise HTTPException(status_code=404, detail="job not found")
     s3.complete_multipart_upload(
         Bucket=bucket,

@@ -228,6 +228,31 @@ def test_presign_part_404_for_a_job_owned_by_another_user(env):
     assert r.status_code == 404, r.text
 
 
+def test_complete_upload_404_for_a_job_owned_by_another_user(env):
+    client, Session, tenant, _alice, deferred, _s3 = env
+    with Session() as s:
+        bob = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="b",
+            username="bob",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        s.commit()
+    job_id = client.post(
+        "/v1/tileset3d/uploads", json={"filename": "city.zip", "title": "Ville"}
+    ).json()["jobId"]
+    client.app.dependency_overrides[get_current_user] = lambda: bob
+    r = client.post(
+        f"/v1/tileset3d/uploads/{job_id}/complete",
+        json={"parts": [{"partNumber": 1, "etag": '"abc"'}]},
+    )
+    assert r.status_code == 404, r.text
+    assert deferred == []
+
+
 def test_presign_part_404_for_unknown_job(env):
     client, *_ = env
     r = client.post("/v1/tileset3d/uploads/does-not-exist/parts/1/presign")
