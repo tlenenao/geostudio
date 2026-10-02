@@ -13,5 +13,9 @@ test("safeReturnTo refuse les destinations externes", () => {
   expect(safeReturnTo("/items/3")).toBe("/items/3");
   expect(safeReturnTo("//evil.com")).toBe("/");
   expect(safeReturnTo("https://evil.com")).toBe("/");
+  // Les navigateurs lisent `\` comme `/` : `/\\evil.com` vaut `//evil.com`.
+  expect(safeReturnTo("/\\evil.com")).toBe("/");
+  expect(safeReturnTo("/\t/evil.com")).toBe("/");
+  expect(safeReturnTo("javascript:alert(1)")).toBe("/");
   expect(safeReturnTo(undefined)).toBe("/");
 });

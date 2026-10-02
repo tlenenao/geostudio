@@ -10,7 +10,8 @@ export function currentReturnTo(loc: { pathname: string; search: string; hash: s
 
 /** N'accepte qu'un chemin interne (anti open-redirect) ; sinon "/". */
 export function safeReturnTo(value: unknown): string {
-  return typeof value === "string" && value.startsWith("/") && !value.startsWith("//")
-    ? value
-    : "/";
+  // Pas de `\` ni de caractère de contrôle : l'analyseur d'URL les lit comme `/`
+  // ou les retire (`/\evil.com`, `/<TAB>/evil.com` valent `//evil.com`).
+  if (typeof value !== "string" || !/^\/(?![/\\])/.test(value)) return "/";
+  return [...value].some((c) => c === "\\" || c.charCodeAt(0) < 32) ? "/" : value;
 }
