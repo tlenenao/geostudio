@@ -427,6 +427,11 @@ def create_app() -> FastAPI:
         # deux ci-dessus) — usage_for_tenant() lit les 4 buckets
         # tenant-préfixés directement depuis les variables d'environnement
         # (pas de dépendance par bucket), un seul client générique suffit.
+        app.dependency_overrides[instance_routes.get_s3_client] = lambda: make_s3_client(
+            endpoint_url=s3_endpoint,
+            access_key=s3_access_key,
+            secret_key=s3_secret_key,
+        )
         app.dependency_overrides[quotas_routes.get_s3_client] = lambda: make_s3_client(
             endpoint_url=s3_endpoint,
             access_key=s3_access_key,
