@@ -14,11 +14,15 @@ n'est ni nécessaire ni correct ici (le plan présumait par défaut un WKB
 brut nécessitant conversion, corrigé après coup par le spike)."""
 
 import json
+import math
+import re
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 import duckdb
 from pydantic import BaseModel
 
+from app.analytics.duckdb_conn import StatementTimeout, statement_timeout
 from app.collections.introspection import TableInfo
 from app.sql_ident import quote_ident_duckdb as _qi
 
@@ -53,6 +57,12 @@ class UnknownAggregateField(Exception):
         self.field = field
         self.message = message
         super().__init__(message)
+
+
+# P25.01 : plafond de groupes d'un agrégat (au-delà : 400, jamais une réponse
+# tronquée en silence ni une explosion mémoire).
+MAX_GROUPS = 10_000
+_DATE_ONLY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def _sql_lit(value: str) -> str:
@@ -230,12 +240,23 @@ def _measures_for(request: AggregateRequestBody) -> list[AggregateMeasure]:
 def _build_where(request: AggregateRequestBody, table_info: TableInfo) -> tuple[str, list[Any]]:
     clauses = []
     params: list[Any] = []
+    col_types = {c.name: c.type for c in table_info.columns}
     for raw_name, value in request.filters.items():
         name, suffix = _split_filter_key(raw_name)
         if suffix == "__in":
             values = value.split(",")
             clauses.append(f"{_qi(name)} IN ({', '.join('?' for _ in values)})")
             params.extend(values)
+        elif suffix in _RANGE_OPS and col_types.get(name) in ("date", "datetime"):
+            # P25.12 : le lac stocke les dates en texte — comparaison TYPÉE
+            # (TIMESTAMPTZ, TimeZone=UTC), et une borne haute « YYYY-MM-DD »
+            # couvre tout le jour (exclusive sur le lendemain).
+            col = f"TRY_CAST({_qi(name)} AS TIMESTAMPTZ)"
+            if suffix == "__lte" and _DATE_ONLY.match(value):
+                clauses.append(f"{col} < CAST(? AS TIMESTAMPTZ) + INTERVAL 1 DAY")
+            else:
+                clauses.append(f"{col} {_RANGE_OPS[suffix]} CAST(? AS TIMESTAMPTZ)")
+            params.append(value)
         elif suffix in _RANGE_OPS:
             clauses.append(f"{_qi(name)} {_RANGE_OPS[suffix]} ?")
             params.append(value)
@@ -267,17 +288,22 @@ def _build_where(request: AggregateRequestBody, table_info: TableInfo) -> tuple[
     return (f"WHERE {' AND '.join(clauses)}" if clauses else ""), params
 
 
+def _key(value: Any) -> str | None:
+    """P25.06 : un groupe NULL reste null (jamais la chaîne « None »)."""
+    return None if value is None else str(value)
+
+
 def _pivot_split(sql_rows: list[dict[str, Any]], *, category_key: str) -> list[dict[str, Any]]:
-    categories: list[str] = []
-    by_cat: dict[str, dict[str, Any]] = {}
+    categories: list[str | None] = []
+    by_cat: dict[str | None, dict[str, Any]] = {}
     splits: list[str] = []
     seen_splits: set[str] = set()
     for r in sql_rows:
-        cat = str(r["__cat"])
+        cat = _key(r["__cat"])
         if cat not in by_cat:
             by_cat[cat] = {category_key: cat}
             categories.append(cat)
-        sv = str(r["__split"])
+        sv = "null" if r["__split"] is None else str(r["__split"])
         if sv not in seen_splits:
             seen_splits.add(sv)
             splits.append(sv)
@@ -294,7 +320,7 @@ def _pivot_measures(
 ) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for r in sql_rows:
-        row: dict[str, Any] = {category_key: str(r["__cat"])}
+        row: dict[str, Any] = {category_key: _key(r["__cat"])}
         for i, m in enumerate(measures):
             row[_measure_label(m)] = r[f"m{i}"]
         out.append(row)
@@ -475,10 +501,91 @@ def _fetch_rows(
 ) -> list[dict[str, Any]]:
     result = conn.execute(sql, params).fetchall()
     cols = [d[0] for d in conn.description]
-    return [dict(zip(cols, r, strict=True)) for r in result]
+    return [dict(zip(cols, (_finite(v) for v in r), strict=True)) for r in result]
+
+
+def _finite(value: Any) -> Any:
+    """P25.08 : inf/NaN ne sont pas sérialisables en JSON (500) — rendus null."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    return value
+
+
+def _fetch_groups(
+    conn: duckdb.DuckDBPyConnection, sql: str, params: list[Any]
+) -> list[dict[str, Any]]:
+    rows = _fetch_rows(conn, f"{sql} LIMIT {MAX_GROUPS + 1}", params)
+    if len(rows) > MAX_GROUPS:
+        raise UnknownAggregateField("groupBy", f"too many groups (more than {MAX_GROUPS})")
+    return rows
 
 
 def run_collection_aggregate(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    base_uri: str,
+    tenant_id: str,
+    collection_id: str,
+    table_info: TableInfo,
+    request: AggregateRequestBody,
+    masked_fields: frozenset[str] = frozenset(),
+) -> tuple[str | list[str], list[dict[str, Any]]]:
+    """Garde commune (P25.01) de toute requête d'agrégat : budget de temps
+    (interruption DuckDB) et valeur de filtre non convertible -> erreur
+    métier (400) au lieu d'un 500. Mémoire/threads : open_connection."""
+    try:
+        with statement_timeout(conn):
+            return _run_collection_aggregate(
+                conn,
+                base_uri=base_uri,
+                tenant_id=tenant_id,
+                collection_id=collection_id,
+                table_info=table_info,
+                request=request,
+                masked_fields=masked_fields,
+            )
+    except StatementTimeout as exc:
+        raise UnknownAggregateField("query", str(exc)) from exc
+    except (duckdb.ConversionException, duckdb.InvalidInputException) as exc:
+        # P25.07
+        raise UnknownAggregateField("filters", f"invalid filter value: {exc}") from exc
+
+
+def aggregate_columns(request: AggregateRequestBody, category_key: str | list[str]) -> list[str]:
+    """Colonnes d'un résultat d'agrégat, connues même sans ligne (en-tête
+    d'export, P25.09)."""
+    if request.sample is not None:
+        return ["value"]
+    if request.bins is not None:
+        return ["bucketIndex", "bucketStart", "bucketEnd", "count"]
+    keys = category_key if isinstance(category_key, list) else [category_key]
+    if request.split:
+        return keys
+    return keys + [_measure_label(m) for m in _measures_for(request)]
+
+
+def lake_as_of(
+    conn: duckdb.DuckDBPyConnection, base_uri: str, tenant_id: str, collection_id: str
+) -> str | None:
+    """P25.10/11 : horodatage ISO du dernier flush CDC présent dans le lac, ou
+    None si le lac n'a encore aucune donnée pour la collection (réplication en
+    attente). Le lac a jusqu'à ~30 s de retard sur la base."""
+    if not _has_any_file(conn, base_uri, tenant_id, collection_id):
+        return None
+    glob = f"{base_uri}/tenant_id={tenant_id}/collection_id={collection_id}/dt=*/*.parquet"
+    try:
+        row = conn.execute(
+            f"SELECT max(_ts) FROM read_parquet({_sql_lit(glob)}, "
+            f"hive_partitioning=true, union_by_name=true)"
+        ).fetchone()
+    except duckdb.Error:
+        return None
+    if not row or row[0] is None:
+        return None
+    return datetime.fromtimestamp(float(row[0]), UTC).isoformat()
+
+
+def _run_collection_aggregate(
     conn: duckdb.DuckDBPyConnection,
     *,
     base_uri: str,
@@ -503,6 +610,7 @@ def run_collection_aggregate(
     if not _has_any_file(conn, base_uri, tenant_id, collection_id):
         return category_key, []
 
+    conn.execute("SET TimeZone='UTC'")  # P25.12 : comparaisons de dates en UTC
     dedup_cte = _dedup_cte(conn, table_info, base_uri, tenant_id, collection_id)
     where_sql, where_params = _build_where(request, table_info)
 
@@ -541,9 +649,9 @@ def run_collection_aggregate(
         group_cols = ", ".join(_qi(f) for f in fields)
         sql = (
             f"{dedup_cte} SELECT {group_cols}, {measure_cols} "
-            f"FROM live {where_sql} GROUP BY {group_cols}"
+            f"FROM live {where_sql} GROUP BY {group_cols} ORDER BY {group_cols}"
         )
-        sql_rows = _fetch_rows(conn, sql, where_params)
+        sql_rows = _fetch_groups(conn, sql, where_params)
         return category_key, _pivot_multi_measures(sql_rows, fields=fields, measures=measures)
 
     single_field = fields[0] if fields else None
@@ -579,20 +687,21 @@ def run_collection_aggregate(
         agg_sql = _agg_expr(request.agg, request.field, request.p)
         sql = (
             f"{dedup_cte} SELECT {cat_expr} AS __cat, {_qi(request.split)} AS __split, "
-            f"{agg_sql} AS __val FROM live {where_sql} GROUP BY __cat, __split"
+            f"{agg_sql} AS __val FROM live {where_sql} GROUP BY __cat, __split "
+            f"ORDER BY __cat, __split"
         )
-        sql_rows = _fetch_rows(conn, sql, where_params)
+        sql_rows = _fetch_groups(conn, sql, where_params)
         return category_key, _pivot_split(sql_rows, category_key=str(category_key))
 
     measures = _measures_for(request)
     measure_cols = ", ".join(
         f"{_agg_expr(m.agg, m.field, m.p)} AS m{i}" for i, m in enumerate(measures)
     )
-    sql = (
-        f"{dedup_cte} SELECT {cat_expr} AS __cat, {measure_cols} "
-        f"FROM live {where_sql} GROUP BY __cat"
-    )
-    sql_rows = _fetch_rows(conn, sql, where_params)
+    # P25.05 : tri par clé (buckets temporels chronologiques). P25.07 : sans
+    # groupBy, pas de GROUP BY — un filtre vide rend UNE ligne (count = 0).
+    grouping = "GROUP BY __cat ORDER BY __cat" if single_field else ""
+    sql = f"{dedup_cte} SELECT {cat_expr} AS __cat, {measure_cols} FROM live {where_sql} {grouping}"
+    sql_rows = _fetch_groups(conn, sql, where_params)
     return category_key, _pivot_measures(
         sql_rows, category_key=str(category_key), measures=measures
     )

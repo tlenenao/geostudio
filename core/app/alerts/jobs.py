@@ -238,6 +238,10 @@ def _measure_value(session, *, user: User, payload: AlertRulePayload) -> float:
     row = rows[0]
     if label not in row:
         raise AlertEvaluationError(f"expected measure '{label}' not present in aggregate result")
+    if row[label] is None and _measures_for(payload.query)[0].agg in _ZERO_ON_EMPTY_AGGS:
+        # P25 : sans groupBy l'agrégat rend toujours UNE ligne ; somme d'un
+        # ensemble vide = NULL -> 0 (même règle que « aucune ligne » ci-dessus).
+        return 0.0
     if row[label] is None:
         # Depuis SP-23, median/percentile/stddev n'ont pas de COALESCE (design
         # §3.1) : « indéfini n'est pas zéro ». float(None) lèverait un

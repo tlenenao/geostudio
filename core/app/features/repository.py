@@ -7,6 +7,7 @@ introspecté. Les colonnes de type "unsupported" sont read-only (contrat de
 validation.py) : jamais écrites ici."""
 
 import json
+import re
 from dataclasses import dataclass
 
 from sqlalchemy import text
@@ -54,6 +55,7 @@ def _coerce(col: ColumnInfo, raw: str):
 
 
 _RANGE_OPS = {"__gte": ">=", "__lte": "<="}
+_DATE_ONLY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def _split_filter_key(raw_name: str) -> tuple[str, str | None]:
@@ -85,6 +87,11 @@ def _where(session: Session, info: TableInfo, bbox, geom_intersects, filters):
                     params[key] = _coerce(col, value)
                     placeholders.append(f":{key}")
                 clauses.append(f"{ident} IN ({', '.join(placeholders)})")
+            elif suffix == "__lte" and col.type == "datetime" and _DATE_ONLY.match(raw):
+                # P25.12 : borne haute « YYYY-MM-DD » = tout ce jour (sinon la
+                # comparaison tombe à minuit et exclut les événements du jour).
+                clauses.append(f"{ident} < CAST(:f{i} AS timestamptz) + INTERVAL '1 day'")
+                params[f"f{i}"] = raw
             elif suffix in _RANGE_OPS:
                 clauses.append(f"{ident} {_RANGE_OPS[suffix]} :f{i}")
                 params[f"f{i}"] = _coerce(col, raw)

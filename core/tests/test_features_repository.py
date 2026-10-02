@@ -389,3 +389,25 @@ def test_filtering_on_a_list_column_is_rejected(info, pg_session_factory):
     with pg_session_factory() as session, rls_scope(session, "default"):
         with pytest.raises(FilterError):
             select_features(session, info, limit=10, offset=0, filters={"tags": "urgent"})
+
+
+def test_single_day_range_on_a_timestamptz_column_keeps_that_day(
+    pg_incidents, pg_engine, pg_session_factory
+):
+    """P25.12 : d__lte « YYYY-MM-DD » couvre tout le jour, pas seulement minuit."""
+    with pg_engine.begin() as conn:
+        conn.execute(text("SET TIME ZONE 'UTC'"))
+        conn.execute(text("ALTER TABLE t_feat ADD COLUMN at timestamptz"))
+        conn.execute(text("UPDATE t_feat SET at = '2026-03-15 10:00:00+00' WHERE titre = 'a'"))
+        conn.execute(text("UPDATE t_feat SET at = '2026-03-16 10:00:00+00' WHERE titre = 'b'"))
+    with pg_session_factory() as session:
+        info = introspect_table(session, "t_feat")
+    with pg_session_factory() as session, rls_scope(session, "default"):
+        page = select_features(
+            session,
+            info,
+            limit=10,
+            offset=0,
+            filters={"at__gte": "2026-03-15", "at__lte": "2026-03-15"},
+        )
+    assert [f["id"] for f in page.features] == [1]
