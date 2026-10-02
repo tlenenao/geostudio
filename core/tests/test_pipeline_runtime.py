@@ -2985,3 +2985,46 @@ def test_reader_collection_drops_sensitive_columns_without_privilege(tmp_path, m
         )
         cols = [r[0] for r in conn.execute("DESCRIBE r1").fetchall()]
         assert "region" in cols and "pop" not in cols
+
+
+def test_preview_is_interrupted_after_its_time_budget(monkeypatch):
+    # P16.03 : l'aperçu est borné en durée — une requête DuckDB interminable
+    # est interrompue et remontée en PipelineRuntimeError.
+    import time
+
+    from app.configs.schemas import PipelinePayload
+
+    monkeypatch.setenv("CORE_PIPELINES_PREVIEW_TIMEOUT_S", "0.5")
+
+    def endless(conn, *a, **k):
+        conn.execute("SELECT sum(i) FROM range(100000000000) t(i)")
+
+    monkeypatch.setattr(runtime, "_prepare", endless)
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {}},
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.export",
+                    "params": {"format": "csv", "key": "o.csv"},
+                },
+            ],
+            "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+        }
+    )
+    t0 = time.monotonic()
+    with pytest.raises(runtime.PipelineRuntimeError, match="durée maximale"):
+        runtime.preview_pipeline(
+            session=None,
+            payload=payload,
+            tenant_id="t",
+            user=None,
+            up_to="r1",
+            endpoint_url="http://localhost:9000",
+            access_key="x",
+            secret_key="y",
+            base_uri="s3://b/cdc",
+        )
+    assert time.monotonic() - t0 < 10

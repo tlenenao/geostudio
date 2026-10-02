@@ -1130,3 +1130,139 @@ def test_materialize_blob_connector_builds_gcs_credentials(
     assert isinstance(creds, GcpServiceAccountCredentials)
     assert creds.project_id == "proj1"
     assert creds.client_email == "x@proj1.iam.gserviceaccount.com"
+
+
+# --- P16.02 / P16.03 : garde d'egress du DSN, délais prouvés par un serveur lent ---
+
+
+def _pg_params(query="SELECT 1 AS x"):
+    return ReaderConnectorPostgresParams(secretName="slow-pg", query=query)
+
+
+def _pg_dsn_secret(session, tenant, user, dsn):
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="slow-pg",
+        kind="postgres_dsn",
+        payload={"kind": "postgres_dsn", "dsn": dsn},
+    )
+
+
+def _run_pg(conn, session, tenant, user, params):
+    connector_runtime.materialize_postgres_connector(
+        conn,
+        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
+        node_id="slow",
+        params=params,
+        view_name="node_slow",
+    )
+
+
+@pytest.mark.parametrize(
+    "dsn",
+    [
+        "postgresql://u:p@127.0.0.1:5432/db",
+        "postgresql://u:p@10.0.0.5/db",
+        "postgresql://u:p@db.example/db?host=169.254.169.254",
+    ],
+)
+def test_postgres_dsn_internal_host_is_blocked_by_egress_guard(
+    conn, session, tenant, user, monkeypatch, dsn
+):
+    monkeypatch.setattr(pipelines_egress, "assert_egress_allowed", _REAL_ASSERT_EGRESS_ALLOWED)
+    monkeypatch.setattr(
+        pipelines_egress.socket,
+        "getaddrinfo",
+        lambda *a, **k: [(2, 1, 6, "", ("93.184.216.34", 0))],
+    )
+    _pg_dsn_secret(session, tenant, user, dsn)
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="egress blocked"):
+        _run_pg(conn, session, tenant, user, _pg_params())
+
+
+def test_postgres_connect_timeout_against_a_server_that_never_answers(
+    conn, session, tenant, user, monkeypatch
+):
+    import socket
+    import time
+
+    monkeypatch.setenv("CORE_PIPELINES_CONNECT_TIMEOUT_S", "1")
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)  # accepte au niveau noyau, ne répond jamais au handshake
+    try:
+        port = srv.getsockname()[1]
+        _pg_dsn_secret(session, tenant, user, f"postgresql://u:p@127.0.0.1:{port}/db")
+        t0 = time.monotonic()
+        with pytest.raises(connector_runtime.ConnectorRuntimeError, match="extraction failed"):
+            _run_pg(conn, session, tenant, user, _pg_params())
+        assert time.monotonic() - t0 < 8  # sans délai : bloqué indéfiniment
+    finally:
+        srv.close()
+
+
+def test_postgres_statement_timeout_against_a_slow_query(
+    conn, session, tenant, user, pg_engine, monkeypatch
+):
+    import time
+
+    monkeypatch.setenv("CORE_PIPELINES_QUERY_TIMEOUT_S", "1")
+    _pg_dsn_secret(session, tenant, user, _pg_dsn(pg_engine))
+    t0 = time.monotonic()
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="extraction failed"):
+        _run_pg(conn, session, tenant, user, _pg_params("SELECT pg_sleep(8) AS x"))
+    assert time.monotonic() - t0 < 6
+
+
+def test_postgres_row_cap(conn, session, tenant, user, pg_engine, monkeypatch):
+    monkeypatch.setenv("CORE_PIPELINES_CONNECTOR_MAX_ROWS", "5")
+    _pg_dsn_secret(session, tenant, user, _pg_dsn(pg_engine))
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="plafond de 5 lignes"):
+        _run_pg(
+            conn, session, tenant, user, _pg_params("SELECT g AS x FROM generate_series(1,50) g")
+        )
+
+
+def test_rest_read_timeout_against_a_slow_server(
+    conn, session, tenant, user, httpserver, monkeypatch
+):
+    import time
+
+    monkeypatch.setenv("CORE_PIPELINES_QUERY_TIMEOUT_S", "1")
+
+    def slow(_request):
+        time.sleep(4)
+        from werkzeug.wrappers import Response
+
+        return Response("[]", content_type="application/json")
+
+    httpserver.expect_request("/items").respond_with_handler(slow)
+    params = ReaderConnectorRestParams(baseUrl=httpserver.url_for("/"), path="items")
+    t0 = time.monotonic()
+    with pytest.raises(connector_runtime.ConnectorRuntimeError):
+        connector_runtime.materialize_rest_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
+            node_id="slowrest",
+            params=params,
+            view_name="node_slowrest",
+        )
+    assert (
+        time.monotonic() - t0 < 3.5
+    )  # coupé par le délai de lecture, pas par la fin de la réponse
+
+
+def test_rest_row_cap(conn, session, tenant, user, httpserver, monkeypatch):
+    monkeypatch.setenv("CORE_PIPELINES_CONNECTOR_MAX_ROWS", "3")
+    httpserver.expect_request("/items").respond_with_json([{"id": i} for i in range(10)])
+    params = ReaderConnectorRestParams(baseUrl=httpserver.url_for("/"), path="items")
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="plafond de 3 lignes"):
+        connector_runtime.materialize_rest_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
+            node_id="cap",
+            params=params,
+            view_name="node_cap",
+        )

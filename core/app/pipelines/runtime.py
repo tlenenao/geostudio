@@ -28,6 +28,7 @@ import csv
 import io
 import json
 import os
+import threading
 from collections.abc import Callable
 
 import duckdb
@@ -792,6 +793,10 @@ def _view_row_count(conn, view_name: str) -> int:
     return conn.execute(f"SELECT count(*) FROM {_qi(view_name)}").fetchone()[0]
 
 
+def _preview_timeout_s() -> float:
+    return float(os.environ.get("CORE_PIPELINES_PREVIEW_TIMEOUT_S") or 30)
+
+
 def preview_pipeline(
     *,
     session: Session | None,
@@ -812,6 +817,17 @@ def preview_pipeline(
         raise PipelineRuntimeError("preview cannot target a writer node")
 
     conn = open_connection(endpoint_url=endpoint_url, access_key=access_key, secret_key=secret_key)
+    # P16.03 : l'aperçu est borné en durée (les lectures externes ont leurs
+    # propres délais ; ceci interrompt la partie DuckDB).
+    timed_out = threading.Event()
+
+    def _on_timeout() -> None:
+        timed_out.set()
+        conn.interrupt()
+
+    timer = threading.Timer(_preview_timeout_s(), _on_timeout)
+    timer.daemon = True
+    timer.start()
     try:
         ordered, view_by_node, srid_by_node, join_srid_by_node = _prepare(
             conn,
@@ -856,7 +872,12 @@ def preview_pipeline(
                 if row.get("geometry") is not None:
                     row["geometry"] = json.loads(row["geometry"])
         return result
+    except duckdb.InterruptException as exc:
+        if timed_out.is_set():
+            raise PipelineRuntimeError("aperçu interrompu : durée maximale dépassée") from exc
+        raise
     finally:
+        timer.cancel()
         conn.close()
 
 

@@ -317,6 +317,14 @@ services:
       # (seules les plages réseau internes/privées sont bloquées, cf.
       # `_allowlist()` de chaque module).
       CORE_PIPELINES_EGRESS_ALLOWLIST: ${CORE_PIPELINES_EGRESS_ALLOWLIST:-}
+      # Délais et plafonds des lectures externes (P16.03) et bornes DuckDB.
+      CORE_PIPELINES_CONNECT_TIMEOUT_S: ${CORE_PIPELINES_CONNECT_TIMEOUT_S:-10}
+      CORE_PIPELINES_QUERY_TIMEOUT_S: ${CORE_PIPELINES_QUERY_TIMEOUT_S:-60}
+      CORE_PIPELINES_CONNECTOR_MAX_ROWS: ${CORE_PIPELINES_CONNECTOR_MAX_ROWS:-1000000}
+      CORE_PIPELINES_CONNECTOR_MAX_PAGES: ${CORE_PIPELINES_CONNECTOR_MAX_PAGES:-1000}
+      CORE_PIPELINES_PREVIEW_TIMEOUT_S: ${CORE_PIPELINES_PREVIEW_TIMEOUT_S:-30}
+      CORE_DUCKDB_MEMORY_LIMIT: ${CORE_DUCKDB_MEMORY_LIMIT:-2GB}
+      CORE_DUCKDB_MAX_TEMP_SIZE: ${CORE_DUCKDB_MAX_TEMP_SIZE:-5GB}
       CORE_HARVEST_EGRESS_ALLOWLIST: ${CORE_HARVEST_EGRESS_ALLOWLIST:-}
       # Plafond de taille de réponse du moissonnage (GAP-59, SP-50) — défaut
       # Python 10 Mio si absent/vide, cf. app/harvest/egress.py.
@@ -497,6 +505,14 @@ services:
       # les runs de pipeline (connector_runtime.py) et les notifications
       # d'alerte (notify.py) tournent dans ce process.
       CORE_PIPELINES_EGRESS_ALLOWLIST: ${CORE_PIPELINES_EGRESS_ALLOWLIST:-}
+      # Délais et plafonds des lectures externes (P16.03) et bornes DuckDB.
+      CORE_PIPELINES_CONNECT_TIMEOUT_S: ${CORE_PIPELINES_CONNECT_TIMEOUT_S:-10}
+      CORE_PIPELINES_QUERY_TIMEOUT_S: ${CORE_PIPELINES_QUERY_TIMEOUT_S:-60}
+      CORE_PIPELINES_CONNECTOR_MAX_ROWS: ${CORE_PIPELINES_CONNECTOR_MAX_ROWS:-1000000}
+      CORE_PIPELINES_CONNECTOR_MAX_PAGES: ${CORE_PIPELINES_CONNECTOR_MAX_PAGES:-1000}
+      CORE_PIPELINES_PREVIEW_TIMEOUT_S: ${CORE_PIPELINES_PREVIEW_TIMEOUT_S:-30}
+      CORE_DUCKDB_MEMORY_LIMIT: ${CORE_DUCKDB_MEMORY_LIMIT:-2GB}
+      CORE_DUCKDB_MAX_TEMP_SIZE: ${CORE_DUCKDB_MAX_TEMP_SIZE:-5GB}
       CORE_HARVEST_EGRESS_ALLOWLIST: ${CORE_HARVEST_EGRESS_ALLOWLIST:-}
       # Plafond de taille de réponse du moissonnage (GAP-59, SP-50) — défaut
       # Python 10 Mio si absent/vide, cf. app/harvest/egress.py.

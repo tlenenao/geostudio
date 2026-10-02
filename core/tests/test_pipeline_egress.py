@@ -86,3 +86,22 @@ def test_non_global_addresses_blocked(url):
     # CGNAT et TEST-NET : ni privées ni réservées au sens historique, mais non globales.
     with pytest.raises(EgressBlockedError):
         assert_egress_allowed(url)
+
+
+@pytest.mark.parametrize(
+    "dsn",
+    [
+        "postgresql://u:p@127.0.0.1/db",
+        "postgresql://u:p@db.example/db?host=10.0.0.1",
+        "postgresql://u:p@db.example/db?hostaddr=192.168.0.9,8.8.8.8",
+        "mssql+pymssql://u:p@[::1]:1433/db",
+    ],
+)
+def test_dsn_with_internal_host_blocked(dsn, monkeypatch):
+    from app.pipelines.egress import assert_dsn_egress_allowed
+
+    monkeypatch.setattr(
+        socket, "getaddrinfo", lambda *a, **k: [(2, 1, 6, "", ("93.184.216.34", 0))]
+    )
+    with pytest.raises(EgressBlockedError):
+        assert_dsn_egress_allowed(dsn)

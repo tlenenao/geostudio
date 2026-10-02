@@ -46,7 +46,11 @@ from dlt.sources.helpers.rest_client.paginators import (
 from sqlalchemy.orm import Session
 
 from app.analytics.sql_sandbox import SqlSandboxError, parse_ast, validate_select_only
-from app.pipelines.egress import EgressBlockedError, build_guarded_session
+from app.pipelines.egress import (
+    EgressBlockedError,
+    assert_dsn_egress_allowed,
+    build_guarded_session,
+)
 from app.pipelines.ops.schemas import (
     ReaderConnectorBigQueryParams,
     ReaderConnectorBlobParams,
@@ -60,6 +64,9 @@ from app.secrets import repository as secrets_repo
 from app.secrets.schemas import SecretPayload
 from app.users.models import User
 
+# Dialectes dont l'hôte n'est pas un nom DNS contrôlable (compte Snowflake,
+# projet BigQuery) : pas de garde d'egress sur le DSN.
+_NO_HOST_BACKENDS = {"snowflake", "bigquery"}
 _REST_SECRET_KINDS = {"api_key", "bearer_token", "basic_auth", "oauth2_client_credentials"}
 
 # reader.connector.blob (Task 15) : fournisseur résolu depuis le schéma d'URL
@@ -114,6 +121,66 @@ class PostgresSecretResolver:
         if payload is None:
             raise KeyError(name)
         return payload
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    return int(raw) if raw else default
+
+
+def _connect_timeout_s() -> int:
+    return _env_int("CORE_PIPELINES_CONNECT_TIMEOUT_S", 10)
+
+
+def _query_timeout_s() -> int:
+    return _env_int("CORE_PIPELINES_QUERY_TIMEOUT_S", 60)
+
+
+def _max_rows() -> int:
+    return _env_int("CORE_PIPELINES_CONNECTOR_MAX_ROWS", 1_000_000)
+
+
+def _max_pages() -> int:
+    return _env_int("CORE_PIPELINES_CONNECTOR_MAX_PAGES", 1000)
+
+
+def _timeout_connect_args(backend: str) -> dict:
+    """Délais de connexion/requête par pilote (P16.03). BigQuery : aucun
+    réglage équivalent côté dialecte, borné par le plafond de lignes."""
+    t, q = _connect_timeout_s(), _query_timeout_s()
+    return {
+        "postgresql": {"connect_timeout": t, "options": f"-c statement_timeout={q * 1000}"},
+        "mssql": {"login_timeout": t, "timeout": q},
+        "oracle": {"tcp_connect_timeout": float(t)},
+        "snowflake": {"login_timeout": t, "network_timeout": q},
+    }.get(backend, {})
+
+
+def _stream_sql(dsn: str, query: str):
+    """Lecture SQL externe commune aux readers postgres/mssql/oracle/
+    snowflake/bigquery : garde d'egress sur l'hôte du DSN (P16.02), délais
+    de connexion/requête et plafond de lignes (P16.03)."""
+    backend = sa.engine.make_url(dsn).get_backend_name()
+    if backend not in _NO_HOST_BACKENDS:
+        assert_dsn_egress_allowed(dsn)
+    engine = sa.create_engine(dsn, connect_args=_timeout_connect_args(backend))
+    if backend == "oracle":
+        # python-oracledb : délai d'appel par requête, en ms.
+        sa.event.listen(
+            engine,
+            "connect",
+            lambda dbapi_conn, _rec: setattr(dbapi_conn, "call_timeout", _query_timeout_s() * 1000),
+        )
+    limit = _max_rows()
+    try:
+        with engine.connect() as db_conn:
+            rows = db_conn.execution_options(yield_per=1000).exec_driver_sql(query)
+            for n, row in enumerate(rows, 1):
+                if n > limit:
+                    raise ConnectorRuntimeError(f"plafond de {limit} lignes dépassé")
+                yield dict(row._mapping)
+    finally:
+        engine.dispose()
 
 
 def _qi(name: str) -> str:
@@ -305,7 +372,16 @@ def materialize_rest_connector(
 
     @dlt.resource(name="records", write_disposition="replace")
     def _records():
-        yield from client.paginate(params.path, method=params.method, params=params.query or None)
+        rows = 0
+        for page_no, page in enumerate(
+            client.paginate(params.path, method=params.method, params=params.query or None), 1
+        ):
+            if page_no > _max_pages():
+                raise ConnectorRuntimeError(f"plafond de {_max_pages()} pages dépassé")
+            rows += len(page)
+            if rows > _max_rows():
+                raise ConnectorRuntimeError(f"plafond de {_max_rows()} lignes dépassé")
+            yield page
 
     _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
 
@@ -337,13 +413,7 @@ def materialize_postgres_connector(
 
     @dlt.resource(name="records", write_disposition="replace")
     def _records():
-        engine = sa.create_engine(payload.dsn)
-        try:
-            with engine.connect() as db_conn:
-                rows = db_conn.execution_options(yield_per=1000).exec_driver_sql(params.query)
-                yield from (dict(row._mapping) for row in rows)
-        finally:
-            engine.dispose()
+        yield from _stream_sql(payload.dsn, params.query)
 
     _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
 
@@ -387,13 +457,7 @@ def materialize_mssql_connector(
         # bigquery) : sa.create_engine() reste paresseux pour ce dialecte,
         # aucun appel réseau avant .connect() (vérifié empiriquement, cf.
         # MssqlDsnPayload).
-        engine = sa.create_engine(payload.dsn)
-        try:
-            with engine.connect() as db_conn:
-                rows = db_conn.execution_options(yield_per=1000).exec_driver_sql(params.query)
-                yield from (dict(row._mapping) for row in rows)
-        finally:
-            engine.dispose()
+        yield from _stream_sql(payload.dsn, params.query)
 
     _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
 
@@ -429,13 +493,7 @@ def materialize_snowflake_connector(
         # l'installation (vérifié empiriquement, design §3.3) — même
         # patron que le dialecte "postgresql" ci-dessus, jamais importé
         # explicitement non plus.
-        engine = sa.create_engine(payload.dsn)
-        try:
-            with engine.connect() as db_conn:
-                rows = db_conn.execution_options(yield_per=1000).exec_driver_sql(params.query)
-                yield from (dict(row._mapping) for row in rows)
-        finally:
-            engine.dispose()
+        yield from _stream_sql(payload.dsn, params.query)
 
     _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
 
@@ -478,13 +536,7 @@ def materialize_oracle_connector(
         # mssql (et contrairement à bigquery) : sa.create_engine() reste
         # paresseux pour ce dialecte, aucun appel réseau avant .connect()
         # (vérifié empiriquement).
-        engine = sa.create_engine(payload.dsn)
-        try:
-            with engine.connect() as db_conn:
-                rows = db_conn.execution_options(yield_per=1000).exec_driver_sql(params.query)
-                yield from (dict(row._mapping) for row in rows)
-        finally:
-            engine.dispose()
+        yield from _stream_sql(payload.dsn, params.query)
 
     _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
 
@@ -528,13 +580,7 @@ def materialize_bigquery_connector(
         # réseau tant que .connect()/l'exécution de la requête n'a pas lieu,
         # mais un JSON de compte de service malformé y échoue ici plutôt
         # qu'à l'exécution de la requête.
-        engine = sa.create_engine(payload.dsn)
-        try:
-            with engine.connect() as db_conn:
-                rows = db_conn.execution_options(yield_per=1000).exec_driver_sql(params.query)
-                yield from (dict(row._mapping) for row in rows)
-        finally:
-            engine.dispose()
+        yield from _stream_sql(payload.dsn, params.query)
 
     _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
 

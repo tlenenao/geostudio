@@ -15,6 +15,8 @@ Les valeurs SET ci-dessous viennent de variables d'environnement serveur
 cœur fait déjà confiance à ses propres variables d'environnement (ex.
 CORE_BASE_URL dans app/main.py)."""
 
+import os
+
 import duckdb
 
 
@@ -32,6 +34,12 @@ def open_connection(
     conn.execute("SET s3_url_style = 'path'")
     conn.execute(f"SET s3_access_key_id = '{access_key}'")
     conn.execute(f"SET s3_secret_access_key = '{secret_key}'")
+    # P16.03 : mémoire et débordement disque bornés (valeurs d'environnement
+    # serveur, pas d'entrée utilisateur).
+    conn.execute(f"SET memory_limit = '{os.environ.get('CORE_DUCKDB_MEMORY_LIMIT') or '2GB'}'")
+    conn.execute(
+        f"SET max_temp_directory_size = '{os.environ.get('CORE_DUCKDB_MAX_TEMP_SIZE') or '5GB'}'"
+    )
     return conn
 
 
