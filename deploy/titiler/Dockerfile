@@ -22,6 +22,10 @@ RUN python -m pip install --no-cache-dir \
       "titiler.core==0.18.4" \
       "titiler.extensions[cogeo,stac]==0.18.4" \
       "titiler.mosaic==0.18.4" \
-      "titiler.application==0.18.4"
+      "titiler.application==0.18.4" \
+      "starlette<1"
+# starlette 1.x change la signature de TemplateResponse : la landing `/`
+# de titiler 0.18.4 répond 500 « unhashable type: 'dict' » (P17.02, j08b-005).
+# Vérifié en conteneur : starlette 0.52 -> GET / = 200.
 ENV MODULE_NAME=titiler.application.main
 ENV VARIABLE_NAME=app

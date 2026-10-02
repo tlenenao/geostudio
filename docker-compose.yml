@@ -349,6 +349,13 @@ services:
       # jeton de lancement (60s) et le cookie de session (30 min) qu'il
       # bootstrap. Même convention que CORE_EXPORT_TOKEN_SECRET.
       CORE_ADMIN_TOOLS_TOKEN_SECRET: ${CORE_ADMIN_TOOLS_TOKEN_SECRET:-}
+      # Origine de la passerelle Traefik : le lancement redirige vers elle
+      # (le cœur ne sert pas /admin ; sans cela le bouton aboutit à un 404
+      # JSON du cœur sur :8200, P17.03 / j08b-006).
+      CORE_ADMIN_TOOLS_GATEWAY_URL: https://${DOMAIN}
+      # Console MinIO (:9001) publiée sur l'hôte en base, pas en prod
+      # (overlay: ports reset) — le shell masque le lien sinon (P17.04).
+      CORE_MINIO_CONSOLE_PUBLISHED: "true"
       # SP-58 : capacité instance-wide optionnelle (quotas par tenant) + 3
       # limites, chacune vide = pas de limite configurée même capacité
       # active (cf. app/quotas/service.py, spec §3.1).
@@ -711,6 +718,12 @@ services:
       # répond 200. Ne PAS ajouter de stripprefix pour ce service.
       GF_SERVER_ROOT_URL: https://${DOMAIN}/admin/grafana/
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      # La passerelle admin-auth est la seule authentification : l'accès
+      # anonyme de l'image est Admin par défaut, ce qui laisse un porteur de
+      # la passerelle créer des sources de données vers le réseau interne
+      # (P17.01, j09b-007). Viewer = lecture seule des dashboards provisionnés.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
     ports:
       - "${GRAFANA_HOST_PORT:-3001}:3000"
       - "4317:4317"
@@ -727,7 +740,7 @@ services:
       - traefik.http.routers.grafana.entrypoints=websecure
       - traefik.http.routers.grafana.tls.certresolver=letsencrypt
       - traefik.http.routers.grafana.priority=15
-      - traefik.http.routers.grafana.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker,csp-dynamic@file
+      - traefik.http.routers.grafana.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker
       - traefik.http.services.grafana.loadbalancer.server.port=3000
 
   postgres-exporter:

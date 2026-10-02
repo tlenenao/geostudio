@@ -159,7 +159,7 @@ services:
       - traefik.http.routers.grafana.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && PathPrefix(`/admin/grafana`)
       - traefik.http.routers.grafana.entrypoints=web
       - traefik.http.routers.grafana.priority=15
-      - traefik.http.routers.grafana.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker,csp-dynamic@file
+      - traefik.http.routers.grafana.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker
       - traefik.http.services.grafana.loadbalancer.server.port=3000
 
   core:
@@ -171,6 +171,8 @@ services:
       CORE_OIDC_ISSUER: https://${GEOSTUDIO_PUBLIC_HOST}/auth/realms/geostudio
       CORE_OIDC_JWKS_URL: http://keycloak:8080/auth/realms/geostudio/protocol/openid-connect/certs
       CORE_BASE_URL: https://${GEOSTUDIO_PUBLIC_HOST}/api
+      CORE_ADMIN_TOOLS_GATEWAY_URL: https://${GEOSTUDIO_PUBLIC_HOST}
+      CORE_MINIO_CONSOLE_PUBLISHED: "false"
       # Rappelé explicitement ici : c'est cet overlay qui donne à
       # CORE_BASE_URL une valeur que le conteneur ne peut pas s'appeler
       # lui-même (TLS + hôte public). Le rappel /mcp du copilote (SP-20)
