@@ -640,7 +640,11 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   RGPD, fuites de lecture, partage/groupes/annuaire, masquage GAP-22 sur
   pipelines/exports/MCP (ferme les 2 bypass documentés). Revues finales :
   P01–P05 6 Important, P06–P15 2 Important. Reste : `REV-270`/`272`.
-  P16–P36 du plan non lancés. Détail dans l'archive.
+  Détail dans l'archive.
+- **Audit pré-release P16–P17 (secrets/egress, passerelle admin)** — ACL du
+  coffre, `PUT /secrets`, egress DSN/blob, plafonds et délais des connecteurs ;
+  Grafana Viewer, Titiler, redirection de lancement, `GET /v1/instance/status`.
+  Reste : `REV-273`/`274` (P17.08 E2E non rejoué). P18–P36 non lancés.
 
 ### Conventions tranchées (2026-09-01)
 

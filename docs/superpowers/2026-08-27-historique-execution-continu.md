@@ -7673,3 +7673,42 @@ Récit relu contre le code et les messages de commit (piège n°12).
   déterministe, pas une anonymisation irréversible.
 - Backlog : reliquats en `REV-266` à `REV-272`. GAP-22 : note ajoutée (2
   bypass fermés). Bilan de fonctionnalités régénéré par un autre agent.
+
+## Audit pré-release 2026-09-29 — paquets P16 et P17 (clos 2026-10-02)
+
+### P16 — coffre de secrets, connecteurs, egress
+
+- **P16.01/05/06/07/08** : usage d'un secret réservé au propriétaire ou à
+  l'admin (pipelines, alertes, rapports, MCP), `PUT /secrets/{id}` en place,
+  409 à la suppression d'un secret encore référencé, 422 sans écho des
+  valeurs, `min_length=1` sur les champs obligatoires.
+- **P16.02/03** : garde d'egress sur l'hôte des DSN (y compris l'hôte passé
+  en paramètre de pilote) et sur l'endpoint S3 du connecteur blob,
+  `connect_timeout`/`statement_timeout`, délai de lecture REST, plafonds de
+  lignes/pages, DuckDB borné mémoire/disque, aperçu interrompu après
+  `CORE_PIPELINES_PREVIEW_TIMEOUT_S` (prouvé par serveurs lents).
+- **P16.04** : toute adresse non globale bloquée (5 modules `egress.py`).
+- Revue finale P16 : non conduite dans cette passe.
+- **Non-faits** : j06-004 non basculé en `test(` ; `reader.connector.blob`
+  sans plafonds ; le 409 liste des titres d'objets sans `can()` ; TOCTOU DNS
+  de la garde d'egress ; j09b-005 (STARTTLS SMTP). Reportés en `REV-273`.
+
+### P17 — passerelle d'administration et observabilité
+
+- **P17.01** Grafana anonyme en Viewer (plus Admin) ; **P17.02** `starlette<1`
+  dans l'image Titiler (landing 500) ; **P17.03** lancement redirigé vers
+  `CORE_ADMIN_TOOLS_GATEWAY_URL` ; **P17.04** `CORE_MINIO_CONSOLE_PUBLISHED`
+  + lien masqué si port non publié ; **P17.05** routeur Grafana sans
+  `csp-dynamic` ; **P17.06** « s'ouvre dans un nouvel onglet » annoncé ;
+  **P17.07** `GET /v1/instance/status` (privilège `settings.instance.manage`,
+  sondes Postgres/S3/CDC/jobs isolées) + vue sur `AdminInfrastructurePage`.
+  Règle de déployabilité « aucun service derrière `admin-auth` en anonyme
+  Admin » ajoutée (falsifiée : rôle remis à Admin -> 2 tests rouges).
+- **Revue finale P17** (3 commits) : 0 Critical, 0 Important. Vérifiés :
+  compose base/prod (variables posées des deux côtés, valeurs cohérentes avec
+  les ports `!reset`), garde de privilège de la route, parité des trois
+  `ItemClient` (Core, Desktop `unsupported`, Static), OpenAPI/types/inventaire
+  régénérés, tests de déployabilité falsifiés. Minor consignés en `REV-274`.
+- **Non-faits** : P17.08 (E2E derrière Traefik) non rejoué ; images
+  `deploy/titiler` et `otel-lgtm` à reconstruire et vérifier sur stack réelle.
+
