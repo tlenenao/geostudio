@@ -41,6 +41,23 @@ def list_objects(client, *, bucket: str, prefix: str) -> list[dict]:
     return objects
 
 
+def list_prefixes(client, *, bucket: str, prefix: str) -> list[str]:
+    """Sous-préfixes directs de `prefix` (Delimiter='/'), paginés — permet de
+    n'énumérer que les partitions voulues sans lister tous les objets."""
+    found: list[str] = []
+    token = None
+    while True:
+        kwargs = {"Bucket": bucket, "Prefix": prefix, "Delimiter": "/"}
+        if token:
+            kwargs["ContinuationToken"] = token
+        resp = client.list_objects_v2(**kwargs)
+        found.extend(p["Prefix"] for p in resp.get("CommonPrefixes", []))
+        if resp.get("IsTruncated"):
+            token = resp.get("NextContinuationToken")
+        else:
+            return found
+
+
 _DELETE_OBJECTS_MAX_KEYS = 1000  # limite dure de l'API S3 DeleteObjects (cf. REV-025)
 
 
