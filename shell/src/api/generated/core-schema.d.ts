@@ -840,6 +840,23 @@ export interface paths {
         patch: operations["patch_source_v1_harvest_sources__source_id__patch"];
         trace?: never;
     };
+    "/v1/harvest/sources/{source_id}/records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Source Records */
+        get: operations["list_source_records_v1_harvest_sources__source_id__records_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/harvest/sources/{source_id}/run": {
         parameters: {
             query?: never;
@@ -5960,6 +5977,42 @@ export interface operations {
                 "application/json": components["schemas"]["HarvestSourcePatch"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_source_records_v1_harvest_sources__source_id__records_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

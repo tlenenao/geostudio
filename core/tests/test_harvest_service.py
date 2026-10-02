@@ -607,3 +607,32 @@ def test_upsert_copy_defaults_filename_when_copy_filename_is_none(
         http_get=lambda u: None,
     )
     assert fake_run_import.call_args.kwargs["filename"] == "harvest.geojson"
+
+
+def test_failed_run_dates_the_attempt_so_interval_is_respected(
+    session, tenant_and_user, monkeypatch
+):
+    # P19.02 / j07-006 : une source en erreur n'est plus « due » avant son intervalle.
+    tenant, user = tenant_and_user
+
+    def _raise(t):
+        connector = Mock()
+        connector.fetch = Mock(side_effect=RuntimeError("boom"))
+        return connector
+
+    monkeypatch.setattr(service, "get_connector", _raise)
+    source = harvest_repo.create_source(
+        session,
+        tenant_id=tenant.id,
+        owner_id=user.id,
+        type="stac",
+        url="https://a",
+        mode="reference",
+        enabled=True,
+        interval_minutes=1440,
+    )
+    assert source in harvest_repo.list_due_sources(session)
+    service.harvest_source(session, source)
+    assert source.last_status == "error"
+    assert source.last_run_at is not None
+    assert source not in harvest_repo.list_due_sources(session)
