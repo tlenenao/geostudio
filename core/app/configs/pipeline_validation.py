@@ -102,6 +102,13 @@ def validate_pipeline_payload(session: Session, config: BuilderConfig, *, user: 
     payload = config.pipeline
     assert payload is not None  # guaranteed by BuilderConfig._require_kind_payload
 
+    policy = payload.refreshPolicy
+    if policy is not None and len(policy.cron.split()) != 5:
+        # j06b-012 : le balayage ne tourne que toutes les 5 min, un cron à
+        # 6 champs (secondes) n'aurait aucun sens. Écriture seulement.
+        raise HTTPException(
+            status_code=422, detail=f"cron must have exactly 5 fields: {policy.cron!r}"
+        )
     _check_acyclic(payload.nodes, payload.edges)
     _check_topology(payload.nodes, payload.edges)
 

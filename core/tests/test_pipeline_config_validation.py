@@ -300,3 +300,26 @@ def test_unexecutable_topologies_are_rejected_with_actionable_message(env, extra
     response = env.post("/v1/configs", json=_with(extra, edges))
     assert response.status_code == 422
     assert needle in response.json()["detail"]
+
+
+# --- P18.08 (j06b-012) : cron à 5 champs exigé à l'écriture, pas à la relecture ---
+
+
+def _with_cron(cron: str) -> dict:
+    body = _linear_pipeline()
+    body["config"]["pipeline"]["refreshPolicy"] = {"enabled": True, "cron": cron}
+    return body
+
+
+def test_six_field_cron_is_rejected_on_write(env):
+    response = env.post("/v1/configs", json=_with_cron("0 */5 * * * *"))
+    assert response.status_code == 422
+    assert "cron" in str(response.json()["detail"])
+
+
+def test_stored_six_field_cron_still_loads():
+    # Une config enregistrée avant P18.08 ne doit pas devenir illisible
+    # (GET, balayage, édition) : le contrôle vit à l'écriture seulement.
+    from app.configs.schemas import BuilderConfig
+
+    BuilderConfig.model_validate(_with_cron("0 */5 * * * *")["config"])

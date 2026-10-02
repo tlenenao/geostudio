@@ -260,9 +260,10 @@ class PipelineRefreshPolicy(BaseModel):
     def _require_valid_cron(self) -> "PipelineRefreshPolicy":
         import croniter
 
-        # j06b-012 : le balayage ne tourne que toutes les 5 min, un cron à
-        # 6 champs (secondes) n'aurait aucun sens.
-        if len(self.cron.split()) != 5 or not croniter.croniter.is_valid(self.cron):
+        # Le contrôle des 5 champs (j06b-012) vit dans validate_pipeline_payload
+        # (écriture seulement) : ici il rendrait illisible toute config déjà
+        # enregistrée avec un cron à 6 champs.
+        if not croniter.croniter.is_valid(self.cron):
             raise ValueError(f"invalid cron expression: {self.cron!r}")
         return self
 
