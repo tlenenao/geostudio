@@ -87,7 +87,8 @@ def list_secrets(session: Session, *, tenant_id: str, user: User) -> list[Connec
 def _references(node: Any, name: str) -> bool:
     if isinstance(node, dict):
         return any(
-            (k in {"secretName", "smtpSecretName"} and v == name) or _references(v, name)
+            (k in {"secretName", "smtpSecretName", "signingSecretName"} and v == name)
+            or _references(v, name)
             for k, v in node.items()
         )
     if isinstance(node, list):

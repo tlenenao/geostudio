@@ -252,3 +252,12 @@ def test_send_webhook_fails_when_the_signing_secret_is_unusable(monkeypatch):
     channel = AlertChannelWebhook(url="https://example.test/hook", signingSecretName="sig")
     with pytest.raises(NotifyError, match="signing secret"):
         send_webhook(channel, payload={}, session=MagicMock(), tenant_id="t", item_id="i")
+
+
+def test_secret_references_include_webhook_signing_secret():
+    """P20 revue finale : supprimer un secret de signature encore cité par une
+    alerte doit être refusé comme pour smtpSecretName (jumelle de find_usages)."""
+    from app.secrets.repository import _references
+
+    cfg = {"alert": {"channels": [{"kind": "webhook", "signingSecretName": "sig"}]}}
+    assert _references(cfg, "sig")
