@@ -110,6 +110,21 @@ def test_filters_by_tag(client):
     assert titles == ["Avec tag"]
 
 
+def test_tag_filter_total_and_pages_are_consistent(client):
+    for i in range(5):
+        item_id = _create_item(client, f"T{i}")
+        client.patch(f"/v1/items/{item_id}", json={"keywords": ["x"] if i != 2 else ["y"]})
+        _publish(client, item_id)
+
+    del client.app.dependency_overrides[get_current_user]
+    p1 = client.get("/v1/public/items?tag=x&page=1&pageSize=3").json()
+    p2 = client.get("/v1/public/items?tag=x&page=2&pageSize=3").json()
+    assert p1["total"] == p2["total"] == 4
+    assert len(p1["items"]) == 3 and len(p2["items"]) == 1
+    titles = [i["title"] for i in p1["items"] + p2["items"]]
+    assert sorted(titles) == ["T0", "T1", "T3", "T4"] and len(set(titles)) == 4
+
+
 def test_paginates(client):
     for i in range(3):
         item_id = _create_item(client, f"Item {i}")

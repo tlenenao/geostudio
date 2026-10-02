@@ -124,6 +124,20 @@ def test_select_is_tenant_bound_and_geojson(info, pg_session_factory):
     }  # ni pk, ni tenant_id, ni geom
 
 
+def test_short_page_total_is_exact_without_count(info, pg_session_factory):
+    # P24.09 : total déduit d'une page courte ; doit rester exact (RLS : 2 lignes
+    # visibles sur 3, offset, filtre, offset au-delà de la fin).
+    with pg_session_factory() as session, rls_scope(session, "default"):
+        assert select_features(session, info, limit=10, offset=0).number_matched == 2
+        assert select_features(session, info, limit=10, offset=1).number_matched == 2
+        assert select_features(session, info, limit=2, offset=0).number_matched == 2  # pleine
+        assert select_features(session, info, limit=10, offset=5).number_matched == 2  # au-delà
+        page = select_features(session, info, limit=10, offset=0, filters={"nb": "2"})
+        assert page.number_matched == 1
+        page = select_features(session, info, limit=10, offset=0, filters={"nb": "99"})
+        assert page.number_matched == 0 and page.number_returned == 0
+
+
 def test_pagination_and_bbox_and_filters(info, pg_session_factory):
     with pg_session_factory() as session, rls_scope(session, "default"):
         page = select_features(session, info, limit=1, offset=1)
