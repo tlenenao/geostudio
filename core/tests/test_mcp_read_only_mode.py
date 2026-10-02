@@ -160,6 +160,8 @@ def test_read_only_tools_constant_matches_the_eleven_write_tools(monkeypatch):
         "create_group",
         "add_group_member",
         "delete_secret",
+        "create_alert_rule",
+        "run_alert_rule",
     }
 
 
@@ -241,3 +243,12 @@ def test_read_only_mode_does_not_affect_read_tools(app_client, monkeypatch):
     with app_client:
         result = call_tool(app_client, "whoami", {})
     assert result["username"] == "mockuser"
+
+
+def test_run_alert_rule_refuses_in_read_only_mode(app_client, monkeypatch):
+    # P20.09 (c01-008/c02-008) : run_alert_rule écrit (alert_evaluations) et
+    # défère un job de notification — même garde que create_alert_rule.
+    monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
+    with app_client:
+        text = call_tool_expecting_error(app_client, "run_alert_rule", {"alertRuleId": "nope"})
+    assert READ_ONLY_MESSAGE in text
