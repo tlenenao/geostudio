@@ -77,7 +77,7 @@ test.describe("j08 utilisateurs — API", () => {
   });
 
   // Finding j08-003 : paramètres de pagination hors bornes → 500 au lieu de 422.
-  bug("j08-003 : page=0 ou pageSize négatif → 4xx, jamais 500", async () => {
+  test("j08-003 : page=0 ou pageSize négatif → 4xx, jamais 500", async () => {
     for (const path of [
       "/v1/users?page=0",
       "/v1/users?pageSize=-1",

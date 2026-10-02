@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -44,8 +44,8 @@ def _notification_json(notification: Notification) -> NotificationRead:
 
 @router.get("/notifications", response_model=NotificationPage)
 def get_notifications(
-    page: int = 1,
-    pageSize: int = 20,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=200),
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session, scope="function"),
 ) -> NotificationPage:

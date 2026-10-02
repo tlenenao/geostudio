@@ -166,7 +166,7 @@ test.describe("j01 visiteur anonyme — API publique", () => {
   });
 
   // j01-005 : erreur de validation non RFC 7807.
-  bug("j01-005 : une erreur de validation renvoie un problème RFC 7807", async ({ request }) => {
+  test("j01-005 : une erreur de validation renvoie un problème RFC 7807", async ({ request }) => {
     const r = await request.get(`${CORE_URL}/v1/public/items?pageSize=0`);
     expect(r.status()).toBe(422);
     expect(r.headers()["content-type"]).toContain("application/problem+json");

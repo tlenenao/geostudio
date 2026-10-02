@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
-import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { stamp } from "../_fixtures/env";
 import { apiFor, meId, openAs, psql, type Api } from "./helpers";
@@ -68,7 +67,7 @@ test.describe("j09 notifications : API", () => {
   });
 
   // Bug confirmé : voir docs/revue/audit-2026-09-29/j09/findings.jsonl
-  bug("j09-005 : une pagination invalide (page=0) est refusée en 422, jamais en 500", async () => {
+  test("j09-005 : une pagination invalide (page=0) est refusée en 422, jamais en 500", async () => {
     const r = await reader.get("/v1/notifications?page=0");
     expect(r.status).toBe(422);
   });

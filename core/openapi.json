@@ -222,6 +222,7 @@
         "type": "object"
       },
       "AlertChannelEmail": {
+        "additionalProperties": false,
         "properties": {
           "kind": {
             "const": "email",
@@ -246,6 +247,7 @@
         "type": "object"
       },
       "AlertChannelWebhook": {
+        "additionalProperties": false,
         "properties": {
           "kind": {
             "const": "webhook",
@@ -276,6 +278,7 @@
         "type": "object"
       },
       "AlertCondition": {
+        "additionalProperties": false,
         "properties": {
           "expr": {
             "title": "Expr",
@@ -289,6 +292,7 @@
         "type": "object"
       },
       "AlertRulePayload": {
+        "additionalProperties": false,
         "properties": {
           "channels": {
             "items": {
@@ -563,6 +567,7 @@
         "type": "object"
       },
       "BaseMap": {
+        "additionalProperties": false,
         "properties": {
           "style": {
             "title": "Style",
@@ -682,6 +687,7 @@
         "type": "object"
       },
       "BookmarkCrossFilterEntry": {
+        "additionalProperties": false,
         "properties": {
           "field": {
             "title": "Field",
@@ -718,6 +724,7 @@
         "type": "object"
       },
       "BookmarkPayload": {
+        "additionalProperties": false,
         "properties": {
           "appId": {
             "title": "Appid",
@@ -780,6 +787,7 @@
         "type": "object"
       },
       "BookmarkTimeRange": {
+        "additionalProperties": false,
         "properties": {
           "from": {
             "title": "From",
@@ -798,6 +806,7 @@
         "type": "object"
       },
       "BuilderConfig": {
+        "additionalProperties": false,
         "properties": {
           "alert": {
             "anyOf": [
@@ -1351,6 +1360,7 @@
         "type": "object"
       },
       "DataSource": {
+        "additionalProperties": false,
         "properties": {
           "datasetId": {
             "anyOf": [
@@ -1395,6 +1405,7 @@
         "type": "object"
       },
       "DatasetColumnMeta": {
+        "additionalProperties": false,
         "properties": {
           "description": {
             "anyOf": [
@@ -1434,6 +1445,7 @@
         "type": "object"
       },
       "DatasetCrossFilterLinkAttribute": {
+        "additionalProperties": false,
         "properties": {
           "mode": {
             "const": "attribute",
@@ -1463,6 +1475,7 @@
         "type": "object"
       },
       "DatasetCrossFilterLinkSpatial": {
+        "additionalProperties": false,
         "properties": {
           "mode": {
             "const": "spatial",
@@ -1491,6 +1504,7 @@
         "type": "object"
       },
       "DatasetPayload": {
+        "additionalProperties": false,
         "properties": {
           "arcgisItemId": {
             "anyOf": [
@@ -2835,6 +2849,7 @@
         "type": "object"
       },
       "Layout": {
+        "additionalProperties": false,
         "properties": {
           "breakpoints": {
             "additionalProperties": true,
@@ -2861,6 +2876,7 @@
         "type": "object"
       },
       "LayoutItem": {
+        "additionalProperties": false,
         "properties": {
           "h": {
             "title": "H",
@@ -2971,6 +2987,7 @@
         "type": "object"
       },
       "MapConfig": {
+        "additionalProperties": false,
         "properties": {
           "basemap": {
             "$ref": "#/components/schemas/BaseMap"
@@ -3037,6 +3054,7 @@
         "type": "object"
       },
       "MapLayer": {
+        "additionalProperties": false,
         "properties": {
           "collectionId": {
             "anyOf": [
@@ -3238,6 +3256,7 @@
         "type": "object"
       },
       "MapTerrain": {
+        "additionalProperties": false,
         "properties": {
           "encoding": {
             "const": "terrarium",
@@ -3268,6 +3287,7 @@
         "type": "object"
       },
       "MapView": {
+        "additionalProperties": false,
         "properties": {
           "bearing": {
             "anyOf": [
@@ -3443,6 +3463,7 @@
         "type": "object"
       },
       "Message": {
+        "additionalProperties": false,
         "properties": {
           "action": {
             "title": "Action",
@@ -3768,6 +3789,7 @@
         "type": "object"
       },
       "Page": {
+        "additionalProperties": false,
         "properties": {
           "id": {
             "title": "Id",
@@ -3797,6 +3819,7 @@
         "type": "object"
       },
       "PipelineCanvasNote": {
+        "additionalProperties": false,
         "properties": {
           "height": {
             "default": 120,
@@ -3835,6 +3858,7 @@
         "type": "object"
       },
       "PipelineEdge": {
+        "additionalProperties": false,
         "properties": {
           "from": {
             "title": "From",
@@ -3884,6 +3908,7 @@
         "type": "object"
       },
       "PipelineNode": {
+        "additionalProperties": false,
         "properties": {
           "id": {
             "title": "Id",
@@ -3938,6 +3963,7 @@
         "type": "object"
       },
       "PipelinePayload": {
+        "additionalProperties": false,
         "properties": {
           "edges": {
             "items": {
@@ -3975,6 +4001,7 @@
         "type": "object"
       },
       "PipelineRefreshPolicy": {
+        "additionalProperties": false,
         "properties": {
           "cron": {
             "title": "Cron",
@@ -3993,6 +4020,7 @@
         "type": "object"
       },
       "PopupConfig": {
+        "additionalProperties": false,
         "description": "Contenu du popup d'une couche (SP-24). `template` non vide l'emporte sur\ntitleField/fields \u2014 un seul mode s'applique \u00e0 la fois.",
         "properties": {
           "fields": {
@@ -4036,6 +4064,7 @@
         "type": "object"
       },
       "PopupField": {
+        "additionalProperties": false,
         "properties": {
           "label": {
             "anyOf": [
@@ -4120,6 +4149,7 @@
         "type": "object"
       },
       "PrintLayout": {
+        "additionalProperties": false,
         "properties": {
           "cartouche": {
             "anyOf": [
@@ -4333,6 +4363,7 @@
         "type": "object"
       },
       "ReportSchedulePayload": {
+        "additionalProperties": false,
         "properties": {
           "bookmarkItemId": {
             "title": "Bookmarkitemid",
@@ -4969,6 +5000,7 @@
         "type": "object"
       },
       "Terrain3DPayload": {
+        "additionalProperties": false,
         "properties": {
           "originalFilename": {
             "title": "Originalfilename",
@@ -4987,6 +5019,7 @@
         "type": "object"
       },
       "Tileset3DPayload": {
+        "additionalProperties": false,
         "properties": {
           "entryCount": {
             "title": "Entrycount",
@@ -5331,6 +5364,7 @@
         "type": "object"
       },
       "Variable": {
+        "additionalProperties": false,
         "properties": {
           "id": {
             "title": "Id",
@@ -10450,6 +10484,7 @@
             "required": false,
             "schema": {
               "default": 1,
+              "minimum": 1,
               "title": "Page",
               "type": "integer"
             }
@@ -10460,6 +10495,8 @@
             "required": false,
             "schema": {
               "default": 20,
+              "maximum": 200,
+              "minimum": 1,
               "title": "Pagesize",
               "type": "integer"
             }
@@ -12238,6 +12275,7 @@
             "schema": {
               "anyOf": [
                 {
+                  "format": "date-time",
                   "type": "string"
                 },
                 {
@@ -12254,6 +12292,7 @@
             "schema": {
               "anyOf": [
                 {
+                  "format": "date-time",
                   "type": "string"
                 },
                 {
@@ -12269,6 +12308,8 @@
             "required": false,
             "schema": {
               "default": 10,
+              "maximum": 100,
+              "minimum": 1,
               "title": "Limit",
               "type": "integer"
             }
@@ -12319,6 +12360,7 @@
             "required": false,
             "schema": {
               "default": 1,
+              "minimum": 1,
               "title": "Page",
               "type": "integer"
             }
@@ -12329,6 +12371,8 @@
             "required": false,
             "schema": {
               "default": 50,
+              "maximum": 200,
+              "minimum": 1,
               "title": "Pagesize",
               "type": "integer"
             }
@@ -12395,6 +12439,7 @@
             "required": false,
             "schema": {
               "default": 1,
+              "minimum": 1,
               "title": "Page",
               "type": "integer"
             }
@@ -12405,6 +12450,8 @@
             "required": false,
             "schema": {
               "default": 50,
+              "maximum": 200,
+              "minimum": 1,
               "title": "Pagesize",
               "type": "integer"
             }

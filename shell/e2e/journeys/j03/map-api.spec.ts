@@ -100,33 +100,30 @@ test.describe("j03 carte — versions et rollback", () => {
     expect([403, 404]).toContain(d.status);
   });
 
-  bug(
-    "j03-011 : la config de carte est validée côté serveur (centre, zoom, opacité, URLs)",
-    async () => {
-      // Défaut j03-011 : MapView/MapLayer sans contraintes — lat 999, zoom 99, opacité 5, url javascript:
-      // sont acceptés (200) et rendront la carte inutilisable pour tout lecteur.
-      const cfg = await mapConfig(creator, seed.pointsItem);
-      const bad = (mut: (m: any) => void) => {
-        const m = JSON.parse(JSON.stringify(cfg.config.map));
-        mut(m);
-        return put(creator, seed.pointsItem, m);
-      };
-      expect.soft((await bad((m) => (m.view.center = [2, 999]))).status).toBe(422);
-      expect.soft((await bad((m) => (m.view.zoom = 99))).status).toBe(422);
-      expect.soft((await bad((m) => (m.layers[0].opacity = 5))).status).toBe(422);
-      expect
-        .soft(
-          (
-            await bad((m) =>
-              m.layers.push({ id: "x", title: "x", kind: "feature", url: "javascript:1" }),
-            )
-          ).status,
-        )
-        .toBe(422);
-      // restaure une config saine
-      await put(creator, seed.pointsItem, cfg.config.map);
-    },
-  );
+  test("j03-011 : la config de carte est validée côté serveur (centre, zoom, opacité, URLs)", async () => {
+    // Défaut j03-011 : MapView/MapLayer sans contraintes — lat 999, zoom 99, opacité 5, url javascript:
+    // sont acceptés (200) et rendront la carte inutilisable pour tout lecteur.
+    const cfg = await mapConfig(creator, seed.pointsItem);
+    const bad = (mut: (m: any) => void) => {
+      const m = JSON.parse(JSON.stringify(cfg.config.map));
+      mut(m);
+      return put(creator, seed.pointsItem, m);
+    };
+    expect.soft((await bad((m) => (m.view.center = [2, 999]))).status).toBe(422);
+    expect.soft((await bad((m) => (m.view.zoom = 99))).status).toBe(422);
+    expect.soft((await bad((m) => (m.layers[0].opacity = 5))).status).toBe(422);
+    expect
+      .soft(
+        (
+          await bad((m) =>
+            m.layers.push({ id: "x", title: "x", kind: "feature", url: "javascript:1" }),
+          )
+        ).status,
+      )
+      .toBe(422);
+    // restaure une config saine
+    await put(creator, seed.pointsItem, cfg.config.map);
+  });
 });
 
 test.describe("j03 carte — publication et droits", () => {

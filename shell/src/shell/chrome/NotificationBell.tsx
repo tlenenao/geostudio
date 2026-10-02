@@ -18,6 +18,8 @@ import { useOpenItem } from "../useOpenItem";
 
 // j09-007 : « Charger plus » agrandit la page (pas de page++ : la liste reste unique).
 const PAGE_SIZE = 20;
+// Plafond de pageSize accepté par le cœur (422 au-delà, P21).
+const MAX_PAGE_SIZE = 200;
 
 const KIND_LABEL_KEYS: Record<NotificationSummary["kind"], MessageKey> = {
   ingestion: "notifications.kindIngestion",
@@ -163,15 +165,16 @@ export function NotificationBell() {
           {notificationsQuery.data?.notifications.map((n) => (
             <NotificationRow key={n.id} notification={n} />
           ))}
-          {(notificationsQuery.data?.total ?? 0) >
-            (notificationsQuery.data?.notifications.length ?? 0) && (
-            <button
-              className="self-start text-xs text-ink-2 hover:text-ink"
-              onClick={() => setPageSize((n) => n + PAGE_SIZE)}
-            >
-              {t("notifications.loadMore")}
-            </button>
-          )}
+          {pageSize < MAX_PAGE_SIZE &&
+            (notificationsQuery.data?.total ?? 0) >
+              (notificationsQuery.data?.notifications.length ?? 0) && (
+              <button
+                className="self-start text-xs text-ink-2 hover:text-ink"
+                onClick={() => setPageSize((n) => Math.min(n + PAGE_SIZE, MAX_PAGE_SIZE))}
+              >
+                {t("notifications.loadMore")}
+              </button>
+            )}
         </div>
       </div>
     </Popover>
