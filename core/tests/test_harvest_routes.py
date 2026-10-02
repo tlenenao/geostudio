@@ -256,11 +256,18 @@ def test_get_and_patch_cross_tenant_returns_404(env):
 
 
 def test_delete_source(env):
-    app, client, _, admin, _regular = env
+    app, client, Session, admin, _regular = env
     _as(app, admin)
     created = client.post("/v1/harvest/sources", json=SOURCE_BODY).json()
     assert client.delete(f"/v1/harvest/sources/{created['id']}").status_code == 204
     assert client.get("/v1/harvest/sources").json()["sources"] == []
+    from sqlalchemy import select
+
+    from app.audit.models import AuditLog
+
+    with Session() as s:
+        row = s.scalars(select(AuditLog).where(AuditLog.action == "harvest_source.delete")).one()
+    assert row.payload == {"removedItems": 0}
 
 
 def test_run_defers_a_task_and_is_audited(env):

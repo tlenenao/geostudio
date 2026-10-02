@@ -346,6 +346,7 @@ def delete_source(
     source = repo.get_source(session, tenant_id=user.tenant_id, source_id=source_id)
     if source is None:
         raise HTTPException(status_code=404, detail="harvest source not found")
+    removed = repo.delete_source(session, source)  # retire aussi les items `external` créés
     write_audit(
         session,
         tenant_id=user.tenant_id,
@@ -353,10 +354,9 @@ def delete_source(
         actor_kind="user",
         action="harvest_source.delete",
         object_type="harvest_source",
-        object_id=source.id,
-        payload={},
+        object_id=source_id,
+        payload={"removedItems": removed},
     )
-    repo.delete_source(session, source)  # retire aussi les items `external` créés
 
 
 @router.post("/harvest/sources/{source_id}/run", status_code=202)
