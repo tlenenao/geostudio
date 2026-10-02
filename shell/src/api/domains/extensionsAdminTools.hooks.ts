@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useItemClient as useItemClientInternal } from "../ItemClientProvider";
-import type { AdminToolName, HarvestSourceCreateInput, HarvestSourcePatchInput } from "../types";
+import type {
+  AdminToolName,
+  ExtensionCreateInput,
+  HarvestSourceCreateInput,
+  HarvestSourcePatchInput,
+} from "../types";
 
 export function useActiveExtensions() {
   const client = useItemClientInternal();
@@ -32,6 +37,28 @@ export function useSetExtensionEnabled() {
   return useMutation({
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
       client.setExtensionEnabled(id, enabled),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["extensions"] });
+    },
+  });
+}
+
+export function useCreateExtension() {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ExtensionCreateInput) => client.createExtension(input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["extensions"] });
+    },
+  });
+}
+
+export function useDeleteExtension() {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => client.deleteExtension(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["extensions"] });
     },

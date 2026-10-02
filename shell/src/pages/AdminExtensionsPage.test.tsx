@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -164,7 +164,7 @@ test("le volet Catalogue propose un lien vers /admin/roles quand le privilège e
     http.get("https://core.test/v1/extensions", () => HttpResponse.json({ extensions: [] })),
   );
   render(<Harness />);
-  await screen.findByRole("table");
+  await screen.findByText("Aucune extension enregistrée.");
   expect(screen.getByRole("link", { name: "Rôles et privilèges →" })).toHaveAttribute(
     "href",
     "/admin/roles",
@@ -177,7 +177,7 @@ test("le volet Catalogue propose un lien vers /admin/users quand le privilège e
     http.get("https://core.test/v1/extensions", () => HttpResponse.json({ extensions: [] })),
   );
   render(<Harness />);
-  await screen.findByRole("table");
+  await screen.findByText("Aucune extension enregistrée.");
   expect(screen.getByRole("link", { name: "Utilisateurs →" })).toHaveAttribute(
     "href",
     "/admin/users",
@@ -190,7 +190,7 @@ test("masque le lien vers /admin/infrastructure quand le privilège est absent",
     http.get("https://core.test/v1/extensions", () => HttpResponse.json({ extensions: [] })),
   );
   render(<Harness />);
-  await screen.findByRole("table");
+  await screen.findByText("Aucune extension enregistrée.");
   expect(screen.queryByRole("link", { name: "Outils d'infrastructure →" })).not.toBeInTheDocument();
 });
 
@@ -200,7 +200,7 @@ test("masque le lien vers /admin/roles quand le privilège est absent", async ()
     http.get("https://core.test/v1/extensions", () => HttpResponse.json({ extensions: [] })),
   );
   render(<Harness />);
-  await screen.findByRole("table");
+  await screen.findByText("Aucune extension enregistrée.");
   expect(screen.queryByRole("link", { name: "Rôles et privilèges →" })).not.toBeInTheDocument();
 });
 
@@ -210,7 +210,7 @@ test("masque le lien vers /admin/users quand le privilège est absent", async ()
     http.get("https://core.test/v1/extensions", () => HttpResponse.json({ extensions: [] })),
   );
   render(<Harness />);
-  await screen.findByRole("table");
+  await screen.findByText("Aucune extension enregistrée.");
   expect(screen.queryByRole("link", { name: "Utilisateurs →" })).not.toBeInTheDocument();
 });
 
@@ -226,7 +226,7 @@ test("un profil qui détient plusieurs privilèges admin voit tous les liens cor
     http.get("https://core.test/v1/extensions", () => HttpResponse.json({ extensions: [] })),
   );
   render(<Harness />);
-  await screen.findByRole("table");
+  await screen.findByText("Aucune extension enregistrée.");
   expect(screen.getByRole("link", { name: "Outils d'infrastructure →" })).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Rôles et privilèges →" })).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Utilisateurs →" })).toBeInTheDocument();
@@ -240,7 +240,7 @@ test("le volet Catalogue propose un lien vers /admin/collections quand le privil
     http.get("https://core.test/v1/extensions", () => HttpResponse.json({ extensions: [] })),
   );
   render(<Harness />);
-  await screen.findByRole("table");
+  await screen.findByText("Aucune extension enregistrée.");
   expect(screen.getByRole("link", { name: "Collections →" })).toHaveAttribute(
     "href",
     "/admin/collections",
@@ -253,7 +253,7 @@ test("masque le lien vers /admin/collections quand le privilège est absent", as
     http.get("https://core.test/v1/extensions", () => HttpResponse.json({ extensions: [] })),
   );
   render(<Harness />);
-  await screen.findByRole("table");
+  await screen.findByText("Aucune extension enregistrée.");
   expect(screen.queryByRole("link", { name: "Collections →" })).not.toBeInTheDocument();
 });
 
@@ -263,7 +263,7 @@ test("le volet Catalogue propose un lien vers /admin/harvest quand le privilège
     http.get("https://core.test/v1/extensions", () => HttpResponse.json({ extensions: [] })),
   );
   render(<Harness />);
-  await screen.findByRole("table");
+  await screen.findByText("Aucune extension enregistrée.");
   expect(screen.getByRole("link", { name: "Moissonnage →" })).toHaveAttribute(
     "href",
     "/admin/harvest",
@@ -276,7 +276,7 @@ test("masque le lien vers /admin/harvest quand le privilège est absent", async 
     http.get("https://core.test/v1/extensions", () => HttpResponse.json({ extensions: [] })),
   );
   render(<Harness />);
-  await screen.findByRole("table");
+  await screen.findByText("Aucune extension enregistrée.");
   expect(screen.queryByRole("link", { name: "Moissonnage →" })).not.toBeInTheDocument();
 });
 
@@ -290,4 +290,67 @@ test("sous viewport étroit, affiche trois onglets Catalogue/Extensions/Détail 
   expect(tabs.map((t) => t.textContent)).toEqual(["Catalogue", "Extensions", "Détail"]);
   const activeTab = tabs.find((t) => t.getAttribute("aria-selected") === "true");
   expect(activeTab).toHaveTextContent("Extensions");
+});
+
+test("le formulaire d'enregistrement poste sur /extensions (j08-009)", async () => {
+  let posted: unknown;
+  server.use(
+    http.get("https://core.test/v1/extensions", () => HttpResponse.json({ extensions: [] })),
+    http.post("https://core.test/v1/extensions", async ({ request }) => {
+      posted = await request.json();
+      return HttpResponse.json({ id: "acme.x" }, { status: 201 });
+    }),
+  );
+  render(<Harness />);
+  await screen.findByText("Aucune extension enregistrée.");
+  await userEvent.type(screen.getByLabelText("Identifiant"), "acme.x");
+  await userEvent.type(screen.getByLabelText("Balise"), "x-widget");
+  await userEvent.type(screen.getByLabelText("Étiquette"), "X");
+  await userEvent.type(screen.getByLabelText("URL du module (https)"), "https://e.com/x.js");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() =>
+    expect(posted).toEqual({
+      id: "acme.x",
+      tag: "x-widget",
+      label: "X",
+      moduleUrl: "https://e.com/x.js",
+      defaultSize: { w: 2, h: 2 },
+    }),
+  );
+});
+
+test("supprimer une extension demande confirmation puis appelle DELETE (j08-009)", async () => {
+  let deleted = false;
+  server.use(
+    http.get("https://core.test/v1/extensions", () =>
+      HttpResponse.json({
+        extensions: deleted
+          ? []
+          : [
+              {
+                id: "acme.gauge",
+                tag: "gauge-extension-widget",
+                label: "Jauge (extension)",
+                moduleUrl: "https://example.com/gauge.js",
+                props: [],
+                defaultSize: { w: 2, h: 2 },
+                enabled: true,
+              },
+            ],
+      }),
+    ),
+    http.delete("https://core.test/v1/extensions/acme.gauge", () => {
+      deleted = true;
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  render(<Harness />);
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Supprimer : Jauge (extension)" }),
+  );
+  expect(deleted).toBe(false);
+  const dialog = await screen.findByRole("dialog");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Supprimer" }));
+  await waitFor(() => expect(deleted).toBe(true));
+  expect(await screen.findByText("Aucune extension enregistrée.")).toBeInTheDocument();
 });

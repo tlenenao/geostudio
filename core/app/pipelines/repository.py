@@ -3,7 +3,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import croniter
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select, update
 from sqlalchemy.orm import Session, aliased
 
 from app.configs import repository as configs_repo
@@ -106,6 +106,10 @@ def mark_running(session: Session, *, run_id: str) -> None:
         return
     run.status = "running"
     run.started_at = _now()
+    # Un run déjà clos par reclaim_stuck_runs puis réellement pris en charge
+    # ne doit pas garder son « run périmé » ni son finished_at.
+    run.finished_at = None
+    run.error = None
     session.flush()
 
 
@@ -114,6 +118,7 @@ def mark_succeeded(session: Session, *, run_id: str, node_stats: dict) -> None:
     if run is None:
         return
     run.status = "succeeded"
+    run.error = None  # run vivant clos à tort par reclaim_stuck_runs : la fin réelle prime
     run.finished_at = _now()
     run.node_stats = node_stats
     session.flush()
@@ -127,6 +132,36 @@ def mark_failed(session: Session, *, run_id: str, error: str) -> None:
     run.finished_at = _now()
     run.error = error
     session.flush()
+
+
+def reclaim_stuck_runs(
+    session: Session, *, older_than_minutes: int = _RUNNING_RECLAIM_MINUTES
+) -> int:
+    """Clôt en erreur les runs « queued » (jamais pris en charge : defer perdu,
+    file non consommée — P01.04) ou « running » (ancrés sur started_at —
+    c02-005 : sans cela l'ancien run restait zombie à côté du nouveau) plus
+    vieux que le seuil. Cross-tenant, appelée par le balayage cron. UPDATE
+    conditionnel sur le statut : un run terminé entre-temps n'est pas touché.
+    # ponytail: pas de heartbeat — un run vivant de plus de
+    # _RUNNING_RECLAIM_MINUTES est aussi clos ; heartbeat si des pipelines
+    # légitimes dépassent ce délai."""
+    threshold = _now() - timedelta(minutes=older_than_minutes)
+    anchor = case(
+        (PipelineRun.status == "running", PipelineRun.started_at), else_=PipelineRun.created_at
+    )
+    result = session.execute(
+        update(PipelineRun)
+        .where(
+            PipelineRun.status.in_(("queued", "running")),
+            func.coalesce(anchor, PipelineRun.created_at) < threshold,
+        )
+        .values(
+            status="failed",
+            finished_at=_now(),
+            error="run périmé : jamais terminé, clos par le balayage de planification",
+        )
+    )
+    return int(result.rowcount or 0)  # type: ignore[attr-defined]
 
 
 def append_node_stat(

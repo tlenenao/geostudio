@@ -175,7 +175,7 @@ def presign_attachment(
     fid: str,
     body: AttachmentPresignRequest,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     s3=Depends(get_s3_client),
 ) -> AttachmentPresignResponse:
     col = _get_writable_collection(session, user, collection_id)
@@ -200,7 +200,7 @@ def confirm_attachment(
     fid: str,
     body: AttachmentConfirmRequest,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     s3=Depends(get_s3_client),
 ) -> AttachmentRead:
     col = _get_writable_collection(session, user, collection_id)
@@ -290,7 +290,7 @@ def list_attachments_route(
     fieldKey: str | None = None,
     user: User | None = Depends(get_current_user_optional),
     guest: GuestActor | None = Depends(get_share_link_actor),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ):
     col = get_readable_collection(session, user, collection_id, guest=guest)
     rows = attachments_repo.list_attachments(
@@ -306,7 +306,7 @@ def read_attachment_file(
     attachment_id: str,
     user: User | None = Depends(get_current_user_optional),
     guest: GuestActor | None = Depends(get_share_link_actor),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     s3=Depends(get_s3_client),
 ) -> Response:
     col = get_readable_collection(session, user, collection_id, guest=guest)
@@ -346,7 +346,7 @@ def delete_attachment_route(
     fid: str,
     attachment_id: str,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     s3=Depends(get_s3_client),
 ) -> None:
     col = _get_writable_collection(session, user, collection_id)

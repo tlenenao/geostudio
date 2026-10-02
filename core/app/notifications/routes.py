@@ -46,7 +46,7 @@ def get_notifications(
     page: int = 1,
     pageSize: int = 20,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> NotificationPage:
     preference = get_notification_preference(session, tenant_id=user.tenant_id, user_id=user.id)
     notifications, total = list_notifications(
@@ -67,7 +67,8 @@ def get_notifications(
 
 @router.get("/notifications/unread-count", response_model=UnreadCount)
 def get_unread_count(
-    user: User = Depends(get_current_user), session: Session = Depends(get_session)
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session, scope="function"),
 ) -> UnreadCount:
     preference = get_notification_preference(session, tenant_id=user.tenant_id, user_id=user.id)
     count = count_unread_notifications(
@@ -80,7 +81,7 @@ def get_unread_count(
 def post_notification_read(
     notification_id: str,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> NotificationRead:
     notification = mark_notification_read(
         session,
@@ -95,7 +96,8 @@ def post_notification_read(
 
 @router.post("/notifications/read-all", status_code=204)
 def post_notifications_read_all(
-    user: User = Depends(get_current_user), session: Session = Depends(get_session)
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session, scope="function"),
 ) -> None:
     preference = get_notification_preference(session, tenant_id=user.tenant_id, user_id=user.id)
     mark_all_notifications_read(
@@ -105,7 +107,8 @@ def post_notifications_read_all(
 
 @router.get("/notifications/preference", response_model=NotificationPreferenceRead)
 def get_preference(
-    user: User = Depends(get_current_user), session: Session = Depends(get_session)
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session, scope="function"),
 ) -> NotificationPreferenceRead:
     value = get_notification_preference(session, tenant_id=user.tenant_id, user_id=user.id)
     return NotificationPreferenceRead(value=value)
@@ -115,7 +118,7 @@ def get_preference(
 def patch_preference(
     body: NotificationPreferencePatch,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> NotificationPreferenceRead:
     if body.value not in _VALID_PREFERENCE_VALUES:
         raise HTTPException(status_code=400, detail=f"unknown preference value: {body.value}")

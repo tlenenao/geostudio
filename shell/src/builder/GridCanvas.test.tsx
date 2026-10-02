@@ -120,3 +120,38 @@ test("clicking the canvas backdrop is a no-op when not editable", async () => {
   await userEvent.click(container.firstChild as Element);
   expect(onSelect).not.toHaveBeenCalled();
 });
+
+test("les poignées de taille et de duplication appellent leurs callbacks (P10.10)", async () => {
+  const onResizeItem = vi.fn();
+  const onDuplicateItem = vi.fn();
+  renderCanvas({ selectedId: "a", onResizeItem, onDuplicateItem });
+  await userEvent.click(screen.getByRole("button", { name: "Élargir widget-a" }));
+  await userEvent.click(screen.getByRole("button", { name: "Rétrécir widget-a" }));
+  await userEvent.click(screen.getByRole("button", { name: "Agrandir en hauteur widget-a" }));
+  await userEvent.click(screen.getByRole("button", { name: "Réduire en hauteur widget-a" }));
+  await userEvent.click(screen.getByRole("button", { name: "Dupliquer widget-a" }));
+  expect(onResizeItem.mock.calls).toEqual([
+    ["a", 1, 0],
+    ["a", -1, 0],
+    ["a", 0, 1],
+    ["a", 0, -1],
+  ]);
+  expect(onDuplicateItem).toHaveBeenCalledWith("a");
+});
+
+test("sans callbacks de taille, aucune poignée de taille n'est rendue", () => {
+  renderCanvas({ selectedId: "a" });
+  expect(screen.queryByRole("button", { name: "Élargir widget-a" })).not.toBeInTheDocument();
+});
+
+test("à sm, deux widgets 6/12 sans layouts.sm s'empilent pleine largeur (P10.16)", () => {
+  const two: WidgetItem[] = [
+    { id: "a", widget: "text", x: 0, y: 0, w: 6, h: 2, props: {} },
+    { id: "b", widget: "text", x: 6, y: 0, w: 6, h: 2, props: {} },
+  ];
+  const { container } = renderCanvas({ items: two, breakpoint: "sm", editable: false });
+  const cells = [...container.querySelectorAll<HTMLElement>("[data-col]")];
+  expect(cells.map((c) => c.dataset.col)).toEqual(["0", "0"]);
+  expect(cells.map((c) => c.dataset.row)).toEqual(["0", "2"]);
+  expect(cells[0].style.gridColumn).toBe("1 / span 12");
+});

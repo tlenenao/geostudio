@@ -208,3 +208,82 @@ test("affiche un état vide quand aucun utilisateur ne correspond à la recherch
   ).toBeInTheDocument();
   expect(screen.queryByRole("table")).not.toBeInTheDocument();
 });
+
+test("anonymiser un compte depuis sa ligne, après confirmation (j08-006)", async () => {
+  let erased = "";
+  server.use(
+    http.get("https://core.test/v1/roles", () => HttpResponse.json(ROLES)),
+    http.get("https://core.test/v1/users", () => HttpResponse.json({ users: USERS, total: 2 })),
+    http.post("https://core.test/v1/compliance/users/u2/erase", () => {
+      erased = "u2";
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  render(<Harness />);
+  await screen.findByText("bob");
+  await userEvent.click(screen.getByRole("button", { name: "Anonymiser bob" }));
+  const dialog = await screen.findByRole("dialog");
+  expect(erased).toBe("");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Anonymiser" }));
+  await waitFor(() => expect(erased).toBe("u2"));
+});
+
+test.each([
+  [404, { detail: "user not found in this tenant" }, "Utilisateur introuvable dans ce tenant."],
+  [409, { detail: "user already erased" }, "Ce compte est déjà anonymisé."],
+  [
+    409,
+    { detail: "cannot erase the last holder of 'admin.users.manage' in this tenant" },
+    "Impossible : ce compte est le dernier titulaire d'un privilège de gestion des utilisateurs ou des rôles.",
+  ],
+  [
+    403,
+    { detail: "privilege 'admin.users.manage' required" },
+    "Droits insuffisants pour anonymiser ce compte.",
+  ],
+])(
+  "un échec d'anonymisation %i affiche un message distinct (j08-006)",
+  async (status, body, message) => {
+    server.use(
+      http.get("https://core.test/v1/roles", () => HttpResponse.json(ROLES)),
+      http.get("https://core.test/v1/users", () => HttpResponse.json({ users: USERS, total: 2 })),
+      http.post("https://core.test/v1/compliance/users/u1/erase", () =>
+        HttpResponse.json(
+          { title: "err", status, ...body },
+          { status, headers: { "Content-Type": "application/problem+json" } },
+        ),
+      ),
+    );
+    render(<Harness />);
+    await screen.findByText("alice");
+    await userEvent.click(screen.getByRole("button", { name: "Anonymiser alice" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Anonymiser" }));
+    const aliceRow = screen.getByText("alice").closest("tr") as HTMLElement;
+    expect(await within(aliceRow).findByText(message)).toBeInTheDocument();
+  },
+);
+
+test("un compte anonymisé est signalé : sélecteur de rôle désactivé, pas d'action (j08-013)", async () => {
+  server.use(
+    http.get("https://core.test/v1/roles", () => HttpResponse.json(ROLES)),
+    http.get("https://core.test/v1/users", () =>
+      HttpResponse.json({
+        users: [
+          {
+            id: "u9",
+            username: "utilisateur-efface-abc",
+            roleSlug: "reader",
+            erasedAt: "2026-09-01T00:00:00",
+          },
+        ],
+        total: 1,
+      }),
+    ),
+  );
+  render(<Harness />);
+  await screen.findByText("utilisateur-efface-abc");
+  expect(screen.getByLabelText("Rôle de utilisateur-efface-abc")).toBeDisabled();
+  expect(screen.getByText("Compte anonymisé")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /^Anonymiser / })).not.toBeInTheDocument();
+});

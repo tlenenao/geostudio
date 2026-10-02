@@ -124,7 +124,7 @@ def get_task_deferrer():  # overridé en test
 def create_source(
     body: HarvestSourceCreate,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ):
     require_privilege(session, user, Privilege.ADMIN_HARVEST_MANAGE.value)
     _check_copy_support(body.type, body.mode)
@@ -152,7 +152,10 @@ def create_source(
 
 
 @router.get("/harvest/sources")
-def list_sources(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+def list_sources(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session, scope="function"),
+):
     require_privilege(session, user, Privilege.ADMIN_HARVEST_MANAGE.value)
     sources = repo.list_sources(session, tenant_id=user.tenant_id)
     return {"sources": [_source_json(s) for s in sources]}
@@ -162,7 +165,7 @@ def list_sources(user: User = Depends(get_current_user), session: Session = Depe
 def list_layers(
     q: str | None = None,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ):
     rows = repo.list_layer_records(session, tenant_id=user.tenant_id, q=q)
     facts_by_id = items_repo.get_access_facts_by_ids(
@@ -200,7 +203,7 @@ def list_layers(
 def list_feature_layers(
     q: str | None = None,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ):
     rows = repo.list_feature_layer_records(session, tenant_id=user.tenant_id, q=q)
     facts_by_id = items_repo.get_access_facts_by_ids(
@@ -238,7 +241,7 @@ def list_feature_layers(
 def get_source(
     source_id: str,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ):
     require_privilege(session, user, Privilege.ADMIN_HARVEST_MANAGE.value)
     source = repo.get_source(session, tenant_id=user.tenant_id, source_id=source_id)
@@ -252,7 +255,7 @@ def patch_source(
     source_id: str,
     body: HarvestSourcePatch,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ):
     require_privilege(session, user, Privilege.ADMIN_HARVEST_MANAGE.value)
     source = repo.get_source(session, tenant_id=user.tenant_id, source_id=source_id)
@@ -281,7 +284,7 @@ def patch_source(
 def delete_source(
     source_id: str,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ):
     require_privilege(session, user, Privilege.ADMIN_HARVEST_MANAGE.value)
     source = repo.get_source(session, tenant_id=user.tenant_id, source_id=source_id)
@@ -304,7 +307,7 @@ def delete_source(
 def run_source(
     source_id: str,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     defer_task=Depends(get_task_deferrer),
 ):
     require_privilege(session, user, Privilege.ADMIN_HARVEST_MANAGE.value)
@@ -334,7 +337,7 @@ def get_dataset_arcgis_items(
     offset: int = Query(0, ge=0),
     bbox: str | None = None,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     client: httpx.Client = Depends(get_arcgis_http_client),
 ):
     limit = min(limit, _MAX_LIMIT)
@@ -378,7 +381,7 @@ def get_dataset_arcgis_aggregate(
     item_id: str,
     body: AggregateRequestBody,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     client: httpx.Client = Depends(get_arcgis_http_client),
 ):
     if body.bucket is not None or body.split is not None or body.bins is not None:
@@ -423,7 +426,7 @@ def export_dataset_arcgis_aggregate(
     body: AggregateRequestBody,
     format: str = Query(...),
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     client: httpx.Client = Depends(get_arcgis_http_client),
 ):
     if format not in _EXPORT_FORMATS_AGGREGATE:
@@ -498,7 +501,7 @@ def export_dataset_arcgis_items(
     format: str = Query(...),
     bbox: str | None = None,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     client: httpx.Client = Depends(get_arcgis_http_client),
 ):
     if format not in _EXPORT_FORMATS_ITEMS:

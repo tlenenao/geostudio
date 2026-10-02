@@ -1,23 +1,14 @@
 import { bug } from "../_fixtures/verify";
 import { test, expect, type Page } from "@playwright/test";
 import { SHELL_URL } from "../_fixtures/env";
-import {
-  evalMap,
-  getMapSeed,
-  go,
-  openAs,
-  stubBasemap,
-  stubMap,
-  touchGesture,
-  VIEWPORTS,
-} from "./helpers";
+import { evalMap, getMapSeed, go, openAs, stubBasemap, touchGesture, VIEWPORTS } from "./helpers";
 
 test.setTimeout(120_000);
 test.use({ viewport: VIEWPORTS.phone, hasTouch: true });
 
 async function openMap(page: Page, persona: "creator" | "reader" = "creator"): Promise<string> {
   const m = await getMapSeed();
-  await stubMap(page);
+  await stubBasemap(page);
   await openAs(page, persona);
   await go(page, `/maps/${m.pk}`, 5000);
   await expect

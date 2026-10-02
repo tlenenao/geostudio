@@ -26,6 +26,16 @@ from app.users.repository import get_or_create_user
 
 pytestmark = []
 
+_REAL_MASKED_FIELDS = runtime._masked_fields
+
+
+@pytest.fixture(autouse=True)
+def _no_masking_by_default(monkeypatch):
+    # La plupart des tests appellent le runtime avec session=None/user=None ;
+    # le masquage GAP-22 (test dédié en fin de fichier) rétablit la vraie fonction.
+    monkeypatch.setattr(runtime, "_masked_fields", lambda *a, **k: frozenset())
+
+
 TABLE_INFO = TableInfo(
     table_name="villes",
     pk_column="id",
@@ -82,6 +92,13 @@ class _FakeS3:
 
     def __init__(self):
         self.calls: list[dict] = []
+        self.buckets: list[str] = []
+
+    def create_bucket(self, *, Bucket):
+        self.buckets.append(Bucket)
+
+    def put_bucket_cors(self, **_):
+        pass
 
     def put_object(self, *, Bucket, Key, Body):
         self.calls.append({"Bucket": Bucket, "Key": Key, "Body": Body})
@@ -373,6 +390,9 @@ def test_write_export_geojson_serializes_geometry(tmp_path, monkeypatch):
 
     assert any(stat.op == "writer.export" and stat.rowCount == 1 for stat in stats)
     assert len(fake_s3.calls) == 1
+    # j06b-003/004 : bucket créé à la demande, clé sous le préfixe du tenant
+    assert fake_s3.buckets == ["exports"]
+    assert fake_s3.calls[0]["Key"].startswith("t1/pipelines/")
     body = fake_s3.calls[0]["Body"]
     parsed = json.loads(body)  # ne doit pas lever (bytes non sérialisables pré-fix)
     assert parsed["type"] == "FeatureCollection"
@@ -726,6 +746,106 @@ def test_run_pipeline_writes_into_target_collection(pg_engine, monkeypatch, tmp_
 
 
 @pytest.mark.postgis
+def test_run_pipeline_writes_into_provisioned_empty_collection(pg_engine, monkeypatch, tmp_path):
+    # P10.04 / j05b-002 : la sortie de l'assistant de requête visuelle est une
+    # collection provisionnée (tenant_id NOT NULL sans défaut), jamais la
+    # table faite main (tenant_id nullable) des tests voisins.
+    from app.collections.introspection_pg import introspect_table
+    from app.collections.provisioning import create_empty_collection
+    from app.collections.schemas import EmptyCollectionColumn
+    from app.configs.schemas import PipelinePayload
+
+    Base.metadata.create_all(pg_engine)
+    Session = make_session_factory(pg_engine)
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        target = create_empty_collection(
+            s,
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            title="Sortie",
+            columns=[
+                EmptyCollectionColumn(name="region", sqlType="text"),
+                EmptyCollectionColumn(name="pop", sqlType="integer"),
+            ],
+            geometry_type="Point",
+            srid=4326,
+            introspect=introspect_table,
+            apply_ddl=apply_collection_ddl,
+        )
+        s.commit()
+        table = target.table_name
+        _write_partition(
+            tmp_path,
+            tenant_id=tenant.id,
+            rows=[_row(1, "Nord", 10, x=1.0, y=45.0), _row(2, "Sud", 5, x=2.0, y=46.0)],
+        )
+        monkeypatch.setattr(
+            runtime,
+            "_table_info_for_collection",
+            lambda session, collection_id: (
+                _table_info_for(collection_id)
+                if collection_id == "villes"
+                else introspect_table(session, collection_id)
+            ),
+        )
+        monkeypatch.setattr(
+            runtime,
+            "_require_readable_collection_id",
+            lambda session, *, tenant_id, user, collection_id: collection_id,
+        )
+        payload = PipelinePayload.model_validate(
+            {
+                "nodes": [
+                    {
+                        "id": "r1",
+                        "kind": "reader",
+                        "op": "reader.collection",
+                        "params": {"collectionId": "villes"},
+                    },
+                    {
+                        "id": "w1",
+                        "kind": "writer",
+                        "op": "writer.collection",
+                        "params": {"collectionId": target.id},
+                    },
+                ],
+                "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+            }
+        )
+        runtime.run_pipeline(
+            s,
+            payload=payload,
+            tenant_id=tenant.id,
+            user=user,
+            endpoint_url="http://localhost:9000",
+            access_key="x",
+            secret_key="y",
+            base_uri=str(tmp_path),
+        )
+        s.commit()
+        assert s.execute(text(f'SELECT count(*) FROM "{table}"')).scalar() == 2
+        assert s.execute(text(f'SELECT DISTINCT tenant_id FROM "{table}"')).scalar() == tenant.id
+
+    with pg_engine.begin() as conn:
+        conn.execute(text(f'DROP TABLE "{table}"'))
+        conn.execute(
+            text(
+                "TRUNCATE items, configs, config_revisions, collections, "
+                "audit_log, users, tenants CASCADE"
+            )
+        )
+
+
 def test_run_pipeline_writer_collection_mode_replace_purges_before_each_run(
     pg_engine, monkeypatch, tmp_path
 ):
@@ -2795,3 +2915,73 @@ def test_execute_transform_chain_invokes_on_node_complete_per_node(tmp_path, mon
         on_node_complete=lambda stat: seen.append(stat.nodeId),
     )
     assert seen == ["r1", "t1"]  # writer node (w1) is handled by run_pipeline, not this function
+
+
+@pytest.mark.parametrize("key", ["", "/etc/x", "../x", "a/../b", "a//b", "a\\b", "./a"])
+def test_writer_export_rejects_unsafe_key(key):
+    from pydantic import ValidationError
+
+    from app.pipelines.ops.schemas import WriterExportParams
+
+    with pytest.raises(ValidationError):
+        WriterExportParams(format="csv", key=key)
+    assert WriterExportParams(format="csv", key="out/a.csv").key == "out/a.csv"
+
+
+def test_reader_collection_drops_sensitive_columns_without_privilege(tmp_path, monkeypatch):
+    # RC-8 / GAP-22 : le lac n'a pas de RLS par colonne — le reader doit les exclure.
+    import duckdb
+
+    from app.collections.repository import create_collection
+
+    monkeypatch.setattr(runtime, "_masked_fields", _REAL_MASKED_FIELDS)
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with make_session_factory(engine)() as s:
+        tenant = get_or_create_default_tenant(s)
+        owner = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="r",
+            username="regular",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        col = create_collection(
+            s,
+            tenant_id=tenant.id,
+            owner_id=owner.id,
+            table_name="villes",
+            title="V",
+            description="",
+            is_public=True,
+            pk_column="id",
+            geometry_column="geometry",
+            geometry_type="Point",
+            srid=4326,
+        )
+        col.sensitive_fields = ["pop"]
+        s.flush()
+        masked = runtime._masked_fields(s, tenant_id=tenant.id, user=owner, collection_id="villes")
+        assert masked == frozenset({"pop"})
+
+        _write_partition(tmp_path, tenant_id=tenant.id, rows=[_row(1, "Nord", 10)])
+        monkeypatch.setattr(
+            runtime,
+            "_table_info_for_collection",
+            lambda session, collection_id: _table_info_for(collection_id),
+        )
+        conn = duckdb.connect(":memory:")
+        runtime._read_collection(
+            conn,
+            session=s,
+            tenant_id=tenant.id,
+            node_id="r1",
+            params={"collectionId": "villes"},
+            view_name="r1",
+            user=owner,
+            base_uri=str(tmp_path),
+        )
+        cols = [r[0] for r in conn.execute("DESCRIBE r1").fetchall()]
+        assert "region" in cols and "pop" not in cols

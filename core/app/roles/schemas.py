@@ -1,5 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
-from pydantic import BaseModel
+from typing import Annotated
+
+from pydantic import BaseModel, StringConstraints, field_validator
+
+RoleName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
+
+
+def _dedupe(values: list[str] | None) -> list[str] | None:
+    return None if values is None else list(dict.fromkeys(values))
 
 
 class RoleRead(BaseModel):
@@ -11,13 +19,17 @@ class RoleRead(BaseModel):
 
 
 class RoleCreate(BaseModel):
-    name: str
+    name: RoleName
     privileges: list[str]
+
+    _dedupe_privileges = field_validator("privileges")(_dedupe)
 
 
 class RolePatch(BaseModel):
-    name: str | None = None
+    name: RoleName | None = None
     privileges: list[str] | None = None
+
+    _dedupe_privileges = field_validator("privileges")(_dedupe)
 
 
 class PrivilegeCatalogEntry(BaseModel):

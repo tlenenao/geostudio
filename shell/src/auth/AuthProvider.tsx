@@ -1,9 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
-import { AuthProvider as OidcProvider } from "react-oidc-context";
+import { AuthProvider as OidcProvider, useAuth as useOidcAuth } from "react-oidc-context";
 import { WebStorageStateStore } from "oidc-client-ts";
 import { createContext, useRef } from "react";
 import type { AppConfig } from "../config";
+import { setStorageUser } from "../lib/userStorage";
+import { safeReturnTo } from "./returnTo";
 import { enableMockAuth } from "./useAuth";
+
+type ReturnState = { returnTo?: unknown } | undefined;
+
+// P07.07/08 : publie l'id du compte AVANT le rendu des enfants (un
+// useEffect arriverait après les initialiseurs d'état qui lisent
+// localStorage). Écriture idempotente d'un module-level, sans effet visible.
+function StorageUserSync({ children }: { children: React.ReactNode }) {
+  setStorageUser(useOidcAuth().user?.profile.sub);
+  return <>{children}</>;
+}
 
 // Mock context value mirrors the react-oidc-context User minimally; only used in tests/E2E.
 export const MockAuthContext = createContext(true);
@@ -55,8 +67,15 @@ export function AuthProvider({
       // In-memory store: nothing persisted to localStorage.
       userStore={storesRef.current.userStore}
       stateStore={storesRef.current.stateStore}
+      // P07.02 : nettoie code/state de l'URL et restaure la route demandée.
+      // Le popstate resynchronise le data router (module-level) sur la
+      // nouvelle URL.
+      onSigninCallback={(user) => {
+        window.history.replaceState({}, "", safeReturnTo((user?.state as ReturnState)?.returnTo));
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      }}
     >
-      {children}
+      <StorageUserSync>{children}</StorageUserSync>
     </OidcProvider>
   );
 }

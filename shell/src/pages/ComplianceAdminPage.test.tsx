@@ -21,7 +21,30 @@ function stubMatchMedia(matches: boolean) {
   );
 }
 
-beforeEach(() => stubMatchMedia(false));
+function mockMe(privileges: string[]) {
+  server.use(
+    http.get("https://core.test/v1/me", () =>
+      HttpResponse.json({
+        id: "u1",
+        username: "me",
+        firstName: "Moi",
+        lastName: "Même",
+        email: "me@example.com",
+        tenantId: "t1",
+        tenantSlug: "demo",
+        role: { id: "role-x", name: "X", slug: "x" },
+        privileges,
+        version: "0.1.0",
+      }),
+    ),
+  );
+}
+
+// Défaut : les deux privilèges — chaque section est ensuite testée seule.
+beforeEach(() => {
+  stubMatchMedia(false);
+  mockMe(["admin.users.manage", "compliance.manage"]);
+});
 afterEach(() => vi.unstubAllGlobals());
 
 function Harness() {
@@ -105,4 +128,34 @@ test("les deux sections (anonymiser / purger) sont visuellement distinctes, jama
   // preuve minimale (piège spec §5) que les deux actions ne partagent pas
   // de conteneur visuel commun.
   expect(eraseHeading.closest("div")).not.toBe(purgeHeading.closest("div"));
+});
+
+test("un administrateur sans compliance.manage anonymise mais ne voit pas la purge (j08-002)", async () => {
+  mockMe(["admin.users.manage"]);
+  render(<Harness />);
+  await screen.findByText("Anonymiser un compte");
+  expect(screen.queryByText("Purger toutes les données du tenant")).not.toBeInTheDocument();
+});
+
+test("compliance.manage seul voit la purge mais pas l'anonymisation", async () => {
+  mockMe(["compliance.manage"]);
+  render(<Harness />);
+  await screen.findByText("Purger toutes les données du tenant");
+  expect(screen.queryByText("Anonymiser un compte")).not.toBeInTheDocument();
+});
+
+test("l'échec d'anonymisation distingue « introuvable » (j08-006)", async () => {
+  server.use(
+    http.post("https://core.test/v1/compliance/users/:userId/erase", () =>
+      HttpResponse.json(
+        { title: "Not Found", status: 404, detail: "user not found in this tenant" },
+        { status: 404, headers: { "Content-Type": "application/problem+json" } },
+      ),
+    ),
+  );
+  render(<Harness />);
+  await screen.findByText("Anonymiser un compte");
+  await userEvent.type(screen.getByLabelText("Identifiant de l'utilisateur à anonymiser"), "nope");
+  await userEvent.click(screen.getByRole("button", { name: "Anonymiser ce compte" }));
+  expect(await screen.findByText("Utilisateur introuvable dans ce tenant.")).toBeInTheDocument();
 });

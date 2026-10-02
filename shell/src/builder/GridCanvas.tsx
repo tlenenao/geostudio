@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { ReactNode } from "react";
 import type { WidgetItem } from "../api/types";
-import { GRID_COLS, posFor, styleForPos, type Breakpoint } from "./grid";
+import { GRID_COLS, positionsFor, styleForPos, type Breakpoint } from "./grid";
 
 export function GridCanvas({
   items,
@@ -11,6 +11,8 @@ export function GridCanvas({
   onSelect,
   onMoveItem,
   onRemoveItem,
+  onResizeItem,
+  onDuplicateItem,
   renderItem,
 }: {
   items: WidgetItem[];
@@ -20,8 +22,11 @@ export function GridCanvas({
   onSelect: (id: string | null) => void;
   onMoveItem: (id: string, dxCells: number, dyCells: number) => void;
   onRemoveItem: (id: string) => void;
+  onResizeItem?: (id: string, dwCells: number, dhCells: number) => void;
+  onDuplicateItem?: (id: string) => void;
   renderItem: (item: WidgetItem) => ReactNode;
 }) {
+  const positions = positionsFor(items, breakpoint);
   return (
     <div
       className="grid h-full w-full gap-1 bg-[var(--gs-color-surface)]"
@@ -42,7 +47,7 @@ export function GridCanvas({
       onClick={() => editable && onSelect(null)}
     >
       {items.map((item) => {
-        const pos = posFor(item, breakpoint);
+        const pos = positions.get(item.id)!;
         const selected = editable && item.id === selectedId;
         return (
           <div
@@ -112,6 +117,67 @@ export function GridCanvas({
                 >
                   ↑
                 </button>
+                {onResizeItem && (
+                  <>
+                    <button
+                      type="button"
+                      aria-label={`Élargir widget-${item.id}`}
+                      className="bg-accent px-1 text-xs text-surface"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onResizeItem(item.id, 1, 0);
+                      }}
+                    >
+                      ↔+
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Rétrécir widget-${item.id}`}
+                      className="bg-accent px-1 text-xs text-surface"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onResizeItem(item.id, -1, 0);
+                      }}
+                    >
+                      ↔−
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Agrandir en hauteur widget-${item.id}`}
+                      className="bg-accent px-1 text-xs text-surface"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onResizeItem(item.id, 0, 1);
+                      }}
+                    >
+                      ↕+
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Réduire en hauteur widget-${item.id}`}
+                      className="bg-accent px-1 text-xs text-surface"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onResizeItem(item.id, 0, -1);
+                      }}
+                    >
+                      ↕−
+                    </button>
+                  </>
+                )}
+                {onDuplicateItem && (
+                  <button
+                    type="button"
+                    aria-label={`Dupliquer widget-${item.id}`}
+                    className="bg-accent px-1 text-xs text-surface"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDuplicateItem(item.id);
+                    }}
+                  >
+                    ⧉
+                  </button>
+                )}
                 <button
                   type="button"
                   aria-label={`Supprimer widget-${item.id}`}

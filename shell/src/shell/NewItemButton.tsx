@@ -18,7 +18,7 @@ import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { TEMPLATES } from "../builder/templates";
 import { isValidSlug, slugify } from "../lib/slug";
 import { t } from "../i18n";
-import { ApiError } from "../api/ApiError";
+import { apiErrorMessage } from "../api/apiErrorMessage";
 
 type Kind = "app" | "dashboard" | "map" | "site" | "dataset" | "pipeline" | "visual-query";
 
@@ -351,15 +351,7 @@ export function NewItemButton() {
               const activeError = create.error ?? createMap.error ?? createDataset.error;
               return (
                 <p role="alert" className="text-sm text-danger">
-                  {activeError instanceof ApiError && activeError.status === 429
-                    ? `${activeError.detail ?? t("newItem.createFailed")} ${
-                        activeError.retryAfter !== undefined
-                          ? t("errors.retryAfter", { seconds: activeError.retryAfter })
-                          : ""
-                      }`.trim()
-                    : activeError instanceof ApiError && activeError.detail
-                      ? activeError.detail
-                      : t("newItem.createFailed")}
+                  {apiErrorMessage(activeError, t("newItem.createFailed"))}
                 </p>
               );
             })()}

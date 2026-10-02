@@ -57,6 +57,26 @@ describe("AppExportPanel", () => {
     expect(client.createAppExport).toHaveBeenCalledWith("item1", "static");
   });
 
+  it("shows the warning of a job done with truncation", async () => {
+    const client = makeClient({
+      createAppExport: vi.fn().mockResolvedValue({ jobId: "job1" }),
+      getAppExportJob: vi.fn().mockResolvedValue({
+        id: "job1",
+        status: "done",
+        resultUrl: "https://x.test/bundle.zip",
+        error: "source 's1' tronquée à 50000 enregistrements",
+      }),
+    });
+    render(
+      <ItemClientProvider client={client}>
+        <AppExportPanel itemId="item1" config={config()} />
+      </ItemClientProvider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /exporter/i }));
+    await userEvent.click(screen.getByRole("button", { name: /statique/i }));
+    expect(await screen.findByRole("status")).toHaveTextContent(/tronquée/);
+  });
+
   it("warns before export when the config contains a form widget", async () => {
     const client = makeClient({ createAppExport: vi.fn(), getAppExportJob: vi.fn() });
     render(

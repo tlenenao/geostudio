@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -20,12 +20,16 @@ from app.auth.dependency import (
     is_tileset3d_enabled,
 )
 from app.db import get_session
-from app.roles.guards import require_privilege
+from app.roles.guards import (
+    require_privilege,
+    require_privileges_within_ceiling,
+    require_sharing_privilege,
+)
 from app.roles.privileges import Privilege
 from app.roles.repository import count_users_with_privileges, get_role, roles_for_ids
 from app.tenants.models import Tenant
 from app.users.models import User
-from app.users.repository import list_users, set_user_role
+from app.users.repository import list_users, search_directory, set_user_role
 
 router = APIRouter()
 
@@ -75,7 +79,7 @@ class MeResponse(BaseModel):
 def get_me(
     request: Request,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> MeResponse:
     tenant = session.get(Tenant, user.tenant_id)
     role = get_role(session, tenant_id=user.tenant_id, role_id=user.role_id)
@@ -111,7 +115,32 @@ class UserRolePatch(BaseModel):
 
 
 def _user_json(user: User, role_slug: str) -> dict[str, Any]:
-    return {"id": user.id, "username": user.username, "roleSlug": role_slug}
+    return {
+        "id": user.id,
+        "username": user.username,
+        "roleSlug": role_slug,
+        "email": user.email,
+        "firstName": user.first_name,
+        "lastName": user.last_name,
+        "createdAt": user.created_at.isoformat(),
+        "erasedAt": user.erased_at.isoformat() if user.erased_at else None,
+    }
+
+
+@router.get("/users/directory")
+def get_users_directory(
+    q: str = Query(min_length=2, max_length=100),
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session, scope="function"),
+) -> list[dict[str, Any]]:
+    """j13-005 : annuaire restreint (id, nom, e-mail — ni rôle ni statut) pour
+    ajouter un membre à un groupe ; réservé à qui peut partager un kind, donc à qui
+    peut créer des groupes. Déclaré avant toute route `/users/{id}` GET."""
+    require_sharing_privilege(session, user)
+    return [
+        {"id": u.id, "username": u.username, "email": u.email}
+        for u in search_directory(session, tenant_id=user.tenant_id, q=q)
+    ]
 
 
 @router.get("/users")
@@ -119,11 +148,23 @@ def get_users(
     page: int = 1,
     pageSize: int = 50,
     q: str | None = None,
+    roleId: str | None = None,
+    sort: Literal["username", "email", "createdAt"] = "username",
+    desc: bool = False,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> dict[str, Any]:
     require_privilege(session, user, Privilege.ADMIN_USERS_MANAGE.value)
-    users, total = list_users(session, tenant_id=user.tenant_id, page=page, page_size=pageSize, q=q)
+    users, total = list_users(
+        session,
+        tenant_id=user.tenant_id,
+        page=page,
+        page_size=pageSize,
+        q=q,
+        role_id=roleId,
+        sort=sort,
+        desc=desc,
+    )
     # REV-085 : une seule requête pour l'ensemble des role_id de la page,
     # au lieu d'un get_role() par utilisateur (même patron que
     # roles_for_items/get_access_facts_by_ids).
@@ -142,7 +183,7 @@ def patch_user(
     user_id: str,
     body: UserRolePatch,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> dict[str, Any]:
     require_privilege(session, user, Privilege.ADMIN_USERS_MANAGE.value)
     target = session.scalar(
@@ -150,9 +191,12 @@ def patch_user(
     )
     if target is None:
         raise HTTPException(status_code=404, detail="user not found")
+    if target.erased_at is not None:
+        raise HTTPException(status_code=409, detail="user already erased")
     new_role = get_role(session, tenant_id=user.tenant_id, role_id=body.roleId)
     if new_role is None:
         raise HTTPException(status_code=400, detail="role not found")
+    require_privileges_within_ceiling(session, user, new_role.privileges)
     needed = [Privilege.ADMIN_USERS_MANAGE.value, Privilege.ADMIN_ROLES_MANAGE.value]
     current_role = get_role(session, tenant_id=user.tenant_id, role_id=target.role_id)
     # Évalué privilège par privilège (SP-42/F-securite-autorisation-07) : une

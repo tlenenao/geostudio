@@ -10,9 +10,19 @@
     "reason": "Pré-existant : le bouton \"⋮\" ouvre/ferme un menu déroulant en ligne (menuOpen && <div>...) via un onClick ternaire (menuOpen ? closeMenu() : setMenuOpen(true)), sans aria-expanded/aria-controls. Dette REV-088 (ligne décalée de 79 à 86 par les tâches de tokenisation Tailwind de Vague B, aucun changement du déclencheur lui-même — vérifié en clôture de Vague B)."
   },
   {
+    "file": "src/builder/widgets/form.tsx",
+    "line": 757,
+    "reason": "Faux positif : setConfirmingDelete(true) ouvre un ConfirmDialog modal, pas un panneau en ligne."
+  },
+  {
     "file": "src/map/MapSymbologyEditor.tsx",
     "line": 566,
     "reason": "Pré-existant : le bouton \"Ajouter des icônes\" ouvre la grille de sélection d'icône en ligne ((icon || iconDraft) && <div>...) sans aria-expanded/aria-controls. Dette REV-088 (ligne décalée de 564 à 566 par l'ajout de ConfirmDialog/pendingIconId, tâche 3 SP-B2)."
+  },
+  {
+    "file": "src/pages/AppRuntimePage.tsx",
+    "line": 200,
+    "reason": "Faux positif : setSaveDialogOpen(true) ouvre un dialogue modal d'enregistrement de vue, pas un panneau en ligne."
   },
   {
     "file": "src/builder/widgets/form.tsx",
@@ -21,7 +31,7 @@
   },
   {
     "file": "src/pages/AppRuntimePage.tsx",
-    "line": 183,
+    "line": 205,
     "reason": "Faux positif de l'heuristique : setSaveDialogOpen(true) ouvre <Dialog> (ui/kit/Dialog, role=\"dialog\", boîte modale) — pas un panneau en ligne, la convention CLAUDE.md ne s'applique pas à ce patron. Ligne décalée de 170 à 183 par les tâches Vague C sur ce fichier (câblage printLayout.showLegend, migration ui/kit), aucun changement du déclencheur lui-même — vérifié en clôture de Vague C."
   },
   {

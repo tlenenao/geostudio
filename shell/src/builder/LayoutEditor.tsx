@@ -2,7 +2,7 @@
 import { useState } from "react";
 import type { DataSource, Variable, WidgetItem } from "../api/types";
 import { getWidget } from "./registry";
-import { moveItemAt, nextFreePosition, type Breakpoint } from "./grid";
+import { duplicateItem, moveItemAt, nextFreePosition, resizeItemAt, type Breakpoint } from "./grid";
 import { WidgetPalette } from "./WidgetPalette";
 import { GridCanvas } from "./GridCanvas";
 import { WidgetHost } from "./WidgetHost";
@@ -57,6 +57,18 @@ export function LayoutEditor({
     onChange(items.map((i) => (i.id === id ? moveItemAt(i, breakpoint, dx, dy) : i)));
   }
 
+  function handleResize(id: string, dw: number, dh: number) {
+    onChange(items.map((i) => (i.id === id ? resizeItemAt(i, breakpoint, dw, dh) : i)));
+  }
+
+  function handleDuplicate(id: string) {
+    const src = items.find((i) => i.id === id);
+    if (!src) return;
+    const copy = duplicateItem(src, items);
+    onChange([...items, copy]);
+    setSelectedId(copy.id);
+  }
+
   function handleRemove(id: string) {
     onChange(items.filter((i) => i.id !== id));
     if (selectedId === id) setSelectedId(null);
@@ -74,6 +86,8 @@ export function LayoutEditor({
           onSelect={setSelectedId}
           onMoveItem={handleMove}
           onRemoveItem={handleRemove}
+          onResizeItem={handleResize}
+          onDuplicateItem={handleDuplicate}
           renderItem={(item) => <WidgetHost item={item} mode="edit" />}
         />
       </div>

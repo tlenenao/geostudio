@@ -21,14 +21,14 @@ du job) est un invariant à préserver dans tout appelant — ne jamais fusionne
 les deux blocs (cf. falsifications dédiées, SP-43 Tâche 6 Step 13)."""
 
 import logging
-import os
 from collections.abc import Callable
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.db import make_engine, make_session_factory, request_scoped_session
+from app.db import request_scoped_session
 from app.items.models import Item
+from app.jobs.engine import session_factory as _engine_session_factory
 from app.notifications import repository as notifications_repo
 from app.users.models import User
 
@@ -42,8 +42,7 @@ def session_factory() -> SessionFactory:
     appexport/export/alerts jobs.py) : engine + session factory depuis
     `DATABASE_URL`, repli SQLite mémoire pour ne jamais casser la collecte
     pytest sur un process qui n'a jamais défini cette variable."""
-    engine = make_engine(os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:"))
-    return make_session_factory(engine)
+    return _engine_session_factory()
 
 
 def resolve_owner_user(session: Session, *, tenant_id: str, item_id: str) -> User:

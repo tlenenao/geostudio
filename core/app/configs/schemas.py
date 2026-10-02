@@ -46,6 +46,8 @@ class Layout(BaseModel):
 class Message(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
+    # P10.01 : identifiant d'action conservé à l'aller-retour (retrait/édition individuels).
+    id: str | None = None
     from_: str = Field(alias="from")
     event: str
     to: str

@@ -134,6 +134,23 @@ def test_job_guard_rejection_marks_error(monkeypatch, tmp_path):
     assert "publique" in job.error
 
 
+def test_truncation_warning_is_stored_on_a_done_job(monkeypatch, tmp_path):
+    # j10b-005 : un job « done » porte l'avertissement de troncature dans `error`.
+    Session, tenant_id, job_id = _setup(monkeypatch, tmp_path)
+    monkeypatch.setattr("app.appexport.jobs._session_factory", lambda: Session)
+    monkeypatch.setattr("app.appexport.jobs.s3_client_from_env", _fake_s3)
+    monkeypatch.setattr(
+        "app.appexport.jobs._build_zip_bytes", lambda *a, **k: (b"zip", ["source 's1' tronquée"])
+    )
+    build_app_export_task(job_id=job_id, tenant_id=tenant_id)
+    with Session() as s:
+        job = appexport_repo.get_job(s, tenant_id=tenant_id, job_id=job_id)
+        notif = s.execute(select(Notification)).scalars().one()
+    assert job.status == "done"
+    assert job.error == "source 's1' tronquée"
+    assert notif.error_message == "source 's1' tronquée"
+
+
 def test_connected_job_skips_freezing_and_embeds_core_base_url(monkeypatch, tmp_path):
     Session, tenant_id, job_id = _setup(monkeypatch, tmp_path, mode="connected")
     monkeypatch.setenv("CORE_BASE_URL", "https://core.example.org")

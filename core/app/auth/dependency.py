@@ -167,7 +167,7 @@ def _jwks_client() -> jwt.PyJWKClient:
 
 def get_current_user(
     authorization: str = Header(default=""),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> User:
     # REV-012 : la résolution du tenant (get_or_create_default_tenant peut
     # INSÉRER une ligne) ne doit se produire qu'après ce contrôle — sinon
@@ -240,7 +240,7 @@ def get_current_user(
 
 def get_current_user_optional(
     authorization: str = Header(default=""),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> User | None:
     """Comme get_current_user, mais renvoie None sans header (accès anonyme
     aux collections publiques — URLs OGC stables, spec SP-3 §2)."""

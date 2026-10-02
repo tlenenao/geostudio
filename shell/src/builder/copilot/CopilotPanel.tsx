@@ -15,9 +15,9 @@
 // when the reply lands, not the one active at send time") : la version
 // littérale du brief (fermeture directe sur `activePageId`) le fait
 // échouer.
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AppConfig, CopilotClientOp } from "../../api/types";
-import { appendCopilotHistory } from "../../lib/copilotHistory";
+import { appendCopilotHistory, readCopilotHistory } from "../../lib/copilotHistory";
 import { applyClientOp, type RawClientOp } from "./applyClientOp";
 import { buildClientToolSchemas } from "./clientTools";
 import { CopilotChat } from "./CopilotChat";
@@ -42,6 +42,8 @@ export function CopilotPanel({
   activePageId: string;
   setDraft: (update: (prev: AppConfig | null) => AppConfig | null) => void;
 }) {
+  // P07.08 : l'historique persistant (par compte et par item) est relisible.
+  const [pastExchanges, setPastExchanges] = useState(() => readCopilotHistory(itemId));
   const activePageIdRef = useRef(activePageId);
   useEffect(() => {
     activePageIdRef.current = activePageId;
@@ -58,14 +60,29 @@ export function CopilotPanel({
   }
 
   return (
-    <CopilotChat
-      itemId={itemId}
-      surface="app_builder"
-      contextPayload={config}
-      clientTools={buildClientToolSchemas()}
-      opLabels={OP_LABELS}
-      onClientOps={handleClientOps}
-      onExchange={(entry) => appendCopilotHistory(entry)}
-    />
+    <>
+      <CopilotChat
+        itemId={itemId}
+        surface="app_builder"
+        contextPayload={config}
+        clientTools={buildClientToolSchemas()}
+        opLabels={OP_LABELS}
+        onClientOps={handleClientOps}
+        onExchange={(entry) => setPastExchanges(appendCopilotHistory(entry, itemId))}
+      />
+      {pastExchanges.length > 0 && (
+        <details className="mt-2 text-xs text-ink-2">
+          <summary>{t("copilot.pastExchanges", { count: pastExchanges.length })}</summary>
+          <ul className="mt-1 flex flex-col gap-1">
+            {pastExchanges.map((e) => (
+              <li key={e.id}>
+                {e.message}
+                {e.status === "error" ? ` — ${t("copilot.requestFailed")}` : ""}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </>
   );
 }

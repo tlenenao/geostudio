@@ -28,7 +28,7 @@
       ansible.builtin.git:
         repo: "{{ geostudio_repo_url }}"
         dest: "{{ geostudio_repo_dest }}"
-        version: main
+        version: "{{ geostudio_version }}"
         force: false
 
     - name: Lancer l'installeur GeoStudio (1ère passe — installe Docker si absent, peut s'arrêter là)
@@ -38,6 +38,7 @@
       environment: &geostudio_install_env
         INSTALL_YES: "1"
         GEOSTUDIO_PUBLIC_HOST: "{{ geostudio_public_host }}"
+        GEOSTUDIO_VERSION: "{{ geostudio_version }}"
         TS_AUTHKEY: "{{ vault_ts_authkey }}"
         INSTALL_PROFILES: "{{ geostudio_profiles }}"
         INSTALL_SEED_DEMO: "{{ '1' if geostudio_seed_demo else '0' }}"
@@ -67,6 +68,14 @@
       register: install_pass2
       changed_when: true
 
-    - name: Afficher le résumé de l'installeur
+    # Le mot de passe temporaire de l'admin n'est imprimé qu'à la création du
+    # compte, donc dans UNE seule des deux passes (la 1re si Docker était déjà
+    # là, sinon la 2e) : les afficher toutes les deux le communique exactement
+    # une fois (P08.03).
+    - name: Afficher le résumé de l'installeur (1re passe)
+      ansible.builtin.debug:
+        var: install_pass1.stdout_lines
+
+    - name: Afficher le résumé de l'installeur (2e passe)
       ansible.builtin.debug:
         var: install_pass2.stdout_lines

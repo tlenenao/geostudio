@@ -50,3 +50,9 @@ def privilege_for_kind(kind: str) -> str:
     kind pas encore explicitement mappé) — mieux vaut sur-restreindre qu'ouvrir
     par défaut."""
     return _KIND_PRIVILEGE.get(kind, Privilege.CATALOG_MANAGE.value)
+
+
+def sharing_privileges() -> list[str]:
+    """Privilèges qui ouvrent le partage d'au moins un kind (P14.01) : qui en
+    détient un peut ouvrir ShareForm, donc lister groupes et annuaire."""
+    return sorted({*_KIND_PRIVILEGE.values(), Privilege.CATALOG_MANAGE.value})

@@ -22,7 +22,9 @@ class ReportRun(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
-    report_item_id: Mapped[str] = mapped_column(ForeignKey("items.id"), nullable=False)
+    report_item_id: Mapped[str] = mapped_column(
+        ForeignKey("items.id", ondelete="CASCADE"), nullable=False
+    )
     # Pas de FK SQL vers export_jobs.id : app.export est sous app.reports
     # dans le contrat de couches, mais les lignes export_jobs sont
     # recherchées par id via export_repo.get_job à la lecture (§2 du

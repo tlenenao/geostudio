@@ -9,7 +9,7 @@ import {
   installVitals,
   netLog,
   readVitals,
-  stubMapEnv,
+  stubBasemap,
   type Vitals,
 } from "./helpers";
 
@@ -127,7 +127,7 @@ test.describe("t03 LCP / CLS", () => {
 
   test.beforeEach(async ({ page }) => {
     await installVitals(page);
-    await stubMapEnv(page);
+    await stubBasemap(page);
   });
 
   test("catalogue à froid : LCP et CLS dans les seuils « bon »", async ({ page }, testInfo) => {

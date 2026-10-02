@@ -549,3 +549,60 @@ def test_render_export_task_handles_get_job_failure_gracefully(db_session, monke
     fetched = export_repo.get_job(session, tenant_id=tenant.id, job_id=job.id)
     assert fetched.status == "error"
     assert "db down" in fetched.error
+
+
+def _serve_env_config(tmp_path, core_url: str):
+    (tmp_path / "env-config.js").write_text(
+        f'window.__GEOSTUDIO_ENV__ = {{\n  VITE_CORE_URL: "{core_url}",\n}};\n'
+    )
+    port = _free_port()
+    server = http.server.ThreadingHTTPServer(
+        ("127.0.0.1", port),
+        lambda *a: http.server.SimpleHTTPRequestHandler(*a, directory=str(tmp_path)),
+    )
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server, f"http://127.0.0.1:{port}"
+
+
+def test_core_unreachable_error_names_the_cause(tmp_path):
+    # j05b-006 : VITE_CORE_URL=localhost:<port fermé> vu depuis export-worker.
+    server, shell_url = _serve_env_config(tmp_path, f"http://127.0.0.1:{_free_port()}")
+    try:
+        message = export_jobs.core_unreachable_error(shell_url)
+    finally:
+        server.shutdown()
+    assert message is not None and "VITE_CORE_URL" in message and "export-worker" in message
+
+
+def test_core_unreachable_error_none_when_core_answers(tmp_path):
+    core, core_url = _serve_env_config(tmp_path, "unused")  # répond 404 sur /health : joignable
+    shell, shell_url = _serve_env_config(tmp_path, core_url)
+    try:
+        assert export_jobs.core_unreachable_error(shell_url) is None
+    finally:
+        core.shutdown()
+        shell.shutdown()
+
+
+def test_render_export_task_fails_fast_when_core_unreachable(db_session, monkeypatch, tmp_path):
+    session, tenant, user, item = db_session
+    job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png"
+    )
+    session.commit()
+    server, shell_url = _serve_env_config(tmp_path, f"http://127.0.0.1:{_free_port()}")
+    monkeypatch.setenv("SHELL_BASE_URL", shell_url)
+
+    def _must_not_launch(url):
+        raise AssertionError("Chromium ne doit pas être lancé")
+
+    monkeypatch.setattr(export_jobs, "_launch_and_navigate", _must_not_launch)
+    try:
+        export_jobs.render_export_task(job_id=job.id, tenant_id=tenant.id)
+    finally:
+        server.shutdown()
+
+    session.expire_all()
+    refreshed = export_repo.get_job(session, tenant_id=tenant.id, job_id=job.id)
+    assert refreshed.status == "error"
+    assert "pas joignable depuis export-worker" in refreshed.error

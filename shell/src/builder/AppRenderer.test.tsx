@@ -83,6 +83,66 @@ test("edit mode moving a widget calls onChange with the new position", async () 
   expect(next.layout.items[0]).toMatchObject({ x: 1 });
 });
 
+test("edit mode resizing a widget calls onChange with the new size", async () => {
+  const onChange = vi.fn();
+  render(
+    <AppRenderer
+      config={config}
+      mode="edit"
+      selectedId="t1"
+      onSelect={vi.fn()}
+      onChange={onChange}
+    />,
+    {
+      wrapper: Wrapper,
+    },
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Élargir widget-t1" }));
+  const next = onChange.mock.calls[0][0] as AppConfig;
+  expect(next.layout.items[0]).toMatchObject({ w: 5, h: 2 });
+});
+
+test("edit mode duplicating a widget appends a copy and selects it", async () => {
+  const onChange = vi.fn();
+  const onSelect = vi.fn();
+  render(
+    <AppRenderer
+      config={config}
+      mode="edit"
+      selectedId="t1"
+      onSelect={onSelect}
+      onChange={onChange}
+    />,
+    {
+      wrapper: Wrapper,
+    },
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Dupliquer widget-t1" }));
+  const next = onChange.mock.calls[0][0] as AppConfig;
+  expect(next.layout.items).toHaveLength(2);
+  expect(next.layout.items[1].id).not.toBe("t1");
+  expect(onSelect).toHaveBeenCalledWith(next.layout.items[1].id);
+});
+
+test("edit mode removing a widget drops it and prunes its wiring", async () => {
+  const onChange = vi.fn();
+  render(
+    <AppRenderer
+      config={config}
+      mode="edit"
+      selectedId="t1"
+      onSelect={vi.fn()}
+      onChange={onChange}
+    />,
+    {
+      wrapper: Wrapper,
+    },
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Supprimer widget-t1" }));
+  const next = onChange.mock.calls[0][0] as AppConfig;
+  expect(next.layout.items).toHaveLength(0);
+});
+
 test("configures the bus so a button click drives a wired action", async () => {
   // Two buttons: one emits "clicked"; the message wires it to the other's… there is
   // no builtin action on button, so assert wiring via a spy widget is covered in
@@ -734,6 +794,16 @@ test("story mode shows a progress bar and prev/next; prev is disabled on the fir
   expect(screen.getByText("Chapitre 1 / 2")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Précédent" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Suivant" })).toBeEnabled();
+});
+
+test("un identifiant de page inconnu retombe sur le premier chapitre (P10.12, P10.15)", () => {
+  registerFlyTarget();
+  render(<AppRenderer config={storyConfig()} mode="runtime" pageId="inconnu" />, {
+    wrapper: Wrapper,
+  });
+  expect(screen.getByText("Chapitre 1 / 2")).toBeInTheDocument();
+  expect(screen.getByText("Chapitre un")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Précédent" })).toBeDisabled();
 });
 
 test("story mode dispatches the active page's onEnter to its widget on entry", () => {

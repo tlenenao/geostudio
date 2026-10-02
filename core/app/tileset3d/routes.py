@@ -20,11 +20,12 @@ from app.auth.dependency import get_current_user, is_quotas_enabled
 from app.configs import repository as configs_repo
 from app.db import get_session
 from app.ingestion.routes import get_s3_client
-from app.ingestion.storage import ensure_uploads_bucket
+from app.ingestion.storage import ensure_uploads_bucket, generate_presigned_part_url
 from app.items import repository as items_repo
 from app.quotas.service import check_storage_quota_or_raise
-from app.roles.guards import require_privilege
+from app.roles.guards import has_privilege, require_privilege
 from app.roles.kind_registry import privilege_for_kind
+from app.roles.privileges import Privilege
 from app.sharing.authorization import can
 from app.tileset3d import repository as repo
 from app.tileset3d.schemas import (
@@ -92,7 +93,7 @@ def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests
 @router.post("/tileset3d/uploads", response_model=Tileset3DUploadCreated, status_code=201)
 def create_tileset3d_upload(
     body: Tileset3DUploadCreate,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
     s3=Depends(get_s3_client),
     bucket: str = Depends(get_tileset3d_bucket),
@@ -143,7 +144,7 @@ def create_tileset3d_upload(
 def presign_tileset3d_part(
     job_id: str,
     part_number: int,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
     s3=Depends(get_s3_client),
     bucket: str = Depends(get_tileset3d_bucket),
@@ -161,15 +162,8 @@ def presign_tileset3d_part(
     job = repo.get_job(session, tenant_id=user.tenant_id, job_id=job_id)
     if job is None or job.created_by != user.id:
         raise HTTPException(status_code=404, detail="job not found")
-    url = s3.generate_presigned_url(
-        "upload_part",
-        Params={
-            "Bucket": bucket,
-            "Key": job.source_key,
-            "PartNumber": part_number,
-            "UploadId": job.upload_id,
-        },
-        ExpiresIn=900,
+    url = generate_presigned_part_url(
+        s3, bucket=bucket, key=job.source_key, upload_id=job.upload_id, part_number=part_number
     )
     return Tileset3DPartPresignResponse(uploadUrl=url)
 
@@ -178,7 +172,7 @@ def presign_tileset3d_part(
 def complete_tileset3d_upload(
     job_id: str,
     body: Tileset3DCompleteRequest,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
     s3=Depends(get_s3_client),
     bucket: str = Depends(get_tileset3d_bucket),
@@ -191,7 +185,9 @@ def complete_tileset3d_upload(
     # convert_tileset3d_task, celui qui crée la config).
     require_privilege(session, user, privilege_for_kind("tileset3d"))
     job = repo.get_job(session, tenant_id=user.tenant_id, job_id=job_id)
-    if job is None:
+    # Même contrôle d'initiateur que presign_tileset3d_part : sinon un autre
+    # utilisateur du tenant finaliserait (et déférerait) le job d'autrui.
+    if job is None or job.created_by != user.id:
         raise HTTPException(status_code=404, detail="job not found")
     s3.complete_multipart_upload(
         Bucket=bucket,
@@ -240,11 +236,14 @@ def complete_tileset3d_upload(
 @router.get("/tileset3d/uploads/{job_id}", response_model=Tileset3DJobStatus)
 def get_tileset3d_upload_job(
     job_id: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> Tileset3DJobStatus:
     job = repo.get_job(session, tenant_id=user.tenant_id, job_id=job_id)
-    if job is None:
+    # Lisible par son initiateur ou un porteur de data.manage (patron d'ingestion, c01-012).
+    if job is None or (
+        job.created_by != user.id and not has_privilege(session, user, Privilege.DATA_MANAGE.value)
+    ):
         raise HTTPException(status_code=404, detail="job not found")
     return Tileset3DJobStatus(status=job.status, errorMessage=job.error_message, itemId=job.item_id)
 
@@ -253,7 +252,7 @@ def get_tileset3d_upload_job(
 def read_tileset3d_entry(
     item_id: str,
     path: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
     s3=Depends(get_s3_client),
     bucket: str = Depends(get_tileset3d_bucket),

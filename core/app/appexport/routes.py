@@ -10,13 +10,17 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.appexport import repository as appexport_repo
+from app.appexport.guard import EXPORTABLE_KINDS
 from app.appexport.jobs import build_app_export_task
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
+from app.configs import repository as configs_repo
 from app.db import get_session
 from app.ingestion.routes import get_s3_client
 from app.ingestion.storage import generate_presigned_get_url
 from app.items import repository as items_repo
+from app.roles.guards import has_privilege
+from app.roles.privileges import Privilege
 from app.sharing.authorization import can
 from app.users.models import User
 
@@ -61,7 +65,7 @@ def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests
 @router.post("/app-exports", response_model=CreateAppExportResponse, status_code=202)
 def create_app_export_route(
     body: CreateAppExportRequest,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
     defer_task: Callable[[str, str], None] = Depends(get_task_deferrer),
 ) -> CreateAppExportResponse:
@@ -70,6 +74,12 @@ def create_app_export_route(
             status_code=422, detail=f"mode must be one of {sorted(_SUPPORTED_MODES)}"
         )
     _require_export_read_access(session, user=user, item_id=body.itemId)
+    config_read = configs_repo.get_config_by_item(session, body.itemId)
+    if config_read is not None and config_read.config.kind not in EXPORTABLE_KINDS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"item kind '{config_read.config.kind}' is not exportable (app/dashboard only)",
+        )
     job = appexport_repo.create_job(
         session, tenant_id=user.tenant_id, item_id=body.itemId, user_id=user.id, mode=body.mode
     )
@@ -91,13 +101,16 @@ def create_app_export_route(
 @router.get("/app-exports/jobs/{job_id}", response_model=AppExportJobStatus)
 def get_app_export_job_route(
     job_id: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
     s3=Depends(get_s3_client),
     bucket: str = Depends(get_appexports_bucket),
 ) -> AppExportJobStatus:
     job = appexport_repo.get_job(session, tenant_id=user.tenant_id, job_id=job_id)
-    if job is None:
+    # Même règle que /export : initiateur ou porteur de data.manage.
+    if job is None or (
+        job.user_id != user.id and not has_privilege(session, user, Privilege.DATA_MANAGE.value)
+    ):
         raise HTTPException(status_code=404, detail="app export job not found")
     _require_export_read_access(session, user=user, item_id=job.item_id)
     result_url = None

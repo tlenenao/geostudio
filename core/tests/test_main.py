@@ -31,7 +31,7 @@ def test_health_stays_unprefixed(monkeypatch):
     client = _client(monkeypatch)
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json()["status"] == "ok"
 
 
 def test_health_under_v1_does_not_exist(monkeypatch):

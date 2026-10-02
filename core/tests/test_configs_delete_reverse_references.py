@@ -114,3 +114,14 @@ def test_delete_item_succeeds_once_the_referencing_alert_rule_is_gone(monkeypatc
 
     response = client.delete(f"/v1/items/{dataset_item_id}")
     assert response.status_code == 204
+
+
+def test_delete_config_by_id_refuses_when_an_alert_rule_still_references_it(monkeypatch, tmp_path):
+    # P09.02 / c02-002 : la 3e route de suppression portait pas la garde.
+    client, dataset_item_id, _rule_item_id = _setup(monkeypatch, tmp_path)
+    config_id = client.get(f"/v1/configs/by-item/{dataset_item_id}").json()["id"]
+
+    response = client.delete(f"/v1/configs/{config_id}")
+
+    assert response.status_code == 409
+    assert client.get(f"/v1/items/{dataset_item_id}").status_code == 200

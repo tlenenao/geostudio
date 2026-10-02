@@ -55,7 +55,7 @@ def get_report_runs_route(
     item_id: str,
     limit: int = Query(100, ge=1),
     offset: int = Query(0, ge=0),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
     s3=Depends(get_s3_client),
     bucket: str = Depends(get_exports_bucket),

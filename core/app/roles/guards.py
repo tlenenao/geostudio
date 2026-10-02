@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app.roles.kind_registry import sharing_privileges
 from app.roles.repository import get_role
 from app.users.models import User
 
@@ -30,3 +31,25 @@ def require_any_privilege(session: Session, user: User, privileges: Sequence[str
     if not any(has_privilege(session, user, p) for p in privileges):
         joined = " ou ".join(privileges) if privileges else "(aucun privilège listé)"
         raise HTTPException(status_code=403, detail=f"privilege '{joined}' required")
+
+
+def require_privileges_within_ceiling(
+    session: Session, user: User, privileges: Sequence[str]
+) -> None:
+    """Plafond « ≤ mes privilèges » (c01-002/j08-007) : on ne peut accorder —
+    par création/édition de rôle ou par attribution d'un rôle — que des
+    privilèges qu'on détient soi-même ; sinon un détenteur de
+    admin.users.manage/admin.roles.manage s'élèverait par rôle interposé."""
+    role = get_role(session, tenant_id=user.tenant_id, role_id=user.role_id)
+    held = set(role.privileges) if role is not None else set()
+    beyond = sorted(set(privileges) - held)
+    if beyond:
+        raise HTTPException(
+            status_code=403, detail=f"cannot grant privileges you do not hold: {beyond}"
+        )
+
+
+def require_sharing_privilege(session: Session, user: User) -> None:
+    """Garde des lectures d'appoint du partage (liste de groupes, annuaire) :
+    qui détient le privilège d'au moins un kind peut ouvrir ShareForm."""
+    require_any_privilege(session, user, sharing_privileges())

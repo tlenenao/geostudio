@@ -4,14 +4,13 @@ import type { ItemClientBase } from "../base";
 import { FeatureValidationError } from "../base";
 
 async function requestFeatureWrite<T>(
+  authFetch: ItemClientBase["authFetch"],
   url: string,
   method: string,
-  token: string | undefined,
   body?: GeoJSONFeatureInput,
 ): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(url, {
+  const res = await authFetch(url, {
     method,
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -38,7 +37,7 @@ type FeaturesMethods = Pick<
 >;
 
 export function createFeaturesMethods(base: ItemClientBase): FeaturesMethods {
-  const { request, coreUrl, getToken } = base;
+  const { request, coreUrl, authFetch } = base;
   return {
     async getCollection(collectionId: string): Promise<CollectionAdmin> {
       return request<CollectionAdmin>("GET", `/collections/${collectionId}`);
@@ -57,9 +56,9 @@ export function createFeaturesMethods(base: ItemClientBase): FeaturesMethods {
       feature: GeoJSONFeatureInput,
     ): Promise<{ id: string | number }> {
       return requestFeatureWrite<{ id: string | number }>(
+        authFetch,
         `${coreUrl}/collections/${collectionId}/items`,
         "POST",
-        getToken(),
         feature,
       );
     },
@@ -70,18 +69,18 @@ export function createFeaturesMethods(base: ItemClientBase): FeaturesMethods {
       feature: GeoJSONFeatureInput,
     ): Promise<void> {
       await requestFeatureWrite<void>(
+        authFetch,
         `${coreUrl}/collections/${collectionId}/items/${fid}`,
         "PUT",
-        getToken(),
         feature,
       );
     },
 
     async deleteFeature(collectionId: string, fid: string): Promise<void> {
       await requestFeatureWrite<void>(
+        authFetch,
         `${coreUrl}/collections/${collectionId}/items/${fid}`,
         "DELETE",
-        getToken(),
       );
     },
   };

@@ -141,9 +141,74 @@ def test_features_source_is_frozen_into_static_records(pg_session):
     names = sorted(r["properties"]["name"] for r in out.query["records"])
     assert names == ["Alpha", "Beta"]
 
+    # j10b-005 : exactement N lignes = pas de troncature ; N+1 = avertissement.
+    warnings: list[str] = []
+    freeze_config(
+        s, tenant_id=tenant.id, config=config, max_records_per_source=2, warnings=warnings
+    )
+    assert warnings == []
+    frozen = freeze_config(
+        s, tenant_id=tenant.id, config=config, max_records_per_source=1, warnings=warnings
+    )
+    assert len(frozen.dataSources[0].query["records"]) == 1
+    assert len(warnings) == 1 and "tronquée" in warnings[0]
+
 
 def test_config_shape_is_otherwise_unchanged(pg_session):
     config = _app_config([])
     frozen = freeze_config(pg_session, tenant_id="t1", config=config)
     assert frozen.pages[0].id == "p1"
     assert frozen.kind == "app"
+
+
+def test_sensitive_column_is_never_frozen_into_the_export(pg_session):
+    # j10-007 : un export est distribué sans identité de lecteur — masqué.
+    from app.collections.ddl import sync_masked_role_grants
+
+    s = pg_session
+    s.execute(
+        text(
+            "CREATE TABLE t_freeze_x (id serial PRIMARY KEY, tenant_id text NOT NULL, "
+            "name text, salary integer)"
+        )
+    )
+    s.commit()
+    apply_collection_ddl(s, "t_freeze_x")
+    sync_masked_role_grants(s, "t_freeze_x", ["salary"])
+    tenant = get_or_create_default_tenant(s)
+    owner = get_or_create_user(
+        s,
+        tenant_id=tenant.id,
+        oidc_sub="a",
+        username="alice",
+        email=None,
+        first_name="",
+        last_name="",
+        bootstrap_admin=False,
+    )
+    s.commit()
+    col = create_collection(
+        s,
+        tenant_id=tenant.id,
+        owner_id=owner.id,
+        table_name="t_freeze_x",
+        title="X",
+        description="",
+        is_public=True,
+        pk_column="id",
+        geometry_column=None,
+        geometry_type=None,
+        srid=None,
+    )
+    col.sensitive_fields = ["salary"]
+    s.commit()
+    info = introspect_table(s, col.table_name)
+    with rls_scope(s, tenant.id):
+        insert_feature(s, info, properties={"name": "Alpha", "salary": 4242}, geometry=None)
+    s.commit()
+    config = _app_config(
+        [DataSource(id="s1", type="features", service="core", layer=col.id, query={})]
+    )
+    out = freeze_config(s, tenant_id=tenant.id, config=config).dataSources[0]
+    assert out.query["records"][0]["properties"] == {"name": "Alpha"}
+    assert "4242" not in out.model_dump_json()

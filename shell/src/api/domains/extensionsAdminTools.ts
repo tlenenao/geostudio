@@ -2,6 +2,7 @@
 import type {
   AdminExtension,
   AdminToolName,
+  ExtensionCreateInput,
   ExtensionManifest,
   HarvestSource,
   HarvestSourceCreateInput,
@@ -15,6 +16,8 @@ type ExtensionsAdminToolsMethods = Pick<
   | "listActiveExtensions"
   | "listAllExtensions"
   | "setExtensionEnabled"
+  | "createExtension"
+  | "deleteExtension"
   | "launchAdminTool"
   | "listHarvestSources"
   | "createHarvestSource"
@@ -26,13 +29,10 @@ type ExtensionsAdminToolsMethods = Pick<
 export function createExtensionsAdminToolsMethods(
   base: ItemClientBase,
 ): ExtensionsAdminToolsMethods {
-  const { request, coreUrl, getToken } = base;
+  const { request, coreUrl, authFetch } = base;
   return {
     async listActiveExtensions(): Promise<ExtensionManifest[]> {
-      const token = getToken();
-      const res = await fetch(`${coreUrl}/extensions`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await authFetch(`${coreUrl}/extensions`);
       if (!res.ok) throw new Error(`Request failed: ${res.status} /extensions`);
       const data = (await res.json()) as {
         extensions?: Array<{
@@ -61,10 +61,7 @@ export function createExtensionsAdminToolsMethods(
     },
 
     async listAllExtensions(): Promise<AdminExtension[]> {
-      const token = getToken();
-      const res = await fetch(`${coreUrl}/extensions?all=true`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await authFetch(`${coreUrl}/extensions?all=true`);
       if (!res.ok) throw new Error(`Request failed: ${res.status} /extensions`);
       const data = (await res.json()) as {
         extensions?: Array<{
@@ -96,6 +93,14 @@ export function createExtensionsAdminToolsMethods(
 
     async setExtensionEnabled(id: string, enabled: boolean): Promise<void> {
       await request<void>("PATCH", `/extensions/${id}`, { enabled });
+    },
+
+    async createExtension(input: ExtensionCreateInput): Promise<void> {
+      await request<void>("POST", `/extensions`, input);
+    },
+
+    async deleteExtension(id: string): Promise<void> {
+      await request<void>("DELETE", `/extensions/${encodeURIComponent(id)}`);
     },
 
     async launchAdminTool(tool: AdminToolName): Promise<{ url: string }> {

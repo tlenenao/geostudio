@@ -62,7 +62,9 @@ class HarvestRecord(Base):
         ForeignKey("harvest_sources.id", ondelete="CASCADE"), nullable=False
     )
     external_id: Mapped[str] = mapped_column(String, nullable=False)
-    item_id: Mapped[str | None] = mapped_column(ForeignKey("items.id"), nullable=True)
+    item_id: Mapped[str | None] = mapped_column(
+        ForeignKey("items.id", ondelete="SET NULL"), nullable=True
+    )
     collection_id: Mapped[str | None] = mapped_column(ForeignKey("collections.id"), nullable=True)
     content_hash: Mapped[str | None] = mapped_column(String, nullable=True)
     harvested_at: Mapped[datetime] = mapped_column(DateTime, default=_now)

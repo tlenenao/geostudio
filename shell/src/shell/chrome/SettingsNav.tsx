@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { Link, useLocation } from "react-router-dom";
 import { useMe } from "../../api/hooks";
+import { holdsAnyPrivilege } from "../../auth/holdsAnyPrivilege";
 import { Panel } from "../../ui/kit/Panel";
 import { t, type MessageKey } from "../../i18n";
 
@@ -12,7 +13,8 @@ import { t, type MessageKey } from "../../i18n";
 export const SETTINGS_LINKS: readonly {
   to: string;
   labelKey: MessageKey;
-  privilege?: string;
+  /** Un privilège, ou une liste dont UN SEUL suffit. */
+  privilege?: string | readonly string[];
 }[] = [
   { to: "/settings", labelKey: "settingsNav.linkGeneral" },
   {
@@ -36,7 +38,9 @@ export const SETTINGS_LINKS: readonly {
   {
     to: "/admin/compliance",
     labelKey: "extensions.linkCompliance",
-    privilege: "compliance.manage",
+    // j08-002 : l'anonymisation (admin.users.manage) et la purge
+    // (compliance.manage) partagent la page ; la purge s'y masque d'elle-même.
+    privilege: ["admin.users.manage", "compliance.manage"],
   },
 ] as const;
 
@@ -45,7 +49,8 @@ export function SettingsNav() {
   const location = useLocation();
   const visibleLinks = SETTINGS_LINKS.filter(
     (link) =>
-      link.privilege === undefined || meQuery.data?.privileges.includes(link.privilege) === true,
+      link.privilege === undefined ||
+      holdsAnyPrivilege(meQuery.data?.privileges ?? [], link.privilege),
   );
 
   return (

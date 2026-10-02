@@ -3,6 +3,7 @@ import { useItems } from "../api/hooks";
 import type { DataSource } from "../api/types";
 import { t } from "../i18n";
 import { useAddDataSource } from "./DataSourcesEditContext";
+import { useSourceLabel } from "./useSourceLabel";
 
 export function DataSourceSelect({
   value,
@@ -14,6 +15,7 @@ export function DataSourceSelect({
   onChange: (id: string) => void;
 }) {
   const addDataSource = useAddDataSource();
+  const sourceLabel = useSourceLabel(Boolean(addDataSource));
   const datasetsQuery = useItems(
     { type: "dataset", pageSize: 100 },
     { enabled: Boolean(addDataSource) },
@@ -55,7 +57,7 @@ export function DataSourceSelect({
         <option value="">{t("dataSourceSelect.noneOption")}</option>
         {dataSources.map((s) => (
           <option key={s.id} value={s.id}>
-            {s.layer || s.id}
+            {sourceLabel(s)}
           </option>
         ))}
         {sharedDatasets.length > 0 && (

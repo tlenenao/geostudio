@@ -23,8 +23,9 @@ from app.ingestion.routes import get_s3_client
 from app.ingestion.storage import ensure_uploads_bucket, generate_presigned_put_url
 from app.items import repository as items_repo
 from app.quotas.service import check_storage_quota_or_raise
-from app.roles.guards import require_privilege
+from app.roles.guards import has_privilege, require_privilege
 from app.roles.kind_registry import privilege_for_kind
+from app.roles.privileges import Privilege
 from app.sharing.authorization import can
 from app.terrain3d import repository as repo
 from app.terrain3d.schemas import (
@@ -57,7 +58,7 @@ def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests
 @router.post("/terrain3d/uploads/presign", response_model=Terrain3DPresignResponse)
 def presign_terrain3d_upload(
     body: Terrain3DPresignRequest,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
     s3=Depends(get_s3_client),
     bucket: str = Depends(get_terrain3d_bucket),
@@ -83,7 +84,7 @@ def presign_terrain3d_upload(
 @router.post("/terrain3d/uploads", response_model=Terrain3DUploadCreated, status_code=201)
 def create_terrain3d_upload(
     body: Terrain3DUploadCreate,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
     defer_task: Callable[[str, str], None] = Depends(get_task_deferrer),
     s3=Depends(get_s3_client),
@@ -141,11 +142,14 @@ def create_terrain3d_upload(
 @router.get("/terrain3d/uploads/{job_id}", response_model=Terrain3DJobStatus)
 def get_terrain3d_upload_job(
     job_id: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> Terrain3DJobStatus:
     job = repo.get_job(session, tenant_id=user.tenant_id, job_id=job_id)
-    if job is None:
+    # Lisible par son initiateur ou un porteur de data.manage (patron d'ingestion, c01-012).
+    if job is None or (
+        job.created_by != user.id and not has_privilege(session, user, Privilege.DATA_MANAGE.value)
+    ):
         raise HTTPException(status_code=404, detail="job not found")
     return Terrain3DJobStatus(status=job.status, errorMessage=job.error_message, itemId=job.item_id)
 
@@ -160,7 +164,7 @@ def read_terrain3d_tile(
     z: int,
     x: int,
     y: int,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
     bucket: str = Depends(get_terrain3d_bucket),
     titiler_url: str = Depends(get_titiler_url),

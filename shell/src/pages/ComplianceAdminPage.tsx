@@ -7,6 +7,7 @@ import { Panel } from "../ui/kit/Panel";
 import { SettingsNav } from "../shell/chrome/SettingsNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
+import { eraseErrorMessage } from "./eraseErrorMessage";
 
 // SP-58 (spec §3.3, risque §5) : anonymisation et purge sont DEUX actions
 // de nature radicalement différente (l'une limitée et réversible dans son
@@ -19,6 +20,7 @@ import { t } from "../i18n";
 function EraseUserSection() {
   const [userId, setUserId] = useState("");
   const [result, setResult] = useState<"idle" | "success" | "error">("idle");
+  const [errorMessage, setErrorMessage] = useState("");
   const eraseUser = useEraseUser();
 
   async function handleErase() {
@@ -27,7 +29,8 @@ function EraseUserSection() {
       await eraseUser.mutateAsync(userId.trim());
       setResult("success");
       setUserId("");
-    } catch {
+    } catch (error) {
+      setErrorMessage(eraseErrorMessage(error));
       setResult("error");
     }
   }
@@ -62,7 +65,7 @@ function EraseUserSection() {
       )}
       {result === "error" && (
         <p role="alert" className="text-sm text-danger">
-          {t("compliance.eraseError")}
+          {errorMessage}
         </p>
       )}
     </Panel>
@@ -139,6 +142,11 @@ function PurgeTenantSection() {
 }
 
 export function ComplianceAdminPage() {
+  const privileges = useMe().data?.privileges ?? [];
+  // j08-002 : anonymiser = admin.users.manage ; purger = compliance.manage
+  // (privilège volontairement absent de l'Administrateur prédéfini).
+  const canErase = privileges.includes("admin.users.manage");
+  const canPurge = privileges.includes("compliance.manage");
   return (
     <div className="-m-6 flex flex-1 flex-col overflow-hidden">
       <TriptychLayout
@@ -153,8 +161,8 @@ export function ComplianceAdminPage() {
           content: (
             <div className="flex h-full flex-col gap-6 overflow-y-auto p-4">
               <h1 className="text-lg font-bold text-ink">{t("compliance.heading")}</h1>
-              <EraseUserSection />
-              <PurgeTenantSection />
+              {canErase && <EraseUserSection />}
+              {canPurge && <PurgeTenantSection />}
             </div>
           ),
         }}

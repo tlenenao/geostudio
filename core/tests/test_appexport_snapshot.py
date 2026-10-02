@@ -118,6 +118,29 @@ def test_features_source_is_written_as_geoparquet(pg_session, tmp_path):
             DataSource(id="s1", type="features", service="core", layer=col.id, query={}),
         ]
     )
+    # j10b-005 : N+1 lignes → avertissement et featureCount plafonné ; N → rien.
+    warnings: list[str] = []
+    capped = write_snapshot(
+        s,
+        tenant_id=tenant.id,
+        config=config,
+        snapshot_dir=str(tmp_path / "capped"),
+        max_records_per_source=1,
+        warnings=warnings,
+    )
+    assert capped[0].collection_json["featureCount"] == 1
+    assert len(warnings) == 1 and "tronquée" in warnings[0]
+    warnings.clear()
+    write_snapshot(
+        s,
+        tenant_id=tenant.id,
+        config=config,
+        snapshot_dir=str(tmp_path / "exact"),
+        max_records_per_source=2,
+        warnings=warnings,
+    )
+    assert warnings == []
+
     entries = write_snapshot(s, tenant_id=tenant.id, config=config, snapshot_dir=str(tmp_path))
 
     assert len(entries) == 1
@@ -242,3 +265,62 @@ def test_same_collection_referenced_twice_is_written_once(pg_session, tmp_path):
     entries = write_snapshot(s, tenant_id=tenant.id, config=config, snapshot_dir=str(tmp_path))
 
     assert len(entries) == 1
+
+
+def test_sensitive_column_is_not_written_to_the_snapshot(pg_session, tmp_path):
+    # j10-007 : le GeoParquet autoporté ne contient jamais la colonne masquée.
+    from app.collections.ddl import sync_masked_role_grants
+
+    s = pg_session
+    s.execute(
+        text(
+            "CREATE TABLE t_snapshot_x (id serial PRIMARY KEY, tenant_id text NOT NULL, "
+            "name text, salary integer)"
+        )
+    )
+    s.commit()
+    apply_collection_ddl(s, "t_snapshot_x")
+    sync_masked_role_grants(s, "t_snapshot_x", ["salary"])
+    tenant = get_or_create_default_tenant(s)
+    owner = get_or_create_user(
+        s,
+        tenant_id=tenant.id,
+        oidc_sub="a",
+        username="alice",
+        email=None,
+        first_name="",
+        last_name="",
+        bootstrap_admin=False,
+    )
+    s.commit()
+    col = create_collection(
+        s,
+        tenant_id=tenant.id,
+        owner_id=owner.id,
+        table_name="t_snapshot_x",
+        title="X",
+        description="",
+        is_public=True,
+        pk_column="id",
+        geometry_column=None,
+        geometry_type=None,
+        srid=None,
+    )
+    col.sensitive_fields = ["salary"]
+    s.commit()
+    info = introspect_table(s, col.table_name)
+    with rls_scope(s, tenant.id):
+        insert_feature(s, info, properties={"name": "Alpha", "salary": 4242}, geometry=None)
+    s.commit()
+    config = _app_config(
+        [DataSource(id="s1", type="features", service="core", layer=col.id, query={})]
+    )
+    entries = write_snapshot(s, tenant_id=tenant.id, config=config, snapshot_dir=str(tmp_path))
+    assert "salary" not in str(entries[0].schema_json)
+    parquet = next(tmp_path.rglob("data.parquet"))
+    conn = duckdb_connect(":memory:")
+    cols = [
+        r[0] for r in conn.execute(f"DESCRIBE SELECT * FROM read_parquet('{parquet}')").fetchall()
+    ]
+    conn.close()
+    assert "name" in cols and "salary" not in cols

@@ -128,8 +128,7 @@ test.describe("dialogues, menus et popovers (creator)", () => {
     await expect(s.page.getByRole("button", { name: "Supprimer widget-txt" })).toBeVisible();
   });
 
-  bug("t01-014 : Retour arrière dans une liste déroulante ne supprime pas le widget", async () => {
-    // Finding t01-014 : le garde de AppBuilderPage exclut input/textarea mais pas <select>.
+  test("t01-014 : Retour arrière dans une liste déroulante ne supprime pas le widget", async () => {
     await go(s.page, `/apps/${seed.appId}/edit`, 3000);
     await s.page.getByRole("button", { name: "Sélectionner widget-txt" }).click();
     const before = await s.page.getByRole("button", { name: /Sélectionner widget-/ }).count();

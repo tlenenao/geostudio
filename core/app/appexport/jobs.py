@@ -70,23 +70,35 @@ def _prepare_bundle_inputs(
     tenant_id: str,
     mode: str,
     config: BuilderConfig,
+    warnings: list[str],
 ) -> tuple[BuilderConfig, dict | None]:
     if mode == "connected":
         core_url = os.environ.get("CORE_BASE_URL", "http://localhost:8200")
         return config, {"coreUrl": core_url}
-    return freeze_config(session, tenant_id=tenant_id, config=config), None
+    return freeze_config(session, tenant_id=tenant_id, config=config, warnings=warnings), None
 
 
-def _build_zip_bytes(session, *, tenant_id: str, mode: str, config: BuilderConfig) -> bytes:
+def _build_zip_bytes(
+    session, *, tenant_id: str, mode: str, config: BuilderConfig
+) -> tuple[bytes, list[str]]:
+    """Retourne (zip, avertissements) — ex. troncature à 50 000 enregistrements."""
+    warnings: list[str] = []
     if mode == "standalone":
         with tempfile.TemporaryDirectory() as snapshot_dir:
-            write_snapshot(session, tenant_id=tenant_id, config=config, snapshot_dir=snapshot_dir)
-            return build_standalone_bundle_zip(config, snapshot_dir=snapshot_dir)
+            write_snapshot(
+                session,
+                tenant_id=tenant_id,
+                config=config,
+                snapshot_dir=snapshot_dir,
+                warnings=warnings,
+            )
+            return build_standalone_bundle_zip(config, snapshot_dir=snapshot_dir), warnings
     bundle_config, connection = _prepare_bundle_inputs(
-        session, tenant_id=tenant_id, mode=mode, config=config
+        session, tenant_id=tenant_id, mode=mode, config=config, warnings=warnings
     )
     runtime_dir = os.environ["APPEXPORT_RUNTIME_DIR"]
-    return build_bundle_zip(bundle_config, runtime_dir=runtime_dir, connection=connection)
+    zip_bytes = build_bundle_zip(bundle_config, runtime_dir=runtime_dir, connection=connection)
+    return zip_bytes, warnings
 
 
 @app.task(queue="appexport")
@@ -131,7 +143,7 @@ def build_app_export_task(job_id: str, tenant_id: str) -> None:
             )
             if not guard_result.allowed:
                 raise ValueError("; ".join(guard_result.reasons))
-            zip_bytes = _build_zip_bytes(
+            zip_bytes, export_warnings = _build_zip_bytes(
                 session, tenant_id=tenant_id, mode=mode, config=config_read.config
             )
 
@@ -147,10 +159,19 @@ def build_app_export_task(job_id: str, tenant_id: str) -> None:
             # SP-58 Tâche 2 (GAP-73) : `zip_bytes` est déjà en mémoire — même
             # rationale que app.export.jobs.
             appexport_repo.mark_done(
-                session, job_id=job_id, result_key=result_key, byte_size=len(zip_bytes)
+                session,
+                job_id=job_id,
+                result_key=result_key,
+                byte_size=len(zip_bytes),
+                warning="; ".join(export_warnings) or None,
             )
         _notify(
-            session_factory, tenant_id=tenant_id, item_id=item_id, user_id=user_id, status="success"
+            session_factory,
+            tenant_id=tenant_id,
+            item_id=item_id,
+            user_id=user_id,
+            status="success",
+            error="; ".join(export_warnings) or None,
         )
     except Exception as exc:  # toute erreur inattendue finit "error", jamais zombie
         logger.exception("app export job %s : erreur inattendue", job_id)
@@ -167,7 +188,7 @@ def build_app_export_task(job_id: str, tenant_id: str) -> None:
 
 
 @app.periodic(cron="*/5 * * * *")
-@app.task(queue="appexport")
+@app.task(queue="appexport", queueing_lock="sweep_appexport_jobs_task")
 def sweep_appexport_jobs_task(timestamp: int) -> None:
     """Réclame les appexport_jobs restés "running" (export-worker/process
     tué en cours de zip) : appexport_repo.reclaim_stuck_jobs existait déjà

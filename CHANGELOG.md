@@ -74,6 +74,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `geostudio-titiler`, not a new problem introduced here, but worth calling
   out for MinIO specifically since it is a newly published image).
 
+- **Pre-release audit (P01–P15) — deployment and API notes.**
+  - `core` image now installs the dependencies pinned by `uv.lock`.
+  - Jobs: the API process opens the procrastinate connector (every
+    `.defer()` used to raise `AppNotOpen`); the worker consumes `harvest`
+    and runs `CORE_WORKER_CONCURRENCY` jobs (default 4). `GET /health` gains
+    `jobsBacklog` (age/size of the job queue; `status` stays the liveness).
+  - S3: set `S3_PUBLIC_ENDPOINT_URL` (public URL used to sign presigned
+    links); in production Traefik routes it through the new `minio-s3`
+    router on the hostname `S3_PUBLIC_HOST` (must point to the instance).
+    MinIO CORS comes from `MINIO_API_CORS_ALLOW_ORIGIN`. File imports are
+    capped by `CORE_UPLOAD_MAX_BYTES` (512 MiB by default, 413 above).
+  - Secrets: the three token HMAC secrets are now generated at install
+    (`bootstrap-env.sh`/`install.sh`); an empty key counts as absent and
+    share-link creation answers 503 without one. Existing instances with an
+    empty secret must generate it.
+  - Production Traefik reaches Docker through `docker-socket-proxy` (read-only,
+    containers/events only) instead of mounting `docker.sock`. Keycloak dynamic
+    client registration is limited by Trusted Hosts: `install.sh` resyncs the
+    policy; **existing instances must add it by hand**.
+  - Releases: the `v*` tag must equal `GEOSTUDIO_VERSION` of `.env.example`,
+    point to a commit on `main` with a green `ci.yml` (`verify-tag`). The
+    published `v0.1.0` has no `minio`/`titiler` image: cut a new release.
+  - Database: migration 0043 adds `ON DELETE` to the foreign keys on `items`
+    (deleting an item with history now succeeds); writes to a config
+    (`PUT /v1/configs/{id}` and `PUT /v1/configs/by-item/{id}`) honour `If-Match` and answer 412 on a stale version
+    (app builder only for now); config write bodies are capped at 5 MB (413).
+  - Self-contained export: the bundled mini-server answers under `/v1` and the
+    image is pinned to the core version that produced the bundle.
+  - Authorization: role assignment is capped to the caller's own privileges;
+    publishing/sharing requires the item's kind privilege; sensitive fields
+    (`sensitiveFields`) are excluded from app exports, pipeline
+    `reader.collection`, MCP schema and the collection record.
+
 ## [0.1.0] - 2026-07-16
 
 Retroactive entry covering everything shipped since the fork from

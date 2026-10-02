@@ -99,6 +99,12 @@ export type UserSummary = {
   id: string;
   username: string;
   roleSlug: string;
+  email?: string | null;
+  firstName?: string;
+  lastName?: string;
+  createdAt?: string;
+  /** Horodatage ISO de l'anonymisation ; absent/null = compte actif. */
+  erasedAt?: string | null;
 };
 
 export type PurgeReceipt = {
@@ -127,6 +133,7 @@ export type NotificationPreferenceValue = "all" | "failuresOnly" | "none";
 export type UsageTask = {
   id: number;
   actorId: string | null;
+  actorUsername?: string | null;
   action: string;
   objectType: string;
   objectId: string;
@@ -230,7 +237,18 @@ export type UpdatePatch = {
   language?: string;
 };
 
-export type Group = { id: string; title: string };
+// canManage : l'appelant est créateur du groupe ou administrateur des
+// utilisateurs (membres, renommage, suppression) — calculé par le cœur (j13-006).
+export type Group = { id: string; title: string; createdBy?: string; canManage?: boolean };
+export type GroupMember = { userId: string; username: string; email: string | null };
+export type DirectoryUser = { id: string; username: string; email: string | null };
+export type ShareLinkInfo = {
+  id: string;
+  expiresAt: string;
+  revoked: boolean;
+  createdAt?: string;
+  createdBy?: string;
+};
 export type ShareRole = "viewer" | "editor";
 export type Sharing = {
   public: boolean;
@@ -483,6 +501,13 @@ export interface ItemClient {
   // plutôt que masqué).
   createGroup(name: string): Promise<Group>;
   addGroupMember(groupId: string, userId: string): Promise<void>;
+  // j13-004 : gestion d'un groupe par son créateur (ou un administrateur).
+  listGroupMembers(groupId: string): Promise<GroupMember[]>;
+  removeGroupMember(groupId: string, userId: string): Promise<void>;
+  renameGroup(groupId: string, name: string): Promise<Group>;
+  deleteGroup(groupId: string): Promise<void>;
+  // j13-005 : annuaire restreint (catalog.manage) pour ajouter un membre.
+  searchUserDirectory(q: string): Promise<DirectoryUser[]>;
   getSharing(pk: string): Promise<Sharing>;
   setSharing(pk: string, sharing: Sharing): Promise<void>;
   // GAP-12 (chantier 4.23) : lien de partage à échéance, révocable — distinct
@@ -491,7 +516,7 @@ export interface ItemClient {
     itemId: string,
     ttlDays: number,
   ): Promise<{ url: string; expiresAt: string; token: string }>;
-  listShareLinks(itemId: string): Promise<{ id: string; expiresAt: string; revoked: boolean }[]>;
+  listShareLinks(itemId: string): Promise<ShareLinkInfo[]>;
   revokeShareLink(itemId: string, linkId: string): Promise<void>;
   listLayerSources(params?: { q?: string }): Promise<LayerSource[]>;
   sampleCollectionField(collectionId: string, field: string, limit: number): Promise<number[]>;
@@ -506,6 +531,8 @@ export interface ItemClient {
   listActiveExtensions(): Promise<ExtensionManifest[]>;
   listAllExtensions(): Promise<AdminExtension[]>;
   setExtensionEnabled(id: string, enabled: boolean): Promise<void>;
+  createExtension(input: ExtensionCreateInput): Promise<void>;
+  deleteExtension(id: string): Promise<void>;
   getMetadataCatalog(): Promise<MetadataCatalog>;
   listCollections(params?: { q?: string } & PageParams): Promise<CollectionAdmin[]>;
   listCandidateTables(): Promise<CandidateTable[]>;
@@ -573,7 +600,8 @@ export interface ItemClient {
   saveDatasetConfig(pk: string, config: DatasetConfig): Promise<void>;
   getAppConfig(pk: string, mode?: "runtime"): Promise<AppConfig>;
   getPublicAppConfig(pk: string): Promise<AppConfig>;
-  saveAppConfig(pk: string, config: AppConfig): Promise<void>;
+  // Retourne la nouvelle version serveur (absente si le cœur ne la renvoie pas).
+  saveAppConfig(pk: string, config: AppConfig): Promise<number | undefined>;
   // GAP-38 : schéma JSON de BuilderConfig, factorisé côté cœur derrière
   // app_config_json_schema() — même source que la ressource MCP
   // schema://app-config (garanti identique par un test dédié côté cœur).
@@ -866,6 +894,14 @@ export type ExtensionManifest = {
   moduleUrl: string;
 };
 
+export type ExtensionCreateInput = {
+  id: string;
+  tag: string;
+  label: string;
+  moduleUrl: string;
+  defaultSize: { w: number; h: number };
+};
+
 export type AdminExtension = ExtensionManifest & { enabled: boolean };
 
 export type CollectionAdmin = {
@@ -1022,6 +1058,10 @@ export type AppConfig = {
   navigationMode?: "tabs" | "story";
   interactions?: "auto" | "manual"; // absent = "manual"
   printLayout?: PrintLayoutConfig | null;
+  // Version serveur lue au chargement (P09.05) : renvoyée en `If-Match` à
+  // l'enregistrement pour que le cœur refuse (412) une écriture périmée.
+  // Jamais persistée dans le corps de la config.
+  baseVersion?: number;
 };
 
 export type PipelineNodeKind = "reader" | "transform" | "writer";

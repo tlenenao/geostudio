@@ -50,7 +50,7 @@ test("persona Administrateur : voit les deux sections", async ({ page }) => {
   });
 
   await page.goto("/tasks");
-  await expect(page.getByText("Mes tâches récentes")).toBeVisible();
+  await expect(page.getByText("Tâches du tenant")).toBeVisible();
   await expect(page.getByText("Aucune tâche récente.")).toBeVisible();
   await expect(page.getByText("Usage de la plateforme")).toBeVisible();
   await expect(page.getByText(/alice/)).toBeVisible();

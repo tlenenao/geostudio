@@ -57,6 +57,7 @@ from app.mcp.tools.identity import (
     require_access,
     require_collection_read,
     resolve_actor,
+    visible_table_info,
     without_thumbnail_url,
 )
 from app.mcp.tools.write_tools import write_tool
@@ -272,7 +273,7 @@ def register(server: FastMCP, session_factory) -> None:
                 raise ValueError("collection backing table not found") from exc
             except UnsupportedTable as exc:
                 raise ValueError(exc.reason) from exc
-            schema = table_info_to_schema(info)
+            schema = table_info_to_schema(visible_table_info(session, user, col, info))
             include_form = form_app.can_write_collection(session, user=user, col=col)
             config = form_app.build_config(
                 collection_id=collectionId,

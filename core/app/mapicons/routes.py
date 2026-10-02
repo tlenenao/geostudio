@@ -104,7 +104,7 @@ async def create_map_icon(
     title: str = Form(...),
     category: str = Form(...),
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     s3_client=Depends(get_s3_client),
 ) -> MapIconOut:
     # Bornes de longueur, précédent app/tileset3d/schemas.py:5-7. Les champs
@@ -186,7 +186,7 @@ async def create_map_icon(
 @router.get("/map-icons")
 def list_map_icons(
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> list[MapIconOut]:
     return [_to_response(i) for i in repo.list_icons(session, tenant_id=user.tenant_id)]
 
@@ -195,7 +195,7 @@ def list_map_icons(
 def delete_map_icon(
     icon_id: str,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     s3_client=Depends(get_s3_client),
 ) -> None:
     icon = repo.get_icon(session, tenant_id=user.tenant_id, icon_id=icon_id)
@@ -238,7 +238,7 @@ def delete_map_icon(
 def read_map_icon_file(
     icon_id: str,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     s3_client=Depends(get_s3_client),
 ) -> Response:
     icon = repo.get_icon(session, tenant_id=user.tenant_id, icon_id=icon_id)

@@ -175,6 +175,19 @@ def test_presign_part_returns_upload_url(env):
     assert "uploadUrl" in r.json()
 
 
+def test_presign_part_url_is_signed_on_the_public_host(env, monkeypatch):
+    # RC-13 : l'URL de part part du navigateur — jamais l'hôte interne (minio:9000).
+    monkeypatch.setenv("S3_PUBLIC_ENDPOINT_URL", "https://files.example.org")
+    monkeypatch.setenv("S3_ACCESS_KEY", "ak")
+    monkeypatch.setenv("S3_SECRET_KEY", "sk")
+    client, *_ = env
+    job_id = client.post(
+        "/v1/tileset3d/uploads", json={"filename": "city.zip", "title": "Ville"}
+    ).json()["jobId"]
+    r = client.post(f"/v1/tileset3d/uploads/{job_id}/parts/1/presign")
+    assert r.json()["uploadUrl"].startswith("https://files.example.org/")
+
+
 def test_presign_part_refuses_a_reader_with_no_privilege(env):
     # REV-002 : cette route ne consultait jusqu'ici que get_current_user —
     # aucun privilège — alors que create_tileset3d_upload/
@@ -215,6 +228,31 @@ def test_presign_part_404_for_a_job_owned_by_another_user(env):
     assert r.status_code == 404, r.text
 
 
+def test_complete_upload_404_for_a_job_owned_by_another_user(env):
+    client, Session, tenant, _alice, deferred, _s3 = env
+    with Session() as s:
+        bob = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="b",
+            username="bob",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        s.commit()
+    job_id = client.post(
+        "/v1/tileset3d/uploads", json={"filename": "city.zip", "title": "Ville"}
+    ).json()["jobId"]
+    client.app.dependency_overrides[get_current_user] = lambda: bob
+    r = client.post(
+        f"/v1/tileset3d/uploads/{job_id}/complete",
+        json={"parts": [{"partNumber": 1, "etag": '"abc"'}]},
+    )
+    assert r.status_code == 404, r.text
+    assert deferred == []
+
+
 def test_presign_part_404_for_unknown_job(env):
     client, *_ = env
     r = client.post("/v1/tileset3d/uploads/does-not-exist/parts/1/presign")
@@ -252,6 +290,37 @@ def test_complete_upload_rejects_empty_parts_list(env):
     ).json()["jobId"]
     r = client.post(f"/v1/tileset3d/uploads/{job_id}/complete", json={"parts": []})
     assert r.status_code == 422
+
+
+def test_get_upload_job_404_for_a_job_owned_by_another_user(env):
+    # c01-012 : le statut d'un job n'est lisible que par son initiateur.
+    client, Session, tenant, _alice, *_ = env
+    with Session() as s:
+        bob = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="b",
+            username="bob",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        roles = ensure_built_in_roles(s, tenant_id=tenant.id)
+        set_user_role(
+            s,
+            tenant_id=tenant.id,
+            user_id=bob.id,
+            role_id=roles["reader"].id,
+            role_slug="reader",
+        )
+        bob.role_id = roles["reader"].id
+        s.commit()
+    job_id = client.post(
+        "/v1/tileset3d/uploads", json={"filename": "city.zip", "title": "Ville"}
+    ).json()["jobId"]
+    assert client.get(f"/v1/tileset3d/uploads/{job_id}").status_code == 200
+    client.app.dependency_overrides[get_current_user] = lambda: bob
+    assert client.get(f"/v1/tileset3d/uploads/{job_id}").status_code == 404
 
 
 def test_get_upload_job_404_for_unknown_job(env):

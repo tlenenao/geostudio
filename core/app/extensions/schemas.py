@@ -1,7 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
+
+# Grammaire des custom elements (tiret obligatoire) ; module chargé via
+# import() dans le shell : https uniquement (j08-008).
+Tag = Annotated[str, Field(min_length=1, pattern=r"^[a-z][a-z0-9._]*-[a-z0-9._-]*$")]
+ModuleUrl = Annotated[str, Field(min_length=1, pattern=r"^https://[^\s]+$")]
+Label = Annotated[str, Field(min_length=1)]
 
 
 class ExtensionProp(BaseModel):
@@ -16,15 +22,15 @@ class ExtensionPermissions(BaseModel):
 
 
 class ExtensionSize(BaseModel):
-    w: int
-    h: int
+    w: int = Field(gt=0)
+    h: int = Field(gt=0)
 
 
 class ExtensionCreate(BaseModel):
     id: str = Field(min_length=1, max_length=100)
-    tag: str = Field(min_length=1)
-    label: str = Field(min_length=1)
-    moduleUrl: str = Field(min_length=1)
+    tag: Tag
+    label: Label
+    moduleUrl: ModuleUrl
     props: list[ExtensionProp] = []
     events: list[str] | None = None
     actions: list[str] | None = None
@@ -33,9 +39,9 @@ class ExtensionCreate(BaseModel):
 
 
 class ExtensionPatch(BaseModel):
-    tag: str | None = None
-    label: str | None = None
-    moduleUrl: str | None = None
+    tag: Tag | None = None
+    label: Label | None = None
+    moduleUrl: ModuleUrl | None = None
     props: list[ExtensionProp] | None = None
     events: list[str] | None = None
     actions: list[str] | None = None

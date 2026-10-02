@@ -118,7 +118,7 @@ def get_rls_scope():  # overridé en test SQLite
 
 def get_masked_for_user(
     user=Depends(get_current_user_optional),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> bool:
     """Verdict de masquage colonne (GAP-22) pour la requête courante — jamais
     faire confiance à un lecteur anonyme pour du sensible."""
@@ -207,7 +207,7 @@ def list_features(
     geom_intersects: str | None = None,
     user=Depends(get_current_user_optional),
     guest: GuestActor | None = Depends(get_share_link_actor),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     introspect=Depends(get_introspector),
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
@@ -270,7 +270,7 @@ def aggregate_features(
     body: AggregateRequestBody,
     user=Depends(get_current_user_optional),
     guest: GuestActor | None = Depends(get_share_link_actor),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     introspect=Depends(get_introspector),
     conn_factory=Depends(get_duckdb_connection_factory),
     base_uri: str = Depends(get_analytics_base_uri),
@@ -312,7 +312,7 @@ def export_collection_aggregate(
     body: AggregateRequestBody,
     format: str = Query(...),
     user=Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     introspect=Depends(get_introspector),
     conn_factory=Depends(get_duckdb_connection_factory),
     base_uri: str = Depends(get_analytics_base_uri),
@@ -383,7 +383,7 @@ def export_collection_items(
     bbox: str | None = None,
     geom_intersects: str | None = None,
     user=Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     introspect=Depends(get_introspector),
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
@@ -464,7 +464,7 @@ def export_collection_items(
 def analytics_sql(
     body: SqlQueryBody,
     user=Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     introspect=Depends(get_introspector),
     conn_factory=Depends(get_duckdb_connection_factory),
     base_uri: str = Depends(get_analytics_base_uri),
@@ -539,7 +539,7 @@ def get_single_feature(
     fid: str,
     user=Depends(get_current_user_optional),
     guest: GuestActor | None = Depends(get_share_link_actor),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     introspect=Depends(get_introspector),
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
@@ -587,7 +587,7 @@ def create_feature(
     request: Request,
     response: Response,
     user=Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     introspect=Depends(get_introspector),
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
@@ -635,13 +635,21 @@ def put_feature(
     fid: str,
     payload: dict,
     user=Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     introspect=Depends(get_introspector),
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
+    masked: bool = Depends(get_masked_for_user),
 ):
     col = _get_writable(session, user, collection_id)
-    info = _validated(introspect, session, col, payload)
+    # GAP-22 : le PUT remplace tout — sans ça, un utilisateur masqué mettrait à
+    # NULL les colonnes sensibles qu'il n'a jamais vues. Retirées de `info`,
+    # elles ne sont ni validées ni écrites (donc conservées en base).
+    info = introspect(session, col.table_name)
+    if masked:
+        info = hide_sensitive_columns(info, col.sensitive_fields)
+    if errors := validate_feature(info, payload):
+        raise _validation_error(errors)
     with rls(session, col.tenant_id):
         ok = repo.replace_feature(
             session,
@@ -669,7 +677,7 @@ def remove_feature(
     collection_id: str,
     fid: str,
     user=Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     introspect=Depends(get_introspector),
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),

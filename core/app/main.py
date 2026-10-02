@@ -2,6 +2,7 @@
 import contextlib
 import os
 import re
+import time
 from collections.abc import Iterator
 from http import HTTPStatus
 
@@ -46,6 +47,8 @@ from app.harvest import routes as harvest_routes
 from app.ingestion import routes as ingestion_routes
 from app.instance import routes as instance_routes
 from app.items import routes as items_routes
+from app.jobs import open_sync_defer
+from app.jobs.engine import jobs_backlog
 from app.mapicons import routes as mapicons_routes
 from app.mcp.server import create_mcp_server
 from app.notifications import routes as notifications_routes
@@ -65,6 +68,8 @@ from app.terrain3d import routes as terrain3d_routes
 from app.tileset3d import routes as tileset3d_routes
 from app.usage import routes as usage_routes
 
+MAX_CONFIG_BODY_BYTES = 5 * 1024 * 1024
+_CONFIG_WRITE_PATH_RE = re.compile(r"^/v1/configs(/[^/]+){0,2}$")
 _AGGREGATE_PATH_RE = re.compile(r"^/v1/collections/[^/]+/aggregate$")
 _EXPORT_PATH_RE = re.compile(
     r"^/v1/(collections/[^/]+|datasets/[^/]+/arcgis)/export(/items)?$"
@@ -135,8 +140,10 @@ def create_app() -> FastAPI:
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):
-        async with mcp_server.session_manager.run():
-            yield
+        # RC-1 : les `.defer()` synchrones des routes exigent un connecteur ouvert.
+        with open_sync_defer():
+            async with mcp_server.session_manager.run():
+                yield
 
     app = FastAPI(title="GeoStudio Builder Service", version="0.1.0", lifespan=lifespan)
     observability.instrument_app(app)
@@ -202,6 +209,33 @@ def create_app() -> FastAPI:
                     "title": HTTPStatus(403).phrase,
                     "status": 403,
                     "detail": "Mode démo : lecture seule, écritures désactivées.",
+                },
+            )
+        return await call_next(request)
+
+    @app.middleware("http")
+    async def config_body_limit(request: Request, call_next):
+        # P09.07 (t02-001) : une config JSON n'a aucune raison de dépasser
+        # quelques Mo ; sans plafond, un créateur sature la base (une révision
+        # par écriture), la mémoire d'uvicorn et l'historique. Rejet AVANT
+        # lecture du corps, sur Content-Length (411 si absent : un corps
+        # chunked contournerait le plafond).
+        if request.method in {"POST", "PUT"} and _CONFIG_WRITE_PATH_RE.match(request.url.path):
+            length = request.headers.get("content-length")
+            if length is None or not length.isdigit():
+                status, detail = 411, "Content-Length required"
+            elif int(length) > MAX_CONFIG_BODY_BYTES:
+                status, detail = 413, f"config too large (max {MAX_CONFIG_BODY_BYTES} bytes)"
+            else:
+                return await call_next(request)
+            return JSONResponse(
+                status_code=status,
+                media_type="application/problem+json",
+                content={
+                    "type": "about:blank",
+                    "title": HTTPStatus(status).phrase,
+                    "status": status,
+                    "detail": detail,
                 },
             )
         return await call_next(request)
@@ -389,9 +423,19 @@ def create_app() -> FastAPI:
             secret_key=s3_secret_key,
         )
 
+    health_cache: dict = {"at": float("-inf"), "value": None}
+
     @app.get("/health")
-    def health() -> dict[str, str]:
-        return {"status": "ok"}
+    def health() -> dict:
+        # `status` reste la liveness (healthcheck compose) ; `jobsBacklog` rend
+        # un worker arrêté visible (t02-013/j09-014) sans jamais faire échouer la sonde.
+        # Route non authentifiée : le COUNT SQL est mis en cache 5 s (par app) pour
+        # qu'un appelant anonyme ne puisse pas le déclencher à chaque requête.
+        now = time.monotonic()
+        if now - health_cache["at"] > 5.0:
+            health_cache["value"] = jobs_backlog()
+            health_cache["at"] = now
+        return {"status": "ok", "jobsBacklog": health_cache["value"]}
 
     # Mounted last: streamable_http_app() already bakes in its own full
     # paths ("/mcp", "/.well-known/oauth-protected-resource/mcp") rather

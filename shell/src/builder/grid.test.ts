@@ -1,6 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test } from "vitest";
-import { posFor, styleForPos, moveItemAt, breakpointForWidth, type Breakpoint } from "./grid";
+import {
+  posFor,
+  positionsFor,
+  styleForPos,
+  moveItemAt,
+  resizeItemAt,
+  duplicateItem,
+  breakpointForWidth,
+  type Breakpoint,
+} from "./grid";
 
 const baseItem = { id: "a", widget: "text", x: 2, y: 3, w: 4, h: 2, props: {} };
 
@@ -57,4 +66,35 @@ test("breakpointForWidth maps widths to breakpoints", () => {
   expect(breakpointForWidth(800)).toBe<Breakpoint>("md");
   expect(breakpointForWidth(640)).toBe<Breakpoint>("md");
   expect(breakpointForWidth(500)).toBe<Breakpoint>("sm");
+});
+
+test("resizeItemAt writes w/h at lg, clamped to the grid and to >= 1", () => {
+  expect(resizeItemAt(baseItem, "lg", 2, 1)).toMatchObject({ w: 6, h: 3, x: 2 });
+  expect(resizeItemAt(baseItem, "lg", 99, 0).w).toBe(10); // 12 - x
+  expect(resizeItemAt(baseItem, "lg", -99, -99)).toMatchObject({ w: 1, h: 1 });
+});
+
+test("resizeItemAt writes an override at sm and leaves the base untouched", () => {
+  const r = resizeItemAt(baseItem, "sm", 1, 0);
+  expect(r.layouts?.sm).toEqual({ x: 2, y: 3, w: 5, h: 2 });
+  expect(r.w).toBe(4);
+});
+
+test("duplicateItem copies with a new id, below existing items, without overrides", () => {
+  const src = { ...baseItem, layouts: { sm: { x: 0, y: 0, w: 12, h: 2 } } };
+  const copy = duplicateItem(src, [src]);
+  expect(copy.id).not.toBe("a");
+  expect(copy).toMatchObject({ widget: "text", x: 0, y: 5, w: 4, h: 2 });
+  expect(copy.layouts).toBeUndefined();
+});
+
+test("positionsFor stacks items full width at sm unless they have an explicit sm layout (P10.16)", () => {
+  const a = { id: "a", widget: "text", x: 6, y: 0, w: 6, h: 3, props: {} };
+  const b = { id: "b", widget: "text", x: 0, y: 0, w: 6, h: 2, props: {} };
+  const c = { ...baseItem, id: "c", layouts: { sm: { x: 1, y: 9, w: 3, h: 1 } } };
+  const sm = positionsFor([a, b, c], "sm");
+  expect(sm.get("b")).toEqual({ x: 0, y: 0, w: 12, h: 2 });
+  expect(sm.get("a")).toEqual({ x: 0, y: 2, w: 12, h: 3 });
+  expect(sm.get("c")).toEqual({ x: 1, y: 9, w: 3, h: 1 });
+  expect(positionsFor([a, b], "md").get("a")).toEqual({ x: 6, y: 0, w: 6, h: 3 });
 });

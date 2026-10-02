@@ -17,6 +17,7 @@ from app.collections.introspection import (
     Introspector,
     TableNotFound,
     UnsupportedTable,
+    hide_sensitive_columns,
 )
 from app.collections.provisioning import create_empty_collection
 from app.collections.publication import remove_table_from_publication
@@ -55,6 +56,114 @@ POSTGIS_SYSTEM_TABLES = frozenset(
         "geography_columns",
     }
 )
+
+
+# Tables de la file de jobs et de Keycloak (même schéma/base que le cœur) :
+# jamais registrables (t02-005).
+_KEYCLOAK_TABLES = frozenset(
+    [
+        "admin_event_entity",
+        "associated_policy",
+        "authentication_execution",
+        "authentication_flow",
+        "authenticator_config",
+        "broker_link",
+        "client",
+        "client_attributes",
+        "client_auth_flow_bindings",
+        "client_initial_access",
+        "client_node_registrations",
+        "client_scope",
+        "client_scope_attributes",
+        "client_scope_client",
+        "client_scope_role_mapping",
+        "client_session",
+        "client_session_auth_status",
+        "client_session_note",
+        "client_session_prot_mapper",
+        "client_session_role",
+        "client_user_session_note",
+        "component",
+        "component_config",
+        "composite_role",
+        "credential",
+        "databasechangelog",
+        "databasechangeloglock",
+        "default_client_scope",
+        "event_entity",
+        "fed_user_attribute",
+        "fed_user_consent",
+        "fed_user_consent_cl_scope",
+        "fed_user_credential",
+        "fed_user_group_membership",
+        "fed_user_required_action",
+        "fed_user_role_mapping",
+        "federated_identity",
+        "federated_user",
+        "group_attribute",
+        "group_role_mapping",
+        "identity_provider",
+        "identity_provider_config",
+        "identity_provider_mapper",
+        "idp_mapper_config",
+        "jgroups_ping",
+        "keycloak_group",
+        "keycloak_role",
+        "migration_model",
+        "offline_client_session",
+        "offline_user_session",
+        "org",
+        "org_domain",
+        "policy_config",
+        "protocol_mapper",
+        "protocol_mapper_config",
+        "realm",
+        "realm_attribute",
+        "realm_default_groups",
+        "realm_enabled_event_types",
+        "realm_events_listeners",
+        "realm_localizations",
+        "realm_required_credential",
+        "realm_smtp_config",
+        "realm_supported_locales",
+        "redirect_uris",
+        "required_action_config",
+        "required_action_provider",
+        "resource_attribute",
+        "resource_policy",
+        "resource_scope",
+        "resource_server",
+        "resource_server_perm_ticket",
+        "resource_server_policy",
+        "resource_server_resource",
+        "resource_server_scope",
+        "resource_uris",
+        "revoked_token",
+        "role_attribute",
+        "scope_mapping",
+        "scope_policy",
+        "user_attribute",
+        "user_consent",
+        "user_consent_client_scope",
+        "user_entity",
+        "user_federation_config",
+        "user_federation_mapper",
+        "user_federation_mapper_config",
+        "user_federation_provider",
+        "user_group_membership",
+        "user_required_action",
+        "user_role_mapping",
+        "user_session",
+        "user_session_note",
+        "username_login_failure",
+        "web_origins",
+    ]
+)
+
+
+def _is_system_table(name: str) -> bool:
+    n = name.lower()
+    return n in _KEYCLOAK_TABLES or n.startswith("procrastinate_")
 
 
 def _core_tables() -> frozenset[str]:
@@ -151,7 +260,18 @@ def get_feature_counter():
     return counter
 
 
-def _collection_json(col, permissions, owner: str | None = None) -> dict:
+def _may_see_sensitive(session, user) -> bool:
+    """GAP-22 : qui voit la liste des champs sensibles (fiche, schéma) et peut
+    la modifier — data.view_sensitive ou admin.collections.manage."""
+    return user is not None and (
+        has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)
+        or has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+    )
+
+
+def _collection_json(
+    col, permissions, owner: str | None = None, *, reveal_sensitive: bool = False
+) -> dict:
     return {
         "id": col.id,
         "title": col.title,
@@ -166,7 +286,7 @@ def _collection_json(col, permissions, owner: str | None = None) -> dict:
         "featureCount": col.feature_count,
         "owner": owner,
         "attachmentFields": col.attachment_fields,
-        "sensitiveFields": col.sensitive_fields,
+        "sensitiveFields": col.sensitive_fields if reveal_sensitive else [],
         "license": col.license,
         "licenseUri": col.license_uri,
         "producer": col.producer,
@@ -270,13 +390,13 @@ def get_readable_collection(
 def register_collection(
     body: CollectionCreate,
     user=Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     introspect: Introspector = Depends(get_introspector),
     apply_ddl: Callable = Depends(get_ddl_applier),
     count_features=Depends(get_feature_counter),
 ):
     require_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
-    if body.tableName in _core_tables():
+    if body.tableName in _core_tables() or _is_system_table(body.tableName):
         raise HTTPException(status_code=400, detail="core table cannot be registered")
     if repo.get_collection(session, tenant_id=user.tenant_id, collection_id=body.tableName):
         raise HTTPException(status_code=409, detail="table already registered")
@@ -333,14 +453,14 @@ def register_collection(
         can_manage_collections=can_manage_collections,
         collections=[col],
     )[col.id]
-    return _collection_json(col, permissions)
+    return _collection_json(col, permissions, reveal_sensitive=True)
 
 
 @router.post("/collections/empty", status_code=201)
 def create_empty_collection_route(
     body: EmptyCollectionCreate,
     user=Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     introspect: Introspector = Depends(get_introspector),
     apply_ddl: Callable = Depends(get_ddl_applier),
 ):
@@ -375,7 +495,7 @@ def create_empty_collection_route(
         can_manage_collections=can_manage_collections,
         collections=[col],
     )[col.id]
-    return _collection_json(col, permissions)
+    return _collection_json(col, permissions, reveal_sensitive=True)
 
 
 @router.get("/collections")
@@ -384,7 +504,7 @@ def list_collections(
     limit: int = Query(DEFAULT_LIMIT, ge=1),
     offset: int = Query(0, ge=0),
     user=Depends(get_current_user_optional),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ):
     from app.tenants.repository import get_or_create_default_tenant
     from app.users.models import User
@@ -417,9 +537,15 @@ def list_collections(
         can_manage_collections=can_manage_collections,
         collections=cols_page,
     )
+    reveal_sensitive = _may_see_sensitive(session, user)
     return {
         "collections": [
-            _collection_json(c, permissions_by_id[c.id], owner=owners.get(c.owner_id))
+            _collection_json(
+                c,
+                permissions_by_id[c.id],
+                owner=owners.get(c.owner_id),
+                reveal_sensitive=reveal_sensitive,
+            )
             for c in cols_page
         ],
         "numberMatched": total,
@@ -430,7 +556,7 @@ def list_collections(
 @router.get("/collections/candidates")
 def list_candidate_tables(
     user=Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     list_tables: Callable[[Session], list[str]] = Depends(get_table_lister),
     introspect: Introspector = Depends(get_introspector),
 ):
@@ -438,7 +564,7 @@ def list_candidate_tables(
     core = _core_tables()
     candidates = []
     for table_name in list_tables(session):
-        if table_name in core:
+        if table_name in core or _is_system_table(table_name):
             continue
         # REV-011 : exclusion cross-tenant (pas seulement tenant-scopée) —
         # une table déjà enregistrée par N'IMPORTE QUEL tenant percuterait la
@@ -472,7 +598,7 @@ def get_collection(
     request: Request,
     user=Depends(get_current_user_optional),
     guest: GuestActor | None = Depends(get_share_link_actor),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     introspect: Introspector = Depends(get_introspector),
     extent_provider=Depends(get_extent_provider),
 ):
@@ -490,7 +616,7 @@ def get_collection(
         can_manage_collections=can_manage_collections,
         collections=[col],
     )[col.id]
-    body = _collection_json(col, permissions)
+    body = _collection_json(col, permissions, reveal_sensitive=_may_see_sensitive(session, user))
     body["itemType"] = "feature"
     # request.base_url ne porte jamais /v1 (juste scheme://host/) — ce
     # routeur est nesté sous /v1 (SP-57b), l'ajouter explicitement ici.
@@ -520,7 +646,7 @@ def get_collection_schema(
     collection_id: str,
     user=Depends(get_current_user_optional),
     guest: GuestActor | None = Depends(get_share_link_actor),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     introspect: Introspector = Depends(get_introspector),
 ):
     can_manage_collections = bool(
@@ -535,6 +661,8 @@ def get_collection_schema(
         raise HTTPException(status_code=404, detail="backing table not found") from exc
     except UnsupportedTable as exc:
         raise HTTPException(status_code=409, detail=exc.reason) from exc
+    if not _may_see_sensitive(session, user):
+        info = hide_sensitive_columns(info, col.sensitive_fields)
     return table_info_to_schema(info, attachment_fields=col.attachment_fields)
 
 
@@ -601,7 +729,7 @@ def patch_collection(
     collection_id: str,
     body: CollectionPatch,
     user=Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     introspect: Introspector = Depends(get_introspector),
 ):
     can_manage_collections = has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
@@ -623,6 +751,15 @@ def patch_collection(
         raise HTTPException(status_code=403, detail="write access required")
     if body.attachmentFields is not None:
         _reject_attachment_field_collisions(session, col, body.attachmentFields, introspect)
+    if (
+        body.sensitiveFields is not None
+        and body.sensitiveFields != col.sensitive_fields
+        and not _may_see_sensitive(session, user)
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="data.view_sensitive or admin.collections.manage required for sensitiveFields",
+        )
     if body.sensitiveFields is not None:
         _reject_invalid_sensitive_fields(session, col, body.sensitiveFields, introspect)
     text_changed = (body.title is not None and body.title != col.title) or (
@@ -681,14 +818,14 @@ def patch_collection(
         can_manage_collections=can_manage_collections,
         collections=[col],
     )[col.id]
-    return _collection_json(col, permissions)
+    return _collection_json(col, permissions, reveal_sensitive=_may_see_sensitive(session, user))
 
 
 @router.delete("/collections/{collection_id}", status_code=204)
 def unregister_collection(
     collection_id: str,
     user=Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     s3=Depends(get_s3_client),
 ):
     can_manage_collections = has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
@@ -755,7 +892,7 @@ def _require_share(session, user, col) -> None:
 def get_sharing(
     collection_id: str,
     user=Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ):
     can_manage_collections = has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
     col = get_readable_collection(
@@ -774,7 +911,7 @@ def put_sharing(
     collection_id: str,
     body: Sharing,
     user=Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ):
     can_manage_collections = has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
     col = get_readable_collection(

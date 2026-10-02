@@ -79,7 +79,7 @@ test.describe("j02 lecteur — recherche, pièces jointes, écriture de données
   });
 
   // j02-003 : une collection créée vide refuse toute entité (tenant_id « requis »).
-  bug("j02-003 : une collection créée vide accepte une première entité via OGC API", async () => {
+  test("j02-003 : une collection créée vide accepte une première entité via OGC API", async () => {
     const s = await getSeed();
     const col = await s.creator.send("POST", "/v1/collections/empty", {
       title: `${s.tag}-vide`,

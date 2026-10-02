@@ -4,7 +4,13 @@ import type { AppConfig, RenderMode, Variable } from "../api/types";
 import { t } from "../i18n";
 import { GridCanvas } from "./GridCanvas";
 import { WidgetHost } from "./WidgetHost";
-import { moveItemAt, breakpointForWidth, type Breakpoint } from "./grid";
+import {
+  duplicateItem,
+  moveItemAt,
+  resizeItemAt,
+  breakpointForWidth,
+  type Breakpoint,
+} from "./grid";
 import { getPages, getPageLayout, setPageLayout } from "./pages";
 import { pruneMessagesForIds } from "./actionMessages";
 import { DataProvider } from "./DataContext";
@@ -130,7 +136,11 @@ export function AppRenderer({
   // (editor page selector, runtime route) or updates this local fallback.
   const pages = useMemo(() => getPages(config), [config]);
   const [internalPageId, setInternalPageId] = useState<string | null>(null);
-  const activePageId = pageId ?? internalPageId ?? pages[0].id;
+  // P10.12/P10.15 : un identifiant de page inconnu (URL périmée, page retirée) retombe
+  // explicitement sur la première page — « Chapitre 1 / N » en story, jamais « 0 / N ».
+  const requestedPageId = pageId ?? internalPageId;
+  const activePageId =
+    requestedPageId && pages.some((p) => p.id === requestedPageId) ? requestedPageId : pages[0].id;
   const activeLayout = getPageLayout(config, activePageId);
 
   function handleNavigate(nextPageId: string) {
@@ -154,6 +164,28 @@ export function AppRenderer({
     if (!onChange) return;
     const items = activeLayout.items.map((it) => (it.id === id ? moveItemAt(it, bp, dx, dy) : it));
     onChange(setPageLayout(config, activePageId, { ...activeLayout, items }));
+  }
+
+  function handleResize(id: string, dw: number, dh: number) {
+    if (!onChange) return;
+    const items = activeLayout.items.map((it) =>
+      it.id === id ? resizeItemAt(it, bp, dw, dh) : it,
+    );
+    onChange(setPageLayout(config, activePageId, { ...activeLayout, items }));
+  }
+
+  function handleDuplicate(id: string) {
+    if (!onChange) return;
+    const src = activeLayout.items.find((it) => it.id === id);
+    if (!src) return;
+    const copy = duplicateItem(src, activeLayout.items);
+    onChange(
+      setPageLayout(config, activePageId, {
+        ...activeLayout,
+        items: [...activeLayout.items, copy],
+      }),
+    );
+    onSelect?.(copy.id);
   }
 
   function handleRemove(id: string) {
@@ -216,6 +248,8 @@ export function AppRenderer({
                     onSelect={(id) => onSelect?.(id)}
                     onMoveItem={handleMove}
                     onRemoveItem={handleRemove}
+                    onResizeItem={handleResize}
+                    onDuplicateItem={handleDuplicate}
                     renderItem={(item) => (
                       <WidgetHost
                         item={item}

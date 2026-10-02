@@ -1,13 +1,23 @@
 # SPDX-License-Identifier: Apache-2.0
+import hashlib
 import uuid
 
-from sqlalchemy import func, select
+from fastapi import HTTPException
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import retry_on_sqlite_row_corruption
 from app.roles.repository import ensure_built_in_roles
 from app.users.models import User
+
+
+def erased_sub(oidc_sub: str) -> str:
+    """Tombstone déterministe (j08-001) : le sub effacé devient le hachage du
+    sub d'origine, que get_or_create_user recalcule pour refuser la recréation
+    du compte au prochain jeton valide (le sub Keycloak est un UUID aléatoire :
+    pas de remontée possible, pas de colonne ni de migration dédiée)."""
+    return "erased:" + hashlib.sha256(oidc_sub.encode()).hexdigest()
 
 
 def get_or_create_user(
@@ -30,6 +40,13 @@ def get_or_create_user(
     )
     just_created = False
     if user is None:
+        tombstone = session.scalar(
+            select(User.id).where(
+                User.tenant_id == tenant_id, User.oidc_sub == erased_sub(oidc_sub)
+            )
+        )
+        if tombstone is not None:
+            raise HTTPException(status_code=403, detail="this account has been erased")
         if bootstrap_admin:
             initial_role = roles["admin"]
         elif bootstrap_analyst:
@@ -104,16 +121,52 @@ def set_user_role(
     return user
 
 
+_USER_SORTS = {"username": User.username, "email": User.email, "createdAt": User.created_at}
+
+
+def search_directory(session: Session, *, tenant_id: str, q: str, limit: int = 20) -> list[User]:
+    """Annuaire minimal pour l'ajout de membre (j13-005) : utilisateurs actifs
+    du tenant dont le nom ou l'e-mail contient `q` (littéralement)."""
+    like = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+    return list(
+        session.scalars(
+            select(User)
+            .where(
+                User.tenant_id == tenant_id,
+                User.erased_at.is_(None),
+                or_(
+                    User.username.ilike(like, escape="\\"),
+                    User.email.ilike(like, escape="\\"),
+                ),
+            )
+            .order_by(User.username)
+            .limit(limit)
+        ).all()
+    )
+
+
 def list_users(
-    session: Session, *, tenant_id: str, page: int, page_size: int, q: str | None = None
+    session: Session,
+    *,
+    tenant_id: str,
+    page: int,
+    page_size: int,
+    q: str | None = None,
+    role_id: str | None = None,
+    sort: str = "username",
+    desc: bool = False,
 ) -> tuple[list[User], int]:
     base = select(User).where(User.tenant_id == tenant_id)
     if q:
-        base = base.where(User.username.ilike(f"%{q}%"))
+        # j08-014 : % _ et \ recherchés littéralement, pas comme jokers.
+        like = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        base = base.where(User.username.ilike(f"%{like}%", escape="\\"))
+    if role_id:
+        base = base.where(User.role_id == role_id)
     total = session.scalar(select(func.count()).select_from(base.subquery()))
+    column = _USER_SORTS[sort]
+    order = [column.desc() if desc else column.asc(), User.id]
     users = list(
-        session.scalars(
-            base.order_by(User.username).offset((page - 1) * page_size).limit(page_size)
-        ).all()
+        session.scalars(base.order_by(*order).offset((page - 1) * page_size).limit(page_size)).all()
     )
     return users, total

@@ -44,7 +44,7 @@ class UsageSnapshotResponse(BaseModel):
 @router.get("/admin/usage", response_model=UsageSnapshotResponse)
 def get_usage(
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     s3=Depends(get_s3_client),
 ) -> UsageSnapshotResponse:
     # SETTINGS_INSTANCE_MANAGE (§1.7 de la spec) : privilège le plus proche

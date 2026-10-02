@@ -247,8 +247,7 @@ test.describe("t02 UI : enregistrement d'une app", () => {
 
   const PUT = (id: string) => `${CORE_URL}/v1/configs/by-item/${id}`;
 
-  // Finding t02-009 : l'éditeur d'app réduit tout échec d'enregistrement à un message générique.
-  bug("t02-009 : un refus 422 du cœur est expliqué à l'utilisateur", async () => {
+  test("t02-009 : un refus 422 du cœur est expliqué à l'utilisateur", async () => {
     await s.page.route(PUT("*"), (r) =>
       r.request().method() === "PUT"
         ? r.fulfill({

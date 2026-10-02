@@ -19,6 +19,8 @@ from app.items.schemas import (
     OwnerFacet,
 )
 from app.items.slug import InvalidSlugError, SlugCollisionError, is_valid_slug, slugify
+from app.roles.kind_registry import privilege_for_kind
+from app.roles.repository import get_role
 from app.search.providers import get_embedding_provider
 from app.search.ranking import hybrid_search_ids
 from app.sharing.authorization import Action, ItemAccessFacts, decide
@@ -78,7 +80,12 @@ def _enqueue_embedding(item_id: str, tenant_id: str) -> None:
 PUBLIC_READ_ONLY = ItemPermissions(read=True, write=False, delete=False, share=False)
 
 
-def _permissions(item: Item, *, current_user_id: str, roles: frozenset[str]) -> ItemPermissions:
+def _permissions(
+    item: Item, *, current_user_id: str, roles: frozenset[str], held: frozenset[str]
+) -> ItemPermissions:
+    # j13-010 : write/delete/share exigent aussi le privilège du kind (comme les
+    # gardes de routes, P14.01) — sinon le shell propose une commande vouée au 403.
+    kind_ok = privilege_for_kind(item.resource_type) in held
     is_owner = item.owner_id == current_user_id
 
     def verdict(action: Action) -> bool:
@@ -96,9 +103,9 @@ def _permissions(item: Item, *, current_user_id: str, roles: frozenset[str]) -> 
 
     return ItemPermissions(
         read=verdict("read"),
-        write=verdict("write"),
-        delete=verdict("delete"),
-        share=verdict("share"),
+        write=kind_ok and verdict("write"),
+        delete=kind_ok and verdict("delete"),
+        share=kind_ok and verdict("share"),
     )
 
 
@@ -117,9 +124,17 @@ def _permissions_by_id(
         user_id=current_user_id,
         item_ids=[item.id for item in items],
     )
+    role_id = session.scalar(
+        select(User.role_id).where(User.id == current_user_id, User.tenant_id == tenant_id)
+    )
+    role = get_role(session, tenant_id=tenant_id, role_id=role_id) if role_id else None
+    held = frozenset(role.privileges) if role is not None else frozenset()
     return {
         item.id: _permissions(
-            item, current_user_id=current_user_id, roles=roles_by_id.get(item.id, frozenset())
+            item,
+            current_user_id=current_user_id,
+            roles=roles_by_id.get(item.id, frozenset()),
+            held=held,
         )
         for item in items
     }
@@ -236,9 +251,14 @@ def get_item(
 
 def get_access_facts(session: Session, *, tenant_id: str, item_id: str) -> ItemAccessFacts | None:
     row = session.execute(
-        select(Item.id, Item.tenant_id, Item.owner_id, Item.is_public, Item.is_published).where(
-            Item.id == item_id, Item.tenant_id == tenant_id
-        )
+        select(
+            Item.id,
+            Item.tenant_id,
+            Item.owner_id,
+            Item.is_public,
+            Item.is_published,
+            Item.resource_type,
+        ).where(Item.id == item_id, Item.tenant_id == tenant_id)
     ).first()
     if row is None:
         return None
@@ -248,6 +268,7 @@ def get_access_facts(session: Session, *, tenant_id: str, item_id: str) -> ItemA
         owner_id=row.owner_id,
         is_public=row.is_public,
         is_published=row.is_published,
+        resource_type=row.resource_type,
     )
 
 
@@ -261,9 +282,14 @@ def get_access_facts_by_ids(
     if not item_ids:
         return {}
     rows = session.execute(
-        select(Item.id, Item.tenant_id, Item.owner_id, Item.is_public, Item.is_published).where(
-            Item.tenant_id == tenant_id, Item.id.in_(item_ids)
-        )
+        select(
+            Item.id,
+            Item.tenant_id,
+            Item.owner_id,
+            Item.is_public,
+            Item.is_published,
+            Item.resource_type,
+        ).where(Item.tenant_id == tenant_id, Item.id.in_(item_ids))
     ).all()
     return {
         row.id: ItemAccessFacts(
@@ -272,6 +298,7 @@ def get_access_facts_by_ids(
             owner_id=row.owner_id,
             is_public=row.is_public,
             is_published=row.is_published,
+            resource_type=row.resource_type,
         )
         for row in rows
     }
@@ -347,6 +374,8 @@ def _visible_items_base_query(
                 shared_exists,
             )
         )
+    else:
+        raise ValueError(f"scope inconnu: {scope!r}")
     return query
 
 
@@ -528,6 +557,10 @@ def get_facets(
     return ItemFacets(owners=owners, keywords=keywords)
 
 
+# Kinds destinés au public : jamais alert/pipeline/report/etc. (config sensible).
+PUBLIC_KINDS = ("site", "app", "dashboard", "map", "dataset")
+
+
 def list_published_items(
     session: Session,
     *,
@@ -544,7 +577,11 @@ def list_published_items(
     query = (
         select(Item, User.username)
         .join(User, User.id == Item.owner_id)
-        .where(Item.tenant_id == tenant_id, Item.is_published.is_(True))
+        .where(
+            Item.tenant_id == tenant_id,
+            Item.is_published.is_(True),
+            Item.resource_type.in_(PUBLIC_KINDS),
+        )
     )
     if resource_type:
         query = query.where(Item.resource_type == resource_type)
@@ -641,7 +678,12 @@ def get_published_item(
     row = session.execute(
         select(Item, User.username)
         .join(User, User.id == Item.owner_id)
-        .where(Item.id == item_id, Item.tenant_id == tenant_id, Item.is_published.is_(True))
+        .where(
+            Item.id == item_id,
+            Item.tenant_id == tenant_id,
+            Item.is_published.is_(True),
+            Item.resource_type.in_(PUBLIC_KINDS),
+        )
     ).first()
     if row is None:
         return None

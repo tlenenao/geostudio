@@ -15,3 +15,35 @@ def test_data_view_sensitive_exists_and_joins_admin_only():
     assert Privilege.DATA_VIEW_SENSITIVE.value in BUILT_IN_ROLE_PRIVILEGES["admin"]
     for role in ("creator", "analyst", "reader"):
         assert Privilege.DATA_VIEW_SENSITIVE.value not in BUILT_IN_ROLE_PRIVILEGES[role]
+
+
+def test_every_privilege_is_enforced_server_side_or_declared_navigation_only_c01_010():
+    """Un privilège catalogué doit garder au moins une route/décision du cœur,
+    ou figurer explicitement dans NAVIGATION_ONLY_PRIVILEGES."""
+    import pathlib
+    import re
+
+    from app.roles.privileges import NAVIGATION_ONLY_PRIVILEGES
+
+    app_dir = pathlib.Path(__file__).parent.parent / "app"
+    source = "\n".join(
+        p.read_text()
+        for p in app_dir.rglob("*.py")
+        if p.name != "privileges.py" or p.parent.name != "roles"
+    )
+    unguarded = {
+        p
+        for p in Privilege
+        if not re.search(rf"Privilege\.{p.name}\b", source) and f'"{p.value}"' not in source
+    }
+    assert unguarded == NAVIGATION_ONLY_PRIVILEGES
+
+
+def test_reader_is_read_only_and_cannot_create_bookmarks_j02_015():
+    """Décision produit explicite (cf. BUILT_IN_ROLE_PRIVILEGES) : un Lecteur ne
+    crée aucune config, bookmark compris ; l'inverse doit être une décision
+    consciente qui met ce test à jour."""
+    from app.roles.kind_registry import privilege_for_kind
+
+    assert BUILT_IN_ROLE_PRIVILEGES["reader"] == []
+    assert privilege_for_kind("bookmark") == Privilege.ANALYTICS_VIEW.value

@@ -376,6 +376,78 @@ describe("VisualQueryWizardPage", () => {
     expect(client.createDatasetItem).not.toHaveBeenCalled();
   });
 
+  test("j05b-001 : un lancement en échec se rattrape sans recréer collection/dataset/pipeline", async () => {
+    const client = renderWizard({
+      runPipeline: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("internal server error"))
+        .mockResolvedValue({ runId: "run-1" }),
+    });
+    await screen.findByRole("option", { name: "Incidents" });
+    await userEvent.selectOptions(screen.getByLabelText("Collection de base"), "incidents");
+    await screen.findByText("Filtrer");
+    await userEvent.click(screen.getByRole("button", { name: "Créer" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("internal server error");
+    await userEvent.click(screen.getByRole("button", { name: "Créer" }));
+
+    await waitFor(() => expect(client.runPipeline).toHaveBeenCalledTimes(2));
+    expect(client.runPipeline).toHaveBeenLastCalledWith("pipeline-1");
+    expect(client.createEmptyCollection).toHaveBeenCalledTimes(1);
+    expect(client.createDatasetItem).toHaveBeenCalledTimes(1);
+    expect(client.createPipelineItem).toHaveBeenCalledTimes(1);
+  });
+
+  test("P01.08 : un schéma modifié après un échec ne réutilise pas l'ancienne collection", async () => {
+    const client = renderWizard({
+      createEmptyCollection: vi
+        .fn()
+        .mockResolvedValueOnce({ id: "query_out_1" })
+        .mockResolvedValue({ id: "query_out_2" }),
+      deleteCollection: vi.fn().mockResolvedValue(undefined),
+      runPipeline: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("internal server error"))
+        .mockResolvedValue({ runId: "run-1" }),
+    });
+    await screen.findByRole("option", { name: "Incidents" });
+    await userEvent.selectOptions(screen.getByLabelText("Collection de base"), "incidents");
+    await screen.findByText("Filtrer");
+    await userEvent.click(screen.getByRole("button", { name: "Créer" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("internal server error");
+    // Ajouter un résumé + une métrique change les colonnes de sortie.
+    await userEvent.click(screen.getByRole("button", { name: "Ajouter un résumé" }));
+    await userEvent.click(screen.getByRole("button", { name: "Ajouter une métrique" }));
+    await userEvent.click(screen.getByRole("button", { name: "Créer" }));
+
+    await waitFor(() => expect(client.runPipeline).toHaveBeenCalledTimes(2));
+    expect(client.createEmptyCollection).toHaveBeenCalledTimes(2);
+    expect(client.deleteCollection).toHaveBeenCalledWith("query_out_1");
+    expect(client.saveDatasetConfig).toHaveBeenLastCalledWith(
+      "dataset-1",
+      expect.objectContaining({ collectionId: "query_out_2" }),
+    );
+    expect(client.createDatasetItem).toHaveBeenCalledTimes(1);
+  });
+
+  test("un échec de liaison dataset→pipeline est rejoué au clic suivant (pas de dataset orphelin)", async () => {
+    const client = renderWizard({
+      saveDatasetConfig: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("boom"))
+        .mockResolvedValue(undefined),
+    });
+    await screen.findByRole("option", { name: "Incidents" });
+    await userEvent.selectOptions(screen.getByLabelText("Collection de base"), "incidents");
+    await screen.findByText("Filtrer");
+    await userEvent.click(screen.getByRole("button", { name: "Créer" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("boom");
+    await userEvent.click(screen.getByRole("button", { name: "Créer" }));
+
+    await waitFor(() => expect(client.runPipeline).toHaveBeenCalledTimes(1));
+    expect(client.saveDatasetConfig).toHaveBeenCalledTimes(2);
+    expect(client.createPipelineItem).toHaveBeenCalledTimes(1);
+  });
+
   test('attend le run par son propre poll (sans clic manuel), même si le premier statut est "running"', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     let call = 0;

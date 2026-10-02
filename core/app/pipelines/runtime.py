@@ -38,13 +38,19 @@ from app.analytics.duckdb_conn import open_connection
 from app.audit.writer import write_audit
 from app.auth.dependency import is_pipeline_file_io_enabled
 from app.collections import repository as collections_repo
-from app.collections.introspection import TableInfo, TableNotFound, UnsupportedTable
+from app.collections.introspection import (
+    TableInfo,
+    TableNotFound,
+    UnsupportedTable,
+    hide_sensitive_columns,
+)
 from app.collections.introspection_pg import introspect_table
 from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig, DatasetPayload, PipelineNode, PipelinePayload
 from app.features.repository import delete_all_features, insert_feature
 from app.features.rls import rls_scope
 from app.features.validation import validate_feature
+from app.ingestion.storage import ensure_uploads_bucket
 from app.items import repository as items_repo
 from app.pipelines import compiler, connector_runtime
 from app.pipelines.errors import PipelineRuntimeError  # noqa: F401 (réexporté pour compatibilité)
@@ -75,7 +81,7 @@ from app.pipelines.ops.schemas import (
     WriterExportParams,
     WriterFileParams,
 )
-from app.roles.guards import require_privilege
+from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
 from app.sharing.authorization import can
 from app.users.models import User
@@ -142,6 +148,29 @@ def _require_readable_collection_id(
     ):
         raise PipelineRuntimeError(f"collection '{collection_id}' not found")
     return collection.table_name
+
+
+def _masked_fields(
+    session: Session, *, tenant_id: str, user: User, collection_id: str
+) -> frozenset[str]:
+    """GAP-22 : champs sensibles que `user` ne peut pas lire — le lac GeoParquet
+    n'a pas de RLS par colonne, donc un reader.collection les laisserait fuiter
+    vers l'aperçu ou un writer."""
+    collection = collections_repo.get_collection(
+        session, tenant_id=tenant_id, collection_id=collection_id
+    )
+    if collection is None or has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value):
+        return frozenset()
+    return frozenset(collection.sensitive_fields)
+
+
+def _readable_table_info(
+    session: Session, *, tenant_id: str, user: User, collection_id: str, table_name: str
+) -> TableInfo:
+    """TableInfo d'une collection lue par un reader/une jointure, sans les
+    colonnes sensibles que `user` ne peut pas lire."""
+    masked = _masked_fields(session, tenant_id=tenant_id, user=user, collection_id=collection_id)
+    return hide_sensitive_columns(_table_info_for_collection(session, table_name), sorted(masked))
 
 
 def _require_writable_collection(
@@ -244,7 +273,9 @@ def _read_collection(
         user=user,
         collection_id=p.collectionId,
     )
-    table_info = _table_info_for_collection(session, table_name)
+    table_info = _readable_table_info(
+        session, tenant_id=tenant_id, user=user, collection_id=p.collectionId, table_name=table_name
+    )
     _materialize_reader(
         conn,
         view_name=view_name,
@@ -627,7 +658,13 @@ def _prepare(
             user=user,
             collection_id=p.withCollectionId,
         )
-        table_info = _table_info_for_collection(session, table_name)
+        table_info = _readable_table_info(
+            session,
+            tenant_id=tenant_id,
+            user=user,
+            collection_id=p.withCollectionId,
+            table_name=table_name,
+        )
         join_view = f"node_{node.id}__join"
         _materialize_reader(
             conn,
@@ -1017,7 +1054,13 @@ def _write_dataset(
 
 
 def _write_export(
-    conn, s3_client, exports_bucket: str, *, node: PipelineNode, view_by_node: dict
+    conn,
+    s3_client,
+    exports_bucket: str,
+    *,
+    node: PipelineNode,
+    view_by_node: dict,
+    tenant_id: str,
 ) -> NodeStat:
     p = WriterExportParams.model_validate(node.params)
     input_view = view_by_node[node.id]
@@ -1055,7 +1098,11 @@ def _write_export(
                 geometry = json.loads(geometry_json) if geometry_json is not None else None
             features.append({"type": "Feature", "properties": properties, "geometry": geometry})
         body = json.dumps({"type": "FeatureCollection", "features": features}).encode("utf-8")
-    s3_client.put_object(Bucket=exports_bucket, Key=p.key, Body=body)
+    # Bucket absent sur un MinIO neuf (j06b-003) ; clé forcée sous le préfixe du
+    # tenant (j06b-004) : un Créateur n'écrase plus renders/… ni l'export d'un autre.
+    # ponytail: préfixe tenant seul, pas par pipeline (run_pipeline ignore l'id du pipeline).
+    ensure_uploads_bucket(s3_client, exports_bucket)
+    s3_client.put_object(Bucket=exports_bucket, Key=f"{tenant_id}/pipelines/{p.key}", Body=body)
     return NodeStat(node.id, node.op, len(rows))
 
 
@@ -1149,7 +1196,12 @@ def run_pipeline(
             if node.op == "writer.export":
                 assert s3_client is not None and exports_bucket is not None
                 stat = writer_fn(
-                    conn, s3_client, exports_bucket, node=node, view_by_node=view_by_node
+                    conn,
+                    s3_client,
+                    exports_bucket,
+                    node=node,
+                    view_by_node=view_by_node,
+                    tenant_id=tenant_id,
                 )
             elif node.op == "writer.file":
                 stat = writer_fn(

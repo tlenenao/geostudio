@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from opentelemetry import metrics
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -53,6 +53,40 @@ class CreateConfigRequest(BaseModel):
 
 class RollbackRequest(BaseModel):
     version: int
+
+
+def _parse_if_match(value: str | None) -> int | None:
+    """`If-Match: "3"` (ou `W/"3"`, ou `3`) = version lue par le client ;
+    absent ou `*` = pas de garde (clients historiques)."""
+    if value is None or value.strip() == "*":
+        return None
+    try:
+        return int(value.strip().removeprefix("W/").strip('"'))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid If-Match version") from None
+
+
+def _update_guarded(
+    session: Session,
+    config_id: str,
+    config: BuilderConfig,
+    *,
+    tenant_id: str,
+    if_match: str | None,
+) -> ConfigRead | None:
+    try:
+        return repo.update_config(
+            session,
+            config_id,
+            config,
+            tenant_id=tenant_id,
+            expected_version=_parse_if_match(if_match),
+        )
+    except repo.StaleConfigVersion as exc:
+        raise HTTPException(
+            status_code=412,
+            detail=f"stale version: the config is now at version {exc.current}",
+        ) from None
 
 
 def _require_access(session: Session, *, user: User, item_id: str, action: str) -> None:
@@ -137,7 +171,7 @@ def _require_kind_matches_existing(existing_kind: str, submitted_kind: str) -> N
 @router.post("/configs", response_model=ConfigRead, status_code=status.HTTP_201_CREATED)
 def create_config(
     request: CreateConfigRequest,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> ConfigRead:
     created = create_config_service(
@@ -169,7 +203,7 @@ def create_config(
 @router.get("/configs/{config_id}", response_model=ConfigRead)
 def get_config(
     config_id: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> ConfigRead:
     result = repo.get_config(session, config_id)
@@ -183,8 +217,9 @@ def get_config(
 def update_config(
     config_id: str,
     config: BuilderConfig,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
+    if_match: str | None = Header(default=None),
 ) -> ConfigRead:
     existing = repo.get_config(session, config_id)
     if existing is None or existing.itemId is None:
@@ -203,7 +238,9 @@ def update_config(
     _validate_tileset3d_payload(session, config, user=user)
     _validate_terrain3d_payload(session, config, user=user)
 
-    result = repo.update_config(session, config_id, config, tenant_id=user.tenant_id)
+    result = _update_guarded(
+        session, config_id, config, tenant_id=user.tenant_id, if_match=if_match
+    )
     if result is None:
         raise HTTPException(status_code=404, detail="config not found")
     write_audit(
@@ -222,7 +259,7 @@ def update_config(
 @router.get("/configs/{config_id}/revisions", response_model=list[RevisionInfo])
 def list_revisions(
     config_id: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> list[RevisionInfo]:
     existing = repo.get_config(session, config_id)
@@ -236,7 +273,7 @@ def list_revisions(
 def rollback_config(
     config_id: str,
     request: RollbackRequest,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> ConfigRead:
     existing = repo.get_config(session, config_id)
@@ -311,7 +348,7 @@ def rollback_config(
 @router.delete("/configs/{config_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_config(
     config_id: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> Response:
     result = repo.get_config(session, config_id)
@@ -325,6 +362,7 @@ def delete_config(
     # Lecteur (0 privilège) à qui une map est partagée en editor détruisait
     # donc une map qu'il n'a pas le droit d'éditer.
     _require_privilege_for_kind(session, user, result.config)
+    _require_no_reverse_references(session, tenant_id=user.tenant_id, item_id=result.itemId)
 
     _delete_config_and_item(session, config_id, result.itemId, user.tenant_id)
     write_audit(
@@ -354,7 +392,7 @@ def delete_config(
 def get_config_by_item(
     item_id: str,
     mode: str | None = None,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User | None = Depends(get_current_user_optional),
     guest: GuestActor | None = Depends(get_share_link_actor),
 ) -> ConfigRead:
@@ -398,8 +436,9 @@ def get_config_by_item(
 def update_config_by_item(
     item_id: str,
     config: BuilderConfig,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
+    if_match: str | None = Header(default=None),
 ) -> ConfigRead:
     _require_access(session, user=user, item_id=item_id, action="write")
     existing = repo.get_config_by_item(session, item_id)
@@ -417,7 +456,9 @@ def update_config_by_item(
     _validate_report_payload(session, config, user=user)
     _validate_tileset3d_payload(session, config, user=user)
     _validate_terrain3d_payload(session, config, user=user)
-    result = repo.update_config(session, existing.id, config, tenant_id=user.tenant_id)
+    result = _update_guarded(
+        session, existing.id, config, tenant_id=user.tenant_id, if_match=if_match
+    )
     if result is None:
         raise HTTPException(status_code=404, detail="config not found")
     write_audit(
@@ -436,7 +477,7 @@ def update_config_by_item(
 @router.delete("/configs/by-item/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_config_by_item(
     item_id: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> Response:
     _require_access(session, user=user, item_id=item_id, action="delete")
@@ -474,7 +515,7 @@ def delete_config_by_item(
 @router.delete("/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_item(
     item_id: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> Response:
     # Lives here, not in app/items/routes.py: deleting an item must also clear

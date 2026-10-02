@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
+import { ApiError } from "../api/ApiError";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import * as ToastPrimitive from "@radix-ui/react-toast";
 import { useState } from "react";
 import { createMemoryRouter, Link, RouterProvider, useSearchParams } from "react-router-dom";
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { AppConfig, Item, ItemClient } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { OWNER_PERMISSIONS, READ_ONLY_PERMISSIONS } from "../auth/permissions";
@@ -179,6 +180,38 @@ test("adds a widget from the palette and saves the config", async () => {
   const saved = saveAppConfig.mock.calls[0][1] as AppConfig;
   expect(saved.layout.items).toHaveLength(1);
   expect(saved.layout.items[0].widget).toBe("text");
+});
+
+test("sends the loaded version on save and keeps the one returned (P09.05)", async () => {
+  const saveAppConfig = vi.fn().mockResolvedValueOnce(4).mockResolvedValueOnce(5);
+  renderPage({
+    getAppConfig: vi.fn().mockResolvedValue({ ...config, baseVersion: 3 }),
+    saveAppConfig,
+  });
+  await screen.findByRole("button", { name: "Texte" });
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveAppConfig).toHaveBeenCalledTimes(1));
+  expect((saveAppConfig.mock.calls[0][1] as AppConfig).baseVersion).toBe(3);
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveAppConfig).toHaveBeenCalledTimes(2));
+  expect((saveAppConfig.mock.calls[1][1] as AppConfig).baseVersion).toBe(4);
+});
+
+test("shows a conflict message and reloads the latest version on a 412 (P09.05)", async () => {
+  const saveAppConfig = vi.fn().mockRejectedValue(new ApiError(412, { detail: "stale" }));
+  const getAppConfig = vi
+    .fn()
+    .mockResolvedValueOnce({ ...config, baseVersion: 1 })
+    .mockResolvedValue({ ...config, baseVersion: 7 });
+  renderPage({ getAppConfig, saveAppConfig });
+  await screen.findByRole("button", { name: "Texte" });
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await screen.findByText(t("appBuilder.conflict"));
+  await userEvent.click(screen.getByRole("button", { name: t("appBuilder.conflictReload") }));
+  await waitFor(() => expect(screen.queryByText(t("appBuilder.conflict"))).toBeNull());
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveAppConfig).toHaveBeenCalledTimes(2));
+  expect((saveAppConfig.mock.calls[1][1] as AppConfig).baseVersion).toBe(7);
 });
 
 test("toggles interactions on and saves it with the app config", async () => {
@@ -367,7 +400,7 @@ test("adds a variable and wires a Filtre action to it, then persists both", asyn
   await userEvent.selectOptions(screen.getByLabelText("Événement"), "changed");
   await userEvent.selectOptions(
     targetSelect,
-    within(targetSelect).getByRole("option", { name: "Variable : Variable 1" }),
+    within(targetSelect).getByRole("option", { name: "Variable : variable_1" }),
   );
   await userEvent.selectOptions(screen.getByLabelText("Action"), "set");
   await userEvent.click(screen.getByRole("button", { name: "Ajouter une action" }));
@@ -614,6 +647,38 @@ test("Backspace with a widget selected removes it, ignored while typing", async 
   expect(screen.queryByRole("button", { name: "Sélectionner widget-w1" })).not.toBeInTheDocument();
 });
 
+describe("raccourcis de suppression (P10.03/05)", () => {
+  const withItem: AppConfig = {
+    kind: "app",
+    theme: {},
+    dataSources: [],
+    messages: [],
+    layout: {
+      type: "grid",
+      breakpoints: {},
+      items: [{ id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Hi" } }],
+    },
+  };
+
+  test("Retour arrière dans un select du panneau ne supprime pas le widget", async () => {
+    renderPage({ getAppConfig: vi.fn().mockResolvedValue(withItem) });
+    await userEvent.click(await screen.findByRole("button", { name: "Sélectionner widget-w1" }));
+    screen.getByLabelText("Widget émetteur").focus();
+    await userEvent.keyboard("{Backspace}");
+    expect(screen.getByRole("button", { name: "Sélectionner widget-w1" })).toBeInTheDocument();
+  });
+
+  test("Suppr en mode Aperçu ne supprime pas le widget resté sélectionné", async () => {
+    renderPage({ getAppConfig: vi.fn().mockResolvedValue(withItem) });
+    await userEvent.click(await screen.findByRole("button", { name: "Sélectionner widget-w1" }));
+    await userEvent.click(screen.getByRole("button", { name: "Aperçu" }));
+    document.body.focus();
+    await userEvent.keyboard("{Delete}");
+    await userEvent.click(screen.getByRole("button", { name: "Édition" }));
+    expect(screen.getByRole("button", { name: "Sélectionner widget-w1" })).toBeInTheDocument();
+  });
+});
+
 test("removing a widget prunes any ActionsPanel message wired to it", async () => {
   // La disparition visuelle de la ligne dans ActionsPanel ne prouve rien à
   // elle seule : `resolvesOnThisPage` (ActionsPanel.tsx) masque déjà tout
@@ -651,6 +716,66 @@ test("removing a widget prunes any ActionsPanel message wired to it", async () =
   await waitFor(() => expect(saveAppConfig).toHaveBeenCalled());
   const saved = saveAppConfig.mock.calls[0][1] as AppConfig;
   expect(saved.messages).toEqual([]);
+});
+
+test.each([
+  [new ApiError(400, { detail: "configuration invalide : widget w1" }), "configuration invalide"],
+  [new ApiError(429, { detail: "Trop de requêtes.", retryAfter: 12 }), "Réessayez dans 12 s."],
+  [new Error("boom"), "Échec de l'enregistrement."],
+])("un échec d'enregistrement affiche le message du cœur (P10.14)", async (error, expected) => {
+  const cfg: AppConfig = {
+    kind: "app",
+    theme: {},
+    dataSources: [],
+    messages: [],
+    layout: { type: "grid", breakpoints: {}, items: [] },
+  };
+  renderPage({
+    getAppConfig: vi.fn().mockResolvedValue(cfg),
+    saveAppConfig: vi.fn().mockRejectedValue(error),
+  });
+  await userEvent.click(await screen.findByRole("button", { name: "Enregistrer" }));
+  expect(await screen.findByText(new RegExp(expected))).toBeInTheDocument();
+});
+
+test("removing a page prunes messages wired to its widgets after confirmation (P10.07)", async () => {
+  const gridOf = (items: AppConfig["layout"]["items"]) => ({
+    type: "grid" as const,
+    breakpoints: {},
+    items,
+  });
+  const page2Items = [
+    { id: "f2", widget: "filter", x: 0, y: 0, w: 4, h: 2, props: {} },
+    { id: "t2", widget: "text", x: 4, y: 0, w: 4, h: 2, props: { text: "T" } },
+  ];
+  const withPages: AppConfig = {
+    kind: "app",
+    theme: {},
+    dataSources: [],
+    variables: [{ id: "v1", name: "v", type: "string", initialValue: "" }],
+    messages: [{ id: "m1", from: "f2", event: "changed", to: "var:v1", action: "set" }],
+    pages: [
+      { id: "p1", name: "P1", layout: gridOf([]), onEnter: [] },
+      { id: "p2", name: "P2", layout: gridOf(page2Items), onEnter: [] },
+    ],
+    layout: gridOf([]),
+  };
+  const saveAppConfig = vi.fn().mockResolvedValue(undefined);
+  renderPage({ getAppConfig: vi.fn().mockResolvedValue(withPages), saveAppConfig });
+
+  await userEvent.click(await screen.findByRole("button", { name: "Retirer la page p2" }));
+  // Rien n'est retiré avant la confirmation.
+  expect(
+    screen.getByRole("button", { name: "Ouvrir la page p2", hidden: true }),
+  ).toBeInTheDocument();
+  await userEvent.click(
+    within(await screen.findByRole("dialog")).getByRole("button", { name: "Supprimer" }),
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveAppConfig).toHaveBeenCalled());
+  const saved = saveAppConfig.mock.calls[0][1] as AppConfig;
+  expect(saved.messages).toEqual([]);
+  expect(saved.pages).toHaveLength(1);
 });
 
 test("removing a variable prunes any ActionsPanel message wired to it", async () => {

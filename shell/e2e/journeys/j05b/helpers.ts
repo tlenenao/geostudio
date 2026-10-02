@@ -113,11 +113,7 @@ export interface WizardResult {
 
 // Clique « Créer », constate le 500 d'AppNotOpen (j06b-001), puis défère le run depuis le worker
 // (contournement des agents précédents) et attend sa fin.
-export async function submitWizard(
-  page: Page,
-  title: string,
-  { patch = true }: { patch?: boolean } = {},
-): Promise<WizardResult> {
+export async function submitWizard(page: Page, title: string): Promise<WizardResult> {
   const creator = await apiFor("creator");
   const resp = page.waitForResponse(
     (r) => /\/v1\/pipelines\/[0-9a-f]+\/run$/.test(r.url()) && r.request().method() === "POST",
@@ -134,10 +130,6 @@ export async function submitWizard(
   const outCollection = psql(
     `SELECT id FROM collections WHERE title='${title} (données)' ORDER BY created_at DESC LIMIT 1`,
   ).trim();
-  // Contournement de j02-003 : la table de sortie (POST /collections/empty) exige tenant_id côté
-  // validate_feature ; un DEFAULT la rend non « required » et laisse le writer écrire.
-  if (patch)
-    psql(`ALTER TABLE ${tableOf(outCollection)} ALTER COLUMN tenant_id SET DEFAULT 'default'`);
   if (r.status() !== 202) deferRun(runId);
   const run = await waitRun(creator, pipelineItem, runId);
   const datasetItem = psql(

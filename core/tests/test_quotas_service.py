@@ -296,3 +296,14 @@ def test_check_storage_quota_or_raise_allows_when_under_limit(env, monkeypatch):
     monkeypatch.setenv("CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT", "1000")
     s3 = _FakeS3Client({})
     check_storage_quota_or_raise(session, s3, tenant_id=tenant_a, additional_bytes=999)
+
+
+def test_count_users_for_tenant_excludes_erased_accounts_j08_013(env):
+    from datetime import UTC, datetime
+
+    from app.users.models import User
+
+    session, tenant_a, _tenant_b, user_a, _user_b = env
+    session.get(User, user_a).erased_at = datetime.now(UTC)
+    session.flush()
+    assert count_users_for_tenant(session, tenant_a) == 0

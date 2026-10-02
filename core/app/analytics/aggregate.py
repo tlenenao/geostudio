@@ -398,6 +398,31 @@ def _has_seq_column(conn: duckdb.DuckDBPyConnection, glob: str, *, union_by_name
     return any(c[0] == "_seq" for c in cols)
 
 
+# Nom canonique de la colonne géométrie dans les GeoParquet du lac (celui
+# qu'écrit app.cdc.parquet_writer via GeoDataFrame). Les lecteurs raisonnent
+# en table_info.geometry_column (`geom` pour une collection importée) :
+# lake_geometry_rename() fait le pont, UN seul endroit (RC-5).
+LAKE_GEOMETRY_COLUMN = "geometry"
+
+
+def lake_geometry_rename(table_info: TableInfo) -> str | None:
+    """Clause DuckDB `"geometry" AS "<geometry_column>"` à poser dans
+    `SELECT * RENAME (...)` sur un read_parquet du lac, ou None si rien à
+    renommer (pas de géométrie, ou déjà nommée `geometry`)."""
+    geom = table_info.geometry_column
+    if not geom or geom == LAKE_GEOMETRY_COLUMN:
+        return None
+    return f"{_qi(LAKE_GEOMETRY_COLUMN)} AS {_qi(geom)}"
+
+
+def _has_lake_geometry(conn: duckdb.DuckDBPyConnection, glob: str) -> bool:
+    cols = conn.execute(
+        f"SELECT * FROM read_parquet({_sql_lit(glob)}, hive_partitioning=true, "
+        f"union_by_name=true) LIMIT 0"
+    ).description
+    return any(c[0] == LAKE_GEOMETRY_COLUMN for c in cols)
+
+
 def _dedup_cte(
     conn: duckdb.DuckDBPyConnection,
     table_info: TableInfo,
@@ -423,9 +448,14 @@ def _dedup_cte(
     # référencer une colonne qui n'existe nulle part (échouerait à la liaison).
     has_seq = _has_seq_column(conn, glob, union_by_name=True)
     order_by = "_lsn DESC, COALESCE(_seq, -1) DESC" if has_seq else "_lsn DESC"
+    # Les Parquet portent `geometry` ; le reste du code lit geometry_column
+    # (`geom` si importée) : renommé ici, donc `live` parle partout le nom de
+    # la table. Parquet déjà au nom de la table (ou sans géométrie) : intact.
+    rename = lake_geometry_rename(table_info)
+    star = f"* RENAME ({rename})" if rename and _has_lake_geometry(conn, glob) else "*"
     return (
-        f"WITH raw AS (SELECT * FROM read_parquet({_sql_lit(glob)}, hive_partitioning=true, "
-        f"union_by_name=true)), "
+        f"WITH raw AS (SELECT {star} FROM read_parquet({_sql_lit(glob)}, "
+        f"hive_partitioning=true, union_by_name=true)), "
         f"current AS (SELECT * FROM raw QUALIFY row_number() OVER "
         f"(PARTITION BY {pk} ORDER BY {order_by}) = 1), "
         f"live AS (SELECT * FROM current WHERE _op != 'delete')"

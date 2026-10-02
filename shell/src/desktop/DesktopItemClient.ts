@@ -237,6 +237,21 @@ export function createDesktopItemClient(connection: {
     async addGroupMember(..._args: unknown[]) {
       return unsupported();
     },
+    async listGroupMembers(..._args: unknown[]) {
+      return unsupported();
+    },
+    async removeGroupMember(..._args: unknown[]) {
+      return unsupported();
+    },
+    async renameGroup(..._args: unknown[]) {
+      return unsupported();
+    },
+    async deleteGroup(..._args: unknown[]) {
+      return unsupported();
+    },
+    async searchUserDirectory(..._args: unknown[]) {
+      return unsupported();
+    },
     async getSharing(..._args: unknown[]) {
       return unsupported();
     },
@@ -280,6 +295,12 @@ export function createDesktopItemClient(connection: {
       return unsupported();
     },
     async setExtensionEnabled(..._args: unknown[]) {
+      return unsupported();
+    },
+    async createExtension(..._args: unknown[]) {
+      return unsupported();
+    },
+    async deleteExtension(..._args: unknown[]) {
       return unsupported();
     },
     async getMetadataCatalog(..._args: unknown[]) {

@@ -3,7 +3,7 @@ import logging
 import uuid
 
 from botocore.exceptions import ClientError
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.orm import Session
 
 from app.attachments.models import Attachment
@@ -72,11 +72,18 @@ def get_attachment(
     )
 
 
-def _delete_s3_object_best_effort(s3_client, bucket: str, key: str) -> None:
-    try:
-        s3_client.delete_object(Bucket=bucket, Key=key)
-    except ClientError:
-        logger.warning("attachment %s: objet S3 non supprimé", key, exc_info=True)
+def _delete_s3_object_best_effort(session: Session, s3_client, bucket: str, key: str) -> None:
+    """Suppression S3 APRÈS le commit de la ligne (c02-011) : un commit raté ou un
+    rollback ne laisse plus une ligne pointant sur un objet disparu. Au pire un
+    objet orphelin (crash entre commit et suppression), jamais une pièce jointe cassée."""
+
+    def _purge(_session: Session) -> None:
+        try:
+            s3_client.delete_object(Bucket=bucket, Key=key)
+        except ClientError:
+            logger.warning("attachment %s: objet S3 non supprimé", key, exc_info=True)
+
+    event.listen(session, "after_commit", _purge, once=True)
 
 
 def delete_attachment(
@@ -98,7 +105,7 @@ def delete_attachment(
     )
     if attachment is None:
         return False
-    _delete_s3_object_best_effort(s3_client, bucket, attachment.s3_key)
+    _delete_s3_object_best_effort(session, s3_client, bucket, attachment.s3_key)
     session.delete(attachment)
     session.flush()
     return True
@@ -109,7 +116,7 @@ def delete_all_for_feature(
 ) -> None:
     rows = list_attachments(session, tenant_id=tenant_id, collection_id=collection_id, fid=fid)
     for attachment in rows:
-        _delete_s3_object_best_effort(s3_client, bucket, attachment.s3_key)
+        _delete_s3_object_best_effort(session, s3_client, bucket, attachment.s3_key)
         session.delete(attachment)
     session.flush()
 
@@ -130,6 +137,6 @@ def delete_all_for_collection(
         ).all()
     )
     for attachment in rows:
-        _delete_s3_object_best_effort(s3_client, bucket, attachment.s3_key)
+        _delete_s3_object_best_effort(session, s3_client, bucket, attachment.s3_key)
         session.delete(attachment)
     session.flush()

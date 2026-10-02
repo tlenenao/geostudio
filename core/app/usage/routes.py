@@ -6,6 +6,7 @@ soi-même ; tasks.view_all lève cette restriction."""
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.dependency import get_current_user
@@ -31,7 +32,7 @@ def list_usage_tasks(
     pageSize: int = 50,
     actorId: str | None = None,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> UsageTaskPage:
     require_any_privilege(
         session, user, [Privilege.TASKS_VIEW.value, Privilege.TASKS_VIEW_ALL.value]
@@ -48,11 +49,25 @@ def list_usage_tasks(
         page=page,
         page_size=min(pageSize, 200),
     )
+    # j08-012 : une seule requête pour les noms d'acteurs de la page.
+    actor_ids = {r.actor_id for r in rows if r.actor_id}
+    names = (
+        dict(
+            session.execute(
+                select(User.id, User.username).where(
+                    User.tenant_id == user.tenant_id, User.id.in_(actor_ids)
+                )
+            ).all()
+        )
+        if actor_ids
+        else {}
+    )
     return UsageTaskPage(
         tasks=[
             UsageTaskRead(
                 id=r.id,
                 actorId=r.actor_id,
+                actorUsername=names.get(r.actor_id) if r.actor_id else None,
                 action=r.action,
                 objectType=r.object_type,
                 objectId=r.object_id,
@@ -72,7 +87,7 @@ def get_usage_summary(
     until: str | None = None,
     limit: int = 10,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> UsageSummaryRead:
     require_privilege(session, user, Privilege.TASKS_VIEW_ALL.value)
     until_dt = datetime.fromisoformat(until) if until else datetime.now(UTC)

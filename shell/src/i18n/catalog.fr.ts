@@ -52,6 +52,8 @@ export const fr = {
   // tableau de bord de supervision temps réel des jobs (SP-47 §7)
   "usage.detail": "Détail",
   "usage.myTasks": "Mes tâches récentes",
+  "usage.tenantTasks": "Tâches du tenant",
+  "usage.columnActor": "Utilisateur",
   "usage.noTasks": "Aucune tâche récente.",
   "usage.columnAction": "Action",
   "usage.columnResource": "Ressource",
@@ -106,6 +108,8 @@ export const fr = {
   "catalog.ownerLabel": "Propriétaire",
   "catalog.keywordsLabel": "Mots-clés",
   "catalog.spatialSearchLabel": "Recherche spatiale",
+  "catalog.spatialShow": "Afficher la carte",
+  "catalog.spatialHide": "Masquer la carte",
   "catalog.loadError": "Erreur de chargement.",
   "catalog.emptyFilteredDescription": "Aucun élément ne correspond à ces filtres.",
   "catalog.emptyFilteredTitle": "Aucun résultat",
@@ -241,6 +245,22 @@ export const fr = {
   "extensions.columnActive": "Actif",
   "extensions.activeAria": "Actif : {label}",
   "extensions.detail": "Détail",
+  "extensions.emptyTitle": "Aucune extension enregistrée.",
+  "extensions.emptyDescription": "Enregistrez un widget tiers avec le formulaire ci-dessous.",
+  "extensions.registerTitle": "Enregistrer une extension",
+  "extensions.fieldId": "Identifiant",
+  "extensions.fieldTag": "Balise",
+  "extensions.fieldLabel": "Étiquette",
+  "extensions.fieldModuleUrl": "URL du module (https)",
+  "extensions.registerButton": "Enregistrer",
+  "extensions.registerError": "Échec de l'enregistrement de l'extension.",
+  "extensions.columnActions": "Actions",
+  "extensions.deleteButton": "Supprimer",
+  "extensions.deleteAria": "Supprimer : {label}",
+  "extensions.deleteTitle": "Supprimer l'extension",
+  "extensions.deleteMessage":
+    "L'extension « {label} » sera retirée du catalogue. Les apps qui l'utilisent ne l'afficheront plus.",
+  "extensions.deleteError": "Échec de la suppression de l'extension.",
 
   // Motif de navigation partagé (lien de retour au catalogue depuis un écran
   // d'administration/édition en triptyque) — réutilisé par plusieurs pages.
@@ -309,6 +329,7 @@ export const fr = {
   // génériques de données répétés à l'identique par presque tous les widgets.
   "common.dataError": "Erreur de données",
   "common.noData": "Aucune donnée",
+  "common.sourceMissing": "Source de données introuvable",
 
   // AppBuilderPage
   "appBuilder.notFound": "Application introuvable.",
@@ -339,6 +360,9 @@ export const fr = {
   "appBuilder.exportStandaloneLabel": "Export standalone",
   "appBuilder.copilotLabel": "Copilote",
   "appBuilder.save": "Enregistrer",
+  "appBuilder.conflict":
+    "Cette application a été modifiée ailleurs depuis votre ouverture : votre enregistrement a été refusé pour ne pas écraser ces changements.",
+  "appBuilder.conflictReload": "Recharger la dernière version",
   "appBuilder.expressionErrorAria": "Erreur de condition d'affichage",
 
   // Motif partagé : bouton d'enregistrement générique.
@@ -395,6 +419,11 @@ export const fr = {
   "compliance.eraseButton": "Anonymiser ce compte",
   "compliance.eraseSuccess": "Compte anonymisé.",
   "compliance.eraseError": "Échec de l'anonymisation.",
+  "compliance.eraseNotFound": "Utilisateur introuvable dans ce tenant.",
+  "compliance.eraseAlreadyErased": "Ce compte est déjà anonymisé.",
+  "compliance.eraseLastHolder":
+    "Impossible : ce compte est le dernier titulaire d'un privilège de gestion des utilisateurs ou des rôles.",
+  "compliance.eraseForbidden": "Droits insuffisants pour anonymiser ce compte.",
   "compliance.purgeRequestError": "Échec du déclenchement de la purge.",
   "compliance.purgeSectionTitle": "Purger toutes les données du tenant",
   "compliance.purgeWarningBefore": "Supprime",
@@ -575,6 +604,13 @@ export const fr = {
   "usersAdmin.roleColumn": "Rôle",
   "usersAdmin.roleAria": "Rôle de {username}",
   "usersAdmin.detail": "Détail",
+  "usersAdmin.actionsColumn": "Actions",
+  "usersAdmin.eraseButton": "Anonymiser",
+  "usersAdmin.eraseAria": "Anonymiser {username}",
+  "usersAdmin.erasedBadge": "Compte anonymisé",
+  "usersAdmin.eraseConfirmTitle": "Anonymiser le compte",
+  "usersAdmin.eraseConfirmMessage":
+    "Anonymiser définitivement le compte « {username} » ? Son nom, son e-mail et son identité de connexion seront effacés ; cette action est irréversible.",
   "usersAdmin.demotionProtectionText":
     "Le dernier titulaire de la gestion des rôles et des utilisateurs ne peut pas être rétrogradé : la tentative échoue pour préserver au moins un compte capable d'administrer le tenant.",
   "usersAdmin.empty": "Aucun utilisateur ne correspond à cette recherche",
@@ -608,7 +644,7 @@ export const fr = {
   "visualQuery.pipelineTitleTemplate": "Requête — {title}",
 
   // Partage — motif partagé entre CollectionSharePanel et ShareForm (item)
-  "sharePanel.publicLabel": "Public (visible par tous)",
+  "sharePanel.publicLabel": "Visible par tous les membres de l'organisation",
   "sharePanel.groupAria": "Groupe {group}",
   "sharePanel.roleAria": "Rôle {group}",
   "sharePanel.roleViewer": "Lecteur",
@@ -626,8 +662,32 @@ export const fr = {
   "shareForm.newGroupNameLabel": "Nom du nouveau groupe",
   "shareForm.createGroupButton": "Créer le groupe",
   "shareForm.createGroupFailed": "Échec de la création du groupe.",
-  "shareForm.memberIdAria": "Identifiant utilisateur ({group})",
-  "shareForm.memberIdPlaceholder": "Identifiant utilisateur (UUID)",
+  "shareForm.memberSearchAria": "Rechercher un membre ({group})",
+  "shareForm.memberSearchPlaceholder": "Nom ou e-mail (2 caractères minimum)",
+  "shareForm.memberSearchEmpty": "Aucun utilisateur trouvé.",
+  "shareForm.membersTitle": "Membres de {group}",
+  "shareForm.membersEmpty": "Aucun membre.",
+  "shareForm.removeMemberButton": "Retirer {user} de {group}",
+  "shareForm.renameGroupAria": "Nouveau nom du groupe {group}",
+  "shareForm.renameGroupButton": "Renommer {group}",
+  "shareForm.deleteGroupButton": "Supprimer le groupe {group}",
+  "shareForm.deleteGroupTitle": "Supprimer le groupe",
+  "shareForm.deleteGroupMessage":
+    "Supprimer le groupe « {group} » retire l'accès de ses membres à tout ce qui est partagé avec lui.",
+  "shareForm.groupActionFailed": "Échec de l'opération sur le groupe.",
+  "shareForm.publishedYes":
+    "Publié sur le web (accessible sans compte). Menu ⋯ → Dépublier pour retirer.",
+  "shareForm.publishedNo":
+    "Non publié sur le web : seuls les comptes de l'organisation peuvent voir cet élément. Menu ⋯ → Publier pour l'ouvrir aux anonymes.",
+  "shareForm.unsharedSource": "Les données « {collection} » ne sont pas partagées avec : {groups}.",
+  "shareForm.shareSourceButton": "Partager les données « {collection} » avec ces groupes",
+  "shareForm.shareSourceFailed": "Échec du partage des données.",
+  "publish.title": "Publier",
+  "publish.privateCollections":
+    "Cet élément lit des collections qui ne sont pas publiques : un visiteur anonyme verrait l'élément sans ses données.",
+  "publish.itemOnly": "Publier sans les collections",
+  "publish.withCollections": "Publier aussi les collections",
+  "publish.collectionsFailed": "Échec de la publication des collections.",
   "shareForm.addMemberButton": "Ajouter un membre ({group})",
   "shareForm.addMemberFailedGeneric": "Échec de l'ajout du membre.",
   "shareForm.linksTitle": "Liens à échéance",
@@ -635,7 +695,9 @@ export const fr = {
   "shareForm.linkStatusRevoked": "révoqué",
   "shareForm.linkStatusExpired": "expiré",
   "shareForm.linkStatusActive": "actif",
-  "shareForm.linkSummaryTemplate": "{id} — {status} (échéance {expiresAt})",
+  "shareForm.linkSummaryTemplate":
+    "Créé le {createdAt} par {createdBy} — {status} (échéance {expiresAt})",
+  "shareForm.inactiveLinks": "Liens inactifs ({count})",
   "shareForm.revokeButton": "Révoquer",
   "shareForm.ttlAria": "Durée du lien (jours)",
   "shareForm.ttlUnit": "jour(s)",
@@ -771,6 +833,9 @@ export const fr = {
   // d'ouverture d'item (distinct de locked.* : garde de route entière, pas
   // une action sur un item déjà ouvert)
   "routes.analystOnly": "Accès réservé aux analystes.",
+  "routes.automationOnly": "Accès réservé à l'automatisation (privilège automation.manage requis).",
+  "routes.visualQueryOnly":
+    "La requête visuelle produit un dataset : elle exige les privilèges automation.manage et data.manage.",
   "routes.adminOnly": "Accès réservé aux administrateurs.",
   "routes.rolesOnly": "Accès réservé à la gestion des rôles.",
   "routes.usersOnly": "Accès réservé à la gestion des utilisateurs.",
@@ -1149,6 +1214,7 @@ export const fr = {
   "copilot.requestFailed": "Échec de la requête au copilote.",
   "copilot.messageAria": "Message au copilote",
   "copilot.send": "Envoyer",
+  "copilot.pastExchanges": "Échanges précédents ({count})",
 
   // PipelineCanvas (builder/pipeline)
   "pipelineCanvas.runningAria": "Exécution en cours",
@@ -1579,6 +1645,9 @@ export const fr = {
   "pageManager.moveUpAria": "Monter la page {id}",
   "pageManager.moveDownAria": "Descendre la page {id}",
   "pageManager.removeAria": "Retirer la page {id}",
+  "pageManager.removeTitle": "Retirer la page",
+  "pageManager.removeMessage":
+    "Retirer la page « {name} » et ses widgets ? Les actions câblées vers eux seront aussi supprimées.",
   "pageManager.addButton": "Ajouter une page",
 
   // PropsPanel (builder)
@@ -1624,6 +1693,9 @@ export const fr = {
   "variablesPanel.initialValueAria": "Valeur initiale de la variable {id}",
   "variablesPanel.definedByWiring": "Définie par câblage d'action",
   "variablesPanel.removeAria": "Retirer la variable {id}",
+  "variablesPanel.nameEmpty": "Le nom ne peut pas être vide.",
+  "variablesPanel.nameInvalid": "Lettres, chiffres et _ uniquement, sans commencer par un chiffre.",
+  "variablesPanel.nameDuplicate": "Une autre variable porte déjà ce nom.",
   "variablesPanel.addButton": "Ajouter une variable",
 
   // WidgetHost (builder)

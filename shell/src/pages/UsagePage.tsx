@@ -70,6 +70,9 @@ export function UsagePage() {
         case "resource":
           cmp = `${a.objectType}/${a.objectId}`.localeCompare(`${b.objectType}/${b.objectId}`);
           break;
+        case "actor":
+          cmp = (a.actorUsername ?? "").localeCompare(b.actorUsername ?? "");
+          break;
         case "date":
           cmp = a.createdAt.localeCompare(b.createdAt);
           break;
@@ -100,7 +103,9 @@ export function UsagePage() {
           content: (
             <div className="flex h-full flex-col gap-6 overflow-y-auto p-4">
               <section className="flex flex-col gap-3">
-                <h1 className="text-lg font-bold text-ink">{t("usage.myTasks")}</h1>
+                <h1 className="text-lg font-bold text-ink">
+                  {sameTenantAll ? t("usage.tenantTasks") : t("usage.myTasks")}
+                </h1>
                 {tasksQuery.isLoading && <p role="status">{t("common.loading")}</p>}
                 {tasksQuery.isError && (
                   <p role="alert" className="text-sm text-danger">
@@ -114,6 +119,16 @@ export function UsagePage() {
                   <>
                     <DataTable
                       columns={[
+                        ...(sameTenantAll
+                          ? [
+                              {
+                                key: "actor",
+                                label: t("usage.columnActor"),
+                                render: (task: UsageTask) =>
+                                  task.actorUsername ?? task.actorId ?? "—",
+                              },
+                            ]
+                          : []),
                         {
                           key: "action",
                           label: t("usage.columnAction"),

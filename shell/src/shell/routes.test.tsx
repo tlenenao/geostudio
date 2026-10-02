@@ -597,3 +597,48 @@ test("a failed bookmark config fetch surfaces an error instead of silently doing
   expect(screen.getByText("Ma vue")).toBeInTheDocument();
   expect(screen.queryByText(/^app-runtime-/)).not.toBeInTheDocument();
 });
+
+function meWith(privileges: string[]) {
+  server.use(
+    http.get("https://core.test/v1/me", () =>
+      HttpResponse.json({
+        id: "u1",
+        username: "alice",
+        firstName: "Alice",
+        lastName: "Martin",
+        email: "alice@example.com",
+        tenantId: "t1",
+        role: { id: "role-x", name: "Sur mesure", slug: "x" },
+        privileges,
+        version: "0.1.0",
+        tenantSlug: "demo",
+      }),
+    ),
+  );
+}
+
+test("/pipelines/new is refused without automation.manage (j05-022, j06-013)", async () => {
+  meWith([]);
+  wrap(<AppRoutes />, "/pipelines/new");
+  expect(await screen.findByRole("alert")).toHaveTextContent(/automation\.manage/);
+  expect(screen.queryByText("pipeline-builder-")).not.toBeInTheDocument();
+});
+
+test("/pipelines/new opens the editor with automation.manage", async () => {
+  meWith(["automation.manage"]);
+  wrap(<AppRoutes />, "/pipelines/new");
+  expect(await screen.findByText("pipeline-builder-")).toBeInTheDocument();
+});
+
+test("/datasets/visual-query/new needs automation.manage and data.manage (j05b-009)", async () => {
+  meWith(["automation.manage"]);
+  wrap(<AppRoutes />, "/datasets/visual-query/new");
+  expect(await screen.findByRole("alert")).toHaveTextContent(/data\.manage/);
+  expect(screen.queryByText("visual-query-wizard")).not.toBeInTheDocument();
+});
+
+test("/datasets/visual-query/new opens the wizard with both privileges", async () => {
+  meWith(["automation.manage", "data.manage"]);
+  wrap(<AppRoutes />, "/datasets/visual-query/new");
+  expect(await screen.findByText("visual-query-wizard")).toBeInTheDocument();
+});

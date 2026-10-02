@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { useEffect, useState } from "react";
 import type { Variable, VariableType } from "../api/types";
 import { t } from "../i18n";
 
@@ -26,6 +27,53 @@ function defaultValueFor(type: VariableType): Variable["initialValue"] {
   }
 }
 
+// P10.11 : un nom de variable sert de clé de valeur au runtime et d'identifiant CEL —
+// non vide, identifiant valide, unique.
+function nameError(name: string, others: string[]): string | null {
+  if (name.trim() === "") return t("variablesPanel.nameEmpty");
+  if (!/^[A-Za-z_]\w*$/.test(name)) return t("variablesPanel.nameInvalid");
+  if (others.includes(name)) return t("variablesPanel.nameDuplicate");
+  return null;
+}
+
+// Champ contrôlé par le brouillon (P10.08 : suit l'undo/redo) mais qui ne
+// valide dans le brouillon qu'un nom valide ; le texte invalide reste local.
+function NameField({
+  id,
+  value,
+  others,
+  onCommit,
+}: {
+  id: string;
+  value: string;
+  others: string[];
+  onCommit: (name: string) => void;
+}) {
+  const [text, setText] = useState(value);
+  useEffect(() => setText(value), [value]);
+  const error = nameError(text, others);
+  return (
+    <span className="flex flex-col">
+      <input
+        aria-label={t("variablesPanel.renameAria", { id })}
+        aria-invalid={error !== null}
+        className="w-16 rounded border border-rule px-1"
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value);
+          if (!nameError(e.target.value, others)) onCommit(e.target.value);
+        }}
+        onBlur={() => error && setText(value)}
+      />
+      {error && (
+        <span role="alert" className="text-danger">
+          {error}
+        </span>
+      )}
+    </span>
+  );
+}
+
 export function VariablesPanel({
   variables,
   onChange,
@@ -34,9 +82,12 @@ export function VariablesPanel({
   onChange: (variables: Variable[]) => void;
 }) {
   function addVariable() {
+    const taken = new Set(variables.map((x) => x.name));
+    let n = variables.length + 1;
+    while (taken.has(`variable_${n}`)) n++;
     const v: Variable = {
       id: crypto.randomUUID(),
-      name: `Variable ${variables.length + 1}`,
+      name: `variable_${n}`,
       type: "string",
       initialValue: "",
     };
@@ -62,11 +113,11 @@ export function VariablesPanel({
         const type = v.type ?? "string";
         return (
           <li key={v.id} className="flex items-center gap-1 rounded border border-rule p-1 text-xs">
-            <input
-              aria-label={t("variablesPanel.renameAria", { id: v.id })}
-              className="w-16 rounded border border-rule px-1"
-              defaultValue={v.name}
-              onChange={(e) => rename(v.id, e.target.value)}
+            <NameField
+              id={v.id}
+              value={v.name}
+              others={variables.filter((x) => x.id !== v.id).map((x) => x.name)}
+              onCommit={(name) => rename(v.id, name)}
             />
             <select
               aria-label={t("variablesPanel.typeAria", { id: v.id })}
@@ -84,7 +135,7 @@ export function VariablesPanel({
               <input
                 aria-label={t("variablesPanel.initialValueAria", { id: v.id })}
                 className="w-16 rounded border border-rule px-1"
-                defaultValue={String(v.initialValue ?? "")}
+                value={String(v.initialValue ?? "")}
                 onChange={(e) => setInitialValue(v.id, e.target.value)}
               />
             )}
@@ -93,7 +144,7 @@ export function VariablesPanel({
                 aria-label={t("variablesPanel.initialValueAria", { id: v.id })}
                 type="number"
                 className="w-16 rounded border border-rule px-1"
-                defaultValue={Number(v.initialValue ?? 0)}
+                value={Number(v.initialValue ?? 0)}
                 onChange={(e) => setInitialValue(v.id, Number(e.target.value))}
               />
             )}
@@ -110,7 +161,7 @@ export function VariablesPanel({
                 aria-label={t("variablesPanel.initialValueAria", { id: v.id })}
                 type="date"
                 className="rounded border border-rule px-1"
-                defaultValue={String(v.initialValue ?? "")}
+                value={String(v.initialValue ?? "")}
                 onChange={(e) => setInitialValue(v.id, e.target.value)}
               />
             )}

@@ -237,7 +237,7 @@ def test_reclaim_stuck_jobs_leaves_recent_running_jobs_alone():
         assert fetched.status == "running"
 
 
-def test_reclaim_stuck_jobs_ignores_pending_and_done_jobs():
+def test_reclaim_stuck_jobs_ignores_done_jobs_but_reclaims_old_pending():
     Session, tenant, user = _env()
     with Session() as s:
         pending_job = repo.create_job(
@@ -270,4 +270,5 @@ def test_reclaim_stuck_jobs_ignores_pending_and_done_jobs():
         reclaimed = repo.reclaim_stuck_jobs(s)
         s.commit()
 
-        assert reclaimed == []
+        # P01.04 : un « pending » ancien est réclamé, un « done » jamais.
+        assert reclaimed == [pending_job.id]

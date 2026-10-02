@@ -53,8 +53,13 @@ _SUPPORTED_WIDGET_TYPES = frozenset(
         "modal",
         "drawer",
         "filter",
+        "variableInput",
     }
 )
+
+# Seuls ces kinds sont des apps rendues par AppRenderer (j10b-007) : un site,
+# une alerte ou un pipeline exportés donneraient un bundle sans sens.
+EXPORTABLE_KINDS = frozenset({"app", "dashboard"})
 
 _STRICT_WIDGET_MODES = frozenset({"static", "standalone"})
 
@@ -65,18 +70,34 @@ class ExportGuardResult:
     reasons: list[str] = field(default_factory=list)
 
 
+def _nested_widget_types(value, types: set[str]) -> None:
+    # tabs (props.tabs[].items), modal/drawer (props.items) : les widgets
+    # imbriqués vivent dans LayoutItem.props (dict libre) — parcours générique
+    # de tout dict portant une clé "widget", sans connaître la forme de chaque
+    # conteneur (j10b-004).
+    if isinstance(value, dict):
+        if isinstance(value.get("widget"), str):
+            types.add(value["widget"])
+        for v in value.values():
+            _nested_widget_types(v, types)
+    elif isinstance(value, list):
+        for v in value:
+            _nested_widget_types(v, types)
+
+
 def _collect_widget_types(config: BuilderConfig) -> set[str]:
     types: set[str] = set()
     # A config always has at least one page. If `pages` is empty (legacy /
     # implicit single-page shape, cf. shell/src/builder/pages.ts:6-7,23),
     # the widgets actually live in the top-level `layout` — scan both so a
     # single-page app (the common case) doesn't sail through unchecked.
+    layouts = [p.layout for p in config.pages]
     if config.layout is not None:
-        for item in config.layout.items:
+        layouts.append(config.layout)
+    for layout in layouts:
+        for item in layout.items:
             types.add(item.widget)
-    for page in config.pages:
-        for item in page.layout.items:
-            types.add(item.widget)
+            _nested_widget_types(item.props, types)
     return types
 
 
@@ -88,6 +109,9 @@ def check_export_guard(
     mode: str,
 ) -> ExportGuardResult:
     reasons: list[str] = []
+
+    if config.kind not in EXPORTABLE_KINDS:
+        reasons.append(f"un item de kind '{config.kind}' n'est pas exportable (app/dashboard)")
 
     for source in config.dataSources:
         if source.type == "static":

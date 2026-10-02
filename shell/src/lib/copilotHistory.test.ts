@@ -9,7 +9,7 @@ describe("copilotHistory", () => {
   });
 
   test("readCopilotHistory returns an empty list when the stored value is corrupted JSON", () => {
-    localStorage.setItem("geostudio.copilot.history", "{not json");
+    localStorage.setItem("geostudio.copilot.history.anonymous", "{not json");
     expect(readCopilotHistory()).toEqual([]);
   });
 

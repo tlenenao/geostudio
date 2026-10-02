@@ -119,6 +119,34 @@ def test_post_app_export_denies_user_without_read_access(env):
     assert response.status_code == 404
 
 
+def test_post_app_export_rejects_non_app_kind(env):
+    # j10b-007 : un item « site » n'est pas exportable en bundle d'app.
+    make_client, owner, _stranger, _item_id, Session = env
+    with Session() as s:
+        site = create_item(
+            s, tenant_id=owner.tenant_id, owner_id=owner.id, resource_type="site", title="S"
+        )
+        configs_repo.create_config(
+            s,
+            BuilderConfig(
+                kind="site",
+                dataSources=[],
+                pages=[],
+                layout={"type": "grid", "breakpoints": {}, "items": []},
+            ),
+            site.id,
+            tenant_id=owner.tenant_id,
+        )
+        s.commit()
+        site_id = site.id
+    client, calls = make_client()
+    client.app.dependency_overrides[get_current_user] = lambda: owner
+    client.app.dependency_overrides[get_current_user_optional] = lambda: owner
+    response = client.post("/v1/app-exports", json={"itemId": site_id, "mode": "static"})
+    assert response.status_code == 422
+    assert calls == []
+
+
 def test_post_app_export_rejects_invalid_mode(env):
     make_client, owner, _stranger, item_id, _Session = env
     client, _calls = make_client()
@@ -139,6 +167,37 @@ def test_get_app_export_job_reports_status(env):
     body = response.json()
     assert body["status"] == "pending"
     assert body["resultUrl"] is None
+
+
+def test_get_app_export_job_404_for_a_job_owned_by_another_user(env):
+    # Même règle que /export et /uploads : un tiers qui a seulement le droit de lire
+    # l'item ne lit pas le job (donc ni le lien de téléchargement) de l'initiateur.
+    from app.items.models import Item
+    from app.roles.repository import ensure_built_in_roles
+    from app.users.repository import set_user_role
+
+    make_client, owner, stranger, item_id, Session = env
+    client, _calls = make_client()
+    client.app.dependency_overrides[get_current_user] = lambda: owner
+    client.app.dependency_overrides[get_current_user_optional] = lambda: owner
+    job_id = client.post("/v1/app-exports", json={"itemId": item_id, "mode": "static"}).json()[
+        "jobId"
+    ]
+    with Session() as s:
+        s.get(Item, item_id).is_public = True
+        # Lecteur : sans data.manage (un Créateur le porte et lirait le job).
+        roles = ensure_built_in_roles(s, tenant_id=stranger.tenant_id)
+        set_user_role(
+            s,
+            tenant_id=stranger.tenant_id,
+            user_id=stranger.id,
+            role_id=roles["reader"].id,
+            role_slug="reader",
+        )
+        stranger.role_id = roles["reader"].id
+        s.commit()
+    client.app.dependency_overrides[get_current_user] = lambda: stranger
+    assert client.get(f"/v1/app-exports/jobs/{job_id}").status_code == 404
 
 
 def test_post_app_export_allowed_in_read_only_demo_mode(env, monkeypatch):

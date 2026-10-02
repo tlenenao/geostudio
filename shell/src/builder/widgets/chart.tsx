@@ -21,6 +21,7 @@ import {
 } from "./chartOption";
 import { ExplorerMenu } from "./ExplorerMenu";
 import type { DataRecord, DataSource, DatasetConfig } from "../../api/types";
+import { SourceMissing } from "./SourceMissing";
 import { t } from "../../i18n";
 import { LoadingState } from "../../ui/kit/LoadingState";
 
@@ -453,6 +454,7 @@ export function registerChartWidget(): void {
         );
       }
 
+      if (!data && props.dataSourceId) return <SourceMissing />;
       if (!data || data.loading)
         return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.loading")}</p>;
       if (data.error) return <p className="text-xs text-danger">{t("common.dataError")}</p>;

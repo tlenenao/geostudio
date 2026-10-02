@@ -11,6 +11,7 @@ cette disposition."""
 import json
 from dataclasses import dataclass
 
+from app.analytics.aggregate import LAKE_GEOMETRY_COLUMN
 from app.collections.introspection import TableInfo
 from app.sql_ident import quote_ident_duckdb as _qi
 
@@ -53,7 +54,8 @@ def _select_list(info: TableInfo) -> str:
     cols = [_qi(info.pk_column)]
     cols += [_qi(c.name) for c in _property_columns(info)]
     if info.geometry_column:
-        cols.append(f"ST_AsGeoJSON({_qi(info.geometry_column)}) AS __geo")
+        # Le Parquet du snapshot porte `geometry`, quel que soit geometry_column (RC-5).
+        cols.append(f"ST_AsGeoJSON({_qi(LAKE_GEOMETRY_COLUMN)}) AS __geo")
     return ", ".join(cols)
 
 
@@ -78,12 +80,10 @@ def _build_where(table_info: TableInfo, bbox, geom_intersects) -> tuple[str, lis
         raise MissingGeometryColumn("collection has no geometry column")
     if bbox is not None:
         minx, miny, maxx, maxy = bbox
-        clauses.append(
-            f"ST_Intersects({_qi(table_info.geometry_column)}, ST_MakeEnvelope(?, ?, ?, ?))"
-        )
+        clauses.append(f"ST_Intersects({_qi(LAKE_GEOMETRY_COLUMN)}, ST_MakeEnvelope(?, ?, ?, ?))")
         params.extend([minx, miny, maxx, maxy])
     if geom_intersects is not None:
-        clauses.append(f"ST_Intersects({_qi(table_info.geometry_column)}, ST_GeomFromGeoJSON(?))")
+        clauses.append(f"ST_Intersects({_qi(LAKE_GEOMETRY_COLUMN)}, ST_GeomFromGeoJSON(?))")
         params.append(json.dumps(geom_intersects))
     return (f"WHERE {' AND '.join(clauses)}" if clauses else ""), params
 

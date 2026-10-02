@@ -45,3 +45,27 @@ def test_write_manifest_with_no_entries(tmp_path):
     path = str(tmp_path / "manifest.json")
     write_manifest([], path)
     assert read_manifest(path) == []
+
+
+def test_manifest_from_a_newer_core_fails_with_a_clear_message(tmp_path):
+    import json
+
+    import pytest
+
+    from app.appexport.manifest import UnsupportedManifestVersion
+
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps({"formatVersion": 999, "collections": []}))
+    with pytest.raises(UnsupportedManifestVersion, match="v999"):
+        read_manifest(str(path))
+
+
+def test_read_manifest_tolerates_unknown_column_keys(tmp_path):
+    import json
+
+    path = tmp_path / "manifest.json"
+    write_manifest([_entry()], str(path))
+    payload = json.loads(path.read_text())
+    payload["collections"][0]["tableInfo"]["columns"][0]["futureKey"] = 1
+    path.write_text(json.dumps(payload))
+    assert read_manifest(str(path))[0].table_info.columns[0].name == "name"

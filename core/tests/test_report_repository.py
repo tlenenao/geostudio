@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig
 from app.db import init_db, make_engine, make_session_factory
 from app.items import repository as items_repo
+from app.items.models import Item
 from app.reports import repository as reports_repo
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
@@ -206,10 +207,35 @@ def test_list_due_reports_returns_report_with_no_prior_run():
             last_name="",
         )
         report_id = _seed_report(s, tenant_id=tenant.id, owner_id=user.id)
+        s.get(Item, report_id).created_at = datetime.now(UTC) - timedelta(minutes=10)
         s.commit()
 
         due = reports_repo.list_due_reports(s)
         assert (report_id, tenant.id) in due
+
+
+def test_list_due_reports_first_run_waits_for_next_cron_tick_after_creation():
+    # j09b-013 : un cron annuel ne se déclenche pas au premier balayage venu.
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        yearly = _seed_report(s, tenant_id=tenant.id, owner_id=user.id, cron="0 3 1 1 *")
+        s.commit()
+
+        assert reports_repo.list_due_reports(s) == []
+
+        s.get(Item, yearly).created_at = datetime.now(UTC) - timedelta(days=400)
+        s.commit()
+        assert (yearly, tenant.id) in reports_repo.list_due_reports(s)
 
 
 def test_list_due_reports_ignores_disabled_refresh_policy():

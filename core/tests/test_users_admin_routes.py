@@ -289,3 +289,64 @@ def test_list_users_query_count_does_not_grow_with_page_size(small, large):
         f"le nombre de requêtes croît avec le nombre d'utilisateurs : {counts} — "
         "c'est un N+1, probablement get_role() appelé ligne par ligne"
     )
+
+
+def test_list_users_search_treats_wildcards_literally_j08_014(env):
+    app, client, Session, admin, _regular, _roles = env
+    with Session() as s:
+        get_or_create_user(
+            s,
+            tenant_id=admin.tenant_id,
+            oidc_sub="u1",
+            username="a_b",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        s.commit()
+    _as(app, admin)
+    assert client.get("/v1/users?q=%25").json()["total"] == 0
+    assert {u["username"] for u in client.get("/v1/users?q=_").json()["users"]} == {"a_b"}
+    assert client.get("/v1/users?q=a_b").json()["total"] == 1
+    assert client.get("/v1/users?q=axb").json()["total"] == 0
+
+
+def test_list_users_exposes_erased_at_j08_013(env):
+    from app.compliance.service import anonymize_user
+
+    app, client, Session, admin, regular, _roles = env
+    with Session() as s:
+        anonymize_user(s, tenant_id=admin.tenant_id, user_id=regular.id, actor_id=admin.id)
+        s.commit()
+    _as(app, admin)
+    by_id = {u["id"]: u for u in client.get("/v1/users").json()["users"]}
+    assert by_id[regular.id]["erasedAt"] is not None
+    assert by_id[admin.id]["erasedAt"] is None
+    resp = client.patch(f"/v1/users/{regular.id}", json={"roleId": _roles["reader"]})
+    assert resp.status_code == 409
+
+
+def test_list_users_exposes_profile_and_sorts_filters_server_side_j08_018(env):
+    app, client, Session, admin, regular, roles = env
+    with Session() as s:
+        get_or_create_user(
+            s,
+            tenant_id=admin.tenant_id,
+            oidc_sub="z",
+            username="zed",
+            email="a@x.org",
+            first_name="Zed",
+            last_name="Z",
+        )
+        s.commit()
+    _as(app, admin)
+    body = client.get("/v1/users?sort=username&desc=true").json()
+    assert [u["username"] for u in body["users"]] == ["zed", "regular", "admin"]
+    zed = body["users"][0]
+    assert (zed["email"], zed["firstName"], zed["lastName"]) == ("a@x.org", "Zed", "Z")
+    assert zed["createdAt"]
+    by_email = client.get("/v1/users?sort=email").json()["users"]
+    assert by_email[-1]["username"] == "zed" or by_email[0]["email"] is None
+    only_admin = client.get(f"/v1/users?roleId={roles['admin']}").json()
+    assert only_admin["total"] == 1 and only_admin["users"][0]["username"] == "admin"
+    assert client.get("/v1/users?sort=password").status_code == 422

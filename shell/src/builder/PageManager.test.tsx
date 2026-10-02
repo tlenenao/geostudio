@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 import type { Page } from "../api/types";
@@ -32,6 +32,10 @@ test("removes a page and falls back to the first remaining page if it was active
     <PageManager pages={pages} activePageId="p2" onChange={onChange} onSelectPage={onSelectPage} />,
   );
   await userEvent.click(screen.getByRole("button", { name: "Retirer la page p2" }));
+  expect(onChange).not.toHaveBeenCalled();
+  await userEvent.click(
+    within(await screen.findByRole("dialog")).getByRole("button", { name: "Supprimer" }),
+  );
   expect(onChange).toHaveBeenCalledWith([pages[0]]);
   expect(onSelectPage).toHaveBeenCalledWith("p1");
 });

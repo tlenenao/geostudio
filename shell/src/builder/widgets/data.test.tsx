@@ -27,6 +27,18 @@ const state = (over: Partial<DataSourceState> = {}): DataSourceState => ({
   ...over,
 });
 
+test.each(["list", "table"])(
+  "%s dont la source est introuvable affiche un état explicite, pas le chargement (P10.09)",
+  (type) => {
+    const Widget = getWidget(type)!.Component;
+    renderWithItemClient(
+      <Widget props={{ dataSourceId: "supprimee" }} ctx={{ mode: "runtime" } as WidgetContext} />,
+    );
+    expect(screen.getByText("Source de données introuvable")).toBeInTheDocument();
+    expect(screen.queryByText("Chargement…")).not.toBeInTheDocument();
+  },
+);
+
 test("list renders a record per row using the title field", () => {
   const List = getWidget("list")!.Component;
   const ctx = {

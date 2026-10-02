@@ -100,10 +100,17 @@ def _materialize(
         raise SqlSandboxError(f"collection '{name}' has no data yet")
     cte = _dedup_cte(conn, table_info, base_uri, tenant_id, name)
     reserved = {table_info.pk_column} | _EXCLUDED_PROPERTIES | masked_fields
-    cols = [table_info.pk_column] + [c.name for c in table_info.columns if c.name not in reserved]
+    # Colonnes temporelles retypées (j05-012) : le lac les stocke en texte,
+    # SQL Lab doit pouvoir faire date_trunc/intervalles sans cast.
+    cast = {"datetime": "TIMESTAMPTZ", "date": "DATE"}
+    select_parts = [_qi(table_info.pk_column)] + [
+        f"CAST({_qi(c.name)} AS {cast[c.type]}) AS {_qi(c.name)}" if c.type in cast else _qi(c.name)
+        for c in table_info.columns
+        if c.name not in reserved
+    ]
     if table_info.geometry_column and table_info.geometry_column not in reserved:
-        cols.append(table_info.geometry_column)
-    select_list = ", ".join(_qi(c) for c in cols)
+        select_parts.append(_qi(table_info.geometry_column))
+    select_list = ", ".join(select_parts)
     conn.execute(f"CREATE TEMP TABLE {_qi(name)} AS {cte} SELECT {select_list} FROM live")
 
 

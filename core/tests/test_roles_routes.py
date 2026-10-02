@@ -199,3 +199,79 @@ def test_moving_the_sole_conjoint_holder_off_a_custom_role_is_blocked(env):
 
     resp = client.patch(f"/v1/users/{admin.id}", json={"roleId": roles["reader"]})
     assert resp.status_code == 409
+
+
+def test_privilege_ceiling_on_role_creation_edit_and_assignment_c01_002(env):
+    app, client, admin, regular, role_ids = env
+    with client.session_factory() as s:  # type: ignore[attr-defined]
+        um_role = create_role(
+            s,
+            tenant_id=admin.tenant_id,
+            name="Gestion identités",
+            privileges=[
+                Privilege.ADMIN_USERS_MANAGE.value,
+                Privilege.ADMIN_ROLES_MANAGE.value,
+            ],
+        )
+        manager = get_or_create_user(
+            s,
+            tenant_id=admin.tenant_id,
+            oidc_sub="um",
+            username="um",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        set_user_role(
+            s, tenant_id=admin.tenant_id, user_id=manager.id, role_id=um_role.id, role_slug="x"
+        )
+        s.commit()
+        s.refresh(manager)
+        um_role_id = um_role.id
+    _as(app, manager)
+    # création d'un rôle au-delà de ses privilèges
+    assert (
+        client.post("/v1/roles", json={"name": "Big", "privileges": ["data.manage"]}).status_code
+        == 403
+    )
+    assert (
+        client.post(
+            "/v1/roles", json={"name": "Small", "privileges": ["admin.users.manage"]}
+        ).status_code
+        == 201
+    )
+    # auto-élévation en éditant son propre rôle
+    r = client.patch(
+        f"/v1/roles/{um_role_id}",
+        json={"privileges": ["admin.users.manage", "admin.roles.manage", "data.manage"]},
+    )
+    assert r.status_code == 403
+    # attribution du rôle Administrateur à un tiers
+    r = client.patch(f"/v1/users/{regular.id}", json={"roleId": role_ids["admin"]})
+    assert r.status_code == 403
+    # attribution d'un rôle dans le plafond
+    r = client.patch(f"/v1/users/{regular.id}", json={"roleId": role_ids["reader"]})
+    assert r.status_code == 200
+
+
+def test_role_name_is_validated_and_unique_and_privileges_deduped_j08_005(env):
+    app, client, admin, _regular, _roles = env
+    _as(app, admin)
+    for bad in ("", "   ", "x" * 81):
+        assert client.post("/v1/roles", json={"name": bad, "privileges": []}).status_code == 422
+    # usurpation d'un rôle prédéfini, insensible à la casse
+    assert (
+        client.post("/v1/roles", json={"name": " administrateur ", "privileges": []}).status_code
+        == 409
+    )
+    created = client.post(
+        "/v1/roles",
+        json={"name": " Support ", "privileges": ["data.view", "data.view"]},
+    ).json()
+    assert created["name"] == "Support"
+    assert created["privileges"] == ["data.view"]
+    assert client.post("/v1/roles", json={"name": "SUPPORT", "privileges": []}).status_code == 409
+    # renommer en soi-même reste permis, en un nom pris non
+    own = client.patch(f"/v1/roles/{created['id']}", json={"name": "support"})
+    assert own.status_code == 200
+    assert client.patch(f"/v1/roles/{created['id']}", json={"name": "Lecteur"}).status_code == 409

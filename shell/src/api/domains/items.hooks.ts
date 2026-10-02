@@ -179,6 +179,59 @@ export function useAddGroupMember() {
   });
 }
 
+export function useGroupMembers(groupId: string, options?: { enabled?: boolean }) {
+  const client = useItemClientInternal();
+  return useQuery({
+    queryKey: ["groupMembers", groupId],
+    queryFn: () => client.listGroupMembers(groupId),
+    enabled: options?.enabled ?? true,
+  });
+}
+
+export function useRemoveGroupMember(groupId: string) {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => client.removeGroupMember(groupId, userId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["groupMembers", groupId] });
+    },
+  });
+}
+
+export function useRenameGroup(groupId: string) {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => client.renameGroup(groupId, name),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["groups"] });
+    },
+  });
+}
+
+export function useDeleteGroup(groupId: string) {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => client.deleteGroup(groupId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["groups"] });
+      void queryClient.invalidateQueries({ queryKey: ["sharing"] });
+    },
+  });
+}
+
+/** Annuaire restreint (j13-005) : actif dès 2 caractères saisis. */
+export function useUserDirectory(q: string) {
+  const client = useItemClientInternal();
+  return useQuery({
+    queryKey: ["userDirectory", q],
+    queryFn: () => client.searchUserDirectory(q),
+    enabled: q.trim().length >= 2,
+  });
+}
+
 export function useSharing(pk: string, options?: { enabled?: boolean }) {
   const client = useItemClientInternal();
   return useQuery({

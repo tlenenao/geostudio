@@ -33,7 +33,7 @@ router = APIRouter(prefix="/compliance")
 def erase_user(
     user_id: str,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> None:
     target_id = user.id if user_id == "me" else user_id
     if target_id != user.id:
@@ -90,7 +90,7 @@ def request_tenant_purge(
     tenant_id: str,
     body: PurgeConfirmRequest,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     defer_task: Callable[[str, str, str], None] = Depends(get_purge_task_deferrer),
 ) -> PurgeTriggeredResponse:
     # Jamais d'acteur cross-tenant (spec §1.2/§3.3, aucun rôle
@@ -125,7 +125,7 @@ def request_tenant_purge(
 def get_purge_status(
     purge_id: str,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> PurgeReceiptResponse:
     require_privilege(session, user, Privilege.COMPLIANCE_MANAGE.value)
     receipt = session.get(PurgeReceipt, purge_id)

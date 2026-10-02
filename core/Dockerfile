@@ -37,7 +37,7 @@ RUN groupadd --system --gid 1001 app \
   && useradd --system --uid 1001 --gid app --home-dir /opt/geostudio-home --create-home app
 ENV HOME=/opt/geostudio-home
 
-COPY pyproject.toml ./
+COPY pyproject.toml uv.lock ./
 # Installe directement depuis [project.dependencies] de pyproject.toml (pas
 # de [build-system] dans ce fichier, donc `uv pip install -r pyproject.toml`
 # ne fait qu'installer les dépendances listées, sans tenter de construire/
@@ -45,7 +45,10 @@ COPY pyproject.toml ./
 # à la main qui avait dérivé à plusieurs reprises (alembic/pyjwt/boto3/
 # python-multipart/mcp puis defusedxml, chacun crash-loopant le conteneur au
 # premier import manquant) — une seule source de vérité désormais.
-RUN uv pip install --system --no-cache -r pyproject.toml
+# P01.02 : versions figées par uv.lock (la CI teste ce même lockfile) — sans lui
+# l'image résolvait la dernière version de chaque dépendance (j03-018).
+RUN uv export --frozen --no-dev --no-hashes --no-emit-project -o /tmp/requirements.txt \
+  && uv pip install --system --no-cache -r /tmp/requirements.txt
 
 # Pré-installe les extensions DuckDB httpfs/spatial (SP-11b, module
 # app/analytics/duckdb_conn.py) sur le disque de l'image, au build — sans

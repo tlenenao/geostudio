@@ -282,7 +282,7 @@ test.describe("audit d'accessibilité (axe-core)", () => {
       });
     });
     await page.goto("/tasks");
-    await expect(page.getByText("Mes tâches récentes")).toBeVisible();
+    await expect(page.getByText("Tâches du tenant")).toBeVisible();
     await runAxeAudit(page, "UsagePage");
   });
 

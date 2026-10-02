@@ -16,10 +16,11 @@ import tempfile
 from app.audit.writer import write_audit
 from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig, Terrain3DPayload
-from app.db import make_engine, make_session_factory, request_scoped_session
+from app.db import request_scoped_session
 from app.ingestion.storage import make_s3_client
 from app.items import repository as items_repo
 from app.jobs import app
+from app.jobs.engine import session_factory as common_session_factory
 from app.terrain3d import repository as terrain3d_repo
 from app.terrain3d.conversion import Terrain3DConversionError, convert_to_cog
 from app.terrain3d.storage import download_to_file, upload_file
@@ -38,8 +39,7 @@ def s3_client_from_env():
 
 
 def _session_factory():
-    engine = make_engine(os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:"))
-    return make_session_factory(engine)
+    return common_session_factory()
 
 
 def _terrain3d_bucket() -> str:

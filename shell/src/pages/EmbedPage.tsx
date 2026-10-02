@@ -7,14 +7,12 @@ import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { AppRenderer } from "../builder/AppRenderer";
 import { registerBuiltinWidgets } from "../builder/widgets";
-import { registerCounterExampleWidget } from "../builder/examples/counterWidget";
-import { registerCounterWcExampleWidget } from "../builder/examples/counterWidgetWc";
+import { registerExampleWidgets } from "../builder/examples";
 import { resolveShareLink } from "./embed/resolveShareLink";
 import { t } from "../i18n";
 
 registerBuiltinWidgets();
-registerCounterExampleWidget();
-registerCounterWcExampleWidget();
+registerExampleWidgets();
 
 // EmbedPage est monté hors `<ProtectedLayout>` (route publique `/embed/:token`,
 // cf. shell/src/shell/routes.tsx) : ce module n'a donc jamais accès à

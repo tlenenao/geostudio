@@ -33,7 +33,10 @@ class SessionTokenClaims:
 
 
 def _secret() -> str:
-    return os.environ["CORE_ADMIN_TOOLS_TOKEN_SECRET"]
+    secret = os.environ.get("CORE_ADMIN_TOOLS_TOKEN_SECRET")
+    if not secret:  # absent OU vide : une clé HMAC vide est forgeable (P08.06)
+        raise KeyError("CORE_ADMIN_TOOLS_TOKEN_SECRET")
+    return secret
 
 
 def mint_launch_token(*, sub: str, tool: str) -> str:

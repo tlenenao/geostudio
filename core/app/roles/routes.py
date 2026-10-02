@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
 from app.db import get_session
-from app.roles.guards import require_privilege
+from app.roles.guards import require_privilege, require_privileges_within_ceiling
 from app.roles.models import Role
 from app.roles.privileges import ALL_PRIVILEGE_VALUES, Privilege
 from app.roles.repository import (
@@ -36,9 +36,21 @@ def _role_json(role: Role) -> RoleRead:
     )
 
 
+def _require_free_name(
+    session: Session, tenant_id: str, name: str, *, except_role_id: str | None = None
+) -> None:
+    """j08-005 : unique (insensible à la casse) dans le tenant — les rôles
+    prédéfinis y sont des lignes, « Administrateur » n'est donc pas usurpable."""
+    wanted = name.casefold()
+    for r in list_roles(session, tenant_id=tenant_id):
+        if r.id != except_role_id and r.name.casefold() == wanted:
+            raise HTTPException(status_code=409, detail="a role with this name already exists")
+
+
 @router.get("/roles/catalog", response_model=list[PrivilegeCatalogEntry])
 def get_roles_catalog(
-    user: User = Depends(get_current_user), session: Session = Depends(get_session)
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session, scope="function"),
 ) -> list[PrivilegeCatalogEntry]:
     require_privilege(session, user, Privilege.ADMIN_ROLES_MANAGE.value)
     return [PrivilegeCatalogEntry(**entry) for entry in get_privilege_catalog()]
@@ -46,7 +58,8 @@ def get_roles_catalog(
 
 @router.get("/roles", response_model=list[RoleRead])
 def get_roles(
-    user: User = Depends(get_current_user), session: Session = Depends(get_session)
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session, scope="function"),
 ) -> list[RoleRead]:
     require_privilege(session, user, Privilege.ADMIN_ROLES_MANAGE.value)
     return [_role_json(r) for r in list_roles(session, tenant_id=user.tenant_id)]
@@ -56,12 +69,14 @@ def get_roles(
 def post_role(
     body: RoleCreate,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> RoleRead:
     require_privilege(session, user, Privilege.ADMIN_ROLES_MANAGE.value)
     unknown = set(body.privileges) - set(ALL_PRIVILEGE_VALUES)
     if unknown:
         raise HTTPException(status_code=400, detail=f"unknown privileges: {sorted(unknown)}")
+    require_privileges_within_ceiling(session, user, body.privileges)
+    _require_free_name(session, user.tenant_id, body.name)
     role = create_role(
         session, tenant_id=user.tenant_id, name=body.name, privileges=body.privileges
     )
@@ -83,7 +98,7 @@ def patch_role(
     role_id: str,
     body: RolePatch,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> RoleRead:
     require_privilege(session, user, Privilege.ADMIN_ROLES_MANAGE.value)
     role = get_role(session, tenant_id=user.tenant_id, role_id=role_id)
@@ -91,10 +106,13 @@ def patch_role(
         raise HTTPException(status_code=404, detail="role not found")
     if role.is_built_in:
         raise HTTPException(status_code=400, detail="a built-in role cannot be edited")
+    if body.name is not None:
+        _require_free_name(session, user.tenant_id, body.name, except_role_id=role.id)
     if body.privileges is not None:
         unknown = set(body.privileges) - set(ALL_PRIVILEGE_VALUES)
         if unknown:
             raise HTTPException(status_code=400, detail=f"unknown privileges: {sorted(unknown)}")
+        require_privileges_within_ceiling(session, user, body.privileges)
         # Évalué privilège par privilège (SP-42/F-securite-autorisation-07) :
         # cf. le même correctif sur PATCH /users/{id} (app/auth/routes.py) —
         # une précondition en conjonction sur les DEUX privilèges anti-lockout
@@ -140,7 +158,7 @@ def patch_role(
 def delete_role_route(
     role_id: str,
     user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> None:
     require_privilege(session, user, Privilege.ADMIN_ROLES_MANAGE.value)
     role = get_role(session, tenant_id=user.tenant_id, role_id=role_id)

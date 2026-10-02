@@ -3,12 +3,25 @@
 // Bloque une navigation interne (useBlocker, API data-router — nécessite la
 // Tâche 25) tant que isDirty est vrai, et affiche ConfirmDialog pour laisser
 // l'utilisateur confirmer ou annuler.
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { useBlocker, type BlockerFunction } from "react-router-dom";
 import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
 import { t } from "../i18n";
 
 export function useDirtyGuard(isDirty: boolean) {
+  // P09.06 : fermeture d'onglet / rechargement / navigation hors SPA — useBlocker
+  // ne couvre que la navigation interne. Le navigateur affiche son propre
+  // message générique (le texte personnalisé n'est plus honoré).
+  useEffect(() => {
+    if (!isDirty) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [isDirty]);
+
   const blocker = useBlocker(
     useCallback<BlockerFunction>(
       ({ currentLocation, nextLocation }) =>

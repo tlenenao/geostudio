@@ -15,6 +15,7 @@ import {
   type ReferenceMode,
 } from "../../lib/comparisonWindow";
 import type { DataSource, DataSourceState, DatasetConfig } from "../../api/types";
+import { SourceMissing } from "./SourceMissing";
 import { t } from "../../i18n";
 import { LoadingState } from "../../ui/kit/LoadingState";
 
@@ -347,6 +348,7 @@ export function registerIndicatorWidget(): void {
         field,
       );
 
+      if (!data && props.dataSourceId) return <SourceMissing />;
       if (!data || data.loading || comparison.loading) return <LoadingState />;
       if (data.error) return <p className="text-xs text-danger">{t("widgetIndicator.error")}</p>;
 

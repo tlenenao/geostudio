@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useMemo, useState } from "react";
-import { useRoles, useUpdateUserRole, useUsers } from "../api/hooks";
+import { useEraseUser, useRoles, useUpdateUserRole, useUsers } from "../api/hooks";
 import type { UserSummary } from "../api/types";
 import { Button } from "../ui/kit/Button";
+import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
+import { eraseErrorMessage } from "./eraseErrorMessage";
 import { DataTable } from "../ui/kit/DataTable";
 import { EmptyState } from "../ui/kit/EmptyState";
 import { Input } from "../ui/kit/Input";
@@ -21,6 +23,8 @@ export function UsersAdminPage() {
   const usersQuery = useUsers({ page, pageSize: PAGE_SIZE, q: q || undefined });
   const rolesQuery = useRoles();
   const updateUserRole = useUpdateUserRole();
+  const eraseUser = useEraseUser();
+  const [erasing, setErasing] = useState<UserSummary | null>(null);
   const [sortKey, setSortKey] = useState<string | undefined>(undefined);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
@@ -63,6 +67,19 @@ export function UsersAdminPage() {
       setRowError({ userId, message: t("usersAdmin.roleUpdateError") });
     } finally {
       setPendingUserId(null);
+    }
+  }
+
+  async function confirmErase() {
+    if (!erasing) return;
+    const target = erasing;
+    setRowError((prev) => (prev?.userId === target.id ? null : prev));
+    try {
+      await eraseUser.mutateAsync(target.id);
+    } catch (error) {
+      setRowError({ userId: target.id, message: eraseErrorMessage(error) });
+    } finally {
+      setErasing(null);
     }
   }
 
@@ -126,7 +143,7 @@ export function UsersAdminPage() {
                               aria-label={t("usersAdmin.roleAria", { username: u.username })}
                               className="h-9 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
                               value={currentRole?.id ?? ""}
-                              disabled={pending}
+                              disabled={pending || !!u.erasedAt}
                               onChange={(e) => void handleRoleChange(u.id, e.target.value)}
                             >
                               {rolesQuery.data!.map((role) => (
@@ -143,6 +160,23 @@ export function UsersAdminPage() {
                           </>
                         );
                       },
+                    },
+                    {
+                      key: "actions",
+                      label: t("usersAdmin.actionsColumn"),
+                      render: (u: UserSummary) =>
+                        u.erasedAt ? (
+                          <span className="text-xs text-ink-2">{t("usersAdmin.erasedBadge")}</span>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            aria-label={t("usersAdmin.eraseAria", { username: u.username })}
+                            onClick={() => setErasing(u)}
+                          >
+                            {t("usersAdmin.eraseButton")}
+                          </Button>
+                        ),
                     },
                   ]}
                   rows={sortedUsers}
@@ -191,6 +225,15 @@ export function UsersAdminPage() {
             </div>
           ),
         }}
+      />
+      <ConfirmDialog
+        open={!!erasing}
+        title={t("usersAdmin.eraseConfirmTitle")}
+        message={erasing ? t("usersAdmin.eraseConfirmMessage", { username: erasing.username }) : ""}
+        confirmLabel={t("usersAdmin.eraseButton")}
+        pending={eraseUser.isPending}
+        onCancel={() => setErasing(null)}
+        onConfirm={() => void confirmErase()}
       />
     </div>
   );

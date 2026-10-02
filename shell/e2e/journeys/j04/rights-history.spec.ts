@@ -121,20 +121,19 @@ test.describe("j04 droits, historique, concurrence", () => {
   });
 
   // finding j04-009
-  fixme(
-    "j04-009 : le créateur peut redimensionner un widget (largeur/hauteur) depuis l'éditeur",
-    async ({ page }) => {
-      const s = await getSeed();
-      const id = await s.mkApp("resize", baseApp({ layout: grid([text("a", "A")]) }));
-      await openBuilder(page, id);
-      await page.getByRole("button", { name: "Sélectionner widget-a" }).click();
-      const controls =
-        (await page
-          .getByRole("button", { name: /(Redimensionner|Élargir|Agrandir|Largeur|Hauteur)/i })
-          .count()) + (await page.getByLabel(/(Largeur|Hauteur|Taille)/i).count());
-      expect(controls).toBeGreaterThan(0);
-    },
-  );
+  test("j04-009 : le créateur peut redimensionner un widget (largeur/hauteur) depuis l'éditeur", async ({
+    page,
+  }) => {
+    const s = await getSeed();
+    const id = await s.mkApp("resize", baseApp({ layout: grid([text("a", "A")]) }));
+    await openBuilder(page, id);
+    await page.getByRole("button", { name: "Sélectionner widget-a" }).click();
+    const controls =
+      (await page
+        .getByRole("button", { name: /(Redimensionner|Élargir|Agrandir|Largeur|Hauteur)/i })
+        .count()) + (await page.getByLabel(/(Largeur|Hauteur|Taille)/i).count());
+    expect(controls).toBeGreaterThan(0);
+  });
 
   test("déplacement : deux widgets peuvent être superposés sans avertissement", async ({
     page,

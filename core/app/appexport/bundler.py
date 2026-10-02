@@ -49,7 +49,7 @@ def build_bundle_zip(
 _STANDALONE_COMPOSE = """\
 services:
   app:
-    image: ghcr.io/tlenenao/geostudio-appexport-standalone:latest
+    image: ghcr.io/tlenenao/geostudio-appexport-standalone:{tag}
     ports:
       - "8090:8000"
     volumes:
@@ -89,6 +89,9 @@ def build_standalone_bundle_zip(config: BuilderConfig, *, snapshot_dir: str) -> 
                 full = os.path.join(root, name)
                 rel = os.path.relpath(full, snapshot_dir)
                 zf.write(full, arcname=f"data/{rel}")
-        zf.writestr("docker-compose.yml", _STANDALONE_COMPOSE)
+        # Image épinglée à la version du cœur exportateur (j10b-009) ; « latest »
+        # seulement hors déploiement versionné (GEOSTUDIO_VERSION absente, dev).
+        tag = os.environ.get("GEOSTUDIO_VERSION") or "latest"
+        zf.writestr("docker-compose.yml", _STANDALONE_COMPOSE.replace("{tag}", tag))
         zf.writestr("README.md", _STANDALONE_README)
     return buf.getvalue()

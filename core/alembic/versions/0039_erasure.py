@@ -17,6 +17,8 @@ Revises: 0038
 Create Date: 2026-09-06
 """
 
+import os
+
 import sqlalchemy as sa
 
 from alembic import op
@@ -40,6 +42,31 @@ def upgrade() -> None:
     )
 
 
+ALLOW_ENV = "GEOSTUDIO_ALLOW_DESTRUCTIVE_DOWNGRADE"
+
+
+def _refuse_if_data(what: str, count: int) -> None:
+    # P09.10 (c03-009) : ce downgrade détruit un état de conformité. Il échoue
+    # tant que des lignes existent, sauf accord explicite (restaurer une
+    # sauvegarde est le chemin normal, cf. deploy/backup).
+    if count and os.environ.get(ALLOW_ENV) != "1":
+        raise RuntimeError(
+            f"downgrade refusé : {count} {what} seraient détruit(e)s. "
+            f"Restaurez une sauvegarde, ou exportez ces données puis relancez avec {ALLOW_ENV}=1."
+        )
+
+
 def downgrade() -> None:
+    conn = op.get_bind()
+    _refuse_if_data(
+        "preuve(s) d'effacement (purge_receipts)",
+        conn.execute(sa.text("SELECT count(*) FROM purge_receipts")).scalar_one(),
+    )
+    _refuse_if_data(
+        "horodatage(s) d'anonymisation (users.erased_at)",
+        conn.execute(
+            sa.text("SELECT count(*) FROM users WHERE erased_at IS NOT NULL")
+        ).scalar_one(),
+    )
     op.drop_table("purge_receipts")
     op.drop_column("users", "erased_at")

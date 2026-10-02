@@ -29,6 +29,8 @@ class ShareLinkListItem(BaseModel):
     id: str
     expiresAt: str
     revoked: bool
+    createdAt: str
+    createdBy: str  # nom d'utilisateur du créateur du lien
 
 
 class ResolvedShareLink(BaseModel):

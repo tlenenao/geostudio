@@ -32,9 +32,11 @@ from app.ingestion.schemas import (
     PresignResponse,
 )
 from app.ingestion.storage import (
+    ObjectTooLarge,
     download_object,
     ensure_uploads_bucket,
     generate_presigned_put_url,
+    max_upload_bytes,
 )
 from app.ingestion.tasks import run_ingestion_task
 from app.quotas.service import check_storage_quota_or_raise
@@ -74,9 +76,11 @@ def get_task_deferrer() -> Callable[[str, str], None]:
 def presign_upload(
     body: PresignRequest,
     user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
     s3=Depends(get_s3_client),
     bucket: str = Depends(get_uploads_bucket),
 ) -> PresignResponse:
+    require_privilege(session, user, Privilege.DATA_MANAGE.value)
     ensure_uploads_bucket(s3, bucket)
     key = f"{user.tenant_id}/{uuid.uuid4().hex}-{body.filename}"
     url = generate_presigned_put_url(s3, bucket=bucket, key=key, content_type=body.contentType)
@@ -87,13 +91,17 @@ def presign_upload(
 def inspect_upload(
     body: InspectRequest,
     user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
     s3=Depends(get_s3_client),
     bucket: str = Depends(get_uploads_bucket),
 ) -> InspectResponse:
+    require_privilege(session, user, Privilege.DATA_MANAGE.value)
     if not body.key.startswith(f"{user.tenant_id}/"):
         raise HTTPException(status_code=400, detail="invalid upload key")
     try:
-        content = download_object(s3, bucket=bucket, key=body.key)
+        content = download_object(s3, bucket=bucket, key=body.key, max_bytes=max_upload_bytes())
+    except ObjectTooLarge as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
     except ClientError as exc:
         raise HTTPException(status_code=404, detail="objet introuvable") from exc
     if body.filename.lower().endswith(".xlsx"):
@@ -154,7 +162,7 @@ def inspect_upload(
 @router.post("/uploads", response_model=IngestionJobCreated, status_code=201)
 def create_upload_job(
     body: IngestionJobCreate,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
     defer_task: Callable[[str, str], None] = Depends(get_task_deferrer),
     s3=Depends(get_s3_client),
@@ -225,7 +233,7 @@ def create_upload_job(
 @router.get("/uploads/{job_id}", response_model=IngestionJobStatus)
 def get_upload_job(
     job_id: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> IngestionJobStatus:
     job = repo.get_job(session, tenant_id=user.tenant_id, job_id=job_id)

@@ -297,3 +297,68 @@ def test_builtin_widgets_only_is_allowed_in_standalone_mode():
         config = _app_config(data_sources=[], widget_types=("text", "table", "map"))
         result = check_export_guard(s, tenant_id="t1", config=config, mode="standalone")
     assert result.allowed is True
+
+
+def test_non_app_kind_is_blocked():
+    # j10b-007 : la tâche refuse aussi un kind non exportable (garde = dernier rempart).
+    Session = _session()
+    with Session() as s:
+        config = _app_config(data_sources=[]).model_copy(update={"kind": "site"})
+        result = check_export_guard(s, tenant_id="t1", config=config, mode="static")
+    assert result.allowed is False
+    assert any("site" in r for r in result.reasons)
+
+
+# --- P11.04/05 (j10b-003, j10b-004) ---
+
+
+def test_allowlist_matches_shell_builtin_widget_registry():
+    import re
+    from pathlib import Path
+
+    from app.appexport.guard import _SUPPORTED_WIDGET_TYPES
+
+    widgets_dir = Path(__file__).resolve().parents[2] / "shell/src/builder/widgets"
+    registered: set[str] = set()
+    for f in widgets_dir.glob("*.tsx"):
+        if f.name.endswith(".test.tsx"):
+            continue
+        registered |= set(re.findall(r'registerWidget\(\{\s*type:\s*"([^"]+)"', f.read_text()))
+    assert registered, "aucun widget lu — chemin du registre shell périmé"
+    assert registered == _SUPPORTED_WIDGET_TYPES
+
+
+def _nested_config(widget: str, props: dict) -> BuilderConfig:
+    return BuilderConfig(
+        kind="app",
+        dataSources=[],
+        layout=Layout(type="grid", items=[]),
+        pages=[
+            Page(
+                id="p1",
+                name="P1",
+                layout=Layout(
+                    type="grid",
+                    items=[LayoutItem(id="w", widget=widget, x=0, y=0, w=4, h=2, props=props)],
+                ),
+            )
+        ],
+    )
+
+
+def test_third_party_widget_nested_in_container_is_blocked():
+    inner = {"id": "i", "widget": "acme-gauge", "x": 0, "y": 0, "w": 2, "h": 2, "props": {}}
+    cases = {
+        "tabs": {"tabs": [{"id": "t", "label": "T", "items": [inner]}]},
+        "modal": {"title": "M", "items": [inner]},
+        "drawer": {"items": [inner]},
+    }
+    Session = _session()
+    with Session() as s:
+        for widget, props in cases.items():
+            for mode in ("static", "standalone"):
+                result = check_export_guard(
+                    s, tenant_id="t1", config=_nested_config(widget, props), mode=mode
+                )
+                assert result.allowed is False, (widget, mode)
+                assert any("acme-gauge" in r for r in result.reasons)

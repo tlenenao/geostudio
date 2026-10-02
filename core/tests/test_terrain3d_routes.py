@@ -99,6 +99,38 @@ def test_create_upload_refuses_a_reader_with_no_privilege(env):
     assert r.status_code == 403, r.text
 
 
+def test_get_upload_job_404_for_a_job_owned_by_another_user(env):
+    # P03.06 : le statut n'est lisible que par l'initiateur ou un porteur de data.manage.
+    client, Session, tenant, alice, *_ = env
+    with Session() as s:
+        bob = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="b",
+            username="bob",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        roles = ensure_built_in_roles(s, tenant_id=tenant.id)
+        set_user_role(
+            s,
+            tenant_id=tenant.id,
+            user_id=bob.id,
+            role_id=roles["reader"].id,
+            role_slug="reader",
+        )
+        bob.role_id = roles["reader"].id
+        s.commit()
+    job_id = client.post(
+        "/v1/terrain3d/uploads",
+        json={"key": f"{tenant.id}/abc/dem.tif", "filename": "dem.tif", "title": "DEM"},
+    ).json()["jobId"]
+    assert client.get(f"/v1/terrain3d/uploads/{job_id}").status_code == 200
+    client.app.dependency_overrides[get_current_user] = lambda: bob
+    assert client.get(f"/v1/terrain3d/uploads/{job_id}").status_code == 404
+
+
 def test_presign_returns_upload_url_and_tenant_scoped_key(env):
     client, _, tenant, *_ = env
     r = client.post("/v1/terrain3d/uploads/presign", json={"filename": "dem.tif"})

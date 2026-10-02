@@ -163,7 +163,15 @@ function DatasetEditRoute() {
 function PipelineNewRoute() {
   const location = useLocation();
   const title = (location.state as { title?: string } | null)?.title;
-  return <PipelineBuilderPage pk={null} initialTitle={title} />;
+  // j05-022/j06-013 : créer un pipeline exige automation.manage — refus
+  // explicite avant l'éditeur, pas un 403 à l'enregistrement. Seules les
+  // routes de CRÉATION sont gardées : l'édition d'un item existant reste
+  // décidée par sa permission d'objet (lecture seule pour un partage).
+  return (
+    <RequirePrivilege privilege="automation.manage" deniedMessage={t("routes.automationOnly")}>
+      <PipelineBuilderPage pk={null} initialTitle={title} />
+    </RequirePrivilege>
+  );
 }
 
 function PipelineEditRoute() {
@@ -174,7 +182,16 @@ function PipelineEditRoute() {
 function VisualQueryWizardNewRoute() {
   const location = useLocation();
   const title = (location.state as { title?: string } | null)?.title;
-  return <VisualQueryWizardPage pipelinePk={null} initialTitle={title} />;
+  // j05b-009 : l'assistant écrit un pipeline ET une collection de sortie
+  // (automation.manage + data.manage) ; l'Analyste en est écarté avec une
+  // explication plutôt qu'un échec à la soumission.
+  return (
+    <RequirePrivilege privilege="automation.manage" deniedMessage={t("routes.visualQueryOnly")}>
+      <RequirePrivilege privilege="data.manage" deniedMessage={t("routes.visualQueryOnly")}>
+        <VisualQueryWizardPage pipelinePk={null} initialTitle={title} />
+      </RequirePrivilege>
+    </RequirePrivilege>
+  );
 }
 
 function VisualQueryWizardEditRoute() {
@@ -329,7 +346,7 @@ function routeElements() {
           path="/admin/compliance"
           element={
             <RequirePrivilege
-              privilege="compliance.manage"
+              privilege={["admin.users.manage", "compliance.manage"]}
               deniedMessage={t("routes.complianceOnly")}
             >
               <ComplianceAdminPage />

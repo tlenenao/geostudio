@@ -11,15 +11,13 @@ import type { ItemClientBase } from "../base";
 import { SqlQueryError, parseErrorResponse } from "../base";
 
 async function requestAnalyticsSql(
+  authFetch: ItemClientBase["authFetch"],
   coreUrl: string,
-  token: string | undefined,
   sql: string,
 ): Promise<{ columns: string[]; rows: unknown[][]; truncated: boolean }> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(`${coreUrl}/analytics/sql`, {
+  const res = await authFetch(`${coreUrl}/analytics/sql`, {
     method: "POST",
-    headers,
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ sql }),
   });
   if (res.status === 400) {
@@ -49,7 +47,7 @@ type ExportsIngestionMethods = Pick<
 >;
 
 export function createExportsIngestionMethods(base: ItemClientBase): ExportsIngestionMethods {
-  const { request, coreUrl, getToken } = base;
+  const { request, coreUrl, authFetch } = base;
   return {
     async createExport(itemId: string, format: ExportFormat): Promise<{ jobId: string }> {
       return request<{ jobId: string }>("POST", `/export`, { itemId, format });
@@ -101,7 +99,7 @@ export function createExportsIngestionMethods(base: ItemClientBase): ExportsInge
     },
 
     async runAnalyticsSql(sql: string) {
-      return requestAnalyticsSql(coreUrl, getToken(), sql);
+      return requestAnalyticsSql(authFetch, coreUrl, sql);
     },
   };
 }

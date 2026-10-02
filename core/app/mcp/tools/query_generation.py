@@ -26,6 +26,7 @@ from app.mcp.tools.identity import (
     http_exception_to_value_error,
     require_collection_read,
     resolve_actor,
+    visible_table_info,
 )
 from app.roles.guards import require_privilege
 from app.roles.privileges import Privilege
@@ -147,7 +148,7 @@ def register(server: FastMCP, session_factory) -> None:
                 raise ValueError("collection backing table not found") from exc
             except UnsupportedTable as exc:
                 raise ValueError(exc.reason) from exc
-            schema = table_info_to_schema(info)
+            schema = table_info_to_schema(visible_table_info(session, user, col, info))
 
         prompt = (
             "Écris une unique requête SQL SELECT (dialecte DuckDB) en "
@@ -189,7 +190,7 @@ def register(server: FastMCP, session_factory) -> None:
                 raise ValueError("collection backing table not found") from exc
             except UnsupportedTable as exc:
                 raise ValueError(exc.reason) from exc
-            schema = table_info_to_schema(info)
+            schema = table_info_to_schema(visible_table_info(session, user, col, info))
 
             joined_schema = None
             if joinCollectionId:
@@ -202,7 +203,9 @@ def register(server: FastMCP, session_factory) -> None:
                     raise ValueError("joined collection backing table not found") from exc
                 except UnsupportedTable as exc:
                     raise ValueError(exc.reason) from exc
-                joined_schema = table_info_to_schema(joined_info)
+                joined_schema = table_info_to_schema(
+                    visible_table_info(session, user, joined_col, joined_info)
+                )
 
         prompt = (
             "Réponds UNIQUEMENT par un objet JSON de la forme "

@@ -70,7 +70,7 @@ def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests
 
 
 @router.get("/pipelines/ops")
-def get_pipeline_ops() -> dict:
+def get_pipeline_ops(user: User = Depends(get_current_user)) -> dict:
     return ops_catalog()
 
 
@@ -93,7 +93,7 @@ def get_pipeline_next_run(
 @router.post("/pipelines/{item_id}/run", response_model=RunResponse, status_code=202)
 def run_pipeline_route(
     item_id: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
     defer_task: Callable[[str, str], None] = Depends(get_task_deferrer),
 ) -> RunResponse:
@@ -109,7 +109,7 @@ def list_pipeline_runs(
     item_id: str,
     limit: int = Query(100, ge=1),
     offset: int = Query(0, ge=0),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> list[RunStatus]:
     require_pipeline_access(session, user=user, item_id=item_id, action="read")
@@ -136,7 +136,7 @@ def preview_pipeline_route(
     item_id: str,
     upTo: str = Query(...),
     body: PipelinePreviewRequest | None = None,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> list[dict]:
     require_pipeline_access(session, user=user, item_id=item_id, action="write")
@@ -163,7 +163,7 @@ def preview_pipeline_route(
 )
 def create_webhook_token_route(
     item_id: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> WebhookTokenCreated:
     token, raw = create_webhook_token_service(session, user=user, item_id=item_id)
@@ -173,7 +173,7 @@ def create_webhook_token_route(
 @router.get("/pipelines/{item_id}/webhook-tokens", response_model=list[WebhookTokenSummary])
 def list_webhook_tokens_route(
     item_id: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> list[WebhookTokenSummary]:
     require_pipeline_access(session, user=user, item_id=item_id, action="read")
@@ -194,7 +194,7 @@ def list_webhook_tokens_route(
 def delete_webhook_token_route(
     item_id: str,
     token_id: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> None:
     revoke_webhook_token_service(session, user=user, item_id=item_id, token_id=token_id)
@@ -204,7 +204,7 @@ def delete_webhook_token_route(
 def trigger_pipeline_webhook_route(
     item_id: str,
     authorization: str | None = Header(default=None),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     defer_task: Callable[[str, str], None] = Depends(get_task_deferrer),
 ) -> RunResponse:
     """Seule route de tout le dépôt sans Depends(get_current_user) — un

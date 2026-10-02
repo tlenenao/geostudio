@@ -6,6 +6,7 @@ import { Input } from "./Input";
 import { navigableDomains, type Profile } from "../../auth/capabilities";
 import { DOMAIN_PATHS } from "../../shell/chrome/domainRoutes";
 import { SETTINGS_LINKS } from "../../shell/chrome/SettingsNav";
+import { holdsAnyPrivilege } from "../../auth/holdsAnyPrivilege";
 import { useMe } from "../../api/hooks";
 import { t } from "../../i18n";
 
@@ -69,7 +70,7 @@ export function CommandPalette({
       });
     }
     for (const link of SETTINGS_LINKS) {
-      if (link.privilege !== undefined && !privileges.includes(link.privilege)) continue;
+      if (link.privilege !== undefined && !holdsAnyPrivilege(privileges, link.privilege)) continue;
       out.push({
         id: `settings:${link.to}`,
         label: t(link.labelKey),

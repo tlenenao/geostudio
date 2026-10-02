@@ -38,7 +38,7 @@ class EvaluationStatus(BaseModel):
 @router.get("/datasets/{item_id}/alerts", response_model=list[AlertRuleSummary])
 def list_alerts_for_dataset(
     item_id: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> list[AlertRuleSummary]:
     results: list[AlertRuleSummary] = []
@@ -81,7 +81,7 @@ class EvaluateAlertResponse(BaseModel):
 @router.post("/alerts/{item_id}/evaluate", response_model=EvaluateAlertResponse, status_code=202)
 def evaluate_alert_now(
     item_id: str,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> EvaluateAlertResponse:
     # D04 (SP-C6, Tâche 39) : déclenchement manuel d'une évaluation, en plus
@@ -100,7 +100,7 @@ def get_alert_evaluations(
     item_id: str,
     limit: int = Query(100, ge=1),
     offset: int = Query(0, ge=0),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> list[EvaluationStatus]:
     _require_alert_read_access(session, user=user, item_id=item_id)

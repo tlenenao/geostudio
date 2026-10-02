@@ -4,12 +4,16 @@ test_pipeline_sweep.py exactly: pure SQLite, render_export_task.defer is
 monkeypatched so this test proves "is a report due, was export_jobs+
 report_runs created and committed before deferring", never a real render."""
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
+from sqlalchemy import event
 
 from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig
 from app.db import init_db, make_engine, make_session_factory
 from app.items import repository as items_repo
+from app.items.models import Item
 from app.reports import jobs as report_jobs
 from app.reports import repository as reports_repo
 from app.tenants.repository import get_or_create_default_tenant
@@ -22,6 +26,18 @@ def _export_enabled(monkeypatch):
     coupée (revue finale SP-17b, I3) — ces tests décrivent une instance où
     elle est active ; le cas coupé a son propre test."""
     monkeypatch.setenv("CORE_EXPORT_ENABLED", "true")
+
+
+@pytest.fixture(autouse=True)
+def _items_created_long_ago():
+    """Sans run antérieur la cadence part de la création (j09b-013) : rapports déjà dus."""
+
+    def _backdate(mapper, connection, target):
+        target.created_at = datetime.now(UTC) - timedelta(days=8)
+
+    event.listen(Item, "before_insert", _backdate)
+    yield
+    event.remove(Item, "before_insert", _backdate)
 
 
 def _make_session():

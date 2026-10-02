@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation, useNavigationType } from "react-router-dom";
 import { afterEach, expect, test, vi } from "vitest";
 import type { AppConfig, Item, ItemClient } from "../api/types";
+import { ApiError } from "../api/ApiError";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { AppRuntimePage } from "./AppRuntimePage";
 import type { AuthState } from "../auth/useAuth";
@@ -137,6 +138,25 @@ test("navigate() percent-encodes pk and the target pageId", async () => {
   });
   await userEvent.click(await screen.findByRole("button", { name: "Détails" }));
   expect(screen.getByTestId("loc")).toHaveTextContent("/apps/9/a%2Fb");
+});
+
+test("redirige un pageId inconnu vers la racine de l'app (j04-015)", async () => {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = {
+    getItem: vi.fn().mockResolvedValue(okItem),
+    getAppConfig: vi.fn().mockResolvedValue(config),
+  } as unknown as ItemClient;
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <MemoryRouter initialEntries={["/apps/9/inconnue"]}>
+          <AppRuntimePage pk="9" pageId="inconnue" />
+          <LocationDisplay />
+        </MemoryRouter>
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(screen.getByTestId("loc")).toHaveTextContent(/^\/apps\/9$/));
 });
 
 test("shows an access-denied message and never fetches the config when getItem fails", async () => {
@@ -696,4 +716,41 @@ test("action-bar border and save-failed alert use semantic tokens, not literal T
   // className directly instead, same pattern as the action-bar check above.
   expect(saveFailedAlert.className).toContain("text-danger");
   expect(saveFailedAlert.className).not.toMatch(/\bred-\d{2,3}\b/);
+});
+
+// P07.03 : /apps/:pk est hors RequireAuth.
+test("attend l'auth avant de requêter, puis affiche l'app (rechargement)", async () => {
+  const getItem = vi.fn().mockResolvedValue(okItem);
+  const client = { getItem, getAppConfig: vi.fn().mockResolvedValue(config) };
+  authState.isLoading = true;
+  authState.isAuthenticated = false;
+  const view = renderRuntime(client);
+  expect(screen.getByRole("status")).toBeInTheDocument();
+  expect(getItem).not.toHaveBeenCalled();
+  authState.isLoading = false;
+  authState.isAuthenticated = true;
+  view.rerender(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <ItemClientProvider client={client as unknown as ItemClient}>
+        <MemoryRouter initialEntries={["/apps/9/page-1"]}>
+          <AppRuntimePage pk="9" pageId="page-1" />
+        </MemoryRouter>
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(getItem).toHaveBeenCalled());
+  expect(screen.queryByText(/accès refusé/i)).not.toBeInTheDocument();
+});
+
+test("401 sans session : redirige vers la connexion au lieu d'afficher « Accès refusé »", async () => {
+  const getItem = vi.fn().mockRejectedValue(new ApiError(401));
+  authState.isLoading = false;
+  authState.isAuthenticated = false;
+  (authState.signIn as ReturnType<typeof vi.fn>).mockClear();
+  renderRuntime({ getItem });
+  await waitFor(() => expect(authState.signIn).toHaveBeenCalledTimes(1));
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  authState.isAuthenticated = true;
 });

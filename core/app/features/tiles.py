@@ -135,7 +135,7 @@ def get_collection_tile(
     y: int,
     user=Depends(get_current_user_optional),
     guest: GuestActor | None = Depends(get_share_link_actor),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
     introspect=Depends(get_introspector),
     rls=Depends(get_rls_scope),
     masked=Depends(get_masked_for_user),
@@ -179,8 +179,10 @@ def get_collection_tile(
     if row is None or not row[0]:
         return Response(status_code=204)
     tile, feature_count = row[0], row[1]
-    visibility = "public" if col.is_public else "private"
-    headers = {"Cache-Control": f"{visibility}, max-age=300"}
+    # Réponse dépendante de l'identité (colonnes sensibles, RLS) : cache
+    # partagé seulement pour l'anonyme (c01-007).
+    visibility = "public" if col.is_public and user is None and guest is None else "private"
+    headers = {"Cache-Control": f"{visibility}, max-age=300", "Vary": "Authorization"}
     if feature_count == MAX_TILE_FEATURES:
         headers["X-Tile-Truncated"] = "true"
     return Response(

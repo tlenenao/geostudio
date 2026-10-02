@@ -239,6 +239,7 @@ jobs:
           VITE_OIDC_CLIENT_ID=geostudio-shell
           VITE_OIDC_REDIRECT_URI=http://localhost:8300/
           VITE_AUTH_MODE=oidc
+          CORE_LLM_PROVIDER=fake
           EOF
           docker compose build core shell
           docker compose up -d postgis keycloak core shell

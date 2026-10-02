@@ -143,7 +143,7 @@ def test_resolve_guest_scope_collects_direct_layer_references(session_factory):
             share_link_id="link-1", tenant_id=tenant.id, item_id=app_item_id
         )
 
-        guest = resolve_guest_scope(session, claims, created_by="sharer-1")
+        guest = resolve_guest_scope(session, claims, created_by=owner.id)
 
         assert guest is not None
         assert guest.allowed_item_ids == frozenset({app_item_id})
@@ -225,7 +225,7 @@ def test_resolve_guest_scope_follows_dataset_id_to_its_collection(session_factor
         )
         claims = ShareLinkTokenClaims(share_link_id="l", tenant_id=tenant.id, item_id=app_item_id)
 
-        guest = resolve_guest_scope(session, claims, created_by="sharer-1")
+        guest = resolve_guest_scope(session, claims, created_by=owner.id)
 
         assert guest is not None
         assert guest.allowed_item_ids == frozenset({app_item_id, dataset_item.id})
@@ -271,7 +271,7 @@ def test_resolve_guest_scope_ignores_an_arcgis_dataset(session_factory):
         )
         claims = ShareLinkTokenClaims(share_link_id="l", tenant_id=tenant.id, item_id=app_item_id)
 
-        guest = resolve_guest_scope(session, claims, created_by="sharer-1")
+        guest = resolve_guest_scope(session, claims, created_by=owner.id)
 
         assert guest is not None
         # Le dataset ArcGIS est bien listé comme item lisible (résolution de
@@ -347,7 +347,7 @@ def test_resolve_guest_scope_rejects_a_dataset_id_from_another_tenant(session_fa
         )
         claims = ShareLinkTokenClaims(share_link_id="l", tenant_id=tenant_a.id, item_id=app_item_id)
 
-        guest = resolve_guest_scope(session, claims, created_by="sharer-1")
+        guest = resolve_guest_scope(session, claims, created_by=owner_a.id)
 
         assert guest is not None
         assert foreign_dataset.id not in guest.allowed_item_ids
@@ -443,7 +443,9 @@ def test_get_share_link_actor_returns_none_for_a_revoked_link(session_factory):
         token = mint_share_link_token(
             share_link_id=link.id, tenant_id=tenant.id, item_id=app_item_id, ttl_seconds=3600
         )
-        sharing_repo.revoke_share_link(session, tenant_id=tenant.id, link_id=link.id)
+        sharing_repo.revoke_share_link(
+            session, tenant_id=tenant.id, item_id=app_item_id, link_id=link.id
+        )
         session.commit()
 
         assert get_share_link_actor(x_share_link_token=token, session=session) is None

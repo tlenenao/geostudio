@@ -94,7 +94,11 @@ def make_engine(url: str) -> Engine:
             # calls get_or_create_default_tenant(), hitting the threshold
             # almost immediately).
             connect_args["prepare_threshold"] = None
-        engine = create_engine(url, connect_args=connect_args)
+        # pre_ping : les Engines mis en cache (worker, API) survivent à un
+        # redémarrage de pgbouncer/postgres sans échouer sur une connexion morte.
+        engine = create_engine(
+            url, connect_args=connect_args, pool_pre_ping=url.startswith("postgresql")
+        )
 
     if engine.dialect.name == "sqlite":
 

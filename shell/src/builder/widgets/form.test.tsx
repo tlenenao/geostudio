@@ -554,6 +554,21 @@ test("a 400 response maps field errors onto the matching inputs", async () => {
   expect(failed).toHaveBeenCalled();
 });
 
+test("a 400 on a field absent from the form shows the generic alert (P10.02)", async () => {
+  const createFeature = vi
+    .fn()
+    .mockRejectedValue(
+      new FeatureValidationError([
+        { field: "tenant_id", code: "missing_required", message: "'tenant_id' is required" },
+      ]),
+    );
+  renderConnectedForm({ client: { createFeature } });
+  await userEvent.type(screen.getByLabelText("Titre"), "Fuite d'eau");
+  await userEvent.selectOptions(screen.getByLabelText("Gravité"), "haute");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  expect(await screen.findByText("Échec de l'enregistrement.")).toBeInTheDocument();
+});
+
 test("a generic write failure shows a fallback message without crashing", async () => {
   const createFeature = vi.fn().mockRejectedValue(new Error("collection is not editable"));
   renderConnectedForm({ client: { createFeature } });
@@ -754,6 +769,41 @@ test("submitting while editing calls updateFeature with the record id and stays 
   );
   expect(screen.getByLabelText("Titre")).toHaveValue("Fuite corrigée");
   expect(screen.getByText(/Modification de l'enregistrement #7/)).toBeInTheDocument();
+});
+
+test("editing resends list columns as loaded (PUT replaces everything, c01-004)", async () => {
+  const bus = new ActionBus();
+  bus.configure([
+    { id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" },
+  ]);
+  const updateFeature = vi.fn().mockResolvedValue(undefined);
+  const fields = [
+    ...visibleFields,
+    {
+      name: "tags",
+      type: "list" as const,
+      label: "Tags",
+      order: 9,
+      hidden: false,
+      required: false,
+    },
+  ];
+  const { client } = renderConnectedForm({ fields, client: { updateFeature }, bus });
+  bus.emit("table1", "itemSelected", {
+    id: 7,
+    properties: { titre: "Fuite existante", gravite: "moyenne", tags: ["a", "b"] },
+  });
+  await screen.findByDisplayValue("Fuite existante");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() =>
+    expect(client.updateFeature).toHaveBeenCalledWith(
+      "incidents",
+      "7",
+      expect.objectContaining({
+        properties: { titre: "Fuite existante", gravite: "moyenne", tags: ["a", "b"] },
+      }),
+    ),
+  );
 });
 
 test("createFeature is still called (not updateFeature) when not editing", async () => {

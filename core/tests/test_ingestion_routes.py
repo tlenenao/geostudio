@@ -30,6 +30,11 @@ class _FakeS3Client:
     def generate_presigned_url(self, operation, Params, ExpiresIn):  # noqa: N803
         return f"https://minio.test/{Params['Bucket']}/{Params['Key']}"
 
+    def head_object(self, Bucket, Key):  # noqa: N803
+        if Key not in self.objects:
+            raise ClientError({"Error": {"Code": "404", "Message": "nf"}}, "HeadObject")
+        return {"ContentLength": len(self.objects[Key])}
+
     def get_object(self, Bucket, Key):  # noqa: N803
         if Key not in self.objects:
             raise ClientError({"Error": {"Code": "NoSuchKey", "Message": "not found"}}, "GetObject")
@@ -413,6 +418,16 @@ def test_inspect_upload_returns_layers(env, tmp_path):
         "layers": [{"name": "villes", "featureCount": 1, "geometryType": "Point"}],
         "fields": None,
     }
+
+
+def test_inspect_upload_rejects_oversized_object(env, monkeypatch):
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    fake_s3.objects[f"{tenant.id}/k.csv"] = b"x" * 10
+    monkeypatch.setenv("CORE_UPLOAD_MAX_BYTES", "5")
+    r = client.post(
+        "/v1/uploads/inspect", json={"key": f"{tenant.id}/k.csv", "filename": "villes.csv"}
+    )
+    assert r.status_code == 413
 
 
 def test_inspect_upload_rejects_foreign_tenant_key(env):

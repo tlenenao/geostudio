@@ -65,3 +65,23 @@ def test_mint_refuses_ttl_above_max(monkeypatch):
         mint_share_link_token(
             share_link_id="sl1", tenant_id="t1", item_id="i1", ttl_seconds=31 * 86400
         )
+
+
+def test_an_empty_secret_is_treated_as_missing(monkeypatch):
+    # P08.06 : défaut compose `${…:-}` = chaîne vide ; PyJWT la refuse déjà
+    # (InvalidKeyError -> 500), on la ramène au chemin « absente » (KeyError,
+    # rejet 401 au décodage / 503 à la création).
+    from app.admin_tools import tokens as admin_tokens
+    from app.auth import export_tokens
+    from app.sharing import share_links
+
+    for var, mod in [
+        ("CORE_SHARE_LINK_TOKEN_SECRET", share_links),
+        ("CORE_EXPORT_TOKEN_SECRET", export_tokens),
+        ("CORE_ADMIN_TOOLS_TOKEN_SECRET", admin_tokens),
+    ]:
+        monkeypatch.setenv(var, "")
+        with pytest.raises(KeyError):
+            mod._secret()
+    with pytest.raises(share_links.ShareLinkTokenError):
+        share_links.decode_share_link_token("a.b.c")

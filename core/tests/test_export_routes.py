@@ -154,6 +154,35 @@ def test_get_export_job_reports_status(env):
     assert body["error"] is None
 
 
+def test_get_export_job_404_for_a_job_owned_by_another_user(env):
+    # P03.06 : un tiers qui peut lire l'item (public) sans data.manage ne lit pas
+    # le job (donc ni le lien de téléchargement) de l'initiateur.
+    from app.items.models import Item
+    from app.roles.repository import ensure_built_in_roles
+    from app.users.repository import set_user_role
+
+    make_client, owner, stranger, item_id, Session = env
+    client, _calls = make_client()
+    client.app.dependency_overrides[get_current_user] = lambda: owner
+    client.app.dependency_overrides[get_current_user_optional] = lambda: owner
+    job_id = client.post("/v1/export", json={"itemId": item_id, "format": "png"}).json()["jobId"]
+    with Session() as s:
+        s.get(Item, item_id).is_public = True
+        roles = ensure_built_in_roles(s, tenant_id=stranger.tenant_id)
+        set_user_role(
+            s,
+            tenant_id=stranger.tenant_id,
+            user_id=stranger.id,
+            role_id=roles["reader"].id,
+            role_slug="reader",
+        )
+        stranger.role_id = roles["reader"].id
+        s.commit()
+    client.app.dependency_overrides[get_current_user] = lambda: stranger
+    client.app.dependency_overrides[get_current_user_optional] = lambda: stranger
+    assert client.get(f"/v1/export/jobs/{job_id}").status_code == 404
+
+
 def test_get_export_job_unknown_id_is_404(env):
     make_client, owner, _stranger, _item_id, _Session = env
     client, _calls = make_client()

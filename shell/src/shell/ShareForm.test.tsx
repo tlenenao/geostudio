@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { vi } from "vitest";
@@ -128,10 +128,37 @@ test("crée un nouveau groupe depuis le formulaire de partage", async () => {
   );
 });
 
-test("ajoute un membre à un groupe existant, affiche l'erreur si non-créateur", async () => {
+test("ajoute un membre trouvé dans l'annuaire à un groupe géré", async () => {
+  let added: unknown = null;
   server.use(
-    http.post("https://core.test/v1/groups/10/members", () =>
-      HttpResponse.json({ detail: "group or user not found" }, { status: 404 }),
+    http.get("https://core.test/v1/groups", () =>
+      HttpResponse.json([{ id: "10", name: "Équipe A", canManage: true }]),
+    ),
+    http.get("https://core.test/v1/groups/10/members", () => HttpResponse.json([])),
+    http.get("https://core.test/v1/users/directory", ({ request }) => {
+      expect(new URL(request.url).searchParams.get("q")).toBe("bo");
+      return HttpResponse.json([{ id: "u2", username: "bob", email: "bob@x.fr" }]);
+    }),
+    http.post("https://core.test/v1/groups/10/members", async ({ request }) => {
+      added = await request.json();
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  render(
+    <Harness>
+      <ShareForm item={item} onDone={vi.fn()} />
+    </Harness>,
+  );
+  await screen.findByRole("checkbox", { name: "Groupe Équipe A" });
+  await userEvent.type(screen.getByLabelText("Rechercher un membre (Équipe A)"), "bo");
+  await userEvent.click(await screen.findByRole("button", { name: /bob/ }));
+  await waitFor(() => expect(added).toEqual({ userId: "u2" }));
+});
+
+test("un groupe non géré n'expose ni membres ni suppression", async () => {
+  server.use(
+    http.get("https://core.test/v1/groups", () =>
+      HttpResponse.json([{ id: "10", name: "Équipe A", canManage: false }]),
     ),
   );
   render(
@@ -140,9 +167,78 @@ test("ajoute un membre à un groupe existant, affiche l'erreur si non-créateur"
     </Harness>,
   );
   await screen.findByRole("checkbox", { name: "Groupe Équipe A" });
-  await userEvent.type(screen.getByLabelText("Identifiant utilisateur (Équipe A)"), "u2");
-  await userEvent.click(screen.getByRole("button", { name: "Ajouter un membre (Équipe A)" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent(/créateur/i);
+  expect(screen.queryByLabelText("Rechercher un membre (Équipe A)")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Supprimer le groupe Équipe A" }),
+  ).not.toBeInTheDocument();
+});
+
+test("retire un membre et supprime un groupe géré après confirmation", async () => {
+  let removed = false;
+  let deleted = false;
+  server.use(
+    http.get("https://core.test/v1/groups", () =>
+      HttpResponse.json([{ id: "10", name: "Équipe A", canManage: true }]),
+    ),
+    http.get("https://core.test/v1/groups/10/members", () =>
+      HttpResponse.json([{ userId: "u2", username: "bob" }]),
+    ),
+    http.delete("https://core.test/v1/groups/10/members/u2", () => {
+      removed = true;
+      return new HttpResponse(null, { status: 204 });
+    }),
+    http.delete("https://core.test/v1/groups/10", () => {
+      deleted = true;
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  render(
+    <Harness>
+      <ShareForm item={item} onDone={vi.fn()} />
+    </Harness>,
+  );
+  await userEvent.click(await screen.findByRole("button", { name: "Retirer bob de Équipe A" }));
+  await waitFor(() => expect(removed).toBe(true));
+  await userEvent.click(screen.getByRole("button", { name: "Supprimer le groupe Équipe A" }));
+  const dialog = await screen.findByRole("dialog", { name: "Supprimer le groupe" });
+  await userEvent.click(within(dialog).getByRole("button", { name: "Supprimer" }));
+  await waitFor(() => expect(deleted).toBe(true));
+});
+
+test("signale une collection lue non partagée avec le groupe coché et propose de la partager", async () => {
+  const puts: unknown[] = [];
+  server.use(
+    http.get("https://core.test/v1/configs/by-item/7", () =>
+      HttpResponse.json({
+        version: 1,
+        config: {
+          kind: "app",
+          layout: { type: "grid", items: [] },
+          dataSources: [{ id: "ds", type: "features", layer: "coll-1" }],
+        },
+      }),
+    ),
+    http.get("https://core.test/v1/collections/coll-1/sharing", () =>
+      HttpResponse.json({ public: false, groups: [] }),
+    ),
+    http.put("https://core.test/v1/collections/coll-1/sharing", async ({ request }) => {
+      puts.push(await request.json());
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  render(
+    <Harness>
+      <ShareForm item={item} onDone={vi.fn()} />
+    </Harness>,
+  );
+  await userEvent.click(await screen.findByRole("checkbox", { name: "Groupe Équipe B" }));
+  await screen.findByText(/ne sont pas partagées avec/);
+  await userEvent.click(screen.getByRole("button", { name: /Partager les données « coll-1 »/ }));
+  await waitFor(() =>
+    expect(puts[0]).toMatchObject({
+      groups: expect.arrayContaining([{ groupId: "11", role: "viewer" }]),
+    }),
+  );
 });
 
 test("crée un lien de partage à échéance", async () => {

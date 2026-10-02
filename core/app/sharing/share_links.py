@@ -32,7 +32,14 @@ class ShareLinkTokenClaims:
 
 
 def _secret() -> str:
-    return os.environ["CORE_SHARE_LINK_TOKEN_SECRET"]
+    secret = os.environ.get("CORE_SHARE_LINK_TOKEN_SECRET")
+    if not secret:  # absent OU vide : une clé HMAC vide est forgeable (P08.06)
+        raise KeyError("CORE_SHARE_LINK_TOKEN_SECRET")
+    return secret
+
+
+def share_link_secret_configured() -> bool:
+    return bool(os.environ.get("CORE_SHARE_LINK_TOKEN_SECRET"))
 
 
 def mint_share_link_token(

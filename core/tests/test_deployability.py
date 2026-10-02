@@ -429,11 +429,6 @@ ENV_WIRING_EXEMPTIONS = {
     # dans le zip — pas celui de ce dépôt.
     "APPEXPORT_STANDALONE_DATA_DIR",
     "APPEXPORT_STANDALONE_RUNTIME_DIR",
-    # Capacité réservée au futur sidecar desktop (design desktop-etl §3) :
-    # jamais réglée par un service du compose de ce dépôt, désactivée par
-    # défaut. Le sidecar la positionne dans son propre environnement (hors
-    # périmètre). Lue par app/auth/dependency.py pour l'introspection.
-    "CORE_PIPELINE_FILE_IO_ENABLED",
 }
 
 
@@ -1316,6 +1311,17 @@ def test_keycloak_router_carries_security_and_rate_limit_middlewares():
         )
 
 
+def test_prod_minio_is_routable_on_a_dedicated_s3_hostname():
+    """Prod sans port hôte MinIO : sans routeur, S3_PUBLIC_ENDPOINT_URL n'a
+    aucune cible et tout lien signé (export, rapport, envoi présigné) est
+    mort. Pas de stripprefix possible (la signature SigV4 couvre le chemin)."""
+    labels = _traefik_labels(services(PROD)["minio"])
+    assert "S3_PUBLIC_HOST" in labels["traefik.http.routers.minio-s3.rule"]
+    assert labels["traefik.http.services.minio-s3.loadbalancer.server.port"] == "9000"
+    assert "traefik.http.routers.minio-s3.middlewares" not in labels
+    assert "S3_PUBLIC_HOST" in documented_env_vars(include_commented=True)
+
+
 @pytest.mark.parametrize("compose", [BASE, PROD], ids=["base", "prod"])
 @pytest.mark.parametrize("router", ["core", "shell"])
 def test_public_app_router_carries_security_and_rate_limit_middlewares(compose, router):
@@ -1627,6 +1633,30 @@ def test_shell_nginx_conf_no_longer_hardcodes_its_own_csp():
     assert "Content-Security-Policy" not in content
 
 
+def test_shell_nginx_serves_mjs_cache_and_404_for_assets():
+    """RC-4 (P04) : sans type `.mjs`, le worker MapLibre part en
+    application/octet-stream + nosniff et ne démarre jamais (j12-001) ; sans
+    `try_files =404` sous /assets/, un chunk périmé répond index.html en 200
+    (t03-003) ; manifeste et fixtures E2E ne doivent pas être servis (t03-004).
+    Vérifié empiriquement sur l'image construite (curl) ; ce test garde la
+    configuration statique contre toute régression."""
+    conf = (REPO / "shell/nginx.conf").read_text()
+    assert "include /etc/nginx/mime.types;" in conf
+    assert "text/javascript mjs;" in conf
+    gzip_types = next(ln for ln in conf.splitlines() if "gzip_types" in ln)
+    assert "text/javascript" in gzip_types
+    assets = conf.split("location /assets/ {")[1].split("}")[0]
+    assert "try_files $uri =404;" in assets
+    immutable = next(ln for ln in assets.splitlines() if "immutable" in ln)
+    assert "max-age=31536000, immutable" in immutable
+    assert "always" not in immutable, "un 404 ne doit pas porter Cache-Control: immutable"
+    assert 'Cache-Control "no-cache"' in conf
+    # un add_header de location masque ceux du server : réinclure les en-têtes de sécurité
+    snippet = "include /etc/nginx/snippets/security-headers.conf;"
+    assert conf.count(snippet) == conf.count("add_header Cache-Control") + 1
+    assert "rm -rf dist/.vite dist/fixtures" in (REPO / "shell/Dockerfile").read_text()
+
+
 def test_core_env_vars_extractor_has_not_silently_regressed_to_empty():
     """REV-076/F-tests-04 : core_env_vars() est la clé de voûte de
     test_every_core_env_var_is_wired_to_a_service — si elle régressait vers
@@ -1933,3 +1963,175 @@ def test_every_caller_of_build_and_push_grants_at_least_its_permissions():
             f"{caller_path.name} n'accorde pas assez de permissions au job "
             f"build-and-push de {BUILD_AND_PUSH.name} : manque {shortfall}"
         )
+
+
+# ─── Câblage du worker (RC-2, P02) ───────────────────────────────────────
+_WORKER_Q_RE = re.compile(r"procrastinate\s+--app\s+app\.jobs\.app\s+worker\b[^\"]*?-q\s+([a-z0-9,]+)")
+
+
+def _task_decorators() -> list[tuple[pathlib.Path, str, dict]]:
+    """(module, nom de fonction, kwargs littéraux) de chaque `@app.task(...)`
+    de `core/app/` ; `periodic=True` si la fonction porte aussi `@app.periodic`."""
+    found = []
+    for module in CORE_APP.rglob("*.py"):
+        for node in ast.walk(ast.parse(module.read_text())):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            kwargs, periodic = None, False
+            for dec in node.decorator_list:
+                if not isinstance(dec, ast.Call) or not isinstance(dec.func, ast.Attribute):
+                    continue
+                if dec.func.attr == "task":
+                    kwargs = {k.arg: ast.literal_eval(k.value) for k in dec.keywords}
+                elif dec.func.attr == "periodic":
+                    periodic = True
+            if kwargs is not None:
+                found.append((module, node.name, {**kwargs, "periodic": periodic}))
+    return found
+
+
+def _consumed_queues(*compose_paths: pathlib.Path) -> set[str]:
+    consumed: set[str] = set()
+    for path in compose_paths:
+        for service in services(path).values():
+            command = service.get("command")
+            if isinstance(command, list):
+                command = " ".join(command)
+            for m in _WORKER_Q_RE.finditer(command if isinstance(command, str) else ""):
+                consumed |= set(m.group(1).split(","))
+    return consumed
+
+
+def test_every_declared_queue_is_consumed_by_a_deployed_worker():
+    """c02-003 : la file `harvest` n'avait aucun consommateur — le
+    moissonnage restait `pending` pour toujours."""
+    declared = {kw["queue"] for _, _, kw in _task_decorators() if "queue" in kw}
+    missing = declared - _consumed_queues(BASE)
+    assert not missing, f"files déclarées par une tâche mais sur aucun `-q` du compose : {sorted(missing)}"
+
+
+def test_every_task_module_is_registered_in_the_worker_import_paths():
+    """c02-004 : `app.compliance.jobs` absent d'`import_paths` — la tâche
+    était déférable par l'API mais inconnue du worker."""
+    tree = ast.parse((CORE_APP / "jobs/__init__.py").read_text())
+    registered = {
+        elt.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.keyword) and node.arg == "import_paths"
+        for elt in node.value.elts
+    }
+    modules = {
+        ".".join(m.relative_to(CORE_APP.parent).with_suffix("").parts)
+        for m, _, _ in _task_decorators()
+    }
+    assert not modules - registered, f"modules de tâches hors import_paths : {sorted(modules - registered)}"
+
+
+def test_worker_environment_mirrors_core_for_task_flags():
+    """j06b-005 : un run de connecteur à secret, un e-mail d'alerte, un
+    rapport planifié tournent dans `worker` — qui ne recevait pas ces
+    variables, que `core` a."""
+    worker_env = services(BASE)["worker"]["environment"]
+    for var in (
+        "CORE_SECRETS_MASTER_KEY",
+        "CORE_EXPORT_ENABLED",
+        "CORE_READ_ONLY_MODE",
+        "CORE_PIPELINE_FILE_IO_ENABLED",
+    ):
+        assert var in worker_env, f"`worker` ne reçoit pas {var}"
+
+
+def test_worker_runs_jobs_concurrently():
+    """c09-001/t03b-002 : concurrence 1 = un run long bloque tous les jobs."""
+    command = services(BASE)["worker"]["command"]
+    assert re.search(r"worker\s+(-c|--concurrency)\s+\S+", command), "worker sans `-c`"
+
+
+def test_periodic_tasks_carry_a_queueing_lock():
+    """c09-002 : sans `queueing_lock`, un tick en retard s'empile derrière
+    le précédent (les ticks périodiques s'accumulent sous charge)."""
+    unlocked = [
+        f"{m.name}:{n}"
+        for m, n, kw in _task_decorators()
+        if kw["periodic"] and not kw.get("queueing_lock")
+    ]
+    assert not unlocked, f"tâches périodiques sans queueing_lock : {unlocked}"
+
+
+def test_public_s3_endpoint_wired_wherever_links_are_signed():
+    """RC-13 : dès qu'un export (rapports/export classique, export d'app) est
+    allumable, `core` et `worker` — qui signent les liens remis au navigateur
+    ou à un destinataire externe — reçoivent S3_PUBLIC_ENDPOINT_URL ; sinon les
+    liens sont signés sur http://minio:9000. Et MinIO porte son CORS global
+    (RC-3 : pas d'API PutBucketCors)."""
+    services_ = services(BASE)
+    for name in ("core", "worker", "export-worker"):
+        assert "S3_PUBLIC_ENDPOINT_URL" in services_[name]["environment"], name
+    assert "MINIO_API_CORS_ALLOW_ORIGIN" in services_["minio"]["environment"]
+    assert {"S3_PUBLIC_ENDPOINT_URL", "MINIO_CORS_ALLOW_ORIGIN"} <= documented_env_vars()
+
+
+def test_every_empty_default_secret_is_generated_by_bootstrap_env():
+    """P08 / RC-3 : un `*_SECRET: ${X:-}` du compose (défaut vide) lu par une
+    route active doit être généré par scripts/bootstrap-env.sh, sinon la
+    capacité (liens de partage, export d'app, passerelle admin) est morte sur
+    toute installation standard (j13-001)."""
+    text = BASE.read_text() + PROD.read_text()
+    empty_default = set(re.findall(r"^\s*(\w+_SECRET):\s*\$\{\1:-\}", text, re.MULTILINE))
+    assert {
+        "CORE_EXPORT_TOKEN_SECRET",
+        "CORE_SHARE_LINK_TOKEN_SECRET",
+        "CORE_ADMIN_TOOLS_TOKEN_SECRET",
+    } <= empty_default
+    bootstrap = BOOTSTRAP_ENV_SH.read_text()
+    missing = sorted(v for v in empty_default if v not in bootstrap)
+    assert not missing, f"secrets à défaut vide non générés par bootstrap-env.sh : {missing}"
+
+
+def test_release_tag_images_and_deployed_revision_move_together():
+    """P08.01 : le playbook clone le tag `geostudio_version` (pas `main`), le
+    passe à l'installeur, les group_vars suivent GEOSTUDIO_VERSION de
+    .env.example, et release.yml refuse un tag qui n'a pas bumpé cette valeur."""
+    env_version = re.search(r"^GEOSTUDIO_VERSION=(\S+)$", ENV_EXAMPLE.read_text(), re.MULTILINE)
+    assert env_version, ".env.example doit fixer GEOSTUDIO_VERSION"
+    for target in ("oci", "proxmox"):
+        gv = yaml.safe_load((REPO / f"deploy/{target}/ansible/group_vars/all.yml").read_text())
+        assert gv["geostudio_version"] == env_version.group(1), target
+    playbook = (REPO / "deploy/ansible/playbook.yml").read_text()
+    assert 'version: "{{ geostudio_version }}"' in playbook
+    assert "version: main" not in playbook
+    assert 'GEOSTUDIO_VERSION: "{{ geostudio_version }}"' in playbook
+    doc = yaml.safe_load(RELEASE.read_text())
+    for job in ("test-gate", "test-gate-arm64"):
+        assert doc["jobs"][job]["needs"] == "verify-tag", job
+    steps = " ".join(s.get("run", "") for s in doc["jobs"]["verify-tag"]["steps"])
+    assert "GEOSTUDIO_VERSION" in steps and "merge-base --is-ancestor" in steps
+    assert "ci.yml" in steps
+
+
+def test_prod_traefik_reaches_docker_only_through_a_read_only_socket_proxy():
+    """P08.07 : seul le proxy monte docker.sock ; Traefik pointe dessus, le
+    proxy n'ouvre que CONTAINERS (jamais POST/EXEC/IMAGES) et ne publie rien."""
+    svcs = services(PROD)
+    traefik = svcs["traefik"]
+    assert not any("docker.sock" in str(v) for v in traefik["volumes"])
+    assert "--providers.docker.endpoint=tcp://docker-socket-proxy:2375" in traefik["command"]
+    proxy = svcs["docker-socket-proxy"]
+    assert not proxy.get("ports")
+    env = {k: str(v) for k, v in proxy["environment"].items()}
+    assert env["CONTAINERS"] == "1" and env["POST"] == "0"
+    assert not {"EXEC", "IMAGES", "VOLUMES", "NETWORKS", "SERVICES"} & env.keys()
+
+
+def test_keycloak_realm_scopes_dynamic_client_registration_with_trusted_hosts():
+    """P08.08 : DCR anonyme cadré (hôtes des redirect_uris) et documenté."""
+    realm = json.loads(KEYCLOAK_REALM_JSON.read_text())
+    policies = realm["components"][
+        "org.keycloak.services.clientregistration.policy.ClientRegistrationPolicy"
+    ]
+    trusted = [
+        p for p in policies if p["providerId"] == "trusted-hosts" and p["subType"] == "anonymous"
+    ]
+    assert len(trusted) == 1
+    assert trusted[0]["config"]["client-uris-must-match"] == ["true"]
+    assert "Trusted Hosts" in (REPO / "deploy/keycloak/README.md").read_text()

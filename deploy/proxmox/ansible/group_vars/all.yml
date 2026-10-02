@@ -4,3 +4,6 @@ geostudio_public_host: ""
 geostudio_profiles: ""
 geostudio_seed_demo: false
 geostudio_core_etl_enabled: false
+# Tag de release déployé : révision du dépôt cloné ET tag des images (.env). Doit
+# rester égal à GEOSTUDIO_VERSION de .env.example (garde : test_deployability).
+geostudio_version: "v0.1.0"

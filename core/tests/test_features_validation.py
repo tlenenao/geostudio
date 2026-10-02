@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
+from dataclasses import replace
+
 from app.collections.introspection import ColumnInfo, TableInfo
 from app.features.validation import validate_feature
 
@@ -134,3 +136,12 @@ def test_list_value_that_is_not_a_list_is_rejected():
 def test_list_value_none_is_valid():
     errors = validate_feature(INFO, _f({"titre": "x", "tags": None}))
     assert errors == []
+
+
+def test_reserved_not_null_columns_are_never_required():
+    # P10.04 : tenant_id est NOT NULL sans défaut mais rempli par le dépôt.
+    cols = [*INFO.columns, ColumnInfo(name="tenant_id", type="string", required=True)]
+    info = replace(INFO, columns=cols)
+    assert ("tenant_id", "missing_required") not in _codes(
+        validate_feature(info, _f({"titre": "x"}))
+    )

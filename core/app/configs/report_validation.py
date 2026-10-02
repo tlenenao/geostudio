@@ -8,6 +8,7 @@ contourner (design SP-17b §Modèle de données)."""
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig
 from app.items import repository as items_repo
 from app.sharing.authorization import can
@@ -32,3 +33,14 @@ def validate_report_payload(session: Session, config: BuilderConfig, *, user: Us
     assert target is not None  # get_access_facts vient d'en confirmer l'existence
     if target.resourceType != "bookmark":
         raise HTTPException(status_code=422, detail="bookmark not found")
+
+    # c01-014 : le rendu s'exécute avec les droits du propriétaire du rapport ; qui modifie
+    # destinataires/canaux doit donc lui-même pouvoir lire l'app rendue (pas seulement le bookmark).
+    bookmark_config = configs_repo.get_config_by_item(session, payload.bookmarkItemId)
+    bookmark = bookmark_config.config.bookmark if bookmark_config is not None else None
+    if bookmark is not None:
+        app_facts = items_repo.get_access_facts(
+            session, tenant_id=user.tenant_id, item_id=bookmark.appId
+        )
+        if app_facts is None or not can(session, user_id=user.id, action="read", item=app_facts):
+            raise HTTPException(status_code=422, detail="target app not readable")

@@ -91,13 +91,69 @@ def list_groups(session: Session, *, tenant_id: str) -> list[Group]:
     )
 
 
-def add_member(
-    session: Session, *, tenant_id: str, group_id: str, user_id: str, caller_id: str
-) -> bool:
+def get_managed_group(
+    session: Session, *, tenant_id: str, group_id: str, caller_id: str, as_admin: bool = False
+) -> Group | None:
+    """Le groupe si l'appelant peut le gérer (son créateur, ou `as_admin` —
+    calculé par la route depuis un privilège d'administration), sinon None
+    (traité en 404 : ne révèle ni l'existence ni le tenant d'un groupe)."""
     group = session.get(Group, group_id)
     if group is None or group.tenant_id != tenant_id:
+        return None
+    if group.created_by != caller_id and not as_admin:
+        return None
+    return group
+
+
+def list_members(session: Session, *, group: Group) -> list[User]:
+    return list(
+        session.scalars(
+            select(User)
+            .join(GroupMember, GroupMember.user_id == User.id)
+            .where(GroupMember.group_id == group.id, GroupMember.tenant_id == group.tenant_id)
+            .order_by(User.username)
+        ).all()
+    )
+
+
+def remove_member(session: Session, *, group: Group, user_id: str) -> bool:
+    member = session.get(GroupMember, {"group_id": group.id, "user_id": user_id})
+    if member is None:
         return False
-    if group.created_by != caller_id:
+    session.delete(member)
+    session.flush()
+    return True
+
+
+def rename_group(session: Session, *, group: Group, name: str) -> Group:
+    group.name = name
+    session.flush()
+    return group
+
+
+def delete_group(session: Session, *, group: Group) -> None:
+    """Retire le groupe ET tout ce qu'il ouvrait (partages d'items/collections,
+    appartenances) — explicite plutôt que via ON DELETE CASCADE, que SQLite
+    (tests) n'applique pas."""
+    for model in (ItemShare, CollectionShare, GroupMember):
+        session.execute(delete(model).where(model.group_id == group.id))
+    session.delete(group)
+    session.flush()
+
+
+def add_member(
+    session: Session,
+    *,
+    tenant_id: str,
+    group_id: str,
+    user_id: str,
+    caller_id: str,
+    as_admin: bool = False,
+) -> bool:
+    group = get_managed_group(
+        session, tenant_id=tenant_id, group_id=group_id, caller_id=caller_id, as_admin=as_admin
+    )
+    if group is None:
         return False
     user_tenant = session.scalar(select(User.tenant_id).where(User.id == user_id))
     if user_tenant != tenant_id:
@@ -162,9 +218,17 @@ def list_share_links(session: Session, *, tenant_id: str, item_id: str) -> list[
     )
 
 
-def revoke_share_link(session: Session, *, tenant_id: str, link_id: str) -> bool:
+def usernames_by_id(session: Session, *, user_ids: Sequence[str]) -> dict[str, str]:
+    if not user_ids:
+        return {}
+    rows = session.execute(select(User.id, User.username).where(User.id.in_(list(user_ids))))
+    return {uid: name for uid, name in rows}
+
+
+def revoke_share_link(session: Session, *, tenant_id: str, item_id: str, link_id: str) -> bool:
     link = session.get(ShareLink, link_id)
-    if link is None or link.tenant_id != tenant_id:
+    # c01-006 : le lien doit appartenir à l'item dont l'appelant a vérifié le droit.
+    if link is None or link.tenant_id != tenant_id or link.item_id != item_id:
         return False
     if link.revoked_at is None:
         link.revoked_at = _sharing_now()

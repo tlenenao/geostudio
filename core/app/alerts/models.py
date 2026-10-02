@@ -28,7 +28,9 @@ class AlertEvaluation(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
-    alert_rule_item_id: Mapped[str] = mapped_column(ForeignKey("items.id"), nullable=False)
+    alert_rule_item_id: Mapped[str] = mapped_column(
+        ForeignKey("items.id", ondelete="CASCADE"), nullable=False
+    )
     value: Mapped[float | None] = mapped_column(Float, nullable=True)
     state: Mapped[str] = mapped_column(String, nullable=False)
     transitioned: Mapped[bool] = mapped_column(

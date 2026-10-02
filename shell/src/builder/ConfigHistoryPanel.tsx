@@ -57,6 +57,22 @@ export function ConfigHistoryPanel({
     void load();
   }, [load]);
 
+  // P09.08 : une sauvegarde invalide puis refetch la config de CET item
+  // (useSaveApp/useSaveMap/… : clés différentes, toutes contenant le pk) —
+  // on relit alors la liste, sinon la nouvelle version n'apparaît qu'au
+  // remontage du panneau et la précédente reste affichée « courante ».
+  useEffect(() => {
+    return queryClient.getQueryCache().subscribe((event) => {
+      if (
+        event.type === "updated" &&
+        event.action.type === "success" &&
+        event.query.queryKey.includes(pk)
+      ) {
+        void load();
+      }
+    });
+  }, [queryClient, pk, load]);
+
   const latest = revisions?.[0]?.version ?? null;
   const current = currentVersion ?? latest;
 

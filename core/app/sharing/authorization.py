@@ -21,6 +21,9 @@ class AccessFacts:
     owner_id: str
     is_public: bool
     is_published: bool
+    # Kind de l'item (None pour une collection) : sert aux gardes de privilège
+    # de kind (P14.01), jamais à decide().
+    resource_type: str | None = None
 
 
 # Rétro-compatibilité : les routes items/configs existantes importent ce nom.

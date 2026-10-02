@@ -28,7 +28,9 @@ class PipelineRun(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
-    pipeline_item_id: Mapped[str] = mapped_column(ForeignKey("items.id"), nullable=False)
+    pipeline_item_id: Mapped[str] = mapped_column(
+        ForeignKey("items.id", ondelete="CASCADE"), nullable=False
+    )
     status: Mapped[str] = mapped_column(
         String, nullable=False, default="queued", server_default="queued"
     )
@@ -62,7 +64,9 @@ class PipelineWebhookToken(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
-    pipeline_item_id: Mapped[str] = mapped_column(ForeignKey("items.id"), nullable=False)
+    pipeline_item_id: Mapped[str] = mapped_column(
+        ForeignKey("items.id", ondelete="CASCADE"), nullable=False
+    )
     token_hash: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)

@@ -4,7 +4,10 @@ import type {
   ConfigRevisionInfo,
   CreateBookmarkInput,
   CreateKind,
+  DirectoryUser,
   Group,
+  GroupMember,
+  ShareLinkInfo,
   InstanceInfo,
   Item,
   ItemClient,
@@ -37,6 +40,11 @@ type ItemsMethods = Pick<
   | "listGroups"
   | "createGroup"
   | "addGroupMember"
+  | "listGroupMembers"
+  | "removeGroupMember"
+  | "renameGroup"
+  | "deleteGroup"
+  | "searchUserDirectory"
   | "getSharing"
   | "setSharing"
   | "createShareLink"
@@ -48,8 +56,14 @@ type ItemsMethods = Pick<
   | "getBookmarkConfig"
 >;
 
+type GroupWire = { id: string; name: string; createdBy?: string; canManage?: boolean };
+
+function toGroup(g: GroupWire): Group {
+  return { id: g.id, title: g.name, createdBy: g.createdBy, canManage: g.canManage };
+}
+
 export function createItemsMethods(base: ItemClientBase): ItemsMethods {
-  const { request, coreUrl, getToken } = base;
+  const { request, coreUrl, authFetch } = base;
   return {
     async listItems(params: ListItemsParams = {}): Promise<ItemPage> {
       const q = new URLSearchParams();
@@ -156,12 +170,10 @@ export function createItemsMethods(base: ItemClientBase): ItemsMethods {
     },
 
     async uploadThumbnail(pk: string, file: File): Promise<void> {
-      const token = getToken();
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch(`${coreUrl}/items/${pk}/thumbnail`, {
+      const res = await authFetch(`${coreUrl}/items/${pk}/thumbnail`, {
         method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: form,
       });
       if (!res.ok) {
@@ -170,11 +182,7 @@ export function createItemsMethods(base: ItemClientBase): ItemsMethods {
     },
 
     async deleteItem(pk: string): Promise<void> {
-      const token = getToken();
-      const res = await fetch(`${coreUrl}/configs/by-item/${pk}`, {
-        method: "DELETE",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await authFetch(`${coreUrl}/configs/by-item/${pk}`, { method: "DELETE" });
       if (!res.ok && res.status !== 404) {
         if (res.status === 409) {
           const data = (await res.json().catch(() => null)) as { detail?: unknown } | null;
@@ -189,13 +197,32 @@ export function createItemsMethods(base: ItemClientBase): ItemsMethods {
     },
 
     async listGroups(): Promise<Group[]> {
-      const data = await request<{ id: string; name: string }[]>("GET", `/groups`);
-      return data.map((g) => ({ id: g.id, title: g.name }));
+      const data = await request<GroupWire[]>("GET", `/groups`);
+      return data.map(toGroup);
     },
 
     async createGroup(name: string): Promise<Group> {
-      const data = await request<{ id: string; name: string }>("POST", `/groups`, { name });
-      return { id: data.id, title: data.name };
+      return toGroup(await request<GroupWire>("POST", `/groups`, { name }));
+    },
+
+    async listGroupMembers(groupId: string): Promise<GroupMember[]> {
+      return request<GroupMember[]>("GET", `/groups/${groupId}/members`);
+    },
+
+    async removeGroupMember(groupId: string, userId: string): Promise<void> {
+      await request<void>("DELETE", `/groups/${groupId}/members/${userId}`);
+    },
+
+    async renameGroup(groupId: string, name: string): Promise<Group> {
+      return toGroup(await request<GroupWire>("PATCH", `/groups/${groupId}`, { name }));
+    },
+
+    async deleteGroup(groupId: string): Promise<void> {
+      await request<void>("DELETE", `/groups/${groupId}`);
+    },
+
+    async searchUserDirectory(q: string): Promise<DirectoryUser[]> {
+      return request<DirectoryUser[]>("GET", `/users/directory?q=${encodeURIComponent(q)}`);
     },
 
     async addGroupMember(groupId: string, userId: string): Promise<void> {
@@ -234,13 +261,8 @@ export function createItemsMethods(base: ItemClientBase): ItemsMethods {
       );
     },
 
-    async listShareLinks(
-      itemId: string,
-    ): Promise<{ id: string; expiresAt: string; revoked: boolean }[]> {
-      return request<{ id: string; expiresAt: string; revoked: boolean }[]>(
-        "GET",
-        `/items/${itemId}/share-links`,
-      );
+    async listShareLinks(itemId: string): Promise<ShareLinkInfo[]> {
+      return request<ShareLinkInfo[]>("GET", `/items/${itemId}/share-links`);
     },
 
     async revokeShareLink(itemId: string, linkId: string): Promise<void> {

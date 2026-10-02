@@ -99,7 +99,7 @@ test("un profil tasks.view_all voit les deux sections", async () => {
     ),
   );
   render(<Harness />);
-  await screen.findByText("Mes tâches récentes");
+  await screen.findByText("Tâches du tenant");
   await screen.findByText("Usage de la plateforme");
   expect(await screen.findByText(/alice/)).toBeInTheDocument();
 });
@@ -181,4 +181,67 @@ test("le libellé français de l'action est affiché, pas la clé technique brut
   render(<Harness />);
   await screen.findByText("Exécution de pipeline");
   expect(screen.queryByText("pipeline.run")).not.toBeInTheDocument();
+});
+
+test("tasks.view_all : titre « Tâches du tenant » et colonne Utilisateur (j08-012)", async () => {
+  mockMe(["tasks.view", "tasks.view_all"]);
+  server.use(
+    http.get("https://core.test/v1/usage/tasks", () =>
+      HttpResponse.json({
+        tasks: [
+          {
+            id: 1,
+            actorId: "u2",
+            actorUsername: "bob",
+            action: "pipeline.run",
+            objectType: "pipeline",
+            objectId: "p1",
+            createdAt: "2026-09-01T00:00:00Z",
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 50,
+      }),
+    ),
+    http.get("https://core.test/v1/usage/summary", () =>
+      HttpResponse.json({
+        byActor: [],
+        byResource: [],
+        totalActions: 0,
+        windowStart: "2026-08-01T00:00:00Z",
+        windowEnd: "2026-09-01T00:00:00Z",
+      }),
+    ),
+  );
+  render(<Harness />);
+  expect(await screen.findByRole("columnheader", { name: "Utilisateur" })).toBeInTheDocument();
+  expect(await screen.findByText("bob")).toBeInTheDocument();
+  expect(screen.queryByText("Mes tâches récentes")).not.toBeInTheDocument();
+});
+
+test("tasks.view seul : pas de colonne Utilisateur, titre « Mes tâches récentes »", async () => {
+  mockMe(["tasks.view"]);
+  server.use(
+    http.get("https://core.test/v1/usage/tasks", () =>
+      HttpResponse.json({
+        tasks: [
+          {
+            id: 1,
+            actorId: "u1",
+            action: "pipeline.run",
+            objectType: "pipeline",
+            objectId: "p1",
+            createdAt: "2026-09-01T00:00:00Z",
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 50,
+      }),
+    ),
+  );
+  render(<Harness />);
+  await screen.findByText("Mes tâches récentes");
+  expect(screen.queryByRole("columnheader", { name: "Utilisateur" })).not.toBeInTheDocument();
 });

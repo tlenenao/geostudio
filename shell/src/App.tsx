@@ -42,14 +42,24 @@ export const queryClient = new QueryClient({ defaultOptions: { queries: { retry:
 const router = createAppRouter();
 
 function AppShell() {
-  const { getAccessToken } = useAuth();
+  const { getAccessToken, renewToken, signIn } = useAuth();
   const client = useMemo(
     () =>
       createItemClient({
         coreUrl: config.coreUrl,
         getToken: buildExportAwareToken(getAccessToken),
+        // P07.06 : 401 -> renouvellement silencieux, sinon reconnexion.
+        // Jamais pour le worker d'export (jeton ?exportToken, pas de session).
+        onUnauthorized: renewToken
+          ? async () => {
+              if (new URLSearchParams(window.location.search).has("exportToken")) return undefined;
+              const fresh = await renewToken();
+              if (!fresh) signIn();
+              return fresh;
+            }
+          : undefined,
       }),
-    [getAccessToken],
+    [getAccessToken, renewToken, signIn],
   );
   return (
     <ItemClientProvider client={client}>

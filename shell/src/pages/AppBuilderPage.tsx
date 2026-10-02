@@ -23,6 +23,8 @@ import { PrintLayoutPanel } from "../builder/print/PrintLayoutPanel";
 import { AppRenderer } from "../builder/AppRenderer";
 import { NavigationPanel } from "../builder/NavigationPanel";
 import { DataSourcePanel } from "../builder/DataSourcePanel";
+import { apiErrorMessage } from "../api/apiErrorMessage";
+import { useSourceLabel } from "../builder/useSourceLabel";
 import { DataSourcesEditProvider } from "../builder/DataSourcesEditContext";
 import { PageManager } from "../builder/PageManager";
 import { WidgetPalette } from "../builder/WidgetPalette";
@@ -30,8 +32,7 @@ import { PropsPanel } from "../builder/PropsPanel";
 import { ThemePanel } from "../builder/ThemePanel";
 import { VariablesPanel } from "../builder/VariablesPanel";
 import { registerBuiltinWidgets } from "../builder/widgets";
-import { registerCounterExampleWidget } from "../builder/examples/counterWidget";
-import { registerCounterWcExampleWidget } from "../builder/examples/counterWidgetWc";
+import { registerExampleWidgets } from "../builder/examples";
 import { useActiveExtensions } from "../api/hooks";
 import { registerExtensionWidget } from "../builder/extensions/registerExtensionWidget";
 import { getWidget } from "../builder/registry";
@@ -46,16 +47,17 @@ import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { useAuth } from "../auth/useAuth";
 import { useDirtyGuard } from "../lib/useDirtyGuard";
 import { t } from "../i18n";
+import { ApiError } from "../api/ApiError";
 
 registerBuiltinWidgets();
-registerCounterExampleWidget();
-registerCounterWcExampleWidget();
+registerExampleWidgets();
 
 export function AppBuilderPage({ pk }: { pk: string }) {
   const client = useItemClient();
   const query = useAppConfig(pk);
   const save = useSaveApp(pk);
   const itemQuery = useItem(pk);
+  const sourceLabel = useSourceLabel(true);
   // SP-42/F-shell-pages-04 : cf. commentaire jumeau sur DatasetEditPage.tsx —
   // même doctrine, même résidu documenté (permissions.write incomplet vs
   // garde de privilège de domaine).
@@ -111,6 +113,8 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   // de redirtification immédiate après un succès de sauvegarde.
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const hasSeededRef = useRef(false);
+  const baseVersionRef = useRef<number | undefined>(undefined);
+  const versionInitRef = useRef(false);
   useEffect(() => {
     if (draft === null) return;
     if (!hasSeededRef.current) {
@@ -120,6 +124,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
     setHasUnsavedChanges(true);
   }, [draft]);
   const { ConfirmLeaveDialog } = useDirtyGuard(hasUnsavedChanges);
+  const isConflict = save.error instanceof ApiError && save.error.status === 412;
 
   const extensionsQuery = useActiveExtensions();
   const [extensionsRegistered, setExtensionsRegistered] = useState(false);
@@ -139,6 +144,13 @@ export function AppBuilderPage({ pk }: { pk: string }) {
     // seedDraft (not setDraft) — this is the session's starting point, not
     // an edit, and must not create an undo step (SP-19).
     if (query.data) seedDraft(query.data);
+    // P09.05 : la version de base est celle du chargement initial, jamais
+    // celle d'un refetch (un autre onglet a pu enregistrer entre-temps — c'est
+    // précisément le conflit que le cœur doit détecter).
+    if (query.data && !versionInitRef.current) {
+      versionInitRef.current = true;
+      baseVersionRef.current = query.data.baseVersion;
+    }
   }, [query.data, seedDraft]);
 
   useEffect(() => {
@@ -149,7 +161,12 @@ export function AppBuilderPage({ pk }: { pk: string }) {
         target instanceof HTMLTextAreaElement ||
         (target instanceof HTMLElement && target.isContentEditable);
       if (isTextField) return;
+      // P10.03/05 : Suppr/Retour arrière ne suppriment que depuis le canevas (ou le body),
+      // jamais depuis un contrôle d'un panneau (select, bouton, case…), ni en aperçu.
+      const onCanvas =
+        !target || target === document.body || !!mainRef.current?.contains(target as Node);
       if ((e.key === "Delete" || e.key === "Backspace") && selectedId) {
+        if (mode !== "edit" || !onCanvas) return;
         e.preventDefault();
         removeSelected();
         return;
@@ -165,7 +182,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
     // (redéfinie identiquement à chaque rendu, capture les mêmes dépendances que le reste
     // du composant) — l'ajouter au tableau ne changerait rien.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [undo, redo, selectedId]);
+  }, [undo, redo, selectedId, mode]);
 
   const pages = useMemo(() => (draft ? getPages(draft) : []), [draft]);
   // Validate activePageId against the current draft's pages rather than
@@ -337,7 +354,20 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const setTheme = (theme: typeof draft.theme) => setDraft((d) => (d ? { ...d, theme } : d));
 
   const setPages = (nextPages: typeof pages) =>
-    setDraft((d) => (d ? { ...d, pages: nextPages, layout: nextPages[0]?.layout ?? d.layout } : d));
+    setDraft((d) => {
+      if (!d) return d;
+      // P10.07 : une page retirée emporte ses widgets — leurs messages câblés sont purgés.
+      const kept = new Set(nextPages.map((p) => p.id));
+      const removedIds = getPages(d)
+        .filter((p) => !kept.has(p.id))
+        .flatMap((p) => p.layout.items.map((i) => i.id));
+      return {
+        ...d,
+        pages: nextPages,
+        layout: nextPages[0]?.layout ?? d.layout,
+        messages: pruneMessagesForIds(d.messages, removedIds),
+      };
+    });
 
   const setNavigationMode = (navigationMode: "tabs" | "story") =>
     setDraft((d) => (d ? { ...d, navigationMode } : d));
@@ -500,6 +530,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                   onChange={setSources}
                   onPromote={(id) => void promoteSource(id)}
                   promotingId={promotingId}
+                  sourceLabel={sourceLabel}
                 />
                 {createDataset.isError && (
                   <p role="alert" className="text-xs text-danger">
@@ -557,6 +588,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                       // resetDraft, pas setDraft : la pile undo ne peut pas défaire
                       // une écriture serveur (cf. useUndoableDraft.resetDraft).
                       resetDraft(restored);
+                      baseVersionRef.current = restored.baseVersion;
                     }}
                   />
                 </div>
@@ -587,7 +619,15 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                     className="w-fit"
                     disabled={save.isPending || expressionErrors.length > 0 || readOnly}
                     onClick={() =>
-                      save.mutate(draft, { onSuccess: () => setHasUnsavedChanges(false) })
+                      save.mutate(
+                        { ...draft, baseVersion: baseVersionRef.current },
+                        {
+                          onSuccess: (version) => {
+                            baseVersionRef.current = version;
+                            setHasUnsavedChanges(false);
+                          },
+                        },
+                      )
                     }
                   >
                     {t("appBuilder.save")}
@@ -602,10 +642,29 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                       {expressionErrors[0]}
                     </span>
                   )}
-                  {save.isError && (
+                  {save.isError && !isConflict && (
                     <span role="alert" className="text-sm text-danger">
-                      {t("actions.saveFailed")}
+                      {apiErrorMessage(save.error, t("actions.saveFailed"))}
                     </span>
+                  )}
+                  {isConflict && (
+                    <div role="alert" className="flex flex-col gap-1 text-sm text-danger">
+                      <span>{t("appBuilder.conflict")}</span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-fit"
+                        onClick={() =>
+                          void client.getAppConfig(pk).then((latest) => {
+                            resetDraft(latest);
+                            baseVersionRef.current = latest.baseVersion;
+                            save.reset();
+                          })
+                        }
+                      >
+                        {t("appBuilder.conflictReload")}
+                      </Button>
+                    </div>
                   )}
                 </div>
               </aside>

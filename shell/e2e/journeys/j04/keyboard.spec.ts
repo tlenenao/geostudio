@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { getSeed, baseApp, grid } from "./seed";
-import { openBuilder, fixme } from "./helpers";
+import { openBuilder } from "./helpers";
 
 test.setTimeout(90_000);
 const text = (id: string, t: string, y = 0) => ({
@@ -15,36 +15,34 @@ const text = (id: string, t: string, y = 0) => ({
 
 test.describe("j04 raccourcis clavier du builder", () => {
   // finding j04-011
-  fixme(
-    "j04-011 : Retour arrière dans un menu déroulant du panneau ne supprime pas le widget sélectionné",
-    async ({ page }) => {
-      const s = await getSeed();
-      const id = await s.mkApp("kbd-select", baseApp({ layout: grid([text("a", "A")]) }));
-      await openBuilder(page, id);
-      await page.getByRole("button", { name: "Sélectionner widget-a" }).click();
-      await page.getByLabel("Widget émetteur").focus();
-      await page.keyboard.press("Backspace");
-      await expect(page.getByRole("button", { name: "Sélectionner widget-a" })).toHaveCount(1);
-    },
-  );
+  test("j04-011 : Retour arrière dans un menu déroulant du panneau ne supprime pas le widget sélectionné", async ({
+    page,
+  }) => {
+    const s = await getSeed();
+    const id = await s.mkApp("kbd-select", baseApp({ layout: grid([text("a", "A")]) }));
+    await openBuilder(page, id);
+    await page.getByRole("button", { name: "Sélectionner widget-a" }).click();
+    await page.getByLabel("Widget émetteur").focus();
+    await page.keyboard.press("Backspace");
+    await expect(page.getByRole("button", { name: "Sélectionner widget-a" })).toHaveCount(1);
+  });
 
   // finding j04-012
-  fixme(
-    "j04-012 : en mode Aperçu, Suppr ne supprime pas un widget resté sélectionné",
-    async ({ page }) => {
-      const s = await getSeed();
-      const id = await s.mkApp(
-        "kbd-preview",
-        baseApp({ layout: grid([text("a", "Visible en aperçu")]) }),
-      );
-      await openBuilder(page, id);
-      await page.getByRole("button", { name: "Sélectionner widget-a" }).click();
-      await page.getByRole("button", { name: "Aperçu" }).click();
-      await page.keyboard.press("Delete");
-      await page.getByRole("button", { name: "Édition" }).click();
-      await expect(page.getByRole("button", { name: "Sélectionner widget-a" })).toHaveCount(1);
-    },
-  );
+  test("j04-012 : en mode Aperçu, Suppr ne supprime pas un widget resté sélectionné", async ({
+    page,
+  }) => {
+    const s = await getSeed();
+    const id = await s.mkApp(
+      "kbd-preview",
+      baseApp({ layout: grid([text("a", "Visible en aperçu")]) }),
+    );
+    await openBuilder(page, id);
+    await page.getByRole("button", { name: "Sélectionner widget-a" }).click();
+    await page.getByRole("button", { name: "Aperçu" }).click();
+    await page.keyboard.press("Delete");
+    await page.getByRole("button", { name: "Édition" }).click();
+    await expect(page.getByRole("button", { name: "Sélectionner widget-a" })).toHaveCount(1);
+  });
 
   test("Ctrl+Z après une saisie de texte annule la saisie entière (coalescing) et pas un caractère", async ({
     page,

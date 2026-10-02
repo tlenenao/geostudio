@@ -5,6 +5,7 @@ from pydantic import BaseModel
 class UsageTaskRead(BaseModel):
     id: int
     actorId: str | None
+    actorUsername: str | None = None
     action: str
     objectType: str
     objectId: str

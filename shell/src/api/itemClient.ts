@@ -32,6 +32,7 @@ export function createItemClient(opts: {
   coreUrl: string;
   getToken: () => string | undefined;
   getShareLinkToken?: () => string | undefined;
+  onUnauthorized?: () => Promise<string | undefined>;
 }): ItemClient {
   const base = createBase(opts);
 

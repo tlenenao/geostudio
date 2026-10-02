@@ -12,7 +12,7 @@ test("adds a variable with an empty initial value", async () => {
   await userEvent.click(screen.getByRole("button", { name: "Ajouter une variable" }));
   const next = onChange.mock.calls[0][0] as Variable[];
   expect(next).toHaveLength(1);
-  expect(next[0].name).toBe("Variable 1");
+  expect(next[0].name).toBe("variable_1");
   expect(next[0].initialValue).toBe("");
 });
 
@@ -29,7 +29,9 @@ test("edits a variable's initial value", async () => {
   const onChange = vi.fn();
   const variables: Variable[] = [{ id: "v1", name: "message", initialValue: "" }];
   render(<VariablesPanel variables={variables} onChange={onChange} />);
-  await userEvent.type(screen.getByLabelText("Valeur initiale de la variable v1"), "salut");
+  fireEvent.change(screen.getByLabelText("Valeur initiale de la variable v1"), {
+    target: { value: "salut" },
+  });
   const next = onChange.mock.calls.at(-1)![0] as Variable[];
   expect(next[0].initialValue).toBe("salut");
 });
@@ -137,4 +139,38 @@ test("changes a variable's type back to string resets its initial value to an em
   await userEvent.selectOptions(screen.getByLabelText("Type de la variable v1"), "string");
   const next = onChange.mock.calls.at(-1)![0] as Variable[];
   expect(next[0]).toEqual({ id: "v1", name: "count", type: "string", initialValue: "" });
+});
+
+test("the name field follows the draft when it changes externally, e.g. undo (P10.08)", () => {
+  const v = (name: string): Variable[] => [{ id: "v1", name, initialValue: "" }];
+  const { rerender } = render(<VariablesPanel variables={v("modifie")} onChange={vi.fn()} />);
+  rerender(<VariablesPanel variables={v("origine")} onChange={vi.fn()} />);
+  expect(screen.getByLabelText("Renommer la variable v1")).toHaveValue("origine");
+});
+
+test("refuses empty, invalid and duplicate names with an alert (P10.11)", async () => {
+  const onChange = vi.fn();
+  const variables: Variable[] = [
+    { id: "v1", name: "a", initialValue: "" },
+    { id: "v2", name: "b", initialValue: "" },
+  ];
+  render(<VariablesPanel variables={variables} onChange={onChange} />);
+  const second = screen.getByLabelText("Renommer la variable v2");
+  await userEvent.clear(second);
+  expect(screen.getByRole("alert")).toHaveTextContent("vide");
+  await userEvent.type(second, "a");
+  expect(screen.getByRole("alert")).toHaveTextContent("déjà ce nom");
+  await userEvent.clear(second);
+  await userEvent.type(second, "1x");
+  expect(screen.getByRole("alert")).toHaveTextContent("Lettres");
+  expect(onChange).not.toHaveBeenCalled();
+});
+
+test("la valeur initiale suit le brouillon (undo/redo) au lieu de rester figée", () => {
+  const v = (initialValue: string): Variable[] => [
+    { id: "v1", name: "message", type: "string", initialValue },
+  ];
+  const { rerender } = render(<VariablesPanel variables={v("a")} onChange={vi.fn()} />);
+  rerender(<VariablesPanel variables={v("b")} onChange={vi.fn()} />);
+  expect(screen.getByLabelText("Valeur initiale de la variable v1")).toHaveValue("b");
 });

@@ -8,7 +8,6 @@ import {
   ensureExportsBucket,
   exportWriter,
   getPlainBig,
-  psql,
   reader,
   runAndTime,
   runPipeline,
@@ -34,8 +33,7 @@ const filter = (expr: string): PNode => ({
   params: { expr },
 });
 
-// Collection de sortie vide typée ; tenant_id reçoit son défaut (contournement de j05b-002,
-// sans lequel writer.collection échoue dès la première ligne).
+// Collection de sortie vide typée .
 async function outCollection(name: string): Promise<string> {
   const out = await creator.send("POST", "/v1/collections/empty", {
     title: `${tag}-${name}`,
@@ -45,7 +43,6 @@ async function outCollection(name: string): Promise<string> {
       { name: "val", sqlType: "integer" },
     ],
   });
-  psql(`ALTER TABLE "${out.body.tableName}" ALTER COLUMN tenant_id SET DEFAULT 'default'`);
   return out.body.id as string;
 }
 const collWriter = (id: string): PNode => ({

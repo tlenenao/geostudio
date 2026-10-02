@@ -131,6 +131,7 @@ export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
     request,
     coreUrl,
     getToken,
+    renewToken,
     resolveDataset,
     datasetCache,
     invalidateDatasetCache,
@@ -295,7 +296,7 @@ export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
         const path = isArcgis
           ? `/datasets/${source.datasetId}/arcgis/export?format=${format}`
           : `/collections/${cachedDataset?.collectionId ?? source.layer}/export?format=${format}`;
-        return requestBlob(coreUrl, getToken, "POST", path, body);
+        return requestBlob(coreUrl, getToken, "POST", path, body, undefined, renewToken);
       }
       const resolved = source.datasetId
         ? { ...source, layer: cachedDataset?.collectionId ?? source.layer }
@@ -305,7 +306,7 @@ export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
       const path = isArcgis
         ? `/datasets/${source.datasetId}/arcgis/export/items?format=${format}${suffix}`
         : `/collections/${resolved.layer}/export/items?format=${format}${suffix}`;
-      return requestBlob(coreUrl, getToken, "GET", path);
+      return requestBlob(coreUrl, getToken, "GET", path, undefined, undefined, renewToken);
     },
 
     async getCollectionSchema(collectionId: string): Promise<CollectionSchema> {

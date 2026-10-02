@@ -624,6 +624,20 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   erreurs DuckDB lisibles sur SQL Lab, finitions transverses (pluriel
   grammatical fr, widget carte, pipeline en lecture seule, historique du
   copilote, déclenchement manuel d'une évaluation d'alerte).
+- **Audit pré-release P01–P05 (socle d'exécution)** — plan
+  `docs/revue/audit-2026-09-29/PLAN-CONSOLIDE.md` : `.defer()` fonctionnel
+  depuis l'API + reprise des jobs `pending`/`queued`, câblage worker (files,
+  env, concurrence), S3 public/CORS/liens signés, nginx `.mjs`/cache, colonne
+  géométrie du lac. Reste : `REV-266`/`267`/`268`.
+- **Audit pré-release P06–P11 (exécution et intégrité)** — export-worker,
+  session OIDC (`returnTo`, 401, historiques par compte), installation/
+  release/secrets HMAC, `If-Match` 412 sur le builder d'app + FK `ON DELETE`
+  (0043), builder d'app, export autoporté sous `/v1`. Reste : `REV-269`/`271`.
+- **Audit pré-release P12–P15 (autorisation)** — plafond de privilèges,
+  RGPD, fuites de lecture, partage/groupes/annuaire, masquage GAP-22 sur
+  pipelines/exports/MCP (ferme les 2 bypass documentés). Revues finales :
+  P01–P05 6 Important, P06–P15 2 Important. Reste : `REV-270`/`272`.
+  P16–P36 du plan non lancés. Détail dans l'archive.
 
 ### Conventions tranchées (2026-09-01)
 
@@ -681,6 +695,10 @@ recoller le détail que le backlog porte déjà :
 - i18n (SP-29a) + a11y (SP-57a) outillés : `npm run lint` bloque le
   français en dur, `a11y-audit.spec.ts` audite 9 pages
   (`REV-176`/`177`/`178`).
+- Audit pré-release (P01–P15) : reliquats `REV-266` à `REV-272` du backlog
+  (stack réelle non rejouée, perf shell, orphelins S3, release/Keycloak,
+  décisions produit, `If-Match` partiel, tombstone RGPD) ; P16–P36 du plan
+  `docs/revue/audit-2026-09-29/PLAN-CONSOLIDE.md` non exécutés.
 - Bilan de fonctionnalités outillé (SP-61) : `docs/revue/
   bilan-fonctionnalites.{html,md}`, régénéré par
   `feature_health_cli.py --write`, CI refuse toute surface non
@@ -794,3 +812,10 @@ change le comportement d'une session sur la stack/l'environnement de dev :
     externe concret, intégralement annulé sur `dev`. Détail des 7 classes de
     défauts rencontrées avant de retenter :
     [`docs/superpowers/specs/2026-09-08-app-builder-package-extraction-postmortem.md`](docs/superpowers/specs/2026-09-08-app-builder-package-extraction-postmortem.md).
+14. **Commit puis defer, et jumelle de garde oubliée** (audit pré-release,
+    2026-10-02). Une ligne de job commitée puis un `.defer()` qui échoue
+    reste `pending` à jamais : toute tâche différée a un balayage de reprise.
+    Un correctif posé sur une surface se reporte sur ses jumelles (`/health`,
+    mini-serveur `geometry`, garde `/export`↔`/uploads`↔`/tileset3d`, URL
+    multipart, `pool_pre_ping`, `catalog.manage` vs Analyste) — 8 trouvées
+    en revue finale seulement ; lister les jumelles avant de clore.

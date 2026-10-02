@@ -1306,6 +1306,8 @@
       "CreateGroupRequest": {
         "properties": {
           "name": {
+            "maxLength": 200,
+            "minLength": 1,
             "title": "Name",
             "type": "string"
           }
@@ -1766,6 +1768,7 @@
           },
           "moduleUrl": {
             "minLength": 1,
+            "pattern": "^https://[^\\s]+$",
             "title": "Moduleurl",
             "type": "string"
           },
@@ -1785,6 +1788,7 @@
           },
           "tag": {
             "minLength": 1,
+            "pattern": "^[a-z][a-z0-9._]*-[a-z0-9._-]*$",
             "title": "Tag",
             "type": "string"
           }
@@ -1853,6 +1857,7 @@
           "label": {
             "anyOf": [
               {
+                "minLength": 1,
                 "type": "string"
               },
               {
@@ -1864,6 +1869,8 @@
           "moduleUrl": {
             "anyOf": [
               {
+                "minLength": 1,
+                "pattern": "^https://[^\\s]+$",
                 "type": "string"
               },
               {
@@ -1899,6 +1906,8 @@
           "tag": {
             "anyOf": [
               {
+                "minLength": 1,
+                "pattern": "^[a-z][a-z0-9._]*-[a-z0-9._-]*$",
                 "type": "string"
               },
               {
@@ -1968,10 +1977,12 @@
       "ExtensionSize": {
         "properties": {
           "h": {
+            "exclusiveMinimum": 0.0,
             "title": "H",
             "type": "integer"
           },
           "w": {
+            "exclusiveMinimum": 0.0,
             "title": "W",
             "type": "integer"
           }
@@ -2022,8 +2033,46 @@
         "title": "GcsCredentialsPayload",
         "type": "object"
       },
+      "GroupMemberRead": {
+        "properties": {
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "userId": {
+            "title": "Userid",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId",
+          "username",
+          "email"
+        ],
+        "title": "GroupMemberRead",
+        "type": "object"
+      },
       "GroupRead": {
         "properties": {
+          "canManage": {
+            "title": "Canmanage",
+            "type": "boolean"
+          },
+          "createdBy": {
+            "title": "Createdby",
+            "type": "string"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -2035,7 +2084,9 @@
         },
         "required": [
           "id",
-          "name"
+          "name",
+          "createdBy",
+          "canManage"
         ],
         "title": "GroupRead",
         "type": "object"
@@ -3364,6 +3415,17 @@
             "title": "From",
             "type": "string"
           },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
           "payload": {
             "anyOf": [
               {
@@ -4149,6 +4211,21 @@
         "title": "PurgeTriggeredResponse",
         "type": "object"
       },
+      "RenameGroupRequest": {
+        "properties": {
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "RenameGroupRequest",
+        "type": "object"
+      },
       "ReportRunStatus": {
         "properties": {
           "createdAt": {
@@ -4296,6 +4373,8 @@
       "RoleCreate": {
         "properties": {
           "name": {
+            "maxLength": 80,
+            "minLength": 1,
             "title": "Name",
             "type": "string"
           },
@@ -4319,6 +4398,8 @@
           "name": {
             "anyOf": [
               {
+                "maxLength": 80,
+                "minLength": 1,
                 "type": "string"
               },
               {
@@ -4632,6 +4713,14 @@
       },
       "ShareLinkListItem": {
         "properties": {
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "createdBy": {
+            "title": "Createdby",
+            "type": "string"
+          },
           "expiresAt": {
             "title": "Expiresat",
             "type": "string"
@@ -4648,7 +4737,9 @@
         "required": [
           "id",
           "expiresAt",
-          "revoked"
+          "revoked",
+          "createdAt",
+          "createdBy"
         ],
         "title": "ShareLinkListItem",
         "type": "object"
@@ -5022,6 +5113,17 @@
             ],
             "title": "Actorid"
           },
+          "actorUsername": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actorusername"
+          },
           "createdAt": {
             "title": "Createdat",
             "type": "string"
@@ -5176,9 +5278,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
+                  "additionalProperties": true,
                   "title": "Response Health Health Get",
                   "type": "object"
                 }
@@ -7325,6 +7425,22 @@
           },
           {
             "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
             "name": "authorization",
             "required": false,
             "schema": {
@@ -7467,6 +7583,22 @@
             "schema": {
               "title": "Config Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
             }
           },
           {
@@ -8184,6 +8316,46 @@
       }
     },
     "/v1/extensions/{extension_id}": {
+      "delete": {
+        "operationId": "delete_extension_v1_extensions__extension_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "extension_id",
+            "required": true,
+            "schema": {
+              "title": "Extension Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Extension"
+      },
       "patch": {
         "operationId": "patch_extension_v1_extensions__extension_id__patch",
         "parameters": [
@@ -8332,7 +8504,157 @@
         "summary": "Create Group"
       }
     },
+    "/v1/groups/{group_id}": {
+      "delete": {
+        "operationId": "delete_group_v1_groups__group_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "title": "Group Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Group"
+      },
+      "patch": {
+        "operationId": "rename_group_v1_groups__group_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "title": "Group Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameGroupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rename Group"
+      }
+    },
     "/v1/groups/{group_id}/members": {
+      "get": {
+        "operationId": "list_group_members_v1_groups__group_id__members_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "title": "Group Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GroupMemberRead"
+                  },
+                  "title": "Response List Group Members V1 Groups  Group Id  Members Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Group Members"
+      },
       "post": {
         "operationId": "add_member_v1_groups__group_id__members_post",
         "parameters": [
@@ -8382,6 +8704,57 @@
           }
         },
         "summary": "Add Member"
+      }
+    },
+    "/v1/groups/{group_id}/members/{member_id}": {
+      "delete": {
+        "operationId": "remove_group_member_v1_groups__group_id__members__member_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "title": "Group Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "member_id",
+            "required": true,
+            "schema": {
+              "title": "Member Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Group Member"
       }
     },
     "/v1/harvest/feature-layers": {
@@ -8827,6 +9200,12 @@
             "required": false,
             "schema": {
               "default": "all",
+              "enum": [
+                "all",
+                "mine",
+                "shared",
+                "public"
+              ],
               "title": "Scope",
               "type": "string"
             }
@@ -8998,6 +9377,12 @@
             "required": false,
             "schema": {
               "default": "all",
+              "enum": [
+                "all",
+                "mine",
+                "shared",
+                "public"
+              ],
               "title": "Scope",
               "type": "string"
             }
@@ -11746,6 +12131,47 @@
             }
           },
           {
+            "in": "query",
+            "name": "roleId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Roleid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "username",
+              "enum": [
+                "username",
+                "email",
+                "createdAt"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "desc",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Desc",
+              "type": "boolean"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -11781,6 +12207,63 @@
           }
         },
         "summary": "Get Users"
+      }
+    },
+    "/v1/users/directory": {
+      "get": {
+        "description": "j13-005 : annuaire restreint (id, nom, e-mail \u2014 ni r\u00f4le ni statut) pour\najouter un membre \u00e0 un groupe ; r\u00e9serv\u00e9 \u00e0 qui peut partager un kind, donc \u00e0 qui\npeut cr\u00e9er des groupes. D\u00e9clar\u00e9 avant toute route `/users/{id}` GET.",
+        "operationId": "get_users_directory_v1_users_directory_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "maxLength": 100,
+              "minLength": 2,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Get Users Directory V1 Users Directory Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Users Directory"
       }
     },
     "/v1/users/{user_id}": {
