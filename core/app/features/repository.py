@@ -214,6 +214,43 @@ def insert_feature(session: Session, info: TableInfo, *, properties: dict, geome
     return fid
 
 
+def insert_features(
+    session: Session, info: TableInfo, rows: list[tuple[dict, dict | None]]
+) -> None:
+    """Insertion groupée (executemany, un seul aller-retour par lot) de lignes
+    (properties, geometry) déjà validées. Contrairement à insert_feature, toutes
+    les lignes du lot partagent les colonnes de la première (clés absentes →
+    NULL, pas le défaut de colonne) : réservé aux producteurs à schéma uniforme
+    (pipelines, t03b-001)."""
+    if not rows:
+        return
+    t = quote_ident(session, info.table_name)
+    cols, values = ["tenant_id"], ["current_setting('app.tenant_id')"]
+    keys: dict[str, str] = {}  # paramètre -> nom de colonne
+    for i, col in enumerate(_property_columns(info)):
+        if col.type != "unsupported" and col.name in rows[0][0]:
+            cols.append(quote_ident(session, col.name))
+            values.append(f":p{i}")
+            keys[f"p{i}"] = col.name
+    if info.geometry_column:
+        cols.append(quote_ident(session, info.geometry_column))
+        values.append(
+            f"CASE WHEN CAST(:__geom AS text) IS NULL THEN NULL ELSE {_geometry_sql(info)} END"
+        )
+    params = []
+    for properties, geometry in rows:
+        p = {k: properties.get(n) for k, n in keys.items()}
+        if info.geometry_column:
+            p.update(
+                __geom=json.dumps(geometry) if geometry is not None else None,
+                __srid=info.srid or 4326,
+            )
+        params.append(p)
+    session.execute(
+        text(f"INSERT INTO public.{t} ({', '.join(cols)}) VALUES ({', '.join(values)})"), params
+    )
+
+
 def replace_feature(
     session: Session, info: TableInfo, *, fid: str, properties: dict, geometry: dict | None
 ) -> bool:

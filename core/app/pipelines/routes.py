@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
 from app.configs.schemas import PipelinePayload
 from app.db import get_session
@@ -79,7 +80,7 @@ def get_pipeline_next_run(
     cron: str = Query(...),
     user: User = Depends(get_current_user),
 ) -> NextRunResponse:
-    if not croniter.croniter.is_valid(cron):
+    if len(cron.split()) != 5 or not croniter.croniter.is_valid(cron):
         raise HTTPException(status_code=400, detail=f"invalid cron expression: {cron!r}")
     try:
         next_tick = croniter.croniter(cron, datetime.now(UTC)).get_next(datetime)
@@ -101,6 +102,47 @@ def run_pipeline_route(
     return RunResponse(runId=run_id)
 
 
+def _run_status(r) -> RunStatus:
+    return RunStatus(
+        id=r.id,
+        status=r.status,
+        startedAt=r.started_at.isoformat() if r.started_at else None,
+        finishedAt=r.finished_at.isoformat() if r.finished_at else None,
+        error=r.error,
+        nodeStats=r.node_stats,
+    )
+
+
+@router.post("/pipelines/{item_id}/runs/{run_id}/cancel", response_model=RunStatus)
+def cancel_pipeline_run_route(
+    item_id: str,
+    run_id: str,
+    session: Session = Depends(get_session, scope="function"),
+    user: User = Depends(get_current_user),
+) -> RunStatus:
+    """t03b-009 : demande l'arrêt d'un run en file ou en cours (effectif entre
+    deux lots d'écriture)."""
+    require_pipeline_access(session, user=user, item_id=item_id, action="write")
+    run = pipelines_repo.get_run(session, tenant_id=user.tenant_id, run_id=run_id)
+    if run is None or run.pipeline_item_id != item_id:
+        raise HTTPException(status_code=404, detail="run not found")
+    if run.status not in ("queued", "running"):
+        raise HTTPException(status_code=409, detail=f"run is {run.status}, cannot be cancelled")
+    pipelines_repo.request_cancel(session, run)
+    write_audit(
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="pipeline.run.cancel",
+        object_type="pipeline_run",
+        object_id=run.id,
+        payload={"pipelineItemId": item_id},
+    )
+    session.commit()
+    return _run_status(run)
+
+
 _RUNS_MAX_LIMIT = 1000
 
 
@@ -118,17 +160,7 @@ def list_pipeline_runs(
     runs = pipelines_repo.list_runs(
         session, tenant_id=user.tenant_id, pipeline_item_id=item_id, limit=limit, offset=offset
     )
-    return [
-        RunStatus(
-            id=r.id,
-            status=r.status,
-            startedAt=r.started_at.isoformat() if r.started_at else None,
-            finishedAt=r.finished_at.isoformat() if r.finished_at else None,
-            error=r.error,
-            nodeStats=r.node_stats,
-        )
-        for r in runs
-    ]
+    return [_run_status(r) for r in runs]
 
 
 @router.post("/pipelines/{item_id}/preview")

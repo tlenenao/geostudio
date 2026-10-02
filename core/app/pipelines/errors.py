@@ -15,3 +15,8 @@ PipelineRuntimeError`)."""
 class PipelineRuntimeError(Exception):
     """Erreur d'exécution : la tâche procrastinate (Task 9) l'attrape et
     marque le run 'failed', jamais 'zombie'."""
+
+
+class PipelineCancelledError(PipelineRuntimeError):
+    """Annulation demandée par l'utilisateur (t03b-009) : le run finit
+    « cancelled », pas « failed », et la transaction d'écriture est annulée."""

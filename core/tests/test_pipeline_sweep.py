@@ -273,3 +273,36 @@ def test_sweep_fails_the_stale_running_run_it_replaces(monkeypatch):
     assert runs[old_id].status == "failed"
     assert runs[old_id].finished_at is not None
     assert sorted(r.status for r in runs.values()) == ["failed", "queued"]
+
+
+def test_sweep_writes_pipeline_run_audit_with_schedule_actor(monkeypatch):
+    # c03-003 : un run planifié laisse la même trace audit que POST /run.
+    from sqlalchemy import select
+
+    from app.audit.models import AuditLog
+
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        item_id = _seed_due_pipeline(s, tenant_id=tenant.id, owner_id=user.id)
+        s.commit()
+    monkeypatch.setattr(pipeline_jobs.run_pipeline_task, "defer", lambda **kw: None)
+    monkeypatch.setattr(pipeline_jobs, "_session_factory", lambda: Session)
+    monkeypatch.setattr(pipeline_jobs, "is_read_only_mode", lambda: False)
+    monkeypatch.setattr(pipeline_jobs, "is_etl_enabled", lambda: True)
+
+    pipeline_jobs.run_pipeline_sweep_task(timestamp=0)
+
+    with Session() as s:
+        row = s.execute(select(AuditLog).where(AuditLog.action == "pipeline.run")).scalar_one()
+        assert (row.tenant_id, row.actor_id, row.actor_kind) == (tenant.id, user.id, "schedule")
+        assert row.payload == {"pipelineItemId": item_id}

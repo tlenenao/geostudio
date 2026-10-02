@@ -113,6 +113,33 @@ def mark_running(session: Session, *, run_id: str) -> None:
     session.flush()
 
 
+def request_cancel(session: Session, run: PipelineRun) -> str:
+    """t03b-009 : un run « queued » passe directement à « cancelled » (la tâche
+    le verra et ne l'exécutera pas) ; un run « running » passe à
+    « cancel_requested », testé par l'écrivain entre deux lots."""
+    if run.status == "queued":
+        run.status = "cancelled"
+        run.finished_at = _now()
+    elif run.status == "running":
+        run.status = "cancel_requested"
+    session.flush()
+    return run.status
+
+
+def is_cancel_requested(session: Session, *, run_id: str) -> bool:
+    run = session.get(PipelineRun, run_id)
+    return run is not None and run.status == "cancel_requested"
+
+
+def mark_cancelled(session: Session, *, run_id: str) -> None:
+    run = session.get(PipelineRun, run_id)
+    if run is None:
+        return
+    run.status = "cancelled"
+    run.finished_at = _now()
+    session.flush()
+
+
 def mark_succeeded(session: Session, *, run_id: str, node_stats: dict) -> None:
     run = session.get(PipelineRun, run_id)
     if run is None:
@@ -147,12 +174,13 @@ def reclaim_stuck_runs(
     # légitimes dépassent ce délai."""
     threshold = _now() - timedelta(minutes=older_than_minutes)
     anchor = case(
-        (PipelineRun.status == "running", PipelineRun.started_at), else_=PipelineRun.created_at
+        (PipelineRun.status.in_(("running", "cancel_requested")), PipelineRun.started_at),
+        else_=PipelineRun.created_at,
     )
     result = session.execute(
         update(PipelineRun)
         .where(
-            PipelineRun.status.in_(("queued", "running")),
+            PipelineRun.status.in_(("queued", "running", "cancel_requested")),
             func.coalesce(anchor, PipelineRun.created_at) < threshold,
         )
         .values(
@@ -212,7 +240,7 @@ def list_due_pipelines(session: Session) -> list[tuple[str, str]]:
         created_at = latest.created_at
         if created_at.tzinfo is None:
             created_at = created_at.replace(tzinfo=UTC)
-        if latest.status in ("queued", "running"):
+        if latest.status in ("queued", "running", "cancel_requested"):
             # Ancre de péremption : pour un run "running", l'horloge pertinente
             # est started_at (posé par mark_running), pas created_at (heure de
             # mise en file) — sinon un run resté longtemps en file d'attente
@@ -222,7 +250,7 @@ def list_due_pipelines(session: Session) -> list[tuple[str, str]]:
             # ancre disponible avant que le run démarre : created_at reste
             # correct.
             reclaim_anchor = created_at
-            if latest.status == "running" and latest.started_at is not None:
+            if latest.status != "queued" and latest.started_at is not None:
                 reclaim_anchor = latest.started_at
                 if reclaim_anchor.tzinfo is None:
                     reclaim_anchor = reclaim_anchor.replace(tzinfo=UTC)

@@ -101,7 +101,8 @@ class _FakeS3:
         pass
 
     def put_object(self, *, Bucket, Key, Body):
-        self.calls.append({"Bucket": Bucket, "Key": Key, "Body": Body})
+        # t03b-008 : le corps arrive en flux (fichier), on le lit pour l'assertion.
+        self.calls.append({"Bucket": Bucket, "Key": Key, "Body": Body.read()})
 
 
 def test_preview_filter_and_derive(tmp_path, monkeypatch):
@@ -3028,3 +3029,59 @@ def test_preview_is_interrupted_after_its_time_budget(monkeypatch):
             base_uri="s3://b/cdc",
         )
     assert time.monotonic() - t0 < 10
+
+
+def test_failing_node_gives_business_message_without_duckdb_internals(tmp_path, monkeypatch):
+    # j06b-007 : nœud + cause, jamais le SQL / les noms de vues DuckDB.
+    from app.configs.schemas import PipelinePayload
+
+    _write_partition(tmp_path, rows=[_row(1, "Nord", 10)])
+    monkeypatch.setattr(
+        runtime, "_table_info_for_collection", lambda session, cid: _table_info_for(cid)
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: collection_id,
+    )
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "villes"},
+                },
+                {
+                    "id": "f",
+                    "kind": "transform",
+                    "op": "transform.filter",
+                    "params": {"expr": "colonne_inconnue > 5"},
+                },
+                {
+                    "id": "w",
+                    "kind": "writer",
+                    "op": "writer.export",
+                    "params": {"format": "csv", "key": "o.csv"},
+                },
+            ],
+            "edges": [{"id": "e1", "from": "r1", "to": "f"}, {"id": "e2", "from": "f", "to": "w"}],
+        }
+    )
+    with pytest.raises(runtime.PipelineRuntimeError) as exc_info:
+        runtime.preview_pipeline(
+            session=None,
+            payload=payload,
+            tenant_id="t1",
+            user=None,
+            up_to="f",
+            endpoint_url="http://localhost:9000",
+            access_key="x",
+            secret_key="y",
+            base_uri=str(tmp_path),
+        )
+    msg = str(exc_info.value)
+    assert "'f'" in msg and "colonne_inconnue" in msg
+    for internal in ("LINE 1", "node_f", "Binder Error", "erreur interne"):
+        assert internal not in msg

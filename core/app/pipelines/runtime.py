@@ -27,7 +27,10 @@ compris) n'ait jamais à connaître le nom d'origine — cf. Task 8 note."""
 import csv
 import io
 import json
+import logging
 import os
+import re
+import tempfile
 import threading
 from collections.abc import Callable
 
@@ -48,13 +51,16 @@ from app.collections.introspection import (
 from app.collections.introspection_pg import introspect_table
 from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig, DatasetPayload, PipelineNode, PipelinePayload
-from app.features.repository import delete_all_features, insert_feature
+from app.features.repository import delete_all_features, insert_features
 from app.features.rls import rls_scope
 from app.features.validation import validate_feature
 from app.ingestion.storage import ensure_uploads_bucket
 from app.items import repository as items_repo
 from app.pipelines import compiler, connector_runtime
-from app.pipelines.errors import PipelineRuntimeError  # noqa: F401 (réexporté pour compatibilité)
+from app.pipelines.errors import (  # noqa: F401 (réexportés pour compatibilité)
+    PipelineCancelledError,
+    PipelineRuntimeError,
+)
 from app.pipelines.expr_validation import validate_bounded_expr
 from app.pipelines.ops.schemas import (
     ReaderCollectionParams,
@@ -113,6 +119,11 @@ def _ql(value: str) -> str:
     # app.analytics.aggregate._quote_literal (duplication déjà acceptée
     # dans ce dépôt, même raisonnement que _qi lui-même).
     return "'" + value.replace("'", "''") + "'"
+
+
+logger = logging.getLogger(__name__)
+
+_WRITE_BATCH_SIZE = 2000
 
 
 class NodeStat:
@@ -722,7 +733,8 @@ def _execute_transform_chain(
         if node.kind != "transform":
             break  # writer nodes are handled by the caller, not here
         pred_id = compiler.predecessor_id(node.id, edges)
-        assert pred_id is not None
+        if pred_id is None:
+            raise PipelineRuntimeError(f"node '{node.id}' has no incoming edge")
         input_view = view_by_node[pred_id]
         input_srid = srid_by_node[pred_id]
         join_view = None
@@ -755,38 +767,52 @@ def _execute_transform_chain(
                 "retirée ? Voir CHANGELOG.md pour la liste des ruptures et "
                 "leur migration."
             )
-        if contract.execute is not None:
-            contract.execute(conn, input_view=input_view, view_name=view_name, params=node.params)
-        else:
-            input_columns = None
-            join_columns = None
-            if contract.needs_columns:
-                input_columns = [
-                    d[0] for d in conn.execute(f"DESCRIBE {_qi(input_view)}").fetchall()
-                ]
-                if join_view is not None:
-                    join_columns = [
-                        d[0] for d in conn.execute(f"DESCRIBE {_qi(join_view)}").fetchall()
+        try:
+            if contract.execute is not None:
+                contract.execute(
+                    conn, input_view=input_view, view_name=view_name, params=node.params
+                )
+            else:
+                input_columns = None
+                join_columns = None
+                if contract.needs_columns:
+                    input_columns = [
+                        d[0] for d in conn.execute(f"DESCRIBE {_qi(input_view)}").fetchall()
                     ]
-            sql = compiler.compile_transform_sql(
-                node.op,
-                node.params,
-                input_view=input_view,
-                join_view=join_view,
-                input_srid=input_srid,
-                input_columns=input_columns,
-                join_columns=join_columns,
-            )
-            conn.execute(f"CREATE TEMP VIEW {_qi(view_name)} AS {sql}")
+                    if join_view is not None:
+                        join_columns = [
+                            d[0] for d in conn.execute(f"DESCRIBE {_qi(join_view)}").fetchall()
+                        ]
+                sql = compiler.compile_transform_sql(
+                    node.op,
+                    node.params,
+                    input_view=input_view,
+                    join_view=join_view,
+                    input_srid=input_srid,
+                    input_columns=input_columns,
+                    join_columns=join_columns,
+                )
+                conn.execute(f"CREATE TEMP VIEW {_qi(view_name)} AS {sql}")
+            stat = NodeStat(node.id, node.op, _view_row_count(conn, view_name))
+        except duckdb.Error as exc:
+            raise _node_error(node, exc) from exc
         view_by_node[node.id] = view_name
         srid_by_node[node.id] = output_srid
-        stat = NodeStat(node.id, node.op, _view_row_count(conn, view_name))
         stats.append(stat)
         if on_node_complete is not None:
             on_node_complete(stat)
         if stop_at == node.id:
             return stats
     return stats
+
+
+def _node_error(node: PipelineNode, exc: Exception) -> PipelineRuntimeError:
+    """j06b-007 : message métier (nœud + cause) au lieu du texte brut DuckDB
+    (SQL interne, noms de vues node_*, LINE 1) ; le détail reste dans les logs."""
+    logger.warning("pipeline node %s (%s) failed: %s", node.id, node.op, exc)
+    cause = re.sub(r"^\w+ Error:\s*", "", str(exc).splitlines()[0] if str(exc) else "")
+    cause = re.sub(r"\bnode_\w+", "l'entrée du nœud", cause)
+    return PipelineRuntimeError(f"nœud '{node.id}' ({node.op}) : {cause or 'échec de l’opération'}")
 
 
 def _view_row_count(conn, view_name: str) -> int:
@@ -882,7 +908,15 @@ def preview_pipeline(
 
 
 def _write_collection(
-    session: Session, conn, *, node: PipelineNode, view_by_node: dict, tenant_id: str, user: User
+    session: Session,
+    conn,
+    *,
+    node: PipelineNode,
+    view_by_node: dict,
+    tenant_id: str,
+    user: User,
+    on_progress: Callable[["NodeStat"], None] | None = None,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> NodeStat:
     p = WriterCollectionParams.model_validate(node.params)
     collection = _require_writable_collection(
@@ -903,8 +937,8 @@ def _write_collection(
     select_list = (
         "* EXCLUDE (geometry), ST_AsGeoJSON(geometry) AS geometry" if has_geometry else "*"
     )
-    rows = conn.execute(f"SELECT {select_list} FROM {_qi(input_view)}").fetchall()
-    cols = [d[0] for d in conn.description]
+    cursor = conn.execute(f"SELECT {select_list} FROM {_qi(input_view)}")
+    cols = [d[0] for d in cursor.description]
 
     # Colonnes réservées de la collection CIBLE : jamais des "properties",
     # même contrat que app.features.validation (reserved) et
@@ -920,22 +954,33 @@ def _write_collection(
     with rls_scope(session, tenant_id):
         if p.mode == "replace":
             deleted = delete_all_features(session, info)
-        for raw in rows:
-            row = dict(zip(cols, raw, strict=True))
-            geometry = (
-                json.loads(row.pop("geometry"))
-                if has_geometry and row.get("geometry") is not None
-                else None
-            )
-            for key in reserved_on_write:
-                row.pop(key, None)
-            properties = row
-            feature = {"type": "Feature", "properties": properties, "geometry": geometry}
-            errors = validate_feature(info, feature)
-            if errors:
-                raise PipelineRuntimeError(f"writer.collection: invalid row: {errors}")
-            insert_feature(session, info, properties=properties, geometry=geometry)
-            count += 1
+        # t03b-001/008 : lecture par lots (mémoire bornée) puis insertion groupée,
+        # au lieu de fetchall() + un INSERT par ligne. La transaction reste unique
+        # (annulation ou erreur = rien d'écrit). Entre deux lots : progression
+        # visible (t03b-009) et point d'annulation.
+        while batch := cursor.fetchmany(_WRITE_BATCH_SIZE):
+            items: list[tuple[dict, dict | None]] = []
+            for raw in batch:
+                row = dict(zip(cols, raw, strict=True))
+                geometry = (
+                    json.loads(row.pop("geometry"))
+                    if has_geometry and row.get("geometry") is not None
+                    else None
+                )
+                for key in reserved_on_write:
+                    row.pop(key, None)
+                errors = validate_feature(
+                    info, {"type": "Feature", "properties": row, "geometry": geometry}
+                )
+                if errors:
+                    raise PipelineRuntimeError(f"writer.collection: invalid row: {errors}")
+                items.append((row, geometry))
+            insert_features(session, info, items)
+            count += len(items)
+            if on_progress is not None:
+                on_progress(NodeStat(node.id, node.op, count))
+            if should_cancel is not None and should_cancel():
+                raise PipelineCancelledError("run annulé")
     # write_audit APRÈS la sortie de rls_scope (RESET ROLE) : audit_log
     # n'est pas grantée au rôle borné gis_rls (cf. docstring de rls_scope),
     # écrire ici en aurait été un bug (permission denied), pas seulement au
@@ -953,6 +998,17 @@ def _write_collection(
             object_id=collection.id,
             payload={"pipelineNodeId": node.id, "deletedRows": deleted},
         )
+    # c03-003 : toute écriture de données laisse une trace, append compris.
+    write_audit(
+        session,
+        tenant_id=tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="collection.pipeline_write",
+        object_type="collection",
+        object_id=collection.id,
+        payload={"pipelineNodeId": node.id, "mode": p.mode, "rows": count},
+    )
     return NodeStat(node.id, node.op, count)
 
 
@@ -964,6 +1020,8 @@ def _write_dataset(
     view_by_node: dict,
     tenant_id: str,
     user: User,
+    on_progress: Callable[["NodeStat"], None] | None = None,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> NodeStat:
     # SP-42, revue de la dernière passe de correctifs (point 1, Critical) :
     # POST /pipelines/{id}/run (app.pipelines.routes) et le tool MCP
@@ -995,6 +1053,8 @@ def _write_dataset(
         view_by_node=view_by_node,
         tenant_id=tenant_id,
         user=user,
+        on_progress=on_progress,
+        should_cancel=should_cancel,
     )
 
     if p.datasetId is not None:
@@ -1096,35 +1156,53 @@ def _write_export(
     select_list = (
         "* EXCLUDE (geometry), ST_AsGeoJSON(geometry) AS geometry" if has_geometry else "*"
     )
-    rows = conn.execute(f"SELECT {select_list} FROM {_qi(input_view)}").fetchall()
-    columns = [d[0] for d in conn.description]
-    if p.format == "csv":
-        # La colonne "geometry" contient désormais une chaîne GeoJSON : une
-        # valeur de cellule CSV utile, pas de traitement supplémentaire requis.
-        buf = io.StringIO()
-        writer = csv.writer(buf)
-        writer.writerow(columns)
-        writer.writerows(rows)
-        body = buf.getvalue().encode("utf-8")
-    else:
-        features = []
-        for row in rows:
-            properties = dict(zip(columns, row, strict=True))
-            # La géométrie ne doit apparaître qu'au niveau "geometry" du
-            # Feature, jamais dupliquée dans "properties" (même contrat que
-            # _write_collection).
-            geometry = None
-            if has_geometry:
-                geometry_json = properties.pop("geometry", None)
-                geometry = json.loads(geometry_json) if geometry_json is not None else None
-            features.append({"type": "Feature", "properties": properties, "geometry": geometry})
-        body = json.dumps({"type": "FeatureCollection", "features": features}).encode("utf-8")
-    # Bucket absent sur un MinIO neuf (j06b-003) ; clé forcée sous le préfixe du
-    # tenant (j06b-004) : un Créateur n'écrase plus renders/… ni l'export d'un autre.
-    # ponytail: préfixe tenant seul, pas par pipeline (run_pipeline ignore l'id du pipeline).
-    ensure_uploads_bucket(s3_client, exports_bucket)
-    s3_client.put_object(Bucket=exports_bucket, Key=f"{tenant_id}/pipelines/{p.key}", Body=body)
-    return NodeStat(node.id, node.op, len(rows))
+    cursor = conn.execute(f"SELECT {select_list} FROM {_qi(input_view)}")
+    columns = [d[0] for d in cursor.description]
+    # t03b-008 : sérialisation en flux (fetchmany + fichier temporaire, spoolé
+    # sur disque au-delà de 8 Mo) — mémoire bornée quel que soit le volume,
+    # là où fetchall() + corps en mémoire coûtait ~0,8 Mo par millier de lignes.
+    count = 0
+    with tempfile.SpooledTemporaryFile(max_size=8 * 1024 * 1024) as body:
+        out = io.TextIOWrapper(body, encoding="utf-8", newline="", write_through=True)
+        if p.format == "csv":
+            # La colonne "geometry" contient désormais une chaîne GeoJSON : une
+            # valeur de cellule CSV utile, pas de traitement supplémentaire requis.
+            writer = csv.writer(out)
+            writer.writerow(columns)
+        else:
+            out.write('{"type": "FeatureCollection", "features": [')
+        while batch := cursor.fetchmany(_WRITE_BATCH_SIZE):
+            if p.format == "csv":
+                writer.writerows(batch)
+            else:
+                chunks = []
+                for row in batch:
+                    properties = dict(zip(columns, row, strict=True))
+                    # La géométrie ne doit apparaître qu'au niveau "geometry" du
+                    # Feature, jamais dupliquée dans "properties" (même contrat
+                    # que _write_collection).
+                    geometry = None
+                    if has_geometry:
+                        geometry_json = properties.pop("geometry", None)
+                        geometry = json.loads(geometry_json) if geometry_json is not None else None
+                    chunks.append(
+                        json.dumps(
+                            {"type": "Feature", "properties": properties, "geometry": geometry}
+                        )
+                    )
+                out.write(("" if count == 0 else ", ") + ", ".join(chunks))
+            count += len(batch)
+        if p.format != "csv":
+            out.write("]}")
+        out.flush()
+        body.seek(0)
+        # Bucket absent sur un MinIO neuf (j06b-003) ; clé forcée sous le préfixe du
+        # tenant (j06b-004) : un Créateur n'écrase plus renders/… ni l'export d'un autre.
+        # ponytail: préfixe tenant seul, pas par pipeline (run_pipeline ignore l'id du pipeline).
+        ensure_uploads_bucket(s3_client, exports_bucket)
+        s3_client.put_object(Bucket=exports_bucket, Key=f"{tenant_id}/pipelines/{p.key}", Body=body)
+        out.detach()
+    return NodeStat(node.id, node.op, count)
 
 
 def _write_file(conn, *, node: PipelineNode, view_by_node: dict, srid: int) -> NodeStat:
@@ -1172,6 +1250,8 @@ def run_pipeline(
     s3_client=None,
     exports_bucket: str | None = None,
     on_node_complete: Callable[["NodeStat"], None] | None = None,
+    on_progress: Callable[["NodeStat"], None] | None = None,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> list[NodeStat]:
     # Import local, même rationale que dans _prepare() : voir registries.py
     # pour le raisonnement complet sur pourquoi cet import doit rester
@@ -1203,7 +1283,8 @@ def run_pipeline(
             if node.kind != "writer":
                 continue
             pred_id = compiler.predecessor_id(node.id, payload.edges)
-            assert pred_id is not None
+            if pred_id is None:
+                raise PipelineRuntimeError(f"node '{node.id}' has no incoming edge")
             view_by_node[node.id] = view_by_node[pred_id]
             writer_fn = WRITERS.get(node.op)
             if writer_fn is None:
@@ -1229,6 +1310,11 @@ def run_pipeline(
                     conn, node=node, view_by_node=view_by_node, srid=srid_by_node[pred_id]
                 )
             else:
+                extra = (
+                    {"on_progress": on_progress, "should_cancel": should_cancel}
+                    if on_progress is not None or should_cancel is not None
+                    else {}
+                )
                 stat = writer_fn(
                     session,
                     conn,
@@ -1236,6 +1322,7 @@ def run_pipeline(
                     view_by_node=view_by_node,
                     tenant_id=tenant_id,
                     user=user,
+                    **extra,
                 )
             stats.append(stat)
             if on_node_complete is not None:

@@ -718,3 +718,41 @@ def test_next_run_route_rejects_a_syntactically_valid_but_unreachable_cron(monke
 def test_next_run_route_absent_when_etl_disabled(monkeypatch):
     client = _make_app(monkeypatch, etl_enabled=False)
     assert client.get("/v1/pipelines/next-run?cron=0+2+*+*+*").status_code == 404
+
+
+def test_next_run_route_rejects_a_six_field_cron(monkeypatch):
+    # j06b-012 : même règle que l'enregistrement (5 champs exactement).
+    client = _make_app(monkeypatch, etl_enabled=True)
+    assert client.get("/v1/pipelines/next-run?cron=*+*+*+*+*+*").status_code == 400
+
+
+def test_cancel_run_route_queued_then_conflict_when_terminal(monkeypatch):
+    # t03b-009
+    from app.pipelines import repository as pipelines_repo
+
+    client = _make_app(monkeypatch, etl_enabled=True)
+    item_id = _seed_webhook_pipeline(client)
+    Session = client.session_factory  # type: ignore[attr-defined]
+    with Session() as s:
+        queued = pipelines_repo.create_run(
+            s,
+            tenant_id=client.tenant.id,
+            pipeline_item_id=item_id,  # type: ignore[attr-defined]
+        )
+        running = pipelines_repo.create_run(
+            s,
+            tenant_id=client.tenant.id,
+            pipeline_item_id=item_id,  # type: ignore[attr-defined]
+        )
+        pipelines_repo.mark_running(s, run_id=running.id)
+        s.commit()
+        queued_id, running_id = queued.id, running.id
+
+    r = client.post(f"/v1/pipelines/{item_id}/runs/{queued_id}/cancel")
+    assert r.status_code == 200 and r.json()["status"] == "cancelled"
+    r = client.post(f"/v1/pipelines/{item_id}/runs/{running_id}/cancel")
+    assert r.status_code == 200 and r.json()["status"] == "cancel_requested"
+    with Session() as s:
+        assert pipelines_repo.is_cancel_requested(s, run_id=running_id)
+    assert client.post(f"/v1/pipelines/{item_id}/runs/{queued_id}/cancel").status_code == 409
+    assert client.post(f"/v1/pipelines/{item_id}/runs/nope/cancel").status_code == 404
