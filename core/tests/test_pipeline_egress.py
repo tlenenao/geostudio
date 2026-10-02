@@ -79,3 +79,10 @@ def test_guarded_session_blocks_before_connection():
 def test_guarded_session_is_a_real_requests_session():
     session = build_guarded_session()
     assert isinstance(session, requests.Session)
+
+
+@pytest.mark.parametrize("url", ["http://100.64.0.1/x", "http://198.51.100.7/x"])
+def test_non_global_addresses_blocked(url):
+    # CGNAT et TEST-NET : ni privées ni réservées au sens historique, mais non globales.
+    with pytest.raises(EgressBlockedError):
+        assert_egress_allowed(url)
