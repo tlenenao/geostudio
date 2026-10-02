@@ -29,7 +29,9 @@ test("edits a variable's initial value", async () => {
   const onChange = vi.fn();
   const variables: Variable[] = [{ id: "v1", name: "message", initialValue: "" }];
   render(<VariablesPanel variables={variables} onChange={onChange} />);
-  await userEvent.type(screen.getByLabelText("Valeur initiale de la variable v1"), "salut");
+  fireEvent.change(screen.getByLabelText("Valeur initiale de la variable v1"), {
+    target: { value: "salut" },
+  });
   const next = onChange.mock.calls.at(-1)![0] as Variable[];
   expect(next[0].initialValue).toBe("salut");
 });
@@ -162,4 +164,13 @@ test("refuses empty, invalid and duplicate names with an alert (P10.11)", async 
   await userEvent.type(second, "1x");
   expect(screen.getByRole("alert")).toHaveTextContent("Lettres");
   expect(onChange).not.toHaveBeenCalled();
+});
+
+test("la valeur initiale suit le brouillon (undo/redo) au lieu de rester figée", () => {
+  const v = (initialValue: string): Variable[] => [
+    { id: "v1", name: "message", type: "string", initialValue },
+  ];
+  const { rerender } = render(<VariablesPanel variables={v("a")} onChange={vi.fn()} />);
+  rerender(<VariablesPanel variables={v("b")} onChange={vi.fn()} />);
+  expect(screen.getByLabelText("Valeur initiale de la variable v1")).toHaveValue("b");
 });

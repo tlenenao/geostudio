@@ -135,7 +135,7 @@ export function VariablesPanel({
               <input
                 aria-label={t("variablesPanel.initialValueAria", { id: v.id })}
                 className="w-16 rounded border border-rule px-1"
-                defaultValue={String(v.initialValue ?? "")}
+                value={String(v.initialValue ?? "")}
                 onChange={(e) => setInitialValue(v.id, e.target.value)}
               />
             )}
@@ -144,7 +144,7 @@ export function VariablesPanel({
                 aria-label={t("variablesPanel.initialValueAria", { id: v.id })}
                 type="number"
                 className="w-16 rounded border border-rule px-1"
-                defaultValue={Number(v.initialValue ?? 0)}
+                value={Number(v.initialValue ?? 0)}
                 onChange={(e) => setInitialValue(v.id, Number(e.target.value))}
               />
             )}
@@ -161,7 +161,7 @@ export function VariablesPanel({
                 aria-label={t("variablesPanel.initialValueAria", { id: v.id })}
                 type="date"
                 className="rounded border border-rule px-1"
-                defaultValue={String(v.initialValue ?? "")}
+                value={String(v.initialValue ?? "")}
                 onChange={(e) => setInitialValue(v.id, e.target.value)}
               />
             )}
