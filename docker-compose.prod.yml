@@ -31,6 +31,18 @@ services:
     build: !reset null
     restart: unless-stopped
     ports: !reset []
+    # Liens signés (exports, rapports, envois présignés) : le navigateur doit
+    # atteindre MinIO. Une signature SigV4 couvre l'hôte ET le chemin, donc ni
+    # préfixe d'URL ni stripprefix : il faut un HOSTNAME dédié (S3_PUBLIC_HOST)
+    # dont le DNS/tunnel/proxy amont mène à ce Traefik, et
+    # S3_PUBLIC_ENDPOINT_URL=https://<ce hostname> (cf. .env.example). Sans
+    # S3_PUBLIC_HOST le routeur ne correspond à rien (hôte `.invalid`).
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.minio-s3.rule=Host(`${S3_PUBLIC_HOST:-s3.invalid}`)
+      - traefik.http.routers.minio-s3.entrypoints=web
+      - traefik.http.routers.minio-s3.priority=20
+      - traefik.http.services.minio-s3.loadbalancer.server.port=9000
 
   martin:
     restart: unless-stopped

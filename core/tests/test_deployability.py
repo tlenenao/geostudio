@@ -1311,6 +1311,17 @@ def test_keycloak_router_carries_security_and_rate_limit_middlewares():
         )
 
 
+def test_prod_minio_is_routable_on_a_dedicated_s3_hostname():
+    """Prod sans port hôte MinIO : sans routeur, S3_PUBLIC_ENDPOINT_URL n'a
+    aucune cible et tout lien signé (export, rapport, envoi présigné) est
+    mort. Pas de stripprefix possible (la signature SigV4 couvre le chemin)."""
+    labels = _traefik_labels(services(PROD)["minio"])
+    assert "S3_PUBLIC_HOST" in labels["traefik.http.routers.minio-s3.rule"]
+    assert labels["traefik.http.services.minio-s3.loadbalancer.server.port"] == "9000"
+    assert "traefik.http.routers.minio-s3.middlewares" not in labels
+    assert "S3_PUBLIC_HOST" in documented_env_vars(include_commented=True)
+
+
 @pytest.mark.parametrize("compose", [BASE, PROD], ids=["base", "prod"])
 @pytest.mark.parametrize("router", ["core", "shell"])
 def test_public_app_router_carries_security_and_rate_limit_middlewares(compose, router):
