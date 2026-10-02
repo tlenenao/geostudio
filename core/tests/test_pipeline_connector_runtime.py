@@ -94,7 +94,7 @@ def test_materialize_rest_connector_unauthenticated_no_pagination(
     params = ReaderConnectorRestParams(baseUrl=httpserver.url_for("/"), path="items")
     connector_runtime.materialize_rest_connector(
         conn,
-        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
         node_id="r1",
         params=params,
         view_name="node_r1",
@@ -114,7 +114,7 @@ def test_materialize_rest_connector_extracts_records_path(conn, session, tenant,
     )
     connector_runtime.materialize_rest_connector(
         conn,
-        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
         node_id="r2",
         params=params,
         view_name="node_r2",
@@ -143,7 +143,7 @@ def test_materialize_rest_connector_injects_bearer_token(conn, session, tenant, 
     )
     connector_runtime.materialize_rest_connector(
         conn,
-        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
         node_id="r3",
         params=params,
         view_name="node_r3",
@@ -172,7 +172,7 @@ def test_materialize_rest_connector_injects_api_key_query_param(
     )
     connector_runtime.materialize_rest_connector(
         conn,
-        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
         node_id="r4",
         params=params,
         view_name="node_r4",
@@ -197,7 +197,7 @@ def test_materialize_rest_connector_injects_basic_auth(conn, session, tenant, us
     )
     connector_runtime.materialize_rest_connector(
         conn,
-        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
         node_id="r5",
         params=params,
         view_name="node_r5",
@@ -218,7 +218,7 @@ def test_materialize_rest_connector_paginates_page_number(conn, session, tenant,
     )
     connector_runtime.materialize_rest_connector(
         conn,
-        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
         node_id="r6",
         params=params,
         view_name="node_r6",
@@ -248,7 +248,7 @@ def test_materialize_rest_connector_wrong_secret_kind_raises(
     ):
         connector_runtime.materialize_rest_connector(
             conn,
-            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
             node_id="r7",
             params=params,
             view_name="node_r7",
@@ -264,7 +264,7 @@ def test_materialize_rest_connector_missing_secret_raises(conn, session, tenant,
     with pytest.raises(connector_runtime.ConnectorRuntimeError, match="not found"):
         connector_runtime.materialize_rest_connector(
             conn,
-            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
             node_id="r8",
             params=params,
             view_name="node_r8",
@@ -315,7 +315,7 @@ def test_materialize_rest_connector_oauth2_token_exchange_goes_through_ssrf_guar
     with pytest.raises(Exception) as excinfo:
         connector_runtime.materialize_rest_connector(
             conn,
-            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
             node_id="r10",
             params=params,
             view_name="node_r10",
@@ -348,7 +348,7 @@ def test_materialize_rest_connector_data_url_egress_block_raises_connector_runti
     with pytest.raises(connector_runtime.ConnectorRuntimeError, match="egress blocked"):
         connector_runtime.materialize_rest_connector(
             conn,
-            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
             node_id="r11",
             params=params,
             view_name="node_r11",
@@ -360,7 +360,7 @@ def test_materialize_rest_connector_drops_dlt_plumbing_columns(conn, session, te
     params = ReaderConnectorRestParams(baseUrl=httpserver.url_for("/"), path="items")
     connector_runtime.materialize_rest_connector(
         conn,
-        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
         node_id="r9",
         params=params,
         view_name="node_r9",
@@ -407,7 +407,7 @@ def pg_secret(session, tenant, user, pg_engine):
 
 
 def test_materialize_postgres_connector_round_trips_query(
-    conn, session, tenant, pg_engine, pg_secret
+    conn, session, tenant, user, pg_engine, pg_secret
 ):
     from sqlalchemy import text
 
@@ -421,7 +421,7 @@ def test_materialize_postgres_connector_round_trips_query(
     )
     connector_runtime.materialize_postgres_connector(
         conn,
-        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
         node_id="p1",
         params=params,
         view_name="node_p1",
@@ -437,7 +437,7 @@ def test_materialize_postgres_connector_rejects_non_select(conn, session, tenant
     with pytest.raises(connector_runtime.ConnectorRuntimeError, match="query rejected"):
         connector_runtime.materialize_postgres_connector(
             conn,
-            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
             node_id="p2",
             params=params,
             view_name="node_p2",
@@ -459,7 +459,7 @@ def test_materialize_postgres_connector_wrong_secret_kind_raises(conn, session, 
     ):
         connector_runtime.materialize_postgres_connector(
             conn,
-            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
             node_id="p3",
             params=params,
             view_name="node_p3",
@@ -471,7 +471,7 @@ def test_materialize_postgres_connector_missing_secret_raises(conn, session, ten
     with pytest.raises(connector_runtime.ConnectorRuntimeError, match="not found"):
         connector_runtime.materialize_postgres_connector(
             conn,
-            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
             node_id="p4",
             params=params,
             view_name="node_p4",
@@ -483,7 +483,7 @@ def test_materialize_snowflake_connector_rejects_non_select(conn, session, tenan
     with pytest.raises(connector_runtime.ConnectorRuntimeError, match="query rejected"):
         connector_runtime.materialize_snowflake_connector(
             conn,
-            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
             node_id="sf1",
             params=params,
             view_name="node_sf1",
@@ -505,7 +505,7 @@ def test_materialize_snowflake_connector_wrong_secret_kind_raises(conn, session,
     ):
         connector_runtime.materialize_snowflake_connector(
             conn,
-            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
             node_id="sf2",
             params=params,
             view_name="node_sf2",
@@ -517,7 +517,7 @@ def test_materialize_snowflake_connector_missing_secret_raises(conn, session, te
     with pytest.raises(connector_runtime.ConnectorRuntimeError, match="not found"):
         connector_runtime.materialize_snowflake_connector(
             conn,
-            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
             node_id="sf3",
             params=params,
             view_name="node_sf3",
@@ -569,7 +569,7 @@ def test_materialize_snowflake_connector_round_trips_query(
     )
     connector_runtime.materialize_snowflake_connector(
         conn,
-        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
         node_id="sf4",
         params=params,
         view_name="node_sf4",
@@ -641,7 +641,7 @@ def test_materialize_bigquery_connector_rejects_non_select(conn, session, tenant
     with pytest.raises(connector_runtime.ConnectorRuntimeError, match="query rejected"):
         connector_runtime.materialize_bigquery_connector(
             conn,
-            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
             node_id="bq1",
             params=params,
             view_name="node_bq1",
@@ -663,7 +663,7 @@ def test_materialize_bigquery_connector_wrong_secret_kind_raises(conn, session, 
     ):
         connector_runtime.materialize_bigquery_connector(
             conn,
-            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
             node_id="bq2",
             params=params,
             view_name="node_bq2",
@@ -675,7 +675,7 @@ def test_materialize_bigquery_connector_missing_secret_raises(conn, session, ten
     with pytest.raises(connector_runtime.ConnectorRuntimeError, match="not found"):
         connector_runtime.materialize_bigquery_connector(
             conn,
-            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
             node_id="bq3",
             params=params,
             view_name="node_bq3",
@@ -710,7 +710,7 @@ def test_materialize_mssql_connector_rejects_non_select(conn, session, tenant):
     with pytest.raises(connector_runtime.ConnectorRuntimeError, match="query rejected"):
         connector_runtime.materialize_mssql_connector(
             conn,
-            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
             node_id="ms1",
             params=params,
             view_name="node_ms1",
@@ -732,7 +732,7 @@ def test_materialize_mssql_connector_wrong_secret_kind_raises(conn, session, ten
     ):
         connector_runtime.materialize_mssql_connector(
             conn,
-            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
             node_id="ms2",
             params=params,
             view_name="node_ms2",
@@ -744,7 +744,7 @@ def test_materialize_mssql_connector_missing_secret_raises(conn, session, tenant
     with pytest.raises(connector_runtime.ConnectorRuntimeError, match="not found"):
         connector_runtime.materialize_mssql_connector(
             conn,
-            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
             node_id="ms3",
             params=params,
             view_name="node_ms3",
@@ -778,7 +778,7 @@ def test_materialize_oracle_connector_rejects_non_select(conn, session, tenant):
     with pytest.raises(connector_runtime.ConnectorRuntimeError, match="query rejected"):
         connector_runtime.materialize_oracle_connector(
             conn,
-            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
             node_id="ora1",
             params=params,
             view_name="node_ora1",
@@ -800,7 +800,7 @@ def test_materialize_oracle_connector_wrong_secret_kind_raises(conn, session, te
     ):
         connector_runtime.materialize_oracle_connector(
             conn,
-            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
             node_id="ora2",
             params=params,
             view_name="node_ora2",
@@ -812,7 +812,7 @@ def test_materialize_oracle_connector_missing_secret_raises(conn, session, tenan
     with pytest.raises(connector_runtime.ConnectorRuntimeError, match="not found"):
         connector_runtime.materialize_oracle_connector(
             conn,
-            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
             node_id="ora3",
             params=params,
             view_name="node_ora3",
@@ -855,14 +855,14 @@ def test_postgres_secret_resolver_get_returns_payload(session, tenant, user):
         kind="bearer_token",
         payload={"kind": "bearer_token", "token": "s3cr3t-tok"},
     )
-    resolver = connector_runtime.PostgresSecretResolver(session, tenant.id)
+    resolver = connector_runtime.PostgresSecretResolver(session, tenant.id, user)
     payload = resolver.get("my-bearer")
     assert payload.kind == "bearer_token"
     assert payload.token == "s3cr3t-tok"
 
 
 def test_postgres_secret_resolver_get_raises_keyerror_when_missing(session, tenant):
-    resolver = connector_runtime.PostgresSecretResolver(session, tenant.id)
+    resolver = connector_runtime.PostgresSecretResolver(session, tenant.id, user)
     with pytest.raises(KeyError):
         resolver.get("does-not-exist")
 
@@ -885,7 +885,7 @@ def test_postgres_secret_resolver_get_does_not_mask_backend_failure_as_not_found
         payload={"kind": "bearer_token", "token": "s3cr3t-tok"},
     )
     monkeypatch.delenv("CORE_SECRETS_MASTER_KEY", raising=False)
-    resolver = connector_runtime.PostgresSecretResolver(session, tenant.id)
+    resolver = connector_runtime.PostgresSecretResolver(session, tenant.id, user)
     with pytest.raises(RuntimeError) as exc_info:
         resolver.get("my-bearer")
     message = str(exc_info.value)
@@ -940,7 +940,7 @@ def test_materialize_blob_connector_unsupported_scheme_raises(conn, session, ten
     with pytest.raises(connector_runtime.ConnectorRuntimeError, match="unsupported path scheme"):
         connector_runtime.materialize_blob_connector(
             conn,
-            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
             node_id="b1",
             params=params,
             view_name="node_b1",
@@ -954,7 +954,7 @@ def test_materialize_blob_connector_missing_secret_raises(conn, session, tenant)
     with pytest.raises(connector_runtime.ConnectorRuntimeError, match="not found"):
         connector_runtime.materialize_blob_connector(
             conn,
-            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
             node_id="b2",
             params=params,
             view_name="node_b2",
@@ -1031,7 +1031,7 @@ def test_materialize_blob_connector_builds_aws_credentials_and_splits_path(
     )
     connector_runtime.materialize_blob_connector(
         conn,
-        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
         node_id="b3",
         params=params,
         view_name="node_b3",
@@ -1070,7 +1070,7 @@ def test_materialize_blob_connector_builds_azure_credentials(
     )
     connector_runtime.materialize_blob_connector(
         conn,
-        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
         node_id="b4",
         params=params,
         view_name="node_b4",
@@ -1117,7 +1117,7 @@ def test_materialize_blob_connector_builds_gcs_credentials(
     )
     connector_runtime.materialize_blob_connector(
         conn,
-        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
         node_id="b5",
         params=params,
         view_name="node_b5",

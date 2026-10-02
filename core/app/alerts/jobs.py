@@ -256,6 +256,7 @@ def _notify(
                 send_email(
                     session,
                     tenant_id=tenant_id,
+                    item_id=item_id,
                     channel=channel,
                     subject=f"[GeoStudio] {rule_name}: {state}",
                     body=message,

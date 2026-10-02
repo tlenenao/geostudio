@@ -85,8 +85,8 @@ def test_list_secrets_scoped_to_tenant(session, tenant_and_user):
         ciphertext=b"c",
         nonce=b"n",
     )
-    assert [s.name for s in repo.list_secrets(session, tenant_id=tenant.id)] == ["a"]
-    assert repo.list_secrets(session, tenant_id="other-tenant") == []
+    assert [s.name for s in repo.list_secrets(session, tenant_id=tenant.id, user=user)] == ["a"]
+    assert repo.list_secrets(session, tenant_id="other-tenant", user=user) == []
 
 
 def test_get_secret_cross_tenant_returns_none(session, tenant_and_user):
@@ -155,13 +155,15 @@ def test_get_secret_payload_round_trip_for_every_kind(
         ciphertext=ciphertext,
         nonce=nonce,
     )
-    payload = repo.get_secret_payload(session, tenant_id=tenant.id, name=raw_payload["kind"])
+    payload = repo.get_secret_payload(
+        session, tenant_id=tenant.id, name=raw_payload["kind"], user=user
+    )
     assert payload.kind == raw_payload["kind"]
 
 
 def test_get_secret_payload_missing_name_returns_none(session, tenant_and_user):
-    tenant, _user = tenant_and_user
-    assert repo.get_secret_payload(session, tenant_id=tenant.id, name="nope") is None
+    tenant, user = tenant_and_user
+    assert repo.get_secret_payload(session, tenant_id=tenant.id, name="nope", user=user) is None
 
 
 def test_list_all_secrets_spans_every_tenant(session, tenant_and_user):
@@ -201,3 +203,51 @@ def test_list_all_secrets_spans_every_tenant(session, tenant_and_user):
     all_secrets = repo.list_all_secrets(session)
     assert {s.tenant_id for s in all_secrets} == {tenant_a.id, tenant_b.id}
     assert len(all_secrets) == 2
+
+
+def test_secret_acl_owner_or_admin_only(session, tenant_and_user):
+    # P16.01 : un autre utilisateur (sans admin.secrets.manage) ne voit ni
+    # n'utilise le secret d'autrui ; indistinguable d'un secret absent.
+    from app.roles.repository import ensure_built_in_roles
+    from app.secrets import crypto
+
+    tenant, owner = tenant_and_user
+    roles = ensure_built_in_roles(session, tenant_id=tenant.id)
+    other = get_or_create_user(
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="o",
+        username="bob",
+        email=None,
+        first_name="",
+        last_name="",
+    )
+    other.role_id = roles["creator"].id
+    admin = get_or_create_user(
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="ad",
+        username="adm",
+        email=None,
+        first_name="",
+        last_name="",
+    )
+    admin.role_id = roles["admin"].id
+    ct, nonce = crypto.encrypt({"kind": "bearer_token", "token": "t"})
+    sec = repo.create_secret(
+        session,
+        tenant_id=tenant.id,
+        created_by=owner.id,
+        name="mine",
+        kind="bearer_token",
+        ciphertext=ct,
+        nonce=nonce,
+    )
+    kw = {"tenant_id": tenant.id, "name": "mine"}
+    assert repo.get_secret_payload(session, user=owner, **kw) is not None
+    assert repo.get_secret_payload(session, user=admin, **kw) is not None
+    assert repo.get_secret_payload(session, user=other, **kw) is None
+    assert repo.list_secrets(session, tenant_id=tenant.id, user=other) == []
+    assert (
+        repo.get_visible_secret(session, tenant_id=tenant.id, secret_id=sec.id, user=other) is None
+    )

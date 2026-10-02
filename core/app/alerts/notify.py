@@ -21,11 +21,14 @@ import smtplib
 from email.message import EmailMessage
 
 import requests
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.alerts.egress import EgressBlockedError, assert_egress_allowed, build_guarded_session
 from app.configs.schemas import AlertChannelEmail, AlertChannelWebhook
+from app.items.models import Item
 from app.secrets import repository as secrets_repo
+from app.users.models import User
 
 
 class NotifyError(Exception):
@@ -56,12 +59,23 @@ def send_email(
     session: Session,
     *,
     tenant_id: str,
+    item_id: str,
     channel: AlertChannelEmail,
     subject: str,
     body: str,
 ) -> None:
-    payload = secrets_repo.get_secret_payload(
-        session, tenant_id=tenant_id, name=channel.smtpSecretName
+    # P16.08 : l'alerte agit comme son propriétaire — il doit avoir le droit
+    # d'usage sur le secret SMTP (indistinguable d'un secret absent sinon).
+    owner_id = session.scalar(
+        select(Item.owner_id).where(Item.id == item_id, Item.tenant_id == tenant_id)
+    )
+    owner = session.get(User, owner_id) if owner_id else None
+    payload = (
+        secrets_repo.get_secret_payload(
+            session, tenant_id=tenant_id, name=channel.smtpSecretName, user=owner
+        )
+        if owner is not None
+        else None
     )
     if payload is None:
         raise NotifyError(f"secret '{channel.smtpSecretName}' not found")

@@ -386,6 +386,7 @@ def _notify_pending_reports(session_factory) -> None:
                             send_email(
                                 session,
                                 tenant_id=run.tenant_id,
+                                item_id=run.report_item_id,
                                 channel=channel,
                                 subject=f"[GeoStudio] Rapport : {title}",
                                 body=message,

@@ -303,7 +303,7 @@ def _read_connector_rest(
     (ce reader n'en a pas besoin) : présents uniquement pour que READERS
     expose un appel uniforme à _prepare() (cf. app.pipelines.registries)."""
     p = ReaderConnectorRestParams.model_validate(params)
-    resolver = connector_runtime.PostgresSecretResolver(session, tenant_id)
+    resolver = connector_runtime.PostgresSecretResolver(session, tenant_id, user)
     try:
         connector_runtime.materialize_rest_connector(
             conn,
@@ -331,7 +331,7 @@ def _read_connector_postgres(
     """reader.connector.postgres (registre READERS) — pendant de
     _read_connector_rest ci-dessus, même rationale."""
     p = ReaderConnectorPostgresParams.model_validate(params)
-    resolver = connector_runtime.PostgresSecretResolver(session, tenant_id)
+    resolver = connector_runtime.PostgresSecretResolver(session, tenant_id, user)
     try:
         connector_runtime.materialize_postgres_connector(
             conn,
@@ -359,7 +359,7 @@ def _read_connector_snowflake(
     """reader.connector.snowflake (registre READERS) — pendant de
     _read_connector_postgres, même rationale (GAP-16)."""
     p = ReaderConnectorSnowflakeParams.model_validate(params)
-    resolver = connector_runtime.PostgresSecretResolver(session, tenant_id)
+    resolver = connector_runtime.PostgresSecretResolver(session, tenant_id, user)
     try:
         connector_runtime.materialize_snowflake_connector(
             conn,
@@ -387,7 +387,7 @@ def _read_connector_bigquery(
     """reader.connector.bigquery (registre READERS) — pendant de
     _read_connector_snowflake, même rationale (Vague 2 §6.1)."""
     p = ReaderConnectorBigQueryParams.model_validate(params)
-    resolver = connector_runtime.PostgresSecretResolver(session, tenant_id)
+    resolver = connector_runtime.PostgresSecretResolver(session, tenant_id, user)
     try:
         connector_runtime.materialize_bigquery_connector(
             conn,
@@ -416,7 +416,7 @@ def _read_connector_mssql(
     _read_connector_bigquery/_read_connector_snowflake, même rationale
     (Vague 2 §6.1)."""
     p = ReaderConnectorMssqlParams.model_validate(params)
-    resolver = connector_runtime.PostgresSecretResolver(session, tenant_id)
+    resolver = connector_runtime.PostgresSecretResolver(session, tenant_id, user)
     try:
         connector_runtime.materialize_mssql_connector(
             conn,
@@ -445,7 +445,7 @@ def _read_connector_oracle(
     _read_connector_mssql/_read_connector_bigquery/_read_connector_snowflake,
     même rationale (Vague 2 §6.1)."""
     p = ReaderConnectorOracleParams.model_validate(params)
-    resolver = connector_runtime.PostgresSecretResolver(session, tenant_id)
+    resolver = connector_runtime.PostgresSecretResolver(session, tenant_id, user)
     try:
         connector_runtime.materialize_oracle_connector(
             conn,
@@ -474,7 +474,7 @@ def _read_connector_blob(
     _read_connector_oracle/_read_connector_mssql/_read_connector_bigquery/
     _read_connector_snowflake, même rationale (Vague 2 §6.1, Task 15)."""
     p = ReaderConnectorBlobParams.model_validate(params)
-    resolver = connector_runtime.PostgresSecretResolver(session, tenant_id)
+    resolver = connector_runtime.PostgresSecretResolver(session, tenant_id, user)
     try:
         connector_runtime.materialize_blob_connector(
             conn,

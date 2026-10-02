@@ -1217,7 +1217,9 @@ def test_notify_sends_email_and_marks_notified(monkeypatch):
     monkeypatch.setattr(
         report_jobs,
         "send_email",
-        lambda session, *, tenant_id, channel, subject, body: sent.append((channel, subject, body)),
+        lambda session, *, tenant_id, item_id, channel, subject, body: sent.append(
+            (channel, subject, body)
+        ),
     )
     monkeypatch.setattr(
         report_jobs, "_presigned_url_for_job", lambda job: "https://s3.test/renders/job-1.pdf"

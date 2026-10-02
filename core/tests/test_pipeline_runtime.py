@@ -2416,7 +2416,7 @@ def test_run_pipeline_reader_connector_rest_never_leaks_secret_value(
             session=session,
             payload=payload,
             tenant_id=tenant.id,
-            user=None,
+            user=author,
             up_to="r1",
             endpoint_url="http://localhost:9000",
             access_key="x",

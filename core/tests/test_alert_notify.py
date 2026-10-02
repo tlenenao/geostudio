@@ -138,26 +138,79 @@ def smtp_secret_session(monkeypatch):
         )
         s.commit()
         tenant_id = tenant.id
-    yield Session, tenant_id
+        from app.items import repository as items_repo
+
+        item_id = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=user.id, resource_type="alert", title="rule"
+        ).id
+        s.commit()
+    yield Session, tenant_id, item_id
     engine.dispose()
 
 
 def test_send_email_delivers_via_smtp_secret(smtp_secret_session):
-    Session, tenant_id = smtp_secret_session
+    Session, tenant_id, item_id = smtp_secret_session
     channel = AlertChannelEmail(to="ops@example.test", smtpSecretName="smtp-main")
     with Session() as s:
         with patch("app.alerts.notify.smtplib.SMTP") as mock_smtp_cls:
             mock_smtp = MagicMock()
             mock_smtp_cls.return_value.__enter__.return_value = mock_smtp
-            send_email(s, tenant_id=tenant_id, channel=channel, subject="Alert", body="value=150")
+            send_email(
+                s,
+                tenant_id=tenant_id,
+                item_id=item_id,
+                channel=channel,
+                subject="Alert",
+                body="value=150",
+            )
     mock_smtp.starttls.assert_called_once()
     mock_smtp.login.assert_called_once_with("alerts@example.test", "s3cret")
     mock_smtp.send_message.assert_called_once()
 
 
 def test_send_email_raises_when_secret_is_missing(smtp_secret_session):
-    Session, tenant_id = smtp_secret_session
+    Session, tenant_id, item_id = smtp_secret_session
     channel = AlertChannelEmail(to="ops@example.test", smtpSecretName="does-not-exist")
     with Session() as s:
         with pytest.raises(NotifyError):
-            send_email(s, tenant_id=tenant_id, channel=channel, subject="Alert", body="value=150")
+            send_email(
+                s,
+                tenant_id=tenant_id,
+                item_id=item_id,
+                channel=channel,
+                subject="Alert",
+                body="value=150",
+            )
+
+
+def test_send_email_refuses_secret_the_rule_owner_cannot_use(smtp_secret_session):
+    # P16.08 : le propriétaire de la règle n'est pas propriétaire du secret
+    # SMTP et n'a pas admin.secrets.manage -> secret traité comme absent.
+    Session, tenant_id, _item_id = smtp_secret_session
+    channel = AlertChannelEmail(to="ops@example.test", smtpSecretName="smtp-main")
+    with Session() as s:
+        mallory = get_or_create_user(
+            s,
+            tenant_id=tenant_id,
+            oidc_sub="m",
+            username="mallory",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        from app.items import repository as items_repo
+
+        rule_id = items_repo.create_item(
+            s, tenant_id=tenant_id, owner_id=mallory.id, resource_type="alert", title="r2"
+        ).id
+        with patch("app.alerts.notify.smtplib.SMTP") as mock_smtp_cls:
+            with pytest.raises(NotifyError):
+                send_email(
+                    s,
+                    tenant_id=tenant_id,
+                    item_id=rule_id,
+                    channel=channel,
+                    subject="A",
+                    body="b",
+                )
+        mock_smtp_cls.assert_not_called()

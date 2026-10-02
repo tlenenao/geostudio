@@ -58,6 +58,7 @@ from app.pipelines.ops.schemas import (
 )
 from app.secrets import repository as secrets_repo
 from app.secrets.schemas import SecretPayload
+from app.users.models import User
 
 _REST_SECRET_KINDS = {"api_key", "bearer_token", "basic_auth", "oauth2_client_credentials"}
 
@@ -92,14 +93,17 @@ class PostgresSecretResolver:
     """Implémentation par défaut, utilisée par le cœur serveur — même
     requête que l'ancien _resolve_secret(session, tenant_id, ...)."""
 
-    def __init__(self, session: Session, tenant_id: str) -> None:
+    def __init__(self, session: Session, tenant_id: str, user: User | None) -> None:
         self._session = session
         self._tenant_id = tenant_id
+        self._user = user
 
     def get(self, name: str) -> SecretPayload:
+        if self._user is None:  # pas d'acteur (P16.01) : aucun secret utilisable
+            raise KeyError(name)
         try:
             payload = secrets_repo.get_secret_payload(
-                self._session, tenant_id=self._tenant_id, name=name
+                self._session, tenant_id=self._tenant_id, name=name, user=self._user
             )
         except KeyError as exc:
             # KeyError est le signal « secret absent » de ce Protocol : une

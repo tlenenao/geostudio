@@ -7,6 +7,8 @@ from collections.abc import Iterator
 from http import HTTPStatus
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
@@ -161,6 +163,14 @@ def create_app() -> FastAPI:
                 "errors": exc.errors,
             },
         )
+
+    @app.exception_handler(RequestValidationError)
+    async def _request_validation_handler(request: Request, exc: RequestValidationError):
+        errors = exc.errors()
+        if "/secrets" in request.url.path:
+            # P16.06 : jamais de valeur de payload (secret) dans la réponse 422.
+            errors = [{k: v for k, v in e.items() if k not in {"input", "ctx"}} for e in errors]
+        return JSONResponse(status_code=422, content={"detail": jsonable_encoder(errors)})
 
     @app.exception_handler(HTTPException)
     async def _http_exception_handler(request: Request, exc: HTTPException):

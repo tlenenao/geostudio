@@ -8,6 +8,8 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, TypeAdapter
 
+NonEmptyStr = Annotated[str, Field(min_length=1)]
+
 
 class ApiKeyPayload(BaseModel):
     """`location="query"` couvre les jetons en paramètre d'URL (ex.
@@ -16,13 +18,13 @@ class ApiKeyPayload(BaseModel):
 
     kind: Literal["api_key"] = "api_key"
     location: Literal["header", "query"]
-    key: str
-    value: str
+    key: NonEmptyStr
+    value: NonEmptyStr
 
 
 class BearerTokenPayload(BaseModel):
     kind: Literal["bearer_token"] = "bearer_token"
-    token: str
+    token: NonEmptyStr
 
 
 class BasicAuthPayload(BaseModel):
@@ -31,8 +33,8 @@ class BasicAuthPayload(BaseModel):
     l'échange de jeton lui-même — le coffre ne porte que le matériel brut."""
 
     kind: Literal["basic_auth"] = "basic_auth"
-    username: str
-    password: str
+    username: NonEmptyStr
+    password: NonEmptyStr
 
 
 class OAuth2ClientCredentialsPayload(BaseModel):
@@ -41,14 +43,14 @@ class OAuth2ClientCredentialsPayload(BaseModel):
     stocke les identifiants client, jamais le jeton d'accès obtenu."""
 
     kind: Literal["oauth2_client_credentials"] = "oauth2_client_credentials"
-    tokenUrl: str
-    clientId: str
-    clientSecret: str
+    tokenUrl: NonEmptyStr
+    clientId: NonEmptyStr
+    clientSecret: NonEmptyStr
 
 
 class PostgresDsnPayload(BaseModel):
     kind: Literal["postgres_dsn"] = "postgres_dsn"
-    dsn: str
+    dsn: NonEmptyStr
 
 
 class SmtpCredentialsPayload(BaseModel):
@@ -59,12 +61,12 @@ class SmtpCredentialsPayload(BaseModel):
     SP-16b plan), same trust model as postgres_dsn."""
 
     kind: Literal["smtp"] = "smtp"
-    host: str
+    host: NonEmptyStr
     port: int
-    username: str
-    password: str
+    username: NonEmptyStr
+    password: NonEmptyStr
     useTls: bool = True
-    fromAddress: str
+    fromAddress: NonEmptyStr
 
 
 class SnowflakeDsnPayload(BaseModel):
@@ -75,7 +77,7 @@ class SnowflakeDsnPayload(BaseModel):
     tel quel à sa.create_engine()."""
 
     kind: Literal["snowflake_dsn"] = "snowflake_dsn"
-    dsn: str
+    dsn: NonEmptyStr
 
 
 class BigQueryDsnPayload(BaseModel):
@@ -112,7 +114,7 @@ class BigQueryDsnPayload(BaseModel):
     masquage explicite au préalable."""
 
     kind: Literal["bigquery_dsn"] = "bigquery_dsn"
-    dsn: str
+    dsn: NonEmptyStr
 
 
 class MssqlDsnPayload(BaseModel):
@@ -150,7 +152,7 @@ class MssqlDsnPayload(BaseModel):
     côté serveur avec une erreur explicite au moment de l'exécution."""
 
     kind: Literal["mssql_dsn"] = "mssql_dsn"
-    dsn: str
+    dsn: NonEmptyStr
 
 
 class OracleDsnPayload(BaseModel):
@@ -187,7 +189,7 @@ class OracleDsnPayload(BaseModel):
     ici peut malgré tout échouer côté serveur avec une erreur explicite."""
 
     kind: Literal["oracle_dsn"] = "oracle_dsn"
-    dsn: str
+    dsn: NonEmptyStr
 
 
 class S3CredentialsPayload(BaseModel):
@@ -204,8 +206,8 @@ class S3CredentialsPayload(BaseModel):
     de s3fs (`.to_s3fs_credentials()` → `key`/`secret`/`endpoint_url`)."""
 
     kind: Literal["s3_credentials"] = "s3_credentials"
-    awsAccessKeyId: str
-    awsSecretAccessKey: str
+    awsAccessKeyId: NonEmptyStr
+    awsSecretAccessKey: NonEmptyStr
     endpointUrl: str | None = None
 
 
@@ -222,8 +224,8 @@ class AzureBlobCredentialsPayload(BaseModel):
     (`.to_adlfs_credentials()` → `account_name`/`account_key`)."""
 
     kind: Literal["azure_blob_credentials"] = "azure_blob_credentials"
-    accountName: str
-    accountKey: str
+    accountName: NonEmptyStr
+    accountKey: NonEmptyStr
 
 
 class GcsCredentialsPayload(BaseModel):
@@ -279,4 +281,8 @@ SECRET_PAYLOAD_ADAPTER: TypeAdapter[
 
 class SecretCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
+    payload: SecretPayload
+
+
+class SecretUpdate(BaseModel):
     payload: SecretPayload
