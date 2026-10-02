@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
 from app.db import get_session
 from app.notifications.models import Notification
@@ -124,5 +125,18 @@ def patch_preference(
         raise HTTPException(status_code=400, detail=f"unknown preference value: {body.value}")
     value = set_notification_preference(
         session, tenant_id=user.tenant_id, user_id=user.id, value=body.value
+    )
+    # P20.15 (c03-010) : règle « audit_log sur toute écriture » pour le choix
+    # persistant de l'utilisateur. Exemption assumée : les accusés de lecture
+    # (read / read-all) sont un état d'affichage jetable, pas une décision.
+    write_audit(
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="notification.preference.update",
+        object_type="user",
+        object_id=user.id,
+        payload={"value": value},
     )
     return NotificationPreferenceRead(value=value)
