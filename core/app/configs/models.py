@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
 
@@ -14,6 +14,11 @@ def _now() -> datetime:
 
 class Config(Base):
     __tablename__ = "configs"
+    # cf. 0045_p24_indexes.py (P24.02/03)
+    __table_args__ = (
+        Index("ix_configs_item_id", "item_id"),
+        Index("ix_configs_kind_tenant_id", "kind", "tenant_id"),
+    )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
@@ -26,6 +31,7 @@ class Config(Base):
 
 class ConfigRevision(Base):
     __tablename__ = "config_revisions"
+    __table_args__ = (Index("ix_config_revisions_config_version", "config_id", "version"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
