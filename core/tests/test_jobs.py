@@ -68,6 +68,7 @@ def test_import_paths_registers_all_domain_tasks():
     assert "app.cdc.jobs.run_compaction_cycle_task" in task_names
     assert "app.harvest.jobs.run_harvest_task" in task_names
     assert "app.security.jobs.refresh_csp_dynamic_conf_task" in task_names
+    assert "app.compliance.jobs.sweep_orphan_job_objects_task" in task_names
 
 
 def test_procrastinate_connector_disables_psycopg_autoprepare():

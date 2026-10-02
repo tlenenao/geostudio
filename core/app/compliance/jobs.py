@@ -8,8 +8,10 @@ mais jamais consommé par aucun worker (piège CLAUDE.md n°2, classe de
 défaut déjà payée plusieurs fois dans ce dépôt), risque qu'évite le choix
 de réutiliser une file déjà dans cette liste."""
 
+import logging
 import os
 
+from app.compliance.orphans import sweep_orphan_job_objects
 from app.compliance.purge import purge_tenant
 from app.db import request_scoped_session
 from app.ingestion.storage import make_s3_client
@@ -38,3 +40,18 @@ def purge_tenant_task(*, purge_id: str, tenant_id: str, requested_by_user_id: st
             receipt_id=purge_id,
         )
         session.commit()
+
+
+@app.periodic(cron="23 3 * * *")
+@app.task(queue="etl", queueing_lock="sweep_orphan_job_objects_task")
+def sweep_orphan_job_objects_task(timestamp: int) -> None:
+    """Supprime les fichiers de résultat d'export/appexport dont le job a
+    disparu (suppression d'item en CASCADE). Quotidien, plafonné par passe.
+    Pas de garde de flag : un bucket absent (capacité éteinte) est ignoré."""
+    if not os.environ.get("S3_ENDPOINT_URL"):
+        return
+    factory = _session_factory()
+    with request_scoped_session(factory) as session:
+        n = sweep_orphan_job_objects(session, s3_client_from_env())
+    if n:
+        logging.getLogger(__name__).info("%d objet(s) S3 orphelin(s) supprimé(s)", n)
