@@ -140,6 +140,25 @@ test("navigate() percent-encodes pk and the target pageId", async () => {
   expect(screen.getByTestId("loc")).toHaveTextContent("/apps/9/a%2Fb");
 });
 
+test("redirige un pageId inconnu vers la racine de l'app (j04-015)", async () => {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = {
+    getItem: vi.fn().mockResolvedValue(okItem),
+    getAppConfig: vi.fn().mockResolvedValue(config),
+  } as unknown as ItemClient;
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <MemoryRouter initialEntries={["/apps/9/inconnue"]}>
+          <AppRuntimePage pk="9" pageId="inconnue" />
+          <LocationDisplay />
+        </MemoryRouter>
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(screen.getByTestId("loc")).toHaveTextContent(/^\/apps\/9$/));
+});
+
 test("shows an access-denied message and never fetches the config when getItem fails", async () => {
   const getAppConfig = vi.fn().mockResolvedValue(config);
   renderRuntime({ getItem: vi.fn().mockRejectedValue(new Error("403")), getAppConfig });

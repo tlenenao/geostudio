@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { useAppConfig, useInstanceInfo, useItem } from "../api/hooks";
 import { AppRenderer } from "../builder/AppRenderer";
 import { EXTENT_DEBOUNCE_MS, type AnalyticsContextState } from "../builder/AnalyticsContext";
-import { getPageLayout } from "../builder/pages";
+import { getPageLayout, getPages } from "../builder/pages";
 import type { MapLayer } from "../api/types";
 import { decodeAnalyticsContext, encodeAnalyticsContext } from "../lib/analyticsContextUrl";
 import { registerBuiltinWidgets } from "../builder/widgets";
@@ -172,6 +172,11 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
         {t("appRuntime.notFound")}
       </p>
     );
+  }
+  // j04-015 : un pageId inconnu (URL périmée) ne doit pas afficher en silence
+  // la première page sous une URL trompeuse — on revient à la racine de l'app.
+  if (pageId && !getPages(query.data).some((p) => p.id === pageId)) {
+    return <Navigate replace to={`/apps/${encodeURIComponent(pk)}`} />;
   }
   // Fix round (finding I1): the export bar/button must show whenever
   // exportEnabled is true, regardless of interactions === "auto" — that flag
