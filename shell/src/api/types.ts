@@ -803,9 +803,10 @@ export type SecretPayload =
       awsAccessKeyId: string;
       awsSecretAccessKey: string;
       endpointUrl?: string;
+      bucketUrl: string;
     }
-  | { kind: "azure_blob_credentials"; accountName: string; accountKey: string }
-  | { kind: "gcs_credentials"; serviceAccountInfo: Record<string, unknown> };
+  | { kind: "azure_blob_credentials"; accountName: string; accountKey: string; bucketUrl: string }
+  | { kind: "gcs_credentials"; serviceAccountInfo: Record<string, unknown>; bucketUrl: string };
 
 export type RenderMode = "edit" | "preview" | "runtime";
 
