@@ -129,11 +129,29 @@ def features_to_gpkg(features: list[dict[str, Any]], conn: duckdb.DuckDBPyConnec
         return out_path.read_bytes()
 
 
+def _rows_with_wkt(features: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """P29.07 : CSV/XLSX portent la géométrie en WKT (colonne `geometry`, ou
+    `geometry_wkt` si une propriété porte déjà ce nom) au lieu de la perdre."""
+    from shapely.geometry import shape
+
+    if not any(f.get("geometry") for f in features):
+        return [f.get("properties") or {} for f in features]
+    taken = any("geometry" in (f.get("properties") or {}) for f in features)
+    key = "geometry_wkt" if taken else "geometry"
+    return [
+        {
+            **(f.get("properties") or {}),
+            key: shape(f["geometry"]).wkt if f.get("geometry") else None,
+        }
+        for f in features
+    ]
+
+
 def features_to_format(
     features: list[dict[str, Any]], *, format: str, conn: duckdb.DuckDBPyConnection | None = None
 ) -> bytes:
     if format in ("csv", "xlsx"):
-        return rows_to_format([f.get("properties") or {} for f in features], format=format)
+        return rows_to_format(_rows_with_wkt(features), format=format)
     if format == "geojson":
         return features_to_geojson(features)
     if format == "gpkg":

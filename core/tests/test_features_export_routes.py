@@ -305,7 +305,9 @@ def test_export_items_csv_flattens_properties(env):
     resp = client.get(f"/v1/collections/{col['id']}/export/items?format=csv")
     assert resp.status_code == 200
     assert "Nord" in resp.text
-    assert "geometry" not in resp.text.splitlines()[0]
+    # P29.07 : la géométrie part en WKT au lieu d'être perdue en silence.
+    assert resp.text.splitlines()[0].split(",")[-1].strip() == "geometry"
+    assert "POINT (0 0)" in resp.text
 
 
 def test_export_items_gpkg_returns_a_sqlite_container(env):
@@ -357,3 +359,10 @@ def test_export_items_caps_at_10000_entities(env, monkeypatch):
     )
     resp = client.get(f"/v1/collections/{col['id']}/export/items?format=csv")
     assert resp.status_code == 413
+
+
+def test_export_items_cap_defaults_above_the_old_10000():
+    # P29.04 : plafond relevé (réglable par CORE_EXPORT_ITEMS_MAX).
+    import app.features.routes as routes_module
+
+    assert routes_module.EXPORT_ITEMS_CAP >= 100_000

@@ -335,6 +335,7 @@ services:
       CORE_SECRETS_MASTER_KEY: ${CORE_SECRETS_MASTER_KEY}
       CORE_EXPORT_ENABLED: ${CORE_EXPORT_ENABLED:-false}
       CORE_EXPORT_TOKEN_SECRET: ${CORE_EXPORT_TOKEN_SECRET:-}
+      CORE_EXPORT_ITEMS_MAX: ${CORE_EXPORT_ITEMS_MAX:-100000}
       # Liens de partage à échéance (GAP-12) : résolus entièrement dans ce
       # service (GET /share-links/{token}), contrairement au jeton d'export
       # ci-dessus — aucun worker séparé n'a besoin de cette variable.
