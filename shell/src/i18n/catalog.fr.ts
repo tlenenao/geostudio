@@ -273,7 +273,7 @@ export const fr = {
   "roles.privilege.mapsManage": "Créer et modifier des cartes",
   "roles.privilege.dataView": "Voir le domaine Données",
   "roles.privilege.dataManage": "Créer et modifier des jeux de données",
-  "roles.privilege.appsManage": "Créer et modifier des apps et sites",
+  "roles.privilege.appsManage": "Créer et modifier des applications et sites",
   "roles.privilege.automationManage": "Créer et modifier des pipelines",
   "roles.privilege.automationSecretsManage": "Voir et gérer les noms de secrets",
   "roles.privilege.analyticsView": "Voir le domaine Analytique",
@@ -325,7 +325,7 @@ export const fr = {
   "extensions.deleteAria": "Supprimer : {label}",
   "extensions.deleteTitle": "Supprimer l'extension",
   "extensions.deleteMessage":
-    "L'extension « {label} » sera retirée du catalogue. Les apps qui l'utilisent ne l'afficheront plus.",
+    "L'extension « {label} » sera retirée du catalogue. Les applications qui l'utilisent ne l'afficheront plus.",
   "extensions.deleteError": "Échec de la suppression de l'extension.",
 
   // Motif de navigation partagé (lien de retour au catalogue depuis un écran
@@ -1248,7 +1248,7 @@ export const fr = {
   "widgetSelectFilter.fieldAria": "Champ du sélecteur",
   "widgetSelectFilter.labelConfig": "Libellé",
   "widgetSelectFilter.labelAria": "Libellé du sélecteur",
-  "widgetSelectFilter.unbound": "Liez ce filtre à une source dataset et un champ",
+  "widgetSelectFilter.unbound": "Liez ce filtre à une source de données et un champ",
   "widgetSelectFilter.loadOptionsError": "Impossible de charger les valeurs",
 
   // Widget Curseur (sliderFilter.tsx)
@@ -1258,7 +1258,7 @@ export const fr = {
   "widgetSliderFilter.fieldAria": "Champ du curseur",
   "widgetSliderFilter.labelConfig": "Libellé",
   "widgetSliderFilter.labelAria": "Libellé du curseur",
-  "widgetSliderFilter.unbound": "Liez ce filtre à une source dataset et un champ",
+  "widgetSliderFilter.unbound": "Liez ce filtre à une source de données et un champ",
   "widgetSliderFilter.loadBoundsError": "Impossible de charger les bornes",
   "widgetSliderFilter.minAria": "Borne minimale",
   "widgetSliderFilter.maxAria": "Borne maximale",
