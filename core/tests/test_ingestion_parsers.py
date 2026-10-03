@@ -1149,6 +1149,6 @@ def test_unreadable_zip_message_leaks_no_server_path():
 def test_sniff_delimiter_ignores_separators_inside_quotes():
     from app.ingestion.parsers import sniff_delimiter
 
-    assert sniff_delimiter('"a;b;c",d,e\n1,2,3') == ","
+    assert sniff_delimiter('"a;b;c;d",e,f\n1,2,3') == ","
     assert sniff_delimiter('"Nom, Prénom";Age\r\nx;1') == ";"
     assert sniff_delimiter("seule\n1") == ","

@@ -103,6 +103,7 @@ _INT_RE = re.compile(
     r"^-?(0|[1-9]\d{0,17})$"
 )  # pas de zéro de tête (codes postaux), tient en bigint
 _FLOAT_RE = re.compile(r"^-?\d+\.\d+$")
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")  # fromisoformat seul accepte aussi « 2026-W01-1 »
 
 
 def _convert_csv_value(value: str, kind: str):
@@ -121,7 +122,7 @@ def _csv_column_kind(values: list[str]) -> str | None:
     if all(_INT_RE.match(v) or _FLOAT_RE.match(v) for v in values):
         return "float"
     try:
-        if all(len(v) == 10 and datetime.date.fromisoformat(v) for v in values):
+        if all(_DATE_RE.match(v) and datetime.date.fromisoformat(v) for v in values):
             return "date"
     except ValueError:
         pass

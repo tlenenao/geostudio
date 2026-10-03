@@ -766,3 +766,14 @@ def test_csv_import_infers_integer_decimal_and_date_columns(env):
     assert types["maj"] == "date"
     assert types["cp"] == "string"
     assert types["mix"] == "string"
+
+
+def test_csv_column_kind_edge_cases():
+    from app.ingestion.importer import _csv_column_kind
+
+    assert _csv_column_kind(["1"] * 10_000 + ["x"]) is None  # valeur tardive : texte, pas d'échec
+    assert _csv_column_kind(["1", "2.5"]) == "float"
+    assert _csv_column_kind(["9" * 19]) is None  # hors bigint : texte
+    assert _csv_column_kind(["2026-W01-1"]) is None
+    assert _csv_column_kind(["2026-02-30"]) is None  # date impossible
+    assert _csv_column_kind(["2026-01-31"]) == "date"
