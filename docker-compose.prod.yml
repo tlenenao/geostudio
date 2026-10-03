@@ -229,6 +229,20 @@ services:
       - traefik.http.routers.seo-bots.middlewares=security-headers@docker,rate-limit@docker,compress@docker,seo-bots-rewrite@docker,csp-dynamic@file
       - traefik.http.middlewares.seo-bots-rewrite.replacepathregex.regex=^/sites/([^/]+)$$
       - traefik.http.middlewares.seo-bots-rewrite.replacepathregex.replacement=/v1/public/sites/$$1/social-preview
+      - traefik.http.routers.seo-bots-items.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && PathPrefix(`/public/items/`) && HeaderRegexp(`User-Agent`, `(?i)(facebookexternalhit|Twitterbot|Slackbot|LinkedInBot|Discordbot|WhatsApp|TelegramBot|Googlebot|bingbot)`)
+      - traefik.http.routers.seo-bots-items.entrypoints=web
+      - traefik.http.routers.seo-bots-items.priority=25
+      - traefik.http.routers.seo-bots-items.service=core
+      - traefik.http.routers.seo-bots-items.middlewares=security-headers@docker,rate-limit@docker,compress@docker,seo-bots-items-rewrite@docker,csp-dynamic@file
+      - traefik.http.middlewares.seo-bots-items-rewrite.replacepathregex.regex=^/public/items/([^/]+)$$
+      - traefik.http.middlewares.seo-bots-items-rewrite.replacepathregex.replacement=/v1/public/items/$$1/social-preview
+      - traefik.http.routers.seo-bots-datasets.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && PathPrefix(`/public/datasets/`) && HeaderRegexp(`User-Agent`, `(?i)(facebookexternalhit|Twitterbot|Slackbot|LinkedInBot|Discordbot|WhatsApp|TelegramBot|Googlebot|bingbot)`)
+      - traefik.http.routers.seo-bots-datasets.entrypoints=web
+      - traefik.http.routers.seo-bots-datasets.priority=25
+      - traefik.http.routers.seo-bots-datasets.service=core
+      - traefik.http.routers.seo-bots-datasets.middlewares=security-headers@docker,rate-limit@docker,compress@docker,seo-bots-datasets-rewrite@docker,csp-dynamic@file
+      - traefik.http.middlewares.seo-bots-datasets-rewrite.replacepathregex.regex=^/public/datasets/([^/]+)$$
+      - traefik.http.middlewares.seo-bots-datasets-rewrite.replacepathregex.replacement=/v1/public/datasets/$$1/social-preview
 
   # worker/cdc-worker sont la MÊME image que core (docker-compose.yml:
   # `build: ./core` pour les trois, processus séparés par `command:`) —

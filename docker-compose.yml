@@ -444,6 +444,8 @@ services:
       - traefik.http.routers.seo-static.middlewares=security-headers@docker,rate-limit@docker,seo-static-rewrite@docker,csp-dynamic@file
       - traefik.http.middlewares.seo-static-rewrite.replacepathregex.regex=^/(sitemap\.xml|robots\.txt)$$
       - traefik.http.middlewares.seo-static-rewrite.replacepathregex.replacement=/v1/public/$$1
+      # P35.07 : une règle par famille de pages publiques (sites, items publiés,
+      # datasets) — un middleware replacepathregex ne porte qu'une regex.
       - traefik.http.routers.seo-bots.rule=Host(`${DOMAIN}`) && PathPrefix(`/sites/`) && HeaderRegexp(`User-Agent`, `(?i)(facebookexternalhit|Twitterbot|Slackbot|LinkedInBot|Discordbot|WhatsApp|TelegramBot|Googlebot|bingbot)`)
       - traefik.http.routers.seo-bots.entrypoints=websecure
       - traefik.http.routers.seo-bots.tls.certresolver=letsencrypt
@@ -452,6 +454,22 @@ services:
       - traefik.http.routers.seo-bots.middlewares=security-headers@docker,rate-limit@docker,seo-bots-rewrite@docker,csp-dynamic@file
       - traefik.http.middlewares.seo-bots-rewrite.replacepathregex.regex=^/sites/([^/]+)$$
       - traefik.http.middlewares.seo-bots-rewrite.replacepathregex.replacement=/v1/public/sites/$$1/social-preview
+      - traefik.http.routers.seo-bots-items.rule=Host(`${DOMAIN}`) && PathPrefix(`/public/items/`) && HeaderRegexp(`User-Agent`, `(?i)(facebookexternalhit|Twitterbot|Slackbot|LinkedInBot|Discordbot|WhatsApp|TelegramBot|Googlebot|bingbot)`)
+      - traefik.http.routers.seo-bots-items.entrypoints=websecure
+      - traefik.http.routers.seo-bots-items.tls.certresolver=letsencrypt
+      - traefik.http.routers.seo-bots-items.priority=25
+      - traefik.http.routers.seo-bots-items.service=core
+      - traefik.http.routers.seo-bots-items.middlewares=security-headers@docker,rate-limit@docker,seo-bots-items-rewrite@docker,csp-dynamic@file
+      - traefik.http.middlewares.seo-bots-items-rewrite.replacepathregex.regex=^/public/items/([^/]+)$$
+      - traefik.http.middlewares.seo-bots-items-rewrite.replacepathregex.replacement=/v1/public/items/$$1/social-preview
+      - traefik.http.routers.seo-bots-datasets.rule=Host(`${DOMAIN}`) && PathPrefix(`/public/datasets/`) && HeaderRegexp(`User-Agent`, `(?i)(facebookexternalhit|Twitterbot|Slackbot|LinkedInBot|Discordbot|WhatsApp|TelegramBot|Googlebot|bingbot)`)
+      - traefik.http.routers.seo-bots-datasets.entrypoints=websecure
+      - traefik.http.routers.seo-bots-datasets.tls.certresolver=letsencrypt
+      - traefik.http.routers.seo-bots-datasets.priority=25
+      - traefik.http.routers.seo-bots-datasets.service=core
+      - traefik.http.routers.seo-bots-datasets.middlewares=security-headers@docker,rate-limit@docker,seo-bots-datasets-rewrite@docker,csp-dynamic@file
+      - traefik.http.middlewares.seo-bots-datasets-rewrite.replacepathregex.regex=^/public/datasets/([^/]+)$$
+      - traefik.http.middlewares.seo-bots-datasets-rewrite.replacepathregex.replacement=/v1/public/datasets/$$1/social-preview
 
   # Worker d'ingestion (SP-6a) — même image que le cœur, process séparé
   # (procrastinate worker, file Postgres, pas de broker — arbitrage A5).

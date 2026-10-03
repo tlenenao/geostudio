@@ -567,6 +567,29 @@ def get_facets(
 PUBLIC_KINDS = ("site", "app", "dashboard", "map", "dataset")
 
 
+def _to_public_read(item: Item, owner_username: str) -> ItemRead:
+    # La vignette d'un item publié se lit par une route anonyme dédiée
+    # (GET /public/items/{id}/thumbnail), pas par /items/{id}/thumbnail
+    # (authentifiée) : chemin relatif à la racine du cœur, le client le préfixe.
+    read = _to_read(item, owner_username)
+    if read.thumbnailUrl:
+        read = read.model_copy(update={"thumbnailUrl": f"/public/items/{item.id}/thumbnail"})
+    return read
+
+
+def get_published_thumbnail_key(
+    session: Session, *, item_id: str, tenant_id: str = DEFAULT_TENANT_SLUG
+) -> str | None:
+    return session.scalar(
+        select(Item.thumbnail_key).where(
+            Item.id == item_id,
+            Item.tenant_id == tenant_id,
+            Item.is_published.is_(True),
+            Item.resource_type.in_(PUBLIC_KINDS),
+        )
+    )
+
+
 def list_published_items(
     session: Session,
     *,
@@ -619,7 +642,7 @@ def list_published_items(
             .limit(page_size)
             .options(defer(Item.embedding))
         ).all()
-    items = [_to_read(item, owner_username) for item, owner_username in page_rows]
+    items = [_to_public_read(item, owner_username) for item, owner_username in page_rows]
     return ItemPage(items=items, total=total, page=page, pageSize=page_size)
 
 
@@ -711,7 +734,7 @@ def get_published_item(
     if row is None:
         return None
     item, owner_username = row
-    return _to_read(item, owner_username)
+    return _to_public_read(item, owner_username)
 
 
 def get_published_site_by_slug(
@@ -734,7 +757,7 @@ def get_published_site_by_slug(
     if row is None:
         return None
     item, owner_username = row
-    return _to_read(item, owner_username)
+    return _to_public_read(item, owner_username)
 
 
 def set_is_public(session: Session, *, tenant_id: str, item_id: str, is_public: bool) -> None:

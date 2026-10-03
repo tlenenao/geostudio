@@ -170,3 +170,108 @@ def test_social_preview_escapes_html_in_title(client):
     assert response.status_code == 200
     assert "<script>alert(1)</script>" not in response.text
     assert "&lt;script&gt;" in response.text
+
+
+def _make_collection(client, cid: str, title: str, *, is_public: bool):
+    from app.collections import repository as collections_repo
+
+    with client.session_factory() as s:
+        collections_repo.create_collection(
+            s,
+            tenant_id=client.tenant.id,
+            owner_id=client.user.id,
+            table_name=cid,
+            title=title,
+            description="Desc <b>x</b>",
+            is_public=is_public,
+            pk_column="id",
+            geometry_column=None,
+            geometry_type=None,
+            srid=None,
+        )
+        s.commit()
+
+
+def test_sitemap_covers_sites_items_and_public_datasets_with_lastmod(client):
+    site = _create_site(client, "Portail", "portail")
+    _publish(client, site)
+    r = client.post(
+        "/v1/configs",
+        json={
+            "title": "Appli",
+            "config": {
+                "kind": "app",
+                "layout": {"type": "grid", "items": []},
+            },
+        },
+    )
+    app_id = r.json()["itemId"]
+    _publish(client, app_id)
+    _make_collection(client, "ouvert", "Ouvert", is_public=True)
+    _make_collection(client, "secret", "Secret", is_public=False)
+
+    del client.app.dependency_overrides[get_current_user]
+    body = client.get("/v1/public/sitemap.xml").text
+    assert f"{_PUBLIC_BASE_URL}/sites/portail</loc><lastmod>" in body
+    assert f"{_PUBLIC_BASE_URL}/public/items/{app_id}</loc><lastmod>" in body
+    assert f"{_PUBLIC_BASE_URL}/public/datasets/ouvert</loc>" in body
+    assert "secret" not in body
+
+
+def test_head_sitemap_and_robots_are_200(client):
+    del client.app.dependency_overrides[get_current_user]
+    for p in ("sitemap.xml", "robots.txt"):
+        r = client.head(f"/v1/public/{p}")
+        assert r.status_code == 200
+        assert "max-age" in r.headers["cache-control"]
+
+
+def test_social_preview_is_complete_for_sites(client):
+    _publish(client, _create_site(client, "Portail", "portail", abstract="Résumé"))
+    del client.app.dependency_overrides[get_current_user]
+    body = client.get("/v1/public/sites/portail/social-preview").text
+    assert f'property="og:url" content="{_PUBLIC_BASE_URL}/sites/portail"' in body
+    assert 'property="og:type"' in body
+    assert 'name="twitter:card"' in body
+    assert "<h1>Portail</h1>" in body
+
+
+def test_item_social_preview_with_public_thumbnail(client):
+    from app.items import routes as items_routes
+    from app.items.storage import InMemoryThumbnailStore
+
+    store = InMemoryThumbnailStore()
+    client.app.dependency_overrides[items_routes.get_thumbnail_store] = lambda: store
+    item_id = _create_site(client, "Portail", "portail")
+    client.post(
+        f"/v1/items/{item_id}/thumbnail", files={"file": ("t.png", b"PNGDATA", "image/png")}
+    )
+    # Non publié : ni aperçu ni vignette anonymes.
+    del client.app.dependency_overrides[get_current_user]
+    assert client.get(f"/v1/public/items/{item_id}/social-preview").status_code == 404
+    assert client.get(f"/v1/public/items/{item_id}/thumbnail").status_code == 404
+
+    client.app.dependency_overrides[get_current_user] = lambda: client.user
+    _publish(client, item_id)
+    del client.app.dependency_overrides[get_current_user]
+    page = client.get(f"/v1/public/items/{item_id}/social-preview").text
+    thumb = f"{_PUBLIC_BASE_URL}/api/v1/public/items/{item_id}/thumbnail"
+    assert f'property="og:image" content="{thumb}"' in page
+    assert 'content="summary_large_image"' in page
+    img = client.get(f"/v1/public/items/{item_id}/thumbnail")
+    assert img.status_code == 200 and img.content == b"PNGDATA"
+    assert img.headers["x-content-type-options"] == "nosniff"
+    listed = client.get("/v1/public/items").json()["items"][0]
+    assert listed["thumbnailUrl"] == f"/public/items/{item_id}/thumbnail"
+
+
+def test_dataset_social_preview_public_only_and_escaped(client):
+    _make_collection(client, "ouvert", "A&B", is_public=True)
+    _make_collection(client, "secret", "Secret", is_public=False)
+    del client.app.dependency_overrides[get_current_user]
+    ok = client.get("/v1/public/datasets/ouvert/social-preview")
+    assert ok.status_code == 200
+    assert "A&amp;B" in ok.text and "<b>x</b>" not in ok.text
+    assert f'rel="canonical" href="{_PUBLIC_BASE_URL}/public/datasets/ouvert"' in ok.text
+    assert client.get("/v1/public/datasets/secret/social-preview").status_code == 404
+    assert client.get("/v1/public/datasets/nope/social-preview").status_code == 404
