@@ -127,7 +127,8 @@ class PostgresSecretResolver:
 
 def _env_int(name: str, default: int) -> int:
     raw = os.environ.get(name, "").strip()
-    return int(raw) if raw else default
+    value = int(raw) if raw else default
+    return value if value > 0 else default
 
 
 def _connect_timeout_s() -> int:
@@ -163,7 +164,10 @@ def _blob_resource(files, reader):
     chaîne filesystem → reader. dlt applique `add_map` élément par élément (y
     compris sur les pages) ; compteurs frais à chaque appel.
     ponytail: gardes entre éléments ; un fichier unique géant n'est borné que
-    par sa taille annoncée et les délais réseau fsspec (`_blob_fs_kwargs`)."""
+    par sa taille annoncée et les délais réseau fsspec (`_blob_fs_kwargs`) ;
+    le listing glob (dlt glob_files -> fs.glob(detail=True)) est chargé en
+    mémoire avant tout plafond : un glob `**` sur un énorme bucket est non
+    borné. Évolution : limiter la profondeur/le préfixe du glob."""
     max_files, max_bytes = _blob_max_files(), _blob_max_bytes()
     max_rows, budget = _max_rows(), _blob_timeout_s()
     deadline = time.monotonic() + budget

@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import socket
+import ssl
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -341,7 +342,8 @@ def test_send_email_uses_smtp_ssl_on_port_465(smtp_variant_session):
         server = ssl_cls.return_value.__enter__.return_value
         _send(*smtp_variant_session)
     smtp_cls.assert_not_called()
-    assert ssl_cls.call_args.kwargs["context"] is not None
+    ctx = ssl_cls.call_args.kwargs["context"]
+    assert ctx.verify_mode == ssl.CERT_REQUIRED and ctx.check_hostname is True
     server.starttls.assert_not_called()
     server.login.assert_called_once_with("alerts@example.test", "s3cret")
     server.send_message.assert_called_once()

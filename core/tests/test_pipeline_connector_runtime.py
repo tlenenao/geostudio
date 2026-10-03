@@ -1551,7 +1551,7 @@ def test_blob_row_cap(conn, tmp_path, monkeypatch):
 
 
 def test_blob_deadline(conn, tmp_path, monkeypatch):
-    monkeypatch.setenv("CORE_PIPELINES_BLOB_TIMEOUT_S", "-1")  # échéance déjà passée
+    monkeypatch.setattr(connector_runtime, "_blob_timeout_s", lambda: -1)  # échéance déjà passée
     with pytest.raises(connector_runtime.ConnectorRuntimeError, match="délai de -1s dépassé"):
         _run_capped(conn, tmp_path, {"a.csv": 2})
 
@@ -1592,3 +1592,9 @@ def test_materialize_blob_connector_passes_provider_timeouts(
     )
     cfg = captured["fs_kwargs"]["config_kwargs"]
     assert cfg["connect_timeout"] == 7 and cfg["read_timeout"] == 42
+
+
+@pytest.mark.parametrize("raw", ["0", "-5"])
+def test_env_int_non_positive_falls_back_to_default(monkeypatch, raw):
+    monkeypatch.setenv("CORE_PIPELINES_BLOB_MAX_FILES", raw)
+    assert connector_runtime._blob_max_files() == 100
