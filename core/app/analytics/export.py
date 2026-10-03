@@ -87,8 +87,9 @@ def rows_to_csv(rows: list[dict[str, Any]], columns: list[str] | None = None) ->
 
 
 def rows_to_xlsx(rows: list[dict[str, Any]], columns: list[str] | None = None) -> bytes:
-    wb = Workbook()
-    ws = wb.active
+    # write_only : flux de lignes, pas tout le classeur en mémoire (export 10^5 lignes).
+    wb = Workbook(write_only=True)
+    ws = wb.create_sheet()
     headers = list(rows[0].keys()) if rows else list(columns or [])
     if headers:
         ws.append([_neutralize(h) for h in headers])
