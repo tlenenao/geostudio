@@ -401,16 +401,16 @@ export const fr = {
   "infrastructure.usageCollectionsWithLimit": "Collections : {count} / {limit}",
   "infrastructure.usageStorage": "Stockage : {size}",
   "infrastructure.usageStorageWithLimit": "Stockage : {size} / {limitSize}",
+  "quota.itemsExceeded":
+    "Quota d'éléments atteint ({current}/{limit}) : supprimez des éléments inutiles ou demandez à un administrateur d'augmenter la limite (Administration > Infrastructure).",
+  "quota.collectionsExceeded":
+    "Quota de collections atteint ({current}/{limit}) : supprimez des collections inutiles ou demandez à un administrateur d'augmenter la limite (Administration > Infrastructure).",
+  "quota.storageExceeded":
+    "Quota de stockage atteint ({current}/{limit}) : le fichier a été refusé. Supprimez des fichiers ou demandez à un administrateur d'augmenter la limite (Administration > Infrastructure).",
+  "infrastructure.usageAlert": "Seuil d'alerte atteint (80 %)",
   "infrastructure.usageNoLimit": "pas de limite configurée",
 
   // Motif partagé : indicateur de chargement générique (role="status").
-  "quota.exceeded.items":
-    "Quota d'éléments atteint ({current}/{limit}) : supprimez des éléments inutiles ou demandez à un administrateur d'augmenter la limite (Administration > Infrastructure).",
-  "quota.exceeded.collections":
-    "Quota de collections atteint ({current}/{limit}) : supprimez des collections inutiles ou demandez à un administrateur d'augmenter la limite (Administration > Infrastructure).",
-  "quota.exceeded.storage":
-    "Quota de stockage atteint ({current}/{limit}) : le fichier a été refusé. Supprimez des fichiers ou demandez à un administrateur d'augmenter la limite (Administration > Infrastructure).",
-  "infrastructure.usageAlert": "Seuil d'alerte atteint (80 %)",
   "common.loading": "Chargement…",
 
   // Motifs partagés supplémentaires (SP-57a, lot builder/widgets) : états
@@ -1322,9 +1322,6 @@ export const fr = {
   "copilot.opSqlDraftApplied": "Brouillon SQL inséré.",
   "copilot.opVisualQueryDraftApplied": "Requête visuelle mise à jour.",
   "copilot.requestFailed": "Échec de la requête au copilote.",
-  "copilot.messageAria": "Message au copilote",
-  "copilot.send": "Envoyer",
-  "copilot.pastExchanges": "Échanges précédents ({count})",
   "copilot.unavailable":
     "Le copilote est indisponible : aucun fournisseur LLM n'est configuré sur cette instance. Un administrateur peut l'activer en définissant CORE_LLM_PROVIDER (voir .env.example) puis en redémarrant le cœur.",
   "copilot.readOnly": "Le copilote est désactivé : vous n'avez pas le droit de modifier cette app.",
@@ -1334,6 +1331,9 @@ export const fr = {
   "copilot.confirmWriteYes": "Confirmer",
   "copilot.confirmWriteNo": "Annuler",
   "copilot.confirmWriteMessage": "Confirmation de l'action proposée.",
+  "copilot.messageAria": "Message au copilote",
+  "copilot.send": "Envoyer",
+  "copilot.pastExchanges": "Échanges précédents ({count})",
 
   // PipelineCanvas (builder/pipeline)
   "pipelineCanvas.runningAria": "Exécution en cours",
@@ -2127,10 +2127,10 @@ export const fr = {
   "mapView.labelsSkippedNoGlyphsWarning":
     'MapView: étiquettes ignorées pour {parentId} — le style du fond de carte ne déclare pas de "glyphs" (text-field l\'exige).',
   "mapView.iconNotLoadedWarning": "MapView: icône {id} non chargée",
-  "mapView.locale.mapTitle": "Carte",
-  "mapView.locale.toggleAttribution": "Afficher les crédits",
-  "mapView.locale.mapFeedback": "Signaler un problème de carte",
-  "mapView.locale.logoTitle": "Logo MapLibre",
+  "mapView.localeMapTitle": "Carte",
+  "mapView.localeToggleAttribution": "Afficher les crédits",
+  "mapView.localeMapFeedback": "Signaler un problème de carte",
+  "mapView.localeLogoTitle": "Logo MapLibre",
   "mapView.styleErrorLog": "MapView: MapLibre a signalé une erreur",
 
   // PopupEditor (map)

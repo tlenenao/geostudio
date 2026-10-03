@@ -296,10 +296,10 @@ export const MapView = forwardRef<
       style: config.basemap.style,
       // P30.05 : libellés des contrôles MapLibre en français.
       locale: {
-        "Map.Title": t("mapView.locale.mapTitle"),
-        "AttributionControl.ToggleAttribution": t("mapView.locale.toggleAttribution"),
-        "AttributionControl.MapFeedback": t("mapView.locale.mapFeedback"),
-        "LogoControl.Title": t("mapView.locale.logoTitle"),
+        "Map.Title": t("mapView.localeMapTitle"),
+        "AttributionControl.ToggleAttribution": t("mapView.localeToggleAttribution"),
+        "AttributionControl.MapFeedback": t("mapView.localeMapFeedback"),
+        "LogoControl.Title": t("mapView.localeLogoTitle"),
       },
       center: config.view.center,
       zoom: config.view.zoom,

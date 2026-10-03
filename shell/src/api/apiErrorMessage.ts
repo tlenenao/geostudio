@@ -11,9 +11,9 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
     const { kind, current, limit } = error.quota;
     const fmt = kind === "storage" ? formatBytes : (n: number) => String(n);
     const vars = { current: fmt(current), limit: fmt(limit) };
-    if (kind === "items") return t("quota.exceeded.items", vars);
-    if (kind === "collections") return t("quota.exceeded.collections", vars);
-    if (kind === "storage") return t("quota.exceeded.storage", vars);
+    if (kind === "items") return t("quota.itemsExceeded", vars);
+    if (kind === "collections") return t("quota.collectionsExceeded", vars);
+    if (kind === "storage") return t("quota.storageExceeded", vars);
   }
   if (error.status === 429)
     return `${error.detail ?? fallback} ${
