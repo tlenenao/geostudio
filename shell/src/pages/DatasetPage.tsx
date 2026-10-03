@@ -6,6 +6,9 @@ import { registerBuiltinWidgets } from "../builder/widgets";
 import { DatasetDownloadButtons } from "../builder/DatasetDownloadButtons";
 import type { AppConfig } from "../api/types";
 import { plural, t } from "../i18n";
+import { Banner } from "../ui/kit/Banner";
+import { LoadingState } from "../ui/kit/LoadingState";
+import { PageTitle } from "../ui/kit/PageTitle";
 
 registerBuiltinWidgets();
 
@@ -69,14 +72,12 @@ export function DatasetPage({ collectionId }: { collectionId: string }) {
   const attachmentField = schemaQuery.data?.fields.find((f) => f.type === "attachment")?.name;
 
   if (query.isLoading) {
-    return <p role="status">{t("common.loading")}</p>;
+    return <LoadingState />;
   }
   if (query.isError || !query.data) {
     return (
       <div className="p-8 text-center">
-        <p role="alert" className="text-sm text-ink-2">
-          {t("datasetPage.notFound")}
-        </p>
+        <Banner variant="danger">{t("datasetPage.notFound")}</Banner>
       </div>
     );
   }
@@ -84,7 +85,7 @@ export function DatasetPage({ collectionId }: { collectionId: string }) {
   return (
     <main className="flex h-full w-full flex-col gap-4 p-6">
       <header className="flex flex-col gap-1">
-        <h1 className="text-xl font-bold text-ink">{col.title}</h1>
+        <PageTitle>{col.title}</PageTitle>
         <p className="text-sm text-ink-2">{col.description}</p>
         <p className="text-xs text-ink-3">
           {(() => {

@@ -29,7 +29,7 @@ function KeyValueField({
       {rows.map(([key, val], i) => (
         <div key={i} className="flex gap-1">
           <input
-            aria-label={`${name} clé ${i + 1}`}
+            aria-label={t("pipelineInspector.keyAria", { name, n: i + 1 })}
             className="h-8 w-1/2 rounded border border-control bg-surface px-2 text-xs text-ink"
             value={key}
             disabled={readOnly}

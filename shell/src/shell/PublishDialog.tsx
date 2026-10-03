@@ -7,6 +7,7 @@ import { Button } from "../ui/kit/Button";
 import { Dialog } from "../ui/kit/Dialog";
 import { t } from "../i18n";
 import { useReferencedCollectionIds } from "./referencedCollections";
+import { LoadingState } from "../ui/kit/LoadingState";
 
 // j03-012 : publier une carte/app ne publie pas les collections qu'elle lit —
 // un anonyme verrait la config mais des données vides. Le dialogue liste les
@@ -69,7 +70,7 @@ export function PublishDialog({
       title={t("publish.title")}
       returnFocusRef={returnFocusRef}
     >
-      {check.isLoading && <p role="status">{t("common.loading")}</p>}
+      {check.isLoading && <LoadingState />}
       {privates.length > 0 && (
         <div className="mb-4 text-sm text-ink-2">
           <p>{t("publish.privateCollections")}</p>

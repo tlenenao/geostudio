@@ -13,6 +13,7 @@ export function evaluateExpression(expr: string, ctx: ExprContext): unknown {
   try {
     return evaluate(expr, ctx);
   } catch (err) {
+    // i18n-ok: journal développeur, jamais affiché
     console.warn(`evaluateExpression: "${expr}" a échoué`, err);
     return undefined;
   }

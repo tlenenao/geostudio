@@ -37,21 +37,21 @@ test("renders each item via renderItem", () => {
 test("selecting an item calls onSelect with its id", async () => {
   const onSelect = vi.fn();
   renderCanvas({ onSelect });
-  await userEvent.click(screen.getByRole("button", { name: "Sélectionner widget-a" }));
+  await userEvent.click(screen.getByRole("button", { name: "Sélectionner text" }));
   expect(onSelect).toHaveBeenCalledWith("a");
 });
 
 test("the move handle nudges the item by one cell", async () => {
   const onMoveItem = vi.fn();
   renderCanvas({ selectedId: "a", onMoveItem });
-  await userEvent.click(screen.getByRole("button", { name: "Déplacer widget-a à droite" }));
+  await userEvent.click(screen.getByRole("button", { name: "Déplacer text à droite" }));
   expect(onMoveItem).toHaveBeenCalledWith("a", 1, 0);
 });
 
 test("the remove button removes the selected item", async () => {
   const onRemoveItem = vi.fn();
   const { container } = renderCanvas({ selectedId: "a", onRemoveItem });
-  await userEvent.click(screen.getByRole("button", { name: "Supprimer widget-a" }));
+  await userEvent.click(screen.getByRole("button", { name: "Supprimer text" }));
   expect(onRemoveItem).toHaveBeenCalledWith("a");
   // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
   // --gs-* à la place.
@@ -99,11 +99,11 @@ test("the canvas backdrop uses the surface theme token", () => {
 test("the move handle nudges the item left, down and up by one cell", async () => {
   const onMoveItem = vi.fn();
   renderCanvas({ selectedId: "a", onMoveItem });
-  await userEvent.click(screen.getByRole("button", { name: "Déplacer widget-a à gauche" }));
+  await userEvent.click(screen.getByRole("button", { name: "Déplacer text à gauche" }));
   expect(onMoveItem).toHaveBeenCalledWith("a", -1, 0);
-  await userEvent.click(screen.getByRole("button", { name: "Déplacer widget-a en bas" }));
+  await userEvent.click(screen.getByRole("button", { name: "Déplacer text en bas" }));
   expect(onMoveItem).toHaveBeenCalledWith("a", 0, 1);
-  await userEvent.click(screen.getByRole("button", { name: "Déplacer widget-a en haut" }));
+  await userEvent.click(screen.getByRole("button", { name: "Déplacer text en haut" }));
   expect(onMoveItem).toHaveBeenCalledWith("a", 0, -1);
 });
 
@@ -125,11 +125,11 @@ test("les poignées de taille et de duplication appellent leurs callbacks (P10.1
   const onResizeItem = vi.fn();
   const onDuplicateItem = vi.fn();
   renderCanvas({ selectedId: "a", onResizeItem, onDuplicateItem });
-  await userEvent.click(screen.getByRole("button", { name: "Élargir widget-a" }));
-  await userEvent.click(screen.getByRole("button", { name: "Rétrécir widget-a" }));
-  await userEvent.click(screen.getByRole("button", { name: "Agrandir en hauteur widget-a" }));
-  await userEvent.click(screen.getByRole("button", { name: "Réduire en hauteur widget-a" }));
-  await userEvent.click(screen.getByRole("button", { name: "Dupliquer widget-a" }));
+  await userEvent.click(screen.getByRole("button", { name: "Élargir text" }));
+  await userEvent.click(screen.getByRole("button", { name: "Rétrécir text" }));
+  await userEvent.click(screen.getByRole("button", { name: "Agrandir en hauteur text" }));
+  await userEvent.click(screen.getByRole("button", { name: "Réduire en hauteur text" }));
+  await userEvent.click(screen.getByRole("button", { name: "Dupliquer text" }));
   expect(onResizeItem.mock.calls).toEqual([
     ["a", 1, 0],
     ["a", -1, 0],
@@ -141,7 +141,7 @@ test("les poignées de taille et de duplication appellent leurs callbacks (P10.1
 
 test("sans callbacks de taille, aucune poignée de taille n'est rendue", () => {
   renderCanvas({ selectedId: "a" });
-  expect(screen.queryByRole("button", { name: "Élargir widget-a" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Élargir text" })).not.toBeInTheDocument();
 });
 
 test("à sm, deux widgets 6/12 sans layouts.sm s'empilent pleine largeur (P10.16)", () => {

@@ -231,5 +231,5 @@ test("supprimer un rôle encore attribué affiche le nombre d'utilisateurs bloqu
   await userEvent.click(within(row).getByRole("button", { name: /supprimer/i }));
   const dialog = await screen.findByRole("alertdialog");
   await userEvent.click(within(dialog).getByRole("button", { name: /supprimer/i }));
-  expect(await screen.findByText("Encore attribué à 3 utilisateur(s).")).toBeInTheDocument();
+  expect(await screen.findByText("Encore attribué à 3 utilisateurs.")).toBeInTheDocument();
 });

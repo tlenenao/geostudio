@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+// i18n-ok-file: exemple de Web Component (CSS/HTML d'exemple), pas de l'interface.
 import { LitElement, css, html } from "lit";
 import { registerWcWidget } from "../wc/registerWcWidget";
 import type { WcWidgetManifest } from "../wc/manifest";

@@ -6,6 +6,7 @@ import { buildPivotGrid } from "./pivotTable";
 import { ExplorerMenu } from "./ExplorerMenu";
 import { SourceMissing } from "./SourceMissing";
 import { t } from "../../i18n";
+import { LoadingState } from "../../ui/kit/LoadingState";
 
 const labelCls = "flex flex-col gap-1";
 const inputCls = "h-9 rounded-md border border-rule px-2";
@@ -84,8 +85,7 @@ export function registerPivotWidget(): void {
       const dataSourceId = String(props.dataSourceId ?? "");
 
       if (!data && props.dataSourceId) return <SourceMissing />;
-      if (!data || data.loading)
-        return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.loading")}</p>;
+      if (!data || data.loading) return <LoadingState />;
       if (data.error) return <p className="text-xs text-danger">{t("common.dataError")}</p>;
       if (data.records.length === 0)
         return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.noData")}</p>;

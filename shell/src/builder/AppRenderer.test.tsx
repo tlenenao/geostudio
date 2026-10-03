@@ -78,7 +78,7 @@ test("edit mode moving a widget calls onChange with the new position", async () 
     />,
     { wrapper: Wrapper },
   );
-  await userEvent.click(screen.getByRole("button", { name: "Déplacer widget-t1 à droite" }));
+  await userEvent.click(screen.getByRole("button", { name: "Déplacer Texte à droite" }));
   const next = onChange.mock.calls[0][0] as AppConfig;
   expect(next.layout.items[0]).toMatchObject({ x: 1 });
 });
@@ -97,7 +97,7 @@ test("edit mode resizing a widget calls onChange with the new size", async () =>
       wrapper: Wrapper,
     },
   );
-  await userEvent.click(screen.getByRole("button", { name: "Élargir widget-t1" }));
+  await userEvent.click(screen.getByRole("button", { name: "Élargir Texte" }));
   const next = onChange.mock.calls[0][0] as AppConfig;
   expect(next.layout.items[0]).toMatchObject({ w: 5, h: 2 });
 });
@@ -117,7 +117,7 @@ test("edit mode duplicating a widget appends a copy and selects it", async () =>
       wrapper: Wrapper,
     },
   );
-  await userEvent.click(screen.getByRole("button", { name: "Dupliquer widget-t1" }));
+  await userEvent.click(screen.getByRole("button", { name: "Dupliquer Texte" }));
   const next = onChange.mock.calls[0][0] as AppConfig;
   expect(next.layout.items).toHaveLength(2);
   expect(next.layout.items[1].id).not.toBe("t1");
@@ -138,7 +138,7 @@ test("edit mode removing a widget drops it and prunes its wiring", async () => {
       wrapper: Wrapper,
     },
   );
-  await userEvent.click(screen.getByRole("button", { name: "Supprimer widget-t1" }));
+  await userEvent.click(screen.getByRole("button", { name: "Supprimer Texte" }));
   const next = onChange.mock.calls[0][0] as AppConfig;
   expect(next.layout.items).toHaveLength(0);
 });
@@ -191,7 +191,7 @@ test("edits the sm layout when the breakpoint prop is sm, leaving the base intac
     />,
     { wrapper: Wrapper },
   );
-  await userEvent.click(screen.getByRole("button", { name: "Déplacer widget-w1 à droite" }));
+  await userEvent.click(screen.getByRole("button", { name: "Déplacer Texte à droite" }));
   expect(latest!.layout.items[0].x).toBe(0); // base untouched
   expect(latest!.layout.items[0].layouts?.sm).toEqual({ x: 1, y: 0, w: 4, h: 2 });
 });
@@ -309,7 +309,7 @@ test("edits write to the active page's layout, mirroring pages[0] into the top-l
     />,
     { wrapper: Wrapper },
   );
-  await userEvent.click(screen.getByRole("button", { name: "Déplacer widget-a1 à droite" }));
+  await userEvent.click(screen.getByRole("button", { name: "Déplacer Texte à droite" }));
   expect(latest!.pages![0].layout.items[0].x).toBe(1);
   expect(latest!.layout.items[0].x).toBe(1); // mirrored
 });

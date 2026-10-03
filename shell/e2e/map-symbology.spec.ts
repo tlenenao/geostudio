@@ -74,7 +74,7 @@ test("author 5 quantile classes on a tiled layer, save, reload, and the rendered
   // dernière classe ("80.0 – 100.0") matche aussi un regex numérique nu — le
   // préfixe "Classes calculées" est propre au résumé du formulaire
   // (FieldClassificationPicker.tsx), jamais rendu par la légende.
-  await expect(page.getByText(/Classes calculées.*0\.0.*100\.0/)).toBeVisible();
+  await expect(page.getByText(/Classes calculées.*0,0.*100,0/)).toBeVisible();
 
   await page.getByRole("button", { name: "Enregistrer" }).click();
   await expect(page.getByText(/échec de l'enregistrement/i)).toHaveCount(0);
@@ -91,6 +91,6 @@ test("author 5 quantile classes on a tiled layer, save, reload, and the rendered
   await expect(page.locator("canvas.maplibregl-canvas")).toBeVisible();
   // Idem : préfixe "Classes calculées" pour éviter le même conflit avec la
   // légende de symbologie (Tâche 35, SP-C6/D15).
-  await expect(page.getByText(/Classes calculées.*0\.0.*100\.0/)).toBeVisible();
+  await expect(page.getByText(/Classes calculées.*0,0.*100,0/)).toBeVisible();
   expect(aggregateCallsAfterSave).toBe(0);
 });

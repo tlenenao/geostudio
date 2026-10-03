@@ -3,6 +3,8 @@ import { useState } from "react";
 import type { Page } from "../api/types";
 import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
 import { t } from "../i18n";
+import { Input } from "../ui/kit/Input";
+import { Button } from "../ui/kit/Button";
 
 export function PageManager({
   pages,
@@ -58,9 +60,9 @@ export function PageManager({
             >
               {p.name}
             </button>
-            <input
+            <Input
               aria-label={t("pageManager.renameAria", { id: p.id })}
-              className="w-16 rounded border border-rule px-1"
+              className="w-28"
               value={p.name}
               onChange={(e) => rename(p.id, e.target.value)}
             />
@@ -94,13 +96,9 @@ export function PageManager({
           </li>
         ))}
         <li>
-          <button
-            type="button"
-            className="rounded border border-rule px-2 py-1 hover:bg-sunken"
-            onClick={addPage}
-          >
+          <Button type="button" size="sm" variant="outline" onClick={addPage}>
             {t("pageManager.addButton")}
-          </button>
+          </Button>
         </li>
       </ul>
       <ConfirmDialog

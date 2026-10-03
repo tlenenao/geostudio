@@ -25,6 +25,7 @@ import { useIsExportRender } from "../shell/useIsExportRender";
 import { markExportReady } from "../shell/exportReady";
 import { useDirtyGuard } from "../lib/useDirtyGuard";
 import { t } from "../i18n";
+import { LoadingState } from "../ui/kit/LoadingState";
 
 export function MapEditorPage({ pk }: { pk: string }) {
   const client = useItemClient();
@@ -101,8 +102,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
   // `draft` lags one render behind a successful load (it is synced in the
   // effect above), so keep showing the loader during that gap instead of
   // flashing the error.
-  if (query.isLoading || itemQuery.isLoading || (!draft && !query.isError))
-    return <p role="status">{t("common.loading")}</p>;
+  if (query.isLoading || itemQuery.isLoading || (!draft && !query.isError)) return <LoadingState />;
   if (query.isError || itemQuery.isError || !draft || !itemQuery.data)
     return (
       <p role="alert" className="text-sm text-danger">

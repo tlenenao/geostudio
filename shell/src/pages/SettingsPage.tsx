@@ -10,13 +10,15 @@ import { SettingsNav } from "../shell/chrome/SettingsNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
 import { readThemePreference, saveThemePreference, type ThemePreference } from "../lib/theme";
+import { LoadingState } from "../ui/kit/LoadingState";
+import { PageTitle } from "../ui/kit/PageTitle";
 
 function ProfileSection() {
   const meQuery = useMe();
   return (
     <section className="flex flex-col gap-2">
       <h2 className="text-base font-semibold text-ink">{t("settings.profileTitle")}</h2>
-      {meQuery.isLoading && <p role="status">{t("common.loading")}</p>}
+      {meQuery.isLoading && <LoadingState />}
       {meQuery.data && (
         <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-sm text-ink-2">
           <dt>{t("settings.profileUsername")}</dt>
@@ -56,7 +58,7 @@ function NotificationsSection() {
   return (
     <section className="flex flex-col gap-2">
       <h2 className="text-base font-semibold text-ink">{t("settings.notificationsTitle")}</h2>
-      {preferenceQuery.isLoading && <p role="status">{t("common.loading")}</p>}
+      {preferenceQuery.isLoading && <LoadingState />}
       {preferenceQuery.data && (
         <Radio.Group
           aria-label={t("settings.notificationsTitle")}
@@ -131,7 +133,7 @@ export function SettingsPage() {
           label: t("domain.settings"),
           content: (
             <div className="flex h-full flex-col gap-6 overflow-y-auto p-4">
-              <h1 className="text-lg font-bold text-ink">{t("settings.heading")}</h1>
+              <PageTitle>{t("settings.heading")}</PageTitle>
               <ProfileSection />
               <NotificationsSection />
               <AppearanceSection />

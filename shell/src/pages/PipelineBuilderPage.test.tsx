@@ -313,7 +313,9 @@ test("unsaved mode: affiche un message de désactivation au lieu du spinner infi
     getPipelineOps: () => new Promise(() => {}),
   });
   expect(
-    await screen.findByText("Non activé sur cette instance (CORE_ETL_ENABLED)."),
+    await screen.findByText(
+      "Fonction indisponible sur cette instance, contactez votre administrateur.",
+    ),
   ).toBeInTheDocument();
   expect(screen.queryByText("Chargement…")).not.toBeInTheDocument();
 });
@@ -350,7 +352,7 @@ test("unsaved mode: n'affiche jamais le builder tant que /v1/instance n'a pas r�
   await waitFor(() => expect(opsSettled).toBe(true));
   expect(screen.queryByText("reader.collection")).not.toBeInTheDocument();
   expect(
-    screen.queryByText("Non activé sur cette instance (CORE_ETL_ENABLED)."),
+    screen.queryByText("Fonction indisponible sur cette instance, contactez votre administrateur."),
   ).not.toBeInTheDocument();
   expect(screen.getByRole("status")).toHaveTextContent("Chargement…");
 
@@ -368,7 +370,9 @@ test("unsaved mode: n'affiche jamais le builder tant que /v1/instance n'a pas r�
     });
   });
   expect(
-    await screen.findByText("Non activé sur cette instance (CORE_ETL_ENABLED)."),
+    await screen.findByText(
+      "Fonction indisponible sur cette instance, contactez votre administrateur.",
+    ),
   ).toBeInTheDocument();
   expect(screen.queryByText("reader.collection")).not.toBeInTheDocument();
 });

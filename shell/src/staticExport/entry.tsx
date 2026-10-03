@@ -32,6 +32,7 @@ import { registerExtensionWidget } from "../builder/extensions/registerExtension
 import { createStaticItemClient } from "./StaticItemClient";
 import type { AppConfig, ExtensionManifest, ItemClient } from "../api/types";
 import "../index.css";
+import { t } from "../i18n";
 
 enableMockAuth();
 registerBuiltinWidgets();
@@ -130,5 +131,5 @@ async function bootstrap() {
 
 bootstrap().catch((err) => {
   const root = document.getElementById("root");
-  if (root) root.textContent = `Erreur de chargement : ${(err as Error).message}`;
+  if (root) root.textContent = t("staticExport.loadError", { message: (err as Error).message });
 });

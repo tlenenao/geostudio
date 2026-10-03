@@ -5,6 +5,7 @@
 // lucideIconSvgs.generated.ts, produit par scripts/gen-lucide-icons.mjs :
 // lucide-static est une devDependency, rien n'est téléchargé au runtime.
 import { LUCIDE_ICON_SVGS } from "./lucideIconSvgs.generated";
+import { t } from "../../i18n";
 
 export type IconCategory =
   "generic" | "buildings" | "nature" | "transport" | "services" | "safety-health" | "leisure";
@@ -213,7 +214,7 @@ export function rasterizeLucideIcon(name: string): Promise<HTMLImageElement> {
   const cached = imageCache.get(name);
   if (cached) return cached;
   const svg = LUCIDE_ICON_SVGS[name];
-  if (svg === undefined) return Promise.reject(new Error(`Icône Lucide inconnue : ${name}`));
+  if (svg === undefined) return Promise.reject(new Error(t("icon.unknown", { name })));
   // Substitution sur NOTRE propre asset de confiance, pas de
   // l'assainissement : `split`/`join` plutôt qu'une expression régulière
   // pour qu'aucun caractère spécial ne soit interprété.

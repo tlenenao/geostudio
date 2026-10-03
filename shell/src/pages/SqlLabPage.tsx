@@ -29,6 +29,7 @@ import { Panel } from "../ui/kit/Panel";
 import { EmptyState } from "../ui/kit/EmptyState";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
+import { PageTitle } from "../ui/kit/PageTitle";
 
 // P25.14 : toutes les collections interrogeables sont proposées à la saisie
 // (titre en détail), colonnes ajoutées dès que leur schéma est connu.
@@ -136,7 +137,9 @@ export function SqlLabPage() {
             const [, schema] = outcome.value;
             next[id] = schema.fields.map((f) => f.name);
           } else {
+            // i18n-ok: journal développeur, jamais affiché
             console.warn(
+              // i18n-ok
               `SqlLabPage: échec de récupération du schéma de la collection "${id}" (autocomplétion désactivée pour elle)`,
               outcome.reason,
             );
@@ -194,7 +197,7 @@ export function SqlLabPage() {
           content: (
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
               <div className="flex items-center gap-1.5">
-                <h1 className="text-lg font-bold text-ink">{t("sqlLab.heading")}</h1>
+                <PageTitle>{t("sqlLab.heading")}</PageTitle>
                 <Popover
                   aria-label={t("sqlLab.helpAria")}
                   trigger={

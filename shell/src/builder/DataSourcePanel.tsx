@@ -5,6 +5,7 @@ import type { BucketGranularity } from "../lib/comparisonWindow";
 import { t } from "../i18n";
 import { ANALYTICS_AGGREGATES, aggregateNeedsP, DEFAULT_PERCENTILE } from "./aggregates";
 import { PercentileInput } from "./PercentileInput";
+import { Button } from "../ui/kit/Button";
 
 type Measure = { field?: string; agg: string; label?: string; p?: number };
 
@@ -41,8 +42,8 @@ function groupByDisplayValue(groupBy: unknown): string {
   return Array.isArray(groupBy) ? groupBy.join(",") : String(groupBy ?? "");
 }
 
-const inputCls = "h-8 w-full rounded border border-rule px-2 text-xs";
-const selectCls = "h-8 w-full rounded border border-rule text-xs";
+const inputCls = "h-9 w-full rounded border border-control px-2 text-xs";
+const selectCls = "h-9 w-full rounded border border-control text-xs";
 
 function StaticRecordRow({
   record,
@@ -136,7 +137,7 @@ export function DataSourcePanel({
             <div className="flex items-center justify-between">
               <select
                 aria-label={t("dataSourcePanel.typeAria", { id: s.id })}
-                className="h-8 rounded border border-rule text-xs"
+                className="h-9 rounded border border-control text-xs"
                 value={s.type}
                 onChange={(e) => patch(s.id, { type: e.target.value as DataSource["type"] })}
               >
@@ -406,13 +407,9 @@ export function DataSourcePanel({
           <li className="text-xs text-ink-2">{t("dataSourcePanel.emptySources")}</li>
         )}
       </ul>
-      <button
-        type="button"
-        className="rounded border border-rule px-2 py-1 text-sm hover:bg-sunken"
-        onClick={add}
-      >
+      <Button type="button" size="sm" variant="outline" onClick={add}>
         {t("dataSourcePanel.addSourceButton")}
-      </button>
+      </Button>
     </div>
   );
 }

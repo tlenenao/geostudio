@@ -14,6 +14,7 @@ import { ExplorerMenu } from "./ExplorerMenu";
 import { DataTable } from "../../ui/kit/DataTable";
 import { SourceMissing } from "./SourceMissing";
 import { t } from "../../i18n";
+import { LoadingState } from "../../ui/kit/LoadingState";
 
 type CalculatedColumn = { label: string; expr: string };
 type TableColumn = string | CalculatedColumn;
@@ -107,8 +108,7 @@ export function registerDataWidgets(): void {
       });
       const data = ctx.data;
       if (!data && props.dataSourceId) return <SourceMissing />;
-      if (!data || data.loading)
-        return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.loading")}</p>;
+      if (!data || data.loading) return <LoadingState />;
       if (data.error) return <p className="text-xs text-danger">{t("common.dataError")}</p>;
       if (data.records.length === 0)
         return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.noData")}</p>;
@@ -284,8 +284,7 @@ export function registerDataWidgets(): void {
         (schemaQuery.data?.fields ?? []).map((f) => [f.name, f.type] as const),
       );
       if (!data && props.dataSourceId) return <SourceMissing />;
-      if (!data || data.loading)
-        return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.loading")}</p>;
+      if (!data || data.loading) return <LoadingState />;
       if (data.error) return <p className="text-xs text-danger">{t("common.dataError")}</p>;
       if (data.records.length === 0)
         return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.noData")}</p>;

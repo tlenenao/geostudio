@@ -14,13 +14,11 @@ import { useCallback, useEffect, useState } from "react";
 import { useItemClient } from "../api/ItemClientProvider";
 import type { ConfigRevisionInfo } from "../api/types";
 import { t } from "../i18n";
+import { formatDateTime } from "../lib/format";
 import { Button } from "../ui/kit/Button";
 import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
 
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString("fr-FR");
-}
+const formatDate = formatDateTime;
 
 export function ConfigHistoryPanel({
   pk,

@@ -25,10 +25,10 @@ async function addFeaturesSource(page: Page, collection: string) {
 
 async function promoteLastSource(page: Page, expectedActiveCount: number) {
   await page
-    .getByRole("button", { name: /Promouvoir en dataset partagé/ })
+    .getByRole("button", { name: /Promouvoir en jeu de données partagé/ })
     .last()
     .click();
-  await expect(page.getByText("Dataset partagé actif")).toHaveCount(expectedActiveCount);
+  await expect(page.getByText("Jeu de données partagé actif")).toHaveCount(expectedActiveCount);
 }
 
 test("exporter un widget table en CSV depuis une app en mode runtime", async ({ page }) => {
@@ -85,7 +85,7 @@ test("exporter un widget table en CSV depuis une app en mode runtime", async ({ 
   await createApp(page, "Export table");
   await addFeaturesSource(page, "analytics");
   await promoteLastSource(page, 1);
-  await page.getByRole("button", { name: "Table" }).click();
+  await page.getByRole("button", { name: "Table", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 1 });
   await page.getByRole("button", { name: "Enregistrer" }).click();
 

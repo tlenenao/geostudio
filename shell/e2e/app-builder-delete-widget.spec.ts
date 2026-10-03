@@ -11,8 +11,8 @@ test("a widget can be removed from the canvas and the removal is undoable", asyn
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 
-  await page.getByRole("button", { name: "Texte" }).click();
-  const select = page.getByRole("button", { name: /^Sélectionner widget-/ });
+  await page.getByRole("button", { name: "Texte", exact: true }).click();
+  const select = page.getByRole("button", { name: /^Sélectionner / });
   await expect(select).toBeVisible();
   // Attendre au-delà de la fenêtre de coalescing d'undo (400ms, SP-19) : sans
   // ce délai, l'ajout et la suppression tombent dans le même burst d'undo et
@@ -20,9 +20,9 @@ test("a widget can be removed from the canvas and the removal is undoable", asyn
   // widget ajouté — confirmé par exécution réelle de ce test sans le délai.
   await page.waitForTimeout(500);
   await select.click();
-  await page.getByRole("button", { name: /^Supprimer widget-/ }).click();
+  await page.getByRole("button", { name: /^Supprimer / }).click();
   await expect(select).toHaveCount(0);
 
   await page.keyboard.press("Control+z");
-  await expect(page.getByRole("button", { name: /^Sélectionner widget-/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Sélectionner / })).toBeVisible();
 });

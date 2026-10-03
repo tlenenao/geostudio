@@ -24,7 +24,7 @@ const item: Item = {
 test("renders title and type", () => {
   render(<ItemCard item={item} onOpen={() => {}} />);
   expect(screen.getByRole("heading", { name: "Suivi incidents" })).toBeInTheDocument();
-  expect(screen.getByText(/dashboard/i)).toBeInTheDocument();
+  expect(screen.getAllByText(/tableau de bord/i).length).toBeGreaterThan(0);
 });
 
 test("calls onOpen with the pk", async () => {

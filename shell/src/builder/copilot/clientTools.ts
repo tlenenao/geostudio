@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+// i18n-ok-file: descriptions de schémas d'outils envoyées au LLM (invite), pas de l'interface.
 // Schémas d'outils "client" pour le copilote (SP-20) — générés depuis le
 // registre de widgets plutôt que maintenus à la main : un nouveau widget
 // (builtin ou WC/extension — configSchema et WcWidgetManifest.props ont la

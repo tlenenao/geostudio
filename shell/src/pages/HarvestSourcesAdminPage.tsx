@@ -16,7 +16,10 @@ import { CreateHarvestSourcePanel } from "../shell/CreateHarvestSourcePanel";
 import { EditHarvestSourcePanel } from "../shell/EditHarvestSourcePanel";
 import { SettingsNav } from "../shell/chrome/SettingsNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
-import { t } from "../i18n";
+import { plural, t } from "../i18n";
+import { LoadingState } from "../ui/kit/LoadingState";
+import { Banner } from "../ui/kit/Banner";
+import { PageTitle } from "../ui/kit/PageTitle";
 
 export function HarvestSourcesAdminPage() {
   const instanceQuery = useInstanceInfo();
@@ -95,7 +98,7 @@ export function HarvestSourcesAdminPage() {
           content: (
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
               <div className="flex items-center justify-between">
-                <h1 className="text-lg font-bold text-ink">{t("harvest.title")}</h1>
+                <PageTitle>{t("harvest.title")}</PageTitle>
                 {!readOnly && (
                   <Button
                     size="sm"
@@ -111,11 +114,11 @@ export function HarvestSourcesAdminPage() {
                   </Button>
                 )}
               </div>
-              {sourcesQuery.isLoading && <p role="status">{t("common.loading")}</p>}
+              {sourcesQuery.isLoading && <LoadingState />}
               {sourcesQuery.isError && (
-                <p role="alert" className="text-sm text-danger">
+                <Banner variant="danger" onRetry={() => void sourcesQuery.refetch()}>
                   {t("harvest.loadError")}
-                </p>
+                </Banner>
               )}
               {deleteSource.isError && (
                 <p role="alert" className="text-sm text-danger">
@@ -193,7 +196,7 @@ export function HarvestSourcesAdminPage() {
                         <span>
                           {source.recordCount ?? 0}
                           {source.staleCount
-                            ? ` (${t("harvest.recordsStale", { count: source.staleCount })})`
+                            ? ` (${t(plural(source.staleCount, "harvest.recordsStaleOne", "harvest.recordsStaleMany"), { count: source.staleCount })})`
                             : ""}
                         </span>
                       ),

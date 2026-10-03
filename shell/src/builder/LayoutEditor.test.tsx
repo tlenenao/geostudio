@@ -106,7 +106,7 @@ test("selecting an item shows its PropsPanel and edits its props", async () => {
   render(<LayoutEditor items={[item]} onChange={onChange} dataSources={[]} breakpoint="lg" />, {
     wrapper,
   });
-  await userEvent.click(screen.getByRole("button", { name: "Sélectionner widget-a" }));
+  await userEvent.click(screen.getByRole("button", { name: "Sélectionner Texte" }));
   expect(screen.getByLabelText("Texte du widget")).toHaveValue("Bonjour");
   await userEvent.type(screen.getByLabelText("Texte du widget"), "!");
   const items = onChange.mock.calls.at(-1)![0] as WidgetItem[];
@@ -151,11 +151,11 @@ test("REV-054 : changer de widget sélectionné remonte PropsPanel (pas de fuite
     <LayoutEditor items={[itemA, itemB]} onChange={vi.fn()} dataSources={[]} breakpoint="lg" />,
     { wrapper },
   );
-  await userEvent.click(screen.getByRole("button", { name: "Sélectionner widget-a" }));
+  await userEvent.click(screen.getByRole("button", { name: "Sélectionner Sonde 1" }));
   await userEvent.click(screen.getByLabelText("Mode avancé"));
   expect(screen.getByLabelText("Mode avancé")).toBeChecked();
 
-  await userEvent.click(screen.getByRole("button", { name: "Sélectionner widget-b" }));
+  await userEvent.click(screen.getByRole("button", { name: "Sélectionner Sonde 2" }));
   expect(screen.getByLabelText("Mode avancé")).not.toBeChecked();
 });
 
@@ -165,8 +165,8 @@ test("moving the selected item updates its position via onChange", async () => {
   render(<LayoutEditor items={[item]} onChange={onChange} dataSources={[]} breakpoint="lg" />, {
     wrapper,
   });
-  await userEvent.click(screen.getByRole("button", { name: "Sélectionner widget-a" }));
-  await userEvent.click(screen.getByRole("button", { name: "Déplacer widget-a à droite" }));
+  await userEvent.click(screen.getByRole("button", { name: "Sélectionner Texte" }));
+  await userEvent.click(screen.getByRole("button", { name: "Déplacer Texte à droite" }));
   const items = onChange.mock.calls.at(-1)![0] as WidgetItem[];
   expect(items[0].x).toBe(1);
 });

@@ -17,11 +17,11 @@ test("une condition sur une action ne déclenche celle-ci que si l'expression s'
   // permet à l'action Variable.set — inchangée depuis SP-4/SP-5a — de
   // reporter la valeur du payload dans la variable ; cf. valueFromPayload
   // dans AppRenderer.tsx).
-  await page.getByRole("button", { name: "Filtre" }).click();
+  await page.getByRole("button", { name: "Filtre", exact: true }).click();
   await page.getByLabel("Champ à filtrer").fill("status");
 
   // Texte affichant la variable "status".
-  await page.getByRole("button", { name: "Texte" }).click();
+  await page.getByRole("button", { name: "Texte", exact: true }).click();
   await page.getByLabel("Texte du widget").fill("Sélection : {{var:status}}");
 
   // Variable "status".

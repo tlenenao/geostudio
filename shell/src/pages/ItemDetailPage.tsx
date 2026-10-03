@@ -13,6 +13,9 @@ import { Gate } from "../auth/Gate";
 import { Locked } from "../auth/Locked";
 import { hasPermission } from "../auth/permissions";
 import { t } from "../i18n";
+import { formatDateTime } from "../lib/format";
+import { LoadingState } from "../ui/kit/LoadingState";
+import { PageTitle } from "../ui/kit/PageTitle";
 
 type PanelKind = "edit" | "thumbnail" | "share" | null;
 
@@ -45,7 +48,7 @@ export function ItemDetailPage({
   const thumbnail = useUploadThumbnail(pk);
   const catalogQuery = useMetadataCatalog();
 
-  if (query.isLoading) return <p role="status">{t("common.loading")}</p>;
+  if (query.isLoading) return <LoadingState />;
   if (query.isError || !query.data)
     return (
       <p role="alert" className="text-sm text-danger">
@@ -95,7 +98,7 @@ export function ItemDetailPage({
                 <dt>{t("catalog.typeLabel")}</dt>
                 <dd>{RESOURCE_TYPE_LABELS[item.resourceType]}</dd>
                 <dt>{t("datasetEdit.modifiedLabel")}</dt>
-                <dd>{item.updatedAt || "—"}</dd>
+                <dd>{item.updatedAt ? formatDateTime(item.updatedAt) : "—"}</dd>
               </dl>
             </Panel>
           ),
@@ -106,9 +109,9 @@ export function ItemDetailPage({
           content: (
             <article className="flex h-full flex-col gap-3 overflow-y-auto p-6">
               <span className="w-fit rounded bg-sunken px-2 py-0.5 text-xs uppercase text-ink-2">
-                {item.resourceType}
+                {RESOURCE_TYPE_LABELS[item.resourceType]}
               </span>
-              <h1 className="text-xl font-semibold text-ink">{item.title}</h1>
+              <PageTitle>{item.title}</PageTitle>
               <p className="text-sm text-ink-2">
                 {t("itemDetail.ownerLabel", { owner: item.owner })}
               </p>

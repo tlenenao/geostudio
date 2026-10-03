@@ -7,7 +7,14 @@ import type { LayerSource, MapLayer } from "../api/types";
 import { detectGeometryKind, renderAsFor } from "../builder/widgets/mapSymbology";
 import { fetchFeatureCollection, hostedToken } from "./geojsonIntrospect";
 import { Button } from "../ui/kit/Button";
-import { plural, t } from "../i18n";
+import { plural, t, type MessageKey } from "../i18n";
+
+const KIND_LABEL_KEYS = {
+  vector: "layerPicker.kindVector",
+  feature: "layerPicker.kindFeature",
+  raster: "layerPicker.kindRaster",
+  tiles3d: "layerPicker.kindTiles3d",
+} as const satisfies Record<LayerSource["kind"], MessageKey>;
 
 function toMapLayer(source: LayerSource): MapLayer {
   const id = crypto.randomUUID();
@@ -149,7 +156,7 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
                 onClick={() => onAdd(toMapLayer(source))}
               >
                 {source.title}
-                <span className="ml-2 text-xs text-ink-3">{source.kind}</span>
+                <span className="ml-2 text-xs text-ink-3">{t(KIND_LABEL_KEYS[source.kind])}</span>
                 {typeof source.featureCount === "number" && (
                   <span className="ml-2 text-xs text-ink-3">
                     {t(

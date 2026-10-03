@@ -29,7 +29,7 @@ import type {
 } from "../../api/types";
 import { genEdgeId, hasIncomingEdge, topologicalOrder, wouldCreateCycle } from "./graphOps";
 import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
-import { t } from "../../i18n";
+import { plural, t } from "../../i18n";
 
 // SP-B12c : pas de token catégoriel à 3 valeurs dans tokens.css — ok/warn/
 // accent réutilisés ici pour leur distinction visuelle (vert/ambre/teal),
@@ -75,7 +75,14 @@ function PipelineNodeBox({ data, selected }: NodeProps) {
       {node.errorCount > 0 && (
         <span
           role="status"
-          aria-label={t("pipelineCanvas.nodeErrorAria", { count: node.errorCount })}
+          aria-label={t(
+            plural(
+              node.errorCount,
+              "pipelineCanvas.nodeErrorAriaOne",
+              "pipelineCanvas.nodeErrorAriaMany",
+            ),
+            { count: node.errorCount },
+          )}
           className="absolute -left-2 -top-2 flex h-4 w-4 items-center justify-center rounded-full bg-danger text-2xs text-surface"
         >
           !

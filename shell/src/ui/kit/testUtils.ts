@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+// i18n-ok-file: message d'échec d'assertion de test, pas de l'interface.
 // REV-080 : le suffixe de nuance (`-\d{2,3}`) est rendu optionnel — bg-white/
 // text-white/bg-black/text-black n'en portent jamais un (contrairement à
 // bg-slate-900), et sont précisément les classes qui ont cassé l'ambiance

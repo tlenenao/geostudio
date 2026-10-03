@@ -88,7 +88,9 @@ test("a node with more than one incoming edge is invalid", () => {
     { id: "e2", from: "r2", to: "w1" },
   ];
   const result = validatePipelineGraphLocally(nodes, edges, CATALOG);
-  expect(result.graphErrors).toContain("Un nœud ne peut avoir qu'une seule arête entrante (w1).");
+  expect(result.graphErrors).toContain(
+    "Le nœud « writer.collection » ne peut avoir qu'une seule arête entrante.",
+  );
 });
 
 test("a node missing a required param is flagged on that node, not as a graph error", () => {
@@ -122,7 +124,7 @@ test("a node with two secondary incoming edges is invalid", () => {
   ];
   const result = validatePipelineGraphLocally(nodes, edges, CATALOG);
   expect(result.graphErrors).toContain(
-    "Un nœud ne peut avoir qu'une seule arête secondaire entrante (t1).",
+    "Le nœud « transform.join » ne peut avoir qu'une seule arête secondaire entrante.",
   );
 });
 
@@ -134,7 +136,7 @@ test("a binary op with neither withCollectionId nor a secondary edge is flagged 
   ];
   const result = validatePipelineGraphLocally(nodes, edges, CATALOG);
   expect(result.nodeErrors.t1).toContain(
-    "transform.join : requiert soit withCollectionId, soit une arête secondaire.",
+    "transform.join : requiert soit le paramètre withCollectionId, soit une arête secondaire.",
   );
 });
 
@@ -152,7 +154,7 @@ test("a binary op with both withCollectionId and a secondary edge is flagged on 
   ];
   const result = validatePipelineGraphLocally(nodes, edges, CATALOG);
   expect(result.nodeErrors.t1).toContain(
-    "transform.join : withCollectionId et une arête secondaire ne peuvent pas être renseignés en même temps.",
+    "transform.join : le paramètre withCollectionId et une arête secondaire ne peuvent pas être renseignés en même temps.",
   );
 });
 
@@ -227,7 +229,7 @@ test.each([
       { id: "e1", from: "r1", to: "r2" },
       { id: "e2", from: "r2", to: "w1" },
     ],
-    /source r2 ne peut pas/,
+    /source « reader.collection » ne peut pas/,
   ],
   [
     "an outgoing edge from a writer",
@@ -236,7 +238,7 @@ test.each([
       { id: "e1", from: "r1", to: "w1" },
       { id: "e2", from: "w1", to: "w2" },
     ],
-    /écriture w1 ne peut pas/,
+    /écriture « writer.collection » ne peut pas/,
   ],
   [
     "a secondary edge on a writer",

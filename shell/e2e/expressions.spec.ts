@@ -18,12 +18,12 @@ test("un Filtre pilote par expression la visibilité d'un widget et une colonne 
   await page.getByLabel(/Collection de la source/).fill("villes");
 
   // Widget Texte, masqué tant que la variable "seuil" ne vaut pas "Nord".
-  await page.getByRole("button", { name: "Texte" }).click();
+  await page.getByRole("button", { name: "Texte", exact: true }).click();
   await page.getByLabel("Texte du widget").fill("Région Nord sélectionnée");
   await page.getByLabel("Condition d'affichage (visibleWhen)").fill('vars.seuil == "Nord"');
 
   // Widget Table, liée à la même source, avec une colonne calculée.
-  await page.getByRole("button", { name: "Table" }).click();
+  await page.getByRole("button", { name: "Table", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 1 });
   await page.getByLabel("Colonnes").fill("region,annee");
   await page.getByRole("button", { name: "Ajouter une colonne calculée" }).click();
@@ -31,7 +31,7 @@ test("un Filtre pilote par expression la visibilité d'un widget et une colonne 
   await page.getByLabel(/Expression de la colonne calculée/).fill("record.region == vars.seuil");
 
   // Filtre + variable "seuil", câblés Filtre.changed -> Variable(seuil).set.
-  await page.getByRole("button", { name: "Filtre" }).click();
+  await page.getByRole("button", { name: "Filtre", exact: true }).click();
   await page.getByLabel("Champ à filtrer").fill("seuil");
   await page.getByRole("button", { name: "Ajouter une variable" }).click();
   await page.getByLabel(/Renommer la variable/).fill("seuil");

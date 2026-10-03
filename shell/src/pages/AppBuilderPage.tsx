@@ -48,9 +48,16 @@ import { useAuth } from "../auth/useAuth";
 import { useDirtyGuard } from "../lib/useDirtyGuard";
 import { t } from "../i18n";
 import { ApiError } from "../api/ApiError";
+import { LoadingState } from "../ui/kit/LoadingState";
 
 registerBuiltinWidgets();
 registerExampleWidgets();
+
+const BREAKPOINT_KEY = {
+  sm: "appBuilder.breakpointSm",
+  md: "appBuilder.breakpointMd",
+  lg: "appBuilder.breakpointLg",
+} as const;
 
 export function AppBuilderPage({ pk }: { pk: string }) {
   const client = useItemClient();
@@ -226,7 +233,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   }, [selectedId, activeLayout, setSelectedId]);
 
   if (query.isLoading || itemQuery.isLoading || !extensionsRegistered || (!draft && !query.isError))
-    return <p role="status">{t("common.loading")}</p>;
+    return <LoadingState />;
   if (
     query.isError ||
     itemQuery.isError ||
@@ -457,10 +464,12 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                         size="sm"
                         variant="outline"
                         className={breakpoint === bp ? "bg-sunken" : undefined}
-                        aria-label={t("appBuilder.editBreakpointAria", { bp })}
+                        aria-label={t("appBuilder.editBreakpointAria", {
+                          bp: t(BREAKPOINT_KEY[bp]),
+                        })}
                         onClick={() => setBreakpoint(bp)}
                       >
-                        {bp}
+                        {t(BREAKPOINT_KEY[bp])}
                       </Button>
                     ))}
                   </div>

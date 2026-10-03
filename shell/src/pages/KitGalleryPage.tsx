@@ -45,6 +45,8 @@ import {
   Tree,
 } from "../ui/kit";
 import { t } from "../i18n";
+import { LoadingState } from "../ui/kit/LoadingState";
+import { PageTitle } from "../ui/kit/PageTitle";
 
 const WIDTHS = [390, 768, 1280];
 
@@ -54,7 +56,7 @@ function GalleryContent() {
   const [switchOn, setSwitchOn] = useState(false);
   const [sliderValue, setSliderValue] = useState([50]);
   const [segmentedValue, setSegmentedValue] = useState("quantile");
-  const [color, setColor] = useState("#0b6e77");
+  const [color, setColor] = useState("#0b6e77"); // gs-raw-color-ok: valeur de démonstration du sélecteur de couleur;
   const [number, setNumber] = useState(5);
   const [selectValue, setSelectValue] = useState("a");
   const [comboValue, setComboValue] = useState("");
@@ -259,7 +261,7 @@ export function KitGalleryPage() {
   const [theme, setTheme] = useState<"light" | "dark" | undefined>(undefined);
 
   if (meQuery.isLoading) {
-    return <p role="status">{t("common.loading")}</p>;
+    return <LoadingState />;
   }
   if (meQuery.data?.role.slug !== "admin") {
     return (
@@ -286,7 +288,7 @@ export function KitGalleryPage() {
       <TooltipPrimitive.Provider>
         <div className="flex flex-col gap-4 p-4">
           <div className="flex items-center justify-between">
-            <h1 className="text-lg font-bold text-ink">{t("kitGallery.pageTitle")}</h1>
+            <PageTitle>{t("kitGallery.pageTitle")}</PageTitle>
             <Button onClick={toggleTheme}>
               {theme === "dark" ? t("kitGallery.lightThemeLabel") : t("kitGallery.darkThemeLabel")}
             </Button>

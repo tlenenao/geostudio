@@ -22,6 +22,8 @@ import { ReportRunPanel } from "../builder/report/ReportRunPanel";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { useDirtyGuard } from "../lib/useDirtyGuard";
 import { t } from "../i18n";
+import { LoadingState } from "../ui/kit/LoadingState";
+import { PageTitle } from "../ui/kit/PageTitle";
 
 function defaultPayload(bookmarkItemId: string): ReportSchedulePayload {
   return {
@@ -81,8 +83,7 @@ export function ReportEditPage({
     if (pk !== null && configQuery.data) setDraft(configQuery.data);
   }, [pk, configQuery.data]);
 
-  if (pk !== null && (configQuery.isLoading || itemQuery.isLoading))
-    return <p role="status">{t("common.loading")}</p>;
+  if (pk !== null && (configQuery.isLoading || itemQuery.isLoading)) return <LoadingState />;
   // SP-42 F-shell-pages-05 : même garde que PipelineBuilderPage.tsx — sans
   // elle, un rapport existant dont le chargement échoue s'affichait comme un
   // brouillon vide avec Enregistrer actif (422 opaque à la sauvegarde).
@@ -155,9 +156,9 @@ export function ReportEditPage({
           label: t("reportEdit.reportLabel"),
           content: (
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
-              <h1 className="text-lg font-semibold text-ink">
+              <PageTitle>
                 {pk === null ? t("actions.scheduleReport") : t("reportEdit.editHeading")}
-              </h1>
+              </PageTitle>
               <ReportScheduleEditor
                 value={draft}
                 onChange={updateDraft}

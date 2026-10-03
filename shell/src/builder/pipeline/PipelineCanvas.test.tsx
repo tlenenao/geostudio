@@ -368,7 +368,7 @@ test("a node with validation errors shows an error badge even when not selected"
       onNotesChange={vi.fn()}
     />,
   );
-  expect(screen.getByRole("status", { name: "1 erreur(s) sur ce nœud" })).toBeInTheDocument();
+  expect(screen.getByRole("status", { name: "1 erreur sur ce nœud" })).toBeInTheDocument();
 });
 
 test("a node with no validation errors shows no error badge", () => {

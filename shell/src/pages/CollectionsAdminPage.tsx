@@ -15,6 +15,9 @@ import { RegisterCollectionPanel } from "../shell/RegisterCollectionPanel";
 import { SettingsNav } from "../shell/chrome/SettingsNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
+import { LoadingState } from "../ui/kit/LoadingState";
+import { Banner } from "../ui/kit/Banner";
+import { PageTitle } from "../ui/kit/PageTitle";
 
 // GET /collections pagine déjà côté cœur (limit/offset, SP-50) mais tronquait
 // silencieusement au-delà de sa limite par défaut (100) sans exposer de
@@ -111,7 +114,7 @@ export function CollectionsAdminPage() {
           content: (
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
               <div className="flex items-center justify-between">
-                <h1 className="text-lg font-bold text-ink">{t("collectionsAdmin.title")}</h1>
+                <PageTitle>{t("collectionsAdmin.title")}</PageTitle>
                 {!readOnly && (
                   <Button
                     size="sm"
@@ -143,11 +146,11 @@ export function CollectionsAdminPage() {
                   setLimit(PAGE_SIZE);
                 }}
               />
-              {collectionsQuery.isLoading && <p role="status">{t("common.loading")}</p>}
+              {collectionsQuery.isLoading && <LoadingState />}
               {collectionsQuery.isError && (
-                <p role="alert" className="text-sm text-danger">
+                <Banner variant="danger" onRetry={() => void collectionsQuery.refetch()}>
                   {t("collectionsAdmin.loadError")}
-                </p>
+                </Banner>
               )}
               {deleteCollection.isError && (
                 <p role="alert" className="text-sm text-danger">

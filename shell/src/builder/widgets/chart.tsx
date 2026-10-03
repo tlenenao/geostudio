@@ -339,7 +339,7 @@ export function registerChartWidget(): void {
               aria-label={t("widgetChart.advancedOption")}
               className="rounded-md border border-rule p-2 font-mono text-xs"
               rows={4}
-              placeholder='{"color":["#f00"]}'
+              placeholder='{"color":["#f00"]}' /* gs-raw-color-ok: exemple JSON dans un placeholder */
               value={String(props.advancedOption ?? "")}
               onChange={(e) => set({ advancedOption: e.target.value })}
             />
@@ -455,8 +455,7 @@ export function registerChartWidget(): void {
       }
 
       if (!data && props.dataSourceId) return <SourceMissing />;
-      if (!data || data.loading)
-        return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.loading")}</p>;
+      if (!data || data.loading) return <LoadingState />;
       if (data.error) return <p className="text-xs text-danger">{t("common.dataError")}</p>;
       if (data.records.length === 0)
         return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.noData")}</p>;

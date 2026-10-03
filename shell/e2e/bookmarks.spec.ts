@@ -136,7 +136,7 @@ test("save a view with a cross-filter and a time range, find it in Mes vues, reo
   await dialog.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 
-  // Deux sources sur "events", promues chacune en dataset partagé (même
+  // Deux sources sur "events", promues chacune en jeu de données partagé (même
   // datasetId "dataset-1" côté mock, cf. le commentaire de
   // analytics-context.spec.ts) : le curseur origine le cross-filter depuis la
   // première, la table le lit sur la seconde. derivePatch()
@@ -149,10 +149,10 @@ test("save a view with a cross-filter and a time range, find it in Mes vues, reo
     .last()
     .fill("events");
   await page
-    .getByRole("button", { name: /Promouvoir en dataset partagé/ })
+    .getByRole("button", { name: /Promouvoir en jeu de données partagé/ })
     .last()
     .click();
-  await expect(page.getByText("Dataset partagé actif")).toHaveCount(1);
+  await expect(page.getByText("Jeu de données partagé actif")).toHaveCount(1);
 
   await page.getByRole("button", { name: "Ajouter une source" }).click();
   await page
@@ -160,10 +160,10 @@ test("save a view with a cross-filter and a time range, find it in Mes vues, reo
     .last()
     .fill("events");
   await page
-    .getByRole("button", { name: /Promouvoir en dataset partagé/ })
+    .getByRole("button", { name: /Promouvoir en jeu de données partagé/ })
     .last()
     .click();
-  await expect(page.getByText("Dataset partagé actif")).toHaveCount(2);
+  await expect(page.getByText("Jeu de données partagé actif")).toHaveCount(2);
 
   await page.getByLabel("Interactions automatiques (cross-filter)").check();
 
@@ -174,7 +174,7 @@ test("save a view with a cross-filter and a time range, find it in Mes vues, reo
   await page.getByLabel("Champ du curseur").fill("score");
   await page.getByLabel("Libellé du curseur").fill("Score");
 
-  await page.getByRole("button", { name: "Table" }).click();
+  await page.getByRole("button", { name: "Table", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 2 });
 
   await page.getByRole("button", { name: "Enregistrer" }).click();

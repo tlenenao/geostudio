@@ -16,6 +16,7 @@ import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
 import { EmptyState } from "../ui/kit/EmptyState";
 import { Input } from "../ui/kit/Input";
 import { LoadingState } from "../ui/kit/LoadingState";
+import { PageTitle } from "../ui/kit/PageTitle";
 
 function RegisterForm({ disabled }: { disabled: boolean }) {
   const create = useCreateExtension();
@@ -74,7 +75,7 @@ export function AdminExtensionsPage() {
           label: t("extensions.title"),
           content: (
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
-              <h1 className="text-lg font-bold text-ink">{t("extensions.title")}</h1>
+              <PageTitle>{t("extensions.title")}</PageTitle>
               {extensionsQuery.isLoading && <LoadingState />}
               {extensionsQuery.isError && (
                 <p role="alert" className="text-sm text-danger">

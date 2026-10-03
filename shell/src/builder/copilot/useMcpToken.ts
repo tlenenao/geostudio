@@ -43,6 +43,7 @@
 import { useCallback, useRef } from "react";
 import { useAuth as useOidcAuth } from "react-oidc-context";
 import { isMockMode } from "../../auth/useAuth";
+import { t } from "../../i18n";
 
 const MCP_SCOPE = "openid profile email geostudio-mcp-audience";
 const EXPIRY_BUFFER_MS = 30_000;
@@ -75,7 +76,7 @@ export function useMcpToken(): () => Promise<string> {
 
     const user = await oidc.signinSilent({ scope: MCP_SCOPE, forceIframeAuth: true });
     if (!user?.access_token) {
-      throw new Error("Impossible d'obtenir un jeton MCP (signinSilent a échoué).");
+      throw new Error(t("copilot.mcpTokenError"));
     }
     const expiresInMs = (user.expires_in ?? 60) * 1000;
     cachedRef.current = {

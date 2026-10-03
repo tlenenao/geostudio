@@ -36,7 +36,7 @@ test("un widget hébergé sur une origine distincte (CORS) se charge, respecte l
   await page.getByLabel("Couleur du texte").fill("#0000ff");
 
   await page.getByRole("button", { name: "Bouton" }).click();
-  await page.getByRole("button", { name: "Texte" }).click();
+  await page.getByRole("button", { name: "Texte", exact: true }).click();
   await page.getByLabel("Texte du widget").fill("Compte : {{var:count}}");
 
   await page.getByRole("button", { name: "Ajouter une variable" }).click();

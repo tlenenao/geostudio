@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
+import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { useMe, useUsageSummary, useUsageTasks } from "../api/hooks";
+import { useItemClient, useMe, useUsageSummary, useUsageTasks } from "../api/hooks";
+import { RESOURCE_TYPE_LABELS } from "../api/resourceTypes";
 import type { UsageTask } from "../api/types";
 import { Button } from "../ui/kit/Button";
 import { DataTable } from "../ui/kit/DataTable";
@@ -10,8 +12,29 @@ import { Panel } from "../ui/kit/Panel";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
 import type { MessageKey } from "../i18n";
+import { LoadingState } from "../ui/kit/LoadingState";
+import { Banner } from "../ui/kit/Banner";
+import { PageTitle } from "../ui/kit/PageTitle";
 
 const PAGE_SIZE = 50;
+
+// Ressource d'une ligne du journal : titre de l'élément (résolu par `getItem`)
+// et son type en français ; repli sur « type · début d'identifiant » quand
+// l'élément n'existe plus ou n'est pas lisible par ce profil.
+function ResourceLabel({ objectType, objectId }: { objectType: string; objectId: string }) {
+  const client = useItemClient();
+  const typeLabel =
+    (RESOURCE_TYPE_LABELS as Record<string, string | undefined>)[objectType] ?? objectType;
+  const item = useQuery({
+    queryKey: ["usage-resource", objectId],
+    queryFn: () => client.getItem(objectId),
+    retry: false,
+    staleTime: 5 * 60_000,
+  });
+  if (item.data?.title)
+    return <>{t("usage.resourceLabel", { title: item.data.title, type: typeLabel })}</>;
+  return <>{t("usage.resourceFallback", { type: typeLabel, id: objectId.slice(0, 8) })}</>;
+}
 
 // Libellé français par action de JOB_AUDIT_ACTIONS (core/app/usage/service.py)
 // — tenu synchronisé manuellement, comme BUILT_IN_ROLE_PRIVILEGES/CREATOR_ME
@@ -103,14 +126,12 @@ export function UsagePage() {
           content: (
             <div className="flex h-full flex-col gap-6 overflow-y-auto p-4">
               <section className="flex flex-col gap-3">
-                <h1 className="text-lg font-bold text-ink">
-                  {sameTenantAll ? t("usage.tenantTasks") : t("usage.myTasks")}
-                </h1>
-                {tasksQuery.isLoading && <p role="status">{t("common.loading")}</p>}
+                <PageTitle>{sameTenantAll ? t("usage.tenantTasks") : t("usage.myTasks")}</PageTitle>
+                {tasksQuery.isLoading && <LoadingState />}
                 {tasksQuery.isError && (
-                  <p role="alert" className="text-sm text-danger">
+                  <Banner variant="danger" onRetry={() => void tasksQuery.refetch()}>
                     {t("usage.loadFailed")}
-                  </p>
+                  </Banner>
                 )}
                 {tasksQuery.data && tasksQuery.data.total === 0 && (
                   <EmptyState title={t("usage.noTasks")} />
@@ -137,7 +158,9 @@ export function UsagePage() {
                         {
                           key: "resource",
                           label: t("usage.columnResource"),
-                          render: (task: UsageTask) => `${task.objectType}/${task.objectId}`,
+                          render: (task: UsageTask) => (
+                            <ResourceLabel objectType={task.objectType} objectId={task.objectId} />
+                          ),
                         },
                         {
                           key: "date",
@@ -181,9 +204,9 @@ export function UsagePage() {
                 <section className="flex flex-col gap-3">
                   <h2 className="text-lg font-semibold text-ink">{t("usage.platformUsage")}</h2>
                   {summaryQuery.isError && (
-                    <p role="alert" className="text-sm text-danger">
+                    <Banner variant="danger" onRetry={() => void summaryQuery.refetch()}>
                       {t("usage.summaryLoadFailed")}
-                    </p>
+                    </Banner>
                   )}
                   {summaryQuery.data && (
                     <div className="flex gap-8">
@@ -202,7 +225,8 @@ export function UsagePage() {
                         <ol className="list-inside list-decimal text-sm text-ink-2">
                           {summaryQuery.data.byResource.map((r) => (
                             <li key={`${r.objectType}/${r.objectId}`}>
-                              {r.objectType}/{r.objectId} — {r.count}
+                              <ResourceLabel objectType={r.objectType} objectId={r.objectId} /> —{" "}
+                              {r.count}
                             </li>
                           ))}
                         </ol>

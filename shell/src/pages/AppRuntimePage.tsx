@@ -20,6 +20,7 @@ import { useIsExportRender } from "../shell/useIsExportRender";
 import { markExportReady } from "../shell/exportReady";
 import { ExportPanel } from "../builder/print/ExportPanel";
 import { t } from "../i18n";
+import { LoadingState } from "../ui/kit/LoadingState";
 
 registerBuiltinWidgets();
 registerExampleWidgets();
@@ -157,7 +158,7 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
     (itemQuery.isSuccess && query.isLoading) ||
     !extensionsRegistered
   ) {
-    return <p role="status">{t("common.loading")}</p>;
+    return <LoadingState />;
   }
   if (itemQuery.isError) {
     return (

@@ -48,7 +48,7 @@ function renderEditor(
 
 test("changing the target dataset calls onChange with the updated link", async () => {
   const { onChange } = renderEditor({});
-  await userEvent.selectOptions(screen.getByLabelText("Dataset cible"), "ds-2");
+  await userEvent.selectOptions(screen.getByLabelText("Jeu de données cible"), "ds-2");
   expect(onChange).toHaveBeenCalledWith({
     targetDatasetId: "ds-2",
     mode: "attribute",
@@ -145,7 +145,7 @@ test("spatial mode hides the precision select when the target collection has no 
     },
     { link: { targetDatasetId: "ds-2", mode: "spatial", precision: "bbox" } },
   );
-  await screen.findByLabelText("Dataset cible");
+  await screen.findByLabelText("Jeu de données cible");
   expect(screen.queryByLabelText("Précision spatiale du lien")).not.toBeInTheDocument();
 });
 

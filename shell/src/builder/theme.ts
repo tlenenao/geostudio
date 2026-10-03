@@ -10,6 +10,7 @@ export const DEFAULT_THEME_COLORS: Required<ThemeColors> = {
   muted: "#64748b",
   border: "#e2e8f0",
 };
+// i18n-ok: pile de polices CSS (« sans-serif »), pas du français
 export const DEFAULT_FONT = "system-ui, sans-serif";
 export const DEFAULT_RADIUS = "0.375rem";
 export const DEFAULT_SPACE = "0.5rem";

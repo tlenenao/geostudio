@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useState } from "react";
 import { Input } from "./Input";
+import { t } from "../../i18n";
 
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
@@ -23,7 +24,7 @@ export function ColorField({
     <div className="flex items-center gap-2">
       <input
         type="color"
-        aria-label={`${ariaLabel} (sélecteur)`}
+        aria-label={t("colorField.pickerAria", { label: ariaLabel })}
         value={value}
         onChange={(e) => {
           setText(e.target.value);

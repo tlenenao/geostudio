@@ -617,7 +617,7 @@ test("shows the failure reason, last run date and record counts (j07-017, j07-02
   );
   render(<Harness />);
   expect(await screen.findByText("cible réseau interne bloquée")).toBeInTheDocument();
-  expect(screen.getByText("3 (1 obsolète(s))")).toBeInTheDocument();
+  expect(screen.getByText("3 (1 obsolète)")).toBeInTheDocument();
   expect(screen.queryByText("Jamais")).not.toBeInTheDocument();
 });
 

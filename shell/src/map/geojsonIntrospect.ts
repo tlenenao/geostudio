@@ -2,6 +2,7 @@
 import type { DataRecord, ItemClient } from "../api/types";
 import { isHostedCollectionUrl } from "./hostedCoreUrl";
 import type { SampleFieldFn, StatQueryFn } from "../builder/widgets/mapSymbology";
+import { t } from "../i18n";
 
 // `token` : jeton de session, à ne passer que pour une URL réellement servie par
 // le cœur (cf. `hostedToken`) — une collection privée (cas par défaut d'un
@@ -13,7 +14,7 @@ export async function fetchFeatureCollection(
   const res = token
     ? await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
     : await fetch(url);
-  if (!res.ok) throw new Error(`Impossible de charger ${url} (HTTP ${res.status})`);
+  if (!res.ok) throw new Error(t("geojson.loadFailed", { url, status: res.status }));
   const data: unknown = await res.json();
   if (
     typeof data !== "object" ||
@@ -21,7 +22,7 @@ export async function fetchFeatureCollection(
     (data as { type?: unknown }).type !== "FeatureCollection" ||
     !Array.isArray((data as { features?: unknown }).features)
   ) {
-    throw new Error(`${url} n'est pas une FeatureCollection GeoJSON valide`);
+    throw new Error(t("geojson.invalid", { url }));
   }
   return data as GeoJSON.FeatureCollection;
 }

@@ -10,6 +10,7 @@ import { registerBuiltinWidgets } from "../builder/widgets";
 import { registerExampleWidgets } from "../builder/examples";
 import { resolveShareLink } from "./embed/resolveShareLink";
 import { t } from "../i18n";
+import { LoadingState } from "../ui/kit/LoadingState";
 
 registerBuiltinWidgets();
 registerExampleWidgets();
@@ -54,7 +55,7 @@ function EmbedApp({ itemId, token }: { itemId: string; token: string }) {
 function EmbedAppRenderer({ itemId }: { itemId: string }) {
   const query = useAppConfig(itemId, { mode: "runtime" });
   if (query.isLoading) {
-    return <p role="status">{t("common.loading")}</p>;
+    return <LoadingState />;
   }
   if (query.isError || !query.data) {
     return (
@@ -78,7 +79,7 @@ export function EmbedPage({ token }: { token: string }) {
   });
 
   if (linkQuery.isLoading) {
-    return <p role="status">{t("common.loading")}</p>;
+    return <LoadingState />;
   }
   if (linkQuery.isError || !linkQuery.data) {
     return (

@@ -11,6 +11,9 @@ import { Input } from "../ui/kit/Input";
 import { SettingsNav } from "../shell/chrome/SettingsNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
+import { LoadingState } from "../ui/kit/LoadingState";
+import { Banner } from "../ui/kit/Banner";
+import { PageTitle } from "../ui/kit/PageTitle";
 
 const PAGE_SIZE = 50;
 
@@ -96,7 +99,7 @@ export function UsersAdminPage() {
           label: t("usersAdmin.title"),
           content: (
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
-              <h1 className="text-lg font-bold text-ink">{t("usersAdmin.title")}</h1>
+              <PageTitle>{t("usersAdmin.title")}</PageTitle>
               <label className="flex flex-col gap-1 text-sm text-ink">
                 {t("catalog.searchLabel")}
                 <Input
@@ -109,16 +112,16 @@ export function UsersAdminPage() {
                   }}
                 />
               </label>
-              {usersQuery.isLoading && <p role="status">{t("common.loading")}</p>}
+              {usersQuery.isLoading && <LoadingState />}
               {usersQuery.isError && (
-                <p role="alert" className="text-sm text-danger">
+                <Banner variant="danger" onRetry={() => void usersQuery.refetch()}>
                   {t("usersAdmin.loadError")}
-                </p>
+                </Banner>
               )}
               {rolesQuery.isError && (
-                <p role="alert" className="text-sm text-danger">
+                <Banner variant="danger" onRetry={() => void rolesQuery.refetch()}>
                   {t("usersAdmin.rolesLoadError")}
-                </p>
+                </Banner>
               )}
               {usersQuery.data && rolesQuery.data && usersQuery.data.users.length === 0 && (
                 <EmptyState title={t("usersAdmin.empty")} />

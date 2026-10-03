@@ -571,7 +571,9 @@ describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)
         }),
     });
     expect(
-      await screen.findByText("Non activé sur cette instance (CORE_ETL_ENABLED)."),
+      await screen.findByText(
+        "Fonction indisponible sur cette instance, contactez votre administrateur.",
+      ),
     ).toBeInTheDocument();
     expect(screen.queryByLabelText("Collection de base")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Mettre à jour" })).not.toBeInTheDocument();
@@ -798,7 +800,7 @@ describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)
     await waitFor(() =>
       expect(screen.getByLabelText("Collection de base")).toHaveValue("incidents"),
     );
-    expect(await screen.findByText("Dataset")).toBeInTheDocument();
+    expect(await screen.findByText("Jeu de données")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "← Retour au catalogue" })).toBeInTheDocument();
   });
 
@@ -877,7 +879,7 @@ describe("VisualQueryWizardPage — volet Catalogue et dégradation d'affichage"
   test("mode création : le volet Catalogue ne montre aucune fiche d'item avant le premier Créer", async () => {
     renderWizard();
     expect(await screen.findByRole("link", { name: "← Retour au catalogue" })).toBeInTheDocument();
-    expect(screen.queryByText("Dataset")).not.toBeInTheDocument();
+    expect(screen.queryByText("Jeu de données")).not.toBeInTheDocument();
   });
 
   test("sous viewport étroit, affiche trois onglets Catalogue/Requête/Réglages avec Requête actif par défaut", async () => {

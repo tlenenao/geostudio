@@ -4,6 +4,7 @@ import { useCandidateTables, useCreateCollection, useInstanceInfo } from "../api
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { t } from "../i18n";
+import { LoadingState } from "../ui/kit/LoadingState";
 
 export function RegisterCollectionPanel({ onClose }: { onClose: () => void }) {
   const candidatesQuery = useCandidateTables();
@@ -34,7 +35,7 @@ export function RegisterCollectionPanel({ onClose }: { onClose: () => void }) {
   return (
     <section aria-label={t("registerCollection.title")} className="flex flex-col gap-3">
       <h2 className="text-sm font-semibold text-ink">{t("registerCollection.title")}</h2>
-      {candidatesQuery.isLoading && <p role="status">{t("common.loading")}</p>}
+      {candidatesQuery.isLoading && <LoadingState />}
       {candidatesQuery.isError && (
         <p role="alert" className="text-sm text-danger">
           {t("registerCollection.candidatesLoadFailed")}

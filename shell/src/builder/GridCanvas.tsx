@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { ReactNode } from "react";
 import type { WidgetItem } from "../api/types";
+import { t } from "../i18n";
+import { getWidget } from "./registry";
 import { GRID_COLS, positionsFor, styleForPos, type Breakpoint } from "./grid";
 
 export function GridCanvas({
@@ -27,6 +29,14 @@ export function GridCanvas({
   renderItem: (item: WidgetItem) => ReactNode;
 }) {
   const positions = positionsFor(items, breakpoint);
+  // Nom accessible = libellé du type de widget (« Table »), numéroté quand
+  // plusieurs widgets du même type cohabitent (jamais l'identifiant technique).
+  const labelOf = (item: WidgetItem) => getWidget(item.widget)?.label ?? item.widget;
+  const nameOf = (item: WidgetItem) => {
+    const label = labelOf(item);
+    const same = items.filter((i) => labelOf(i) === label);
+    return same.length > 1 ? `${label} ${same.indexOf(item) + 1}` : label;
+  };
   return (
     <div
       className="grid h-full w-full gap-1 bg-[var(--gs-color-surface)]"
@@ -60,7 +70,7 @@ export function GridCanvas({
             {editable && (
               <button
                 type="button"
-                aria-label={`Sélectionner widget-${item.id}`}
+                aria-label={t("gridCanvas.select", { name: nameOf(item) })}
                 className="absolute inset-0 z-10 cursor-pointer"
                 onClick={(e) => {
                   e.stopPropagation();
@@ -75,7 +85,7 @@ export function GridCanvas({
               <div className="absolute right-0 top-0 z-20 flex gap-0.5">
                 <button
                   type="button"
-                  aria-label={`Déplacer widget-${item.id} à gauche`}
+                  aria-label={t("gridCanvas.moveLeft", { name: nameOf(item) })}
                   className="bg-accent px-1 text-xs text-surface"
                   onClick={(e) => {
                     e.stopPropagation();
@@ -86,7 +96,7 @@ export function GridCanvas({
                 </button>
                 <button
                   type="button"
-                  aria-label={`Déplacer widget-${item.id} à droite`}
+                  aria-label={t("gridCanvas.moveRight", { name: nameOf(item) })}
                   className="bg-accent px-1 text-xs text-surface"
                   onClick={(e) => {
                     e.stopPropagation();
@@ -97,7 +107,7 @@ export function GridCanvas({
                 </button>
                 <button
                   type="button"
-                  aria-label={`Déplacer widget-${item.id} en bas`}
+                  aria-label={t("gridCanvas.moveDown", { name: nameOf(item) })}
                   className="bg-accent px-1 text-xs text-surface"
                   onClick={(e) => {
                     e.stopPropagation();
@@ -108,7 +118,7 @@ export function GridCanvas({
                 </button>
                 <button
                   type="button"
-                  aria-label={`Déplacer widget-${item.id} en haut`}
+                  aria-label={t("gridCanvas.moveUp", { name: nameOf(item) })}
                   className="bg-accent px-1 text-xs text-surface"
                   onClick={(e) => {
                     e.stopPropagation();
@@ -121,7 +131,7 @@ export function GridCanvas({
                   <>
                     <button
                       type="button"
-                      aria-label={`Élargir widget-${item.id}`}
+                      aria-label={t("gridCanvas.widen", { name: nameOf(item) })}
                       className="bg-accent px-1 text-xs text-surface"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -132,7 +142,7 @@ export function GridCanvas({
                     </button>
                     <button
                       type="button"
-                      aria-label={`Rétrécir widget-${item.id}`}
+                      aria-label={t("gridCanvas.narrow", { name: nameOf(item) })}
                       className="bg-accent px-1 text-xs text-surface"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -143,7 +153,7 @@ export function GridCanvas({
                     </button>
                     <button
                       type="button"
-                      aria-label={`Agrandir en hauteur widget-${item.id}`}
+                      aria-label={t("gridCanvas.taller", { name: nameOf(item) })}
                       className="bg-accent px-1 text-xs text-surface"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -154,7 +164,7 @@ export function GridCanvas({
                     </button>
                     <button
                       type="button"
-                      aria-label={`Réduire en hauteur widget-${item.id}`}
+                      aria-label={t("gridCanvas.shorter", { name: nameOf(item) })}
                       className="bg-accent px-1 text-xs text-surface"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -168,7 +178,7 @@ export function GridCanvas({
                 {onDuplicateItem && (
                   <button
                     type="button"
-                    aria-label={`Dupliquer widget-${item.id}`}
+                    aria-label={t("gridCanvas.duplicate", { name: nameOf(item) })}
                     className="bg-accent px-1 text-xs text-surface"
                     onClick={(e) => {
                       e.stopPropagation();
@@ -180,7 +190,7 @@ export function GridCanvas({
                 )}
                 <button
                   type="button"
-                  aria-label={`Supprimer widget-${item.id}`}
+                  aria-label={t("gridCanvas.remove", { name: nameOf(item) })}
                   className="bg-danger px-1 text-xs text-surface"
                   onClick={(e) => {
                     e.stopPropagation();

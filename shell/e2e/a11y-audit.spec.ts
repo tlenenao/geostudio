@@ -342,7 +342,7 @@ test.describe("audit d'accessibilité (axe-core)", () => {
     });
     await page.goto("/datasets/dataset-a11y/edit");
     await expect(
-      page.getByRole("heading", { name: "Dataset partagé — Points d'intérêt (partagé)" }),
+      page.getByRole("heading", { name: "Jeu de données partagé — Points d'intérêt (partagé)" }),
     ).toBeVisible();
     await runAxeAudit(page, "DatasetEditPage");
   });
@@ -511,14 +511,14 @@ test.describe("audit d'accessibilité (axe-core)", () => {
   test("BookmarksRoute (CatalogPage filtré sur les signets, état vide)", async ({ page }) => {
     await mockCore(page);
     await page.goto("/bookmarks");
-    await expect(page.getByText("Aucun élément pour l'instant")).toBeVisible();
+    await expect(page.getByText("Aucune vue enregistrée pour l'instant")).toBeVisible();
     await runAxeAudit(page, "BookmarksRoute");
   });
 
   test("ReportsRoute (CatalogPage filtré sur les rapports, état vide)", async ({ page }) => {
     await mockCore(page);
     await page.goto("/reports");
-    await expect(page.getByText("Aucun élément pour l'instant")).toBeVisible();
+    await expect(page.getByText("Aucun rapport pour l'instant")).toBeVisible();
     await runAxeAudit(page, "ReportsRoute");
   });
 

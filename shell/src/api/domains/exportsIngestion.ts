@@ -9,6 +9,7 @@ import type {
 } from "../types";
 import type { ItemClientBase } from "../base";
 import { SqlQueryError, parseErrorResponse } from "../base";
+import { t } from "../../i18n";
 
 async function requestAnalyticsSql(
   authFetch: ItemClientBase["authFetch"],
@@ -24,7 +25,7 @@ async function requestAnalyticsSql(
     const data = (await res.json().catch(() => null)) as {
       errors?: FieldError[];
     } | null;
-    throw new SqlQueryError(data?.errors?.[0]?.message ?? "Requête SQL invalide.");
+    throw new SqlQueryError(data?.errors?.[0]?.message ?? t("errors.invalidSql"));
   }
   if (!res.ok) {
     throw await parseErrorResponse(res);

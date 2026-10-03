@@ -23,6 +23,7 @@ import type { ItemClientBase } from "../base";
 import { getTemplate } from "../../builder/templates";
 import { ApiError } from "../ApiError";
 import { OWNER_PERMISSIONS } from "../../auth/permissions";
+import { t } from "../../i18n";
 
 type ItemsMethods = Pick<
   ItemClient,
@@ -234,9 +235,7 @@ export function createItemsMethods(base: ItemClientBase): ItemsMethods {
         // user not found"), qui ne contient plus la sous-chaîne "404"
         // qu'un ancien Error générique portait. .status se lit directement.
         if (err instanceof ApiError && err.status === 404) {
-          throw new Error(
-            "Ce groupe n'existe pas, ou vous n'en êtes pas le créateur — seul le créateur d'un groupe peut y ajouter un membre.",
-          );
+          throw new Error(t("errors.groupMemberForbidden"));
         }
         throw err;
       }

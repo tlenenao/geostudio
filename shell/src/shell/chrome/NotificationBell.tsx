@@ -13,6 +13,7 @@ import type { NotificationPreferenceValue, NotificationSummary } from "../../api
 import { Badge } from "../../ui/kit/Badge";
 import { Popover } from "../../ui/kit/Popover";
 import { t } from "../../i18n";
+import { formatDateTime } from "../../lib/format";
 import type { MessageKey } from "../../i18n";
 import { useOpenItem } from "../useOpenItem";
 
@@ -68,9 +69,7 @@ function NotificationRow({ notification }: { notification: NotificationSummary }
       {notification.errorMessage && (
         <span className="text-xs text-danger">{notification.errorMessage}</span>
       )}
-      <span className="text-xs text-ink-2">
-        {new Date(notification.createdAt).toLocaleString()}
-      </span>
+      <span className="text-xs text-ink-2">{formatDateTime(notification.createdAt)}</span>
       {markRead.isError && (
         <span role="alert" className="text-xs text-danger">
           {t("notifications.actionError")}

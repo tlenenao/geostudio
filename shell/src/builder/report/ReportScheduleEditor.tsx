@@ -2,6 +2,8 @@
 import type { AlertChannel, ReportSchedulePayload } from "../../api/types";
 import { t } from "../../i18n";
 import { PipelineScheduleEditor } from "../pipeline/PipelineScheduleEditor";
+import { NativeSelect } from "../../ui/kit/NativeSelect";
+import { Input } from "../../ui/kit/Input";
 
 // Composant contrôlé (reproduit la forme value/onChange de
 // PipelineScheduleEditor, pas la forme autonome création-et-réinitialisation
@@ -32,8 +34,7 @@ export function ReportScheduleEditor({
 
       <label className="flex flex-col gap-1 text-sm">
         {t("reportSchedule.channelLabel")}
-        <select
-          className="rounded border border-control bg-surface px-2 py-1 text-ink"
+        <NativeSelect
           value={channel?.kind ?? "webhook"}
           onChange={(e) => {
             if (e.target.value === "webhook") setChannel({ kind: "webhook", url: "" });
@@ -42,14 +43,13 @@ export function ReportScheduleEditor({
         >
           <option value="webhook">{t("reportSchedule.channelWebhook")}</option>
           <option value="email">{t("reportSchedule.channelEmail")}</option>
-        </select>
+        </NativeSelect>
       </label>
 
       {channel?.kind === "webhook" && (
         <label className="flex flex-col gap-1 text-sm">
           {t("reportSchedule.webhookUrlLabel")}
-          <input
-            className="rounded border border-control bg-surface px-2 py-1 text-ink"
+          <Input
             value={channel.url}
             onChange={(e) => setChannel({ kind: "webhook", url: e.target.value })}
           />
@@ -60,8 +60,7 @@ export function ReportScheduleEditor({
         <>
           <label className="flex flex-col gap-1 text-sm">
             {t("reportSchedule.recipientLabel")}
-            <input
-              className="rounded border border-control bg-surface px-2 py-1 text-ink"
+            <Input
               value={channel.to}
               onChange={(e) =>
                 setChannel({
@@ -74,8 +73,7 @@ export function ReportScheduleEditor({
           </label>
           <label className="flex flex-col gap-1 text-sm">
             {t("reportSchedule.smtpSecretLabel")}
-            <input
-              className="rounded border border-control bg-surface px-2 py-1 text-ink"
+            <Input
               value={channel.smtpSecretName}
               onChange={(e) =>
                 setChannel({ kind: "email", to: channel.to, smtpSecretName: e.target.value })

@@ -17,6 +17,7 @@ import { FieldClassificationPicker, type ClassifiedEncoding } from "./FieldClass
 import { labelCls, inputCls } from "./formFieldStyles";
 import type { ThemeColors } from "../api/types";
 import { t } from "../i18n";
+import { formatDateTime } from "../lib/format";
 
 // Éditeur partagé par les DEUX surfaces (éditeur de cartes et PropsPanel du
 // widget carte) — même précédent que PopupEditor.tsx (SP-24). Les deux
@@ -402,7 +403,7 @@ export function MapSymbologyEditor({
           {size.computedAt && (
             <p className="text-xs text-ink-3">
               {t("mapSymbology.sizeComputedAtText", {
-                date: new Date(size.computedAt).toLocaleString(),
+                date: formatDateTime(size.computedAt),
                 min: size.domain.min,
                 max: size.domain.max,
               })}

@@ -27,6 +27,8 @@ import {
 } from "../builder/visualQuery/compilePipeline";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
+import { LoadingState } from "../ui/kit/LoadingState";
+import { PageTitle } from "../ui/kit/PageTitle";
 
 // Compare le schéma de sortie recompilé (déduit de l'état courant du
 // formulaire) au schéma réel de la collection de sortie déjà provisionnée,
@@ -203,7 +205,7 @@ export function VisualQueryWizardPage({
   // pourquoi le bouton reste désactivé.
   // j06-012 : même garde de tête de page que PipelineBuilderPage — un état
   // d'indisponibilité, pas un formulaire qu'on remplit pour rien.
-  if (instanceQuery.isLoading) return <p role="status">{t("common.loading")}</p>;
+  if (instanceQuery.isLoading) return <LoadingState />;
   if (!etlEnabled) {
     return (
       <p role="status" className="text-sm text-ink-2">
@@ -412,9 +414,9 @@ export function VisualQueryWizardPage({
           label: t("visualQuery.queryLabel"),
           content: (
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
-              <h1 className="text-lg font-semibold text-ink">
+              <PageTitle>
                 {pipelinePk !== null ? t("visualQuery.editHeading") : t("visualQuery.newHeading")}
-              </h1>
+              </PageTitle>
               <label className="flex flex-col gap-1 text-sm">
                 {t("visualQuery.titleLabel")}
                 <Input

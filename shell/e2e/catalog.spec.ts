@@ -89,7 +89,7 @@ test("filtrer sur Dataset ne ramène que les datasets", async ({ page }) => {
   // toBeVisible() (native <option> elements report hidden outside an open
   // dropdown), for a reason unrelated to the filter under test. .last()
   // reliably lands on the one ItemCard badge left after filtering.
-  await expect(page.getByText("Dataset", { exact: true }).last()).toBeVisible();
+  await expect(page.getByText("Jeu de données", { exact: true }).last()).toBeVisible();
 });
 
 test("SP-55 : trie le catalogue par titre (A→Z)", async ({ page }) => {

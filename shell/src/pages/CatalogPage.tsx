@@ -9,10 +9,12 @@ import { ItemActions } from "../shell/ItemActions";
 import { Input } from "../ui/kit/Input";
 import { Button } from "../ui/kit/Button";
 import { Panel } from "../ui/kit/Panel";
+import { Banner } from "../ui/kit/Banner";
 import { EmptyState } from "../ui/kit/EmptyState";
 import { NewItemButton } from "../shell/NewItemButton";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { plural, t } from "../i18n";
+import { formatNumber } from "../lib/format";
 import { LoadingState } from "../ui/kit/LoadingState";
 import type { Bbox } from "./CatalogSpatialFilter";
 
@@ -312,14 +314,11 @@ export function CatalogPage({
                   {openError}
                 </p>
               )}
-              {query.isLoading && <p role="status">{t("common.loading")}</p>}
+              {query.isLoading && <LoadingState />}
               {query.isError && (
-                <div role="alert" className="text-sm text-danger">
-                  {t("catalog.loadError")}{" "}
-                  <Button size="sm" variant="outline" onClick={() => void query.refetch()}>
-                    {t("common.retry")}
-                  </Button>
-                </div>
+                <Banner variant="danger" onRetry={() => void query.refetch()}>
+                  {t("catalog.loadError")}
+                </Banner>
               )}
               {query.isSuccess &&
                 query.data.items.length === 0 &&
@@ -348,6 +347,29 @@ export function CatalogPage({
                       />
                     );
                   }
+                  if (fixedType === "bookmark" || fixedType === "report") {
+                    return (
+                      <EmptyState
+                        title={t(
+                          fixedType === "report"
+                            ? "catalog.emptyReportsTitle"
+                            : "catalog.emptyBookmarksTitle",
+                        )}
+                        description={t(
+                          fixedType === "report"
+                            ? "catalog.emptyReportsDescription"
+                            : "catalog.emptyBookmarksDescription",
+                        )}
+                        action={
+                          fixedType === "report" ? (
+                            <Link to="/reports/new" className="text-accent hover:underline">
+                              {t("catalog.emptyReportsAction")}
+                            </Link>
+                          ) : undefined
+                        }
+                      />
+                    );
+                  }
                   return (
                     <EmptyState
                       title={t("catalog.emptyNoFilterTitle")}
@@ -368,27 +390,29 @@ export function CatalogPage({
                   ))}
                 </div>
               )}
-              <div className="mt-auto flex items-center gap-3">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={page <= 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                >
-                  {t("usage.previous")}
-                </Button>
-                <span className="text-sm text-ink-2">
-                  {t("usage.pageOf", { page, totalPages })}
-                </span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={page >= totalPages}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  {t("usage.next")}
-                </Button>
-              </div>
+              {total > 0 && (
+                <div className="mt-auto flex items-center gap-3">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={page <= 1}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  >
+                    {t("usage.previous")}
+                  </Button>
+                  <span className="text-sm text-ink-2">
+                    {t("usage.pageOf", { page, totalPages })}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={page >= totalPages}
+                    onClick={() => setPage((p) => p + 1)}
+                  >
+                    {t("usage.next")}
+                  </Button>
+                </div>
+              )}
             </div>
           ),
         }}
@@ -417,7 +441,9 @@ export function CatalogPage({
                 <dt>{t("catalog.keywordsLabel")}</dt>
                 <dd>{selectedKeywords.length > 0 ? selectedKeywords.join(", ") : "—"}</dd>
                 <dt>{t("catalog.spatialExtentLabel")}</dt>
-                <dd>{spatialBbox ? spatialBbox.map((n) => n.toFixed(2)).join(", ") : "—"}</dd>
+                <dd>
+                  {spatialBbox ? spatialBbox.map((n) => formatNumber(n, 2, 2)).join(", ") : "—"}
+                </dd>
               </dl>
             </Panel>
           ),

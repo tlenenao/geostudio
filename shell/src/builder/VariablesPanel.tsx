@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import type { Variable, VariableType } from "../api/types";
 import { t } from "../i18n";
+import { Button } from "../ui/kit/Button";
 
 const TYPE_LABELS: Record<VariableType, string> = {
   string: t("variablesPanel.typeString"),
@@ -180,13 +181,9 @@ export function VariablesPanel({
         );
       })}
       <li>
-        <button
-          type="button"
-          className="rounded border border-rule px-2 py-1 hover:bg-sunken"
-          onClick={addVariable}
-        >
+        <Button type="button" size="sm" variant="outline" onClick={addVariable}>
           {t("variablesPanel.addButton")}
-        </button>
+        </Button>
       </li>
     </ul>
   );

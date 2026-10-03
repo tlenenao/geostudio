@@ -13,6 +13,7 @@ import { Select } from "../ui/kit/Select";
 import { Tabs } from "../ui/kit/Tabs";
 import { Textarea } from "../ui/kit/Textarea";
 import { t } from "../i18n";
+import { LoadingState } from "../ui/kit/LoadingState";
 
 const UNSET = "unset";
 
@@ -341,9 +342,7 @@ export function EditCollectionPanel({
                   <p className="text-sm font-medium text-ink">
                     {t("editCollection.sensitiveFieldsTitle")}
                   </p>
-                  {schemaQuery.isLoading && (
-                    <p className="text-sm text-ink-2">{t("common.loading")}</p>
-                  )}
+                  {schemaQuery.isLoading && <LoadingState />}
                   <ul className="flex flex-col gap-1">
                     {sensitiveFieldCandidates.map((f) => (
                       <li key={f.name}>

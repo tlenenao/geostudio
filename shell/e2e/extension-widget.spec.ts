@@ -37,7 +37,7 @@ test("un widget d'extension chargé dynamiquement par URL se pose dans le builde
 
   // Bouton (déclenchera reset) et Texte (affichera la variable count).
   await page.getByRole("button", { name: "Bouton" }).click();
-  await page.getByRole("button", { name: "Texte" }).click();
+  await page.getByRole("button", { name: "Texte", exact: true }).click();
   await page.getByLabel("Texte du widget").fill("Compte : {{var:count}}");
 
   await page.getByRole("button", { name: "Ajouter une variable" }).click();

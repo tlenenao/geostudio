@@ -17,7 +17,7 @@ test("déclarer un incident : créer sans code, créer/voir/modifier/supprimer u
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 
   // Sélectionner le widget Formulaire pré-câblé et charger son schéma.
-  await page.getByRole("button", { name: "Sélectionner widget-tpl-incident-form" }).click();
+  await page.getByRole("button", { name: "Sélectionner Formulaire" }).click();
   await page.getByRole("button", { name: "Charger les champs du schéma" }).click();
   await expect(page.getByLabel("Label du champ titre")).toBeVisible();
 

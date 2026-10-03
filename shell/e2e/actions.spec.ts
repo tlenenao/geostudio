@@ -21,7 +21,7 @@ test("Filtre widget filters a bound List through the action bus", async ({ page 
   await page.getByLabel("Champ titre").fill("nom");
 
   // Filtre widget on field "nom"
-  await page.getByRole("button", { name: "Filtre" }).click();
+  await page.getByRole("button", { name: "Filtre", exact: true }).click();
   await page.getByLabel("Champ à filtrer").fill("nom");
 
   // Wire Filtre.changed → Liste.setFilter

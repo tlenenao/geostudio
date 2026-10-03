@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { PrintLayoutConfig } from "../../api/types";
 import { t } from "../../i18n";
+import { NativeSelect } from "../../ui/kit/NativeSelect";
+import { Input } from "../../ui/kit/Input";
+import { Textarea } from "../../ui/kit/Textarea";
 
 const DEFAULTS: Required<Pick<PrintLayoutConfig, "pageSize" | "orientation" | "showLegend">> = {
   pageSize: "a4",
@@ -26,18 +29,18 @@ export function PrintLayoutPanel({
       <p className="mb-1 mt-3 text-xs font-medium text-ink-2">{t("printLayout.heading")}</p>
       <label className="flex flex-col gap-1 text-sm">
         {t("printLayout.formatLabel")}
-        <select
+        <NativeSelect
           aria-label={t("printLayout.formatAria")}
           value={current.pageSize}
           onChange={(e) => patch({ pageSize: e.target.value as PrintLayoutConfig["pageSize"] })}
         >
           <option value="a4">A4</option>
           <option value="a3">A3</option>
-        </select>
+        </NativeSelect>
       </label>
       <label className="flex flex-col gap-1 text-sm">
         {t("printLayout.orientationLabel")}
-        <select
+        <NativeSelect
           aria-label={t("printLayout.orientationAria")}
           value={current.orientation}
           onChange={(e) =>
@@ -46,11 +49,11 @@ export function PrintLayoutPanel({
         >
           <option value="portrait">{t("printLayout.orientationPortrait")}</option>
           <option value="landscape">{t("printLayout.orientationLandscape")}</option>
-        </select>
+        </NativeSelect>
       </label>
       <label className="flex flex-col gap-1 text-sm">
         {t("printLayout.titleLabel")}
-        <input
+        <Input
           aria-label={t("printLayout.titleAria")}
           type="text"
           value={current.title ?? ""}
@@ -75,7 +78,7 @@ export function PrintLayoutPanel({
           new fields rather than resurrect these. */}
       <label className="flex flex-col gap-1 text-sm">
         {t("printLayout.cartoucheLabel")}
-        <textarea
+        <Textarea
           aria-label={t("printLayout.cartoucheAria")}
           value={current.cartouche ?? ""}
           onChange={(e) => patch({ cartouche: e.target.value || null })}

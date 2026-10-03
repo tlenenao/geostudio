@@ -12,7 +12,10 @@ import { CreateRolePanel } from "../shell/CreateRolePanel";
 import { EditRolePanel } from "../shell/EditRolePanel";
 import { SettingsNav } from "../shell/chrome/SettingsNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
-import { t } from "../i18n";
+import { plural, t } from "../i18n";
+import { LoadingState } from "../ui/kit/LoadingState";
+import { Banner } from "../ui/kit/Banner";
+import { PageTitle } from "../ui/kit/PageTitle";
 
 export function RolesAdminPage() {
   const rolesQuery = useRoles();
@@ -65,7 +68,9 @@ export function RolesAdminPage() {
       : Number.NaN;
   const deleteErrorMessage = Number.isNaN(blockedCount)
     ? t("roles.deleteError")
-    : t("roles.deleteBlockedByUsage", { count: blockedCount });
+    : t(plural(blockedCount, "roles.deleteBlockedByUsageOne", "roles.deleteBlockedByUsageMany"), {
+        count: blockedCount,
+      });
 
   return (
     <div className="-m-6 flex flex-1 flex-col overflow-hidden">
@@ -81,7 +86,7 @@ export function RolesAdminPage() {
           content: (
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
               <div className="flex items-center justify-between">
-                <h1 className="text-lg font-bold text-ink">{t("roles.title")}</h1>
+                <PageTitle>{t("roles.title")}</PageTitle>
                 <Button
                   size="sm"
                   {...createPanel.triggerProps}
@@ -93,11 +98,11 @@ export function RolesAdminPage() {
                   {t("roles.addRole")}
                 </Button>
               </div>
-              {rolesQuery.isLoading && <p role="status">{t("common.loading")}</p>}
+              {rolesQuery.isLoading && <LoadingState />}
               {rolesQuery.isError && (
-                <p role="alert" className="text-sm text-danger">
+                <Banner variant="danger" onRetry={() => void rolesQuery.refetch()}>
                   {t("roles.loadError")}
-                </p>
+                </Banner>
               )}
               {deleteRole.isError && (
                 <p role="alert" className="text-sm text-danger">

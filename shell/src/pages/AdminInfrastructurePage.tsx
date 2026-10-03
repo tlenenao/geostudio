@@ -9,7 +9,9 @@ import {
 import { Button } from "../ui/kit/Button";
 import { SettingsNav } from "../shell/chrome/SettingsNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
-import { t } from "../i18n";
+import { plural, t } from "../i18n";
+import { formatNumber } from "../lib/format";
+import { PageTitle } from "../ui/kit/PageTitle";
 
 const PROTECTED_TOOLS: { tool: AdminToolName; label: string }[] = [
   { tool: "martin", label: "Martin" },
@@ -44,7 +46,7 @@ export function AdminInfrastructurePage() {
 
   function formatBytes(bytes: number): string {
     const mb = bytes / (1024 * 1024);
-    return mb >= 1024 ? `${(mb / 1024).toFixed(1)} Go` : `${mb.toFixed(1)} Mo`;
+    return mb >= 1024 ? `${formatNumber(mb / 1024, 1, 1)} Go` : `${formatNumber(mb, 1, 1)} Mo`;
   }
 
   return (
@@ -60,7 +62,7 @@ export function AdminInfrastructurePage() {
           label: t("infrastructure.title"),
           content: (
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
-              <h1 className="text-lg font-bold text-ink">{t("infrastructure.heading")}</h1>
+              <PageTitle>{t("infrastructure.heading")}</PageTitle>
               {!adminToolsEnabled && (
                 <p className="text-sm text-ink-2">{t("infrastructure.disabled")}</p>
               )}
@@ -98,10 +100,14 @@ export function AdminInfrastructurePage() {
                       ok={status.jobs.ok && !status.jobs.stalled}
                       detail={
                         status.jobs.ok
-                          ? t("infrastructure.statusJobsDetail", {
-                              pending: backlog,
-                              stalled: status.jobs.stalled ?? 0,
-                            })
+                          ? t(
+                              plural(
+                                status.jobs.stalled ?? 0,
+                                "infrastructure.statusJobsDetailOne",
+                                "infrastructure.statusJobsDetailMany",
+                              ),
+                              { pending: backlog, stalled: status.jobs.stalled ?? 0 },
+                            )
                           : undefined
                       }
                     />

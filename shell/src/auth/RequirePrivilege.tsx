@@ -2,6 +2,7 @@
 import type { ReactNode } from "react";
 import { useMe } from "../api/hooks";
 import { holdsAnyPrivilege } from "./holdsAnyPrivilege";
+import { LoadingState } from "../ui/kit/LoadingState";
 
 /**
  * Porte de privilège au niveau route — pendant côté privilèges de rôle de
@@ -20,7 +21,7 @@ export function RequirePrivilege({
   children: ReactNode;
 }): ReactNode {
   const meQuery = useMe();
-  if (meQuery.isLoading) return <p role="status">Chargement…</p>;
+  if (meQuery.isLoading) return <LoadingState />;
   const allowed = holdsAnyPrivilege(meQuery.data?.privileges ?? [], privilege);
   if (!allowed) {
     return (

@@ -234,7 +234,7 @@ test("adding a cross-filter link and saving includes it in the saved payload", a
 
   await screen.findByLabelText("Libellé de nom");
   await userEvent.click(screen.getByRole("button", { name: "Ajouter un lien" }));
-  await userEvent.selectOptions(screen.getByLabelText("Dataset cible"), "ds-2");
+  await userEvent.selectOptions(screen.getByLabelText("Jeu de données cible"), "ds-2");
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer les colonnes" }));
 
   await waitFor(() => expect(saveDatasetConfig).toHaveBeenCalled());
@@ -309,7 +309,7 @@ test("offers CSV/XLSX/GeoJSON/GPKG export when the collection has geometry, and 
     exportDataSource,
   });
 
-  await screen.findByText(/Dataset partagé/);
+  await screen.findByText(/Jeu de données partagé/);
   await userEvent.click(screen.getByLabelText("Exporter en CSV"));
   expect(exportDataSource).toHaveBeenCalledWith(
     expect.objectContaining({ type: "features", datasetId: "ds-1", query: {} }),
@@ -336,7 +336,7 @@ test("a failed export surfaces an inline error message instead of failing silent
     listConfigRevisions: vi.fn().mockResolvedValue([]),
   });
 
-  await screen.findByText(/Dataset partagé/);
+  await screen.findByText(/Jeu de données partagé/);
   await userEvent.click(screen.getByLabelText("Exporter en CSV"));
 
   expect(await screen.findByRole("alert")).toHaveTextContent("413");
@@ -350,7 +350,7 @@ test("only offers CSV/XLSX when the collection has no geometry", async () => {
     saveDatasetConfig: vi.fn(),
     updateItem: vi.fn().mockResolvedValue(item),
   });
-  await screen.findByText(/Dataset partagé/);
+  await screen.findByText(/Jeu de données partagé/);
   expect(screen.getByLabelText("Exporter en CSV")).toBeInTheDocument();
   expect(screen.queryByLabelText("Exporter en GEOJSON")).not.toBeInTheDocument();
 });
@@ -380,7 +380,7 @@ test("hides the button when sourcePipelineId is absent (dataset created by hand)
     saveDatasetConfig: vi.fn(),
     updateItem: vi.fn().mockResolvedValue(item),
   });
-  await screen.findByText(/Dataset partagé/);
+  await screen.findByText(/Jeu de données partagé/);
   expect(screen.queryByRole("button", { name: "Modifier la requête" })).not.toBeInTheDocument();
 });
 
@@ -406,7 +406,7 @@ test("affiche le panneau d'historique", async () => {
   expect(await screen.findByText("Historique")).toBeInTheDocument();
 });
 
-test("sous viewport étroit, affiche trois onglets Catalogue/Dataset/Réglages avec Dataset actif par défaut", async () => {
+test("sous viewport étroit, affiche trois onglets Catalogue/Jeu de données/Réglages avec Jeu de données actif par défaut", async () => {
   stubMatchMedia(true);
   renderPage({
     getItem: vi.fn().mockResolvedValue(item),
@@ -414,9 +414,9 @@ test("sous viewport étroit, affiche trois onglets Catalogue/Dataset/Réglages a
     getCollectionSchema: vi.fn().mockResolvedValue(schema),
   });
   const tabs = await screen.findAllByRole("tab");
-  expect(tabs.map((t) => t.textContent)).toEqual(["Catalogue", "Dataset", "Réglages"]);
+  expect(tabs.map((t) => t.textContent)).toEqual(["Catalogue", "Jeu de données", "Réglages"]);
   const activeTab = tabs.find((t) => t.getAttribute("aria-selected") === "true");
-  expect(activeTab).toHaveTextContent("Dataset");
+  expect(activeTab).toHaveTextContent("Jeu de données");
 });
 
 test("SP-42/F-shell-pages-04 : verrouille Enregistrer quand permissions.write est false", async () => {

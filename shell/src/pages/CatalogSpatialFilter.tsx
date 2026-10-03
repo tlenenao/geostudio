@@ -6,6 +6,7 @@ import { DEFAULT_BASEMAP } from "../map/basemaps";
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { t } from "../i18n";
+import { readToken } from "../lib/theme";
 
 export type Bbox = [number, number, number, number]; // [minLon, minLat, maxLon, maxLat]
 
@@ -111,13 +112,19 @@ export function CatalogSpatialFilter({ onChange }: { onChange: (bbox: Bbox | nul
           id: RECT_LAYER_ID,
           type: "fill",
           source: RECT_SOURCE_ID,
-          paint: { "fill-color": "#3388ff", "fill-opacity": 0.2 },
+          paint: {
+            "fill-color": readToken("--gs-accent", "#0b6e77") /* gs-raw-color-ok: repli jsdom */,
+            "fill-opacity": 0.2,
+          },
         });
         map.addLayer({
           id: RECT_OUTLINE_LAYER_ID,
           type: "line",
           source: RECT_SOURCE_ID,
-          paint: { "line-color": "#3388ff", "line-width": 2 },
+          paint: {
+            "line-color": readToken("--gs-accent", "#0b6e77") /* gs-raw-color-ok: repli jsdom */,
+            "line-width": 2,
+          },
         });
       }
     }

@@ -71,7 +71,7 @@ test("un binding { $expr } sur une prop non-Texte lit un champ imbriqué d'une v
   await page.getByLabel(/Collection de la source/).fill("villes");
 
   // Table liée à la source.
-  await page.getByRole("button", { name: "Table" }).click();
+  await page.getByRole("button", { name: "Table", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 1 });
   await page.getByLabel("Colonnes").fill("region,annee");
 

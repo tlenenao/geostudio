@@ -22,8 +22,9 @@ import type { Group, Item, ShareLinkInfo, ShareRole } from "../api/types";
 import { Button } from "../ui/kit/Button";
 import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
-import { t } from "../i18n";
+import { plural, t } from "../i18n";
 import { useReferencedCollectionIds } from "./referencedCollections";
+import { LoadingState } from "../ui/kit/LoadingState";
 
 const MAX_SHARE_LINK_TTL_DAYS = 30;
 
@@ -129,7 +130,7 @@ function ShareLinksPanel({ itemId }: { itemId: string }) {
   return (
     <div className="flex flex-col gap-2 border-t border-rule pt-2">
       <p className="text-xs font-medium text-ink-2">{t("shareForm.linksTitle")}</p>
-      {linksQuery.isLoading && <p role="status">{t("common.loading")}</p>}
+      {linksQuery.isLoading && <LoadingState />}
       {linksQuery.isError && (
         <p role="alert" className="text-xs text-danger">
           {t("shareForm.linksLoadError")}
@@ -155,7 +156,7 @@ function ShareLinksPanel({ itemId }: { itemId: string }) {
             value={ttlDays}
             onChange={(e) => setTtlDays(Number(e.target.value))}
           />
-          {t("shareForm.ttlUnit")}
+          {t(plural(ttlDays, "shareForm.ttlUnitOne", "shareForm.ttlUnitMany"))}
         </label>
         <Button
           type="button"
@@ -479,7 +480,7 @@ export function ShareForm({ item, onDone }: { item: Item; onDone: () => void }) 
   return (
     <div className="flex flex-col gap-3">
       <h3 className="text-sm font-semibold text-ink">{t("shareForm.heading")}</h3>
-      {loading && <p role="status">{t("common.loading")}</p>}
+      {loading && <LoadingState />}
       {failed && (
         <p role="alert" className="text-sm text-danger">
           {t("sharePanel.loadError")}
