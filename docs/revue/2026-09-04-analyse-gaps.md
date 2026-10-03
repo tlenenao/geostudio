@@ -282,7 +282,7 @@ engageant, en particulier les points `[DÉDUCTION]`.
 | GAP | Manque | Impact | Coût (j-h) | Source |
 |---|---|---|---|---|
 | GAP-16 | Aucun connecteur natif vers un entrepôt cloud analytique (BigQuery, Snowflake, Databricks, Redshift) avec rafraîchissement planifié — GeoStudio ne lit que REST/Postgres (via dlt) et moissonne des catalogues géospatiaux. Felt, ArcGIS Data Pipelines, Metabase et Superset l'offrent tous. | Sérieux | 5-10 | [DOC OFFICIELLE] `help.felt.com/data-sources/cloud-sources` ; `esri.com/.../arcgis-data-pipelines` ; `superset.apache.org/user-docs/databases` |
-| GAP-17 | Aucune génération de requête en langage naturel avec revue humaine avant exécution (NL→SQL ou NL→CEL) — GeoStudio a un copilote orchestrant des outils MCP, mais pas de génération de requête analytique en langage naturel dans SQL Lab ou la requête visuelle. Felt (« AI SQL »), Metabase (Metabot), FME (AI Assist) le font tous, avec le même patron « montre la requête générée, l'utilisateur valide ». | Confort à sérieux | 5-8 | [DOC OFFICIELLE] `felt.com/platform/felt-ai` ; `metabase.com/docs/latest/ai/metabot` ; `fme.safe.com/platform/ai-assist` |
+| GAP-17 | **[Fermé par SP-62, cf. table « ✅ Fermé » — texte d'origine conservé ci-dessous pour l'historique]** Aucune génération de requête en langage naturel avec revue humaine avant exécution (NL→SQL ou NL→CEL) — GeoStudio a un copilote orchestrant des outils MCP, mais pas de génération de requête analytique en langage naturel dans SQL Lab ou la requête visuelle. Felt (« AI SQL »), Metabase (Metabot), FME (AI Assist) le font tous, avec le même patron « montre la requête générée, l'utilisateur valide ». | Confort à sérieux | 5-8 | [DOC OFFICIELLE] `felt.com/platform/felt-ai` ; `metabase.com/docs/latest/ai/metabot` ; `fme.safe.com/platform/ai-assist` |
 | GAP-18 | Aucun marketplace/registre public d'extensions inter-tenants — le registre d'extensions (SP-8c) est scopé par tenant, pas un catalogue partagé/découvrable comme FME Hub (1300+ items), les `ckanext-*` de CKAN ou l'ArcGIS Marketplace. | Confort | 8-15 (infrastructure de partage + modération) | [DOC OFFICIELLE] `fme.safe.com/blog/.../fme-hub-helps` ; `catalog.civicdataecosystem.org` |
 | GAP-19 | Aucun SDK d'embedding « widget dans une app tierce » avec authentification déléguée (guest token) — l'export d'app publie une app entière (statique/connectée/autoportée), pas un composant enfichable par iframe/SDK dans un site tiers existant. Metabase (SDK React modulaire), Superset (embedded-sdk + guest token) et Felt (embed + extensions JS) l'offrent. | Sérieux (adoption B2B/SaaS) | 5-10 | [DOC OFFICIELLE] `metabase.com/docs/latest/embedding/sdk/introduction` ; `github.com/apache/superset/.../superset-embedded-sdk` |
 | GAP-20 | Aucune édition collaborative temps réel multi-utilisateurs (façon Google Docs) — GeoStudio n'a que le modèle rollback par révision successive (dernier écrit gagne), sans présence ni fusion en direct. Felt l'offre nativement. | Confort | 10-20 (chantier lourd, CRDT ou équivalent) | [DOC OFFICIELLE] `felt.com` |
@@ -482,7 +482,7 @@ fois dans le total ci-dessous.)*
 
 ### Confort (35)
 
-GAP-03, GAP-04, GAP-08, GAP-10, GAP-13, GAP-15, GAP-17, GAP-18, GAP-20,
+GAP-03, GAP-04, GAP-08, GAP-10, GAP-13, GAP-15, ~~GAP-17~~ (fermé SP-62), GAP-18, GAP-20,
 GAP-21, GAP-23, GAP-25, GAP-27, GAP-31, GAP-33, GAP-34, GAP-35, GAP-37,
 GAP-38, GAP-45, GAP-46, GAP-48, GAP-49, GAP-54, GAP-55, GAP-67.
 
