@@ -627,7 +627,12 @@ class TransformResolveOverlapsParams(BaseModel):
 
 class TransformTriangulateParams(BaseModel):
     """Triangulation de Delaunay de la géométrie (points) en entrée — une ligne de sortie par
-    triangle. Calculée en process via Shapely (BSD-3-Clause), pas en SQL."""
+    triangle. Calculée en process via Shapely (BSD-3-Clause), pas en SQL.
+
+    `groupBy` (liste de colonnes) triangule chaque groupe séparément, sans pontage entre
+    groupes ; vide = un seul nuage global."""
+
+    groupBy: list[str] = Field(default_factory=list)
 
 
 class TransformDensifyParams(BaseModel):
@@ -639,4 +644,9 @@ class TransformDensifyParams(BaseModel):
 
 class TransformMinimumBoundingCircleParams(BaseModel):
     """Remplace la géométrie par le plus petit cercle qui la contient entièrement. Calculé
-    en process via Shapely (agrège toutes les lignes de l'entrée en un seul cercle)."""
+    en process via Shapely (agrège toutes les lignes de l'entrée en un seul cercle).
+
+    `groupBy` (liste de colonnes) produit un cercle par groupe, les colonnes de groupe étant
+    conservées ; vide = un seul cercle global."""
+
+    groupBy: list[str] = Field(default_factory=list)
