@@ -91,27 +91,34 @@ def build_mvt_sql(quote: Callable[[str], str], info: TableInfo) -> str:
             return f"to_jsonb(t.{ident})::text AS {ident}"
         return f"t.{ident} AS {ident}"
 
-    props = ", ".join(_projection(name) for name in mvt_property_columns(info))
+    names = mvt_property_columns(info)
+    props = ", ".join(_projection(name) for name in names)
     props_clause = f", {props}" if props else ""
+    outer_props = "".join(f", raw.{quote(n)}" for n in names)
+    # P29.08/09 : LIMIT max+1 DANS la lecture brute, tri déterministe sur la PK
+    # (sinon les entités gardées suivent l'ordre physique et changent après un
+    # VACUUM/UPDATE). La ligne en trop ne part jamais dans la tuile (rn <= max) :
+    # elle sert seulement à prouver qu'il y a eu une vraie omission, donc une
+    # collection d'exactement `max` entités n'est plus déclarée tronquée.
+    order = f"ORDER BY t.{quote(info.pk_column)}" if info.pk_column else ""
+    window = f"ORDER BY t.{quote(info.pk_column)}" if info.pk_column else ""
     return (
-        # count(*) sur la même requête agrégée : le nombre de géométries
-        # effectivement matérialisées dans la tuile (donc après le WHERE
-        # tile.geom IS NOT NULL externe), pour détecter une troncature sans
-        # décoder le protobuf en sortie.
-        "SELECT ST_AsMVT(tile, :layer, :extent, 'geom', :fid), count(*) FROM ("
+        "WITH raw AS ("
         f"SELECT ST_AsMVTGeom(ST_Transform({geom}, 3857), "
         "ST_TileEnvelope(:z, :x, :y), :extent, :buffer, true) AS geom"
-        f"{props_clause} "
+        f"{props_clause}, row_number() OVER ({window}) AS __rn "
         f"FROM {table} t "
         # Le filtre porte sur la géométrie brute pour rester indexable par le
         # GiST posé par apply_collection_ddl : ST_Transform à gauche du && le
         # rendrait inutilisable.
         f"WHERE {geom} && ST_Transform(ST_TileEnvelope(:z, :x, :y), :srid) "
-        # Plafond DANS la sous-requête : c'est le nombre de lignes lues et
-        # transformées qu'il faut borner, pas la sortie de l'agrégat (une
-        # tuile est toujours une seule ligne).
-        "LIMIT :max_features"
-        ") AS tile WHERE tile.geom IS NOT NULL"
+        # Plafond DANS la lecture brute : c'est le nombre de lignes lues et
+        # transformées qu'il faut borner, pas la sortie de l'agrégat.
+        f"{order} LIMIT :max_features + 1"
+        ") SELECT (SELECT ST_AsMVT(tile, :layer, :extent, 'geom', :fid) FROM ("
+        f"SELECT raw.geom{outer_props} FROM raw "
+        "WHERE raw.geom IS NOT NULL AND raw.__rn <= :max_features"
+        ") AS tile), (SELECT count(*) FROM raw)"
     )
 
 
@@ -183,7 +190,7 @@ def get_collection_tile(
     # partagé seulement pour l'anonyme (c01-007).
     visibility = "public" if col.is_public and user is None and guest is None else "private"
     headers = {"Cache-Control": f"{visibility}, max-age=300", "Vary": "Authorization"}
-    if feature_count == MAX_TILE_FEATURES:
+    if feature_count > MAX_TILE_FEATURES:
         headers["X-Tile-Truncated"] = "true"
     return Response(
         content=bytes(tile),
