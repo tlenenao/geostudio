@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """P27.07 : `backup.sh --upload-only` (relance après échec d'envoi hors-site) ne
-refait aucun dump, code 2 si l'envoi échoue, et ne touche `.last_success`
+refait aucun dump, code 75 si l'envoi échoue, et ne touche `.last_success`
 (sonde de fraîcheur du healthcheck) qu'en cas de succès."""
 
 import os
@@ -37,9 +37,9 @@ def _run(tmp_path, mc_exit):
     return r, arch
 
 
-def test_upload_failure_exits_2_without_marking_success(tmp_path):
+def test_upload_failure_exits_75_without_marking_success(tmp_path):
     r, arch = _run(tmp_path, mc_exit=1)
-    assert r.returncode == 2, r.stderr
+    assert r.returncode == 75, r.stderr
     assert not (arch / ".last_success").exists()
 
 

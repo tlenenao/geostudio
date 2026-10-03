@@ -12,7 +12,7 @@ echo "[backup] planifié quotidiennement à ${HOUR}:00 UTC"
 run_day() {
   local rc=0 attempt
   for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
-    if [ "$rc" = 2 ]; then
+    if [ "$rc" = 75 ]; then
       /usr/local/bin/backup.sh --upload-only && return 0 || rc=$?
     else
       /usr/local/bin/backup.sh && return 0 || rc=$?

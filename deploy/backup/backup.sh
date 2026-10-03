@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# P27.07 : codes de sortie — 0 = tout est fait ; 2 = archive locale écrite et
+# P27.07 : codes de sortie — 0 = tout est fait ; 75 (EX_TEMPFAIL, jamais un code d outil : tar/pg_dump rendent 2) = archive locale écrite et
 # rotée mais envoi hors-site en échec (l'entrypoint ne relance alors que
 # `--upload-only`, sans refaire de dump ni dupliquer d'archive) ; autre = échec.
 # /backup/archives/.last_success n'est touché qu'après un succès complet : c'est
@@ -25,7 +25,7 @@ if [ "$UPLOAD_ONLY" = 1 ]; then
     exit 0
   fi
   echo "[backup] ERREUR: envoi hors-site de ${LATEST} en échec" >&2
-  exit 2
+  exit 75
 fi
 
 DATE="$(date -u +%Y%m%d-%H%M%S)"
@@ -122,7 +122,7 @@ done
 if [ -n "${BACKUP_S3_ENDPOINT:-}" ]; then
   if ! upload_offsite "${DATE}.tar.gz.age"; then
     echo "[backup] ERREUR: envoi hors-site en échec — archive locale conservée" >&2
-    exit 2
+    exit 75
   fi
   for f in $TO_DELETE; do
     mc rm --quiet "offsite/${BACKUP_S3_BUCKET}/${f}" 2>/dev/null || true

@@ -51,6 +51,13 @@ until curl -sf "${CORE_URL:-http://localhost:8200}/health" >/dev/null; do
   sleep 2
 done
 
+step "attente du shell"
+t0=$SECONDS
+until curl -sf "$SHELL_URL/" >/dev/null; do
+  [ $((SECONDS - t0)) -lt "$WAIT_S" ] || fail "shell injoignable"
+  sleep 2
+done
+
 # ── RC-4 : le worker MapLibre doit partir en type JavaScript, jamais octet-stream ──
 step "shell : /assets/maplibre-gl-worker.mjs servi en JavaScript"
 ctype="$(curl -sI "$SHELL_URL/assets/maplibre-gl-worker.mjs" | tr -d '\r' | awk -F': ' 'tolower($1)=="content-type"{print tolower($2)}')"
