@@ -100,17 +100,20 @@ def get_latest_runs_for_items(session: Session, *, item_ids: list[str]) -> dict[
     return {r.pipeline_item_id: r for r in rows}
 
 
-def mark_running(session: Session, *, run_id: str) -> None:
-    run = session.get(PipelineRun, run_id)
-    if run is None:
-        return
-    run.status = "running"
-    run.started_at = _now()
-    # Un run déjà clos par reclaim_stuck_runs puis réellement pris en charge
-    # ne doit pas garder son « run périmé » ni son finished_at.
-    run.finished_at = None
-    run.error = None
+def mark_running(session: Session, *, run_id: str) -> bool:
+    """REV-275 (c) : transition conditionnelle `queued|pending -> running`
+    (UPDATE ... WHERE status IN ...). Retourne False si le run n'est plus
+    prenable — annulé entre-temps par `request_cancel`, déjà terminé, réclamé
+    par `reclaim_stuck_runs`, ou inconnu : l'appelant sort alors sans
+    exécuter. Remplace l'ancien écrasement inconditionnel (un `cancelled`
+    repassait `running`)."""
+    result = session.execute(
+        update(PipelineRun)
+        .where(PipelineRun.id == run_id, PipelineRun.status.in_(("queued", "pending")))
+        .values(status="running", started_at=_now(), finished_at=None, error=None)
+    )
     session.flush()
+    return bool(result.rowcount)  # type: ignore[attr-defined]
 
 
 def request_cancel(session: Session, run: PipelineRun) -> str:
