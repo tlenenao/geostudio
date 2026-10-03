@@ -109,7 +109,7 @@ test("créer une règle d'alerte et voir son état firing sur DatasetEditPage", 
   await page.getByRole("button", { name: "Créer la règle" }).click();
 
   await expect(page.getByText("Trop d'incidents")).toBeVisible();
-  await expect(page.getByText(/firing/i)).toBeVisible();
+  await expect(page.getByText("Déclenchée")).toBeVisible();
   expect(createdAlertConfig).not.toBeNull();
   // Vérifie que le POST /configs porte bien les valeurs saisies dans le
   // formulaire, pas seulement qu'un POST a eu lieu (cf. itemClient.ts's
