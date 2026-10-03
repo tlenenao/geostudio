@@ -19,6 +19,8 @@ import { CameraControls } from "../map/CameraControls";
 import { PrintLayoutPanel } from "../builder/print/PrintLayoutPanel";
 import { ExportPanel } from "../builder/print/ExportPanel";
 import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
+import { isConflictError } from "../api/ApiError";
+import { SaveConflictNotice } from "../builder/SaveConflictNotice";
 import { Button } from "../ui/kit/Button";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { useIsExportRender } from "../shell/useIsExportRender";
@@ -62,6 +64,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
     setDraft(next);
   };
   const { ConfirmLeaveDialog } = useDirtyGuard(hasUnsavedChanges);
+  const baseVersionRef = useRef<number | undefined>(undefined);
   const mapViewRef = useRef<MapViewHandle>(null);
   const hasAutoFitted = useRef(false);
   // C1 (revue finale) : `onReady` (MapView.tsx:1017-1033/1063) ne se
@@ -77,7 +80,12 @@ export function MapEditorPage({ pk }: { pk: string }) {
   const exportEnabled = instanceQuery.data?.exportEnabled === true;
 
   useEffect(() => {
-    if (query.data) setDraft(query.data);
+    if (query.data) {
+      setDraft(query.data);
+      // Le brouillon EST l'état serveur à cette version (cet effet réécrase
+      // le brouillon à chaque nouvelle donnée) : la version suit.
+      baseVersionRef.current = query.data.baseVersion;
+    }
   }, [query.data]);
 
   // D18 : n'auto-cadrer que si la vue est encore la valeur par défaut
@@ -183,6 +191,15 @@ export function MapEditorPage({ pk }: { pk: string }) {
     );
   }
 
+  const isConflict = isConflictError(save.error);
+  async function reloadLatest() {
+    const latest = await client.getMapConfig(pk);
+    setDraft(latest);
+    baseVersionRef.current = latest.baseVersion;
+    setHasUnsavedChanges(false);
+    save.reset();
+  }
+
   return (
     <div className="-m-6 flex flex-1 flex-col overflow-hidden">
       <h1 className="sr-only">{t("docTitle.map")}</h1>
@@ -283,23 +300,38 @@ export function MapEditorPage({ pk }: { pk: string }) {
               <ConfigHistoryPanel
                 pk={pk}
                 currentVersion={null}
-                onRestored={async () => updateDraft(await client.getMapConfig(pk))}
+                onRestored={async () => {
+                  const restored = await client.getMapConfig(pk);
+                  updateDraft(restored);
+                  baseVersionRef.current = restored.baseVersion;
+                }}
               />
               {exportEnabled && <ExportPanel itemId={pk} />}
               <Button
                 size="sm"
                 className="w-fit"
                 disabled={save.isPending || readOnly}
-                onClick={() => save.mutate(draft, { onSuccess: () => setHasUnsavedChanges(false) })}
+                onClick={() =>
+                  save.mutate(
+                    { ...draft, baseVersion: baseVersionRef.current },
+                    {
+                      onSuccess: (version) => {
+                        baseVersionRef.current = version;
+                        setHasUnsavedChanges(false);
+                      },
+                    },
+                  )
+                }
               >
                 {t("common.save")}
               </Button>
               {readOnly && <p className="text-xs text-ink-2">{t("locked.needWrite")}</p>}
-              {save.isError && (
+              {save.isError && !isConflict && (
                 <p role="alert" className="text-sm text-danger">
                   {t("actions.saveFailed")}
                 </p>
               )}
+              {isConflict && <SaveConflictNotice onReload={() => void reloadLatest()} />}
             </div>
           ),
         }}

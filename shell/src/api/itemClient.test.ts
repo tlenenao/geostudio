@@ -4463,3 +4463,47 @@ test("copilotTurn accepts an undefined itemId and a non-AppConfig currentConfig"
   expect(body.surface).toBe("sql_lab");
   expect(body.currentConfig).toEqual({ sql: "SELECT 1" });
 });
+
+test("REV-271 : getMapConfig expose la version lue ; saveMapConfig l'envoie en If-Match, ne la persiste pas et rend la nouvelle ; 412 → ApiError", async () => {
+  vi.unstubAllGlobals(); // le test précédent laisse `fetch` stubbé
+  let ifMatch: string | null = "unset";
+  let body: any;
+  server.use(
+    http.get("https://core.test/v1/configs/by-item/77", () =>
+      HttpResponse.json({
+        id: "cfg-1",
+        itemId: "77",
+        kind: "map",
+        version: 3,
+        config: {
+          kind: "map",
+          map: { basemap: { style: "s" }, view: { center: [0, 0], zoom: 3 }, layers: [] },
+        },
+      }),
+    ),
+    http.put("https://core.test/v1/configs/by-item/77", async ({ request }) => {
+      ifMatch = request.headers.get("If-Match");
+      body = await request.json();
+      return HttpResponse.json({ id: "cfg-1", itemId: "77", kind: "map", version: 4 });
+    }),
+  );
+  const client = makeClient();
+  const loaded = await client.getMapConfig("77");
+  expect(loaded.baseVersion).toBe(3);
+  expect(await client.saveMapConfig("77", loaded)).toBe(4);
+  expect(ifMatch).toBe('"3"');
+  expect("baseVersion" in body).toBe(false);
+  expect("baseVersion" in body.map).toBe(false);
+  // client sans version connue : pas d'en-tête (dernier écrivain gagne)
+  await client.saveMapConfig("77", { ...loaded, baseVersion: undefined });
+  expect(ifMatch).toBeNull();
+  server.use(
+    http.put("https://core.test/v1/configs/by-item/77", () =>
+      HttpResponse.json(
+        { title: "Precondition Failed", detail: "stale version: the config is now at version 5" },
+        { status: 412 },
+      ),
+    ),
+  );
+  await expect(client.saveMapConfig("77", loaded)).rejects.toMatchObject({ status: 412 });
+});

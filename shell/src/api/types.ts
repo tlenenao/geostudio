@@ -355,6 +355,10 @@ export type MapConfig = {
   layers: MapLayer[];
   printLayout?: PrintLayoutConfig | null;
   terrain?: MapTerrainConfig | null;
+  // Version serveur lue au chargement (REV-271) : renvoyée en `If-Match` à
+  // l'enregistrement pour que le cœur refuse (412) une écriture périmée.
+  // Jamais persistée dans le corps de la config.
+  baseVersion?: number;
 };
 
 export type LayerSource = {
@@ -575,7 +579,7 @@ export interface ItemClient {
   setCollectionSharing(id: string, sharing: Sharing): Promise<void>;
   createMapItem(input: { title: string; owner: string }): Promise<Item>;
   getMapConfig(pk: string): Promise<MapConfig>;
-  saveMapConfig(pk: string, config: MapConfig): Promise<void>;
+  saveMapConfig(pk: string, config: MapConfig): Promise<number | undefined>;
   // Historique de versions (SP-23, chantier 4.18). Clés par `pk` d'item et
   // non par `configId` : aucun éditeur du shell ne connaît son configId.
   listConfigRevisions(pk: string): Promise<ConfigRevisionInfo[]>;

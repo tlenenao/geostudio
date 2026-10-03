@@ -279,6 +279,50 @@ test("surfaces a save failure", async () => {
   expect(await screen.findByText(/échec de l'enregistrement/i)).toBeInTheDocument();
 });
 
+test("REV-271 : envoie la version lue à l'enregistrement puis celle que le cœur renvoie", async () => {
+  const saveMapConfig = vi.fn().mockResolvedValueOnce(4).mockResolvedValueOnce(5);
+  renderEditor({
+    getMapConfig: vi
+      .fn()
+      .mockResolvedValueOnce({ ...config, baseVersion: 3 })
+      .mockResolvedValueOnce({ ...config, baseVersion: 4 })
+      .mockResolvedValue({ ...config, baseVersion: 5 }),
+    saveMapConfig,
+    listLayerSources: vi.fn().mockResolvedValue([]),
+  });
+  await screen.findAllByText("Couche A");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveMapConfig).toHaveBeenCalledTimes(1));
+  expect(saveMapConfig.mock.calls[0][1].baseVersion).toBe(3);
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveMapConfig).toHaveBeenCalledTimes(2));
+  expect(saveMapConfig.mock.calls[1][1].baseVersion).toBe(4);
+});
+
+test("REV-271 : un 412 affiche le conflit ; « Recharger » reprend la dernière version du cœur", async () => {
+  const saveMapConfig = vi
+    .fn()
+    .mockRejectedValueOnce(new ApiError(412, { detail: "stale" }))
+    .mockResolvedValue(8);
+  renderEditor({
+    getMapConfig: vi
+      .fn()
+      .mockResolvedValueOnce({ ...config, baseVersion: 1 })
+      .mockResolvedValue({ ...config, baseVersion: 7 }),
+    saveMapConfig,
+    listLayerSources: vi.fn().mockResolvedValue([]),
+  });
+  await screen.findAllByText("Couche A");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await screen.findByText(t("common.saveConflict"));
+  expect(screen.queryByText(/échec de l'enregistrement/i)).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: t("common.saveConflictReload") }));
+  await waitFor(() => expect(screen.queryByText(t("common.saveConflict"))).toBeNull());
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveMapConfig).toHaveBeenCalledTimes(2));
+  expect(saveMapConfig.mock.calls[1][1].baseVersion).toBe(7);
+});
+
 test("exportRender=1 hides the builder chrome (no save button/layer removal controls) and marks the page export-ready once the map idles", async () => {
   renderEditor(
     {
