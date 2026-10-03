@@ -97,6 +97,11 @@ describe("createDesktopItemClient", () => {
     await expect(client.listPipelineWebhookTokens("any-pk")).rejects.toThrow();
   });
 
+  it("getInstanceInfo declares ETL enabled (PipelineBuilderPage waits for it before showing the palette)", async () => {
+    const client = createDesktopItemClient(CONNECTION);
+    await expect(client.getInstanceInfo()).resolves.toMatchObject({ etlEnabled: true });
+  });
+
   it("a method with no desktop meaning at all rejects with a clear message", async () => {
     const client = createDesktopItemClient(CONNECTION);
     await expect(client.listCollections()).rejects.toThrow(/desktop/i);
