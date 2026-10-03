@@ -67,7 +67,7 @@ def _to_response(icon: MapIcon) -> MapIconOut:
     )
 
 
-async def _read_bounded(file: UploadFile) -> bytes:
+def _read_bounded(file: UploadFile) -> bytes:
     """Lit le corps PAR MORCEAUX et abandonne dès le dépassement du plafond.
 
     Jamais `await file.read()` sans argument : le plafond doit être appliqué
@@ -85,7 +85,7 @@ async def _read_bounded(file: UploadFile) -> bytes:
     chunks: list[bytes] = []
     total = 0
     while True:
-        chunk = await file.read(UPLOAD_CHUNK_BYTES)
+        chunk = file.file.read(UPLOAD_CHUNK_BYTES)
         if not chunk:
             break
         total += len(chunk)
@@ -99,7 +99,7 @@ async def _read_bounded(file: UploadFile) -> bytes:
 
 
 @router.post("/map-icons", status_code=201)
-async def create_map_icon(
+def create_map_icon(
     file: UploadFile = File(...),
     title: str = Form(...),
     category: str = Form(...),
@@ -120,7 +120,7 @@ async def create_map_icon(
     if declared not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(status_code=422, detail="unsupported content type")
 
-    raw = await _read_bounded(file)
+    raw = _read_bounded(file)
 
     # Le contentType DÉCLARÉ dans l'en-tête de partie ne prouve rien sur les
     # octets : on tranche sur leur contenu réel.

@@ -28,6 +28,7 @@ from app.harvest import routes as harvest_routes
 from app.harvest.egress import EgressBlockedError
 from app.items import repository as items_repo
 from app.mcp.tools.identity import (
+    McpToolError,
     require_access,
     require_collection_read,
     resolve_actor,
@@ -127,7 +128,11 @@ def register(server: FastMCP, session_factory) -> None:
                             masked_fields=masked_fields,
                         )
                     except UnknownAggregateField as exc:
-                        raise ValueError(f"{exc.field}: {exc.message}") from exc
+                        raise McpToolError(
+                            422,
+                            f"{exc.field}: {exc.message}",
+                            [{"field": exc.field, "code": "unknown_field", "message": exc.message}],
+                        ) from exc
                 finally:
                     conn.close()
                 return {"categoryKey": category_key, "rows": rows}
@@ -155,7 +160,11 @@ def register(server: FastMCP, session_factory) -> None:
                     bbox=query.bbox,
                 )
             except live_query.ArcgisQueryError as exc:
-                raise ValueError(f"{exc.field}: {exc.message}") from exc
+                raise McpToolError(
+                    422,
+                    f"{exc.field}: {exc.message}",
+                    [{"field": exc.field, "code": "unknown_field", "message": exc.message}],
+                ) from exc
             client = harvest_routes.get_arcgis_http_client()
             try:
                 raw = live_query.fetch_query(client, external_url, params)

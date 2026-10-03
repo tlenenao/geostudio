@@ -17,6 +17,10 @@ from app.copilot.egress import build_guarded_async_client
 LLM_CALL_TIMEOUT_SECONDS = 30.0
 
 
+class LLMNotConfiguredError(ValueError):
+    """CORE_LLM_PROVIDER défini mais vide (valeur du compose par défaut)."""
+
+
 @dataclass
 class ToolCall:
     id: str
@@ -111,6 +115,11 @@ class OpenAICompatibleLLMProvider:
 
 def get_llm_provider() -> LLMProvider:
     kind = os.environ.get("CORE_LLM_PROVIDER")
+    if kind == "":
+        raise LLMNotConfiguredError(
+            "fournisseur LLM non configuré : un administrateur doit définir "
+            "CORE_LLM_PROVIDER (ex. openai) puis redémarrer le cœur"
+        )
     if kind is None or kind == "fake":
         return FakeLLMProvider()
     if kind == "openai":

@@ -25,6 +25,18 @@ from app.users.models import User
 from app.users.repository import get_or_create_user
 
 
+class McpToolError(ValueError):
+    """Erreur d'outil portant le statut HTTP équivalent de la route REST
+    (c08-006) : le texte rendu à l'agent est préfixé `[statut]`, et `errors`
+    garde la liste structurée {field, code, message} d'un 422."""
+
+    def __init__(self, status: int, detail: str, errors: list[dict] | None = None):
+        super().__init__(f"[{status}] {detail}")
+        self.status = status
+        self.detail = detail
+        self.errors = errors or []
+
+
 def without_thumbnail_url(item: ItemRead) -> ItemRead:
     """SP-42, correctif 2 (F-coeur-federation-08) : ItemRead.thumbnailUrl
     pointe vers GET /items/{id}/thumbnail, gardée par l'audience OIDC du
@@ -99,7 +111,11 @@ def http_exception_to_value_error(exc: HTTPException) -> ValueError:
     HTTPException — un tool MCP n'a pas de canal de statut HTTP, donc chaque
     site d'appel la retraduit en ValueError (message identique), même
     patron que les validateurs par kind déjà existants avant SP-43."""
-    return ValueError(exc.detail)
+    return McpToolError(
+        exc.status_code,
+        str(exc.detail),
+        getattr(exc, "errors", None),  # ValidationHTTPException
+    )
 
 
 def register(server: FastMCP, session_factory) -> None:

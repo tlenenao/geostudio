@@ -80,6 +80,8 @@ class McpLoopbackSession:
         headers = {
             "Accept": "application/json, text/event-stream",
             "Authorization": f"Bearer {self._mcp_token}",
+            # étiquette d'audit : distingue le copilote d'un agent externe (j11-011)
+            "X-GeoStudio-Origin": "copilot",
         }
         if self._session_id:
             headers["mcp-session-id"] = self._session_id

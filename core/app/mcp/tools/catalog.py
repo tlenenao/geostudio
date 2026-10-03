@@ -6,10 +6,12 @@ GET /items/{id} (première couche de service partagée entre route REST et
 tool MCP de ce dépôt, avec app.items.service.get_sharing_service/
 set_sharing_service et app.configs.service.create_config_service)."""
 
+from typing import Annotated
+
 from fastapi import HTTPException
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.fastmcp import Context, FastMCP
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.collections import repository as collections_repo
 from app.collections.introspection import (
@@ -33,6 +35,12 @@ from app.mcp.tools.identity import (
 )
 from app.roles.guards import has_privilege
 from app.roles.privileges import Privilege
+
+# Mêmes bornes que les routes REST (Query ge=1 / ge=0) : sans elles, page=0 ou
+# un OFFSET négatif atteignait PostgreSQL (c08-003, j11-002).
+Page = Annotated[int, Field(ge=1)]
+Limit = Annotated[int, Field(ge=1)]
+Offset = Annotated[int, Field(ge=0)]
 
 
 class CollectionSearchResult(BaseModel):
@@ -58,8 +66,12 @@ def register(server: FastMCP, session_factory) -> None:
         q: str | None = None,
         type: str | None = None,
         scope: str = "all",
-        page: int = 1,
-        pageSize: int = 12,
+        page: Page = 1,
+        pageSize: Page = 12,
+        sort: str | None = None,
+        owner: str | None = None,
+        keyword: list[str] | None = None,
+        bbox: str | None = None,
     ) -> ItemPage:
         """List catalog items — mirrors GET /items. scope: all|mine|shared|public."""
         access_token = get_access_token()
@@ -75,6 +87,10 @@ def register(server: FastMCP, session_factory) -> None:
                     scope=scope,
                     page=page,
                     page_size=pageSize,
+                    sort=sort,
+                    owner=owner,
+                    keywords=keyword,
+                    bbox=_parse_bbox_tuple(bbox) if bbox else None,
                 )
             )
 
@@ -84,8 +100,12 @@ def register(server: FastMCP, session_factory) -> None:
         q: str | None = None,
         type: str | None = None,
         scope: str = "all",
-        page: int = 1,
-        pageSize: int = 12,
+        page: Page = 1,
+        pageSize: Page = 12,
+        sort: str | None = None,
+        owner: str | None = None,
+        keyword: list[str] | None = None,
+        bbox: str | None = None,
     ) -> ItemPage:
         """Search the catalog (hybrid trigram + vector ranking on q) — items
         only, not collections. Same permissions/parameters as list_items;
@@ -104,12 +124,16 @@ def register(server: FastMCP, session_factory) -> None:
                     scope=scope,
                     page=page,
                     page_size=pageSize,
+                    sort=sort,
+                    owner=owner,
+                    keywords=keyword,
+                    bbox=_parse_bbox_tuple(bbox) if bbox else None,
                 )
             )
 
     @server.tool()
     async def search_collections(
-        ctx: Context, q: str | None = None, page: int = 1, pageSize: int = 12
+        ctx: Context, q: str | None = None, page: Page = 1, pageSize: Page = 12
     ) -> list[CollectionSearchResult]:
         """Search collections (hybrid trigram + vector ranking on q, same
         mechanism as search_catalog for items) — collections were never
@@ -139,8 +163,8 @@ def register(server: FastMCP, session_factory) -> None:
         bbox: str | None = None,
         geomIntersects: dict | None = None,
         filters: dict[str, str] | None = None,
-        limit: int = 100,
-        offset: int = 0,
+        limit: Limit = 100,
+        offset: Offset = 0,
     ) -> dict:
         """Read features from a collection — mirrors GET
         /collections/{id}/items (bbox, attribute filters, pagination), same
