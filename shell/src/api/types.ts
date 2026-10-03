@@ -628,7 +628,7 @@ export interface ItemClient {
   getReportRuns(pk: string, params?: PageParams): Promise<ReportRunStatus[]>;
   listFeatureLayers(params?: { q?: string }): Promise<FeatureLayerSource[]>;
   getDatasetConfig(pk: string): Promise<DatasetConfig>;
-  saveDatasetConfig(pk: string, config: DatasetConfig): Promise<void>;
+  saveDatasetConfig(pk: string, config: DatasetConfig): Promise<number | undefined>;
   getAppConfig(pk: string, mode?: "runtime"): Promise<AppConfig>;
   getPublicAppConfig(pk: string): Promise<AppConfig>;
   // Retourne la nouvelle version serveur (absente si le cœur ne la renvoie pas).
@@ -868,7 +868,7 @@ export type CrossFilterLink =
   | { targetDatasetId: string; mode: "attribute"; sourceField: string; targetField: string }
   | { targetDatasetId: string; mode: "spatial"; precision: "bbox" | "exact" };
 
-export type DatasetConfig =
+export type DatasetConfig = (
   | {
       source: "collection";
       collectionId: string;
@@ -886,7 +886,11 @@ export type DatasetConfig =
       reactsToExtent?: boolean;
       crossFilterLinks?: CrossFilterLink[];
       sourcePipelineId?: string | null;
-    };
+    }
+) & {
+  // Version serveur lue au chargement (REV-271) — jamais persistée.
+  baseVersion?: number;
+};
 
 export type FeatureLayerSource = { id: string; title: string };
 

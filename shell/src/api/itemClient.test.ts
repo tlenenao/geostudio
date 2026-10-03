@@ -4507,3 +4507,49 @@ test("REV-271 : getMapConfig expose la version lue ; saveMapConfig l'envoie en I
   );
   await expect(client.saveMapConfig("77", loaded)).rejects.toMatchObject({ status: 412 });
 });
+
+test("REV-271 : getDatasetConfig expose la version, saveDatasetConfig l'envoie en If-Match et la met en cache ; rollbackConfig invalide le cache", async () => {
+  vi.unstubAllGlobals();
+  let reads = 0;
+  let ifMatch: string | null = "unset";
+  server.use(
+    http.get("https://core.test/v1/configs/by-item/ds-71", () => {
+      reads += 1;
+      return HttpResponse.json({
+        id: "cfg-ds71",
+        itemId: "ds-71",
+        kind: "dataset",
+        version: reads,
+        config: { kind: "dataset", dataset: { source: "collection", collectionId: "parcs" } },
+      });
+    }),
+    http.put("https://core.test/v1/configs/by-item/ds-71", async ({ request }) => {
+      ifMatch = request.headers.get("If-Match");
+      return HttpResponse.json({ id: "cfg-ds71", itemId: "ds-71", kind: "dataset", version: 10 });
+    }),
+    http.post("https://core.test/v1/configs/cfg-ds71/rollback", () =>
+      HttpResponse.json({ id: "cfg-ds71", itemId: "ds-71", kind: "dataset", version: 11 }),
+    ),
+  );
+  const client = makeClient();
+  const loaded = await client.getDatasetConfig("ds-71");
+  expect(loaded.baseVersion).toBe(1);
+  expect(await client.saveDatasetConfig("ds-71", loaded)).toBe(10);
+  expect(ifMatch).toBe('"1"');
+  // la lecture suivante (cache) voit la version écrite, pas l'ancienne
+  expect((await client.getDatasetConfig("ds-71")).baseVersion).toBe(10);
+  expect(reads).toBe(1);
+  // rollbackConfig relit by-item (reads=2) puis invalide le cache dataset
+  await client.rollbackConfig("ds-71", 1);
+  expect((await client.getDatasetConfig("ds-71")).baseVersion).toBe(3);
+  // le corps PUT ne contient jamais baseVersion
+  let body: any;
+  server.use(
+    http.put("https://core.test/v1/configs/by-item/ds-71", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ version: 12 });
+    }),
+  );
+  await client.saveDatasetConfig("ds-71", loaded);
+  expect("baseVersion" in body.dataset).toBe(false);
+});

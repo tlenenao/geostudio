@@ -229,6 +229,7 @@ export type ResolvedDataset = {
   reactsToExtent: boolean;
   crossFilterLinks: CrossFilterLink[];
   sourcePipelineId: string | null;
+  version?: number;
 };
 
 export type ItemClientBase = {
@@ -428,6 +429,7 @@ export function createBase(opts: {
     const expiresAt = expiryByPk.get(pk);
     if (cached && expiresAt !== undefined && Date.now() < expiresAt) return cached;
     const data = await request<{
+      version?: number;
       config?: {
         dataset?: {
           source: "collection" | "arcgis";
@@ -452,6 +454,7 @@ export function createBase(opts: {
       reactsToExtent: dataset.reactsToExtent ?? false,
       crossFilterLinks: dataset.crossFilterLinks ?? [],
       sourcePipelineId: dataset.sourcePipelineId ?? null,
+      version: data.version,
     };
     datasetCache.set(pk, resolved);
     expiryByPk.set(pk, Date.now() + DATASET_CACHE_TTL_MS);

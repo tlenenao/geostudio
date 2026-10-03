@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -22,6 +22,8 @@ import { QueryErrorState } from "../ui/kit/QueryErrorState";
 import { CrossFilterLinkEditor } from "../builder/CrossFilterLinkEditor";
 import { AlertRuleEditor } from "../builder/AlertRuleEditor";
 import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
+import { isConflictError } from "../api/ApiError";
+import { SaveConflictNotice } from "../builder/SaveConflictNotice";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { useDirtyGuard } from "../lib/useDirtyGuard";
 import { t } from "../i18n";
@@ -36,6 +38,8 @@ export function DatasetEditPage({ pk }: { pk: string }) {
   const client = useItemClient();
   const navigate = useNavigate();
   const [draft, setDraft] = useState<DatasetConfig | null>(null);
+  const baseVersionRef = useRef<number | undefined>(undefined);
+  const versionSeededRef = useRef(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportingFormat, setExportingFormat] = useState<string | null>(null);
   // SP-B6d : même patron que MapEditorPage (Tâche 27) — `updateDraft`
@@ -50,7 +54,14 @@ export function DatasetEditPage({ pk }: { pk: string }) {
   const { ConfirmLeaveDialog } = useDirtyGuard(hasUnsavedChanges);
 
   useEffect(() => {
-    if (configQuery.data) setDraft((d) => d ?? configQuery.data);
+    if (!configQuery.data) return;
+    setDraft((d) => d ?? configQuery.data);
+    // Le brouillon n'est seedé qu'une fois : la version de base est celle du
+    // chargement initial, jamais celle d'un refetch (cf. AppBuilderPage).
+    if (!versionSeededRef.current) {
+      versionSeededRef.current = true;
+      baseVersionRef.current = configQuery.data.baseVersion;
+    }
   }, [configQuery.data]);
 
   const draftCollectionId = draft && draft.source === "collection" ? draft.collectionId : undefined;
@@ -80,6 +91,15 @@ export function DatasetEditPage({ pk }: { pk: string }) {
   // privilège de domaine (PUT /configs) — ce correctif ne ferme donc pas
   // tous les 403 possibles.
   const readOnly = !hasPermission(item, "write");
+  const isConflict = isConflictError(save.error);
+  async function reloadLatest() {
+    client.invalidateDatasetCache(pk); // sinon getDatasetConfig relit le cache (5 min)
+    const latest = await client.getDatasetConfig(pk);
+    setDraft(latest);
+    baseVersionRef.current = latest.baseVersion;
+    setHasUnsavedChanges(false);
+    save.reset();
+  }
 
   function setColumn(name: string, patch: DatasetColumnMeta) {
     updateDraft((d) =>
@@ -333,7 +353,11 @@ export function DatasetEditPage({ pk }: { pk: string }) {
               <ConfigHistoryPanel
                 pk={pk}
                 currentVersion={null}
-                onRestored={async () => updateDraft(await client.getDatasetConfig(pk))}
+                onRestored={async () => {
+                  const restored = await client.getDatasetConfig(pk);
+                  updateDraft(restored);
+                  baseVersionRef.current = restored.baseVersion;
+                }}
               />
               {draft.sourcePipelineId && (
                 <Button
@@ -350,16 +374,27 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                 size="sm"
                 className="w-fit"
                 disabled={save.isPending || readOnly}
-                onClick={() => save.mutate(draft, { onSuccess: () => setHasUnsavedChanges(false) })}
+                onClick={() =>
+                  save.mutate(
+                    { ...draft, baseVersion: baseVersionRef.current },
+                    {
+                      onSuccess: (version) => {
+                        baseVersionRef.current = version;
+                        setHasUnsavedChanges(false);
+                      },
+                    },
+                  )
+                }
               >
                 {t("datasetEdit.saveColumns")}
               </Button>
               {readOnly && <p className="text-xs text-ink-2">{t("locked.needWrite")}</p>}
-              {save.isError && (
+              {save.isError && !isConflict && (
                 <p role="alert" className="text-sm text-danger">
                   {t("actions.saveFailed")}
                 </p>
               )}
+              {isConflict && <SaveConflictNotice onReload={() => void reloadLatest()} />}
             </div>
           ),
         }}
