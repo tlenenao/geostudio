@@ -126,6 +126,8 @@ def cancel_pipeline_run_route(
     run = pipelines_repo.get_run(session, tenant_id=user.tenant_id, run_id=run_id)
     if run is None or run.pipeline_item_id != item_id:
         raise HTTPException(status_code=404, detail="run not found")
+    if run.status in ("cancel_requested", "cancelled"):
+        return _run_status(run)  # idempotent (REV-275 c) : déjà demandé, pas de nouvel audit
     if run.status not in ("queued", "running"):
         raise HTTPException(status_code=409, detail=f"run is {run.status}, cannot be cancelled")
     pipelines_repo.request_cancel(session, run)

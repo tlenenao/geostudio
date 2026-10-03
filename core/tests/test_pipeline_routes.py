@@ -754,6 +754,15 @@ def test_cancel_run_route_queued_then_conflict_when_terminal(monkeypatch):
     assert r.status_code == 200 and r.json()["status"] == "cancel_requested"
     with Session() as s:
         assert pipelines_repo.is_cancel_requested(s, run_id=running_id)
+    # REV-275 (c) : un 2e cancel sur cancelled / cancel_requested est idempotent.
+    again = client.post(f"/v1/pipelines/{item_id}/runs/{queued_id}/cancel")
+    assert again.status_code == 200 and again.json()["status"] == "cancelled"
+    again = client.post(f"/v1/pipelines/{item_id}/runs/{running_id}/cancel")
+    assert again.status_code == 200 and again.json()["status"] == "cancel_requested"
+    # Un run réellement terminé reste en 409.
+    with Session() as s:
+        pipelines_repo.mark_succeeded(s, run_id=queued_id, node_stats={})
+        s.commit()
     assert client.post(f"/v1/pipelines/{item_id}/runs/{queued_id}/cancel").status_code == 409
     assert client.post(f"/v1/pipelines/{item_id}/runs/nope/cancel").status_code == 404
 
