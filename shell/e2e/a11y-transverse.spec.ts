@@ -4,7 +4,7 @@
 // Version pérenne, sur mocks, des parcours `shell/e2e/journeys/t01*` (qui exigent
 // une stack réelle et ne tournent pas en CI).
 import { expect, test, type Page } from "@playwright/test";
-import { ADMIN_ME, ANALYST_ME, mockCore, mockMe } from "./mocks";
+import { ADMIN_ME, ANALYST_ME, READER_ME, mockCore, mockMe } from "./mocks";
 
 async function openCatalog(page: Page) {
   await mockCore(page);
@@ -251,4 +251,17 @@ test("t01-001 : une route publique (embed) porte un <main>", async ({ page }) =>
   );
   await page.goto("/embed/tok");
   await expect(page.locator("main")).toHaveCount(1);
+});
+
+test("t01b-015 : « Nouveau tileset 3D » masqué sans catalog.manage, visible avec", async ({
+  page,
+}) => {
+  await mockCore(page);
+  await mockMe(page, { ...READER_ME, capabilities: { tileset3dEnabled: true } });
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "Importer un fichier" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Nouveau tileset 3D" })).toHaveCount(0);
+  await mockMe(page, { ...ADMIN_ME, capabilities: { tileset3dEnabled: true } });
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Nouveau tileset 3D" })).toBeVisible();
 });
