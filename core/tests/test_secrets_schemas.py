@@ -130,3 +130,57 @@ def test_smtp_credentials_payload_round_trips():
     assert isinstance(restored, SmtpCredentialsPayload)
     assert restored.host == "smtp.example.test"
     assert restored.useTls is True
+
+
+from app.secrets.schemas import SecretUpdate  # noqa: E402
+
+_BLOB_BODIES = {
+    "s3_credentials": {
+        "awsAccessKeyId": "AKIA",
+        "awsSecretAccessKey": "x",
+        "bucketUrl": "s3://b/p",
+    },
+    "azure_blob_credentials": {"accountName": "a", "accountKey": "k", "bucketUrl": "az://c/p"},
+    "gcs_credentials": {"serviceAccountInfo": {"type": "service_account"}, "bucketUrl": "gs://b"},
+}
+
+
+@pytest.mark.parametrize("kind", sorted(_BLOB_BODIES))
+def test_blob_secret_round_trips_with_bucket_url(kind):
+    body = {"kind": kind, **_BLOB_BODIES[kind]}
+    created = SecretCreate.model_validate({"name": "x", "payload": body})
+    assert created.payload.bucketUrl == _BLOB_BODIES[kind]["bucketUrl"]
+
+
+@pytest.mark.parametrize("kind", sorted(_BLOB_BODIES))
+def test_blob_secret_creation_requires_bucket_url(kind):
+    body = {"kind": kind, **{k: v for k, v in _BLOB_BODIES[kind].items() if k != "bucketUrl"}}
+    with pytest.raises(ValidationError, match="bucketUrl"):
+        SecretCreate.model_validate({"name": "x", "payload": body})
+    with pytest.raises(ValidationError, match="bucketUrl"):
+        SecretUpdate.model_validate({"payload": body})
+
+
+@pytest.mark.parametrize("kind", sorted(_BLOB_BODIES))
+def test_legacy_blob_secret_without_bucket_url_still_decodes(kind):
+    # Un secret chiffré avant REV-197 doit rester lisible (l'exécution, elle, échoue
+    # avec un message explicite — cf. connector_runtime).
+    body = {"kind": kind, **{k: v for k, v in _BLOB_BODIES[kind].items() if k != "bucketUrl"}}
+    assert SECRET_PAYLOAD_ADAPTER.validate_python(body).bucketUrl is None
+
+
+@pytest.mark.parametrize(
+    "kind, bad",
+    [
+        ("s3_credentials", "az://b/p"),  # mauvais schéma pour le kind
+        ("s3_credentials", "s3://"),  # pas de bucket
+        ("s3_credentials", "s3://b/../other"),  # traversée
+        ("s3_credentials", "s3://b/p?x=1"),  # query
+        ("azure_blob_credentials", "s3://c"),
+        ("gcs_credentials", "gs:///p"),
+    ],
+)
+def test_blob_bucket_url_format_is_validated(kind, bad):
+    body = {"kind": kind, **_BLOB_BODIES[kind], "bucketUrl": bad}
+    with pytest.raises(ValidationError):
+        SecretCreate.model_validate({"name": "x", "payload": body})

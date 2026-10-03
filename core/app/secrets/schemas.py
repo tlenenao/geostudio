@@ -5,8 +5,9 @@ ajouter une variante Pydantic, aucune migration requise pour les lignes
 existantes."""
 
 from typing import Annotated, Any, Literal
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, Field, TypeAdapter
+from pydantic import BaseModel, Field, TypeAdapter, field_validator
 
 NonEmptyStr = Annotated[str, Field(min_length=1)]
 
@@ -192,6 +193,34 @@ class OracleDsnPayload(BaseModel):
     dsn: NonEmptyStr
 
 
+_BLOB_KIND_SCHEME = {
+    "s3_credentials": "s3",
+    "azure_blob_credentials": "az",
+    "gcs_credentials": "gs",
+}
+
+
+def _check_bucket_url(value: str | None, scheme: str) -> str | None:
+    """REV-197 : `bucketUrl` = bucket (+ préfixe optionnel) auquel le secret est
+    lié. `None` toléré UNIQUEMENT pour décoder un secret antérieur à REV-197 ;
+    l'écriture l'exige (SecretCreate/SecretUpdate)."""
+    if value is None:
+        return value
+    parts = urlsplit(value)
+    if (
+        parts.scheme != scheme
+        or not parts.netloc
+        or parts.query
+        or parts.fragment
+        or ".." in parts.path.split("/")
+    ):
+        raise ValueError(
+            f"bucketUrl must look like '{scheme}://<bucket>[/<prefix>]' "
+            "(no query, fragment or '..' segment)"
+        )
+    return value
+
+
 class S3CredentialsPayload(BaseModel):
     """Identifiants d'accès à un bucket S3 (ou compatible S3 — MinIO, etc. via
     `endpointUrl`) pour `reader.connector.blob` (Task 15, Vague 2 §6.1).
@@ -203,12 +232,22 @@ class S3CredentialsPayload(BaseModel):
     construit un `AwsCredentials(...)` directement à partir de ces 3 champs
     et le passe tel quel à `dlt.sources.filesystem.filesystem(credentials=)` —
     c'est CETTE classe, jamais ce payload, qui sait produire les kwargs réels
-    de s3fs (`.to_s3fs_credentials()` → `key`/`secret`/`endpoint_url`)."""
+    de s3fs (`.to_s3fs_credentials()` → `key`/`secret`/`endpoint_url`).
+
+    `bucketUrl` lie le secret à un bucket/préfixe : `params.path` d'un
+    `reader.connector.blob` doit en porter le préfixe (REV-197)."""
 
     kind: Literal["s3_credentials"] = "s3_credentials"
     awsAccessKeyId: NonEmptyStr
     awsSecretAccessKey: NonEmptyStr
     endpointUrl: str | None = None
+
+    bucketUrl: str | None = None  # bucket/préfixe auquel le secret est lié (REV-197)
+
+    @field_validator("bucketUrl")
+    @classmethod
+    def _bucket_url(cls, v: str | None) -> str | None:
+        return _check_bucket_url(v, "s3")
 
 
 class AzureBlobCredentialsPayload(BaseModel):
@@ -221,11 +260,21 @@ class AzureBlobCredentialsPayload(BaseModel):
     introspection du paquet `dlt` installé) : ce module construit un
     `AzureCredentialsWithoutDefaults(...)` à partir de ces 2 champs — c'est
     cette classe qui produit ensuite les kwargs adlfs réels
-    (`.to_adlfs_credentials()` → `account_name`/`account_key`)."""
+    (`.to_adlfs_credentials()` → `account_name`/`account_key`).
+
+    `bucketUrl` lie le secret à un bucket/préfixe : `params.path` d'un
+    `reader.connector.blob` doit en porter le préfixe (REV-197)."""
 
     kind: Literal["azure_blob_credentials"] = "azure_blob_credentials"
     accountName: NonEmptyStr
     accountKey: NonEmptyStr
+
+    bucketUrl: str | None = None  # bucket/préfixe auquel le secret est lié (REV-197)
+
+    @field_validator("bucketUrl")
+    @classmethod
+    def _bucket_url(cls, v: str | None) -> str | None:
+        return _check_bucket_url(v, "az")
 
 
 class GcsCredentialsPayload(BaseModel):
@@ -239,10 +288,20 @@ class GcsCredentialsPayload(BaseModel):
     non repris par le dataclass (`client_id`, `auth_provider_x509_cert_url`,
     `universe_domain`, etc., piège CLAUDE.md n°3 : pas supposé, testé), donc
     un JSON de compte de service copié-collé tel quel depuis la console GCP
-    fonctionne sans filtrage manuel."""
+    fonctionne sans filtrage manuel.
+
+    `bucketUrl` lie le secret à un bucket/préfixe : `params.path` d'un
+    `reader.connector.blob` doit en porter le préfixe (REV-197)."""
 
     kind: Literal["gcs_credentials"] = "gcs_credentials"
     serviceAccountInfo: dict[str, Any]
+
+    bucketUrl: str | None = None  # bucket/préfixe auquel le secret est lié (REV-197)
+
+    @field_validator("bucketUrl")
+    @classmethod
+    def _bucket_url(cls, v: str | None) -> str | None:
+        return _check_bucket_url(v, "gs")
 
 
 SecretPayload = Annotated[
@@ -279,10 +338,29 @@ SECRET_PAYLOAD_ADAPTER: TypeAdapter[
 ] = TypeAdapter(SecretPayload)
 
 
+def _require_bucket_url(payload: Any) -> Any:
+    if payload.kind in _BLOB_KIND_SCHEME and payload.bucketUrl is None:
+        raise ValueError(
+            "bucketUrl is required for blob secrets "
+            f"(e.g. '{_BLOB_KIND_SCHEME[payload.kind]}://my-bucket/prefix')"
+        )
+    return payload
+
+
 class SecretCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     payload: SecretPayload
 
+    @field_validator("payload")
+    @classmethod
+    def _bucket_scoped(cls, v: Any) -> Any:
+        return _require_bucket_url(v)
+
 
 class SecretUpdate(BaseModel):
     payload: SecretPayload
+
+    @field_validator("payload")
+    @classmethod
+    def _bucket_scoped(cls, v: Any) -> Any:
+        return _require_bucket_url(v)
