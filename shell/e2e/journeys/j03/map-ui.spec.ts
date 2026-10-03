@@ -120,19 +120,18 @@ test.describe("j03 éditeur de carte — symbologie, popups, terrain", () => {
     await expect(page.getByLabel("Activer le terrain 3D")).toBeVisible();
   });
 
-  bug(
-    "j03-016 : l'éditeur de carte tient dans la fenêtre (pas de défilement de page)",
-    async ({ page }) => {
-      // Défaut j03-016 : à 1400x900 la page défile (scrollHeight ≈ 1619) — la colonne « Couches » (liste
-      // de toutes les collections + formulaires d'ajout) étire tout l'éditeur, la carte fait ~1585 px de haut.
-      await openMap(page, seed.pointsItem);
-      const { scrollHeight, innerHeight } = await page.evaluate(() => ({
-        scrollHeight: document.scrollingElement!.scrollHeight,
-        innerHeight: window.innerHeight,
-      }));
-      expect(scrollHeight).toBeLessThanOrEqual(innerHeight + 2);
-    },
-  );
+  test("j03-016 : l'éditeur de carte tient dans la fenêtre (pas de défilement de page)", async ({
+    page,
+  }) => {
+    // Défaut j03-016 : à 1400x900 la page défile (scrollHeight ≈ 1619) — la colonne « Couches » (liste
+    // de toutes les collections + formulaires d'ajout) étire tout l'éditeur, la carte fait ~1585 px de haut.
+    await openMap(page, seed.pointsItem);
+    const { scrollHeight, innerHeight } = await page.evaluate(() => ({
+      scrollHeight: document.scrollingElement!.scrollHeight,
+      innerHeight: window.innerHeight,
+    }));
+    expect(scrollHeight).toBeLessThanOrEqual(innerHeight + 2);
+  });
 
   test("j03-013 : sur une collection privée, « Champ couleur » propose les champs de la couche importée", async ({
     page,

@@ -134,7 +134,7 @@ test.describe("j02 lecteur — catalogue, fiches, éditeurs", () => {
   });
 
   // j02-009 : le canevas de la carte prend la hauteur du panneau de gauche, pas celle de l'écran.
-  bug("j02-009 : le canevas de la carte tient dans la fenêtre", async ({ page }) => {
+  test("j02-009 : le canevas de la carte tient dans la fenêtre", async ({ page }) => {
     const s = await getSeed();
     await page.setViewportSize({ width: 1280, height: 720 });
     await asReader(page);

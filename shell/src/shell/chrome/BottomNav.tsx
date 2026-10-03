@@ -30,8 +30,8 @@ export function BottomNav({ profile }: { profile: Profile }) {
             aria-current={isActive ? "page" : undefined}
             className={
               isActive
-                ? "flex flex-1 flex-col items-center border-t-2 border-accent py-2 text-xs font-semibold text-ink"
-                : "flex flex-1 flex-col items-center py-2 text-xs text-ink-2"
+                ? "flex min-h-6 flex-1 flex-col items-center justify-center border-t-2 border-accent py-2 text-xs font-semibold text-ink pointer-coarse:min-h-11"
+                : "flex min-h-6 flex-1 flex-col items-center justify-center py-2 text-xs text-ink-2 pointer-coarse:min-h-11"
             }
           >
             {t(domain.labelKey)}
@@ -44,7 +44,7 @@ export function BottomNav({ profile }: { profile: Profile }) {
         trigger={
           <button
             type="button"
-            className="flex flex-1 flex-col items-center py-2 text-xs text-ink-2"
+            className="flex min-h-6 flex-1 flex-col items-center justify-center py-2 text-xs text-ink-2 pointer-coarse:min-h-11"
           >
             {t("bottomNav.more")}
           </button>
@@ -62,7 +62,7 @@ export function BottomNav({ profile }: { profile: Profile }) {
                 key={domain.id}
                 to={path}
                 aria-current={isActive ? "page" : undefined}
-                className="px-2 py-1 text-sm"
+                className="px-2 py-1 text-sm pointer-coarse:flex pointer-coarse:min-h-11 pointer-coarse:items-center"
               >
                 {t(domain.labelKey)}
               </Link>

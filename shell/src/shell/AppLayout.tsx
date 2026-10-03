@@ -66,8 +66,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     },
   };
 
+  // P31.03 : hauteur bornée à la fenêtre (h-dvh, pas min-h-screen) — c'est `main`
+  // qui défile, TopBar/BottomNav/StatusBar restent ancrés et la carte ne dépasse
+  // plus l'écran. `min-h-0` sur main : sans lui un flex-item ne descend pas sous
+  // son contenu.
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex h-dvh flex-col bg-background">
       {/* P33.05 : lien d'évitement, premier arrêt de tabulation. */}
       <a
         href="#main-content"
@@ -85,7 +89,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <main
         id="main-content"
         tabIndex={-1}
-        className="focus:outline-none flex flex-1 flex-col overflow-y-auto p-6"
+        className="focus:outline-none flex min-h-0 flex-1 flex-col overflow-y-auto p-6"
       >
         {children}
       </main>

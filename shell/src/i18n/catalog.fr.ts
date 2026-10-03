@@ -183,6 +183,7 @@ export const fr = {
   "commandPalette.searchAria": "Rechercher une action",
   "commandPalette.newItemAction": "Nouvel élément",
   "commandPalette.triggerLabel": "Rechercher",
+  "topbar.actions": "Actions",
 
   // Motif partagé : bouton générique d'effacement d'un filtre/champ.
   "common.clear": "Effacer",
@@ -2017,6 +2018,8 @@ export const fr = {
   "mapMeasure.textLayerUnsupportedWarning":
     'MapMeasureSketchToolbar: texte de croquis non rendu sur la carte — le style du fond de carte ne déclare pas de "glyphs" (text-field l\'exige). Les formes et les mesures restent affichées.',
   "mapMeasure.textPromptMessage": "Texte du marqueur :",
+  "mapMeasure.textConfirmButton": "Ajouter",
+  "mapMeasure.textCancelButton": "Annuler",
   "mapMeasure.sketchColorAria": "Couleur du croquis",
   "mapMeasure.measureButton": "Mesurer",
   "mapMeasure.areaButton": "Surface",
