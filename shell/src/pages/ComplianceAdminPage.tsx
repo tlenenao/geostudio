@@ -42,7 +42,6 @@ function EraseUserSection() {
       <label className="flex flex-col gap-1 text-sm text-ink">
         {t("compliance.userIdLabel")}
         <Input
-          aria-label={t("compliance.userIdAria")}
           value={userId}
           onChange={(e) => {
             setUserId(e.target.value);
@@ -108,11 +107,7 @@ function PurgeTenantSection() {
         {t("compliance.confirmSlugBefore")}
         <code>{tenantSlug || "…"}</code>
         {t("compliance.confirmSlugAfter")}
-        <Input
-          aria-label={t("compliance.confirmSlugAria")}
-          value={confirmSlug}
-          onChange={(e) => setConfirmSlug(e.target.value)}
-        />
+        <Input value={confirmSlug} onChange={(e) => setConfirmSlug(e.target.value)} />
       </label>
       <Button
         size="sm"

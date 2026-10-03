@@ -74,7 +74,7 @@ describe("AppExportPanel", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: /exporter/i }));
     await userEvent.click(screen.getByRole("button", { name: /statique/i }));
-    expect(await screen.findByRole("status")).toHaveTextContent(/tronquée/);
+    expect(await screen.findByText(/tronquée/)).toBeInTheDocument();
   });
 
   it("warns before export when the config contains a form widget", async () => {
@@ -265,5 +265,46 @@ describe("AppExportPanel — plafond de poll", () => {
       await vi.advanceTimersByTimeAsync(1500 * 10);
     });
     expect(getAppExportJob.mock.calls.length).toBe(callsAtCap);
+  });
+});
+
+describe("AppExportPanel : accessibilité (P33.23, P33.24)", () => {
+  it("le déclencheur expose aria-expanded et aria-controls vers le panneau de choix", async () => {
+    render(
+      <ItemClientProvider client={makeClient({})}>
+        <AppExportPanel itemId="item1" config={config()} />
+      </ItemClientProvider>,
+    );
+    const trigger = screen.getByRole("button", { name: /exporter/i });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    const panel = document.getElementById(trigger.getAttribute("aria-controls") as string);
+    expect(panel).not.toBeNull();
+    expect(panel).toContainElement(screen.getByRole("button", { name: /statique/i }));
+  });
+
+  it("pendant l'export : aria-disabled (le focus reste), progression annoncée en role=status", async () => {
+    let finish: (v: { jobId: string }) => void = () => {};
+    const client = makeClient({
+      createAppExport: vi.fn().mockReturnValue(new Promise((r) => (finish = r))),
+      getAppExportJob: vi.fn().mockResolvedValue({ id: "j", status: "done", resultUrl: null }),
+    });
+    render(
+      <ItemClientProvider client={client}>
+        <AppExportPanel itemId="item1" config={config()} />
+      </ItemClientProvider>,
+    );
+    const trigger = screen.getByRole("button", { name: /exporter/i });
+    await userEvent.click(trigger);
+    await userEvent.click(screen.getByRole("button", { name: /statique/i }));
+    expect(trigger).toHaveAttribute("aria-disabled", "true");
+    expect(trigger).not.toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent("Export en cours");
+    // un clic pendant l'export n'ouvre pas le panneau
+    await userEvent.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    await act(async () => finish({ jobId: "j" }));
+    await waitFor(() => expect(trigger).toHaveAttribute("aria-disabled", "false"));
   });
 });

@@ -13,6 +13,9 @@ import { ItemActions } from "./ItemActions";
 import { OWNER_PERMISSIONS } from "../auth/permissions";
 import { server } from "../test/msw/server";
 
+// Radix DropdownMenu sous jsdom : repositionnement lent (cf. ui/kit/Menu.test.tsx).
+vi.setConfig({ testTimeout: 45000 });
+
 const item: Item = {
   pk: "7",
   resourceType: "app",
@@ -76,14 +79,14 @@ function HarnessWithRouter({ children }: { children: ReactNode }) {
 test("« Modifier » navigue vers la fiche avec ?panel=edit", async () => {
   render(<ItemActions item={item} />, { wrapper: HarnessWithRouter });
   await userEvent.click(screen.getByRole("button", { name: /actions/i }));
-  await userEvent.click(screen.getByRole("button", { name: /modifier/i }));
+  await userEvent.click(screen.getByRole("menuitem", { name: /modifier/i }));
   expect(await screen.findByText(/panel=edit/)).toBeInTheDocument();
 });
 
 test("« Partager » navigue vers la fiche avec ?panel=share", async () => {
   render(<ItemActions item={item} />, { wrapper: HarnessWithRouter });
   await userEvent.click(screen.getByRole("button", { name: /actions/i }));
-  await userEvent.click(screen.getByRole("button", { name: /partager/i }));
+  await userEvent.click(screen.getByRole("menuitem", { name: /partager/i }));
   expect(await screen.findByText(/panel=share/)).toBeInTheDocument();
 });
 
@@ -95,8 +98,8 @@ test("deletes an item after confirmation and calls onDeleted", async () => {
     </Harness>,
   );
   await userEvent.click(screen.getByRole("button", { name: /actions/i }));
-  await userEvent.click(screen.getByRole("button", { name: /supprimer/i }));
-  const dialog = screen.getByRole("dialog");
+  await userEvent.click(screen.getByRole("menuitem", { name: /supprimer/i }));
+  const dialog = screen.getByRole("alertdialog");
   await userEvent.click(within(dialog).getByRole("button", { name: "Supprimer" }));
   await waitFor(() => expect(onDeleted).toHaveBeenCalled());
 });
@@ -120,7 +123,7 @@ test("toggles publication from the menu", async () => {
     </Harness>,
   );
   await userEvent.click(screen.getByRole("button", { name: /actions/i }));
-  const publish = screen.getByRole("button", { name: "Publier" });
+  const publish = screen.getByRole("menuitem", { name: "Publier" });
   await userEvent.click(publish);
   // j03-012 : une app passe par le dialogue de publication (aucune collection
   // lue ici : un seul bouton de confirmation).
@@ -161,7 +164,7 @@ test("publier une app qui lit une collection privée propose de la publier aussi
     </Harness>,
   );
   await userEvent.click(screen.getByRole("button", { name: /actions/i }));
-  await userEvent.click(screen.getByRole("button", { name: "Publier" }));
+  await userEvent.click(screen.getByRole("menuitem", { name: "Publier" }));
   const dialog = await screen.findByRole("dialog");
   expect(await within(dialog).findByText("coll-1")).toBeInTheDocument();
   await userEvent.click(
@@ -198,7 +201,7 @@ test("propose « Programmer un rapport » sur un signet quand la capacité expor
   renderBookmarkActions(true);
   await userEvent.click(screen.getByRole("button", { name: /actions/i }));
   await waitFor(() =>
-    expect(screen.getByRole("button", { name: "Programmer un rapport" })).toBeInTheDocument(),
+    expect(screen.getByRole("menuitem", { name: "Programmer un rapport" })).toBeInTheDocument(),
   );
 });
 
@@ -206,9 +209,9 @@ test("masque « Programmer un rapport » quand la capacité export est coupée",
   renderBookmarkActions(false);
   await userEvent.click(screen.getByRole("button", { name: /actions/i }));
   await waitFor(() =>
-    expect(screen.getByRole("button", { name: /modifier/i })).toBeInTheDocument(),
+    expect(screen.getByRole("menuitem", { name: /modifier/i })).toBeInTheDocument(),
   );
-  expect(screen.queryByRole("button", { name: "Programmer un rapport" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("menuitem", { name: "Programmer un rapport" })).not.toBeInTheDocument();
 });
 
 const viewerItem: Item = {
@@ -235,17 +238,26 @@ const editorItem: Item = {
 describe("ItemActions et les droits", () => {
   it("un lecteur ne voit ni Partager ni Supprimer", async () => {
     render(<ItemActions item={viewerItem} />, { wrapper });
-    await userEvent.click(screen.getByRole("button", { name: "Actions" }));
-    expect(screen.queryByRole("button", { name: "Partager" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Supprimer" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /^actions/i }));
+    expect(screen.queryByRole("menuitem", { name: "Partager" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Supprimer" })).not.toBeInTheDocument();
   });
 
   it("un lecteur voit Modifier, Publier et Miniature verrouillées en un seul message", async () => {
     render(<ItemActions item={viewerItem} />, { wrapper });
-    await userEvent.click(screen.getByRole("button", { name: "Actions" }));
-    expect(screen.getByRole("button", { name: "Modifier" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Publier" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Miniature" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: /^actions/i }));
+    expect(screen.getByRole("menuitem", { name: "Modifier" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(screen.getByRole("menuitem", { name: "Publier" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(screen.getByRole("menuitem", { name: "Miniature" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
     // Un seul message de raison pour les trois, pas un par action verrouillée
     // (SP-29a review finale — regroupement décidé pour SP-30a).
     expect(screen.getAllByText("Modification réservée aux éditeurs de cet élément.")).toHaveLength(
@@ -255,10 +267,16 @@ describe("ItemActions et les droits", () => {
 
   it("un éditeur peut modifier et publier, mais pas supprimer ni partager", async () => {
     render(<ItemActions item={editorItem} />, { wrapper });
-    await userEvent.click(screen.getByRole("button", { name: "Actions" }));
-    expect(screen.getByRole("button", { name: "Modifier" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Publier" })).toBeEnabled();
-    expect(screen.queryByRole("button", { name: "Supprimer" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /^actions/i }));
+    expect(screen.getByRole("menuitem", { name: "Modifier" })).not.toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(screen.getByRole("menuitem", { name: "Publier" })).not.toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(screen.queryByRole("menuitem", { name: "Supprimer" })).not.toBeInTheDocument();
   });
 
   it("le propriétaire garde les cinq commandes", async () => {
@@ -268,9 +286,9 @@ describe("ItemActions et les droits", () => {
       permissions: { read: true, write: true, delete: true, share: true },
     };
     render(<ItemActions item={owned} />, { wrapper });
-    await userEvent.click(screen.getByRole("button", { name: "Actions" }));
+    await userEvent.click(screen.getByRole("button", { name: /^actions/i }));
     for (const name of ["Modifier", "Publier", "Miniature", "Partager", "Supprimer"]) {
-      expect(screen.getByRole("button", { name })).toBeEnabled();
+      expect(screen.getByRole("menuitem", { name })).not.toHaveAttribute("aria-disabled", "true");
     }
   });
 });
@@ -289,7 +307,7 @@ test("publier un item sans référence de données envoie le PATCH sans dialogue
     </Harness>,
   );
   await userEvent.click(screen.getByRole("button", { name: /actions/i }));
-  await userEvent.click(screen.getByRole("button", { name: "Publier" }));
+  await userEvent.click(screen.getByRole("menuitem", { name: "Publier" }));
   await waitFor(() => expect(capturedBody).toEqual({ isPublished: true }));
   expect(screen.queryByRole("dialog")).toBeNull();
 });
@@ -318,6 +336,40 @@ test("« Programmer un rapport » ouvre /reports/new quand l'export est actif", 
     </MemoryRouter>,
   );
   await userEvent.click(screen.getByRole("button", { name: /actions/i }));
-  await userEvent.click(await screen.findByRole("button", { name: /programmer un rapport/i }));
+  await userEvent.click(await screen.findByRole("menuitem", { name: /programmer un rapport/i }));
   expect(await screen.findByText("Nouveau rapport")).toBeInTheDocument();
+});
+
+describe("ItemActions : accessibilité du menu (P33.04, P33.09, P33.10, P33.12)", () => {
+  it("le déclencheur porte un nom propre à la carte, aria-haspopup=menu et aria-expanded", async () => {
+    render(<ItemActions item={item} />, { wrapper });
+    const trigger = screen.getByRole("button", { name: "Actions de Old" });
+    expect(trigger).toHaveAttribute("aria-haspopup", "menu");
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
+  });
+
+  it("Échap ferme le menu et rend le focus au déclencheur", async () => {
+    render(<ItemActions item={item} />, { wrapper });
+    const trigger = screen.getByRole("button", { name: "Actions de Old" });
+    await userEvent.click(trigger);
+    await screen.findByRole("menu");
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+    expect(trigger).toHaveFocus();
+  });
+
+  it("annuler la confirmation de suppression rend le focus au déclencheur", async () => {
+    render(<ItemActions item={item} />, { wrapper });
+    const trigger = screen.getByRole("button", { name: "Actions de Old" });
+    await userEvent.click(trigger);
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Supprimer" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveAccessibleDescription(/irréversible/);
+    await userEvent.click(within(dialog).getByRole("button", { name: "Annuler" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
 });

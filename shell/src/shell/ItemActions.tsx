@@ -1,23 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useDeleteItem, useInstanceInfo, useUpdateItem } from "../api/hooks";
 import type { Item } from "../api/types";
 import { Button } from "../ui/kit/Button";
 import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
+import { Menu } from "../ui/kit/Menu";
 import { PublishDialog } from "./PublishDialog";
-import { Gate } from "../auth/Gate";
-import { Locked } from "../auth/Locked";
 import { hasPermission } from "../auth/permissions";
 import { t } from "../i18n";
 
-type MenuState = "closed" | "open" | "delete" | "publish";
+type MenuState = "closed" | "delete" | "publish";
 
 const REFERENCING_KINDS = new Set(["map", "app", "dashboard"]);
 
 export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () => void }) {
   const navigate = useNavigate();
   const [menu, setMenu] = useState<MenuState>("closed");
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const publish = useUpdateItem(item.pk);
   const remove = useDeleteItem();
   // Même garde que NewItemButton sur l'option « Pipeline »/etlEnabled : la
@@ -60,84 +60,46 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
     navigate(`/items/${item.pk}?panel=${panel}`);
   }
 
+  const canWrite = hasPermission(item, "write");
+  const publishLabel = item.isPublished ? t("actions.unpublish") : t("actions.publish");
+  // « Modifier/Publier/Miniature » : verrouillés et expliqués (note du menu) ;
+  // « Partager/Supprimer » : absents, pas grisés (doctrine §6.2).
+  const items = [
+    { label: t("actions.edit"), onSelect: () => goToPanel("edit"), disabled: !canWrite },
+    { label: publishLabel, onSelect: () => void togglePublish(), disabled: !canWrite },
+    { label: t("actions.thumbnail"), onSelect: () => goToPanel("thumbnail"), disabled: !canWrite },
+    ...(item.resourceType === "bookmark" && exportEnabled
+      ? [
+          {
+            label: t("actions.scheduleReport"),
+            onSelect: () => navigate("/reports/new", { state: { bookmarkItemId: item.pk } }),
+          },
+        ]
+      : []),
+    ...(hasPermission(item, "share")
+      ? [{ label: t("actions.share"), onSelect: () => goToPanel("share") }]
+      : []),
+    ...(hasPermission(item, "delete")
+      ? [{ label: t("actions.delete"), onSelect: () => setMenu("delete"), danger: true }]
+      : []),
+  ];
+
   return (
     <div className="relative">
-      <Button
-        size="sm"
-        variant="ghost"
-        aria-label={t("actions.menu")}
-        onClick={() => setMenu(menu === "open" ? "closed" : "open")}
-      >
-        ⋯
-      </Button>
-
-      {menu === "open" && (
-        <div className="absolute right-0 z-20 mt-1 flex w-44 flex-col rounded-md border border-rule bg-raised py-1 text-sm shadow-md">
-          {hasPermission(item, "write") ? (
-            <>
-              <button
-                className="px-3 py-1.5 text-left text-ink hover:bg-sunken"
-                onClick={() => goToPanel("edit")}
-              >
-                {t("actions.edit")}
-              </button>
-              <button
-                className="px-3 py-1.5 text-left text-ink hover:bg-sunken"
-                onClick={() => void togglePublish()}
-              >
-                {item.isPublished ? t("actions.unpublish") : t("actions.publish")}
-              </button>
-              <button
-                className="px-3 py-1.5 text-left text-ink hover:bg-sunken"
-                onClick={() => goToPanel("thumbnail")}
-              >
-                {t("actions.thumbnail")}
-              </button>
-            </>
-          ) : (
-            <Locked reason={t("locked.needWrite")}>
-              <button className="px-3 py-1.5 text-left">{t("actions.edit")}</button>
-              <button className="px-3 py-1.5 text-left">
-                {item.isPublished ? t("actions.unpublish") : t("actions.publish")}
-              </button>
-              <button className="px-3 py-1.5 text-left">{t("actions.thumbnail")}</button>
-            </Locked>
-          )}
-
-          {item.resourceType === "bookmark" && exportEnabled && (
-            <button
-              className="px-3 py-1.5 text-left text-ink hover:bg-sunken"
-              onClick={() => {
-                setMenu("closed");
-                navigate("/reports/new", { state: { bookmarkItemId: item.pk } });
-              }}
-            >
-              {t("actions.scheduleReport")}
-            </button>
-          )}
-
-          {/* Partager et Supprimer : traitement « absent », pas « verrouillé ».
-              Les montrer grisées sur chaque ligne d'un catalogue partagé
-              encombrerait sans rien apprendre (doctrine §6.2). */}
-          <Gate on={item} can="share">
-            <button
-              className="px-3 py-1.5 text-left text-ink hover:bg-sunken"
-              onClick={() => goToPanel("share")}
-            >
-              {t("actions.share")}
-            </button>
-          </Gate>
-
-          <Gate on={item} can="delete">
-            <button
-              className="px-3 py-1.5 text-left text-danger hover:bg-sunken"
-              onClick={() => setMenu("delete")}
-            >
-              {t("actions.delete")}
-            </button>
-          </Gate>
-        </div>
-      )}
+      <Menu
+        trigger={
+          <Button
+            ref={triggerRef}
+            size="sm"
+            variant="ghost"
+            aria-label={t("actions.menuFor", { title: item.title })}
+          >
+            ⋯
+          </Button>
+        }
+        items={items}
+        note={canWrite ? undefined : t("locked.needWrite")}
+      />
 
       <PublishDialog
         item={item}
@@ -145,6 +107,7 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
         pending={publish.isPending}
         onPublish={() => void doTogglePublish()}
         onCancel={() => setMenu("closed")}
+        returnFocusRef={triggerRef}
       />
       <ConfirmDialog
         open={menu === "delete"}
@@ -154,13 +117,14 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
         pending={remove.isPending}
         onConfirm={() => void confirmDelete()}
         onCancel={() => setMenu("closed")}
+        returnFocusRef={triggerRef}
       />
       {remove.isError && menu === "delete" && (
         <p role="alert" className="mt-2 text-sm text-danger">
           {t("actions.deleteFailed")}
         </p>
       )}
-      {publish.isError && (menu === "open" || menu === "publish") && (
+      {publish.isError && (
         <p role="alert" className="mt-2 text-sm text-danger">
           {t("actions.publishFailed")}
         </p>

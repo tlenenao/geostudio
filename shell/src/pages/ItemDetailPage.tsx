@@ -108,7 +108,7 @@ export function ItemDetailPage({
               <span className="w-fit rounded bg-sunken px-2 py-0.5 text-xs uppercase text-ink-2">
                 {item.resourceType}
               </span>
-              <h2 className="text-xl font-semibold text-ink">{item.title}</h2>
+              <h1 className="text-xl font-semibold text-ink">{item.title}</h1>
               <p className="text-sm text-ink-2">
                 {t("itemDetail.ownerLabel", { owner: item.owner })}
               </p>

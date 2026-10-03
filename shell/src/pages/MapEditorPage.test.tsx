@@ -525,7 +525,7 @@ test("bloque la navigation après une modification non enregistrée de la carte 
   await screen.findAllByText("Couche A");
   await userEvent.click(screen.getByLabelText("Activer le terrain 3D"));
   await userEvent.click(screen.getByRole("link", { name: "Retour au catalogue" }));
-  expect(await screen.findByRole("dialog")).toHaveTextContent(
+  expect(await screen.findByRole("alertdialog")).toHaveTextContent(
     t("navigation.unsavedChangesMessage"),
   );
 });

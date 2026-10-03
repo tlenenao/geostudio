@@ -442,7 +442,7 @@ test("bloque la navigation après une modification non enregistrée des colonnes
   await userEvent.type(await screen.findByLabelText("Libellé de nom"), "Nom du parc");
   await userEvent.click(screen.getByRole("link", { name: "Autre page" }));
 
-  expect(await screen.findByRole("dialog")).toHaveTextContent(
+  expect(await screen.findByRole("alertdialog")).toHaveTextContent(
     t("navigation.unsavedChangesMessage"),
   );
 });

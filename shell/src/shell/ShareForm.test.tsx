@@ -200,7 +200,7 @@ test("retire un membre et supprime un groupe géré après confirmation", async 
   await userEvent.click(await screen.findByRole("button", { name: "Retirer bob de Équipe A" }));
   await waitFor(() => expect(removed).toBe(true));
   await userEvent.click(screen.getByRole("button", { name: "Supprimer le groupe Équipe A" }));
-  const dialog = await screen.findByRole("dialog", { name: "Supprimer le groupe" });
+  const dialog = await screen.findByRole("alertdialog", { name: "Supprimer le groupe" });
   await userEvent.click(within(dialog).getByRole("button", { name: "Supprimer" }));
   await waitFor(() => expect(deleted).toBe(true));
 });

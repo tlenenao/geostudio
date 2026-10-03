@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useRef, useState } from "react";
-import { useItemClient } from "../api/hooks";
+import { useItemClient, useMe } from "../api/hooks";
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { Drawer } from "../ui/kit/Drawer";
+import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { t } from "../i18n";
 
 // S3 multipart accepts a single part of any size — the same chunking code
@@ -26,12 +27,18 @@ export function Tileset3DUploadButton({
   pollTimeoutMs = POLL_TIMEOUT_MS,
 }: { pollTimeoutMs?: number } = {}) {
   const [open, setOpen] = useState(false);
+  const drawerPanel = usePanelTrigger(open);
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [phase, setPhase] = useState<Phase>("form");
   const [error, setError] = useState("");
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const client = useItemClient();
+  // P33.26 : même garde que « Nouveau »/« Importer » — le cœur exige
+  // catalog.manage (kind tileset3d, repli de privilege_for_kind) ; sans lui le
+  // bouton menait à un 403.
+  const privileges = useMe().data?.privileges;
+  const canUpload = privileges === undefined || privileges.includes("catalog.manage");
   const mountedRef = useRef(true);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -127,15 +134,23 @@ export function Tileset3DUploadButton({
     close();
   }
 
+  if (!canUpload) return null;
+
   return (
     <>
-      <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+      <Button
+        size="sm"
+        variant="outline"
+        {...drawerPanel.triggerProps}
+        onClick={() => setOpen(true)}
+      >
         {t("tileset3d.newButton")}
       </Button>
       <Drawer
         open={open}
         onOpenChange={(next) => !next && requestClose()}
         title={t("tileset3d.newButton")}
+        id={drawerPanel.panelId}
       >
         <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
           <label className="flex flex-col gap-1 text-sm text-ink">
@@ -156,12 +171,14 @@ export function Tileset3DUploadButton({
             />
           </label>
           {progress && (
-            <p className="text-sm text-ink-2">
+            <p role="status" className="text-sm text-ink-2">
               {t("tileset3d.progressTemplate", { done: progress.done, total: progress.total })}
             </p>
           )}
           {phase === "finalizing" && (
-            <p className="text-sm text-ink-2">{t("tileset3d.validating")}</p>
+            <p role="status" className="text-sm text-ink-2">
+              {t("tileset3d.validating")}
+            </p>
           )}
           {phase === "error" && (
             <p role="alert" className="text-sm text-danger">

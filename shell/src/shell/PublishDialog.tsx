@@ -17,12 +17,14 @@ export function PublishDialog({
   pending,
   onPublish,
   onCancel,
+  returnFocusRef,
 }: {
   item: Item;
   open: boolean;
   pending: boolean;
   onPublish: () => void;
   onCancel: () => void;
+  returnFocusRef?: React.RefObject<HTMLElement | null>;
 }) {
   const client = useItemClient();
   const queryClient = useQueryClient();
@@ -61,7 +63,12 @@ export function PublishDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onCancel()} title={t("publish.title")}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => !next && onCancel()}
+      title={t("publish.title")}
+      returnFocusRef={returnFocusRef}
+    >
       {check.isLoading && <p role="status">{t("common.loading")}</p>}
       {privates.length > 0 && (
         <div className="mb-4 text-sm text-ink-2">

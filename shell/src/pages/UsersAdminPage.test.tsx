@@ -222,7 +222,7 @@ test("anonymiser un compte depuis sa ligne, après confirmation (j08-006)", asyn
   render(<Harness />);
   await screen.findByText("bob");
   await userEvent.click(screen.getByRole("button", { name: "Anonymiser bob" }));
-  const dialog = await screen.findByRole("dialog");
+  const dialog = await screen.findByRole("alertdialog");
   expect(erased).toBe("");
   await userEvent.click(within(dialog).getByRole("button", { name: "Anonymiser" }));
   await waitFor(() => expect(erased).toBe("u2"));
@@ -257,7 +257,7 @@ test.each([
     render(<Harness />);
     await screen.findByText("alice");
     await userEvent.click(screen.getByRole("button", { name: "Anonymiser alice" }));
-    const dialog = await screen.findByRole("dialog");
+    const dialog = await screen.findByRole("alertdialog");
     await userEvent.click(within(dialog).getByRole("button", { name: "Anonymiser" }));
     const aliceRow = screen.getByText("alice").closest("tr") as HTMLElement;
     expect(await within(aliceRow).findByText(message)).toBeInTheDocument();

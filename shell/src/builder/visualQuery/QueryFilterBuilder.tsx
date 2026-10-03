@@ -42,7 +42,7 @@ export function QueryFilterBuilder({
           <div key={i} className="flex items-center gap-2">
             <select
               aria-label={t("queryFilterBuilder.columnAria", { n: i + 1 })}
-              className="h-8 rounded border border-rule bg-surface px-2 text-xs text-ink"
+              className="h-8 rounded border border-control bg-surface px-2 text-xs text-ink"
               value={row.column}
               onChange={(e) => updateRow(i, { column: e.target.value })}
             >
@@ -54,7 +54,7 @@ export function QueryFilterBuilder({
             </select>
             <select
               aria-label={t("queryFilterBuilder.operatorAria", { n: i + 1 })}
-              className="h-8 rounded border border-rule bg-surface px-2 text-xs text-ink"
+              className="h-8 rounded border border-control bg-surface px-2 text-xs text-ink"
               value={row.operator}
               onChange={(e) => updateRow(i, { operator: e.target.value as FilterOperator })}
             >
@@ -67,7 +67,7 @@ export function QueryFilterBuilder({
             <input
               aria-label={t("queryFilterBuilder.valueAria", { n: i + 1 })}
               inputMode={isNumeric ? "numeric" : undefined}
-              className="h-8 rounded border border-rule bg-surface px-2 text-xs text-ink"
+              className="h-8 rounded border border-control bg-surface px-2 text-xs text-ink"
               value={row.value}
               onChange={(e) => updateRow(i, { value: e.target.value })}
             />

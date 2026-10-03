@@ -155,9 +155,9 @@ export function ReportEditPage({
           label: t("reportEdit.reportLabel"),
           content: (
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
-              <h2 className="text-lg font-semibold text-ink">
+              <h1 className="text-lg font-semibold text-ink">
                 {pk === null ? t("actions.scheduleReport") : t("reportEdit.editHeading")}
-              </h2>
+              </h1>
               <ReportScheduleEditor
                 value={draft}
                 onChange={updateDraft}

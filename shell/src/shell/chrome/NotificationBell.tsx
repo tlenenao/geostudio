@@ -126,7 +126,7 @@ export function NotificationBell() {
           <div className="flex items-center justify-between gap-2">
             <select
               aria-label={t("notifications.preference")}
-              className="rounded border border-rule bg-surface px-1 py-0.5 text-xs text-ink"
+              className="rounded border border-control bg-surface px-1 py-0.5 text-xs text-ink"
               value={preferenceQuery.data ?? "all"}
               onChange={(e) =>
                 updatePreference.mutate(e.target.value as NotificationPreferenceValue)

@@ -72,7 +72,7 @@ export function MetadataForm({
         {t("catalog.summaryLabel")}
         <textarea
           aria-label={t("catalog.summaryLabel")}
-          className="min-h-20 rounded-md border border-rule bg-surface px-3 py-2 text-sm text-ink"
+          className="min-h-20 rounded-md border border-control bg-surface px-3 py-2 text-sm text-ink"
           value={abstract}
           onChange={(e) => setAbstract(e.target.value)}
         />

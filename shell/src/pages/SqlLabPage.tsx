@@ -228,11 +228,17 @@ export function SqlLabPage() {
                     // bon élément.
                     EditorView.contentAttributes.of({
                       "aria-label": t("sqlLab.sqlQueryLabel"),
+                      "aria-describedby": "sql-editor-keyboard-hint",
                     }),
                   ]}
                   onChange={(value) => setSql(value)}
                   className="rounded-md border border-rule text-xs"
                 />
+                {/* P33.13 (WCAG 2.1.2) : Tab indente dans l'éditeur ; la sortie au
+                    clavier est dite, pas devinée. */}
+                <span id="sql-editor-keyboard-hint" className="text-xs text-ink-3">
+                  {t("sqlLab.keyboardHint")}
+                </span>
               </div>
               <Button
                 size="sm"

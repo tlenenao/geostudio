@@ -92,7 +92,7 @@ export function CollectionSharePanel({
                 </label>
                 <select
                   aria-label={t("sharePanel.roleAria", { group: g.title })}
-                  className="h-8 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
+                  className="h-8 rounded-md border border-control bg-surface px-2 text-sm text-ink"
                   disabled={!roles[g.id]}
                   value={roles[g.id] ?? "viewer"}
                   onChange={(e) => setRoles((r) => ({ ...r, [g.id]: e.target.value as ShareRole }))}

@@ -141,7 +141,7 @@ export function UsersAdminPage() {
                           <>
                             <select
                               aria-label={t("usersAdmin.roleAria", { username: u.username })}
-                              className="h-9 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
+                              className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink"
                               value={currentRole?.id ?? ""}
                               disabled={pending || !!u.erasedAt}
                               onChange={(e) => void handleRoleChange(u.id, e.target.value)}

@@ -228,7 +228,7 @@ export function NewItemButton() {
             {t("catalog.typeLabel")}
             <select
               aria-label={t("catalog.typeLabel")}
-              className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+              className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
               value={kind}
               onChange={(e) => {
                 setKind(e.target.value as Kind);
@@ -253,7 +253,7 @@ export function NewItemButton() {
               {t("newItem.templateLabel")}
               <select
                 aria-label={t("newItem.templateLabel")}
-                className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                 value={templateId}
                 onChange={(e) => setTemplateId(e.target.value)}
               >
@@ -271,7 +271,7 @@ export function NewItemButton() {
               {t("newItem.datasetSourceTypeLabel")}
               <select
                 aria-label={t("newItem.datasetSourceTypeLabel")}
-                className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                 value={datasetSource}
                 onChange={(e) => setDatasetSource(e.target.value as "collection" | "arcgis")}
               >
@@ -285,7 +285,7 @@ export function NewItemButton() {
               {t("newItem.collectionSourceLabel")}
               <select
                 aria-label={t("newItem.collectionSourceLabel")}
-                className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                 value={collectionId}
                 onChange={(e) => setCollectionId(e.target.value)}
               >
@@ -303,7 +303,7 @@ export function NewItemButton() {
               {t("newItem.arcgisLayerLabel")}
               <select
                 aria-label={t("newItem.arcgisLayerLabel")}
-                className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                 value={arcgisItemId}
                 onChange={(e) => setArcgisItemId(e.target.value)}
               >

@@ -29,7 +29,7 @@ export function ColorField({
           setText(e.target.value);
           onValueChange(e.target.value);
         }}
-        className="h-9 w-9 cursor-pointer rounded-md border border-rule bg-surface p-0.5"
+        className="h-9 w-9 cursor-pointer rounded-md border border-control bg-surface p-0.5"
       />
       <Input
         aria-label={ariaLabel}

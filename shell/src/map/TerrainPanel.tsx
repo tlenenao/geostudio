@@ -115,9 +115,8 @@ export function TerrainPanel({
             />
           </label>
           <label className="flex flex-col gap-1 text-sm">
-            Exaggeration
+            {t("terrainPanel.exaggerationLabel")}
             <input
-              aria-label={t("terrainPanel.exaggerationAria")}
               type="number"
               step={0.1}
               min={0}

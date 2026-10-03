@@ -174,9 +174,9 @@ export function DatasetEditPage({ pk }: { pk: string }) {
           label: t("datasetEdit.datasetLabel"),
           content: (
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
-              <h2 className="text-xl font-semibold text-ink">
+              <h1 className="text-xl font-semibold text-ink">
                 {t("datasetEdit.heading", { title: item.title })}
-              </h2>
+              </h1>
               <MetadataForm
                 initial={{
                   title: item.title,
@@ -218,7 +218,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                           <td className="p-1">
                             <input
                               aria-label={t("datasetEdit.labelAria", { name: f.name })}
-                              className="h-8 w-full rounded border border-rule bg-surface px-2 text-xs text-ink"
+                              className="h-8 w-full rounded border border-control bg-surface px-2 text-xs text-ink"
                               value={f.label ?? ""}
                               onChange={(e) => setColumn(f.name, { label: e.target.value })}
                             />
@@ -226,7 +226,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                           <td className="p-1">
                             <input
                               aria-label={t("datasetEdit.descriptionAria", { name: f.name })}
-                              className="h-8 w-full rounded border border-rule bg-surface px-2 text-xs text-ink"
+                              className="h-8 w-full rounded border border-control bg-surface px-2 text-xs text-ink"
                               value={f.description ?? ""}
                               onChange={(e) => setColumn(f.name, { description: e.target.value })}
                             />
@@ -234,7 +234,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                           <td className="p-1">
                             <input
                               aria-label={t("datasetEdit.formatAria", { name: f.name })}
-                              className="h-8 w-full rounded border border-rule bg-surface px-2 text-xs text-ink"
+                              className="h-8 w-full rounded border border-control bg-surface px-2 text-xs text-ink"
                               value={f.format ?? ""}
                               onChange={(e) => setColumn(f.name, { format: e.target.value })}
                             />
@@ -248,7 +248,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                   {t("datasetEdit.timeFieldLabel")}
                   <select
                     aria-label={t("datasetEdit.timeFieldLabel")}
-                    className="h-8 w-full rounded border border-rule bg-surface px-2 text-xs text-ink"
+                    className="h-8 w-full rounded border border-control bg-surface px-2 text-xs text-ink"
                     value={draft.timeField ?? ""}
                     onChange={(e) =>
                       updateDraft((d) => (d ? { ...d, timeField: e.target.value || null } : d))

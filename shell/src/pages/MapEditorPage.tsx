@@ -187,6 +187,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
 
   return (
     <div className="-m-6 flex flex-1 flex-col overflow-hidden">
+      <h1 className="sr-only">{t("docTitle.map")}</h1>
       <TriptychLayout
         defaultTabId="map"
         browse={{

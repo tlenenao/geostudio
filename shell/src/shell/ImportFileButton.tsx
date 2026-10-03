@@ -496,7 +496,7 @@ export function ImportFileButton() {
                   {t("importFile.latColumn")}
                   <select
                     aria-label={t("importFile.latColumn")}
-                    className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                    className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                     value={latField}
                     onChange={(e) => setLatField(e.target.value)}
                   >
@@ -512,7 +512,7 @@ export function ImportFileButton() {
                   {t("importFile.lonColumn")}
                   <select
                     aria-label={t("importFile.lonColumn")}
-                    className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                    className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                     value={lonField}
                     onChange={(e) => setLonField(e.target.value)}
                   >
@@ -531,7 +531,7 @@ export function ImportFileButton() {
                 {t("importFile.wktColumn")}
                 <select
                   aria-label={t("importFile.wktColumn")}
-                  className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                  className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                   value={wktField}
                   onChange={(e) => setWktField(e.target.value)}
                 >
@@ -559,7 +559,7 @@ export function ImportFileButton() {
               {t("importFile.layerColumn")}
               <select
                 aria-label={t("importFile.layerColumn")}
-                className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                 value={layerName}
                 onChange={(e) => setLayerName(e.target.value)}
               >
@@ -612,7 +612,7 @@ export function ImportFileButton() {
                   {t("importFile.latColumn")}
                   <select
                     aria-label={t("importFile.latColumn")}
-                    className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                    className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                     value={latField}
                     onChange={(e) => setLatField(e.target.value)}
                   >
@@ -628,7 +628,7 @@ export function ImportFileButton() {
                   {t("importFile.lonColumn")}
                   <select
                     aria-label={t("importFile.lonColumn")}
-                    className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                    className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                     value={lonField}
                     onChange={(e) => setLonField(e.target.value)}
                   >

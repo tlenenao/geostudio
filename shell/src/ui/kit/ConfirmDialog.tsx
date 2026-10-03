@@ -11,6 +11,7 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
   pending,
+  returnFocusRef,
 }: {
   open: boolean;
   title: string;
@@ -19,10 +20,17 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
   pending?: boolean;
+  returnFocusRef?: React.RefObject<HTMLElement | null>;
 }) {
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onCancel()} title={title}>
-      <p className="mb-4 text-sm text-ink-2">{message}</p>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => !next && onCancel()}
+      title={title}
+      description={message}
+      alert
+      returnFocusRef={returnFocusRef}
+    >
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" size="sm" onClick={onCancel}>
           {t("confirmDialog.cancel")}

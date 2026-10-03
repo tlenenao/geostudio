@@ -113,7 +113,7 @@ export function ConfigHistoryPanel({
 
   return (
     <div className="flex flex-col gap-2">
-      <h3 className="text-sm font-medium">{t("configHistory.heading")}</h3>
+      <h2 className="text-sm font-medium">{t("configHistory.heading")}</h2>
       {loadError && (
         <p role="alert" className="text-sm text-danger">
           {t("configHistory.loadError")}

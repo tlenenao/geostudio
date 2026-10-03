@@ -157,7 +157,7 @@ export function AlertRuleEditor({
           {t("alertRule.nameLabel")}
           <input
             aria-label={t("alertRule.nameLabel")}
-            className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+            className="h-8 rounded border border-control bg-surface px-2 text-ink"
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
@@ -166,7 +166,7 @@ export function AlertRuleEditor({
           {t("alertRule.conditionLabel")}
           <input
             aria-label={t("alertRule.conditionLabel")}
-            className="h-8 rounded border border-rule bg-surface px-2 font-mono text-ink"
+            className="h-8 rounded border border-control bg-surface px-2 font-mono text-ink"
             placeholder="value > 100"
             value={expr}
             onChange={(e) => setExpr(e.target.value)}
@@ -176,7 +176,7 @@ export function AlertRuleEditor({
           {t("alertRule.channelLabel")}
           <select
             aria-label={t("alertRule.channelLabel")}
-            className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+            className="h-8 rounded border border-control bg-surface px-2 text-ink"
             value={channel.kind}
             onChange={(e) =>
               setChannel(
@@ -196,7 +196,7 @@ export function AlertRuleEditor({
               {t("alertRule.webhookUrlLabel")}
               <input
                 aria-label={t("alertRule.webhookUrlLabel")}
-                className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+                className="h-8 rounded border border-control bg-surface px-2 text-ink"
                 value={channel.url}
                 onChange={(e) => setChannel({ ...channel, url: e.target.value })}
               />
@@ -219,7 +219,7 @@ export function AlertRuleEditor({
               {t("alertRule.recipientLabel")}
               <input
                 aria-label={t("alertRule.recipientLabel")}
-                className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+                className="h-8 rounded border border-control bg-surface px-2 text-ink"
                 value={channel.to}
                 onChange={(e) =>
                   setChannel({
@@ -242,7 +242,7 @@ export function AlertRuleEditor({
           {t("alertRule.aggregateLabel")}
           <select
             aria-label={t("alertRule.aggregateLabel")}
-            className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+            className="h-8 rounded border border-control bg-surface px-2 text-ink"
             value={agg}
             onChange={(e) => setAgg(e.target.value)}
           >
@@ -258,7 +258,7 @@ export function AlertRuleEditor({
             {t("alertRule.fieldLabel")}
             <input
               aria-label={t("alertRule.fieldLabel")}
-              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+              className="h-8 rounded border border-control bg-surface px-2 text-ink"
               value={field}
               onChange={(e) => setField(e.target.value)}
             />
@@ -268,7 +268,7 @@ export function AlertRuleEditor({
           <PercentileInput
             label={t("alertRule.percentileLabel")}
             value={p}
-            className="h-8 rounded border border-rule bg-surface px-2 text-xs text-ink"
+            className="h-8 rounded border border-control bg-surface px-2 text-xs text-ink"
             onCommit={setP}
           />
         )}

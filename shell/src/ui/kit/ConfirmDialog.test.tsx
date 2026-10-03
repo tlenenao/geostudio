@@ -56,3 +56,18 @@ test("pending désactive le bouton de confirmation", () => {
   );
   expect(screen.getByRole("button", { name: "Supprimer" })).toBeDisabled();
 });
+
+test("alertdialog décrit par son message (P33.11)", () => {
+  render(
+    <ConfirmDialog
+      open
+      title="Supprimer"
+      message="Cette action est irréversible."
+      confirmLabel="Supprimer"
+      onConfirm={() => {}}
+      onCancel={() => {}}
+    />,
+  );
+  const dialog = screen.getByRole("alertdialog", { name: "Supprimer" });
+  expect(dialog).toHaveAccessibleDescription("Cette action est irréversible.");
+});

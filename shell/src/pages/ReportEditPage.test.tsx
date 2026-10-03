@@ -359,7 +359,7 @@ test("bloque la navigation après une modification non enregistrée du rapport (
   await userEvent.type(await screen.findByLabelText("URL du webhook"), "https://x");
   await userEvent.click(screen.getByRole("link", { name: "Autre page" }));
 
-  expect(await screen.findByRole("dialog")).toHaveTextContent(
+  expect(await screen.findByRole("alertdialog")).toHaveTextContent(
     t("navigation.unsavedChangesMessage"),
   );
 });
@@ -402,5 +402,5 @@ test("le round-trip de création (pk=null -> Enregistrer -> redirection) n'affic
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
 
   await waitFor(() => expect(createReportScheduleItem).toHaveBeenCalledTimes(1));
-  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
 });

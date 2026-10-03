@@ -12,6 +12,7 @@ import type { AppConfig, AppExportJobStatus, AppExportMode } from "../../api/typ
 import { t } from "../../i18n";
 import { Button } from "../../ui/kit/Button";
 import { Panel } from "../../ui/kit/Panel";
+import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
 import { collectWidgetTypes, WRITE_CAPABLE_WIDGET_TYPES } from "./collectWidgetTypes";
 
 const POLL_INTERVAL_MS = 1500;
@@ -24,6 +25,7 @@ export function AppExportPanel({ itemId, config }: { itemId: string; config: App
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [pendingWarningMode, setPendingWarningMode] = useState<AppExportMode | null>(null);
+  const picker = usePanelTrigger(pickerOpen);
   const mountedRef = useRef(true);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -89,8 +91,12 @@ export function AppExportPanel({ itemId, config }: { itemId: string; config: App
       <Button
         size="sm"
         variant="outline"
-        onClick={() => setPickerOpen((open) => !open)}
-        disabled={running}
+        // aria-disabled plutôt que disabled (P33.24) : un bouton désactivé perd
+        // le focus clavier au moment même où l'export démarre.
+        onClick={() => !running && setPickerOpen((open) => !open)}
+        aria-disabled={running}
+        className="aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+        {...picker.triggerProps}
       >
         {t("appExport.exportButton")}
       </Button>
@@ -98,7 +104,7 @@ export function AppExportPanel({ itemId, config }: { itemId: string; config: App
         // Panneau en ligne, pas une fenêtre modale (spec §2.1, ConfirmDialog
         // seul survit) : pas d'Escape/backdrop à intercepter, Fermer ferme
         // explicitement sans exporter.
-        <Panel className="flex flex-col gap-2">
+        <Panel className="flex flex-col gap-2" {...picker.panelProps}>
           <p className="text-sm font-medium text-ink">{t("appExport.chooseModeHeading")}</p>
           <div className="flex flex-wrap justify-end gap-2">
             <Button type="button" variant="outline" size="sm" onClick={() => setPickerOpen(false)}>
@@ -116,6 +122,11 @@ export function AppExportPanel({ itemId, config }: { itemId: string; config: App
           </div>
         </Panel>
       )}
+      {/* Région live permanente : l'annonce de « en cours » n'est lue que si
+          la région existe déjà avant que son texte change. */}
+      <p role="status" className={running ? "text-sm text-ink-2" : "sr-only"}>
+        {running ? t("appExport.running") : ""}
+      </p>
       {pendingWarningMode && (
         <div
           role="alert"

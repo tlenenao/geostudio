@@ -407,9 +407,9 @@ export function PipelineBuilderPage({
             <div className="flex h-full flex-col overflow-hidden">
               <div className="flex items-center justify-between border-b border-rule p-2">
                 <div className="flex items-center gap-1.5">
-                  <h2 className="text-lg font-semibold text-ink">
+                  <h1 className="text-lg font-semibold text-ink">
                     {initialTitle ?? t("pipelineBuilder.defaultTitle")}
-                  </h2>
+                  </h1>
                   <Popover
                     aria-label={t("pipelineBuilder.helpAria")}
                     trigger={

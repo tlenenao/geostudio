@@ -24,7 +24,7 @@ export function Checkbox({
       onCheckedChange={(state) => onCheckedChange?.(state === true)}
       disabled={disabled}
       className={cn(
-        "flex h-4 w-4 items-center justify-center rounded-sm border border-rule bg-surface data-[state=checked]:border-accent data-[state=checked]:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50",
+        "flex h-4 w-4 items-center justify-center rounded-sm border border-control bg-surface data-[state=checked]:border-accent data-[state=checked]:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
       {...props}

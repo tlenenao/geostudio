@@ -3,6 +3,7 @@ import type { Item, ResourceType } from "../../api/types";
 import { RESOURCE_TYPE_LABELS } from "../../api/resourceTypes";
 import { Button } from "./Button";
 import { Panel } from "./Panel";
+import { t } from "../../i18n";
 
 export function ItemCard({
   item,
@@ -30,8 +31,13 @@ export function ItemCard({
       )}
       <h3 className="text-base font-semibold text-ink">{item.title}</h3>
       <p className="line-clamp-2 text-sm text-ink-2">{item.abstract}</p>
-      <Button size="sm" className="mt-2 w-fit" onClick={() => onOpen(item.pk, item.resourceType)}>
-        Ouvrir
+      <Button
+        size="sm"
+        className="mt-2 w-fit"
+        aria-label={t("itemCard.openFor", { title: item.title })}
+        onClick={() => onOpen(item.pk, item.resourceType)}
+      >
+        {t("itemCard.open")}
       </Button>
     </Panel>
   );

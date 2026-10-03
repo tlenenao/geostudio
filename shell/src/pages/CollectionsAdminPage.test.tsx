@@ -265,7 +265,7 @@ test("deletes a collection after confirming", async () => {
   );
   render(<Harness />);
   await userEvent.click(await screen.findByRole("button", { name: "Supprimer" }));
-  const dialog = screen.getByRole("dialog");
+  const dialog = screen.getByRole("alertdialog");
   await userEvent.click(within(dialog).getByRole("button", { name: "Supprimer" }));
   await waitFor(() => expect(deleteCalled).toBe(true));
 });
@@ -288,7 +288,7 @@ test("supprimer la ligne en cours d'édition ferme le panneau Éditer (croisemen
   expect(await screen.findByLabelText("Titre")).toBeInTheDocument();
 
   await userEvent.click(screen.getByRole("button", { name: "Supprimer" }));
-  const dialog = screen.getByRole("dialog");
+  const dialog = screen.getByRole("alertdialog");
   await userEvent.click(within(dialog).getByRole("button", { name: "Supprimer" }));
 
   await waitFor(() => expect(screen.queryByLabelText("Titre")).not.toBeInTheDocument());
@@ -316,7 +316,7 @@ test("supprimer la ligne en cours de partage ferme le panneau Partager (croiseme
   await screen.findByText("Partager la collection");
 
   await userEvent.click(screen.getByRole("button", { name: "Supprimer" }));
-  const dialog = screen.getByRole("dialog");
+  const dialog = screen.getByRole("alertdialog");
   await userEvent.click(within(dialog).getByRole("button", { name: "Supprimer" }));
 
   await waitFor(() => expect(screen.queryByText("Partager la collection")).not.toBeInTheDocument());

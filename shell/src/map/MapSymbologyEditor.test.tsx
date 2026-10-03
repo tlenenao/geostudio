@@ -979,7 +979,7 @@ test("décliner la confirmation via ConfirmDialog n'appelle pas deleteCustomIcon
     onChange: vi.fn(),
   });
   await userEvent.click(deleteButton);
-  const dialog = screen.getByRole("dialog");
+  const dialog = screen.getByRole("alertdialog");
   // La confirmation nomme la conséquence (constat I3 Part B) plutôt qu'une
   // question générique : sans ce texte, l'auteur clique sans comprendre ce
   // qu'il risque de casser sur d'autres cartes.
@@ -987,7 +987,7 @@ test("décliner la confirmation via ConfirmDialog n'appelle pas deleteCustomIcon
   expect(deleteCustomIcon).not.toHaveBeenCalled();
   await userEvent.click(within(dialog).getByRole("button", { name: t("confirmDialog.cancel") }));
   expect(deleteCustomIcon).not.toHaveBeenCalled();
-  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
 });
 
 test("un échec de suppression d'icône personnalisée affiche une erreur", async () => {
@@ -1001,7 +1001,7 @@ test("un échec de suppression d'icône personnalisée affiche une erreur", asyn
     onChange: vi.fn(),
   });
   await userEvent.click(deleteButton);
-  const dialog = screen.getByRole("dialog");
+  const dialog = screen.getByRole("alertdialog");
   expect(deleteCustomIcon).not.toHaveBeenCalled();
   await userEvent.click(
     within(dialog).getByRole("button", { name: t("mapSymbology.deleteIconConfirmLabel") }),

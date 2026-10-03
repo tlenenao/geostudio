@@ -67,7 +67,7 @@ test("le bouton de purge reste désactivé tant que le slug tapé ne correspond 
   const purgeButton = screen.getByRole("button", { name: "Purger définitivement ce tenant" });
   expect(purgeButton).toBeDisabled();
 
-  await userEvent.type(screen.getByLabelText("Confirmer le slug du tenant"), "mauvais-slug");
+  await userEvent.type(screen.getByLabelText(/Retapez le slug du tenant/), "mauvais-slug");
   expect(purgeButton).toBeDisabled();
 });
 
@@ -91,7 +91,7 @@ test("le bouton de purge s'active une fois le slug exact tapé, et déclenche PO
   await screen.findByText("Purger toutes les données du tenant");
 
   // "demo" = tenantSlug servi par le mock /me par défaut (src/test/msw/handlers.ts).
-  await userEvent.type(screen.getByLabelText("Confirmer le slug du tenant"), "demo");
+  await userEvent.type(screen.getByLabelText(/Retapez le slug du tenant/), "demo");
   const purgeButton = screen.getByRole("button", { name: "Purger définitivement ce tenant" });
   expect(purgeButton).toBeEnabled();
   await userEvent.click(purgeButton);
@@ -112,7 +112,7 @@ test("anonymiser un compte appelle POST /compliance/users/{id}/erase et affiche 
   render(<Harness />);
   await screen.findByText("Anonymiser un compte");
 
-  await userEvent.type(screen.getByLabelText("Identifiant de l'utilisateur à anonymiser"), "u42");
+  await userEvent.type(screen.getByLabelText(/Identifiant de l'utilisateur/), "u42");
   await userEvent.click(screen.getByRole("button", { name: "Anonymiser ce compte" }));
 
   await waitFor(() => expect(erasedUserId).toBe("u42"));
@@ -155,7 +155,7 @@ test("l'échec d'anonymisation distingue « introuvable » (j08-006)", async () 
   );
   render(<Harness />);
   await screen.findByText("Anonymiser un compte");
-  await userEvent.type(screen.getByLabelText("Identifiant de l'utilisateur à anonymiser"), "nope");
+  await userEvent.type(screen.getByLabelText(/Identifiant de l'utilisateur/), "nope");
   await userEvent.click(screen.getByRole("button", { name: "Anonymiser ce compte" }));
   expect(await screen.findByText("Utilisateur introuvable dans ce tenant.")).toBeInTheDocument();
 });

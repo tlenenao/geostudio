@@ -80,7 +80,7 @@ export function PipelinePalette({ onAdd }: { onAdd?: (op: string) => void }) {
                         recordUse(op);
                         onAdd?.(op);
                       }}
-                      className="flex w-full cursor-grab items-start gap-2 rounded border border-rule bg-surface px-2 py-1 text-left text-ink hover:bg-sunken"
+                      className="flex w-full cursor-grab items-start gap-2 rounded border border-control bg-surface px-2 py-1 text-left text-ink hover:bg-sunken"
                     >
                       <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-2" />
                       <span className="flex flex-col">
@@ -126,7 +126,7 @@ export function PipelinePalette({ onAdd }: { onAdd?: (op: string) => void }) {
                       recordUse(op);
                       onAdd?.(op);
                     }}
-                    className="flex w-full cursor-grab items-start gap-2 rounded border border-rule bg-surface px-2 py-1 text-left text-ink hover:bg-sunken"
+                    className="flex w-full cursor-grab items-start gap-2 rounded border border-control bg-surface px-2 py-1 text-left text-ink hover:bg-sunken"
                   >
                     <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-2" />
                     <span className="flex flex-col">

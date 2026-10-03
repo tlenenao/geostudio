@@ -107,7 +107,9 @@ test("shows URL and exaggeration fields when a terrain config is provided", () =
   expect(screen.getByLabelText("URL de tuiles terrain")).toHaveValue(
     "https://example.test/dem/{z}/{x}/{y}.png",
   );
-  expect(screen.getByLabelText("Exaggeration du terrain")).toHaveValue(2);
+  expect(screen.getByLabelText("Exagération du relief")).toHaveValue(2);
+  // j03-014 : plus de libellé anglais en dur.
+  expect(screen.queryByText("Exaggeration")).not.toBeInTheDocument();
 });
 
 test("editing the URL field patches tilesUrl and preserves other fields", async () => {
@@ -122,7 +124,7 @@ test("editing the exaggeration field patches exaggeration", () => {
   const onChange = vi.fn();
   const value: MapTerrainConfig = { tilesUrl: "u", encoding: "terrarium", exaggeration: 1 };
   renderPanel(value, onChange);
-  fireEvent.change(screen.getByLabelText("Exaggeration du terrain"), { target: { value: "2.5" } });
+  fireEvent.change(screen.getByLabelText("Exagération du relief"), { target: { value: "2.5" } });
   expect(onChange).toHaveBeenCalledWith({
     tilesUrl: "u",
     encoding: "terrarium",
@@ -134,7 +136,7 @@ test("clearing the exaggeration field keeps the previous value instead of zeroin
   const onChange = vi.fn();
   const value: MapTerrainConfig = { tilesUrl: "u", encoding: "terrarium", exaggeration: 2 };
   renderPanel(value, onChange);
-  fireEvent.change(screen.getByLabelText("Exaggeration du terrain"), { target: { value: "" } });
+  fireEvent.change(screen.getByLabelText("Exagération du relief"), { target: { value: "" } });
   expect(onChange).not.toHaveBeenCalled();
 });
 
@@ -142,7 +144,7 @@ test("a still-explicit zero exaggeration is accepted", () => {
   const onChange = vi.fn();
   const value: MapTerrainConfig = { tilesUrl: "u", encoding: "terrarium", exaggeration: 2 };
   renderPanel(value, onChange);
-  fireEvent.change(screen.getByLabelText("Exaggeration du terrain"), { target: { value: "0" } });
+  fireEvent.change(screen.getByLabelText("Exagération du relief"), { target: { value: "0" } });
   expect(onChange).toHaveBeenCalledWith({ tilesUrl: "u", encoding: "terrarium", exaggeration: 0 });
 });
 

@@ -851,7 +851,7 @@ test("Supprimer demande confirmation via ConfirmDialog, appelle deleteFeature, i
   });
   await screen.findByText(/Modification de l'enregistrement #7/);
   await userEvent.click(screen.getByRole("button", { name: "Supprimer" }));
-  const dialog = screen.getByRole("dialog");
+  const dialog = screen.getByRole("alertdialog");
   expect(client.deleteFeature).not.toHaveBeenCalled();
   await userEvent.click(within(dialog).getByRole("button", { name: "Supprimer" }));
   await waitFor(() => expect(client.deleteFeature).toHaveBeenCalledWith("incidents", "7"));
@@ -943,11 +943,11 @@ test("Supprimer does nothing when the confirmation is declined", async () => {
   });
   await screen.findByText(/Modification de l'enregistrement #7/);
   await userEvent.click(screen.getByRole("button", { name: "Supprimer" }));
-  const dialog = screen.getByRole("dialog");
+  const dialog = screen.getByRole("alertdialog");
   await userEvent.click(within(dialog).getByRole("button", { name: t("confirmDialog.cancel") }));
   expect(client.deleteFeature).not.toHaveBeenCalled();
   expect(screen.getByText(/Modification de l'enregistrement #7/)).toBeInTheDocument();
-  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
 });
 
 test("hides the write buttons once the collection permission resolves to canWrite=false", async () => {
@@ -1141,7 +1141,7 @@ test("demande confirmation via ConfirmDialog avant de supprimer une pièce joint
   await screen.findByText("a.jpg");
   await userEvent.click(screen.getByRole("button", { name: /supprimer a\.jpg/i }));
   expect(deleteAttachment).not.toHaveBeenCalled();
-  const dialog = screen.getByRole("dialog");
+  const dialog = screen.getByRole("alertdialog");
   expect(dialog).toHaveTextContent(t("widgetForm.confirmDeleteAttachment", { filename: "a.jpg" }));
   await userEvent.click(within(dialog).getByRole("button", { name: "Supprimer" }));
   expect(deleteAttachment).toHaveBeenCalledWith("incidents", "7", "att1");
@@ -1175,10 +1175,10 @@ test("décliner la confirmation ne supprime pas la pièce jointe", async () => {
   bus.emit("table1", "itemSelected", { id: 7, properties: {} });
   await screen.findByText("a.jpg");
   await userEvent.click(screen.getByRole("button", { name: /supprimer a\.jpg/i }));
-  const dialog = screen.getByRole("dialog");
+  const dialog = screen.getByRole("alertdialog");
   await userEvent.click(within(dialog).getByRole("button", { name: t("confirmDialog.cancel") }));
   expect(deleteAttachment).not.toHaveBeenCalled();
-  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   expect(screen.getByText("a.jpg")).toBeInTheDocument();
 });
 

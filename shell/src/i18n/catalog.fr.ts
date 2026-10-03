@@ -10,6 +10,7 @@
 export const fr = {
   // Actions sur un item
   "actions.menu": "Actions",
+  "actions.menuFor": "Actions de {title}",
   "actions.edit": "Modifier",
   "actions.publish": "Publier",
   "actions.unpublish": "Dépublier",
@@ -33,7 +34,44 @@ export const fr = {
   "locked.capabilityOff": "Désactivé sur cette instance — voir un administrateur.",
 
   // Chrome de page (AppLayout)
+  "layout.skipToContent": "Aller au contenu principal",
   "layout.readOnlyBanner": "Mode démo — lecture seule, les modifications ne sont pas enregistrées.",
+
+  // Titres de document par vue (WCAG 2.4.2)
+  "itemCard.open": "Ouvrir",
+  "itemCard.openFor": "Ouvrir {title}",
+
+  "docTitle.format": "{view} — GeoStudio",
+  "docTitle.appName": "GeoStudio",
+  "docTitle.catalog": "Catalogue",
+  "docTitle.item": "Fiche de l'élément",
+  "docTitle.bookmarks": "Signets",
+  "docTitle.map": "Éditeur de carte",
+  "docTitle.appEdit": "Éditeur d'application",
+  "docTitle.datasetEdit": "Éditeur de jeu de données",
+  "docTitle.pipelineNew": "Nouveau pipeline",
+  "docTitle.pipelineEdit": "Éditeur de pipeline",
+  "docTitle.visualQueryNew": "Nouvelle requête visuelle",
+  "docTitle.visualQueryEdit": "Requête visuelle",
+  "docTitle.reports": "Rapports",
+  "docTitle.reportNew": "Nouveau rapport",
+  "docTitle.reportEdit": "Édition du rapport",
+  "docTitle.sqlLab": "SQL Lab",
+  "docTitle.adminExtensions": "Extensions",
+  "docTitle.adminCollections": "Collections",
+  "docTitle.adminHarvest": "Moissonnage",
+  "docTitle.adminRoles": "Rôles",
+  "docTitle.adminUsers": "Utilisateurs",
+  "docTitle.adminCompliance": "Conformité",
+  "docTitle.adminInfrastructure": "Infrastructure",
+  "docTitle.kitGallery": "Galerie du kit",
+  "docTitle.tasks": "Tâches",
+  "docTitle.settings": "Paramètres",
+  "docTitle.app": "Application",
+  "docTitle.embed": "Contenu intégré",
+  "docTitle.site": "Portail",
+  "docTitle.publicItem": "Élément public",
+  "docTitle.publicDataset": "Jeu de données public",
 
   // Domaines
   "domain.catalog": "Catalogue",
@@ -120,6 +158,15 @@ export const fr = {
   "catalog.summaryLabel": "Résumé",
   "catalog.searchResultLabel": "Recherche",
   "catalog.spatialExtentLabel": "Emprise spatiale",
+  "catalog.spatialMapTitle": "Carte de sélection de l'emprise",
+  "catalog.spatialFieldsLegend": "Ou saisir l'emprise en degrés",
+  "catalog.spatialWest": "Ouest (longitude min.)",
+  "catalog.spatialSouth": "Sud (latitude min.)",
+  "catalog.spatialEast": "Est (longitude max.)",
+  "catalog.spatialNorth": "Nord (latitude max.)",
+  "catalog.spatialApply": "Appliquer l'emprise",
+  "catalog.spatialInvalid":
+    "Emprise invalide : renseignez les quatre valeurs (ouest < est, sud < nord, longitude entre -180 et 180, latitude entre -90 et 90).",
   "catalog.spatialDrawAria": "Dessiner un rectangle de recherche spatiale",
 
   // Palette de commandes ⌘K (D07, SP-C4/Task 21)
@@ -206,6 +253,7 @@ export const fr = {
   "roles.title": "Rôles",
   "roles.addRole": "Ajouter un rôle",
   "roles.nameLabel": "Nom",
+  "roles.nameRequired": "Le nom est obligatoire pour enregistrer le rôle.",
   "roles.privilegesLabel": "Privilèges",
   "roles.builtInBadge": "Prédéfini",
   "roles.deleteConfirmTitle": "Supprimer le rôle",
@@ -308,6 +356,10 @@ export const fr = {
   "settings.notificationsFailuresOnly": "Échecs seulement",
   "settings.notificationsNone": "Aucune",
   "settings.notificationsSaveError": "Échec de l'enregistrement de la préférence.",
+  "settings.appearanceTitle": "Apparence",
+  "settings.appearanceAuto": "Automatique (suit le système)",
+  "settings.appearanceLight": "Clair",
+  "settings.appearanceDark": "Sombre",
   "settings.accountTitle": "Compte",
   "settings.accountKeycloakLink":
     "Gérer mon compte (mot de passe, authentification à deux facteurs) →",
@@ -429,7 +481,6 @@ export const fr = {
   "compliance.eraseDescription":
     "Écrase le nom d'utilisateur, l'email et l'identité de connexion d'un compte. Les objets qu'il possède (cartes, collections, pièces jointes) restent intacts, attribués au compte anonymisé. Effet limité — le tenant continue de fonctionner normalement.",
   "compliance.userIdLabel": "Identifiant de l'utilisateur (ou « me » pour votre propre compte)",
-  "compliance.userIdAria": "Identifiant de l'utilisateur à anonymiser",
   "compliance.eraseButton": "Anonymiser ce compte",
   "compliance.eraseSuccess": "Compte anonymisé.",
   "compliance.eraseError": "Échec de l'anonymisation.",
@@ -446,7 +497,6 @@ export const fr = {
     "toutes les données de ce tenant : items, collections (y compris leurs tables), utilisateurs, rôles, pièces jointes, journal d'audit — puis le tenant lui-même. Aucune restauration possible après confirmation.",
   "compliance.confirmSlugBefore": "Retapez le slug du tenant (",
   "compliance.confirmSlugAfter": ") pour confirmer",
-  "compliance.confirmSlugAria": "Confirmer le slug du tenant",
   "compliance.purgeButton": "Purger définitivement ce tenant",
   "compliance.purgeInProgress": "Purge en cours…",
   "compliance.purgeCompleted": "Purge terminée à {completedAt}.",
@@ -607,6 +657,7 @@ export const fr = {
     "Requêtes SQL en lecture seule sur les jeux de données exposés (DuckDB). Le résultat est tronqué au-delà d'un certain nombre de lignes.",
   "sqlLab.queryLabel": "Requête",
   "sqlLab.sqlQueryLabel": "Requête SQL",
+  "sqlLab.keyboardHint": "Échap puis Tab pour quitter l'éditeur.",
   "sqlLab.runButton": "Exécuter",
   "sqlLab.truncatedMessage": "Résultat tronqué aux {n} premières lignes.",
   "sqlLab.nullCell": "NULL",
@@ -1220,6 +1271,7 @@ export const fr = {
   "appExport.stillRunning": "Export toujours en cours, réessayer plus tard.",
   "appExport.exportFailed": "Échec de l'export.",
   "appExport.exportButton": "Exporter",
+  "appExport.running": "Export en cours…",
   "appExport.chooseModeHeading": "Choisir le mode d'export",
   "appExport.close": "Fermer",
   "appExport.modeStatic": "Statique",
@@ -1765,7 +1817,7 @@ export const fr = {
   "terrainPanel.chooseHostedOption": "— choisir un DEM hébergé —",
   "terrainPanel.tilesUrlLabel": "URL de tuiles terrain (terrain-RGB, encodage terrarium)",
   "terrainPanel.tilesUrlAria": "URL de tuiles terrain",
-  "terrainPanel.exaggerationAria": "Exaggeration du terrain",
+  "terrainPanel.exaggerationLabel": "Exagération du relief",
 
   // Terrain3DUploadButton (map)
   "terrain3dUpload.conversionErrorFallback": "Échec de la conversion du DEM.",

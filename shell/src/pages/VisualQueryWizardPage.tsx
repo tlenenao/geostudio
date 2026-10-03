@@ -412,9 +412,9 @@ export function VisualQueryWizardPage({
           label: t("visualQuery.queryLabel"),
           content: (
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
-              <h2 className="text-lg font-semibold text-ink">
+              <h1 className="text-lg font-semibold text-ink">
                 {pipelinePk !== null ? t("visualQuery.editHeading") : t("visualQuery.newHeading")}
-              </h2>
+              </h1>
               <label className="flex flex-col gap-1 text-sm">
                 {t("visualQuery.titleLabel")}
                 <Input
@@ -430,7 +430,7 @@ export function VisualQueryWizardPage({
                 {t("visualQuery.baseCollectionLabel")}
                 <select
                   aria-label={t("visualQuery.baseCollectionLabel")}
-                  className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                  className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                   value={baseCollectionId}
                   onChange={(e) => {
                     // Important 3 : un changement direct de collection de base

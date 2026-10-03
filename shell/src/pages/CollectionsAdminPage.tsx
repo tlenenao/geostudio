@@ -132,7 +132,7 @@ export function CollectionsAdminPage() {
                 role="searchbox"
                 aria-label={t("collectionsAdmin.searchAria")}
                 placeholder={t("collectionsAdmin.searchPlaceholder")}
-                className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                 value={q}
                 onChange={(e) => {
                   setQ(e.target.value);

@@ -76,7 +76,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const { username } = useAuth();
   const createDataset = useCreateDataset();
   const [promotingId, setPromotingId] = useState<string | null>(null);
-  const mainRef = useRef<HTMLElement>(null);
+  const mainRef = useRef<HTMLDivElement>(null);
   const { draft, setDraft, seedDraft, resetDraft, undo, redo, canUndo, canRedo } =
     useUndoableDraft<AppConfig>();
   // SP-B9b : page active et sélection synchronisées à l'URL
@@ -398,6 +398,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   return (
     <DataSourcesEditProvider onAdd={(source) => setSources([...draft.dataSources, source])}>
       <div className="-m-6 flex flex-1 flex-col overflow-hidden">
+        <h1 className="sr-only">{t("docTitle.appEdit")}</h1>
         <TriptychLayout
           defaultTabId="canvas"
           browse={{
@@ -478,7 +479,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                     </span>
                   )}
                 </div>
-                <main ref={mainRef} className="flex-1 overflow-auto p-2">
+                <div ref={mainRef} data-testid="app-canvas" className="flex-1 overflow-auto p-2">
                   <AppRenderer
                     config={draft}
                     mode={mode}
@@ -489,7 +490,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                     pageId={activePage}
                     onNavigate={setActivePageId}
                   />
-                </main>
+                </div>
               </div>
             ),
           }}

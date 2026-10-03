@@ -769,7 +769,7 @@ test("removing a page prunes messages wired to its widgets after confirmation (P
     screen.getByRole("button", { name: "Ouvrir la page p2", hidden: true }),
   ).toBeInTheDocument();
   await userEvent.click(
-    within(await screen.findByRole("dialog")).getByRole("button", { name: "Supprimer" }),
+    within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Supprimer" }),
   );
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   await waitFor(() => expect(saveAppConfig).toHaveBeenCalled());
@@ -904,7 +904,7 @@ test("restaurer une version recharge le brouillon et vide l'undo", async () => {
   await waitFor(() => expect(screen.getByRole("button", { name: "Annuler" })).toBeEnabled());
 
   await userEvent.click(await screen.findByRole("button", { name: /restaurer/i }));
-  const dialog = screen.getByRole("dialog");
+  const dialog = screen.getByRole("alertdialog");
   await userEvent.click(within(dialog).getByRole("button", { name: /restaurer/i }));
   await waitFor(() => expect(screen.getByRole("button", { name: "Annuler" })).toBeDisabled());
 });
@@ -1104,7 +1104,7 @@ test("bloque la navigation après une modification non enregistrée du builder (
   await userEvent.click(await screen.findByRole("button", { name: "Texte" }));
   await userEvent.click(screen.getByRole("link", { name: "Autre page" }));
 
-  expect(await screen.findByRole("dialog")).toHaveTextContent(
+  expect(await screen.findByRole("alertdialog")).toHaveTextContent(
     t("navigation.unsavedChangesMessage"),
   );
 });
@@ -1132,7 +1132,7 @@ test("changer d'onglet de page (URL interne, même pathname) ne déclenche pas l
 
   await userEvent.click(screen.getByRole("button", { name: "Ouvrir la page page-2" }));
 
-  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   await waitFor(() => expect(screen.getByTestId("url-search").textContent).toContain("page-2"));
 });
 

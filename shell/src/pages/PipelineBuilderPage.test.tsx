@@ -1168,7 +1168,7 @@ test("bloque la navigation après une modification non enregistrée du pipeline 
 
   await userEvent.click(screen.getByRole("link", { name: "Autre page" }));
 
-  expect(await screen.findByRole("dialog")).toHaveTextContent(
+  expect(await screen.findByRole("alertdialog")).toHaveTextContent(
     t("navigation.unsavedChangesMessage"),
   );
 });
@@ -1200,7 +1200,7 @@ test("sélectionner un nœud (URL interne, même pathname) ne déclenche pas la 
   fireEvent.click(screen.getByText("Villes"));
 
   await waitFor(() => expect(screen.getByText("Nœud sélectionné")).toBeInTheDocument());
-  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
 });
 
 // SP-B6d, risque explicitement signalé au brief : le round-trip réel de
@@ -1282,7 +1282,7 @@ test("le round-trip de création (pk=null -> Enregistrer -> redirection) n'affic
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
 
   await waitFor(() => expect(createPipelineItem).toHaveBeenCalled());
-  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   // Démonte avant de retirer les stubs : React Flow mesure encore ses nœuds sinon.
   cleanup();
   Reflect.deleteProperty(HTMLElement.prototype, "offsetWidth");

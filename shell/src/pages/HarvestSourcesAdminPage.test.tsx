@@ -275,7 +275,7 @@ test("supprimer la source en cours d'édition ferme le panneau Éditer (croiseme
   expect(await screen.findByRole("region", { name: "Éditer https://a" })).toBeInTheDocument();
 
   await userEvent.click(screen.getByRole("button", { name: "Supprimer" }));
-  const dialog = screen.getByRole("dialog");
+  const dialog = screen.getByRole("alertdialog");
   await userEvent.click(within(dialog).getByRole("button", { name: "Supprimer" }));
 
   await waitFor(() =>
@@ -316,7 +316,7 @@ test("delete removes the source from the list", async () => {
   // Le bouton de la ligne et celui du ConfirmDialog partagent le même nom
   // accessible une fois le dialogue ouvert — on scope au dialogue (même
   // patron que CollectionsAdminPage.test.tsx : within(dialog).getByRole).
-  const dialog = screen.getByRole("dialog");
+  const dialog = screen.getByRole("alertdialog");
   await userEvent.click(within(dialog).getByRole("button", { name: "Supprimer" }));
   await waitFor(() => expect(deleted).toBe(true));
   await waitFor(() => expect(screen.queryByText("https://a")).not.toBeInTheDocument());

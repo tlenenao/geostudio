@@ -349,7 +349,7 @@ test("supprimer une extension demande confirmation puis appelle DELETE (j08-009)
     await screen.findByRole("button", { name: "Supprimer : Jauge (extension)" }),
   );
   expect(deleted).toBe(false);
-  const dialog = await screen.findByRole("dialog");
+  const dialog = await screen.findByRole("alertdialog");
   await userEvent.click(within(dialog).getByRole("button", { name: "Supprimer" }));
   await waitFor(() => expect(deleted).toBe(true));
   expect(await screen.findByText("Aucune extension enregistrée.")).toBeInTheDocument();

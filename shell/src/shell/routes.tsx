@@ -20,6 +20,7 @@ import { useOpenItem } from "./useOpenItem";
 import { resolvePipelineEditorPath } from "./resolvePipelineEditorPath";
 import { useItemClient } from "../api/ItemClientProvider";
 import { AppErrorFallback } from "../AppErrorBoundary";
+import { RouteTitle } from "./RouteTitle";
 
 // Découpage par route (Task 8, SP-60/GAP-68) : chaque page lourde part dans
 // son propre chunk, chargé seulement quand sa route est visitée — le chunk
@@ -387,6 +388,7 @@ function routeElements() {
 export function AppRoutes() {
   return (
     <Suspense fallback={<p role="status">Chargement…</p>}>
+      <RouteTitle />
       <Routes>{routeElements()}</Routes>
     </Suspense>
   );
@@ -405,6 +407,7 @@ export function createAppRouter(options?: { initialEntries?: string[] }) {
     <Route
       element={
         <Suspense fallback={<p role="status">Chargement…</p>}>
+          <RouteTitle />
           <Outlet />
         </Suspense>
       }

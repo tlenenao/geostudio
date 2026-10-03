@@ -56,7 +56,7 @@ export function CrossFilterLinkEditor({
         {t("crossFilterLink.targetDatasetLabel")}
         <select
           aria-label={t("crossFilterLink.targetDatasetLabel")}
-          className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+          className="h-8 rounded border border-control bg-surface px-2 text-ink"
           value={link.targetDatasetId}
           onChange={(e) => onChange({ ...link, targetDatasetId: e.target.value })}
         >
@@ -72,7 +72,7 @@ export function CrossFilterLinkEditor({
         {t("crossFilterLink.modeLabel")}
         <select
           aria-label={t("crossFilterLink.modeLabel")}
-          className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+          className="h-8 rounded border border-control bg-surface px-2 text-ink"
           value={link.mode}
           onChange={(e) => changeMode(e.target.value as "attribute" | "spatial")}
         >
@@ -86,7 +86,7 @@ export function CrossFilterLinkEditor({
             {t("crossFilterLink.sourceFieldLabel")}
             <select
               aria-label={t("crossFilterLink.sourceFieldLabel")}
-              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+              className="h-8 rounded border border-control bg-surface px-2 text-ink"
               value={link.sourceField}
               onChange={(e) => onChange({ ...link, sourceField: e.target.value })}
             >
@@ -102,7 +102,7 @@ export function CrossFilterLinkEditor({
             {t("crossFilterLink.targetFieldLabel")}
             <select
               aria-label={t("crossFilterLink.targetFieldLabel")}
-              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+              className="h-8 rounded border border-control bg-surface px-2 text-ink"
               value={link.targetField}
               onChange={(e) => onChange({ ...link, targetField: e.target.value })}
             >
@@ -121,7 +121,7 @@ export function CrossFilterLinkEditor({
             {t("crossFilterLink.precisionLabel")}
             <select
               aria-label={t("crossFilterLink.precisionLabel")}
-              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+              className="h-8 rounded border border-control bg-surface px-2 text-ink"
               value={link.precision}
               onChange={(e) => onChange({ ...link, precision: e.target.value as "bbox" | "exact" })}
             >

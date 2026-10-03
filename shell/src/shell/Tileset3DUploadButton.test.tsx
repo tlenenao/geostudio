@@ -263,3 +263,85 @@ test("does not poll again or update state after the drawer is unmounted mid-fina
   expect(errorSpy).not.toHaveBeenCalled();
   errorSpy.mockRestore();
 });
+
+const ME_BASE = {
+  id: "u1",
+  username: "alice",
+  firstName: "Alice",
+  lastName: "Martin",
+  email: "alice@example.com",
+  tenantId: "t1",
+  version: "0.1.0",
+  tenantSlug: "demo",
+};
+
+test("P33.26 : sans catalog.manage, le bouton « Nouveau tileset 3D » est masqué", async () => {
+  server.use(
+    http.get("https://core.test/v1/me", () =>
+      HttpResponse.json({
+        ...ME_BASE,
+        role: { id: "role-reader", name: "Lecteur", slug: "reader" },
+        privileges: ["data.view"],
+      }),
+    ),
+  );
+  render(
+    <Harness>
+      <Tileset3DUploadButton />
+    </Harness>,
+  );
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: "Nouveau tileset 3D" })).not.toBeInTheDocument(),
+  );
+});
+
+test("P33.26 : avec catalog.manage, le bouton reste visible", async () => {
+  server.use(
+    http.get("https://core.test/v1/me", () =>
+      HttpResponse.json({
+        ...ME_BASE,
+        role: { id: "role-creator", name: "Créateur", slug: "creator" },
+        privileges: ["catalog.manage", "data.view"],
+      }),
+    ),
+  );
+  render(
+    <Harness>
+      <Tileset3DUploadButton />
+    </Harness>,
+  );
+  expect(await screen.findByRole("button", { name: "Nouveau tileset 3D" })).toBeInTheDocument();
+});
+
+test("P33.25 : progression et validation sont des régions role=status", async () => {
+  server.use(
+    http.post("https://core.test/v1/tileset3d/uploads", () =>
+      HttpResponse.json({ jobId: "job-s" }, { status: 201 }),
+    ),
+    http.post("https://core.test/v1/tileset3d/uploads/job-s/parts/1/presign", () =>
+      HttpResponse.json({ uploadUrl: "https://minio.test/part-s" }),
+    ),
+    http.put(
+      "https://minio.test/part-s",
+      () => new HttpResponse(null, { status: 200, headers: { ETag: '"e"' } }),
+    ),
+    http.post(
+      "https://core.test/v1/tileset3d/uploads/job-s/complete",
+      () => new HttpResponse(null, { status: 204 }),
+    ),
+    http.get("https://core.test/v1/tileset3d/uploads/job-s", () =>
+      HttpResponse.json({ status: "running", errorMessage: null, itemId: null }),
+    ),
+  );
+  render(
+    <Harness>
+      <Tileset3DUploadButton pollTimeoutMs={60_000} />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByText("Nouveau tileset 3D"));
+  await userEvent.upload(screen.getByLabelText("Archive du tileset (.zip)"), zipFile());
+  await userEvent.type(screen.getByLabelText("Titre"), "Ville");
+  await userEvent.click(screen.getByText("Importer"));
+  const validating = await screen.findByText(/Validation/);
+  expect(validating.closest("[role=status]")).not.toBeNull();
+});

@@ -107,6 +107,22 @@ export function CatalogPage({
     { enabled: !requiresMe || !!me.data },
   );
 
+  const hasActiveFilter =
+    q.length > 0 ||
+    (!fixedType && type !== "") ||
+    scope !== "all" ||
+    ownerFilter.length > 0 ||
+    selectedKeywords.length > 0 ||
+    spatialBbox !== null;
+  const total = query.data?.total ?? 0;
+  const countText = t(plural(total, "catalog.countOne", "catalog.countMany"), { n: total });
+  const viewHeadingKey =
+    fixedType === "bookmark"
+      ? "docTitle.bookmarks"
+      : fixedType === "report"
+        ? "docTitle.reports"
+        : "docTitle.catalog";
+
   const totalPages = query.data ? Math.max(1, Math.ceil(query.data.total / PAGE_SIZE)) : 1;
 
   function toggleKeyword(keyword: string) {
@@ -141,7 +157,7 @@ export function CatalogPage({
                   {t("catalog.typeLabel")}
                   <select
                     aria-label={t("catalog.typeLabel")}
-                    className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                    className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                     value={type}
                     onChange={(e) => setType(e.target.value as ResourceType | "")}
                   >
@@ -175,7 +191,7 @@ export function CatalogPage({
                 {t("catalog.scopeLabel")}
                 <select
                   aria-label={t("catalog.scopeLabel")}
-                  className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                  className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                   value={scope}
                   onChange={(e) => {
                     setScope(e.target.value as ItemScope);
@@ -193,7 +209,7 @@ export function CatalogPage({
                 {t("catalog.sortByLabel")}
                 <select
                   aria-label={t("catalog.sortByLabel")}
-                  className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                  className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                   value={sort}
                   onChange={(e) => {
                     setSort(e.target.value as ItemSort);
@@ -211,7 +227,7 @@ export function CatalogPage({
                 {t("catalog.ownerLabel")}
                 <select
                   aria-label={t("catalog.ownerLabel")}
-                  className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                  className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                   value={ownerFilter}
                   onChange={(e) => {
                     setOwnerFilter(e.target.value);
@@ -236,7 +252,7 @@ export function CatalogPage({
                         type="button"
                         aria-pressed={selectedKeywords.includes(k.keyword)}
                         onClick={() => toggleKeyword(k.keyword)}
-                        className="rounded-full border border-rule bg-surface px-3 py-1 text-xs text-ink aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-surface"
+                        className="rounded-full border border-control bg-surface px-3 py-1 text-xs text-ink aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-surface"
                       >
                         {k.keyword} ({k.count})
                       </button>
@@ -281,6 +297,16 @@ export function CatalogPage({
           label: t("domain.catalog"),
           content: (
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-6">
+              <h1 className="sr-only">{t(viewHeadingKey)}</h1>
+              {/* P33.17 : nombre de résultats / état vide annoncé à chaque
+                  changement de filtre (région polie, hors écran). */}
+              <p role="status" className="sr-only">
+                {query.isSuccess
+                  ? hasActiveFilter && total === 0
+                    ? t("catalog.emptyFilteredTitle")
+                    : countText
+                  : ""}
+              </p>
               {openError && (
                 <p role="alert" className="text-sm text-danger">
                   {openError}
@@ -298,13 +324,6 @@ export function CatalogPage({
               {query.isSuccess &&
                 query.data.items.length === 0 &&
                 (() => {
-                  const hasActiveFilter =
-                    q.length > 0 ||
-                    (!fixedType && type !== "") ||
-                    scope !== "all" ||
-                    ownerFilter.length > 0 ||
-                    selectedKeywords.length > 0 ||
-                    spatialBbox !== null;
                   if (hasActiveFilter) {
                     return (
                       <EmptyState

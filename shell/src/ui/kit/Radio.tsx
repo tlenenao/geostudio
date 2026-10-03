@@ -92,7 +92,7 @@ function RadioItem({ value, children }: { value: string; children: React.ReactNo
         id={id}
         value={value}
         aria-label={typeof children === "string" ? children : undefined}
-        className="flex h-4 w-4 items-center justify-center rounded-full border border-rule bg-surface data-[state=checked]:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex h-4 w-4 items-center justify-center rounded-full border border-control bg-surface data-[state=checked]:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50"
       >
         <RadioGroupPrimitive.Indicator className="block h-2 w-2 rounded-full bg-accent" />
       </RadioGroupPrimitive.Item>

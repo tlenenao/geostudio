@@ -38,7 +38,7 @@ export function SecretParamSelect({
     <div className="flex flex-col gap-1">
       <select
         aria-label={ariaLabel}
-        className="h-9 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
+        className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
@@ -232,7 +232,7 @@ function SecretCreateForm({
         <input
           aria-label={t("secretParamSelect.nameAria")}
           placeholder={t("secretParamSelect.namePlaceholder")}
-          className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+          className="h-8 rounded border border-control bg-surface px-2 text-ink"
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
@@ -242,7 +242,7 @@ function SecretCreateForm({
           {t("secretParamSelect.typeLabel")}
           <select
             aria-label={t("secretParamSelect.typeAria")}
-            className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+            className="h-8 rounded border border-control bg-surface px-2 text-ink"
             value={kind}
             onChange={(e) => setKind(e.target.value as SecretPayload["kind"])}
           >
@@ -260,7 +260,7 @@ function SecretCreateForm({
             {t("secretParamSelect.locationLabel")}
             <select
               aria-label={t("secretParamSelect.locationAria")}
-              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+              className="h-8 rounded border border-control bg-surface px-2 text-ink"
               value={field("location") || "header"}
               onChange={(e) => setFieldValue("location", e.target.value)}
             >
@@ -273,7 +273,7 @@ function SecretCreateForm({
             <input
               aria-label={t("secretParamSelect.keyAria")}
               placeholder={t("secretParamSelect.keyPlaceholder")}
-              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+              className="h-8 rounded border border-control bg-surface px-2 text-ink"
               value={field("key")}
               onChange={(e) => setFieldValue("key", e.target.value)}
             />
@@ -284,7 +284,7 @@ function SecretCreateForm({
               aria-label={t("secretParamSelect.valueAria")}
               placeholder={t("secretParamSelect.valuePlaceholder")}
               type="password"
-              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+              className="h-8 rounded border border-control bg-surface px-2 text-ink"
               value={field("value")}
               onChange={(e) => setFieldValue("value", e.target.value)}
             />
@@ -298,7 +298,7 @@ function SecretCreateForm({
             aria-label={t("secretParamSelect.tokenAria")}
             placeholder={t("secretParamSelect.tokenPlaceholder")}
             type="password"
-            className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+            className="h-8 rounded border border-control bg-surface px-2 text-ink"
             value={field("token")}
             onChange={(e) => setFieldValue("token", e.target.value)}
           />
@@ -311,7 +311,7 @@ function SecretCreateForm({
             <input
               aria-label={t("secretParamSelect.usernameAria")}
               placeholder={t("secretParamSelect.usernamePlaceholder")}
-              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+              className="h-8 rounded border border-control bg-surface px-2 text-ink"
               value={field("username")}
               onChange={(e) => setFieldValue("username", e.target.value)}
             />
@@ -322,7 +322,7 @@ function SecretCreateForm({
               aria-label={t("secretParamSelect.passwordAria")}
               placeholder={t("secretParamSelect.passwordPlaceholder")}
               type="password"
-              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+              className="h-8 rounded border border-control bg-surface px-2 text-ink"
               value={field("password")}
               onChange={(e) => setFieldValue("password", e.target.value)}
             />
@@ -336,7 +336,7 @@ function SecretCreateForm({
             <input
               aria-label={t("secretParamSelect.tokenUrlAria")}
               placeholder={t("secretParamSelect.tokenUrlPlaceholder")}
-              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+              className="h-8 rounded border border-control bg-surface px-2 text-ink"
               value={field("tokenUrl")}
               onChange={(e) => setFieldValue("tokenUrl", e.target.value)}
             />
@@ -346,7 +346,7 @@ function SecretCreateForm({
             <input
               aria-label={t("secretParamSelect.clientIdAria")}
               placeholder={t("secretParamSelect.clientIdPlaceholder")}
-              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+              className="h-8 rounded border border-control bg-surface px-2 text-ink"
               value={field("clientId")}
               onChange={(e) => setFieldValue("clientId", e.target.value)}
             />
@@ -357,7 +357,7 @@ function SecretCreateForm({
               aria-label={t("secretParamSelect.clientSecretAria")}
               placeholder={t("secretParamSelect.clientSecretPlaceholder")}
               type="password"
-              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+              className="h-8 rounded border border-control bg-surface px-2 text-ink"
               value={field("clientSecret")}
               onChange={(e) => setFieldValue("clientSecret", e.target.value)}
             />
@@ -375,7 +375,7 @@ function SecretCreateForm({
             aria-label={t("secretParamSelect.dsnAria")}
             placeholder={t("secretParamSelect.dsnPlaceholder")}
             type="password"
-            className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+            className="h-8 rounded border border-control bg-surface px-2 text-ink"
             value={field("dsn")}
             onChange={(e) => setFieldValue("dsn", e.target.value)}
           />
@@ -388,7 +388,7 @@ function SecretCreateForm({
             <input
               aria-label={t("secretParamSelect.awsAccessKeyIdAria")}
               placeholder={t("secretParamSelect.awsAccessKeyIdPlaceholder")}
-              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+              className="h-8 rounded border border-control bg-surface px-2 text-ink"
               value={field("awsAccessKeyId")}
               onChange={(e) => setFieldValue("awsAccessKeyId", e.target.value)}
             />
@@ -399,7 +399,7 @@ function SecretCreateForm({
               aria-label={t("secretParamSelect.awsSecretAccessKeyAria")}
               placeholder={t("secretParamSelect.awsSecretAccessKeyPlaceholder")}
               type="password"
-              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+              className="h-8 rounded border border-control bg-surface px-2 text-ink"
               value={field("awsSecretAccessKey")}
               onChange={(e) => setFieldValue("awsSecretAccessKey", e.target.value)}
             />
@@ -409,7 +409,7 @@ function SecretCreateForm({
             <input
               aria-label={t("secretParamSelect.endpointUrlAria")}
               placeholder={t("secretParamSelect.endpointUrlPlaceholder")}
-              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+              className="h-8 rounded border border-control bg-surface px-2 text-ink"
               value={field("endpointUrl")}
               onChange={(e) => setFieldValue("endpointUrl", e.target.value)}
             />
@@ -423,7 +423,7 @@ function SecretCreateForm({
             <input
               aria-label={t("secretParamSelect.accountNameAria")}
               placeholder={t("secretParamSelect.accountNamePlaceholder")}
-              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+              className="h-8 rounded border border-control bg-surface px-2 text-ink"
               value={field("accountName")}
               onChange={(e) => setFieldValue("accountName", e.target.value)}
             />
@@ -434,7 +434,7 @@ function SecretCreateForm({
               aria-label={t("secretParamSelect.accountKeyAria")}
               placeholder={t("secretParamSelect.accountKeyPlaceholder")}
               type="password"
-              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+              className="h-8 rounded border border-control bg-surface px-2 text-ink"
               value={field("accountKey")}
               onChange={(e) => setFieldValue("accountKey", e.target.value)}
             />
@@ -447,7 +447,7 @@ function SecretCreateForm({
           <textarea
             aria-label={t("secretParamSelect.serviceAccountInfoAria")}
             placeholder={t("secretParamSelect.serviceAccountInfoPlaceholder")}
-            className="h-24 rounded border border-rule bg-surface px-2 py-1 text-ink"
+            className="h-24 rounded border border-control bg-surface px-2 py-1 text-ink"
             value={field("serviceAccountInfo")}
             onChange={(e) => setFieldValue("serviceAccountInfo", e.target.value)}
           />
@@ -460,7 +460,7 @@ function SecretCreateForm({
             <input
               aria-label={t("secretParamSelect.hostAria")}
               placeholder={t("secretParamSelect.hostPlaceholder")}
-              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+              className="h-8 rounded border border-control bg-surface px-2 text-ink"
               value={field("host")}
               onChange={(e) => setFieldValue("host", e.target.value)}
             />
@@ -471,7 +471,7 @@ function SecretCreateForm({
               aria-label={t("secretParamSelect.portAria")}
               placeholder={t("secretParamSelect.portPlaceholder")}
               type="number"
-              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+              className="h-8 rounded border border-control bg-surface px-2 text-ink"
               value={field("port")}
               onChange={(e) => setFieldValue("port", e.target.value)}
             />
@@ -481,7 +481,7 @@ function SecretCreateForm({
             <input
               aria-label={t("secretParamSelect.usernameAria")}
               placeholder={t("secretParamSelect.usernamePlaceholder")}
-              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+              className="h-8 rounded border border-control bg-surface px-2 text-ink"
               value={field("username")}
               onChange={(e) => setFieldValue("username", e.target.value)}
             />
@@ -492,7 +492,7 @@ function SecretCreateForm({
               aria-label={t("secretParamSelect.passwordAria")}
               placeholder={t("secretParamSelect.passwordPlaceholder")}
               type="password"
-              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+              className="h-8 rounded border border-control bg-surface px-2 text-ink"
               value={field("password")}
               onChange={(e) => setFieldValue("password", e.target.value)}
             />
@@ -502,7 +502,7 @@ function SecretCreateForm({
             <input
               aria-label={t("secretParamSelect.fromAddressAria")}
               placeholder={t("secretParamSelect.fromAddressPlaceholder")}
-              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+              className="h-8 rounded border border-control bg-surface px-2 text-ink"
               value={field("fromAddress")}
               onChange={(e) => setFieldValue("fromAddress", e.target.value)}
             />

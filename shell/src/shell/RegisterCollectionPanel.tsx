@@ -49,7 +49,7 @@ export function RegisterCollectionPanel({ onClose }: { onClose: () => void }) {
             {t("registerCollection.tableLabel")}
             <select
               aria-label={t("registerCollection.tableLabel")}
-              className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+              className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
               value={tableName}
               onChange={(e) => setTableName(e.target.value)}
             >
