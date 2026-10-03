@@ -2138,6 +2138,7 @@ export const fr = {
 
   // ConnectivityBanner (SP-B7) — bannière globale sur injoignabilité du cœur
   "connectivity.unreachable": "Connexion au serveur perdue — nouvelle tentative en cours…",
+  "connectivity.offline": "Vous êtes hors ligne — les données ne sont pas rechargées.",
 
   // jobStatusLabel (SP-B10a) — vocabulaire d'état de job partagé entre
   // PipelineRunPanel et ReportRunPanel (deux énumérations réelles distinctes,

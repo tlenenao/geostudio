@@ -57,30 +57,32 @@ test.describe("t02 UI : le cœur devient injoignable puis revient", () => {
   });
 
   // Finding t02-006 : la bannière annonce « nouvelle tentative en cours » mais rien ne réessaie jamais.
-  bug("t02-006 : le retour du cœur est détecté sans action de l'utilisateur", async () => {
+  test("t02-006 : le retour du cœur est détecté sans action de l'utilisateur", async () => {
+    await s.page.clock.install();
     let cut = true;
     await cutReads(s.page, () => cut);
     await go(s.page, "/bookmarks", 3500);
     await expect(s.page.getByRole("alert").filter({ hasText: BANNER })).toBeVisible();
     cut = false;
-    await s.page.waitForTimeout(25_000);
-    expect(await alerts(s.page)).not.toMatch(BANNER);
+    // Horloge simulée : le sondage de la bannière (5 s) tourne sans attente réelle.
+    await s.page.clock.fastForward(10_000);
+    await expect(s.page.getByRole("alert").filter({ hasText: BANNER })).toHaveCount(0);
   });
 
   // Finding t02-012 : n'importe quelle requête réussie (ici le sondage de notifications) efface la bannière.
-  bug("t02-012 : la bannière persiste tant que la lecture de la page échoue", async () => {
-    test.setTimeout(120_000);
+  test("t02-012 : la bannière persiste tant que la lecture de la page échoue", async () => {
+    await s.page.clock.install();
     await cutReads(s.page, () => true);
     await go(s.page, "/bookmarks", 3500);
     await expect(s.page.getByRole("alert").filter({ hasText: BANNER })).toBeVisible();
     // Le sondage de notifications (45 s) réussit pendant que la liste reste en erreur.
-    await s.page.waitForTimeout(50_000);
-    expect(await alerts(s.page)).toMatch(LIST_ERROR);
-    expect(await alerts(s.page)).toMatch(BANNER);
+    await s.page.clock.fastForward(50_000);
+    await expect(s.page.getByRole("alert").filter({ hasText: LIST_ERROR })).toBeVisible();
+    await expect(s.page.getByRole("alert").filter({ hasText: BANNER })).toBeVisible();
   });
 
   // Finding t02-007 : hors ligne (navigator.onLine=false) les requêtes sont mises en pause sans aucun message.
-  bug("t02-007 : le mode hors ligne du navigateur est signalé à l'utilisateur", async () => {
+  test("t02-007 : le mode hors ligne du navigateur est signalé à l'utilisateur", async () => {
     await go(s.page, "/", 1500);
     await s.ctx.setOffline(true);
     await go(s.page, "/bookmarks", 4000);

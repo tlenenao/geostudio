@@ -280,6 +280,16 @@ export const READER_ME = {
 };
 
 export async function mockCore(page: Page) {
+  // P22 : une requête cœur non mockée échoue en CoreUnreachableError et lève la
+  // bannière de connectivité (suivi par requête, plus levée par le premier
+  // succès venu) — le sondage de notifications du chrome est donc mocké ici,
+  // en premier : toute route enregistrée ensuite par un spec le surcharge.
+  await page.route("https://core.test/v1/notifications**", (route) => {
+    const url = route.request().url();
+    if (url.includes("/unread-count")) return route.fulfill({ json: { count: 0 } });
+    if (url.includes("/preference")) return route.fulfill({ json: { value: "all" } });
+    return route.fulfill({ json: { notifications: [], total: 0 } });
+  });
   const deleted = new Set<string>();
   // Stateful store: keyed by item id, holds the last PUT body per item.
   const savedConfigs = new Map<string, unknown>();
