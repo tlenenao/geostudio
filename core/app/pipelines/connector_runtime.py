@@ -18,6 +18,7 @@ os.environ.setdefault("RUNTIME__DLTHUB_TELEMETRY", "false")
 import json
 import shutil
 import tempfile
+import time
 import uuid
 from typing import Protocol
 from urllib.parse import urlsplit
@@ -143,6 +144,68 @@ def _max_rows() -> int:
 
 def _max_pages() -> int:
     return _env_int("CORE_PIPELINES_CONNECTOR_MAX_PAGES", 1000)
+
+
+def _blob_max_files() -> int:
+    return _env_int("CORE_PIPELINES_BLOB_MAX_FILES", 100)
+
+
+def _blob_max_bytes() -> int:
+    return _env_int("CORE_PIPELINES_BLOB_MAX_BYTES", 1_073_741_824)
+
+
+def _blob_timeout_s() -> int:
+    return _env_int("CORE_PIPELINES_BLOB_TIMEOUT_S", 600)
+
+
+def _blob_resource(files, reader):
+    """REV-273b : plafonds fichiers/octets/lignes + échéance globale sur la
+    chaîne filesystem → reader. dlt applique `add_map` élément par élément (y
+    compris sur les pages) ; compteurs frais à chaque appel.
+    ponytail: gardes entre éléments ; un fichier unique géant n'est borné que
+    par sa taille annoncée et les délais réseau fsspec (`_blob_fs_kwargs`)."""
+    max_files, max_bytes = _blob_max_files(), _blob_max_bytes()
+    max_rows, budget = _max_rows(), _blob_timeout_s()
+    deadline = time.monotonic() + budget
+    state = {"files": 0, "bytes": 0, "rows": 0}
+
+    def _check_deadline() -> None:
+        if time.monotonic() > deadline:
+            raise ConnectorRuntimeError(f"délai de {budget}s dépassé")
+
+    def _file_guard(item):
+        _check_deadline()
+        state["files"] += 1
+        if state["files"] > max_files:
+            raise ConnectorRuntimeError(f"plafond de {max_files} fichiers dépassé")
+        state["bytes"] += int(item["size_in_bytes"])
+        if state["bytes"] > max_bytes:
+            raise ConnectorRuntimeError(f"plafond de {max_bytes} octets dépassé")
+        return item
+
+    def _row_guard(row):
+        _check_deadline()
+        state["rows"] += 1
+        if state["rows"] > max_rows:
+            raise ConnectorRuntimeError(f"plafond de {max_rows} lignes dépassé")
+        return row
+
+    files.add_map(_file_guard)
+    resource = files | reader
+    resource.add_map(_row_guard)
+    return resource
+
+
+def _blob_fs_kwargs(payload) -> dict:
+    """Délais réseau fsspec par fournisseur (P16.03, REV-273b) : s3fs
+    `config_kwargs` → botocore Config ; adlfs `connection_timeout`/`read_timeout` ;
+    gcsfs `requests_timeout`."""
+    t, q = _connect_timeout_s(), _query_timeout_s()
+    if payload.kind == "s3_credentials":
+        return {"kwargs": {"config_kwargs": {"connect_timeout": t, "read_timeout": q}}}
+    if payload.kind == "azure_blob_credentials":
+        return {"kwargs": {"connection_timeout": t, "read_timeout": q}}
+    return {"kwargs": {"requests_timeout": q}}
 
 
 def _timeout_connect_args(backend: str) -> dict:
@@ -679,10 +742,13 @@ def materialize_blob_connector(
 
     bucket_url = f"{parsed.scheme}://{parsed.netloc}"
     file_glob = parsed.path.lstrip("/")
-    resource = (
-        filesystem(bucket_url=bucket_url, credentials=credentials, file_glob=file_glob)
-        | _BLOB_READERS[params.format]()
+    files = filesystem(
+        bucket_url=bucket_url,
+        credentials=credentials,
+        file_glob=file_glob,
+        **_blob_fs_kwargs(payload),
     )
+    resource = _blob_resource(files, _BLOB_READERS[params.format]())
     resource.apply_hints(table_name="records", write_disposition="replace")
 
     # M12 (REV-199) : un `file_glob` littéral (sans joker) vise UN fichier — 0 ligne chargée

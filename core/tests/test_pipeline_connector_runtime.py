@@ -973,12 +973,16 @@ class _FakeBlobResource:
     def __or__(self, other):
         return self
 
+    def add_map(self, fn):
+        return self
+
     def apply_hints(self, **kwargs):
         pass
 
 
 def _patch_blob_internals(monkeypatch, captured):
-    def _fake_filesystem(*, bucket_url, credentials=None, file_glob="*"):
+    def _fake_filesystem(*, bucket_url, credentials=None, file_glob="*", kwargs=None):
+        captured["fs_kwargs"] = kwargs
         captured["bucket_url"] = bucket_url
         captured["credentials"] = credentials
         captured["file_glob"] = file_glob
@@ -1510,3 +1514,81 @@ def test_materialize_blob_connector_wildcard_glob_with_zero_rows_is_accepted(
         view_name="node_b12",
     )
     assert conn.execute('SELECT count(*) FROM "node_b12"').fetchone() == (0,)
+
+
+def _local_csv_files(tmp_path, sizes):
+    """sizes = {nom: nb_lignes}. `filesystem` dlt réel sur un dossier local."""
+    from dlt.sources.filesystem import filesystem
+
+    for name, n in sizes.items():
+        (tmp_path / name).write_text("x\n" + "\n".join(str(i) for i in range(n)) + "\n")
+    return filesystem(bucket_url=str(tmp_path), file_glob="*.csv")
+
+
+def _run_capped(conn, tmp_path, sizes):
+    files = _local_csv_files(tmp_path, sizes)
+    resource = connector_runtime._blob_resource(files, connector_runtime.read_csv())
+    resource.apply_hints(table_name="records", write_disposition="replace")
+    connector_runtime._run_dlt_and_attach(conn, resource, node_id="cap", view_name="node_cap")
+
+
+def test_blob_file_cap(conn, tmp_path, monkeypatch):
+    monkeypatch.setenv("CORE_PIPELINES_BLOB_MAX_FILES", "2")
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="plafond de 2 fichiers"):
+        _run_capped(conn, tmp_path, {"a.csv": 1, "b.csv": 1, "c.csv": 1})
+
+
+def test_blob_byte_cap(conn, tmp_path, monkeypatch):
+    monkeypatch.setenv("CORE_PIPELINES_BLOB_MAX_BYTES", "10")
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="plafond de 10 octets"):
+        _run_capped(conn, tmp_path, {"a.csv": 50})
+
+
+def test_blob_row_cap(conn, tmp_path, monkeypatch):
+    monkeypatch.setenv("CORE_PIPELINES_CONNECTOR_MAX_ROWS", "3")
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="plafond de 3 lignes"):
+        _run_capped(conn, tmp_path, {"a.csv": 10})
+
+
+def test_blob_deadline(conn, tmp_path, monkeypatch):
+    monkeypatch.setenv("CORE_PIPELINES_BLOB_TIMEOUT_S", "-1")  # échéance déjà passée
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="délai de -1s dépassé"):
+        _run_capped(conn, tmp_path, {"a.csv": 2})
+
+
+def test_blob_under_caps_loads_all_rows(conn, tmp_path):
+    _run_capped(conn, tmp_path, {"a.csv": 4, "b.csv": 3})
+    assert conn.execute("SELECT count(*) FROM node_cap").fetchone()[0] == 7
+
+
+def test_materialize_blob_connector_passes_provider_timeouts(
+    monkeypatch, conn, session, tenant, user
+):
+    monkeypatch.setenv("CORE_PIPELINES_CONNECT_TIMEOUT_S", "7")
+    monkeypatch.setenv("CORE_PIPELINES_QUERY_TIMEOUT_S", "42")
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="s3-t",
+        kind="s3_credentials",
+        payload={
+            "kind": "s3_credentials",
+            "awsAccessKeyId": "AKIA123",
+            "awsSecretAccessKey": "shh",
+            "bucketUrl": "s3://bucket",
+        },
+    )
+    captured: dict = {}
+    _patch_blob_internals(monkeypatch, captured)
+    connector_runtime.materialize_blob_connector(
+        conn,
+        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
+        node_id="bt",
+        params=ReaderConnectorBlobParams(
+            secretName="s3-t", path="s3://bucket/data.csv", format="csv"
+        ),
+        view_name="node_bt",
+    )
+    cfg = captured["fs_kwargs"]["config_kwargs"]
+    assert cfg["connect_timeout"] == 7 and cfg["read_timeout"] == 42
