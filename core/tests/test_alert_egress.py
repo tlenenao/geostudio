@@ -30,7 +30,7 @@ def test_allows_a_public_https_url(monkeypatch):
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
 
     monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
-    assert assert_egress_allowed("https://example.test/hook") is None
+    assert assert_egress_allowed("https://example.test/hook") == "93.184.216.34"
 
 
 def test_allowlist_restricts_to_named_hosts(monkeypatch):
