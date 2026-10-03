@@ -184,3 +184,36 @@ def test_blob_bucket_url_format_is_validated(kind, bad):
     body = {"kind": kind, **_BLOB_BODIES[kind], "bucketUrl": bad}
     with pytest.raises(ValidationError):
         SecretCreate.model_validate({"name": "x", "payload": body})
+
+
+_SMTP = {
+    "kind": "smtp",
+    "host": "smtp.example.test",
+    "port": 25,
+    "username": "u",
+    "password": "p",
+    "useTls": False,
+    "fromAddress": "a@example.test",
+}
+
+
+def test_secret_create_rejects_smtp_without_tls_on_a_remote_host():
+    with pytest.raises(ValidationError, match="useTls"):
+        SecretCreate(name="m", payload=_SMTP)
+
+
+def test_secret_update_rejects_smtp_without_tls_on_a_remote_host():
+    from app.secrets.schemas import SecretUpdate
+
+    with pytest.raises(ValidationError, match="useTls"):
+        SecretUpdate(payload=_SMTP)
+
+
+@pytest.mark.parametrize("host", ["localhost", "127.0.0.1", "::1", "LocalHost"])
+def test_secret_create_accepts_smtp_without_tls_on_localhost(host):
+    SecretCreate(name="m", payload={**_SMTP, "host": host})
+
+
+def test_stored_smtp_payload_without_tls_still_decodes():
+    # Compat : un secret déjà chiffré avec useTls=false doit rester lisible.
+    assert SECRET_PAYLOAD_ADAPTER.validate_python(_SMTP).useTls is False

@@ -399,3 +399,25 @@ def test_rev273c_409_lists_only_items_the_caller_can_read(env):
     assert "Mine" in detail
     assert "Theirs" not in detail
     assert "1 autre objet non visible" in detail
+
+
+def test_rev273e_post_smtp_without_tls_remote_is_422_and_does_not_echo_password(env):
+    app, client, _, admin, _regular = env
+    _as(app, admin)
+    smtp = {
+        "kind": "smtp",
+        "host": "smtp.example.test",
+        "port": 25,
+        "username": "u",
+        "password": "ultra-secret-pw",
+        "useTls": False,
+        "fromAddress": "a@example.test",
+    }
+    r = client.post("/v1/secrets", json={"name": "smtp-clear", "payload": smtp})
+    assert r.status_code == 422
+    assert "useTls" in r.text and "ultra-secret-pw" not in r.text
+    ok = client.post(
+        "/v1/secrets",
+        json={"name": "smtp-local", "payload": {**smtp, "host": "localhost"}},
+    )
+    assert ok.status_code == 201

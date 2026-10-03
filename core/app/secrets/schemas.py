@@ -7,7 +7,7 @@ existantes."""
 from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, Field, TypeAdapter, field_validator
+from pydantic import BaseModel, Field, TypeAdapter, field_validator, model_validator
 
 NonEmptyStr = Annotated[str, Field(min_length=1)]
 
@@ -68,6 +68,24 @@ class SmtpCredentialsPayload(BaseModel):
     password: NonEmptyStr
     useTls: bool = True
     fromAddress: NonEmptyStr
+
+
+SMTP_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+def smtp_tls_violation(payload: SmtpCredentialsPayload) -> str | None:
+    """REV-273e : sans TLS, identifiants et courrier transitent en clair —
+    toléré uniquement vers la machine locale (relais de dev)."""
+    if not payload.useTls and payload.host.lower() not in SMTP_LOCAL_HOSTS:
+        return "useTls=false n'est autorisé que pour localhost : activez TLS (STARTTLS ou SMTPS)"
+    return None
+
+
+def _check_smtp_payload(payload: object) -> None:
+    if isinstance(payload, SmtpCredentialsPayload):
+        message = smtp_tls_violation(payload)
+        if message:
+            raise ValueError(message)
 
 
 class SnowflakeDsnPayload(BaseModel):
@@ -356,6 +374,11 @@ class SecretCreate(BaseModel):
     def _bucket_scoped(cls, v: Any) -> Any:
         return _require_bucket_url(v)
 
+    @model_validator(mode="after")
+    def _smtp_tls(self) -> "SecretCreate":
+        _check_smtp_payload(self.payload)
+        return self
+
 
 class SecretUpdate(BaseModel):
     payload: SecretPayload
@@ -364,3 +387,8 @@ class SecretUpdate(BaseModel):
     @classmethod
     def _bucket_scoped(cls, v: Any) -> Any:
         return _require_bucket_url(v)
+
+    @model_validator(mode="after")
+    def _smtp_tls(self) -> "SecretUpdate":
+        _check_smtp_payload(self.payload)
+        return self
