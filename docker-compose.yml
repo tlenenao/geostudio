@@ -475,6 +475,10 @@ services:
   # (procrastinate worker, file Postgres, pas de broker — arbitrage A5).
   worker:
     build: ./core
+    # REV-275 (d) : borne mémoire du process (DuckDB, pandas, geopandas des
+    # runs de pipeline) — sans elle un run lourd peut faire OOM-killer l'hôte.
+    # À dimensionner avec CORE_WORKER_CONCURRENCY (~1 job lourd par unité).
+    mem_limit: ${WORKER_MEM_LIMIT:-2g}
     # `python -m procrastinate` (pas le script `procrastinate` du PATH) : ce
     # dernier ne met jamais le cwd (/app, où vit le paquet `app`) sur
     # sys.path — seule l'invocation via `-m` (comme `-c`) le fait. Sans ça,
