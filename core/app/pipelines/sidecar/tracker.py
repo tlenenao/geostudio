@@ -78,3 +78,15 @@ class InMemoryRunTracker:
             finishedAt=datetime.now(UTC).isoformat(),
             error=error,
         )
+
+    # Contrat RunTracker (t03b-009) : le sidecar n'expose pas d'annulation.
+    def mark_cancelled(self) -> None:
+        self._registry._update(
+            self._item_id,
+            self._run_id,
+            status="cancelled",
+            finishedAt=datetime.now(UTC).isoformat(),
+        )
+
+    def is_cancel_requested(self) -> bool:
+        return False

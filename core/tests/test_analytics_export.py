@@ -59,7 +59,7 @@ def test_features_to_format_geojson_wraps_a_feature_collection():
     assert body == {"type": "FeatureCollection", "features": features}
 
 
-def test_features_to_format_csv_flattens_properties_and_drops_geometry():
+def test_features_to_format_csv_flattens_properties_and_appends_wkt_geometry():
     features = [
         {
             "type": "Feature",
@@ -69,8 +69,8 @@ def test_features_to_format_csv_flattens_properties_and_drops_geometry():
     ]
     content = features_to_format(features, format="csv")
     text = content.decode("utf-8")
-    assert text.splitlines()[0] == "nom,pop"
-    assert "geometry" not in text
+    assert text.splitlines()[0] == "nom,pop,geometry"
+    assert "POINT (1 2)" in text
 
 
 def test_features_to_format_gpkg_requires_a_connection():

@@ -568,7 +568,7 @@ def test_bucket_on_non_castable_field_groups_under_a_null_bucket(tmp_path, conn)
     )
 
     by_key = {r["annee"]: r["value"] for r in rows}
-    assert by_key["None"] == 10
+    assert by_key[None] == 10  # P25.06 : groupe NULL rendu null
     assert by_key["2026-01-05 00:00:00"] == 3
 
 

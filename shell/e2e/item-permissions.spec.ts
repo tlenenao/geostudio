@@ -34,9 +34,9 @@ test("un item en lecture seule ne propose ni suppression ni partage", async ({ p
   await expect(page.getByRole("heading", { name: "Partagée en lecture" })).toBeVisible();
   await page.getByRole("button", { name: "Actions" }).click();
 
-  await expect(page.getByRole("button", { name: /^supprimer$/i })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /^partager$/i })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Modifier" })).toBeDisabled();
+  await expect(page.getByRole("menuitem", { name: /^supprimer$/i })).toHaveCount(0);
+  await expect(page.getByRole("menuitem", { name: /^partager$/i })).toHaveCount(0);
+  await expect(page.getByRole("menuitem", { name: "Modifier" })).toBeDisabled();
   // Publier et Miniature sont aussi verrouillées par `write` pour ce même item
   // et affichent la même raison (`locked.needWrite`) : plusieurs occurrences
   // du texte sont donc attendues, `.first()` remplace l'appel nu du brief

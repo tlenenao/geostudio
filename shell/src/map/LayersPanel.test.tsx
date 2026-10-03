@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { ItemClient, MapLayer } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { t } from "../i18n";
 import { LayersPanel } from "./LayersPanel";
+import { publishViewport } from "./viewportTiles";
+
+// P30.03 : le client de test relaie fetchUrl vers le `fetch` global stubbé ; les
+// options (`authenticated`) sont transmises telles quelles pour être assertées.
+const fetchUrl = (url: string, opts?: unknown) => fetch(url, opts as RequestInit);
 
 // LayersPanel est un composant contrôlé pur (comme PopupEditor/
 // LayerPopupEditor) : sans état local qui répercute onChange dans layers,
@@ -57,6 +62,7 @@ afterEach(() => {
 
 function renderPanel(current: MapLayer[], onChange: (l: MapLayer[]) => void) {
   const client = {
+    fetchUrl,
     listLayerSources: vi.fn().mockResolvedValue([]),
     getCollectionSchema: vi.fn().mockResolvedValue({ fields: [] }),
   } as unknown as ItemClient;
@@ -110,6 +116,7 @@ test("the layers panel exposes the popup editor of each layer", async () => {
 test("a vector layer with a collectionId exposes the symbology editor and can recompute a numeric domain", async () => {
   const onChange = vi.fn();
   const client = {
+    fetchUrl,
     listLayerSources: vi.fn().mockResolvedValue([]),
     getCollectionSchema: vi.fn().mockResolvedValue({ fields: [{ name: "pop" }] }),
     queryDataSource: vi.fn().mockResolvedValue([{ id: "", properties: { min: 0, max: 100 } }]),
@@ -293,7 +300,9 @@ test("a feature layer without a collection lists fields from its fetched GeoJSON
   render(
     <QueryClientProvider client={qc}>
       <ItemClientProvider
-        client={{ listLayerSources: vi.fn().mockResolvedValue([]) } as unknown as ItemClient}
+        client={
+          { fetchUrl, listLayerSources: vi.fn().mockResolvedValue([]) } as unknown as ItemClient
+        }
       >
         <SymbologyHost initialLayers={[featureLayer]} onLayersChange={onChange} />
       </ItemClientProvider>
@@ -326,14 +335,20 @@ test("a feature layer without a collection computes Jenks classes from its own G
   render(
     <QueryClientProvider client={qc}>
       <ItemClientProvider
-        client={{ listLayerSources: vi.fn().mockResolvedValue([]) } as unknown as ItemClient}
+        client={
+          { fetchUrl, listLayerSources: vi.fn().mockResolvedValue([]) } as unknown as ItemClient
+        }
       >
         <SymbologyHost initialLayers={[featureLayer]} onLayersChange={onChange} />
       </ItemClientProvider>
     </QueryClientProvider>,
   );
 
-  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("https://ex.test/points.geojson"));
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith("https://ex.test/points.geojson", {
+      authenticated: false,
+    }),
+  );
   await userEvent.type(screen.getByLabelText("Champ couleur"), "pop");
   await userEvent.selectOptions(screen.getByLabelText("Type de couleur"), "numeric");
   await userEvent.selectOptions(screen.getByLabelText("Méthode de classification"), "jenks");
@@ -382,6 +397,7 @@ const vectorLayer: MapLayer = {
 // `?.()`/ItemClient partiel déjà suivi par le reste de ce fichier).
 function renderPanelWithAuthToken(current: MapLayer[], onChange: (l: MapLayer[]) => void) {
   const client = {
+    fetchUrl,
     listLayerSources: vi.fn().mockResolvedValue([]),
     getCollectionSchema: vi.fn().mockResolvedValue({ fields: [] }),
     getAuthToken: () => "mock-token",
@@ -409,10 +425,9 @@ test("affiche un badge de troncature quand la tuile racine répond X-Tile-Trunca
   );
   renderPanelWithAuthToken([vectorLayer], vi.fn());
   expect(await screen.findByText(t("layersPanel.truncatedBadge"))).toBeInTheDocument();
-  expect(fetch).toHaveBeenCalledWith(
-    "https://core.test/collections/communes/tiles/0/0/0.mvt",
-    expect.objectContaining({ headers: { Authorization: "Bearer mock-token" } }),
-  );
+  expect(fetch).toHaveBeenCalledWith("https://core.test/collections/communes/tiles/0/0/0.mvt", {
+    authenticated: true,
+  });
 });
 
 // Régression C2 (revue finale Vague B) : la sonde attachait le jeton OIDC à
@@ -434,14 +449,15 @@ test("n'attache le jeton qu'aux tuiles servies par le cœur, jamais à une origi
     sourceLayer: "x",
   };
   renderPanelWithAuthToken([vectorLayer, externalLayer], vi.fn());
-  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
-  expect(fetch).toHaveBeenCalledWith(
-    "https://core.test/collections/communes/tiles/0/0/0.mvt",
-    expect.objectContaining({ headers: { Authorization: "Bearer mock-token" } }),
-  );
-  expect(fetch).toHaveBeenCalledWith("https://attacker.example/collections/x/tiles/0/0/0.mvt", {
-    headers: undefined,
+  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+  expect(fetch).toHaveBeenCalledWith("https://core.test/collections/communes/tiles/0/0/0.mvt", {
+    authenticated: true,
   });
+  // Tuile tierce : jamais sondée (ni jeton, ni requête).
+  expect(fetch).not.toHaveBeenCalledWith(
+    "https://attacker.example/collections/x/tiles/0/0/0.mvt",
+    expect.anything(),
+  );
 });
 
 test("n'affiche aucun badge quand la tuile n'est pas tronquée", async () => {
@@ -452,4 +468,30 @@ test("n'affiche aucun badge quand la tuile n'est pas tronquée", async () => {
   renderPanelWithAuthToken([vectorLayer], vi.fn());
   await waitFor(() => expect(fetch).toHaveBeenCalled());
   expect(screen.queryByText(t("layersPanel.truncatedBadge"))).not.toBeInTheDocument();
+});
+
+// P29.06 (t03-010) : le badge suit les tuiles de la VUE, pas la seule 0/0/0.
+// En dernier du fichier : le viewport publié est global au module.
+test("sonde les tuiles visibles et le badge disparaît quand elles sont complètes", async () => {
+  const truncatedRoot = (url: string) => url.endsWith("/0/0/0.mvt");
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        new Response(new Uint8Array(), {
+          status: 200,
+          headers: truncatedRoot(url) ? { "X-Tile-Truncated": "true" } : {},
+        }),
+      ),
+    ),
+  );
+  const { unmount } = renderPanelWithAuthToken([vectorLayer], vi.fn());
+  expect(await screen.findByText(t("layersPanel.truncatedBadge"))).toBeInTheDocument();
+  act(() => publishViewport({ zoom: 12.4, bounds: [2.34, 48.85, 2.36, 48.86] }));
+  await waitFor(() =>
+    expect(screen.queryByText(t("layersPanel.truncatedBadge"))).not.toBeInTheDocument(),
+  );
+  const urls = (fetch as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0] as string);
+  expect(urls.some((u) => /\/12\/\d+\/\d+\.mvt$/.test(u))).toBe(true);
+  unmount();
 });

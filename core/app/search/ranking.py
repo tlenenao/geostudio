@@ -24,6 +24,14 @@ def reciprocal_rank_fusion(
     return sorted(scores.items(), key=lambda pair: pair[1], reverse=True)
 
 
+# Similarité cosinus minimale (0,35) pour qu'un candidat vecteur compte : l'ancien
+# seuil « > 0 » laissait passer ~la moitié du corpus pour une requête sans rapport
+# (vecteurs quasi orthogonaux, cosinus ±0,03) — la recherche ne renvoyait jamais
+# « Aucun résultat » (P35.10).
+# ponytail: seuil global ; à régler par fournisseur d'embeddings si besoin.
+_MAX_COSINE_DISTANCE = 0.65
+
+
 def hybrid_search_ids(
     session: Session,
     *,
@@ -45,9 +53,8 @@ def hybrid_search_ids(
     Les deux branches filtrent leurs candidats avant le classement, pas
     seulement après : la branche trigram exclut les similarités quasi
     nulles (`> 0.05`, du bruit de n-grammes) et la branche vecteur exclut
-    symétriquement les embeddings au moins aussi éloignés qu'une paire de
-    vecteurs orthogonaux (`cosine_distance < 1.0`, c.-à-d. similarité
-    cosinus strictement positive). Sans ce filtre, un item dont
+    symétriquement les embeddings trop éloignés (`cosine_distance <
+    _MAX_COSINE_DISTANCE`). Sans ce filtre, un item dont
     l'embedding est décorrélé de la requête se classe quand même dans
     `vector_ids` dès que le corpus filtré par `base_stmt` est petit (il n'y
     a personne d'autre pour occuper les rangs), et RRF — qui ne pondère que
@@ -72,7 +79,7 @@ def hybrid_search_ids(
 
     distance_expr = embedding_column.cosine_distance(query_vector)
     vector_stmt = (
-        base_stmt.where(embedding_column.isnot(None), distance_expr < 1.0)
+        base_stmt.where(embedding_column.isnot(None), distance_expr < _MAX_COSINE_DISTANCE)
         .order_by(distance_expr)
         .limit(limit)
         .with_only_columns(id_column)

@@ -1558,14 +1558,14 @@ CSP_DYNAMIC_ROUTERS = (
     (BASE, "seo-bots"),
     (BASE, "martin"),
     (BASE, "titiler"),
-    (BASE, "grafana"),
+    # grafana volontairement absent : ses scripts en ligne seraient bloqués
+    # (P17.05, test_grafana_router_is_not_under_dynamic_csp).
     (PROD, "core"),
     (PROD, "shell"),
     (PROD, "seo-static"),
     (PROD, "seo-bots"),
     (PROD, "martin"),
     (PROD, "titiler"),
-    (PROD, "grafana"),
     (PROD, "keycloak"),
 )
 
@@ -2135,3 +2135,102 @@ def test_keycloak_realm_scopes_dynamic_client_registration_with_trusted_hosts():
     assert len(trusted) == 1
     assert trusted[0]["config"]["client-uris-must-match"] == ["true"]
     assert "Trusted Hosts" in (REPO / "deploy/keycloak/README.md").read_text()
+
+
+# ─── P17 : passerelle d'administration (RC-14) ─────────────────────────
+
+
+def _env_of(service: dict) -> dict[str, str]:
+    env = service.get("environment") or {}
+    if isinstance(env, list):
+        env = dict(e.split("=", 1) for e in env)
+    return {k: str(v) for k, v in env.items()}
+
+
+@pytest.mark.parametrize("compose", [BASE, PROD], ids=["base", "prod"])
+def test_no_service_behind_admin_auth_exposes_anonymous_admin(compose):
+    """j09b-007 : un service derrière `admin-auth@docker` ne doit pas ouvrir
+    un rôle anonyme Admin. Grafana (otel-lgtm) est anonyme-Admin par défaut
+    dans son image : le rôle doit être posé explicitement et != Admin."""
+    for name, service in services(compose).items():
+        labels = _traefik_labels(service)
+        gated = any("admin-auth@docker" in v for k, v in labels.items() if k.endswith(".middlewares"))
+        if not gated:
+            continue
+        # l'overlay prod hérite l'environnement de la base (fusion par clé)
+        role = {**_env_of(services(BASE).get(name, {})), **_env_of(service)}.get(
+            "GF_AUTH_ANONYMOUS_ORG_ROLE"
+        )
+        if name == "otel-lgtm":
+            assert role not in (None, "Admin"), f"{name} ({compose.name}) : rôle anonyme {role!r}"
+        else:
+            assert role != "Admin", f"{name} ({compose.name}) expose un rôle anonyme Admin"
+
+
+@pytest.mark.parametrize("compose", [BASE, PROD], ids=["base", "prod"])
+def test_grafana_router_is_not_under_dynamic_csp(compose):
+    """j09b-008 : Grafana embarque des scripts en ligne, `script-src 'self'` les bloque."""
+    labels = _traefik_labels(services(compose)["otel-lgtm"])
+    assert "csp-dynamic@file" not in _router_middlewares(labels, "grafana")
+
+
+@pytest.mark.parametrize("compose", [BASE, PROD], ids=["base", "prod"])
+def test_core_redirects_admin_launch_to_gateway_origin(compose):
+    """j08b-006 : sans origine de passerelle, le lancement retombe sur le cœur (404)."""
+    assert _env_of(services(compose)["core"]).get("CORE_ADMIN_TOOLS_GATEWAY_URL", "").startswith("https://")
+
+
+def test_minio_console_flag_matches_published_port():
+    """j08b-009 : le lien console MinIO n'est affiché que si le port est publié."""
+    assert services(BASE)["minio"].get("ports")
+    assert _env_of(services(BASE)["core"])["CORE_MINIO_CONSOLE_PUBLISHED"] == "true"
+    assert not services(PROD)["minio"].get("ports")
+    assert _env_of(services(PROD)["core"])["CORE_MINIO_CONSOLE_PUBLISHED"] == "false"
+
+
+def test_titiler_pins_starlette_below_1():
+    """j08b-005 : starlette 1.x casse la landing de titiler 0.18.4 (500)."""
+    assert re.search(r'"starlette<1"', (REPO / "deploy/titiler/Dockerfile").read_text())
+
+
+# P27.14 : un service long-vivant sans restart ni sonde plante en silence.
+# Exemptions = tâches one-shot, ou images sans shell (aucune sonde CMD possible).
+LONG_LIVED_EXEMPTIONS = {
+    "appexport-runtime-builder": "one-shot (build du runtime, aucun restart voulu)",
+    "csp-dynamic-conf-init": "one-shot (init de propriété du volume)",
+    "docker-socket-proxy": "image sans shell ni wget : sonde impossible (restart seul)",
+}
+
+
+def test_every_long_lived_service_has_restart_and_healthcheck():
+    base, prod = services(BASE), services(PROD)
+    missing = []
+    for name in sorted(set(base) | set(prod)):
+        if name in LONG_LIVED_EXEMPTIONS:
+            continue
+        merged = {**base.get(name, {}), **prod.get(name, {})}
+        if merged.get("restart") != "unless-stopped":
+            missing.append(f"{name}: restart")
+        if "healthcheck" not in merged:
+            missing.append(f"{name}: healthcheck")
+    assert not missing, missing
+
+
+def test_backup_healthcheck_probes_last_success_freshness():
+    hc = services(PROD)["backup"]["healthcheck"]["test"]
+    assert ".last_success" in " ".join(hc) and "-mmin -1560" in " ".join(hc)
+    assert ".last_success" in BACKUP_SH.read_text()
+
+
+def test_worker_gets_the_same_quota_env_as_core():
+    """P26.03 (RC-12) : les jobs du worker créent items/collections ; sans
+    ces variables sur `worker`, le quota ne s'y applique jamais."""
+    svc = services(BASE)
+    for var in (
+        "CORE_QUOTAS_ENABLED",
+        "CORE_QUOTA_MAX_ITEMS_PER_TENANT",
+        "CORE_QUOTA_MAX_COLLECTIONS_PER_TENANT",
+        "CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT",
+    ):
+        for name in ("core", "worker"):
+            assert var in (svc[name].get("environment") or {}), f"{var} absent de `{name}`"

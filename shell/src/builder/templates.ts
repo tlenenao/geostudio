@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
+// i18n-ok-file: contenu initial des modèles (données copiées dans la config de l'auteur, modifiables), pas des libellés d'interface ; les noms de modèle passent par le catalogue.
+import { t } from "../i18n";
 import type { ActionMessage, AppLayout, DataSource, Page, Theme } from "../api/types";
 
 export type Template = {
@@ -224,16 +226,16 @@ const PORTAL_LAYOUT: AppLayout = {
 };
 
 export const TEMPLATES: Template[] = [
-  { id: "two-column", name: "Deux colonnes", kind: "app", layout: TWO_COLUMN_LAYOUT },
+  { id: "two-column", name: t("template.two"), kind: "app", layout: TWO_COLUMN_LAYOUT },
   {
     id: "basic-dashboard",
-    name: "Tableau de bord basique",
+    name: t("template.basicDashboard"),
     kind: "dashboard",
     layout: BASIC_DASHBOARD_LAYOUT,
   },
   {
     id: "application-de-saisie",
-    name: "Application de saisie",
+    name: t("template.incidentApp"),
     kind: "app",
     layout: INCIDENT_APP_LAYOUT,
     dataSources: INCIDENT_APP_DATA_SOURCES,
@@ -241,7 +243,7 @@ export const TEMPLATES: Template[] = [
   },
   {
     id: "story-cartographique",
-    name: "Story cartographique",
+    name: t("template.story"),
     kind: "app",
     layout: STORY_PAGES[0].layout,
     pages: STORY_PAGES,
@@ -249,7 +251,7 @@ export const TEMPLATES: Template[] = [
   },
   {
     id: "portail-de-donnees",
-    name: "Portail de données",
+    name: t("template.portal"),
     kind: "site",
     layout: PORTAL_LAYOUT,
     dataSources: PORTAL_DATA_SOURCES,

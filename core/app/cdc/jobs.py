@@ -26,7 +26,11 @@ def run_compaction_cycle_task(timestamp: int) -> None:
         secret_key=os.environ["S3_SECRET_KEY"],
     )
     storage.ensure_cdc_bucket(client, bucket)
-    report = compaction.run_compaction_cycle(client, bucket=bucket)
+    report = compaction.run_compaction_cycle(
+        client,
+        bucket=bucket,
+        recent_days=int(os.environ.get("CORE_CDC_COMPACTION_RECENT_DAYS") or 7),
+    )
     logger.info(
         "compaction cycle: %s partitions scanned, %s compacted, %s files removed, %s failed",
         report.partitions_scanned,

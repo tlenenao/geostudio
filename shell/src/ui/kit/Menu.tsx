@@ -5,8 +5,11 @@ import { cn } from "../../lib/utils";
 export function Menu({
   trigger,
   items,
+  note,
 }: {
   trigger: React.ReactNode;
+  /** Texte explicatif en pied de menu (ex. raison d'un item désactivé). */
+  note?: string;
   items: { label: string; onSelect: () => void; disabled?: boolean; danger?: boolean }[];
 }) {
   return (
@@ -44,6 +47,11 @@ export function Menu({
               {item.label}
             </DropdownMenuPrimitive.Item>
           ))}
+          {note && (
+            <DropdownMenuPrimitive.Label className="px-2 py-1 text-xs text-ink-3">
+              {note}
+            </DropdownMenuPrimitive.Label>
+          )}
         </DropdownMenuPrimitive.Content>
       </DropdownMenuPrimitive.Portal>
     </DropdownMenuPrimitive.Root>

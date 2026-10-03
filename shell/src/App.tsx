@@ -4,7 +4,7 @@ import { RouterProvider } from "react-router-dom";
 import { useMemo } from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import * as ToastPrimitive from "@radix-ui/react-toast";
-import { loadConfig } from "./config";
+import { loadRuntimeConfig } from "./config";
 import { ConfigProvider } from "./ConfigContext";
 import { AuthProvider } from "./auth/AuthProvider";
 import { useAuth } from "./auth/useAuth";
@@ -18,12 +18,7 @@ import { AppErrorBoundary } from "./AppErrorBoundary";
 import { ToastProvider } from "./ui/kit/ToastProvider";
 import { ConnectivityBanner } from "./shell/ConnectivityBanner";
 
-const runtimeEnv = (window as unknown as { __GEOSTUDIO_ENV__?: Record<string, string | undefined> })
-  .__GEOSTUDIO_ENV__;
-const config = loadConfig(
-  import.meta.env as unknown as Record<string, string | undefined>,
-  runtimeEnv,
-);
+const config = loadRuntimeConfig();
 // SP-B7 (étape 6) : borne le retry par défaut de React Query à 1 (2 appels
 // fetch au total) au lieu de 3 (4 appels, backoff exponentiel) — sans ce
 // réglage, le timeout de 15s de fetchWithTimeout (base.ts) se multiplierait

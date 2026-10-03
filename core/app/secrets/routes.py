@@ -15,7 +15,7 @@ from app.roles.privileges import Privilege
 from app.secrets import crypto
 from app.secrets import repository as repo
 from app.secrets.models import ConnectorSecret
-from app.secrets.schemas import SecretCreate
+from app.secrets.schemas import SecretCreate, SecretUpdate
 from app.users.models import User
 
 router = APIRouter()
@@ -100,7 +100,9 @@ def list_secrets_route(
         user,
         [Privilege.ADMIN_SECRETS_MANAGE.value, Privilege.AUTOMATION_SECRETS_MANAGE.value],
     )
-    return [_to_response(s) for s in repo.list_secrets(session, tenant_id=user.tenant_id)]
+    return [
+        _to_response(s) for s in repo.list_secrets(session, tenant_id=user.tenant_id, user=user)
+    ]
 
 
 @router.delete("/secrets/{secret_id}", status_code=204)
@@ -114,11 +116,16 @@ def delete_secret_route(
         user,
         [Privilege.ADMIN_SECRETS_MANAGE.value, Privilege.AUTOMATION_SECRETS_MANAGE.value],
     )
-    secret = repo.get_secret(session, tenant_id=user.tenant_id, secret_id=secret_id)
+    secret = repo.get_visible_secret(
+        session, tenant_id=user.tenant_id, secret_id=secret_id, user=user
+    )
     if secret is None:
         raise HTTPException(status_code=404, detail="secret not found")
     name, kind = secret.name, secret.kind
-    repo.delete_secret(session, secret)
+    try:
+        repo.delete_secret_unless_used(session, secret)
+    except repo.SecretInUseError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
     write_audit(
         session,
         tenant_id=user.tenant_id,
@@ -129,3 +136,40 @@ def delete_secret_route(
         object_id=secret_id,
         payload={"name": name, "kind": kind},
     )
+
+
+@router.put("/secrets/{secret_id}")
+def update_secret_route(
+    secret_id: str,
+    body: SecretUpdate,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session, scope="function"),
+) -> ConnectorSecretOut:
+    """Remplace la valeur en place (P16.05) : nom et kind inchangés, donc
+    les configs qui citent le secret par son nom continuent de marcher."""
+    require_any_privilege(
+        session,
+        user,
+        [Privilege.ADMIN_SECRETS_MANAGE.value, Privilege.AUTOMATION_SECRETS_MANAGE.value],
+    )
+    secret = repo.get_visible_secret(
+        session, tenant_id=user.tenant_id, secret_id=secret_id, user=user
+    )
+    if secret is None:
+        raise HTTPException(status_code=404, detail="secret not found")
+    if body.payload.kind != secret.kind:
+        raise HTTPException(status_code=422, detail="secret kind cannot change")
+    secret.ciphertext, secret.nonce = crypto.encrypt(body.payload.model_dump())
+    session.flush()
+    session.refresh(secret)
+    write_audit(
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="secret.update",
+        object_type="secret",
+        object_id=secret.id,
+        payload={"name": secret.name, "kind": secret.kind},
+    )
+    return _to_response(secret)

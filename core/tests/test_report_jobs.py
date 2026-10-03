@@ -534,7 +534,9 @@ def test_notify_sends_webhook_with_result_url_and_marks_notified(monkeypatch):
 
     sent = []
     monkeypatch.setattr(
-        report_jobs, "send_webhook", lambda channel, *, payload: sent.append((channel, payload))
+        report_jobs,
+        "send_webhook",
+        lambda channel, *, payload, **_kw: sent.append((channel, payload)),
     )
     monkeypatch.setattr(
         report_jobs, "_presigned_url_for_job", lambda job: "https://s3.test/renders/job-1.pdf"
@@ -749,7 +751,7 @@ def test_notify_marks_notified_when_presigned_url_raises(monkeypatch):
 
     sent = []
     monkeypatch.setattr(
-        report_jobs, "send_webhook", lambda channel, *, payload: sent.append(payload)
+        report_jobs, "send_webhook", lambda channel, *, payload, **_kw: sent.append(payload)
     )
 
     def _boom(job):
@@ -1156,7 +1158,7 @@ def test_notify_pending_reports_survives_a_notification_write_that_poisons_its_o
         session.flush()
 
     monkeypatch.setattr(notifications_repo, "create_notification", _boom)
-    monkeypatch.setattr(report_jobs, "send_webhook", lambda channel, *, payload: None)
+    monkeypatch.setattr(report_jobs, "send_webhook", lambda channel, *, payload, **_kw: None)
     monkeypatch.setattr(
         report_jobs, "_presigned_url_for_job", lambda job: "https://s3.test/renders/job-3.pdf"
     )
@@ -1217,7 +1219,9 @@ def test_notify_sends_email_and_marks_notified(monkeypatch):
     monkeypatch.setattr(
         report_jobs,
         "send_email",
-        lambda session, *, tenant_id, channel, subject, body: sent.append((channel, subject, body)),
+        lambda session, *, tenant_id, item_id, channel, subject, body: sent.append(
+            (channel, subject, body)
+        ),
     )
     monkeypatch.setattr(
         report_jobs, "_presigned_url_for_job", lambda job: "https://s3.test/renders/job-1.pdf"

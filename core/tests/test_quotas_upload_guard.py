@@ -44,7 +44,16 @@ class _FakeS3Client:
         self.deleted.append(Key)
 
     def list_objects_v2(self, *, Bucket, Prefix="", ContinuationToken=None):
-        return {"Contents": [], "IsTruncated": False, "NextContinuationToken": None}
+        # L'objet confirmé est déjà dans son bucket : usage_for_tenant le
+        # compte (P26.02, plus de double comptage). Bucket par défaut = uploads.
+        contents = [
+            {"Key": k, "Size": h["ContentLength"]}
+            for k, h in self.heads.items()
+            if k.startswith(Prefix)
+            and h.get("Bucket", "geostudio-uploads") == Bucket
+            and k not in self.deleted
+        ]
+        return {"Contents": contents, "IsTruncated": False, "NextContinuationToken": None}
 
     def create_multipart_upload(self, *, Bucket, Key):
         return {"UploadId": "up1"}
@@ -125,7 +134,7 @@ def test_confirm_attachment_rejects_when_it_would_exceed_storage_quota(monkeypat
     monkeypatch.setenv("CORE_QUOTAS_ENABLED", "true")
     monkeypatch.setenv("CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT", "1000")
     key = f"{tenant.id}/col1/f1/abc-big.bin"
-    s3.heads[key] = {"ContentLength": 1001}
+    s3.heads[key] = {"ContentLength": 1001, "Bucket": "geostudio-attachments"}
 
     res = api.post(
         "/v1/collections/col1/items/f1/attachments",
@@ -136,7 +145,7 @@ def test_confirm_attachment_rejects_when_it_would_exceed_storage_quota(monkeypat
             "contentType": "application/octet-stream",
         },
     )
-    assert res.status_code == 409, res.text
+    assert res.status_code == 413, res.text
     # Objet orphelin nettoyé (même patron que MAX_ATTACHMENT_BYTES).
     assert key in s3.deleted
 
@@ -147,7 +156,7 @@ def test_confirm_attachment_allows_when_under_storage_quota(monkeypatch):
     monkeypatch.setenv("CORE_QUOTAS_ENABLED", "true")
     monkeypatch.setenv("CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT", "1000")
     key = f"{tenant.id}/col1/f1/abc-small.bin"
-    s3.heads[key] = {"ContentLength": 500}
+    s3.heads[key] = {"ContentLength": 500, "Bucket": "geostudio-attachments"}
 
     res = api.post(
         "/v1/collections/col1/items/f1/attachments",
@@ -167,7 +176,7 @@ def test_confirm_attachment_quota_guard_disappears_when_capacity_disabled(monkey
     monkeypatch.setenv("CORE_QUOTAS_ENABLED", "false")
     monkeypatch.setenv("CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT", "1000")
     key = f"{tenant.id}/col1/f1/abc-big.bin"
-    s3.heads[key] = {"ContentLength": 1001}
+    s3.heads[key] = {"ContentLength": 1001, "Bucket": "geostudio-attachments"}
 
     res = api.post(
         "/v1/collections/col1/items/f1/attachments",
@@ -234,7 +243,7 @@ def _create_tileset3d_job_and_set_head_size(api, Session, tenant, s3, *, content
     with Session() as s:
         job = tileset3d_repo.get_job(s, tenant_id=tenant.id, job_id=job_id)
         source_key = job.source_key
-    s3.heads[source_key] = {"ContentLength": content_length}
+    s3.heads[source_key] = {"ContentLength": content_length, "Bucket": "geostudio-tileset3d"}
     return job_id
 
 
@@ -249,7 +258,7 @@ def test_complete_tileset3d_upload_rejects_when_it_would_exceed_storage_quota(mo
         f"/v1/tileset3d/uploads/{job_id}/complete",
         json={"parts": [{"partNumber": 1, "etag": "e1"}]},
     )
-    assert resp.status_code == 409, resp.text
+    assert resp.status_code == 413, resp.text
 
 
 def test_complete_tileset3d_upload_allows_when_under_storage_quota(monkeypatch):
@@ -323,13 +332,13 @@ def test_create_terrain3d_upload_rejects_when_it_would_exceed_storage_quota(monk
     monkeypatch.setenv("CORE_QUOTAS_ENABLED", "true")
     monkeypatch.setenv("CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT", "1000")
     key = f"{tenant.id}/{'x' * 8}/dem.tif"
-    s3.heads[key] = {"ContentLength": 1001}
+    s3.heads[key] = {"ContentLength": 1001, "Bucket": "geostudio-terrain3d"}
 
     resp = api.post(
         "/v1/terrain3d/uploads",
         json={"key": key, "filename": "dem.tif", "title": "Mon terrain"},
     )
-    assert resp.status_code == 409, resp.text
+    assert resp.status_code == 413, resp.text
 
 
 def test_create_terrain3d_upload_allows_when_under_storage_quota(monkeypatch):
@@ -338,7 +347,7 @@ def test_create_terrain3d_upload_allows_when_under_storage_quota(monkeypatch):
     monkeypatch.setenv("CORE_QUOTAS_ENABLED", "true")
     monkeypatch.setenv("CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT", "1000")
     key = f"{tenant.id}/{'x' * 8}/dem.tif"
-    s3.heads[key] = {"ContentLength": 500}
+    s3.heads[key] = {"ContentLength": 500, "Bucket": "geostudio-terrain3d"}
 
     resp = api.post(
         "/v1/terrain3d/uploads",
@@ -353,7 +362,7 @@ def test_create_terrain3d_upload_quota_guard_disappears_when_capacity_disabled(m
     monkeypatch.setenv("CORE_QUOTAS_ENABLED", "false")
     monkeypatch.setenv("CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT", "1000")
     key = f"{tenant.id}/{'x' * 8}/dem.tif"
-    s3.heads[key] = {"ContentLength": 1001}
+    s3.heads[key] = {"ContentLength": 1001, "Bucket": "geostudio-terrain3d"}
 
     resp = api.post(
         "/v1/terrain3d/uploads",
@@ -410,7 +419,7 @@ def test_create_upload_job_rejects_when_it_would_exceed_storage_quota(monkeypatc
         "/v1/uploads",
         json={"key": key, "filename": "data.geojson", "collectionTitle": "Ma collection"},
     )
-    assert resp.status_code == 409, resp.text
+    assert resp.status_code == 413, resp.text
 
 
 def test_create_upload_job_allows_when_under_storage_quota(monkeypatch):

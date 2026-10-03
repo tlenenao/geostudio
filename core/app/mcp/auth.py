@@ -2,6 +2,7 @@
 import os
 from functools import lru_cache
 
+import anyio
 import jwt
 from mcp.server.auth.provider import AccessToken, TokenVerifier
 
@@ -25,7 +26,10 @@ class KeycloakTokenVerifier(TokenVerifier):
         issuer = os.environ["CORE_OIDC_ISSUER"]
         audience = os.environ.get("CORE_MCP_AUDIENCE", "geostudio-mcp")
         try:
-            signing_key = _jwks_client().get_signing_key_from_jwt(token)
+            # PyJWKClient fait une requête HTTP synchrone (rafraîchissement JWKS) : hors boucle.
+            signing_key = await anyio.to_thread.run_sync(
+                _jwks_client().get_signing_key_from_jwt, token
+            )
             claims = jwt.decode(
                 token,
                 signing_key.key,

@@ -12,6 +12,7 @@ import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { Panel } from "../ui/kit/Panel";
 import { VisualQueryCopilotPanel } from "../builder/copilot/VisualQueryCopilotPanel";
+import { CopilotUnavailable } from "../builder/copilot/CopilotUnavailable";
 import { QueryFilterBuilder } from "../builder/visualQuery/QueryFilterBuilder";
 import { QueryJoinPicker } from "../builder/visualQuery/QueryJoinPicker";
 import { QuerySummaryBuilder } from "../builder/visualQuery/QuerySummaryBuilder";
@@ -27,6 +28,8 @@ import {
 } from "../builder/visualQuery/compilePipeline";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
+import { LoadingState } from "../ui/kit/LoadingState";
+import { PageTitle } from "../ui/kit/PageTitle";
 
 // Compare le schéma de sortie recompilé (déduit de l'état courant du
 // formulaire) au schéma réel de la collection de sortie déjà provisionnée,
@@ -201,6 +204,17 @@ export function VisualQueryWizardPage({
   // garde `!existingOutput` bloque bien la mutation (pas d'écrasement
   // possible ici, contrairement à Pipeline/Rapport), mais rien n'explique
   // pourquoi le bouton reste désactivé.
+  // j06-012 : même garde de tête de page que PipelineBuilderPage — un état
+  // d'indisponibilité, pas un formulaire qu'on remplit pour rien.
+  if (instanceQuery.isLoading) return <LoadingState />;
+  if (!etlEnabled) {
+    return (
+      <p role="status" className="text-sm text-ink-2">
+        {t("pipelineBuilder.etlDisabled")}
+      </p>
+    );
+  }
+
   if (pipelinePk !== null && existingPipelineQuery.isError) {
     return (
       <p role="alert" className="text-sm text-danger">
@@ -401,9 +415,9 @@ export function VisualQueryWizardPage({
           label: t("visualQuery.queryLabel"),
           content: (
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
-              <h2 className="text-lg font-semibold text-ink">
+              <PageTitle>
                 {pipelinePk !== null ? t("visualQuery.editHeading") : t("visualQuery.newHeading")}
-              </h2>
+              </PageTitle>
               <label className="flex flex-col gap-1 text-sm">
                 {t("visualQuery.titleLabel")}
                 <Input
@@ -419,7 +433,7 @@ export function VisualQueryWizardPage({
                 {t("visualQuery.baseCollectionLabel")}
                 <select
                   aria-label={t("visualQuery.baseCollectionLabel")}
-                  className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                  className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                   value={baseCollectionId}
                   onChange={(e) => {
                     // Important 3 : un changement direct de collection de base
@@ -533,23 +547,26 @@ export function VisualQueryWizardPage({
                   <PipelineScheduleEditor value={refreshPolicy} onChange={setRefreshPolicy} />
                 </div>
               )}
-              {baseSchema && copilotEnabled && (
+              {baseSchema && (copilotEnabled || instanceQuery.isSuccess) && (
                 <div className="border-t border-rule pt-3">
                   <p className="mb-1 text-xs font-medium text-ink-2">
                     {t("appBuilder.copilotLabel")}
                   </p>
-                  <VisualQueryCopilotPanel
-                    baseCollectionId={baseCollectionId}
-                    baseSchema={baseSchema}
-                    joinedSchema={joinedSchema}
-                    collectionIds={(collectionsQuery.data ?? []).map((c) => c.id)}
-                    filters={filters}
-                    join={join}
-                    summary={summary}
-                    setFilters={setFilters}
-                    setJoin={setJoin}
-                    setSummary={setSummary}
-                  />
+                  {!copilotEnabled && <CopilotUnavailable />}
+                  {copilotEnabled && (
+                    <VisualQueryCopilotPanel
+                      baseCollectionId={baseCollectionId}
+                      baseSchema={baseSchema}
+                      joinedSchema={joinedSchema}
+                      collectionIds={(collectionsQuery.data ?? []).map((c) => c.id)}
+                      filters={filters}
+                      join={join}
+                      summary={summary}
+                      setFilters={setFilters}
+                      setJoin={setJoin}
+                      setSummary={setSummary}
+                    />
+                  )}
                 </div>
               )}
               <div className="flex flex-col gap-2 border-t border-rule pt-3">

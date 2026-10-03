@@ -29,7 +29,7 @@ export function CollectionParamSelect({
   return (
     <select
       aria-label={ariaLabel}
-      className="h-9 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
+      className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink"
       value={value}
       onChange={(e) => onChange(e.target.value)}
       disabled={disabled}

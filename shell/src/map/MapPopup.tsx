@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { AttachmentSummary } from "../api/types";
 import type { PopupContent } from "./popupContent";
 import { t } from "../i18n";
@@ -41,6 +41,26 @@ export function MapPopup({
 
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // P31.11 : le popup est ancré au-dessus du point (translate -50%/-100%) ;
+  // près d'un bord de la carte il sortait du cadre visible. Après mesure
+  // (avant peinture), on le ramène dans le conteneur positionné : clamp en X,
+  // et bascule sous le point si le haut manque de place.
+  const [placed, setPlaced] = useState<{ left: number; top: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    const parent = el?.offsetParent as HTMLElement | null;
+    if (!el || !parent) return;
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    const pw = parent.clientWidth;
+    const ph = parent.clientHeight;
+    if (pw === 0 || ph === 0) return; // pas de mise en page mesurable (jsdom, conteneur masqué)
+    const left = Math.max(0, Math.min(x - w / 2, pw - w));
+    const above = y - h;
+    const top = above >= 0 ? above : Math.max(0, Math.min(y, ph - h));
+    setPlaced((p) => (p && p.left === left && p.top === top ? p : { left, top }));
+  }, [x, y, content, attachments]);
+
   // D41 : composant présentationnel sans Radix (positionné en x/y absolus
   // sur une feature carte, coexiste avec l'interaction carte derrière) —
   // pas de FocusScope automatique. Gère lui-même Échap et le focus initial
@@ -63,18 +83,22 @@ export function MapPopup({
       ref={containerRef}
       role="dialog"
       aria-label={t("mapPopup.attributesAria")}
-      className="absolute z-20 max-h-64 max-w-xs -translate-x-1/2 -translate-y-full overflow-auto rounded-md bg-surface p-2 text-xs text-ink shadow-lg"
-      style={{ left: `${x}px`, top: `${y}px` }}
+      className={`absolute z-20 max-h-64 max-w-xs overflow-auto rounded-md bg-surface p-2 text-xs text-ink shadow-lg pointer-coarse:pr-11 ${placed ? "" : "-translate-x-1/2 -translate-y-full"}`}
+      style={
+        placed
+          ? { left: `${placed.left}px`, top: `${placed.top}px` }
+          : { left: `${x}px`, top: `${y}px` }
+      }
     >
       <button
         type="button"
         aria-label={t("mapPopup.closeAria")}
-        className="absolute right-1 top-1 px-1 text-ink-3"
+        className="absolute right-0 top-0 inline-flex min-h-6 min-w-6 items-center justify-center px-1 text-ink-3 pointer-coarse:min-h-11 pointer-coarse:min-w-11"
         onClick={onClose}
       >
         ✕
       </button>
-      {content.title && <p className="mb-1 pr-4 font-medium">{content.title}</p>}
+      {content.title && <p className="mb-1 pr-6 font-medium">{content.title}</p>}
       {content.html ? (
         <div dangerouslySetInnerHTML={{ __html: content.html }} />
       ) : (

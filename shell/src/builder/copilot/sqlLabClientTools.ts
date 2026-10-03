@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+// i18n-ok-file: descriptions de schémas d'outils envoyées au LLM (invite), pas de l'interface.
 // Outil CLIENT du copilote sur SQL Lab (GAP-17) — insère un brouillon SQL
 // dans l'éditeur, jamais exécuté. Même patron que clientTools.ts (builder).
 type ClientToolSchema = { name: string; description: string; inputSchema: Record<string, unknown> };

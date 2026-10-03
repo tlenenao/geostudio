@@ -22,8 +22,9 @@ import type { Group, Item, ShareLinkInfo, ShareRole } from "../api/types";
 import { Button } from "../ui/kit/Button";
 import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
-import { t } from "../i18n";
+import { plural, t } from "../i18n";
 import { useReferencedCollectionIds } from "./referencedCollections";
+import { LoadingState } from "../ui/kit/LoadingState";
 
 const MAX_SHARE_LINK_TTL_DAYS = 30;
 
@@ -31,7 +32,7 @@ const MAX_SHARE_LINK_TTL_DAYS = 30;
 // embed. `navigator.clipboard.writeText` requiert un contexte sécurisé
 // (HTTPS ou localhost) — repli sur `execCommand("copy")` (dépréciée mais
 // toujours fonctionnelle) sinon.
-async function copyToClipboard(text: string): Promise<void> {
+export async function copyToClipboard(text: string): Promise<void> {
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(text);
     return;
@@ -129,7 +130,7 @@ function ShareLinksPanel({ itemId }: { itemId: string }) {
   return (
     <div className="flex flex-col gap-2 border-t border-rule pt-2">
       <p className="text-xs font-medium text-ink-2">{t("shareForm.linksTitle")}</p>
-      {linksQuery.isLoading && <p role="status">{t("common.loading")}</p>}
+      {linksQuery.isLoading && <LoadingState />}
       {linksQuery.isError && (
         <p role="alert" className="text-xs text-danger">
           {t("shareForm.linksLoadError")}
@@ -151,11 +152,11 @@ function ShareLinksPanel({ itemId }: { itemId: string }) {
             aria-label={t("shareForm.ttlAria")}
             min={1}
             max={MAX_SHARE_LINK_TTL_DAYS}
-            className="h-8 w-16 rounded-md border border-rule bg-surface px-2 text-xs text-ink"
+            className="h-8 w-16 rounded-md border border-control bg-surface px-2 text-xs text-ink"
             value={ttlDays}
             onChange={(e) => setTtlDays(Number(e.target.value))}
           />
-          {t("shareForm.ttlUnit")}
+          {t(plural(ttlDays, "shareForm.ttlUnitOne", "shareForm.ttlUnitMany"))}
         </label>
         <Button
           type="button"
@@ -248,7 +249,7 @@ function AddGroupMemberControl({ groupId, groupTitle }: { groupId: string; group
         type="search"
         aria-label={t("shareForm.memberSearchAria", { group: groupTitle })}
         placeholder={t("shareForm.memberSearchPlaceholder")}
-        className="h-8 rounded-md border border-rule bg-surface px-2 text-xs text-ink"
+        className="h-8 rounded-md border border-control bg-surface px-2 text-xs text-ink"
         value={q}
         onChange={(e) => setQ(e.target.value)}
       />
@@ -331,7 +332,7 @@ function GroupManageControl({ group }: { group: Group }) {
         <input
           type="text"
           aria-label={t("shareForm.renameGroupAria", { group: group.title })}
-          className="h-8 flex-1 rounded-md border border-rule bg-surface px-2 text-xs text-ink"
+          className="h-8 flex-1 rounded-md border border-control bg-surface px-2 text-xs text-ink"
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
@@ -479,7 +480,7 @@ export function ShareForm({ item, onDone }: { item: Item; onDone: () => void }) 
   return (
     <div className="flex flex-col gap-3">
       <h3 className="text-sm font-semibold text-ink">{t("shareForm.heading")}</h3>
-      {loading && <p role="status">{t("common.loading")}</p>}
+      {loading && <LoadingState />}
       {failed && (
         <p role="alert" className="text-sm text-danger">
           {t("sharePanel.loadError")}
@@ -520,7 +521,7 @@ export function ShareForm({ item, onDone }: { item: Item; onDone: () => void }) 
                   </label>
                   <select
                     aria-label={t("sharePanel.roleAria", { group: g.title })}
-                    className="h-8 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
+                    className="h-8 rounded-md border border-control bg-surface px-2 text-sm text-ink"
                     disabled={!roles[g.id]}
                     value={roles[g.id] ?? "viewer"}
                     onChange={(e) =>
@@ -559,7 +560,7 @@ export function ShareForm({ item, onDone }: { item: Item; onDone: () => void }) 
                 type="text"
                 aria-label={t("shareForm.newGroupNameLabel")}
                 placeholder={t("shareForm.newGroupNameLabel")}
-                className="h-8 flex-1 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
+                className="h-8 flex-1 rounded-md border border-control bg-surface px-2 text-sm text-ink"
                 value={newGroupName}
                 onChange={(e) => setNewGroupName(e.target.value)}
               />

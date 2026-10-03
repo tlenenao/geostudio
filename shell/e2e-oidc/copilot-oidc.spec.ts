@@ -80,7 +80,7 @@ test("copilote sous OIDC réel : brouillon intact, jeton d'audience MCP, 25 tour
   expect(page.url()).not.toMatch(/[?&](code|state)=/);
 
   await page.getByRole("button", { name: "Texte" }).click();
-  const widgets = page.getByRole("button", { name: /^Sélectionner widget-/ });
+  const widgets = page.getByRole("button", { name: /^Sélectionner / });
   await expect(widgets).toHaveCount(1);
 
   // 3 tours : aucun remontage, brouillon et conversation conservés.

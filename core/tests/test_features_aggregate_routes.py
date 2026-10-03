@@ -243,3 +243,61 @@ def test_aggregate_sample_returns_bare_values(env):
     body = response.json()
     assert body["categoryKey"] == "value"
     assert body["rows"] == [{"value": 42.0}]
+
+
+def test_aggregate_reports_lake_freshness_and_pending(env):
+    """P25.10/11 : asOf (dernier flush) ; pending tant que le lac est vide."""
+    app, client, admin, _r, tmp_path, tenant_id = env
+    col = _register(app, client, admin)
+    body = {"agg": "count"}
+    empty = client.post(f"/v1/collections/{col['id']}/aggregate", json=body).json()
+    assert empty["pending"] is True and empty["asOf"] is None
+    _write_partition(
+        tmp_path,
+        tenant_id=tenant_id,
+        collection_id=col["id"],
+        rows=[
+            {
+                "id": 1,
+                "region": "Nord",
+                "pop": 10,
+                "_op": "insert",
+                "_lsn": 1,
+                "_ts": 5.0,
+                "geometry": Point(0, 0),
+            }
+        ],
+    )
+    full = client.post(f"/v1/collections/{col['id']}/aggregate", json=body).json()
+    assert full["pending"] is False and full["asOf"].startswith("1970-01-01T00:00:05")
+    assert full["rows"][0]["value"] == 1
+
+
+def test_aggregate_invalid_filter_value_is_400_and_empty_export_has_header(env):
+    app, client, admin, _r, tmp_path, tenant_id = env
+    col = _register(app, client, admin)
+    _write_partition(
+        tmp_path,
+        tenant_id=tenant_id,
+        collection_id=col["id"],
+        rows=[
+            {
+                "id": 1,
+                "region": "Nord",
+                "pop": 10,
+                "_op": "insert",
+                "_lsn": 1,
+                "_ts": 1.0,
+                "geometry": Point(0, 0),
+            }
+        ],
+    )
+    url = f"/v1/collections/{col['id']}/aggregate"
+    assert (
+        client.post(url, json={"agg": "count", "filters": {"pop__gte": "abc"}}).status_code == 400
+    )
+    export = client.post(
+        f"/v1/collections/{col['id']}/export?format=csv",
+        json={"groupBy": "region", "agg": "count", "filters": {"region": "zz"}},
+    )
+    assert export.status_code == 200 and export.text.strip() == "region,value"

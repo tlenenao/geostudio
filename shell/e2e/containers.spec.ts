@@ -16,7 +16,7 @@ test("Onglets switches which nested widget is visible", async ({ page }) => {
   const propsPanel = page.locator("aside").filter({ hasText: "Propriétés" });
 
   // Onglet 1 (par défaut) reçoit un Texte "Contenu A".
-  await propsPanel.getByRole("button", { name: "Texte" }).click();
+  await propsPanel.getByRole("button", { name: "Texte", exact: true }).click();
   await propsPanel.getByLabel("Texte du widget").fill("Contenu A");
 
   // Un 2e onglet est ajouté, vide.
@@ -44,7 +44,7 @@ test("a Tabs widget shows its active tab's content directly on the edit canvas",
 
   await page.getByRole("button", { name: "Onglets" }).click();
   const propsPanel = page.locator("aside").filter({ hasText: "Propriétés" });
-  await propsPanel.getByRole("button", { name: "Texte" }).click();
+  await propsPanel.getByRole("button", { name: "Texte", exact: true }).click();
   await propsPanel.getByLabel("Texte du widget").fill("Contenu du premier onglet");
 
   // Le panneau Propriétés a lui-même un aperçu (son propre LayoutEditor
@@ -52,7 +52,7 @@ test("a Tabs widget shows its active tab's content directly on the edit canvas",
   // spécifiquement sur le canevas principal (<main>), pas n'importe où sur
   // la page, sans quoi ce test resterait vert même si le canevas principal
   // continuait à n'afficher qu'un bandeau vide (confirmé par falsification).
-  const canvas = page.locator("main");
+  const canvas = page.getByTestId("app-canvas");
   await expect(canvas.getByText("Contenu du premier onglet")).toBeVisible();
 });
 
@@ -72,7 +72,7 @@ test("Bouton opens a Modale via the action bus, and Escape closes it", async ({ 
   await page.getByRole("button", { name: "Modale" }).click();
   const propsPanel = page.locator("aside").filter({ hasText: "Propriétés" });
   await propsPanel.getByLabel("Titre de la modale").fill("Détail");
-  await propsPanel.getByRole("button", { name: "Texte" }).click();
+  await propsPanel.getByRole("button", { name: "Texte", exact: true }).click();
   await propsPanel.getByLabel("Texte du widget").fill("Corps modale");
 
   await page.getByLabel("Widget émetteur").selectOption({ label: "Bouton" });
@@ -108,7 +108,7 @@ test("Bouton opens a Tiroir via the action bus, and Escape closes it", async ({ 
   await page.getByRole("button", { name: "Tiroir" }).click();
   const propsPanel = page.locator("aside").filter({ hasText: "Propriétés" });
   await propsPanel.getByLabel("Titre du tiroir").fill("Filtres");
-  await propsPanel.getByRole("button", { name: "Texte" }).click();
+  await propsPanel.getByRole("button", { name: "Texte", exact: true }).click();
   await propsPanel.getByLabel("Texte du widget").fill("Corps tiroir");
 
   await page.getByLabel("Widget émetteur").selectOption({ label: "Bouton" });

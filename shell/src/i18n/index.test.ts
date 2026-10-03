@@ -20,9 +20,9 @@ describe("t", () => {
     expect(t("actions.deleteMessage", {})).toContain("{title}");
   });
 
-  it("plural choisit le singulier à n=1, le pluriel sinon", () => {
+  it("plural choisit le singulier à 0 et 1, le pluriel dès 2", () => {
     expect(t(plural(1, "catalog.countOne", "catalog.countMany"), { n: 1 })).toBe("1 élément");
-    expect(t(plural(0, "catalog.countOne", "catalog.countMany"), { n: 0 })).toBe("0 éléments");
+    expect(t(plural(0, "catalog.countOne", "catalog.countMany"), { n: 0 })).toBe("0 élément");
     expect(t(plural(68, "catalog.countOne", "catalog.countMany"), { n: 68 })).toBe("68 éléments");
   });
 

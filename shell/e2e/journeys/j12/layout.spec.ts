@@ -1,4 +1,3 @@
-import { bug } from "../_fixtures/verify";
 import AxeBuilder from "@axe-core/playwright";
 import { test, expect } from "@playwright/test";
 import { apiFor } from "../j03/api";
@@ -41,20 +40,21 @@ test.describe("j12 chrome sur téléphone (360 px)", () => {
   test.use({ viewport: VIEWPORTS.phone, hasTouch: true });
 
   // Finding j12-002 : la barre du haut exige ~517 px, le bouton Compte sort de l'écran.
-  bug(
-    "j12-002 : l'en-tête tient dans 360 px (Notifications et Compte atteignables sans défilement horizontal)",
-    async ({ page }) => {
-      await openAs(page, "creator");
-      await go(page, "/", 1500);
-      const acc = await page.getByRole("button", { name: "Compte" }).boundingBox();
-      expect(acc!.x + acc!.width).toBeLessThanOrEqual(360);
-      const sw = await page.evaluate(() => document.documentElement.scrollWidth);
-      expect(sw).toBeLessThanOrEqual(360);
-    },
-  );
+  test("j12-002 : l'en-tête tient dans 360 px (Notifications et Compte atteignables sans défilement horizontal)", async ({
+    page,
+  }) => {
+    await openAs(page, "creator");
+    await go(page, "/", 1500);
+    const acc = await page.getByRole("button", { name: "Compte" }).boundingBox();
+    expect(acc!.x + acc!.width).toBeLessThanOrEqual(360);
+    const sw = await page.evaluate(() => document.documentElement.scrollWidth);
+    expect(sw).toBeLessThanOrEqual(360);
+  });
 
   // Finding j12-004 : la navigation basse n'est pas ancrée à l'écran.
-  bug("j12-004 : la navigation basse reste visible sans défiler le catalogue", async ({ page }) => {
+  test("j12-004 : la navigation basse reste visible sans défiler le catalogue", async ({
+    page,
+  }) => {
     await openAs(page, "creator");
     await go(page, "/", 2500);
     const top = await page
@@ -65,30 +65,28 @@ test.describe("j12 chrome sur téléphone (360 px)", () => {
   });
 
   // Finding j12-008 : cibles de 32 px partout (44 px recommandés).
-  bug(
-    "j12-008 : les boutons de la navigation basse et les onglets font au moins 44 px de haut",
-    async ({ page }) => {
-      await openAs(page, "creator");
-      await go(page, "/", 1500);
-      const small = (await smallTargets(page)).filter(
-        (t) => t.h < 44 && /Catalogue|Cartes|Tâches|Plus|Filtrer|Résumé/.test(t.text),
-      );
-      expect(small).toEqual([]);
-    },
-  );
+  test("j12-008 : les boutons de la navigation basse et les onglets font au moins 44 px de haut", async ({
+    page,
+  }) => {
+    await openAs(page, "creator");
+    await go(page, "/", 1500);
+    const small = (await smallTargets(page)).filter(
+      (t) => t.h < 44 && /Catalogue|Cartes|Tâches|Plus|Filtrer|Résumé/.test(t.text),
+    );
+    expect(small).toEqual([]);
+  });
 
   // Finding j12-010 : les onglets ne sont pas pilotables aux flèches.
-  bug(
-    "j12-010 : les flèches gauche/droite déplacent la sélection de l'onglet (patron tablist)",
-    async ({ page }) => {
-      await openAs(page, "creator");
-      await go(page, "/", 1500);
-      const tabs = page.getByRole("tab");
-      await tabs.nth(1).focus();
-      await page.keyboard.press("ArrowRight");
-      await expect(tabs.nth(2)).toHaveAttribute("aria-selected", "true");
-    },
-  );
+  test("j12-010 : les flèches gauche/droite déplacent la sélection de l'onglet (patron tablist)", async ({
+    page,
+  }) => {
+    await openAs(page, "creator");
+    await go(page, "/", 1500);
+    const tabs = page.getByRole("tab");
+    await tabs.nth(1).focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(tabs.nth(2)).toHaveAttribute("aria-selected", "true");
+  });
 
   test("les onglets exposent le panneau actif et le changement d'onglet remplace le contenu", async ({
     page,
@@ -160,16 +158,15 @@ test.describe("j12 thèmes et mouvement", () => {
 
 test.describe("j12 carte : hauteur de la mise en page large", () => {
   // Finding j12-003 : sur ≥ 900 px la grille grandit avec le panneau le plus haut.
-  bug(
-    "j12-003 : à 1280×800 l'éditeur de carte ne dépasse pas la hauteur de la fenêtre",
-    async ({ page }) => {
-      await stubBasemap(page);
-      const m = await getMapSeed();
-      await page.setViewportSize(VIEWPORTS.desktop);
-      await openAs(page, "creator");
-      await go(page, `/maps/${m.pk}`, 4000);
-      const h = await page.evaluate(() => document.documentElement.scrollHeight);
-      expect(h).toBeLessThanOrEqual(800 + 2);
-    },
-  );
+  test("j12-003 : à 1280×800 l'éditeur de carte ne dépasse pas la hauteur de la fenêtre", async ({
+    page,
+  }) => {
+    await stubBasemap(page);
+    const m = await getMapSeed();
+    await page.setViewportSize(VIEWPORTS.desktop);
+    await openAs(page, "creator");
+    await go(page, `/maps/${m.pk}`, 4000);
+    const h = await page.evaluate(() => document.documentElement.scrollHeight);
+    expect(h).toBeLessThanOrEqual(800 + 2);
+  });
 });

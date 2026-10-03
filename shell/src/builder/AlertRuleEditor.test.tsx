@@ -35,7 +35,8 @@ test("renders the list of existing rules with their firing state", async () => {
   renderWithClient({ listAlertRulesForDataset, getAlertEvaluations });
 
   expect(await screen.findByText("High counts")).toBeInTheDocument();
-  expect(await screen.findByText(/firing/i)).toBeInTheDocument();
+  expect(await screen.findByText("Déclenchée")).toBeInTheDocument();
+  expect(screen.getByText(/valeur 150/)).toBeInTheDocument();
 });
 
 test("creating a rule calls createAlertRuleItem with the form values", async () => {
@@ -205,4 +206,28 @@ test("shows a save error inline instead of failing silently", async () => {
   await userEvent.click(screen.getByRole("button", { name: "Créer la règle" }));
 
   expect(await screen.findByRole("alert")).toHaveTextContent("Échec de la création de la règle.");
+});
+
+test("shows the delivery failure of the latest evaluation (P20.01) and the evaluation error (P20.07)", async () => {
+  const listAlertRulesForDataset = vi
+    .fn()
+    .mockResolvedValue([{ itemId: "rule-1", title: "R" }] satisfies AlertRuleSummary[]);
+  const getAlertEvaluations = vi.fn().mockResolvedValue([
+    {
+      id: "e1",
+      value: 3,
+      state: "firing",
+      transitioned: true,
+      error: null,
+      notifyStatus: "failed",
+      notifyError: "webhook: 500",
+      createdAt: "2026-08-07T00:00:00Z",
+    },
+  ] satisfies AlertEvaluation[]);
+  const evaluateAlertRule = vi.fn().mockRejectedValue(new Error("boom"));
+  renderWithClient({ listAlertRulesForDataset, getAlertEvaluations, evaluateAlertRule });
+
+  expect(await screen.findByText(/Notification non livrée : webhook: 500/)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Exécuter maintenant" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Impossible de lancer l'évaluation.");
 });

@@ -115,39 +115,34 @@ test.describe("j09 AlertRule : évaluation et historique", () => {
     expect(rows[0].error).toContain("egress blocked");
   });
 
-  // Bug confirmé : voir docs/revue/audit-2026-09-29/j09/findings.jsonl
-  bug(
-    "j09-013 : une règle count sur un dataset vide s'évalue à 0 au lieu de finir en erreur",
-    async () => {
-      const empty = await creator.send("POST", "/v1/collections/empty", {
-        title: `${tag}-vide`,
-        columns: [{ name: "nom", sqlType: "text" }],
-        geometryType: "Point",
-        srid: 4326,
-      });
-      const ds = await creator.send("POST", "/v1/configs", {
-        title: `${tag}-ds-vide`,
-        config: {
-          version: 1,
-          kind: "dataset",
-          dataset: { source: "collection", collectionId: empty.body.id },
-        },
-      });
-      const rule = await creator.send("POST", "/v1/configs", {
-        title: `${tag}-regle-vide`,
-        config: alertConfig(ds.body.itemId, { condition: { expr: "value < 1" } }),
-      });
-      const id = rule.body.itemId as string;
-      const ev = await pendingEvaluation(id);
-      deferEvaluation(ev);
-      const done = await waitEvaluation(creator, id, ev);
-      expect(done.state).toBe("firing");
-      expect(done.value).toBe(0);
-    },
-  );
+  test("j09-013 : une règle count sur un dataset vide s'évalue à 0 au lieu de finir en erreur", async () => {
+    const empty = await creator.send("POST", "/v1/collections/empty", {
+      title: `${tag}-vide`,
+      columns: [{ name: "nom", sqlType: "text" }],
+      geometryType: "Point",
+      srid: 4326,
+    });
+    const ds = await creator.send("POST", "/v1/configs", {
+      title: `${tag}-ds-vide`,
+      config: {
+        version: 1,
+        kind: "dataset",
+        dataset: { source: "collection", collectionId: empty.body.id },
+      },
+    });
+    const rule = await creator.send("POST", "/v1/configs", {
+      title: `${tag}-regle-vide`,
+      config: alertConfig(ds.body.itemId, { condition: { expr: "value < 1" } }),
+    });
+    const id = rule.body.itemId as string;
+    const ev = await pendingEvaluation(id);
+    deferEvaluation(ev);
+    const done = await waitEvaluation(creator, id, ev);
+    expect(done.state).toBe("firing");
+    expect(done.value).toBe(0);
+  });
 
-  // Bug confirmé : voir docs/revue/audit-2026-09-29/j09/findings.jsonl
-  bug("j09-003 : un échec de notification est visible dans l'historique d'évaluation", async () => {
+  test("j09-003 : un échec de notification est visible dans l'historique d'évaluation", async () => {
     const id = await mkRule("silent-failure");
     const ev = await pendingEvaluation(id);
     deferEvaluation(ev);
@@ -157,8 +152,7 @@ test.describe("j09 AlertRule : évaluation et historique", () => {
     expect(done.error).not.toBeNull();
   });
 
-  // Bug confirmé : voir docs/revue/audit-2026-09-29/j09/findings.jsonl
-  bug("j09-004 : une première évaluation à l'état ok n'envoie pas de notification", async () => {
+  test("j09-004 : une première évaluation à l'état ok n'envoie pas de notification", async () => {
     const id = await mkRule("first-ok", { condition: { expr: "value > 100" } });
     const ev = await pendingEvaluation(id);
     deferEvaluation(ev);

@@ -107,7 +107,7 @@ test("ajouter, lister et supprimer une pièce jointe depuis le widget Formulaire
 
   // Sélectionner le widget Formulaire pré-câblé et charger son schéma (avec
   // le champ "photos" désormais servi par la surcharge ci-dessus).
-  await page.getByRole("button", { name: "Sélectionner widget-tpl-incident-form" }).click();
+  await page.getByRole("button", { name: "Sélectionner Formulaire" }).click();
   await page.getByRole("button", { name: "Charger les champs du schéma" }).click();
   await expect(page.getByLabel("Label du champ titre")).toBeVisible();
 

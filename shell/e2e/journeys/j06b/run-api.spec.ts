@@ -137,21 +137,18 @@ test.describe("j06b exécution de pipelines", () => {
   });
 
   // Finding j06b-007 : l'erreur d'exécution est le texte brut de DuckDB (SQL interne, noms de vues).
-  bug(
-    "j06b-007 : l'erreur d'un run échoué est un message métier, pas du SQL DuckDB brut",
-    async () => {
-      const col = await createPlainCollection(creator, `${tag}-rawerr`, [["a", 1]]);
-      const p = await createPipeline(
-        creator,
-        `${tag}-rawerr`,
-        [reader(col), filter("colonne_inconnue > 5"), exportWriter(`j06b/${tag}-rawerr.csv`)],
-        [edge("r", "f"), edge("f", "w")],
-      );
-      const fin = await runAndWait(p.itemId!);
-      expect(fin.status).toBe("failed");
-      expect(fin.error).not.toMatch(/erreur interne|LINE 1|node_f|Binder Error/);
-    },
-  );
+  test("j06b-007 : l'erreur d'un run échoué est un message métier, pas du SQL DuckDB brut", async () => {
+    const col = await createPlainCollection(creator, `${tag}-rawerr`, [["a", 1]]);
+    const p = await createPipeline(
+      creator,
+      `${tag}-rawerr`,
+      [reader(col), filter("colonne_inconnue > 5"), exportWriter(`j06b/${tag}-rawerr.csv`)],
+      [edge("r", "f"), edge("f", "w")],
+    );
+    const fin = await runAndWait(p.itemId!);
+    expect(fin.status).toBe("failed");
+    expect(fin.error).not.toMatch(/erreur interne|LINE 1|node_f|Binder Error/);
+  });
 
   // Finding j06b-008 : une colonne ajoutée à la table (DBA) n'existe pas dans le GeoParquet → reader en échec.
   bug(

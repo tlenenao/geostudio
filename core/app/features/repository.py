@@ -7,7 +7,9 @@ introspecté. Les colonnes de type "unsupported" sont read-only (contrat de
 validation.py) : jamais écrites ici."""
 
 import json
+import re
 from dataclasses import dataclass
+from datetime import date
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -54,6 +56,7 @@ def _coerce(col: ColumnInfo, raw: str):
 
 
 _RANGE_OPS = {"__gte": ">=", "__lte": "<="}
+_DATE_ONLY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def _split_filter_key(raw_name: str) -> tuple[str, str | None]:
@@ -85,6 +88,15 @@ def _where(session: Session, info: TableInfo, bbox, geom_intersects, filters):
                     params[key] = _coerce(col, value)
                     placeholders.append(f":{key}")
                 clauses.append(f"{ident} IN ({', '.join(placeholders)})")
+            elif suffix == "__lte" and col.type == "datetime" and _DATE_ONLY.match(raw):
+                # P25.12 : borne haute « YYYY-MM-DD » = tout ce jour (sinon la
+                # comparaison tombe à minuit et exclut les événements du jour).
+                try:
+                    date.fromisoformat(raw)  # « 2026-13-45 » : 400, pas une DataError 500
+                except ValueError:
+                    raise FilterError(name, f"cannot parse '{raw}' as datetime") from None
+                clauses.append(f"{ident} < CAST(:f{i} AS timestamptz) + INTERVAL '1 day'")
+                params[f"f{i}"] = raw
             elif suffix in _RANGE_OPS:
                 clauses.append(f"{ident} {_RANGE_OPS[suffix]} :f{i}")
                 params[f"f{i}"] = _coerce(col, raw)
@@ -149,7 +161,6 @@ def select_features(
 ) -> FeaturePage:
     t = quote_ident(session, info.table_name)
     where, params = _where(session, info, bbox, geom_intersects, filters)
-    matched = session.execute(text(f"SELECT count(*) FROM public.{t}{where}"), params).scalar()
     rows = session.execute(
         text(
             f"SELECT {_select_list(session, info)} FROM public.{t}{where} "
@@ -158,6 +169,13 @@ def select_features(
         {**params, "__l": limit, "__o": offset},
     ).all()
     features = [_row_to_feature(info, r) for r in rows]
+    if len(rows) < limit and (rows or offset == 0):
+        # Page courte : le total est connu sans count(*) (P24.09). Exact, pas
+        # une estimation. ponytail: page pleine = count(*) exact ; keyset sur la
+        # PK si l'offset profond devient le goulot.
+        matched = offset + len(rows)
+    else:
+        matched = session.execute(text(f"SELECT count(*) FROM public.{t}{where}"), params).scalar()
     return FeaturePage(features=features, number_matched=matched, number_returned=len(features))
 
 
@@ -212,6 +230,43 @@ def insert_feature(session: Session, info: TableInfo, *, properties: dict, geome
         params,
     ).scalar()
     return fid
+
+
+def insert_features(
+    session: Session, info: TableInfo, rows: list[tuple[dict, dict | None]]
+) -> None:
+    """Insertion groupée (executemany, un seul aller-retour par lot) de lignes
+    (properties, geometry) déjà validées. Contrairement à insert_feature, toutes
+    les lignes du lot partagent les colonnes de la première (clés absentes →
+    NULL, pas le défaut de colonne) : réservé aux producteurs à schéma uniforme
+    (pipelines, t03b-001)."""
+    if not rows:
+        return
+    t = quote_ident(session, info.table_name)
+    cols, values = ["tenant_id"], ["current_setting('app.tenant_id')"]
+    keys: dict[str, str] = {}  # paramètre -> nom de colonne
+    for i, col in enumerate(_property_columns(info)):
+        if col.type != "unsupported" and col.name in rows[0][0]:
+            cols.append(quote_ident(session, col.name))
+            values.append(f":p{i}")
+            keys[f"p{i}"] = col.name
+    if info.geometry_column:
+        cols.append(quote_ident(session, info.geometry_column))
+        values.append(
+            f"CASE WHEN CAST(:__geom AS text) IS NULL THEN NULL ELSE {_geometry_sql(info)} END"
+        )
+    params = []
+    for properties, geometry in rows:
+        p = {k: properties.get(n) for k, n in keys.items()}
+        if info.geometry_column:
+            p.update(
+                __geom=json.dumps(geometry) if geometry is not None else None,
+                __srid=info.srid or 4326,
+            )
+        params.append(p)
+    session.execute(
+        text(f"INSERT INTO public.{t} ({', '.join(cols)}) VALUES ({', '.join(values)})"), params
+    )
 
 
 def replace_feature(

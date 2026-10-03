@@ -184,3 +184,36 @@ def test_sweep_short_circuits_in_read_only_mode(env, monkeypatch):
 
     with Session() as s:
         assert harvest_repo.get_source(s, tenant_id=tenant.id, source_id=due_id).last_status is None
+
+
+def test_run_harvest_task_notifies_the_owner_in_app_on_failure_only(env, monkeypatch):
+    # P20.12 (j09-015)
+    from sqlalchemy import select
+
+    from app.notifications.models import Notification
+
+    app, Session, tenant, user = env
+    ok = Mock(fetch=Mock(return_value=[RECORD]))
+    boom = Mock(fetch=Mock(side_effect=RuntimeError("catalogue injoignable")))
+    for connector in (ok, boom):
+        monkeypatch.setattr(service, "get_connector", lambda t, c=connector: c)
+        with Session() as s:
+            source = harvest_repo.create_source(
+                s,
+                tenant_id=tenant.id,
+                owner_id=user.id,
+                type="stac",
+                url="https://a",
+                mode="reference",
+                enabled=True,
+                interval_minutes=None,
+            )
+            s.commit()
+            source_id = source.id
+        with harvest_jobs.app.replace_connector(testing.InMemoryConnector()) as a:
+            harvest_jobs.run_harvest_task.defer(source_id=source_id, tenant_id=tenant.id)
+            a.run_worker(wait=False, queues=["harvest"])
+    with Session() as s:
+        notif = s.scalars(select(Notification).where(Notification.kind == "harvest")).one()
+        assert notif.status == "failure" and "injoignable" in notif.error_message
+        assert notif.recipient_user_id == user.id

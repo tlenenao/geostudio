@@ -28,6 +28,7 @@ from app.configs import repository as configs_repo
 from app.configs.alert_validation import validate_alert_payload as _validate_alert_payload
 from app.configs.bookmark_validation import validate_bookmark_payload as _validate_bookmark_payload
 from app.configs.dataset_validation import validate_dataset_payload as _validate_dataset_payload
+from app.configs.document_validation import validate_document
 from app.configs.extension_permissions import (
     ExtensionPermissionError,
     validate_extension_permissions,
@@ -114,6 +115,7 @@ def _validate_payload_by_kind(session, config: BuilderConfig, *, user: User) -> 
     collection, a pipeline/report bypassing its capability guard's sibling
     structural checks, etc."""
     try:
+        validate_document(config)
         _validate_dataset_payload(session, config, user=user)
         _validate_bookmark_payload(session, config, user=user)
         _validate_pipeline_payload(session, config, user=user)

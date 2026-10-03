@@ -114,3 +114,15 @@ test("too-large message uses semantic tokens, not literal Tailwind colors (SP-B1
   );
   expectTokenizedClasses(container);
 });
+
+test("annonce que le GeoJSON est borné aux 1000 premières entités (P29.03)", async () => {
+  renderButtons(500000);
+  expect(
+    screen.getByText("Le GeoJSON ne contient que les 1000 premières entités sur 500000."),
+  ).toBeInTheDocument();
+});
+
+test("aucune annonce de troncature sous 1000 entités", async () => {
+  renderButtons(900);
+  expect(screen.queryByText(/premières entités/)).not.toBeInTheDocument();
+});

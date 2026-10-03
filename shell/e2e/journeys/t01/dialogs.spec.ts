@@ -1,13 +1,5 @@
 import { expect, test } from "@playwright/test";
-import {
-  bug,
-  focusDesc,
-  getA11ySeed,
-  go,
-  newSession,
-  type A11ySeed,
-  type Session,
-} from "./helpers";
+import { focusDesc, getA11ySeed, go, newSession, type A11ySeed, type Session } from "./helpers";
 
 test.describe("dialogues, menus et popovers (creator)", () => {
   let s: Session;
@@ -64,7 +56,7 @@ test.describe("dialogues, menus et popovers (creator)", () => {
     await expect(account).toBeFocused();
   });
 
-  bug("t01-009 : le menu « Actions » d'une carte expose menu/aria-expanded", async () => {
+  test("t01-009 : le menu « Actions » d'une carte expose menu/aria-expanded", async () => {
     // Finding t01-009 : ItemActions = <div> de <button> sans role=menu ni aria-haspopup/expanded.
     const trigger = s.page.getByRole("button", { name: "Actions" }).first();
     await trigger.click();
@@ -77,7 +69,7 @@ test.describe("dialogues, menus et popovers (creator)", () => {
     expect(await s.page.locator("[role=menu]").count()).toBeGreaterThan(0);
   });
 
-  bug("t01-010 : Échap ferme le menu « Actions » d'une carte", async () => {
+  test("t01-010 : Échap ferme le menu « Actions » d'une carte", async () => {
     // Finding t01-010 : aucun gestionnaire clavier ; le menu reste ouvert après Échap.
     await s.page.getByRole("button", { name: "Actions" }).first().click();
     await expect(s.page.getByRole("button", { name: "Supprimer" }).first()).toBeVisible();
@@ -100,7 +92,7 @@ test.describe("dialogues, menus et popovers (creator)", () => {
     await expect(s.page.getByRole("dialog")).toBeHidden();
   });
 
-  bug("t01-011 : annuler une confirmation de suppression rend le focus", async () => {
+  test("t01-011 : annuler une confirmation de suppression rend le focus", async () => {
     // Finding t01-011 : après Échap, document.activeElement === body (menu démonté).
     await s.page.getByRole("button", { name: "Actions" }).first().click();
     await s.page.getByRole("button", { name: "Supprimer" }).first().click();
@@ -110,7 +102,7 @@ test.describe("dialogues, menus et popovers (creator)", () => {
     expect(await focusDesc(s.page)).not.toBe("body");
   });
 
-  bug("t01-012 : la confirmation destructive est un alertdialog décrit", async () => {
+  test("t01-012 : la confirmation destructive est un alertdialog décrit", async () => {
     // Finding t01-012 : role=dialog sans aria-describedby pour « Cette action est irréversible ».
     await s.page.getByRole("button", { name: "Actions" }).first().click();
     await s.page.getByRole("button", { name: "Supprimer" }).first().click();
@@ -157,23 +149,22 @@ test.describe("SQL Lab (analyst)", () => {
     }
   });
 
-  bug(
-    "t01-015 : la touche Tab de l'éditeur SQL est documentée ou ne piège pas",
-    async ({ browser }) => {
-      // Finding t01-015 : Tab insère une indentation (WCAG 2.1.2) ; la sortie par Échap n'est dite nulle part.
-      const s = await newSession(browser, "analyst");
-      try {
-        await go(s.page, "/analytics/sql", 3000);
-        await s.page.locator(".cm-content").first().click();
-        await s.page.keyboard.press("Tab");
-        const stillInEditor = await s.page.evaluate(
-          () => !!document.activeElement?.closest(".cm-content"),
-        );
-        const hint = await s.page.getByText(/Échap/).count();
-        expect(!stillInEditor || hint > 0).toBe(true);
-      } finally {
-        await s.ctx.close();
-      }
-    },
-  );
+  test("t01-015 : la touche Tab de l'éditeur SQL est documentée ou ne piège pas", async ({
+    browser,
+  }) => {
+    // Finding t01-015 : Tab insère une indentation (WCAG 2.1.2) ; la sortie par Échap n'est dite nulle part.
+    const s = await newSession(browser, "analyst");
+    try {
+      await go(s.page, "/analytics/sql", 3000);
+      await s.page.locator(".cm-content").first().click();
+      await s.page.keyboard.press("Tab");
+      const stillInEditor = await s.page.evaluate(
+        () => !!document.activeElement?.closest(".cm-content"),
+      );
+      const hint = await s.page.getByText(/Échap/).count();
+      expect(!stillInEditor || hint > 0).toBe(true);
+    } finally {
+      await s.ctx.close();
+    }
+  });
 });

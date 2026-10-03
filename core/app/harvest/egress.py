@@ -48,14 +48,8 @@ def _allowlist() -> set[str]:
 
 
 def _is_internal(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
-    return (
-        ip.is_loopback
-        or ip.is_private
-        or ip.is_link_local
-        or ip.is_reserved
-        or ip.is_multicast
-        or ip.is_unspecified
-    )
+    # tout ce qui n'est pas globalement routable (CGNAT 100.64/10, TEST-NET, 6to4…)
+    return not ip.is_global or ip.is_multicast
 
 
 def assert_egress_allowed(url: str) -> None:

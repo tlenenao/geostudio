@@ -159,7 +159,7 @@ services:
       - traefik.http.routers.grafana.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && PathPrefix(`/admin/grafana`)
       - traefik.http.routers.grafana.entrypoints=web
       - traefik.http.routers.grafana.priority=15
-      - traefik.http.routers.grafana.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker,csp-dynamic@file
+      - traefik.http.routers.grafana.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker
       - traefik.http.services.grafana.loadbalancer.server.port=3000
 
   core:
@@ -171,6 +171,8 @@ services:
       CORE_OIDC_ISSUER: https://${GEOSTUDIO_PUBLIC_HOST}/auth/realms/geostudio
       CORE_OIDC_JWKS_URL: http://keycloak:8080/auth/realms/geostudio/protocol/openid-connect/certs
       CORE_BASE_URL: https://${GEOSTUDIO_PUBLIC_HOST}/api
+      CORE_ADMIN_TOOLS_GATEWAY_URL: https://${GEOSTUDIO_PUBLIC_HOST}
+      CORE_MINIO_CONSOLE_PUBLISHED: "false"
       # Rappelé explicitement ici : c'est cet overlay qui donne à
       # CORE_BASE_URL une valeur que le conteneur ne peut pas s'appeler
       # lui-même (TLS + hôte public). Le rappel /mcp du copilote (SP-20)
@@ -227,6 +229,20 @@ services:
       - traefik.http.routers.seo-bots.middlewares=security-headers@docker,rate-limit@docker,compress@docker,seo-bots-rewrite@docker,csp-dynamic@file
       - traefik.http.middlewares.seo-bots-rewrite.replacepathregex.regex=^/sites/([^/]+)$$
       - traefik.http.middlewares.seo-bots-rewrite.replacepathregex.replacement=/v1/public/sites/$$1/social-preview
+      - traefik.http.routers.seo-bots-items.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && PathPrefix(`/public/items/`) && HeaderRegexp(`User-Agent`, `(?i)(facebookexternalhit|Twitterbot|Slackbot|LinkedInBot|Discordbot|WhatsApp|TelegramBot|Googlebot|bingbot)`)
+      - traefik.http.routers.seo-bots-items.entrypoints=web
+      - traefik.http.routers.seo-bots-items.priority=25
+      - traefik.http.routers.seo-bots-items.service=core
+      - traefik.http.routers.seo-bots-items.middlewares=security-headers@docker,rate-limit@docker,compress@docker,seo-bots-items-rewrite@docker,csp-dynamic@file
+      - traefik.http.middlewares.seo-bots-items-rewrite.replacepathregex.regex=^/public/items/([^/]+)$$
+      - traefik.http.middlewares.seo-bots-items-rewrite.replacepathregex.replacement=/v1/public/items/$$1/social-preview
+      - traefik.http.routers.seo-bots-datasets.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && PathPrefix(`/public/datasets/`) && HeaderRegexp(`User-Agent`, `(?i)(facebookexternalhit|Twitterbot|Slackbot|LinkedInBot|Discordbot|WhatsApp|TelegramBot|Googlebot|bingbot)`)
+      - traefik.http.routers.seo-bots-datasets.entrypoints=web
+      - traefik.http.routers.seo-bots-datasets.priority=25
+      - traefik.http.routers.seo-bots-datasets.service=core
+      - traefik.http.routers.seo-bots-datasets.middlewares=security-headers@docker,rate-limit@docker,compress@docker,seo-bots-datasets-rewrite@docker,csp-dynamic@file
+      - traefik.http.middlewares.seo-bots-datasets-rewrite.replacepathregex.regex=^/public/datasets/([^/]+)$$
+      - traefik.http.middlewares.seo-bots-datasets-rewrite.replacepathregex.replacement=/v1/public/datasets/$$1/social-preview
 
   # worker/cdc-worker sont la MÊME image que core (docker-compose.yml:
   # `build: ./core` pour les trois, processus séparés par `command:`) —
@@ -308,6 +324,7 @@ services:
       - --providers.docker.exposedbydefault=false
       - --providers.file.directory=/csp-dynamic
       - --providers.file.watch=true
+      - --ping=true
       - --entrypoints.web.address=:80
     depends_on:
       - docker-socket-proxy
@@ -337,6 +354,12 @@ services:
     image: tailscale/tailscale:v1.102.3
     restart: unless-stopped
     network_mode: service:traefik
+    healthcheck:
+      test: ["CMD", "tailscale", "status", "--peers=false"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     environment:
       TS_AUTHKEY: ${TS_AUTHKEY}
       TS_STATE_DIR: /var/lib/tailscale
@@ -374,6 +397,17 @@ services:
       BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-geostudio-backups}
     volumes:
       - backup-archives:/backup/archives
+    # P27.08 : fraîcheur — `.last_success` est touché par backup.sh après un
+    # succès COMPLET (envoi hors-site compris s'il est configuré). Plus vieux
+    # que 26 h (1560 min) = unhealthy. start_period couvre le premier cycle
+    # (planifié une fois par jour, BACKUP_HOUR). Pas de règle Grafana : le
+    # profil observability ne scrape pas l'état Docker.
+    healthcheck:
+      test: ["CMD-SHELL", "test -n \"$$(find /backup/archives/.last_success -mmin -1560 2>/dev/null)\""]
+      interval: 15m
+      timeout: 10s
+      retries: 1
+      start_period: 26h
     networks: [gis-net]
     depends_on:
       postgis:

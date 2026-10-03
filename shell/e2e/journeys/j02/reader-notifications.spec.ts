@@ -1,4 +1,3 @@
-import { bug } from "../_fixtures/verify";
 import { test, expect, type Page } from "@playwright/test";
 import { getSeed } from "./seed";
 import { loginOidc } from "../_fixtures/env";
@@ -41,40 +40,38 @@ test.describe("j02 lecteur — notifications in-app", () => {
   });
 
   // j02-013 : le déclencheur et le sélecteur de préférence portent le même nom accessible.
-  bug(
-    "j02-013 : la cloche et le sélecteur de préférence ont des noms accessibles distincts",
-    async ({ page }) => {
-      await loginOidc(page, "reader");
-      await page.waitForTimeout(1500);
-      await openBell(page);
-      await expect(page.getByLabel("Notifications", { exact: true })).toHaveCount(1);
-    },
-  );
+  test("j02-013 : la cloche et le sélecteur de préférence ont des noms accessibles distincts", async ({
+    page,
+  }) => {
+    await loginOidc(page, "reader");
+    await page.waitForTimeout(1500);
+    await openBell(page);
+    await expect(page.getByLabel("Notifications", { exact: true })).toHaveCount(1);
+  });
 
   // j02-014 : aucune distinction visuelle/sémantique entre notification lue et non lue.
-  bug(
-    "j02-014 : une notification lue se distingue d'une non lue dans la liste",
-    async ({ page }) => {
-      const s = await getSeed();
-      seedNotifications(s.readerId, s.sharedDataset, s.sharedApp, s.tag);
-      const list = await s.reader.get("/v1/notifications");
-      const ok = list.body.notifications.find(
-        (n: { itemTitle: string }) => n.itemTitle === `${s.tag}-notif-ok`,
-      );
-      await s.reader.send("POST", `/v1/notifications/${ok.id}/read`);
-      await loginOidc(page, "reader");
-      await page.waitForTimeout(1500);
-      await openBell(page);
-      const attrs = async (title: string) =>
-        page
-          .getByRole("button", { name: new RegExp(title) })
-          .evaluate(
-            (el) =>
-              [...el.attributes].map((a) => `${a.name}=${a.value}`).join(";") +
-              "|" +
-              el.querySelector("span.text-sm")?.className,
-          );
-      expect(await attrs(`${s.tag}-notif-ok`)).not.toEqual(await attrs(`${s.tag}-notif-ko`));
-    },
-  );
+  test("j02-014 : une notification lue se distingue d'une non lue dans la liste", async ({
+    page,
+  }) => {
+    const s = await getSeed();
+    seedNotifications(s.readerId, s.sharedDataset, s.sharedApp, s.tag);
+    const list = await s.reader.get("/v1/notifications");
+    const ok = list.body.notifications.find(
+      (n: { itemTitle: string }) => n.itemTitle === `${s.tag}-notif-ok`,
+    );
+    await s.reader.send("POST", `/v1/notifications/${ok.id}/read`);
+    await loginOidc(page, "reader");
+    await page.waitForTimeout(1500);
+    await openBell(page);
+    const attrs = async (title: string) =>
+      page
+        .getByRole("button", { name: new RegExp(title) })
+        .evaluate(
+          (el) =>
+            [...el.attributes].map((a) => `${a.name}=${a.value}`).join(";") +
+            "|" +
+            el.querySelector("span.text-sm")?.className,
+        );
+    expect(await attrs(`${s.tag}-notif-ok`)).not.toEqual(await attrs(`${s.tag}-notif-ko`));
+  });
 });

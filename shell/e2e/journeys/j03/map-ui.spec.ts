@@ -62,7 +62,7 @@ test.describe("j03 import par le tiroir « Importer un fichier »", () => {
     await dialog.getByLabel("Titre de la collection").fill("aud-j03 import ui");
     await dialog.getByRole("button", { name: "Importer", exact: true }).click();
     // Chemin actuel : le présigné répond 500 (j03-002) → message générique, pas de boucle infinie.
-    await expect(dialog.getByRole("alert")).toContainText("Échec de l'import.", {
+    await expect(dialog.getByRole("alert")).toContainText("Échec de l'envoi du fichier.", {
       timeout: 20_000,
     });
   });
@@ -93,21 +93,20 @@ test.describe("j03 import par le tiroir « Importer un fichier »", () => {
     await expect(dialog.getByLabel("Colonne longitude")).toBeVisible();
   });
 
-  bug(
-    "j03-005 : un CSV séparé par « ; » propose ses vraies colonnes (nom, lat, lon) au choix",
-    async ({ page }) => {
-      // Défaut j03-005 : l'en-tête est découpé sur « , » : une seule « colonne » « nom;lat;lon ».
-      await asCreator(page);
-      await page.getByRole("button", { name: "Importer un fichier" }).click();
-      const dialog = page.getByRole("dialog");
-      await dialog.getByLabel("Fichier à importer").setInputFiles(join(FX, "semi.csv"));
-      const latOptions = await dialog
-        .getByLabel("Colonne latitude")
-        .locator("option")
-        .allInnerTexts();
-      expect(latOptions).toContain("lat");
-    },
-  );
+  test("j03-005 : un CSV séparé par « ; » propose ses vraies colonnes (nom, lat, lon) au choix", async ({
+    page,
+  }) => {
+    // Défaut j03-005 : l'en-tête est découpé sur « , » : une seule « colonne » « nom;lat;lon ».
+    await asCreator(page);
+    await page.getByRole("button", { name: "Importer un fichier" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("Fichier à importer").setInputFiles(join(FX, "semi.csv"));
+    const latOptions = await dialog
+      .getByLabel("Colonne latitude")
+      .locator("option")
+      .allInnerTexts();
+    expect(latOptions).toContain("lat");
+  });
 });
 
 test.describe("j03 éditeur de carte — symbologie, popups, terrain", () => {
@@ -121,29 +120,27 @@ test.describe("j03 éditeur de carte — symbologie, popups, terrain", () => {
     await expect(page.getByLabel("Activer le terrain 3D")).toBeVisible();
   });
 
-  bug(
-    "j03-016 : l'éditeur de carte tient dans la fenêtre (pas de défilement de page)",
-    async ({ page }) => {
-      // Défaut j03-016 : à 1400x900 la page défile (scrollHeight ≈ 1619) — la colonne « Couches » (liste
-      // de toutes les collections + formulaires d'ajout) étire tout l'éditeur, la carte fait ~1585 px de haut.
-      await openMap(page, seed.pointsItem);
-      const { scrollHeight, innerHeight } = await page.evaluate(() => ({
-        scrollHeight: document.scrollingElement!.scrollHeight,
-        innerHeight: window.innerHeight,
-      }));
-      expect(scrollHeight).toBeLessThanOrEqual(innerHeight + 2);
-    },
-  );
+  test("j03-016 : l'éditeur de carte tient dans la fenêtre (pas de défilement de page)", async ({
+    page,
+  }) => {
+    // Défaut j03-016 : à 1400x900 la page défile (scrollHeight ≈ 1619) — la colonne « Couches » (liste
+    // de toutes les collections + formulaires d'ajout) étire tout l'éditeur, la carte fait ~1585 px de haut.
+    await openMap(page, seed.pointsItem);
+    const { scrollHeight, innerHeight } = await page.evaluate(() => ({
+      scrollHeight: document.scrollingElement!.scrollHeight,
+      innerHeight: window.innerHeight,
+    }));
+    expect(scrollHeight).toBeLessThanOrEqual(innerHeight + 2);
+  });
 
-  bug(
-    "j03-013 : sur une collection privée, « Champ couleur » propose les champs de la couche importée",
-    async ({ page }) => {
-      // Défaut j03-013 : geojsonIntrospect.fetchFeatureCollection fait un fetch() nu (sans jeton) :
-      // 404 sur une collection privée → liste de champs vide, symbologie par champ inutilisable.
-      await openMap(page, seed.pointsItem);
-      expect(await fieldOptions(page, "Champ couleur")).toBeGreaterThanOrEqual(4);
-    },
-  );
+  test("j03-013 : sur une collection privée, « Champ couleur » propose les champs de la couche importée", async ({
+    page,
+  }) => {
+    // Défaut j03-013 : geojsonIntrospect.fetchFeatureCollection fait un fetch() nu (sans jeton) :
+    // 404 sur une collection privée → liste de champs vide, symbologie par champ inutilisable.
+    await openMap(page, seed.pointsItem);
+    expect(await fieldOptions(page, "Champ couleur")).toBeGreaterThanOrEqual(4);
+  });
 
   test("témoin j03-013 : sur une collection publique la même liste de champs se charge", async ({
     page,
@@ -172,12 +169,12 @@ test.describe("j03 éditeur de carte — symbologie, popups, terrain", () => {
     await openMap(page, pub.itemId);
     await page.getByLabel("Activer le terrain 3D").check();
     await expect(page.getByLabel("URL de tuiles terrain")).toBeVisible();
-    await expect(page.getByLabel("Exaggeration du terrain")).toBeVisible();
+    await expect(page.getByLabel("Exagération du relief")).toBeVisible();
     await expect(page.getByText("DEM hébergé")).toHaveCount(0);
   });
 
-  bug("j03-014 : le champ d'exagération du terrain est libellé en français", async ({ page }) => {
-    // Défaut j03-014 : libellé « Exaggeration » en dur (TerrainPanel.tsx) et aria « Exaggeration du terrain ».
+  test("j03-014 : le champ d'exagération du terrain est libellé en français", async ({ page }) => {
+    // Défaut j03-014 : libellé « Exaggeration » en dur (TerrainPanel.tsx) et aria « Exagération du relief ».
     await openMap(page, pub.itemId);
     await page.getByLabel("Activer le terrain 3D").check();
     await expect(page.getByText("Exaggeration", { exact: true })).toHaveCount(0);

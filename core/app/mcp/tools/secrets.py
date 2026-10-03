@@ -38,11 +38,16 @@ def register(server: FastMCP, session_factory) -> None:
                 )
             except HTTPException as exc:
                 raise http_exception_to_value_error(exc) from exc
-            secret = repo.get_secret(session, tenant_id=user.tenant_id, secret_id=secret_id)
+            secret = repo.get_visible_secret(
+                session, tenant_id=user.tenant_id, secret_id=secret_id, user=user
+            )
             if secret is None:
                 raise ValueError("secret not found")
             name, kind = secret.name, secret.kind
-            repo.delete_secret(session, secret)
+            try:
+                repo.delete_secret_unless_used(session, secret)
+            except repo.SecretInUseError as exc:
+                raise ValueError(str(exc)) from exc
             write_audit(
                 session,
                 tenant_id=user.tenant_id,

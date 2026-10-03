@@ -11,6 +11,7 @@ import { enableMockAuth } from "../auth/useAuth";
 import { createDesktopItemClient } from "./DesktopItemClient";
 import { DesktopApp } from "./DesktopApp";
 import "../index.css";
+import { t } from "../i18n";
 
 enableMockAuth();
 const queryClient = new QueryClient();
@@ -65,5 +66,5 @@ async function bootstrap() {
 bootstrap().catch((err) => {
   const root = document.getElementById("root");
   const message = err instanceof Error ? err.message : String(err);
-  if (root) root.textContent = `Erreur de démarrage : ${message}`;
+  if (root) root.textContent = t("desktop.startupError", { message });
 });

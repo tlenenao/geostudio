@@ -145,8 +145,8 @@ def get_users_directory(
 
 @router.get("/users")
 def get_users(
-    page: int = 1,
-    pageSize: int = 50,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(50, ge=1, le=200),
     q: str | None = None,
     roleId: str | None = None,
     sort: Literal["username", "email", "createdAt"] = "username",

@@ -7,6 +7,7 @@ import { Button } from "../ui/kit/Button";
 import { Dialog } from "../ui/kit/Dialog";
 import { t } from "../i18n";
 import { useReferencedCollectionIds } from "./referencedCollections";
+import { LoadingState } from "../ui/kit/LoadingState";
 
 // j03-012 : publier une carte/app ne publie pas les collections qu'elle lit —
 // un anonyme verrait la config mais des données vides. Le dialogue liste les
@@ -17,12 +18,14 @@ export function PublishDialog({
   pending,
   onPublish,
   onCancel,
+  returnFocusRef,
 }: {
   item: Item;
   open: boolean;
   pending: boolean;
   onPublish: () => void;
   onCancel: () => void;
+  returnFocusRef?: React.RefObject<HTMLElement | null>;
 }) {
   const client = useItemClient();
   const queryClient = useQueryClient();
@@ -61,8 +64,13 @@ export function PublishDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onCancel()} title={t("publish.title")}>
-      {check.isLoading && <p role="status">{t("common.loading")}</p>}
+    <Dialog
+      open={open}
+      onOpenChange={(next) => !next && onCancel()}
+      title={t("publish.title")}
+      returnFocusRef={returnFocusRef}
+    >
+      {check.isLoading && <LoadingState />}
       {privates.length > 0 && (
         <div className="mb-4 text-sm text-ink-2">
           <p>{t("publish.privateCollections")}</p>

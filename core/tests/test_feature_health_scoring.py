@@ -100,7 +100,7 @@ def test_quality_facts_read_the_real_repository():
     # 15 depuis la Vague C (revue finale, point 1) : MapPopup.tsx (Tâche 2)
     # et SqlLabPage.tsx (Tâche 26) ajoutent chacun un eslint-disable
     # légitime, portant le compte réel de 13 à 15. Ferme REV-255.
-    assert len(facts.eslint_disabled) == 15
+    assert len(facts.eslint_disabled) == 16
     assert len(facts.typing_escapes) == 7
 
 

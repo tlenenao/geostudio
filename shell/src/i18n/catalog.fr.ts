@@ -10,6 +10,7 @@
 export const fr = {
   // Actions sur un item
   "actions.menu": "Actions",
+  "actions.menuFor": "Actions de {title}",
   "actions.edit": "Modifier",
   "actions.publish": "Publier",
   "actions.unpublish": "Dépublier",
@@ -33,7 +34,44 @@ export const fr = {
   "locked.capabilityOff": "Désactivé sur cette instance — voir un administrateur.",
 
   // Chrome de page (AppLayout)
+  "layout.skipToContent": "Aller au contenu principal",
   "layout.readOnlyBanner": "Mode démo — lecture seule, les modifications ne sont pas enregistrées.",
+
+  // Titres de document par vue (WCAG 2.4.2)
+  "itemCard.open": "Ouvrir",
+  "itemCard.openFor": "Ouvrir {title}",
+
+  "docTitle.format": "{view} — GeoStudio",
+  "docTitle.appName": "GeoStudio",
+  "docTitle.catalog": "Catalogue",
+  "docTitle.item": "Fiche de l'élément",
+  "docTitle.bookmarks": "Signets",
+  "docTitle.map": "Éditeur de carte",
+  "docTitle.appEdit": "Éditeur d'application",
+  "docTitle.datasetEdit": "Éditeur de jeu de données",
+  "docTitle.pipelineNew": "Nouveau pipeline",
+  "docTitle.pipelineEdit": "Éditeur de pipeline",
+  "docTitle.visualQueryNew": "Nouvelle requête visuelle",
+  "docTitle.visualQueryEdit": "Requête visuelle",
+  "docTitle.reports": "Rapports",
+  "docTitle.reportNew": "Nouveau rapport",
+  "docTitle.reportEdit": "Édition du rapport",
+  "docTitle.sqlLab": "SQL Lab",
+  "docTitle.adminExtensions": "Extensions",
+  "docTitle.adminCollections": "Collections",
+  "docTitle.adminHarvest": "Moissonnage",
+  "docTitle.adminRoles": "Rôles",
+  "docTitle.adminUsers": "Utilisateurs",
+  "docTitle.adminCompliance": "Conformité",
+  "docTitle.adminInfrastructure": "Infrastructure",
+  "docTitle.kitGallery": "Galerie du kit",
+  "docTitle.tasks": "Tâches",
+  "docTitle.settings": "Paramètres",
+  "docTitle.app": "Application",
+  "docTitle.embed": "Contenu intégré",
+  "docTitle.site": "Portail",
+  "docTitle.publicItem": "Élément public",
+  "docTitle.publicDataset": "Jeu de données public",
 
   // Domaines
   "domain.catalog": "Catalogue",
@@ -61,6 +99,8 @@ export const fr = {
   "usage.platformUsage": "Usage de la plateforme",
   "usage.byActor": "Par utilisateur",
   "usage.byResource": "Par ressource",
+  "usage.resourceLabel": "{title} ({type})",
+  "usage.resourceFallback": "{type} {id}…",
   "usage.loadFailed": "Échec du chargement des tâches.",
   "usage.summaryLoadFailed": "Échec du chargement de l'usage de la plateforme.",
   "usage.previous": "Précédent",
@@ -83,7 +123,7 @@ export const fr = {
   "usageAction.tileset3dJobCreate": "Traitement de jeu de tuiles 3D",
   "usageAction.terrain3dJobCreate": "Traitement de terrain 3D",
   "usage.helpText":
-    "Ce journal reflète les actions déclenchées (audit_log), pas un statut de job en temps réel.",
+    "Ce journal reflète les actions déclenchées (journal d'activité), pas un statut de job en temps réel.",
 
   // Catalogue
   "catalog.countOne": "{n} élément",
@@ -114,12 +154,28 @@ export const fr = {
   "catalog.emptyFilteredDescription": "Aucun élément ne correspond à ces filtres.",
   "catalog.emptyFilteredTitle": "Aucun résultat",
   "catalog.emptyNoFilterDescription":
-    "Créez votre première carte, appli ou jeu de données pour commencer.",
+    "Créez votre première carte, application ou jeu de données pour commencer.",
+  "catalog.emptyBookmarksTitle": "Aucune vue enregistrée pour l'instant",
+  "catalog.emptyBookmarksDescription":
+    "Enregistrez une vue depuis une application pour la retrouver ici.",
+  "catalog.emptyReportsTitle": "Aucun rapport pour l'instant",
+  "catalog.emptyReportsDescription":
+    "Programmez un rapport pour recevoir une vue enregistrée en PDF à intervalle régulier.",
+  "catalog.emptyReportsAction": "Programmer un rapport",
   "catalog.emptyNoFilterTitle": "Aucun élément pour l'instant",
   "catalog.resetFilters": "Réinitialiser les filtres",
   "catalog.summaryLabel": "Résumé",
   "catalog.searchResultLabel": "Recherche",
   "catalog.spatialExtentLabel": "Emprise spatiale",
+  "catalog.spatialMapTitle": "Carte de sélection de l'emprise",
+  "catalog.spatialFieldsLegend": "Ou saisir l'emprise en degrés",
+  "catalog.spatialWest": "Ouest (longitude min.)",
+  "catalog.spatialSouth": "Sud (latitude min.)",
+  "catalog.spatialEast": "Est (longitude max.)",
+  "catalog.spatialNorth": "Nord (latitude max.)",
+  "catalog.spatialApply": "Appliquer l'emprise",
+  "catalog.spatialInvalid":
+    "Emprise invalide : renseignez les quatre valeurs (ouest < est, sud < nord, longitude entre -180 et 180, latitude entre -90 et 90).",
   "catalog.spatialDrawAria": "Dessiner un rectangle de recherche spatiale",
 
   // Palette de commandes ⌘K (D07, SP-C4/Task 21)
@@ -127,12 +183,16 @@ export const fr = {
   "commandPalette.searchAria": "Rechercher une action",
   "commandPalette.newItemAction": "Nouvel élément",
   "commandPalette.triggerLabel": "Rechercher",
+  "topbar.actions": "Actions",
 
   // Motif partagé : bouton générique d'effacement d'un filtre/champ.
   "common.clear": "Effacer",
 
   // Motif partagé : bouton de nouvelle tentative après une erreur de chargement.
   "common.retry": "Réessayer",
+  // Motif partagé : lecture en échec (hors 404/403) et accès refusé.
+  "common.loadError": "Erreur de chargement.",
+  "common.accessDenied": "Accès refusé.",
 
   // NumberField
   "numberField.increase": "Augmenter",
@@ -190,6 +250,14 @@ export const fr = {
   "notifications.kindExport": "Export",
   "notifications.kindAppexport": "Export d'app",
   "notifications.kindReport": "Rapport",
+  "notifications.kindAlert": "Alerte",
+  "notifications.kindHarvest": "Moissonnage",
+  "notifications.kindTileset3d": "Tileset 3D",
+  "notifications.kindTerrain3d": "Terrain 3D",
+  "notifications.panel": "Centre de notifications",
+  "notifications.preference": "Préférence de notification",
+  "notifications.unread": "Non lue",
+  "notifications.loadMore": "Charger plus",
   "notifications.deletedItem": "Élément supprimé",
   "notifications.loadError": "Échec du chargement des notifications.",
   "notifications.actionError": "Échec de l'action. Réessayez.",
@@ -198,16 +266,18 @@ export const fr = {
   "roles.title": "Rôles",
   "roles.addRole": "Ajouter un rôle",
   "roles.nameLabel": "Nom",
+  "roles.nameRequired": "Le nom est obligatoire pour enregistrer le rôle.",
   "roles.privilegesLabel": "Privilèges",
   "roles.builtInBadge": "Prédéfini",
   "roles.deleteConfirmTitle": "Supprimer le rôle",
   "roles.deleteConfirmMessage": "Supprimer le rôle « {name} » ? Cette action est irréversible.",
-  "roles.deleteBlockedByUsage": "Encore attribué à {count} utilisateur(s).",
+  "roles.deleteBlockedByUsageOne": "Encore attribué à {count} utilisateur.",
+  "roles.deleteBlockedByUsageMany": "Encore attribué à {count} utilisateurs.",
   "roles.privilege.catalogManage": "Créer et modifier les éléments du catalogue",
   "roles.privilege.mapsManage": "Créer et modifier des cartes",
   "roles.privilege.dataView": "Voir le domaine Données",
   "roles.privilege.dataManage": "Créer et modifier des jeux de données",
-  "roles.privilege.appsManage": "Créer et modifier des apps et sites",
+  "roles.privilege.appsManage": "Créer et modifier des applications et sites",
   "roles.privilege.automationManage": "Créer et modifier des pipelines",
   "roles.privilege.automationSecretsManage": "Voir et gérer les noms de secrets",
   "roles.privilege.analyticsView": "Voir le domaine Analytique",
@@ -259,7 +329,7 @@ export const fr = {
   "extensions.deleteAria": "Supprimer : {label}",
   "extensions.deleteTitle": "Supprimer l'extension",
   "extensions.deleteMessage":
-    "L'extension « {label} » sera retirée du catalogue. Les apps qui l'utilisent ne l'afficheront plus.",
+    "L'extension « {label} » sera retirée du catalogue. Les applications qui l'utilisent ne l'afficheront plus.",
   "extensions.deleteError": "Échec de la suppression de l'extension.",
 
   // Motif de navigation partagé (lien de retour au catalogue depuis un écran
@@ -300,6 +370,10 @@ export const fr = {
   "settings.notificationsFailuresOnly": "Échecs seulement",
   "settings.notificationsNone": "Aucune",
   "settings.notificationsSaveError": "Échec de l'enregistrement de la préférence.",
+  "settings.appearanceTitle": "Apparence",
+  "settings.appearanceAuto": "Automatique (suit le système)",
+  "settings.appearanceLight": "Clair",
+  "settings.appearanceDark": "Sombre",
   "settings.accountTitle": "Compte",
   "settings.accountKeycloakLink":
     "Gérer mon compte (mot de passe, authentification à deux facteurs) →",
@@ -311,6 +385,13 @@ export const fr = {
   "infrastructure.minioConsole": "Console MinIO",
   "infrastructure.minioNote":
     "— accès direct, non protégé par ce garde-fou ; fonctionne seulement si le port 9001 est exposé sur cet hôte.",
+  "infrastructure.newTab": "(s'ouvre dans un nouvel onglet)",
+  "infrastructure.statusHeading": "État de l'instance",
+  "infrastructure.statusOk": "opérationnel",
+  "infrastructure.statusDown": "en échec",
+  "infrastructure.statusJobs": "File de jobs",
+  "infrastructure.statusJobsDetailOne": "{pending} en attente ou en cours, {stalled} bloqué",
+  "infrastructure.statusJobsDetailMany": "{pending} en attente ou en cours, {stalled} bloqués",
   "infrastructure.launchError": "Échec de l'ouverture de l'outil.",
   "infrastructure.detail": "Détail",
   "infrastructure.usageHeading": "Utilisation",
@@ -320,6 +401,13 @@ export const fr = {
   "infrastructure.usageCollectionsWithLimit": "Collections : {count} / {limit}",
   "infrastructure.usageStorage": "Stockage : {size}",
   "infrastructure.usageStorageWithLimit": "Stockage : {size} / {limitSize}",
+  "quota.itemsExceeded":
+    "Quota d'éléments atteint ({current}/{limit}) : supprimez des éléments inutiles ou demandez à un administrateur d'augmenter la limite (Administration > Infrastructure).",
+  "quota.collectionsExceeded":
+    "Quota de collections atteint ({current}/{limit}) : supprimez des collections inutiles ou demandez à un administrateur d'augmenter la limite (Administration > Infrastructure).",
+  "quota.storageExceeded":
+    "Quota de stockage atteint ({current}/{limit}) : le fichier a été refusé. Supprimez des fichiers ou demandez à un administrateur d'augmenter la limite (Administration > Infrastructure).",
+  "infrastructure.usageAlert": "Seuil d'alerte atteint (80 %)",
   "infrastructure.usageNoLimit": "pas de limite configurée",
 
   // Motif partagé : indicateur de chargement générique (role="status").
@@ -341,7 +429,10 @@ export const fr = {
   "appBuilder.previewMode": "Aperçu",
   "appBuilder.undo": "Annuler",
   "appBuilder.redo": "Rétablir",
-  "appBuilder.editBreakpointAria": "Éditer en {bp}",
+  "appBuilder.editBreakpointAria": "Éditer la disposition {bp}",
+  "appBuilder.breakpointSm": "Mobile",
+  "appBuilder.breakpointMd": "Tablette",
+  "appBuilder.breakpointLg": "Bureau",
   "appBuilder.captureThumbnail": "Capturer une miniature",
   "appBuilder.captureError": "Échec de la capture.",
   "appBuilder.propertiesLabel": "Propriétés",
@@ -415,7 +506,6 @@ export const fr = {
   "compliance.eraseDescription":
     "Écrase le nom d'utilisateur, l'email et l'identité de connexion d'un compte. Les objets qu'il possède (cartes, collections, pièces jointes) restent intacts, attribués au compte anonymisé. Effet limité — le tenant continue de fonctionner normalement.",
   "compliance.userIdLabel": "Identifiant de l'utilisateur (ou « me » pour votre propre compte)",
-  "compliance.userIdAria": "Identifiant de l'utilisateur à anonymiser",
   "compliance.eraseButton": "Anonymiser ce compte",
   "compliance.eraseSuccess": "Compte anonymisé.",
   "compliance.eraseError": "Échec de l'anonymisation.",
@@ -432,17 +522,16 @@ export const fr = {
     "toutes les données de ce tenant : items, collections (y compris leurs tables), utilisateurs, rôles, pièces jointes, journal d'audit — puis le tenant lui-même. Aucune restauration possible après confirmation.",
   "compliance.confirmSlugBefore": "Retapez le slug du tenant (",
   "compliance.confirmSlugAfter": ") pour confirmer",
-  "compliance.confirmSlugAria": "Confirmer le slug du tenant",
   "compliance.purgeButton": "Purger définitivement ce tenant",
   "compliance.purgeInProgress": "Purge en cours…",
   "compliance.purgeCompleted": "Purge terminée à {completedAt}.",
 
   // DatasetEditPage
-  "datasetEdit.notFound": "Dataset partagé introuvable.",
+  "datasetEdit.notFound": "Jeu de données partagé introuvable.",
   "datasetEdit.exportError": "Échec de l'export.",
   "datasetEdit.modifiedLabel": "Modifié",
-  "datasetEdit.datasetLabel": "Dataset",
-  "datasetEdit.heading": "Dataset partagé — {title}",
+  "datasetEdit.datasetLabel": "Jeu de données",
+  "datasetEdit.heading": "Jeu de données partagé — {title}",
   "datasetEdit.columnsLabel": "Colonnes",
   "datasetEdit.schemaLoading": "Chargement du schéma…",
   "datasetEdit.sourceNotFound": "Collection source introuvable.",
@@ -483,6 +572,13 @@ export const fr = {
   "harvest.deleteMessage":
     "Supprimer la source « {url} » ? Les items/collections déjà produits survivent.",
   "harvest.empty": "Aucune source de moissonnage configurée",
+  "harvest.columnLastRun": "Dernier passage",
+  "harvest.columnRecords": "Enregistrements",
+  "harvest.recordsStaleOne": "{count} obsolète",
+  "harvest.recordsStaleMany": "{count} obsolètes",
+  "harvest.neverRun": "Jamais",
+  "harvest.runQueued": "Moissonnage mis en file d'attente.",
+  "harvest.runFailed": "Échec du lancement du moissonnage.",
 
   // ItemDetailPage
   "itemDetail.notFound": "Élément introuvable.",
@@ -553,7 +649,8 @@ export const fr = {
   "mapEditor.inspectLabel": "Inspecter",
 
   // PipelineBuilderPage
-  "pipelineBuilder.etlDisabled": "Non activé sur cette instance (CORE_ETL_ENABLED).",
+  "pipelineBuilder.etlDisabled":
+    "Fonction indisponible sur cette instance, contactez votre administrateur.",
   "pipelineBuilder.notFound": "Pipeline introuvable.",
   "pipelineBuilder.stepsLabel": "Étapes",
   "pipelineBuilder.defaultTitle": "Pipeline",
@@ -587,8 +684,10 @@ export const fr = {
     "Requêtes SQL en lecture seule sur les jeux de données exposés (DuckDB). Le résultat est tronqué au-delà d'un certain nombre de lignes.",
   "sqlLab.queryLabel": "Requête",
   "sqlLab.sqlQueryLabel": "Requête SQL",
+  "sqlLab.keyboardHint": "Échap puis Tab pour quitter l'éditeur.",
   "sqlLab.runButton": "Exécuter",
   "sqlLab.truncatedMessage": "Résultat tronqué aux {n} premières lignes.",
+  "sqlLab.nullCell": "NULL",
   "sqlLab.historyLabel": "Historique",
   "sqlLab.emptyHistory": "Aucune requête exécutée pour l'instant.",
   "sqlLab.errorLineLabel": "Ligne {line} : ",
@@ -700,7 +799,8 @@ export const fr = {
   "shareForm.inactiveLinks": "Liens inactifs ({count})",
   "shareForm.revokeButton": "Révoquer",
   "shareForm.ttlAria": "Durée du lien (jours)",
-  "shareForm.ttlUnit": "jour(s)",
+  "shareForm.ttlUnitOne": "jour",
+  "shareForm.ttlUnitMany": "jours",
   "shareForm.createLinkButton": "Créer un lien",
   "shareForm.createLinkFailed": "Échec de la création du lien.",
   "shareForm.linkCreatedPrefix": "Lien créé : ",
@@ -775,6 +875,14 @@ export const fr = {
   // ImportFileButton
   "importFile.button": "Importer un fichier",
   "importFile.genericError": "Échec de l'import.",
+  "importFile.uploadError": "Échec de l'envoi du fichier.",
+  "importFile.inspectError": "Échec de l'analyse du fichier.",
+  "importFile.jobError": "Échec du lancement de l'import.",
+  "importFile.pollError": "Échec du suivi de l'import.",
+  "importFile.tooLong":
+    "L'import est toujours en cours après 10 minutes ; il continue en arrière-plan, la cloche vous notifiera.",
+  "importFile.slow":
+    "L'import prend plus de temps que prévu ; il continue en arrière-plan, vous pouvez fermer ce tiroir (la cloche vous notifiera).",
   "importFile.latColumn": "Colonne latitude",
   "importFile.lonColumn": "Colonne longitude",
   "importFile.continueButton": "Continuer",
@@ -795,12 +903,12 @@ export const fr = {
   // NewItemButton
   "newItem.button": "Nouveau",
   "newItem.drawerTitle": "Nouvel élément",
-  "newItem.appOption": "App",
-  "newItem.dashboardOption": "Dashboard",
-  "newItem.mapOption": "Map",
+  "newItem.appOption": "Application",
+  "newItem.dashboardOption": "Tableau de bord",
+  "newItem.mapOption": "Carte",
   "newItem.siteOption": "Site",
-  "newItem.datasetSharedOption": "Dataset partagé",
-  "newItem.datasetVisualQueryOption": "Dataset par requête visuelle",
+  "newItem.datasetSharedOption": "Jeu de données partagé",
+  "newItem.datasetVisualQueryOption": "Jeu de données par requête visuelle",
   "newItem.pipelineOption": "Pipeline",
   "newItem.templateLabel": "Modèle",
   "newItem.emptyTemplateOption": "Vide",
@@ -835,7 +943,7 @@ export const fr = {
   "routes.analystOnly": "Accès réservé aux analystes.",
   "routes.automationOnly": "Accès réservé à l'automatisation (privilège automation.manage requis).",
   "routes.visualQueryOnly":
-    "La requête visuelle produit un dataset : elle exige les privilèges automation.manage et data.manage.",
+    "La requête visuelle produit un jeu de données : elle exige les privilèges automation.manage et data.manage.",
   "routes.adminOnly": "Accès réservé aux administrateurs.",
   "routes.rolesOnly": "Accès réservé à la gestion des rôles.",
   "routes.usersOnly": "Accès réservé à la gestion des utilisateurs.",
@@ -924,6 +1032,7 @@ export const fr = {
   "widgetData.removeCalcColumn": "Supprimer la colonne",
   "widgetData.addCalcColumn": "Ajouter une colonne calculée",
   "widgetData.previous": "Précédent",
+  "widgetData.truncated": "Lignes affichées : {count} sur {total}",
   "widgetData.next": "Suivant",
   "widgetData.pageOf": "Page {page} / {totalPages}",
   // Valeur initiale d'une colonne calculée nouvellement ajoutée — littéral de
@@ -1150,7 +1259,7 @@ export const fr = {
   "widgetSelectFilter.fieldAria": "Champ du sélecteur",
   "widgetSelectFilter.labelConfig": "Libellé",
   "widgetSelectFilter.labelAria": "Libellé du sélecteur",
-  "widgetSelectFilter.unbound": "Liez ce filtre à une source dataset et un champ",
+  "widgetSelectFilter.unbound": "Liez ce filtre à une source de données et un champ",
   "widgetSelectFilter.loadOptionsError": "Impossible de charger les valeurs",
 
   // Widget Curseur (sliderFilter.tsx)
@@ -1160,7 +1269,7 @@ export const fr = {
   "widgetSliderFilter.fieldAria": "Champ du curseur",
   "widgetSliderFilter.labelConfig": "Libellé",
   "widgetSliderFilter.labelAria": "Libellé du curseur",
-  "widgetSliderFilter.unbound": "Liez ce filtre à une source dataset et un champ",
+  "widgetSliderFilter.unbound": "Liez ce filtre à une source de données et un champ",
   "widgetSliderFilter.loadBoundsError": "Impossible de charger les bornes",
   "widgetSliderFilter.minAria": "Borne minimale",
   "widgetSliderFilter.maxAria": "Borne maximale",
@@ -1190,6 +1299,7 @@ export const fr = {
   "appExport.stillRunning": "Export toujours en cours, réessayer plus tard.",
   "appExport.exportFailed": "Échec de l'export.",
   "appExport.exportButton": "Exporter",
+  "appExport.running": "Export en cours…",
   "appExport.chooseModeHeading": "Choisir le mode d'export",
   "appExport.close": "Fermer",
   "appExport.modeStatic": "Statique",
@@ -1212,6 +1322,15 @@ export const fr = {
   "copilot.opSqlDraftApplied": "Brouillon SQL inséré.",
   "copilot.opVisualQueryDraftApplied": "Requête visuelle mise à jour.",
   "copilot.requestFailed": "Échec de la requête au copilote.",
+  "copilot.unavailable":
+    "Le copilote est indisponible : aucun fournisseur LLM n'est configuré sur cette instance. Un administrateur peut l'activer en définissant CORE_LLM_PROVIDER (voir .env.example) puis en redémarrant le cœur.",
+  "copilot.readOnly": "Le copilote est désactivé : vous n'avez pas le droit de modifier cette app.",
+  "copilot.contextTooLarge":
+    "La configuration est trop volumineuse pour le copilote, même compactée : seule la page active lui est transmise, réduisez-la ou divisez l'app.",
+  "copilot.confirmWritePrompt": "Le copilote propose d'exécuter l'action « {name} ».",
+  "copilot.confirmWriteYes": "Confirmer",
+  "copilot.confirmWriteNo": "Annuler",
+  "copilot.confirmWriteMessage": "Confirmation de l'action proposée.",
   "copilot.messageAria": "Message au copilote",
   "copilot.send": "Envoyer",
   "copilot.pastExchanges": "Échanges précédents ({count})",
@@ -1219,10 +1338,24 @@ export const fr = {
   // PipelineCanvas (builder/pipeline)
   "pipelineCanvas.runningAria": "Exécution en cours",
   "pipelineCanvas.insertStepAria": "Insérer une étape sur cette arête",
-  "pipelineCanvas.nodeErrorAria": "{count} erreur(s) sur ce nœud",
+  "pipelineCanvas.nodeErrorAriaOne": "{count} erreur sur ce nœud",
+  "pipelineCanvas.nodeErrorAriaMany": "{count} erreurs sur ce nœud",
   "pipelineCanvas.deleteNodeAria": "Supprimer {title}",
   "pipelineCanvas.startConnectAria": "Connecter depuis {title}",
   "pipelineCanvas.noteLabelAria": "Étiquette de la zone",
+  "pipelineCanvas.edgeAria": "Lien de {source} vers {target}",
+  "pipelineCanvas.nodeA11yDescription":
+    "Entrée ou Espace pour sélectionner une étape ; si une connexion est amorcée, elle s'achève sur cette étape. Suppr pour la retirer, Échap pour annuler.",
+  "pipelineCanvas.edgeA11yDescription":
+    "Entrée ou Espace pour sélectionner un lien, puis Suppr pour le retirer ou Échap pour annuler.",
+  "pipelineCanvas.nodeMovedLive": "Étape déplacée ({direction}). Nouvelle position : x {x}, y {y}",
+  "pipelineCanvas.controlsAria": "Commandes du canevas",
+  "pipelineCanvas.zoomIn": "Zoom avant",
+  "pipelineCanvas.zoomOut": "Zoom arrière",
+  "pipelineCanvas.fitView": "Ajuster la vue",
+  "pipelineCanvas.toggleInteractivity": "Activer ou désactiver l'interaction",
+  "pipelineCanvas.minimapAria": "Mini-carte du pipeline",
+  "pipelineCanvas.handleAria": "Point de connexion",
 
   // PipelinePalette (builder/pipeline)
   "pipelinePalette.sectionSources": "Sources",
@@ -1231,6 +1364,7 @@ export const fr = {
   "pipelinePalette.sectionRecent": "Récemment utilisés",
   "pipelinePalette.searchAria": "Rechercher une opération",
   "pipelinePalette.searchPlaceholder": "Rechercher…",
+  "pipelinePalette.noResults": "Aucune opération ne correspond à cette recherche.",
 
   // PipelinePreviewPanel (builder/pipeline)
   "pipelinePreview.loading": "Chargement de l'aperçu…",
@@ -1254,6 +1388,9 @@ export const fr = {
   "pipelineRun.runFailed": "Échec du lancement du pipeline.",
   "pipelineRun.running": "Exécution…",
   "pipelineRun.runButton": "Exécuter",
+  "pipelineRun.cancelButton": "Annuler le run",
+  "pipelineRun.cancelFailed": "Échec de l'annulation du run.",
+  "pipelineRun.rowsProgress": "{rows} lignes traitées",
   // GET /pipelines/{id}/runs pagine déjà côté cœur (limit/offset, SP-50) —
   // ce bouton évite de tronquer silencieusement l'historique au-delà de la
   // limite par défaut du cœur (100).
@@ -1520,6 +1657,15 @@ export const fr = {
   "alertRule.createError": "Échec de la création de la règle.",
   "alertRule.loadMore": "Charger plus",
   "alertRule.evaluateNowButton": "Exécuter maintenant",
+  "alertRule.evaluateError": "Impossible de lancer l'évaluation.",
+  "alertRule.evaluateStarted": "Évaluation lancée.",
+  "alertRule.stateFiring": "Déclenchée",
+  "alertRule.stateOk": "Normale",
+  "alertRule.statePending": "En attente",
+  "alertRule.stateError": "Erreur",
+  "alertRule.value": "valeur {value}",
+  "alertRule.notifyFailed": "Notification non livrée : {reason}",
+  "alertRule.signingSecretLabel": "Secret de signature (optionnel)",
 
   // AnalyticsContextIndicator (builder)
   "analyticsContext.periodLabel": "Période : {from} → {to}",
@@ -1547,7 +1693,7 @@ export const fr = {
     "Restaurer la version {version} ? Les modifications non enregistrées seront perdues.",
 
   // CrossFilterLinkEditor (builder)
-  "crossFilterLink.targetDatasetLabel": "Dataset cible",
+  "crossFilterLink.targetDatasetLabel": "Jeu de données cible",
   "crossFilterLink.choosePlaceholder": "— choisir —",
   "crossFilterLink.modeLabel": "Mode du lien",
   "crossFilterLink.modeAttributeOption": "Attribut partagé",
@@ -1569,17 +1715,17 @@ export const fr = {
   "dataSourcePanel.invalidJson": "JSON invalide — modification non enregistrée.",
   "dataSourcePanel.recordPropertiesAria": "Propriétés de l'enregistrement {id}",
   "dataSourcePanel.removeRecordAria": "Retirer l'enregistrement {id}",
-  "dataSourcePanel.typeFeaturesOption": "Features",
+  "dataSourcePanel.typeFeaturesOption": "Entités",
   "dataSourcePanel.typeStatisticsOption": "Statistiques",
   "dataSourcePanel.typeStaticOption": "Statique",
   "dataSourcePanel.typeAria": "Type de la source {id}",
   "dataSourcePanel.removeSourceAria": "Retirer {label}",
   "dataSourcePanel.collectionAria": "Collection de la source {id}",
   "dataSourcePanel.collectionPlaceholder": "collection",
-  "dataSourcePanel.sharedDatasetActive": "Dataset partagé actif",
-  "dataSourcePanel.promoteAria": "Promouvoir en dataset partagé {id}",
+  "dataSourcePanel.sharedDatasetActive": "Jeu de données partagé actif",
+  "dataSourcePanel.promoteAria": "Promouvoir en jeu de données partagé {id}",
   "dataSourcePanel.promotingLabel": "Promotion…",
-  "dataSourcePanel.promoteButton": "Promouvoir en dataset partagé",
+  "dataSourcePanel.promoteButton": "Promouvoir en jeu de données partagé",
   "dataSourcePanel.groupByAria": "Grouper par (source {id})",
   "dataSourcePanel.groupByPlaceholder": "grouper par (axe X, virgule = plusieurs niveaux)",
   "dataSourcePanel.splitAria": "Séparer par (source {id})",
@@ -1612,6 +1758,8 @@ export const fr = {
   // DatasetDownloadButtons (builder)
   "datasetDownload.geojsonButton": "Télécharger GeoJSON",
   "datasetDownload.csvButton": "Télécharger CSV",
+  "datasetDownload.geojsonTruncated":
+    "Le GeoJSON ne contient que les {count} premières entités sur {total}.",
   "datasetDownload.tooLarge":
     "Jeu de données trop volumineux pour l'export CSV navigateur — export serveur à venir (SP-15).",
 
@@ -1721,7 +1869,7 @@ export const fr = {
   "terrainPanel.chooseHostedOption": "— choisir un DEM hébergé —",
   "terrainPanel.tilesUrlLabel": "URL de tuiles terrain (terrain-RGB, encodage terrarium)",
   "terrainPanel.tilesUrlAria": "URL de tuiles terrain",
-  "terrainPanel.exaggerationAria": "Exaggeration du terrain",
+  "terrainPanel.exaggerationLabel": "Exagération du relief",
 
   // Terrain3DUploadButton (map)
   "terrain3dUpload.conversionErrorFallback": "Échec de la conversion du DEM.",
@@ -1765,7 +1913,89 @@ export const fr = {
   "layerPicker.searchPlaceholder": "Rechercher…",
   "layerPicker.loadingSources": "Chargement des sources…",
   "layerPicker.loadError": "Impossible de charger les sources de couches.",
+  "chartCompare.offsetLabel": "{unit} {n}",
+  "chartCompare.unitHour": "Heure",
+  "chartCompare.unitDay": "Jour",
+  "chartCompare.unitWeek": "Semaine",
+  "chartCompare.unitMonth": "Mois",
+  "chartCompare.unitQuarter": "Trimestre",
+  "chartCompare.unitYear": "Année",
+  "chartCompare.currentPeriod": "Période courante",
+  "chartCompare.reference": "Référence",
+  "aggregate.count": "Nombre",
+  "aggregate.countDistinct": "Nombre de valeurs distinctes",
+  "aggregate.sum": "Somme",
+  "aggregate.avg": "Moyenne",
+  "aggregate.median": "Médiane",
+  "aggregate.percentile": "Centile",
+  "aggregate.stddev": "Écart-type",
+  "aggregate.min": "Min",
+  "aggregate.max": "Max",
+  "resourceType.app": "Application",
+  "resourceType.dashboard": "Tableau de bord",
+  "resourceType.map": "Carte",
+  "resourceType.site": "Site",
+  "resourceType.dataset": "Jeu de données",
+  "resourceType.bookmark": "Vue enregistrée",
+  "resourceType.pipeline": "Pipeline",
+  "resourceType.alert": "Alerte",
+  "resourceType.report": "Rapport",
+  "resourceType.tileset3d": "Tuiles 3D",
+  "resourceType.terrain3d": "Terrain 3D",
+  "resourceType.external": "Externe",
+  "gridCanvas.select": "Sélectionner {name}",
+  "gridCanvas.moveLeft": "Déplacer {name} à gauche",
+  "gridCanvas.moveRight": "Déplacer {name} à droite",
+  "gridCanvas.moveDown": "Déplacer {name} en bas",
+  "gridCanvas.moveUp": "Déplacer {name} en haut",
+  "gridCanvas.widen": "Élargir {name}",
+  "gridCanvas.narrow": "Rétrécir {name}",
+  "gridCanvas.taller": "Agrandir en hauteur {name}",
+  "gridCanvas.shorter": "Réduire en hauteur {name}",
+  "gridCanvas.duplicate": "Dupliquer {name}",
+  "gridCanvas.remove": "Supprimer {name}",
+  "errors.coreUnreachable": "Le cœur GeoStudio est injoignable",
+  "errors.invalidSql": "Requête SQL invalide.",
+  "errors.groupMemberForbidden":
+    "Ce groupe n'existe pas, ou vous n'en êtes pas le créateur — seul le créateur d'un groupe peut y ajouter un membre.",
+  "desktop.startupError": "Erreur de démarrage : {message}",
+  "geojson.loadFailed": "Impossible de charger {url} (HTTP {status})",
+  "geojson.invalid": "{url} n'est pas une FeatureCollection GeoJSON valide",
+  "staticExport.unsupported": "Non disponible dans un export statique (aucun backend).",
+  "staticExport.loadError": "Erreur de chargement : {message}",
+  "colorField.pickerAria": "{label} (sélecteur)",
+  "icon.unknown": "Icône Lucide inconnue : {name}",
+  "pipelineInspector.keyAria": "{name} clé {n}",
+  "pipelineValidation.fieldRequired": "{field} est requis.",
+  "pipelineValidation.multiplePrimary":
+    "Le nœud « {node} » ne peut avoir qu'une seule arête entrante.",
+  "pipelineValidation.multipleSecondary":
+    "Le nœud « {node} » ne peut avoir qu'une seule arête secondaire entrante.",
+  "pipelineValidation.readerIncoming": "La source « {node} » ne peut pas avoir d'arête entrante.",
+  "pipelineValidation.writerOutgoing": "L'écriture « {node} » ne peut pas avoir d'arête sortante.",
+  "pipelineValidation.writerSecondary": "L'écriture « {node} » n'accepte pas d'arête secondaire.",
+  "pipelineValidation.cycle": "Le graphe contient un cycle.",
+  "pipelineValidation.noReader": "Le pipeline doit contenir au moins une source.",
+  "pipelineValidation.noWriter": "Le pipeline doit contenir au moins une écriture.",
+  "pipelineValidation.unknownOp": "Opération inconnue : {op}.",
+  "pipelineValidation.noInput": "n'a pas d'entrée : reliez-le à un nœud amont.",
+  "pipelineValidation.needsPrimary": "{node} : requiert une arête primaire entrante.",
+  "pipelineValidation.secondaryConflict":
+    "{node} : le paramètre withCollectionId et une arête secondaire ne peuvent pas être renseignés en même temps.",
+  "pipelineValidation.needsSecondary":
+    "{node} : requiert soit le paramètre withCollectionId, soit une arête secondaire.",
+  "pipelineValidation.noSecondaryAllowed": "{node} n'accepte pas d'arête secondaire.",
+  "template.two": "Deux colonnes",
+  "template.basicDashboard": "Tableau de bord basique",
+  "template.incidentApp": "Application de saisie",
+  "template.story": "Story cartographique",
+  "template.portal": "Portail de données",
+  "copilot.mcpTokenError": "Impossible d'obtenir un jeton MCP (signinSilent a échoué).",
   "layerPicker.emptyText": "Aucune source disponible.",
+  "layerPicker.kindVector": "Vecteur",
+  "layerPicker.kindFeature": "Entités",
+  "layerPicker.kindRaster": "Raster",
+  "layerPicker.kindTiles3d": "Tuiles 3D",
   "layerPicker.featureCountTemplateOne": "{n} entité",
   "layerPicker.featureCountTemplateMany": "{n} entités",
   "layerPicker.addTileset3dHeading": "Ajouter un tileset 3D par URL",
@@ -1821,6 +2051,8 @@ export const fr = {
   "mapMeasure.textLayerUnsupportedWarning":
     'MapMeasureSketchToolbar: texte de croquis non rendu sur la carte — le style du fond de carte ne déclare pas de "glyphs" (text-field l\'exige). Les formes et les mesures restent affichées.',
   "mapMeasure.textPromptMessage": "Texte du marqueur :",
+  "mapMeasure.textConfirmButton": "Ajouter",
+  "mapMeasure.textCancelButton": "Annuler",
   "mapMeasure.sketchColorAria": "Couleur du croquis",
   "mapMeasure.measureButton": "Mesurer",
   "mapMeasure.areaButton": "Surface",
@@ -1895,6 +2127,10 @@ export const fr = {
   "mapView.labelsSkippedNoGlyphsWarning":
     'MapView: étiquettes ignorées pour {parentId} — le style du fond de carte ne déclare pas de "glyphs" (text-field l\'exige).',
   "mapView.iconNotLoadedWarning": "MapView: icône {id} non chargée",
+  "mapView.localeMapTitle": "Carte",
+  "mapView.localeToggleAttribution": "Afficher les crédits",
+  "mapView.localeMapFeedback": "Signaler un problème de carte",
+  "mapView.localeLogoTitle": "Logo MapLibre",
   "mapView.styleErrorLog": "MapView: MapLibre a signalé une erreur",
 
   // PopupEditor (map)
@@ -1920,6 +2156,7 @@ export const fr = {
 
   // ConnectivityBanner (SP-B7) — bannière globale sur injoignabilité du cœur
   "connectivity.unreachable": "Connexion au serveur perdue — nouvelle tentative en cours…",
+  "connectivity.offline": "Vous êtes hors ligne — les données ne sont pas rechargées.",
 
   // jobStatusLabel (SP-B10a) — vocabulaire d'état de job partagé entre
   // PipelineRunPanel et ReportRunPanel (deux énumérations réelles distinctes,
@@ -1934,6 +2171,7 @@ export const fr = {
   "jobStatus.failed": "Échoué",
   "jobStatus.error": "Échoué",
   "jobStatus.cancelled": "Annulé",
+  "jobStatus.cancelRequested": "Annulation demandée",
   "jobStatus.unknown": "Inconnu",
 
   // useDirtyGuard (SP-B6b) — garde de navigation in-app sur brouillon non
@@ -1942,4 +2180,29 @@ export const fr = {
   "navigation.unsavedChangesMessage":
     "Vous avez des modifications non enregistrées. Voulez-vous vraiment quitter cette page ?",
   "navigation.leaveAnyway": "Quitter sans enregistrer",
+
+  // Catalogue public, SEO et parcours lecteur (P35)
+  "publicPage.notFound": "Page introuvable.",
+  "publicPage.notFoundHeading": "Page publique",
+  "docTitle.publicCatalog": "Catalogue public",
+  "publicCatalog.title": "Catalogue public",
+  "publicCatalog.description": "Cartes, applications, sites et jeux de données publiés.",
+  "publicCatalog.typeLabel": "Type",
+  "publicCatalog.allTypes": "Tous les types",
+  "publicCatalog.tagLabel": "Mot-clé",
+  "publicCatalog.empty": "Aucun contenu public pour le moment.",
+  "publicCatalog.loadError": "Impossible de charger le catalogue public.",
+  "publicCatalog.previous": "Page précédente",
+  "publicCatalog.next": "Page suivante",
+  "publicCatalog.pageOf": "Page {page} sur {pages}",
+  "itemDetail.openView": "Ouvrir",
+  "itemDetail.licenseLabel": "Licence",
+  "itemDetail.keywordsLabel": "Mots-clés",
+  "itemDetail.languageLabel": "Langue",
+  "itemDetail.columnsLabel": "Colonnes",
+  "itemDetail.featureCountLabel": "Volume",
+  "itemDetail.publicUrlLabel": "URL publique",
+  "itemDetail.copyUrl": "Copier l'URL",
+  "itemDetail.urlCopied": "URL copiée.",
+  "itemDetail.slugInvalid": "Slug invalide : minuscules, chiffres et tirets uniquement.",
 } as const;

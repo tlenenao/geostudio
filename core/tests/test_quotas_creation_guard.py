@@ -69,6 +69,15 @@ def test_create_config_refuses_past_item_quota(env, monkeypatch):
 
     resp2 = client.post("/v1/configs", json=_map_body("second"))
     assert resp2.status_code == 409, resp2.text
+    # P26.09 : type problem+json dédié, champs exploitables par le shell.
+    assert resp2.headers["content-type"].startswith("application/problem+json")
+    body = resp2.json()
+    assert (body["type"], body["quota"], body["current"], body["limit"]) == (
+        "quota-exceeded",
+        "items",
+        1,
+        1,
+    )
 
 
 def test_create_config_quota_guard_disappears_when_capacity_disabled(env, monkeypatch):

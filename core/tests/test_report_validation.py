@@ -292,3 +292,12 @@ def test_update_report_is_rejected_when_export_capability_is_disabled(monkeypatc
 
     assert resp.status_code == 403
     assert resp.json()["detail"] == "Export capability disabled on this instance"
+
+
+def test_rejects_a_six_field_cron_on_write_only():
+    # REV-275 : jumelle de P18.08 (écriture seulement, le modèle relu reste valide)
+    config = _report_config("b1")
+    config.report.refreshPolicy.cron = "0 0 8 * * MON"
+    with pytest.raises(HTTPException) as exc:
+        validate_report_payload(None, config, user=None)  # type: ignore[arg-type]
+    assert exc.value.status_code == 422 and "5 fields" in str(exc.value.detail)

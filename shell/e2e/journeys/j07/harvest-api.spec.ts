@@ -171,14 +171,6 @@ test.describe("j07 moissonnage — exécution", () => {
     expect(after.body.lastError).toContain("cible réseau interne bloquée");
   });
 
-  test("une URL non valide est acceptée à la création puis échoue à l'exécution avec un message technique", async () => {
-    const src = await createSource(admin, { type: "wms", url: `not a url ${tag}` });
-    runHarvestInWorker(src.id);
-    const after = await admin.get(`/v1/harvest/sources/${src.id}`);
-    expect(after.body.lastStatus).toBe("error");
-    expect(after.body.lastError).toBeTruthy();
-  });
-
   test("@audit-flaky un catalogue STAC public réel est moissonné (statut ok) et ses enregistrements listés", async () => {
     const src = await createSource(admin, {
       type: "stac",
@@ -221,13 +213,13 @@ test.describe("j07 moissonnage — défauts constatés", () => {
   });
 
   // Finding j07-004 : aucune validation d'URL à la création.
-  bug("j07-004 : une URL qui n'est pas http(s) est refusée à la création (422)", async () => {
+  test("j07-004 : une URL qui n'est pas http(s) est refusée à la création (422)", async () => {
     const r = await admin.send("POST", "/v1/harvest/sources", { type: "wms", url: "pas une url" });
     expect(r.status).toBe(422);
   });
 
   // Finding j07-005 : doublons de source non détectés.
-  bug("j07-005 : créer deux fois la même source (type+URL) est refusé (409)", async () => {
+  test("j07-005 : créer deux fois la même source (type+URL) est refusé (409)", async () => {
     const url = `https://x.invalid/${tag}-dup`;
     await createSource(admin, { type: "stac", url });
     const r = await admin.send("POST", "/v1/harvest/sources", { type: "stac", url });
@@ -235,41 +227,35 @@ test.describe("j07 moissonnage — défauts constatés", () => {
   });
 
   // Finding j07-006 : une source en erreur reste « due » à chaque balayage, malgré son intervalle.
-  bug(
-    "j07-006 : une source en erreur avec intervalle 1440 min n'est pas re-lancée à chaque balayage",
-    async () => {
-      const src = await createSource(admin, {
-        type: "stac",
-        url: `http://127.0.0.1:1/${tag}-due`,
-        intervalMinutes: 1440,
-      });
-      runHarvestInWorker(src.id);
-      const lastRun = psql(`SELECT last_run_at FROM harvest_sources WHERE id='${src.id}'`).trim();
-      expect(
-        lastRun,
-        "last_run_at doit être posé même en erreur pour respecter l'intervalle",
-      ).not.toBe("");
-    },
-  );
+  test("j07-006 : une source en erreur avec intervalle 1440 min n'est pas re-lancée à chaque balayage", async () => {
+    const src = await createSource(admin, {
+      type: "stac",
+      url: `http://127.0.0.1:1/${tag}-due`,
+      intervalMinutes: 1440,
+    });
+    runHarvestInWorker(src.id);
+    const lastRun = psql(`SELECT last_run_at FROM harvest_sources WHERE id='${src.id}'`).trim();
+    expect(
+      lastRun,
+      "last_run_at doit être posé même en erreur pour respecter l'intervalle",
+    ).not.toBe("");
+  });
 
   // Finding j07-007 : la suppression d'une source laisse ses items « external » orphelins.
-  bug(
-    "j07-007 : supprimer une source retire ou signale les items qu'elle avait créés",
-    async () => {
-      const src = await createSource(admin, {
-        type: "stac",
-        url: "https://earth-search.aws.element84.com/v1",
-      });
-      runHarvestInWorker(src.id);
-      const ids = psql(`SELECT item_id FROM harvest_records WHERE source_id='${src.id}'`)
-        .trim()
-        .split("\n")
-        .filter(Boolean);
-      test.skip(ids.length === 0, "moissonnage réel indisponible");
-      await admin.send("DELETE", `/v1/harvest/sources/${src.id}`);
-      const list = ids.map((i) => `'${i}'`).join(",");
-      const left = Number(psql(`SELECT count(*) FROM items WHERE id IN (${list})`).trim());
-      expect(left).toBe(0);
-    },
-  );
+  test("j07-007 : supprimer une source retire ou signale les items qu'elle avait créés", async () => {
+    const src = await createSource(admin, {
+      type: "stac",
+      url: "https://earth-search.aws.element84.com/v1",
+    });
+    runHarvestInWorker(src.id);
+    const ids = psql(`SELECT item_id FROM harvest_records WHERE source_id='${src.id}'`)
+      .trim()
+      .split("\n")
+      .filter(Boolean);
+    test.skip(ids.length === 0, "moissonnage réel indisponible");
+    await admin.send("DELETE", `/v1/harvest/sources/${src.id}`);
+    const list = ids.map((i) => `'${i}'`).join(",");
+    const left = Number(psql(`SELECT count(*) FROM items WHERE id IN (${list})`).trim());
+    expect(left).toBe(0);
+  });
 });

@@ -5,6 +5,7 @@ import { t } from "../i18n";
 import { getWidget } from "./registry";
 import { validateExpression } from "./expr";
 import { formatCelError } from "./celError";
+import { Button } from "../ui/kit/Button";
 
 function widgetLabel(items: WidgetItem[], variables: Variable[], id: string): string {
   if (id.startsWith("var:")) {
@@ -176,13 +177,9 @@ export function ActionsPanel({
           </option>
         ))}
       </select>
-      <button
-        type="button"
-        className="rounded border border-rule px-2 py-1 text-sm hover:bg-sunken"
-        onClick={add}
-      >
+      <Button type="button" size="sm" variant="outline" onClick={add}>
         {t("actionsPanel.addButton")}
-      </button>
+      </Button>
     </div>
   );
 }

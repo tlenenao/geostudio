@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
+import "maplibre-gl/dist/maplibre-gl.css";
+import "./maplibreWorkerSetup";
 import {
   forwardRef,
   useCallback,
@@ -9,813 +11,49 @@ import {
   useState,
 } from "react";
 import * as maplibregl from "maplibre-gl";
-import { type FilterSpecification } from "maplibre-gl";
-import "maplibre-gl/dist/maplibre-gl.css";
-import "./maplibreWorkerSetup";
 import { MapboxOverlay } from "@deck.gl/mapbox";
-import { HeatmapLayer, HexagonLayer } from "@deck.gl/aggregation-layers";
-import { ColumnLayer } from "@deck.gl/layers";
-import { Tile3DLayer } from "@deck.gl/geo-layers";
-import { Tiles3DLoader } from "@loaders.gl/3d-tiles";
-import type {
-  AttachmentSummary,
-  CollectionSchema,
-  CollectionSchemaField,
-  DataRecord,
-  MapConfig,
-  MapLayer,
-  ThemeColors,
-} from "../api/types";
+import type { DataRecord, MapConfig, ThemeColors } from "../api/types";
 import { MapLegend } from "./MapLegend";
 import { MapMeasureSketchToolbar } from "./MapMeasureSketchToolbar";
 import { MapPopup } from "./MapPopup";
+import { useMapPopup } from "./useMapPopup";
 import { resolvePopupContent } from "./popupContent";
-import {
-  buildMapPaint,
-  renderAsFor,
-  symbologyToPaintInputs,
-  type GeometryKind,
-  type LayerLabel,
-  type MapPaintResult,
-} from "../builder/widgets/mapSymbology";
-import { decodeIconImage, rasterizeLucideIcon } from "../builder/widgets/iconLibrary";
-import { buildLabelFeatureCollection } from "./labelSource";
+import { publishViewport } from "./viewportTiles";
 import { t } from "../i18n";
-import { isHostedCollectionUrl, isHostedTerrainUrl, isHostedTilesetUrl } from "./hostedCoreUrl";
-
-const HIGHLIGHT_ID = "__highlight__";
-const TERRAIN_SOURCE_ID = "__terrain__";
+import { isHostedCollectionUrl, isHostedTerrainUrl } from "./hostedCoreUrl";
+import { HIGHLIGHT_ID } from "./mapLayerBuild";
+import {
+  applyLayers,
+  loadIconImages,
+  refreshLabelSources,
+  mapRelevantLayer,
+} from "./mapApplyLayers";
+import {
+  tilesetKey,
+  applyDeckLayers,
+  releaseLumaCanvasObserver,
+  applyTerrain,
+} from "./mapDeckTerrain";
 
 export type MapViewHandle = {
-  flyTo: (opts: {
-    center: [number, number];
-    zoom?: number;
-    pitch?: number;
-    bearing?: number;
-  }) => void;
+  // `instant` : saut sans animation (saisie numérique de la caméra — un vol
+  // interrompu par la frappe suivante émet un `moveend` à mi-course qui
+  // écrasait l'inclinaison saisie dans le brouillon).
+  flyTo: (
+    opts: {
+      center: [number, number];
+      zoom?: number;
+      pitch?: number;
+      bearing?: number;
+    },
+    instant?: boolean,
+  ) => void;
   highlight: (geometry: unknown | null) => void;
   fitBounds: (
     bbox: [number, number, number, number],
     opts?: { padding?: number; maxZoom?: number },
   ) => void;
 };
-
-// Une couche tuilée était jusqu'ici ajoutée en "fill" quel que soit son
-// contenu : une collection de points ne s'affichait donc pas du tout. Le type
-// MapLibre suit désormais la géométrie déclarée par la couche.
-function layerTypeFor(geometryKind: "point" | "line" | "polygon") {
-  if (geometryKind === "point") return "circle" as const;
-  if (geometryKind === "line") return "line" as const;
-  return "fill" as const;
-}
-
-// Géométrie inconnue ou mixte (I1 de la revue finale SP-24) : le cœur renvoie
-// geometryType "GEOMETRY" pour toute colonne PostGIS non typée — issue
-// courante de l'ingestion d'un fichier mêlant Point et MultiPoint, ou
-// LineString et MultiLineString — et itemClient.ts ne sait alors pas la
-// mapper, d'où un `geometryKind` absent. Un unique layer "fill" ne rend RIEN
-// pour des points ou des lignes : la couche était silencieusement blanche,
-// sans erreur ni avertissement. On pose donc les trois, chacun filtré par le
-// type de géométrie de l'entité. Multi* est cité explicitement plutôt que de
-// parier sur la normalisation de ["geometry-type"] par la version de MapLibre.
-const MIXED_GEOMETRY_SUBLAYERS = [
-  { suffix: "point", type: "circle", paintPrefix: "circle-", geometries: ["Point", "MultiPoint"] },
-  {
-    suffix: "line",
-    type: "line",
-    paintPrefix: "line-",
-    geometries: ["LineString", "MultiLineString"],
-  },
-  {
-    suffix: "polygon",
-    type: "fill",
-    paintPrefix: "fill-",
-    geometries: ["Polygon", "MultiPolygon"],
-  },
-] as const;
-
-// Tous les suffixes de sous-couche que `applyLayers` peut poser sur une
-// couche : les trois de la géométrie mixte, plus les couches décoratives de
-// SP-27. Une seule liste, utilisée par le rollback du catch ET par le suivi
-// dans `applied` — le rollback codait auparavant en dur les trois suffixes
-// de MIXED_GEOMETRY_SUBLAYERS, et toute nouvelle sous-couche fuyait, laissant
-// la source référencée donc non supprimable (constat 3.5 du pré-vol).
-const SUBLAYER_SUFFIXES = [
-  "__point",
-  "__line",
-  "__polygon",
-  "__outline",
-  "__icon",
-  "__label",
-] as const;
-
-// Les sources auxiliaires posées par applyLayers, à retirer avec la couche.
-// (`__labels` est une SOURCE, `__label` la couche qui la consomme.)
-const SUBSOURCE_SUFFIXES = ["__labels"] as const;
-
-// Le `paint` de l'auteur est typé pour UNE géométrie : poser un "fill-color"
-// sur un layer "circle" fait lever MapLibre, et la garde par couche
-// d'applyLayers avalerait alors toute la couche. On ne transmet à chaque
-// sous-couche que les propriétés de peinture qui la concernent.
-function paintFor(paint: Record<string, unknown> | undefined, prefix: string) {
-  return Object.fromEntries(Object.entries(paint ?? {}).filter(([k]) => k.startsWith(prefix)));
-}
-
-// `symbology`, quand présent, l'emporte sur `paint` : le domaine/la palette
-// sont déjà figés dans la config (Task 6, mapSymbology.ts), donc ce calcul
-// est pur et synchrone, sans appel réseau. `paint` reste le chemin manuel
-// pour toute couche sans symbology (branche inchangée ci-dessous).
-//
-// Le `geometryKind` est désormais un paramètre explicite, jamais dérivé en
-// interne : une couche tuilée de géométrie mixte/inconnue (I1 de la revue
-// finale SP-24) pose TROIS sous-couches (MIXED_GEOMETRY_SUBLAYERS), chacune
-// d'une géométrie réelle différente. Avant ce fix, `effectivePaint`
-// calculait un seul paint pour `layer.geometryKind ?? "polygon"` — la
-// géométrie mixte tombait donc toujours sur "polygon", et `buildMapPaint` ne
-// produisait que des clés `fill-*` : les sous-couches point/ligne recevaient
-// un paint vide (non stylé), sans aucune indication qu'un encodage avait été
-// perdu (I4 de la revue finale SP-25). Chaque appelant fournit maintenant la
-// géométrie réelle de la sous-couche qu'il pose — un appel de
-// `buildMapPaint` par géométrie présente sur la couche, jamais un seul calcul
-// partagé. Pour une couche "feature", le `geometryKind` doit produire la même
-// clé de paint que le type de layer MapLibre réellement posé par le switch
-// existant sur `layer.renderAs ?? "fill"` juste plus bas (circle→"point",
-// line→"line", fill→"polygon") : jamais une géométrie détectée, toujours
-// celle qu'implique le choix d'auteur `renderAs`, sous peine de poser par ex.
-// "fill-color" sur un layer MapLibre de type "circle" (rejeté par MapLibre,
-// la couche entière serait alors avalée par le garde-fou try/catch
-// d'applyLayers).
-function effectivePaint(
-  layer: Extract<MapLayer, { kind: "vector" | "feature" }>,
-  geometryKind: GeometryKind,
-  themeColors: ThemeColors | undefined,
-): MapPaintResult {
-  if (!layer.symbology)
-    return { renderAs: renderAsFor(geometryKind), paint: layer.paint ?? {}, iconImages: [] };
-  const { encodings, colorDomain, sizeDomain, palette, stroke } = symbologyToPaintInputs(
-    layer.symbology,
-    themeColors,
-  );
-  return buildMapPaint(encodings, colorDomain, sizeDomain, geometryKind, palette, {
-    stroke,
-    opacity: layer.symbology.opacity,
-    icon: layer.symbology.icon,
-  });
-}
-
-// `AddLayerObject` est une union discriminée par `type` : un `type` calculé ne
-// la réduit pas, d'où le switch — même raison que la branche `feature`
-// ci-dessous, et jamais un cast (cf. commentaire de la branche `vector`).
-function addTypedLayer(
-  map: maplibregl.Map,
-  spec: {
-    id: string;
-    type: "circle" | "line" | "fill";
-    source: string;
-    sourceLayer?: string;
-    filter?: FilterSpecification;
-    paint: Record<string, unknown>;
-  },
-) {
-  const common = {
-    id: spec.id,
-    source: spec.source,
-    ...(spec.sourceLayer !== undefined ? { "source-layer": spec.sourceLayer } : {}),
-    ...(spec.filter !== undefined ? { filter: spec.filter } : {}),
-    paint: spec.paint,
-  };
-  switch (spec.type) {
-    case "circle":
-      map.addLayer({ ...common, type: "circle" });
-      break;
-    case "line":
-      map.addLayer({ ...common, type: "line" });
-      break;
-    default:
-      map.addLayer({ ...common, type: "fill" });
-      break;
-  }
-}
-
-// Le contour d'un polygone a besoin d'une vraie couche `line` : MapLibre n'a
-// pas de fill-outline-width (déviation 2 du plan). Partage la source, la
-// source-layer et le filtre de la couche de remplissage qu'elle décore.
-// Volontairement SANS handler de clic : deux couches superposées sur la même
-// source déclenchent le handler deux fois pour un seul clic (popup ouvert
-// deux fois, cross-filter émis deux fois).
-function addOutlineLayer(
-  map: maplibregl.Map,
-  spec: {
-    parentId: string;
-    source: string;
-    sourceLayer?: string;
-    filter?: FilterSpecification;
-    paint: Record<string, unknown>;
-  },
-) {
-  map.addLayer({
-    id: `${spec.parentId}__outline`,
-    type: "line",
-    source: spec.source,
-    ...(spec.sourceLayer !== undefined ? { "source-layer": spec.sourceLayer } : {}),
-    ...(spec.filter !== undefined ? { filter: spec.filter } : {}),
-    paint: spec.paint,
-  });
-}
-
-// Partagé par les couches tuilées et GeoJSON : une seule définition du "que
-// vaut l'identité d'une entité cliquée". ST_AsMVT ne pose un feature id que
-// sur une PK entière, d'où le repli sur la propriété de PK.
-// Les icônes catégorielles vivent sur une couche `symbol` appariée : le
-// `icon-image` est une propriété LAYOUT, qu'un layer `circle` n'accepte pas
-// (le validateur rejetterait la couche entière, en silence). Sans handler de
-// clic, comme le contour : la couche est posée exactement sur les points, et
-// un handler y ferait doubler chaque clic.
-function addIconLayer(
-  map: maplibregl.Map,
-  spec: {
-    parentId: string;
-    source: string;
-    sourceLayer?: string;
-    filter?: FilterSpecification;
-    layout: Record<string, unknown>;
-  },
-) {
-  map.addLayer({
-    id: `${spec.parentId}__icon`,
-    type: "symbol",
-    source: spec.source,
-    ...(spec.sourceLayer !== undefined ? { "source-layer": spec.sourceLayer } : {}),
-    ...(spec.filter !== undefined ? { filter: spec.filter } : {}),
-    layout: spec.layout,
-  } as maplibregl.AddLayerObject);
-}
-
-// Charge initiale d'une source d'étiquettes, partagée par addLabelLayer (pour
-// `addSource`) et le garde d'idempotence de refreshLabelSources (pour amorcer
-// `lastLabelPayloads`) : les deux DOIVENT produire la même sérialisation, sous
-// peine de reposer inutilement cette charge vide au tout premier `idle`.
-const EMPTY_LABEL_COLLECTION = { type: "FeatureCollection" as const, features: [] };
-
-// Étiquettes : source GeoJSON dédiée, calculée côté client (déviation 3).
-// `text-field` ne peut PAS être ["feature-state", …] — c'est une propriété
-// layout, et le validateur le refuse ; il lit donc une vraie propriété
-// `label` de la source. Cette source est vide à la pose : elle est remplie
-// par refreshLabelSources dès que des tuiles sont chargées.
-//
-// `text-field` exige par ailleurs que le STYLE déclare `glyphs`. Sans lui, la
-// couche serait rejetée par le validateur et disparaîtrait sans erreur : on
-// préfère ne pas la poser du tout et le dire.
-function addLabelLayer(
-  map: maplibregl.Map,
-  spec: { parentId: string; label: LayerLabel },
-  // Ref-backed Map appartenant à l'instance de MapView appelante (voir sa
-  // déclaration dans le composant) — jamais un Map de portée module, sous
-  // peine de partager cette bookkeeping entre deux <MapView> montés en même
-  // temps (revue post-Task 14, cf. commentaire sur lastLabelPayloadsRef).
-  lastLabelPayloads: Map<string, string>,
-): boolean {
-  // L'optional chaining est NÉCESSAIRE et non défensif : Map.getStyle() fait
-  // `if (this.style) return this.style.serialize();` et Style.serialize()
-  // commence par `if (!this._loaded) return;` (dist/maplibre-gl-dev.js:
-  // 45157-45163) — sur un style non encore chargé, getStyle() vaut undefined.
-  //
-  // Le message ne doit donc PAS affirmer une cause qu'il ne connaît pas
-  // (constat N10) : « le style ne déclare pas de glyphs » est faux quand le
-  // style n'est simplement pas encore chargé. Deux messages distincts.
-  const style = map.getStyle() as { glyphs?: string } | undefined;
-  if (style === undefined) {
-    console.warn(t("mapView.labelsSkippedNoStyleWarning", { parentId: spec.parentId }));
-    return false;
-  }
-  if (!style.glyphs) {
-    console.warn(t("mapView.labelsSkippedNoGlyphsWarning", { parentId: spec.parentId }));
-    return false;
-  }
-  // Coût assumé (seconde moitié du constat N10) : serialize() sérialise TOUT
-  // le style — sources et couches comprises via _serializeByIds — et
-  // addLabelLayer est appelé une fois par couche étiquetée à chaque
-  // applyLayers. Lire getStyle() une seule fois par passe et le passer en
-  // argument serait plus économe ; ce n'est pas fait parce que applyLayers a
-  // déjà huit paramètres et que le nombre de couches ÉTIQUETÉES par carte est
-  // de l'ordre de 1 à 3. Consigné dans les suivis.
-  const sourceId = `${spec.parentId}__labels`;
-  map.addSource(sourceId, {
-    type: "geojson",
-    data: EMPTY_LABEL_COLLECTION,
-  });
-  // Amorce le garde d'idempotence (constat N3) sur cet état initial : le
-  // premier `refreshLabelSources`, appelé juste après `applyLayers` alors
-  // qu'aucune tuile n'est encore chargée, calculerait lui aussi une
-  // FeatureCollection vide — sans cette amorce, il la reposerait via
-  // `setData` une fois pour rien (un aller-retour worker + repaint gratuit,
-  // exactement le coût que le garde existe pour éviter).
-  lastLabelPayloads.set(sourceId, JSON.stringify(EMPTY_LABEL_COLLECTION));
-  map.addLayer({
-    id: `${spec.parentId}__label`,
-    type: "symbol",
-    source: sourceId,
-    // Pas de `text-font` : le défaut du style-spec est
-    // ["Open Sans Regular", "Arial Unicode MS Regular"], et nommer une police
-    // absente du jeu de glyphes est un autre échec silencieux.
-    layout: { "text-field": ["get", "label"], "text-size": spec.label.size },
-    paint: {
-      "text-color": spec.label.color,
-      "text-halo-color": spec.label.haloColor,
-      "text-halo-width": spec.label.haloWidth,
-    },
-  } as maplibregl.AddLayerObject);
-  return true;
-}
-
-function makeFeatureClickHandler(
-  pkColumn: string | undefined,
-  onFeatureClick: (record: DataRecord) => void,
-  // Toujours appelé : c'est `handlePopup` (côté React, qui relit la config à
-  // chaque rendu) qui décide si la couche a encore un popup — le handler ne
-  // capture donc plus `layer.popup`, et une modification du popup n'oblige
-  // plus à reconstruire la carte (I5 de la revue finale SP-24).
-  onPopup: (
-    properties: Record<string, unknown>,
-    lngLat: { lng: number; lat: number },
-    id: string | number | undefined,
-  ) => void,
-) {
-  return (e: maplibregl.MapLayerMouseEvent) => {
-    const f = e.features?.[0];
-    if (!f) return;
-    const properties = (f.properties ?? {}) as Record<string, unknown>;
-    // `f.id` (id de feature top-level MapLibre) prime sur properties[pkColumn] :
-    // ST_AsMVT retire la colonne PK des attributs quand elle est entière
-    // (feature_id_name, cf. core/app/features/tiles.py::mvt_feature_id_column)
-    // — elle n'existe alors QUE dans f.id, jamais dans properties (chantier
-    // 4.12, Tâche 20). properties[pkColumn] reste le repli pour une PK non
-    // entière ou une couche `feature` (GeoJSON, jamais de feature_id MVT).
-    const fallback = pkColumn ? properties[pkColumn] : undefined;
-    const id = (f.id ?? fallback) as string | number | undefined;
-    // Le popup s'ouvre même sans identité utilisable : les attributs sont là,
-    // c'est la seule chose dont il a besoin — mais on transmet quand même
-    // l'id résolu, dont dépend maintenant aussi le popup (pièces jointes).
-    onPopup(properties, e.lngLat, id);
-    if (id == null) return;
-    onFeatureClick({ id, properties, geometry: f.geometry });
-  };
-}
-
-function applyLayers(
-  map: maplibregl.Map,
-  layers: MapConfig["layers"],
-  applied: Set<string>,
-  clickHandlers: Map<string, (e: maplibregl.MapLayerMouseEvent) => void>,
-  // Ref-backed, par instance de MapView — voir lastLabelPayloadsRef.
-  lastLabelPayloads: Map<string, string>,
-  onFeatureClick: (record: DataRecord) => void,
-  onPopup: (
-    layerId: string,
-    properties: Record<string, unknown>,
-    lngLat: { lng: number; lat: number },
-    id: string | number | undefined,
-  ) => void,
-  themeColors: ThemeColors | undefined,
-  // Rempli par CETTE passe : les ids d'image résolus par `effectivePaint`
-  // (déjà filtrés au domaine figé, dédoublonnés, ordre valeurs-puis-repli —
-  // cf. buildMapPaint) pour chaque sous-couche réellement posée. Fix I1 de la
-  // revue finale SP-27 : `loadIconImages` consommait auparavant
-  // `layer.symbology.icon.mapping` directement, sans garde de géométrie ni
-  // filtre de domaine — une seconde copie de la logique que `effectivePaint`
-  // calcule déjà ICI, dans la même passe. On la retourne au lieu de la
-  // recalculer.
-): string[] {
-  const iconImages = new Set<string>();
-  // Deux passes : tous les layers, PUIS toutes les sources. Une couche de
-  // géométrie mixte pose plusieurs layers sur une seule source (cf.
-  // MIXED_GEOMETRY_SUBLAYERS) et MapLibre refuse de retirer une source encore
-  // référencée par un layer.
-  applied.forEach((id) => {
-    if (map.getLayer(id)) map.removeLayer(id);
-    const prevHandler = clickHandlers.get(id);
-    if (prevHandler) {
-      map.off("click", id, prevHandler);
-      clickHandlers.delete(id);
-    }
-  });
-  applied.forEach((id) => {
-    if (map.getSource(id)) map.removeSource(id);
-    // Purge la dernière charge mémorisée (garde d'idempotence du constat
-    // N3) : sans cela, un cycle retrait → ré-ajout de la même couche
-    // d'étiquettes avec les mêmes entités ne reposerait jamais la source, la
-    // source neuve étant alors vide alors que le garde croit que rien n'a
-    // changé. No-op pour tout id qui n'est pas une source d'étiquettes.
-    lastLabelPayloads.delete(id);
-  });
-  applied.clear();
-
-  for (const layer of layers) {
-    if (!layer.visible || layer.kind === "deck" || layer.kind === "tiles3d") continue;
-    try {
-      if (layer.kind === "vector") {
-        map.addSource(layer.id, { type: "vector", tiles: [layer.tilesUrl] });
-        // Une couche = une source, mais pas forcément un seul layer : une
-        // géométrie inconnue/mixte en pose trois (MIXED_GEOMETRY_SUBLAYERS).
-        const layerIds: string[] = [];
-        // Couches décoratives (contour, ...) : jamais de handler de clic,
-        // seulement suivies dans `applied` pour le nettoyage.
-        const decorativeIds: string[] = [];
-        if (layer.geometryKind === undefined) {
-          // Un paint par sous-couche, calculé pour SA géométrie réelle (I4
-          // de la revue finale SP-25) — jamais un unique `vectorPaint`
-          // calculé pour "polygon" puis filtré par préfixe, qui ne stylait
-          // jamais les sous-couches point/ligne. `paintFor` reste
-          // nécessaire même ici : pour le chemin `layer.paint` manuel (sans
-          // symbology), le même objet brut peut porter des clés de
-          // plusieurs préfixes à la fois (cf. test "paint is split by
-          // prefix").
-          for (const sub of MIXED_GEOMETRY_SUBLAYERS) {
-            const id = `${layer.id}__${sub.suffix}`;
-            const result = effectivePaint(layer, sub.suffix, themeColors);
-            for (const imageId of result.iconImages) iconImages.add(imageId);
-            addTypedLayer(map, {
-              id,
-              type: sub.type,
-              source: layer.id,
-              sourceLayer: layer.sourceLayer,
-              filter: ["match", ["geometry-type"], [...sub.geometries], true, false],
-              paint: paintFor(result.paint, sub.paintPrefix),
-            });
-            layerIds.push(id);
-            if (sub.suffix === "point" && result.iconLayout) {
-              addIconLayer(map, {
-                parentId: id,
-                source: layer.id,
-                sourceLayer: layer.sourceLayer,
-                filter: ["match", ["geometry-type"], [...sub.geometries], true, false],
-                layout: result.iconLayout,
-              });
-              decorativeIds.push(`${id}__icon`);
-            }
-            if (sub.suffix === "polygon" && result.outlinePaint) {
-              addOutlineLayer(map, {
-                parentId: id,
-                source: layer.id,
-                sourceLayer: layer.sourceLayer,
-                filter: ["match", ["geometry-type"], [...sub.geometries], true, false],
-                paint: result.outlinePaint,
-              });
-              decorativeIds.push(`${id}__outline`);
-            }
-          }
-        } else {
-          const result = effectivePaint(layer, layer.geometryKind, themeColors);
-          for (const imageId of result.iconImages) iconImages.add(imageId);
-          addTypedLayer(map, {
-            id: layer.id,
-            type: layerTypeFor(layer.geometryKind),
-            source: layer.id,
-            sourceLayer: layer.sourceLayer,
-            paint: result.paint,
-          });
-          layerIds.push(layer.id);
-          if (layer.geometryKind === "point" && result.iconLayout) {
-            addIconLayer(map, {
-              parentId: layer.id,
-              source: layer.id,
-              sourceLayer: layer.sourceLayer,
-              layout: result.iconLayout,
-            });
-            decorativeIds.push(`${layer.id}__icon`);
-          }
-          if (layer.geometryKind === "polygon" && result.outlinePaint) {
-            addOutlineLayer(map, {
-              parentId: layer.id,
-              source: layer.id,
-              sourceLayer: layer.sourceLayer,
-              paint: result.outlinePaint,
-            });
-            decorativeIds.push(`${layer.id}__outline`);
-          }
-        }
-        for (const id of layerIds) {
-          const handler = makeFeatureClickHandler(
-            layer.pkColumn,
-            onFeatureClick,
-            // Le popup est toujours identifié par l'id de la COUCHE de la
-            // config, jamais par celui d'une sous-couche : c'est lui que
-            // MapView recroise avec config.layers.
-            (properties, lngLat, featureId) => onPopup(layer.id, properties, lngLat, featureId),
-          );
-          map.on("click", id, handler);
-          clickHandlers.set(id, handler);
-          applied.add(id);
-        }
-        for (const id of decorativeIds) applied.add(id);
-        const label = layer.symbology?.label;
-        if (label && addLabelLayer(map, { parentId: layer.id, label }, lastLabelPayloads)) {
-          applied.add(`${layer.id}__label`);
-          applied.add(`${layer.id}__labels`);
-        }
-      } else if (layer.kind === "raster") {
-        map.addSource(layer.id, { type: "raster", tiles: [layer.tilesUrl], tileSize: 256 });
-        map.addLayer({
-          id: layer.id,
-          type: "raster",
-          source: layer.id,
-          paint: { "raster-opacity": layer.opacity ?? 1 },
-        });
-      } else if (layer.kind === "feature") {
-        map.addSource(layer.id, { type: "geojson", data: layer.url });
-        const featureGeometryKind: GeometryKind =
-          layer.renderAs === "circle" ? "point" : layer.renderAs === "line" ? "line" : "polygon";
-        const featureResult = effectivePaint(layer, featureGeometryKind, themeColors);
-        for (const imageId of featureResult.iconImages) iconImages.add(imageId);
-        switch (layer.renderAs ?? "fill") {
-          case "circle":
-            map.addLayer({
-              id: layer.id,
-              type: "circle",
-              source: layer.id,
-              paint: featureResult.paint,
-            });
-            break;
-          case "line":
-            map.addLayer({
-              id: layer.id,
-              type: "line",
-              source: layer.id,
-              paint: featureResult.paint,
-            });
-            break;
-          default:
-            map.addLayer({
-              id: layer.id,
-              type: "fill",
-              source: layer.id,
-              paint: featureResult.paint,
-            });
-            break;
-        }
-        if (featureGeometryKind === "polygon" && featureResult.outlinePaint) {
-          addOutlineLayer(map, {
-            parentId: layer.id,
-            source: layer.id,
-            paint: featureResult.outlinePaint,
-          });
-          applied.add(`${layer.id}__outline`);
-        }
-        if (featureGeometryKind === "point" && featureResult.iconLayout) {
-          addIconLayer(map, {
-            parentId: layer.id,
-            source: layer.id,
-            layout: featureResult.iconLayout,
-          });
-          applied.add(`${layer.id}__icon`);
-        }
-        const featureLabel = layer.symbology?.label;
-        if (
-          featureLabel &&
-          addLabelLayer(map, { parentId: layer.id, label: featureLabel }, lastLabelPayloads)
-        ) {
-          applied.add(`${layer.id}__label`);
-          applied.add(`${layer.id}__labels`);
-        }
-        const handler = makeFeatureClickHandler(
-          undefined,
-          onFeatureClick,
-          (properties, lngLat, featureId) => onPopup(layer.id, properties, lngLat, featureId),
-        );
-        map.on("click", layer.id, handler);
-        clickHandlers.set(layer.id, handler);
-      }
-      applied.add(layer.id);
-    } catch (err) {
-      // Per spec §8: one bad layer must not break the whole map. Roll back any
-      // half-added source/layer so it can't orphan or clash on the next apply.
-      // Les sous-couches d'une géométrie mixte en font partie : elles sont
-      // déjà dans `applied`, donc la prochaine passe de nettoyage les prendra,
-      // mais on les retire tout de suite pour ne pas laisser la source
-      // référencée (et donc non supprimable) derrière nous.
-      for (const suffix of SUBLAYER_SUFFIXES) {
-        const id = `${layer.id}${suffix}`;
-        if (map.getLayer(id)) map.removeLayer(id);
-        applied.delete(id);
-        // Le contour d'une sous-couche de géométrie mixte porte un double
-        // suffixe (ex. "communes__polygon__outline").
-        for (const inner of SUBLAYER_SUFFIXES) {
-          const nested = `${id}${inner}`;
-          if (map.getLayer(nested)) map.removeLayer(nested);
-          applied.delete(nested);
-        }
-      }
-      // Un `__labels` (source) qu'un `__label` (couche) n'a jamais atteint —
-      // ex. addLayer a levé après que addSource ait réussi — fuirait sinon :
-      // la boucle SUBLAYER_SUFFIXES ci-dessus ne retire que des LAYERS.
-      for (const suffix of SUBSOURCE_SUFFIXES) {
-        const id = `${layer.id}${suffix}`;
-        if (map.getSource(id)) map.removeSource(id);
-        applied.delete(id);
-        lastLabelPayloads.delete(id);
-      }
-      if (map.getLayer(layer.id)) map.removeLayer(layer.id);
-      if (map.getSource(layer.id)) map.removeSource(layer.id);
-      applied.delete(layer.id);
-      console.error(`MapView: skipping layer ${layer.id}`, err);
-    }
-  }
-  return [...iconImages];
-}
-
-// map.addImage doit finir par arriver pour que la couche `symbol` affiche
-// quelque chose — mais PAS avant addLayer : Style.addImage appelle
-// _afterImageUpdated(id), qui marque l'image changée et fait repeindre les
-// couches symbol qui la référencent. On pose donc les couches
-// synchroniquement (aucun test existant ne casse) et on charge les images
-// après, en tâche de fond.
-//
-// allSettled + try/catch par id : une seule icône illisible ne doit jamais
-// faire échouer les autres, ni remonter en rejection non gérée.
-// `iconImageIds` vient de `applyLayers` (son retour, la même passe) : déjà
-// filtré au `geometryKind === "point"` et au domaine figé par `buildMapPaint`
-// (fix I1 de la revue finale SP-27 — cette fonction dérivait auparavant ses
-// propres ids depuis `layer.symbology.icon.mapping`, sans garde de géométrie
-// ni filtre de domaine, chargeant des icônes pour des couches polygone/ligne
-// et des valeurs de mapping oubliées par un recalcul de domaine).
-async function loadIconImages(
-  map: maplibregl.Map,
-  iconImageIds: readonly string[],
-  loadCustomIcon: ((iconId: string) => Promise<Blob>) | undefined,
-) {
-  await Promise.allSettled(
-    [...new Set(iconImageIds)].map(async (id) => {
-      try {
-        if (map.hasImage(id)) return;
-        let image: HTMLImageElement | undefined;
-        if (id.startsWith("lucide:")) {
-          image = await rasterizeLucideIcon(id.slice("lucide:".length));
-        } else if (id.startsWith("custom:") && loadCustomIcon) {
-          // Blob récupéré par fetch AUTHENTIFIÉ (ItemClient) puis décodé
-          // localement : jamais `new Image().src = <url du cœur>`, qui ne
-          // porte aucun en-tête et prendrait un 401 (constat 4.4). L'URL
-          // passée à Image est une URL d'objet locale, same-origin.
-          const blob = await loadCustomIcon(id.slice("custom:".length));
-          image = await decodeIconImage(blob);
-        }
-        if (!image) return;
-        // Pas d'option { sdf: true } : l'image est du RGBA ordinaire.
-        // HTMLImageElement est accepté par addImage (signature vérifiée).
-        if (!map.hasImage(id)) map.addImage(id, image);
-      } catch (err) {
-        console.warn(t("mapView.iconNotLoadedWarning", { id }), err);
-      }
-    }),
-  );
-}
-
-// Remplit les sources d'étiquettes depuis les entités RÉELLEMENT chargées.
-// Déclenché sur `idle` : querySourceFeatures ne parcourt que les tuiles
-// rendables (getRenderableIds), donc l'appeler plus tôt renvoie du vide.
-function refreshLabelSources(
-  map: maplibregl.Map,
-  layers: MapConfig["layers"],
-  // Ref-backed, par instance de MapView — voir lastLabelPayloadsRef. Passé
-  // en paramètre plutôt que fermé sur une variable de portée module : deux
-  // <MapView> peuvent partager un `layer.id` (deux widgets carte sur le même
-  // tableau de bord affichant la même collection), et un Map de portée
-  // module aurait alors partagé cette même entrée de garde entre les deux
-  // instances (revue post-Task 14).
-  lastLabelPayloads: Map<string, string>,
-) {
-  for (const layer of layers) {
-    if (!layer.visible) continue;
-    if (layer.kind !== "vector" && layer.kind !== "feature") continue;
-    const label = layer.symbology?.label;
-    if (!label) continue;
-    const sourceId = `${layer.id}__labels`;
-    const source = map.getSource(sourceId) as { setData?: (d: unknown) => void } | undefined;
-    if (!source?.setData) {
-      // Couche d'étiquettes non posée (glyphs absents) : ce n'est PAS une
-      // anomalie ici, addLabelLayer a déjà averti une fois. Ne pas journaliser
-      // à chaque `idle`.
-      continue;
-    }
-    // sourceLayer est OBLIGATOIRE sur une source vecteur (sinon la requête
-    // renvoie zéro entité, sans erreur) et doit être ABSENT sur du GeoJSON.
-    const features =
-      layer.kind === "vector"
-        ? map.querySourceFeatures(layer.id, { sourceLayer: layer.sourceLayer })
-        : map.querySourceFeatures(layer.id);
-    const collection = buildLabelFeatureCollection(
-      features.map((f) => ({
-        id: f.id,
-        properties: (f.properties ?? {}) as Record<string, unknown>,
-        geometry: f.geometry,
-      })),
-      label.template,
-      { pkColumn: layer.kind === "vector" ? layer.pkColumn : undefined },
-    );
-    // GARDE D'IDEMPOTENCE (constat N3). Le JSON.stringify est le même travail
-    // que celui que _updateWorkerData ferait de toute façon derrière setData :
-    // il ne coûte donc rien de plus dans le cas « ça a changé », et il évite
-    // TOUT le reste (aller-retour worker + re-tuilage + repaint + nouvel idle)
-    // dans le cas « rien n'a changé », qui est le cas de tous les idle
-    // consécutifs sur une carte immobile.
-    const serialized = JSON.stringify(collection);
-    if (lastLabelPayloads.get(sourceId) === serialized) continue;
-    lastLabelPayloads.set(sourceId, serialized);
-    source.setData(collection);
-  }
-}
-
-// Projection d'une couche sur ce que MapLibre/deck.gl en consomment : `popup`
-// n'est jamais lu par le moteur cartographique, seulement par le rendu React
-// d'un clic déjà survenu (cf. layersKey dans MapView).
-function mapRelevantLayer(layer: MapConfig["layers"][number]) {
-  if ("popup" in layer) {
-    const { popup: _popup, ...rest } = layer;
-    return rest;
-  }
-  return layer;
-}
-
-type DeckLayer = Extract<MapConfig["layers"][number], { kind: "deck" }>;
-type Tiles3DMapLayer = Extract<MapConfig["layers"][number], { kind: "tiles3d" }>;
-
-function buildDeckLayer(layer: DeckLayer) {
-  // Canonical fields last so user props can't shadow the id Deck.gl uses for
-  // layer reconciliation, nor the data source.
-  const props = { ...(layer.props ?? {}), id: layer.id, data: layer.dataUrl };
-  switch (layer.deckType) {
-    case "heatmap":
-      return new HeatmapLayer(props);
-    case "hexbin":
-      return new HexagonLayer(props);
-    case "column":
-      return new ColumnLayer(props);
-    default:
-      // Exhaustiveness guard: a new deckType turns into a compile error here.
-      return layer.deckType satisfies never;
-  }
-}
-
-// Identity of a *tileset*, not of a layer: re-pointing the same layer id at a
-// different tileset URL must invalidate the "already loaded" bookkeeping used
-// by the export-readiness gate below.
-function tilesetKey(layer: Tiles3DMapLayer) {
-  return `${layer.id}\n${layer.url}`;
-}
-
-function buildTiles3DLayer(
-  layer: Tiles3DMapLayer,
-  onTilesetLoad?: (key: string) => void,
-  getAuthToken?: () => string | undefined,
-  getCoreUrl?: () => string,
-) {
-  const token = isHostedTilesetUrl(layer.url, getCoreUrl?.()) ? getAuthToken?.() : undefined;
-  return new Tile3DLayer({
-    id: layer.id,
-    data: layer.url,
-    loader: Tiles3DLoader,
-    loadOptions: token ? { fetch: { headers: { Authorization: `Bearer ${token}` } } } : undefined,
-    // Fired once the root tileset has loaded. Deck.gl loads 3D Tiles entirely
-    // outside MapLibre's knowledge, so this is the only signal that tells the
-    // export worker the tileset is actually on screen (see onReady below).
-    onTilesetLoad: () => onTilesetLoad?.(tilesetKey(layer)),
-  });
-}
-
-function applyDeckLayers(
-  overlay: MapboxOverlay,
-  layers: MapConfig["layers"],
-  onTilesetLoad?: (key: string) => void,
-  getAuthToken?: () => string | undefined,
-  getCoreUrl?: () => string,
-) {
-  const deckLayers = layers
-    .filter((l): l is DeckLayer => l.visible && l.kind === "deck")
-    .map(buildDeckLayer);
-  const tiles3dLayers = layers
-    .filter((l): l is Tiles3DMapLayer => l.visible && l.kind === "tiles3d")
-    .map((l) => buildTiles3DLayer(l, onTilesetLoad, getAuthToken, getCoreUrl));
-  overlay.setProps({ layers: [...deckLayers, ...tiles3dLayers] });
-}
-
-// Full teardown-then-rebuild on every apply, mirroring applyLayers' pattern
-// for the MapLibre-native layer array — simpler than diffing, and the only
-// way to pick up a changed tilesUrl (MapLibre raster-dem sources are
-// immutable once created).
-function applyTerrain(map: maplibregl.Map, terrain: MapConfig["terrain"] | null | undefined) {
-  map.setTerrain(null);
-  if (map.getSource(TERRAIN_SOURCE_ID)) map.removeSource(TERRAIN_SOURCE_ID);
-  // A blank URL is the transient state right after the author ticks "Activer
-  // le terrain 3D" (TerrainPanel emits tilesUrl: "" first). Building a
-  // raster-dem source on it fires doomed tile requests for nothing.
-  if (!terrain || !terrain.tilesUrl.trim()) return;
-  map.addSource(TERRAIN_SOURCE_ID, {
-    type: "raster-dem",
-    tiles: [terrain.tilesUrl],
-    tileSize: 256,
-    encoding: terrain.encoding,
-  });
-  map.setTerrain({ source: TERRAIN_SOURCE_ID, exaggeration: terrain.exaggeration ?? 1 });
-}
 
 export const MapView = forwardRef<
   MapViewHandle,
@@ -940,30 +178,16 @@ export const MapView = forwardRef<
   const idleRef = useRef(false);
   const readyFiredRef = useRef(false);
   const loadedTilesetsRef = useRef<Set<string>>(new Set());
-  // Popup ouvert : la couche qui l'a ouvert, les propriétés de l'entité, et le
-  // point géographique cliqué (reprojeté à chaque déplacement de la carte).
-  const [popup, setPopup] = useState<{
-    layerId: string;
-    properties: Record<string, unknown>;
-    lngLat: { lng: number; lat: number };
-    // Identité de l'entité cliquée, dérivée de `pkColumn` (uniquement pour
-    // les couches `vector` — cf. handlePopup) : nécessaire pour retrouver
-    // ses pièces jointes (chantier 4.12), absente pour tout le reste.
-    fid: string | undefined;
-  } | null>(null);
-  const [popupPoint, setPopupPoint] = useState<{ x: number; y: number } | null>(null);
-  // Pièces jointes de l'entité dont le popup est ouvert (chantier 4.12) :
-  // remplies par l'effet de fetch juste avant le `return` final, jamais lues
-  // directement depuis `popup` — ce n'est pas une projection pure de l'état
-  // déjà là, mais le résultat d'un appel réseau asynchrone.
-  const [popupAttachments, setPopupAttachments] = useState<AttachmentSummary[]>([]);
-  // Schéma de la collection de la couche du popup actif (D35, Vague C,
-  // SP-C6) : formatage fr-FR des valeurs en mode `fields` seulement. Repli
-  // assumé du plan (§ Step 5) : résolu au clic pour la seule couche
-  // concernée, pas préchargé pour toutes les couches visibles — un cache
-  // par couche multiplierait les requêtes pour un gain non mesuré, cf.
-  // rapport de tâche.
-  const [popupSchema, setPopupSchema] = useState<CollectionSchemaField[]>([]);
+  // Popup ouvert (état, reprojection, fermeture, pièces jointes, schéma).
+  const {
+    popup,
+    setPopup,
+    popupPoint,
+    popupConfig,
+    popupAttachments,
+    popupSchema,
+    downloadPopupAttachment,
+  } = useMapPopup(mapRef, config.layers);
   // Un `useRef` assigné dans un effet ne provoque AUCUN rendu : la barre
   // d'outils conditionnée à `mapRef.current` ne se monterait jamais au
   // premier rendu. On garde donc l'instance dans un état, posé depuis le
@@ -1068,7 +292,7 @@ export const MapView = forwardRef<
           : undefined;
       setPopup({ layerId, properties, lngLat, fid });
     },
-    [],
+    [setPopup],
   );
 
   useEffect(() => {
@@ -1076,6 +300,13 @@ export const MapView = forwardRef<
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: config.basemap.style,
+      // P30.05 : libellés des contrôles MapLibre en français.
+      locale: {
+        "Map.Title": t("mapView.localeMapTitle"),
+        "AttributionControl.ToggleAttribution": t("mapView.localeToggleAttribution"),
+        "AttributionControl.MapFeedback": t("mapView.localeMapFeedback"),
+        "LogoControl.Title": t("mapView.localeLogoTitle"),
+      },
       center: config.view.center,
       zoom: config.view.zoom,
       pitch: config.view.pitch ?? 0,
@@ -1101,6 +332,10 @@ export const MapView = forwardRef<
     map.on("load", () => {
       styleLoadedRef.current = true;
       setReadyMap(map);
+      publishViewport({
+        zoom: map.getZoom(),
+        bounds: map.getBounds().toArray().flat() as [number, number, number, number],
+      });
       map.addSource(HIGHLIGHT_ID, {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
@@ -1158,10 +393,11 @@ export const MapView = forwardRef<
     };
     map.on("idle", scheduleLabelRefresh);
     map.on("moveend", () => {
+      const bounds = map.getBounds().toArray().flat() as [number, number, number, number];
+      publishViewport({ zoom: map.getZoom(), bounds });
       const cb = onViewChangeRef.current;
       if (!cb) return;
       const c = map.getCenter();
-      const bounds = map.getBounds().toArray().flat() as [number, number, number, number];
       cb({
         center: [c.lng, c.lat],
         zoom: map.getZoom(),
@@ -1194,6 +430,7 @@ export const MapView = forwardRef<
       clearTimeout(labelDebounce);
       map.off("idle", scheduleLabelRefresh);
       map.removeControl(overlay);
+      releaseLumaCanvasObserver(map);
       map.remove();
       mapRef.current = null;
       setReadyMap(null);
@@ -1266,43 +503,10 @@ export const MapView = forwardRef<
     applyTerrain(map, config.terrain);
   }, [config.terrain]);
 
-  // Reprojection du point cliqué à chaque déplacement de la carte : sans ce
-  // listener, un popup ouvert resterait figé au pixel de l'ouverture pendant
-  // qu'on pan/zoom la carte sous lui. Un seul listener à la fois — le nettoyage
-  // le retire avant que l'effet ne s'exécute à nouveau (nouveau popup ou
-  // fermeture), jamais accumulé au clic.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !popup) {
-      setPopupPoint(null);
-      return;
-    }
-    const reproject = () => setPopupPoint(map.project(popup.lngLat));
-    reproject();
-    map.on("move", reproject);
-    return () => {
-      map.off("move", reproject);
-    };
-  }, [popup]);
-
-  // Ferme le popup quand la couche qui l'a ouvert disparaît de la config, ou
-  // quand elle garde son id mais perd sa configuration `popup` — l'absence de
-  // `popup` sur la couche EST l'état désactivé (types.ts), et
-  // `resolvePopupContent` se réévalue à chaque rendu : le laisser ouvert
-  // ferait retomber sur sa branche "pas de config → tout afficher", exposant
-  // des champs que l'auteur avait explicitement exclus. Un popup ne doit
-  // jamais survivre à la disparition de sa propre configuration.
-  useEffect(() => {
-    if (!popup) return;
-    const layer = config.layers.find((l) => l.id === popup.layerId);
-    const stillConfigured = !!layer && "popup" in layer && !!layer.popup;
-    if (!stillConfigured) setPopup(null);
-  }, [config.layers, popup]);
-
   useImperativeHandle(
     ref,
     () => ({
-      flyTo: (opts) => {
+      flyTo: (opts, instant) => {
         // maplibre-gl v6 regression, confirmed by e2e (with vs. without
         // terrain, with `flyTo` vs. `easeTo` vs. `jumpTo` — only the
         // animated forms fail, only when a terrain is currently set): an
@@ -1322,7 +526,7 @@ export const MapView = forwardRef<
         // système en cours de session doit être respecté au prochain
         // flyTo, pas seulement à celui qui suit le montage.
         const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-        if (mapRef.current?.getTerrain() || reducedMotion) {
+        if (instant || mapRef.current?.getTerrain() || reducedMotion) {
           mapRef.current?.jumpTo(opts);
         } else {
           mapRef.current?.flyTo(opts);
@@ -1349,111 +553,6 @@ export const MapView = forwardRef<
     }),
     [],
   );
-
-  const popupLayer = popup ? config.layers.find((l) => l.id === popup.layerId) : undefined;
-  // `popup` n'est porté que par les variantes "vector"/"feature" de l'union
-  // discriminée `MapLayer` — un accès défensif plutôt qu'un cast reste
-  // compilable sur l'union complète (les variantes "raster"/"deck"/"tiles3d"
-  // n'ont pas de champ `popup` du tout).
-  const popupConfig = popupLayer && "popup" in popupLayer ? popupLayer.popup : undefined;
-
-  // Pièces jointes de l'entité dont le popup est ouvert (chantier 4.12) :
-  // fetch NU via getCoreUrl/getAuthToken, jamais useItemClient()/React Query
-  // — ce composant fonctionne aussi hors ItemClientProvider (export
-  // statique, cf. son commentaire d'en-tête général sur exportRender/SP-17a
-  // et les usages standalone de MapView). Placé ICI, après le calcul de
-  // popupConfig/popupLayer ci-dessus (dont il dépend) et avant le `return`
-  // final : il n'y a aucun `return` conditionnel plus haut dans ce
-  // composant, donc cet ordre respecte les règles des Hooks (jamais après
-  // un `return` conditionnel).
-  useEffect(() => {
-    setPopupAttachments([]);
-    if (!popup || !popupConfig?.attachmentField || popup.fid === undefined) return;
-    if (!popupLayer || (popupLayer.kind !== "vector" && popupLayer.kind !== "feature")) return;
-    if (!popupLayer.collectionId) return;
-    const coreUrl = getCoreUrlRef.current?.();
-    if (!coreUrl) return;
-    const token = getAuthTokenRef.current?.();
-    const shareToken = getShareLinkTokenRef.current?.();
-    const headers: Record<string, string> = {};
-    if (token) headers.Authorization = `Bearer ${token}`;
-    else if (shareToken) headers["X-Share-Link-Token"] = shareToken;
-    const url = `${coreUrl}/collections/${popupLayer.collectionId}/items/${popup.fid}/attachments?fieldKey=${encodeURIComponent(popupConfig.attachmentField)}`;
-    let cancelled = false;
-    fetch(url, { headers })
-      .then((res) => (res.ok ? res.json() : { attachments: [] }))
-      .then((data: { attachments?: AttachmentSummary[] }) => {
-        if (!cancelled) setPopupAttachments(data.attachments ?? []);
-      })
-      .catch(() => {
-        if (!cancelled) setPopupAttachments([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [popup?.layerId, popup?.fid, popupConfig?.attachmentField]);
-
-  // Schéma de la collection de la couche du popup actif (D35, Vague C,
-  // SP-C6) : même patron fetch NU que l'effet de pièces jointes ci-dessus,
-  // pour la même raison (composant utilisable hors ItemClientProvider).
-  // Résolu par `popup.layerId` seul (le schéma d'une collection ne dépend
-  // pas de l'entité cliquée), pas préchargé pour les autres couches.
-  useEffect(() => {
-    setPopupSchema([]);
-    if (!popup) return;
-    if (!popupLayer || (popupLayer.kind !== "vector" && popupLayer.kind !== "feature")) return;
-    if (!popupLayer.collectionId) return;
-    const coreUrl = getCoreUrlRef.current?.();
-    if (!coreUrl) return;
-    const token = getAuthTokenRef.current?.();
-    const shareToken = getShareLinkTokenRef.current?.();
-    const headers: Record<string, string> = {};
-    if (token) headers.Authorization = `Bearer ${token}`;
-    else if (shareToken) headers["X-Share-Link-Token"] = shareToken;
-    const url = `${coreUrl}/collections/${popupLayer.collectionId}/schema`;
-    let cancelled = false;
-    fetch(url, { headers })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: CollectionSchema | null) => {
-        if (!cancelled) setPopupSchema(data?.fields ?? []);
-      })
-      .catch(() => {
-        if (!cancelled) setPopupSchema([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [popup?.layerId]);
-
-  async function downloadPopupAttachment(attachmentId: string, filename: string) {
-    if (
-      !popupLayer ||
-      (popupLayer.kind !== "vector" && popupLayer.kind !== "feature") ||
-      !popupLayer.collectionId ||
-      !popup ||
-      popup.fid === undefined
-    )
-      return;
-    const coreUrl = getCoreUrlRef.current?.();
-    if (!coreUrl) return;
-    const token = getAuthTokenRef.current?.();
-    const shareToken = getShareLinkTokenRef.current?.();
-    const headers: Record<string, string> = {};
-    if (token) headers.Authorization = `Bearer ${token}`;
-    else if (shareToken) headers["X-Share-Link-Token"] = shareToken;
-    const url = `${coreUrl}/collections/${popupLayer.collectionId}/items/${popup.fid}/attachments/${attachmentId}/file`;
-    const res = await fetch(url, { headers });
-    if (!res.ok) return;
-    const blob = await res.blob();
-    const objectUrl = URL.createObjectURL(blob);
-    const el = document.createElement("a");
-    el.href = objectUrl;
-    el.download = filename;
-    el.click();
-    URL.revokeObjectURL(objectUrl);
-  }
 
   return (
     <div className="relative h-full w-full">

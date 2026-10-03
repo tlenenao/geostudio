@@ -1,4 +1,3 @@
-import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { CORE_URL } from "../_fixtures/env";
 import { apiFor, psql, type Api } from "./helpers";
@@ -42,13 +41,10 @@ test.describe("j09 tuiles tronquées", () => {
   });
 
   // Bug confirmé : voir docs/revue/audit-2026-09-29/j09/findings.jsonl
-  bug(
-    "j09-010 : exactement 5000 entités (aucune perdue) ne sont pas marquées tronquées",
-    async () => {
-      const id = await collectionWith(5000, "aud-j09-mvt-5000");
-      const r = await tile(id);
-      expect(r.status).toBe(200);
-      expect(r.headers.get("x-tile-truncated")).toBeNull();
-    },
-  );
+  test("j09-010 : exactement 5000 entités (aucune perdue) ne sont pas marquées tronquées", async () => {
+    const id = await collectionWith(5000, "aud-j09-mvt-5000");
+    const r = await tile(id);
+    expect(r.status).toBe(200);
+    expect(r.headers.get("x-tile-truncated")).toBeNull();
+  });
 });

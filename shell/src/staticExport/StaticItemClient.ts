@@ -10,6 +10,7 @@
 // backend : chaque méthode rejette explicitement plutôt que d'être omise,
 // afin que TypeScript prouve qu'aucune n'a été oubliée (pas de
 // `as unknown as ItemClient`, contrairement au sketch illustratif du plan).
+import { t } from "../i18n";
 import type {
   AppConfig,
   DataRecord,
@@ -18,10 +19,8 @@ import type {
   ItemClient,
 } from "../api/types";
 
-const UNSUPPORTED = "Non disponible dans un export statique (aucun backend).";
-
 function unsupported<T = never>(): Promise<T> {
-  return Promise.reject(new Error(UNSUPPORTED));
+  return Promise.reject(new Error(t("staticExport.unsupported")));
 }
 
 export function createStaticItemClient(config: AppConfig): ItemClient {
@@ -217,6 +216,9 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
       return unsupported();
     },
     async runHarvestSource(..._args: unknown[]) {
+      return unsupported();
+    },
+    async getInstanceStatus(..._args: unknown[]) {
       return unsupported();
     },
     async launchAdminTool(..._args: unknown[]) {

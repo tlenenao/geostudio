@@ -92,7 +92,7 @@ test("programmer un rapport sur un signet, voir son historique d'exécutions", a
   await expect(page.getByText("Récents 2026")).toBeVisible();
 
   await page.getByRole("button", { name: "Actions" }).click();
-  await page.getByRole("button", { name: "Programmer un rapport" }).click();
+  await page.getByRole("menuitem", { name: "Programmer un rapport" }).click();
   await expect(page).toHaveURL(/\/reports\/new$/);
 
   await page.getByLabel("URL du webhook").fill("https://example.test/hook");

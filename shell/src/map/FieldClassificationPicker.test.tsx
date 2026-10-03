@@ -270,7 +270,7 @@ test("l'avertissement nomme le bouton de recalcul injecté", () => {
 test("formatDomain rend chaque forme de domaine", () => {
   expect(formatDomain({ kind: "categorical", values: ["A", "B"] })).toBe("A, B");
   expect(formatDomain({ kind: "numeric-classed", breaks: [0, 50, 100] })).toBe(
-    "0.0 – 50.0 – 100.0",
+    "0,0 – 50,0 – 100,0",
   );
   expect(formatDomain({ kind: "numeric", min: 1, max: 9 })).toBe("1 – 9");
 });

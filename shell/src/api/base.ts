@@ -58,10 +58,30 @@ async function readBody<T>(read: () => Promise<T>): Promise<T> {
 export async function parseErrorResponse(res: Response): Promise<ApiError> {
   let title: string | undefined;
   let detail: string | undefined;
+  let errors: FieldError[] | undefined;
+  let problemType: string | undefined;
+  let quota: { kind: string; current: number; limit: number } | undefined;
   try {
-    const problem = (await res.clone().json()) as { title?: unknown; detail?: unknown };
+    const problem = (await res.clone().json()) as {
+      title?: unknown;
+      detail?: unknown;
+      errors?: unknown;
+      type?: unknown;
+      quota?: unknown;
+      current?: unknown;
+      limit?: unknown;
+    };
+    if (problem.type === "quota-exceeded") {
+      problemType = problem.type;
+      quota = {
+        kind: String(problem.quota),
+        current: Number(problem.current),
+        limit: Number(problem.limit),
+      };
+    }
     if (typeof problem.title === "string") title = problem.title;
     if (typeof problem.detail === "string") detail = problem.detail;
+    if (Array.isArray(problem.errors)) errors = problem.errors as FieldError[];
   } catch {
     // Corps absent ou non-JSON (ex. 500 sans body) : ApiError retombe sur
     // son message générique plutôt que de faire échouer la gestion d'erreur.
@@ -71,7 +91,14 @@ export async function parseErrorResponse(res: Response): Promise<ApiError> {
     res.status === 429 && retryAfterHeader !== null && !Number.isNaN(Number(retryAfterHeader))
       ? Number(retryAfterHeader)
       : undefined;
-  return new ApiError(res.status, { title, detail, retryAfter });
+  return new ApiError(res.status, { title, detail, retryAfter, errors, problemType, quota });
+}
+
+// P22.04 : garde `!res.ok` unique des sites qui font leur propre fetch (via
+// authFetch) — jette l'ApiError RFC 7807 au lieu d'une Error « Request failed ».
+export async function ensureOk(res: Response): Promise<Response> {
+  if (!res.ok) throw await parseErrorResponse(res);
+  return res;
 }
 
 // RawMapLayer/toFrontLayer vivent ici (et non dans domains/layers.ts) pour
@@ -99,7 +126,15 @@ export type RawMapLayer = {
   symbology?: import("../builder/widgets/mapSymbology").LayerSymbology | null;
 };
 
+// P22.02 : tout champ non nul du cœur survit au round-trip (le PUT de
+// saveMapConfig est complet) — les variantes ci-dessous ne fixent que les
+// défauts/normalisations propres à chaque kind.
 export function toFrontLayer(l: RawMapLayer): MapLayer {
+  const extra = Object.fromEntries(Object.entries(l).filter(([, v]) => v != null));
+  return { ...extra, ...toFrontLayerKind(l) } as MapLayer;
+}
+
+function toFrontLayerKind(l: RawMapLayer): MapLayer {
   const base = { id: l.id, title: l.title, visible: l.visible };
   switch (l.kind) {
     case "vector":
@@ -193,6 +228,10 @@ export type ItemClientBase = {
   // P07.06 : fetch authentifié (Authorization + renouvellement silencieux sur
   // 401, rejeu unique) pour les sites qui ne passent pas par request().
   authFetch(url: string, init?: RequestInit, timeoutMs?: number): Promise<Response>;
+  // P30.03 : GET d'une URL arbitraire (tuile, GeoJSON). `authenticated` = URL
+  // servie par le cœur (jeton de session ou de lien de partage) ; sinon requête
+  // nue, jamais de jeton vers un hôte libre.
+  fetchUrl(url: string, opts?: { authenticated?: boolean }): Promise<Response>;
   // Renouvellement partagé (undefined = pas de renouvellement possible).
   renewToken?: () => Promise<string | undefined>;
   resolveDataset(pk: string): Promise<ResolvedDataset>;
@@ -203,6 +242,8 @@ export type ItemClientBase = {
   // domains/datasets.ts (createDatasetItem/saveDatasetConfig).
   invalidateDatasetCache(pk?: string): void;
   fetchGeoJsonFeatures(url: string): Promise<DataRecord[]>;
+  // P29.05 : idem avec `numberMatched` du cœur (total hors page), null si absent.
+  fetchGeoJsonPage(url: string): Promise<{ records: DataRecord[]; total: number | null }>;
   fetchCoreCollections(q?: string): Promise<LayerSource[]>;
   fetchExternalRasterSources(q?: string): Promise<LayerSource[]>;
   fetchHostedTileset3dSources(q?: string): Promise<LayerSource[]>;
@@ -395,30 +436,57 @@ export function createBase(opts: {
     return resolved;
   }
 
+  async function fetchUrl(url: string, opts?: { authenticated?: boolean }): Promise<Response> {
+    if (!opts?.authenticated) return fetchWithTimeout(url);
+    const shareToken = getShareLinkToken?.();
+    return authFetch(url, shareToken ? { headers: { "X-Share-Link-Token": shareToken } } : {});
+  }
+
+  function isCoreServed(url: string): boolean {
+    try {
+      const target = new URL(url);
+      const core = new URL(coreUrl);
+      return target.origin === core.origin && target.pathname.startsWith(core.pathname);
+    } catch {
+      return false;
+    }
+  }
+
   async function fetchGeoJsonFeatures(url: string): Promise<DataRecord[]> {
+    return (await fetchGeoJsonPage(url)).records;
+  }
+
+  async function fetchGeoJsonPage(
+    url: string,
+  ): Promise<{ records: DataRecord[]; total: number | null }> {
     const shareToken = getShareLinkToken?.();
     const headers: Record<string, string> = {};
     if (shareToken) headers["X-Share-Link-Token"] = shareToken;
-    const res = await authFetch(url, { headers });
-    if (!res.ok) throw new Error(`Request failed: ${res.status} features`);
+    // Jeton uniquement pour une URL servie par le cœur (jamais vers un hôte tiers).
+    const res = isCoreServed(url)
+      ? await authFetch(url, { headers })
+      : await fetchWithTimeout(url, { headers });
+    await ensureOk(res);
     const data = (await res.json()) as {
+      numberMatched?: number;
       features?: {
         id?: string | number;
         properties?: Record<string, unknown>;
         geometry?: unknown;
       }[];
     };
-    return (data.features ?? []).map((f, i) => ({
+    const records = (data.features ?? []).map((f, i) => ({
       id: f.id ?? i,
       properties: f.properties ?? {},
       geometry: f.geometry,
     }));
+    return { records, total: typeof data.numberMatched === "number" ? data.numberMatched : null };
   }
 
   async function fetchCoreCollections(q?: string): Promise<LayerSource[]> {
     const query = q ? `?q=${encodeURIComponent(q)}` : "";
     const res = await authFetch(`${coreUrl}/collections${query}`);
-    if (!res.ok) throw new Error(`Request failed: ${res.status} /collections`);
+    await ensureOk(res);
     const data = (await res.json()) as {
       collections?: {
         id: string;
@@ -445,7 +513,7 @@ export function createBase(opts: {
   async function fetchExternalRasterSources(q?: string): Promise<LayerSource[]> {
     const query = q ? `?q=${encodeURIComponent(q)}` : "";
     const res = await authFetch(`${coreUrl}/harvest/layers${query}`);
-    if (!res.ok) throw new Error(`Request failed: ${res.status} /harvest/layers`);
+    await ensureOk(res);
     const data = (await res.json()) as {
       layers?: { id: string; title: string; kind: "raster"; tilesUrl: string }[];
     };
@@ -462,7 +530,7 @@ export function createBase(opts: {
     const query = new URLSearchParams({ type: "tileset3d", pageSize: "200" });
     if (q) query.set("q", q);
     const res = await authFetch(`${coreUrl}/items?${query.toString()}`);
-    if (!res.ok) throw new Error(`Request failed: ${res.status} /items`);
+    await ensureOk(res);
     const data = (await res.json()) as { items?: { pk: string; title: string }[] };
     return (data.items ?? []).map((item) => ({
       id: item.pk,
@@ -477,7 +545,7 @@ export function createBase(opts: {
     const query = new URLSearchParams({ type: "terrain3d", pageSize: "200" });
     if (q) query.set("q", q);
     const res = await authFetch(`${coreUrl}/items?${query.toString()}`);
-    if (!res.ok) throw new Error(`Request failed: ${res.status} /items`);
+    await ensureOk(res);
     const data = (await res.json()) as { items?: { pk: string; title: string }[] };
     return (data.items ?? []).map((item) => ({ id: item.pk, title: item.title }));
   }
@@ -492,7 +560,9 @@ export function createBase(opts: {
     resolveDataset,
     datasetCache,
     invalidateDatasetCache,
+    fetchUrl,
     fetchGeoJsonFeatures,
+    fetchGeoJsonPage,
     fetchCoreCollections,
     fetchExternalRasterSources,
     fetchHostedTileset3dSources,

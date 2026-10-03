@@ -152,3 +152,18 @@ def test_mark_read_unknown_id_is_404(client):
     api, *_ = client
     res = api.post("/v1/notifications/does-not-exist/read")
     assert res.status_code == 404
+
+
+def test_patch_preference_is_audited(client):
+    # P20.15 (c03-010)
+    from sqlalchemy import select
+
+    from app.audit.models import AuditLog
+
+    api, Session, tenant, user, _ = client
+    assert api.patch("/v1/notifications/preference", json={"value": "none"}).status_code == 200
+    with Session() as s:
+        row = s.scalars(
+            select(AuditLog).where(AuditLog.action == "notification.preference.update")
+        ).one()
+        assert row.actor_id == user.id and row.payload == {"value": "none"}

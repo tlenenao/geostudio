@@ -4,6 +4,7 @@ import { t } from "../../i18n";
 import { Button } from "./Button";
 import { Input } from "./Input";
 import { Select } from "./Select";
+import { isValidSlug } from "../../lib/slug";
 
 const UNSET = "unset";
 
@@ -21,6 +22,8 @@ export function MetadataForm({
     keywords: string[];
     license: string;
     language: string;
+    /** Présent seulement pour un site : champ « Slug » (URL publique). */
+    slug?: string;
   };
   licenses: { id: string; label: string }[];
   languages: { id: string; label: string }[];
@@ -30,6 +33,7 @@ export function MetadataForm({
     keywords: string[];
     license: string;
     language: string;
+    slug?: string;
   }) => void;
   onCancel: () => void;
   pending?: boolean;
@@ -39,6 +43,8 @@ export function MetadataForm({
   const [keywords, setKeywords] = useState(initial.keywords.join(", "));
   const [license, setLicense] = useState(initial.license || UNSET);
   const [language, setLanguage] = useState(initial.language);
+  const [slug, setSlug] = useState(initial.slug ?? "");
+  const slugInvalid = initial.slug !== undefined && !isValidSlug(slug);
 
   const licenseOptions = [
     { value: UNSET, label: t("editCollection.noLicenseOption") },
@@ -49,7 +55,7 @@ export function MetadataForm({
   function submit(e: React.FormEvent) {
     e.preventDefault();
     const clean = title.trim();
-    if (!clean) return;
+    if (!clean || slugInvalid) return;
     onSubmit({
       title: clean,
       abstract,
@@ -59,6 +65,7 @@ export function MetadataForm({
         .filter((k) => k.length > 0),
       license: license === UNSET ? "" : license,
       language,
+      ...(initial.slug !== undefined ? { slug } : {}),
     });
   }
 
@@ -72,7 +79,7 @@ export function MetadataForm({
         {t("catalog.summaryLabel")}
         <textarea
           aria-label={t("catalog.summaryLabel")}
-          className="min-h-20 rounded-md border border-rule bg-surface px-3 py-2 text-sm text-ink"
+          className="min-h-20 rounded-md border border-control bg-surface px-3 py-2 text-sm text-ink"
           value={abstract}
           onChange={(e) => setAbstract(e.target.value)}
         />
@@ -103,6 +110,19 @@ export function MetadataForm({
           options={languageOptions}
         />
       </label>
+      {initial.slug !== undefined && (
+        <label className="flex flex-col gap-1 text-sm text-ink">
+          {t("newItem.slugLabel")}
+          <Input
+            aria-label={t("newItem.slugLabel")}
+            value={slug}
+            onChange={(e) => setSlug(e.target.value)}
+          />
+          {slugInvalid && (
+            <span className="text-xs text-danger">{t("itemDetail.slugInvalid")}</span>
+          )}
+        </label>
+      )}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" size="sm" onClick={onCancel}>
           {t("confirmDialog.cancel")}

@@ -40,6 +40,8 @@ test("liste les versions, la plus récente en tête, et marque la courante", asy
   expect(items[1]).toHaveTextContent("Version 1");
   // Pas de bouton Restaurer sur la version courante.
   expect(screen.getAllByRole("button", { name: /restaurer/i })).toHaveLength(1);
+  // t01-023 : le titre est un h2 (aucun h2 parent dans les éditeurs → h3 cassait l'ordre).
+  expect(screen.getByRole("heading", { level: 2, name: "Historique" })).toBeInTheDocument();
 });
 
 test("un échec de chargement est visible et distinct d'un historique vide", async () => {
@@ -65,7 +67,7 @@ test("restaurer demande confirmation via ConfirmDialog, appelle le client puis p
 
   await userEvent.click(await screen.findByRole("button", { name: /restaurer/i }));
 
-  const dialog = screen.getByRole("dialog");
+  const dialog = screen.getByRole("alertdialog");
   expect(dialog).toHaveTextContent(t("configHistory.confirmMessage", { version: 1 }));
   expect(rollbackConfig).not.toHaveBeenCalled();
   await userEvent.click(
@@ -89,11 +91,11 @@ test("annuler la confirmation ne restaure rien", async () => {
   });
 
   await userEvent.click(await screen.findByRole("button", { name: /restaurer/i }));
-  const dialog = screen.getByRole("dialog");
+  const dialog = screen.getByRole("alertdialog");
   await userEvent.click(within(dialog).getByRole("button", { name: t("confirmDialog.cancel") }));
 
   expect(rollbackConfig).not.toHaveBeenCalled();
-  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
 });
 
 test("un échec de restauration est affiché", async () => {
@@ -106,7 +108,7 @@ test("un échec de restauration est affiché", async () => {
   });
 
   await userEvent.click(await screen.findByRole("button", { name: /restaurer/i }));
-  const dialog = screen.getByRole("dialog");
+  const dialog = screen.getByRole("alertdialog");
   await userEvent.click(
     within(dialog).getByRole("button", { name: t("configHistory.restoreButton") }),
   );
@@ -146,7 +148,7 @@ test("restaurer invalide le cache de la config, quelle que soit la page qui mont
   );
 
   await userEvent.click(await screen.findByRole("button", { name: /restaurer/i }));
-  const dialog = screen.getByRole("dialog");
+  const dialog = screen.getByRole("alertdialog");
   await userEvent.click(
     within(dialog).getByRole("button", { name: t("configHistory.restoreButton") }),
   );

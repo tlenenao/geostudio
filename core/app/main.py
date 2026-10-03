@@ -7,8 +7,11 @@ from collections.abc import Iterator
 from http import HTTPStatus
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app import db, observability
@@ -32,6 +35,7 @@ from app.auth.dependency import (
 from app.catalog import routes as catalog_routes
 from app.collections import dataset_validation as collections_dataset_validation  # noqa: F401
 from app.collections import routes as collections_routes
+from app.collections.introspection import TableNotFound, UnsupportedTable
 from app.compliance import routes as compliance_routes
 from app.configs import routes as configs_routes
 from app.copilot import routes as copilot_routes
@@ -56,6 +60,7 @@ from app.pipelines import config_validation as pipelines_config_validation  # no
 from app.pipelines import routes as pipelines_routes
 from app.public import routes as public_routes
 from app.quotas import routes as quotas_routes
+from app.quotas.service import QuotaExceededError
 from app.ratelimit.limiter import RateLimiter, caller_key, route_group
 from app.reports import routes as reports_routes
 from app.roles import routes as roles_routes
@@ -162,8 +167,36 @@ def create_app() -> FastAPI:
             },
         )
 
-    @app.exception_handler(HTTPException)
-    async def _http_exception_handler(request: Request, exc: HTTPException):
+    @app.exception_handler(RequestValidationError)
+    async def _request_validation_handler(request: Request, exc: RequestValidationError):
+        # P21.02/05 : 422 en RFC 7807, `errors[] {field, code, message}` comme
+        # ValidationHTTPException. Jamais `input`/`ctx` (P16.06 : un secret
+        # soumis ne doit pas être renvoyé) : on ne recopie que loc/type/msg.
+        errors = [
+            {
+                "field": ".".join(str(p) for p in e.get("loc", ()) if p != "body"),
+                "code": e.get("type", "invalid"),
+                "message": e.get("msg", ""),
+            }
+            for e in exc.errors()
+        ]
+        detail = "; ".join(
+            f"{e['field']}: {e['message']}" if e["field"] else e["message"] for e in errors
+        )
+        return JSONResponse(
+            status_code=422,
+            media_type="application/problem+json",
+            content={
+                "type": "about:blank",
+                "title": HTTPStatus(422).phrase,
+                "status": 422,
+                "detail": detail or "validation failed",
+                "errors": jsonable_encoder(errors),
+            },
+        )
+
+    @app.exception_handler(StarletteHTTPException)
+    async def _http_exception_handler(request: Request, exc: StarletteHTTPException):
         return JSONResponse(
             status_code=exc.status_code,
             media_type="application/problem+json",
@@ -173,6 +206,36 @@ def create_app() -> FastAPI:
                 "status": exc.status_code,
                 "detail": exc.detail if isinstance(exc.detail, str) else "request failed",
             },
+        )
+
+    @app.exception_handler(QuotaExceededError)
+    async def _quota_exceeded_handler(request: Request, exc: QuotaExceededError):
+        # P26.09 : type dédié que le shell traite (message i18n + lien d'usage).
+        return JSONResponse(
+            status_code=exc.status_code,
+            media_type="application/problem+json",
+            content={
+                "type": "quota-exceeded",
+                "title": HTTPStatus(exc.status_code).phrase,
+                "status": exc.status_code,
+                "detail": exc.detail,
+                "quota": exc.quota,
+                "current": exc.current,
+                "limit": exc.limit,
+            },
+        )
+
+    @app.exception_handler(TableNotFound)
+    async def _table_not_found_handler(request: Request, exc: TableNotFound):
+        # j07-009 : table d'une collection disparue -> 404 stable, jamais 500.
+        return await _http_exception_handler(
+            request, HTTPException(status_code=404, detail="backing table not found")
+        )
+
+    @app.exception_handler(UnsupportedTable)
+    async def _unsupported_table_handler(request: Request, exc: UnsupportedTable):
+        return await _http_exception_handler(
+            request, HTTPException(status_code=409, detail=exc.reason)
         )
 
     @app.exception_handler(Exception)
@@ -253,6 +316,8 @@ def create_app() -> FastAPI:
             caller_key_value = caller_key(
                 request.headers.get("authorization"),
                 request.client.host if request.client else None,
+                group,
+                request.url.path,
             )
             if not rate_limiter.allow(caller_key_value, group):
                 return JSONResponse(
@@ -417,6 +482,11 @@ def create_app() -> FastAPI:
         # deux ci-dessus) — usage_for_tenant() lit les 4 buckets
         # tenant-préfixés directement depuis les variables d'environnement
         # (pas de dépendance par bucket), un seul client générique suffit.
+        app.dependency_overrides[instance_routes.get_s3_client] = lambda: make_s3_client(
+            endpoint_url=s3_endpoint,
+            access_key=s3_access_key,
+            secret_key=s3_secret_key,
+        )
         app.dependency_overrides[quotas_routes.get_s3_client] = lambda: make_s3_client(
             endpoint_url=s3_endpoint,
             access_key=s3_access_key,
@@ -444,7 +514,11 @@ def create_app() -> FastAPI:
     # matches routes in registration order and a root Mount matches any
     # path as a prefix, so it must come after every app-specific route
     # above or it would shadow them (e.g. swallow "/health").
-    app.mount("/", mcp_server.streamable_http_app())
+    mcp_app = mcp_server.streamable_http_app()
+    # Le montage racine attrape aussi toute route inconnue : sans handler propre,
+    # son 404 sort en text/plain hors RFC 7807 (P21.02).
+    mcp_app.add_exception_handler(StarletteHTTPException, _http_exception_handler)
+    app.mount("/", mcp_app)
 
     # GAP-61.a : sans cette couche, request.client reflète l'IP du
     # conteneur Traefik (seul point d'entrée réseau vers ce service — `core`

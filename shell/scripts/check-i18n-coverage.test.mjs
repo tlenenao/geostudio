@@ -41,4 +41,16 @@ describe("detectViolations", () => {
     const violations = detectViolations(content);
     expect(violations).toHaveLength(0);
   });
+
+  it("détecte un gabarit (backticks) et un fichier .ts, pas une exemption justifiée", () => {
+    expect(
+      detectViolations("export const m = (n) => `Opération inconnue : ${n}.`;\n"),
+    ).toHaveLength(1);
+    expect(
+      detectViolations("// i18n-ok: message console\nconsole.warn(`échec de ${x}`);\n"),
+    ).toHaveLength(0);
+    expect(
+      detectViolations('// i18n-ok-file: invite LLM\nexport const a = "Insère une requête";\n'),
+    ).toHaveLength(0);
+  });
 });

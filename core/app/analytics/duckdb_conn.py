@@ -15,6 +15,11 @@ Les valeurs SET ci-dessous viennent de variables d'environnement serveur
 cœur fait déjà confiance à ses propres variables d'environnement (ex.
 CORE_BASE_URL dans app/main.py)."""
 
+import os
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
+
 import duckdb
 
 
@@ -32,7 +37,47 @@ def open_connection(
     conn.execute("SET s3_url_style = 'path'")
     conn.execute(f"SET s3_access_key_id = '{access_key}'")
     conn.execute(f"SET s3_secret_access_key = '{secret_key}'")
+    # P16.03 : mémoire et débordement disque bornés (valeurs d'environnement
+    # serveur, pas d'entrée utilisateur).
+    conn.execute(f"SET memory_limit = '{os.environ.get('CORE_DUCKDB_MEMORY_LIMIT') or '2GB'}'")
+    conn.execute(
+        f"SET max_temp_directory_size = '{os.environ.get('CORE_DUCKDB_MAX_TEMP_SIZE') or '5GB'}'"
+    )
+    # P25.01 : threads bornés (comme sql_sandbox) pour qu'une requête HTTP
+    # ne monopolise pas tous les coeurs.
+    conn.execute(f"SET threads = {int(os.environ.get('CORE_DUCKDB_THREADS') or 4)}")
     return conn
+
+
+def statement_timeout_s() -> float:
+    return float(os.environ.get("CORE_DUCKDB_STATEMENT_TIMEOUT_S") or 30)
+
+
+class StatementTimeout(Exception):
+    pass
+
+
+@contextmanager
+def statement_timeout(
+    conn: duckdb.DuckDBPyConnection, seconds: float | None = None
+) -> Iterator[None]:
+    """P25.01 : budget de temps d'une requête servie en HTTP — même mécanisme
+    que sql_sandbox (Timer -> conn.interrupt). Lève StatementTimeout."""
+    fired = threading.Event()
+
+    def _fire() -> None:
+        fired.set()
+        conn.interrupt()
+
+    timer = threading.Timer(statement_timeout_s() if seconds is None else seconds, _fire)
+    timer.daemon = True
+    timer.start()
+    try:
+        yield
+    except duckdb.InterruptException as exc:
+        raise StatementTimeout("query exceeded the time limit") from exc
+    finally:
+        timer.cancel()
 
 
 def open_spatial_connection() -> duckdb.DuckDBPyConnection:

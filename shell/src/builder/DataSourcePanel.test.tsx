@@ -107,7 +107,9 @@ test("promoting a features source calls onPromote and then shows it as shared", 
     />,
   );
 
-  await userEvent.click(screen.getByRole("button", { name: "Promouvoir en dataset partagé s1" }));
+  await userEvent.click(
+    screen.getByRole("button", { name: "Promouvoir en jeu de données partagé s1" }),
+  );
   expect(onPromote).toHaveBeenCalledWith("s1");
 
   rerender(
@@ -118,9 +120,9 @@ test("promoting a features source calls onPromote and then shows it as shared", 
       promotingId={null}
     />,
   );
-  expect(screen.getByText("Dataset partagé actif")).toBeInTheDocument();
+  expect(screen.getByText("Jeu de données partagé actif")).toBeInTheDocument();
   expect(
-    screen.queryByRole("button", { name: "Promouvoir en dataset partagé s1" }),
+    screen.queryByRole("button", { name: "Promouvoir en jeu de données partagé s1" }),
   ).not.toBeInTheDocument();
   // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
   // --gs-* à la place.
@@ -453,7 +455,7 @@ test("shows a promoting label and disables the button while a promotion is in fl
   render(
     <DataSourcePanel sources={sources} onChange={vi.fn()} onPromote={vi.fn()} promotingId="s1" />,
   );
-  const button = screen.getByRole("button", { name: "Promouvoir en dataset partagé s1" });
+  const button = screen.getByRole("button", { name: "Promouvoir en jeu de données partagé s1" });
   expect(button).toBeDisabled();
   expect(button).toHaveTextContent("Promotion…");
 });

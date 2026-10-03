@@ -137,3 +137,35 @@ def test_lists_public_base_tables_only(pg_session, pg_engine):
         with pg_engine.begin() as conn:
             conn.execute(text("DROP VIEW IF EXISTS t_a_view"))
             conn.execute(text("DROP TABLE IF EXISTS t_extra"))
+
+
+def test_cache_is_invalidated_by_alter_and_drop_create(pg_session, pg_engine, pg_session_factory):
+    # P24.08 : l'empreinte (oid+xmin) doit invalider le cache, même pour un DDL
+    # fait par une autre connexion, sans attendre le TTL.
+    assert "extra" not in {c.name for c in introspect_table(pg_session, "t_incidents").columns}
+    with pg_engine.begin() as conn:
+        conn.execute(text("ALTER TABLE t_incidents ADD COLUMN extra text"))
+    pg_session.rollback()
+    cols = {c.name: c for c in introspect_table(pg_session, "t_incidents").columns}
+    assert "extra" in cols and cols["extra"].required is False
+    with pg_engine.begin() as conn:
+        conn.execute(text("ALTER TABLE t_incidents ALTER COLUMN extra SET NOT NULL"))
+    pg_session.rollback()
+    assert introspect_table(pg_session, "t_incidents").columns[-1].required is True
+    with pg_engine.begin() as conn:
+        conn.execute(text("DROP TABLE t_incidents"))
+        conn.execute(text("CREATE TABLE t_incidents (pk uuid PRIMARY KEY, n integer)"))
+    pg_session.rollback()
+    info = introspect_table(pg_session, "t_incidents")
+    assert info.pk_column == "pk" and [c.name for c in info.columns] == ["pk", "n"]
+    with pg_engine.begin() as conn:
+        conn.execute(text("DROP TABLE t_incidents"))
+    pg_session.rollback()
+    with pytest.raises(TableNotFound):
+        introspect_table(pg_session, "t_incidents")
+
+
+def test_cached_info_is_isolated_from_caller_mutation(pg_session):
+    a = introspect_table(pg_session, "t_incidents")
+    a.columns.clear()
+    assert introspect_table(pg_session, "t_incidents").columns

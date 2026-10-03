@@ -14,13 +14,11 @@ import { useCallback, useEffect, useState } from "react";
 import { useItemClient } from "../api/ItemClientProvider";
 import type { ConfigRevisionInfo } from "../api/types";
 import { t } from "../i18n";
+import { formatDateTime } from "../lib/format";
 import { Button } from "../ui/kit/Button";
 import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
 
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString("fr-FR");
-}
+const formatDate = formatDateTime;
 
 export function ConfigHistoryPanel({
   pk,
@@ -113,7 +111,7 @@ export function ConfigHistoryPanel({
 
   return (
     <div className="flex flex-col gap-2">
-      <h3 className="text-sm font-medium">{t("configHistory.heading")}</h3>
+      <h2 className="text-sm font-medium">{t("configHistory.heading")}</h2>
       {loadError && (
         <p role="alert" className="text-sm text-danger">
           {t("configHistory.loadError")}

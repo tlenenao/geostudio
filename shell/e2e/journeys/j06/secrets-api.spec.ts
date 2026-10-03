@@ -133,12 +133,8 @@ test.describe("j06 coffre de secrets — erreurs et droits", () => {
     expect(r.status).toBe(401);
   });
 
-  test("le coffre n'expose aucune route de mise à jour (PUT/PATCH refusés)", async () => {
+  test("le coffre n'expose pas de PATCH (PUT seul remplace la valeur)", async () => {
     const c = await creator.send("POST", "/v1/secrets", bearer(`${tag}-noput`));
-    // 404 constaté (et non 405) : la route n'existe pas du tout.
-    expect([404, 405]).toContain(
-      (await creator.send("PUT", `/v1/secrets/${c.body.id}`, bearer("x"))).status,
-    );
     expect([404, 405]).toContain(
       (await creator.send("PATCH", `/v1/secrets/${c.body.id}`, { name: "x" })).status,
     );
@@ -148,7 +144,7 @@ test.describe("j06 coffre de secrets — erreurs et droits", () => {
 test.describe("j06 coffre de secrets — défauts constatés", () => {
   // Finding j06-006 : impossible de faire tourner un secret sans le supprimer, ce qui
   // casse les références par nom (pipelines, moissonnage, alertes SMTP).
-  bug("j06-006 : un secret peut être mis à jour en place (rotation)", async () => {
+  test("j06-006 : un secret peut être mis à jour en place (rotation)", async () => {
     const c = await creator.send("POST", "/v1/secrets", bearer(`${tag}-rot`));
     const r = await creator.send(
       "PUT",
@@ -159,18 +155,16 @@ test.describe("j06 coffre de secrets — défauts constatés", () => {
   });
 
   // Finding j06-005 : aucune notion de propriétaire, tout Créateur gère tous les secrets du tenant.
-  bug(
-    "j06-005 : un Créateur ne peut pas supprimer le secret créé par l'administrateur",
-    async () => {
-      const c = await admin.send("POST", "/v1/secrets", bearer(`${tag}-admin-owned`));
-      expect(c.status).toBe(201);
-      const r = await creator.send("DELETE", `/v1/secrets/${c.body.id}`);
-      expect(r.status).toBe(403);
-    },
-  );
+  test("j06-005 : un Créateur ne peut pas supprimer le secret créé par l'administrateur", async () => {
+    const c = await admin.send("POST", "/v1/secrets", bearer(`${tag}-admin-owned`));
+    expect(c.status).toBe(201);
+    const r = await creator.send("DELETE", `/v1/secrets/${c.body.id}`);
+    // 404 (secret d'autrui indistinguable d'un absent) ou 403.
+    expect([403, 404]).toContain(r.status);
+  });
 
   // Finding j06-007 : la 422 FastAPI par défaut renvoie le corps fautif dans `input`.
-  bug("j06-007 : une 422 sur POST /secrets ne renvoie pas la valeur du secret", async () => {
+  test("j06-007 : une 422 sur POST /secrets ne renvoie pas la valeur du secret", async () => {
     const r = await creator.send("POST", "/v1/secrets", {
       payload: { kind: "bearer_token", token: "ECHO-SECRET-VALUE" },
     });
@@ -179,7 +173,7 @@ test.describe("j06 coffre de secrets — défauts constatés", () => {
   });
 
   // Finding j06-008 : aucun contrôle de contenu (jeton vide, DSN vide).
-  bug("j06-008 : un secret dont la valeur est vide est refusé", async () => {
+  test("j06-008 : un secret dont la valeur est vide est refusé", async () => {
     const r = await creator.send("POST", "/v1/secrets", bearer(`${tag}-vide`, ""));
     expect(r.status).toBe(422);
   });

@@ -14,7 +14,7 @@ export function BasemapSelect({
       {t("basemapSelect.label")}
       <select
         aria-label={t("basemapSelect.label")}
-        className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+        className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
         value={value}
         onChange={(e) => onChange(e.target.value)}
       >

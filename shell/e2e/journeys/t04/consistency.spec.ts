@@ -1,15 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { stamp } from "../_fixtures/env";
 import { apiFor } from "../j03/api";
-import {
-  bug,
-  createApp,
-  getA11ySeed,
-  go,
-  newSession,
-  type A11ySeed,
-  type Session,
-} from "./helpers";
+import { createApp, getA11ySeed, go, newSession, type A11ySeed, type Session } from "./helpers";
 
 // Hauteurs des contrôles de saisie à ligne simple visibles sur la page courante.
 async function controlHeights(s: Session): Promise<{ label: string; h: number }[]> {
@@ -48,7 +40,7 @@ test.describe("cohérence visuelle entre pages similaires (creator)", () => {
 
   // Finding t04-006 : le panneau « Mise en page d'impression », le renommage de page et le formulaire
   // de rapport utilisent des <select>/<input> natifs sans aucune classe : 18-30 px, look navigateur.
-  bug("t04-006 : aucun contrôle de formulaire ne reste sans style (hauteur < 32 px)", async () => {
+  test("t04-006 : aucun contrôle de formulaire ne reste sans style (hauteur < 32 px)", async () => {
     const tiny: string[] = [];
     for (const path of [`/apps/${seed.appId}/edit`, `/maps/${seed.mapId}`, "/reports/new"]) {
       await go(s.page, path, 2500);
@@ -61,7 +53,7 @@ test.describe("cohérence visuelle entre pages similaires (creator)", () => {
 
   // Finding t04-007 : 72 contrôles natifs en h-8 contre 62 en h-9 ; sur une même page (dataset partagé)
   // le titre fait 36 px et les champs voisins 32 px.
-  bug("t04-007 : les champs d'une même page partagent une seule hauteur", async () => {
+  test("t04-007 : les champs d'une même page partagent une seule hauteur", async () => {
     await go(s.page, `/datasets/${seed.datasetId}/edit`, 2500);
     const hs = await controlHeights(s);
     expect(hs.length).toBeGreaterThan(5);
@@ -113,7 +105,7 @@ test.describe("cohérence des titres de page (admin)", () => {
 
   // Finding t04-008 : aucun composant de titre de page : h1 18/700 (admin, réglages, tâches), h2 18/600
   // (requête visuelle, rapport), h2 20/600 (fiche d'item, dataset), h1 20/700 (fiche publique), aucun (catalogue).
-  bug("t04-008 : les pages de premier niveau partagent un style de titre commun", async () => {
+  test("t04-008 : les pages de premier niveau partagent un style de titre commun", async () => {
     const seen: Record<string, string> = {};
     for (const p of [
       "/admin/users",
@@ -130,7 +122,7 @@ test.describe("cohérence des titres de page (admin)", () => {
 
   // Finding t04-020 : /tasks liste des identifiants hexadécimaux bruts (« item/75f41b05… — 2 », noms d'utilisateur
   // techniques) et cite « audit_log », un nom de table, dans le texte d'aide.
-  bug("t04-020 : la page Tâches n'expose ni identifiants bruts ni nom de table", async () => {
+  test("t04-020 : la page Tâches n'expose ni identifiants bruts ni nom de table", async () => {
     await go(s.page, "/tasks", 2500);
     const text = await s.page.locator("body").innerText();
     expect(text).not.toMatch(/[0-9a-f]{32}/);

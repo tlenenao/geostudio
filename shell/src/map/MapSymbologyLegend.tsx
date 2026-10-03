@@ -4,6 +4,7 @@
 // n'affichait jusqu'ici aucune légende de symbologie.
 import type { LegendSpec } from "../builder/widgets/mapSymbology";
 import { t } from "../i18n";
+import { formatNumber } from "../lib/format";
 
 // Correctif revue Tâche 35 : `mapWidget.tsx` monte toujours une seule
 // instance directement dans son propre conteneur `relative`, donc l'ancrage
@@ -51,7 +52,7 @@ export function MapSymbologyLegend({
                 className="inline-block h-3 w-3 rounded-sm"
                 style={{ backgroundColor: c.color }}
               />
-              {c.from.toFixed(1)} – {c.to.toFixed(1)}
+              {formatNumber(c.from, 1, 1)} – {formatNumber(c.to, 1, 1)}
             </li>
           ))}
         </ul>
@@ -111,7 +112,7 @@ export function MapSymbologyLegend({
                 className="inline-block h-3 w-3 rounded-sm border-2"
                 style={{ borderColor: c.color }}
               />
-              {c.from.toFixed(1)} – {c.to.toFixed(1)}
+              {formatNumber(c.from, 1, 1)} – {formatNumber(c.to, 1, 1)}
             </li>
           ))}
         </ul>

@@ -17,6 +17,7 @@ import {
 import type { DataSource, DataSourceState, DatasetConfig } from "../../api/types";
 import { SourceMissing } from "./SourceMissing";
 import { t } from "../../i18n";
+import { formatNumber } from "../../lib/format";
 import { LoadingState } from "../../ui/kit/LoadingState";
 
 const EChart = lazy(() => import("../EChart").then((m) => ({ default: m.EChart })));
@@ -187,7 +188,9 @@ function resolveFlatValue(
 }
 
 function displayValue(value: number | null | undefined): string {
-  return value === null || value === undefined || Number.isNaN(value) ? "—" : String(value);
+  return value === null || value === undefined || Number.isNaN(value)
+    ? "—"
+    : formatNumber(value, 6);
 }
 
 function deltaLabel(delta: number, deltaPct: number | null, mode: ReferenceMode): string {
@@ -195,7 +198,9 @@ function deltaLabel(delta: number, deltaPct: number | null, mode: ReferenceMode)
     mode === "previous" ? t("widgetIndicator.refPrevious") : t("widgetIndicator.refSameLastYear");
   const sign = delta >= 0 ? "+" : "";
   const magnitude =
-    deltaPct !== null ? `${sign}${Math.round(deltaPct * 100)} %` : `${sign}${delta}`;
+    deltaPct !== null
+      ? `${sign}${Math.round(deltaPct * 100)} %`
+      : `${sign}${formatNumber(delta, 6)}`;
   return t("widgetIndicator.deltaLabel", { magnitude, refLabel });
 }
 

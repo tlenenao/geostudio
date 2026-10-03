@@ -1041,8 +1041,8 @@ test("shows a classed stroke legend entry from a data-driven stroke color", asyn
       />,
     ),
   );
-  expect(await screen.findByText("0.0 – 10.0")).toBeInTheDocument();
-  expect(screen.getByText("10.0 – 20.0")).toBeInTheDocument();
+  expect(await screen.findByText("0,0 – 10,0")).toBeInTheDocument();
+  expect(screen.getByText("10,0 – 20,0")).toBeInTheDocument();
 });
 
 test("SP-B12c : la légende de taille (points) n'a pas de couleur Tailwind codée en dur", async () => {

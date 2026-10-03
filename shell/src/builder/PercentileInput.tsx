@@ -20,7 +20,7 @@ export function PercentileInput({
   label,
   value,
   onCommit,
-  className = "h-8 w-20 rounded border border-rule bg-surface px-2 text-xs text-ink",
+  className = "h-8 w-20 rounded border border-control bg-surface px-2 text-xs text-ink",
   placeholder,
 }: {
   label: string;

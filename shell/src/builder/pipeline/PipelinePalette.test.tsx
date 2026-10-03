@@ -153,3 +153,33 @@ test("using an op via the palette adds it to a Récemment utilisés section", as
   expect(screen.getByText("Récemment utilisés")).toBeInTheDocument();
   expect(screen.getAllByText("reader.collection")).toHaveLength(2);
 });
+
+test("P32.06 : un seul arrêt de tabulation, flèches pour parcourir", async () => {
+  renderPalette();
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  const items = ["reader.collection", "transform.filter", "writer.collection"].map((n) =>
+    screen.getByRole("button", { name: n }),
+  );
+  expect(items.map((b) => b.tabIndex)).toEqual([0, -1, -1]);
+  items[0].focus();
+  fireEvent.keyDown(items[0], { key: "ArrowDown" });
+  expect(items[1]).toHaveFocus();
+  expect(items.map((b) => b.tabIndex)).toEqual([-1, 0, -1]);
+  fireEvent.keyDown(items[1], { key: "End" });
+  expect(items[2]).toHaveFocus();
+});
+
+test("P32.05 : le nom est l'opération, la description la complète (aria-describedby)", async () => {
+  renderPalette();
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  const b = screen.getByRole("button", { name: "reader.collection" });
+  expect(b).toHaveAccessibleDescription("Import data from a collection");
+  expect(b.textContent).toMatch(/^reader\.collection\s/);
+});
+
+test("P32.10 : une recherche sans résultat affiche un message explicite", async () => {
+  renderPalette();
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  fireEvent.change(screen.getByRole("searchbox"), { target: { value: "zzzz" } });
+  expect(screen.getByRole("status")).toHaveTextContent("Aucune opération");
+});

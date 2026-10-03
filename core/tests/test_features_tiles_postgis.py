@@ -167,10 +167,24 @@ def test_a_dense_tile_is_truncated_to_the_feature_cap(pg_app, monkeypatch):
         _insert(client, titre)
     r = client.get(TILE_PATH)
     assert r.status_code == 200
-    # Lesquelles sortent n'est pas déterministe (aucun ORDER BY, et il n'en
-    # faut pas : trier coûterait exactement ce que le plafond évite) — leur
-    # NOMBRE l'est.
+    # P29.09 : les gardées sont les premières par PK (déterministe).
     assert sum(1 for t in (b"Alpha", b"Bravo", b"Charlie") if t in r.content) == 2
+    assert b"Alpha" in r.content and b"Bravo" in r.content
+    assert b"Charlie" not in r.content
+
+
+def test_a_tile_of_exactly_the_cap_is_not_flagged_truncated(pg_app, monkeypatch):
+    """P29.08 (j09-010) : rien d'omis => pas d'en-tête."""
+    from app.features import tiles as tiles_module
+
+    client, _, _ = pg_app
+    monkeypatch.setattr(tiles_module, "MAX_TILE_FEATURES", 3)
+    for titre in ("Alpha", "Bravo", "Charlie"):
+        _insert(client, titre)
+    r = client.get(TILE_PATH)
+    assert r.status_code == 200
+    assert b"Charlie" in r.content
+    assert "X-Tile-Truncated" not in r.headers
 
 
 def test_a_truncated_tile_carries_the_truncation_header(pg_app, monkeypatch):

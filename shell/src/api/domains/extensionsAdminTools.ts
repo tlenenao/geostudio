@@ -7,9 +7,11 @@ import type {
   HarvestSource,
   HarvestSourceCreateInput,
   HarvestSourcePatchInput,
+  InstanceStatus,
   ItemClient,
 } from "../types";
 import type { ItemClientBase } from "../base";
+import { ensureOk } from "../base";
 
 type ExtensionsAdminToolsMethods = Pick<
   ItemClient,
@@ -19,6 +21,7 @@ type ExtensionsAdminToolsMethods = Pick<
   | "createExtension"
   | "deleteExtension"
   | "launchAdminTool"
+  | "getInstanceStatus"
   | "listHarvestSources"
   | "createHarvestSource"
   | "updateHarvestSource"
@@ -33,7 +36,7 @@ export function createExtensionsAdminToolsMethods(
   return {
     async listActiveExtensions(): Promise<ExtensionManifest[]> {
       const res = await authFetch(`${coreUrl}/extensions`);
-      if (!res.ok) throw new Error(`Request failed: ${res.status} /extensions`);
+      await ensureOk(res);
       const data = (await res.json()) as {
         extensions?: Array<{
           id: string;
@@ -62,7 +65,7 @@ export function createExtensionsAdminToolsMethods(
 
     async listAllExtensions(): Promise<AdminExtension[]> {
       const res = await authFetch(`${coreUrl}/extensions?all=true`);
-      if (!res.ok) throw new Error(`Request failed: ${res.status} /extensions`);
+      await ensureOk(res);
       const data = (await res.json()) as {
         extensions?: Array<{
           id: string;
@@ -105,6 +108,10 @@ export function createExtensionsAdminToolsMethods(
 
     async launchAdminTool(tool: AdminToolName): Promise<{ url: string }> {
       return request<{ url: string }>("POST", `/admin-tools/launch/${tool}`);
+    },
+
+    async getInstanceStatus(): Promise<InstanceStatus> {
+      return request<InstanceStatus>("GET", "/instance/status");
     },
 
     async listHarvestSources(): Promise<HarvestSource[]> {

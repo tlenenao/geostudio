@@ -45,6 +45,9 @@ import { isPipelineValid, validatePipelineGraphLocally } from "../builder/pipeli
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { useDirtyGuard } from "../lib/useDirtyGuard";
 import { t } from "../i18n";
+import { LoadingState } from "../ui/kit/LoadingState";
+import { QueryErrorState } from "../ui/kit/QueryErrorState";
+import { PageTitle } from "../ui/kit/PageTitle";
 
 const EMPTY_PAYLOAD: PipelinePayload = { nodes: [], edges: [] };
 
@@ -197,8 +200,7 @@ export function PipelineBuilderPage({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  if (pk !== null && (configQuery.isLoading || itemQuery.isLoading))
-    return <p role="status">{t("common.loading")}</p>;
+  if (pk !== null && (configQuery.isLoading || itemQuery.isLoading)) return <LoadingState />;
   // SP-42 F-shell-pages-05 : sans cette garde, un pipeline existant dont le
   // chargement échoue (403 suite à une révocation de partage, item supprimé
   // mais lien conservé, panne réseau transitoire) s'affichait comme un
@@ -212,9 +214,10 @@ export function PipelineBuilderPage({
   // à tort) sans jamais bloquer le rendu complet.
   if (pk !== null && (configQuery.isError || itemQuery.isError || !itemQuery.data))
     return (
-      <p role="alert" className="text-sm text-danger">
-        {t("pipelineBuilder.notFound")}
-      </p>
+      <QueryErrorState
+        queries={[configQuery, itemQuery]}
+        notFoundMessage={t("pipelineBuilder.notFound")}
+      />
     );
   // D09, revue finale (Important) : instanceQuery (/v1/instance) et opsQuery
   // (/v1/pipelines/ops) sont deux requêtes indépendantes sans garantie
@@ -226,7 +229,7 @@ export function PipelineBuilderPage({
   // basculer vers le message de désactivation une fois instanceQuery résolu
   // à son tour. Attendre explicitement instanceQuery avant même de regarder
   // opsQuery ferme cette fenêtre.
-  if (instanceQuery.isLoading) return <p role="status">{t("common.loading")}</p>;
+  if (instanceQuery.isLoading) return <LoadingState />;
   // D09 : CORE_ETL_ENABLED=false → les routes pipeline ne sont pas montées
   // côté cœur (core/app/pipelines/routes.py), opsQuery termine en erreur
   // (404) et !opsQuery.data reste vrai pour toujours sans cette garde —
@@ -238,8 +241,8 @@ export function PipelineBuilderPage({
       </p>
     );
   }
-  if (opsQuery.isLoading || !opsQuery.data) return <p role="status">{t("common.loading")}</p>;
-  if (draft === null) return <p role="status">{t("common.loading")}</p>;
+  if (opsQuery.isLoading || !opsQuery.data) return <LoadingState />;
+  if (draft === null) return <LoadingState />;
 
   const catalog = opsQuery.data;
   // Narrowing from the `draft === null` guard above does not survive into the
@@ -407,9 +410,7 @@ export function PipelineBuilderPage({
             <div className="flex h-full flex-col overflow-hidden">
               <div className="flex items-center justify-between border-b border-rule p-2">
                 <div className="flex items-center gap-1.5">
-                  <h2 className="text-lg font-semibold text-ink">
-                    {initialTitle ?? t("pipelineBuilder.defaultTitle")}
-                  </h2>
+                  <PageTitle>{initialTitle ?? t("pipelineBuilder.defaultTitle")}</PageTitle>
                   <Popover
                     aria-label={t("pipelineBuilder.helpAria")}
                     trigger={

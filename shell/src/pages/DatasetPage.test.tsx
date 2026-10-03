@@ -97,6 +97,7 @@ test("404: shows a not-found message without leaking whether the collection exis
   );
   expect(await screen.findByRole("alert")).toHaveTextContent(/introuvable/i);
   expect(screen.getByRole("alert")).not.toHaveTextContent(/private-x/i);
+  expect(document.querySelector('meta[name="robots"]')?.getAttribute("content")).toBe("noindex");
   expectTokenizedClasses(container);
 });
 
@@ -122,4 +123,24 @@ test("dérive attachmentField du premier champ attachment déclaré sur la colle
   const lastCall = appRendererMock.mock.calls.at(-1)?.[0] as { config: AppConfig } | undefined;
   const mapItem = lastCall?.config.layout.items.find((item: WidgetItem) => item.widget === "map");
   expect(mapItem?.props).toMatchObject({ popup: { attachmentField: "photos" } });
+});
+
+test("titre, description et canonical dérivés de la collection (P35.04)", async () => {
+  renderPage({
+    getCollection: vi.fn().mockResolvedValue(collection),
+    getCollectionSchema: vi
+      .fn()
+      .mockResolvedValue({ collection: "parcs", pk: "id", geometry: null, fields: [] }),
+    featuresUrl: vi.fn().mockReturnValue("https://core.test/collections/parcs/items?limit=1000"),
+    queryDataSource: vi.fn().mockResolvedValue([]),
+  });
+  await screen.findByRole("heading", { level: 1, name: "Parcs" });
+  expect(document.title).toBe("Parcs");
+  expect(document.querySelector('meta[name="description"]')?.getAttribute("content")).toBe(
+    "Parcs publics",
+  );
+  expect(document.querySelector('link[rel="canonical"]')?.getAttribute("href")).toBe(
+    `${window.location.origin}/public/datasets/parcs`,
+  );
+  expect(document.querySelector('meta[name="robots"]')).toBeNull();
 });

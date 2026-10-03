@@ -52,3 +52,23 @@ test("étroit : respecte defaultTabId quand fourni", () => {
   render(<TriptychLayout {...TABS} defaultTabId="browse" />);
   expect(screen.getByText("Contenu Parcourir")).toBeVisible();
 });
+
+test("étroit : flèches, Home et End déplacent sélection et focus (WAI-ARIA tablist)", async () => {
+  vi.mocked(useNarrowViewport).mockReturnValue(true);
+  render(<TriptychLayout {...TABS} />);
+  const user = userEvent.setup();
+  screen.getByRole("tab", { name: "Travailler" }).focus();
+  await user.keyboard("{ArrowRight}");
+  expect(screen.getByRole("tab", { name: "Inspecter" })).toHaveFocus();
+  expect(screen.getByText("Contenu Inspecter")).toBeVisible();
+  await user.keyboard("{ArrowRight}");
+  expect(screen.getByRole("tab", { name: "Parcourir" })).toHaveFocus();
+  await user.keyboard("{ArrowLeft}");
+  expect(screen.getByRole("tab", { name: "Inspecter" })).toHaveFocus();
+  await user.keyboard("{Home}");
+  expect(screen.getByRole("tab", { name: "Parcourir" })).toHaveAttribute("aria-selected", "true");
+  await user.keyboard("{End}");
+  expect(screen.getByRole("tab", { name: "Inspecter" })).toHaveAttribute("aria-selected", "true");
+  await user.keyboard("a");
+  expect(screen.getByRole("tab", { name: "Inspecter" })).toHaveAttribute("aria-selected", "true");
+});

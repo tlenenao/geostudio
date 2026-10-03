@@ -448,7 +448,7 @@ test("le volet Résumé affiche le compte total et les filtres actifs", async ()
   mockCatalogItems();
   render(<CatalogPage onOpenItem={() => {}} />, { wrapper });
   await screen.findByText("Alpha");
-  expect(await screen.findByText("2 éléments")).toBeInTheDocument();
+  expect((await screen.findAllByText("2 éléments")).length).toBeGreaterThan(0);
 });
 
 test("openError affiche le message d'échec d'ouverture dans le volet Catalogue", () => {
@@ -506,7 +506,7 @@ test("propose de réinitialiser les filtres quand la recherche ne trouve rien", 
   render(<CatalogPage onOpenItem={() => {}} />, { wrapper });
   await screen.findByText("Alpha");
   await userEvent.type(screen.getByLabelText("Rechercher"), "zzz-introuvable");
-  expect(await screen.findByText("Aucun résultat")).toBeInTheDocument();
+  expect((await screen.findAllByText("Aucun résultat")).length).toBeGreaterThan(0);
   expect(screen.getByRole("button", { name: "Réinitialiser les filtres" })).toBeInTheDocument();
 });
 
@@ -554,7 +554,7 @@ test("affiche l'état vide filtré (pas 'catalogue vide') quand la portée séle
   render(<CatalogPage onOpenItem={() => {}} />, { wrapper });
   await screen.findByText("Alpha");
   await userEvent.selectOptions(screen.getByLabelText("Portée"), "mine");
-  expect(await screen.findByText("Aucun résultat")).toBeInTheDocument();
+  expect((await screen.findAllByText("Aucun résultat")).length).toBeGreaterThan(0);
   expect(screen.queryByText("Aucun élément pour l'instant")).not.toBeInTheDocument();
 });
 
@@ -591,7 +591,7 @@ test("réinitialiser les filtres vide la recherche et réaffiche les éléments"
   render(<CatalogPage onOpenItem={() => {}} />, { wrapper });
   await screen.findByText("Alpha");
   await userEvent.type(screen.getByLabelText("Rechercher"), "zzz-introuvable");
-  await screen.findByText("Aucun résultat");
+  await screen.findAllByText("Aucun résultat");
   await userEvent.click(screen.getByRole("button", { name: "Réinitialiser les filtres" }));
   await waitFor(() => expect(screen.getByLabelText("Rechercher")).toHaveValue(""));
   expect(await screen.findByText("Alpha")).toBeInTheDocument();

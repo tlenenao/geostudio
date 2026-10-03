@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.db import Base, init_db, make_engine, make_session_factory
 from app.harvest import repository as repo
+from app.items import repository as items_repo
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
@@ -461,3 +462,70 @@ def test_list_feature_layer_records_excludes_raster_and_filters_by_q(session, te
 
     filtered = repo.list_feature_layer_records(session, tenant_id=tenant.id, q="zzz-nomatch")
     assert filtered == []
+
+
+def test_delete_source_removes_external_items_it_created(session, tenant_and_user):
+    # P19.07 / j07-007 : plus d'items `external` orphelins après suppression.
+    from app.items.models import Item
+
+    tenant, user = tenant_and_user
+    source = repo.create_source(
+        session,
+        tenant_id=tenant.id,
+        owner_id=user.id,
+        type="stac",
+        url="https://a",
+        mode="reference",
+        enabled=True,
+        interval_minutes=None,
+    )
+    item = items_repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="external", title="t"
+    )
+    repo.create_record(
+        session,
+        tenant_id=tenant.id,
+        source_id=source.id,
+        external_id="e1",
+        item_id=item.id,
+        collection_id=None,
+        content_hash="h",
+    )
+    assert repo.record_counts(session, tenant_id=tenant.id, source_ids=[source.id]) == {
+        source.id: (1, 0)
+    }
+    assert repo.delete_source(session, source) == 1
+    session.expire_all()
+    assert session.get(Item, item.id) is None
+
+
+def test_delete_source_keeps_copied_dataset_items(session, tenant_and_user):
+    # Revue finale P19 : seuls les items `external` sont retirés, jamais ceux d'une copie.
+    from app.items.models import Item
+
+    tenant, user = tenant_and_user
+    source = repo.create_source(
+        session,
+        tenant_id=tenant.id,
+        owner_id=user.id,
+        type="stac",
+        url="https://c",
+        mode="copy",
+        enabled=True,
+        interval_minutes=None,
+    )
+    item = items_repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="dataset", title="d"
+    )
+    repo.create_record(
+        session,
+        tenant_id=tenant.id,
+        source_id=source.id,
+        external_id="e1",
+        item_id=item.id,
+        collection_id=None,
+        content_hash="h",
+    )
+    assert repo.delete_source(session, source) == 0
+    session.expire_all()
+    assert session.get(Item, item.id) is not None

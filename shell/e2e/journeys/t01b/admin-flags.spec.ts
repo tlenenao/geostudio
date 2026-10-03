@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { stamp } from "../_fixtures/env";
 import { apiFor, makeUser, openAsUser } from "../j08/helpers";
-import { bug, focusDesc, go, seriousViolations, session } from "./helpers";
+import { focusDesc, go, seriousViolations, session } from "./helpers";
 
 test.setTimeout(150_000);
 const tag = stamp("t01b");
@@ -59,22 +59,21 @@ test.describe("t01b administration : conformité, infrastructure, usage", () => 
   });
 
   // t01b-010 : finding. aria-label remplace le libellé visible (WCAG 2.5.3 Label in Name).
-  bug(
-    "t01b-010 : le nom accessible des champs de conformité contient leur libellé visible",
-    async ({ browser }) => {
-      const { ctx, page } = await dpoPage(browser, "light");
-      await go(page, "/admin/compliance", 2500);
-      const rows = await page.evaluate(() =>
-        [...document.querySelectorAll<HTMLInputElement>("label input")].map((i) => ({
-          name: i.getAttribute("aria-label") ?? "",
-          visible: (i.closest("label")?.textContent ?? "").trim(),
-        })),
-      );
-      expect(rows.length).toBe(2);
-      for (const r of rows) expect(r.name, r.visible).toContain(r.visible);
-      await ctx.close();
-    },
-  );
+  test("t01b-010 : le nom accessible des champs de conformité contient leur libellé visible", async ({
+    browser,
+  }) => {
+    const { ctx, page } = await dpoPage(browser, "light");
+    await go(page, "/admin/compliance", 2500);
+    const rows = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLInputElement>("label input")].map((i) => ({
+        name: i.getAttribute("aria-label") ?? "",
+        visible: (i.closest("label")?.textContent ?? "").trim(),
+      })),
+    );
+    expect(rows.length).toBe(2);
+    for (const r of rows) expect(r.name, r.visible).toContain(r.visible);
+    await ctx.close();
+  });
 
   test("/admin/infrastructure (outils admin allumés) : axe propre et un bouton par outil", async ({
     browser,
@@ -89,21 +88,20 @@ test.describe("t01b administration : conformité, infrastructure, usage", () => 
   });
 
   // t01b-011 : finding. Liens/boutons qui ouvrent un nouvel onglet sans le dire.
-  bug(
-    "t01b-011 : la console MinIO (target=_blank) annonce l'ouverture dans un nouvel onglet",
-    async ({ browser }) => {
-      const { ctx, page } = await session(browser, "admin");
-      await go(page, "/admin/infrastructure", 2500);
-      const link = page.getByRole("link", { name: /Console MinIO/ });
-      await expect(link).toHaveAttribute("target", "_blank");
-      const name = await link.evaluate(
-        (a) =>
-          `${a.getAttribute("aria-label") ?? ""} ${a.textContent ?? ""} ${a.getAttribute("title") ?? ""}`,
-      );
-      expect(name).toMatch(/nouvel onglet|nouvelle fen/i);
-      await ctx.close();
-    },
-  );
+  test("t01b-011 : la console MinIO (target=_blank) annonce l'ouverture dans un nouvel onglet", async ({
+    browser,
+  }) => {
+    const { ctx, page } = await session(browser, "admin");
+    await go(page, "/admin/infrastructure", 2500);
+    const link = page.getByRole("link", { name: /Console MinIO/ });
+    await expect(link).toHaveAttribute("target", "_blank");
+    const name = await link.evaluate(
+      (a) =>
+        `${a.getAttribute("aria-label") ?? ""} ${a.textContent ?? ""} ${a.getAttribute("title") ?? ""}`,
+    );
+    expect(name).toMatch(/nouvel onglet|nouvelle fen/i);
+    await ctx.close();
+  });
 
   test("/tasks (usage) : axe propre, tri au clavier sur l'en-tête (aria-sort) et synthèse de la plateforme", async ({
     browser,

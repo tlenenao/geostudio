@@ -13,7 +13,10 @@ import { useEffect, useRef } from "react";
 // restaure explicitement à la fermeture — revue finale Vague C (point 3) :
 // factorisé ici, partagé entre Drawer.tsx et Dialog.tsx (ce dernier avait
 // le même défaut, jamais corrigé).
-export function useFocusRestoreOnClose(open: boolean): (event: Event) => void {
+export function useFocusRestoreOnClose(
+  open: boolean,
+  returnFocusRef?: React.RefObject<HTMLElement | null>,
+): (event: Event) => void {
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -24,6 +27,8 @@ export function useFocusRestoreOnClose(open: boolean): (event: Event) => void {
 
   return function onCloseAutoFocus(event: Event) {
     event.preventDefault();
-    previouslyFocusedRef.current?.focus();
+    // returnFocusRef : le déclencheur réel quand l'élément actif à l'ouverture
+    // (ex. l'item d'un menu) est démonté avant la fermeture (P33.10).
+    (returnFocusRef?.current ?? previouslyFocusedRef.current)?.focus();
   };
 }

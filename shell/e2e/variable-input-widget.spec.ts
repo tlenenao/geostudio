@@ -28,7 +28,7 @@ test("a Saisie widget bound to a number variable updates a Texte widget reading 
   await propsPanel.getByLabel("Variable liée").selectOption({ label: "seuil" });
 
   // Ajoute un widget Texte dont le texte interpole {{var:seuil}}.
-  await page.getByRole("button", { name: "Texte" }).click();
+  await page.getByRole("button", { name: "Texte", exact: true }).click();
   await page.getByLabel("Texte du widget").fill("Valeur : {{var:seuil}}");
 
   await page.getByRole("button", { name: "Enregistrer" }).click();

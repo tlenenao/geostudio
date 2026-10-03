@@ -23,7 +23,7 @@ test("statistics source with a split field feeds a multi-series Chart in the run
   await page.getByLabel(/Champ agrégé/).fill("pop");
 
   // Chart bound to the source.
-  await page.getByRole("button", { name: "Graphique" }).click();
+  await page.getByRole("button", { name: "Graphique", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 1 });
   await page.getByLabel("Champ catégorie").fill("region");
 

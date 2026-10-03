@@ -21,11 +21,11 @@ export function t(key: MessageKey, params?: Record<string, string | number>): st
 }
 
 /**
- * Sélectionne la clé de message accordée en nombre (français : singulier à
- * n=1, pluriel sinon — y compris à n=0, contrairement à l'anglais).
+ * Sélectionne la clé de message accordée en nombre (français : singulier
+ * pour 0 et 1, pluriel à partir de 2 — « 0 élément », contrairement à l'anglais).
  */
 export function plural(n: number, one: MessageKey, many: MessageKey): MessageKey {
-  return n === 1 ? one : many;
+  return n >= 0 && n < 2 ? one : many;
 }
 
 /**

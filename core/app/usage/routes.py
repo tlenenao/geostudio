@@ -5,7 +5,7 @@ soi-même ; tasks.view_all lève cette restriction."""
 
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -26,10 +26,15 @@ from app.users.models import User
 router = APIRouter()
 
 
+def _utc(dt: datetime) -> datetime:
+    """Une date sans fuseau est lue en UTC (comparable à `now(UTC)`)."""
+    return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+
+
 @router.get("/usage/tasks", response_model=UsageTaskPage)
 def list_usage_tasks(
-    page: int = 1,
-    pageSize: int = 50,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(50, ge=1, le=200),
     actorId: str | None = None,
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session, scope="function"),
@@ -47,7 +52,7 @@ def list_usage_tasks(
         tenant_id=user.tenant_id,
         actor_id=actorId,
         page=page,
-        page_size=min(pageSize, 200),
+        page_size=pageSize,
     )
     # j08-012 : une seule requête pour les noms d'acteurs de la page.
     actor_ids = {r.actor_id for r in rows if r.actor_id}
@@ -83,15 +88,17 @@ def list_usage_tasks(
 
 @router.get("/usage/summary", response_model=UsageSummaryRead)
 def get_usage_summary(
-    since: str | None = None,
-    until: str | None = None,
-    limit: int = 10,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    limit: int = Query(10, ge=1, le=100),
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session, scope="function"),
 ) -> UsageSummaryRead:
     require_privilege(session, user, Privilege.TASKS_VIEW_ALL.value)
-    until_dt = datetime.fromisoformat(until) if until else datetime.now(UTC)
-    since_dt = datetime.fromisoformat(since) if since else until_dt - timedelta(days=30)
+    until_dt = _utc(until) if until else datetime.now(UTC)
+    since_dt = _utc(since) if since else until_dt - timedelta(days=30)
+    if since_dt > until_dt:
+        raise HTTPException(status_code=400, detail="since must not be after until")
     summary = service.summarize(
         session, tenant_id=user.tenant_id, since=since_dt, until=until_dt, limit=limit
     )

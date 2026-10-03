@@ -106,15 +106,17 @@ export function buildLabelFeatureCollection(
       geometry: f.geometry,
     });
   }
+  // i18n-ok: journal développeur, jamais affiché
   if (truncated > 0) {
     console.warn(
-      `labelSource: ${maxFeatures} étiquettes au maximum, ${truncated} entités ignorées ` +
+      `labelSource: ${maxFeatures} étiquettes au maximum, ${truncated} entités ignorées ` + // i18n-ok
         `— resserrez l'emprise ou filtrez la couche.`,
     );
   }
+  // i18n-ok: journal développeur, jamais affiché
   if (failed > 0) {
     console.warn(
-      `labelSource: ${failed} entités sans étiquette exploitable (gabarit « ${template} »).`,
+      `labelSource: ${failed} entités sans étiquette exploitable (gabarit « ${template} »).`, // i18n-ok
     );
   }
   return { type: "FeatureCollection", features: out };

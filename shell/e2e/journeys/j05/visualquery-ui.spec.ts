@@ -31,7 +31,7 @@ test.describe("j05 requête visuelle — UI", () => {
     await page.getByLabel("Titre", { exact: true }).fill("aud-j05 requête");
     const create = page.getByRole("button", { name: "Créer", exact: true });
     await expect(create).toBeDisabled();
-    await expect(page.getByText(/Non activé sur cette instance/)).toBeVisible();
+    await expect(page.getByText(/Fonction indisponible sur cette instance/)).toBeVisible();
     // Changer de collection de base réinitialise filtres, jointure et résumé.
     await page.getByLabel("Collection de base").selectOption(seed.zonesRef);
     await expect(page.getByLabel("Colonne du filtre 1")).toHaveCount(0);

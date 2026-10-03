@@ -215,3 +215,56 @@ def test_run_compaction_cycle_reports_across_partitions():
     assert report == CompactionReport(
         partitions_scanned=2, partitions_compacted=1, files_removed=2, partitions_failed=0
     )
+
+
+def test_select_files_to_merge_never_rewrites_a_file_near_the_threshold():
+    """P25.03 : un fichier à 90 % du seuil n'est pas réécrit pour absorber un petit."""
+    files = [{"key": "big", "size": 900}, {"key": "tiny", "size": 10}]
+    assert select_files_to_merge(files, size_threshold_bytes=1000) == []
+
+
+def test_select_files_to_merge_caps_a_batch_at_the_threshold():
+    """P25.03 : plafond mémoire par fusion — jamais plus du seuil en octets."""
+    files = [{"key": f"f{i}", "size": 400} for i in range(5)]
+    batch = select_files_to_merge(files, size_threshold_bytes=1000)
+    assert len(batch) == 2 and sum(f["size"] for f in batch) <= 1000
+
+
+def test_recent_cycle_lists_only_recent_partitions():
+    from datetime import UTC, datetime
+
+    class _Client(_FakeS3Client):
+        def list_objects_v2(self, Bucket, Prefix, Delimiter=None, ContinuationToken=None):  # noqa: N803
+            if Delimiter is None:
+                return super().list_objects_v2(Bucket, Prefix)
+            subs = sorted(
+                {k[len(Prefix) :].split("/")[0] for k in self.objects if k.startswith(Prefix)}
+            )
+            return {
+                "CommonPrefixes": [{"Prefix": f"{Prefix}{s}/"} for s in subs],
+                "IsTruncated": False,
+            }
+
+    client = _Client()
+    today = datetime.now(UTC).date().isoformat()
+    recent = f"cdc/tenant_id=t1/collection_id=c1/dt={today}/"
+    for name in ("a", "b"):
+        client.objects[f"{recent}p-{name}.parquet"] = _geoparquet_bytes(
+            [
+                {
+                    "id": 1,
+                    "titre": name,
+                    "_op": "insert",
+                    "_lsn": 1,
+                    "_ts": 1.0,
+                    "geometry": Point(0, 0),
+                }
+            ]
+        )
+    client.objects[f"{PARTITION}old-a.parquet"] = b"x"  # dt=2026-07-18, hors fenêtre
+    client.objects[f"{PARTITION}old-b.parquet"] = b"x"
+
+    report = run_compaction_cycle(client, bucket="b", size_threshold_bytes=20000, recent_days=3)
+
+    assert report.partitions_scanned == 1 and report.files_removed == 2
+    assert f"{PARTITION}old-a.parquet" in client.objects

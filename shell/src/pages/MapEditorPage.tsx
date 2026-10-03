@@ -25,6 +25,8 @@ import { useIsExportRender } from "../shell/useIsExportRender";
 import { markExportReady } from "../shell/exportReady";
 import { useDirtyGuard } from "../lib/useDirtyGuard";
 import { t } from "../i18n";
+import { LoadingState } from "../ui/kit/LoadingState";
+import { QueryErrorState } from "../ui/kit/QueryErrorState";
 
 export function MapEditorPage({ pk }: { pk: string }) {
   const client = useItemClient();
@@ -101,13 +103,10 @@ export function MapEditorPage({ pk }: { pk: string }) {
   // `draft` lags one render behind a successful load (it is synced in the
   // effect above), so keep showing the loader during that gap instead of
   // flashing the error.
-  if (query.isLoading || itemQuery.isLoading || (!draft && !query.isError))
-    return <p role="status">{t("common.loading")}</p>;
+  if (query.isLoading || itemQuery.isLoading || (!draft && !query.isError)) return <LoadingState />;
   if (query.isError || itemQuery.isError || !draft || !itemQuery.data)
     return (
-      <p role="alert" className="text-sm text-danger">
-        {t("mapEditor.notFound")}
-      </p>
+      <QueryErrorState queries={[query, itemQuery]} notFoundMessage={t("mapEditor.notFound")} />
     );
 
   const setLayers = (layers: MapLayer[]) => updateDraft({ ...draft, layers });
@@ -127,11 +126,10 @@ export function MapEditorPage({ pk }: { pk: string }) {
   const currentDraft = draft;
   function setCamera(next: { pitch: number; bearing: number }) {
     updateDraft((d) => (d ? { ...d, view: { ...d.view, ...next } } : d));
-    mapViewRef.current?.flyTo({
-      center: currentDraft.view.center,
-      zoom: currentDraft.view.zoom,
-      ...next,
-    });
+    mapViewRef.current?.flyTo(
+      { center: currentDraft.view.center, zoom: currentDraft.view.zoom, ...next },
+      true,
+    );
   }
 
   // Export/print chrome (SP-17a Task 10): the Playwright worker (Task 6)
@@ -187,6 +185,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
 
   return (
     <div className="-m-6 flex flex-1 flex-col overflow-hidden">
+      <h1 className="sr-only">{t("docTitle.map")}</h1>
       <TriptychLayout
         defaultTabId="map"
         browse={{

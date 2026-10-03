@@ -1,4 +1,3 @@
-import { bug } from "../_fixtures/verify";
 import { expect, test } from "@playwright/test";
 import { loginOidc, stamp } from "../_fixtures/env";
 import { fillWizard, getSeed, psql, rowsOf, submitWizard, type Seed } from "./helpers";
@@ -23,7 +22,7 @@ test.describe("j05b requête visuelle — opérateurs, métriques, schéma", () 
     expect(res.run.status).toBe("succeeded");
   });
 
-  test("« contient » : enrobé de %, mais sensible à la casse et jokers non échappés", async ({
+  test("« contient » : enrobé de %, insensible à la casse, jokers littéraux (P25.13)", async ({
     page,
   }) => {
     test.setTimeout(300_000);
@@ -41,29 +40,28 @@ test.describe("j05b requête visuelle — opérateurs, métriques, schéma", () 
       return Number(rowsOf(r.outCollection, "count(*)", "1")[0][0]);
     };
     expect(await count("n1")).toBe(10); // n10..n19 (E0/E1 portent des notes spéciales)
-    // Attendu par un auteur no-code : « N1 » retrouve « n1 » ; « _ » (souligné littéral) ne retient rien.
-    expect(await count("N1")).toBe(0); // sensible à la casse (constaté)
-    expect(await count("_")).toBe(60); // joker LIKE non échappé : tout passe (constaté)
+    // « N1 » retrouve « n1 » ; « _ » (souligné littéral) ne retient rien.
+    expect(await count("N1")).toBe(10);
+    expect(await count("_")).toBe(0);
   });
 
   // Finding j05b-003 : constaté ci-dessus (casse + jokers) ; le test correspond au comportement
   // attendu par l'auteur. Confirme j05-023 (hypothèse de 1re passe, à nuancer : l'enrobage % existe).
-  bug(
-    "j05b-003 : « contient » ignore la casse et traite % et _ comme des caractères littéraux",
-    async ({ page }) => {
-      test.setTimeout(240_000);
-      await loginOidc(page, "creator");
-      await page.waitForTimeout(800);
-      const title = stamp("j05b");
-      await fillWizard(page, {
-        title,
-        base: seed.ventes,
-        filters: [{ column: "note", op: "contains", value: "_" }],
-      });
-      const r = await submitWizard(page, title);
-      expect(Number(rowsOf(r.outCollection, "count(*)", "1")[0][0])).toBe(0);
-    },
-  );
+  test("j05b-003 : « contient » ignore la casse et traite % et _ comme des caractères littéraux", async ({
+    page,
+  }) => {
+    test.setTimeout(240_000);
+    await loginOidc(page, "creator");
+    await page.waitForTimeout(800);
+    const title = stamp("j05b");
+    await fillWizard(page, {
+      title,
+      base: seed.ventes,
+      filters: [{ column: "note", op: "contains", value: "_" }],
+    });
+    const r = await submitWizard(page, title);
+    expect(Number(rowsOf(r.outCollection, "count(*)", "1")[0][0])).toBe(0);
+  });
 
   test("filtre sur colonne date (timestamptz) et sur colonne numérique", async ({ page }) => {
     test.setTimeout(300_000);

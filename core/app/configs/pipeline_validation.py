@@ -26,7 +26,7 @@ def register_pipeline_node_validator(op: str, validator: NodeValidator) -> None:
     _node_validators[op] = validator
 
 
-def _check_topology(edges: list[PipelineEdge]) -> None:
+def _check_topology(nodes: list[PipelineNode], edges: list[PipelineEdge]) -> None:
     primary_count: dict[str, int] = {}
     secondary_count: dict[str, int] = {}
     for edge in edges:
@@ -44,6 +44,33 @@ def _check_topology(edges: list[PipelineEdge]) -> None:
             raise HTTPException(
                 status_code=422,
                 detail=f"node '{node_id}' has more than one secondary incoming edge",
+            )
+
+    # j06-002 : sans ces gardes, run_pipeline plantait sur un `assert` muet
+    # après avoir déjà lu les sources.
+    kind_by_id = {n.id: n.kind for n in nodes}
+    for edge in edges:
+        if kind_by_id.get(edge.to) == "reader":
+            raise HTTPException(
+                status_code=422,
+                detail=f"node '{edge.to}' is a reader and cannot have an incoming edge",
+            )
+        if kind_by_id.get(edge.from_) == "writer":
+            raise HTTPException(
+                status_code=422,
+                detail=f"node '{edge.from_}' is a writer and cannot have an outgoing edge",
+            )
+        if edge.role == "secondary" and kind_by_id.get(edge.to) == "writer":
+            raise HTTPException(
+                status_code=422,
+                detail=f"node '{edge.to}' is a writer and accepts no secondary input",
+            )
+    has_incoming = {e.to for e in edges}
+    for node in nodes:
+        if node.kind != "reader" and node.id not in has_incoming:
+            raise HTTPException(
+                status_code=422,
+                detail=f"node '{node.id}' ({node.op}) has no incoming edge",
             )
 
 
@@ -75,8 +102,15 @@ def validate_pipeline_payload(session: Session, config: BuilderConfig, *, user: 
     payload = config.pipeline
     assert payload is not None  # guaranteed by BuilderConfig._require_kind_payload
 
+    policy = payload.refreshPolicy
+    if policy is not None and len(policy.cron.split()) != 5:
+        # j06b-012 : le balayage ne tourne que toutes les 5 min, un cron à
+        # 6 champs (secondes) n'aurait aucun sens. Écriture seulement.
+        raise HTTPException(
+            status_code=422, detail=f"cron must have exactly 5 fields: {policy.cron!r}"
+        )
     _check_acyclic(payload.nodes, payload.edges)
-    _check_topology(payload.edges)
+    _check_topology(payload.nodes, payload.edges)
 
     for node in payload.nodes:
         validator = _node_validators.get(node.op)

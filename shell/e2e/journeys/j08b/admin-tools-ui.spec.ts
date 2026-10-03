@@ -1,4 +1,3 @@
-import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { openAs, spaGoto } from "../j06/helpers";
 
@@ -50,10 +49,11 @@ test("échec du lancement (403) : le bouton affiche une alerte « Échec de l'ou
   await expect(page.getByRole("alert")).toHaveText("Échec de l'ouverture de l'outil.");
 });
 
-// Finding j08b-009 : le lien « Console MinIO » pointe sur le port 9001 de l'hôte courant, hors
-// passerelle authentifiée, alors que Martin/Titiler/Grafana passent par /admin-tools.
-bug("j08b-009 : la console MinIO est ouverte via la passerelle authentifiée", async ({ page }) => {
+// Finding j08b-009 : le lien « Console MinIO » n'est affiché que si le port 9001 est publié
+// (indiqué par GET /instance/status) ; en production il est masqué plutôt que mort.
+test("j08b-009 : la console MinIO n'est proposée que si son port est publié", async ({ page }) => {
+  const status = page.waitForResponse((r) => r.url().includes("/instance/status"));
   await openInfra(page);
-  const href = await page.getByRole("link", { name: "Console MinIO" }).getAttribute("href");
-  expect(href).not.toMatch(/:9001/);
+  const published = (await (await status).json()).minioConsolePublished === true;
+  await expect(page.getByRole("link", { name: /Console MinIO/ })).toHaveCount(published ? 1 : 0);
 });

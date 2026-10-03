@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import { cva, type VariantProps } from "class-variance-authority";
+import { t } from "../../i18n";
 import { cn } from "../../lib/utils";
+import { Button } from "./Button";
 
 const bannerVariants = cva("rounded-md border p-3 text-sm", {
   variants: {
@@ -13,16 +15,26 @@ const bannerVariants = cva("rounded-md border p-3 text-sm", {
   defaultVariants: { variant: "info" },
 });
 
+// `onRetry` : état d'erreur de chargement uniforme (message + « Réessayer »).
 export function Banner({
   variant,
   children,
-}: { children: React.ReactNode } & VariantProps<typeof bannerVariants>) {
+  onRetry,
+}: { children: React.ReactNode; onRetry?: () => void } & VariantProps<typeof bannerVariants>) {
   return (
     <div
       className={cn(bannerVariants({ variant }))}
       role={variant === "danger" ? "alert" : undefined}
     >
       {children}
+      {onRetry && (
+        <>
+          {" "}
+          <Button size="sm" variant="outline" onClick={onRetry}>
+            {t("common.retry")}
+          </Button>
+        </>
+      )}
     </div>
   );
 }

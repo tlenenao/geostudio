@@ -15,6 +15,7 @@ from app.db import request_scoped_session
 from app.ingestion.storage import make_s3_client
 from app.items import repository as items_repo
 from app.jobs import app
+from app.jobs.common import notify_best_effort
 from app.jobs.engine import session_factory as common_session_factory
 from app.tileset3d import repository as tileset3d_repo
 from app.tileset3d.storage import S3RangeFile, Tileset3DValidationError, validate_tileset_zip
@@ -66,6 +67,20 @@ def finalize_tileset3d_task(job_id: str, tenant_id: str) -> None:
             job.created_by,
         )
 
+    def _notify_outcome(status: str, item_id: str | None, error: str | None = None) -> None:
+        # P20.12 : fin de job notifiée in-app au créateur (best-effort).
+        notify_best_effort(
+            session_factory,
+            tenant_id=tenant_id,
+            recipient_user_id=created_by,
+            kind="tileset3d",
+            status=status,
+            item_id=item_id,
+            item_resource_type="tileset3d" if item_id else None,
+            item_title=title,
+            error=error,
+        )
+
     try:
         s3 = s3_client_from_env()
         range_file = S3RangeFile(s3, bucket=_tileset3d_bucket(), key=source_key)
@@ -104,6 +119,8 @@ def finalize_tileset3d_task(job_id: str, tenant_id: str) -> None:
             )
             configs_repo.create_config(session, config, item_id=item.id, tenant_id=tenant_id)
             tileset3d_repo.mark_done(session, job_id=job_id, item_id=item.id)
+            new_item_id = item.id
+        _notify_outcome("success", new_item_id)
     except Tileset3DValidationError as exc:
         # Le zip rejeté n'est référencé par rien (aucun item, aucun config) :
         # le purger tout de suite, sinon plusieurs Go restent dans le bucket
@@ -134,9 +151,11 @@ def finalize_tileset3d_task(job_id: str, tenant_id: str) -> None:
                     payload={"sourceKey": source_key, "reason": str(exc)},
                 )
             tileset3d_repo.mark_error(session, job_id=job_id, error_message=str(exc))
+        _notify_outcome("failure", None, str(exc))
     except Exception as exc:  # toute erreur inattendue finit "error", jamais zombie
         logger.exception("tileset3d job %s : erreur inattendue", job_id)
         with request_scoped_session(session_factory) as session:
             tileset3d_repo.mark_error(
                 session, job_id=job_id, error_message=f"erreur interne : {exc}"
             )
+        _notify_outcome("failure", None, f"erreur interne : {exc}")

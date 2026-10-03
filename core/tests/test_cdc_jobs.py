@@ -24,7 +24,7 @@ def test_run_compaction_cycle_task_wires_env_and_report(monkeypatch, caplog):
     def fake_ensure_cdc_bucket(client, bucket):
         ensure_bucket_calls.append((client, bucket))
 
-    def fake_run_compaction_cycle(client, *, bucket):
+    def fake_run_compaction_cycle(client, *, bucket, recent_days):
         run_cycle_calls.append((client, bucket))
         return cdc_jobs.compaction.CompactionReport(
             partitions_scanned=3, partitions_compacted=2, files_removed=5, partitions_failed=1
@@ -59,7 +59,7 @@ def test_run_compaction_cycle_task_defaults_bucket_when_unset(monkeypatch):
     monkeypatch.setattr(
         cdc_jobs.compaction,
         "run_compaction_cycle",
-        lambda client, *, bucket: cdc_jobs.compaction.CompactionReport(0, 0, 0, 0),
+        lambda client, *, bucket, recent_days: cdc_jobs.compaction.CompactionReport(0, 0, 0, 0),
     )
 
     cdc_jobs.run_compaction_cycle_task(timestamp=0)

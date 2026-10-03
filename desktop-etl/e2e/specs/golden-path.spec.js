@@ -3,7 +3,7 @@
 //
 // Chemin d'or bout-en-bout contre la vraie application Tauri (pas de mock
 // réseau, pas de sidecar simulé) : palette -> canevas -> connexion ->
-// paramétrage -> Enregistrer -> Exécuter -> statut "succeeded" -> fichier
+// paramétrage -> Enregistrer -> Exécuter -> statut "Terminé" -> fichier
 // .gpkg réel sur disque. Sélecteurs vérifiés empiriquement contre le DOM
 // réel par le contrôleur (session séparée avec accès Windows/CDP) --
 // cf. desktop-etl-phase-fg-task-7-brief.md.
@@ -178,9 +178,10 @@ describe("desktop-etl golden path", () => {
     // 7. Exécution.
     await runButton.click();
 
-    // 8. Attente du statut terminal. STATUS_LABEL rend "succeeded" en dur
-    // (littéral anglais, jamais traduit -- cf. PipelineRunPanel.tsx:121,
-    // dans un <span>). "*=succeeded" sans préfixe de balise compile vers
+    // 8. Attente du statut terminal. PipelineRunPanel rend le libellé traduit
+    // jobStatusLabel("succeeded") = "Terminé" (glossaire i18n, clé
+    // jobStatus.succeeded) dans un <span>. "span*=Terminé" : "*=" sans préfixe
+    // de balise compile vers
     // la stratégie WebDriver "partial link text", qui ne matche QUE les
     // éléments <a> (limitation du protocole, pas de WebdriverIO) -- contre
     // un <span> ça n'attend jamais, silencieusement, jusqu'au timeout de
@@ -188,7 +189,7 @@ describe("desktop-etl golden path", () => {
     // test échouait après 30s sur cette seule ligne, sans jamais atteindre
     // l'assertion de fichier plus bas. Préfixer par la balise réelle force
     // la vraie recherche de texte au lieu de la stratégie "link text".
-    const successStatus = await $("span*=succeeded");
+    const successStatus = await $("span*=Terminé");
     await successStatus.waitForExist({ timeout: 30_000 });
 
     // 9. Preuve réelle : le fichier .gpkg a bien été écrit sur disque par le

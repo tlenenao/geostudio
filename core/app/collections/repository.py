@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.collections.models import Collection
 from app.collections.schemas import CollectionPermissions
+from app.quotas.service import check_quota_or_raise
 from app.search.providers import get_embedding_provider
 from app.search.ranking import hybrid_search_ids
 from app.sharing.authorization import AccessFacts, Action, decide
@@ -94,6 +95,8 @@ def create_collection(
     srid: int | None,
     feature_count: int | None = None,
 ) -> Collection:
+    # Point unique de création de collection (REST, import, provisioning) : P26.01.
+    check_quota_or_raise(session, tenant_id=tenant_id, kind="collections")
     col = Collection(
         id=table_name,
         tenant_id=tenant_id,

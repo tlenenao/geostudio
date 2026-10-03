@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- sondes navigateur */
-import { bug } from "../_fixtures/verify";
 import { test, expect, type Page } from "@playwright/test";
 import { loginOidc, stamp } from "../_fixtures/env";
 import { spaGo } from "../j02/helpers";
@@ -175,10 +174,9 @@ test.describe("t03 sondages et démontage", () => {
 
   // Mesuré : +3984 nœuds DOM, +296 écouteurs, +4,7 Mo de tas sur 8 ouvertures de l'éditeur de carte
   // (catalogue et paramètres seuls : 0).
-  bug(
-    "t03-012 : ouvrir/fermer l'éditeur de carte ne retient ni nœuds DOM ni écouteurs",
-    async ({ page }, testInfo) => {
-      await leak(page, testInfo, true);
-    },
-  );
+  test("t03-012 : ouvrir/fermer l'éditeur de carte ne retient ni nœuds DOM ni écouteurs", async ({
+    page,
+  }, testInfo) => {
+    await leak(page, testInfo, true);
+  });
 });

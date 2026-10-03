@@ -2,6 +2,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useItemClient, useMe } from "../api/hooks";
+import { apiErrorMessage } from "../api/apiErrorMessage";
+import { ApiError } from "../api/ApiError";
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { Drawer } from "../ui/kit/Drawer";
@@ -20,6 +22,60 @@ type GeometryOverride = {
 
 const LAT_NAMES = ["lat", "latitude", "y"];
 const LON_NAMES = ["lon", "lng", "longitude", "x"];
+
+// P28.02 : même heuristique que le cœur (sniff_delimiter, parsers.py) —
+// séparateur le plus fréquent de la ligne d'en-tête parmi , ; tabulation |.
+function sniffDelimiter(line: string): string {
+  const firstLine = line.replace(/"[^"]*"/g, ""); // séparateurs entre guillemets ignorés
+  const count = (c: string) => firstLine.split(c).length - 1;
+  const best = [",", ";", "\t", "|"].reduce((a, b) => (count(b) > count(a) ? b : a));
+  return count(best) > 0 ? best : ",";
+}
+
+// P28.09/10 : au-delà de SLOW_AFTER_MS le tiroir offre une sortie (le job
+// continue côté serveur, la cloche notifie) ; MAX_POLL_MS borne le sondage ;
+// MAX_POLL_FAILURES erreurs consécutives du sondage = échec (P28.10).
+const SLOW_AFTER_MS = 30_000;
+const MAX_POLL_MS = 10 * 60_000;
+const MAX_POLL_FAILURES = 3;
+
+type Stage =
+  | "importFile.uploadError"
+  | "importFile.inspectError"
+  | "importFile.jobError"
+  | "importFile.pollError";
+
+// P28.08 : l'étape en échec + le detail RFC 7807 du cœur quand il existe.
+function stageMessage(stage: Stage, err: unknown): string {
+  // P26.09 : un quota atteint a son message traduit et actionnable.
+  if (err instanceof ApiError && err.problemType === "quota-exceeded")
+    return apiErrorMessage(err, t(stage));
+  const detail = err instanceof ApiError ? err.detail : undefined;
+  return detail ? `${t(stage)} ${detail}` : t(stage);
+}
+
+class StageError extends Error {
+  constructor(
+    readonly stage: Stage,
+    readonly cause: unknown,
+  ) {
+    super(stage);
+  }
+}
+
+async function at<T>(stage: Stage, p: Promise<T>): Promise<T> {
+  try {
+    return await p;
+  } catch (err) {
+    throw new StageError(stage, err);
+  }
+}
+
+function failureMessage(err: unknown): string {
+  return err instanceof StageError
+    ? stageMessage(err.stage, err.cause)
+    : t("importFile.genericError");
+}
 
 function detectLatLon(headers: string[]): boolean {
   const byLower = new Set(headers.map((h) => h.trim().toLowerCase()));
@@ -83,6 +139,9 @@ export function ImportFileButton() {
   const [pendingLayerName, setPendingLayerName] = useState<string | undefined>(undefined);
   const [phase, setPhase] = useState<Phase>("form");
   const [error, setError] = useState("");
+  const [slow, setSlow] = useState(false);
+  // génération du sondage : close()/nouveau job l'incrémentent, un ancien sondage s'arrête
+  const pollGenRef = useRef(0);
   const client = useItemClient();
   const navigate = useNavigate();
   const mountedRef = useRef(true);
@@ -130,6 +189,8 @@ export function ImportFileButton() {
     setPendingLayerName(undefined);
     setPhase("form");
     setError("");
+    setSlow(false);
+    pollGenRef.current++;
   }
 
   async function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -145,7 +206,7 @@ export function ImportFileButton() {
         reader.readAsText(blob);
       });
       const firstLine = text.split(/\r?\n/)[0] ?? "";
-      const headers = firstLine.split(",").map((h) => h.trim());
+      const headers = firstLine.split(sniffDelimiter(firstLine)).map((h) => h.trim());
       if (!detectLatLon(headers)) setCsvHeaders(headers);
     }
   }
@@ -153,11 +214,32 @@ export function ImportFileButton() {
   const needsManualLatLon = csvHeaders !== null;
 
   async function poll(jobId: string) {
+    const startedAt = Date.now();
+    let failures = 0;
+    const gen = pollGenRef.current;
+    const stale = () => !mountedRef.current || pollGenRef.current !== gen;
     for (;;) {
-      if (!mountedRef.current) return;
-      const job = await client.getIngestionJob(jobId);
-      if (!mountedRef.current) return;
-      if (job.status === "done") {
+      if (stale()) return;
+      if (Date.now() - startedAt > MAX_POLL_MS) {
+        setPhase("error");
+        setError(t("importFile.tooLong"));
+        return;
+      }
+      if (Date.now() - startedAt > SLOW_AFTER_MS) setSlow(true);
+      let job;
+      try {
+        job = await client.getIngestionJob(jobId);
+        failures = 0;
+      } catch (err) {
+        if (++failures >= MAX_POLL_FAILURES) {
+          if (stale()) return;
+          setPhase("error");
+          setError(stageMessage("importFile.pollError", err));
+          return;
+        }
+      }
+      if (stale()) return;
+      if (job?.status === "done") {
         close();
         // GAP-29 : une collection sans géométrie (geometryMode="none") n'a
         // pas de Map associée (core/app/ingestion/importer.py) — itemId
@@ -171,7 +253,7 @@ export function ImportFileButton() {
         );
         return;
       }
-      if (job.status === "error") {
+      if (job?.status === "error") {
         setPhase("error");
         setError(job.errorMessage ?? t("importFile.genericError"));
         return;
@@ -190,13 +272,18 @@ export function ImportFileButton() {
   ) {
     const geometryPayload: GeometryOverride =
       geometryOverride ?? (needsManualLatLon ? { latField, lonField } : {});
-    const { jobId } = await client.createIngestionJob({
-      key,
-      filename: file!.name,
-      collectionTitle: title.trim(),
-      layerName: chosenLayerName,
-      ...geometryPayload,
-    });
+    const { jobId } = await at(
+      "importFile.jobError",
+      client.createIngestionJob({
+        key,
+        filename: file!.name,
+        collectionTitle: title.trim(),
+        layerName: chosenLayerName,
+        ...geometryPayload,
+      }),
+    );
+    pollGenRef.current++;
+    setSlow(false);
     setPhase("polling");
     await poll(jobId);
   }
@@ -237,13 +324,16 @@ export function ImportFileButton() {
     setPhase("uploading");
     setError("");
     try {
-      const { uploadUrl, key } = await client.presignUpload(
-        file.name,
-        file.type || "application/octet-stream",
+      const { uploadUrl, key } = await at(
+        "importFile.uploadError",
+        client.presignUpload(file.name, file.type || "application/octet-stream"),
       );
-      await client.uploadToPresignedUrl(uploadUrl, file);
+      await at("importFile.uploadError", client.uploadToPresignedUrl(uploadUrl, file));
       if (isLayeredFormat(file.name)) {
-        const { layers: found } = await client.inspectUpload({ key, filename: file.name });
+        const { layers: found } = await at(
+          "importFile.inspectError",
+          client.inspectUpload({ key, filename: file.name }),
+        );
         if (found.length > 1) {
           setUploadedKey(key);
           setLayers(found);
@@ -254,7 +344,10 @@ export function ImportFileButton() {
         return;
       }
       if (isTabularSheetFormat(file.name)) {
-        const { layers: found, fields } = await client.inspectUpload({ key, filename: file.name });
+        const { layers: found, fields } = await at(
+          "importFile.inspectError",
+          client.inspectUpload({ key, filename: file.name }),
+        );
         if (found.length > 1) {
           setUploadedKey(key);
           setLayers(found);
@@ -265,15 +358,18 @@ export function ImportFileButton() {
         return;
       }
       if (needsFieldInspection(file.name)) {
-        const { fields } = await client.inspectUpload({ key, filename: file.name });
+        const { fields } = await at(
+          "importFile.inspectError",
+          client.inspectUpload({ key, filename: file.name }),
+        );
         await inspectFieldsThenProceed(key, undefined, fields ?? null);
         return;
       }
       await startJob(key, undefined);
-    } catch {
+    } catch (err) {
       if (!mountedRef.current) return;
       setPhase("error");
-      setError(t("importFile.genericError"));
+      setError(failureMessage(err));
     }
   }
 
@@ -288,19 +384,22 @@ export function ImportFileButton() {
       // savoir si ses colonnes portent une géométrie exploitable. Les
       // formats "couches natives" (gpkg/kml/kmz/gml) n'en ont jamais besoin.
       if (isTabularSheetFormat(file!.name)) {
-        const { fields } = await client.inspectUpload({
-          key: uploadedKey,
-          filename: file!.name,
-          layerName,
-        });
+        const { fields } = await at(
+          "importFile.inspectError",
+          client.inspectUpload({
+            key: uploadedKey,
+            filename: file!.name,
+            layerName,
+          }),
+        );
         await inspectFieldsThenProceed(uploadedKey, layerName, fields ?? null);
         return;
       }
       await startJob(uploadedKey, layerName);
-    } catch {
+    } catch (err) {
       if (!mountedRef.current) return;
       setPhase("error");
-      setError(t("importFile.genericError"));
+      setError(failureMessage(err));
     }
   }
 
@@ -319,14 +418,15 @@ export function ImportFileButton() {
             ? { geometryMode: "none" }
             : { latField, lonField };
       await startJob(uploadedKey, pendingLayerName, geometryOverride);
-    } catch {
+    } catch (err) {
       if (!mountedRef.current) return;
       setPhase("error");
-      setError(t("importFile.genericError"));
+      setError(failureMessage(err));
     }
   }
 
-  const busy = phase === "uploading" || phase === "polling";
+  // P28.09 : un sondage « lent » n'est plus verrouillant (sortie offerte).
+  const busy = phase === "uploading" || (phase === "polling" && !slow);
 
   // Fermer pendant un upload/un balayage en vol laisserait la chaîne async
   // (submit()/confirmLayer()/confirmGeometry()/poll()) tourner en
@@ -400,7 +500,7 @@ export function ImportFileButton() {
                   {t("importFile.latColumn")}
                   <select
                     aria-label={t("importFile.latColumn")}
-                    className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                    className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                     value={latField}
                     onChange={(e) => setLatField(e.target.value)}
                   >
@@ -416,7 +516,7 @@ export function ImportFileButton() {
                   {t("importFile.lonColumn")}
                   <select
                     aria-label={t("importFile.lonColumn")}
-                    className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                    className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                     value={lonField}
                     onChange={(e) => setLonField(e.target.value)}
                   >
@@ -435,7 +535,7 @@ export function ImportFileButton() {
                 {t("importFile.wktColumn")}
                 <select
                   aria-label={t("importFile.wktColumn")}
-                  className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                  className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                   value={wktField}
                   onChange={(e) => setWktField(e.target.value)}
                 >
@@ -463,7 +563,7 @@ export function ImportFileButton() {
               {t("importFile.layerColumn")}
               <select
                 aria-label={t("importFile.layerColumn")}
-                className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                 value={layerName}
                 onChange={(e) => setLayerName(e.target.value)}
               >
@@ -516,7 +616,7 @@ export function ImportFileButton() {
                   {t("importFile.latColumn")}
                   <select
                     aria-label={t("importFile.latColumn")}
-                    className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                    className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                     value={latField}
                     onChange={(e) => setLatField(e.target.value)}
                   >
@@ -532,7 +632,7 @@ export function ImportFileButton() {
                   {t("importFile.lonColumn")}
                   <select
                     aria-label={t("importFile.lonColumn")}
-                    className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                    className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                     value={lonField}
                     onChange={(e) => setLonField(e.target.value)}
                   >
@@ -545,6 +645,11 @@ export function ImportFileButton() {
                   </select>
                 </label>
               </>
+            )}
+            {phase === "polling" && slow && (
+              <p role="status" className="text-sm text-ink-muted">
+                {t("importFile.slow")}
+              </p>
             )}
             {phase === "error" && (
               <p role="alert" className="text-sm text-danger">

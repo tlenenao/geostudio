@@ -2,7 +2,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAppConfig } from "../api/hooks";
-import { loadConfig } from "../config";
+import { loadRuntimeConfig } from "../config";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { AppRenderer } from "../builder/AppRenderer";
@@ -10,6 +10,7 @@ import { registerBuiltinWidgets } from "../builder/widgets";
 import { registerExampleWidgets } from "../builder/examples";
 import { resolveShareLink } from "./embed/resolveShareLink";
 import { t } from "../i18n";
+import { LoadingState } from "../ui/kit/LoadingState";
 
 registerBuiltinWidgets();
 registerExampleWidgets();
@@ -21,12 +22,7 @@ registerExampleWidgets();
 // App.tsx avant que cette route lazy() ne soit jamais atteinte — cet appel
 // séparé ne fait que relire les mêmes variables d'environnement déjà
 // disponibles pour le bundle entier, sans dépendance à un état d'auth.
-const runtimeEnv = (window as unknown as { __GEOSTUDIO_ENV__?: Record<string, string | undefined> })
-  .__GEOSTUDIO_ENV__;
-const embedConfig = loadConfig(
-  import.meta.env as unknown as Record<string, string | undefined>,
-  runtimeEnv,
-);
+const embedConfig = loadRuntimeConfig();
 
 const EMBEDDABLE_RESOURCE_TYPES = new Set(["app", "dashboard"]);
 
@@ -54,7 +50,7 @@ function EmbedApp({ itemId, token }: { itemId: string; token: string }) {
 function EmbedAppRenderer({ itemId }: { itemId: string }) {
   const query = useAppConfig(itemId, { mode: "runtime" });
   if (query.isLoading) {
-    return <p role="status">{t("common.loading")}</p>;
+    return <LoadingState />;
   }
   if (query.isError || !query.data) {
     return (
@@ -64,9 +60,9 @@ function EmbedAppRenderer({ itemId }: { itemId: string }) {
     );
   }
   return (
-    <div className="h-screen w-screen">
+    <main className="h-screen w-screen">
       <AppRenderer config={query.data} mode="runtime" />
-    </div>
+    </main>
   );
 }
 
@@ -78,7 +74,7 @@ export function EmbedPage({ token }: { token: string }) {
   });
 
   if (linkQuery.isLoading) {
-    return <p role="status">{t("common.loading")}</p>;
+    return <LoadingState />;
   }
   if (linkQuery.isError || !linkQuery.data) {
     return (

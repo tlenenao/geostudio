@@ -18,8 +18,14 @@ export function csvTooLarge(featureCount: number | null): boolean {
 // OGC API Features caps `limit` server-side at 1000 (core/app/features/routes.py
 // MAX_LIMIT, verified while writing this plan) — a direct browser download of a
 // collection with more features than that only returns the first page. Accepted
-// v1 limitation: full exports beyond 1000 features wait on SP-15's server-side
-// export. GeoJSON stays "always available" (unlike CSV, never disabled).
+// v1 limitation — désormais ANNONCÉE (P29.03, `geojsonTruncated` + libellé « N sur
+// M » dans DatasetDownloadButtons). GeoJSON stays "always available".
+export function geojsonTruncated(featureCount: number | null): boolean {
+  return featureCount !== null && featureCount > PAGE_SIZE;
+}
+
+export const GEOJSON_DOWNLOAD_LIMIT = PAGE_SIZE;
+
 export function geojsonDownloadUrl(
   client: Pick<ItemClient, "featuresUrl">,
   collectionId: string,

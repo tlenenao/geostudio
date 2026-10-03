@@ -24,5 +24,5 @@ test("a static data source's records feed a widget bound to it", async ({ page }
   await widgetPropsPanel.getByLabel("Source de données").selectOption({ index: 1 });
   await widgetPropsPanel.getByLabel("Champ titre").fill("titre");
 
-  await expect(page.locator("main").getByText("Premier enregistrement")).toBeVisible();
+  await expect(page.getByTestId("app-canvas").getByText("Premier enregistrement")).toBeVisible();
 });

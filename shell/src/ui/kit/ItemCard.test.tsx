@@ -24,14 +24,14 @@ const item: Item = {
 test("renders title and type", () => {
   render(<ItemCard item={item} onOpen={() => {}} />);
   expect(screen.getByRole("heading", { name: "Suivi incidents" })).toBeInTheDocument();
-  expect(screen.getByText(/dashboard/i)).toBeInTheDocument();
+  expect(screen.getAllByText(/tableau de bord/i).length).toBeGreaterThan(0);
 });
 
 test("calls onOpen with the pk", async () => {
   const onOpen = vi.fn();
   render(<ItemCard item={item} onOpen={onOpen} />);
   await userEvent.click(screen.getByRole("button", { name: /ouvrir/i }));
-  expect(onOpen).toHaveBeenCalledWith("42", "dashboard");
+  expect(onOpen).toHaveBeenCalledWith("42", "dashboard", item);
 });
 
 test("renders the actions slot when provided", () => {

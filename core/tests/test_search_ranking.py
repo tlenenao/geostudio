@@ -111,3 +111,44 @@ def test_hybrid_search_ids_ranks_a_vector_match_ahead_of_a_weak_text_match(pg_se
         query_vector=provider.embed("incidents voirie"),
     )
     assert ids.index("i-close") < ids.index("i-weak")
+
+
+@pytest.mark.postgis
+def test_hybrid_search_ids_returns_nothing_for_an_unrelated_query(pg_session):
+    # P35.10 : un vecteur quasi orthogonal (cosinus ~0) ne doit plus compter —
+    # l'ancien seuil « cosinus > 0 » renvoyait ~la moitié du corpus.
+    tenant = get_or_create_default_tenant(pg_session)
+    user = get_or_create_user(
+        pg_session,
+        tenant_id=tenant.id,
+        oidc_sub="b",
+        username="bob",
+        email=None,
+        first_name="",
+        last_name="",
+    )
+    query_vector = [1.0] * 1536
+    # cosinus = 100 / (sqrt(100) * sqrt(1536)) ~ 0,26 : positif (passait l'ancien
+    # seuil) mais sans rapport (< 0,35).
+    weak = [1.0] * 100 + [0.0] * 1436
+    pg_session.add(
+        Item(
+            id="i-weak-vec",
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            resource_type="app",
+            title="Sans rapport",
+            embedding=weak,
+        )
+    )
+    pg_session.flush()
+    ids = hybrid_search_ids(
+        pg_session,
+        base_stmt=select(Item).where(Item.tenant_id == tenant.id),
+        id_column=Item.id,
+        text_columns=[Item.title, Item.abstract],
+        embedding_column=Item.embedding,
+        query_text="zzz-introuvable",
+        query_vector=query_vector,
+    )
+    assert ids == []

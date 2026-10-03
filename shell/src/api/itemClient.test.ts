@@ -327,6 +327,45 @@ test("deleteItem relaie le detail du 409 (kinds référençants) dans le message
   );
 });
 
+test("P22.04 : les appels authFetch lèvent une ApiError RFC 7807 (detail, errors, Retry-After)", async () => {
+  const problem = (status: number, body: Record<string, unknown>, headers = {}) =>
+    HttpResponse.json(body, {
+      status,
+      headers: { "Content-Type": "application/problem+json", ...headers },
+    });
+  server.use(
+    http.get("https://core.test/v1/extensions", () =>
+      problem(500, { title: "Erreur", detail: "base indisponible" }),
+    ),
+    http.get("https://core.test/v1/harvest/feature-layers", () =>
+      problem(429, { title: "Trop", detail: "ralentis" }, { "Retry-After": "7" }),
+    ),
+    http.post("https://core.test/v1/collections/c1/items", () =>
+      problem(422, {
+        title: "Validation",
+        detail: "1 champ invalide",
+        errors: [{ field: "nom", code: "required", message: "requis" }],
+      }),
+    ),
+  );
+  const client = makeClient();
+  await expect(client.listActiveExtensions()).rejects.toMatchObject({
+    name: "ApiError",
+    status: 500,
+    detail: "base indisponible",
+  });
+  await expect(client.listFeatureLayers()).rejects.toMatchObject({
+    status: 429,
+    retryAfter: 7,
+  });
+  await expect(
+    client.createFeature("c1", { type: "Feature", properties: {}, geometry: null }),
+  ).rejects.toMatchObject({
+    name: "FeatureValidationError",
+    errors: [{ field: "nom", code: "required", message: "requis" }],
+  });
+});
+
 test("listGroups maps name to title", async () => {
   const groups = await makeClient().listGroups();
   expect(groups).toEqual([
@@ -908,6 +947,37 @@ describe("toFrontLayer characteristic test — no optional field is ever dropped
     expect(out.popup).toEqual(raw.popup);
     expect(out.renderAs).toBe(raw.renderAs);
     expect(out.symbology).toEqual(raw.symbology);
+  });
+
+  test("P22.02: un champ du cœur propre à un autre kind survit aussi (opacity sur vector, paint sur raster/deck)", () => {
+    const vec = toFrontLayer({
+      id: "v",
+      title: "V",
+      visible: true,
+      kind: "vector",
+      tilesUrl: "t",
+      sourceLayer: "s",
+      opacity: 0.4,
+    } as RawMapLayer) as Record<string, unknown>;
+    expect(vec.opacity).toBe(0.4);
+    const ras = toFrontLayer({
+      id: "r",
+      title: "R",
+      visible: true,
+      kind: "raster",
+      tilesUrl: "t",
+      paint: { "raster-contrast": 0.2 },
+    } as RawMapLayer) as Record<string, unknown>;
+    expect(ras.paint).toEqual({ "raster-contrast": 0.2 });
+    const feat = toFrontLayer({
+      id: "f",
+      title: "F",
+      visible: true,
+      kind: "feature",
+      url: "u",
+      geometryKind: "line",
+    } as RawMapLayer) as Record<string, unknown>;
+    expect(feat.geometryKind).toBe("line");
   });
 
   test("raster: optional field (opacity) survives", () => {
@@ -1496,6 +1566,26 @@ test("queryDataSource resolves datasetId to the dataset's collectionId before fe
     query: {},
   });
   expect(records).toEqual([{ id: 1, properties: { nom: "Le Parc" }, geometry: undefined }]);
+});
+
+test("queryDataSourcePage returns the real total (numberMatched) beside the truncated page (P29.05)", async () => {
+  server.use(
+    http.get("https://core.test/v1/collections/gros/items", () =>
+      HttpResponse.json({
+        numberMatched: 500000,
+        features: [{ id: 1, properties: { nom: "A" } }],
+      }),
+    ),
+  );
+  const page = await makeClient().queryDataSourcePage!({
+    id: "s1",
+    type: "features",
+    service: "core",
+    layer: "gros",
+    query: {},
+  });
+  expect(page.total).toBe(500000);
+  expect(page.records).toHaveLength(1);
 });
 
 test("featuresUrl routes an arcgis-sourced dataset to /datasets/{datasetItemId}/arcgis/items", async () => {
@@ -3288,6 +3378,16 @@ test("runPipeline posts with no body and returns the runId", async () => {
   );
   const result = await makeClient().runPipeline("p-5");
   expect(result).toEqual({ runId: "run-1" });
+});
+
+test("cancelPipelineRun posts to the run's cancel route", async () => {
+  server.use(
+    http.post("https://core.test/v1/pipelines/p-5/runs/run-1/cancel", () =>
+      HttpResponse.json({ id: "run-1", status: "cancel_requested" }),
+    ),
+  );
+  const result = await makeClient().cancelPipelineRun?.("p-5", "run-1");
+  expect(result?.status).toBe("cancel_requested");
 });
 
 test("getPipelineRuns returns the run history", async () => {

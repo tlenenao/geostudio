@@ -1,10 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
+import re
 from datetime import date
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.catalog.metadata import validate_frequency_id, validate_language_id, validate_license_id
+
+_EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 
 
 class CollectionCreate(BaseModel):
@@ -85,6 +89,26 @@ class CollectionPatch(BaseModel):
     @classmethod
     def _validate_license(cls, v: str | None) -> str | None:
         return validate_license_id(v)
+
+    @field_validator("licenseUri")
+    @classmethod
+    def _validate_license_uri(cls, v: str | None) -> str | None:
+        # j07-014 : validé à l'écriture seulement (CollectionPatch ne relit pas
+        # les valeurs stockées). "" = effacer.
+        if v:
+            parts = urlsplit(v)
+            if parts.scheme not in ("http", "https") or not parts.hostname:
+                raise ValueError("licenseUri must be an http(s) URL")
+        return v
+
+    @field_validator("contact")
+    @classmethod
+    def _validate_contact(cls, v: str | None) -> str | None:
+        if v and not _EMAIL_RE.fullmatch(v):
+            parts = urlsplit(v)
+            if parts.scheme not in ("http", "https") or not parts.hostname:
+                raise ValueError("contact must be an email address or an http(s) URL")
+        return v
 
     @field_validator("updateFrequency")
     @classmethod

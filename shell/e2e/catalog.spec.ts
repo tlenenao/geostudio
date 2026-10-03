@@ -32,10 +32,10 @@ test("delete an item from the catalog", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Alpha" })).toBeVisible();
   await page.getByRole("button", { name: "Actions" }).first().click();
   await page
-    .getByRole("button", { name: /^supprimer$/i })
+    .getByRole("menuitem", { name: /^supprimer$/i })
     .first()
     .click();
-  await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Supprimer" }).click();
   await expect(page.getByRole("heading", { name: "Alpha" })).toHaveCount(0);
 });
 
@@ -46,10 +46,10 @@ test("delete from the detail page returns to the catalog", async ({ page }) => {
   await expect(page).toHaveURL(/\/items\/1$/);
   await page.getByRole("button", { name: "Actions" }).click();
   await page
-    .getByRole("button", { name: /^supprimer$/i })
+    .getByRole("menuitem", { name: /^supprimer$/i })
     .first()
     .click();
-  await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Supprimer" }).click();
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("heading", { name: "Alpha" })).toHaveCount(0);
 });
@@ -89,7 +89,7 @@ test("filtrer sur Dataset ne ramène que les datasets", async ({ page }) => {
   // toBeVisible() (native <option> elements report hidden outside an open
   // dropdown), for a reason unrelated to the filter under test. .last()
   // reliably lands on the one ItemCard badge left after filtering.
-  await expect(page.getByText("Dataset", { exact: true }).last()).toBeVisible();
+  await expect(page.getByText("Jeu de données", { exact: true }).last()).toBeVisible();
 });
 
 test("SP-55 : trie le catalogue par titre (A→Z)", async ({ page }) => {
@@ -102,7 +102,7 @@ test("SP-55 : trie le catalogue par titre (A→Z)", async ({ page }) => {
   // est présent (e2e/mocks.ts) — Alpha < Beta < Gamma alphabétiquement,
   // donc trier par titre_desc doit inverser l'ordre observable.
   await page.getByLabel("Trier par").selectOption("title_desc");
-  const headings = page.getByRole("heading");
+  const headings = page.getByRole("heading", { level: 3 });
   await expect(headings.first()).toHaveText("Gamma");
 });
 

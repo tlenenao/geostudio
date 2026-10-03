@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Background,
+  BaseEdge,
   Controls,
   EdgeLabelRenderer,
   Handle,
@@ -10,6 +11,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   getBezierPath,
+  type AriaLabelConfig,
   type Edge,
   type EdgeChange,
   type EdgeProps,
@@ -25,14 +27,18 @@ import type {
   PipelineNode,
   PipelineNodeStat,
   PipelineOpsCatalog,
+  PipelineRunStatus,
 } from "../../api/types";
 import { genEdgeId, hasIncomingEdge, topologicalOrder, wouldCreateCycle } from "./graphOps";
 import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
-import { t } from "../../i18n";
+import { plural, t } from "../../i18n";
 
 // SP-B12c : pas de token catégoriel à 3 valeurs dans tokens.css — ok/warn/
 // accent réutilisés ici pour leur distinction visuelle (vert/ambre/teal),
 // pas pour leur sens sémantique de statut.
+const FOCUS_RING =
+  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
+
 const KIND_COLOR: Record<PipelineNode["kind"], string> = {
   reader: "border-ok bg-ok-soft",
   transform: "border-warn bg-warn-soft",
@@ -57,7 +63,7 @@ function PipelineNodeBox({ data, selected }: NodeProps) {
   const node = data as unknown as CanvasNodeData;
   return (
     <div
-      className={`relative rounded-md border-2 px-3 py-2 text-xs ${KIND_COLOR[node.kind]} ${selected ? "ring-2 ring-accent" : ""} ${node.errorCount > 0 ? "border-danger" : ""} ${node.isConnectingSource ? "ring-2 ring-accent" : ""}`}
+      className={`relative rounded-md border-2 px-3 py-2 text-xs text-ink ${KIND_COLOR[node.kind]} ${selected ? "ring-2 ring-accent" : ""} ${node.errorCount > 0 ? "border-danger" : ""} ${node.isConnectingSource ? "ring-2 ring-accent" : ""}`}
     >
       <Handle type="target" position={Position.Left} id="primary" />
       {node.acceptsSecondaryInput && (
@@ -74,7 +80,14 @@ function PipelineNodeBox({ data, selected }: NodeProps) {
       {node.errorCount > 0 && (
         <span
           role="status"
-          aria-label={t("pipelineCanvas.nodeErrorAria", { count: node.errorCount })}
+          aria-label={t(
+            plural(
+              node.errorCount,
+              "pipelineCanvas.nodeErrorAriaOne",
+              "pipelineCanvas.nodeErrorAriaMany",
+            ),
+            { count: node.errorCount },
+          )}
           className="absolute -left-2 -top-2 flex h-4 w-4 items-center justify-center rounded-full bg-danger text-2xs text-surface"
         >
           !
@@ -98,7 +111,7 @@ function PipelineNodeBox({ data, selected }: NodeProps) {
       <button
         type="button"
         aria-label={t("pipelineCanvas.deleteNodeAria", { title: node.title ?? node.op })}
-        className="absolute -bottom-2 -right-2 flex h-4 w-4 items-center justify-center rounded-full border border-rule bg-surface text-2xs leading-none text-ink-2 hover:bg-sunken hover:text-danger"
+        className="absolute -bottom-3 -right-3 flex h-6 w-6 items-center justify-center rounded-full border border-rule bg-surface text-2xs leading-none text-ink-2 hover:bg-sunken hover:text-danger"
         onClick={(e) => {
           e.stopPropagation();
           node.onDelete(node.id);
@@ -110,7 +123,7 @@ function PipelineNodeBox({ data, selected }: NodeProps) {
         type="button"
         aria-label={t("pipelineCanvas.startConnectAria", { title: node.title ?? node.op })}
         aria-pressed={node.isConnectingSource}
-        className="absolute -bottom-2 -left-2 flex h-4 w-4 items-center justify-center rounded-full border border-rule bg-surface text-2xs leading-none text-ink-2 hover:bg-sunken"
+        className="absolute -bottom-3 -left-3 flex h-6 w-6 items-center justify-center rounded-full border border-rule bg-surface text-2xs leading-none text-ink-2 hover:bg-sunken"
         onClick={(e) => {
           e.stopPropagation();
           node.onStartConnect(node.id);
@@ -136,7 +149,7 @@ function CanvasNoteBox({ data }: NodeProps) {
     >
       <input
         aria-label={t("pipelineCanvas.noteLabelAria")}
-        className="w-full bg-transparent text-xs font-medium text-ink-2 outline-none"
+        className="h-6 w-full bg-transparent text-xs font-medium text-ink-2 outline-none"
         value={note.label}
         onChange={(e) => note.onLabelChange(note.id, e.target.value)}
         disabled={note.readOnly}
@@ -159,35 +172,30 @@ function toFlowNoteNode(
   };
 }
 
-function InsertOnEdgeButton({
-  id,
-  sourceX,
-  sourceY,
-  targetX,
-  targetY,
-  data,
-  onInsert,
-  opsCatalog,
-  readOnly,
-}: EdgeProps & {
+type InsertEdgeData = {
+  role?: string;
   onInsert: (edgeId: string, op: string) => void;
   opsCatalog: PipelineOpsCatalog;
   readOnly?: boolean;
-}) {
+};
+
+// Les types d'arête/nœud doivent être stables (module scope) : un composant
+// recréé à chaque rendu remonte à chaque changement de sélection et perd son
+// état (menu « + » ouvert, focus).
+function InsertOnEdgeButton({ id, sourceX, sourceY, targetX, targetY, data }: EdgeProps) {
+  const { role, onInsert, opsCatalog, readOnly } = data as unknown as InsertEdgeData;
   const [open, setOpen] = useState(false);
   const insertMenu = usePanelTrigger(open);
   const [edgePath, labelX, labelY] = getBezierPath({ sourceX, sourceY, targetX, targetY });
-  const role = (data as { role?: string } | undefined)?.role;
   const insertableTransforms = Object.entries(opsCatalog)
     .filter(([, entry]) => entry.kind === "transform")
     .map(([op]) => op)
     .sort();
   return (
     <>
-      <path
+      <BaseEdge
         id={id}
-        className="react-flow__edge-path"
-        d={edgePath}
+        path={edgePath}
         style={role === "secondary" ? { strokeDasharray: "4 4" } : undefined}
       />
       <EdgeLabelRenderer>
@@ -197,13 +205,17 @@ function InsertOnEdgeButton({
             transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
             pointerEvents: "all",
           }}
+          // Un clic sur « + » n'est pas une sélection de l'arête (le portail
+          // fait remonter l'événement React jusqu'au wrapper de l'arête).
+          role="presentation"
+          onClick={(e) => e.stopPropagation()}
         >
           <button
             type="button"
             aria-label={t("pipelineCanvas.insertStepAria")}
             aria-expanded={insertMenu.triggerProps["aria-expanded"]}
             aria-controls={insertMenu.triggerProps["aria-controls"]}
-            className="h-5 w-5 rounded-full border border-rule bg-surface text-xs leading-none hover:bg-sunken"
+            className="h-6 w-6 rounded-full border border-rule bg-surface text-xs leading-none text-ink hover:bg-sunken"
             onClick={() => setOpen((o) => !o)}
             disabled={readOnly}
           >
@@ -260,16 +272,31 @@ function toFlowNode(
     data: { ...n, ...extra } as unknown as Record<string, unknown>,
     type: "pipelineNode",
     selected,
+    // P32.04 : le wrapper React Flow porte le focus clavier, pas notre boîte.
+    className: FOCUS_RING,
   };
 }
-function toFlowEdge(e: PipelineEdge): Edge {
+// Référence stable : React Flow ré-abonne ses écouteurs clavier à chaque nouveau tableau.
+const DELETE_KEYS = ["Backspace", "Delete"];
+const NODE_TYPES = { pipelineNode: PipelineNodeBox, canvasNote: CanvasNoteBox };
+const EDGE_TYPES = { insertable: InsertOnEdgeButton };
+
+function toFlowEdge(
+  e: PipelineEdge,
+  selected: boolean,
+  label: string,
+  extra: Omit<InsertEdgeData, "role">,
+): Edge {
   return {
     id: e.id,
     source: e.from,
     target: e.to,
     type: "insertable",
+    selected,
+    ariaLabel: label,
+    className: "focus-visible:outline-none [&:focus-visible_.react-flow__edge-path]:stroke-accent",
     targetHandle: e.role === "secondary" ? "secondary" : "primary",
-    data: { role: e.role },
+    data: { role: e.role, ...extra },
   };
 }
 
@@ -298,24 +325,12 @@ function PipelineCanvasInner({
   onInsertOnEdge: (edgeId: string, op: string) => void;
   opsCatalog: PipelineOpsCatalog;
   nodeStats?: Record<string, PipelineNodeStat>;
-  runStatus?: "queued" | "running" | "succeeded" | "failed";
+  runStatus?: PipelineRunStatus;
   nodeErrors?: Record<string, string[]>;
   notes: PipelineCanvasNote[];
   onNotesChange: (notes: PipelineCanvasNote[]) => void;
   readOnly?: boolean;
 }) {
-  const nodeTypes = { pipelineNode: PipelineNodeBox, canvasNote: CanvasNoteBox };
-  const edgeTypes = {
-    insertable: (props: EdgeProps) => (
-      <InsertOnEdgeButton
-        {...props}
-        onInsert={onInsertOnEdge}
-        opsCatalog={opsCatalog}
-        readOnly={readOnly}
-      />
-    ),
-  };
-
   const onConnect: OnConnect = useCallback(
     (connection) => {
       if (readOnly) return;
@@ -384,8 +399,16 @@ function PipelineCanvasInner({
     [nodes, notes, onNodesChange, onNotesChange, onSelectNode, readOnly],
   );
 
+  // P32.02 : les arêtes sont reconstruites à chaque rendu ; sans cet état,
+  // React Flow n'en voit jamais une « selected » et Suppr ne la retire pas.
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+
   const handleEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
+      for (const c of changes) {
+        if (c.type === "select")
+          setSelectedEdgeId((cur) => (c.selected ? c.id : cur === c.id ? null : cur));
+      }
       // D55 : même raisonnement que handleNodesChange — deleteKeyCode={null}
       // empêche déjà l'émission d'un changement "remove" au clavier en
       // lecture seule ; ce garde explicite est la seconde ligne de défense.
@@ -438,11 +461,42 @@ function PipelineCanvasInner({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [connectingFromId]);
 
+  // P32.01 : Entrée/Espace sur le nœud cible achève la connexion amorcée par ↝
+  // (le clic passe par onNodeClick, le clavier par ce gestionnaire).
+  function onCanvasKeyDown(e: React.KeyboardEvent) {
+    if (!connectingFromId || (e.key !== "Enter" && e.key !== " ")) return;
+    const el = (e.target as HTMLElement).closest<HTMLElement>(".react-flow__node");
+    if (!el || e.target !== el) return;
+    const id = el.dataset.id;
+    if (!id || id === connectingFromId || id.startsWith("note-")) return;
+    e.preventDefault();
+    completeConnection(id);
+  }
+
+  const titleOf = useMemo(() => new Map(nodes.map((n) => [n.id, n.title ?? n.op])), [nodes]);
+  const ariaLabelConfig = useMemo<Partial<AriaLabelConfig>>(
+    () => ({
+      "node.a11yDescription.default": t("pipelineCanvas.nodeA11yDescription"),
+      "node.a11yDescription.keyboardDisabled": t("pipelineCanvas.nodeA11yDescription"),
+      "node.a11yDescription.ariaLiveMessage": ({ direction, x, y }) =>
+        t("pipelineCanvas.nodeMovedLive", { direction, x: Math.round(x), y: Math.round(y) }),
+      "edge.a11yDescription.default": t("pipelineCanvas.edgeA11yDescription"),
+      "controls.ariaLabel": t("pipelineCanvas.controlsAria"),
+      "controls.zoomIn.ariaLabel": t("pipelineCanvas.zoomIn"),
+      "controls.zoomOut.ariaLabel": t("pipelineCanvas.zoomOut"),
+      "controls.fitView.ariaLabel": t("pipelineCanvas.fitView"),
+      "controls.interactive.ariaLabel": t("pipelineCanvas.toggleInteractivity"),
+      "minimap.ariaLabel": t("pipelineCanvas.minimapAria"),
+      "handle.ariaLabel": t("pipelineCanvas.handleAria"),
+    }),
+    [],
+  );
+
   const order = topologicalOrder(nodes, edges);
   const nextNodeId = runStatus === "running" ? order.find((id) => !nodeStats?.[id]) : undefined;
 
   return (
-    <div className="h-full">
+    <div className="h-full" role="presentation" onKeyDown={onCanvasKeyDown}>
       <ReactFlow
         nodes={[
           ...nodes.map((n) =>
@@ -472,9 +526,20 @@ function PipelineCanvasInner({
             ),
           ),
         ]}
-        edges={edges.map(toFlowEdge)}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
+        edges={edges.map((e) =>
+          toFlowEdge(
+            e,
+            e.id === selectedEdgeId,
+            t("pipelineCanvas.edgeAria", {
+              source: titleOf.get(e.from) ?? e.from,
+              target: titleOf.get(e.to) ?? e.to,
+            }),
+            { onInsert: onInsertOnEdge, opsCatalog, readOnly },
+          ),
+        )}
+        ariaLabelConfig={ariaLabelConfig}
+        nodeTypes={NODE_TYPES}
+        edgeTypes={EDGE_TYPES}
         onConnect={onConnect}
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
@@ -487,7 +552,7 @@ function PipelineCanvasInner({
             completeConnection(flowNode.id);
         }}
         onPaneClick={() => onSelectNode(null)}
-        deleteKeyCode={readOnly ? null : ["Backspace", "Delete"]}
+        deleteKeyCode={readOnly ? null : DELETE_KEYS}
         nodesDraggable={!readOnly}
         nodesConnectable={!readOnly}
       >

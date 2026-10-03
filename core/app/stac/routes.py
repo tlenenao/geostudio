@@ -79,6 +79,34 @@ def _visible_collections(session: Session, user):
     return sorted(cols, key=lambda c: c.id)
 
 
+def _collection_doc(request: Request, col, bbox) -> dict:
+    return serializers.collection(
+        base=_base(request),
+        collection_id=col.id,
+        title=col.title,
+        description=col.description or "",
+        bbox=bbox,
+        temporal_start=(
+            f"{col.temporal_start.isoformat()}T00:00:00Z"
+            if col.temporal_start
+            else _rfc3339(col.created_at)
+        ),
+        temporal_end=(f"{col.temporal_end.isoformat()}T23:59:59Z" if col.temporal_end else None),
+        license=col.license,
+        license_uri=col.license_uri,
+        providers=[{"name": col.producer, "roles": ["producer"]}] if col.producer else None,
+    )
+
+
+def _item_datetimes(col) -> tuple[str, str | None]:
+    """(datetime, end_datetime) d'un item : emprise temporelle déclarée de la
+    collection si renseignée, sinon sa date de mise à jour (j07-011)."""
+    if col.temporal_start:
+        end = f"{col.temporal_end.isoformat()}T23:59:59Z" if col.temporal_end else None
+        return f"{col.temporal_start.isoformat()}T00:00:00Z", end
+    return _rfc3339(col.updated_at), None
+
+
 @router.get("")
 def landing(
     request: Request,
@@ -119,27 +147,7 @@ def list_collections(
         except (TableNotFound, UnsupportedTable, DBAPIError) as exc:
             logger.warning("stac catalog: extent lookup failed for collection %s: %s", col.id, exc)
             bbox = None
-        docs.append(
-            serializers.collection(
-                base=_base(request),
-                collection_id=col.id,
-                title=col.title,
-                description=col.description or "",
-                bbox=bbox,
-                temporal_start=(
-                    f"{col.temporal_start.isoformat()}T00:00:00Z"
-                    if col.temporal_start
-                    else _rfc3339(col.created_at)
-                ),
-                temporal_end=(
-                    f"{col.temporal_end.isoformat()}T23:59:59Z" if col.temporal_end else None
-                ),
-                license=col.license,
-                providers=(
-                    [{"name": col.producer, "roles": ["producer"]}] if col.producer else None
-                ),
-            )
-        )
+        docs.append(_collection_doc(request, col, bbox))
     links = [
         {
             "rel": "self",
@@ -180,24 +188,14 @@ def get_collection(
             user and has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
         ),
     )  # 404 non-fuyant
-    info = introspect(session, col.table_name)
-    with rls(session, col.tenant_id):
-        bbox = bbox_provider(session, info)
-    return serializers.collection(
-        base=_base(request),
-        collection_id=col.id,
-        title=col.title,
-        description=col.description or "",
-        bbox=bbox,
-        temporal_start=(
-            f"{col.temporal_start.isoformat()}T00:00:00Z"
-            if col.temporal_start
-            else _rfc3339(col.created_at)
-        ),
-        temporal_end=(f"{col.temporal_end.isoformat()}T23:59:59Z" if col.temporal_end else None),
-        license=col.license,
-        providers=[{"name": col.producer, "roles": ["producer"]}] if col.producer else None,
-    )
+    try:
+        info = introspect(session, col.table_name)
+        with rls(session, col.tenant_id):
+            bbox = bbox_provider(session, info)
+    except (TableNotFound, UnsupportedTable, DBAPIError) as exc:
+        logger.warning("stac collection %s: extent lookup failed: %s", col.id, exc)
+        bbox = None  # j07-009 : dégradation gracieuse, comme /stac/collections
+    return _collection_doc(request, col, bbox)
 
 
 def _parse_bbox(raw: str | None):
@@ -243,10 +241,12 @@ def list_items(
         page = repo.select_features(
             session, info, limit=limit, offset=offset, bbox=parsed_bbox, filters=None
         )
-    dtv = _rfc3339(col.updated_at)
+    dtv, dte = _item_datetimes(col)
     base = _base(request)
     items = [
-        serializers.item(base=base, collection_id=col.id, feature=f, datetime_value=dtv)
+        serializers.item(
+            base=base, collection_id=col.id, feature=f, datetime_value=dtv, end_datetime=dte
+        )
         for f in page.features
     ]
     links = [
@@ -295,7 +295,8 @@ def get_item(
         base=_base(request),
         collection_id=col.id,
         feature=feature,
-        datetime_value=_rfc3339(col.updated_at),
+        datetime_value=_item_datetimes(col)[0],
+        end_datetime=_item_datetimes(col)[1],
     )
 
 
@@ -320,25 +321,49 @@ def _decode_token(token: str | None):
         d = json.loads(base64.urlsafe_b64decode(token.encode()))
         return str(d["c"]), int(d["o"])
     except Exception:
-        return None
+        raise HTTPException(status_code=400, detail="invalid pagination token") from None
 
 
 def _parse_dt(value: str):
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        raise HTTPException(
+            status_code=400, detail="datetime must be an RFC 3339 instant or interval"
+        ) from None
+    return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
 
 
-def _collection_in_datetime(updated_at, datetime_param: str | None) -> bool:
+def _parse_datetime_param(datetime_param: str | None):
+    """-> (start, end) ; None = borne ouverte. Lève 400 si invalide."""
     if not datetime_param:
-        return True
-    ua = updated_at if updated_at.tzinfo else updated_at.replace(tzinfo=UTC)
+        return None
     if "/" in datetime_param:
         start_s, end_s = datetime_param.split("/", 1)
-        if start_s not in ("", "..") and ua < _parse_dt(start_s):
-            return False
-        if end_s not in ("", "..") and ua > _parse_dt(end_s):
-            return False
+        return (
+            None if start_s in ("", "..") else _parse_dt(start_s),
+            None if end_s in ("", "..") else _parse_dt(end_s),
+        )
+    instant = _parse_dt(datetime_param)
+    return instant, instant
+
+
+def _collection_in_datetime(col, window) -> bool:
+    """Recouvrement entre la fenêtre demandée et l'emprise temporelle de la
+    collection (temporal_start/end si déclarée, sinon l'instant updated_at)."""
+    if window is None:
         return True
-    return ua == _parse_dt(datetime_param)
+    if col.temporal_start:
+        cs = datetime.combine(col.temporal_start, datetime.min.time(), UTC)
+        ce = (
+            datetime.combine(col.temporal_end, datetime.max.time(), UTC)
+            if col.temporal_end
+            else None
+        )
+    else:
+        cs = ce = col.updated_at if col.updated_at.tzinfo else col.updated_at.replace(tzinfo=UTC)
+    qs, qe = window
+    return (qe is None or cs <= qe) and (qs is None or ce is None or ce >= qs)
 
 
 def _run_search(
@@ -362,7 +387,8 @@ def _run_search(
     if collections:
         wanted = set(collections)
         cols = [c for c in cols if c.id in wanted]
-    cols = [c for c in cols if _collection_in_datetime(c.updated_at, datetime_param)]
+    window = _parse_datetime_param(datetime_param)
+    cols = [c for c in cols if _collection_in_datetime(c, window)]
 
     decoded = _decode_token(token)
     start_c, start_o = decoded if decoded else (None, 0)
@@ -378,7 +404,12 @@ def _run_search(
             offset = start_o
         else:
             offset = 0
-        info = introspect(session, col.table_name)
+        try:
+            info = introspect(session, col.table_name)
+        except (TableNotFound, UnsupportedTable) as exc:
+            # j07-008 : une collection cassée ne fait pas échouer toute la recherche.
+            logger.warning("stac search: collection %s ignorée: %s", col.id, exc)
+            continue
         if masked:
             info = hide_sensitive_columns(info, col.sensitive_fields)
         remaining = limit - len(results)
@@ -386,12 +417,14 @@ def _run_search(
             page = repo.select_features(
                 session, info, limit=remaining, offset=offset, bbox=bbox, filters=None
             )
-        dtv = _rfc3339(col.updated_at)
+        dtv, dte = _item_datetimes(col)
         for f in page.features:
             if ids and str(f["id"]) not in ids:
                 continue
             results.append(
-                serializers.item(base=base, collection_id=col.id, feature=f, datetime_value=dtv)
+                serializers.item(
+                    base=base, collection_id=col.id, feature=f, datetime_value=dtv, end_datetime=dte
+                )
             )
         consumed = offset + page.number_returned
         if len(results) >= limit and consumed < page.number_matched:

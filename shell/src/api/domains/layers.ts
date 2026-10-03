@@ -9,7 +9,8 @@ import type {
   PrintLayoutConfig,
 } from "../types";
 import type { ItemClientBase, RawMapLayer } from "../base";
-import { toFrontLayer } from "../base";
+import { ensureOk, parseErrorResponse, toFrontLayer } from "../base";
+import { ApiError } from "../ApiError";
 import { DEFAULT_BASEMAP } from "../../map/basemaps";
 import { OWNER_PERMISSIONS } from "../../auth/permissions";
 
@@ -142,7 +143,7 @@ export function createLayersMethods(base: ItemClientBase): LayersMethods {
     async listFeatureLayers(params: { q?: string } = {}): Promise<FeatureLayerSource[]> {
       const query = params.q ? `?q=${encodeURIComponent(params.q)}` : "";
       const res = await authFetch(`${coreUrl}/harvest/feature-layers${query}`);
-      if (!res.ok) throw new Error(`Request failed: ${res.status} /harvest/feature-layers`);
+      await ensureOk(res);
       const data = (await res.json()) as { layers?: FeatureLayerSource[] };
       return data.layers ?? [];
     },
@@ -174,21 +175,15 @@ export function createLayersMethods(base: ItemClientBase): LayersMethods {
       });
       if (!res.ok) {
         // Le cœur répond en RFC 7807 avec un membre `errors` de premier
-        // niveau quand un SVG est refusé : remonter le message pour que
+        // niveau quand un SVG est refusé : on le promeut en `detail` pour que
         // l'auteur voie POURQUOI, au lieu d'un code nu.
-        let detail = "";
-        try {
-          const problem = (await res.json()) as {
-            detail?: string;
-            errors?: { message?: string }[];
-          };
-          detail = problem.errors?.[0]?.message ?? problem.detail ?? "";
-        } catch {
-          detail = "";
-        }
-        throw new Error(
-          `Request failed: ${res.status} POST /map-icons${detail ? ` — ${detail}` : ""}`,
-        );
+        const e = await parseErrorResponse(res);
+        throw new ApiError(e.status, {
+          title: e.title,
+          detail: e.errors?.[0]?.message ?? e.detail,
+          retryAfter: e.retryAfter,
+          errors: e.errors,
+        });
       }
       return (await res.json()) as MapIconOut;
     },
@@ -205,7 +200,7 @@ export function createLayersMethods(base: ItemClientBase): LayersMethods {
       // `request()` fait toujours res.json() : cette route renvoie des
       // octets, donc fetch direct, avec le même en-tête d'autorisation.
       const res = await authFetch(`${coreUrl}/map-icons/${encodeURIComponent(iconId)}/file`);
-      if (!res.ok) throw new Error(`Request failed: ${res.status} GET /map-icons/${iconId}/file`);
+      await ensureOk(res);
       return res.blob();
     },
   };

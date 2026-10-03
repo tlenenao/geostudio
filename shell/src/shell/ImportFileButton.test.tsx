@@ -848,3 +848,144 @@ test("does not poll again or update state after the drawer is unmounted mid-impo
   expect(errorSpy).not.toHaveBeenCalled();
   errorSpy.mockRestore();
 });
+
+function stubPipeline(poll: () => Response | Promise<Response>) {
+  server.use(
+    http.post("https://core.test/v1/uploads/presign", () =>
+      HttpResponse.json({ uploadUrl: "https://minio.test/p28", key: "t/p28-villes.geojson" }),
+    ),
+    http.put("https://minio.test/p28", () => new HttpResponse(null, { status: 200 })),
+    http.post("https://core.test/v1/uploads", () => HttpResponse.json({ jobId: "job-p28" })),
+    http.get("https://core.test/v1/uploads/job-p28", poll),
+  );
+}
+
+async function startGeojsonImport() {
+  render(
+    <Harness>
+      <ImportFileButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Importer un fichier" }));
+  await userEvent.upload(screen.getByLabelText("Fichier à importer"), geojsonFile());
+  await userEvent.type(screen.getByLabelText("Titre de la collection"), "P28");
+  await userEvent.click(screen.getByRole("button", { name: "Importer" }));
+}
+
+test("P28.02 : un CSV séparé par « ; » est détecté (colonnes réelles proposées)", async () => {
+  render(
+    <Harness>
+      <ImportFileButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Importer un fichier" }));
+  const ok = new File(["nom;lat;lon\nParis;48,85;2,35\n"], "semi.csv", { type: "text/csv" });
+  await userEvent.upload(screen.getByLabelText("Fichier à importer"), ok);
+  await waitFor(() => expect(screen.getByLabelText("Titre de la collection")).toBeInTheDocument());
+  expect(screen.queryByLabelText("Colonne latitude")).not.toBeInTheDocument();
+
+  const other = new File(["nom;x1;x2\nA;1;2\n"], "other.csv", { type: "text/csv" });
+  await userEvent.upload(screen.getByLabelText("Fichier à importer"), other);
+  await waitFor(() => expect(screen.getByLabelText("Colonne latitude")).toBeInTheDocument());
+  expect(screen.getAllByRole("option", { name: "x1" }).length).toBeGreaterThan(0);
+});
+
+test("P28.08 : l'échec de l'envoi nomme l'étape et reprend le detail du cœur", async () => {
+  server.use(
+    http.post("https://core.test/v1/uploads/presign", () =>
+      HttpResponse.json({ detail: "Quota dépassé." }, { status: 413 }),
+    ),
+  );
+  await startGeojsonImport();
+  await waitFor(() =>
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Échec de l'envoi du fichier. Quota dépassé.",
+    ),
+  );
+});
+
+test("P28.10 : une erreur transitoire du sondage est retentée", async () => {
+  let n = 0;
+  stubPipeline(() => {
+    n += 1;
+    if (n === 1) return HttpResponse.error();
+    return HttpResponse.json({
+      status: "done",
+      errorMessage: null,
+      collectionId: "c",
+      itemId: "7",
+    });
+  });
+  await startGeojsonImport();
+  await waitFor(() => expect(screen.getByText("map-7")).toBeInTheDocument(), { timeout: 6000 });
+  expect(n).toBe(2);
+});
+
+test("P28.10 : trois erreurs consécutives du sondage affichent l'échec du suivi", async () => {
+  stubPipeline(() => HttpResponse.error());
+  await startGeojsonImport();
+  await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Échec du suivi"), {
+    timeout: 8000,
+  });
+});
+
+test("P28.09 : un import lent affiche un avertissement et libère l'annulation", async () => {
+  let offset = 0;
+  const base = Date.now();
+  vi.spyOn(Date, "now").mockImplementation(() => base + offset);
+  stubPipeline(() => {
+    offset = 40_000;
+    return HttpResponse.json({
+      status: "pending",
+      errorMessage: null,
+      collectionId: null,
+      itemId: null,
+    });
+  });
+  await startGeojsonImport();
+  await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("plus de temps"), {
+    timeout: 6000,
+  });
+  expect(screen.getByRole("button", { name: "Annuler" })).toBeEnabled();
+  await userEvent.click(screen.getByRole("button", { name: "Annuler" }));
+  vi.restoreAllMocks();
+});
+
+test("P28.02 : un séparateur dans un en-tête entre guillemets ne fausse pas la détection", async () => {
+  render(
+    <Harness>
+      <ImportFileButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Importer un fichier" }));
+  const f = new File(['"a;b;c;d",x1,x2\n1,2,3\n'], "q.csv", { type: "text/csv" });
+  await userEvent.upload(screen.getByLabelText("Fichier à importer"), f);
+  await waitFor(() => expect(screen.getByLabelText("Colonne latitude")).toBeInTheDocument());
+  expect(screen.getAllByRole("option", { name: "x1" }).length).toBeGreaterThan(0);
+});
+
+test("P28.09 : annuler un import lent arrête le sondage", async () => {
+  let offset = 0;
+  let n = 0;
+  const base = Date.now();
+  vi.spyOn(Date, "now").mockImplementation(() => base + offset);
+  stubPipeline(() => {
+    n += 1;
+    offset = 40_000;
+    return HttpResponse.json({
+      status: "pending",
+      errorMessage: null,
+      collectionId: null,
+      itemId: null,
+    });
+  });
+  await startGeojsonImport();
+  await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("plus de temps"), {
+    timeout: 6000,
+  });
+  await userEvent.click(screen.getByRole("button", { name: "Annuler" }));
+  const after = n;
+  await new Promise((r) => setTimeout(r, 2200));
+  expect(n).toBe(after);
+  vi.restoreAllMocks();
+});

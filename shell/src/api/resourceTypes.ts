@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { t } from "../i18n";
 import type { ResourceType } from "./types";
 
 // Source unique des libellés de type de ressource, lue par le filtre du
@@ -10,19 +11,20 @@ import type { ResourceType } from "./types";
 // ResourceType casse la compilation tant qu'il n'a pas son libellé ici —
 // même argument d'exhaustivité prouvée par le typage que StaticItemClient
 // (SP-18a).
+// Glossaire arrêté (P34.18) : Application / Tableau de bord / Carte / Jeu de données.
 export const RESOURCE_TYPE_LABELS: Record<ResourceType, string> = {
-  app: "App",
-  dashboard: "Dashboard",
-  map: "Carte",
-  site: "Site",
-  dataset: "Dataset",
-  bookmark: "Vue enregistrée",
-  pipeline: "Pipeline",
-  alert: "Alerte",
-  report: "Rapport",
-  tileset3d: "Tuiles 3D",
-  terrain3d: "Terrain 3D",
-  external: "Externe",
+  app: t("resourceType.app"),
+  dashboard: t("resourceType.dashboard"),
+  map: t("resourceType.map"),
+  site: t("resourceType.site"),
+  dataset: t("resourceType.dataset"),
+  bookmark: t("resourceType.bookmark"),
+  pipeline: t("resourceType.pipeline"),
+  alert: t("resourceType.alert"),
+  report: t("resourceType.report"),
+  tileset3d: t("resourceType.tileset3d"),
+  terrain3d: t("resourceType.terrain3d"),
+  external: t("resourceType.external"),
 };
 
 // Ordre d'affichage dans le filtre : les objets que l'on crée le plus

@@ -228,7 +228,19 @@ test("toggles interactions on and saves it with the app config", async () => {
 
 test("shows an error when loading fails", async () => {
   renderPage({ getAppConfig: vi.fn().mockRejectedValue(new Error("x")) });
+  expect(await screen.findByRole("alert")).toHaveTextContent(/erreur de chargement/i);
+  expect(screen.getByRole("button", { name: "Réessayer" })).toBeInTheDocument();
+});
+
+test("P22.09 : un 404 est « introuvable » (sans Réessayer), un 403 « accès refusé »", async () => {
+  const { unmount } = renderPage({
+    getAppConfig: vi.fn().mockRejectedValue(new ApiError(404)),
+  });
   expect(await screen.findByRole("alert")).toHaveTextContent(/introuvable/i);
+  expect(screen.queryByRole("button", { name: "Réessayer" })).not.toBeInTheDocument();
+  unmount();
+  renderPage({ getAppConfig: vi.fn().mockRejectedValue(new ApiError(403)) });
+  expect(await screen.findByRole("alert")).toHaveTextContent(/accès refusé/i);
 });
 
 test("adds a data source and persists it", async () => {
@@ -295,9 +307,11 @@ test("edits a position at the sm breakpoint and persists layouts.sm", async () =
   const saveAppConfig = vi.fn().mockResolvedValue(undefined);
   renderPage({ getAppConfig: vi.fn().mockResolvedValue(withItem), saveAppConfig });
 
-  await userEvent.click(await screen.findByRole("button", { name: "Éditer en sm" }));
-  await userEvent.click(screen.getByRole("button", { name: "Sélectionner widget-w1" }));
-  await userEvent.click(screen.getByRole("button", { name: "Déplacer widget-w1 à droite" }));
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Éditer la disposition Mobile" }),
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Sélectionner Texte" }));
+  await userEvent.click(screen.getByRole("button", { name: "Déplacer Texte à droite" }));
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
 
   await waitFor(() => expect(saveAppConfig).toHaveBeenCalled());
@@ -354,11 +368,11 @@ test("REV-054 : changer de widget sélectionné remonte PropsPanel (pas de fuite
   };
   renderPage({ getAppConfig: vi.fn().mockResolvedValue(withTwoProbes) });
 
-  await userEvent.click(await screen.findByRole("button", { name: "Sélectionner widget-w1" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Sélectionner Sonde 1" }));
   await userEvent.click(screen.getByLabelText("Mode avancé"));
   expect(screen.getByLabelText("Mode avancé")).toBeChecked();
 
-  await userEvent.click(screen.getByRole("button", { name: "Sélectionner widget-w2" }));
+  await userEvent.click(screen.getByRole("button", { name: "Sélectionner Sonde 2" }));
   expect(screen.getByLabelText("Mode avancé")).not.toBeChecked();
 });
 
@@ -452,7 +466,7 @@ test("undoing 'Ajouter une page' then adding a widget lands on a real page, not 
   await userEvent.click(screen.getByRole("button", { name: "Texte" }));
   // The widget must show up on the canvas actually being edited, not be
   // silently dropped.
-  expect(screen.getAllByRole("button", { name: /^Sélectionner widget-/ })).toHaveLength(1);
+  expect(screen.getAllByRole("button", { name: /^Sélectionner / })).toHaveLength(1);
 
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   await waitFor(() => expect(saveAppConfig).toHaveBeenCalled());
@@ -517,7 +531,7 @@ test("promotes one data source to a shared dataset without touching its siblings
   });
 
   const promoteButton = await screen.findByRole("button", {
-    name: "Promouvoir en dataset partagé s1",
+    name: "Promouvoir en jeu de données partagé s1",
   });
   await userEvent.click(promoteButton);
 
@@ -529,7 +543,7 @@ test("promotes one data source to a shared dataset without touching its siblings
       collectionId: "parcs",
     }),
   );
-  await screen.findByText("Dataset partagé actif");
+  await screen.findByText("Jeu de données partagé actif");
 
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   await waitFor(() => expect(saveAppConfig).toHaveBeenCalled());
@@ -568,8 +582,8 @@ test("a GridCanvas move can be undone with Ctrl+Z", async () => {
   const saveAppConfig = vi.fn().mockResolvedValue(undefined);
   renderPage({ getAppConfig: vi.fn().mockResolvedValue(withItem), saveAppConfig });
 
-  await userEvent.click(await screen.findByRole("button", { name: "Sélectionner widget-w1" }));
-  await userEvent.click(screen.getByRole("button", { name: "Déplacer widget-w1 à droite" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Sélectionner Texte" }));
+  await userEvent.click(screen.getByRole("button", { name: "Déplacer Texte à droite" }));
 
   await userEvent.keyboard("{Control>}z{/Control}");
   expect(screen.getByRole("button", { name: "Annuler" })).toBeDisabled();
@@ -595,8 +609,8 @@ test("Ctrl+Shift+Z redoes an undone GridCanvas move", async () => {
   const saveAppConfig = vi.fn().mockResolvedValue(undefined);
   renderPage({ getAppConfig: vi.fn().mockResolvedValue(withItem), saveAppConfig });
 
-  await userEvent.click(await screen.findByRole("button", { name: "Sélectionner widget-w1" }));
-  await userEvent.click(screen.getByRole("button", { name: "Déplacer widget-w1 à droite" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Sélectionner Texte" }));
+  await userEvent.click(screen.getByRole("button", { name: "Déplacer Texte à droite" }));
   await userEvent.keyboard("{Control>}z{/Control}");
   expect(screen.getByRole("button", { name: "Rétablir" })).toBeEnabled();
 
@@ -623,9 +637,9 @@ test("the remove button on GridCanvas removes the selected widget", async () => 
   };
   renderPage({ getAppConfig: vi.fn().mockResolvedValue(withItem) });
 
-  await userEvent.click(await screen.findByRole("button", { name: "Sélectionner widget-w1" }));
-  await userEvent.click(screen.getByRole("button", { name: "Supprimer widget-w1" }));
-  expect(screen.queryByRole("button", { name: "Sélectionner widget-w1" })).not.toBeInTheDocument();
+  await userEvent.click(await screen.findByRole("button", { name: "Sélectionner Texte" }));
+  await userEvent.click(screen.getByRole("button", { name: "Supprimer Texte" }));
+  expect(screen.queryByRole("button", { name: "Sélectionner Texte" })).not.toBeInTheDocument();
 });
 
 test("Backspace with a widget selected removes it, ignored while typing", async () => {
@@ -642,9 +656,9 @@ test("Backspace with a widget selected removes it, ignored while typing", async 
   };
   renderPage({ getAppConfig: vi.fn().mockResolvedValue(withItem) });
 
-  await userEvent.click(await screen.findByRole("button", { name: "Sélectionner widget-w1" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Sélectionner Texte" }));
   await userEvent.keyboard("{Backspace}");
-  expect(screen.queryByRole("button", { name: "Sélectionner widget-w1" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Sélectionner Texte" })).not.toBeInTheDocument();
 });
 
 describe("raccourcis de suppression (P10.03/05)", () => {
@@ -662,20 +676,20 @@ describe("raccourcis de suppression (P10.03/05)", () => {
 
   test("Retour arrière dans un select du panneau ne supprime pas le widget", async () => {
     renderPage({ getAppConfig: vi.fn().mockResolvedValue(withItem) });
-    await userEvent.click(await screen.findByRole("button", { name: "Sélectionner widget-w1" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Sélectionner Texte" }));
     screen.getByLabelText("Widget émetteur").focus();
     await userEvent.keyboard("{Backspace}");
-    expect(screen.getByRole("button", { name: "Sélectionner widget-w1" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sélectionner Texte" })).toBeInTheDocument();
   });
 
   test("Suppr en mode Aperçu ne supprime pas le widget resté sélectionné", async () => {
     renderPage({ getAppConfig: vi.fn().mockResolvedValue(withItem) });
-    await userEvent.click(await screen.findByRole("button", { name: "Sélectionner widget-w1" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Sélectionner Texte" }));
     await userEvent.click(screen.getByRole("button", { name: "Aperçu" }));
     document.body.focus();
     await userEvent.keyboard("{Delete}");
     await userEvent.click(screen.getByRole("button", { name: "Édition" }));
-    expect(screen.getByRole("button", { name: "Sélectionner widget-w1" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sélectionner Texte" })).toBeInTheDocument();
   });
 });
 
@@ -703,11 +717,11 @@ test("removing a widget prunes any ActionsPanel message wired to it", async () =
   const saveAppConfig = vi.fn().mockResolvedValue(undefined);
   renderPage({ getAppConfig: vi.fn().mockResolvedValue(withMessage), saveAppConfig });
 
-  await screen.findByRole("button", { name: "Sélectionner widget-w1" });
+  await screen.findByRole("button", { name: "Sélectionner Filtre" });
   expect(screen.getByText("Filtre.changed → Liste.setFilter")).toBeInTheDocument();
 
-  await userEvent.click(screen.getByRole("button", { name: "Sélectionner widget-w1" }));
-  await userEvent.click(screen.getByRole("button", { name: "Supprimer widget-w1" }));
+  await userEvent.click(screen.getByRole("button", { name: "Sélectionner Filtre" }));
+  await userEvent.click(screen.getByRole("button", { name: "Supprimer Filtre" }));
 
   expect(screen.queryByText("Filtre.changed → Liste.setFilter")).not.toBeInTheDocument();
   expect(screen.getByText("Aucune action.")).toBeInTheDocument();
@@ -769,7 +783,7 @@ test("removing a page prunes messages wired to its widgets after confirmation (P
     screen.getByRole("button", { name: "Ouvrir la page p2", hidden: true }),
   ).toBeInTheDocument();
   await userEvent.click(
-    within(await screen.findByRole("dialog")).getByRole("button", { name: "Supprimer" }),
+    within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Supprimer" }),
   );
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   await waitFor(() => expect(saveAppConfig).toHaveBeenCalled());
@@ -834,7 +848,7 @@ test("a burst of keystrokes in visibleWhen collapses into one undo step once blu
     },
   };
   renderPage({ getAppConfig: vi.fn().mockResolvedValue(withItem) });
-  await userEvent.click(await screen.findByRole("button", { name: "Sélectionner widget-w1" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Sélectionner Texte" }));
   const area = screen.getByLabelText("Condition d'affichage (visibleWhen)");
   await userEvent.type(area, "vars.x == 'a'");
   // Move focus to a non-text element — tabbing would only land in the "text"
@@ -904,7 +918,7 @@ test("restaurer une version recharge le brouillon et vide l'undo", async () => {
   await waitFor(() => expect(screen.getByRole("button", { name: "Annuler" })).toBeEnabled());
 
   await userEvent.click(await screen.findByRole("button", { name: /restaurer/i }));
-  const dialog = screen.getByRole("dialog");
+  const dialog = screen.getByRole("alertdialog");
   await userEvent.click(within(dialog).getByRole("button", { name: /restaurer/i }));
   await waitFor(() => expect(screen.getByRole("button", { name: "Annuler" })).toBeDisabled());
 });
@@ -1065,8 +1079,8 @@ test("restaure le widget sélectionné depuis l'URL", async () => {
   };
   renderPage({ getAppConfig: vi.fn().mockResolvedValue(withTwoWidgets) }, "/?selected=w2");
   // "Supprimer widget-X" (GridCanvas) ne s'affiche que pour l'item sélectionné.
-  expect(await screen.findByRole("button", { name: "Supprimer widget-w2" })).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Supprimer widget-w1" })).not.toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "Supprimer Texte 2" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Supprimer Texte 1" })).not.toBeInTheDocument();
 });
 
 // Contrepartie sélection du test de page fantôme ci-dessus : un id de
@@ -1087,16 +1101,16 @@ test("un id de sélection inconnu dans l'URL n'affiche aucune sélection et rest
     },
   };
   renderPage({ getAppConfig: vi.fn().mockResolvedValue(withItem) }, "/?selected=widget-fantome");
-  await screen.findByRole("button", { name: "Sélectionner widget-w1" });
-  expect(screen.queryByRole("button", { name: /^Supprimer widget-/ })).not.toBeInTheDocument();
+  await screen.findByRole("button", { name: "Sélectionner Texte" });
+  expect(screen.queryByRole("button", { name: /^Supprimer / })).not.toBeInTheDocument();
   // La réconciliation (SP-19, finding M2) ne se contente pas de masquer la
   // sélection périmée à l'écran : elle efface aussi le paramètre "selected"
   // de l'URL — sinon un permalink partagé continuerait de pointer vers un
   // widget fantôme indéfiniment.
   await waitFor(() => expect(screen.getByTestId("url-search").textContent).toBe(""));
 
-  await userEvent.click(screen.getByRole("button", { name: "Sélectionner widget-w1" }));
-  expect(screen.getByRole("button", { name: "Supprimer widget-w1" })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Sélectionner Texte" }));
+  expect(screen.getByRole("button", { name: "Supprimer Texte" })).toBeInTheDocument();
 });
 
 test("bloque la navigation après une modification non enregistrée du builder (SP-B6d)", async () => {
@@ -1104,7 +1118,7 @@ test("bloque la navigation après une modification non enregistrée du builder (
   await userEvent.click(await screen.findByRole("button", { name: "Texte" }));
   await userEvent.click(screen.getByRole("link", { name: "Autre page" }));
 
-  expect(await screen.findByRole("dialog")).toHaveTextContent(
+  expect(await screen.findByRole("alertdialog")).toHaveTextContent(
     t("navigation.unsavedChangesMessage"),
   );
 });
@@ -1132,7 +1146,7 @@ test("changer d'onglet de page (URL interne, même pathname) ne déclenche pas l
 
   await userEvent.click(screen.getByRole("button", { name: "Ouvrir la page page-2" }));
 
-  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   await waitFor(() => expect(screen.getByTestId("url-search").textContent).toContain("page-2"));
 });
 
@@ -1141,7 +1155,7 @@ test("D47 : le toggle Édition/Aperçu et les boutons de largeur d'écran ne son
   const editButton = await screen.findByRole("button", { name: t("appBuilder.editMode") });
   const previewButton = screen.getByRole("button", { name: t("appBuilder.previewMode") });
   const lgButton = screen.getByRole("button", {
-    name: t("appBuilder.editBreakpointAria", { bp: "lg" }),
+    name: t("appBuilder.editBreakpointAria", { bp: t("appBuilder.breakpointLg") }),
   });
   const saveButton = screen.getByRole("button", { name: t("appBuilder.save") });
 

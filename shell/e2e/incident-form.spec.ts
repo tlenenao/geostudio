@@ -17,7 +17,7 @@ test("déclarer un incident : créer sans code, créer/voir/modifier/supprimer u
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 
   // Sélectionner le widget Formulaire pré-câblé et charger son schéma.
-  await page.getByRole("button", { name: "Sélectionner widget-tpl-incident-form" }).click();
+  await page.getByRole("button", { name: "Sélectionner Formulaire" }).click();
   await page.getByRole("button", { name: "Charger les champs du schéma" }).click();
   await expect(page.getByLabel("Label du champ titre")).toBeVisible();
 
@@ -47,7 +47,7 @@ test("déclarer un incident : créer sans code, créer/voir/modifier/supprimer u
   // form.tsx par un ConfirmDialog du kit — le premier clic ouvre la boîte de
   // dialogue, le second (dans la boîte) confirme réellement la suppression.
   await page.getByRole("button", { name: "Supprimer" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Supprimer" }).click();
   await expect(page.getByText("Fuite d'eau (résolue)")).toBeHidden();
   await expect(page.getByText(/Modification de l'enregistrement/)).toBeHidden();
 });

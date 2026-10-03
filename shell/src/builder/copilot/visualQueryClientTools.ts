@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+// i18n-ok-file: descriptions de schémas d'outils envoyées au LLM (invite), pas de l'interface.
 // Outil CLIENT du copilote sur la requête visuelle (GAP-17) — applique
 // filtres/jointure/résumé générés au formulaire, jamais de création ni
 // d'exécution. Un seul outil pour les trois volets.

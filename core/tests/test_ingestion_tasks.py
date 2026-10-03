@@ -98,7 +98,7 @@ def test_valid_geojson_marks_job_done_with_collection_and_item(env, monkeypatch)
         assert fetched.item_id is not None
 
 
-def test_corrupted_file_marks_job_error_not_zombie(env, monkeypatch):
+def test_corrupted_file_marks_job_error_not_zombie(env, monkeypatch, caplog):
     app, Session, tenant, user = env
     monkeypatch.setattr(
         ingestion_tasks, "_make_s3_client_from_env", lambda: _FakeS3Client({"k2": b"not json"})
@@ -124,6 +124,8 @@ def test_corrupted_file_marks_job_error_not_zombie(env, monkeypatch):
         fetched = ingestion_repo.get_job(s, tenant_id=tenant.id, job_id=job_id)
         assert fetched.status == "error"
         assert fetched.error_message is not None
+    # P28.03 : le détail du refus reste diagnosticable côté serveur
+    assert any(f"ingestion job {job_id} refusé" in r.getMessage() for r in caplog.records)
 
 
 def test_missing_job_is_a_noop_not_a_crash(env, monkeypatch):

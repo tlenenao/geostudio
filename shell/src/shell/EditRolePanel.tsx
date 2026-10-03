@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useRolesCatalog, useUpdateRole } from "../api/hooks";
 import type { Role } from "../api/types";
 import { Button } from "../ui/kit/Button";
@@ -11,6 +11,7 @@ import type { MessageKey } from "../i18n";
 export function EditRolePanel({ role, onClose }: { role: Role; onClose: () => void }) {
   const updateRole = useUpdateRole(role.id);
   const catalogQuery = useRolesCatalog();
+  const nameHintId = useId();
   const [name, setName] = useState(role.name);
   const [privileges, setPrivileges] = useState<Set<string>>(new Set(role.privileges));
 
@@ -56,10 +57,17 @@ export function EditRolePanel({ role, onClose }: { role: Role; onClose: () => vo
           {t("roles.nameLabel")}
           <Input
             aria-label={t("roles.nameLabel")}
+            aria-required="true"
+            aria-describedby={name ? undefined : nameHintId}
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
         </label>
+        {!name && (
+          <p id={nameHintId} className="text-xs text-ink-3">
+            {t("roles.nameRequired")}
+          </p>
+        )}
         <fieldset className="flex flex-col gap-2">
           <legend className="text-sm text-ink">{t("roles.privilegesLabel")}</legend>
           {[...byDomain.entries()].map(([domain, entries]) => (
@@ -86,7 +94,12 @@ export function EditRolePanel({ role, onClose }: { role: Role; onClose: () => vo
           <Button type="button" variant="outline" size="sm" onClick={onClose}>
             {t("confirmDialog.cancel")}
           </Button>
-          <Button type="submit" size="sm" disabled={!name || updateRole.isPending}>
+          <Button
+            type="submit"
+            size="sm"
+            aria-describedby={name ? undefined : nameHintId}
+            disabled={!name || updateRole.isPending}
+          >
             {t("common.save")}
           </Button>
         </div>

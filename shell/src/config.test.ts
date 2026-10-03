@@ -54,3 +54,16 @@ test("absent runtime env behaves exactly like before (undefined second arg)", ()
   const cfg = loadConfig(base);
   expect(cfg.coreUrl).toBe("https://core.test");
 });
+
+test("loadRuntimeConfig lit __GEOSTUDIO_ENV__ (P22.03)", async () => {
+  const { loadRuntimeConfig } = await import("./config");
+  (window as unknown as { __GEOSTUDIO_ENV__: Record<string, string> }).__GEOSTUDIO_ENV__ = {
+    VITE_CORE_URL: "http://rt.test",
+    VITE_AUTH_MODE: "mock",
+  };
+  try {
+    expect(loadRuntimeConfig().coreUrl).toBe("http://rt.test");
+  } finally {
+    delete (window as unknown as { __GEOSTUDIO_ENV__?: unknown }).__GEOSTUDIO_ENV__;
+  }
+});

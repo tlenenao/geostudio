@@ -15,8 +15,8 @@ test("an sdk-only example widget appears in the palette and wires through Action
 
   // Add two Compteur widgets — the palette lists it purely because it's
   // registered, with no special-casing anywhere in the builder.
-  await page.getByRole("button", { name: "Compteur (exemple SDK)" }).click();
-  await page.getByRole("button", { name: "Compteur (exemple SDK)" }).click();
+  await page.getByRole("button", { name: "Compteur (exemple SDK)", exact: true }).click();
+  await page.getByRole("button", { name: "Compteur (exemple SDK)", exact: true }).click();
 
   // Wire the first's "changed" event to the second's "reset" action. Both
   // counters render the identical label "Compteur (exemple SDK)", so

@@ -74,22 +74,24 @@ def export_filename(title: str, *, format: str) -> str:
     return f"{slug}-{stamp}.{format}"
 
 
-def rows_to_csv(rows: list[dict[str, Any]]) -> bytes:
-    if not rows:
+def rows_to_csv(rows: list[dict[str, Any]], columns: list[str] | None = None) -> bytes:
+    # P25.09 : sans ligne, l'en-tête reste écrit si `columns` est connu.
+    fields = list(rows[0].keys()) if rows else list(columns or [])
+    if not fields:
         return b""
     buf = StringIO()
-    fields = list(rows[0].keys())
     writer = DictWriter(buf, fieldnames=fields)
     writer.writerow({f: _neutralize(f) for f in fields})
     writer.writerows({k: _neutralize(v) for k, v in row.items()} for row in rows)
     return buf.getvalue().encode("utf-8")
 
 
-def rows_to_xlsx(rows: list[dict[str, Any]]) -> bytes:
-    wb = Workbook()
-    ws = wb.active
-    if rows:
-        headers = list(rows[0].keys())
+def rows_to_xlsx(rows: list[dict[str, Any]], columns: list[str] | None = None) -> bytes:
+    # write_only : flux de lignes, pas tout le classeur en mémoire (export 10^5 lignes).
+    wb = Workbook(write_only=True)
+    ws = wb.create_sheet()
+    headers = list(rows[0].keys()) if rows else list(columns or [])
+    if headers:
         ws.append([_neutralize(h) for h in headers])
         for row in rows:
             ws.append([_xlsx_cell_value(row.get(h)) for h in headers])
@@ -98,11 +100,13 @@ def rows_to_xlsx(rows: list[dict[str, Any]]) -> bytes:
     return buf.getvalue()
 
 
-def rows_to_format(rows: list[dict[str, Any]], *, format: str) -> bytes:
+def rows_to_format(
+    rows: list[dict[str, Any]], *, format: str, columns: list[str] | None = None
+) -> bytes:
     if format == "csv":
-        return rows_to_csv(rows)
+        return rows_to_csv(rows, columns)
     if format == "xlsx":
-        return rows_to_xlsx(rows)
+        return rows_to_xlsx(rows, columns)
     raise ValueError(f"unsupported row format '{format}'")
 
 
@@ -126,11 +130,29 @@ def features_to_gpkg(features: list[dict[str, Any]], conn: duckdb.DuckDBPyConnec
         return out_path.read_bytes()
 
 
+def _rows_with_wkt(features: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """P29.07 : CSV/XLSX portent la géométrie en WKT (colonne `geometry`, ou
+    `geometry_wkt` si une propriété porte déjà ce nom) au lieu de la perdre."""
+    from shapely.geometry import shape
+
+    if not any(f.get("geometry") for f in features):
+        return [f.get("properties") or {} for f in features]
+    taken = any("geometry" in (f.get("properties") or {}) for f in features)
+    key = "geometry_wkt" if taken else "geometry"
+    return [
+        {
+            **(f.get("properties") or {}),
+            key: shape(f["geometry"]).wkt if f.get("geometry") else None,
+        }
+        for f in features
+    ]
+
+
 def features_to_format(
     features: list[dict[str, Any]], *, format: str, conn: duckdb.DuckDBPyConnection | None = None
 ) -> bytes:
     if format in ("csv", "xlsx"):
-        return rows_to_format([f.get("properties") or {} for f in features], format=format)
+        return rows_to_format(_rows_with_wkt(features), format=format)
     if format == "geojson":
         return features_to_geojson(features)
     if format == "gpkg":

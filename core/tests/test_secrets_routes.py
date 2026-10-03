@@ -250,3 +250,106 @@ def test_create_concurrent_duplicate_race_returns_409(env, monkeypatch):
     second = client.post("/v1/secrets", json=BEARER_BODY)
     assert second.status_code == 409
     assert second.json()["detail"] == "secret name already exists"
+
+
+def _creator_with_secrets(env):
+    app, client, Session, admin, regular = env
+    with Session() as s:
+        custom = create_role(
+            s,
+            tenant_id=admin.tenant_id,
+            name="Secrets pipeline",
+            privileges=[Privilege.AUTOMATION_SECRETS_MANAGE.value],
+        )
+        target = s.get(User, regular.id)
+        target.role_id = custom.id
+        s.commit()
+        s.refresh(target)
+    return target
+
+
+def test_p16_01_creator_cannot_see_or_delete_someone_elses_secret(env):
+    app, client, _, admin, _regular = env
+    target = _creator_with_secrets(env)
+    _as(app, admin)
+    sid = client.post("/v1/secrets", json=BEARER_BODY).json()["id"]
+    _as(app, target)
+    assert client.get("/v1/secrets").json() == []
+    assert client.delete(f"/v1/secrets/{sid}").status_code == 404
+    assert (
+        client.put(f"/v1/secrets/{sid}", json={"payload": BEARER_BODY["payload"]}).status_code
+        == 404
+    )
+    _as(app, admin)
+    assert len(client.get("/v1/secrets").json()) == 1
+
+
+def test_p16_05_update_in_place_and_delete_refused_while_referenced(env):
+    from app.configs.models import Config, ConfigRevision
+    from app.items.repository import create_item
+
+    app, client, Session, admin, _regular = env
+    _as(app, admin)
+    sid = client.post("/v1/secrets", json=BEARER_BODY).json()["id"]
+    new = {"kind": "bearer_token", "token": "rotated"}
+    r = client.put(f"/v1/secrets/{sid}", json={"payload": new})
+    assert r.status_code == 200 and "rotated" not in r.text
+    assert client.put(f"/v1/secrets/{sid}", json={"payload": {"kind": "smtp"}}).status_code == 422
+    kind_change = {"kind": "basic_auth", "username": "u", "password": "p"}
+    assert client.put(f"/v1/secrets/{sid}", json={"payload": kind_change}).status_code == 422
+    with Session() as s:
+        item = create_item(
+            s,
+            tenant_id=admin.tenant_id,
+            owner_id=admin.id,
+            resource_type="pipeline",
+            title="Pipe X",
+        )
+        s.add(Config(id="c1", tenant_id=admin.tenant_id, kind="pipeline", item_id=item.id))
+        s.add(
+            ConfigRevision(
+                tenant_id=admin.tenant_id,
+                config_id="c1",
+                version=1,
+                data={"nodes": [{"params": {"secretName": "weather-api"}}]},
+            )
+        )
+        s.commit()
+        item_id = item.id
+    r = client.delete(f"/v1/secrets/{sid}")
+    assert r.status_code == 409 and "Pipe X" in r.json()["detail"]
+    with Session() as s:
+        s.query(ConfigRevision).filter_by(config_id="c1").delete()
+        s.query(Config).filter_by(id="c1").delete()
+        s.commit()
+    assert item_id
+    assert client.delete(f"/v1/secrets/{sid}").status_code == 204
+
+
+def test_p16_06_07_validation_errors_do_not_echo_values_and_reject_empty(env):
+    app, client, _, admin, _regular = env
+    _as(app, admin)
+    r = client.post(
+        "/v1/secrets",
+        json={"name": "x", "payload": {"kind": "bearer_token", "token": ""}},
+    )
+    assert r.status_code == 422
+    leaky = {
+        "name": "x",
+        "payload": {
+            "kind": "basic_auth",
+            "username": "u",
+            "password": "TOPSECRET",
+            "bogus": 1,
+            "kind2": 3,
+        },
+    }
+    leaky["payload"].pop("kind2")
+    leaky["payload"]["username"] = ""
+    r = client.post("/v1/secrets", json=leaky)
+    assert r.status_code == 422
+    assert "TOPSECRET" not in r.text
+    r = client.post(
+        "/v1/secrets", json={"name": "x", "payload": {"kind": "bearer_token", "token": 5}}
+    )
+    assert r.status_code == 422 and "input" not in r.text

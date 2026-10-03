@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { CORE_URL } from "../_fixtures/env";
-import { bug, go, newSession } from "./helpers";
+import { go, newSession } from "./helpers";
 
 test("t02 UI : la session survit à l'expiration du jeton d'accès (5 min) grâce au renouvellement silencieux", async ({
   browser,
@@ -98,38 +98,36 @@ test.describe("t02 UI : import de fichier sous file de jobs à l'arrêt ou insta
   });
 
   // Finding t02-010 : le sondage n'a ni plafond de durée ni issue de secours ; le tiroir reste verrouillé.
-  bug(
-    "t02-010 : un import en attente prolongée offre une sortie (annulation ou avertissement)",
-    async ({ browser }) => {
-      test.setTimeout(120_000);
-      const s = await newSession(browser, "creator");
-      await go(s.page, "/", 1500);
-      await stubUploadPipeline(s.page, () => "pending");
-      await startImport(s.page);
-      await s.page.waitForTimeout(60_000);
-      const cancelEnabled = await s.page.getByRole("button", { name: "Annuler" }).isEnabled();
-      const hint = await s.page.getByRole("dialog").innerText();
-      expect(
-        cancelEnabled || /toujours en cours|plus long|en attente|arrière-plan/i.test(hint),
-      ).toBe(true);
-      await s.ctx.close();
-    },
-  );
+  test("t02-010 : un import en attente prolongée offre une sortie (annulation ou avertissement)", async ({
+    browser,
+  }) => {
+    test.setTimeout(120_000);
+    const s = await newSession(browser, "creator");
+    await go(s.page, "/", 1500);
+    await stubUploadPipeline(s.page, () => "pending");
+    await startImport(s.page);
+    await s.page.waitForTimeout(60_000);
+    const cancelEnabled = await s.page.getByRole("button", { name: "Annuler" }).isEnabled();
+    const hint = await s.page.getByRole("dialog").innerText();
+    expect(cancelEnabled || /toujours en cours|plus long|en attente|arrière-plan/i.test(hint)).toBe(
+      true,
+    );
+    await s.ctx.close();
+  });
 
   // Finding t02-011 : une seule erreur réseau du sondage est présentée comme un échec de l'import.
-  bug(
-    "t02-011 : un raté ponctuel du sondage n'affiche pas « Échec de l'import. »",
-    async ({ browser }) => {
-      test.setTimeout(60_000);
-      const s = await newSession(browser, "creator");
-      await go(s.page, "/", 1500);
-      await stubUploadPipeline(s.page, (n) => (n === 2 ? "abort" : n >= 4 ? "done" : "running"));
-      await startImport(s.page);
-      await s.page.waitForTimeout(6000);
-      expect(await s.page.locator("[role=alert]").allTextContents()).not.toContain(
-        "Échec de l'import.",
-      );
-      await s.ctx.close();
-    },
-  );
+  test("t02-011 : un raté ponctuel du sondage n'affiche pas « Échec de l'import. »", async ({
+    browser,
+  }) => {
+    test.setTimeout(60_000);
+    const s = await newSession(browser, "creator");
+    await go(s.page, "/", 1500);
+    await stubUploadPipeline(s.page, (n) => (n === 2 ? "abort" : n >= 4 ? "done" : "running"));
+    await startImport(s.page);
+    await s.page.waitForTimeout(6000);
+    expect(await s.page.locator("[role=alert]").allTextContents()).not.toContain(
+      "Échec de l'import.",
+    );
+    await s.ctx.close();
+  });
 });

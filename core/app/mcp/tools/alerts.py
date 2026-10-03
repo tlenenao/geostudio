@@ -34,11 +34,13 @@ from app.mcp.tools.identity import (
     resolve_actor,
     without_thumbnail_url,
 )
+from app.mcp.tools.write_tools import write_tool
 from app.sharing.authorization import can
 
 
 def register(server: FastMCP, session_factory) -> None:
     @server.tool()
+    @write_tool
     async def create_alert_rule(
         ctx: Context,
         title: str,
@@ -97,6 +99,7 @@ def register(server: FastMCP, session_factory) -> None:
             return without_thumbnail_url(result)
 
     @server.tool()
+    @write_tool
     async def run_alert_rule(ctx: Context, alertRuleId: str) -> dict:
         """Defer an immediate evaluation of an AlertRule — mirrors, for a
         single rule, what sweep_alert_rules_task does for all due rules.
@@ -104,7 +107,11 @@ def register(server: FastMCP, session_factory) -> None:
         POST /alerts/{item_id}/evaluate calls the exact same service
         (app.alerts.service.evaluate_alert_now_service) — "write" access
         required, `config.kind == "alert"` checked, a recent "pending"
-        evaluation deduplicated rather than re-created. SP-53."""
+        evaluation deduplicated rather than re-created. SP-53.
+        Refused in read-only mode (P20.09 : crée une alert_evaluation et
+        défère un job qui notifie webhook/e-mail)."""
+        if is_read_only_mode():
+            raise ValueError("Mode démo : lecture seule, écritures désactivées.")
         access_token = get_access_token()
         with request_scoped_session(session_factory) as session:
             user = resolve_actor(session, access_token)

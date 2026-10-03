@@ -67,11 +67,14 @@ function LocationDisplay() {
   );
 }
 
+// Le cœur exige analytics.view pour enregistrer une vue (P35.09).
+const getMe = vi.fn().mockResolvedValue({ privileges: ["analytics.view"] });
+
 function renderRuntime(client: Partial<ItemClient>, initialEntries: string[] = ["/apps/9/page-1"]) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <ItemClientProvider client={client as ItemClient}>
+      <ItemClientProvider client={{ getMe, ...client } as ItemClient}>
         <MemoryRouter initialEntries={initialEntries}>
           <AppRuntimePage pk="9" pageId="page-1" />
           <LocationDisplay />
@@ -753,4 +756,16 @@ test("401 sans session : redirige vers la connexion au lieu d'afficher « Accès
   await waitFor(() => expect(authState.signIn).toHaveBeenCalledTimes(1));
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   authState.isAuthenticated = true;
+});
+
+test("le bouton « Enregistrer la vue » est masqué sans le privilège analytics.view (P35.09)", async () => {
+  const noPrivileges = vi.fn().mockResolvedValue({ privileges: [] });
+  renderRuntime({
+    getItem: vi.fn().mockResolvedValue(okItem),
+    getAppConfig: vi.fn().mockResolvedValue({ ...config, interactions: "auto" }),
+    getMe: noPrivileges,
+  });
+  await waitFor(() => expect(noPrivileges).toHaveBeenCalled());
+  await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
+  expect(screen.queryByRole("button", { name: "Enregistrer la vue" })).not.toBeInTheDocument();
 });

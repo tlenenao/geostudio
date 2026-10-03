@@ -33,11 +33,22 @@ function formatDuration(startedAt: string | null, finishedAt: string | null): st
 // une prop optionnelle fournie par l'appelant qui connaît cette définition
 // (PipelineBuilderPage, via `draft.nodes.length`) plutôt qu'un champ lu sur
 // `run`.
-function RunRow({ run, totalNodes }: { run: PipelineRun; totalNodes?: number }) {
+function RunRow({
+  run,
+  totalNodes,
+  onCancel,
+}: {
+  run: PipelineRun;
+  totalNodes?: number;
+  onCancel?: (runId: string) => void;
+}) {
   const [open, setOpen] = useState(false);
   const detail = usePanelTrigger(open);
   const nodeEntries = Object.values(run.nodeStats);
   const showNodeProgress = run.status === "running" && totalNodes !== undefined && totalNodes > 0;
+  const active = run.status === "queued" || run.status === "running";
+  // t03b-009 : l'écrivain publie sa progression par lot dans nodeStats.
+  const lastStat = nodeEntries[nodeEntries.length - 1];
   return (
     <li className="border-t border-rule pt-1">
       <div className="flex items-center gap-2">
@@ -46,6 +57,16 @@ function RunRow({ run, totalNodes }: { run: PipelineRun; totalNodes?: number }) 
           <span className="text-ink-2">
             {t("pipelineRun.nodeProgress", { completed: nodeEntries.length, total: totalNodes })}
           </span>
+        )}
+        {(active || run.status === "cancel_requested") && lastStat?.rowCount != null && (
+          <span className="text-ink-2">
+            {t("pipelineRun.rowsProgress", { rows: lastStat.rowCount })}
+          </span>
+        )}
+        {active && onCancel && (
+          <button type="button" className="text-danger underline" onClick={() => onCancel(run.id)}>
+            {t("pipelineRun.cancelButton")}
+          </button>
         )}
         {run.startedAt && (
           <span className="text-ink-2">{new Date(run.startedAt).toLocaleString("fr-FR")}</span>
@@ -153,7 +174,7 @@ export function PipelineRunPanel({
       setRuns(latest);
       onLatestRunChange?.(latest[0] ?? null);
       const status = latest[0]?.status;
-      if (status !== "queued" && status !== "running") {
+      if (status !== "queued" && status !== "running" && status !== "cancel_requested") {
         setRunning(false);
         return;
       }
@@ -178,6 +199,16 @@ export function PipelineRunPanel({
     }
   }
 
+  async function onCancel(runId: string) {
+    setRunError(null);
+    try {
+      await client.cancelPipelineRun?.(pipelineId, runId);
+      await loadRuns();
+    } catch {
+      if (mountedRef.current) setRunError(t("pipelineRun.cancelFailed"));
+    }
+  }
+
   return (
     <div className="flex flex-col gap-2">
       <Button size="sm" onClick={() => void onRun()} disabled={running}>
@@ -190,7 +221,12 @@ export function PipelineRunPanel({
       )}
       <ul className="flex flex-col gap-1 text-xs">
         {runs.map((run) => (
-          <RunRow key={run.id} run={run} totalNodes={totalNodes} />
+          <RunRow
+            key={run.id}
+            run={run}
+            totalNodes={totalNodes}
+            onCancel={client.cancelPipelineRun ? (id) => void onCancel(id) : undefined}
+          />
         ))}
       </ul>
       {runs.length >= limit && (

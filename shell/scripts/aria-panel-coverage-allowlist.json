@@ -16,7 +16,7 @@
   },
   {
     "file": "src/map/MapSymbologyEditor.tsx",
-    "line": 566,
+    "line": 567,
     "reason": "Pré-existant : le bouton \"Ajouter des icônes\" ouvre la grille de sélection d'icône en ligne ((icon || iconDraft) && <div>...) sans aria-expanded/aria-controls. Dette REV-088 (ligne décalée de 564 à 566 par l'ajout de ConfirmDialog/pendingIconId, tâche 3 SP-B2)."
   },
   {
@@ -31,27 +31,27 @@
   },
   {
     "file": "src/pages/AppRuntimePage.tsx",
-    "line": 205,
+    "line": 211,
     "reason": "Faux positif de l'heuristique : setSaveDialogOpen(true) ouvre <Dialog> (ui/kit/Dialog, role=\"dialog\", boîte modale) — pas un panneau en ligne, la convention CLAUDE.md ne s'applique pas à ce patron. Ligne décalée de 170 à 183 par les tâches Vague C sur ce fichier (câblage printLayout.showLegend, migration ui/kit), aucun changement du déclencheur lui-même — vérifié en clôture de Vague C."
   },
   {
     "file": "src/pages/CollectionsAdminPage.tsx",
-    "line": 116,
+    "line": 119,
     "reason": "Pré-existant : setRegistering(true) ouvre RegisterCollectionPanel en ligne (registering && <RegisterCollectionPanel/>) sans aria-expanded/aria-controls, alors que ce même fichier câble déjà usePanelTrigger() pour ses panneaux editing/sharing voisins. Dette REV-088 (ligne décalée de 75 à 116 par la migration DataTable de Vague B, aucun changement du déclencheur lui-même — vérifié en clôture de Vague B)."
   },
   {
     "file": "src/pages/KitGalleryPage.tsx",
-    "line": 215,
+    "line": 217,
     "reason": "Faux positif de l'heuristique : setConfirmOpen(true) ouvre <ConfirmDialog> (boîte de dialogue modale) sur la galerie interne de démonstration du kit — pas un panneau en ligne."
   },
   {
     "file": "src/pages/KitGalleryPage.tsx",
-    "line": 224,
+    "line": 226,
     "reason": "Faux positif de l'heuristique : setDrawerOpen(true) ouvre <Drawer> (ui/kit/Drawer.tsx, Radix Dialog sous-jacent, tiroir modal) sur la galerie interne de démonstration du kit — illustratif, pas un vrai écran livré."
   },
   {
     "file": "src/pages/KitGalleryPage.tsx",
-    "line": 228,
+    "line": 230,
     "reason": "Faux positif de l'heuristique : setToastOpen(true) déclenche une notification transitoire (<Toast>), pas un panneau — la convention CLAUDE.md ne vise pas ce patron."
   },
   {
@@ -60,8 +60,8 @@
     "reason": "Pré-existant : setCreating(true) ouvre CreateRolePanel en ligne (creating && <CreateRolePanel/>) sans aria-expanded/aria-controls, alors que ce même fichier câble déjà usePanelTrigger() pour son panneau editPanel voisin (par ligne de rôle). Dette REV-088 (ligne décalée de 48 à 73 par la migration DataTable de Vague B, aucun changement du déclencheur lui-même — vérifié en clôture de Vague B)."
   },
   {
-    "file": "src/shell/Tileset3DUploadButton.tsx",
-    "line": 132,
-    "reason": "Pré-existant : setOpen(true) ouvre <Drawer> (ui/kit/Drawer.tsx) sans aria-expanded/aria-controls ni usePanelTrigger() — contrairement à ImportFileButton.tsx/NewItemButton.tsx qui ouvrent le même composant Drawer en le câblant correctement. Dette REV-088."
+    "file": "src/pages/ItemDetailPage.tsx",
+    "line": 293,
+    "reason": "Faux positif de l'heuristique : le bouton « Copier » appelle setCopied(true) après copie dans le presse-papiers (P35) — il n'ouvre aucun panneau."
   }
 ]

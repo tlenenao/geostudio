@@ -67,7 +67,10 @@ def bootstrap_admin_tool_session(tool: ToolName, _at: str) -> Response:
     if claims.tool != tool:
         raise HTTPException(status_code=401, detail="invalid launch token")
     session_token = mint_session_token(sub=claims.sub)
-    response = RedirectResponse(url=_ADMIN_PATHS[tool], status_code=302)
+    # Le cœur ne sert pas /admin : en dev il tourne sur un autre port que
+    # Traefik, d'où une redirection absolue vers la passerelle (P17.03).
+    gateway = os.environ.get("CORE_ADMIN_TOOLS_GATEWAY_URL", "").rstrip("/")
+    response = RedirectResponse(url=f"{gateway}{_ADMIN_PATHS[tool]}", status_code=302)
     response.set_cookie(
         key=_SESSION_COOKIE,
         value=session_token,

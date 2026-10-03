@@ -99,14 +99,14 @@ test("révocation : retirer settings.instance.manage à un porteur invalide imm�
 });
 
 // Finding j08b-005 : la page racine de Titiler (derrière la passerelle) répond 500.
-bug("j08b-005 : /admin/titiler/ derrière la passerelle répond 200", async () => {
+test("j08b-005 : /admin/titiler/ derrière la passerelle répond 200", async () => {
   const s = await session("titiler");
   expect((await gateway("/admin/titiler/", s.cookie)).status).toBe(200);
 });
 
 // Finding j08b-006 : l'URL de lancement (CORE_BASE_URL) puis la redirection relative /admin/<outil>/
 // retombent sur le cœur (:8200) qui ne sert pas /admin : 404 dans le compose de dev.
-bug("j08b-006 : suivre l'URL de lancement aboutit à l'outil, pas à un 404 du cœur", async () => {
+test("j08b-006 : suivre l'URL de lancement aboutit à l'outil, pas à un 404 du cœur", async () => {
   const launch = await admin.send("POST", "/v1/admin-tools/launch/grafana");
   const r = await fetch(launch.body.url, { redirect: "manual" });
   const target = new URL(r.headers.get("location") ?? "", launch.body.url).toString();

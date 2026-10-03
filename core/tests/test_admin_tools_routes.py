@@ -256,3 +256,35 @@ def test_launch_rejected_for_custom_role_without_settings_instance_manage(env):
     use_as(member_id)
     response = client.post("/v1/admin-tools/launch/martin")
     assert response.status_code == 403
+
+
+def test_session_redirects_to_gateway_origin_when_configured(env, monkeypatch):
+    """P17.03 (j08b-006) : le cœur ne sert pas /admin, la redirection vise Traefik."""
+    monkeypatch.setenv("CORE_ADMIN_TOOLS_GATEWAY_URL", "https://gis.example.org/")
+    client, _use_as, admin_id, _member_id, _sf = env
+    token = mint_launch_token(sub=admin_id, tool="grafana")
+    response = client.get(f"/v1/admin-tools/session/grafana?_at={token}", follow_redirects=False)
+    assert response.headers["location"] == "https://gis.example.org/admin/grafana/"
+
+
+def test_instance_status_requires_privilege_and_degrades_per_probe(env):
+    """P17.07 (j09-009) : 403 sans privilège ; sinon chaque sonde échoue seule
+    (SQLite en test : ni pg_replication_slots ni procrastinate_jobs)."""
+    client, use_as, admin_id, member_id, _sf = env
+    use_as(member_id)
+    assert client.get("/v1/instance/status").status_code == 403
+    use_as(admin_id)
+    body = client.get("/v1/instance/status").json()
+    assert body["postgres"]["ok"] is True
+    assert body["s3"]["ok"] is False
+    assert body["cdc"]["ok"] is False
+    assert body["jobs"]["ok"] is False
+
+
+def test_instance_status_reports_minio_console_published(env, monkeypatch):
+    client, use_as, admin_id, _member_id, _sf = env
+    use_as(admin_id)
+    monkeypatch.setenv("CORE_MINIO_CONSOLE_PUBLISHED", "true")
+    assert client.get("/v1/instance/status").json()["minioConsolePublished"] is True
+    monkeypatch.delenv("CORE_MINIO_CONSOLE_PUBLISHED")
+    assert client.get("/v1/instance/status").json()["minioConsolePublished"] is False

@@ -16,6 +16,7 @@ import logging
 import re
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from io import BytesIO
 
 import geopandas as gpd
@@ -51,8 +52,33 @@ def group_by_partition(objects: list[dict]) -> dict[str, list[dict]]:
 
 
 def select_files_to_merge(files: list[dict], *, size_threshold_bytes: int) -> list[dict]:
-    eligible = [f for f in files if f["size"] < size_threshold_bytes]
-    return eligible if len(eligible) > 1 else []
+    """P25.03 : fusion par niveaux. Seuls les fichiers de moins de la moitié du
+    seuil sont éligibles (un fichier proche du seuil n'est jamais réécrit), et
+    un lot ne dépasse jamais le seuil en octets (plafond mémoire par fusion)."""
+    eligible = sorted(
+        (f for f in files if f["size"] < size_threshold_bytes // 2), key=lambda f: f["size"]
+    )
+    batch: list[dict] = []
+    total = 0
+    for f in eligible:
+        if total + f["size"] > size_threshold_bytes:
+            break
+        batch.append(f)
+        total += f["size"]
+    return batch if len(batch) > 1 else []
+
+
+def list_recent_partition_objects(client, *, bucket: str, recent_days: int) -> list[dict]:
+    """P25.03 : ne liste que les partitions dt= récentes (les anciennes ne
+    reçoivent plus d'écritures) au lieu de tous les objets du lac."""
+    cutoff = (datetime.now(UTC) - timedelta(days=recent_days)).date().isoformat()
+    objects: list[dict] = []
+    for tenant in storage.list_prefixes(client, bucket=bucket, prefix=CDC_PREFIX):
+        for coll in storage.list_prefixes(client, bucket=bucket, prefix=tenant):
+            for part in storage.list_prefixes(client, bucket=bucket, prefix=coll):
+                if part.rstrip("/").rsplit("=", 1)[-1] >= cutoff:
+                    objects += storage.list_objects(client, bucket=bucket, prefix=part)
+    return objects
 
 
 def merge_geoparquet(byte_blobs: list[bytes]) -> bytes:
@@ -71,16 +97,20 @@ def compact_partition(
     files: list[dict],
     size_threshold_bytes: int,
 ) -> int:
-    to_merge = select_files_to_merge(files, size_threshold_bytes=size_threshold_bytes)
-    if not to_merge:
-        return 0
-    blobs = [download_object(client, bucket=bucket, key=f["key"]) for f in to_merge]
-    merged_bytes = merge_geoparquet(blobs)
-    new_key = f"{partition_prefix}part-{uuid.uuid4().hex}.parquet"
-    # Écriture AVANT suppression, jamais l'inverse (cf. docstring module).
-    storage.upload_bytes(client, bucket=bucket, key=new_key, data=merged_bytes)
-    storage.delete_objects(client, bucket=bucket, keys=[f["key"] for f in to_merge])
-    return len(to_merge)
+    removed = 0
+    files = list(files)
+    while to_merge := select_files_to_merge(files, size_threshold_bytes=size_threshold_bytes):
+        blobs = [download_object(client, bucket=bucket, key=f["key"]) for f in to_merge]
+        merged_bytes = merge_geoparquet(blobs)
+        new_key = f"{partition_prefix}part-{uuid.uuid4().hex}.parquet"
+        # Écriture AVANT suppression, jamais l'inverse (cf. docstring module).
+        storage.upload_bytes(client, bucket=bucket, key=new_key, data=merged_bytes)
+        storage.delete_objects(client, bucket=bucket, keys=[f["key"] for f in to_merge])
+        merged_keys = {f["key"] for f in to_merge}
+        files = [f for f in files if f["key"] not in merged_keys]
+        files.append({"key": new_key, "size": len(merged_bytes)})
+        removed += len(to_merge)
+    return removed
 
 
 def run_compaction_cycle(
@@ -88,8 +118,12 @@ def run_compaction_cycle(
     *,
     bucket: str,
     size_threshold_bytes: int = DEFAULT_SIZE_THRESHOLD_BYTES,
+    recent_days: int | None = None,
 ) -> CompactionReport:
-    objects = storage.list_objects(client, bucket=bucket, prefix=CDC_PREFIX)
+    if recent_days is None:
+        objects = storage.list_objects(client, bucket=bucket, prefix=CDC_PREFIX)
+    else:
+        objects = list_recent_partition_objects(client, bucket=bucket, recent_days=recent_days)
     groups = group_by_partition(objects)
     partitions_compacted = 0
     partitions_failed = 0

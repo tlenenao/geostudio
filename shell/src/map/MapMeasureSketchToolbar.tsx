@@ -61,7 +61,13 @@ export type MapMeasureSketchToolbarMap = Pick<
   | "removeLayer"
   | "removeSource"
   | "isStyleLoaded"
->;
+> & {
+  // P31.06 : suspendu pendant le tracé libre, sinon le doigt (ou la souris)
+  // déplace la carte au lieu de dessiner. Optionnel : les doubles de test
+  // d'unité n'en ont pas.
+  dragPan?: Pick<maplibregl.Map["dragPan"], "enable" | "disable" | "isEnabled">;
+  getCanvasContainer?: maplibregl.Map["getCanvasContainer"];
+};
 
 export function MapMeasureSketchToolbar({
   map,
@@ -83,6 +89,15 @@ export function MapMeasureSketchToolbar({
   // `mouseup`.
   const [freehandPoints, setFreehandPoints] = useState<LngLat[]>([]);
   const [polygonPoints, setPolygonPoints] = useState<LngLat[]>([]);
+  // P31.14 : saisie du texte dans un champ de la barre (et non window.prompt,
+  // bloquant et inutilisable/peu fiable sur mobile) : le clic carte pose
+  // l'ancrage, le champ en attend le contenu.
+  const [pendingText, setPendingText] = useState<{ at: LngLat; value: string } | null>(null);
+  const textInputRef = useRef<HTMLInputElement>(null);
+  const textPending = pendingText !== null;
+  useEffect(() => {
+    if (textPending) textInputRef.current?.focus();
+  }, [textPending]);
   const drawingRef = useRef(false);
   // Coin en attente d'un rectangle/cercle : une REF, pas un état lu depuis un
   // updater. Un effet de bord dans un updater est exécuté deux fois sous
@@ -291,9 +306,7 @@ export function MapMeasureSketchToolbar({
       if (current !== "sketch") return;
       const tool = sketchToolRef.current;
       if (tool === "text") {
-        const text = window.prompt(t("mapMeasure.textPromptMessage"));
-        if (text)
-          setShapes((s) => [...s, { kind: "text", at: lngLat, text, color: colorRef.current }]);
+        setPendingText({ at: lngLat, value: "" });
         return;
       }
       if (tool === "rect" || tool === "circle") {
@@ -355,15 +368,43 @@ export function MapMeasureSketchToolbar({
         setShapes((s) => [...s, { kind: "freehand", points: captured, color: colorRef.current }]);
       }
     }
-    map.on("mousedown", onMouseDown as never);
-    map.on("mousemove", onMouseMove as never);
-    map.on("mouseup", onMouseUp as never);
+    // P31.06 : MapLibre n'émet mousedown/move/up QUE pour la souris ; au doigt
+    // il émet touchstart/move/end (même `lngLat`). Mêmes handlers.
+    const events: [string, (e: unknown) => void][] = [
+      ["mousedown", onMouseDown],
+      ["mousemove", onMouseMove],
+      ["mouseup", onMouseUp],
+      ["touchstart", onMouseDown],
+      ["touchmove", onMouseMove],
+      ["touchend", onMouseUp],
+      ["touchcancel", onMouseUp],
+    ];
+    for (const [ev, h] of events) map.on(ev as never, h as never);
     return () => {
-      map.off("mousedown", onMouseDown as never);
-      map.off("mousemove", onMouseMove as never);
-      map.off("mouseup", onMouseUp as never);
+      for (const [ev, h] of events) map.off(ev as never, h as never);
     };
   }, [map]);
+
+  // dragPan suspendu tant que l'outil Tracé libre est actif (sinon le geste
+  // déplace la carte au lieu de dessiner), rétabli au changement d'outil/mode
+  // et au démontage.
+  const freehandActive = mode === "sketch" && sketchTool === "freehand";
+  useEffect(() => {
+    if (!freehandActive || !map.dragPan) return;
+    const dragPan = map.dragPan;
+    // Ne rétablit que ce qu'on a suspendu (une carte `dragPan: false` le reste).
+    const wasEnabled = dragPan.isEnabled();
+    dragPan.disable();
+    // Sans dragPan, MapLibre laisse `touch-action: pan-x pan-y` : le navigateur
+    // défilerait la page (puis touchcancel) au lieu de laisser tracer.
+    const container = map.getCanvasContainer?.();
+    const prevTouchAction = container?.style.touchAction ?? "";
+    if (container) container.style.touchAction = "none";
+    return () => {
+      if (wasEnabled) dragPan.enable();
+      if (container) container.style.touchAction = prevTouchAction;
+    };
+  }, [map, freehandActive]);
 
   function startMode(next: ToolbarMode) {
     setMode(next);
@@ -382,11 +423,13 @@ export function MapMeasureSketchToolbar({
     // déjà ce nettoyage pour switcher d'outil SANS quitter le mode croquis ;
     // ceci est le même nettoyage pour switcher de MODE.
     setPolygonPoints([]);
+    setPendingText(null);
     pendingCornerRef.current = null;
     setPendingCorner(null);
   }
 
   function clearAll() {
+    setPendingText(null);
     setMode("idle");
     setPoints([]);
     setShapes([]);
@@ -412,7 +455,9 @@ export function MapMeasureSketchToolbar({
   const area =
     mode === "measure-area" && points.length >= 3 ? sphericalPolygonAreaSquareMeters(points) : null;
 
-  const buttonCls = "rounded border border-rule px-2 py-1";
+  // 24 px minimum (WCAG 2.5.8), 44 px sur pointeur grossier (P31.05/09).
+  const buttonCls =
+    "min-h-6 min-w-6 rounded border border-rule px-2 py-1 pointer-coarse:min-h-11 pointer-coarse:min-w-11";
 
   return (
     <div className="absolute left-2 top-2 z-10 flex flex-col gap-1 rounded-md bg-surface/90 p-2 text-xs text-ink shadow">
@@ -472,6 +517,7 @@ export function MapMeasureSketchToolbar({
                   pendingCornerRef.current = null;
                   setPendingCorner(null);
                   setPolygonPoints([]);
+                  setPendingText(null);
                 }}
               >
                 {label}
@@ -480,12 +526,47 @@ export function MapMeasureSketchToolbar({
             <input
               aria-label={t("mapMeasure.sketchColorAria")}
               type="color"
+              className="min-h-6 min-w-6 pointer-coarse:min-h-11 pointer-coarse:min-w-11"
               value={color}
               onChange={(e) => setColor(e.target.value)}
             />
           </>
         )}
       </div>
+      {pendingText && (
+        <form
+          className="flex flex-wrap items-center gap-1"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const text = pendingText.value.trim();
+            if (text) {
+              setShapes((s) => [
+                ...s,
+                { kind: "text", at: pendingText.at, text, color: colorRef.current },
+              ]);
+            }
+            setPendingText(null);
+          }}
+        >
+          <input
+            type="text"
+            ref={textInputRef}
+            aria-label={t("mapMeasure.textPromptMessage")}
+            value={pendingText.value}
+            onChange={(e) => setPendingText({ ...pendingText, value: e.target.value })}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setPendingText(null);
+            }}
+            className="min-h-6 min-w-0 flex-1 rounded border border-control bg-surface px-2 py-1 text-ink pointer-coarse:min-h-11"
+          />
+          <button type="submit" className={buttonCls}>
+            {t("mapMeasure.textConfirmButton")}
+          </button>
+          <button type="button" className={buttonCls} onClick={() => setPendingText(null)}>
+            {t("mapMeasure.textCancelButton")}
+          </button>
+        </form>
+      )}
       {pendingCorner && <p className="text-ink-3">{t("mapMeasure.secondPointHint")}</p>}
       {sketchTool === "polygon" && polygonPoints.length >= 3 && (
         <button

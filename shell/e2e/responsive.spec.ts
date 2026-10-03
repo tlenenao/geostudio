@@ -14,12 +14,12 @@ test("a per-breakpoint position is applied by the runtime at the matching viewpo
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 
   // Add a Text widget (lands at column 0).
-  await page.getByRole("button", { name: "Texte" }).click();
+  await page.getByRole("button", { name: "Texte", exact: true }).click();
 
   // Switch to the sm breakpoint and nudge the widget one column right.
-  await page.getByRole("button", { name: "Éditer en sm" }).click();
-  await page.getByLabel(/^Sélectionner widget-/).click();
-  await page.getByLabel(/Déplacer widget-.* à droite/).click();
+  await page.getByRole("button", { name: "Éditer la disposition Mobile" }).click();
+  await page.getByLabel(/^Sélectionner /).click();
+  await page.getByLabel(/Déplacer .* à droite/).click();
 
   await page.getByRole("button", { name: "Enregistrer" }).click();
 

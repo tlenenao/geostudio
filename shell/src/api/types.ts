@@ -118,7 +118,16 @@ export type PurgeReceipt = {
 
 export type NotificationSummary = {
   id: string;
-  kind: "ingestion" | "pipeline" | "export" | "appexport" | "report";
+  kind:
+    | "ingestion"
+    | "pipeline"
+    | "export"
+    | "appexport"
+    | "report"
+    | "alert"
+    | "harvest"
+    | "tileset3d"
+    | "terrain3d";
   status: "success" | "failure";
   itemId: string | null;
   itemResourceType: ResourceType | null;
@@ -192,6 +201,19 @@ export type InstanceInfo = {
   copilotEnabled: boolean;
   adminToolsEnabled: boolean;
   quotasEnabled: boolean;
+};
+
+export type ProbeStatus = { ok: boolean; error?: string };
+export type InstanceStatus = {
+  checkedAt: string;
+  minioConsolePublished: boolean;
+  postgres: ProbeStatus;
+  s3: ProbeStatus;
+  cdc: ProbeStatus & { slotActive?: boolean };
+  jobs: ProbeStatus & {
+    queues?: { queue: string; status: string; count: number }[];
+    stalled?: number;
+  };
 };
 
 export type AdminToolName = "martin" | "titiler" | "grafana";
@@ -480,6 +502,8 @@ export interface ItemClient {
       currentConfig: Record<string, unknown>;
       clientTools: CopilotToolSchema[];
       surface?: CopilotSurface;
+      // j11-012 : exécution d'un outil d'écriture après clic humain.
+      confirmWrite?: { name: string; arguments: Record<string, unknown> };
     },
   ): Promise<CopilotTurnResult>;
   createConfigItem(input: {
@@ -546,6 +570,7 @@ export interface ItemClient {
   deleteHarvestSource(id: string): Promise<void>;
   runHarvestSource(id: string): Promise<void>;
   launchAdminTool(tool: AdminToolName): Promise<{ url: string }>;
+  getInstanceStatus(): Promise<InstanceStatus>;
   getCollectionSharing(id: string): Promise<Sharing>;
   setCollectionSharing(id: string, sharing: Sharing): Promise<void>;
   createMapItem(input: { title: string; owner: string }): Promise<Item>;
@@ -569,6 +594,8 @@ export interface ItemClient {
   getPipelineNextRun(cron: string): Promise<{ nextRun: string }>;
   runPipeline(pk: string): Promise<{ runId: string }>;
   getPipelineRuns(pk: string, params?: PageParams): Promise<PipelineRun[]>;
+  // t03b-009 : absent côté sidecar desktop / export statique (pas d'annulation).
+  cancelPipelineRun?(pk: string, runId: string): Promise<PipelineRun>;
   listPipelineWebhookTokens(pk: string): Promise<PipelineWebhookToken[]>;
   createPipelineWebhookToken(pk: string): Promise<{ id: string; token: string; createdAt: string }>;
   revokePipelineWebhookToken(pk: string, tokenId: string): Promise<void>;
@@ -607,6 +634,12 @@ export interface ItemClient {
   // schema://app-config (garanti identique par un test dédié côté cœur).
   getAppConfigSchema(): Promise<Record<string, unknown>>;
   queryDataSource(source: DataSource): Promise<DataRecord[]>;
+  // P29.05 : comme queryDataSource, avec le total réel (`numberMatched`) quand
+  // le cœur le donne — pour annoncer « N sur M » au lieu d'une troncature muette.
+  // Optionnel : les clients sans cœur (export statique, desktop) ne l'ont pas.
+  queryDataSourcePage?(
+    source: DataSource,
+  ): Promise<{ records: DataRecord[]; total: number | null }>;
   // Symétrique de sampleCollectionField, mais pour un hôte qui n'a qu'un
   // DataSource (pas déjà un collectionId résolu) : la couche `feature` du
   // widget carte de l'App Builder (Jenks, GAP-52 4/4). Résout collectionId
@@ -709,6 +742,9 @@ export interface ItemClient {
   // un en-tête dédié, jamais sur Authorization (cf. getAuthToken ci-dessus,
   // qui reste undefined dans ce cas). Absent sur tout ItemClient normal.
   getShareLinkToken?(): string | undefined;
+  // P30.03 : GET d'une URL de tuile/GeoJSON ; `authenticated` n'est posé que
+  // pour une URL servie par le cœur. Optionnel (mocks partiels, client desktop).
+  fetchUrl?(url: string, opts?: { authenticated?: boolean }): Promise<Response>;
   listHostedTerrain3DSources(q?: string): Promise<{ id: string; title: string }[]>;
   // Dédiée, jamais presignUpload() : la générique signe dans
   // S3_UPLOADS_BUCKET alors que le worker de conversion lit le DEM brut dans
@@ -982,6 +1018,8 @@ export type HarvestSource = {
   lastRunAt: string | null;
   lastStatus: HarvestSourceStatus;
   lastError: string | null;
+  recordCount?: number;
+  staleCount?: number;
 };
 
 export type HarvestSourceCreateInput = {
@@ -996,7 +1034,7 @@ export type HarvestSourcePatchInput = {
   url?: string;
   mode?: HarvestSourceMode;
   enabled?: boolean;
-  intervalMinutes?: number;
+  intervalMinutes?: number | null;
 };
 
 export type DataRecord = {
@@ -1009,6 +1047,8 @@ export type DataSourceState = {
   loading: boolean;
   error: boolean;
   records: DataRecord[];
+  // Total réel côté cœur (numberMatched), null/absent si inconnu.
+  total?: number | null;
   layer?: string;
   url?: string;
   datasetId?: string;
@@ -1114,7 +1154,8 @@ export interface AlertCondition {
 }
 
 export type AlertChannel =
-  { kind: "webhook"; url: string } | { kind: "email"; to: string; smtpSecretName: string };
+  | { kind: "webhook"; url: string; signingSecretName?: string }
+  | { kind: "email"; to: string; smtpSecretName: string };
 
 export interface AlertRulePayload {
   datasetItemId: string;
@@ -1139,6 +1180,9 @@ export interface AlertEvaluation {
   state: "pending" | "ok" | "firing" | "error";
   transitioned: boolean;
   error: string | null;
+  // P20.01 : livraison de la notification (null = aucune tentative)
+  notifyStatus?: "delivered" | "failed" | null;
+  notifyError?: string | null;
   createdAt: string;
 }
 
@@ -1199,7 +1243,8 @@ export type AppExportJobStatus = {
   error: string | null;
 };
 
-export type PipelineRunStatus = "queued" | "running" | "succeeded" | "failed";
+export type PipelineRunStatus =
+  "queued" | "running" | "succeeded" | "failed" | "cancel_requested" | "cancelled";
 
 export type PipelineNodeStat = { nodeId: string; op: string; rowCount: number | null };
 

@@ -18,7 +18,10 @@ class ReportRun(Base):
     # initial — ni ce fichier ni cette colonne ne portent de server_default
     # manquant, mais mécanique et sûre : additive, correspond exactement à
     # l'index déjà posé par la migration).
-    __table_args__ = (Index("ix_report_runs_tenant_id", "tenant_id", "id"),)
+    __table_args__ = (
+        Index("ix_report_runs_tenant_id", "tenant_id", "id"),
+        Index("ix_report_runs_report", "report_item_id", "tenant_id", "created_at"),
+    )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)

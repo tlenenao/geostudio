@@ -16,7 +16,10 @@ import { CreateHarvestSourcePanel } from "../shell/CreateHarvestSourcePanel";
 import { EditHarvestSourcePanel } from "../shell/EditHarvestSourcePanel";
 import { SettingsNav } from "../shell/chrome/SettingsNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
-import { t } from "../i18n";
+import { plural, t } from "../i18n";
+import { LoadingState } from "../ui/kit/LoadingState";
+import { Banner } from "../ui/kit/Banner";
+import { PageTitle } from "../ui/kit/PageTitle";
 
 export function HarvestSourcesAdminPage() {
   const instanceQuery = useInstanceInfo();
@@ -95,7 +98,7 @@ export function HarvestSourcesAdminPage() {
           content: (
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
               <div className="flex items-center justify-between">
-                <h1 className="text-lg font-bold text-ink">{t("harvest.title")}</h1>
+                <PageTitle>{t("harvest.title")}</PageTitle>
                 {!readOnly && (
                   <Button
                     size="sm"
@@ -111,15 +114,25 @@ export function HarvestSourcesAdminPage() {
                   </Button>
                 )}
               </div>
-              {sourcesQuery.isLoading && <p role="status">{t("common.loading")}</p>}
+              {sourcesQuery.isLoading && <LoadingState />}
               {sourcesQuery.isError && (
-                <p role="alert" className="text-sm text-danger">
+                <Banner variant="danger" onRetry={() => void sourcesQuery.refetch()}>
                   {t("harvest.loadError")}
-                </p>
+                </Banner>
               )}
               {deleteSource.isError && (
                 <p role="alert" className="text-sm text-danger">
                   {t("harvest.deleteError")}
+                </p>
+              )}
+              {runSource.isError && (
+                <p role="alert" className="text-sm text-danger">
+                  {t("harvest.runFailed")}
+                </p>
+              )}
+              {runSource.isSuccess && (
+                <p role="status" className="text-sm text-ink">
+                  {t("harvest.runQueued")}
                 </p>
               )}
               {sourcesQuery.data && sourcesQuery.data.length === 0 && (
@@ -154,7 +167,39 @@ export function HarvestSourcesAdminPage() {
                     {
                       key: "lastStatus",
                       label: t("harvest.columnLastStatus"),
-                      render: (source: HarvestSource) => source.lastStatus ?? "—",
+                      render: (source: HarvestSource) => (
+                        <div className="flex flex-col">
+                          <span>{source.lastStatus ?? "—"}</span>
+                          {source.lastError && (
+                            <span
+                              className="max-w-xs truncate text-xs text-danger"
+                              title={source.lastError}
+                            >
+                              {source.lastError}
+                            </span>
+                          )}
+                        </div>
+                      ),
+                    },
+                    {
+                      key: "lastRunAt",
+                      label: t("harvest.columnLastRun"),
+                      render: (source: HarvestSource) =>
+                        source.lastRunAt
+                          ? new Date(source.lastRunAt).toLocaleString("fr-FR")
+                          : t("harvest.neverRun"),
+                    },
+                    {
+                      key: "recordCount",
+                      label: t("harvest.columnRecords"),
+                      render: (source: HarvestSource) => (
+                        <span>
+                          {source.recordCount ?? 0}
+                          {source.staleCount
+                            ? ` (${t(plural(source.staleCount, "harvest.recordsStaleOne", "harvest.recordsStaleMany"), { count: source.staleCount })})`
+                            : ""}
+                        </span>
+                      ),
                     },
                     {
                       key: "actions",

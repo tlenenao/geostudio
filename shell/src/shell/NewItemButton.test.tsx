@@ -603,7 +603,7 @@ test("selecting Pipeline only asks for a title, and navigates to /pipelines/new 
   expect(configPosted).toBe(false);
 });
 
-test("selecting « Dataset par requête visuelle » only asks for a title, and navigates to /datasets/visual-query/new with the title in route state, without calling the create API", async () => {
+test("selecting « Jeu de données par requête visuelle » only asks for a title, and navigates to /datasets/visual-query/new with the title in route state, without calling the create API", async () => {
   server.use(
     http.get("https://core.test/v1/instance", () =>
       HttpResponse.json({ readOnly: false, etlEnabled: true }),
@@ -657,7 +657,7 @@ test("the visual-query option is hidden when etlEnabled is false", async () => {
   await userEvent.click(screen.getByRole("button", { name: "Nouveau" }));
   await waitFor(() =>
     expect(
-      screen.queryByRole("option", { name: "Dataset par requête visuelle" }),
+      screen.queryByRole("option", { name: "Jeu de données par requête visuelle" }),
     ).not.toBeInTheDocument(),
   );
 });
@@ -716,9 +716,9 @@ test("SP-42/F-shell-pages-01 : un profil ne portant que maps.manage ne voit que 
   );
   await userEvent.click(await screen.findByRole("button", { name: "Nouveau" }));
   await waitFor(() => expect(screen.getByLabelText("Type")).toHaveValue("map"));
-  expect(screen.queryByRole("option", { name: "App" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("option", { name: "Dashboard" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("option", { name: "Application" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("option", { name: "Tableau de bord" })).not.toBeInTheDocument();
   expect(screen.queryByRole("option", { name: "Site" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("option", { name: "Dataset partagé" })).not.toBeInTheDocument();
-  expect(screen.getByRole("option", { name: "Map" })).toBeInTheDocument();
+  expect(screen.queryByRole("option", { name: "Jeu de données partagé" })).not.toBeInTheDocument();
+  expect(screen.getByRole("option", { name: "Carte" })).toBeInTheDocument();
 });

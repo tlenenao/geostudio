@@ -48,6 +48,8 @@ export { Progress } from "./Progress";
 export { EmptyState } from "./EmptyState";
 export { LoadingState } from "./LoadingState";
 export { Banner } from "./Banner";
+export { PageTitle } from "./PageTitle";
+export { NativeSelect } from "./NativeSelect";
 export { Avatar } from "./Avatar";
 export { Kbd } from "./Kbd";
 export { ItemCard } from "./ItemCard";

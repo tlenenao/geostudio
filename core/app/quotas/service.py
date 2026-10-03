@@ -10,10 +10,11 @@ tileset3d/terrain3d/ingestion routes)."""
 
 from __future__ import annotations
 
+import logging
 import os
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.appexport.models import AppExportJob
@@ -50,7 +51,9 @@ def count_users_for_tenant(session: Session, tenant_id: str) -> int:
     )
 
 
-def tenant_prefixed_storage_bytes(s3, bucket: str, tenant_id: str) -> int:
+def tenant_prefixed_storage_bytes(
+    s3, bucket: str, tenant_id: str, prefix: str | None = None
+) -> int:
     """Somme les tailles de tous les objets sous le préfixe `{tenant_id}/`
     d'un bucket tenant-préfixé (S3_UPLOADS_BUCKET/S3_ATTACHMENTS_BUCKET/
     S3_TILESET3D_BUCKET/S3_TERRAIN3D_BUCKET, cf. spec §1.4). Pagine
@@ -58,7 +61,7 @@ def tenant_prefixed_storage_bytes(s3, bucket: str, tenant_id: str) -> int:
     documenté par la spec (§3.1.2 Tâche 3 Step 2), déjà vécu ailleurs dans
     ce dépôt si oublié."""
     total = 0
-    prefix = f"{tenant_id}/"
+    prefix = prefix or f"{tenant_id}/"
     continuation_token: str | None = None
     while True:
         kwargs: dict = {"Bucket": bucket, "Prefix": prefix}
@@ -132,6 +135,22 @@ def usage_for_tenant(session: Session, s3, tenant_id: str) -> UsageSnapshot:
     décision : calcul à la demande, uniquement à GET /admin/usage ou à la
     confirmation d'un upload, jamais en continu)."""
     storage = job_output_storage_bytes(session, tenant_id)
+    # t03b-006 : sorties writer.export (`{tenant}/pipelines/` du bucket des
+    # exports, hors byte_size des jobs) et lakehouse CDC (partition tenant).
+    # Exclusions assumées et documentées (j08b-012) : lignes PostGIS des
+    # collections, miniatures et icônes — non mesurées, donc jamais bloquantes.
+    storage += tenant_prefixed_storage_bytes(
+        s3,
+        os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports"),
+        tenant_id,
+        prefix=f"{tenant_id}/pipelines/",
+    )
+    storage += tenant_prefixed_storage_bytes(
+        s3,
+        os.environ.get("S3_CDC_BUCKET", "geostudio-cdc"),
+        tenant_id,
+        prefix=f"cdc/tenant_id={tenant_id}/",
+    )
     for env_var, default_bucket in _TENANT_PREFIXED_BUCKET_ENV_VARS_AND_DEFAULTS:
         bucket = os.environ.get(env_var, default_bucket)
         storage += tenant_prefixed_storage_bytes(s3, bucket, tenant_id)
@@ -161,54 +180,80 @@ def max_storage_bytes_per_tenant() -> int | None:
     return int(raw) if raw else None
 
 
+class QuotaExceededError(HTTPException):
+    """Quota atteint (P26.09, t02-014) : 409 pour un comptage, 413 pour le
+    stockage ; rendu en problem+json `type: "quota-exceeded"` (app.main) avec
+    `quota`/`current`/`limit` que le shell traduit sans parser le texte."""
+
+    def __init__(self, quota: str, current: int, limit: int, detail: str) -> None:
+        super().__init__(status_code=413 if quota == "storage" else 409, detail=detail)
+        self.quota, self.current, self.limit = quota, current, limit
+
+    def __str__(self) -> str:
+        return str(self.detail)
+
+
+def quotas_enabled() -> bool:
+    """Même lecture que app.auth.dependency.is_quotas_enabled (ce module ne
+    peut pas importer app.auth, cf. docstring de tête)."""
+    return os.environ.get("CORE_QUOTAS_ENABLED", "false").lower() == "true"
+
+
+def _lock_tenant_kind(session: Session, tenant_id: str, kind: str) -> None:
+    """Sérialise compte-puis-insère par (tenant, kind) jusqu'à la fin de la
+    transaction (verrou consultatif PostgreSQL) : deux créations simultanées
+    au plafond ne passent plus toutes les deux (TOCTOU, c02-014)."""
+    if session.get_bind().dialect.name == "postgresql":
+        session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))"),
+            {"k": f"quota:{kind}:{tenant_id}"},
+        )
+
+
 def check_quota_or_raise(session: Session, *, tenant_id: str, kind: str) -> None:
-    """Lève HTTPException(409) si la limite instance-wide de comptage
-    `kind` ("items" ou "collections") serait atteinte/dépassée par une
-    création supplémentaire. L'appelant doit vérifier is_quotas_enabled()
-    avant d'invoquer cette fonction (app.auth.dependency) — ce module ne
-    connaît pas la capacité, seulement les limites, pour ne pas dépendre
-    d'app.auth (cf. docstring de tête du module)."""
-    if kind == "items":
-        limit = max_items_per_tenant()
-        if limit is None:
-            return
-        current = count_items_for_tenant(session, tenant_id)
-        if current >= limit:
-            raise HTTPException(
-                status_code=409,
-                detail=f"quota d'items du tenant dépassé : {current}/{limit}",
-            )
-    elif kind == "collections":
-        limit = max_collections_per_tenant()
-        if limit is None:
-            return
-        current = count_collections_for_tenant(session, tenant_id)
-        if current >= limit:
-            raise HTTPException(
-                status_code=409,
-                detail=f"quota de collections du tenant dépassé : {current}/{limit}",
-            )
-    else:
+    """Lève QuotaExceededError si la limite instance-wide de comptage `kind`
+    ("items" ou "collections") serait dépassée par une création de plus.
+    Appelée au point unique de création (items.repository.create_item,
+    collections.repository.create_collection) : REST, MCP, jobs, moissonnage.
+    Sans effet quand CORE_QUOTAS_ENABLED est éteint."""
+    if kind not in ("items", "collections"):
         raise ValueError(f"unknown quota kind: {kind}")
-
-
-def check_storage_quota_or_raise(
-    session: Session, s3, *, tenant_id: str, additional_bytes: int
-) -> None:
-    """Point d'entrée des 4 sites de confirmation d'upload (Tâche 5) :
-    recalcule l'usage de stockage complet (spec §3.1.1 option a — un seul
-    calcul par upload réel, pas par requête de lecture) puis vérifie
-    qu'ajouter `additional_bytes` ne dépasserait pas la limite. L'appelant
-    doit vérifier is_quotas_enabled() avant d'invoquer cette fonction, même
-    convention que check_quota_or_raise ci-dessus."""
-    limit = max_storage_bytes_per_tenant()
+    if not quotas_enabled():
+        return
+    limit = max_items_per_tenant() if kind == "items" else max_collections_per_tenant()
     if limit is None:
         return
+    _lock_tenant_kind(session, tenant_id, kind)
+    count = count_items_for_tenant if kind == "items" else count_collections_for_tenant
+    current = count(session, tenant_id)
+    if current >= limit:
+        label = "d'items" if kind == "items" else "de collections"
+        raise QuotaExceededError(
+            kind, current, limit, f"quota {label} du tenant dépassé : {current}/{limit}"
+        )
+
+
+def enforce_storage_quota(
+    session: Session, s3, *, tenant_id: str, bucket: str | None = None, key: str | None = None
+) -> None:
+    """Appelée APRÈS le téléversement : l'objet est déjà dans le bucket, donc
+    déjà compté par usage_for_tenant (j08b-003 : plus de double comptage) —
+    refus seulement si l'usage réel dépasse la limite (limite+1 octet refusé,
+    limite exacte acceptée). Au refus, l'objet fautif est supprimé (j08b-002)
+    pour ne pas laisser d'orphelin compté."""
+    limit = max_storage_bytes_per_tenant()
+    if not quotas_enabled() or limit is None:
+        return
     current = usage_for_tenant(session, s3, tenant_id).storage_bytes
-    if current + additional_bytes > limit:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"quota de stockage du tenant dépassé : {current + additional_bytes}/{limit} octets"
-            ),
+    if current > limit:
+        if bucket and key:
+            try:
+                s3.delete_object(Bucket=bucket, Key=key)
+            except Exception:  # best-effort : le refus prime
+                logging.getLogger(__name__).warning("quota: objet %s non supprimé", key)
+        raise QuotaExceededError(
+            "storage",
+            current,
+            limit,
+            f"quota de stockage du tenant dépassé : {current}/{limit} octets",
         )

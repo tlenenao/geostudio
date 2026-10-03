@@ -2,17 +2,19 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useItemFacets, useItems, useMe } from "../api/hooks";
-import type { ItemScope, ItemSort, ResourceType } from "../api/types";
+import type { Item, ItemScope, ItemSort, ResourceType } from "../api/types";
 import { RESOURCE_TYPE_LABELS, RESOURCE_TYPE_ORDER } from "../api/resourceTypes";
 import { ItemCard } from "../ui/kit/ItemCard";
 import { ItemActions } from "../shell/ItemActions";
 import { Input } from "../ui/kit/Input";
 import { Button } from "../ui/kit/Button";
 import { Panel } from "../ui/kit/Panel";
+import { Banner } from "../ui/kit/Banner";
 import { EmptyState } from "../ui/kit/EmptyState";
 import { NewItemButton } from "../shell/NewItemButton";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { plural, t } from "../i18n";
+import { formatNumber } from "../lib/format";
 import { LoadingState } from "../ui/kit/LoadingState";
 import type { Bbox } from "./CatalogSpatialFilter";
 
@@ -43,7 +45,7 @@ export function CatalogPage({
   fixedType,
   openError,
 }: {
-  onOpenItem: (pk: string, type: ResourceType) => void;
+  onOpenItem: (pk: string, type: ResourceType, item?: Item) => void;
   fixedType?: ResourceType;
   openError?: string;
 }) {
@@ -107,6 +109,22 @@ export function CatalogPage({
     { enabled: !requiresMe || !!me.data },
   );
 
+  const hasActiveFilter =
+    q.length > 0 ||
+    (!fixedType && type !== "") ||
+    scope !== "all" ||
+    ownerFilter.length > 0 ||
+    selectedKeywords.length > 0 ||
+    spatialBbox !== null;
+  const total = query.data?.total ?? 0;
+  const countText = t(plural(total, "catalog.countOne", "catalog.countMany"), { n: total });
+  const viewHeadingKey =
+    fixedType === "bookmark"
+      ? "docTitle.bookmarks"
+      : fixedType === "report"
+        ? "docTitle.reports"
+        : "docTitle.catalog";
+
   const totalPages = query.data ? Math.max(1, Math.ceil(query.data.total / PAGE_SIZE)) : 1;
 
   function toggleKeyword(keyword: string) {
@@ -141,7 +159,7 @@ export function CatalogPage({
                   {t("catalog.typeLabel")}
                   <select
                     aria-label={t("catalog.typeLabel")}
-                    className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                    className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                     value={type}
                     onChange={(e) => setType(e.target.value as ResourceType | "")}
                   >
@@ -175,7 +193,7 @@ export function CatalogPage({
                 {t("catalog.scopeLabel")}
                 <select
                   aria-label={t("catalog.scopeLabel")}
-                  className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                  className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                   value={scope}
                   onChange={(e) => {
                     setScope(e.target.value as ItemScope);
@@ -193,7 +211,7 @@ export function CatalogPage({
                 {t("catalog.sortByLabel")}
                 <select
                   aria-label={t("catalog.sortByLabel")}
-                  className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                  className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                   value={sort}
                   onChange={(e) => {
                     setSort(e.target.value as ItemSort);
@@ -211,7 +229,7 @@ export function CatalogPage({
                 {t("catalog.ownerLabel")}
                 <select
                   aria-label={t("catalog.ownerLabel")}
-                  className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                  className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                   value={ownerFilter}
                   onChange={(e) => {
                     setOwnerFilter(e.target.value);
@@ -236,7 +254,7 @@ export function CatalogPage({
                         type="button"
                         aria-pressed={selectedKeywords.includes(k.keyword)}
                         onClick={() => toggleKeyword(k.keyword)}
-                        className="rounded-full border border-rule bg-surface px-3 py-1 text-xs text-ink aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-surface"
+                        className="rounded-full border border-control bg-surface px-3 py-1 text-xs text-ink aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-surface"
                       >
                         {k.keyword} ({k.count})
                       </button>
@@ -281,30 +299,30 @@ export function CatalogPage({
           label: t("domain.catalog"),
           content: (
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-6">
+              <h1 className="sr-only">{t(viewHeadingKey)}</h1>
+              {/* P33.17 : nombre de résultats / état vide annoncé à chaque
+                  changement de filtre (région polie, hors écran). */}
+              <p role="status" className="sr-only">
+                {query.isSuccess
+                  ? hasActiveFilter && total === 0
+                    ? t("catalog.emptyFilteredTitle")
+                    : countText
+                  : ""}
+              </p>
               {openError && (
                 <p role="alert" className="text-sm text-danger">
                   {openError}
                 </p>
               )}
-              {query.isLoading && <p role="status">{t("common.loading")}</p>}
+              {query.isLoading && <LoadingState />}
               {query.isError && (
-                <div role="alert" className="text-sm text-danger">
-                  {t("catalog.loadError")}{" "}
-                  <Button size="sm" variant="outline" onClick={() => void query.refetch()}>
-                    {t("common.retry")}
-                  </Button>
-                </div>
+                <Banner variant="danger" onRetry={() => void query.refetch()}>
+                  {t("catalog.loadError")}
+                </Banner>
               )}
               {query.isSuccess &&
                 query.data.items.length === 0 &&
                 (() => {
-                  const hasActiveFilter =
-                    q.length > 0 ||
-                    (!fixedType && type !== "") ||
-                    scope !== "all" ||
-                    ownerFilter.length > 0 ||
-                    selectedKeywords.length > 0 ||
-                    spatialBbox !== null;
                   if (hasActiveFilter) {
                     return (
                       <EmptyState
@@ -329,6 +347,29 @@ export function CatalogPage({
                       />
                     );
                   }
+                  if (fixedType === "bookmark" || fixedType === "report") {
+                    return (
+                      <EmptyState
+                        title={t(
+                          fixedType === "report"
+                            ? "catalog.emptyReportsTitle"
+                            : "catalog.emptyBookmarksTitle",
+                        )}
+                        description={t(
+                          fixedType === "report"
+                            ? "catalog.emptyReportsDescription"
+                            : "catalog.emptyBookmarksDescription",
+                        )}
+                        action={
+                          fixedType === "report" ? (
+                            <Link to="/reports/new" className="text-accent hover:underline">
+                              {t("catalog.emptyReportsAction")}
+                            </Link>
+                          ) : undefined
+                        }
+                      />
+                    );
+                  }
                   return (
                     <EmptyState
                       title={t("catalog.emptyNoFilterTitle")}
@@ -349,27 +390,29 @@ export function CatalogPage({
                   ))}
                 </div>
               )}
-              <div className="mt-auto flex items-center gap-3">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={page <= 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                >
-                  {t("usage.previous")}
-                </Button>
-                <span className="text-sm text-ink-2">
-                  {t("usage.pageOf", { page, totalPages })}
-                </span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={page >= totalPages}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  {t("usage.next")}
-                </Button>
-              </div>
+              {total > 0 && (
+                <div className="mt-auto flex items-center gap-3">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={page <= 1}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  >
+                    {t("usage.previous")}
+                  </Button>
+                  <span className="text-sm text-ink-2">
+                    {t("usage.pageOf", { page, totalPages })}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={page >= totalPages}
+                    onClick={() => setPage((p) => p + 1)}
+                  >
+                    {t("usage.next")}
+                  </Button>
+                </div>
+              )}
             </div>
           ),
         }}
@@ -398,7 +441,9 @@ export function CatalogPage({
                 <dt>{t("catalog.keywordsLabel")}</dt>
                 <dd>{selectedKeywords.length > 0 ? selectedKeywords.join(", ") : "—"}</dd>
                 <dt>{t("catalog.spatialExtentLabel")}</dt>
-                <dd>{spatialBbox ? spatialBbox.map((n) => n.toFixed(2)).join(", ") : "—"}</dd>
+                <dd>
+                  {spatialBbox ? spatialBbox.map((n) => formatNumber(n, 2, 2)).join(", ") : "—"}
+                </dd>
               </dl>
             </Panel>
           ),

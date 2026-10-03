@@ -124,6 +124,20 @@ def test_select_is_tenant_bound_and_geojson(info, pg_session_factory):
     }  # ni pk, ni tenant_id, ni geom
 
 
+def test_short_page_total_is_exact_without_count(info, pg_session_factory):
+    # P24.09 : total déduit d'une page courte ; doit rester exact (RLS : 2 lignes
+    # visibles sur 3, offset, filtre, offset au-delà de la fin).
+    with pg_session_factory() as session, rls_scope(session, "default"):
+        assert select_features(session, info, limit=10, offset=0).number_matched == 2
+        assert select_features(session, info, limit=10, offset=1).number_matched == 2
+        assert select_features(session, info, limit=2, offset=0).number_matched == 2  # pleine
+        assert select_features(session, info, limit=10, offset=5).number_matched == 2  # au-delà
+        page = select_features(session, info, limit=10, offset=0, filters={"nb": "2"})
+        assert page.number_matched == 1
+        page = select_features(session, info, limit=10, offset=0, filters={"nb": "99"})
+        assert page.number_matched == 0 and page.number_returned == 0
+
+
 def test_pagination_and_bbox_and_filters(info, pg_session_factory):
     with pg_session_factory() as session, rls_scope(session, "default"):
         page = select_features(session, info, limit=1, offset=1)
@@ -375,3 +389,37 @@ def test_filtering_on_a_list_column_is_rejected(info, pg_session_factory):
     with pg_session_factory() as session, rls_scope(session, "default"):
         with pytest.raises(FilterError):
             select_features(session, info, limit=10, offset=0, filters={"tags": "urgent"})
+
+
+def test_single_day_range_on_a_timestamptz_column_keeps_that_day(
+    pg_incidents, pg_engine, pg_session_factory
+):
+    """P25.12 : d__lte « YYYY-MM-DD » couvre tout le jour, pas seulement minuit."""
+    with pg_engine.begin() as conn:
+        conn.execute(text("SET TIME ZONE 'UTC'"))
+        conn.execute(text("ALTER TABLE t_feat ADD COLUMN at timestamptz"))
+        conn.execute(text("UPDATE t_feat SET at = '2026-03-15 10:00:00+00' WHERE titre = 'a'"))
+        conn.execute(text("UPDATE t_feat SET at = '2026-03-16 10:00:00+00' WHERE titre = 'b'"))
+    with pg_session_factory() as session:
+        info = introspect_table(session, "t_feat")
+    with pg_session_factory() as session, rls_scope(session, "default"):
+        page = select_features(
+            session,
+            info,
+            limit=10,
+            offset=0,
+            filters={"at__gte": "2026-03-15", "at__lte": "2026-03-15"},
+        )
+    assert [f["id"] for f in page.features] == [1]
+
+
+def test_impossible_day_bound_is_a_filter_error_not_a_db_error(
+    pg_incidents, pg_engine, pg_session_factory
+):
+    with pg_engine.begin() as conn:
+        conn.execute(text("ALTER TABLE t_feat ADD COLUMN at timestamptz"))
+    with pg_session_factory() as session:
+        info = introspect_table(session, "t_feat")
+    with pg_session_factory() as session, rls_scope(session, "default"):
+        with pytest.raises(FilterError):
+            select_features(session, info, limit=10, offset=0, filters={"at__lte": "2026-13-45"})

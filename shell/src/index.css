@@ -10,3 +10,27 @@
 @import "@fontsource-variable/source-serif-4";
 
 @import "./styles/tokens.css";
+
+/* P33.02/P33.03 : fond et encre globaux. Sans eux, tout ce qui est rendu hors
+ * AppLayout (routes publiques, états de chargement, <label>/<select> sans
+ * classe text-ink) héritait du noir par défaut du navigateur sur un fond
+ * sombre — 1,1:1 en thème sombre. */
+@layer base {
+  body {
+    background-color: var(--gs-background);
+    color: var(--gs-ink);
+  }
+}
+
+/* Widgets natifs (barres de défilement, <select>, date) suivent l'ambiance. */
+:root {
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}

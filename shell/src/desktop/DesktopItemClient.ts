@@ -210,8 +210,20 @@ export function createDesktopItemClient(connection: {
     async getMe(..._args: unknown[]) {
       return unsupported();
     },
+    // PipelineBuilderPage attend etlEnabled (D09) avant d'afficher la palette :
+    // le sidecar desktop EST le moteur ETL, seul le pipeline est disponible.
     async getInstanceInfo(..._args: unknown[]) {
-      return unsupported();
+      return {
+        readOnly: false,
+        etlEnabled: true,
+        exportEnabled: false,
+        appExportEnabled: false,
+        tileset3dEnabled: false,
+        terrain3dEnabled: false,
+        copilotEnabled: false,
+        adminToolsEnabled: false,
+        quotasEnabled: false,
+      };
     },
     async getQuotaUsage(..._args: unknown[]) {
       return unsupported();
@@ -337,6 +349,9 @@ export function createDesktopItemClient(connection: {
       return unsupported();
     },
     async runHarvestSource(..._args: unknown[]) {
+      return unsupported();
+    },
+    async getInstanceStatus(..._args: unknown[]) {
       return unsupported();
     },
     async launchAdminTool(..._args: unknown[]) {

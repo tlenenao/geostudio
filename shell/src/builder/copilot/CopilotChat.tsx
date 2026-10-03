@@ -4,6 +4,7 @@
 // (AppConfig, SQL brut, état de requête visuelle...). Chaque appelant
 // fournit son propre contextPayload/clientTools/onClientOps.
 import { useEffect, useRef, useState } from "react";
+import { ApiError } from "../../api/ApiError";
 import { useItemClient } from "../../api/ItemClientProvider";
 import type {
   CopilotClientOp,
@@ -36,7 +37,9 @@ export function CopilotChat({
   opLabels,
   onClientOps,
   onExchange,
+  disabled = false,
 }: {
+  disabled?: boolean;
   itemId?: string;
   surface: CopilotSurface;
   contextPayload: Record<string, unknown>;
@@ -63,6 +66,33 @@ export function CopilotChat({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastOpsSummary, setLastOpsSummary] = useState<string[]>([]);
+  // j11-012 : écriture proposée par le copilote, en attente d'un clic humain.
+  const [pendingWrite, setPendingWrite] = useState<{
+    name: string;
+    arguments: Record<string, unknown>;
+  } | null>(null);
+
+  async function confirmWrite(write: { name: string; arguments: Record<string, unknown> }) {
+    setPendingWrite(null);
+    setSending(true);
+    setError(null);
+    try {
+      const result = await client.copilotTurn(itemId, {
+        message: t("copilot.confirmWriteMessage"),
+        history: [],
+        mcpToken: await getMcpToken(),
+        currentConfig: contextPayloadRef.current,
+        clientTools: [],
+        surface,
+        confirmWrite: write,
+      });
+      setHistory((h) => [...h, { role: "assistant", content: result.reply }]);
+    } catch {
+      setError(t("copilot.requestFailed"));
+    } finally {
+      setSending(false);
+    }
+  }
 
   async function send() {
     const message = input.trim();
@@ -84,6 +114,10 @@ export function CopilotChat({
         surface,
       });
       setHistory([...nextHistory, { role: "assistant", content: result.reply }]);
+      const writeOp = result.clientOps.find((o) => o.op === "confirmWrite");
+      if (writeOp)
+        setPendingWrite(writeOp.args as { name: string; arguments: Record<string, unknown> });
+      result.clientOps = result.clientOps.filter((o) => o.op !== "confirmWrite");
       if (result.clientOps.length > 0) {
         // Appliquer D'ABORD, étiqueter ENSUITE (M1) : l'ordre inverse
         // annonçait « Brouillon SQL inséré. » pour une op que l'applier
@@ -101,8 +135,12 @@ export function CopilotChat({
         setLastOpsSummary([]);
       }
       onExchange?.({ message, opsCount: result.clientOps.length, status: "ok" });
-    } catch {
-      setError(t("copilot.requestFailed"));
+    } catch (e) {
+      setError(
+        e instanceof ApiError && e.status === 422 && /trop volumineuse/.test(e.detail ?? "")
+          ? t("copilot.contextTooLarge")
+          : t("copilot.requestFailed"),
+      );
       onExchange?.({ message, opsCount: 0, status: "error" });
     } finally {
       setSending(false);
@@ -123,13 +161,28 @@ export function CopilotChat({
           aria-label={t("copilot.messageAria")}
           className="min-h-16 rounded-md border border-rule bg-surface p-2 text-sm text-ink"
           value={input}
+          disabled={disabled}
           maxLength={MAX_MESSAGE_CHARS}
           onChange={(e) => setInput(e.target.value)}
         />
       </label>
-      <Button size="sm" disabled={sending || !input.trim()} onClick={() => void send()}>
+      <Button size="sm" disabled={disabled || sending || !input.trim()} onClick={() => void send()}>
         {t("copilot.send")}
       </Button>
+      {disabled && <p className="text-xs text-ink-2">{t("copilot.readOnly")}</p>}
+      {pendingWrite && (
+        <div role="alert" className="flex flex-col gap-1 rounded-md border border-rule p-2 text-xs">
+          <p>{t("copilot.confirmWritePrompt", { name: pendingWrite.name })}</p>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={() => void confirmWrite(pendingWrite)}>
+              {t("copilot.confirmWriteYes")}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setPendingWrite(null)}>
+              {t("copilot.confirmWriteNo")}
+            </Button>
+          </div>
+        </div>
+      )}
       {lastOpsSummary.length > 0 && (
         <ul className="text-xs text-ink-2">
           {lastOpsSummary.map((s, i) => (

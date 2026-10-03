@@ -65,3 +65,19 @@ it("pas de renouvellement sans jeton, et un seul pour des 401 parallèles", asyn
   await Promise.allSettled([authed.request("GET", "/a"), authed.request("GET", "/b")]);
   expect(onUnauthorized).toHaveBeenCalledTimes(1);
 });
+
+it("P30.03 fetchUrl : jeton et lien de partage seulement si authenticated", async () => {
+  const fetchSpy = vi.fn().mockResolvedValue(ok());
+  vi.stubGlobal("fetch", fetchSpy);
+  const base = createBase({
+    coreUrl: "http://c",
+    getToken: () => "tok",
+    getShareLinkToken: () => "share",
+  });
+  await base.fetchUrl("http://c/t/0/0/0.mvt", { authenticated: true });
+  const h = fetchSpy.mock.calls[0][1].headers as Headers;
+  expect(h.get("Authorization")).toBe("Bearer tok");
+  expect(h.get("X-Share-Link-Token")).toBe("share");
+  await base.fetchUrl("http://evil.example/x.geojson");
+  expect(fetchSpy.mock.calls[1][1].headers).toBeUndefined();
+});

@@ -62,12 +62,21 @@ _BUDGETS = {
 _WINDOW_SECONDS = 60.0
 
 
-def caller_key(auth_header: str | None, client_host: str | None) -> str:
+def caller_key(
+    auth_header: str | None,
+    client_host: str | None,
+    group: str | None = None,
+    path: str | None = None,
+) -> str:
     """Clé d'appelant pour le compteur glissant : l'en-tête Authorization
     brut s'il existe (comportement inchangé pour tout appelant authentifié),
     sinon l'IP réelle du visiteur (nécessite ProxyHeadersMiddleware côté
     app.main, cf. commentaire dédié) — jamais la chaîne vide partagée par
-    tous les anonymes (GAP-61.a)."""
+    tous les anonymes (GAP-61.a). Exception (j06b-011) : la route webhook-trigger
+    est indexée sur IP + chemin (donc pipeline), jamais sur le jeton présenté —
+    sinon varier le jeton à chaque essai contourne le budget (brute-force)."""
+    if group == "webhook-trigger":
+        return f"trigger:{client_host or 'unknown'}:{path}"
     if auth_header:
         return auth_header
     return f"anon:{client_host or 'unknown'}"

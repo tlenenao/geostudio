@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
-import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { CORE_URL, SHELL_URL, stamp } from "../_fixtures/env";
 import { openAs, spaGoto } from "../j06/helpers";
@@ -148,7 +147,7 @@ test.describe("j10 sites publics : rendu anonyme", () => {
 
   // FINDING j10-003 : les vignettes de la galerie pointent vers une route
   // authentifiée (et un chemin sans /v1) : image cassée pour un visiteur anonyme.
-  bug("j10-003 : la galerie publique affiche la vignette d'un item publié", async ({ page }) => {
+  test("j10-003 : la galerie publique affiche la vignette d'un item publié", async ({ page }) => {
     const pub = await createSite(creator, `${tag}-vign`, siteConfig(), { publish: true });
     await uploadThumbnail(pub.pk);
     const cfg = siteConfig([
@@ -192,7 +191,7 @@ test.describe("j10 sites : édition côté auteur", () => {
 
   // FINDING j10-005 : ni la fiche d'item, ni le builder n'affichent l'URL publique
   // /sites/{slug} ni ne permettent de modifier le slug après création.
-  bug("j10-005 : la fiche d'un site publié montre son URL publique", async ({ page }) => {
+  test("j10-005 : la fiche d'un site publié montre son URL publique", async ({ page }) => {
     const s = await createSite(creator, `${tag}-url`, siteConfig(), { publish: true });
     await openAs(page, "creator");
     await spaGoto(page, `/items/${s.pk}`);

@@ -49,13 +49,13 @@ async function addFeaturesSource(page: Page, collection: string) {
     .fill(collection);
 }
 
-// Promeut la dernière source en dataset partagé (→ datasetId="dataset-1" côté mock).
+// Promeut la dernière source en jeu de données partagé (→ datasetId="dataset-1" côté mock).
 async function promoteLastSource(page: Page, expectedActiveCount: number) {
   await page
-    .getByRole("button", { name: /Promouvoir en dataset partagé/ })
+    .getByRole("button", { name: /Promouvoir en jeu de données partagé/ })
     .last()
     .click();
-  await expect(page.getByText("Dataset partagé actif")).toHaveCount(expectedActiveCount);
+  await expect(page.getByText("Jeu de données partagé actif")).toHaveCount(expectedActiveCount);
 }
 
 // -------------------------------------------------------------------------
@@ -91,7 +91,7 @@ test("a chart click cross-filters a table on the same dataset, second click clea
     const features = cat ? all.filter((f) => f.properties.categorie === cat) : all;
     await route.fulfill({ json: { type: "FeatureCollection", features } });
   });
-  // Dataset partagé "dataset-1" adossé à "analytics" (timeField vide).
+  // Jeu de données partagé "dataset-1" adossé à "analytics" (timeField vide).
   await page.route("**/configs/by-item/dataset-1", async (route) => {
     await route.fulfill({
       json: {
@@ -121,12 +121,12 @@ test("a chart click cross-filters a table on the same dataset, second click clea
   await promoteLastSource(page, 2);
 
   // Graphique lié à la source 1, catégorie = "categorie".
-  await page.getByRole("button", { name: "Graphique" }).click();
+  await page.getByRole("button", { name: "Graphique", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 1 });
   await page.getByLabel("Champ catégorie").fill("categorie");
 
   // Table liée à la source 2.
-  await page.getByRole("button", { name: "Table" }).click();
+  await page.getByRole("button", { name: "Table", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 2 });
 
   // Interactions automatiques ON (défaut des nouvelles apps, garanti idempotent).
@@ -220,7 +220,7 @@ test("map extent reactivity refetches a reactsToExtent dataset after the debounc
   await page.route("**/collections/geo/aggregate", async (route) => {
     await route.fulfill({ json: { categoryKey: "nom", rows: [{ nom: "P1", count: 1 }] } });
   });
-  // Dataset partagé "dataset-1" : capture le PUT (reactsToExtent réglé via l'UI)
+  // Jeu de données partagé "dataset-1" : capture le PUT (reactsToExtent réglé via l'UI)
   // et le ressert au runtime.
   await page.route("**/configs/by-item/dataset-1", async (route) => {
     if (route.request().method() === "PUT") {
@@ -505,6 +505,9 @@ test("the analytics context in the URL restores on reload", async ({ page }) => 
 // canaux coexistent (spec §5).
 // -------------------------------------------------------------------------
 test("an existing app without interactions never auto-filters on click", async ({ page }) => {
+  // P27.04 : horloge pilotée — la preuve négative avance le temps (debounce
+  // compris) au lieu de dormir.
+  await page.clock.install();
   await mockCore(page);
 
   await page.route("**/collections/analytics/schema", async (route) => {
@@ -556,11 +559,11 @@ test("an existing app without interactions never auto-filters on click", async (
   await addFeaturesSource(page, "analytics");
   await promoteLastSource(page, 2);
 
-  await page.getByRole("button", { name: "Graphique" }).click();
+  await page.getByRole("button", { name: "Graphique", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 1 });
   await page.getByLabel("Champ catégorie").fill("categorie");
 
-  await page.getByRole("button", { name: "Table" }).click();
+  await page.getByRole("button", { name: "Table", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 2 });
 
   // Câblage MANUEL chart.categorySelected → table.setFilter (comme actions.spec.ts).
@@ -597,7 +600,7 @@ test("an existing app without interactions never auto-filters on click", async (
   // même vide, pour une app qui ne passe jamais en mode auto. On laisse passer
   // le délai du debounce (EXTENT_DEBOUNCE_MS = 500ms) pour s'assurer qu'aucune
   // écriture différée ne survient.
-  await page.waitForTimeout(700);
+  await page.clock.fastForward(1000);
   expect(new URL(page.url()).searchParams.has("ctx")).toBe(false);
 });
 
@@ -620,7 +623,7 @@ async function setupTimeFieldDatasetAndApp(page: Page) {
   await promoteLastSource(page, 1);
 
   await page.getByRole("button", { name: "Plage de dates" }).click();
-  await page.getByRole("button", { name: "Table" }).click();
+  await page.getByRole("button", { name: "Table", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 1 });
 
   await page.getByLabel("Interactions automatiques (cross-filter)").check();
@@ -696,7 +699,7 @@ test("a select filter multi-value cross-filters a table via field__in", async ({
   await page.getByLabel("Source de données").selectOption({ index: 1 });
   await page.getByLabel("Champ du sélecteur").fill("categorie");
 
-  await page.getByRole("button", { name: "Table" }).click();
+  await page.getByRole("button", { name: "Table", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 2 });
 
   await page.getByLabel("Interactions automatiques (cross-filter)").check();
@@ -783,7 +786,7 @@ test("a slider filter cross-filters a table by range, resetting to full bounds c
   await page.getByLabel("Source de données").selectOption({ index: 1 });
   await page.getByLabel("Champ du curseur").fill("score");
 
-  await page.getByRole("button", { name: "Table" }).click();
+  await page.getByRole("button", { name: "Table", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 2 });
 
   await page.getByLabel("Interactions automatiques (cross-filter)").check();
@@ -878,7 +881,7 @@ test("the context indicator shows chips for active period and cross-filter, clea
   await addFeaturesSource(page, "analytics");
   await promoteLastSource(page, 1);
 
-  await page.getByRole("button", { name: "Graphique" }).click();
+  await page.getByRole("button", { name: "Graphique", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 1 });
   await page.getByLabel("Champ catégorie").fill("categorie");
 
@@ -977,7 +980,7 @@ test("interactions manual: no indicator, select/slider never cross-filter", asyn
   await page.getByRole("button", { name: "Sélecteur" }).click();
   await page.getByLabel("Source de données").selectOption({ index: 1 });
   await page.getByLabel("Champ du sélecteur").fill("categorie");
-  await page.getByRole("button", { name: "Table" }).click();
+  await page.getByRole("button", { name: "Table", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 2 });
 
   // Interactions automatiques OFF — le défaut des nouvelles apps est "auto"
@@ -1058,11 +1061,11 @@ test("voir les entités shows cross-filtered rows, even opened from the widget t
   await addFeaturesSource(page, "analytics");
   await promoteLastSource(page, 2);
 
-  await page.getByRole("button", { name: "Graphique" }).click();
+  await page.getByRole("button", { name: "Graphique", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 1 });
   await page.getByLabel("Champ catégorie").fill("categorie");
 
-  await page.getByRole("button", { name: "Table" }).click();
+  await page.getByRole("button", { name: "Table", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 2 });
 
   await page.getByLabel("Interactions automatiques (cross-filter)").check();
@@ -1156,7 +1159,7 @@ test("the explorer menu never appears when interactions is manual", async ({ pag
   await createApp(page, "Manuel");
   await addFeaturesSource(page, "analytics");
   await promoteLastSource(page, 1);
-  await page.getByRole("button", { name: "Table" }).click();
+  await page.getByRole("button", { name: "Table", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 1 });
   await page.getByLabel("Interactions automatiques (cross-filter)").uncheck();
   await page.getByRole("button", { name: "Enregistrer" }).click();
@@ -1273,7 +1276,7 @@ test("a KPI shows a delta badge against the reference period", async ({ page }) 
   await promoteLastSource(page, 1);
 
   await page.getByRole("button", { name: "Plage de dates" }).click();
-  await page.getByRole("button", { name: "Indicateur" }).click();
+  await page.getByRole("button", { name: "Indicateur", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 1 });
   await page.getByLabel("Comparer à").selectOption("previous");
 
@@ -1347,7 +1350,7 @@ test("a KPI shows a critical pastille when criticalWhen is exceeded, none otherw
   await addFeaturesSource(page, "analytics");
   await promoteLastSource(page, 1);
 
-  await page.getByRole("button", { name: "Indicateur" }).click();
+  await page.getByRole("button", { name: "Indicateur", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 1 });
   await page.getByLabel("Seuil critique (CEL)").fill("record.value > 2");
 
@@ -1473,7 +1476,7 @@ test("chart compare-periods mode renders two aligned series", async ({ page }) =
   await promoteLastSource(page, 1);
 
   await page.getByRole("button", { name: "Plage de dates" }).click();
-  await page.getByRole("button", { name: "Graphique" }).click();
+  await page.getByRole("button", { name: "Graphique", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 1 });
   await page.getByLabel("Type de graphique").selectOption("line");
   await page.getByLabel("Comparer les périodes").check();
@@ -1589,9 +1592,9 @@ test("indicator and chart behave exactly as before without the new SP-14e props,
   await promoteLastSource(page, 1);
 
   await page.getByRole("button", { name: "Plage de dates" }).click();
-  await page.getByRole("button", { name: "Indicateur" }).click();
+  await page.getByRole("button", { name: "Indicateur", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 1 });
-  await page.getByRole("button", { name: "Graphique" }).click();
+  await page.getByRole("button", { name: "Graphique", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 1 });
   await page.getByLabel("Type de graphique").selectOption("line");
 
@@ -1661,13 +1664,13 @@ test("a funnel click cross-filters a table on the same dataset (SP-14f)", async 
   await addFeaturesSource(page, "analytics");
   await promoteLastSource(page, 2);
 
-  await page.getByRole("button", { name: "Graphique" }).click();
+  await page.getByRole("button", { name: "Graphique", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 1 });
   await page.getByLabel("Type de graphique").selectOption("funnel");
   await page.getByLabel("Champ catégorie").fill("categorie");
   await page.getByLabel("Champ valeur").fill("valeur");
 
-  await page.getByRole("button", { name: "Table" }).click();
+  await page.getByRole("button", { name: "Table", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 2 });
 
   await page.getByLabel("Interactions automatiques (cross-filter)").check();
@@ -1757,7 +1760,7 @@ test("sankey, treemap and sunburst render from a multi-field groupBy dataset (SP
     ["treemap", "Zones hiérarchiques (treemap)"],
     ["sunburst", "Soleil hiérarchique (sunburst)"],
   ] as const) {
-    await page.getByRole("button", { name: "Graphique" }).click();
+    await page.getByRole("button", { name: "Graphique", exact: true }).click();
     await page.getByLabel("Source de données").selectOption({ index: 1 });
     await page.getByLabel("Type de graphique").selectOption(type);
     if (type === "sankey") {
@@ -1799,6 +1802,7 @@ test("sankey, treemap and sunburst render from a multi-field groupBy dataset (SP
 test("a histogram renders binned data and never cross-filters on click (SP-14f)", async ({
   page,
 }) => {
+  await page.clock.install();
   await mockCore(page);
   await page.route("**/collections/pops/schema", async (route) => {
     await route.fulfill({
@@ -1876,12 +1880,12 @@ test("a histogram renders binned data and never cross-filters on click (SP-14f)"
     .last()
     .fill("2");
 
-  await page.getByRole("button", { name: "Graphique" }).click();
+  await page.getByRole("button", { name: "Graphique", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 1 });
   await page.getByLabel("Type de graphique").selectOption("histogram");
   await page.getByLabel("Champ catégorie").fill("city");
 
-  await page.getByRole("button", { name: "Table" }).click();
+  await page.getByRole("button", { name: "Table", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 2 });
   await page.getByLabel("Interactions automatiques (cross-filter)").check();
   await page.getByRole("button", { name: "Enregistrer" }).click();
@@ -1915,7 +1919,7 @@ test("a histogram renders binned data and never cross-filters on click (SP-14f)"
   // a comfortable margin; x:0.72/y:0.45 sits well inside it.
   const secondBar = { x: box.width * 0.72, y: box.height * 0.45 };
   await chart.click({ position: secondBar });
-  await page.waitForTimeout(300); // no debounce/refetch to await — proving nothing fires
+  await page.clock.fastForward(1000); // vide tout timer différé : prouve qu'aucun refetch ne part
 
   // Primary assertion: the table — a real consuming widget — still shows
   // every original row (it never narrowed), not just "no request was seen".
@@ -2041,7 +2045,7 @@ test("a pivot renders row/column totals and a row-header click cross-filters a t
 
   // Source 2 → table brute liée au même dataset partagé, restreinte à la
   // colonne "label" pour ne jamais dupliquer un texte affiché par le pivot.
-  await page.getByRole("button", { name: "Table" }).click();
+  await page.getByRole("button", { name: "Table", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 2 });
   await page.getByLabel("Colonnes").fill("label");
 
@@ -2177,7 +2181,7 @@ test("a pivot column-header click cross-filters a table on the columns field (SP
   await page.getByLabel("Champ lignes").fill("region");
   await page.getByLabel("Champ colonnes").fill("quarter");
 
-  await page.getByRole("button", { name: "Table" }).click();
+  await page.getByRole("button", { name: "Table", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 2 });
   await page.getByLabel("Colonnes").fill("label");
 
@@ -2562,7 +2566,7 @@ test("a click on a styled map feature still cross-filters a sibling table by pk 
   await page.getByRole("button", { name: "Recalculer les classes" }).click();
   await expect(page.getByText(/Nord, Sud/)).toBeVisible();
 
-  await page.getByRole("button", { name: "Table" }).click();
+  await page.getByRole("button", { name: "Table", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 2 });
   await page.getByLabel("Colonnes").fill("region");
 
@@ -2674,7 +2678,7 @@ test("a map with no encodings configured issues no domain query (SP-14h)", async
 // par le bbox de sa géométrie — sans lien direct entre les deux sources.
 //
 // Note d'implémentation (écart avec la transcription littérale du plan) :
-// « Promouvoir en dataset partagé » (AppBuilderPage.promoteSource) crée
+// « Promouvoir en jeu de données partagé » (AppBuilderPage.promoteSource) crée
 // TOUJOURS un nouvel item dataset (POST /configs) — il ne réutilise jamais un
 // dataset existant pour la même collection. Pré-créer "Incidents"/"Communes"
 // via le dialogue « Nouveau » AVANT de construire l'app (comme le plan
@@ -2829,9 +2833,9 @@ test("a spatial cross-filter link propagates a bbox from one dataset's Table cli
     .last()
     .selectOption("statistics");
 
-  await page.getByRole("button", { name: "Table" }).click();
+  await page.getByRole("button", { name: "Table", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 1 });
-  await page.getByRole("button", { name: "Indicateur" }).click();
+  await page.getByRole("button", { name: "Indicateur", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 2 });
   // L'indicateur affiche `records.length` par défaut (agrégation "Nombre",
   // qui compte les lignes de résultat — toujours 1 ici, une seule ligne
@@ -2847,7 +2851,7 @@ test("a spatial cross-filter link propagates a bbox from one dataset's Table cli
   //    Table), un lien spatial/bbox vers "Incidents" (dataset-2, la cible).
   await page.goto("/datasets/dataset-1/edit");
   await page.getByRole("button", { name: "Ajouter un lien" }).click();
-  await page.getByLabel("Dataset cible").selectOption("dataset-2");
+  await page.getByLabel("Jeu de données cible").selectOption("dataset-2");
   await page.getByLabel("Mode du lien").selectOption("spatial");
   await expect(page.getByLabel("Précision spatiale du lien")).toHaveValue("bbox");
   await page.getByRole("button", { name: "Enregistrer les colonnes" }).click();

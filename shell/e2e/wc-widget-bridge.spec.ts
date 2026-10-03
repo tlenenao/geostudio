@@ -25,7 +25,7 @@ test("un widget Web Component se pose dans le builder, suit le thème, émet un 
 
   // Bouton (déclenchera reset sur le Compteur WC) et Texte (affichera la variable count).
   await page.getByRole("button", { name: "Bouton" }).click();
-  await page.getByRole("button", { name: "Texte" }).click();
+  await page.getByRole("button", { name: "Texte", exact: true }).click();
   await page.getByLabel("Texte du widget").fill("Compte : {{var:count}}");
 
   await page.getByRole("button", { name: "Ajouter une variable" }).click();

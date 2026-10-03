@@ -92,6 +92,10 @@ test("an invalid advanced cron shows an inline error", async () => {
   await userEvent.clear(screen.getByLabelText("Expression cron"));
   await userEvent.type(screen.getByLabelText("Expression cron"), "not a cron");
   expect(screen.getByRole("alert")).toHaveTextContent("Format cron invalide");
+  // P32.09 : le champ est marqué invalide et relié à son message.
+  const field = screen.getByLabelText("Expression cron");
+  expect(field).toHaveAttribute("aria-invalid", "true");
+  expect(field).toHaveAccessibleDescription(/Format cron invalide/);
 });
 
 test("switching to weekly mode compiles a default weekly cron and lists all 7 days", async () => {

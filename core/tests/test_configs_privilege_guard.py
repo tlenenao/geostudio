@@ -134,7 +134,8 @@ def _body(kind: str) -> dict:
                         "op": "writer.dataset",
                         "params": {"collectionId": "parcs", "title": "sortie"},
                     },
-                ]
+                ],
+                "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
             },
         }
     if kind == "bookmark":

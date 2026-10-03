@@ -30,7 +30,7 @@ vi.mock("./shell/ImportFileButton", () => ({
 // autres consommateurs de "./config" (ConfigContext, AuthProvider,
 // EmbedPage) n'importent que le type AppConfig, effacé à l'exécution.
 vi.mock("./config", () => ({
-  loadConfig: () => ({
+  loadRuntimeConfig: () => ({
     coreUrl: "http://core.test",
     oidcAuthority: "",
     oidcClientId: "",

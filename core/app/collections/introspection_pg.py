@@ -3,6 +3,9 @@
 Toutes les requêtes sont paramétrées — le nom de table est une *valeur* ici,
 jamais un identifiant interpolé."""
 
+import copy
+import time
+
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -71,7 +74,39 @@ def list_public_tables(session: Session) -> list[str]:
     return list(rows)
 
 
+# P24.08 : une introspection = ~5-10 requêtes catalogue, refaites à chaque
+# requête de tuile/feature. Cache validé par une empreinte (une seule requête :
+# oid + xmin des lignes pg_attribute/pg_index) — tout ALTER/DROP/CREATE, même
+# fait par un autre process (worker d'ingestion), change l'empreinte. Le TTL
+# borne le reste (valeurs d'enum, non couvertes par l'empreinte).
+_CACHE_TTL_S = 30.0
+_cache: dict[tuple[str, str], tuple[float, str, TableInfo]] = {}
+
+_FINGERPRINT_SQL = (
+    "SELECT c.oid::text || ':' || c.relkind::text || ':' || "
+    "coalesce((SELECT string_agg(a.xmin::text, ',' ORDER BY a.attnum) "
+    "FROM pg_attribute a WHERE a.attrelid = c.oid), '') || ':' || "
+    "coalesce((SELECT string_agg(i.xmin::text, ',' ORDER BY i.indexrelid) "
+    "FROM pg_index i WHERE i.indrelid = c.oid), '') "
+    "FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+    "WHERE n.nspname = 'public' AND c.relname = :t"
+)
+
+
 def introspect_table(session: Session, table_name: str) -> TableInfo:
+    fingerprint = session.execute(text(_FINGERPRINT_SQL), {"t": table_name}).scalar()
+    if fingerprint is None:  # absente : l'erreur vient du chemin non caché
+        return _introspect_table_uncached(session, table_name)
+    key = (str(session.get_bind().url), table_name)
+    hit = _cache.get(key)
+    if hit and hit[1] == fingerprint and time.monotonic() - hit[0] < _CACHE_TTL_S:
+        return copy.deepcopy(hit[2])
+    info = _introspect_table_uncached(session, table_name)
+    _cache[key] = (time.monotonic(), fingerprint, info)
+    return copy.deepcopy(info)
+
+
+def _introspect_table_uncached(session: Session, table_name: str) -> TableInfo:
     exists = session.execute(
         text(
             "SELECT relkind FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "

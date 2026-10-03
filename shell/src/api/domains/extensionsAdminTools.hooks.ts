@@ -72,6 +72,16 @@ export function useLaunchAdminTool() {
   });
 }
 
+export function useInstanceStatus(options?: { enabled?: boolean }) {
+  const client = useItemClientInternal();
+  return useQuery({
+    queryKey: ["instance-status"],
+    queryFn: () => client.getInstanceStatus(),
+    enabled: options?.enabled ?? true,
+    refetchInterval: 30_000,
+  });
+}
+
 export function useHarvestSources(options?: { enabled?: boolean }) {
   const client = useItemClientInternal();
   return useQuery({

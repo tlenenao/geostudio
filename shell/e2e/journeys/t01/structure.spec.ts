@@ -1,6 +1,5 @@
 import { expect, test } from "@playwright/test";
 import {
-  bug,
   contrast,
   getA11ySeed,
   go,
@@ -26,13 +25,13 @@ test.describe("structure des pages (creator)", () => {
     await expect(s.page.getByRole("banner")).toBeVisible();
   });
 
-  bug("t01-001 : chaque page porte un repère <main>", async () => {
+  test("t01-001 : chaque page porte un repère <main>", async () => {
     // Finding t01-001 : AppLayout rend un <div> ; seul l'éditeur d'app a un <main>.
     await go(s.page, "/", 1500);
     expect(await s.page.locator("main, [role=main]").count()).toBeGreaterThan(0);
   });
 
-  bug("t01-002 : un lien d'évitement mène au contenu principal", async () => {
+  test("t01-002 : un lien d'évitement mène au contenu principal", async () => {
     // Finding t01-002 : 1er arrêt de tabulation = « Rechercher ⌘K », puis 11 contrôles de chrome.
     await go(s.page, "/", 1500);
     await s.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
@@ -44,7 +43,7 @@ test.describe("structure des pages (creator)", () => {
     expect(href).toMatch(/^#/);
   });
 
-  bug("t01-003 : chaque page porte un titre de niveau 1", async () => {
+  test("t01-003 : chaque page porte un titre de niveau 1", async () => {
     // Finding t01-003 : catalogue, favoris, cartes, datasets, pipelines… n'ont aucun <h1>.
     const missing: string[] = [];
     for (const r of [
@@ -63,7 +62,7 @@ test.describe("structure des pages (creator)", () => {
     expect(missing).toEqual([]);
   });
 
-  bug("t01-004 : le titre du document change à chaque route", async () => {
+  test("t01-004 : le titre du document change à chaque route", async () => {
     // Finding t01-004 : document.title reste « GeoStudio » partout (WCAG 2.4.2).
     const titles = new Set<string>();
     for (const r of ["/", "/bookmarks", "/settings", "/tasks"]) {
@@ -73,7 +72,7 @@ test.describe("structure des pages (creator)", () => {
     expect(titles.size).toBe(4);
   });
 
-  bug("t01-013 : les boutons d'une carte du catalogue ont un nom unique", async () => {
+  test("t01-013 : les boutons d'une carte du catalogue ont un nom unique", async () => {
     // Finding t01-013 : N boutons « Ouvrir » et N boutons « Actions » de même nom accessible.
     await go(s.page, "/", 2500);
     const names = await s.page.evaluate(() =>
@@ -87,7 +86,7 @@ test.describe("structure des pages (creator)", () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
-  bug("t01-019 : le nombre de résultats / l'état vide du catalogue est annoncé", async () => {
+  test("t01-019 : le nombre de résultats / l'état vide du catalogue est annoncé", async () => {
     // Finding t01-019 : aucune région aria-live/role=status ; « Aucun élément… » muet.
     await go(s.page, "/", 2000);
     await s.page.getByRole("textbox", { name: "Rechercher" }).fill("zzzzzz-introuvable");
@@ -99,7 +98,7 @@ test.describe("structure des pages (creator)", () => {
     expect(live).toBeGreaterThan(0);
   });
 
-  bug("t01-016 : le filtre spatial du catalogue a une alternative clavier", async () => {
+  test("t01-016 : le filtre spatial du catalogue a une alternative clavier", async () => {
     // Finding t01-016 : le rectangle ne se dessine qu'à la souris (mousedown/mouseup).
     await go(s.page, "/", 2000);
     const alt = await s.page
@@ -112,7 +111,7 @@ test.describe("structure des pages (creator)", () => {
     expect(alt + inputs).toBeGreaterThan(0);
   });
 
-  bug("t01-020 : la carte du filtre spatial porte un libellé français", async () => {
+  test("t01-020 : la carte du filtre spatial porte un libellé français", async () => {
     // Finding t01-020 : MapLibre pose aria-label="Map" sur son canevas/région.
     await go(s.page, "/", 2000);
     const english = await s.page.locator('[aria-label="Map"]').count();
@@ -170,7 +169,9 @@ test.describe("contrastes (jetons)", () => {
     }
   });
 
-  bug("t01-007 : ink-3 et warn atteignent 4,5:1 sur les surfaces teintées", async ({ browser }) => {
+  test("t01-007 : ink-3 et warn atteignent 4,5:1 sur les surfaces teintées", async ({
+    browser,
+  }) => {
     // Finding t01-007 : ink-3 sur sunken 4,26 ; warn sur warn-soft 4,46 (clair) ; ink-3 sur accent-soft 4,05 (sombre).
     const low: string[] = [];
     for (const scheme of ["light", "dark"] as const) {
@@ -184,7 +185,7 @@ test.describe("contrastes (jetons)", () => {
     expect(low).toEqual([]);
   });
 
-  bug("t01-008 : la bordure des champs atteint 3:1 (WCAG 1.4.11)", async ({ browser }) => {
+  test("t01-008 : la bordure des champs atteint 3:1 (WCAG 1.4.11)", async ({ browser }) => {
     // Finding t01-008 : --gs-rule sur --gs-surface = 1,41:1 (clair), 1,35:1 (sombre).
     const low: string[] = [];
     for (const scheme of ["light", "dark"] as const) {

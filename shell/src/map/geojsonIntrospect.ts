@@ -1,10 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { DataRecord } from "../api/types";
+import type { DataRecord, ItemClient } from "../api/types";
+import { isHostedCollectionUrl } from "./hostedCoreUrl";
 import type { SampleFieldFn, StatQueryFn } from "../builder/widgets/mapSymbology";
+import { t } from "../i18n";
 
-export async function fetchFeatureCollection(url: string): Promise<GeoJSON.FeatureCollection> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Impossible de charger ${url} (HTTP ${res.status})`);
+// Passe par `client.fetchUrl` (délai, jeton de session ou de partage) ; jeton
+// uniquement si l'URL est servie par le cœur — une collection privée (cas par
+// défaut d'un import) répond 401 sans lui, et le panneau de symbologie restait
+// sans champ.
+export async function fetchFeatureCollection(
+  client: Pick<ItemClient, "getCoreUrl" | "fetchUrl">,
+  url: string,
+): Promise<GeoJSON.FeatureCollection> {
+  if (!client.fetchUrl) throw new Error(t("geojson.loadFailed", { url, status: 0 }));
+  const res = await client.fetchUrl(url, {
+    authenticated: isHostedCollectionUrl(url, client.getCoreUrl?.()),
+  });
+  if (!res.ok) throw new Error(t("geojson.loadFailed", { url, status: res.status }));
   const data: unknown = await res.json();
   if (
     typeof data !== "object" ||
@@ -12,7 +24,7 @@ export async function fetchFeatureCollection(url: string): Promise<GeoJSON.Featu
     (data as { type?: unknown }).type !== "FeatureCollection" ||
     !Array.isArray((data as { features?: unknown }).features)
   ) {
-    throw new Error(`${url} n'est pas une FeatureCollection GeoJSON valide`);
+    throw new Error(t("geojson.invalid", { url }));
   }
   return data as GeoJSON.FeatureCollection;
 }

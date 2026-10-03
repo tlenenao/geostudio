@@ -92,7 +92,7 @@ export function QuerySummaryBuilder({
         <div key={i} className="flex items-center gap-2">
           <select
             aria-label={t("querySummaryBuilder.metricFunctionAria", { n: i + 1 })}
-            className="h-8 rounded border border-rule bg-surface px-2 text-xs text-ink"
+            className="h-8 rounded border border-control bg-surface px-2 text-xs text-ink"
             value={metric.function}
             onChange={(e) => updateMetric(i, { function: e.target.value as MetricFunction })}
           >
@@ -105,7 +105,7 @@ export function QuerySummaryBuilder({
           {metric.function !== "count" && (
             <select
               aria-label={t("querySummaryBuilder.metricColumnAria", { n: i + 1 })}
-              className="h-8 rounded border border-rule bg-surface px-2 text-xs text-ink"
+              className="h-8 rounded border border-control bg-surface px-2 text-xs text-ink"
               value={metric.sourceColumn ?? ""}
               onChange={(e) => updateMetric(i, { sourceColumn: e.target.value })}
             >

@@ -17,7 +17,10 @@ from sqlalchemy.orm import Session
 
 from app.analytics.aggregate import (
     AggregateRequestBody,
+    AggregateResponse,
     UnknownAggregateField,
+    aggregate_columns,
+    lake_as_of,
     run_collection_aggregate,
 )
 from app.analytics.duckdb_conn import open_spatial_connection
@@ -264,7 +267,7 @@ def get_analytics_base_uri():  # overridé en test (pointe un répertoire tmp_pa
     return f"s3://{bucket}/cdc"
 
 
-@router.post("/collections/{collection_id}/aggregate")
+@router.post("/collections/{collection_id}/aggregate", response_model=AggregateResponse)
 def aggregate_features(
     collection_id: str,
     body: AggregateRequestBody,
@@ -298,9 +301,12 @@ def aggregate_features(
             raise _validation_error(
                 [{"field": exc.field, "code": "unknown_field", "message": exc.message}]
             ) from exc
+        # P25.10/11 : le lac peut retarder sur la base (flush CDC ~30 s) —
+        # la réponse dit jusqu'où il est à jour ; pending = pas encore répliqué.
+        as_of = lake_as_of(conn, base_uri, col.tenant_id, col.id)
     finally:
         conn.close()
-    return {"categoryKey": category_key, "rows": rows}
+    return AggregateResponse(categoryKey=category_key, rows=rows, asOf=as_of, pending=as_of is None)
 
 
 EXPORT_FORMATS_AGGREGATE = {"csv", "xlsx"}
@@ -337,7 +343,7 @@ def export_collection_aggregate(
     conn = conn_factory()
     try:
         try:
-            _category_key, rows = run_collection_aggregate(
+            category_key, rows = run_collection_aggregate(
                 conn,
                 base_uri=base_uri,
                 tenant_id=col.tenant_id,
@@ -352,7 +358,7 @@ def export_collection_aggregate(
             ) from exc
     finally:
         conn.close()
-    content = rows_to_format(rows, format=format)
+    content = rows_to_format(rows, format=format, columns=aggregate_columns(body, category_key))
     filename = export_filename(col.title, format=format)
     write_audit(
         session,
@@ -372,7 +378,9 @@ def export_collection_aggregate(
 
 
 EXPORT_FORMATS_ITEMS = {"csv", "xlsx", "geojson", "gpkg"}
-EXPORT_ITEMS_CAP = 10_000
+# P29.04 : plafond mémoire de l'export synchrone, réglable (CORE_EXPORT_ITEMS_MAX).
+# ponytail: export en mémoire, flux/job (file export) si on dépasse ~10^5 entités.
+EXPORT_ITEMS_CAP = int(os.environ.get("CORE_EXPORT_ITEMS_MAX", "100000"))
 
 
 @router.get("/collections/{collection_id}/export/items")

@@ -55,7 +55,7 @@ def test_collection_valid_with_bbox_and_temporal():
         temporal_start="2026-07-01T00:00:00Z",
     )
     assert col["type"] == "Collection"
-    assert col["license"] == "other"
+    assert col["license"] == "proprietary"
     assert col["extent"]["spatial"]["bbox"] == [[1.0, 44.0, 2.0, 45.0]]
     assert col["extent"]["temporal"]["interval"] == [["2026-07-01T00:00:00Z", None]]
     rels = {link["rel"]: link["href"] for link in col["links"]}
@@ -142,7 +142,7 @@ def test_collection_resolves_declared_license_to_spdx_id():
     Collection.model_validate(doc)
 
 
-def test_collection_unknown_license_falls_back_to_other():
+def test_collection_unknown_license_falls_back_to_proprietary():
     doc = s.collection(
         base=BASE,
         collection_id="roads",
@@ -152,7 +152,7 @@ def test_collection_unknown_license_falls_back_to_other():
         temporal_start="2026-07-01T00:00:00Z",
         license="",
     )
-    assert doc["license"] == "other"
+    assert doc["license"] == "proprietary"
     Collection.model_validate(doc)
 
 

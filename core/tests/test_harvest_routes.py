@@ -256,11 +256,18 @@ def test_get_and_patch_cross_tenant_returns_404(env):
 
 
 def test_delete_source(env):
-    app, client, _, admin, _regular = env
+    app, client, Session, admin, _regular = env
     _as(app, admin)
     created = client.post("/v1/harvest/sources", json=SOURCE_BODY).json()
     assert client.delete(f"/v1/harvest/sources/{created['id']}").status_code == 204
     assert client.get("/v1/harvest/sources").json()["sources"] == []
+    from sqlalchemy import select
+
+    from app.audit.models import AuditLog
+
+    with Session() as s:
+        row = s.scalars(select(AuditLog).where(AuditLog.action == "harvest_source.delete")).one()
+    assert row.payload == {"removedItems": 0}
 
 
 def test_run_defers_a_task_and_is_audited(env):
@@ -331,3 +338,83 @@ def test_copy_mode_accepted_for_ckan(env):
         },
     )
     assert resp.status_code == 201
+
+
+@pytest.mark.parametrize(
+    "url", ["pas une url", "ftp://x.example.com", "file:///etc/passwd", "http://"]
+)
+def test_create_rejects_non_http_url(env, url):
+    # P19.05 / j07-004
+    app, client, _, admin, _regular = env
+    _as(app, admin)
+    assert client.post("/v1/harvest/sources", json={**SOURCE_BODY, "url": url}).status_code == 422
+
+
+def test_patch_rejects_non_http_url_but_legacy_stored_url_stays_readable(env):
+    # Piège « modèle pydantic relu » : la validation ne vaut qu'à l'écriture ;
+    # une source déjà stockée avec une URL invalide reste listable/lisible.
+    app, client, Session, admin, _regular = env
+    _as(app, admin)
+    created = client.post("/v1/harvest/sources", json=SOURCE_BODY).json()
+    assert (
+        client.patch(f"/v1/harvest/sources/{created['id']}", json={"url": "nope"}).status_code
+        == 422
+    )
+    from app.harvest.models import HarvestSource
+
+    with Session() as s:
+        s.get(HarvestSource, created["id"]).url = "pas une url"
+        s.commit()
+    assert client.get(f"/v1/harvest/sources/{created['id']}").status_code == 200
+    assert client.get("/v1/harvest/sources").json()["sources"][0]["url"] == "pas une url"
+    # PATCH sans toucher l'URL reste possible.
+    assert (
+        client.patch(f"/v1/harvest/sources/{created['id']}", json={"enabled": False}).status_code
+        == 200
+    )
+
+
+def test_duplicate_source_is_409(env):
+    # P19.06 / j07-005
+    app, client, _, admin, _regular = env
+    _as(app, admin)
+    assert client.post("/v1/harvest/sources", json=SOURCE_BODY).status_code == 201
+    assert client.post("/v1/harvest/sources", json=SOURCE_BODY).status_code == 409
+    other = client.post("/v1/harvest/sources", json={**SOURCE_BODY, "url": "https://b.example"})
+    assert other.status_code == 201
+    dup = client.patch(
+        f"/v1/harvest/sources/{other.json()['id']}", json={"url": SOURCE_BODY["url"]}
+    )
+    assert dup.status_code == 409
+
+
+def test_source_exposes_record_counts_and_records_list(env):
+    # P19.16 / j07-020
+    app, client, Session, admin, _regular = env
+    _as(app, admin)
+    sid = client.post("/v1/harvest/sources", json=SOURCE_BODY).json()["id"]
+    from app.harvest import repository as repo
+
+    with Session() as s:
+        tenant_id = s.get(
+            __import__("app.harvest.models", fromlist=["x"]).HarvestSource, sid
+        ).tenant_id
+        for ext, stale in (("a", False), ("b", True)):
+            rec = repo.create_record(
+                s,
+                tenant_id=tenant_id,
+                source_id=sid,
+                external_id=ext,
+                item_id=None,
+                collection_id=None,
+                content_hash="h",
+            )
+            rec.is_stale = stale
+        s.commit()
+    one = client.get(f"/v1/harvest/sources/{sid}").json()
+    assert (one["recordCount"], one["staleCount"]) == (2, 1)
+    assert client.get("/v1/harvest/sources").json()["sources"][0]["recordCount"] == 2
+    recs = client.get(f"/v1/harvest/sources/{sid}/records").json()
+    assert recs["total"] == 2
+    assert [(r["externalId"], r["state"]) for r in recs["records"]] == [("a", "ok"), ("b", "stale")]
+    assert client.get("/v1/harvest/sources/nope/records").status_code == 404

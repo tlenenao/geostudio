@@ -89,7 +89,8 @@ def _groupby_fields(raw: str | list[str] | None) -> list[str]:
     return raw if isinstance(raw, list) else [raw]
 
 
-def _source_json(source) -> dict:
+def _source_json(source, counts: tuple[int, int] | None = None) -> dict:
+    total, stale = counts or (0, 0)
     return {
         "id": source.id,
         "type": source.type,
@@ -100,7 +101,20 @@ def _source_json(source) -> dict:
         "lastRunAt": source.last_run_at.isoformat() if source.last_run_at else None,
         "lastStatus": source.last_status,
         "lastError": source.last_error,
+        "recordCount": total,
+        "staleCount": stale,
     }
+
+
+def _counts_for(session: Session, user: User, source_ids: list[str]) -> dict:
+    return repo.record_counts(session, tenant_id=user.tenant_id, source_ids=source_ids)
+
+
+def _reject_duplicate(session: Session, user: User, type_: str, url: str, exclude=None) -> None:
+    if repo.find_duplicate_source(
+        session, tenant_id=user.tenant_id, type=type_, url=url, exclude_id=exclude
+    ):
+        raise HTTPException(status_code=409, detail="harvest source already exists")
 
 
 def _check_copy_support(type_: str, mode: str) -> None:
@@ -128,6 +142,7 @@ def create_source(
 ):
     require_privilege(session, user, Privilege.ADMIN_HARVEST_MANAGE.value)
     _check_copy_support(body.type, body.mode)
+    _reject_duplicate(session, user, body.type, body.url)
     source = repo.create_source(
         session,
         tenant_id=user.tenant_id,
@@ -158,7 +173,8 @@ def list_sources(
 ):
     require_privilege(session, user, Privilege.ADMIN_HARVEST_MANAGE.value)
     sources = repo.list_sources(session, tenant_id=user.tenant_id)
-    return {"sources": [_source_json(s) for s in sources]}
+    counts = _counts_for(session, user, [s.id for s in sources])
+    return {"sources": [_source_json(s, counts.get(s.id)) for s in sources]}
 
 
 @router.get("/harvest/layers")
@@ -247,7 +263,45 @@ def get_source(
     source = repo.get_source(session, tenant_id=user.tenant_id, source_id=source_id)
     if source is None:
         raise HTTPException(status_code=404, detail="harvest source not found")
-    return _source_json(source)
+    return _source_json(source, _counts_for(session, user, [source.id]).get(source.id))
+
+
+@router.get("/harvest/sources/{source_id}/records")
+def list_source_records(
+    source_id: str,
+    limit: int = Query(100, ge=1),
+    offset: int = Query(0, ge=0),
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session, scope="function"),
+):
+    require_privilege(session, user, Privilege.ADMIN_HARVEST_MANAGE.value)
+    source = repo.get_source(session, tenant_id=user.tenant_id, source_id=source_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="harvest source not found")
+    records = repo.list_source_records(
+        session,
+        tenant_id=user.tenant_id,
+        source_id=source_id,
+        limit=min(limit, _MAX_LIMIT),
+        offset=offset,
+    )
+    total, stale = _counts_for(session, user, [source_id]).get(source_id, (0, 0))
+    return {
+        "total": total,
+        "staleCount": stale,
+        "records": [
+            {
+                "id": r.id,
+                "externalId": r.external_id,
+                "itemId": r.item_id,
+                "collectionId": r.collection_id,
+                "state": "stale" if r.is_stale else "ok",
+                "harvestedAt": r.harvested_at.isoformat() if r.harvested_at else None,
+                "externalUrl": r.external_url,
+            }
+            for r in records
+        ],
+    }
 
 
 @router.patch("/harvest/sources/{source_id}")
@@ -266,6 +320,8 @@ def patch_source(
         fields["interval_minutes"] = fields.pop("intervalMinutes")
     if fields.get("mode") == "copy":
         _check_copy_support(source.type, "copy")
+    if fields.get("url") is not None:
+        _reject_duplicate(session, user, source.type, fields["url"], exclude=source.id)
     repo.update_source(session, source, **fields)
     write_audit(
         session,
@@ -277,7 +333,7 @@ def patch_source(
         object_id=source.id,
         payload={"fields": list(fields)},
     )
-    return _source_json(source)
+    return _source_json(source, _counts_for(session, user, [source.id]).get(source.id))
 
 
 @router.delete("/harvest/sources/{source_id}", status_code=204)
@@ -290,6 +346,7 @@ def delete_source(
     source = repo.get_source(session, tenant_id=user.tenant_id, source_id=source_id)
     if source is None:
         raise HTTPException(status_code=404, detail="harvest source not found")
+    removed = repo.delete_source(session, source)  # retire aussi les items `external` créés
     write_audit(
         session,
         tenant_id=user.tenant_id,
@@ -297,10 +354,9 @@ def delete_source(
         actor_kind="user",
         action="harvest_source.delete",
         object_type="harvest_source",
-        object_id=source.id,
-        payload={},
+        object_id=source_id,
+        payload={"removedItems": removed},
     )
-    repo.delete_source(session, source)
 
 
 @router.post("/harvest/sources/{source_id}/run", status_code=202)

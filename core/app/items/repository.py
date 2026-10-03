@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 import procrastinate
 from opentelemetry import metrics
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 
 from app.items.models import Item
 from app.items.schemas import (
@@ -19,6 +19,7 @@ from app.items.schemas import (
     OwnerFacet,
 )
 from app.items.slug import InvalidSlugError, SlugCollisionError, is_valid_slug, slugify
+from app.quotas.service import check_quota_or_raise
 from app.roles.kind_registry import privilege_for_kind
 from app.roles.repository import get_role
 from app.search.providers import get_embedding_provider
@@ -209,6 +210,9 @@ def create_item(
     title: str,
     slug: str | None = None,
 ) -> Item:
+    # Point unique de création d'item (REST, MCP, import, pipelines, moissonnage,
+    # tileset3d/terrain3d, wizards) : quota d'items (P26.03, RC-12).
+    check_quota_or_raise(session, tenant_id=tenant_id, kind="items")
     resolved_slug = None
     if resource_type == "site":
         resolved_slug = _resolve_site_slug(session, tenant_id=tenant_id, title=title, slug=slug)
@@ -344,6 +348,7 @@ def _visible_items_base_query(
         select(Item, User.username)
         .join(User, User.id == Item.owner_id)
         .where(Item.tenant_id == tenant_id)
+        .options(defer(Item.embedding))  # jamais lu par _to_read (P24.05)
     )
     if resource_type:
         query = query.where(Item.resource_type == resource_type)
@@ -540,11 +545,12 @@ def get_facets(
         like = f"%{q}%"
         query = query.where(or_(Item.title.ilike(like), Item.abstract.ilike(like)))
 
-    rows = session.execute(query).all()
-    owner_counts = Counter(owner_username for _item, owner_username in rows)
+    # Colonnes owner/keywords seules (P24.07) : ni embedding ni documents.
+    rows = session.execute(query.with_only_columns(User.username, Item.keywords)).all()
+    owner_counts = Counter(owner_username for owner_username, _kw in rows)
     keyword_counts: Counter[str] = Counter()
-    for item, _owner_username in rows:
-        keyword_counts.update(item.keywords or [])
+    for _owner_username, kws in rows:
+        keyword_counts.update(kws or [])
 
     owners = [
         OwnerFacet(username=username, count=count)
@@ -559,6 +565,29 @@ def get_facets(
 
 # Kinds destinés au public : jamais alert/pipeline/report/etc. (config sensible).
 PUBLIC_KINDS = ("site", "app", "dashboard", "map", "dataset")
+
+
+def _to_public_read(item: Item, owner_username: str) -> ItemRead:
+    # La vignette d'un item publié se lit par une route anonyme dédiée
+    # (GET /public/items/{id}/thumbnail), pas par /items/{id}/thumbnail
+    # (authentifiée) : chemin relatif à la racine du cœur, le client le préfixe.
+    read = _to_read(item, owner_username)
+    if read.thumbnailUrl:
+        read = read.model_copy(update={"thumbnailUrl": f"/public/items/{item.id}/thumbnail"})
+    return read
+
+
+def get_published_thumbnail_key(
+    session: Session, *, item_id: str, tenant_id: str = DEFAULT_TENANT_SLUG
+) -> str | None:
+    return session.scalar(
+        select(Item.thumbnail_key).where(
+            Item.id == item_id,
+            Item.tenant_id == tenant_id,
+            Item.is_published.is_(True),
+            Item.resource_type.in_(PUBLIC_KINDS),
+        )
+    )
 
 
 def list_published_items(
@@ -586,17 +615,34 @@ def list_published_items(
     if resource_type:
         query = query.where(Item.resource_type == resource_type)
 
-    rows = session.execute(query.order_by(Item.created_at.desc())).all()
-    # Tag filter done in Python, not as a DB-side JSON-contains predicate:
-    # portable across SQLite (tests) and Postgres (prod) without a
-    # dialect-specific operator. Small scale (published items of one
-    # tenant), so recomputing `total` post-filter is cheap.
+    # id en départage : OFFSET SQL instable sinon sur created_at égaux (P24.05).
+    order = (Item.created_at.desc(), Item.id)
     if tag:
-        rows = [row for row in rows if tag in (row[0].keywords or [])]
-
-    total = len(rows)
-    page_rows = rows[(page - 1) * page_size : (page - 1) * page_size + page_size]
-    items = [_to_read(item, owner_username) for item, owner_username in page_rows]
+        # Tag en Python (colonne JSON générique, pas d'opérateur portable
+        # SQLite/Postgres) mais sur (id, keywords) seulement : on ne charge
+        # les lignes complètes que pour la page demandée (P24.05).
+        tagged = session.execute(
+            query.with_only_columns(Item.id, Item.keywords).order_by(*order)
+        ).all()
+        ids = [i for i, kw in tagged if tag in (kw or [])]
+        total = len(ids)
+        page_ids = ids[(page - 1) * page_size : (page - 1) * page_size + page_size]
+        by_id = {
+            item.id: (item, owner)
+            for item, owner in session.execute(
+                query.where(Item.id.in_(page_ids)).options(defer(Item.embedding))
+            ).all()
+        }
+        page_rows = [by_id[i] for i in page_ids if i in by_id]
+    else:
+        total = session.scalar(select(func.count()).select_from(query.subquery())) or 0
+        page_rows = session.execute(
+            query.order_by(*order)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+            .options(defer(Item.embedding))
+        ).all()
+    items = [_to_public_read(item, owner_username) for item, owner_username in page_rows]
     return ItemPage(items=items, total=total, page=page, pageSize=page_size)
 
 
@@ -688,7 +734,7 @@ def get_published_item(
     if row is None:
         return None
     item, owner_username = row
-    return _to_read(item, owner_username)
+    return _to_public_read(item, owner_username)
 
 
 def get_published_site_by_slug(
@@ -711,7 +757,7 @@ def get_published_site_by_slug(
     if row is None:
         return None
     item, owner_username = row
-    return _to_read(item, owner_username)
+    return _to_public_read(item, owner_username)
 
 
 def set_is_public(session: Session, *, tenant_id: str, item_id: str, is_public: bool) -> None:

@@ -82,7 +82,7 @@ test("create a dataset, edit a column label, then promote an app's inline source
     return route.fallback();
   });
 
-  // 1. Créer un Dataset partagé depuis le catalogue.
+  // 1. Créer un Jeu de données partagé depuis le catalogue.
   await page.goto("/");
   await page.getByRole("button", { name: "Nouveau" }).click();
   const dialog = page.getByRole("dialog", { name: "Nouvel élément" });
@@ -123,8 +123,8 @@ test("create a dataset, edit a column label, then promote an app's inline source
 
   await page.getByRole("button", { name: "Ajouter une source" }).click();
   await page.getByLabel(/Collection de la source/).fill("parcs");
-  await page.getByRole("button", { name: /Promouvoir en dataset partagé/ }).click();
+  await page.getByRole("button", { name: /Promouvoir en jeu de données partagé/ }).click();
 
-  await expect(page.getByText("Dataset partagé actif")).toBeVisible();
+  await expect(page.getByText("Jeu de données partagé actif")).toBeVisible();
   expect(promotePostedCollectionId).toBe("parcs");
 });

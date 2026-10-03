@@ -22,6 +22,7 @@ import type { ThemeColors } from "../api/types";
 import { labelCls, inputCls } from "./formFieldStyles";
 import { Button } from "../ui/kit/Button";
 import { t } from "../i18n";
+import { formatDateTime, formatNumber } from "../lib/format";
 
 const PALETTE_OPTIONS: { id: Exclude<PaletteId, "theme-primary">; label: string }[] = [
   { id: "categorical-a", label: t("fieldClassification.categoricalAOption") },
@@ -32,7 +33,8 @@ const PALETTE_OPTIONS: { id: Exclude<PaletteId, "theme-primary">; label: string 
 
 export function formatDomain(domain: ColorDomain): string {
   if (domain.kind === "categorical") return domain.values.join(", ");
-  if (domain.kind === "numeric-classed") return domain.breaks.map((b) => b.toFixed(1)).join(" – ");
+  if (domain.kind === "numeric-classed")
+    return domain.breaks.map((b) => formatNumber(b, 1, 1)).join(" – ");
   return `${domain.min} – ${domain.max}`;
 }
 
@@ -228,7 +230,7 @@ export function FieldClassificationPicker({
           {value.computedAt && (
             <p className="text-xs text-ink-3">
               {t("fieldClassification.computedAtText", {
-                date: new Date(value.computedAt).toLocaleString(),
+                date: formatDateTime(value.computedAt),
                 domain: formatDomain(value.domain),
               })}
             </p>

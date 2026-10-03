@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useItemClient } from "../../api/ItemClientProvider";
 import type { ReportRunStatus } from "../../api/types";
 import { t } from "../../i18n";
+import { formatDateTime } from "../../lib/format";
 import { jobStatusLabel } from "../../lib/jobStatusLabel";
 import { Button } from "../../ui/kit/Button";
 
@@ -80,7 +81,7 @@ export function ReportRunPanel({ reportId }: { reportId: string }) {
         {runs.map((run) => (
           <li key={run.id} className="flex items-center gap-2 text-sm">
             <span>{jobStatusLabel(run.status)}</span>
-            <span className="text-ink-2">{new Date(run.createdAt).toLocaleString()}</span>
+            <span className="text-ink-2">{formatDateTime(run.createdAt)}</span>
             {run.resultUrl && (
               <a
                 href={run.resultUrl}

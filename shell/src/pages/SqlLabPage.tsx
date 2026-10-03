@@ -3,11 +3,12 @@ import { HelpCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import CodeMirror from "@uiw/react-codemirror";
+import CodeMirror, { Prec, keymap } from "@uiw/react-codemirror";
+import { acceptCompletion } from "@codemirror/autocomplete";
 // Alias `sqlLang` : le fichier a déjà une variable d'état locale `sql` (le
 // texte de la requête) — l'import du snippet du brief, nommé `sql` sans
 // alias, entre en collision de nom avec elle.
-import { sql as sqlLang, SQLite } from "@codemirror/lang-sql";
+import { sql as sqlLang, SQLite, type SQLNamespace } from "@codemirror/lang-sql";
 import { EditorView } from "@codemirror/view";
 import { useCollectionsAdmin, useInstanceInfo } from "../api/hooks";
 import { useItemClient } from "../api/ItemClientProvider";
@@ -19,6 +20,7 @@ import {
 } from "../lib/sqlLabHistory";
 import { useUrlSyncedState } from "../lib/useUrlSyncedState";
 import { SqlLabCopilotPanel } from "../builder/copilot/SqlLabCopilotPanel";
+import { CopilotUnavailable } from "../builder/copilot/CopilotUnavailable";
 import { parseDuckDbError } from "../lib/parseDuckDbError";
 import { Banner } from "../ui/kit/Banner";
 import { Button } from "../ui/kit/Button";
@@ -28,6 +30,39 @@ import { Panel } from "../ui/kit/Panel";
 import { EmptyState } from "../ui/kit/EmptyState";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
+import { PageTitle } from "../ui/kit/PageTitle";
+
+// P25.14 : toutes les collections interrogeables sont proposées à la saisie
+// (titre en détail), colonnes ajoutées dès que leur schéma est connu.
+export function buildSqlSchema(
+  collections: { id: string; title: string }[],
+  columnsById: Record<string, string[]>,
+): Record<string, SQLNamespace> {
+  const schema: Record<string, SQLNamespace> = {};
+  for (const [id, columns] of Object.entries(columnsById)) schema[id] = columns;
+  for (const c of collections) {
+    schema[c.id] = {
+      self: { label: c.id, type: "table", detail: c.title },
+      children: columnsById[c.id] ?? [],
+    };
+  }
+  return schema;
+}
+
+// P25.16 : Entrée insère une nouvelle ligne même quand la liste de complétion
+// est ouverte (elle validait le mot-clé « catalog ») ; Tab accepte la complétion.
+const sqlEditorKeys = Prec.highest(
+  keymap.of([
+    {
+      key: "Enter",
+      run: (view) => {
+        view.dispatch(view.state.replaceSelection("\n"), { scrollIntoView: true });
+        return true;
+      },
+    },
+    { key: "Tab", run: acceptCompletion },
+  ]),
+);
 
 type SqlResult = { columns: string[]; rows: unknown[][]; truncated: boolean };
 
@@ -103,7 +138,9 @@ export function SqlLabPage() {
             const [, schema] = outcome.value;
             next[id] = schema.fields.map((f) => f.name);
           } else {
+            // i18n-ok: journal développeur, jamais affiché
             console.warn(
+              // i18n-ok
               `SqlLabPage: échec de récupération du schéma de la collection "${id}" (autocomplétion désactivée pour elle)`,
               outcome.reason,
             );
@@ -161,7 +198,7 @@ export function SqlLabPage() {
           content: (
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
               <div className="flex items-center gap-1.5">
-                <h1 className="text-lg font-bold text-ink">{t("sqlLab.heading")}</h1>
+                <PageTitle>{t("sqlLab.heading")}</PageTitle>
                 <Popover
                   aria-label={t("sqlLab.helpAria")}
                   trigger={
@@ -181,7 +218,11 @@ export function SqlLabPage() {
                   value={sql}
                   height="8rem"
                   extensions={[
-                    sqlLang({ dialect: SQLite, schema: schemaByCollection }),
+                    sqlLang({
+                      dialect: SQLite,
+                      schema: buildSqlSchema(collectionsQuery.data ?? [], schemaByCollection),
+                    }),
+                    sqlEditorKeys,
                     // `aria-label` passé directement à <CodeMirror> atterrit
                     // sur le conteneur englobant, pas sur le
                     // `role="textbox"` (div `.cm-content` contenteditable)
@@ -191,11 +232,17 @@ export function SqlLabPage() {
                     // bon élément.
                     EditorView.contentAttributes.of({
                       "aria-label": t("sqlLab.sqlQueryLabel"),
+                      "aria-describedby": "sql-editor-keyboard-hint",
                     }),
                   ]}
                   onChange={(value) => setSql(value)}
                   className="rounded-md border border-rule text-xs"
                 />
+                {/* P33.13 (WCAG 2.1.2) : Tab indente dans l'éditeur ; la sortie au
+                    clavier est dite, pas devinée. */}
+                <span id="sql-editor-keyboard-hint" className="text-xs text-ink-3">
+                  {t("sqlLab.keyboardHint")}
+                </span>
               </div>
               <Button
                 size="sm"
@@ -238,7 +285,11 @@ export function SqlLabPage() {
                         <tr key={i}>
                           {row.map((cell, j) => (
                             <td key={j} className="border-b border-rule-2 p-1 text-ink">
-                              {cell === null || cell === undefined ? "" : String(cell)}
+                              {cell === null || cell === undefined ? (
+                                <span className="italic text-ink-2">{t("sqlLab.nullCell")}</span>
+                              ) : (
+                                String(cell)
+                              )}
                             </td>
                           ))}
                         </tr>
@@ -282,19 +333,22 @@ export function SqlLabPage() {
                   ))}
                 </ul>
               )}
-              {copilotEnabled && (
+              {(copilotEnabled || instanceQuery.isSuccess) && (
                 <div className="border-t border-rule pt-3">
                   <p className="mb-1 text-xs font-medium text-ink-2">
                     {t("appBuilder.copilotLabel")}
                   </p>
-                  <SqlLabCopilotPanel
-                    sql={sql}
-                    setSql={setSql}
-                    collections={(collectionsQuery.data ?? []).map((c) => ({
-                      id: c.id,
-                      title: c.title,
-                    }))}
-                  />
+                  {!copilotEnabled && <CopilotUnavailable />}
+                  {copilotEnabled && (
+                    <SqlLabCopilotPanel
+                      sql={sql}
+                      setSql={setSql}
+                      collections={(collectionsQuery.data ?? []).map((c) => ({
+                        id: c.id,
+                        title: c.title,
+                      }))}
+                    />
+                  )}
                 </div>
               )}
             </div>

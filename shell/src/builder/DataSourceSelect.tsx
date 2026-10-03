@@ -50,7 +50,7 @@ export function DataSourceSelect({
       {t("dataSourceSelect.label")}
       <select
         aria-label={t("dataSourceSelect.label")}
-        className="h-9 rounded-md border border-rule bg-surface px-2 text-sm"
+        className="h-9 rounded-md border border-control bg-surface px-2 text-sm"
         value={value}
         onChange={(e) => handleChange(e.target.value)}
       >

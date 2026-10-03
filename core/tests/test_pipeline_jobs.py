@@ -466,3 +466,26 @@ def test_run_pipeline_task_refuses_writer_dataset_without_data_manage(env, monke
             .all()
         )
         assert dataset_items == []
+
+
+def test_run_pipeline_task_marks_cancel_requested_run_cancelled(env):
+    # t03b-009 : le run annulé entre deux lots finit « cancelled », pas « failed »,
+    # et n'écrit rien (transaction annulée).
+    app, Session, tenant, user, item_id = env
+    with Session() as s:
+        run = pipelines_repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_id)
+        s.commit()
+        run_id = run.id
+    # Demande d'annulation posée dès le départ : mark_running la remet à "running",
+    # donc on la pose via un tracker qui la voit après le premier lot.
+    orig = pipelines_repo.is_cancel_requested
+    pipelines_repo.is_cancel_requested = lambda session, *, run_id: True  # type: ignore[assignment]
+    try:
+        pipeline_jobs.run_pipeline_task.defer(run_id=run_id, tenant_id=tenant.id)
+        app.run_worker(wait=False, queues=["etl"])
+    finally:
+        pipelines_repo.is_cancel_requested = orig  # type: ignore[assignment]
+
+    with Session() as s:
+        assert pipelines_repo.get_run(s, tenant_id=tenant.id, run_id=run_id).status == "cancelled"
+        assert s.execute(text("SELECT count(*) FROM villes_propres")).scalar() == 0

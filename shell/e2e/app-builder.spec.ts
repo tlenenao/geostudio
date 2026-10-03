@@ -15,7 +15,7 @@ test("create an App → add a Text widget → save → runtime shows it", async 
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 
   // Add a Text widget from the palette and edit its text.
-  await page.getByRole("button", { name: "Texte" }).click();
+  await page.getByRole("button", { name: "Texte", exact: true }).click();
   await page.getByLabel("Texte du widget").fill("Bonjour le monde");
   await page.getByRole("button", { name: "Enregistrer" }).click();
 
@@ -35,13 +35,13 @@ test("undo/redo: adding a widget can be undone and redone", async ({ page }) => 
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 
-  await page.getByRole("button", { name: "Texte" }).click();
-  await expect(page.getByRole("button", { name: /^Sélectionner widget-/ })).toBeVisible();
+  await page.getByRole("button", { name: "Texte", exact: true }).click();
+  await expect(page.getByRole("button", { name: /^Sélectionner / })).toBeVisible();
 
   await page.keyboard.press("Control+z");
-  await expect(page.getByRole("button", { name: /^Sélectionner widget-/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Sélectionner / })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Annuler" })).toBeDisabled();
 
   await page.keyboard.press("Control+Shift+z");
-  await expect(page.getByRole("button", { name: /^Sélectionner widget-/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Sélectionner / })).toBeVisible();
 });

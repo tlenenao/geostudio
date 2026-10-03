@@ -133,3 +133,23 @@ def test_create_alert_rule_rejects_a_percentile_query_without_p(monkeypatch, tmp
         json=_alert_body(dataset_item_id, query={"agg": "percentile", "field": "amount", "p": 90}),
     )
     assert resp.status_code == 201
+
+
+def test_create_alert_rule_rejects_a_six_field_cron_but_reads_existing_ones(monkeypatch, tmp_path):
+    """REV-275 : jumelle de P18.08, contrôle à l'écriture seulement."""
+    from app.configs.schemas import BuilderConfig
+
+    client, tenant, user, Session = _client_and_user(monkeypatch, tmp_path)
+    with Session() as s:
+        item = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=user.id, resource_type="dataset", title="D"
+        )
+        s.commit()
+        dataset_item_id = item.id
+    body = _alert_body(dataset_item_id)
+    body["config"]["alert"]["refreshPolicy"]["cron"] = "0 */5 * * * *"
+    resp = client.post("/v1/configs", json=body)
+    assert resp.status_code == 422
+    assert "5 fields" in resp.json()["detail"]
+    # un modèle relu (config déjà enregistrée) reste valide : pas de contrainte pydantic
+    assert BuilderConfig.model_validate(body["config"]).alert is not None

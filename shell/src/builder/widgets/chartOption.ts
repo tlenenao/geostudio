@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { EChartsOption } from "echarts";
 import type { DataRecord } from "../../api/types";
+import { t } from "../../i18n";
 import type { BucketGranularity } from "../../lib/comparisonWindow";
+import { formatNumber } from "../../lib/format";
 
 export type ChartProps = {
   dataSourceId?: string;
@@ -94,7 +96,7 @@ function valueFormatter(props: ChartProps): ((val: unknown) => string) | undefin
   const unit = String(props.yAxisUnit ?? "");
   const fmt = String(props.yAxisFormat ?? "");
   if (!unit && !fmt) return undefined;
-  const nf = fmt ? new Intl.NumberFormat("fr-FR") : null;
+  const nf = fmt ? new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 6 }) : null;
   return (val: unknown) => {
     const s = nf && Number.isFinite(Number(val)) ? nf.format(Number(val)) : String(val);
     return unit ? `${s} ${unit}` : s;
@@ -102,7 +104,7 @@ function valueFormatter(props: ChartProps): ((val: unknown) => string) | undefin
 }
 
 function round2(n: number): string {
-  return Number.isFinite(n) ? String(Math.round(n * 100) / 100) : String(n);
+  return Number.isFinite(n) ? formatNumber(n, 2) : String(n);
 }
 
 // Pure translation of the widget config + resolved records into an ECharts
@@ -327,17 +329,17 @@ export function resolveClickFilter(
 
 export type ComparePoint = { bucket: string; value: number };
 
-const BUCKET_UNIT_LABELS: Record<BucketGranularity, string> = {
-  hour: "Heure",
-  day: "Jour",
-  week: "Semaine",
-  month: "Mois",
-  quarter: "Trimestre",
-  year: "Année",
-};
+const UNIT_KEY = {
+  hour: "chartCompare.unitHour",
+  day: "chartCompare.unitDay",
+  week: "chartCompare.unitWeek",
+  month: "chartCompare.unitMonth",
+  quarter: "chartCompare.unitQuarter",
+  year: "chartCompare.unitYear",
+} as const;
 
 function offsetLabel(bucket: BucketGranularity, index: number): string {
-  return `${BUCKET_UNIT_LABELS[bucket]} ${index + 1}`;
+  return t("chartCompare.offsetLabel", { unit: t(UNIT_KEY[bucket]), n: index + 1 });
 }
 
 // Compare-periods mode (SP-14e §5): two line series on a relative offset
@@ -362,10 +364,10 @@ export function buildCompareOption(
     xAxis: { type: "category", data: categories },
     yAxis,
     series: [
-      { type: "line", name: "Période courante", data: current.map((p) => p.value) },
+      { type: "line", name: t("chartCompare.currentPeriod"), data: current.map((p) => p.value) },
       {
         type: "line",
-        name: "Référence",
+        name: t("chartCompare.reference"),
         data: reference.map((p) => p.value),
         lineStyle: { type: "dashed" },
         itemStyle: { opacity: 0.6 },

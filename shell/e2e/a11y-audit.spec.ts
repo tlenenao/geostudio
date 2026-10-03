@@ -67,6 +67,77 @@ async function runAxeAudit(page: Page, pageName: string) {
   ).toEqual([]);
 }
 
+// Pipeline pipe-1 (1 reader -> 1 writer) et ses métadonnées d'opérations : partagé
+// entre l'audit clair et l'audit sombre de l'éditeur de pipeline.
+async function mockPipelineEditor(page: Page) {
+  await mockCore(page);
+  await page.route("https://core.test/v1/instance", async (route) => {
+    await route.fulfill({ json: { readOnly: false, etlEnabled: true } });
+  });
+  await page.route("https://core.test/v1/pipelines/ops", async (route) => {
+    await route.fulfill({
+      json: {
+        "reader.collection": {
+          kind: "reader",
+          paramsSchema: {
+            properties: { collectionId: { type: "string", format: "collection-id" } },
+            required: ["collectionId"],
+          },
+        },
+        "writer.collection": {
+          kind: "writer",
+          paramsSchema: {
+            properties: { collectionId: { type: "string", format: "collection-id" } },
+            required: ["collectionId"],
+          },
+        },
+      },
+    });
+  });
+  await page.route("https://core.test/v1/collections*", async (route) => {
+    await route.fulfill({
+      json: {
+        collections: [mockCollection({ id: "villes", title: "Villes", tableName: "villes" })],
+      },
+    });
+  });
+  await page.route("https://core.test/v1/configs/by-item/pipe-1", async (route) => {
+    await route.fulfill({
+      json: {
+        id: "cfg-pipe1",
+        itemId: "pipe-1",
+        kind: "pipeline",
+        config: {
+          kind: "pipeline",
+          pipeline: {
+            nodes: [
+              {
+                id: "r1",
+                kind: "reader",
+                op: "reader.collection",
+                x: 0,
+                y: 0,
+                params: { collectionId: "villes" },
+                title: "reader.collection",
+              },
+              {
+                id: "w1",
+                kind: "writer",
+                op: "writer.collection",
+                x: 300,
+                y: 0,
+                params: { collectionId: "villes" },
+                title: "writer.collection",
+              },
+            ],
+            edges: [{ id: "e1", from: "r1", to: "w1" }],
+          },
+        },
+      },
+    });
+  });
+}
+
 test.describe("audit d'accessibilité (axe-core)", () => {
   test("CatalogPage (liste/recherche, layout triptyque standard)", async ({ page }) => {
     await mockCore(page);
@@ -101,72 +172,7 @@ test.describe("audit d'accessibilité (axe-core)", () => {
   });
 
   test("PipelineBuilderPage (canvas DAG, un autre type de canvas interactif)", async ({ page }) => {
-    await mockCore(page);
-    await page.route("https://core.test/v1/instance", async (route) => {
-      await route.fulfill({ json: { readOnly: false, etlEnabled: true } });
-    });
-    await page.route("https://core.test/v1/pipelines/ops", async (route) => {
-      await route.fulfill({
-        json: {
-          "reader.collection": {
-            kind: "reader",
-            paramsSchema: {
-              properties: { collectionId: { type: "string", format: "collection-id" } },
-              required: ["collectionId"],
-            },
-          },
-          "writer.collection": {
-            kind: "writer",
-            paramsSchema: {
-              properties: { collectionId: { type: "string", format: "collection-id" } },
-              required: ["collectionId"],
-            },
-          },
-        },
-      });
-    });
-    await page.route("https://core.test/v1/collections*", async (route) => {
-      await route.fulfill({
-        json: {
-          collections: [mockCollection({ id: "villes", title: "Villes", tableName: "villes" })],
-        },
-      });
-    });
-    await page.route("https://core.test/v1/configs/by-item/pipe-1", async (route) => {
-      await route.fulfill({
-        json: {
-          id: "cfg-pipe1",
-          itemId: "pipe-1",
-          kind: "pipeline",
-          config: {
-            kind: "pipeline",
-            pipeline: {
-              nodes: [
-                {
-                  id: "r1",
-                  kind: "reader",
-                  op: "reader.collection",
-                  x: 0,
-                  y: 0,
-                  params: { collectionId: "villes" },
-                  title: "reader.collection",
-                },
-                {
-                  id: "w1",
-                  kind: "writer",
-                  op: "writer.collection",
-                  x: 300,
-                  y: 0,
-                  params: { collectionId: "villes" },
-                  title: "writer.collection",
-                },
-              ],
-              edges: [{ id: "e1", from: "r1", to: "w1" }],
-            },
-          },
-        },
-      });
-    });
+    await mockPipelineEditor(page);
     await page.goto("/pipelines/pipe-1/edit");
     await expect(page.locator(".react-flow__node").first()).toBeVisible();
     await runAxeAudit(page, "PipelineBuilderPage");
@@ -336,7 +342,7 @@ test.describe("audit d'accessibilité (axe-core)", () => {
     });
     await page.goto("/datasets/dataset-a11y/edit");
     await expect(
-      page.getByRole("heading", { name: "Dataset partagé — Points d'intérêt (partagé)" }),
+      page.getByRole("heading", { name: "Jeu de données partagé — Points d'intérêt (partagé)" }),
     ).toBeVisible();
     await runAxeAudit(page, "DatasetEditPage");
   });
@@ -374,6 +380,10 @@ test.describe("audit d'accessibilité (axe-core)", () => {
 
   test("VisualQueryWizardPage (assistant Filtrer→Joindre→Résumer, brouillon)", async ({ page }) => {
     await mockCore(page);
+    // P18.12 : la page est gardée par l'indisponibilité ETL, on l'active.
+    await page.route("https://core.test/v1/instance", async (route) => {
+      await route.fulfill({ json: { readOnly: false, etlEnabled: true } });
+    });
     await page.goto("/datasets/visual-query/new");
     await expect(page.getByRole("heading", { name: "Nouvelle requête visuelle" })).toBeVisible();
     await runAxeAudit(page, "VisualQueryWizardPage");
@@ -501,14 +511,14 @@ test.describe("audit d'accessibilité (axe-core)", () => {
   test("BookmarksRoute (CatalogPage filtré sur les signets, état vide)", async ({ page }) => {
     await mockCore(page);
     await page.goto("/bookmarks");
-    await expect(page.getByText("Aucun élément pour l'instant")).toBeVisible();
+    await expect(page.getByText("Aucune vue enregistrée pour l'instant")).toBeVisible();
     await runAxeAudit(page, "BookmarksRoute");
   });
 
   test("ReportsRoute (CatalogPage filtré sur les rapports, état vide)", async ({ page }) => {
     await mockCore(page);
     await page.goto("/reports");
-    await expect(page.getByText("Aucun élément pour l'instant")).toBeVisible();
+    await expect(page.getByText("Aucun rapport pour l'instant")).toBeVisible();
     await runAxeAudit(page, "ReportsRoute");
   });
 
@@ -657,6 +667,39 @@ test.describe("audit d'accessibilité (axe-core)", () => {
     await runAxeAudit(page, "PublicItemRoute");
   });
 
+  test("PublicCatalogPage (catalogue public, consultation anonyme)", async ({ page }) => {
+    await mockCore(page);
+    await page.route("https://core.test/v1/public/items?*", async (route) => {
+      await route.fulfill({
+        json: {
+          items: [
+            {
+              pk: "m1",
+              resourceType: "map",
+              title: "Carte ouverte",
+              abstract: "Une carte",
+              owner: "alice",
+              thumbnailUrl: null,
+              date: "",
+              configId: null,
+              isPublished: true,
+              keywords: [],
+              license: "",
+              language: "fr",
+              permissions: { read: true, write: false, delete: false, share: false },
+            },
+          ],
+          total: 1,
+          page: 1,
+          pageSize: 12,
+        },
+      });
+    });
+    await page.goto("/public");
+    await expect(page.getByRole("heading", { name: "Carte ouverte" })).toBeVisible();
+    await runAxeAudit(page, "PublicCatalogPage");
+  });
+
   test("DatasetRoute (fiche dataset publique, consultation anonyme)", async ({ page }) => {
     await mockCore(page);
     // "parcs" est déjà publique par défaut dans mocks.ts (collection +
@@ -773,5 +816,41 @@ test.describe("audit d'accessibilité (axe-core)", () => {
     await page.goto("/datasets/visual-query/pipe-vq-1/edit");
     await expect(page.getByRole("heading", { name: "Modifier la requête" })).toBeVisible();
     await runAxeAudit(page, "VisualQueryWizardEditPage");
+  });
+});
+
+// P33 (critère de clôture) : même audit en thème sombre — l'absence de fond/encre
+// globaux rendait les éditeurs illisibles (1,1:1) sans qu'aucun audit clair ne le voie.
+test.describe("audit d'accessibilité (axe-core), thème sombre", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.emulateMedia({ colorScheme: "dark" });
+  });
+
+  test("CatalogPage", async ({ page }) => {
+    await mockCore(page);
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: "Alpha" })).toBeVisible();
+    await runAxeAudit(page, "CatalogPage");
+  });
+
+  test("PipelineBuilderPage (éditeur de pipeline)", async ({ page }) => {
+    await mockPipelineEditor(page);
+    await page.goto("/pipelines/pipe-1/edit");
+    await expect(page.locator(".react-flow__node").first()).toBeVisible();
+    await runAxeAudit(page, "PipelineBuilderPage");
+  });
+
+  test("ReportNewRoute (/reports/new)", async ({ page }) => {
+    await mockCore(page);
+    await page.goto("/reports/new");
+    await expect(page.getByRole("heading", { name: "Programmer un rapport" })).toBeVisible();
+    await runAxeAudit(page, "ReportNewRoute");
+  });
+
+  test("DatasetRoute (route publique, hors AppLayout)", async ({ page }) => {
+    await mockCore(page);
+    await page.goto("/public/datasets/parcs");
+    await expect(page.getByRole("heading", { name: "Parcs" })).toBeVisible();
+    await runAxeAudit(page, "DatasetRoute");
   });
 });

@@ -280,9 +280,9 @@ test("PropsPanel shows the compare-periods toggle only for line/area chart types
   expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ compareEnabled: true }));
 });
 
-test("loading and empty states use the theme muted token", () => {
+test("loading state uses the shared LoadingState", () => {
   renderChart({}, { data: state({ loading: true }) });
-  expect(screen.getByText(/chargement/i)).toHaveClass("text-[var(--gs-color-muted)]");
+  expect(screen.getByText(/chargement/i)).toBeInTheDocument();
 });
 
 test("declares the categorySelected event", () => {

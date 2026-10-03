@@ -18,12 +18,14 @@ import { MetadataForm } from "../ui/kit/MetadataForm";
 import { Button } from "../ui/kit/Button";
 import { Panel } from "../ui/kit/Panel";
 import { LoadingState } from "../ui/kit/LoadingState";
+import { QueryErrorState } from "../ui/kit/QueryErrorState";
 import { CrossFilterLinkEditor } from "../builder/CrossFilterLinkEditor";
 import { AlertRuleEditor } from "../builder/AlertRuleEditor";
 import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { useDirtyGuard } from "../lib/useDirtyGuard";
 import { t } from "../i18n";
+import { PageTitle } from "../ui/kit/PageTitle";
 
 export function DatasetEditPage({ pk }: { pk: string }) {
   const itemQuery = useItem(pk);
@@ -60,12 +62,13 @@ export function DatasetEditPage({ pk }: { pk: string }) {
   const otherDatasetsQuery = useItems({ type: "dataset", pageSize: 100 });
 
   if (itemQuery.isLoading || configQuery.isLoading || (!draft && !configQuery.isError))
-    return <p role="status">{t("common.loading")}</p>;
+    return <LoadingState />;
   if (itemQuery.isError || configQuery.isError || !draft || !itemQuery.data)
     return (
-      <p role="alert" className="text-sm text-danger">
-        {t("datasetEdit.notFound")}
-      </p>
+      <QueryErrorState
+        queries={[itemQuery, configQuery]}
+        notFoundMessage={t("datasetEdit.notFound")}
+      />
     );
 
   const item = itemQuery.data;
@@ -174,9 +177,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
           label: t("datasetEdit.datasetLabel"),
           content: (
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
-              <h2 className="text-xl font-semibold text-ink">
-                {t("datasetEdit.heading", { title: item.title })}
-              </h2>
+              <PageTitle>{t("datasetEdit.heading", { title: item.title })}</PageTitle>
               <MetadataForm
                 initial={{
                   title: item.title,
@@ -218,7 +219,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                           <td className="p-1">
                             <input
                               aria-label={t("datasetEdit.labelAria", { name: f.name })}
-                              className="h-8 w-full rounded border border-rule bg-surface px-2 text-xs text-ink"
+                              className="h-9 w-full rounded border border-control bg-surface px-2 text-xs text-ink"
                               value={f.label ?? ""}
                               onChange={(e) => setColumn(f.name, { label: e.target.value })}
                             />
@@ -226,7 +227,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                           <td className="p-1">
                             <input
                               aria-label={t("datasetEdit.descriptionAria", { name: f.name })}
-                              className="h-8 w-full rounded border border-rule bg-surface px-2 text-xs text-ink"
+                              className="h-9 w-full rounded border border-control bg-surface px-2 text-xs text-ink"
                               value={f.description ?? ""}
                               onChange={(e) => setColumn(f.name, { description: e.target.value })}
                             />
@@ -234,7 +235,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                           <td className="p-1">
                             <input
                               aria-label={t("datasetEdit.formatAria", { name: f.name })}
-                              className="h-8 w-full rounded border border-rule bg-surface px-2 text-xs text-ink"
+                              className="h-9 w-full rounded border border-control bg-surface px-2 text-xs text-ink"
                               value={f.format ?? ""}
                               onChange={(e) => setColumn(f.name, { format: e.target.value })}
                             />
@@ -248,7 +249,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                   {t("datasetEdit.timeFieldLabel")}
                   <select
                     aria-label={t("datasetEdit.timeFieldLabel")}
-                    className="h-8 w-full rounded border border-rule bg-surface px-2 text-xs text-ink"
+                    className="h-9 w-full rounded border border-control bg-surface px-2 text-xs text-ink"
                     value={draft.timeField ?? ""}
                     onChange={(e) =>
                       updateDraft((d) => (d ? { ...d, timeField: e.target.value || null } : d))

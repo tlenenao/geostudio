@@ -43,7 +43,7 @@ export function CreateHarvestSourcePanel({ onClose }: { onClose: () => void }) {
           {t("catalog.typeLabel")}
           <select
             aria-label={t("catalog.typeLabel")}
-            className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+            className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
             value={type}
             onChange={(e) => {
               const next = e.target.value as HarvestSourceType;
@@ -73,7 +73,7 @@ export function CreateHarvestSourcePanel({ onClose }: { onClose: () => void }) {
           {t("harvest.columnMode")}
           <select
             aria-label={t("harvest.columnMode")}
-            className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+            className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
             value={mode}
             onChange={(e) => setMode(e.target.value as "reference" | "copy")}
           >

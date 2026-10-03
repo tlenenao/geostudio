@@ -1113,3 +1113,42 @@ def test_read_xml_header_fields():
     content = (_FIXTURES / "books.xml").read_bytes()
     fields = read_xml_header_fields(content)
     assert "author" in fields and "title" in fields and "xml_id" in fields
+
+
+def test_csv_latitude_out_of_range_names_line_and_value():
+    # P28.01 (j03-004)
+    content = b"latitude,longitude\n48.8,2.3\n146.1,2.1\n"
+    with pytest.raises(IngestionParseError, match=r"ligne 2.*latitude hors de.*146\.1"):
+        list(parse_csv_latlon(content, GeometryMode(kind="latlon")))
+
+
+def test_csv_longitude_out_of_range_and_nan_refused():
+    with pytest.raises(IngestionParseError, match="longitude hors de"):
+        list(parse_csv_latlon(b"lat,lon\n1,200\n", GeometryMode(kind="latlon")))
+    with pytest.raises(IngestionParseError, match="lat/lon invalide"):
+        list(parse_csv_latlon(b"lat,lon\nnan,2\n", GeometryMode(kind="latlon")))
+
+
+def test_csv_semicolon_with_decimal_comma_is_parsed():
+    # P28.02 (j03-005)
+    content = b"nom;lat;lon\nParis;48,85;2,35\n"
+    [(geom, props)] = list(parse_csv_latlon(content, GeometryMode(kind="latlon")))
+    assert (geom.x, geom.y) == (2.35, 48.85)
+    assert props == {"nom": "Paris"}
+
+
+def test_unreadable_zip_message_leaks_no_server_path():
+    # P28.03 (j03-006)
+    from app.ingestion.parsers import parse_shapefile_zip
+
+    with pytest.raises(IngestionParseError) as exc:
+        list(parse_shapefile_zip(b"PK\x05\x06" + b"\x00" * 18, None))
+    assert "/tmp" not in str(exc.value) and "vsizip" not in str(exc.value)
+
+
+def test_sniff_delimiter_ignores_separators_inside_quotes():
+    from app.ingestion.parsers import sniff_delimiter
+
+    assert sniff_delimiter('"a;b;c;d",e,f\n1,2,3') == ","
+    assert sniff_delimiter('"Nom, Prénom";Age\r\nx;1') == ";"
+    assert sniff_delimiter("seule\n1") == ","

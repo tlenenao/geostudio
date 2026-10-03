@@ -64,6 +64,7 @@ def collection(
     bbox: list[float] | None,
     temporal_start: str | None,
     license: str = "",
+    license_uri: str = "",
     providers: list[dict] | None = None,
     temporal_end: str | None = None,
 ) -> dict:
@@ -74,7 +75,8 @@ def collection(
         "id": collection_id,
         "title": title,
         "description": description or title or "No description provided.",
-        "license": entry.spdx_id if entry else "other",
+        # STAC 1.0 : SPDX, sinon "proprietary"/"various" — jamais "other" (j07-012).
+        "license": entry.spdx_id if entry and entry.spdx_id != "other" else "proprietary",
         "extent": {
             "spatial": {"bbox": [bbox if bbox is not None else list(WORLD_BBOX)]},
             "temporal": {"interval": [[temporal_start, temporal_end]]},
@@ -94,6 +96,8 @@ def collection(
             },
         ],
     }
+    if license_uri:
+        doc["links"].append({"rel": "license", "href": license_uri})
     if providers:
         doc["providers"] = providers
     if bbox is None:
@@ -122,11 +126,21 @@ def _geojson_bbox(geometry: dict | None) -> list[float] | None:
     return [min(xs), min(ys), max(xs), max(ys)]
 
 
-def item(*, base: str, collection_id: str, feature: dict, datetime_value: str) -> dict:
+def item(
+    *,
+    base: str,
+    collection_id: str,
+    feature: dict,
+    datetime_value: str,
+    end_datetime: str | None = None,
+) -> dict:
     fid = str(feature["id"])
     geometry = feature.get("geometry")
     properties = dict(feature.get("properties") or {})
     properties["datetime"] = datetime_value  # clé réservée : écrase un homonyme (§2.2)
+    if end_datetime:
+        properties["start_datetime"] = datetime_value
+        properties["end_datetime"] = end_datetime
     return {
         "type": "Feature",
         "stac_version": STAC_VERSION,

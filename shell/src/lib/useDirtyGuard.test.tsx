@@ -33,7 +33,7 @@ describe("useDirtyGuard", () => {
 
     await userEvent.click(screen.getByRole("link", { name: "partir" }));
 
-    expect(await screen.findByRole("dialog")).toHaveTextContent(
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent(
       t("navigation.unsavedChangesMessage"),
     );
 
@@ -104,11 +104,11 @@ describe("useDirtyGuard", () => {
     const tickButton = screen.getByRole("button", { name: /re-render sans rapport/ });
 
     await userEvent.click(screen.getByRole("link", { name: "partir" }));
-    const dialogBeforeRerender = await screen.findByRole("dialog");
+    const dialogBeforeRerender = await screen.findByRole("alertdialog");
 
     fireEvent.click(tickButton);
 
-    const dialogAfterRerender = screen.getByRole("dialog");
+    const dialogAfterRerender = screen.getByRole("alertdialog");
     expect(dialogAfterRerender).toBe(dialogBeforeRerender);
   });
 

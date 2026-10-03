@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { axe, bug, fmt, getA11ySeed, go, newSession, type A11ySeed, type Session } from "./helpers";
+import { axe, fmt, getA11ySeed, go, newSession, type A11ySeed, type Session } from "./helpers";
 
 const SERIOUS = ["critical", "serious"];
 
@@ -52,22 +52,21 @@ test.describe("axe-core : routes du shell en clair (creator)", () => {
   });
 
   // Le catalogue interne « kit gallery » n'est pas une page produit mais il est routé.
-  bug(
-    "t01-021 : la galerie du kit n'a aucune violation critique/sérieuse (clair)",
-    async ({ browser }) => {
-      // Finding t01-021 : role="tree" avec enfants <button> (aria-required-children) et
-      // texte warn sur warn-soft à 4,46:1 ; constaté avec le persona admin.
-      const a = await newSession(browser, "admin");
-      try {
-        await go(a.page, "/internal/kit-gallery", 3000);
-        expect(fmt(await seriousViolations(a.page))).toBe("");
-      } finally {
-        await a.ctx.close();
-      }
-    },
-  );
+  test("t01-021 : la galerie du kit n'a aucune violation critique/sérieuse (clair)", async ({
+    browser,
+  }) => {
+    // Finding t01-021 : role="tree" avec enfants <button> (aria-required-children) et
+    // texte warn sur warn-soft à 4,46:1 ; constaté avec le persona admin.
+    const a = await newSession(browser, "admin");
+    try {
+      await go(a.page, "/internal/kit-gallery", 3000);
+      expect(fmt(await seriousViolations(a.page))).toBe("");
+    } finally {
+      await a.ctx.close();
+    }
+  });
 
-  bug("t01-023 : l'ordre des titres est valide dans l'éditeur d'app", async () => {
+  test("t01-023 : l'ordre des titres est valide dans l'éditeur d'app", async () => {
     await go(s.page, `/apps/${seed.appId}/edit`, 3000);
     // Finding t01-023 : « Historique » (h3) sans h2 parent.
     const v = (await axe(s.page, ["heading-order"])).filter((x) => x.id === "heading-order");
@@ -136,7 +135,7 @@ test.describe("axe-core : thème sombre", () => {
     expect(bad.join("\n\n")).toBe("");
   });
 
-  bug("t01-005 : les formulaires des éditeurs sont lisibles en sombre (contraste)", async () => {
+  test("t01-005 : les formulaires des éditeurs sont lisibles en sombre (contraste)", async () => {
     test.setTimeout(120_000);
     // Finding t01-005 : aucune couleur de texte/fond globale : les <label>/<select>/<button>
     // sans classe text-ink héritent du noir (#000) sur #0a1316 (1,11:1).
@@ -155,14 +154,14 @@ test.describe("axe-core : thème sombre", () => {
     expect(bad.join("\n")).toBe("");
   });
 
-  bug("t01-006 : les routes publiques (fiche dataset) sont lisibles en sombre", async () => {
+  test("t01-006 : les routes publiques (fiche dataset) sont lisibles en sombre", async () => {
     // Finding t01-006 : hors AppLayout, aucun fond : texte clair (#e7eeec) sur blanc (1,17:1).
     await go(s.page, `/public/datasets/${seed.collectionId}`, 3000);
     const v = (await axe(s.page, ["color-contrast"])).filter((x) => x.id === "color-contrast");
     expect(fmt(v)).toBe("");
   });
 
-  bug("t01-006b : l'état « Accès refusé » d'une app est lisible en sombre", async () => {
+  test("t01-006b : l'état « Accès refusé » d'une app est lisible en sombre", async () => {
     // Un lecteur sans droit sur l'app : fond blanc + texte danger clair (2,66:1).
     const r = await newSession(s.page.context().browser()!, "reader", "dark");
     try {

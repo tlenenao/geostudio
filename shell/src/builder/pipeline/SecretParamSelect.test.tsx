@@ -197,9 +197,9 @@ test("supprime un secret après confirmation (D05)", async () => {
 
   // Annulation : le secret reste.
   await userEvent.click(screen.getByRole("button", { name: /supprimer.*arcgis/i }));
-  await screen.findByRole("dialog");
+  await screen.findByRole("alertdialog");
   await userEvent.click(screen.getByRole("button", { name: t("confirmDialog.cancel") }));
-  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   expect(screen.getByRole("option", { name: "arcgis" })).toBeInTheDocument();
   expect(deleteSecret).not.toHaveBeenCalled();
 
@@ -210,7 +210,7 @@ test("supprime un secret après confirmation (D05)", async () => {
     expect(screen.queryByRole("option", { name: "arcgis" })).not.toBeInTheDocument(),
   );
   expect(deleteSecret).toHaveBeenCalledWith("s1");
-  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
 });
 
 test("le champ dsn a un placeholder d'exemple", async () => {

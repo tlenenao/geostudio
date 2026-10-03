@@ -32,6 +32,8 @@ class EvaluationStatus(BaseModel):
     state: str
     transitioned: bool
     error: str | None
+    notifyStatus: str | None = None  # P20.01 : None | "delivered" | "failed"
+    notifyError: str | None = None
     createdAt: str
 
 
@@ -115,6 +117,8 @@ def get_alert_evaluations(
             state=r.state,
             transitioned=r.transitioned,
             error=r.error,
+            notifyStatus=r.notify_status,
+            notifyError=r.notify_error,
             createdAt=r.created_at.isoformat(),
         )
         for r in rows

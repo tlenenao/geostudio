@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { ApiError } from "../api/ApiError";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -283,7 +284,7 @@ test("persisted mode: un rapport qui échoue à charger affiche une alerte et n'
   const saveReportScheduleConfig = vi.fn().mockResolvedValue(undefined);
   renderPage("r-1", {
     getItem: vi.fn().mockResolvedValue(item),
-    getReportScheduleConfig: vi.fn().mockRejectedValue(new Error("403")),
+    getReportScheduleConfig: vi.fn().mockRejectedValue(new ApiError(403)),
     saveReportScheduleConfig,
     // Isole le défaut sous test — même piège de méthode que
     // PipelineBuilderPage.test.tsx (ConfigHistoryPanel affiche son propre
@@ -292,7 +293,7 @@ test("persisted mode: un rapport qui échoue à charger affiche une alerte et n'
   });
 
   const alert = await screen.findByRole("alert");
-  expect(alert).toHaveTextContent("introuvable");
+  expect(alert).toHaveTextContent("Accès refusé");
   expect(screen.queryByRole("heading", { name: "Programmer un rapport" })).not.toBeInTheDocument();
   expect(saveReportScheduleConfig).not.toHaveBeenCalled();
 });
@@ -359,7 +360,7 @@ test("bloque la navigation après une modification non enregistrée du rapport (
   await userEvent.type(await screen.findByLabelText("URL du webhook"), "https://x");
   await userEvent.click(screen.getByRole("link", { name: "Autre page" }));
 
-  expect(await screen.findByRole("dialog")).toHaveTextContent(
+  expect(await screen.findByRole("alertdialog")).toHaveTextContent(
     t("navigation.unsavedChangesMessage"),
   );
 });
@@ -402,5 +403,5 @@ test("le round-trip de création (pk=null -> Enregistrer -> redirection) n'affic
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
 
   await waitFor(() => expect(createReportScheduleItem).toHaveBeenCalledTimes(1));
-  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
 });

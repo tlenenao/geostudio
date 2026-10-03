@@ -9,6 +9,7 @@ import {
 import type { ShareRole } from "../api/types";
 import { Button } from "../ui/kit/Button";
 import { t } from "../i18n";
+import { LoadingState } from "../ui/kit/LoadingState";
 
 export function CollectionSharePanel({
   collectionId,
@@ -55,7 +56,7 @@ export function CollectionSharePanel({
   return (
     <section aria-label={t("collectionShare.title")} className="flex flex-col gap-3">
       <h2 className="text-sm font-semibold text-ink">{t("collectionShare.title")}</h2>
-      {loading && <p role="status">{t("common.loading")}</p>}
+      {loading && <LoadingState />}
       {failed && (
         <p role="alert" className="text-sm text-danger">
           {t("sharePanel.loadError")}
@@ -92,7 +93,7 @@ export function CollectionSharePanel({
                 </label>
                 <select
                   aria-label={t("sharePanel.roleAria", { group: g.title })}
-                  className="h-8 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
+                  className="h-8 rounded-md border border-control bg-surface px-2 text-sm text-ink"
                   disabled={!roles[g.id]}
                   value={roles[g.id] ?? "viewer"}
                   onChange={(e) => setRoles((r) => ({ ...r, [g.id]: e.target.value as ShareRole }))}

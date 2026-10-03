@@ -8,6 +8,7 @@ import { SettingsNav } from "../shell/chrome/SettingsNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
 import { eraseErrorMessage } from "./eraseErrorMessage";
+import { PageTitle } from "../ui/kit/PageTitle";
 
 // SP-58 (spec §3.3, risque §5) : anonymisation et purge sont DEUX actions
 // de nature radicalement différente (l'une limitée et réversible dans son
@@ -42,7 +43,6 @@ function EraseUserSection() {
       <label className="flex flex-col gap-1 text-sm text-ink">
         {t("compliance.userIdLabel")}
         <Input
-          aria-label={t("compliance.userIdAria")}
           value={userId}
           onChange={(e) => {
             setUserId(e.target.value);
@@ -108,11 +108,7 @@ function PurgeTenantSection() {
         {t("compliance.confirmSlugBefore")}
         <code>{tenantSlug || "…"}</code>
         {t("compliance.confirmSlugAfter")}
-        <Input
-          aria-label={t("compliance.confirmSlugAria")}
-          value={confirmSlug}
-          onChange={(e) => setConfirmSlug(e.target.value)}
-        />
+        <Input value={confirmSlug} onChange={(e) => setConfirmSlug(e.target.value)} />
       </label>
       <Button
         size="sm"
@@ -160,7 +156,7 @@ export function ComplianceAdminPage() {
           label: t("compliance.title"),
           content: (
             <div className="flex h-full flex-col gap-6 overflow-y-auto p-4">
-              <h1 className="text-lg font-bold text-ink">{t("compliance.heading")}</h1>
+              <PageTitle>{t("compliance.heading")}</PageTitle>
               {canErase && <EraseUserSection />}
               {canPurge && <PurgeTenantSection />}
             </div>

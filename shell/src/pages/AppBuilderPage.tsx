@@ -19,6 +19,7 @@ import { ActionsPanel } from "../builder/ActionsPanel";
 import { AppExportPanel } from "../builder/appexport/AppExportPanel";
 import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
 import { CopilotPanel } from "../builder/copilot/CopilotPanel";
+import { CopilotUnavailable } from "../builder/copilot/CopilotUnavailable";
 import { PrintLayoutPanel } from "../builder/print/PrintLayoutPanel";
 import { AppRenderer } from "../builder/AppRenderer";
 import { NavigationPanel } from "../builder/NavigationPanel";
@@ -48,9 +49,17 @@ import { useAuth } from "../auth/useAuth";
 import { useDirtyGuard } from "../lib/useDirtyGuard";
 import { t } from "../i18n";
 import { ApiError } from "../api/ApiError";
+import { LoadingState } from "../ui/kit/LoadingState";
+import { QueryErrorState } from "../ui/kit/QueryErrorState";
 
 registerBuiltinWidgets();
 registerExampleWidgets();
+
+const BREAKPOINT_KEY = {
+  sm: "appBuilder.breakpointSm",
+  md: "appBuilder.breakpointMd",
+  lg: "appBuilder.breakpointLg",
+} as const;
 
 export function AppBuilderPage({ pk }: { pk: string }) {
   const client = useItemClient();
@@ -76,7 +85,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const { username } = useAuth();
   const createDataset = useCreateDataset();
   const [promotingId, setPromotingId] = useState<string | null>(null);
-  const mainRef = useRef<HTMLElement>(null);
+  const mainRef = useRef<HTMLDivElement>(null);
   const { draft, setDraft, seedDraft, resetDraft, undo, redo, canUndo, canRedo } =
     useUndoableDraft<AppConfig>();
   // SP-B9b : page active et sélection synchronisées à l'URL
@@ -226,7 +235,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   }, [selectedId, activeLayout, setSelectedId]);
 
   if (query.isLoading || itemQuery.isLoading || !extensionsRegistered || (!draft && !query.isError))
-    return <p role="status">{t("common.loading")}</p>;
+    return <LoadingState />;
   if (
     query.isError ||
     itemQuery.isError ||
@@ -236,9 +245,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
     !itemQuery.data
   )
     return (
-      <p role="alert" className="text-sm text-danger">
-        {t("appBuilder.notFound")}
-      </p>
+      <QueryErrorState queries={[query, itemQuery]} notFoundMessage={t("appBuilder.notFound")} />
     );
 
   function addWidget(type: string) {
@@ -398,6 +405,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   return (
     <DataSourcesEditProvider onAdd={(source) => setSources([...draft.dataSources, source])}>
       <div className="-m-6 flex flex-1 flex-col overflow-hidden">
+        <h1 className="sr-only">{t("docTitle.appEdit")}</h1>
         <TriptychLayout
           defaultTabId="canvas"
           browse={{
@@ -456,10 +464,12 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                         size="sm"
                         variant="outline"
                         className={breakpoint === bp ? "bg-sunken" : undefined}
-                        aria-label={t("appBuilder.editBreakpointAria", { bp })}
+                        aria-label={t("appBuilder.editBreakpointAria", {
+                          bp: t(BREAKPOINT_KEY[bp]),
+                        })}
                         onClick={() => setBreakpoint(bp)}
                       >
-                        {bp}
+                        {t(BREAKPOINT_KEY[bp])}
                       </Button>
                     ))}
                   </div>
@@ -478,7 +488,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                     </span>
                   )}
                 </div>
-                <main ref={mainRef} className="flex-1 overflow-auto p-2">
+                <div ref={mainRef} data-testid="app-canvas" className="flex-1 overflow-auto p-2">
                   <AppRenderer
                     config={draft}
                     mode={mode}
@@ -489,7 +499,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                     pageId={activePage}
                     onNavigate={setActivePageId}
                   />
-                </main>
+                </div>
               </div>
             ),
           }}
@@ -600,17 +610,22 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                     <AppExportPanel itemId={pk} config={draft} />
                   </>
                 )}
-                {copilotEnabled && (
+                {(copilotEnabled || instanceQuery.isSuccess) && (
                   <>
                     <p className="mb-1 mt-3 text-xs font-medium text-ink-2">
                       {t("appBuilder.copilotLabel")}
                     </p>
-                    <CopilotPanel
-                      itemId={pk}
-                      config={draft}
-                      activePageId={activePage}
-                      setDraft={setDraft}
-                    />
+                    {copilotEnabled ? (
+                      <CopilotPanel
+                        itemId={pk}
+                        config={draft}
+                        activePageId={activePage}
+                        setDraft={setDraft}
+                        readOnly={readOnly}
+                      />
+                    ) : (
+                      <CopilotUnavailable />
+                    )}
                   </>
                 )}
                 <div className="mt-3 flex flex-col gap-2 border-t border-rule pt-3">

@@ -7,6 +7,7 @@ import { DEFAULT_BASEMAP } from "../../map/basemaps";
 import { t } from "../../i18n";
 import type { MessageKey } from "../../i18n";
 import { bboxFromFeatureCollection } from "../../lib/geometryBbox";
+import { readToken } from "../../lib/theme";
 
 const SOURCE_ID = "pipeline-preview";
 
@@ -28,9 +29,9 @@ const LEGEND_ENTRIES: {
   color: string;
   labelKey: MessageKey;
 }[] = [
-  { kind: "Polygon", color: "#2563eb", labelKey: "pipelinePreviewMap.legendPolygon" },
-  { kind: "LineString", color: "#16a34a", labelKey: "pipelinePreviewMap.legendLine" },
-  { kind: "Point", color: "#dc2626", labelKey: "pipelinePreviewMap.legendPoint" },
+  { kind: "Polygon", color: "var(--gs-accent)", labelKey: "pipelinePreviewMap.legendPolygon" },
+  { kind: "LineString", color: "var(--gs-ok)", labelKey: "pipelinePreviewMap.legendLine" },
+  { kind: "Point", color: "var(--gs-danger)", labelKey: "pipelinePreviewMap.legendPoint" },
 ];
 
 // Aperçu cartographique d'une étape de pipeline (SP-15g §5.3) — alternative à
@@ -75,28 +76,40 @@ export function PipelinePreviewMap({
         type: "fill",
         source: SOURCE_ID,
         filter: ["==", ["geometry-type"], "Polygon"],
-        paint: { "fill-color": "#2563eb", "fill-opacity": 0.4 },
+        paint: {
+          "fill-color": readToken("--gs-accent", "#0b6e77") /* gs-raw-color-ok: repli jsdom */,
+          "fill-opacity": 0.4,
+        },
       });
       map.addLayer({
         id: `${SOURCE_ID}-line`,
         type: "line",
         source: SOURCE_ID,
         filter: ["==", ["geometry-type"], "LineString"],
-        paint: { "line-color": "#16a34a", "line-width": 2 },
+        paint: {
+          "line-color": readToken("--gs-ok", "#2a6a50") /* gs-raw-color-ok: repli jsdom */,
+          "line-width": 2,
+        },
       });
       map.addLayer({
         id: `${SOURCE_ID}-circle`,
         type: "circle",
         source: SOURCE_ID,
         filter: ["==", ["geometry-type"], "Point"],
-        paint: { "circle-color": "#dc2626", "circle-radius": 5 },
+        paint: {
+          "circle-color": readToken("--gs-danger", "#9a2c45") /* gs-raw-color-ok: repli jsdom */,
+          "circle-radius": 5,
+        },
       });
       map.addLayer({
         id: `${SOURCE_ID}-selected`,
         type: "line",
         source: SOURCE_ID,
         filter: ["==", ["get", "__rowIndex"], selectedIndex ?? -1],
-        paint: { "line-color": "#facc15", "line-width": 3 },
+        paint: {
+          "line-color": readToken("--gs-warn", "#85600f") /* gs-raw-color-ok: repli jsdom */,
+          "line-width": 3,
+        },
       });
       const handleClick = (e: maplibregl.MapLayerMouseEvent) => {
         const idx = e.features?.[0]?.properties?.__rowIndex;

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { editorPath } from "./editorPath";
 import { lazy, Suspense } from "react";
 import {
   Routes,
@@ -20,6 +21,8 @@ import { useOpenItem } from "./useOpenItem";
 import { resolvePipelineEditorPath } from "./resolvePipelineEditorPath";
 import { useItemClient } from "../api/ItemClientProvider";
 import { AppErrorFallback } from "../AppErrorBoundary";
+import { RouteTitle } from "./RouteTitle";
+import { LoadingState } from "../ui/kit/LoadingState";
 
 // Découpage par route (Task 8, SP-60/GAP-68) : chaque page lourde part dans
 // son propre chunk, chargé seulement quand sa route est visitée — le chunk
@@ -47,6 +50,9 @@ const AppRuntimePage = lazy(() =>
 );
 const SitePublicPage = lazy(() =>
   import("../pages/SitePublicPage").then((m) => ({ default: m.SitePublicPage })),
+);
+const PublicCatalogPage = lazy(() =>
+  import("../pages/PublicCatalogPage").then((m) => ({ default: m.PublicCatalogPage })),
 );
 const PublicItemPage = lazy(() =>
   import("../pages/PublicItemPage").then((m) => ({ default: m.PublicItemPage })),
@@ -128,18 +134,12 @@ function ItemDetailRoute() {
     <ItemDetailPage
       pk={pk!}
       onDeleted={() => navigate("/")}
-      onOpenEditor={(type) => {
+      onOpenEditor={(type, item) => {
         if (type === "pipeline") {
           void resolvePipelineEditorPath(client, pk!).then((path) => navigate(path));
           return;
         }
-        navigate(
-          type === "map"
-            ? `/maps/${pk}`
-            : type === "dataset"
-              ? `/datasets/${pk}/edit`
-              : `/apps/${pk}/edit`,
-        );
+        navigate(editorPath(pk!, type, item));
       }}
     />
   );
@@ -250,7 +250,7 @@ function ProtectedLayout() {
   return (
     <RequireAuth>
       <AppLayout>
-        <Suspense fallback={<p role="status">Chargement…</p>}>
+        <Suspense fallback={<LoadingState />}>
           <Outlet />
         </Suspense>
       </AppLayout>
@@ -378,6 +378,7 @@ function routeElements() {
       <Route path="/apps/:pk/:pageId?" element={<AppRuntimeRoute />} />
       <Route path="/embed/:token" element={<EmbedRoute />} />
       <Route path="/sites/:slug" element={<SitePublicRoute />} />
+      <Route path="/public" element={<PublicCatalogPage />} />
       <Route path="/public/items/:pk" element={<PublicItemRoute />} />
       <Route path="/public/datasets/:collectionId" element={<DatasetRoute />} />
     </>
@@ -386,7 +387,8 @@ function routeElements() {
 
 export function AppRoutes() {
   return (
-    <Suspense fallback={<p role="status">Chargement…</p>}>
+    <Suspense fallback={<LoadingState />}>
+      <RouteTitle />
       <Routes>{routeElements()}</Routes>
     </Suspense>
   );
@@ -404,7 +406,8 @@ export function createAppRouter(options?: { initialEntries?: string[] }) {
   const routes: RouteObject[] = createRoutesFromElements(
     <Route
       element={
-        <Suspense fallback={<p role="status">Chargement…</p>}>
+        <Suspense fallback={<LoadingState />}>
+          <RouteTitle />
           <Outlet />
         </Suspense>
       }

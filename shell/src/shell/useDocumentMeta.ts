@@ -16,10 +16,13 @@ export function useDocumentMeta({
   title,
   description,
   canonicalUrl,
+  noindex = false,
 }: {
   title: string;
   description: string;
   canonicalUrl: string;
+  /** Page introuvable (soft-404) : pose `<meta name=robots content=noindex>`. */
+  noindex?: boolean;
 }) {
   useEffect(() => {
     const previousTitle = document.title;
@@ -43,10 +46,19 @@ export function useDocumentMeta({
     }
     link.setAttribute("href", canonicalUrl);
 
+    let robots: HTMLMetaElement | null = null;
+    if (noindex) {
+      robots = document.createElement("meta");
+      robots.setAttribute("name", "robots");
+      robots.setAttribute("content", "noindex");
+      document.head.appendChild(robots);
+    }
+
     return () => {
+      robots?.remove();
       document.title = previousTitle;
       if (createdMeta) meta.remove();
       if (createdLink) link.remove();
     };
-  }, [title, description, canonicalUrl]);
+  }, [title, description, canonicalUrl, noindex]);
 }

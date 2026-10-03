@@ -125,10 +125,10 @@ test("create an arcgis-sourced dataset from a harvested layer, consume it live i
   await dialog.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 
-  await page.getByRole("button", { name: "Table" }).click();
+  await page.getByRole("button", { name: "Table", exact: true }).click();
   await page.getByLabel("Source de données").selectOption("dataset:dataset-1");
 
-  await page.getByRole("button", { name: "Indicateur" }).click();
+  await page.getByRole("button", { name: "Indicateur", exact: true }).click();
   // Le dataset est déjà lié (via la Table) : il apparaît désormais comme une
   // source existante (index 1), plus dans l'optgroup "Datasets partagés".
   await page.getByLabel("Source de données").last().selectOption({ index: 1 });

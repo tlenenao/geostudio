@@ -14,6 +14,8 @@ avec des droits élevés."""
 import logging
 import os
 
+from sqlalchemy import select
+
 from app.alerts.notify import NotifyError, send_email, send_webhook
 from app.audit.writer import write_audit
 from app.auth.dependency import is_export_enabled, is_read_only_mode
@@ -24,6 +26,7 @@ from app.export import repository as export_repo
 from app.export.jobs import render_export_task, s3_client_from_env
 from app.ingestion.storage import generate_presigned_get_url
 from app.items import repository as items_repo
+from app.items.models import Item
 from app.jobs import app
 from app.jobs.common import notify_best_effort, resolve_owner_user
 from app.jobs.common import session_factory as _session_factory
@@ -51,11 +54,17 @@ def _owner_user(session, *, tenant_id: str, item_id: str) -> User:
         raise ReportTriggerError(str(exc)) from exc
 
 
+def _item_owner_id(session, *, tenant_id: str, item_id: str) -> str | None:
+    return session.scalar(
+        select(Item.owner_id).where(Item.id == item_id, Item.tenant_id == tenant_id)
+    )
+
+
 def _audit_trigger_failure(session, *, tenant_id: str, item_id: str, error: str) -> None:
     write_audit(
         session,
         tenant_id=tenant_id,
-        actor_id=None,
+        actor_id=_item_owner_id(session, tenant_id=tenant_id, item_id=item_id),  # P20.06
         actor_kind="agent",
         action="report.run",
         object_type="item",
@@ -335,6 +344,7 @@ def _notify_pending_reports(session_factory) -> None:
             # empêche l'abort du sweep, même si l'isolation de la notification
             # (revue finale SP-39, I1) change la garantie de delivery :
             # voir le docstring de mark_notified ci-dessous.
+            owner_actor_id: str | None = None  # P20.06 : audits « Mes tâches » du propriétaire
             try:
                 report_config = configs_repo.get_config_by_item(session, run.report_item_id)
                 if report_config is None or report_config.kind != "report":
@@ -350,6 +360,9 @@ def _notify_pending_reports(session_factory) -> None:
                     session, tenant_id=run.tenant_id, item_id=run.report_item_id
                 )
                 title = item.title if item is not None else run.report_item_id
+                owner_actor_id = _item_owner_id(
+                    session, tenant_id=run.tenant_id, item_id=run.report_item_id
+                )
                 result_url = _presigned_url_for_job(job)
                 # Session isolée du sweep (revue finale SP-39, I1) : voir le
                 # docstring de _notify — ne jamais écrire cette notification
@@ -375,6 +388,9 @@ def _notify_pending_reports(session_factory) -> None:
                         if isinstance(channel, AlertChannelWebhook):
                             send_webhook(
                                 channel,
+                                session=session,
+                                tenant_id=run.tenant_id,
+                                item_id=run.report_item_id,
                                 payload={
                                     "reportItemId": run.report_item_id,
                                     "status": job.status,
@@ -386,6 +402,7 @@ def _notify_pending_reports(session_factory) -> None:
                             send_email(
                                 session,
                                 tenant_id=run.tenant_id,
+                                item_id=run.report_item_id,
                                 channel=channel,
                                 subject=f"[GeoStudio] Rapport : {title}",
                                 body=message,
@@ -397,7 +414,7 @@ def _notify_pending_reports(session_factory) -> None:
                     write_audit(
                         session,
                         tenant_id=run.tenant_id,
-                        actor_id=None,
+                        actor_id=owner_actor_id,
                         actor_kind="agent",
                         action="report.notify",
                         object_type="item",
@@ -414,7 +431,7 @@ def _notify_pending_reports(session_factory) -> None:
                     write_audit(
                         session,
                         tenant_id=run.tenant_id,
-                        actor_id=None,
+                        actor_id=owner_actor_id,
                         actor_kind="agent",
                         action="report.notify",
                         object_type="item",

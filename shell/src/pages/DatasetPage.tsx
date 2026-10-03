@@ -6,6 +6,10 @@ import { registerBuiltinWidgets } from "../builder/widgets";
 import { DatasetDownloadButtons } from "../builder/DatasetDownloadButtons";
 import type { AppConfig } from "../api/types";
 import { plural, t } from "../i18n";
+import { PublicNotFound } from "./PublicNotFound";
+import { useDocumentMeta } from "../shell/useDocumentMeta";
+import { LoadingState } from "../ui/kit/LoadingState";
+import { PageTitle } from "../ui/kit/PageTitle";
 
 registerBuiltinWidgets();
 
@@ -68,23 +72,27 @@ export function DatasetPage({ collectionId }: { collectionId: string }) {
   });
   const attachmentField = schemaQuery.data?.fields.find((f) => f.type === "attachment")?.name;
 
+  // Titre/description/canonical dérivés de la collection (P35.04) ; introuvable
+  // = noindex. Appelé avant les retours anticipés (règle des Hooks).
+  const notFound = query.isError || (query.isSuccess && !query.data);
+  useDocumentMeta({
+    title: notFound ? t("datasetPage.notFound") : (query.data?.title ?? t("docTitle.appName")),
+    noindex: notFound,
+    description: query.data?.description ?? "",
+    canonicalUrl: `${window.location.origin}/public/datasets/${encodeURIComponent(collectionId)}`,
+  });
+
   if (query.isLoading) {
-    return <p role="status">{t("common.loading")}</p>;
+    return <LoadingState />;
   }
   if (query.isError || !query.data) {
-    return (
-      <div className="p-8 text-center">
-        <p role="alert" className="text-sm text-ink-2">
-          {t("datasetPage.notFound")}
-        </p>
-      </div>
-    );
+    return <PublicNotFound message={t("datasetPage.notFound")} />;
   }
   const col = query.data;
   return (
-    <div className="flex h-full w-full flex-col gap-4 p-6">
+    <main className="flex h-full w-full flex-col gap-4 p-6">
       <header className="flex flex-col gap-1">
-        <h1 className="text-xl font-bold text-ink">{col.title}</h1>
+        <PageTitle>{col.title}</PageTitle>
         <p className="text-sm text-ink-2">{col.description}</p>
         <p className="text-xs text-ink-3">
           {(() => {
@@ -99,6 +107,6 @@ export function DatasetPage({ collectionId }: { collectionId: string }) {
       <div className="h-[480px] w-full">
         <AppRenderer config={previewConfig(collectionId, attachmentField)} mode="runtime" />
       </div>
-    </div>
+    </main>
   );
 }

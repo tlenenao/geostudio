@@ -13,14 +13,17 @@ from typing import Protocol
 
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.audit.writer import write_audit
 from app.auth.dependency import is_etl_enabled, is_read_only_mode
 from app.configs import repository as configs_repo
 from app.configs.schemas import PipelinePayload
 from app.db import request_scoped_session
+from app.items.models import Item
 from app.jobs import app
 from app.jobs.common import notify_best_effort, resolve_owner_user
 from app.jobs.common import session_factory as _session_factory
 from app.pipelines import repository as pipelines_repo
+from app.pipelines.errors import PipelineCancelledError
 from app.pipelines.runtime import NodeStat, PipelineRuntimeError, run_pipeline
 from app.users.models import User
 
@@ -150,6 +153,8 @@ class RunTracker(Protocol):
     def mark_running(self) -> None: ...
     def mark_succeeded(self, node_stats: dict) -> None: ...
     def mark_failed(self, error: str) -> None: ...
+    def mark_cancelled(self) -> None: ...
+    def is_cancel_requested(self) -> bool: ...
 
 
 class PostgresRunTracker:
@@ -185,6 +190,14 @@ class PostgresRunTracker:
         with request_scoped_session(self._session_factory) as session:
             pipelines_repo.mark_failed(session, run_id=self._run_id, error=error)
 
+    def mark_cancelled(self) -> None:
+        with request_scoped_session(self._session_factory) as session:
+            pipelines_repo.mark_cancelled(session, run_id=self._run_id)
+
+    def is_cancel_requested(self) -> bool:
+        with request_scoped_session(self._session_factory) as session:
+            return pipelines_repo.is_cancel_requested(session, run_id=self._run_id)
+
 
 @app.task(queue="etl")
 def run_pipeline_task(run_id: str, tenant_id: str) -> None:
@@ -205,6 +218,8 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
             run = pipelines_repo.get_run(session, tenant_id=tenant_id, run_id=run_id)
             if run is None:
                 logger.error("pipeline run %s introuvable (tenant %s)", run_id, tenant_id)
+                return
+            if run.status == "cancelled":  # annulé avant sa prise en charge (t03b-009)
                 return
             pipeline_item_id = run.pipeline_item_id
         # `item_id` n'est affecté qu'APRÈS tracker.mark_running(), pas avant —
@@ -237,10 +252,14 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
                 on_node_complete=_make_progress_callback(
                     factory, run_id=run_id, tenant_id=tenant_id
                 ),
+                on_progress=_make_progress_callback(factory, run_id=run_id, tenant_id=tenant_id),
+                should_cancel=tracker.is_cancel_requested,
             )
         tracker.mark_succeeded({s.nodeId: s.to_dict() for s in stats})
         assert item_id is not None  # affecté ci-dessus, jamais atteint sinon (cf. return/raise)
         _notify(factory, tenant_id=tenant_id, item_id=item_id, status="success")
+    except PipelineCancelledError:
+        tracker.mark_cancelled()
     except (PipelineRuntimeError, ValueError) as exc:
         tracker.mark_failed(str(exc))
         if item_id is not None:
@@ -282,6 +301,19 @@ def run_pipeline_sweep_task(timestamp: int) -> None:
         due = pipelines_repo.list_due_pipelines(session)
         for item_id, tenant_id in due:
             run = pipelines_repo.create_run(session, tenant_id=tenant_id, pipeline_item_id=item_id)
+            # c03-003 : même trace que run_pipeline_service ; acteur = propriétaire
+            # (identité sous laquelle le run s'exécutera), actor_kind="schedule".
+            owner = session.get(Item, item_id)
+            write_audit(
+                session,
+                tenant_id=tenant_id,
+                actor_id=owner.owner_id if owner else None,
+                actor_kind="schedule",
+                action="pipeline.run",
+                object_type="pipeline_run",
+                object_id=run.id,
+                payload={"pipelineItemId": item_id},
+            )
             # Commit avant de déférer, même raison que routes.py/mcp/tools.py
             # (create_run puis defer) : un worker pourrait ramasser la tâche
             # avant que la ligne pipeline_runs ne soit visible autrement. À

@@ -1,12 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useItemClient } from "../api/ItemClientProvider";
 import { useLayerSources } from "../api/hooks";
 import type { LayerSource, MapLayer } from "../api/types";
 import { detectGeometryKind, renderAsFor } from "../builder/widgets/mapSymbology";
 import { fetchFeatureCollection } from "./geojsonIntrospect";
 import { Button } from "../ui/kit/Button";
-import { plural, t } from "../i18n";
+import { plural, t, type MessageKey } from "../i18n";
+
+const KIND_LABEL_KEYS = {
+  vector: "layerPicker.kindVector",
+  feature: "layerPicker.kindFeature",
+  raster: "layerPicker.kindRaster",
+  tiles3d: "layerPicker.kindTiles3d",
+} as const satisfies Record<LayerSource["kind"], MessageKey>;
 
 function toMapLayer(source: LayerSource): MapLayer {
   const id = crypto.randomUUID();
@@ -51,6 +59,7 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
   const [deckType, setDeckType] = useState<"heatmap" | "hexbin" | "column">("heatmap");
   const [deckUrl, setDeckUrl] = useState("");
   const queryClient = useQueryClient();
+  const client = useItemClient();
   const { data, isLoading, isError, refetch } = useLayerSources({ q: q || undefined });
 
   async function addFeatureLayer() {
@@ -61,7 +70,7 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
     setFeatureError(null);
     let renderAs: "fill" | "circle" | "line" | undefined;
     try {
-      const fc = await fetchFeatureCollection(url);
+      const fc = await fetchFeatureCollection(client, url);
       renderAs = renderAsFor(detectGeometryKind(fc.features[0]?.geometry));
       // Amorce le cache que LayersPanel.tsx lit sous la même clé
       // (useFeatureLayerGeoJson) : ouvrir tout de suite le panneau de
@@ -121,7 +130,7 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
         role="searchbox"
         aria-label={t("layerPicker.searchAria")}
         placeholder={t("layerPicker.searchPlaceholder")}
-        className="h-8 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
+        className="h-8 rounded-md border border-control bg-surface px-2 text-sm text-ink"
         value={q}
         onChange={(e) => setQ(e.target.value)}
       />
@@ -147,7 +156,7 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
                 onClick={() => onAdd(toMapLayer(source))}
               >
                 {source.title}
-                <span className="ml-2 text-xs text-ink-3">{source.kind}</span>
+                <span className="ml-2 text-xs text-ink-3">{t(KIND_LABEL_KEYS[source.kind])}</span>
                 {typeof source.featureCount === "number" && (
                   <span className="ml-2 text-xs text-ink-3">
                     {t(
@@ -174,7 +183,7 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
             aria-label={t("layerPicker.tileset3dTitleAria")}
             type="text"
             placeholder={t("layerPicker.titlePlaceholder")}
-            className="h-8 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
+            className="h-8 rounded-md border border-control bg-surface px-2 text-sm text-ink"
             value={tiles3dTitle}
             onChange={(e) => setTiles3dTitle(e.target.value)}
           />
@@ -182,7 +191,7 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
             aria-label={t("layerPicker.tileset3dUrlAria")}
             type="text"
             placeholder={t("layerPicker.tileset3dUrlPlaceholder")}
-            className="h-8 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
+            className="h-8 rounded-md border border-control bg-surface px-2 text-sm text-ink"
             value={tiles3dUrl}
             onChange={(e) => setTiles3dUrl(e.target.value)}
           />
@@ -204,13 +213,13 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
             aria-label={t("layerPicker.deckTitleAria")}
             type="text"
             placeholder={t("layerPicker.titlePlaceholder")}
-            className="h-8 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
+            className="h-8 rounded-md border border-control bg-surface px-2 text-sm text-ink"
             value={deckTitle}
             onChange={(e) => setDeckTitle(e.target.value)}
           />
           <select
             aria-label={t("layerPicker.deckTypeAria")}
-            className="h-8 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
+            className="h-8 rounded-md border border-control bg-surface px-2 text-sm text-ink"
             value={deckType}
             onChange={(e) => setDeckType(e.target.value as "heatmap" | "hexbin" | "column")}
           >
@@ -222,7 +231,7 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
             aria-label={t("layerPicker.deckUrlAria")}
             type="text"
             placeholder={t("layerPicker.geojsonUrlPlaceholder")}
-            className="h-8 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
+            className="h-8 rounded-md border border-control bg-surface px-2 text-sm text-ink"
             value={deckUrl}
             onChange={(e) => setDeckUrl(e.target.value)}
           />
@@ -244,7 +253,7 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
             aria-label={t("layerPicker.featureTitleAria")}
             type="text"
             placeholder={t("layerPicker.titlePlaceholder")}
-            className="h-8 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
+            className="h-8 rounded-md border border-control bg-surface px-2 text-sm text-ink"
             value={featureTitle}
             onChange={(e) => setFeatureTitle(e.target.value)}
           />
@@ -252,7 +261,7 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
             aria-label={t("layerPicker.featureUrlAria")}
             type="text"
             placeholder={t("layerPicker.geojsonUrlPlaceholder")}
-            className="h-8 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
+            className="h-8 rounded-md border border-control bg-surface px-2 text-sm text-ink"
             value={featureUrl}
             onChange={(e) => setFeatureUrl(e.target.value)}
           />

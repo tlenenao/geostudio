@@ -32,9 +32,9 @@ test("créer un site, y ajouter Hero+RichSection+Gallery, publier, consulter en 
   // 3. Publier.
   await page.goto("/items/site-1");
   await page.getByRole("button", { name: "Actions" }).click();
-  await page.getByRole("button", { name: "Publier" }).click();
+  await page.getByRole("menuitem", { name: "Publier" }).click();
   await page.getByRole("button", { name: "Actions" }).click();
-  await expect(page.getByRole("button", { name: "Dépublier" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Dépublier" })).toBeVisible();
 
   // 4. Consultation publique anonyme : Hero, Markdown rendu, galerie des items publiés.
   await page.goto("/sites/mon-portail");

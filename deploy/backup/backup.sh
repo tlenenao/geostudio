@@ -1,9 +1,35 @@
 #!/bin/bash
 set -euo pipefail
 
+# P27.07 : codes de sortie — 0 = tout est fait ; 75 (EX_TEMPFAIL, jamais un code d outil : tar/pg_dump rendent 2) = archive locale écrite et
+# rotée mais envoi hors-site en échec (l'entrypoint ne relance alors que
+# `--upload-only`, sans refaire de dump ni dupliquer d'archive) ; autre = échec.
+# /backup/archives/.last_success n'est touché qu'après un succès complet : c'est
+# la sonde de fraîcheur du healthcheck (docker-compose.prod.yml).
+ARCHIVES_DIR="${BACKUP_ARCHIVES_DIR:-/backup/archives}"
+UPLOAD_ONLY=0
+[ "${1:-}" = "--upload-only" ] && UPLOAD_ONLY=1
+
+upload_offsite() {
+  [ -n "${BACKUP_S3_ENDPOINT:-}" ] || return 0
+  mc alias set offsite "$BACKUP_S3_ENDPOINT" "$BACKUP_S3_ACCESS_KEY" "$BACKUP_S3_SECRET_KEY" >/dev/null \
+    && mc cp --quiet "${ARCHIVES_DIR}/$1" "offsite/${BACKUP_S3_BUCKET}/" \
+    && echo "[backup] envoyé vers offsite/${BACKUP_S3_BUCKET}/$1"
+}
+
+if [ "$UPLOAD_ONLY" = 1 ]; then
+  LATEST="$(cd "$ARCHIVES_DIR" && ls -1 *.tar.gz.age 2>/dev/null | sort | tail -n 1 || true)"
+  [ -n "$LATEST" ] || { echo "[backup] ERREUR: aucune archive locale à envoyer" >&2; exit 1; }
+  if upload_offsite "$LATEST"; then
+    touch "${ARCHIVES_DIR}/.last_success"
+    exit 0
+  fi
+  echo "[backup] ERREUR: envoi hors-site de ${LATEST} en échec" >&2
+  exit 75
+fi
+
 DATE="$(date -u +%Y%m%d-%H%M%S)"
 WORKDIR="/backup/work/${DATE}"
-ARCHIVES_DIR="/backup/archives"
 # Purge systématique du répertoire de travail en clair (dump Postgres, export
 # Keycloak, miroir MinIO) et de l'archive intermédiaire non chiffrée, quelle
 # que soit l'issue du script (succès, échec sous `set -e`, signal) — cf. plan
@@ -82,26 +108,31 @@ else
 fi
 echo "[backup] archive chiffrée: ${ARCHIVES_DIR}/${DATE}.tar.gz.age"
 
-# ── 5. Envoi hors-site (optionnel — avertissement clair si absent) ──
+# ── 5. Rotation locale (7 quotidiennes + 4 hebdomadaires) — AVANT l'envoi
+#    hors-site : un échec réseau ne doit jamais empêcher de purger le disque ──
+LOCAL_FILES="$(cd "$ARCHIVES_DIR" && ls -1 *.tar.gz.age 2>/dev/null || true)"
+TO_DELETE="$(python3 /usr/local/bin/retention.py "$LOCAL_FILES")"
+for f in $TO_DELETE; do
+  rm -f "${ARCHIVES_DIR}/${f}"
+  echo "[backup] rotation: supprimé localement ${f}"
+done
+
+# ── 6. Envoi hors-site (optionnel — avertissement clair si absent), puis
+#    rotation hors-site sur la même politique ──
 if [ -n "${BACKUP_S3_ENDPOINT:-}" ]; then
-  mc alias set offsite "$BACKUP_S3_ENDPOINT" "$BACKUP_S3_ACCESS_KEY" "$BACKUP_S3_SECRET_KEY" >/dev/null
-  mc cp --quiet "${ARCHIVES_DIR}/${DATE}.tar.gz.age" "offsite/${BACKUP_S3_BUCKET}/"
-  echo "[backup] envoyé vers offsite/${BACKUP_S3_BUCKET}/${DATE}.tar.gz.age"
+  if ! upload_offsite "${DATE}.tar.gz.age"; then
+    echo "[backup] ERREUR: envoi hors-site en échec — archive locale conservée" >&2
+    exit 75
+  fi
+  for f in $TO_DELETE; do
+    mc rm --quiet "offsite/${BACKUP_S3_BUCKET}/${f}" 2>/dev/null || true
+  done
 else
   echo "[backup] AVERTISSEMENT: aucune cible hors-site configurée (BACKUP_S3_ENDPOINT vide)." >&2
   echo "[backup] Les sauvegardes restent UNIQUEMENT sur cette machine — ne protège ni de" >&2
   echo "[backup] l'incendie, ni du vol, ni de la panne disque. Configurer BACKUP_S3_* dès que possible." >&2
 fi
 
-# ── 6. Rotation (7 quotidiennes + 4 hebdomadaires, locale ET hors-site) ──
-LOCAL_FILES="$(cd "$ARCHIVES_DIR" && ls -1 *.tar.gz.age 2>/dev/null || true)"
-TO_DELETE="$(python3 /usr/local/bin/retention.py "$LOCAL_FILES")"
-for f in $TO_DELETE; do
-  rm -f "${ARCHIVES_DIR}/${f}"
-  echo "[backup] rotation: supprimé localement ${f}"
-  if [ -n "${BACKUP_S3_ENDPOINT:-}" ]; then
-    mc rm --quiet "offsite/${BACKUP_S3_BUCKET}/${f}" 2>/dev/null || true
-  fi
-done
+touch "${ARCHIVES_DIR}/.last_success"
 
 echo "[backup] ${DATE} — terminé"

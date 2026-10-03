@@ -840,6 +840,23 @@ export interface paths {
         patch: operations["patch_source_v1_harvest_sources__source_id__patch"];
         trace?: never;
     };
+    "/v1/harvest/sources/{source_id}/records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Source Records */
+        get: operations["list_source_records_v1_harvest_sources__source_id__records_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/harvest/sources/{source_id}/run": {
         parameters: {
             query?: never;
@@ -866,6 +883,27 @@ export interface paths {
         };
         /** Get Instance Info */
         get: operations["get_instance_info_v1_instance_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/instance/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Instance Status
+         * @description Vue d'état d'instance (P17.07, j09-009) : Postgres, S3, CDC, files
+         *     procrastinate. Réservée à `settings.instance.manage`.
+         */
+        get: operations["get_instance_status_v1_instance_status_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1187,6 +1225,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/public/datasets/{collection_id}/social-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Public Dataset Social Preview */
+        get: operations["public_dataset_social_preview_v1_public_datasets__collection_id__social_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/public/items": {
         parameters: {
             query?: never;
@@ -1213,6 +1268,40 @@ export interface paths {
         };
         /** Get Public Item */
         get: operations["get_public_item_v1_public_items__item_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/items/{item_id}/social-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Public Item Social Preview */
+        get: operations["public_item_social_preview_v1_public_items__item_id__social_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/items/{item_id}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Public Item Thumbnail */
+        get: operations["public_item_thumbnail_v1_public_items__item_id__thumbnail_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1402,7 +1491,12 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put?: never;
+        /**
+         * Update Secret Route
+         * @description Remplace la valeur en place (P16.05) : nom et kind inchangés, donc
+         *     les configs qui citent le secret par son nom continuent de marcher.
+         */
+        put: operations["update_secret_route_v1_secrets__secret_id__put"];
         post?: never;
         /** Delete Secret Route */
         delete: operations["delete_secret_route_v1_secrets__secret_id__delete"];
@@ -1778,6 +1872,26 @@ export interface components {
             /** Split */
             split?: string | null;
         };
+        /**
+         * AggregateResponse
+         * @description Contrat de POST /collections/{id}/aggregate (P25.10/11) : asOf = dernier
+         *     flush CDC présent dans le lac, pending = lac pas encore alimenté.
+         */
+        AggregateResponse: {
+            /** Asof */
+            asOf?: string | null;
+            /** Categorykey */
+            categoryKey: string | string[];
+            /**
+             * Pending
+             * @default false
+             */
+            pending: boolean;
+            /** Rows */
+            rows: {
+                [key: string]: unknown;
+            }[];
+        };
         /** AlertChannelEmail */
         AlertChannelEmail: {
             /**
@@ -1797,6 +1911,8 @@ export interface components {
              * @enum {string}
              */
             kind: "webhook";
+            /** Signingsecretname */
+            signingSecretName?: string | null;
             /** Url */
             url: string;
         };
@@ -2318,6 +2434,10 @@ export interface components {
             error: string | null;
             /** Id */
             id: string;
+            /** Notifyerror */
+            notifyError?: string | null;
+            /** Notifystatus */
+            notifyStatus?: string | null;
             /** State */
             state: string;
             /** Transitioned */
@@ -3403,6 +3523,11 @@ export interface components {
             /** Payload */
             payload: components["schemas"]["ApiKeyPayload"] | components["schemas"]["BearerTokenPayload"] | components["schemas"]["BasicAuthPayload"] | components["schemas"]["OAuth2ClientCredentialsPayload"] | components["schemas"]["PostgresDsnPayload"] | components["schemas"]["SmtpCredentialsPayload"] | components["schemas"]["SnowflakeDsnPayload"] | components["schemas"]["BigQueryDsnPayload"] | components["schemas"]["MssqlDsnPayload"] | components["schemas"]["OracleDsnPayload"] | components["schemas"]["S3CredentialsPayload"] | components["schemas"]["AzureBlobCredentialsPayload"] | components["schemas"]["GcsCredentialsPayload"];
         };
+        /** SecretUpdate */
+        SecretUpdate: {
+            /** Payload */
+            payload: components["schemas"]["ApiKeyPayload"] | components["schemas"]["BearerTokenPayload"] | components["schemas"]["BasicAuthPayload"] | components["schemas"]["OAuth2ClientCredentialsPayload"] | components["schemas"]["PostgresDsnPayload"] | components["schemas"]["SmtpCredentialsPayload"] | components["schemas"]["SnowflakeDsnPayload"] | components["schemas"]["BigQueryDsnPayload"] | components["schemas"]["MssqlDsnPayload"] | components["schemas"]["OracleDsnPayload"] | components["schemas"]["S3CredentialsPayload"] | components["schemas"]["AzureBlobCredentialsPayload"] | components["schemas"]["GcsCredentialsPayload"];
+        };
         /** ShareLinkCreated */
         ShareLinkCreated: {
             /** Expiresat */
@@ -4069,7 +4194,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["AggregateResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5950,6 +6075,42 @@ export interface operations {
             };
         };
     };
+    list_source_records_v1_harvest_sources__source_id__records_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     run_source_v1_harvest_sources__source_id__run_post: {
         parameters: {
             query?: never;
@@ -6001,6 +6162,39 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    get_instance_status_v1_instance_status_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -6837,6 +7031,35 @@ export interface operations {
             };
         };
     };
+    public_dataset_social_preview_v1_public_datasets__collection_id__social_preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_public_items_v1_public_items_get: {
         parameters: {
             query?: {
@@ -6889,6 +7112,66 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ItemRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    public_item_social_preview_v1_public_items__item_id__social_preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    public_item_thumbnail_v1_public_items__item_id__thumbnail_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -7269,6 +7552,43 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectorSecretOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_secret_route_v1_secrets__secret_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                secret_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

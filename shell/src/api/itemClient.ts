@@ -58,5 +58,6 @@ export function createItemClient(opts: {
     getAuthToken: base.getToken,
     getCoreUrl: () => base.coreUrl,
     getShareLinkToken: base.getShareLinkToken,
+    fetchUrl: base.fetchUrl,
   };
 }

@@ -12,6 +12,7 @@ pas en DuckDB 1.5.4 (AttributeError à l'exécution) — la base commune réelle
 de toutes les exceptions DuckDB est `duckdb.Error`, utilisée ci-dessous."""
 
 import json
+import math
 import threading
 from datetime import date, datetime
 from decimal import Decimal
@@ -126,6 +127,8 @@ def _coerce(value: object) -> object:
         return value.isoformat()
     if isinstance(value, Decimal):
         return float(value)
+    if isinstance(value, float) and not math.isfinite(value):
+        return None  # P25.08 : inf/NaN non sérialisables en JSON
     return value
 
 

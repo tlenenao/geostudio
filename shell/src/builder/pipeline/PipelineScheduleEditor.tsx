@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { usePipelineNextRun } from "../../api/hooks";
 import type { PipelineRefreshPolicy } from "../../api/types";
 import { t } from "../../i18n";
@@ -92,6 +92,7 @@ export function PipelineScheduleEditor({
   const cron = value?.cron ?? "*/15 * * * *";
   const [form, setForm] = useState<ScheduleForm>(() => parseCron(cron));
   const nextRunQuery = usePipelineNextRun(cron, enabled);
+  const cronErrorId = useId();
 
   useEffect(() => {
     setForm(parseCron(cron));
@@ -113,6 +114,7 @@ export function PipelineScheduleEditor({
         <input
           type="checkbox"
           aria-label={t("pipelineSchedule.autoSchedulingAria")}
+          className="h-6 w-6"
           checked={enabled}
           onChange={(e) => setEnabled(e.target.checked)}
           disabled={readOnly}
@@ -125,7 +127,7 @@ export function PipelineScheduleEditor({
             {t("pipelineSchedule.modeLabel")}
             <select
               aria-label={t("pipelineSchedule.modeAria")}
-              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+              className="h-8 rounded border border-control bg-surface px-2 text-ink"
               value={form.mode}
               onChange={(e) => {
                 const mode = e.target.value as ScheduleForm["mode"];
@@ -157,7 +159,7 @@ export function PipelineScheduleEditor({
                 aria-label={t("pipelineSchedule.intervalAria")}
                 type="number"
                 min={1}
-                className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+                className="h-8 rounded border border-control bg-surface px-2 text-ink"
                 value={form.minutes}
                 onChange={(e) => handleSetForm({ mode: "interval", minutes: e.target.value })}
                 disabled={readOnly}
@@ -170,7 +172,7 @@ export function PipelineScheduleEditor({
               <input
                 aria-label={t("pipelineSchedule.executionTimeAria")}
                 type="time"
-                className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+                className="h-8 rounded border border-control bg-surface px-2 text-ink"
                 value={form.time}
                 onChange={(e) => handleSetForm({ mode: "daily", time: e.target.value })}
                 disabled={readOnly}
@@ -183,7 +185,7 @@ export function PipelineScheduleEditor({
                 {t("pipelineSchedule.dayLabel")}
                 <select
                   aria-label={t("pipelineSchedule.dayAria")}
-                  className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+                  className="h-8 rounded border border-control bg-surface px-2 text-ink"
                   value={form.day}
                   onChange={(e) =>
                     handleSetForm({ mode: "weekly", day: e.target.value, time: form.time })
@@ -202,7 +204,7 @@ export function PipelineScheduleEditor({
                 <input
                   aria-label={t("pipelineSchedule.executionTimeAria")}
                   type="time"
-                  className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+                  className="h-8 rounded border border-control bg-surface px-2 text-ink"
                   value={form.time}
                   onChange={(e) =>
                     handleSetForm({ mode: "weekly", day: form.day, time: e.target.value })
@@ -217,13 +219,15 @@ export function PipelineScheduleEditor({
               {t("pipelineSchedule.cronExpressionLabel")}
               <input
                 aria-label={t("pipelineSchedule.cronExpressionAria")}
-                className="h-8 rounded border border-rule bg-surface px-2 font-mono text-ink"
+                aria-invalid={!ADVANCED_CRON_RE.test(form.raw)}
+                aria-describedby={!ADVANCED_CRON_RE.test(form.raw) ? `${cronErrorId}` : undefined}
+                className="h-8 rounded border border-control bg-surface px-2 font-mono text-ink"
                 value={form.raw}
                 onChange={(e) => handleSetForm({ mode: "advanced", raw: e.target.value })}
                 disabled={readOnly}
               />
               {!ADVANCED_CRON_RE.test(form.raw) && (
-                <p role="alert" className="text-danger">
+                <p id={cronErrorId} role="alert" className="text-danger">
                   {t("pipelineSchedule.invalidCronFormat")}
                 </p>
               )}

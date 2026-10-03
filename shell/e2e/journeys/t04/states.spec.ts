@@ -1,7 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { CORE_URL } from "../_fixtures/env";
 import {
-  bug,
   failCoreReads,
   getA11ySeed,
   go,
@@ -71,7 +70,7 @@ test.describe("états d'erreur (le cœur répond 500 aux lectures)", () => {
   });
 
   // Finding t04-010 : quatre écrans traduisent toute erreur de lecture (500, réseau) par « … introuvable. »
-  bug("t04-010 : une erreur serveur n'est pas présentée comme « introuvable »", () => {
+  test("t04-010 : une erreur serveur n'est pas présentée comme « introuvable »", () => {
     for (const [p, snap] of Object.entries(items)) {
       expect(snap.alerts.join(" "), p).not.toMatch(/introuvable/i);
     }
@@ -79,12 +78,12 @@ test.describe("états d'erreur (le cœur répond 500 aux lectures)", () => {
 
   // Finding t04-011 : seul le catalogue offre « Réessayer » ; les six listes d'administration n'ont ni bouton
   // ni formulation commune (« Erreur de chargement. » contre « Échec du chargement des … »).
-  bug("t04-011 : toute erreur de chargement propose « Réessayer »", () => {
+  test("t04-011 : toute erreur de chargement propose « Réessayer »", () => {
     for (const p of ADMIN_LISTS) expect(lists[p].retry, p).toBe(true);
   });
 
   // Finding t04-012 : si la préférence de notifications ne se charge pas, la section reste un titre vide.
-  bug("t04-012 : Paramètres signale l'échec de chargement des préférences", () => {
+  test("t04-012 : Paramètres signale l'échec de chargement des préférences", () => {
     expect(settings.alerts.join(" ")).toMatch(/échec|erreur/i);
   });
 });
@@ -109,17 +108,14 @@ test.describe("états de chargement (lectures retardées de 5 s)", () => {
 
   // Finding t04-009 : seul /admin/extensions utilise LoadingState (pastille animée) ; les cinq autres écrans
   // affichent un <p role=status> nu sans indicateur visuel.
-  bug(
-    "t04-009 : tous les écrans de chargement utilisent la même présentation (LoadingState)",
-    () => {
-      for (const p of ADMIN_LISTS) {
-        expect(
-          snaps[p].status.some((x) => x.spinner),
-          p,
-        ).toBe(true);
-      }
-    },
-  );
+  test("t04-009 : tous les écrans de chargement utilisent la même présentation (LoadingState)", () => {
+    for (const p of ADMIN_LISTS) {
+      expect(
+        snaps[p].status.some((x) => x.spinner),
+        p,
+      ).toBe(true);
+    }
+  });
 });
 
 test.describe("accès refusé (reader)", () => {

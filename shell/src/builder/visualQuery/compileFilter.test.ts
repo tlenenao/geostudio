@@ -43,12 +43,25 @@ describe("compileFilterRowsToSql", () => {
     expect(sql).toBe("\"commune\" = 'L''Île'");
   });
 
-  test("contains produit un LIKE encadré de %", () => {
+  test("contains produit un ILIKE encadré de %, jokers échappés (P25.13)", () => {
     const sql = compileFilterRowsToSql(
       [{ column: "commune", operator: "contains", value: "par" }],
       SCHEMA,
     );
-    expect(sql).toBe("\"commune\" LIKE '%par%'");
+    expect(sql).toBe("\"commune\" ILIKE '%par%' ESCAPE '\\'");
+    const wild = compileFilterRowsToSql(
+      [{ column: "commune", operator: "contains", value: "100%_\\" }],
+      SCHEMA,
+    );
+    expect(wild).toBe("\"commune\" ILIKE '%100\\%\\_\\\\%' ESCAPE '\\'");
+  });
+
+  test("round-trip contains avec jokers, et ancien LIKE toujours relu", () => {
+    const original = [{ column: "commune", operator: "contains" as const, value: "a%_\\'b" }];
+    expect(decompileSqlToFilterRows(compileFilterRowsToSql(original, SCHEMA))).toEqual(original);
+    expect(decompileSqlToFilterRows("\"commune\" LIKE '%par%'")).toEqual([
+      { column: "commune", operator: "contains", value: "par" },
+    ]);
   });
 });
 

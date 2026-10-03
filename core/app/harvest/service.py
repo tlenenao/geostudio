@@ -68,6 +68,9 @@ def harvest_source(
         records = list(connector.fetch(source.url))
     except Exception as exc:
         logger.exception("harvest source %s: échec de récupération", source.id)
+        # j07-006 : dater la tentative, sinon list_due_sources relance la source
+        # en erreur à chaque balayage quel que soit son intervalle.
+        source.last_run_at = _now()
         source.last_status = "error"
         source.last_error = str(exc)[:500]
         session.flush()
@@ -125,6 +128,7 @@ def harvest_source(
         source = harvest_repo.get_source(session, tenant_id=tenant_id, source_id=source_id)
         if source is None:
             return
+        source.last_run_at = _now()
         source.last_status = "error"
         source.last_error = str(exc)[:500]
         session.flush()

@@ -147,8 +147,8 @@ test.describe("j08 usage (/tasks) — API", () => {
     expect(win.body.totalActions).toBe(0);
   });
 
-  // Finding j08-004 : paramètres de fenêtre invalides → 500.
-  bug("j08-004 : since illisible ou limit négatif → 4xx, jamais 500", async () => {
+  // j08-004 (P21.07) : fenêtre invalide → 422, jamais 500.
+  test("j08-004 : since illisible ou limit négatif → 4xx, jamais 500", async () => {
     for (const q of ["since=pas-une-date", "until=32/13/2026", "limit=-1"]) {
       const r = await admin.get(`/v1/usage/summary?${q}`);
       expect(r.status, q).toBeGreaterThanOrEqual(400);

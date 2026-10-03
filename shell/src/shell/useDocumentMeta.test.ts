@@ -62,3 +62,17 @@ test("nettoie les balises posées au démontage", () => {
   expect(document.querySelector('meta[name="description"]')).toBeNull();
   expect(document.querySelector('link[rel="canonical"]')).toBeNull();
 });
+
+test("noindex pose <meta name=robots> et le retire au démontage (P35.03)", () => {
+  const { unmount } = renderHook(() =>
+    useDocumentMeta({
+      title: "Page introuvable.",
+      description: "",
+      canonicalUrl: "/x",
+      noindex: true,
+    }),
+  );
+  expect(document.querySelector('meta[name="robots"]')?.getAttribute("content")).toBe("noindex");
+  unmount();
+  expect(document.querySelector('meta[name="robots"]')).toBeNull();
+});

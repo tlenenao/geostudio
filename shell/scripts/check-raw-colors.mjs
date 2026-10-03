@@ -39,6 +39,10 @@ const ROOT = "src";
 const RAW_COLOR_RE =
   /\b(text|bg|border)-(red|green|blue|yellow|slate|gray|zinc|neutral|stone|emerald|amber|orange|indigo|violet|purple|pink|rose|cyan|sky|teal|lime|white|black)(-[0-9]+)?(\/[0-9]+)?\b/;
 
+// Couleurs hexadécimales littérales entre guillemets (dataviz, MapLibre) : à lire
+// depuis un jeton --gs-* (lib/theme.ts readToken) ou à justifier par le pragma.
+const HEX_COLOR_RE = /["'`]#[0-9a-fA-F]{3,8}["'`]/;
+
 const PRAGMA_RE = /gs-raw-color-ok/;
 
 /**
@@ -86,7 +90,7 @@ function findOffenders(file) {
   const lines = content.split("\n");
   const offenders = [];
   lines.forEach((line, index) => {
-    if (!RAW_COLOR_RE.test(line)) return;
+    if (!RAW_COLOR_RE.test(line) && !HEX_COLOR_RE.test(line)) return;
     const coveredBySameLine = PRAGMA_RE.test(line);
     const prevLine = index > 0 ? lines[index - 1] : "";
     const prevLineTrimmed = prevLine.trim();

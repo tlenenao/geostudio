@@ -61,34 +61,32 @@ test.describe("j05 SQL Lab — UI", () => {
   });
 
   // Finding j05-013 : ni liste de tables, ni complétion de leurs noms (ids opaques type ingest_xxx).
-  bug(
-    "j05-013 : SQL Lab propose les collections interrogeables (noms de table) à la saisie",
-    async ({ page }) => {
-      await loginOidc(page, "analyst");
-      await page.waitForTimeout(800);
-      await spaGo(page, "/analytics/sql", 2000);
-      await editor(page).click();
-      await page.keyboard.type(`select * from ${seed.ventes.slice(0, 8)}`);
-      const list = page.locator(".cm-tooltip-autocomplete");
-      await expect(list).toContainText(seed.ventes);
-    },
-  );
+  test("j05-013 : SQL Lab propose les collections interrogeables (noms de table) à la saisie", async ({
+    page,
+  }) => {
+    await loginOidc(page, "analyst");
+    await page.waitForTimeout(800);
+    await spaGo(page, "/analytics/sql", 2000);
+    await editor(page).click();
+    await page.keyboard.type(`select * from ${seed.ventes.slice(0, 8)}`);
+    const list = page.locator(".cm-tooltip-autocomplete");
+    await expect(list).toContainText(seed.ventes);
+  });
 
   // Finding j05-015 : NULL et chaîne vide sont tous deux rendus en cellule vide.
-  bug(
-    "j05-015 : une valeur NULL se distingue d'une chaîne vide dans le résultat",
-    async ({ page }) => {
-      await loginOidc(page, "analyst");
-      await page.waitForTimeout(800);
-      await spaGo(page, "/analytics/sql", 2000);
-      await typeSql(page, "select cast(null as varchar) a, '' b");
-      await page.getByRole("button", { name: "Exécuter" }).click();
-      const cells = page.locator("table tbody tr td");
-      await expect(cells).toHaveCount(2);
-      const [a, b] = await cells.allInnerTexts();
-      expect(a).not.toBe(b);
-    },
-  );
+  test("j05-015 : une valeur NULL se distingue d'une chaîne vide dans le résultat", async ({
+    page,
+  }) => {
+    await loginOidc(page, "analyst");
+    await page.waitForTimeout(800);
+    await spaGo(page, "/analytics/sql", 2000);
+    await typeSql(page, "select cast(null as varchar) a, '' b");
+    await page.getByRole("button", { name: "Exécuter" }).click();
+    const cells = page.locator("table tbody tr td");
+    await expect(cells).toHaveCount(2);
+    const [a, b] = await cells.allInnerTexts();
+    expect(a).not.toBe(b);
+  });
 
   // Finding j05-016 : clé localStorage unique « geostudio.sqlLab.history », partagée entre comptes.
   bug("j05-016 : l'historique SQL est cloisonné par utilisateur", async ({ page }) => {
@@ -107,17 +105,16 @@ test.describe("j05 SQL Lab — UI", () => {
   });
 
   // Finding j05-027 : dialecte SQLite + Entrée qui valide la complétion au lieu de passer à la ligne.
-  bug(
-    "j05-027 : Entrée après « select cat » ne remplace pas la saisie par le mot-clé « catalog »",
-    async ({ page }) => {
-      await loginOidc(page, "analyst");
-      await page.waitForTimeout(800);
-      await spaGo(page, "/analytics/sql", 2000);
-      await editor(page).click();
-      await page.keyboard.type("select cat");
-      await page.waitForTimeout(400);
-      await page.keyboard.press("Enter");
-      await expect(editor(page)).not.toContainText("catalog");
-    },
-  );
+  test("j05-027 : Entrée après « select cat » ne remplace pas la saisie par le mot-clé « catalog »", async ({
+    page,
+  }) => {
+    await loginOidc(page, "analyst");
+    await page.waitForTimeout(800);
+    await spaGo(page, "/analytics/sql", 2000);
+    await editor(page).click();
+    await page.keyboard.type("select cat");
+    await page.waitForTimeout(400);
+    await page.keyboard.press("Enter");
+    await expect(editor(page)).not.toContainText("catalog");
+  });
 });

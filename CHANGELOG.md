@@ -107,6 +107,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     (`sensitiveFields`) are excluded from app exports, pipeline
     `reader.collection`, MCP schema and the collection record.
 
+- **Pre-release audit (P22–P35) — behaviour notes.**
+  - Quotas (`CORE_QUOTAS_ENABLED`, `CORE_QUOTA_MAX_*`) are enforced at the single
+    creation point of items and collections (REST, MCP, import, pipelines,
+    harvest, 3D) and the variables are now wired on the worker too. A refusal
+    answers 413 (storage) or 409 (count). No migration.
+  - Public item thumbnails are served with a `sandbox` CSP (scripted SVG no
+    longer runs in the core origin). The public catalogue lives at `/public`
+    and `sitemap.xml` covers all public pages (single file, 50,000 URL cap).
+  - MCP tool calls and copilot turns leave `mcp.tool_call` / `copilot.turn`
+    rows in `audit_log`; copilot writes require a click confirmation.
+
 ## [0.1.0] - 2026-07-16
 
 Retroactive entry covering everything shipped since the fork from

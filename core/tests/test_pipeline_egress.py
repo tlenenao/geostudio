@@ -79,3 +79,33 @@ def test_guarded_session_blocks_before_connection():
 def test_guarded_session_is_a_real_requests_session():
     session = build_guarded_session()
     assert isinstance(session, requests.Session)
+
+
+@pytest.mark.parametrize("url", ["http://100.64.0.1/x", "http://198.51.100.7/x"])
+def test_non_global_addresses_blocked(url):
+    # CGNAT et TEST-NET : ni privées ni réservées au sens historique, mais non globales.
+    with pytest.raises(EgressBlockedError):
+        assert_egress_allowed(url)
+
+
+@pytest.mark.parametrize(
+    "dsn",
+    [
+        "postgresql://u:p@127.0.0.1/db",
+        "postgresql://u:p@db.example/db?host=10.0.0.1",
+        "postgresql://u:p@db.example/db?hostaddr=192.168.0.9,8.8.8.8",
+        "mssql+pymssql://u:p@[::1]:1433/db",
+        # hôte passé par un paramètre de pilote plutôt que par l'URL
+        "mssql+pymssql://u:p@/db?server=127.0.0.1",
+        "oracle+oracledb://u:p@/?dsn=127.0.0.1:1521/x",
+        "mssql+pyodbc://u:p@/db?odbc_connect=SERVER%3D127.0.0.1",
+    ],
+)
+def test_dsn_with_internal_host_blocked(dsn, monkeypatch):
+    from app.pipelines.egress import assert_dsn_egress_allowed
+
+    monkeypatch.setattr(
+        socket, "getaddrinfo", lambda *a, **k: [(2, 1, 6, "", ("93.184.216.34", 0))]
+    )
+    with pytest.raises(EgressBlockedError):
+        assert_dsn_egress_allowed(dsn)

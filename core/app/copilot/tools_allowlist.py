@@ -23,3 +23,9 @@ ALLOWED_MCP_TOOL_NAMES = frozenset(
         "generate_visual_query",
     }
 )
+
+# Sous-ensemble d'écriture de l'allowlist : jamais exécuté sans clic humain
+# (j11-012). Déclaré ici car app.copilot n'importe pas app.mcp (contrat de
+# couches) ; test_mcp_copilot_p23 vérifie qu'il reste inclus dans
+# WRITE_TOOL_NAMES (registre @write_tool).
+COPILOT_WRITE_TOOL_NAMES = frozenset({"create_item", "create_form_app"})

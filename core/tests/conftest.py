@@ -27,10 +27,21 @@ os.environ.setdefault("CORE_ENV", "development")
 
 
 @pytest.fixture(scope="session")
-def pg_engine():
+def test_db_url():
+    """URL du postgis de test, point unique du skip conditionnel (P27.01/02).
+    CORE_REQUIRE_DB=1 (posé en CI) transforme le skip silencieux en échec."""
     url = os.environ.get("CORE_TEST_DATABASE_URL")
     if not url:
-        pytest.skip("CORE_TEST_DATABASE_URL non défini — test postgis skippé")
+        msg = "CORE_TEST_DATABASE_URL non défini — test postgis skippé"
+        if os.environ.get("CORE_REQUIRE_DB") == "1":
+            pytest.fail(msg + " (CORE_REQUIRE_DB=1 : base réelle obligatoire)")
+        pytest.skip(msg)
+    return url
+
+
+@pytest.fixture(scope="session")
+def pg_engine(test_db_url):
+    url = test_db_url
     engine = create_engine(url)
     # Les rôles RLS et les extensions vector/pg_trgm existent dans la base de
     # test (idempotent) : les tests DDL (SP-3) et d'embedding (SP-7)

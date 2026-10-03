@@ -12,6 +12,7 @@ from app.audit.models import AuditLog
 from app.configs import repository as configs_repo
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.items import repository as items_repo
+from app.notifications.models import Notification
 from app.tenants.repository import get_or_create_default_tenant
 from app.tileset3d import jobs as tileset3d_jobs
 from app.tileset3d import repository as tileset3d_repo
@@ -141,6 +142,9 @@ def test_finalize_task_creates_item_and_config_on_success(env, monkeypatch, tmp_
         assert config.config.tileset3d.sourceKey == "k"
         assert config.config.tileset3d.tilesetJsonPath == "tileset.json"
         assert config.config.tileset3d.entryCount == 2
+        # P20.12 : le créateur est notifié in-app de la fin du job
+        notif = s.scalars(select(Notification).where(Notification.kind == "tileset3d")).one()
+        assert (notif.status, notif.item_id) == ("success", job.item_id)
 
 
 def test_finalize_task_marks_error_on_invalid_zip_without_creating_an_item(
@@ -186,6 +190,8 @@ def test_finalize_task_marks_error_on_invalid_zip_without_creating_an_item(
         assert job.status == "error"
         assert "zip invalide" in job.error_message
         assert job.item_id is None
+        notif = s.scalars(select(Notification).where(Notification.kind == "tileset3d")).one()
+        assert notif.status == "failure" and "zip invalide" in notif.error_message
     # Le zip rejeté n'est référencé par rien : il doit être purgé du bucket,
     # sinon plusieurs Go y restent pour toujours (revue finale, I4).
     assert fake_s3.deleted == [(tileset3d_jobs._tileset3d_bucket(), "k")]

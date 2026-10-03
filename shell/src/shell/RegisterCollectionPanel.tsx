@@ -4,6 +4,7 @@ import { useCandidateTables, useCreateCollection, useInstanceInfo } from "../api
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { t } from "../i18n";
+import { LoadingState } from "../ui/kit/LoadingState";
 
 export function RegisterCollectionPanel({ onClose }: { onClose: () => void }) {
   const candidatesQuery = useCandidateTables();
@@ -34,7 +35,7 @@ export function RegisterCollectionPanel({ onClose }: { onClose: () => void }) {
   return (
     <section aria-label={t("registerCollection.title")} className="flex flex-col gap-3">
       <h2 className="text-sm font-semibold text-ink">{t("registerCollection.title")}</h2>
-      {candidatesQuery.isLoading && <p role="status">{t("common.loading")}</p>}
+      {candidatesQuery.isLoading && <LoadingState />}
       {candidatesQuery.isError && (
         <p role="alert" className="text-sm text-danger">
           {t("registerCollection.candidatesLoadFailed")}
@@ -49,7 +50,7 @@ export function RegisterCollectionPanel({ onClose }: { onClose: () => void }) {
             {t("registerCollection.tableLabel")}
             <select
               aria-label={t("registerCollection.tableLabel")}
-              className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+              className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
               value={tableName}
               onChange={(e) => setTableName(e.target.value)}
             >

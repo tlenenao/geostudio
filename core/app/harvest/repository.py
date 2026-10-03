@@ -2,7 +2,8 @@
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import delete as sa_delete
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.harvest.models import HarvestRecord, HarvestSource
@@ -68,9 +69,78 @@ def update_source(session: Session, source: HarvestSource, **fields) -> HarvestS
     return source
 
 
-def delete_source(session: Session, source: HarvestSource) -> None:
+def find_duplicate_source(
+    session: Session,
+    *,
+    tenant_id: str,
+    type: str,
+    url: str,
+    exclude_id: str | None = None,
+) -> HarvestSource | None:
+    # ponytail: vérification applicative (course possible entre deux POST
+    # simultanés) ; contrainte unique + migration si le cas se présente.
+    stmt = select(HarvestSource).where(
+        HarvestSource.tenant_id == tenant_id,
+        HarvestSource.type == type,
+        HarvestSource.url == url,
+    )
+    if exclude_id is not None:
+        stmt = stmt.where(HarvestSource.id != exclude_id)
+    return session.scalars(stmt.limit(1)).first()
+
+
+def delete_source(session: Session, source: HarvestSource) -> int:
+    """Supprime la source, ses enregistrements (cascade) et les items `external`
+    qu'elle avait créés (mode référence). Les items d'une copie (jeux de données
+    réels) sont conservés. Retourne le nombre d'items retirés (j07-007)."""
+    item_ids = list(
+        session.scalars(
+            select(HarvestRecord.item_id)
+            .join(Item, Item.id == HarvestRecord.item_id)
+            .where(
+                HarvestRecord.source_id == source.id,
+                HarvestRecord.tenant_id == source.tenant_id,
+                Item.resource_type == "external",
+            )
+        ).all()
+    )
     session.delete(source)
     session.flush()
+    if item_ids:
+        session.execute(sa_delete(Item).where(Item.id.in_(item_ids)))
+    return len(item_ids)
+
+
+def record_counts(
+    session: Session, *, tenant_id: str, source_ids: list[str]
+) -> dict[str, tuple[int, int]]:
+    """source_id -> (total, stale) en une seule requête."""
+    if not source_ids:
+        return {}
+    rows = session.execute(
+        select(
+            HarvestRecord.source_id,
+            func.count(),
+            func.count().filter(HarvestRecord.is_stale.is_(True)),
+        )
+        .where(HarvestRecord.tenant_id == tenant_id, HarvestRecord.source_id.in_(source_ids))
+        .group_by(HarvestRecord.source_id)
+    ).all()
+    return {sid: (total, stale) for sid, total, stale in rows}
+
+
+def list_source_records(
+    session: Session, *, tenant_id: str, source_id: str, limit: int, offset: int
+) -> list[HarvestRecord]:
+    return list(
+        session.scalars(
+            select(HarvestRecord)
+            .where(HarvestRecord.tenant_id == tenant_id, HarvestRecord.source_id == source_id)
+            .order_by(HarvestRecord.external_id)
+            .limit(limit)
+            .offset(offset)
+        ).all()
+    )
 
 
 def mark_running(session: Session, *, tenant_id: str, source_id: str) -> None:

@@ -34,7 +34,7 @@ test("removes a page and falls back to the first remaining page if it was active
   await userEvent.click(screen.getByRole("button", { name: "Retirer la page p2" }));
   expect(onChange).not.toHaveBeenCalled();
   await userEvent.click(
-    within(await screen.findByRole("dialog")).getByRole("button", { name: "Supprimer" }),
+    within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Supprimer" }),
   );
   expect(onChange).toHaveBeenCalledWith([pages[0]]);
   expect(onSelectPage).toHaveBeenCalledWith("p1");

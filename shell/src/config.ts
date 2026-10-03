@@ -57,3 +57,13 @@ export function loadConfig(
     authMode,
   };
 }
+
+// P22.03 : lecture unique de l'environnement (build Vite + injection runtime
+// `window.__GEOSTUDIO_ENV__`), partagée par App.tsx et EmbedPage.tsx.
+export function loadRuntimeConfig(): AppConfig {
+  return loadConfig(
+    import.meta.env as unknown as Record<string, string | undefined>,
+    (window as unknown as { __GEOSTUDIO_ENV__?: Record<string, string | undefined> })
+      .__GEOSTUDIO_ENV__,
+  );
+}

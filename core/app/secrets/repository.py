@@ -1,20 +1,44 @@
 # SPDX-License-Identifier: Apache-2.0
 import uuid
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.configs.models import Config, ConfigRevision
+from app.items.models import Item
+from app.roles.guards import has_privilege
+from app.roles.privileges import Privilege
 from app.secrets.crypto import decrypt
 from app.secrets.models import ConnectorSecret
 from app.secrets.schemas import SECRET_PAYLOAD_ADAPTER, SecretPayload
+from app.users.models import User
+
+
+def can_use_secret(session: Session, user: User, secret: ConnectorSecret) -> bool:
+    """ACL du coffre (P16.01) : propriétaire du secret, ou privilège
+    admin.secrets.manage. automation.secrets.manage seul ne donne accès
+    qu'à ses propres secrets."""
+    return secret.created_by == user.id or has_privilege(
+        session, user, Privilege.ADMIN_SECRETS_MANAGE.value
+    )
 
 
 def get_secret(session: Session, *, tenant_id: str, secret_id: str) -> ConnectorSecret | None:
+    """Sans ACL — les routes appliquent can_use_secret."""
     return session.scalar(
         select(ConnectorSecret).where(
             ConnectorSecret.tenant_id == tenant_id, ConnectorSecret.id == secret_id
         )
     )
+
+
+def get_visible_secret(
+    session: Session, *, tenant_id: str, secret_id: str, user: User
+) -> ConnectorSecret | None:
+    """get_secret + ACL : un secret d'autrui est indistinguable d'un absent."""
+    secret = get_secret(session, tenant_id=tenant_id, secret_id=secret_id)
+    return secret if secret is not None and can_use_secret(session, user, secret) else None
 
 
 def get_secret_by_name(session: Session, *, tenant_id: str, name: str) -> ConnectorSecret | None:
@@ -50,14 +74,56 @@ def create_secret(
     return secret
 
 
-def list_secrets(session: Session, *, tenant_id: str) -> list[ConnectorSecret]:
-    return list(
-        session.scalars(
-            select(ConnectorSecret)
-            .where(ConnectorSecret.tenant_id == tenant_id)
-            .order_by(ConnectorSecret.name)
-        ).all()
-    )
+def list_secrets(session: Session, *, tenant_id: str, user: User) -> list[ConnectorSecret]:
+    """Seulement les secrets que `user` peut utiliser (P16.01)."""
+    rows = session.scalars(
+        select(ConnectorSecret)
+        .where(ConnectorSecret.tenant_id == tenant_id)
+        .order_by(ConnectorSecret.name)
+    ).all()
+    return [s for s in rows if can_use_secret(session, user, s)]
+
+
+def _references(node: Any, name: str) -> bool:
+    if isinstance(node, dict):
+        return any(
+            (k in {"secretName", "smtpSecretName", "signingSecretName"} and v == name)
+            or _references(v, name)
+            for k, v in node.items()
+        )
+    if isinstance(node, list):
+        return any(_references(v, name) for v in node)
+    return False
+
+
+def find_usages(session: Session, *, tenant_id: str, name: str) -> list[dict[str, str]]:
+    """Items (pipelines, alertes, rapports…) dont la config courante cite
+    ce secret par son nom (P16.05)."""
+    rows = session.execute(
+        select(Item.id, Item.title, ConfigRevision.data)
+        .join(Config, Config.item_id == Item.id)
+        .join(
+            ConfigRevision,
+            (ConfigRevision.config_id == Config.id)
+            & (ConfigRevision.version == Config.current_version),
+        )
+        .where(Config.tenant_id == tenant_id)
+    ).all()
+    return [{"itemId": i, "title": t} for i, t, data in rows if _references(data, name)]
+
+
+class SecretInUseError(Exception):
+    pass
+
+
+def delete_secret_unless_used(session: Session, secret: ConnectorSecret) -> None:
+    """Refuse (SecretInUseError, message = liste des usages) si une config
+    cite encore le secret (P16.05)."""
+    usages = find_usages(session, tenant_id=secret.tenant_id, name=secret.name)
+    if usages:
+        titles = ", ".join(u["title"] for u in usages)
+        raise SecretInUseError(f"secret encore utilisé par : {titles}")
+    delete_secret(session, secret)
 
 
 def delete_secret(session: Session, secret: ConnectorSecret) -> None:
@@ -74,11 +140,15 @@ def list_all_secrets(session: Session) -> list[ConnectorSecret]:
     return list(session.scalars(select(ConnectorSecret)).all())
 
 
-def get_secret_payload(session: Session, *, tenant_id: str, name: str) -> SecretPayload | None:
+def get_secret_payload(
+    session: Session, *, tenant_id: str, name: str, user: User
+) -> SecretPayload | None:
     """Déchiffre. Usage interne uniquement (ex. futur runtime SP-15f) —
     jamais appelé depuis un handler de route qui sérialise sa sortie en
-    JSON (design §5)."""
+    JSON (design §5). `user` = l'acteur qui utilise le secret (P16.01) :
+    un secret qu'il ne peut pas utiliser est indistinguable d'un secret
+    absent (None)."""
     secret = get_secret_by_name(session, tenant_id=tenant_id, name=name)
-    if secret is None:
+    if secret is None or not can_use_secret(session, user, secret):
         return None
     return SECRET_PAYLOAD_ADAPTER.validate_python(decrypt(secret.ciphertext, secret.nonce))

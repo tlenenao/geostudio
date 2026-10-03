@@ -24,6 +24,7 @@ from app.mcp.tools import (
     secrets,
     sharing,
 )
+from app.mcp.tools.harness import instrument
 from app.mcp.tools.write_tools import WRITE_TOOL_NAMES
 
 # REV-008 : READ_ONLY_TOOLS n'est plus un ensemble littéral écrit à la main
@@ -34,6 +35,7 @@ READ_ONLY_TOOLS = WRITE_TOOL_NAMES
 
 
 def register_tools(server: FastMCP, session_factory) -> None:
+    tools_server = instrument(server, session_factory)
     for module in (
         identity,
         catalog,
@@ -49,7 +51,7 @@ def register_tools(server: FastMCP, session_factory) -> None:
         attachments,
         secrets,
     ):
-        module.register(server, session_factory)
+        module.register(tools_server, session_factory)
 
     @server.resource("schema://app-config")
     def app_config_schema() -> dict:

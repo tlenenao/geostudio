@@ -186,13 +186,13 @@ uv run pytest        # doit être entièrement vert, couverture ≥ seuil
 cd core
 uv run ruff check . && uv run ruff format --check .
 uv run mypy --strict app/auth app/secrets app/analytics app/copilot app/admin_tools app/roles
-uv run lint-imports                      # contrat de couches (30 entrées)
+uv run lint-imports                      # contrat de couches (40 entrées)
 uv run python scripts/check_coverage.py coverage.xml .coverage-threshold   # 85
 cd ../shell
 npm run lint && npm run format:check
 node scripts/check-coverage.mjs coverage/coverage-summary.json \
-  .coverage-threshold                    # 88 ; nettoyer dist/ + dist-export/ avant
-uvx pre-commit run --all-files           # 5 hooks (commitlint ne sort qu'au commit)
+  .coverage-threshold                    # seuil = shell/.coverage-threshold ; nettoyer dist/ + dist-export/ avant
+uvx pre-commit run --all-files           # 6 hooks (commitlint ne sort qu'au commit)
 
 # régénérer la spec OpenAPI + les types TS — À FAIRE dès qu'une route ou un
 # modèle change (classe d'oubli n°1 du dépôt). La commande nue échoue en
@@ -299,15 +299,16 @@ garde-fou posé depuis.
   Autoporté (conteneur + snapshot GeoParquet). **Jalon M15**.
 - **SP-19** — undo/redo général du builder (`useUndoableDraft`, pile de 50,
   coalescing 400 ms).
-- **SP-20** — copilote IA dans le builder : 6 outils MCP allowlistés en
+- **SP-20** — copilote IA dans le builder : 8 outils MCP allowlistés
+  (`core/app/copilot/tools_allowlist.py` : lecture/recherche, `create_item`/
+  `create_form_app`, `generate_sql_query`/`generate_visual_query`) en
   loopback HTTP réel sur `/mcp`, derrière `CORE_LLM_PROVIDER`. **Jalon
-  M16**. Reste : garde d'egress sur l'appel LLM sortant, 4e surface sortante
-  sans garde (`REV-096`).
+  M16**. Garde d'egress sur l'appel LLM posée par SP-45 (`REV-096` clos).
 - **Release v0.1.0** — huit images `ghcr.io/tlenenao/geostudio-*` publiées,
   plus aucun `:latest` dans le compose de production résolu.
 - **SP-21** — déployabilité : garde-fou `core/tests/test_deployability.py`,
   healthchecks sur 7 services, notices GPL/AGPL embarquées.
-- **SP-22** — filet qualité statique : ruff, contrat de couches (30
+- **SP-22** — filet qualité statique : ruff, contrat de couches (40
   entrées), ESLint+Prettier, `mypy --strict` (4 modules), seuils de
   couverture non régressifs, pre-commit + commitlint, CodeQL/gitleaks/
   Trivy/SBOM/Dependabot.
@@ -640,7 +641,13 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   RGPD, fuites de lecture, partage/groupes/annuaire, masquage GAP-22 sur
   pipelines/exports/MCP (ferme les 2 bypass documentés). Revues finales :
   P01–P05 6 Important, P06–P15 2 Important. Reste : `REV-270`/`272`.
-  P16–P36 du plan non lancés. Détail dans l'archive.
+  Détail dans l'archive.
+- **Audit pré-release P16–P21 + P24–P25 + P27–P29 + P31 + P33–P34 (secrets/egress, passerelle admin, pipelines, moissonnage, alertes, contrats d'API, index/balayages SQL, bornes DuckDB/lac)** —
+  ACL du coffre, egress DSN/blob, plafonds des connecteurs ; Grafana Viewer,
+  `GET /v1/instance/status` ; écriture de pipeline par lots, annulation de run,
+  audit des runs planifiés, topologie validée ; moissonnage daté/dédoublonné/purgé,
+  recherche STAC tolérante ; alertes (livraison tracée/rejouée/signée, cloche) ; 404/422 en RFC 7807, config stricte à l'écriture seulement, pagination bornée ; index `audit_log`/`configs`/`report_runs`, balayage des configs en 1 requête, catalogue public paginé en SQL, cache d'introspection ; agrégats DuckDB bornés (temps/threads/groupes), `asOf`/`pending`, compaction CDC par niveaux ; CI (base réelle exigée, actions épinglées par SHA, Node 22, timeouts, job `stack-smoke`), sauvegarde bornée + sonde de fraîcheur ; import de fichiers (bornes lat/lon, séparateur, typage CSV, item dataset, sondage borné) ; données complètes (carte importée en tuiles, tuile triée sur la PK, totaux annoncés, export WKT) ; accessibilité transverse (titres de route, repères `<main>`/`<h1>`, menu Actions Radix, `alertdialog`, jeton `--gs-control` 3:1, réglage de thème persistant) ; cohérence UI/i18n (glossaire, formats fr-FR, kit de page/état, détecteur i18n `.ts`). Reste : `REV-273`/`274`/`275`/`276`/`277`/`278`/`279`/`280`/`281`/`282`/`283`/`284`/`285`.
+- **Audit pré-release P22/P23/P26/P30/P32/P35/P36 (clôture : plan P01–P36 intégralement exécuté)** — erreurs RFC 7807 et bannière de connectivité à sondage sur tout appel cœur (règle ESLint `fetch`) ; outils MCP hors boucle d'événements + audit `mcp.tool_call`/`copilot.turn` + écritures du copilote confirmées par clic ; quotas items/collections/stockage au point unique de création ; carte via `ItemClient`, fuite luma.gl corrigée, `MapView` découpé ; canevas de pipeline au clavier ; catalogue public `/public`, sitemap/og ; CLAUDE.md réaligné. Revue finale : 5 Important corrigés. Reste : `REV-287` à `REV-293` (journeys non rejoués sur stack OIDC réelle, `REV-266`).
 
 ### Conventions tranchées (2026-09-01)
 
@@ -661,8 +668,7 @@ cette décision a été fermée par SP-34 (cf. `### Livré` ci-dessus).
 
 ### Suivis et dette non bloquante
 
-Détail complet (195 entrées `REV-nnn`, 17 ouvertes, recompté le 2026-09-20
-par classification robuste de chaque ligne `**État :**`) dans
+Détail complet (entrées `REV-nnn` ; compteurs dans son sommaire, non dupliqués ici) dans
 **`docs/revue/2026-09-04-backlog.md`** — revalidé le 2026-09-06 après une
 dérive documentaire (piège n°12, ce document était resté 21 SP sans être
 retouché). Ce qui suit est un **pointeur**, pas un résumé — ne pas y
@@ -682,10 +688,8 @@ recoller le détail que le backlog porte déjà :
   fermé, pas de lint automatique).
 - Restauration de sauvegarde : succès partiel, reconnexion OIDC jamais
   vérifiée (`REV-164`, détail dans la section suivante).
-- `save_app_config` (MCP) saute des validateurs REST — connu, non corrigé
-  (`REV-174`).
-- 4 index fonctionnels pgvector/trgm filtrés nommément par le comparateur
-  modèle/Alembic (`REV-175`).
+- 4 index fonctionnels pgvector/trgm restent filtrés nommément par le
+  comparateur modèle/Alembic (décision actée, `REV-175` clos).
 - GAP-72 partiellement fermé par **SP-48** : CSP `enforce` par défaut en
   prod (`report-only` en dev, rollback via `CORE_CSP_MODE`) sur
   img-src/connect-src ; `script-src` pour les widgets d'extension tiers
@@ -696,18 +700,19 @@ recoller le détail que le backlog porte déjà :
   taille d'egress, dégradation gracieuse sur collection cassée).
   Pagination shell et `GET /dcat/datasets/{id}` restent hors périmètre.
 - i18n (SP-29a) + a11y (SP-57a) outillés : `npm run lint` bloque le
-  français en dur, `a11y-audit.spec.ts` audite 9 pages
+  français en dur, `a11y-audit.spec.ts` audite ~17 pages
   (`REV-176`/`177`/`178`).
 - Audit pré-release (P01–P15) : reliquats `REV-266` à `REV-272` du backlog
   (stack réelle non rejouée, perf shell, orphelins S3, release/Keycloak,
-  décisions produit, `If-Match` partiel, tombstone RGPD) ; P16–P36 du plan
-  `docs/revue/audit-2026-09-29/PLAN-CONSOLIDE.md` non exécutés.
+  décisions produit, `If-Match` partiel, tombstone RGPD) ; le plan
+  `docs/revue/audit-2026-09-29/PLAN-CONSOLIDE.md` (P01–P36) est intégralement exécuté,
+  reliquats `REV-266` à `REV-293` du backlog.
 - Bilan de fonctionnalités outillé (SP-61) : `docs/revue/
   bilan-fonctionnalites.{html,md}`, régénéré par
   `feature_health_cli.py --write`, CI refuse toute surface non
   inventoriée. Matrice `2026-09-04-matrice-fonctionnalites.md` **gelée**,
   ne plus l'éditer (`REV-179`/`180`).
-- Questions produit ouvertes : Q10 temps réel (`REV-108`), Q11 offline
+- Questions produit ouvertes : Q10 temps réel (`REV-114`), Q11 offline
   (`REV-120`). Q2 répondue 2026-09-15 : produit horizontal, parité de
   couverture de connecteurs comme différenciateur face à FME —
   `OperationContract` envisagé pour `core/app/pipelines/`, pas encore

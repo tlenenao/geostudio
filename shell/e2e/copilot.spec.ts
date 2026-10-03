@@ -49,15 +49,15 @@ test("copilot: explain prompt makes no changes, add-widget prompt adds and is un
   await page.getByLabel("Message au copilote").fill("Explique ce dataset");
   await page.getByRole("button", { name: "Envoyer" }).click();
   await expect(page.getByText("Ce dataset contient des incidents.")).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Sélectionner widget-/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Sélectionner / })).toHaveCount(0);
 
   // Ajoute un widget — apparaît sur le canevas, annulable via le bouton
   // Annuler de la barre d'outils (pas de bouton dédié dans le panneau).
   await page.getByLabel("Message au copilote").fill("Ajoute un indicateur");
   await page.getByRole("button", { name: "Envoyer" }).click();
   await expect(page.getByText("J'ai ajouté un indicateur.")).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Sélectionner widget-/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Sélectionner / })).toBeVisible();
 
   await page.getByRole("button", { name: "Annuler" }).click();
-  await expect(page.getByRole("button", { name: /^Sélectionner widget-/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Sélectionner / })).toHaveCount(0);
 });

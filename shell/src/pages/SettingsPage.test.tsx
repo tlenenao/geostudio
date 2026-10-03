@@ -136,3 +136,23 @@ test("affiche le lien vers la console de compte Keycloak en mode oidc", async ()
   expect(link).toHaveAttribute("href", "https://kc.test/realms/geostudio/account");
   expect(link).toHaveAttribute("target", "_blank");
 });
+
+test("P22.11 : chaque section qui échoue affiche une erreur avec Réessayer", async () => {
+  server.use(
+    http.get("https://core.test/v1/me", () =>
+      HttpResponse.json({ detail: "boom" }, { status: 500 }),
+    ),
+    http.get("https://core.test/v1/notifications/preference", () =>
+      HttpResponse.json({ detail: "boom" }, { status: 500 }),
+    ),
+  );
+  renderPage();
+  await waitFor(() => expect(screen.getAllByRole("button", { name: "Réessayer" })).toHaveLength(2));
+  const retries = screen.getAllByRole("button", { name: "Réessayer" });
+  expect(screen.getAllByRole("alert")).toHaveLength(2);
+  // Le cœur revient : « Réessayer » recharge la section.
+  mockMe();
+  mockPreference("all");
+  await userEvent.click(retries[0]);
+  expect(await screen.findByText("alice")).toBeInTheDocument();
+});

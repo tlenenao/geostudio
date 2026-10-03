@@ -49,15 +49,14 @@ def _run_alert_rule_scenario(app_client):  # noqa: F811
     ran = call_tool_raw(app_client, "run_alert_rule", {"alertRuleId": "nope"})
     assert ran.get("isError")
     text = ran["content"][0]["text"]
-    assert READ_ONLY_MESSAGE not in text
-    assert "alert rule not found" in text
+    assert READ_ONLY_MESSAGE in text  # corrigé par P20.09
 
 
 def test_alert_write_tools_absent_from_write_inventory(monkeypatch):
     monkeypatch.setenv("CORE_ETL_ENABLED", "true")
     register_tools(FastMCP("c01-inventory"), session_factory=None)
-    assert "create_alert_rule" not in READ_ONLY_TOOLS
-    assert "run_alert_rule" not in READ_ONLY_TOOLS
+    assert "create_alert_rule" in READ_ONLY_TOOLS  # corrigé par P20.09
+    assert "run_alert_rule" in READ_ONLY_TOOLS
 
 
 def test_mcp_read_tools_leave_no_audit_trail(app_client):  # noqa: F811

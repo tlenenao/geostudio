@@ -32,3 +32,16 @@ test("clic sur une feuille appelle onSelect avec son id", async () => {
   await userEvent.click(screen.getByText("Apps"));
   expect(onSelect).toHaveBeenCalledWith("app");
 });
+
+test("patron ARIA : treeitem avec niveau, aria-expanded et groupe d'enfants (P33.19)", async () => {
+  render(<Tree nodes={NODES} selectedId="app" />);
+  const parent = screen.getByRole("treeitem", { name: "Cartes" });
+  expect(parent).toHaveAttribute("aria-expanded", "false");
+  expect(parent).toHaveAttribute("aria-level", "1");
+  expect(screen.getByRole("treeitem", { name: "Apps" })).toHaveAttribute("aria-selected", "true");
+  await userEvent.click(screen.getByRole("button", { name: "Cartes" }));
+  expect(parent).toHaveAttribute("aria-expanded", "true");
+  const child = screen.getByRole("treeitem", { name: "Carte topo" });
+  expect(child).toHaveAttribute("aria-level", "2");
+  expect(screen.getByRole("group")).toContainElement(child);
+});

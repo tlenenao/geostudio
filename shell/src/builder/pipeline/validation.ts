@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { PipelineEdge, PipelineNode, PipelineOpsCatalog } from "../../api/types";
+import { t } from "../../i18n";
 import { hasCycle } from "./graphOps";
 
 export type PipelineValidationResult = {
@@ -35,7 +36,7 @@ function validateNodeParamsShape(
   for (const field of entry.paramsSchema.required ?? []) {
     const value = params[field];
     if (value === undefined || value === null || value === "") {
-      errors.push(`${field} est requis.`);
+      errors.push(t("pipelineValidation.fieldRequired", { field }));
     }
   }
   return errors;
@@ -59,48 +60,61 @@ export function validatePipelineGraphLocally(
     const bucket = e.role === "secondary" ? secondaryCount : primaryCount;
     bucket.set(e.to, (bucket.get(e.to) ?? 0) + 1);
   }
+  // Nom affiché d'un nœud (titre, sinon opération) — jamais son identifiant technique.
+  const nameById = new Map(nodes.map((n) => [n.id, n.title ?? n.op]));
+  const nameOf = (id: string) => nameById.get(id) ?? id;
   for (const [nodeId, count] of primaryCount) {
     if (count > 1)
-      graphErrors.push(`Un nœud ne peut avoir qu'une seule arête entrante (${nodeId}).`);
+      graphErrors.push(t("pipelineValidation.multiplePrimary", { node: nameOf(nodeId) }));
   }
   for (const [nodeId, count] of secondaryCount) {
     if (count > 1)
-      graphErrors.push(`Un nœud ne peut avoir qu'une seule arête secondaire entrante (${nodeId}).`);
+      graphErrors.push(t("pipelineValidation.multipleSecondary", { node: nameOf(nodeId) }));
   }
 
+  // j06-002 : miroir de _check_topology (cœur) — formes que l'exécution ne sait pas traiter.
+  const kindById = new Map(nodes.map((n) => [n.id, n.kind]));
+  for (const e of edges) {
+    if (kindById.get(e.to) === "reader")
+      graphErrors.push(t("pipelineValidation.readerIncoming", { node: nameOf(e.to) }));
+    if (kindById.get(e.from) === "writer")
+      graphErrors.push(t("pipelineValidation.writerOutgoing", { node: nameOf(e.from) }));
+    if (e.role === "secondary" && kindById.get(e.to) === "writer")
+      graphErrors.push(t("pipelineValidation.writerSecondary", { node: nameOf(e.to) }));
+  }
   if (hasCycle(nodes, edges)) {
-    graphErrors.push("Le graphe contient un cycle.");
+    graphErrors.push(t("pipelineValidation.cycle"));
   }
 
-  if (!nodes.some((n) => n.kind === "reader"))
-    graphErrors.push("Le pipeline doit contenir au moins une source.");
-  if (!nodes.some((n) => n.kind === "writer"))
-    graphErrors.push("Le pipeline doit contenir au moins une écriture.");
+  if (!nodes.some((n) => n.kind === "reader")) graphErrors.push(t("pipelineValidation.noReader"));
+  if (!nodes.some((n) => n.kind === "writer")) graphErrors.push(t("pipelineValidation.noWriter"));
 
   for (const node of nodes) {
     const entry = opsCatalog[node.op];
     const errors = entry
       ? validateNodeParamsShape(entry, node.params)
-      : [`Opération inconnue : ${node.op}.`];
+      : [t("pipelineValidation.unknownOp", { op: node.op })];
     const hasSecondaryEdge = edges.some((e) => e.to === node.id && e.role === "secondary");
     const hasPrimaryEdge = edges.some((e) => e.to === node.id && e.role !== "secondary");
+    // j06-002 : erreur portée par le nœud (badge + inspecteur), pas une bannière de graphe.
+    if (node.kind !== "reader" && !edges.some((e) => e.to === node.id)) {
+      errors.push(t("pipelineValidation.noInput"));
+    }
     if (entry) {
       if (entry.acceptsSecondaryInput) {
         const withCollectionId = node.params.withCollectionId;
         const hasParam =
           withCollectionId !== undefined && withCollectionId !== null && withCollectionId !== "";
         if (!hasPrimaryEdge) {
-          errors.push(`${node.op} : requiert une arête primaire entrante.`);
+          errors.push(t("pipelineValidation.needsPrimary", { node: nameOf(node.id) }));
         }
         if (hasSecondaryEdge && hasParam) {
-          errors.push(
-            `${node.op} : withCollectionId et une arête secondaire ne peuvent pas être renseignés en même temps.`,
-          );
+          errors.push(t("pipelineValidation.secondaryConflict", { node: nameOf(node.id) }));
         } else if (!hasSecondaryEdge && !hasParam) {
-          errors.push(`${node.op} : requiert soit withCollectionId, soit une arête secondaire.`);
+          errors.push(t("pipelineValidation.needsSecondary", { node: nameOf(node.id) }));
         }
       } else if (hasSecondaryEdge) {
-        errors.push(`${node.op} n'accepte pas d'arête secondaire.`);
+        errors.push(t("pipelineValidation.noSecondaryAllowed", { node: nameOf(node.id) }));
       }
     }
     nodeErrors[node.id] = errors;

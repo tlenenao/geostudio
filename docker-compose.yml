@@ -317,6 +317,16 @@ services:
       # (seules les plages réseau internes/privées sont bloquées, cf.
       # `_allowlist()` de chaque module).
       CORE_PIPELINES_EGRESS_ALLOWLIST: ${CORE_PIPELINES_EGRESS_ALLOWLIST:-}
+      # Délais et plafonds des lectures externes (P16.03) et bornes DuckDB.
+      CORE_PIPELINES_CONNECT_TIMEOUT_S: ${CORE_PIPELINES_CONNECT_TIMEOUT_S:-10}
+      CORE_PIPELINES_QUERY_TIMEOUT_S: ${CORE_PIPELINES_QUERY_TIMEOUT_S:-60}
+      CORE_PIPELINES_CONNECTOR_MAX_ROWS: ${CORE_PIPELINES_CONNECTOR_MAX_ROWS:-1000000}
+      CORE_PIPELINES_CONNECTOR_MAX_PAGES: ${CORE_PIPELINES_CONNECTOR_MAX_PAGES:-1000}
+      CORE_PIPELINES_PREVIEW_TIMEOUT_S: ${CORE_PIPELINES_PREVIEW_TIMEOUT_S:-30}
+      CORE_DUCKDB_MEMORY_LIMIT: ${CORE_DUCKDB_MEMORY_LIMIT:-2GB}
+      CORE_DUCKDB_MAX_TEMP_SIZE: ${CORE_DUCKDB_MAX_TEMP_SIZE:-5GB}
+      CORE_DUCKDB_THREADS: ${CORE_DUCKDB_THREADS:-4}
+      CORE_DUCKDB_STATEMENT_TIMEOUT_S: ${CORE_DUCKDB_STATEMENT_TIMEOUT_S:-30}
       CORE_HARVEST_EGRESS_ALLOWLIST: ${CORE_HARVEST_EGRESS_ALLOWLIST:-}
       # Plafond de taille de réponse du moissonnage (GAP-59, SP-50) — défaut
       # Python 10 Mio si absent/vide, cf. app/harvest/egress.py.
@@ -325,6 +335,7 @@ services:
       CORE_SECRETS_MASTER_KEY: ${CORE_SECRETS_MASTER_KEY}
       CORE_EXPORT_ENABLED: ${CORE_EXPORT_ENABLED:-false}
       CORE_EXPORT_TOKEN_SECRET: ${CORE_EXPORT_TOKEN_SECRET:-}
+      CORE_EXPORT_ITEMS_MAX: ${CORE_EXPORT_ITEMS_MAX:-100000}
       # Liens de partage à échéance (GAP-12) : résolus entièrement dans ce
       # service (GET /share-links/{token}), contrairement au jeton d'export
       # ci-dessus — aucun worker séparé n'a besoin de cette variable.
@@ -341,6 +352,13 @@ services:
       # jeton de lancement (60s) et le cookie de session (30 min) qu'il
       # bootstrap. Même convention que CORE_EXPORT_TOKEN_SECRET.
       CORE_ADMIN_TOOLS_TOKEN_SECRET: ${CORE_ADMIN_TOOLS_TOKEN_SECRET:-}
+      # Origine de la passerelle Traefik : le lancement redirige vers elle
+      # (le cœur ne sert pas /admin ; sans cela le bouton aboutit à un 404
+      # JSON du cœur sur :8200, P17.03 / j08b-006).
+      CORE_ADMIN_TOOLS_GATEWAY_URL: https://${DOMAIN}
+      # Console MinIO (:9001) publiée sur l'hôte en base, pas en prod
+      # (overlay: ports reset) — le shell masque le lien sinon (P17.04).
+      CORE_MINIO_CONSOLE_PUBLISHED: "true"
       # SP-58 : capacité instance-wide optionnelle (quotas par tenant) + 3
       # limites, chacune vide = pas de limite configurée même capacité
       # active (cf. app/quotas/service.py, spec §3.1).
@@ -426,6 +444,8 @@ services:
       - traefik.http.routers.seo-static.middlewares=security-headers@docker,rate-limit@docker,seo-static-rewrite@docker,csp-dynamic@file
       - traefik.http.middlewares.seo-static-rewrite.replacepathregex.regex=^/(sitemap\.xml|robots\.txt)$$
       - traefik.http.middlewares.seo-static-rewrite.replacepathregex.replacement=/v1/public/$$1
+      # P35.07 : une règle par famille de pages publiques (sites, items publiés,
+      # datasets) — un middleware replacepathregex ne porte qu'une regex.
       - traefik.http.routers.seo-bots.rule=Host(`${DOMAIN}`) && PathPrefix(`/sites/`) && HeaderRegexp(`User-Agent`, `(?i)(facebookexternalhit|Twitterbot|Slackbot|LinkedInBot|Discordbot|WhatsApp|TelegramBot|Googlebot|bingbot)`)
       - traefik.http.routers.seo-bots.entrypoints=websecure
       - traefik.http.routers.seo-bots.tls.certresolver=letsencrypt
@@ -434,6 +454,22 @@ services:
       - traefik.http.routers.seo-bots.middlewares=security-headers@docker,rate-limit@docker,seo-bots-rewrite@docker,csp-dynamic@file
       - traefik.http.middlewares.seo-bots-rewrite.replacepathregex.regex=^/sites/([^/]+)$$
       - traefik.http.middlewares.seo-bots-rewrite.replacepathregex.replacement=/v1/public/sites/$$1/social-preview
+      - traefik.http.routers.seo-bots-items.rule=Host(`${DOMAIN}`) && PathPrefix(`/public/items/`) && HeaderRegexp(`User-Agent`, `(?i)(facebookexternalhit|Twitterbot|Slackbot|LinkedInBot|Discordbot|WhatsApp|TelegramBot|Googlebot|bingbot)`)
+      - traefik.http.routers.seo-bots-items.entrypoints=websecure
+      - traefik.http.routers.seo-bots-items.tls.certresolver=letsencrypt
+      - traefik.http.routers.seo-bots-items.priority=25
+      - traefik.http.routers.seo-bots-items.service=core
+      - traefik.http.routers.seo-bots-items.middlewares=security-headers@docker,rate-limit@docker,seo-bots-items-rewrite@docker,csp-dynamic@file
+      - traefik.http.middlewares.seo-bots-items-rewrite.replacepathregex.regex=^/public/items/([^/]+)$$
+      - traefik.http.middlewares.seo-bots-items-rewrite.replacepathregex.replacement=/v1/public/items/$$1/social-preview
+      - traefik.http.routers.seo-bots-datasets.rule=Host(`${DOMAIN}`) && PathPrefix(`/public/datasets/`) && HeaderRegexp(`User-Agent`, `(?i)(facebookexternalhit|Twitterbot|Slackbot|LinkedInBot|Discordbot|WhatsApp|TelegramBot|Googlebot|bingbot)`)
+      - traefik.http.routers.seo-bots-datasets.entrypoints=websecure
+      - traefik.http.routers.seo-bots-datasets.tls.certresolver=letsencrypt
+      - traefik.http.routers.seo-bots-datasets.priority=25
+      - traefik.http.routers.seo-bots-datasets.service=core
+      - traefik.http.routers.seo-bots-datasets.middlewares=security-headers@docker,rate-limit@docker,seo-bots-datasets-rewrite@docker,csp-dynamic@file
+      - traefik.http.middlewares.seo-bots-datasets-rewrite.replacepathregex.regex=^/public/datasets/([^/]+)$$
+      - traefik.http.middlewares.seo-bots-datasets-rewrite.replacepathregex.replacement=/v1/public/datasets/$$1/social-preview
 
   # Worker d'ingestion (SP-6a) — même image que le cœur, process séparé
   # (procrastinate worker, file Postgres, pas de broker — arbitrage A5).
@@ -460,6 +496,7 @@ services:
       S3_SECRET_KEY: ${MINIO_PASSWORD}
       S3_UPLOADS_BUCKET: geostudio-uploads
       S3_CDC_BUCKET: geostudio-cdc
+      CORE_CDC_COMPACTION_RECENT_DAYS: ${CORE_CDC_COMPACTION_RECENT_DAYS:-7}
       S3_TILESET3D_BUCKET: geostudio-tileset3d
       # Plafonds de validation tileset3d (finalize_tileset3d_task,
       # app/tileset3d/jobs.py) — s'exécutent dans ce process (`worker`), pas
@@ -472,6 +509,12 @@ services:
       # (file `etl`). Une valeur divergente entre les deux services produit
       # une capacité à moitié allumée — précédent SP-17a.
       CORE_ETL_ENABLED: ${CORE_ETL_ENABLED:-false}
+      # Quotas (P26.03, RC-12) : le worker crée items/collections (import,
+      # pipelines, moissonnage, 3D) — mêmes limites que le service `core`.
+      CORE_QUOTAS_ENABLED: ${CORE_QUOTAS_ENABLED:-false}
+      CORE_QUOTA_MAX_ITEMS_PER_TENANT: ${CORE_QUOTA_MAX_ITEMS_PER_TENANT:-}
+      CORE_QUOTA_MAX_COLLECTIONS_PER_TENANT: ${CORE_QUOTA_MAX_COLLECTIONS_PER_TENANT:-}
+      CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT: ${CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT:-}
       # Parité d'environnement core/worker (RC-2, P02.04) : lues par les
       # tâches de CE process — coffre de secrets (runs de connecteur,
       # secret d'alerte), rapports planifiés/exports (`CORE_EXPORT_ENABLED`),
@@ -497,6 +540,16 @@ services:
       # les runs de pipeline (connector_runtime.py) et les notifications
       # d'alerte (notify.py) tournent dans ce process.
       CORE_PIPELINES_EGRESS_ALLOWLIST: ${CORE_PIPELINES_EGRESS_ALLOWLIST:-}
+      # Délais et plafonds des lectures externes (P16.03) et bornes DuckDB.
+      CORE_PIPELINES_CONNECT_TIMEOUT_S: ${CORE_PIPELINES_CONNECT_TIMEOUT_S:-10}
+      CORE_PIPELINES_QUERY_TIMEOUT_S: ${CORE_PIPELINES_QUERY_TIMEOUT_S:-60}
+      CORE_PIPELINES_CONNECTOR_MAX_ROWS: ${CORE_PIPELINES_CONNECTOR_MAX_ROWS:-1000000}
+      CORE_PIPELINES_CONNECTOR_MAX_PAGES: ${CORE_PIPELINES_CONNECTOR_MAX_PAGES:-1000}
+      CORE_PIPELINES_PREVIEW_TIMEOUT_S: ${CORE_PIPELINES_PREVIEW_TIMEOUT_S:-30}
+      CORE_DUCKDB_MEMORY_LIMIT: ${CORE_DUCKDB_MEMORY_LIMIT:-2GB}
+      CORE_DUCKDB_MAX_TEMP_SIZE: ${CORE_DUCKDB_MAX_TEMP_SIZE:-5GB}
+      CORE_DUCKDB_THREADS: ${CORE_DUCKDB_THREADS:-4}
+      CORE_DUCKDB_STATEMENT_TIMEOUT_S: ${CORE_DUCKDB_STATEMENT_TIMEOUT_S:-30}
       CORE_HARVEST_EGRESS_ALLOWLIST: ${CORE_HARVEST_EGRESS_ALLOWLIST:-}
       # Plafond de taille de réponse du moissonnage (GAP-59, SP-50) — défaut
       # Python 10 Mio si absent/vide, cf. app/harvest/egress.py.
@@ -675,6 +728,13 @@ services:
   otel-lgtm:
     image: grafana/otel-lgtm:0.11.4
     profiles: ["observability"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
     environment:
       # Résolue nativement par Grafana dans les fichiers de provisioning
       # (`${...}` dans contactpoints.yaml, confirmé empiriquement contre
@@ -695,6 +755,12 @@ services:
       # répond 200. Ne PAS ajouter de stripprefix pour ce service.
       GF_SERVER_ROOT_URL: https://${DOMAIN}/admin/grafana/
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      # La passerelle admin-auth est la seule authentification : l'accès
+      # anonyme de l'image est Admin par défaut, ce qui laisse un porteur de
+      # la passerelle créer des sources de données vers le réseau interne
+      # (P17.01, j09b-007). Viewer = lecture seule des dashboards provisionnés.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
     ports:
       - "${GRAFANA_HOST_PORT:-3001}:3000"
       - "4317:4317"
@@ -711,12 +777,19 @@ services:
       - traefik.http.routers.grafana.entrypoints=websecure
       - traefik.http.routers.grafana.tls.certresolver=letsencrypt
       - traefik.http.routers.grafana.priority=15
-      - traefik.http.routers.grafana.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker,csp-dynamic@file
+      - traefik.http.routers.grafana.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker
       - traefik.http.services.grafana.loadbalancer.server.port=3000
 
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.20.1
     profiles: ["observability"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9187/metrics"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     environment:
       DATA_SOURCE_NAME: postgresql://gis:${PG_PASSWORD}@pgbouncer:6432/gis?sslmode=disable
     networks: [gis-net]
@@ -869,6 +942,10 @@ services:
       # utilisable par un routeur bout-en-bout.
       - --providers.file.directory=/csp-dynamic
       - --providers.file.watch=true
+      # P27.14 : /ping interne (entrypoint `traefik`, :8080, non publié)
+      # pour le healthcheck ci-dessous ; à répéter dans l'overlay prod, dont
+      # `command:` remplace celui-ci.
+      - --ping=true
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
       - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
@@ -883,3 +960,9 @@ services:
       - csp-dynamic-conf:/csp-dynamic
     networks: [gis-net]
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
