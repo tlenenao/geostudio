@@ -122,7 +122,11 @@ def _reject_preexisting_mismatched_tenant_column(
 
 
 def apply_collection_ddl(
-    session: Session, table_name: str, *, tenant_id: str = DEFAULT_TENANT_SLUG
+    session: Session,
+    table_name: str,
+    *,
+    tenant_id: str = DEFAULT_TENANT_SLUG,
+    sensitive_fields: list[str] | None = None,
 ) -> None:
     _reject_preexisting_mismatched_tenant_column(session, table_name, tenant_id)
     t = _qi(session, table_name)
@@ -144,7 +148,9 @@ def apply_collection_ddl(
     ]
     for stmt in stmts:
         session.execute(text(stmt))
-    sync_masked_role_grants(session, table_name, [])
+    # REV-186 : jamais `[]` en dur — une ré-application sur une collection
+    # sensible rouvrirait la colonne à gis_rls_masked (GAP-22).
+    sync_masked_role_grants(session, table_name, sensitive_fields or [])
     # Index spatial : sans lui, tout filtre bbox (OGC Features, geom_intersects
     # du cross-filter SP-14n, tuiles MVT SP-24) est un scan complet de table.
     # Le nom de la colonne de géométrie vient de geometry_columns, jamais de
