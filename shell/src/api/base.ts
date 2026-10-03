@@ -442,6 +442,16 @@ export function createBase(opts: {
     return authFetch(url, shareToken ? { headers: { "X-Share-Link-Token": shareToken } } : {});
   }
 
+  function isCoreServed(url: string): boolean {
+    try {
+      const target = new URL(url);
+      const core = new URL(coreUrl);
+      return target.origin === core.origin && target.pathname.startsWith(core.pathname);
+    } catch {
+      return false;
+    }
+  }
+
   async function fetchGeoJsonFeatures(url: string): Promise<DataRecord[]> {
     return (await fetchGeoJsonPage(url)).records;
   }
@@ -452,7 +462,10 @@ export function createBase(opts: {
     const shareToken = getShareLinkToken?.();
     const headers: Record<string, string> = {};
     if (shareToken) headers["X-Share-Link-Token"] = shareToken;
-    const res = await authFetch(url, { headers });
+    // Jeton uniquement pour une URL servie par le cœur (jamais vers un hôte tiers).
+    const res = isCoreServed(url)
+      ? await authFetch(url, { headers })
+      : await fetchWithTimeout(url, { headers });
     await ensureOk(res);
     const data = (await res.json()) as {
       numberMatched?: number;

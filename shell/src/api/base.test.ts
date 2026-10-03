@@ -197,3 +197,29 @@ describe("timeouts longs et abandon pendant la lecture du corps (revue finale Va
     ).rejects.toBeInstanceOf(CoreUnreachableError);
   });
 });
+
+describe("createBase — fetchGeoJsonPage ne fuit pas le jeton (P30 revue)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const geojson = () => new Response(JSON.stringify({ features: [] }), { status: 200 });
+
+  it("n'envoie aucun jeton à une URL hors du cœur", async () => {
+    const fetchSpy = vi.fn().mockImplementation(() => Promise.resolve(geojson()));
+    vi.stubGlobal("fetch", fetchSpy);
+    const base = createBase({ coreUrl: "http://core.test", getToken: () => "secret-tok" });
+    await base.fetchGeoJsonPage("https://attacker.example/data.geojson");
+    const headers = new Headers((fetchSpy.mock.calls[0][1] as RequestInit).headers);
+    expect(headers.get("authorization")).toBeNull();
+  });
+
+  it("envoie le jeton à une URL servie par le cœur", async () => {
+    const fetchSpy = vi.fn().mockImplementation(() => Promise.resolve(geojson()));
+    vi.stubGlobal("fetch", fetchSpy);
+    const base = createBase({ coreUrl: "http://core.test", getToken: () => "secret-tok" });
+    await base.fetchGeoJsonPage("http://core.test/v1/collections/c1/items");
+    const headers = new Headers((fetchSpy.mock.calls[0][1] as RequestInit).headers);
+    expect(headers.get("authorization")).toBe("Bearer secret-tok");
+  });
+});
