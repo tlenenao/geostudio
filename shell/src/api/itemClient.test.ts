@@ -12,6 +12,9 @@ import {
 import type { DataSource } from "./types";
 import { OWNER_PERMISSIONS } from "../auth/permissions";
 
+// Les tests qui stubbent `fetch` (copilotTurn…) ne doivent pas fuir sur les suivants.
+afterEach(() => vi.unstubAllGlobals());
+
 // jsdom's Blob shim (used by this test environment) has no .text()/.arrayBuffer();
 // Node's own Blob (from node:buffer) does — swap it in so exportDataSource tests
 // can read the fetched blob's content. No effect in real browsers.
@@ -4465,7 +4468,6 @@ test("copilotTurn accepts an undefined itemId and a non-AppConfig currentConfig"
 });
 
 test("REV-271 : getMapConfig expose la version lue ; saveMapConfig l'envoie en If-Match, ne la persiste pas et rend la nouvelle ; 412 → ApiError", async () => {
-  vi.unstubAllGlobals(); // le test précédent laisse `fetch` stubbé
   let ifMatch: string | null = "unset";
   let body: any;
   server.use(
@@ -4509,7 +4511,6 @@ test("REV-271 : getMapConfig expose la version lue ; saveMapConfig l'envoie en I
 });
 
 test("REV-271 : getDatasetConfig expose la version, saveDatasetConfig l'envoie en If-Match et la met en cache ; rollbackConfig invalide le cache", async () => {
-  vi.unstubAllGlobals();
   let reads = 0;
   let ifMatch: string | null = "unset";
   server.use(
@@ -4592,7 +4593,6 @@ test("REV-271 : getPipelineConfig expose la version, savePipelineConfig l'envoie
 });
 
 test("REV-271 : getReportScheduleConfig expose la version, saveReportScheduleConfig l'envoie en If-Match sans la persister", async () => {
-  vi.unstubAllGlobals();
   let ifMatch: string | null = "unset";
   let body: any;
   const report = {
@@ -4627,7 +4627,6 @@ test("REV-271 : getReportScheduleConfig expose la version, saveReportScheduleCon
 });
 
 test("REV-271 : getAlertRuleConfig expose la version, saveAlertRuleConfig l'envoie en If-Match sans la persister", async () => {
-  vi.unstubAllGlobals();
   let ifMatch: string | null = "unset";
   let body: any;
   const alert = {
