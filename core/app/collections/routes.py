@@ -385,6 +385,24 @@ def get_readable_collection(
     return col
 
 
+def get_collection_for_read(session, user, collection_id, *, guest=None):
+    """Porte de LECTURE d'une collection (REV-185) : `get_readable_collection`
+    avec `can_manage_collections` dérivé du rôle de `user` — un porteur de
+    `admin.collections.manage` doit lire individuellement (items, agrégats,
+    exports, tuiles, pièces jointes) toute collection qu'il voit déjà en
+    liste, sinon 404 après un lien valide (pièges n°5/n°14). Anonyme/invité :
+    `False` (la portée d'un jeton invité ne se délègue jamais, cf. docstring
+    de `get_readable_collection`). NE PAS utiliser pour une écriture :
+    `_get_writable` (features) et `_get_writable_collection` (attachments)
+    restent volontairement sur `get_readable_collection` nu."""
+    can_manage_collections = bool(
+        user and has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+    )
+    return get_readable_collection(
+        session, user, collection_id, can_manage_collections=can_manage_collections, guest=guest
+    )
+
+
 @router.post("/collections", status_code=201)
 def register_collection(
     body: CollectionCreate,

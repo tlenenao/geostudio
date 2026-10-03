@@ -55,6 +55,7 @@ GUARD_NAMES = frozenset(
         # lecture directe de leur corps — chacun recoupe avec `can()`/lève
         # 404-403 selon le verdict, jamais un simple accesseur.
         "get_readable_collection",
+        "get_collection_for_read",  # REV-185 : wrapper de get_readable_collection (lecture)
         "require_pipeline_access",
     }
 )
