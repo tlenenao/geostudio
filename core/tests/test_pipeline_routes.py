@@ -756,3 +756,29 @@ def test_cancel_run_route_queued_then_conflict_when_terminal(monkeypatch):
         assert pipelines_repo.is_cancel_requested(s, run_id=running_id)
     assert client.post(f"/v1/pipelines/{item_id}/runs/{queued_id}/cancel").status_code == 409
     assert client.post(f"/v1/pipelines/{item_id}/runs/nope/cancel").status_code == 404
+
+
+def test_preview_route_maps_degenerate_op_input_to_400(monkeypatch):
+    # REV-196 : une op `execute` qui reçoit une entrée inadaptée (polygone passé à
+    # `transform.triangulate`) lève PipelineRuntimeError -> 400 explicite, plus de 500.
+    import duckdb
+
+    from app.pipelines.ops.execute import _execute_triangulate
+
+    client = _make_app(monkeypatch, etl_enabled=True)
+    item_id = _seed_preview_pipeline(client)
+
+    def fake_preview_pipeline(**kwargs):
+        conn = duckdb.connect(":memory:")
+        conn.execute("INSTALL spatial; LOAD spatial;")
+        conn.execute("CREATE TABLE poly (id INTEGER, geometry GEOMETRY)")
+        conn.execute(
+            "INSERT INTO poly VALUES (1, ST_GeomFromText('POLYGON ((0 0, 1 0, 1 1, 0 0))'))"
+        )
+        _execute_triangulate(conn, input_view="poly", view_name="out", params={})
+        return []
+
+    monkeypatch.setattr("app.pipelines.routes.preview_pipeline", fake_preview_pipeline)
+    response = client.post(f"/v1/pipelines/{item_id}/preview?upTo=r1")
+    assert response.status_code == 400
+    assert "Point" in response.text

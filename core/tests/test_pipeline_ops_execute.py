@@ -2,6 +2,7 @@
 import duckdb
 import pytest
 
+from app.pipelines.errors import PipelineRuntimeError
 from app.pipelines.ops.execute import _read_geometry_rows, _write_geometry_rows
 
 
@@ -105,3 +106,78 @@ def test_execute_minimum_bounding_circle(conn):
     # une ligne par point d'entrée.
     count = conn.execute("SELECT count(*) FROM out").fetchone()[0]
     assert count == 1
+
+
+def test_triangulate_on_polygon_raises_pipeline_runtime_error(conn):
+    conn.execute("CREATE TABLE poly (id INTEGER, geometry GEOMETRY)")
+    conn.execute("INSERT INTO poly VALUES (1, ST_GeomFromText('POLYGON ((0 0, 1 0, 1 1, 0 0))'))")
+    from app.pipelines.ops.execute import _execute_triangulate
+
+    with pytest.raises(PipelineRuntimeError, match="Point"):
+        _execute_triangulate(conn, input_view="poly", view_name="out", params={})
+
+
+@pytest.mark.parametrize(
+    ("fn_name", "params"),
+    [
+        ("_execute_triangulate", {}),
+        ("_execute_densify", {"maxSegmentLength": 1}),
+        ("_execute_minimum_bounding_circle", {}),
+    ],
+)
+def test_empty_input_yields_empty_output(conn, fn_name, params):
+    from app.pipelines.ops import execute
+
+    conn.execute("CREATE TABLE empty_in (id INTEGER, geometry GEOMETRY)")
+    getattr(execute, fn_name)(conn, input_view="empty_in", view_name="out", params=params)
+    assert conn.execute("SELECT count(*) FROM out").fetchone() == (0,)
+
+
+@pytest.mark.parametrize(
+    ("fn_name", "params"),
+    [
+        ("_execute_densify", {"maxSegmentLength": 2}),
+        ("_execute_minimum_bounding_circle", {}),
+        ("_execute_triangulate", {}),
+    ],
+)
+def test_null_geometry_rows_are_dropped(conn, fn_name, params):
+    from app.pipelines.ops import execute
+
+    conn.execute("CREATE TABLE with_null (id INTEGER, geometry GEOMETRY)")
+    conn.execute(
+        "INSERT INTO with_null VALUES (1, NULL), (2, ST_Point(0, 0)), "
+        "(3, ST_Point(4, 0)), (4, ST_Point(2, 3))"
+    )
+    getattr(execute, fn_name)(conn, input_view="with_null", view_name="out", params=params)
+    assert conn.execute("SELECT count(*) FROM out WHERE geometry IS NULL").fetchone() == (0,)
+    assert conn.execute("SELECT count(*) FROM out").fetchone()[0] >= 1
+
+
+def test_densify_with_empty_linestring_does_not_crash(conn):
+    # Jumelle de _write_geometry_rows : segmentize d'une géométrie vide reste écrivable.
+    conn.execute("CREATE TABLE empty_line (id INTEGER, geometry GEOMETRY)")
+    conn.execute("INSERT INTO empty_line VALUES (1, ST_GeomFromText('LINESTRING EMPTY'))")
+    from app.pipelines.ops.execute import _execute_densify
+
+    _execute_densify(conn, input_view="empty_line", view_name="out", params={"maxSegmentLength": 1})
+    assert conn.execute("SELECT count(*) FROM out").fetchone() == (1,)
+
+
+def test_write_geometry_rows_tolerates_null_geometry(conn):
+    import pandas as pd
+    import shapely
+    import shapely.wkb
+
+    df = pd.DataFrame({"id": [1, 2], "geometry": [None, shapely.wkb.dumps(shapely.Point(1, 1))]})
+    _write_geometry_rows(conn, df, view_name="out")
+    assert conn.execute("SELECT id, ST_AsText(geometry) FROM out ORDER BY id").fetchall() == [
+        (1, None),
+        (2, "POINT (1 1)"),
+    ]
+
+
+def test_read_geometry_rows_without_geometry_column_raises(conn):
+    conn.execute("CREATE TABLE no_geom (id INTEGER)")
+    with pytest.raises(PipelineRuntimeError, match="geometry"):
+        _read_geometry_rows(conn, "no_geom")

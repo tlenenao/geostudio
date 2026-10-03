@@ -12,6 +12,8 @@ import shapely.ops
 import shapely.wkb
 from shapely.geometry import GeometryCollection, MultiPoint
 
+from app.pipelines.errors import PipelineRuntimeError
+
 
 def _qi(name: str) -> str:
     # Duplication délibérée (patron déjà établi par compiler.py/runtime.py) — helper de 2
@@ -21,12 +23,18 @@ def _qi(name: str) -> str:
 
 def _read_geometry_rows(conn, input_view: str) -> pd.DataFrame:
     """Lit toutes les colonnes de `input_view`, la géométrie sérialisée en WKB (bytearray,
-    consommable par shapely.wkb.loads)."""
+    consommable par shapely.wkb.loads). Les lignes à géométrie NULL sont écartées en SQL
+    (REV-196) : aucune op de ce module n'a de sens sur une géométrie absente, et un NULL
+    ferait lever `TypeError` à `bytes(...)`."""
     cols = [d[0] for d in conn.execute(f"SELECT * FROM {_qi(input_view)} LIMIT 0").description]
+    if "geometry" not in cols:
+        raise PipelineRuntimeError(f"input has no 'geometry' column (columns: {cols})")
     select_list = ", ".join(
         f"ST_AsWKB({_qi(c)}) AS {_qi(c)}" if c == "geometry" else _qi(c) for c in cols
     )
-    return conn.execute(f"SELECT {select_list} FROM {_qi(input_view)}").fetchdf()
+    return conn.execute(
+        f"SELECT {select_list} FROM {_qi(input_view)} WHERE {_qi('geometry')} IS NOT NULL"
+    ).fetchdf()
 
 
 def _write_geometry_rows(conn, df: pd.DataFrame, *, view_name: str) -> None:
@@ -44,9 +52,17 @@ def _write_geometry_rows(conn, df: pd.DataFrame, *, view_name: str) -> None:
 def _execute_triangulate(conn, *, input_view: str, view_name: str, params: dict) -> None:
     from app.pipelines.ops.schemas import TransformTriangulateParams
 
-    TransformTriangulateParams.model_validate(params)  # forme seulement, aucun champ
+    TransformTriangulateParams.model_validate(params)
     df = _read_geometry_rows(conn, input_view)
+    if df.empty:
+        _write_geometry_rows(conn, df, view_name=view_name)
+        return
     points = [shapely.wkb.loads(bytes(wkb)) for wkb in df["geometry"]]
+    bad = sorted({g.geom_type for g in points if g.geom_type != "Point"})
+    if bad:
+        raise PipelineRuntimeError(
+            f"transform.triangulate expects Point geometries, got {', '.join(bad)}"
+        )
     triangles = shapely.ops.triangulate(MultiPoint([p.coords[0] for p in points]))
     other_cols = [c for c in df.columns if c != "geometry"]
     out = pd.DataFrame(
@@ -63,12 +79,15 @@ def _execute_densify(conn, *, input_view: str, view_name: str, params: dict) -> 
 
     p = TransformDensifyParams.model_validate(params)
     df = _read_geometry_rows(conn, input_view)
-    df = df.assign(
-        geometry=[
-            shapely.wkb.dumps(shapely.segmentize(shapely.wkb.loads(bytes(g)), p.maxSegmentLength))
-            for g in df["geometry"]
-        ]
-    )
+    if not df.empty:  # `assign(geometry=[])` fabriquerait une colonne float64 illisible par DuckDB
+        df = df.assign(
+            geometry=[
+                shapely.wkb.dumps(
+                    shapely.segmentize(shapely.wkb.loads(bytes(g)), p.maxSegmentLength)
+                )
+                for g in df["geometry"]
+            ]
+        )
     _write_geometry_rows(conn, df, view_name=view_name)
 
 
@@ -79,6 +98,9 @@ def _execute_minimum_bounding_circle(
 
     TransformMinimumBoundingCircleParams.model_validate(params)  # forme seulement
     df = _read_geometry_rows(conn, input_view)
+    if df.empty:
+        _write_geometry_rows(conn, df[["geometry"]], view_name=view_name)
+        return
     geoms = [shapely.wkb.loads(bytes(g)) for g in df["geometry"]]
     circle = shapely.minimum_bounding_circle(GeometryCollection(geoms))
     out = pd.DataFrame({"geometry": [shapely.wkb.dumps(circle)]})
