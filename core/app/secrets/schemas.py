@@ -231,10 +231,11 @@ def _check_bucket_url(value: str | None, scheme: str) -> str | None:
         or parts.query
         or parts.fragment
         or ".." in parts.path.split("/")
+        or any(c in value for c in "*?[")  # jokers glob : élargiraient le périmètre lié
     ):
         raise ValueError(
             f"bucketUrl must look like '{scheme}://<bucket>[/<prefix>]' "
-            "(no query, fragment or '..' segment)"
+            "(no query, fragment, wildcard or '..' segment)"
         )
     return value
 

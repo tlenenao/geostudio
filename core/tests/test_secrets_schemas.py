@@ -176,6 +176,9 @@ def test_legacy_blob_secret_without_bucket_url_still_decodes(kind):
         ("s3_credentials", "s3://"),  # pas de bucket
         ("s3_credentials", "s3://b/../other"),  # traversée
         ("s3_credentials", "s3://b/p?x=1"),  # query
+        ("s3_credentials", "s3://*/p"),  # joker dans le bucket
+        ("s3_credentials", "s3://b/p/*"),  # joker dans le préfixe
+        ("s3_credentials", "s3://b/p[0-9]"),
         ("azure_blob_credentials", "s3://c"),
         ("gcs_credentials", "gs:///p"),
     ],
