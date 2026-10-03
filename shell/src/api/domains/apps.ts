@@ -11,6 +11,7 @@ import type {
   Variable,
 } from "../types";
 import type { ItemClientBase } from "../base";
+import { ifMatchHeader } from "../ifMatch";
 
 type AppsMethods = Pick<
   ItemClient,
@@ -107,7 +108,7 @@ export function createAppsMethods(base: ItemClientBase): AppsMethods {
           printLayout: config.printLayout ?? null,
         },
         undefined,
-        config.baseVersion === undefined ? undefined : { "If-Match": `"${config.baseVersion}"` },
+        ifMatchHeader(config.baseVersion),
       );
       return saved?.version;
     },

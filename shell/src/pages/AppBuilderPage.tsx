@@ -48,7 +48,8 @@ import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { useAuth } from "../auth/useAuth";
 import { useDirtyGuard } from "../lib/useDirtyGuard";
 import { t } from "../i18n";
-import { ApiError } from "../api/ApiError";
+import { isConflictError } from "../api/ApiError";
+import { SaveConflictNotice } from "../builder/SaveConflictNotice";
 import { LoadingState } from "../ui/kit/LoadingState";
 import { QueryErrorState } from "../ui/kit/QueryErrorState";
 
@@ -133,7 +134,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
     setHasUnsavedChanges(true);
   }, [draft]);
   const { ConfirmLeaveDialog } = useDirtyGuard(hasUnsavedChanges);
-  const isConflict = save.error instanceof ApiError && save.error.status === 412;
+  const isConflict = isConflictError(save.error);
 
   const extensionsQuery = useActiveExtensions();
   const [extensionsRegistered, setExtensionsRegistered] = useState(false);
@@ -663,23 +664,17 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                     </span>
                   )}
                   {isConflict && (
-                    <div role="alert" className="flex flex-col gap-1 text-sm text-danger">
-                      <span>{t("appBuilder.conflict")}</span>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="w-fit"
-                        onClick={() =>
-                          void client.getAppConfig(pk).then((latest) => {
-                            resetDraft(latest);
-                            baseVersionRef.current = latest.baseVersion;
-                            save.reset();
-                          })
-                        }
-                      >
-                        {t("appBuilder.conflictReload")}
-                      </Button>
-                    </div>
+                    <SaveConflictNotice
+                      message={t("appBuilder.conflict")}
+                      reloadLabel={t("appBuilder.conflictReload")}
+                      onReload={() =>
+                        void client.getAppConfig(pk).then((latest) => {
+                          resetDraft(latest);
+                          baseVersionRef.current = latest.baseVersion;
+                          save.reset();
+                        })
+                      }
+                    />
                   )}
                 </div>
               </aside>

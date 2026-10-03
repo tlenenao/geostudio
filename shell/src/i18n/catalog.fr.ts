@@ -458,6 +458,9 @@ export const fr = {
 
   // Motif partagé : bouton d'enregistrement générique.
   "common.save": "Enregistrer",
+  "common.saveConflict":
+    "Cet objet a été modifié ailleurs depuis votre ouverture : votre enregistrement a été refusé pour ne pas écraser ces changements.",
+  "common.saveConflictReload": "Recharger la dernière version",
 
   // AppRuntimePage
   "appRuntime.accessDenied": "Accès refusé.",
