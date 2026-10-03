@@ -5,10 +5,9 @@ URL fournie par un admin ; cette garde bloque les cibles réseau internes
 allowlist optionnelle par env. Point d'enforcement : le transport du client
 HTTP par défaut de tous les connecteurs et de la récupération copie.
 
-Résiduel documenté (§3, §8) : DNS-rebinding TOCTOU — la garde valide l'IP
-résolue AVANT la requête, httpx re-résout au connect. Le pinning-IP est différé
-(fragile avec TLS/vhosts). Les cibles SSRF à forte valeur (métadonnées cloud,
-localhost) sont des IP-littérales ou résolvent stablement : couvertes en v0."""
+DNS-rebinding TOCTOU (§3, §8) fermé par REV-273d : le transport connecte sur
+l'IP validée par la garde (`app.net_pin.pin_httpx_request`, Host/SNI/certificat
+sur le nom d'origine), chaque redirection repasse par le transport."""
 
 import ipaddress
 import logging
@@ -17,6 +16,8 @@ import socket
 from urllib.parse import urlparse
 
 import httpx
+
+from app.net_pin import pin_httpx_request
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +87,7 @@ class _GuardedTransport(httpx.BaseTransport):
         self._inner = inner
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
-        assert_egress_allowed(str(request.url))
+        pin_httpx_request(request, assert_egress_allowed(str(request.url)))
         response = self._inner.handle_request(request)
         cap = _max_response_bytes()
         chunks: list[bytes] = []

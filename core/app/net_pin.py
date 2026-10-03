@@ -65,8 +65,19 @@ def pinned_adapter(base: type[HTTPAdapter], resolve: Resolve) -> type[HTTPAdapte
 def pin_httpx_request(request: httpx.Request, ip: str | None) -> None:
     """Redirige `request` vers `ip` en gardant `Host:` (déjà posé à la
     construction) et le SNI/la vérification TLS (extension httpcore
-    `sni_hostname`)."""
+    `sni_hostname`).
+
+    httpcore 1.0 regroupe ses connexions par origine (schéma, hôte, port) :
+    une fois l'hôte réécrit en IP, deux noms résolus vers la même IP
+    partageraient une connexion TLS dont le certificat n'a été vérifié que
+    pour le premier (constaté sur un vrai serveur TLS keep-alive). En HTTPS,
+    `Connection: close` interdit donc toute réutilisation : chaque requête
+    ouvre sa connexion et vérifie le certificat pour son propre nom.
+    ponytail: plus de keep-alive HTTPS sur les clients gardés (une poignée
+    de main TLS par requête) ; pools par nom d'hôte si le coût se mesure."""
     if not ip:
         return
     request.extensions["sni_hostname"] = request.url.host
+    if request.url.scheme == "https":
+        request.headers["Connection"] = "close"
     request.url = request.url.copy_with(host=ip)

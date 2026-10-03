@@ -28,11 +28,8 @@ sibling), pas la version async. La garde enveloppe un `httpx.BaseTransport`
 appel) : `OpenAICompatibleProvider.__init__` construit son client gardé et le
 réutilise sur chaque `embed()`.
 
-Résiduel documenté (identique à `app.harvest.egress`) : DNS-rebinding TOCTOU —
-la garde valide l'IP résolue AVANT la requête, httpx re-résout au connect.
-`CORE_EMBEDDING_API_URL` est un réglage opérateur (pas une entrée
-utilisateur), donc la surface d'attaque réelle est plus étroite que pour le
-moissonnage — même compromis que documenté par `app.copilot.egress`."""
+DNS-rebinding TOCTOU fermé par REV-273d (comme `app.harvest.egress`) : le
+transport connecte sur l'IP validée (`app.net_pin.pin_httpx_request`)."""
 
 import ipaddress
 import logging
@@ -41,6 +38,8 @@ import socket
 from urllib.parse import urlparse
 
 import httpx
+
+from app.net_pin import pin_httpx_request
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +95,7 @@ class _GuardedTransport(httpx.BaseTransport):
         self._inner = inner
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
-        assert_egress_allowed(str(request.url))
+        pin_httpx_request(request, assert_egress_allowed(str(request.url)))
         return self._inner.handle_request(request)
 
 

@@ -23,10 +23,8 @@ appel bloquant gèlerait la boucle d'événements du process, qui tourne sans
 les trois autres gardes : c'est un appel rapide (un seul `socket.getaddrinfo`),
 même compromis qu'ailleurs.
 
-Résiduel documenté (identique à `app.harvest.egress`) : TOCTOU DNS-rebinding
-— la garde valide l'IP résolue avant la requête, httpx re-résout au connect.
-`CORE_LLM_API_URL` est un réglage opérateur (pas une entrée utilisateur), donc
-la surface d'attaque réelle est plus étroite que pour le moissonnage."""
+DNS-rebinding TOCTOU fermé par REV-273d (comme `app.harvest.egress`) : le
+transport connecte sur l'IP validée (`app.net_pin.pin_httpx_request`)."""
 
 import ipaddress
 import logging
@@ -35,6 +33,8 @@ import socket
 from urllib.parse import urlparse
 
 import httpx
+
+from app.net_pin import pin_httpx_request
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +90,7 @@ class _GuardedAsyncTransport(httpx.AsyncBaseTransport):
         self._inner = inner
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-        assert_egress_allowed(str(request.url))
+        pin_httpx_request(request, assert_egress_allowed(str(request.url)))
         return await self._inner.handle_async_request(request)
 
 

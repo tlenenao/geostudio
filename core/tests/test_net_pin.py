@@ -2,7 +2,7 @@
 import datetime
 import ssl
 import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 
 import httpx
 import pytest
@@ -122,10 +122,14 @@ def tls_server(tmp_path):
         )
     )
     sni: list[str | None] = []
+
+    class KeepAlive(_Handler):
+        protocol_version = "HTTP/1.1"  # garde la connexion ouverte entre requêtes
+
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     ctx.load_cert_chain(cert_path, key_path)
     ctx.sni_callback = lambda sock, server_name, _ctx: sni.append(server_name)
-    srv = HTTPServer(("127.0.0.1", 0), _Handler)
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), KeepAlive)
     srv.socket = ctx.wrap_socket(srv.socket, server_side=True)
     port = _serve(srv)
     yield port, str(cert_path), sni
@@ -151,9 +155,41 @@ def test_pin_httpx_request_rewrites_target_keeps_host_and_sni():
     assert req.url.path == "/x" and req.url.query == b"y=1"
     assert req.headers["host"] == "example.test:8443"
     assert req.extensions["sni_hostname"] == "example.test"
+    assert req.headers["connection"] == "close"
 
 
 def test_pin_httpx_request_none_is_a_noop():
     req = httpx.Request("GET", "https://example.test/x")
     pin_httpx_request(req, None)
     assert req.url.host == "example.test" and "sni_hostname" not in req.extensions
+
+
+def test_harvest_guarded_httpx_https_keeps_sni_and_verifies_cert_against_hostname(
+    tls_server, monkeypatch
+):
+    """Bout en bout, vrai TLS httpcore : connexion sur l'IP épinglée, SNI et
+    contrôle du certificat sur le nom d'origine."""
+    from app.harvest import egress
+
+    port, ca, sni = tls_server
+    monkeypatch.setattr(egress, "assert_egress_allowed", lambda url: "127.0.0.1")
+
+    def client() -> httpx.Client:
+        return httpx.Client(
+            transport=egress._GuardedTransport(
+                httpx.HTTPTransport(verify=ssl.create_default_context(cafile=ca))
+            )
+        )
+
+    with client() as c:
+        assert c.get(f"https://pinned.test:{port}/").status_code == 200
+    assert sni == ["pinned.test"]
+    assert _Handler.seen["host"] == f"pinned.test:{port}"
+    with client() as c, pytest.raises(httpx.ConnectError, match="CERTIFICATE_VERIFY_FAILED"):
+        c.get(f"https://other.test:{port}/")
+    # Même client, même IP, serveur keep-alive : la connexion vérifiée pour
+    # pinned.test ne doit pas être réutilisée pour other.test.
+    with client() as c:
+        assert c.get(f"https://pinned.test:{port}/").status_code == 200
+        with pytest.raises(httpx.ConnectError, match="CERTIFICATE_VERIFY_FAILED"):
+            c.get(f"https://other.test:{port}/")
