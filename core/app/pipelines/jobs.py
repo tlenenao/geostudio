@@ -238,6 +238,7 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
         # (tests/test_pipeline_jobs.py), qui vérifie précisément l'absence de
         # cette notification.
         if not tracker.mark_running():  # annulé entre get_run et ici (REV-275 c) : rien à exécuter
+            logger.info("pipeline run %s non démarré : plus en file (annulé entre-temps)", run_id)
             return
         item_id = pipeline_item_id
 

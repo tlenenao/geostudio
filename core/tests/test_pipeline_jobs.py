@@ -491,7 +491,7 @@ def test_run_pipeline_task_marks_cancel_requested_run_cancelled(env):
         assert s.execute(text("SELECT count(*) FROM villes_propres")).scalar() == 0
 
 
-def test_run_pipeline_task_does_not_execute_a_run_cancelled_after_get_run(env, monkeypatch):
+def test_run_pipeline_task_does_not_execute_a_run_cancelled_after_get_run(env, monkeypatch, caplog):
     # REV-275 (c) : annulation arrivant entre get_run (statut lu « queued ») et
     # mark_running — la garde `run.status == "cancelled"` ne la voit pas ; seul
     # le UPDATE conditionnel la ferme. Le run reste « cancelled », rien ne s'exécute.
@@ -520,7 +520,9 @@ def test_run_pipeline_task_does_not_execute_a_run_cancelled_after_get_run(env, m
     monkeypatch.setattr(pipelines_repo, "get_run", _get_run_then_cancel)
     monkeypatch.setattr(pipeline_jobs, "run_pipeline", _must_not_run)
 
-    pipeline_jobs.run_pipeline_task(run_id=run_id, tenant_id=tenant.id)
+    with caplog.at_level("INFO", logger=pipeline_jobs.logger.name):
+        pipeline_jobs.run_pipeline_task(run_id=run_id, tenant_id=tenant.id)
+    assert any(run_id in r.getMessage() and r.levelname == "INFO" for r in caplog.records)
 
     monkeypatch.setattr(pipelines_repo, "get_run", real_get_run)
     with Session() as s:
