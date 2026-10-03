@@ -802,6 +802,23 @@ function applyDeckLayers(
 // for the MapLibre-native layer array — simpler than diffing, and the only
 // way to pick up a changed tilesUrl (MapLibre raster-dem sources are
 // immutable once created).
+// P30.01 (t03-012) : deck.gl interleaved attache un device luma au contexte WebGL
+// de MapLibre et ne détruit jamais son CanvasContext ; l'écouteur `matchMedia`
+// de résolution (DPR) qu'il pose reste alors accroché globalement et retient le
+// canvas, donc tout le DOM détaché de l'éditeur (~380 nœuds par ouverture).
+// ponytail: accès à `gl.luma` (détail interne de luma.gl 9) ; à retirer si
+// deck.gl détruit lui-même ce contexte à `MapboxOverlay.onRemove`.
+function releaseLumaCanvasObserver(map: maplibregl.Map): void {
+  try {
+    const gl = map.getCanvas().getContext("webgl2") as {
+      luma?: { device?: { canvasContext?: { destroy?: () => void } } };
+    } | null;
+    gl?.luma?.device?.canvasContext?.destroy?.();
+  } catch {
+    // Libération best-effort : un échec ne doit jamais empêcher map.remove().
+  }
+}
+
 function applyTerrain(map: maplibregl.Map, terrain: MapConfig["terrain"] | null | undefined) {
   map.setTerrain(null);
   if (map.getSource(TERRAIN_SOURCE_ID)) map.removeSource(TERRAIN_SOURCE_ID);
@@ -1207,6 +1224,7 @@ export const MapView = forwardRef<
       clearTimeout(labelDebounce);
       map.off("idle", scheduleLabelRefresh);
       map.removeControl(overlay);
+      releaseLumaCanvasObserver(map);
       map.remove();
       mapRef.current = null;
       setReadyMap(null);
