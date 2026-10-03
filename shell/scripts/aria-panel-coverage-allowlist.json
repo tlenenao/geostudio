@@ -31,7 +31,7 @@
   },
   {
     "file": "src/pages/AppRuntimePage.tsx",
-    "line": 206,
+    "line": 211,
     "reason": "Faux positif de l'heuristique : setSaveDialogOpen(true) ouvre <Dialog> (ui/kit/Dialog, role=\"dialog\", boîte modale) — pas un panneau en ligne, la convention CLAUDE.md ne s'applique pas à ce patron. Ligne décalée de 170 à 183 par les tâches Vague C sur ce fichier (câblage printLayout.showLegend, migration ui/kit), aucun changement du déclencheur lui-même — vérifié en clôture de Vague C."
   },
   {
@@ -58,5 +58,10 @@
     "file": "src/pages/RolesAdminPage.tsx",
     "line": 73,
     "reason": "Pré-existant : setCreating(true) ouvre CreateRolePanel en ligne (creating && <CreateRolePanel/>) sans aria-expanded/aria-controls, alors que ce même fichier câble déjà usePanelTrigger() pour son panneau editPanel voisin (par ligne de rôle). Dette REV-088 (ligne décalée de 48 à 73 par la migration DataTable de Vague B, aucun changement du déclencheur lui-même — vérifié en clôture de Vague B)."
+  },
+  {
+    "file": "src/pages/ItemDetailPage.tsx",
+    "line": 293,
+    "reason": "Faux positif de l'heuristique : le bouton « Copier » appelle setCopied(true) après copie dans le presse-papiers (P35) — il n'ouvre aucun panneau."
   }
 ]
