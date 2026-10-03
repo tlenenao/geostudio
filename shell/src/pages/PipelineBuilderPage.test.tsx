@@ -1453,3 +1453,22 @@ test("REV-271 : un 412 affiche le conflit ; « Recharger » reprend la version d
   await waitFor(() => expect(savePipelineConfig).toHaveBeenCalledTimes(2));
   expect(savePipelineConfig.mock.calls[1][1].baseVersion).toBe(7);
 });
+
+test("REV-271 : après « Recharger » (412), quitter la page ne déclenche pas la garde", async () => {
+  renderPageWithNavigation("p-1", {
+    getPipelineConfig: vi
+      .fn()
+      .mockResolvedValueOnce({ ...TWO_NODE_PAYLOAD, baseVersion: 1 })
+      .mockResolvedValue({ ...TWO_NODE_PAYLOAD, baseVersion: 7 }),
+    savePipelineConfig: vi.fn().mockRejectedValue(new ApiError(412, { detail: "stale" })),
+    listConfigRevisions: vi.fn().mockResolvedValue([]),
+  });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Enregistrer" })).toBeEnabled());
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await userEvent.click(
+    await screen.findByRole("button", { name: t("common.saveConflictReload") }),
+  );
+  await waitFor(() => expect(screen.queryByText(t("common.saveConflict"))).toBeNull());
+  await userEvent.click(screen.getByRole("link", { name: "Autre page" }));
+  expect(await screen.findByText("Autre page ouverte")).toBeInTheDocument();
+});

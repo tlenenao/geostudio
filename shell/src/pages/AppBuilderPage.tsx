@@ -123,12 +123,18 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   // de redirtification immédiate après un succès de sauvegarde.
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const hasSeededRef = useRef(false);
+  // Brouillon issu d'un rechargement (412) = état du cœur, pas une modification.
+  const skipDirtyRef = useRef(false);
   const baseVersionRef = useRef<number | undefined>(undefined);
   const versionInitRef = useRef(false);
   useEffect(() => {
     if (draft === null) return;
     if (!hasSeededRef.current) {
       hasSeededRef.current = true;
+      return;
+    }
+    if (skipDirtyRef.current) {
+      skipDirtyRef.current = false;
       return;
     }
     setHasUnsavedChanges(true);
@@ -669,7 +675,9 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                       reloadLabel={t("appBuilder.conflictReload")}
                       onReload={() =>
                         void client.getAppConfig(pk).then((latest) => {
+                          skipDirtyRef.current = true;
                           resetDraft(latest);
+                          setHasUnsavedChanges(false);
                           baseVersionRef.current = latest.baseVersion;
                           save.reset();
                         })

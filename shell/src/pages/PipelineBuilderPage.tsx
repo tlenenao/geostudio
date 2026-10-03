@@ -148,10 +148,17 @@ export function PipelineBuilderPage({
   // de référence avec `configQuery.data`. `isDraftStale` reste intouchée.
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const hasSeededRef = useRef(false);
+  // Un brouillon issu d'un rechargement/rollback (412, historique) est l'état
+  // du cœur, pas une modification : l'effet ci-dessous ne doit pas le marquer sale.
+  const skipDirtyRef = useRef(false);
   useEffect(() => {
     if (draft === null) return;
     if (!hasSeededRef.current) {
       hasSeededRef.current = true;
+      return;
+    }
+    if (skipDirtyRef.current) {
+      skipDirtyRef.current = false;
       return;
     }
     setHasUnsavedChanges(true);
@@ -411,7 +418,9 @@ export function PipelineBuilderPage({
   async function reloadLatest() {
     if (pk === null) return;
     const latest = await client.getPipelineConfig(pk);
+    skipDirtyRef.current = true;
     resetDraft(latest);
+    setHasUnsavedChanges(false);
     baseVersionRef.current = latest.baseVersion;
     setConflict(false);
   }
@@ -572,7 +581,9 @@ export function PipelineBuilderPage({
                     currentVersion={null}
                     onRestored={async () => {
                       const restored = await client.getPipelineConfig(pk);
+                      skipDirtyRef.current = true;
                       resetDraft(restored);
+                      setHasUnsavedChanges(false);
                       baseVersionRef.current = restored.baseVersion;
                     }}
                   />
