@@ -1343,6 +1343,19 @@ export const fr = {
   "pipelineCanvas.deleteNodeAria": "Supprimer {title}",
   "pipelineCanvas.startConnectAria": "Connecter depuis {title}",
   "pipelineCanvas.noteLabelAria": "Étiquette de la zone",
+  "pipelineCanvas.edgeAria": "Lien de {source} vers {target}",
+  "pipelineCanvas.nodeA11yDescription":
+    "Entrée ou Espace pour sélectionner une étape ; si une connexion est amorcée, elle s'achève sur cette étape. Suppr pour la retirer, Échap pour annuler.",
+  "pipelineCanvas.edgeA11yDescription":
+    "Entrée ou Espace pour sélectionner un lien, puis Suppr pour le retirer ou Échap pour annuler.",
+  "pipelineCanvas.nodeMovedLive": "Étape déplacée ({direction}). Nouvelle position : x {x}, y {y}",
+  "pipelineCanvas.controlsAria": "Commandes du canevas",
+  "pipelineCanvas.zoomIn": "Zoom avant",
+  "pipelineCanvas.zoomOut": "Zoom arrière",
+  "pipelineCanvas.fitView": "Ajuster la vue",
+  "pipelineCanvas.toggleInteractivity": "Activer ou désactiver l'interaction",
+  "pipelineCanvas.minimapAria": "Mini-carte du pipeline",
+  "pipelineCanvas.handleAria": "Point de connexion",
 
   // PipelinePalette (builder/pipeline)
   "pipelinePalette.sectionSources": "Sources",
@@ -1351,6 +1364,7 @@ export const fr = {
   "pipelinePalette.sectionRecent": "Récemment utilisés",
   "pipelinePalette.searchAria": "Rechercher une opération",
   "pipelinePalette.searchPlaceholder": "Rechercher…",
+  "pipelinePalette.noResults": "Aucune opération ne correspond à cette recherche.",
 
   // PipelinePreviewPanel (builder/pipeline)
   "pipelinePreview.loading": "Chargement de l'aperçu…",
