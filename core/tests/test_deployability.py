@@ -2191,3 +2191,32 @@ def test_minio_console_flag_matches_published_port():
 def test_titiler_pins_starlette_below_1():
     """j08b-005 : starlette 1.x casse la landing de titiler 0.18.4 (500)."""
     assert re.search(r'"starlette<1"', (REPO / "deploy/titiler/Dockerfile").read_text())
+
+
+# P27.14 : un service long-vivant sans restart ni sonde plante en silence.
+# Exemptions = tâches one-shot, ou images sans shell (aucune sonde CMD possible).
+LONG_LIVED_EXEMPTIONS = {
+    "appexport-runtime-builder": "one-shot (build du runtime, aucun restart voulu)",
+    "csp-dynamic-conf-init": "one-shot (init de propriété du volume)",
+    "docker-socket-proxy": "image sans shell ni wget : sonde impossible (restart seul)",
+}
+
+
+def test_every_long_lived_service_has_restart_and_healthcheck():
+    base, prod = services(BASE), services(PROD)
+    missing = []
+    for name in sorted(set(base) | set(prod)):
+        if name in LONG_LIVED_EXEMPTIONS:
+            continue
+        merged = {**base.get(name, {}), **prod.get(name, {})}
+        if merged.get("restart") != "unless-stopped":
+            missing.append(f"{name}: restart")
+        if "healthcheck" not in merged:
+            missing.append(f"{name}: healthcheck")
+    assert not missing, missing
+
+
+def test_backup_healthcheck_probes_last_success_freshness():
+    hc = services(PROD)["backup"]["healthcheck"]["test"]
+    assert ".last_success" in " ".join(hc) and "-mmin -1560" in " ".join(hc)
+    assert ".last_success" in BACKUP_SH.read_text()

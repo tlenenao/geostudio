@@ -310,6 +310,7 @@ services:
       - --providers.docker.exposedbydefault=false
       - --providers.file.directory=/csp-dynamic
       - --providers.file.watch=true
+      - --ping=true
       - --entrypoints.web.address=:80
     depends_on:
       - docker-socket-proxy
@@ -339,6 +340,12 @@ services:
     image: tailscale/tailscale:v1.102.3
     restart: unless-stopped
     network_mode: service:traefik
+    healthcheck:
+      test: ["CMD", "tailscale", "status", "--peers=false"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     environment:
       TS_AUTHKEY: ${TS_AUTHKEY}
       TS_STATE_DIR: /var/lib/tailscale
@@ -376,6 +383,17 @@ services:
       BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-geostudio-backups}
     volumes:
       - backup-archives:/backup/archives
+    # P27.08 : fraîcheur — `.last_success` est touché par backup.sh après un
+    # succès COMPLET (envoi hors-site compris s'il est configuré). Plus vieux
+    # que 26 h (1560 min) = unhealthy. start_period couvre le premier cycle
+    # (planifié une fois par jour, BACKUP_HOUR). Pas de règle Grafana : le
+    # profil observability ne scrape pas l'état Docker.
+    healthcheck:
+      test: ["CMD-SHELL", "test -n \"$$(find /backup/archives/.last_success -mmin -1560 2>/dev/null)\""]
+      interval: 15m
+      timeout: 10s
+      retries: 1
+      start_period: 26h
     networks: [gis-net]
     depends_on:
       postgis:

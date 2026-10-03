@@ -698,6 +698,13 @@ services:
   otel-lgtm:
     image: grafana/otel-lgtm:0.11.4
     profiles: ["observability"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
     environment:
       # Résolue nativement par Grafana dans les fichiers de provisioning
       # (`${...}` dans contactpoints.yaml, confirmé empiriquement contre
@@ -746,6 +753,13 @@ services:
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.20.1
     profiles: ["observability"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9187/metrics"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     environment:
       DATA_SOURCE_NAME: postgresql://gis:${PG_PASSWORD}@pgbouncer:6432/gis?sslmode=disable
     networks: [gis-net]
@@ -898,6 +912,10 @@ services:
       # utilisable par un routeur bout-en-bout.
       - --providers.file.directory=/csp-dynamic
       - --providers.file.watch=true
+      # P27.14 : /ping interne (entrypoint `traefik`, :8080, non publié)
+      # pour le healthcheck ci-dessous ; à répéter dans l'overlay prod, dont
+      # `command:` remplace celui-ci.
+      - --ping=true
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
       - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
@@ -912,3 +930,9 @@ services:
       - csp-dynamic-conf:/csp-dynamic
     networks: [gis-net]
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
