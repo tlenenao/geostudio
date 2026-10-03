@@ -1594,6 +1594,71 @@ def test_materialize_blob_connector_passes_provider_timeouts(
     assert cfg["connect_timeout"] == 7 and cfg["read_timeout"] == 42
 
 
+def test_materialize_blob_connector_pins_the_s3_endpoint_resolver(
+    monkeypatch, conn, session, tenant, user
+):
+    from app.pipelines.egress import PinnedAioResolver
+
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="s3-pin",
+        kind="s3_credentials",
+        payload={
+            "kind": "s3_credentials",
+            "awsAccessKeyId": "AKIA123",
+            "awsSecretAccessKey": "shh",
+            "bucketUrl": "s3://bucket",
+            "endpointUrl": "http://minio.local:9000",
+        },
+    )
+    captured: dict = {}
+    _patch_blob_internals(monkeypatch, captured)
+    monkeypatch.setattr("socket.getaddrinfo", lambda *a, **k: [(2, 1, 6, "", ("93.184.216.34", 0))])
+    connector_runtime.materialize_blob_connector(
+        conn,
+        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
+        node_id="bp",
+        params=ReaderConnectorBlobParams(
+            secretName="s3-pin", path="s3://bucket/data.csv", format="csv"
+        ),
+        view_name="node_bp",
+    )
+    cfg = captured["fs_kwargs"]["config_kwargs"]
+    assert isinstance(cfg["connector_args"]["resolver"], PinnedAioResolver)
+
+
+def test_materialize_blob_connector_without_endpoint_has_no_custom_resolver(
+    monkeypatch, conn, session, tenant, user
+):
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="s3-aws",
+        kind="s3_credentials",
+        payload={
+            "kind": "s3_credentials",
+            "awsAccessKeyId": "AKIA123",
+            "awsSecretAccessKey": "shh",
+            "bucketUrl": "s3://bucket",
+        },
+    )
+    captured: dict = {}
+    _patch_blob_internals(monkeypatch, captured)
+    connector_runtime.materialize_blob_connector(
+        conn,
+        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
+        node_id="ba",
+        params=ReaderConnectorBlobParams(
+            secretName="s3-aws", path="s3://bucket/data.csv", format="csv"
+        ),
+        view_name="node_ba",
+    )
+    assert "connector_args" not in captured["fs_kwargs"]["config_kwargs"]
+
+
 @pytest.mark.parametrize("raw", ["0", "-5"])
 def test_env_int_non_positive_falls_back_to_default(monkeypatch, raw):
     monkeypatch.setenv("CORE_PIPELINES_BLOB_MAX_FILES", raw)

@@ -1,11 +1,17 @@
 # SPDX-License-Identifier: Apache-2.0
+import asyncio
 import socket
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import aiohttp
 import pytest
 import requests
+from botocore.exceptions import HTTPClientError
 
 from app.pipelines.egress import (
     EgressBlockedError,
+    PinnedAioResolver,
     assert_dsn_egress_allowed,
     assert_egress_allowed,
     build_guarded_session,
@@ -166,3 +172,88 @@ def test_dsn_pin_refuses_rebinding_to_loopback(monkeypatch):
 def test_dsn_pin_is_empty_when_not_applicable(dsn, monkeypatch):
     monkeypatch.setattr(socket, "getaddrinfo", _seq_getaddrinfo("93.184.216.34"))
     assert dsn_pin_connect_args(dsn) == {}
+
+
+def test_pinned_aio_resolver_returns_the_validated_ip_and_keeps_hostname(monkeypatch):
+    monkeypatch.setattr(socket, "getaddrinfo", _seq_getaddrinfo("93.184.216.34"))
+    infos = asyncio.run(PinnedAioResolver().resolve("minio.example.com", 9000))
+    assert infos[0]["host"] == "93.184.216.34"
+    assert infos[0]["hostname"] == "minio.example.com"
+    assert infos[0]["port"] == 9000 and infos[0]["family"] == socket.AF_INET
+
+
+def test_pinned_aio_resolver_refuses_an_internal_answer(monkeypatch):
+    monkeypatch.setattr(socket, "getaddrinfo", _seq_getaddrinfo("127.0.0.1"))
+    with pytest.raises(EgressBlockedError):
+        asyncio.run(PinnedAioResolver().resolve("minio.example.com", 9000))
+
+
+@pytest.fixture
+def local_http_server():
+    seen: dict = {}
+
+    class _Handler(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            seen["host"] = self.headers["Host"]
+            self.send_response(200)
+            self.send_header("Content-Length", "2")
+            self.end_headers()
+            self.wfile.write(b"ok")
+
+        def log_message(self, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield server.server_address[1], seen
+    server.shutdown()
+
+
+def _aiohttp_get(url: str) -> str:
+    async def _go() -> str:
+        connector = aiohttp.TCPConnector(resolver=PinnedAioResolver())
+        async with aiohttp.ClientSession(connector=connector) as s:
+            async with s.get(url, timeout=aiohttp.ClientTimeout(total=5)) as r:
+                return await r.text()
+
+    return asyncio.run(_go())
+
+
+def test_real_aiohttp_connector_connects_to_the_pinned_ip(monkeypatch, local_http_server):
+    """Chemin réel aiohttp : la connexion TCP vise l'IP rendue par la garde
+    (ici 127.0.0.1 simulée « validée »), le Host: garde le nom d'origine."""
+    from app.pipelines import egress
+
+    port, seen = local_http_server
+    monkeypatch.setattr(egress, "assert_egress_allowed", lambda url: "127.0.0.1")
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: pytest.fail("DNS hors garde"))
+    assert _aiohttp_get(f"http://s3.example.test:{port}/") == "ok"
+    assert seen["host"] == f"s3.example.test:{port}"
+
+
+def test_real_aiohttp_connector_refuses_rebinding_to_loopback(monkeypatch, local_http_server):
+    port, seen = local_http_server
+    monkeypatch.setattr(socket, "getaddrinfo", _seq_getaddrinfo("127.0.0.1"))
+    with pytest.raises(EgressBlockedError):
+        _aiohttp_get(f"http://s3.example.test:{port}/")
+    assert seen == {}
+
+
+def test_real_s3fs_client_goes_through_the_pinned_resolver(monkeypatch, local_http_server):
+    """s3fs → aiobotocore AioConfig(connector_args) → aiohttp.TCPConnector :
+    le résolveur passé dans config_kwargs est bien celui qui résout l'endpoint."""
+    import s3fs
+
+    port, seen = local_http_server
+    monkeypatch.setattr(socket, "getaddrinfo", _seq_getaddrinfo("127.0.0.1"))
+    fs = s3fs.S3FileSystem(
+        key="k",
+        secret="s",
+        endpoint_url=f"http://minio.example.test:{port}",
+        config_kwargs={"connector_args": {"resolver": PinnedAioResolver()}},
+        skip_instance_cache=True,
+    )
+    # aiobotocore enveloppe l'exception du résolveur dans HTTPClientError.
+    with pytest.raises(HTTPClientError, match="cible réseau interne bloquée"):
+        fs.ls("bucket")
+    assert seen == {}

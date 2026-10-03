@@ -7,6 +7,7 @@ l'importer. Point d'application différent de l'original : dlt.sources.rest_api
 utilise `requests`, pas `httpx` — copier le transport httpx de
 app.harvest.egress ne garderait rien en pratique."""
 
+import asyncio
 import ipaddress
 import logging
 import os
@@ -14,6 +15,7 @@ import socket
 from urllib.parse import urlparse
 
 import requests
+from aiohttp.abc import AbstractResolver, ResolveResult
 from sqlalchemy.engine import make_url
 
 from app.net_pin import pinned_adapter
@@ -145,3 +147,31 @@ def build_guarded_session() -> requests.Session:
     session.mount("http://", adapter)
     session.mount("https://", adapter)
     return session
+
+
+class PinnedAioResolver(AbstractResolver):
+    """Résolveur aiohttp (donc aiobotocore/s3fs, endpoint S3 compatible) qui
+    n'accepte que l'adresse validée par la garde d'egress au moment même de
+    la connexion (REV-273d). `hostname` reste le nom d'origine : SNI et
+    vérification de certificat inchangés. aiohttp (connector._resolve_host)
+    n'appelle pas le résolveur pour un littéral IP : celui-ci est validé en
+    amont par assert_egress_allowed(endpointUrl). Le cache DNS d'aiohttp
+    (use_dns_cache, 10 s) ne réutilise que des réponses déjà validées."""
+
+    async def resolve(
+        self, host: str, port: int = 0, family: socket.AddressFamily = socket.AF_INET
+    ) -> list[ResolveResult]:
+        ip = await asyncio.to_thread(_pin_ip, host)  # getaddrinfo bloquant hors boucle
+        return [
+            {
+                "hostname": host,
+                "host": ip,
+                "port": port,
+                "family": socket.AF_INET6 if ":" in ip else socket.AF_INET,
+                "proto": 0,
+                "flags": socket.AI_NUMERICHOST,
+            }
+        ]
+
+    async def close(self) -> None:
+        return None

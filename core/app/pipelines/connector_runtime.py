@@ -49,6 +49,7 @@ from sqlalchemy.orm import Session
 from app.analytics.sql_sandbox import SqlSandboxError, parse_ast, validate_select_only
 from app.pipelines.egress import (
     EgressBlockedError,
+    PinnedAioResolver,
     assert_dsn_egress_allowed,
     assert_egress_allowed,
     build_guarded_session,
@@ -207,7 +208,10 @@ def _blob_fs_kwargs(payload) -> dict:
     gcsfs `requests_timeout`."""
     t, q = _connect_timeout_s(), _query_timeout_s()
     if payload.kind == "s3_credentials":
-        return {"kwargs": {"config_kwargs": {"connect_timeout": t, "read_timeout": q}}}
+        cfg: dict = {"connect_timeout": t, "read_timeout": q}
+        if payload.endpointUrl:  # cible réseau libre : épingler la résolution (REV-273d)
+            cfg["connector_args"] = {"resolver": PinnedAioResolver()}
+        return {"kwargs": {"config_kwargs": cfg}}
     if payload.kind == "azure_blob_credentials":
         return {"kwargs": {"connection_timeout": t, "read_timeout": q}}
     return {"kwargs": {"requests_timeout": q}}
