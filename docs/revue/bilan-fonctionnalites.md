@@ -13,7 +13,7 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | 4 | **Administration** | 99.4 |
 | 4 | **Analytique** | 94.5 |
 | 3 | **Apps & sites** | 99.3 |
-| 30 | **Automatisation** | 97.7 |
+| 30 | **Automatisation** | 97.6 |
 | 3 | **Builder — Actions composees** | 100.0 |
 | 3 | **Builder — Analytique globale** | 97.5 |
 | 5 | **Builder — Automatisation (pipelines)** | 96.8 |
@@ -33,7 +33,7 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | 12 | **CI/Qualité** | 100.0 |
 | 27 | **Carte** | 98.9 |
 | 2 | **Cartes** | 97.4 |
-| 5 | **Cartographie** | 98.7 |
+| 5 | **Cartographie** | 97.7 |
 | 5 | **Catalogue** | 98.7 |
 | 10 | **Catalogue/Items** | 96.7 |
 | 1 | **Catalogue/Métadonnées** | 100.0 |
@@ -57,7 +57,7 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | 11 | **Fédération des données** | 96.7 |
 | 1 | **Gouvernance/Licences** | 100.0 |
 | 1 | **Interne** | 74.4 |
-| 4 | **Navigation** | 100.0 |
+| 4 | **Navigation** | 99.2 |
 | 1 | **Paramètres** | 98.6 |
 | 7 | **Plateforme IA** | 76.6 |
 | 1 | **Provisioning** | 100.0 |
@@ -84,6 +84,7 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | Collections | RLS multi-tenant appliquée automatiquement à toute nouvelle collection | `collections-rls-multi-tenant-appliquee-automatiquement-a-toute-nouvelle-collecti` | 60.8 | = | haute (amorcée) | 34.7 | — | — | 100.0 |
 | Features (OGC API) | Exécution SQL sous rôle non-propriétaire borné au tenant (RLS transactionnelle) | `features-ogc-api-execution-sql-sous-role-non-proprietaire-borne-au-tenant-rls-tr` | 62.5 | = | haute (amorcée) | 37.5 | — | — | 100.0 |
 | Collections | Inscrire/retirer une table de la publication logique CDC | `collections-inscrire-retirer-une-table-de-la-publication-logique-cdc` | 59.3 | = | moyenne (amorcée) | 32.1 | — | — | 100.0 |
+| Navigation | Layout triptyque adaptatif (3 colonnes desktop / onglets mobile) | `navigation-layout-triptyque-adaptatif-3-colonnes-desktop-onglets-mobile` | 76.7 | -23.3 | haute (amorcée) | 61.1 | — | — | 100.0 |
 | Features (OGC API) | Filtrer les features par intersection géométrique exacte (ST_Intersects) | `features-ogc-api-filtrer-les-features-par-intersection-geometrique-exacte-st-int` | 67.1 | = | moyenne (amorcée) | 17.7 | 100.0 | — | 100.0 |
 | Plateforme IA | Décrire les champs interrogeables d'un dataset avant une requête analytique (agent MCP) | `plateforme-ia-decrire-les-champs-interrogeables-d-un-dataset-avant-une-requete-a` | 69.0 | = | moyenne (amorcée) | 22.6 | 100.0 | — | 100.0 |
 | Plateforme IA | Générer une application de saisie complète sur une collection depuis un agent MCP | `plateforme-ia-generer-une-application-de-saisie-complete-sur-une-collection-depu` | 73.5 | = | moyenne (amorcée) | 33.8 | 100.0 | — | 100.0 |
@@ -103,7 +104,7 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | Automatisation | Consulter l'historique des évaluations d'une règle d'alerte | `automatisation-consulter-l-historique-des-evaluations-d-une-regle-d-alerte` | 85.7 | = | moyenne (amorcée) | 52.2 | 100.0 | 100.0 | 100.0 |
 | sharing | Créer un groupe de partage et y ajouter des membres | `sharing-creer-un-groupe-de-partage-et-y-ajouter-des-membres` | 86.5 | = | moyenne (amorcée) | 70.7 | 100.0 | 81.2 | 100.0 |
 | Automatisation | Définir une règle d'alerte de seuil sur un dataset | `automatisation-definir-une-regle-d-alerte-de-seuil-sur-un-dataset` | 86.7 | = | moyenne (amorcée) | 69.7 | 100.0 | 83.3 | 100.0 |
-| Builder — Widgets | Widget Table (tri, pagination, cross-filter, action setFilter) | `builder-widgets-widget-table-tri-pagination-cross-filter-action-setfilter` | 91.3 | +0.4 | haute (amorcée) | 85.6 | — | — | 100.0 |
+| Builder — Widgets | Widget Table (tri, pagination, cross-filter, action setFilter) | `builder-widgets-widget-table-tri-pagination-cross-filter-action-setfilter` | 91.3 | = | haute (amorcée) | 85.6 | — | — | 100.0 |
 | Interne | Galerie interne de composants du kit UI | `interne-galerie-interne-de-composants-du-kit-ui` | 74.4 | = | basse (amorcée) | 36.1 | 100.0 | — | 100.0 |
 | roles | Quatre rôles prédéfinis immuables par tenant (Administrateur, Créateur, Analyste, Lecteur) | `roles-quatre-roles-predefinis-immuables-par-tenant-administrateur-createur-analy` | 92.0 | = | haute (amorcée) | 86.7 | — | — | 100.0 |
 | Collections | Lister/rechercher les collections (recherche hybride) | `collections-lister-rechercher-les-collections-recherche-hybride` | 88.7 | = | moyenne (amorcée) | 71.7 | 100.0 | — | 100.0 |
@@ -117,8 +118,8 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | Plateforme IA | Générer des filtres/jointure/résumé en langage naturel pour la requête visuelle (agent MCP) | `plateforme-ia-generer-des-filtres-jointure-resume-en-langage-naturel-pour-la-req` | 91.2 | = | moyenne (amorcée) | 77.9 | 100.0 | — | 100.0 |
 | Catalogue | Fiche détail d'un item (panneaux édition/miniature/partage via URL) | `catalogue-fiche-detail-d-un-item-panneaux-edition-miniature-partage-via-url` | 91.2 | = | moyenne (amorcée) | 78.0 | 100.0 | — | 100.0 |
 | Builder — Widgets | Widget Carte (symbologie, popup, cross-filter, actions flyTo/highlight) | `builder-widgets-widget-carte-symbologie-popup-cross-filter-actions-flyto-highlig` | 94.2 | = | haute (amorcée) | 90.4 | — | — | 100.0 |
-| Builder — CEL & expressions | Colonne calculee CEL sur le widget Table | `builder-cel-expressions-colonne-calculee-cel-sur-le-widget-table` | 91.3 | +0.4 | moyenne (amorcée) | 85.6 | — | — | 100.0 |
-| Builder — Widgets | Widget Liste (selection -> cross-filter) | `builder-widgets-widget-liste-selection-cross-filter` | 91.3 | +0.4 | moyenne (amorcée) | 85.6 | — | — | 100.0 |
+| Builder — CEL & expressions | Colonne calculee CEL sur le widget Table | `builder-cel-expressions-colonne-calculee-cel-sur-le-widget-table` | 91.3 | = | moyenne (amorcée) | 85.6 | — | — | 100.0 |
+| Builder — Widgets | Widget Liste (selection -> cross-filter) | `builder-widgets-widget-liste-selection-cross-filter` | 91.3 | = | moyenne (amorcée) | 85.6 | — | — | 100.0 |
 | Automatisation | Planifier l'exécution récurrente d'un pipeline (cron) | `automatisation-planifier-l-execution-recurrente-d-un-pipeline-cron` | 91.5 | = | moyenne (amorcée) | 71.6 | 100.0 | 100.0 | 100.0 |
 | auth | Promotion automatique en Administrateur ou Analyste par sub OIDC (CORE_ADMIN_SUBS / CORE_ANALYST_SUBS) | `auth-promotion-automatique-en-administrateur-ou-analyste-par-sub-oidc-core-admin` | 91.6 | = | moyenne (amorcée) | 86.0 | — | — | 100.0 |
 | Automatisation | Catalogue des rapports planifiés (/reports) | `automatisation-catalogue-des-rapports-planifies-reports` | 83.3 | = | basse (amorcée) | 72.2 | — | — | 100.0 |
@@ -137,7 +138,7 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | Features (OGC API) | Exporter un agrégat en CSV/XLSX | `features-ogc-api-exporter-un-agregat-en-csv-xlsx` | 92.8 | = | moyenne (amorcée) | 76.1 | 100.0 | 100.0 | 100.0 |
 | Features (OGC API) | Landing page et déclaration de conformité OGC API Features | `features-ogc-api-landing-page-et-declaration-de-conformite-ogc-api-features` | 92.8 | = | moyenne (amorcée) | 76.1 | 100.0 | 100.0 | 100.0 |
 | Builder — CEL & expressions | Seuils critique/alerte CEL sur l'indicateur | `builder-cel-expressions-seuils-critique-alerte-cel-sur-l-indicateur` | 92.9 | = | moyenne (amorcée) | 88.2 | — | — | 100.0 |
-| Builder — Widgets | Widget Pivot (tableau croise dynamique) | `builder-widgets-widget-pivot-tableau-croise-dynamique` | 93.0 | -0.2 | moyenne (amorcée) | 88.4 | — | — | 100.0 |
+| Builder — Widgets | Widget Pivot (tableau croise dynamique) | `builder-widgets-widget-pivot-tableau-croise-dynamique` | 93.0 | = | moyenne (amorcée) | 88.4 | — | — | 100.0 |
 | tenants | Provisionnement d'un tenant unique par défaut (multi-tenant non exposé à l'utilisateur) | `tenants-provisionnement-d-un-tenant-unique-par-defaut-multi-tenant-non-expose-a-` | 86.4 | = | basse (amorcée) | 77.3 | — | — | 100.0 |
 | Features (OGC API) | Créer/modifier/supprimer une entité (OGC Part 4) | `features-ogc-api-creer-modifier-supprimer-une-entite-ogc-part-4` | 95.5 | = | haute (amorcée) | 85.0 | 100.0 | 100.0 | 100.0 |
 | Builder — Widgets | Formulaire en lecture seule si permission insuffisante ou instance en mode demo | `builder-widgets-formulaire-en-lecture-seule-si-permission-insuffisante-ou-instan` | 95.8 | = | haute (amorcée) | 93.0 | — | — | 100.0 |
@@ -155,10 +156,10 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | Builder — Widgets | Widget Bouton (action composee + lien externe) | `builder-widgets-widget-bouton-action-composee-lien-externe` | 94.0 | = | moyenne (amorcée) | 90.0 | — | — | 100.0 |
 | Builder — Widgets | Widget Image | `builder-widgets-widget-image` | 94.0 | = | moyenne (amorcée) | 90.0 | — | — | 100.0 |
 | Builder — Widgets | Widget Texte avec interpolation {{champ}}/{{var:nom}} | `builder-widgets-widget-texte-avec-interpolation-champ-var-nom` | 94.0 | = | moyenne (amorcée) | 90.0 | — | — | 100.0 |
-| Carte | Gestion des couches (réordonnancement, visibilité, suppression) | `carte-gestion-des-couches-reordonnancement-visibilite-suppression` | 96.1 | = | haute (amorcée) | 93.5 | — | — | 100.0 |
 | Fédération des données | Moissonnage : créer/lister/éditer/supprimer une source externe (STAC, ArcGIS FS, WMS, WFS, WMTS, CSW, OGC API - Records, CKAN) | `federation-des-donnees-moissonnage-creer-lister-editer-supprimer-une-source-exte` | 94.2 | = | moyenne (amorcée) | 87.0 | 100.0 | 92.3 | 100.0 |
 | Carte | Popup au clic sur une entité (liste de champs configurable) | `carte-popup-au-clic-sur-une-entite-liste-de-champs-configurable` | 96.1 | = | haute (amorcée) | 93.5 | — | — | 100.0 |
 | Carte | Étiquettes de carte multi-champs (gabarit CEL) | `carte-etiquettes-de-carte-multi-champs-gabarit-cel` | 94.2 | = | moyenne (amorcée) | 90.3 | — | — | 100.0 |
+| Carte | Gestion des couches (réordonnancement, visibilité, suppression) | `carte-gestion-des-couches-reordonnancement-visibilite-suppression` | 96.1 | = | haute (amorcée) | 93.5 | — | — | 100.0 |
 | Builder — Widgets | Outils de mesure/croquis sur le widget Carte, actifs seulement hors edition | `builder-widgets-outils-de-mesure-croquis-sur-le-widget-carte-actifs-seulement-ho` | 94.2 | = | moyenne (amorcée) | 90.4 | — | — | 100.0 |
 | Carte | Légende de symbologie (couleurs par classe/catégorie) affichée sur la carte | `carte-legende-de-symbologie-couleurs-par-classe-categorie-affichee-sur-la-carte` | 94.2 | = | moyenne (amorcée) | 90.4 | — | — | 100.0 |
 | Catalogue/Items | Publier / dépublier un item | `catalogue-items-publier-depublier-un-item` | 96.2 | = | haute (amorcée) | 94.2 | 100.0 | 91.7 | 100.0 |
@@ -168,7 +169,7 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | Analytique | Export (agrégat CSV/XLSX et entités GeoJSON/CSV/XLSX) d'un dataset ArcGIS Feature Service live | `analytique-export-agregat-csv-xlsx-et-entites-geojson-csv-xlsx-d-un-dataset-arcg` | 94.5 | = | moyenne (amorcée) | 88.7 | 100.0 | 91.7 | 100.0 |
 | Analytique | Lecture live paginée/filtrée des entités d'un dataset ArcGIS Feature Service (pour rendu carte) | `analytique-lecture-live-paginee-filtree-des-entites-d-un-dataset-arcgis-feature-` | 94.5 | = | moyenne (amorcée) | 88.7 | 100.0 | 91.7 | 100.0 |
 | Fédération des données | Exécution manuelle immédiate d'un moissonnage (bouton « Lancer ») | `federation-des-donnees-execution-manuelle-immediate-d-un-moissonnage-bouton-lanc` | 94.5 | = | moyenne (amorcée) | 88.7 | 100.0 | 91.7 | 100.0 |
-| users | Liste des utilisateurs du tenant, avec recherche et pagination | `users-liste-des-utilisateurs-du-tenant-avec-recherche-et-pagination` | 94.7 | -0.3 | moyenne (amorcée) | 96.1 | 100.0 | 83.3 | 100.0 |
+| users | Liste des utilisateurs du tenant, avec recherche et pagination | `users-liste-des-utilisateurs-du-tenant-avec-recherche-et-pagination` | 94.7 | = | moyenne (amorcée) | 96.1 | 100.0 | 83.3 | 100.0 |
 | Automatisation | Lancer l'exécution d'un pipeline à la demande | `automatisation-lancer-l-execution-d-un-pipeline-a-la-demande` | 96.5 | = | haute (amorcée) | 93.1 | 100.0 | 94.4 | 100.0 |
 | Builder — Widgets | Widget Plage de dates (pilote le contexte temporel global) | `builder-widgets-widget-plage-de-dates-pilote-le-contexte-temporel-global` | 95.0 | = | moyenne (amorcée) | 91.7 | — | — | 100.0 |
 | Fédération des données | Mode « copie » du moissonnage : matérialise le contenu distant en une collection propre au tenant (RLS, édition, etc.) | `federation-des-donnees-mode-copie-du-moissonnage-materialise-le-contenu-distant-` | 95.0 | = | moyenne (amorcée) | 91.7 | — | — | 100.0 |
@@ -189,7 +190,9 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | Collections | Lister les tables PostGIS candidates à l'enregistrement | `collections-lister-les-tables-postgis-candidates-a-l-enregistrement` | 96.3 | = | moyenne (amorcée) | 87.5 | 100.0 | 100.0 | 100.0 |
 | Collections | Modifier une collection (titre, publication, métadonnées ouvertes, champs pièces jointes) | `collections-modifier-une-collection-titre-publication-metadonnees-ouvertes-champ` | 96.3 | = | moyenne (amorcée) | 87.5 | 100.0 | 100.0 | 100.0 |
 | Collections | Supprimer une collection | `collections-supprimer-une-collection` | 96.3 | = | moyenne (amorcée) | 87.5 | 100.0 | 100.0 | 100.0 |
+| Automatisation | Voir les pièces jointes d'une entité dans le popup de la carte | `automatisation-voir-les-pieces-jointes-d-une-entite-dans-le-popup-de-la-carte` | 96.3 | -2.3 | moyenne (amorcée) | 87.7 | 100.0 | 100.0 | 100.0 |
 | Features (OGC API) | SQL Lab : requête SQL en lecture seule sandboxée sur les collections visibles | `features-ogc-api-sql-lab-requete-sql-en-lecture-seule-sandboxee-sur-les-collecti` | 96.4 | = | moyenne (amorcée) | 88.0 | 100.0 | 100.0 | 100.0 |
+| Cartographie | Héberger un tileset 3D (zip, ex. Cesium 3D Tiles) sans jamais l'extraire sur disque | `cartographie-heberger-un-tileset-3d-zip-ex-cesium-3d-tiles-sans-jamais-l-extrair` | 96.5 | -2.5 | moyenne (amorcée) | 88.2 | 100.0 | 100.0 | 100.0 |
 | Catalogue | Menu d'actions sur un item (modifier/publier/miniature/partager/supprimer/programmer un rapport) | `catalogue-menu-d-actions-sur-un-item-modifier-publier-miniature-partager-supprim` | 96.5 | = | moyenne (amorcée) | 94.1 | — | — | 100.0 |
 | Plateforme IA | Serveur MCP authentifié (OAuth 2.1 + PKCE) exposant des outils au catalogue/aux items/au partage | `plateforme-ia-serveur-mcp-authentifie-oauth-2-1-pkce-exposant-des-outils-au-cata` | 97.7 | = | haute (amorcée) | 94.2 | 100.0 | — | 100.0 |
 | Automatisation | Attacher un fichier (photo, document) à une entité depuis le widget Formulaire | `automatisation-attacher-un-fichier-photo-document-a-une-entite-depuis-le-widget-` | 97.8 | = | haute (amorcée) | 92.6 | 100.0 | 100.0 | 100.0 |
@@ -222,7 +225,7 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | Cartographie | Afficher un tileset 3D hébergé directement sur la carte (deck.gl) | `cartographie-afficher-un-tileset-3d-heberge-directement-sur-la-carte-deck-gl` | 97.7 | = | moyenne (amorcée) | 96.2 | — | — | 100.0 |
 | Catalogue/Items | Créer un objet de plateforme versionné (AppConfig/MapConfig/Dataset/...) | `catalogue-items-creer-un-objet-de-plateforme-versionne-appconfig-mapconfig-datas` | 98.5 | = | haute (amorcée) | 95.0 | 100.0 | 100.0 | 100.0 |
 | Automatisation | Inspecter les couches d'un GeoPackage/Shapefile avant de choisir laquelle importer | `automatisation-inspecter-les-couches-d-un-geopackage-shapefile-avant-de-choisir-` | 97.9 | = | moyenne (amorcée) | 93.0 | 100.0 | 100.0 | 100.0 |
-| roles | Créer, éditer, supprimer un rôle sur mesure avec privilèges cochés par domaine | `roles-creer-editer-supprimer-un-role-sur-mesure-avec-privileges-coches-par-domai` | 97.9 | -0.2 | moyenne (amorcée) | 93.1 | 100.0 | 100.0 | 100.0 |
+| roles | Créer, éditer, supprimer un rôle sur mesure avec privilèges cochés par domaine | `roles-creer-editer-supprimer-un-role-sur-mesure-avec-privileges-coches-par-domai` | 97.9 | = | moyenne (amorcée) | 93.1 | 100.0 | 100.0 | 100.0 |
 | Collections | Permissions calculées par collection, avec bypass admin.collections.manage sur GET/PATCH/DELETE/schema/sharing | `collections-permissions-calculees-par-collection-avec-bypass-admin-collections-m` | 98.0 | = | moyenne (amorcée) | 96.7 | — | — | 100.0 |
 | Données | Éditeur de dataset partagé (métadonnées, colonnes, champ temporel, cross-filter) | `donnees-editeur-de-dataset-partage-metadonnees-colonnes-champ-temporel-cross-fil` | 98.7 | = | haute (amorcée) | 96.8 | 100.0 | — | 100.0 |
 | Catalogue | Catalogue (recherche, filtre type, filtre portée, pagination) | `catalogue-catalogue-recherche-filtre-type-filtre-portee-pagination` | 98.7 | = | haute (amorcée) | 96.8 | 100.0 | — | 100.0 |
@@ -238,7 +241,6 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | Extensibilité | Enregistrer un widget externe (Web Component) dans le registre d'extensions du tenant | `extensibilite-enregistrer-un-widget-externe-web-component-dans-le-registre-d-ext` | 98.5 | = | moyenne (amorcée) | 95.1 | 100.0 | 100.0 | 100.0 |
 | Automatisation | Marquer une ou toutes les notifications comme lues | `automatisation-marquer-une-ou-toutes-les-notifications-comme-lues` | 98.6 | = | moyenne (amorcée) | 95.2 | 100.0 | 100.0 | 100.0 |
 | Paramètres | Paramètres d'instance et de tenant | `parametres-parametres-d-instance-et-de-tenant` | 98.6 | = | moyenne (amorcée) | 96.5 | 100.0 | — | 100.0 |
-| Automatisation | Voir les pièces jointes d'une entité dans le popup de la carte | `automatisation-voir-les-pieces-jointes-d-une-entite-dans-le-popup-de-la-carte` | 98.6 | = | moyenne (amorcée) | 95.4 | 100.0 | 100.0 | 100.0 |
 | Automatisation | Lire une source REST ou Postgres externe dans un pipeline (connecteurs) | `automatisation-lire-une-source-rest-ou-postgres-externe-dans-un-pipeline-connect` | 98.7 | = | moyenne (amorcée) | 96.7 | 100.0 | — | 100.0 |
 | Apps & sites | Capturer une miniature depuis le canevas de l'app | `apps-sites-capturer-une-miniature-depuis-le-canevas-de-l-app` | 98.7 | = | moyenne (amorcée) | 96.7 | 100.0 | — | 100.0 |
 | Builder — Export d'app | Export d'app en trois modes (Statique/Connecte/Autoporte) | `builder-export-d-app-export-d-app-en-trois-modes-statique-connecte-autoporte` | 99.1 | = | haute (amorcée) | 97.8 | 100.0 | — | 100.0 |
@@ -255,7 +257,6 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | Carte | Réglage de l'opacité d'une couche raster | `carte-reglage-de-l-opacite-d-une-couche-raster` | 97.7 | = | basse (amorcée) | 96.2 | — | — | 100.0 |
 | auth | Accès anonyme en lecture aux items/collections publics | `auth-acces-anonyme-en-lecture-aux-items-collections-publics` | 99.3 | = | haute (amorcée) | 98.8 | — | — | 100.0 |
 | auth | Authentification OIDC (Keycloak) avec provisioning JIT du compte, et mode mock réservé au développement | `auth-authentification-oidc-keycloak-avec-provisioning-jit-du-compte-et-mode-mock` | 99.3 | = | haute (amorcée) | 98.8 | — | — | 100.0 |
-| Cartographie | Héberger un tileset 3D (zip, ex. Cesium 3D Tiles) sans jamais l'extraire sur disque | `cartographie-heberger-un-tileset-3d-zip-ex-cesium-3d-tiles-sans-jamais-l-extrair` | 99.0 | = | moyenne (amorcée) | 96.5 | 100.0 | 100.0 | 100.0 |
 | Automatisation | Exporter une carte enregistrée (Bookmark) en image PNG ou PDF | `automatisation-exporter-une-carte-enregistree-bookmark-en-image-png-ou-pdf` | 99.0 | = | moyenne (amorcée) | 96.6 | 100.0 | 100.0 | 100.0 |
 | Catalogue | Créer un nouvel élément (App/Dashboard/Map/Site/Dataset/Pipeline/Requête visuelle) | `catalogue-creer-un-nouvel-element-app-dashboard-map-site-dataset-pipeline-requet` | 99.3 | = | haute (amorcée) | 98.9 | — | — | 100.0 |
 | Builder — Donnees | Six grains temporels pour une source statistics | `builder-donnees-six-grains-temporels-pour-une-source-statistics` | 99.0 | = | moyenne (amorcée) | 98.3 | — | — | 100.0 |
@@ -277,6 +278,7 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | Apps & sites | Runtime d'une app (navigation par page, contexte analytique dans l'URL, enregistrer une vue) | `apps-sites-runtime-d-une-app-navigation-par-page-contexte-analytique-dans-l-url-` | 99.7 | = | haute (amorcée) | 99.3 | 100.0 | — | 100.0 |
 | Conformité | Mesurer l'usage de stockage et de ressources d'un tenant | `conformite-mesurer-l-usage-de-stockage-et-de-ressources-d-un-tenant` | 99.2 | = | basse | 97.3 | 100.0 | 100.0 | 100.0 |
 | Automatisation | Consulter l'historique des exécutions d'un rapport planifié | `automatisation-consulter-l-historique-des-executions-d-un-rapport-planifie` | 99.6 | = | moyenne (amorcée) | 98.7 | 100.0 | 100.0 | 100.0 |
+| Carte | Outil de mesure de distance et de surface | `carte-outil-de-mesure-de-distance-et-de-surface` | 99.6 | -0.4 | moyenne (amorcée) | 99.4 | — | — | 100.0 |
 | Administration | Accéder à la console MinIO depuis la page d'infrastructure admin | `administration-acceder-a-la-console-minio-depuis-la-page-d-infrastructure-admin` | 100.0 | = | basse (amorcée) | 100.0 | — | — | 100.0 |
 | Administration | Lancer Martin/Titiler/Grafana depuis le shell derrière un gate cookie de courte durée | `administration-lancer-martin-titiler-grafana-depuis-le-shell-derriere-un-gate-co` | 100.0 | = | moyenne (amorcée) | 100.0 | 100.0 | 100.0 | 100.0 |
 | Analytique | Agrégation live sur un dataset ArcGIS Feature Service moissonné, sans copie locale | `analytique-agregation-live-sur-un-dataset-arcgis-feature-service-moissonne-sans-` | 100.0 | = | moyenne (amorcée) | 100.0 | — | — | 100.0 |
@@ -324,7 +326,6 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | Carte | Classification par seuils naturels (Jenks) | `carte-classification-par-seuils-naturels-jenks` | 100.0 | = | moyenne (amorcée) | 100.0 | — | — | 100.0 |
 | Carte | Contrôle de la caméra 3D (inclinaison/orientation) | `carte-controle-de-la-camera-3d-inclinaison-orientation` | 100.0 | = | moyenne (amorcée) | 100.0 | — | — | 100.0 |
 | Carte | Introspection d'une couche GeoJSON externe (champs, statistiques calculés côté client) | `carte-introspection-d-une-couche-geojson-externe-champs-statistiques-calcules-co` | 100.0 | = | moyenne (amorcée) | 100.0 | — | — | 100.0 |
-| Carte | Outil de mesure de distance et de surface | `carte-outil-de-mesure-de-distance-et-de-surface` | 100.0 | = | moyenne (amorcée) | 100.0 | — | — | 100.0 |
 | Carte | Palette de couleur reprenant le thème du site (theme-primary) | `carte-palette-de-couleur-reprenant-le-theme-du-site-theme-primary` | 100.0 | = | moyenne (amorcée) | 100.0 | — | — | 100.0 |
 | Carte | Persistance de collectionId/pkColumn sur une couche 'feature' (URL GeoJSON) | `carte-persistance-de-collectionid-pkcolumn-sur-une-couche-feature-url-geojson` | 100.0 | = | moyenne (amorcée) | 100.0 | — | — | 100.0 |
 | Carte | Persistance de la configuration de carte (basemap, vue, couches, terrain, mise en page d'impression) | `carte-persistance-de-la-configuration-de-carte-basemap-vue-couches-terrain-mise-` | 100.0 | = | haute (amorcée) | 100.0 | — | — | 100.0 |
@@ -368,7 +369,6 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | i18n | Catalogue de messages français (t()) | `i18n-catalogue-de-messages-francais-t` | 100.0 | = | moyenne (amorcée) | 100.0 | — | — | 100.0 |
 | instance | Statut des capacités du déploiement, visible sans authentification | `instance-statut-des-capacites-du-deploiement-visible-sans-authentification` | 100.0 | = | haute (amorcée) | 100.0 | 100.0 | 100.0 | 100.0 |
 | Navigation | Barre de statut (version + tenant) | `navigation-barre-de-statut-version-tenant` | 100.0 | = | basse (amorcée) | 100.0 | — | — | 100.0 |
-| Navigation | Layout triptyque adaptatif (3 colonnes desktop / onglets mobile) | `navigation-layout-triptyque-adaptatif-3-colonnes-desktop-onglets-mobile` | 100.0 | = | haute (amorcée) | 100.0 | — | — | 100.0 |
 | Navigation | Menu compte (rôle affiché + déconnexion) | `navigation-menu-compte-role-affiche-deconnexion` | 100.0 | = | moyenne (amorcée) | 100.0 | — | — | 100.0 |
 | Provisioning | Provisionner automatiquement une VM et y déployer GeoStudio sur un hyperviseur Proxmox | `provisioning-provisionner-automatiquement-une-vm-et-y-deployer-geostudio-sur-un-` | 100.0 | = | moyenne (amorcée) | 100.0 | — | — | 100.0 |
 | Release | Générer et publier un SBOM par image de release | `release-generer-et-publier-un-sbom-par-image-de-release` | 100.0 | = | moyenne (amorcée) | 100.0 | — | — | 100.0 |
