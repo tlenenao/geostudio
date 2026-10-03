@@ -88,6 +88,33 @@ export default tseslint.config(
     },
   },
   {
+    // P22.01 : tout appel au cœur passe par base.ts (fetchWithTimeout/authFetch :
+    // timeout 15 s, CoreUnreachableError, ApiError RFC 7807). Exceptions
+    // explicites : base.ts lui-même, PUT présignés S3 (hôte externe, sans jeton),
+    // sidecar desktop, export statique (fichiers locaux), lien de partage public,
+    // et 3 sites carte (tuiles/GeoJSON avec jeton) à migrer par P30.03.
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: [
+      "**/*.test.{ts,tsx}",
+      "src/api/base.ts",
+      "src/api/domains/exportsIngestion.ts",
+      "src/builder/widgets/form.tsx",
+      "src/shell/Tileset3DUploadButton.tsx",
+      "src/desktop/DesktopItemClient.ts",
+      "src/staticExport/entry.tsx",
+      "src/pages/embed/resolveShareLink.ts",
+      "src/map/MapView.tsx",
+      "src/map/LayersPanel.tsx",
+      "src/map/geojsonIntrospect.ts",
+    ],
+    rules: {
+      "no-restricted-globals": [
+        "error",
+        { name: "fetch", message: "Passer par base.request/authFetch (src/api/base.ts)." },
+      ],
+    },
+  },
+  {
     // Deux consommateurs légitimes de sanitizeMarkdown() : le widget
     // RichSection et le popup de carte (SP-24). Tout autre fichier reste
     // interdit par la règle no-restricted-syntax ci-dessus.

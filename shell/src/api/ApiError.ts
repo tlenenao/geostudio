@@ -12,13 +12,24 @@ export class ApiError extends Error {
   readonly title?: string;
   readonly detail?: string;
   readonly retryAfter?: number;
+  // P22.04 : membre `errors[]` du problem+json (P21 : `{field, code, message}`).
+  readonly errors?: { field: string; code: string; message: string }[];
 
-  constructor(status: number, options?: { title?: string; detail?: string; retryAfter?: number }) {
+  constructor(
+    status: number,
+    options?: {
+      title?: string;
+      detail?: string;
+      retryAfter?: number;
+      errors?: { field: string; code: string; message: string }[];
+    },
+  ) {
     super(options?.detail ?? `Erreur HTTP ${status}`);
     this.name = "ApiError";
     this.status = status;
     this.title = options?.title;
     this.detail = options?.detail;
     this.retryAfter = options?.retryAfter;
+    this.errors = options?.errors;
   }
 }

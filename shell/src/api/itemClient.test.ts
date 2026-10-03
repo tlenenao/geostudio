@@ -327,6 +327,45 @@ test("deleteItem relaie le detail du 409 (kinds référençants) dans le message
   );
 });
 
+test("P22.04 : les appels authFetch lèvent une ApiError RFC 7807 (detail, errors, Retry-After)", async () => {
+  const problem = (status: number, body: Record<string, unknown>, headers = {}) =>
+    HttpResponse.json(body, {
+      status,
+      headers: { "Content-Type": "application/problem+json", ...headers },
+    });
+  server.use(
+    http.get("https://core.test/v1/extensions", () =>
+      problem(500, { title: "Erreur", detail: "base indisponible" }),
+    ),
+    http.get("https://core.test/v1/harvest/feature-layers", () =>
+      problem(429, { title: "Trop", detail: "ralentis" }, { "Retry-After": "7" }),
+    ),
+    http.post("https://core.test/v1/collections/c1/items", () =>
+      problem(422, {
+        title: "Validation",
+        detail: "1 champ invalide",
+        errors: [{ field: "nom", code: "required", message: "requis" }],
+      }),
+    ),
+  );
+  const client = makeClient();
+  await expect(client.listActiveExtensions()).rejects.toMatchObject({
+    name: "ApiError",
+    status: 500,
+    detail: "base indisponible",
+  });
+  await expect(client.listFeatureLayers()).rejects.toMatchObject({
+    status: 429,
+    retryAfter: 7,
+  });
+  await expect(
+    client.createFeature("c1", { type: "Feature", properties: {}, geometry: null }),
+  ).rejects.toMatchObject({
+    name: "FeatureValidationError",
+    errors: [{ field: "nom", code: "required", message: "requis" }],
+  });
+});
+
 test("listGroups maps name to title", async () => {
   const groups = await makeClient().listGroups();
   expect(groups).toEqual([
@@ -466,7 +505,7 @@ test("listLayerSources returns one tiled entry per core collection, and no Marti
 
 test("a collection without geometry type yields no geometryKind rather than a wrong one", async () => {
   server.use(
-    http.get("https://core.test/v1/collections", () =>
+    http.get("https://core.test/v1/harvest/feature-layers", () =>
       HttpResponse.json({
         collections: [{ id: "sans_geom", title: "Sans géométrie", geometryType: null }],
       }),
@@ -479,7 +518,9 @@ test("a collection without geometry type yields no geometryKind rather than a wr
 
 test("the Martin catalog is never fetched any more", async () => {
   server.use(
-    http.get("https://core.test/v1/collections", () => HttpResponse.json({ collections: [] })),
+    http.get("https://core.test/v1/harvest/feature-layers", () =>
+      HttpResponse.json({ collections: [] }),
+    ),
     http.get("https://core.test/v1/harvest/layers", () => HttpResponse.json({ layers: [] })),
   );
   const fetchSpy = vi.spyOn(globalThis, "fetch");
@@ -530,7 +571,7 @@ test("listActiveExtensions maps the core's /extensions response to ExtensionMani
 
 test("listLayerSources still returns core collections when another layer service fails", async () => {
   server.use(
-    http.get("https://core.test/v1/collections", () =>
+    http.get("https://core.test/v1/harvest/feature-layers", () =>
       HttpResponse.json({ collections: [{ id: "public.parcs", title: "Parcs" }] }),
     ),
     http.get("https://core.test/v1/harvest/layers", () => new HttpResponse(null, { status: 500 })),
@@ -556,7 +597,10 @@ test("listLayerSources passes q to /collections", async () => {
 
 test("listLayerSources throws when all services fail", async () => {
   server.use(
-    http.get("https://core.test/v1/collections", () => new HttpResponse(null, { status: 500 })),
+    http.get(
+      "https://core.test/v1/harvest/feature-layers",
+      () => new HttpResponse(null, { status: 500 }),
+    ),
     http.get("https://core.test/v1/harvest/layers", () => new HttpResponse(null, { status: 500 })),
     http.get("https://core.test/v1/items", () => new HttpResponse(null, { status: 500 })),
   );
@@ -908,6 +952,37 @@ describe("toFrontLayer characteristic test — no optional field is ever dropped
     expect(out.popup).toEqual(raw.popup);
     expect(out.renderAs).toBe(raw.renderAs);
     expect(out.symbology).toEqual(raw.symbology);
+  });
+
+  test("P22.02: un champ du cœur propre à un autre kind survit aussi (opacity sur vector, paint sur raster/deck)", () => {
+    const vec = toFrontLayer({
+      id: "v",
+      title: "V",
+      visible: true,
+      kind: "vector",
+      tilesUrl: "t",
+      sourceLayer: "s",
+      opacity: 0.4,
+    } as RawMapLayer) as Record<string, unknown>;
+    expect(vec.opacity).toBe(0.4);
+    const ras = toFrontLayer({
+      id: "r",
+      title: "R",
+      visible: true,
+      kind: "raster",
+      tilesUrl: "t",
+      paint: { "raster-contrast": 0.2 },
+    } as RawMapLayer) as Record<string, unknown>;
+    expect(ras.paint).toEqual({ "raster-contrast": 0.2 });
+    const feat = toFrontLayer({
+      id: "f",
+      title: "F",
+      visible: true,
+      kind: "feature",
+      url: "u",
+      geometryKind: "line",
+    } as RawMapLayer) as Record<string, unknown>;
+    expect(feat.geometryKind).toBe("line");
   });
 
   test("raster: optional field (opacity) survives", () => {
@@ -2773,7 +2848,7 @@ test("launchAdminTool POSTs to /admin-tools/launch/{tool} and returns the url", 
 
 test("listCollections returns the admin collection shape including owner", async () => {
   server.use(
-    http.get("https://core.test/v1/collections", () =>
+    http.get("https://core.test/v1/harvest/feature-layers", () =>
       HttpResponse.json({
         collections: [
           {
@@ -3975,7 +4050,9 @@ test("getTerrain3DUploadJob returns the job status", async () => {
 test("listLayerSources includes hosted tileset3d items", async () => {
   server.use(
     http.get("https://martin.test/catalog", () => HttpResponse.json({ tiles: {} })),
-    http.get("https://core.test/v1/collections", () => HttpResponse.json({ collections: [] })),
+    http.get("https://core.test/v1/harvest/feature-layers", () =>
+      HttpResponse.json({ collections: [] }),
+    ),
     http.get("https://core.test/v1/harvest/layers", () => HttpResponse.json({ layers: [] })),
     http.get("https://core.test/v1/items", ({ request }) => {
       expect(new URL(request.url).searchParams.get("type")).toBe("tileset3d");

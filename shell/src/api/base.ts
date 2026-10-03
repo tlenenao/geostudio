@@ -58,10 +58,16 @@ async function readBody<T>(read: () => Promise<T>): Promise<T> {
 export async function parseErrorResponse(res: Response): Promise<ApiError> {
   let title: string | undefined;
   let detail: string | undefined;
+  let errors: FieldError[] | undefined;
   try {
-    const problem = (await res.clone().json()) as { title?: unknown; detail?: unknown };
+    const problem = (await res.clone().json()) as {
+      title?: unknown;
+      detail?: unknown;
+      errors?: unknown;
+    };
     if (typeof problem.title === "string") title = problem.title;
     if (typeof problem.detail === "string") detail = problem.detail;
+    if (Array.isArray(problem.errors)) errors = problem.errors as FieldError[];
   } catch {
     // Corps absent ou non-JSON (ex. 500 sans body) : ApiError retombe sur
     // son message générique plutôt que de faire échouer la gestion d'erreur.
@@ -71,7 +77,14 @@ export async function parseErrorResponse(res: Response): Promise<ApiError> {
     res.status === 429 && retryAfterHeader !== null && !Number.isNaN(Number(retryAfterHeader))
       ? Number(retryAfterHeader)
       : undefined;
-  return new ApiError(res.status, { title, detail, retryAfter });
+  return new ApiError(res.status, { title, detail, retryAfter, errors });
+}
+
+// P22.04 : garde `!res.ok` unique des sites qui font leur propre fetch (via
+// authFetch) — jette l'ApiError RFC 7807 au lieu d'une Error « Request failed ».
+export async function ensureOk(res: Response): Promise<Response> {
+  if (!res.ok) throw await parseErrorResponse(res);
+  return res;
 }
 
 // RawMapLayer/toFrontLayer vivent ici (et non dans domains/layers.ts) pour
@@ -99,7 +112,15 @@ export type RawMapLayer = {
   symbology?: import("../builder/widgets/mapSymbology").LayerSymbology | null;
 };
 
+// P22.02 : tout champ non nul du cœur survit au round-trip (le PUT de
+// saveMapConfig est complet) — les variantes ci-dessous ne fixent que les
+// défauts/normalisations propres à chaque kind.
 export function toFrontLayer(l: RawMapLayer): MapLayer {
+  const extra = Object.fromEntries(Object.entries(l).filter(([, v]) => v != null));
+  return { ...extra, ...toFrontLayerKind(l) } as MapLayer;
+}
+
+function toFrontLayerKind(l: RawMapLayer): MapLayer {
   const base = { id: l.id, title: l.title, visible: l.visible };
   switch (l.kind) {
     case "vector":
@@ -408,7 +429,7 @@ export function createBase(opts: {
     const headers: Record<string, string> = {};
     if (shareToken) headers["X-Share-Link-Token"] = shareToken;
     const res = await authFetch(url, { headers });
-    if (!res.ok) throw new Error(`Request failed: ${res.status} features`);
+    await ensureOk(res);
     const data = (await res.json()) as {
       numberMatched?: number;
       features?: {
@@ -428,7 +449,7 @@ export function createBase(opts: {
   async function fetchCoreCollections(q?: string): Promise<LayerSource[]> {
     const query = q ? `?q=${encodeURIComponent(q)}` : "";
     const res = await authFetch(`${coreUrl}/collections${query}`);
-    if (!res.ok) throw new Error(`Request failed: ${res.status} /collections`);
+    await ensureOk(res);
     const data = (await res.json()) as {
       collections?: {
         id: string;
@@ -455,7 +476,7 @@ export function createBase(opts: {
   async function fetchExternalRasterSources(q?: string): Promise<LayerSource[]> {
     const query = q ? `?q=${encodeURIComponent(q)}` : "";
     const res = await authFetch(`${coreUrl}/harvest/layers${query}`);
-    if (!res.ok) throw new Error(`Request failed: ${res.status} /harvest/layers`);
+    await ensureOk(res);
     const data = (await res.json()) as {
       layers?: { id: string; title: string; kind: "raster"; tilesUrl: string }[];
     };
@@ -472,7 +493,7 @@ export function createBase(opts: {
     const query = new URLSearchParams({ type: "tileset3d", pageSize: "200" });
     if (q) query.set("q", q);
     const res = await authFetch(`${coreUrl}/items?${query.toString()}`);
-    if (!res.ok) throw new Error(`Request failed: ${res.status} /items`);
+    await ensureOk(res);
     const data = (await res.json()) as { items?: { pk: string; title: string }[] };
     return (data.items ?? []).map((item) => ({
       id: item.pk,
@@ -487,7 +508,7 @@ export function createBase(opts: {
     const query = new URLSearchParams({ type: "terrain3d", pageSize: "200" });
     if (q) query.set("q", q);
     const res = await authFetch(`${coreUrl}/items?${query.toString()}`);
-    if (!res.ok) throw new Error(`Request failed: ${res.status} /items`);
+    await ensureOk(res);
     const data = (await res.json()) as { items?: { pk: string; title: string }[] };
     return (data.items ?? []).map((item) => ({ id: item.pk, title: item.title }));
   }

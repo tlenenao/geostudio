@@ -2,7 +2,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAppConfig } from "../api/hooks";
-import { loadConfig } from "../config";
+import { loadRuntimeConfig } from "../config";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { AppRenderer } from "../builder/AppRenderer";
@@ -22,12 +22,7 @@ registerExampleWidgets();
 // App.tsx avant que cette route lazy() ne soit jamais atteinte — cet appel
 // séparé ne fait que relire les mêmes variables d'environnement déjà
 // disponibles pour le bundle entier, sans dépendance à un état d'auth.
-const runtimeEnv = (window as unknown as { __GEOSTUDIO_ENV__?: Record<string, string | undefined> })
-  .__GEOSTUDIO_ENV__;
-const embedConfig = loadConfig(
-  import.meta.env as unknown as Record<string, string | undefined>,
-  runtimeEnv,
-);
+const embedConfig = loadRuntimeConfig();
 
 const EMBEDDABLE_RESOURCE_TYPES = new Set(["app", "dashboard"]);
 

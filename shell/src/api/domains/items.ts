@@ -20,6 +20,7 @@ import type {
   UpdatePatch,
 } from "../types";
 import type { ItemClientBase } from "../base";
+import { ensureOk, parseErrorResponse } from "../base";
 import { getTemplate } from "../../builder/templates";
 import { ApiError } from "../ApiError";
 import { OWNER_PERMISSIONS } from "../../auth/permissions";
@@ -177,24 +178,12 @@ export function createItemsMethods(base: ItemClientBase): ItemsMethods {
         method: "POST",
         body: form,
       });
-      if (!res.ok) {
-        throw new Error(`Request failed: ${res.status} POST thumbnail`);
-      }
+      await ensureOk(res);
     },
 
     async deleteItem(pk: string): Promise<void> {
       const res = await authFetch(`${coreUrl}/configs/by-item/${pk}`, { method: "DELETE" });
-      if (!res.ok && res.status !== 404) {
-        if (res.status === 409) {
-          const data = (await res.json().catch(() => null)) as { detail?: unknown } | null;
-          const message =
-            typeof data?.detail === "string"
-              ? data.detail
-              : `Request failed: ${res.status} DELETE /configs/by-item/${pk}`;
-          throw new Error(message);
-        }
-        throw new Error(`Request failed: ${res.status} DELETE /configs/by-item/${pk}`);
-      }
+      if (!res.ok && res.status !== 404) throw await parseErrorResponse(res);
     },
 
     async listGroups(): Promise<Group[]> {

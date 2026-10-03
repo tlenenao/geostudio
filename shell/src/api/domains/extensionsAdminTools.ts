@@ -11,6 +11,7 @@ import type {
   ItemClient,
 } from "../types";
 import type { ItemClientBase } from "../base";
+import { ensureOk } from "../base";
 
 type ExtensionsAdminToolsMethods = Pick<
   ItemClient,
@@ -35,7 +36,7 @@ export function createExtensionsAdminToolsMethods(
   return {
     async listActiveExtensions(): Promise<ExtensionManifest[]> {
       const res = await authFetch(`${coreUrl}/extensions`);
-      if (!res.ok) throw new Error(`Request failed: ${res.status} /extensions`);
+      await ensureOk(res);
       const data = (await res.json()) as {
         extensions?: Array<{
           id: string;
@@ -64,7 +65,7 @@ export function createExtensionsAdminToolsMethods(
 
     async listAllExtensions(): Promise<AdminExtension[]> {
       const res = await authFetch(`${coreUrl}/extensions?all=true`);
-      if (!res.ok) throw new Error(`Request failed: ${res.status} /extensions`);
+      await ensureOk(res);
       const data = (await res.json()) as {
         extensions?: Array<{
           id: string;

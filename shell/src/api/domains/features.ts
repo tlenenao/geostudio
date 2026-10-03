@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { CollectionAdmin, FieldError, GeoJSONFeatureInput, ItemClient } from "../types";
+import type { CollectionAdmin, GeoJSONFeatureInput, ItemClient } from "../types";
 import type { ItemClientBase } from "../base";
-import { FeatureValidationError } from "../base";
+import { FeatureValidationError, parseErrorResponse } from "../base";
 
 async function requestFeatureWrite<T>(
   authFetch: ItemClientBase["authFetch"],
@@ -15,17 +15,14 @@ async function requestFeatureWrite<T>(
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
-  if (res.status === 400) {
-    const data = (await res.json().catch(() => null)) as { errors?: FieldError[] } | null;
-    throw new FeatureValidationError(data?.errors ?? []);
-  }
   if (!res.ok) {
-    const data = (await res.json().catch(() => null)) as { detail?: unknown } | null;
-    const message =
-      typeof data?.detail === "string"
-        ? data.detail
-        : `Request failed: ${res.status} ${method} ${url}`;
-    throw new Error(message);
+    const err = await parseErrorResponse(res);
+    // 400 (écriture de feature) ou 422 : erreurs par champ `{field, code, message}`.
+    if ((res.status === 400 || res.status === 422) && err.errors) {
+      throw new FeatureValidationError(err.errors);
+    }
+    if (res.status === 400) throw new FeatureValidationError([]);
+    throw err;
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
