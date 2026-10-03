@@ -614,7 +614,7 @@ export interface ItemClient {
     alert: AlertRulePayload;
   }): Promise<Item>;
   getAlertRuleConfig(pk: string): Promise<AlertRulePayload>;
-  saveAlertRuleConfig(pk: string, payload: AlertRulePayload): Promise<void>;
+  saveAlertRuleConfig(pk: string, payload: AlertRulePayload): Promise<number | undefined>;
   listAlertRulesForDataset(datasetItemId: string): Promise<AlertRuleSummary[]>;
   getAlertEvaluations(alertItemId: string, params?: PageParams): Promise<AlertEvaluation[]>;
   evaluateAlertRule(itemId: string): Promise<{ evaluationId: string; created: boolean }>;
@@ -1177,6 +1177,7 @@ export interface AlertRulePayload {
   refreshPolicy: PipelineRefreshPolicy; // reused verbatim, same shape as pipeline scheduling
   channels: AlertChannel[];
   messageTemplate: string;
+  baseVersion?: number; // version serveur lue (REV-271), jamais persistée
 }
 
 export interface AlertRuleSummary {

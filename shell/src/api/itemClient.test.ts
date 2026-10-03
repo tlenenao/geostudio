@@ -4625,3 +4625,39 @@ test("REV-271 : getReportScheduleConfig expose la version, saveReportScheduleCon
   await client.saveReportScheduleConfig("r-71", { ...loaded, baseVersion: undefined });
   expect(ifMatch).toBeNull();
 });
+
+test("REV-271 : getAlertRuleConfig expose la version, saveAlertRuleConfig l'envoie en If-Match sans la persister", async () => {
+  vi.unstubAllGlobals();
+  let ifMatch: string | null = "unset";
+  let body: any;
+  const alert = {
+    datasetItemId: "ds-1",
+    query: { agg: "count" },
+    condition: { expr: "value > 100" },
+    refreshPolicy: { enabled: true, cron: "*/5 * * * *" },
+    channels: [{ kind: "webhook" as const, url: "https://example.test/hook" }],
+    messageTemplate: "Alert {ruleName}",
+  };
+  server.use(
+    http.get("https://core.test/v1/configs/by-item/a-71", () =>
+      HttpResponse.json({
+        id: "cfg-a71",
+        itemId: "a-71",
+        kind: "alert",
+        version: 5,
+        config: { kind: "alert", alert },
+      }),
+    ),
+    http.put("https://core.test/v1/configs/by-item/a-71", async ({ request }) => {
+      ifMatch = request.headers.get("If-Match");
+      body = await request.json();
+      return HttpResponse.json({ id: "cfg-a71", itemId: "a-71", kind: "alert", version: 6 });
+    }),
+  );
+  const client = makeClient();
+  const loaded = await client.getAlertRuleConfig("a-71");
+  expect(loaded.baseVersion).toBe(5);
+  expect(await client.saveAlertRuleConfig("a-71", loaded)).toBe(6);
+  expect(ifMatch).toBe('"5"');
+  expect(body).toEqual({ version: 1, kind: "alert", alert });
+});
