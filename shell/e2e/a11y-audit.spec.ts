@@ -374,6 +374,10 @@ test.describe("audit d'accessibilité (axe-core)", () => {
 
   test("VisualQueryWizardPage (assistant Filtrer→Joindre→Résumer, brouillon)", async ({ page }) => {
     await mockCore(page);
+    // P18.12 : la page est gardée par l'indisponibilité ETL, on l'active.
+    await page.route("https://core.test/v1/instance", async (route) => {
+      await route.fulfill({ json: { readOnly: false, etlEnabled: true } });
+    });
     await page.goto("/datasets/visual-query/new");
     await expect(page.getByRole("heading", { name: "Nouvelle requête visuelle" })).toBeVisible();
     await runAxeAudit(page, "VisualQueryWizardPage");
