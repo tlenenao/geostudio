@@ -52,7 +52,7 @@ test("a Tabs widget shows its active tab's content directly on the edit canvas",
   // spécifiquement sur le canevas principal (<main>), pas n'importe où sur
   // la page, sans quoi ce test resterait vert même si le canevas principal
   // continuait à n'afficher qu'un bandeau vide (confirmé par falsification).
-  const canvas = page.locator("main");
+  const canvas = page.getByTestId("app-canvas");
   await expect(canvas.getByText("Contenu du premier onglet")).toBeVisible();
 });
 

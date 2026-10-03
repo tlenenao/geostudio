@@ -305,5 +305,5 @@ test("a non-shared view is invisible to a second user of the same tenant", async
   // par un EmptyState qui distingue liste vide et recherche sans résultat
   // (CatalogPage.tsx) : scope=mine est un filtre actif (hasActiveFilter),
   // donc c'est la branche "emptyFiltered" qui s'affiche ici.
-  await expect(page.getByText("Aucun résultat")).toBeVisible();
+  await expect(page.getByText("Aucun résultat").last()).toBeVisible();
 });

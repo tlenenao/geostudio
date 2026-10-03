@@ -33,11 +33,11 @@ test("un titulaire de compliance.manage purge un tenant après confirmation par 
   await expect(purgeButton).toBeDisabled();
 
   // Slug erroné : reste désactivé.
-  await page.getByLabel("Confirmer le slug du tenant").fill("mauvais-slug");
+  await page.getByLabel(/Retapez le slug du tenant/).fill("mauvais-slug");
   await expect(purgeButton).toBeDisabled();
 
   // Slug exact ("demo", cf. DEFAULT_ME de e2e/mocks.ts) : s'active.
-  await page.getByLabel("Confirmer le slug du tenant").fill("demo");
+  await page.getByLabel(/Retapez le slug du tenant/).fill("demo");
   await expect(purgeButton).toBeEnabled();
   await purgeButton.click();
 
@@ -58,7 +58,7 @@ test("anonymiser un compte est une action visuellement distincte de la purge", a
   await page.goto("/admin/compliance");
   await expect(page.getByRole("heading", { name: "Anonymiser un compte" })).toBeVisible();
 
-  await page.getByLabel("Identifiant de l'utilisateur à anonymiser").fill("u42");
+  await page.getByLabel(/Identifiant de l'utilisateur/).fill("u42");
   await page.getByRole("button", { name: "Anonymiser ce compte" }).click();
   await expect(page.getByText("Compte anonymisé.", { exact: true })).toBeVisible();
 

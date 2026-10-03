@@ -43,6 +43,9 @@ async function measureClipOffenders(page: Page): Promise<ClipOffender[]> {
       clientWidth: number;
     }> = [];
     for (const el of document.querySelectorAll<HTMLElement>("*")) {
+      // Contenu volontairement réduit à 1 px (sr-only : lien d'évitement, régions
+      // d'annonce) : il « déborde » par construction, ce n'est pas du clippage.
+      if (el.closest(".sr-only")) continue;
       const style = getComputedStyle(el);
       if (
         ["hidden", "auto", "scroll"].includes(style.overflowX) &&

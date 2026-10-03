@@ -20,9 +20,9 @@ test("créer un site, le publier, le consulter en anonyme", async ({ page }) => 
   // 2. Publier — même choreographie que publication.spec.ts.
   await page.goto("/items/site-1");
   await page.getByRole("button", { name: "Actions" }).click();
-  await page.getByRole("button", { name: "Publier" }).click();
+  await page.getByRole("menuitem", { name: "Publier" }).click();
   await page.getByRole("button", { name: "Actions" }).click();
-  await expect(page.getByRole("button", { name: "Dépublier" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Dépublier" })).toBeVisible();
 
   // 3. Consultation publique anonyme, par slug.
   await page.goto("/sites/mon-portail");

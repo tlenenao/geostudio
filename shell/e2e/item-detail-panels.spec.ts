@@ -7,7 +7,7 @@ test("modifier le titre depuis le menu Actions ouvre le panneau d'édition sur l
   await mockCore(page);
   await page.goto("/");
   await page.getByRole("button", { name: "Actions" }).first().click();
-  await page.getByRole("button", { name: "Modifier" }).click();
+  await page.getByRole("menuitem", { name: "Modifier" }).click();
   await expect(page).toHaveURL(/\/items\/1\?panel=edit$/);
   const title = page.getByLabel("Titre");
   await title.fill("Alpha renommé");
@@ -22,7 +22,7 @@ test("partager depuis la fiche ouvre le formulaire de partage inline, sans dialo
   await mockCore(page);
   await page.goto("/items/1");
   await page.getByRole("button", { name: "Actions" }).click();
-  await page.getByRole("button", { name: "Partager" }).click();
+  await page.getByRole("menuitem", { name: "Partager" }).click();
   await expect(page).toHaveURL(/\/items\/1\?panel=share$/);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByText("Partager l'élément")).toBeVisible();

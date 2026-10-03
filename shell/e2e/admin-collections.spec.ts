@@ -127,7 +127,7 @@ test("un admin gère le cycle de vie complet d'une collection depuis le shell", 
   // exact same accessible name once the dialog is open — Playwright's
   // strict mode would reject an unscoped getByRole here. Scope to the
   // dialog, same fix as CollectionsAdminPage.test.tsx (Task 5, Step 5).
-  await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Supprimer" }).click();
   await expect.poll(() => deleted).toBe(true);
   // Scoped locators, not a bare getByText("POI (édité)"): while the DELETE
   // response is still unwinding (mutateAsync -> setDeleting(null)), the

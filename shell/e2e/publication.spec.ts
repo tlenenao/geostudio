@@ -17,14 +17,14 @@ test("publishing an item, capturing a thumbnail, and the runtime route still wor
   // 1. Publish toggle from the item detail page.
   await page.goto("/items/9");
   await page.getByRole("button", { name: "Actions" }).click();
-  await page.getByRole("button", { name: "Publier" }).click();
+  await page.getByRole("menuitem", { name: "Publier" }).click();
   await page
     .getByRole("dialog", { name: "Publier" })
     .getByRole("button", { name: "Publier" })
     .click();
   await expect(page.getByRole("button", { name: "Actions" })).toBeVisible();
   await page.getByRole("button", { name: "Actions" }).click();
-  await expect(page.getByRole("button", { name: "Dépublier" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Dépublier" })).toBeVisible();
 
   // 2. Authenticated runtime route still renders after the routing change.
   await page.goto("/apps/9");

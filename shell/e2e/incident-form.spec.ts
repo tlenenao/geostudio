@@ -47,7 +47,7 @@ test("déclarer un incident : créer sans code, créer/voir/modifier/supprimer u
   // form.tsx par un ConfirmDialog du kit — le premier clic ouvre la boîte de
   // dialogue, le second (dans la boîte) confirme réellement la suppression.
   await page.getByRole("button", { name: "Supprimer" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Supprimer" }).click();
   await expect(page.getByText("Fuite d'eau (résolue)")).toBeHidden();
   await expect(page.getByText(/Modification de l'enregistrement/)).toBeHidden();
 });
