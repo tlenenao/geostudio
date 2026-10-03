@@ -95,6 +95,31 @@ def assert_dsn_egress_allowed(dsn: str) -> None:
                 assert_egress_allowed(f"http://[{host}]" if ":" in host else f"http://{host}")
 
 
+def dsn_pin_connect_args(dsn: str) -> dict[str, str]:
+    """REV-273d : épingle la connexion Postgres sur l'IP validée par la garde
+    (paramètre libpq `hostaddr` ; `host` reste le nom → `verify-full` intact).
+    `{}` quand il n'y a rien à épingler. ponytail: mssql/oracle sans
+    équivalent fiable (descripteur TNS/ODBC) — seule la garde amont s'applique."""
+    url = make_url(dsn)
+    host = url.host or ""
+    if (
+        not url.get_backend_name().startswith("postgresql")
+        or not host
+        or host.startswith("/")
+        or "," in host
+        or "host" in url.query
+        or "hostaddr" in url.query
+    ):
+        return {}
+    try:
+        ipaddress.ip_address(host)
+        return {}  # littéral : déjà validé par assert_dsn_egress_allowed
+    except ValueError:
+        pass
+    ip = assert_egress_allowed(f"http://{host}")
+    return {"hostaddr": ip} if ip else {}
+
+
 def _pin_ip(host: str) -> str:
     # REV-273d : la connexion vise l'IP que la garde vient de valider (anti
     # DNS-rebinding entre contrôle et connexion). Lookup du nom global à

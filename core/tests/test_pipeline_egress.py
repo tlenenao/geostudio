@@ -6,8 +6,10 @@ import requests
 
 from app.pipelines.egress import (
     EgressBlockedError,
+    assert_dsn_egress_allowed,
     assert_egress_allowed,
     build_guarded_session,
+    dsn_pin_connect_args,
 )
 
 
@@ -124,3 +126,43 @@ def test_guarded_session_refuses_dns_rebinding_between_check_and_connect(monkeyp
     session = build_guarded_session()
     with pytest.raises(EgressBlockedError):
         session.get("http://rebind.example.com:9/x", timeout=1.0)
+
+
+def _seq_getaddrinfo(*ips):
+    it = iter(ips)
+
+    def fake(host, *args, **kwargs):
+        ip = next(it, ips[-1])
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, 0))]
+
+    return fake
+
+
+def test_dsn_pin_sets_hostaddr_to_the_validated_ip(monkeypatch):
+    monkeypatch.setattr(socket, "getaddrinfo", _seq_getaddrinfo("93.184.216.34"))
+    assert dsn_pin_connect_args("postgresql://u:p@db.example.com:5432/d") == {
+        "hostaddr": "93.184.216.34"
+    }
+
+
+def test_dsn_pin_refuses_rebinding_to_loopback(monkeypatch):
+    # 1re résolution (assert_dsn_egress_allowed) publique, 2e (épinglage) = 127.0.0.1
+    monkeypatch.setattr(socket, "getaddrinfo", _seq_getaddrinfo("93.184.216.34", "127.0.0.1"))
+    dsn = "postgresql://u:p@db.example.com/d"
+    assert_dsn_egress_allowed(dsn)
+    with pytest.raises(EgressBlockedError):
+        dsn_pin_connect_args(dsn)
+
+
+@pytest.mark.parametrize(
+    "dsn",
+    [
+        "postgresql://u:p@93.184.216.34/d",  # littéral IP : rien à épingler
+        "postgresql://u:p@/d?host=/var/run/postgresql",  # socket unix
+        "postgresql://u:p@db.example.com/d?hostaddr=93.184.216.34",  # déjà épinglé
+        "mssql+pymssql://u:p@db.example.com/d",  # pas d'équivalent hostaddr
+    ],
+)
+def test_dsn_pin_is_empty_when_not_applicable(dsn, monkeypatch):
+    monkeypatch.setattr(socket, "getaddrinfo", _seq_getaddrinfo("93.184.216.34"))
+    assert dsn_pin_connect_args(dsn) == {}

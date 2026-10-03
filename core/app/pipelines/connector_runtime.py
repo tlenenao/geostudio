@@ -52,6 +52,7 @@ from app.pipelines.egress import (
     assert_dsn_egress_allowed,
     assert_egress_allowed,
     build_guarded_session,
+    dsn_pin_connect_args,
 )
 from app.pipelines.ops.schemas import (
     ReaderConnectorBigQueryParams,
@@ -231,7 +232,8 @@ def _stream_sql(dsn: str, query: str):
     backend = sa.engine.make_url(dsn).get_backend_name()
     if backend not in _NO_HOST_BACKENDS:
         assert_dsn_egress_allowed(dsn)
-    engine = sa.create_engine(dsn, connect_args=_timeout_connect_args(backend))
+    connect_args = {**_timeout_connect_args(backend), **dsn_pin_connect_args(dsn)}
+    engine = sa.create_engine(dsn, connect_args=connect_args)
     if backend == "oracle":
         # python-oracledb : délai d'appel par requête, en ms.
         sa.event.listen(

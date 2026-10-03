@@ -1598,3 +1598,21 @@ def test_materialize_blob_connector_passes_provider_timeouts(
 def test_env_int_non_positive_falls_back_to_default(monkeypatch, raw):
     monkeypatch.setenv("CORE_PIPELINES_BLOB_MAX_FILES", raw)
     assert connector_runtime._blob_max_files() == 100
+
+
+def test_stream_sql_passes_hostaddr_pin_to_the_driver(monkeypatch):
+    seen: dict = {}
+
+    def fake_create_engine(dsn, connect_args=None, **kw):
+        seen["connect_args"] = connect_args
+        raise RuntimeError("stop")
+
+    monkeypatch.setattr(connector_runtime.sa, "create_engine", fake_create_engine)
+    monkeypatch.setattr(connector_runtime, "assert_dsn_egress_allowed", lambda dsn: None)
+    monkeypatch.setattr(
+        connector_runtime, "dsn_pin_connect_args", lambda dsn: {"hostaddr": "93.184.216.34"}
+    )
+    with pytest.raises(RuntimeError, match="stop"):
+        list(connector_runtime._stream_sql("postgresql://u:p@db.example.com/d", "SELECT 1"))
+    assert seen["connect_args"]["hostaddr"] == "93.184.216.34"
+    assert "connect_timeout" in seen["connect_args"]  # les délais P16.03 sont conservés
