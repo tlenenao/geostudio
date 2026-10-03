@@ -641,12 +641,12 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   pipelines/exports/MCP (ferme les 2 bypass documentés). Revues finales :
   P01–P05 6 Important, P06–P15 2 Important. Reste : `REV-270`/`272`.
   Détail dans l'archive.
-- **Audit pré-release P16–P21 + P24–P25 + P27 (secrets/egress, passerelle admin, pipelines, moissonnage, alertes, contrats d'API, index/balayages SQL, bornes DuckDB/lac)** —
+- **Audit pré-release P16–P21 + P24–P25 + P27–P28 (secrets/egress, passerelle admin, pipelines, moissonnage, alertes, contrats d'API, index/balayages SQL, bornes DuckDB/lac)** —
   ACL du coffre, egress DSN/blob, plafonds des connecteurs ; Grafana Viewer,
   `GET /v1/instance/status` ; écriture de pipeline par lots, annulation de run,
   audit des runs planifiés, topologie validée ; moissonnage daté/dédoublonné/purgé,
-  recherche STAC tolérante ; alertes (livraison tracée/rejouée/signée, cloche) ; 404/422 en RFC 7807, config stricte à l'écriture seulement, pagination bornée ; index `audit_log`/`configs`/`report_runs`, balayage des configs en 1 requête, catalogue public paginé en SQL, cache d'introspection ; agrégats DuckDB bornés (temps/threads/groupes), `asOf`/`pending`, compaction CDC par niveaux ; CI (base réelle exigée, actions épinglées par SHA, Node 22, timeouts, job `stack-smoke`), sauvegarde bornée + sonde de fraîcheur. Reste : `REV-273`/`274`/`275`/`276`/`277`/`278`/`279`/`280`/`281`.
-  P22/P23/P26/P28–P36 non lancés.
+  recherche STAC tolérante ; alertes (livraison tracée/rejouée/signée, cloche) ; 404/422 en RFC 7807, config stricte à l'écriture seulement, pagination bornée ; index `audit_log`/`configs`/`report_runs`, balayage des configs en 1 requête, catalogue public paginé en SQL, cache d'introspection ; agrégats DuckDB bornés (temps/threads/groupes), `asOf`/`pending`, compaction CDC par niveaux ; CI (base réelle exigée, actions épinglées par SHA, Node 22, timeouts, job `stack-smoke`), sauvegarde bornée + sonde de fraîcheur ; import de fichiers (bornes lat/lon, séparateur, typage CSV, item dataset, sondage borné). Reste : `REV-273`/`274`/`275`/`276`/`277`/`278`/`279`/`280`/`281`/`282`.
+  P22/P23/P26/P29–P36 non lancés.
 
 ### Conventions tranchées (2026-09-01)
 
@@ -706,7 +706,7 @@ recoller le détail que le backlog porte déjà :
   (`REV-176`/`177`/`178`).
 - Audit pré-release (P01–P15) : reliquats `REV-266` à `REV-272` du backlog
   (stack réelle non rejouée, perf shell, orphelins S3, release/Keycloak,
-  décisions produit, `If-Match` partiel, tombstone RGPD) ; P22/P23/P26/P28–P36 du plan
+  décisions produit, `If-Match` partiel, tombstone RGPD) ; P22/P23/P26/P29–P36 du plan
   `docs/revue/audit-2026-09-29/PLAN-CONSOLIDE.md` non exécutés.
 - Bilan de fonctionnalités outillé (SP-61) : `docs/revue/
   bilan-fonctionnalites.{html,md}`, régénéré par
