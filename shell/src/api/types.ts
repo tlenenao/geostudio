@@ -624,7 +624,7 @@ export interface ItemClient {
     report: ReportSchedulePayload;
   }): Promise<Item>;
   getReportScheduleConfig(pk: string): Promise<ReportSchedulePayload>;
-  saveReportScheduleConfig(pk: string, payload: ReportSchedulePayload): Promise<void>;
+  saveReportScheduleConfig(pk: string, payload: ReportSchedulePayload): Promise<number | undefined>;
   getReportRuns(pk: string, params?: PageParams): Promise<ReportRunStatus[]>;
   listFeatureLayers(params?: { q?: string }): Promise<FeatureLayerSource[]>;
   getDatasetConfig(pk: string): Promise<DatasetConfig>;
@@ -1200,6 +1200,7 @@ export interface ReportSchedulePayload {
   bookmarkItemId: string;
   refreshPolicy: PipelineRefreshPolicy; // réutilisé tel quel, même forme que la planification pipeline/alerte
   channels: AlertChannel[]; // réutilisé tel quel depuis AlertRule (SP-16b)
+  baseVersion?: number; // version serveur lue (REV-271), jamais persistée
 }
 
 export interface ReportRunStatus {

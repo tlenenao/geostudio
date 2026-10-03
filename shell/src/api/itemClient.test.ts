@@ -4590,3 +4590,38 @@ test("REV-271 : getPipelineConfig expose la version, savePipelineConfig l'envoie
   await client.savePipelineConfig("p-71", { ...loaded, baseVersion: undefined });
   expect(ifMatch).toBeNull();
 });
+
+test("REV-271 : getReportScheduleConfig expose la version, saveReportScheduleConfig l'envoie en If-Match sans la persister", async () => {
+  vi.unstubAllGlobals();
+  let ifMatch: string | null = "unset";
+  let body: any;
+  const report = {
+    bookmarkItemId: "bm-1",
+    refreshPolicy: { enabled: true, cron: "0 8 * * MON" },
+    channels: [],
+  };
+  server.use(
+    http.get("https://core.test/v1/configs/by-item/r-71", () =>
+      HttpResponse.json({
+        id: "cfg-r71",
+        itemId: "r-71",
+        kind: "report",
+        version: 2,
+        config: { kind: "report", report },
+      }),
+    ),
+    http.put("https://core.test/v1/configs/by-item/r-71", async ({ request }) => {
+      ifMatch = request.headers.get("If-Match");
+      body = await request.json();
+      return HttpResponse.json({ id: "cfg-r71", itemId: "r-71", kind: "report", version: 3 });
+    }),
+  );
+  const client = makeClient();
+  const loaded = await client.getReportScheduleConfig("r-71");
+  expect(loaded.baseVersion).toBe(2);
+  expect(await client.saveReportScheduleConfig("r-71", loaded)).toBe(3);
+  expect(ifMatch).toBe('"2"');
+  expect(body).toEqual({ version: 1, kind: "report", report });
+  await client.saveReportScheduleConfig("r-71", { ...loaded, baseVersion: undefined });
+  expect(ifMatch).toBeNull();
+});
