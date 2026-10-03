@@ -120,12 +120,22 @@ def request_cancel(session: Session, run: PipelineRun) -> str:
     """t03b-009 : un run « queued » passe directement à « cancelled » (la tâche
     le verra et ne l'exécutera pas) ; un run « running » passe à
     « cancel_requested », testé par l'écrivain entre deux lots."""
-    if run.status == "queued":
-        run.status = "cancelled"
-        run.finished_at = _now()
-    elif run.status == "running":
-        run.status = "cancel_requested"
+
+    # REV-275 (c) : UPDATE conditionnels — l'instantané ORM peut être périmé
+    # (le worker a pu passer queued -> running entre la lecture et ici).
+    def _transition(src: str, **values: object) -> bool:
+        res = session.execute(
+            update(PipelineRun)
+            .where(PipelineRun.id == run.id, PipelineRun.status == src)
+            .values(**values)
+            .execution_options(synchronize_session=False)
+        )
+        return bool(res.rowcount)  # type: ignore[attr-defined]
+
+    if not _transition("queued", status="cancelled", finished_at=_now()):
+        _transition("running", status="cancel_requested")
     session.flush()
+    session.refresh(run)
     return run.status
 
 

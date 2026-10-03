@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import update
+
 from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig
 from app.db import init_db, make_engine, make_session_factory
@@ -514,3 +516,26 @@ def test_get_latest_runs_for_items_returns_empty_dict_for_empty_input():
     Session = _make_session()
     with Session() as s:
         assert repo.get_latest_runs_for_items(s, item_ids=[]) == {}
+
+
+def test_request_cancel_on_stale_queued_snapshot_does_not_overwrite_running():
+    # REV-275 (c) : le worker passe queued -> running entre la lecture du run et request_cancel.
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        item_id = _make_pipeline_item(s, tenant_id=tenant.id)
+        s.commit()
+        run = repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_id)
+        s.commit()
+        assert run.status == "queued"
+        s.execute(
+            update(repo.PipelineRun)
+            .where(repo.PipelineRun.id == run.id)
+            .values(status="running")
+            .execution_options(synchronize_session=False)
+        )  # instantané ORM resté « queued »
+        assert run.status == "queued"
+        assert repo.request_cancel(s, run) == "cancel_requested"
+        s.commit()
+        s.expire_all()
+        assert repo.get_run(s, tenant_id=tenant.id, run_id=run.id).status == "cancel_requested"
