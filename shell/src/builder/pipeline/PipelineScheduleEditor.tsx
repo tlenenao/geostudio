@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { usePipelineNextRun } from "../../api/hooks";
 import type { PipelineRefreshPolicy } from "../../api/types";
 import { t } from "../../i18n";
@@ -92,6 +92,7 @@ export function PipelineScheduleEditor({
   const cron = value?.cron ?? "*/15 * * * *";
   const [form, setForm] = useState<ScheduleForm>(() => parseCron(cron));
   const nextRunQuery = usePipelineNextRun(cron, enabled);
+  const cronErrorId = useId();
 
   useEffect(() => {
     setForm(parseCron(cron));
@@ -113,6 +114,7 @@ export function PipelineScheduleEditor({
         <input
           type="checkbox"
           aria-label={t("pipelineSchedule.autoSchedulingAria")}
+          className="h-6 w-6"
           checked={enabled}
           onChange={(e) => setEnabled(e.target.checked)}
           disabled={readOnly}
@@ -217,13 +219,15 @@ export function PipelineScheduleEditor({
               {t("pipelineSchedule.cronExpressionLabel")}
               <input
                 aria-label={t("pipelineSchedule.cronExpressionAria")}
+                aria-invalid={!ADVANCED_CRON_RE.test(form.raw)}
+                aria-describedby={!ADVANCED_CRON_RE.test(form.raw) ? `${cronErrorId}` : undefined}
                 className="h-8 rounded border border-control bg-surface px-2 font-mono text-ink"
                 value={form.raw}
                 onChange={(e) => handleSetForm({ mode: "advanced", raw: e.target.value })}
                 disabled={readOnly}
               />
               {!ADVANCED_CRON_RE.test(form.raw) && (
-                <p role="alert" className="text-danger">
+                <p id={cronErrorId} role="alert" className="text-danger">
                   {t("pipelineSchedule.invalidCronFormat")}
                 </p>
               )}

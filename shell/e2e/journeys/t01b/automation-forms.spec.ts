@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { bug, getA11ySeed, go, seriousViolations, session } from "./helpers";
+import { getA11ySeed, go, seriousViolations, session } from "./helpers";
 
 test.setTimeout(120_000);
 
@@ -24,22 +24,21 @@ test.describe("t01b rapports et alertes : formulaires", () => {
 
   // t01b-009 : finding. L'erreur est un <p role=alert> dans le <label> ; le champ n'est ni
   // aria-invalid ni relié à son message.
-  bug(
-    "t01b-009 : un cron invalide marque le champ aria-invalid et le relie à son message",
-    async ({ browser }) => {
-      const s = await getA11ySeed();
-      const { ctx, page } = await session(browser, "creator");
-      await go(page, `/reports/${s.reportId}/edit`, 2500);
-      await page.getByRole("checkbox", { name: /planification automatique/i }).check();
-      await page.getByRole("combobox", { name: /mode/i }).selectOption("advanced");
-      const field = page.getByLabel("Expression cron", { exact: false }).last();
-      await field.fill("pas un cron");
-      await expect(page.getByRole("alert").filter({ hasText: /cron|format/i })).toBeVisible();
-      expect(await field.getAttribute("aria-invalid")).toBe("true");
-      expect(await field.getAttribute("aria-describedby")).toBeTruthy();
-      await ctx.close();
-    },
-  );
+  test("t01b-009 : un cron invalide marque le champ aria-invalid et le relie à son message", async ({
+    browser,
+  }) => {
+    const s = await getA11ySeed();
+    const { ctx, page } = await session(browser, "creator");
+    await go(page, `/reports/${s.reportId}/edit`, 2500);
+    await page.getByRole("checkbox", { name: /planification automatique/i }).check();
+    await page.getByRole("combobox", { name: /mode/i }).selectOption("advanced");
+    const field = page.getByLabel("Expression cron", { exact: false }).last();
+    await field.fill("pas un cron");
+    await expect(page.getByRole("alert").filter({ hasText: /cron|format/i })).toBeVisible();
+    expect(await field.getAttribute("aria-invalid")).toBe("true");
+    expect(await field.getAttribute("aria-describedby")).toBeTruthy();
+    await ctx.close();
+  });
 
   // Réfute j06-010 (domaine verrouillé = <span aria-disabled> quand l'ETL est coupé).
   test("ETL allumé : « Automatisation » est un vrai lien clavier, plus un span aria-disabled (réfute j06-010)", async ({

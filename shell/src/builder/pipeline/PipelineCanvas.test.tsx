@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { PipelineEdge, PipelineNode, PipelineOpsCatalog } from "../../api/types";
 import { PipelineCanvas } from "./PipelineCanvas";
@@ -689,4 +690,69 @@ test("clicking the connect affordance on a node, then clicking a note, does not 
   fireEvent.click(screen.getByRole("button", { name: "Connecter depuis R" }));
   fireEvent.click(screen.getByLabelText("Étiquette de la zone"));
   expect(onEdgesChange).not.toHaveBeenCalled();
+});
+
+function renderCanvas(over: Partial<React.ComponentProps<typeof PipelineCanvas>> = {}) {
+  const props = {
+    nodes: NODES,
+    edges: EDGES,
+    selectedNodeId: null,
+    onSelectNode: vi.fn(),
+    onNodesChange: vi.fn(),
+    onEdgesChange: vi.fn(),
+    onInsertOnEdge: vi.fn(),
+    opsCatalog: {},
+    notes: [],
+    onNotesChange: vi.fn(),
+    ...over,
+  };
+  render(<PipelineCanvas {...props} />);
+  return props;
+}
+
+test("P32.02 : une arête sélectionnée au clavier (Entrée) se supprime avec Suppr", async () => {
+  const user = userEvent.setup();
+  const { onEdgesChange } = renderCanvas();
+  const edge = document.querySelector<HTMLElement>(".react-flow__edge")!;
+  edge.focus();
+  await user.keyboard("{Enter}");
+  expect(document.querySelector(".react-flow__edge.selected")).not.toBeNull();
+  await user.keyboard("{Delete}");
+  // deleteElements est asynchrone (onBeforeDelete).
+  await waitFor(() => expect(onEdgesChange).toHaveBeenCalledWith([]));
+});
+
+test("P32.07 : l'arête est nommée « de X vers Y » et les contrôles sont en français", () => {
+  renderCanvas();
+  const edge = document.querySelector(".react-flow__edge")!;
+  expect(edge).toHaveAttribute("aria-label", "Lien de Villes vers Écriture");
+  expect(screen.getByRole("button", { name: "Zoom avant" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Zoom In" })).toBeNull();
+});
+
+test("P32.01 : Entrée sur le nœud cible achève la connexion amorcée par ↝", () => {
+  const nodes: PipelineNode[] = [
+    ...NODES,
+    { id: "t1", kind: "transform", op: "transform.filter", x: 150, y: 100, params: {}, title: "T" },
+  ];
+  const onEdgesChange = vi.fn();
+  renderCanvas({ nodes, onEdgesChange });
+  fireEvent.click(screen.getByRole("button", { name: "Connecter depuis Villes" }));
+  const target = screen.getByText("T").closest<HTMLElement>(".react-flow__node")!;
+  target.focus();
+  fireEvent.keyDown(target, { key: "Enter" });
+  expect(onEdgesChange).toHaveBeenCalledTimes(1);
+  expect(onEdgesChange.mock.calls[0][0]).toEqual([
+    ...EDGES,
+    expect.objectContaining({ from: "r1", to: "t1" }),
+  ]);
+});
+
+test("P32.03/P32.08 : texte de nœud hérite de text-ink, commandes de 24 px", () => {
+  renderCanvas();
+  const box = screen.getByText("Villes").parentElement!;
+  expect(box.className).toContain("text-ink");
+  for (const name of ["Supprimer Villes", "Connecter depuis Villes"]) {
+    expect(screen.getByRole("button", { name }).className).toMatch(/\bh-6 w-6\b/);
+  }
 });
