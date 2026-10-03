@@ -6,10 +6,9 @@ correspondance FME↔QGIS (aucune ligne `qgis_frozen`/`engine: "qgis"` ne
 subsiste dans la matrice de couverture FME depuis Task 31 du retrait — le
 mécanisme de validation de `scripts/fme_coverage_cli.py` qui la consommait
 n'a donc plus rien à valider ; il reste en place pour toute ligne future qui
-referait référence à ces algorithmes). Généré par
-scripts/generate_qgis_algorithm_schemas.py contre l'image pinnée
-qgis/qgis:release-3_34 — ne pas éditer qgis_algorithms.json à la main,
-relancer le script si l'allowlist doit changer."""
+referait référence à ces algorithmes). Généré à l'origine contre l'image pinnée
+qgis/qgis:release-3_34 par un script de génération supprimé avec le sidecar
+(REV-199 M6) : `qgis_algorithms.json` est désormais figé, ne pas l'éditer."""
 
 import json
 from pathlib import Path
