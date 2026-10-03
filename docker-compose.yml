@@ -325,6 +325,8 @@ services:
       CORE_PIPELINES_PREVIEW_TIMEOUT_S: ${CORE_PIPELINES_PREVIEW_TIMEOUT_S:-30}
       CORE_DUCKDB_MEMORY_LIMIT: ${CORE_DUCKDB_MEMORY_LIMIT:-2GB}
       CORE_DUCKDB_MAX_TEMP_SIZE: ${CORE_DUCKDB_MAX_TEMP_SIZE:-5GB}
+      CORE_DUCKDB_THREADS: ${CORE_DUCKDB_THREADS:-4}
+      CORE_DUCKDB_STATEMENT_TIMEOUT_S: ${CORE_DUCKDB_STATEMENT_TIMEOUT_S:-30}
       CORE_HARVEST_EGRESS_ALLOWLIST: ${CORE_HARVEST_EGRESS_ALLOWLIST:-}
       # Plafond de taille de réponse du moissonnage (GAP-59, SP-50) — défaut
       # Python 10 Mio si absent/vide, cf. app/harvest/egress.py.
@@ -475,6 +477,7 @@ services:
       S3_SECRET_KEY: ${MINIO_PASSWORD}
       S3_UPLOADS_BUCKET: geostudio-uploads
       S3_CDC_BUCKET: geostudio-cdc
+      CORE_CDC_COMPACTION_RECENT_DAYS: ${CORE_CDC_COMPACTION_RECENT_DAYS:-7}
       S3_TILESET3D_BUCKET: geostudio-tileset3d
       # Plafonds de validation tileset3d (finalize_tileset3d_task,
       # app/tileset3d/jobs.py) — s'exécutent dans ce process (`worker`), pas
@@ -520,6 +523,8 @@ services:
       CORE_PIPELINES_PREVIEW_TIMEOUT_S: ${CORE_PIPELINES_PREVIEW_TIMEOUT_S:-30}
       CORE_DUCKDB_MEMORY_LIMIT: ${CORE_DUCKDB_MEMORY_LIMIT:-2GB}
       CORE_DUCKDB_MAX_TEMP_SIZE: ${CORE_DUCKDB_MAX_TEMP_SIZE:-5GB}
+      CORE_DUCKDB_THREADS: ${CORE_DUCKDB_THREADS:-4}
+      CORE_DUCKDB_STATEMENT_TIMEOUT_S: ${CORE_DUCKDB_STATEMENT_TIMEOUT_S:-30}
       CORE_HARVEST_EGRESS_ALLOWLIST: ${CORE_HARVEST_EGRESS_ALLOWLIST:-}
       # Plafond de taille de réponse du moissonnage (GAP-59, SP-50) — défaut
       # Python 10 Mio si absent/vide, cf. app/harvest/egress.py.
