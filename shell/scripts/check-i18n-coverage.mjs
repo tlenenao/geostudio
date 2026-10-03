@@ -100,24 +100,34 @@ function preprocess(content) {
   return out;
 }
 
-const STRING_RE = /"([^"\\]*(?:\\.[^"\\]*)*)"|'([^'\\]*(?:\\.[^'\\]*)*)'/g;
+const STRING_RE =
+  /"([^"\\\n]*(?:\\.[^"\\\n]*)*)"|'([^'\\\n]*(?:\\.[^'\\\n]*)*)'|`([^`\\]*(?:\\.[^`\\]*)*)`/g;
 const JSX_TEXT_RE = />([^<>{}]+)</g;
 
 /**
  * Détecte les chaînes littérales françaises codées en dur dans un contenu de
- * fichier .tsx : chaînes entre guillemets (attributs JSX, propriétés d'objet,
+ * fichier .ts/.tsx : chaînes entre guillemets, apostrophes ou gabarits (backticks),
+ * attributs JSX entre guillemets (attributs JSX, propriétés d'objet,
  * variables) et texte JSX statique entre balises. Ignore les commentaires,
  * les lignes `import`, et le premier argument littéral d'un appel `t(`.
  */
 export function detectViolations(fileContent) {
   const violations = [];
   const seen = new Set();
+  // Exemptions explicites et justifiées : `i18n-ok-file: raison` n'importe où
+  // dans le fichier (invite LLM, contenu de modèle, CSS…), ou `i18n-ok: raison`
+  // sur la ligne fautive / la ligne précédente (message console développeur).
+  if (/i18n-ok-file/.test(fileContent)) return violations;
+  const rawLines = fileContent.split("\n");
+  const exempt = (line) =>
+    /i18n-ok\b/.test(rawLines[line - 1] ?? "") || /i18n-ok\b/.test(rawLines[line - 2] ?? "");
   const processed = preprocess(fileContent);
 
   for (const match of processed.matchAll(STRING_RE)) {
-    const value = match[1] ?? match[2] ?? "";
+    const value = match[1] ?? match[2] ?? match[3] ?? "";
     if (!looksFrench(value)) continue;
     const line = lineAt(processed, match.index);
+    if (exempt(line)) continue;
     const key = `${line}:${match[0]}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -128,6 +138,7 @@ export function detectViolations(fileContent) {
     const value = match[1];
     if (!value.trim() || !looksFrench(value)) continue;
     const line = lineAt(processed, match.index);
+    if (exempt(line)) continue;
     const key = `${line}:${value.trim()}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -144,7 +155,11 @@ function walk(dir, out = []) {
     const st = statSync(full);
     if (st.isDirectory()) {
       walk(full, out);
-    } else if (extname(full) === ".tsx" && !entry.endsWith(".test.tsx")) {
+    } else if (
+      (extname(full) === ".tsx" || extname(full) === ".ts") &&
+      !/\.test\.tsx?$/.test(entry) &&
+      !entry.endsWith(".d.ts")
+    ) {
       out.push(full);
     }
   }

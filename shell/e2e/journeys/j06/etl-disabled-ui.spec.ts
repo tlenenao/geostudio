@@ -20,7 +20,9 @@ test.describe("j06 ETL désactivé — shell (créateur)", () => {
 
   test("/pipelines/new affiche l'indisponibilité, sans canevas ni palette", async ({ page }) => {
     await spaGoto(page, "/pipelines/new");
-    await expect(page.getByRole("status")).toContainText("Non activé sur cette instance");
+    await expect(page.getByRole("status")).toContainText(
+      "Fonction indisponible sur cette instance",
+    );
     await expect(page.getByRole("button", { name: "Exécuter" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Enregistrer" })).toHaveCount(0);
   });
@@ -47,7 +49,7 @@ test.describe("j06 ETL désactivé — shell (créateur)", () => {
     await expect(page.getByRole("heading", { name: "Nouvelle requête visuelle" })).toBeVisible();
     await page.getByLabel("Titre").fill("aud-j06 requête");
     await expect(page.getByRole("button", { name: "Créer" })).toBeDisabled();
-    await expect(page.getByText("Non activé sur cette instance")).toBeVisible();
+    await expect(page.getByText("Fonction indisponible sur cette instance")).toBeVisible();
   });
 
   test("requête visuelle inconnue : « Requête introuvable »", async ({ page }) => {
@@ -56,9 +58,9 @@ test.describe("j06 ETL désactivé — shell (créateur)", () => {
   });
 
   // Finding j06-009 : le message final expose le nom d'une variable d'environnement serveur.
-  bug("j06-009 : le message d'indisponibilité ne cite pas CORE_ETL_ENABLED", async ({ page }) => {
+  test("j06-009 : le message d'indisponibilité ne cite pas CORE_ETL_ENABLED", async ({ page }) => {
     await spaGoto(page, "/pipelines/new");
-    await expect(page.getByRole("status")).toContainText("Non activé");
+    await expect(page.getByRole("status")).toContainText("Fonction indisponible");
     await expect(page.getByRole("status")).not.toContainText("CORE_ETL_ENABLED");
   });
 

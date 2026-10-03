@@ -211,7 +211,7 @@ test.describe("j13 identifiants et accès direct par URL", () => {
       [`/items/${app.pk}`, "Élément introuvable."],
       [`/apps/${app.pk}/edit`, "Application introuvable."],
       [`/maps/${map.pk}`, "Carte introuvable."],
-      [`/datasets/${ds.pk}/edit`, "Dataset partagé introuvable."],
+      [`/datasets/${ds.pk}/edit`, "Jeu de données partagé introuvable."],
     ] as const) {
       await go(page, path, 2500);
       await expect(page.getByText(msg)).toBeVisible();

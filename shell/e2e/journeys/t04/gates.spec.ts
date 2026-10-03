@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { execFileSync } from "node:child_process";
-import { bug, readLines, rel, sourceFiles } from "./helpers";
+import { readLines, rel, sourceFiles } from "./helpers";
 
 // Les trois garde-fous de tokens/i18n du dépôt passent bien : preuve que le « vert » de
 // `npm run lint` est réel avant de chercher ce qu'ils ne voient pas.
@@ -29,15 +29,18 @@ test.describe("garde-fous de tokens et d'i18n (sources)", () => {
 
   // Finding t04-018 : check-i18n-coverage.mjs ne lit que les .tsx et ne reconnaît pas les
   // gabarits (backticks) : du français d'interface vit hors catalogue sans alerter la CI.
-  bug("t04-018 : aucun libellé français d'interface hors du catalogue i18n", () => {
+  test("t04-018 : aucun libellé français d'interface hors du catalogue i18n", () => {
     const accent = /[àâäéèêëïîôöùûüçÀÂÉÈÊÎÔÙÛÇ]/;
     const skip = /console\.|throw new Error|^\s*(\/\/|\*|\/\*)|localStorage|description:/;
     const offenders: string[] = [];
     for (const f of sourceFiles([".ts", ".tsx"])) {
       // TriptychLayout (prose de commentaire JSX) et SqlLabPage (console.warn multiligne) : faux positifs.
       if (/src\/(builder\/copilot|test)\/|TriptychLayout|SqlLabPage/.test(f)) continue;
-      readLines(f).forEach((l, i) => {
-        if (skip.test(l)) return;
+      const lines = readLines(f);
+      // Exemptions justifiées du détecteur (`i18n-ok-file` / `i18n-ok`), comme check-i18n-coverage.mjs.
+      if (lines.some((x) => x.includes("i18n-ok-file"))) continue;
+      lines.forEach((l, i) => {
+        if (skip.test(l) || /i18n-ok/.test(l) || /i18n-ok/.test(lines[i - 1] ?? "")) return;
         const literals = [...l.matchAll(/`([^`]*)`|"([^"\\]*)"/g)].map((m) => m[1] ?? m[2] ?? "");
         if (literals.some((v) => accent.test(v))) offenders.push(`${rel(f)}:${i + 1}`);
       });

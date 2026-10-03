@@ -109,17 +109,14 @@ test.describe("états de chargement (lectures retardées de 5 s)", () => {
 
   // Finding t04-009 : seul /admin/extensions utilise LoadingState (pastille animée) ; les cinq autres écrans
   // affichent un <p role=status> nu sans indicateur visuel.
-  bug(
-    "t04-009 : tous les écrans de chargement utilisent la même présentation (LoadingState)",
-    () => {
-      for (const p of ADMIN_LISTS) {
-        expect(
-          snaps[p].status.some((x) => x.spinner),
-          p,
-        ).toBe(true);
-      }
-    },
-  );
+  test("t04-009 : tous les écrans de chargement utilisent la même présentation (LoadingState)", () => {
+    for (const p of ADMIN_LISTS) {
+      expect(
+        snaps[p].status.some((x) => x.spinner),
+        p,
+      ).toBe(true);
+    }
+  });
 });
 
 test.describe("accès refusé (reader)", () => {
