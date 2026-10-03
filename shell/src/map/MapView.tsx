@@ -36,12 +36,18 @@ import {
 } from "./mapDeckTerrain";
 
 export type MapViewHandle = {
-  flyTo: (opts: {
-    center: [number, number];
-    zoom?: number;
-    pitch?: number;
-    bearing?: number;
-  }) => void;
+  // `instant` : saut sans animation (saisie numérique de la caméra — un vol
+  // interrompu par la frappe suivante émet un `moveend` à mi-course qui
+  // écrasait l'inclinaison saisie dans le brouillon).
+  flyTo: (
+    opts: {
+      center: [number, number];
+      zoom?: number;
+      pitch?: number;
+      bearing?: number;
+    },
+    instant?: boolean,
+  ) => void;
   highlight: (geometry: unknown | null) => void;
   fitBounds: (
     bbox: [number, number, number, number],
@@ -500,7 +506,7 @@ export const MapView = forwardRef<
   useImperativeHandle(
     ref,
     () => ({
-      flyTo: (opts) => {
+      flyTo: (opts, instant) => {
         // maplibre-gl v6 regression, confirmed by e2e (with vs. without
         // terrain, with `flyTo` vs. `easeTo` vs. `jumpTo` — only the
         // animated forms fail, only when a terrain is currently set): an
@@ -520,7 +526,7 @@ export const MapView = forwardRef<
         // système en cours de session doit être respecté au prochain
         // flyTo, pas seulement à celui qui suit le montage.
         const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-        if (mapRef.current?.getTerrain() || reducedMotion) {
+        if (instant || mapRef.current?.getTerrain() || reducedMotion) {
           mapRef.current?.jumpTo(opts);
         } else {
           mapRef.current?.flyTo(opts);

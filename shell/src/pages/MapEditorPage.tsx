@@ -126,11 +126,10 @@ export function MapEditorPage({ pk }: { pk: string }) {
   const currentDraft = draft;
   function setCamera(next: { pitch: number; bearing: number }) {
     updateDraft((d) => (d ? { ...d, view: { ...d.view, ...next } } : d));
-    mapViewRef.current?.flyTo({
-      center: currentDraft.view.center,
-      zoom: currentDraft.view.zoom,
-      ...next,
-    });
+    mapViewRef.current?.flyTo(
+      { center: currentDraft.view.center, zoom: currentDraft.view.zoom, ...next },
+      true,
+    );
   }
 
   // Export/print chrome (SP-17a Task 10): the Playwright worker (Task 6)
