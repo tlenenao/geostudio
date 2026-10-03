@@ -57,10 +57,7 @@ export function ConnectivityBanner() {
 
   if (!online) {
     return (
-      <div
-        role="alert"
-        className="w-full bg-danger-soft px-4 py-2 text-center text-sm text-danger"
-      >
+      <div role="alert" className="w-full bg-danger-soft px-4 py-2 text-center text-sm text-danger">
         {t("connectivity.offline")}
       </div>
     );

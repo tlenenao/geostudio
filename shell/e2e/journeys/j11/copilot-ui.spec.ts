@@ -87,15 +87,14 @@ test.describe("j11 copilote : capacité éteinte côté UI", () => {
 
   // FINDING j11-006 : aucun texte ne dit que le copilote existe mais n'est pas configuré ;
   // la fonction est simplement invisible, l'utilisateur ne peut pas la découvrir.
-  test(
-    "j11-006 : le builder explique que le copilote est indisponible quand aucun fournisseur LLM n'est configuré",
-    async ({ page }) => {
-      const seed = await getSeed();
-      await openBuilder(page, "creator", seed.appPk);
-      await expect(page.getByRole("button", { name: "Enregistrer" })).toBeVisible();
-      await expect(page.getByText(/copilote.*(indisponible|non configuré)/i)).toBeVisible();
-    },
-  );
+  test("j11-006 : le builder explique que le copilote est indisponible quand aucun fournisseur LLM n'est configuré", async ({
+    page,
+  }) => {
+    const seed = await getSeed();
+    await openBuilder(page, "creator", seed.appPk);
+    await expect(page.getByRole("button", { name: "Enregistrer" })).toBeVisible();
+    await expect(page.getByText(/copilote.*(indisponible|non configuré)/i)).toBeVisible();
+  });
 });
 
 test.describe("j11 copilote : builder avec cœur simulé sur /copilot/turn", () => {
@@ -181,17 +180,16 @@ test.describe("j11 copilote : builder avec cœur simulé sur /copilot/turn", () 
 
   // FINDING j11-010 : un lecteur (Enregistrer désactivé) peut néanmoins utiliser le copilote
   // et modifier le brouillon local ; le panneau n'est pas mis en lecture seule.
-  test(
-    "j11-010 : un lecteur sur une app partagée ne peut pas utiliser le copilote d'édition",
-    async ({ page }) => {
-      const pk = await newApp("creator", "aud-j11-ui-7", true);
-      await enableCopilot(page);
-      await stubTurn(page, () => ({ json: { reply: "ajouté", clientOps: [] } }));
-      await openBuilder(page, "reader", pk);
-      await expect(page.getByRole("button", { name: "Enregistrer" })).toBeDisabled();
-      await expect(page.getByLabel("Message au copilote")).toBeDisabled();
-    },
-  );
+  test("j11-010 : un lecteur sur une app partagée ne peut pas utiliser le copilote d'édition", async ({
+    page,
+  }) => {
+    const pk = await newApp("creator", "aud-j11-ui-7", true);
+    await enableCopilot(page);
+    await stubTurn(page, () => ({ json: { reply: "ajouté", clientOps: [] } }));
+    await openBuilder(page, "reader", pk);
+    await expect(page.getByRole("button", { name: "Enregistrer" })).toBeDisabled();
+    await expect(page.getByLabel("Message au copilote")).toBeDisabled();
+  });
 });
 
 test.describe("j11 copilote : SQL Lab", () => {

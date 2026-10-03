@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- sortie JSON de la sonde, forme libre */
-import { bug } from "../_fixtures/verify";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";

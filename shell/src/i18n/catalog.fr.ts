@@ -2127,6 +2127,10 @@ export const fr = {
   "mapView.labelsSkippedNoGlyphsWarning":
     'MapView: étiquettes ignorées pour {parentId} — le style du fond de carte ne déclare pas de "glyphs" (text-field l\'exige).',
   "mapView.iconNotLoadedWarning": "MapView: icône {id} non chargée",
+  "mapView.locale.mapTitle": "Carte",
+  "mapView.locale.toggleAttribution": "Afficher les crédits",
+  "mapView.locale.mapFeedback": "Signaler un problème de carte",
+  "mapView.locale.logoTitle": "Logo MapLibre",
   "mapView.styleErrorLog": "MapView: MapLibre a signalé une erreur",
 
   // PopupEditor (map)

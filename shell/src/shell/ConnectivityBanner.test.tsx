@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
-import { QueryClient, QueryClientProvider, QueryObserver, onlineManager } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  QueryObserver,
+  onlineManager,
+} from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { ConnectivityBanner, CONNECTIVITY_POLL_MS } from "./ConnectivityBanner";
 import { CoreUnreachableError } from "../api/CoreUnreachableError";
