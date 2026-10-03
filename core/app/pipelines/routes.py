@@ -130,7 +130,10 @@ def cancel_pipeline_run_route(
         return _run_status(run)  # idempotent (REV-275 c) : déjà demandé, pas de nouvel audit
     if run.status not in ("queued", "running"):
         raise HTTPException(status_code=409, detail=f"run is {run.status}, cannot be cancelled")
-    pipelines_repo.request_cancel(session, run)
+    if pipelines_repo.request_cancel(session, run) not in ("cancelled", "cancel_requested"):
+        # Le run a fini entre la lecture et l'UPDATE conditionnel : rien annulé, pas d'audit.
+        session.rollback()
+        raise HTTPException(status_code=409, detail=f"run is {run.status}, cannot be cancelled")
     write_audit(
         session,
         tenant_id=user.tenant_id,

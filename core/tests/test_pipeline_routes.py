@@ -767,6 +767,44 @@ def test_cancel_run_route_queued_then_conflict_when_terminal(monkeypatch):
     assert client.post(f"/v1/pipelines/{item_id}/runs/nope/cancel").status_code == 404
 
 
+def test_cancel_run_route_409_without_audit_when_run_finishes_during_cancel(monkeypatch):
+    # Course : le run passe succeeded entre la lecture et l'UPDATE conditionnel
+    # de request_cancel -> 409 et aucune entrée d'audit « pipeline.run.cancel ».
+    from sqlalchemy import select
+
+    from app.audit.models import AuditLog
+    from app.pipelines import repository as pipelines_repo
+
+    client = _make_app(monkeypatch, etl_enabled=True)
+    item_id = _seed_webhook_pipeline(client)
+    Session = client.session_factory  # type: ignore[attr-defined]
+    with Session() as s:
+        run = pipelines_repo.create_run(
+            s,
+            tenant_id=client.tenant.id,
+            pipeline_item_id=item_id,  # type: ignore[attr-defined]
+        )
+        pipelines_repo.mark_running(s, run_id=run.id)
+        s.commit()
+        run_id = run.id
+
+    def finished_meanwhile(session, run):
+        pipelines_repo.mark_succeeded(session, run_id=run.id, node_stats={})
+        session.refresh(run)
+        return run.status
+
+    monkeypatch.setattr("app.pipelines.routes.pipelines_repo.request_cancel", finished_meanwhile)
+    r = client.post(f"/v1/pipelines/{item_id}/runs/{run_id}/cancel")
+    assert r.status_code == 409
+    with Session() as s:
+        audits = s.scalars(
+            select(AuditLog).where(
+                AuditLog.action == "pipeline.run.cancel", AuditLog.object_id == run_id
+            )
+        ).all()
+        assert audits == []
+
+
 def test_preview_route_maps_degenerate_op_input_to_400(monkeypatch):
     # REV-196 : une op `execute` qui reçoit une entrée inadaptée (polygone passé à
     # `transform.triangulate`) lève PipelineRuntimeError -> 400 explicite, plus de 500.
