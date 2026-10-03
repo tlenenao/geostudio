@@ -5,7 +5,7 @@ import { useItemClient } from "../api/ItemClientProvider";
 import { useLayerSources } from "../api/hooks";
 import type { LayerSource, MapLayer } from "../api/types";
 import { detectGeometryKind, renderAsFor } from "../builder/widgets/mapSymbology";
-import { fetchFeatureCollection, hostedToken } from "./geojsonIntrospect";
+import { fetchFeatureCollection } from "./geojsonIntrospect";
 import { Button } from "../ui/kit/Button";
 import { plural, t, type MessageKey } from "../i18n";
 
@@ -70,7 +70,7 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
     setFeatureError(null);
     let renderAs: "fill" | "circle" | "line" | undefined;
     try {
-      const fc = await fetchFeatureCollection(url, hostedToken(client, url));
+      const fc = await fetchFeatureCollection(client, url);
       renderAs = renderAsFor(detectGeometryKind(fc.features[0]?.geometry));
       // Amorce le cache que LayersPanel.tsx lit sous la même clé
       // (useFeatureLayerGeoJson) : ouvrir tout de suite le panneau de

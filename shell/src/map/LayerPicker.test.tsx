@@ -7,6 +7,10 @@ import type { ItemClient, LayerSource, MapLayer } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { LayerPicker } from "./LayerPicker";
 
+// P30.03 : le client de test relaie fetchUrl vers le `fetch` global stubbé ; les
+// options (`authenticated`) sont transmises telles quelles pour être assertées.
+const fetchUrl = (url: string, opts?: unknown) => fetch(url, opts as RequestInit);
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -56,7 +60,10 @@ const sources: LayerSource[] = [
 ];
 
 function renderPicker(onAdd: (l: MapLayer) => void) {
-  const client = { listLayerSources: vi.fn().mockResolvedValue(sources) } as unknown as ItemClient;
+  const client = {
+    fetchUrl,
+    listLayerSources: vi.fn().mockResolvedValue(sources),
+  } as unknown as ItemClient;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
@@ -167,7 +174,10 @@ test("shows no feature-count badge for a tiled vector source or an unknown count
 
 test("has a search field that calls listLayerSources with q", async () => {
   const onAdd = vi.fn();
-  const client = { listLayerSources: vi.fn().mockResolvedValue(sources) } as unknown as ItemClient;
+  const client = {
+    fetchUrl,
+    listLayerSources: vi.fn().mockResolvedValue(sources),
+  } as unknown as ItemClient;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
@@ -337,7 +347,10 @@ test("clears the GeoJSON URL form after adding and primes the introspection cach
   };
   const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => fc });
   vi.stubGlobal("fetch", fetchMock);
-  const client = { listLayerSources: vi.fn().mockResolvedValue(sources) } as unknown as ItemClient;
+  const client = {
+    fetchUrl,
+    listLayerSources: vi.fn().mockResolvedValue(sources),
+  } as unknown as ItemClient;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>

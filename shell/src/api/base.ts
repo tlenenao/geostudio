@@ -228,6 +228,10 @@ export type ItemClientBase = {
   // P07.06 : fetch authentifié (Authorization + renouvellement silencieux sur
   // 401, rejeu unique) pour les sites qui ne passent pas par request().
   authFetch(url: string, init?: RequestInit, timeoutMs?: number): Promise<Response>;
+  // P30.03 : GET d'une URL arbitraire (tuile, GeoJSON). `authenticated` = URL
+  // servie par le cœur (jeton de session ou de lien de partage) ; sinon requête
+  // nue, jamais de jeton vers un hôte libre.
+  fetchUrl(url: string, opts?: { authenticated?: boolean }): Promise<Response>;
   // Renouvellement partagé (undefined = pas de renouvellement possible).
   renewToken?: () => Promise<string | undefined>;
   resolveDataset(pk: string): Promise<ResolvedDataset>;
@@ -432,6 +436,12 @@ export function createBase(opts: {
     return resolved;
   }
 
+  async function fetchUrl(url: string, opts?: { authenticated?: boolean }): Promise<Response> {
+    if (!opts?.authenticated) return fetchWithTimeout(url);
+    const shareToken = getShareLinkToken?.();
+    return authFetch(url, shareToken ? { headers: { "X-Share-Link-Token": shareToken } } : {});
+  }
+
   async function fetchGeoJsonFeatures(url: string): Promise<DataRecord[]> {
     return (await fetchGeoJsonPage(url)).records;
   }
@@ -537,6 +547,7 @@ export function createBase(opts: {
     resolveDataset,
     datasetCache,
     invalidateDatasetCache,
+    fetchUrl,
     fetchGeoJsonFeatures,
     fetchGeoJsonPage,
     fetchCoreCollections,

@@ -2,7 +2,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   fetchFeatureCollection,
-  hostedToken,
   listFields,
   makeSampleFieldFn,
   makeStatQueryFn,
@@ -23,29 +22,29 @@ function fcWithValues(field: string, values: unknown[]): GeoJSON.FeatureCollecti
   };
 }
 
+const emptyFc = { type: "FeatureCollection", features: [] };
+const mkClient = (res: unknown) => ({
+  getCoreUrl: () => "https://core.test",
+  fetchUrl: vi.fn().mockResolvedValue(res),
+});
+
 describe("fetchFeatureCollection", () => {
-  test("resolves a valid FeatureCollection", async () => {
-    const fc = { type: "FeatureCollection", features: [] };
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => fc }));
-    await expect(fetchFeatureCollection("https://ex.test/d.geojson")).resolves.toEqual(fc);
-  });
-
-  test("attache le jeton quand il est fourni (collection privée, P29.02)", async () => {
-    const f = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ type: "FeatureCollection", features: [] }),
-    });
-    vi.stubGlobal("fetch", f);
-    await fetchFeatureCollection("https://core.test/collections/c/items", "tok");
-    expect(f).toHaveBeenCalledWith("https://core.test/collections/c/items", {
-      headers: { Authorization: "Bearer tok" },
+  test("resolves a valid FeatureCollection, sans jeton pour une URL externe", async () => {
+    const client = mkClient({ ok: true, json: async () => emptyFc });
+    await expect(fetchFeatureCollection(client, "https://ex.test/d.geojson")).resolves.toEqual(
+      emptyFc,
+    );
+    expect(client.fetchUrl).toHaveBeenCalledWith("https://ex.test/d.geojson", {
+      authenticated: false,
     });
   });
 
-  test("hostedToken : jeton seulement pour une URL servie par le cœur", () => {
-    const client = { getCoreUrl: () => "https://core.test", getAuthToken: () => "tok" };
-    expect(hostedToken(client, "https://core.test/collections/c/items")).toBe("tok");
-    expect(hostedToken(client, "https://evil.example/collections/c/items")).toBeUndefined();
+  test("authentifié seulement pour une URL servie par le cœur (P30.03)", async () => {
+    const client = mkClient({ ok: true, json: async () => emptyFc });
+    await fetchFeatureCollection(client, "https://core.test/collections/c/items");
+    expect(client.fetchUrl).toHaveBeenLastCalledWith("https://core.test/collections/c/items", {
+      authenticated: true,
+    });
     for (const u of [
       "https://core.test.evil.com/collections/c/items",
       "https://core.test@evil.com/collections/c/items",
@@ -54,24 +53,21 @@ describe("fetchFeatureCollection", () => {
       "https://core.test:8443/collections/c/items",
       "//evil.com/collections/c/items",
     ]) {
-      expect(hostedToken(client, u), u).toBeUndefined();
+      await fetchFeatureCollection(client, u);
+      expect(client.fetchUrl, u).toHaveBeenLastCalledWith(u, { authenticated: false });
     }
   });
 
   test("rejects on a non-OK response", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({ ok: false, status: 404, json: async () => ({}) }),
+    const client = mkClient({ ok: false, status: 404, json: async () => ({}) });
+    await expect(fetchFeatureCollection(client, "https://ex.test/d.geojson")).rejects.toThrow(
+      /404/,
     );
-    await expect(fetchFeatureCollection("https://ex.test/d.geojson")).rejects.toThrow(/404/);
   });
 
   test("rejects when the body is not a GeoJSON FeatureCollection", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({ ok: true, json: async () => ({ type: "Feature" }) }),
-    );
-    await expect(fetchFeatureCollection("https://ex.test/d.geojson")).rejects.toThrow(
+    const client = mkClient({ ok: true, json: async () => ({ type: "Feature" }) });
+    await expect(fetchFeatureCollection(client, "https://ex.test/d.geojson")).rejects.toThrow(
       /FeatureCollection/,
     );
   });

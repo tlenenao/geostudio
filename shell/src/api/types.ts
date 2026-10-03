@@ -742,6 +742,9 @@ export interface ItemClient {
   // un en-tête dédié, jamais sur Authorization (cf. getAuthToken ci-dessus,
   // qui reste undefined dans ce cas). Absent sur tout ItemClient normal.
   getShareLinkToken?(): string | undefined;
+  // P30.03 : GET d'une URL de tuile/GeoJSON ; `authenticated` n'est posé que
+  // pour une URL servie par le cœur. Optionnel (mocks partiels, client desktop).
+  fetchUrl?(url: string, opts?: { authenticated?: boolean }): Promise<Response>;
   listHostedTerrain3DSources(q?: string): Promise<{ id: string; title: string }[]>;
   // Dédiée, jamais presignUpload() : la générique signe dans
   // S3_UPLOADS_BUCKET alors que le worker de conversion lit le DEM brut dans

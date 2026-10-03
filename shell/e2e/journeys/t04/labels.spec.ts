@@ -1,15 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { stamp } from "../_fixtures/env";
 import { apiFor } from "../j03/api";
-import {
-  bug,
-  createApp,
-  getA11ySeed,
-  go,
-  newSession,
-  type A11ySeed,
-  type Session,
-} from "./helpers";
+import { createApp, getA11ySeed, go, newSession, type A11ySeed, type Session } from "./helpers";
 
 test.describe("libellés, vocabulaire et formats (creator, navigateur en-US)", () => {
   let s: Session;
@@ -193,8 +185,8 @@ test.describe("libellés, vocabulaire et formats (creator, navigateur en-US)", (
     expect(text).toMatch(/1\s234\s567,75/);
   });
 
-  // Finding t04-017 : le contrôle d'attribution MapLibre garde ses libellés anglais (aucune locale passée).
-  bug("t04-017 : les contrôles de carte sont libellés en français", async () => {
+  // Finding t04-017 (P30.05) : libellés MapLibre passés via l'option `locale`.
+  test("t04-017 : les contrôles de carte sont libellés en français", async () => {
     await go(s.page, `/maps/${seed.mapId}`, 2500);
     const labels = await s.page
       .locator("[aria-label],[title]")

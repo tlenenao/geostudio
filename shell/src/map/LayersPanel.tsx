@@ -5,7 +5,6 @@ import { useItemClient } from "../api/ItemClientProvider";
 import type { MapLayer } from "../api/types";
 import {
   fetchFeatureCollection,
-  hostedToken,
   listFields,
   makeSampleFieldFn,
   makeStatQueryFn,
@@ -28,7 +27,7 @@ function useFeatureLayerGeoJson(layer: Extract<MapLayer, { kind: "vector" | "fea
   const url = layer.kind === "feature" ? layer.url : undefined;
   return useQuery({
     queryKey: ["feature-geojson", url],
-    queryFn: () => fetchFeatureCollection(url!, hostedToken(client, url!)),
+    queryFn: () => fetchFeatureCollection(client, url!),
     enabled: Boolean(url),
   });
 }
@@ -259,13 +258,13 @@ export function LayersPanel({
         const probes = await Promise.all(
           tiles.map(async (key) => {
             const url = layer.tilesUrl.replace("{z}/{x}/{y}", key);
-            const token = isHostedCollectionUrl(url, client.getCoreUrl?.())
-              ? client.getAuthToken?.()
-              : undefined;
+            // Tuile non servie par le cœur : pas de sonde (seul le cœur pose
+            // X-Tile-Truncated, et aucun jeton ne part vers un hôte libre).
+            if (!isHostedCollectionUrl(url, client.getCoreUrl?.()) || !client.fetchUrl) {
+              return false;
+            }
             try {
-              const res = await fetch(url, {
-                headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-              });
+              const res = await client.fetchUrl(url, { authenticated: true });
               return res.headers.get("X-Tile-Truncated") === "true";
             } catch {
               return false;

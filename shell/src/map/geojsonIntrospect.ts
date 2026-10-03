@@ -4,16 +4,18 @@ import { isHostedCollectionUrl } from "./hostedCoreUrl";
 import type { SampleFieldFn, StatQueryFn } from "../builder/widgets/mapSymbology";
 import { t } from "../i18n";
 
-// `token` : jeton de session, à ne passer que pour une URL réellement servie par
-// le cœur (cf. `hostedToken`) — une collection privée (cas par défaut d'un
-// import) répond 401 sans lui, et le panneau de symbologie restait sans champ.
+// Passe par `client.fetchUrl` (délai, jeton de session ou de partage) ; jeton
+// uniquement si l'URL est servie par le cœur — une collection privée (cas par
+// défaut d'un import) répond 401 sans lui, et le panneau de symbologie restait
+// sans champ.
 export async function fetchFeatureCollection(
+  client: Pick<ItemClient, "getCoreUrl" | "fetchUrl">,
   url: string,
-  token?: string,
 ): Promise<GeoJSON.FeatureCollection> {
-  const res = token
-    ? await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-    : await fetch(url);
+  if (!client.fetchUrl) throw new Error(t("geojson.loadFailed", { url, status: 0 }));
+  const res = await client.fetchUrl(url, {
+    authenticated: isHostedCollectionUrl(url, client.getCoreUrl?.()),
+  });
   if (!res.ok) throw new Error(t("geojson.loadFailed", { url, status: res.status }));
   const data: unknown = await res.json();
   if (
@@ -112,14 +114,4 @@ function sampleArray<T>(values: T[], limit: number): T[] {
 
 export function makeSampleFieldFn(fc: GeoJSON.FeatureCollection): SampleFieldFn {
   return async (field, limit) => sampleArray(numericValues(fc, field), limit);
-}
-
-// Jeton de session pour `url` si, et seulement si, le cœur la sert (même garde
-// que la sonde de tuile : jamais le jeton vers une URL libre saisie par
-// l'auteur). `?.()` : certains hôtes/tests passent un ItemClient partiel.
-export function hostedToken(
-  client: Pick<ItemClient, "getCoreUrl" | "getAuthToken">,
-  url: string,
-): string | undefined {
-  return isHostedCollectionUrl(url, client.getCoreUrl?.()) ? client.getAuthToken?.() : undefined;
 }

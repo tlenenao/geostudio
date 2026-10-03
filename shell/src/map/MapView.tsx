@@ -19,13 +19,13 @@ import { Tile3DLayer } from "@deck.gl/geo-layers";
 import { Tiles3DLoader } from "@loaders.gl/3d-tiles";
 import type {
   AttachmentSummary,
-  CollectionSchema,
   CollectionSchemaField,
   DataRecord,
   MapConfig,
   MapLayer,
   ThemeColors,
 } from "../api/types";
+import { useOptionalItemClient } from "../api/ItemClientProvider";
 import { MapLegend } from "./MapLegend";
 import { MapMeasureSketchToolbar } from "./MapMeasureSketchToolbar";
 import { MapPopup } from "./MapPopup";
@@ -1077,6 +1077,13 @@ export const MapView = forwardRef<
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: config.basemap.style,
+      // P30.05 : libellés des contrôles MapLibre en français.
+      locale: {
+        "Map.Title": t("mapView.locale.mapTitle"),
+        "AttributionControl.ToggleAttribution": t("mapView.locale.toggleAttribution"),
+        "AttributionControl.MapFeedback": t("mapView.locale.mapFeedback"),
+        "LogoControl.Title": t("mapView.locale.logoTitle"),
+      },
       center: config.view.center,
       zoom: config.view.zoom,
       pitch: config.view.pitch ?? 0,
@@ -1363,33 +1370,29 @@ export const MapView = forwardRef<
   // n'ont pas de champ `popup` du tout).
   const popupConfig = popupLayer && "popup" in popupLayer ? popupLayer.popup : undefined;
 
-  // Pièces jointes de l'entité dont le popup est ouvert (chantier 4.12) :
-  // fetch NU via getCoreUrl/getAuthToken, jamais useItemClient()/React Query
-  // — ce composant fonctionne aussi hors ItemClientProvider (export
-  // statique, cf. son commentaire d'en-tête général sur exportRender/SP-17a
-  // et les usages standalone de MapView). Placé ICI, après le calcul de
-  // popupConfig/popupLayer ci-dessus (dont il dépend) et avant le `return`
-  // final : il n'y a aucun `return` conditionnel plus haut dans ce
-  // composant, donc cet ordre respecte les règles des Hooks (jamais après
-  // un `return` conditionnel).
+  // Pièces jointes et schéma de la couche du popup ouvert (chantier 4.12, D35) :
+  // via ItemClient (P30.03 : délai, jeton ou lien de partage, erreurs typées).
+  // `useOptionalItemClient` : MapView reste utilisable hors provider (export
+  // statique) — sans client, ni pièces jointes ni formatage de schéma.
+  // Placés après popupConfig/popupLayer, avant le `return` final (règles des Hooks).
+  const itemClient = useOptionalItemClient();
+  const popupCollectionId =
+    popupLayer && (popupLayer.kind === "vector" || popupLayer.kind === "feature")
+      ? popupLayer.collectionId
+      : undefined;
   useEffect(() => {
     setPopupAttachments([]);
-    if (!popup || !popupConfig?.attachmentField || popup.fid === undefined) return;
-    if (!popupLayer || (popupLayer.kind !== "vector" && popupLayer.kind !== "feature")) return;
-    if (!popupLayer.collectionId) return;
-    const coreUrl = getCoreUrlRef.current?.();
-    if (!coreUrl) return;
-    const token = getAuthTokenRef.current?.();
-    const shareToken = getShareLinkTokenRef.current?.();
-    const headers: Record<string, string> = {};
-    if (token) headers.Authorization = `Bearer ${token}`;
-    else if (shareToken) headers["X-Share-Link-Token"] = shareToken;
-    const url = `${coreUrl}/collections/${popupLayer.collectionId}/items/${popup.fid}/attachments?fieldKey=${encodeURIComponent(popupConfig.attachmentField)}`;
+    if (!itemClient || !popupConfig?.attachmentField || popup?.fid === undefined) return;
+    if (!popupCollectionId) return;
     let cancelled = false;
-    fetch(url, { headers })
-      .then((res) => (res.ok ? res.json() : { attachments: [] }))
-      .then((data: { attachments?: AttachmentSummary[] }) => {
-        if (!cancelled) setPopupAttachments(data.attachments ?? []);
+    // Promise.resolve().then : un ItemClient partiel (mock) sans la méthode
+    // rejette ici au lieu de lever dans l'effet.
+    Promise.resolve()
+      .then(() =>
+        itemClient.listAttachments(popupCollectionId, popup.fid!, popupConfig.attachmentField),
+      )
+      .then((list) => {
+        if (!cancelled) setPopupAttachments(list ?? []);
       })
       .catch(() => {
         if (!cancelled) setPopupAttachments([]);
@@ -1398,30 +1401,17 @@ export const MapView = forwardRef<
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [popup?.layerId, popup?.fid, popupConfig?.attachmentField]);
+  }, [itemClient, popup?.layerId, popup?.fid, popupConfig?.attachmentField]);
 
-  // Schéma de la collection de la couche du popup actif (D35, Vague C,
-  // SP-C6) : même patron fetch NU que l'effet de pièces jointes ci-dessus,
-  // pour la même raison (composant utilisable hors ItemClientProvider).
-  // Résolu par `popup.layerId` seul (le schéma d'une collection ne dépend
-  // pas de l'entité cliquée), pas préchargé pour les autres couches.
+  // Schéma de la collection de la couche du popup actif (D35) : résolu par
+  // `popup.layerId` seul (il ne dépend pas de l'entité cliquée).
   useEffect(() => {
     setPopupSchema([]);
-    if (!popup) return;
-    if (!popupLayer || (popupLayer.kind !== "vector" && popupLayer.kind !== "feature")) return;
-    if (!popupLayer.collectionId) return;
-    const coreUrl = getCoreUrlRef.current?.();
-    if (!coreUrl) return;
-    const token = getAuthTokenRef.current?.();
-    const shareToken = getShareLinkTokenRef.current?.();
-    const headers: Record<string, string> = {};
-    if (token) headers.Authorization = `Bearer ${token}`;
-    else if (shareToken) headers["X-Share-Link-Token"] = shareToken;
-    const url = `${coreUrl}/collections/${popupLayer.collectionId}/schema`;
+    if (!itemClient || !popup || !popupCollectionId) return;
     let cancelled = false;
-    fetch(url, { headers })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: CollectionSchema | null) => {
+    Promise.resolve()
+      .then(() => itemClient.getCollectionSchema(popupCollectionId))
+      .then((data) => {
         if (!cancelled) setPopupSchema(data?.fields ?? []);
       })
       .catch(() => {
@@ -1431,34 +1421,25 @@ export const MapView = forwardRef<
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [popup?.layerId]);
+  }, [itemClient, popup?.layerId]);
 
   async function downloadPopupAttachment(attachmentId: string, filename: string) {
-    if (
-      !popupLayer ||
-      (popupLayer.kind !== "vector" && popupLayer.kind !== "feature") ||
-      !popupLayer.collectionId ||
-      !popup ||
-      popup.fid === undefined
-    )
-      return;
-    const coreUrl = getCoreUrlRef.current?.();
-    if (!coreUrl) return;
-    const token = getAuthTokenRef.current?.();
-    const shareToken = getShareLinkTokenRef.current?.();
-    const headers: Record<string, string> = {};
-    if (token) headers.Authorization = `Bearer ${token}`;
-    else if (shareToken) headers["X-Share-Link-Token"] = shareToken;
-    const url = `${coreUrl}/collections/${popupLayer.collectionId}/items/${popup.fid}/attachments/${attachmentId}/file`;
-    const res = await fetch(url, { headers });
-    if (!res.ok) return;
-    const blob = await res.blob();
-    const objectUrl = URL.createObjectURL(blob);
-    const el = document.createElement("a");
-    el.href = objectUrl;
-    el.download = filename;
-    el.click();
-    URL.revokeObjectURL(objectUrl);
+    if (!itemClient || !popupCollectionId || !popup || popup.fid === undefined) return;
+    try {
+      const { blob } = await itemClient.downloadAttachment(
+        popupCollectionId,
+        popup.fid,
+        attachmentId,
+      );
+      const objectUrl = URL.createObjectURL(blob);
+      const el = document.createElement("a");
+      el.href = objectUrl;
+      el.download = filename;
+      el.click();
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      // Échec de téléchargement : sans effet visible, comme avant (res.ok faux).
+    }
   }
 
   return (
