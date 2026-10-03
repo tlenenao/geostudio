@@ -505,7 +505,7 @@ test("listLayerSources returns one tiled entry per core collection, and no Marti
 
 test("a collection without geometry type yields no geometryKind rather than a wrong one", async () => {
   server.use(
-    http.get("https://core.test/v1/harvest/feature-layers", () =>
+    http.get("https://core.test/v1/collections", () =>
       HttpResponse.json({
         collections: [{ id: "sans_geom", title: "Sans géométrie", geometryType: null }],
       }),
@@ -518,9 +518,7 @@ test("a collection without geometry type yields no geometryKind rather than a wr
 
 test("the Martin catalog is never fetched any more", async () => {
   server.use(
-    http.get("https://core.test/v1/harvest/feature-layers", () =>
-      HttpResponse.json({ collections: [] }),
-    ),
+    http.get("https://core.test/v1/collections", () => HttpResponse.json({ collections: [] })),
     http.get("https://core.test/v1/harvest/layers", () => HttpResponse.json({ layers: [] })),
   );
   const fetchSpy = vi.spyOn(globalThis, "fetch");
@@ -571,7 +569,7 @@ test("listActiveExtensions maps the core's /extensions response to ExtensionMani
 
 test("listLayerSources still returns core collections when another layer service fails", async () => {
   server.use(
-    http.get("https://core.test/v1/harvest/feature-layers", () =>
+    http.get("https://core.test/v1/collections", () =>
       HttpResponse.json({ collections: [{ id: "public.parcs", title: "Parcs" }] }),
     ),
     http.get("https://core.test/v1/harvest/layers", () => new HttpResponse(null, { status: 500 })),
@@ -597,10 +595,7 @@ test("listLayerSources passes q to /collections", async () => {
 
 test("listLayerSources throws when all services fail", async () => {
   server.use(
-    http.get(
-      "https://core.test/v1/harvest/feature-layers",
-      () => new HttpResponse(null, { status: 500 }),
-    ),
+    http.get("https://core.test/v1/collections", () => new HttpResponse(null, { status: 500 })),
     http.get("https://core.test/v1/harvest/layers", () => new HttpResponse(null, { status: 500 })),
     http.get("https://core.test/v1/items", () => new HttpResponse(null, { status: 500 })),
   );
@@ -2848,7 +2843,7 @@ test("launchAdminTool POSTs to /admin-tools/launch/{tool} and returns the url", 
 
 test("listCollections returns the admin collection shape including owner", async () => {
   server.use(
-    http.get("https://core.test/v1/harvest/feature-layers", () =>
+    http.get("https://core.test/v1/collections", () =>
       HttpResponse.json({
         collections: [
           {
@@ -4050,9 +4045,7 @@ test("getTerrain3DUploadJob returns the job status", async () => {
 test("listLayerSources includes hosted tileset3d items", async () => {
   server.use(
     http.get("https://martin.test/catalog", () => HttpResponse.json({ tiles: {} })),
-    http.get("https://core.test/v1/harvest/feature-layers", () =>
-      HttpResponse.json({ collections: [] }),
-    ),
+    http.get("https://core.test/v1/collections", () => HttpResponse.json({ collections: [] })),
     http.get("https://core.test/v1/harvest/layers", () => HttpResponse.json({ layers: [] })),
     http.get("https://core.test/v1/items", ({ request }) => {
       expect(new URL(request.url).searchParams.get("type")).toBe("tileset3d");
