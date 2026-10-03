@@ -593,7 +593,7 @@ export interface ItemClient {
     pipeline: PipelinePayload;
   }): Promise<Item>;
   getPipelineConfig(pk: string): Promise<PipelinePayload>;
-  savePipelineConfig(pk: string, payload: PipelinePayload): Promise<void>;
+  savePipelineConfig(pk: string, payload: PipelinePayload): Promise<number | undefined>;
   getPipelineOps(): Promise<PipelineOpsCatalog>;
   getPipelineNextRun(cron: string): Promise<{ nextRun: string }>;
   runPipeline(pk: string): Promise<{ runId: string }>;
@@ -1156,6 +1156,7 @@ export type PipelinePayload = {
   edges: PipelineEdge[];
   refreshPolicy?: PipelineRefreshPolicy | null;
   notes?: PipelineCanvasNote[];
+  baseVersion?: number; // version serveur lue (REV-271), jamais persistée
 };
 
 export interface AlertCondition {

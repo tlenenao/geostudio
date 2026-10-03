@@ -89,9 +89,10 @@ export function createDesktopItemClient(connection: {
       return payload;
     },
 
-    async savePipelineConfig(pk: string, payload: PipelinePayload): Promise<void> {
+    async savePipelineConfig(pk: string, payload: PipelinePayload): Promise<number | undefined> {
       localPayloads.set(pk, payload);
       await sidecarFetch<void>("PUT", `/pipelines/${pk}`, payload);
+      return undefined; // le sidecar n'a pas de versionnage de config
     },
 
     async getPipelineOps(): Promise<PipelineOpsCatalog> {

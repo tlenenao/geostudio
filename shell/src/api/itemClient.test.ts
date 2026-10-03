@@ -4553,3 +4553,40 @@ test("REV-271 : getDatasetConfig expose la version, saveDatasetConfig l'envoie e
   await client.saveDatasetConfig("ds-71", loaded);
   expect("baseVersion" in body.dataset).toBe(false);
 });
+
+test("REV-271 : getPipelineConfig expose la version, savePipelineConfig l'envoie en If-Match sans la persister ; previewPipeline ne l'envoie pas", async () => {
+  let ifMatch: string | null = "unset";
+  let putBody: any;
+  let previewBody: any;
+  const graph = { nodes: [], edges: [] };
+  server.use(
+    http.get("https://core.test/v1/configs/by-item/p-71", () =>
+      HttpResponse.json({
+        id: "cfg-p71",
+        itemId: "p-71",
+        kind: "pipeline",
+        version: 6,
+        config: { kind: "pipeline", pipeline: graph },
+      }),
+    ),
+    http.put("https://core.test/v1/configs/by-item/p-71", async ({ request }) => {
+      ifMatch = request.headers.get("If-Match");
+      putBody = await request.json();
+      return HttpResponse.json({ id: "cfg-p71", itemId: "p-71", kind: "pipeline", version: 7 });
+    }),
+    http.post("https://core.test/v1/pipelines/p-71/preview", async ({ request }) => {
+      previewBody = await request.json();
+      return HttpResponse.json([]);
+    }),
+  );
+  const client = makeClient();
+  const loaded = await client.getPipelineConfig("p-71");
+  expect(loaded.baseVersion).toBe(6);
+  expect(await client.savePipelineConfig("p-71", loaded)).toBe(7);
+  expect(ifMatch).toBe('"6"');
+  expect(putBody).toEqual({ version: 1, kind: "pipeline", pipeline: graph });
+  await client.previewPipeline("p-71", "n1", loaded);
+  expect(previewBody).toEqual({ pipeline: graph });
+  await client.savePipelineConfig("p-71", { ...loaded, baseVersion: undefined });
+  expect(ifMatch).toBeNull();
+});

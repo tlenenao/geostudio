@@ -1413,3 +1413,43 @@ test("persisted mode: lecture seule désactive la case de planification automati
   await waitFor(() => expect(screen.getByText("Villes")).toBeInTheDocument());
   expect(screen.getByLabelText("Planification automatique")).toBeDisabled();
 });
+
+test("REV-271 : envoie la version lue puis celle que le cœur renvoie", async () => {
+  const savePipelineConfig = vi.fn().mockResolvedValueOnce(4).mockResolvedValueOnce(5);
+  renderPage("p-1", {
+    getPipelineConfig: vi.fn().mockResolvedValue({ ...TWO_NODE_PAYLOAD, baseVersion: 3 }),
+    savePipelineConfig,
+    listConfigRevisions: vi.fn().mockResolvedValue([]),
+  });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Enregistrer" })).toBeEnabled());
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(savePipelineConfig).toHaveBeenCalledTimes(1));
+  expect(savePipelineConfig.mock.calls[0][1].baseVersion).toBe(3);
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(savePipelineConfig).toHaveBeenCalledTimes(2));
+  expect(savePipelineConfig.mock.calls[1][1].baseVersion).toBe(4);
+});
+
+test("REV-271 : un 412 affiche le conflit ; « Recharger » reprend la version du cœur", async () => {
+  const savePipelineConfig = vi
+    .fn()
+    .mockRejectedValueOnce(new ApiError(412, { detail: "stale" }))
+    .mockResolvedValue(8);
+  renderPage("p-1", {
+    getPipelineConfig: vi
+      .fn()
+      .mockResolvedValueOnce({ ...TWO_NODE_PAYLOAD, baseVersion: 1 })
+      .mockResolvedValue({ ...TWO_NODE_PAYLOAD, baseVersion: 7 }),
+    savePipelineConfig,
+    listConfigRevisions: vi.fn().mockResolvedValue([]),
+  });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Enregistrer" })).toBeEnabled());
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await screen.findByText(t("common.saveConflict"));
+  await userEvent.click(screen.getByRole("button", { name: t("common.saveConflictReload") }));
+  await waitFor(() => expect(screen.queryByText(t("common.saveConflict"))).toBeNull());
+  await waitFor(() => expect(screen.getByRole("button", { name: "Enregistrer" })).toBeEnabled());
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(savePipelineConfig).toHaveBeenCalledTimes(2));
+  expect(savePipelineConfig.mock.calls[1][1].baseVersion).toBe(7);
+});

@@ -13,6 +13,8 @@ import {
   useSavePipeline,
 } from "../api/hooks";
 import { useAuth } from "../auth/useAuth";
+import { isConflictError } from "../api/ApiError";
+import { SaveConflictNotice } from "../builder/SaveConflictNotice";
 import { useItemClient } from "../api/ItemClientProvider";
 import type {
   PipelineCanvasNote,
@@ -119,6 +121,9 @@ export function PipelineBuilderPage({
   const [selectedNodeId, setSelectedNodeId] = useUrlSyncedState<string>("node", null);
   const [latestRun, setLatestRun] = useState<PipelineRun | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const baseVersionRef = useRef<number | undefined>(undefined);
+  const versionSeededRef = useRef(false);
+  const [conflict, setConflict] = useState(false);
   // SP-B6d : investigation — `isDraftStale` (ci-dessous, plus loin dans ce
   // composant) calcule déjà "le brouillon diffère-t-il du dernier état
   // sauvegardé", mais par comparaison de RÉFÉRENCE avec `configQuery.data`,
@@ -158,7 +163,15 @@ export function PipelineBuilderPage({
       seedDraft(EMPTY_PAYLOAD);
       return;
     }
-    if (configQuery.data) seedDraft(configQuery.data);
+    if (configQuery.data) {
+      seedDraft(configQuery.data);
+      // Version du chargement initial seulement : un refetch (autre onglet) est
+      // précisément le conflit que le cœur doit détecter (cf. AppBuilderPage).
+      if (!versionSeededRef.current) {
+        versionSeededRef.current = true;
+        baseVersionRef.current = configQuery.data.baseVersion;
+      }
+    }
   }, [pk, configQuery.data, seedDraft]);
 
   useEffect(() => {
@@ -379,11 +392,28 @@ export function PipelineBuilderPage({
         navigate(`/pipelines/${item.pk}/edit`, { replace: true });
         return;
       }
-      await savePipeline.mutateAsync(currentDraft);
+      const version = await savePipeline.mutateAsync({
+        ...currentDraft,
+        baseVersion: baseVersionRef.current,
+      });
+      baseVersionRef.current = version;
+      setConflict(false);
       setHasUnsavedChanges(false);
     } catch (e) {
+      if (isConflictError(e)) {
+        setConflict(true);
+        return;
+      }
       setSaveError(e instanceof Error ? e.message : t("actions.saveFailed"));
     }
+  }
+
+  async function reloadLatest() {
+    if (pk === null) return;
+    const latest = await client.getPipelineConfig(pk);
+    resetDraft(latest);
+    baseVersionRef.current = latest.baseVersion;
+    setConflict(false);
   }
 
   return (
@@ -540,7 +570,11 @@ export function PipelineBuilderPage({
                   <ConfigHistoryPanel
                     pk={pk}
                     currentVersion={null}
-                    onRestored={async () => resetDraft(await client.getPipelineConfig(pk))}
+                    onRestored={async () => {
+                      const restored = await client.getPipelineConfig(pk);
+                      resetDraft(restored);
+                      baseVersionRef.current = restored.baseVersion;
+                    }}
                   />
                 </div>
               )}
@@ -564,6 +598,7 @@ export function PipelineBuilderPage({
                     {saveError}
                   </p>
                 )}
+                {conflict && <SaveConflictNotice onReload={() => void reloadLatest()} />}
               </div>
             </div>
           ),
