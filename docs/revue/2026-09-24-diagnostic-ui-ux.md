@@ -92,7 +92,7 @@ verdict Phase 2 · vague.
 | D52 | journeys-power | 51 | ko | Aucun bouton « Copier » nulle part dans le shell (`navigator.clipboard`/`clipboard.writeText` : 0 occurrence) — lien de partage et snippet embed à sélectionner à la main | lu | Créateur, Intégrateur | 3 | S | nouveau | — |
 | D54 | journeys-power | 54 | ko | Éditeur SQL Lab = `<textarea>` brut sans coloration syntaxique ni autocomplétion table/colonne | lu | Analyste | 2 | L | GAP-81 (adjacent, découvrabilité déjà ouverte ; ceci porte sur l'ergonomie une fois la page atteinte) | — |
 | D55 | journeys-power | 55 | partiel | `readOnly` du canevas pipeline ne désactive pas Annuler/Rétablir/Ajout de zone/suppression/connexion de nœud — résidu consigné en clôture du chantier Pipeline builder UX (2026-09-19), non repris en REV numérotée | lu | Lecteur (démo/partage) | 2 | S | résidu connu (pipeline builder UX) | — |
-| D56 | journeys-power | 57 | partiel | Historique de conversation du copilote App Builder/Pipeline non persisté (contraste SQL Lab) ; opérations (`addWidget`/`setFilter`…) appliquées sans aperçu préalable — mitigé par Undo/Redo (SP-19), mais hors doctrine GAP-17 | lu | Créateur | 4 | M | nouveau (distinct de GAP-17, qui couvre SQL Lab/requête visuelle) | — |
+| D56 | journeys-power | 57 | partiel | Historique de conversation du copilote App Builder/Pipeline non persisté (contraste SQL Lab) ; opérations (`addWidget`/`setFilter`…) appliquées sans aperçu préalable — mitigé par Undo/Redo (SP-19), mais hors doctrine GAP-17. **Mise à jour 2026-10-03 : traité** — aperçu des écritures par confirmation au clic (P23, j11-012) et historique local relisible par compte (`copilotHistory.ts`) ; persistance serveur non faite (observation, cf. REV-239) | lu | Créateur | 4 | M | nouveau (distinct de GAP-17, qui couvre SQL Lab/requête visuelle) | — |
 | D27 | states-feedback | 32 | partiel | Aucune annulation-après-coup nulle part — pattern acceptable en soi (confirmer-avant suffit), noté comme constat neutre, pas un défaut à corriger en priorité | lu | Créateur | 2 | — | nouveau | — |
 | D23 | states-feedback | 25 | ko | Résidu connu re-confirmé (404 trompeur au lieu de 403 sur `GET /collections/{id}/...` OGC features pour un porteur du seul privilège `admin.collections.manage`) | lu | Administrateur | 2 | S | **GAP-82, REV-185** | — |
 | D53 | journeys-power | 52 | partiel | Résidu connu re-confirmé (icônes de carte personnalisées non chargées pour un invité via `/embed/:token`, jeton invité non couvert par `read_map_icon_file`) | lu | Visiteur anonyme, Intégrateur | 2 | M | **GAP-19** (disclosed à la clôture) | — |
@@ -288,7 +288,7 @@ de l'existant est proposée pour D43 (chiffre REV-178).
 | REV-236 | D50 | `t()` sans pluralisation ; `PublicItemPage` sans `useDocumentMeta` | C | 3 | M |
 | REV-237 | D51 | SQL Lab affiche l'exception backend brute | C | 4 | S |
 | REV-238 | D52 | Aucun bouton « Copier » nulle part dans le produit | C | 3 | S |
-| REV-239 | D56 | Copilote : historique non persisté, opérations sans aperçu préalable | C | 4 | M |
+| REV-239 | D56 | Copilote : historique non persisté, opérations sans aperçu préalable — fermé 2026-10-03 (historique local + confirmation au clic) | C | 4 | M |
 | REV-240 | D57 | Export Bookmark/App : aucun texte « en cours » pendant le sondage | B | 4 | S |
 | REV-241 | D34 | `FieldOverrides` : réordonnancement drag-only sans fallback clavier | C | 4 | S |
 | REV-242 | D12 | Widget carte : `availableFields` vide sur symbologie et popup | C | 3 | S |
