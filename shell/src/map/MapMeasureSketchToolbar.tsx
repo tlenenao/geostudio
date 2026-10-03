@@ -65,7 +65,8 @@ export type MapMeasureSketchToolbarMap = Pick<
   // P31.06 : suspendu pendant le tracé libre, sinon le doigt (ou la souris)
   // déplace la carte au lieu de dessiner. Optionnel : les doubles de test
   // d'unité n'en ont pas.
-  dragPan?: Pick<maplibregl.Map["dragPan"], "enable" | "disable">;
+  dragPan?: Pick<maplibregl.Map["dragPan"], "enable" | "disable" | "isEnabled">;
+  getCanvasContainer?: maplibregl.Map["getCanvasContainer"];
 };
 
 export function MapMeasureSketchToolbar({
@@ -391,8 +392,18 @@ export function MapMeasureSketchToolbar({
   useEffect(() => {
     if (!freehandActive || !map.dragPan) return;
     const dragPan = map.dragPan;
+    // Ne rétablit que ce qu'on a suspendu (une carte `dragPan: false` le reste).
+    const wasEnabled = dragPan.isEnabled();
     dragPan.disable();
-    return () => dragPan.enable();
+    // Sans dragPan, MapLibre laisse `touch-action: pan-x pan-y` : le navigateur
+    // défilerait la page (puis touchcancel) au lieu de laisser tracer.
+    const container = map.getCanvasContainer?.();
+    const prevTouchAction = container?.style.touchAction ?? "";
+    if (container) container.style.touchAction = "none";
+    return () => {
+      if (wasEnabled) dragPan.enable();
+      if (container) container.style.touchAction = prevTouchAction;
+    };
   }, [map, freehandActive]);
 
   function startMode(next: ToolbarMode) {

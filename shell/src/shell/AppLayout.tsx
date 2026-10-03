@@ -71,7 +71,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   // plus l'écran. `min-h-0` sur main : sans lui un flex-item ne descend pas sous
   // son contenu.
   return (
-    <div className="flex h-dvh flex-col bg-background">
+    <div className="flex h-dvh flex-col bg-background print:block print:h-auto">
       {/* P33.05 : lien d'évitement, premier arrêt de tabulation. */}
       <a
         href="#main-content"
@@ -89,7 +89,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <main
         id="main-content"
         tabIndex={-1}
-        className="focus:outline-none flex min-h-0 flex-1 flex-col overflow-y-auto p-6"
+        className="focus:outline-none flex min-h-0 flex-1 flex-col overflow-y-auto p-6 print:overflow-visible"
       >
         {children}
       </main>

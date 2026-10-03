@@ -461,16 +461,33 @@ test("sans glyphs dans le style, la couche de texte n'est pas posée et l'auteur
 // P31.06 : au doigt, MapLibre n'émet que touchstart/move/end (jamais mouse*).
 test("le tracé libre fonctionne aux événements tactiles et suspend dragPan pendant l'outil", () => {
   const map = makeMapStub();
-  const dragPan = { enable: vi.fn(), disable: vi.fn() };
-  render(<MapMeasureSketchToolbar map={{ ...map, dragPan } as never} />);
+  const dragPan = { enable: vi.fn(), disable: vi.fn(), isEnabled: () => true };
+  const container = document.createElement("div");
+  render(
+    <MapMeasureSketchToolbar
+      map={{ ...map, dragPan, getCanvasContainer: () => container } as never}
+    />,
+  );
   fireEvent.click(screen.getByRole("button", { name: "Croquis" }));
   expect(dragPan.disable).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Tracé libre" }));
   expect(dragPan.disable).toHaveBeenCalledTimes(1);
+  expect(container.style.touchAction).toBe("none");
   act(() => map.emit("touchstart", { lngLat: { lng: 0, lat: 0 } }));
   act(() => map.emit("touchmove", { lngLat: { lng: 1, lat: 1 } }));
   act(() => map.emit("touchend", {}));
   expect(screen.getByText("1 tracé")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Rectangle" }));
   expect(dragPan.enable).toHaveBeenCalledTimes(1);
+  expect(container.style.touchAction).toBe("");
+});
+
+test("le tracé libre ne réactive pas un dragPan que la carte avait désactivé", () => {
+  const map = makeMapStub();
+  const dragPan = { enable: vi.fn(), disable: vi.fn(), isEnabled: () => false };
+  render(<MapMeasureSketchToolbar map={{ ...map, dragPan } as never} />);
+  fireEvent.click(screen.getByRole("button", { name: "Croquis" }));
+  fireEvent.click(screen.getByRole("button", { name: "Tracé libre" }));
+  fireEvent.click(screen.getByRole("button", { name: "Rectangle" }));
+  expect(dragPan.enable).not.toHaveBeenCalled();
 });
