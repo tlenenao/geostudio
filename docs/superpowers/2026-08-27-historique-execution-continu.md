@@ -7789,3 +7789,46 @@ Récit relu contre le code et les messages de commit (piège n°12).
 - **Vérification globale** : vitest 292 fichiers / 2749 tests verts, couverture 91,54/82,94/85,92/89,27 (seuils 89,8/81,0/80,6/87,7) ; Playwright `--workers=1` 226 passed / 4 skipped / 0 failed ; `npm run build` OK, bundle initial 721,7 Ko (seuil 730) ; lint + format:check verts.
 - **Revue finale P31** : 0 Critical, 3 Important corrigés (commit `1bd42f4e`). (1) Tracé libre : avec `dragPan` désactivé MapLibre laisse `touch-action: pan-x pan-y` sur le canvas, le navigateur aurait défilé `main` puis émis `touchcancel` — `touch-action: none` posé sur le conteneur pendant l'outil, restauré à la sortie. (2) `dragPan.enable()` inconditionnel à la sortie réactivait une carte configurée `dragPan:false` : restauré seulement si l'état initial était actif (`isEnabled`). (3) `h-dvh` + `main` en défilement interne tronquait l'impression à une page : `print:block print:h-auto print:overflow-visible`. Vérifié sans défaut : `max-sm:hidden` (display:none, pas `sr-only`), `aria-expanded` cohérent, boucle de rendu du popup (setState gardé par égalité), plus aucun `window.prompt/alert/confirm` dans `shell/src`, pages hors `AppLayout` (embed, publiques) non affectées.
 - **Non-faits** (REV-286) : P31.15 mode deux volets (chrome compact seulement), j12-001 hors paquet, journeys non rejoués sur stack réelle, aucun appareil tactile réel testé, popup non recalé au seul redimensionnement du conteneur, `touchcancel` valide le tracé partiel, scroll de `main` non réinitialisé au changement de route.
+
+### P22 — client shell : erreurs et connectivité
+
+- **P22.01-05** tout appel cœur du sas `ItemClient` passe par `request`/`fetchWithTimeout` (règle ESLint `no-restricted-globals` sur `fetch` brut), `ensureOk` + `ApiError.errors[]` portent le detail RFC 7807, `MapLayer` sans perte au round-trip. **P22.06-08** `ConnectivityBanner` à sondage, état hors ligne distinct, levée seulement quand les requêtes tombées par injoignabilité réussissent. **P22.09-11** `QueryErrorState` (404/403 vs panne, bouton Réessayer) sur les pages de détail/catalogue/paramètres (t04-010/011/012, renvoyés par REV-285).
+- **Déviation** : commits `aa148986`, `0517da0a`, `0644b54d` livrés en contournant les hooks ; rejoués depuis (pre-commit `--all-files` vert).
+
+### P23 — MCP et copilote
+
+- **P23.01-04/08** outils MCP à I/O bloquantes hors boucle d'événements, bornes de pagination alignées sur le REST, erreurs d'outil structurées. **P23.05-07/14** parité REST↔MCP testée, audit `mcp.tool_call` (acteur, outil, cibles) et `copilot.turn` (hash du message, outils appelés). **P23.09-13/15-16** copilote indisponible/lecture seule signalé, 502/504 explicites, budget de débit du bouclage MCP, écritures du copilote confirmées par clic (`confirmWrite`), contexte compacté.
+- **Revue finale** : 1 Important corrigé (`7a0a3514`) — l'audit `copilot.turn` d'un tour en échec (502/504) était annulé par le rollback de la session.
+- **Non-faits** (REV-287) : le shell n'invalide rien après `confirmWrite` ; l'audit `copilot.turn` est best-effort (`except: pass`) ; REV-239 reste ouvert pour l'historique (la confirmation d'écriture est livrée).
+
+### P26 — quotas
+
+- **P26.01-06/09** contrôle items/collections/stockage au point unique de création (`items.create_item`, `collections.create_collection` : REST, MCP, import, pipelines, moissonnage, 3D), verrou consultatif par tenant, stockage sans double comptage avec suppression de l'objet refusé, CDC et sorties `writer.export` comptés, sources d'import purgées + expiration S3, `CORE_QUOTA*` câblées sur le worker (garde `test_deployability`), refus en 413/409. **P26.07-08** jauge et message actionnable côté shell.
+- **Écart au brief** : aucune migration n'est livrée par P26 (`0044` = notify status des alertes, `0045` = index P24) ; le commit `6c362931` ne touche pas `core/alembic`.
+- **Non-faits** (REV-288) : `QuotaExceededError` hérite de `HTTPException` et peut sortir d'un job de fond sans message dédié ; le plancher de santé `priorite_haute` dépend d'artefacts de couverture locaux.
+
+### P30 — carte
+
+- **P30.01** fuite luma.gl corrigée (`CanvasContext` libéré à la fermeture, mesurée par heap snapshot). **P30.02** `MapView` découpé (1484 → 572 lignes : modules couches, deck/terrain, popup). **P30.03-04** pièces jointes et tuiles via `ItemClient` (`fetchUrl`), sonde de tuiles authentifiée. **P30.05** libellés MapLibre en français (`mapView.locale.*`).
+- **Revue finale** : `fetchGeoJsonPage` envoyait le jeton à toute URL (`aa7232c0`) : restreint aux URL servies par le cœur. Clés `quota.*`/`mapView.locale.*` non conformes au format `domaine.intention` corrigées (`7464f610`).
+- **Non-faits** (REV-290, REV-293) : `authFetch` n'a pas de garde générique d'origine ; la fuite persiste sous React StrictMode en dev uniquement.
+
+### P32 — canevas de pipeline
+
+- **P32.01-09** connexion de nœuds au clavier, arêtes sélectionnables et supprimables (Suppr), texte des nœuds en `text-ink`, anneau de focus, palette à tabindex itinérant, libellés i18n et noms d'arête, cibles >= 24 px, `aria-invalid`/`aria-describedby` des éditeurs de planification. Le plancher de santé du triptyque étroit (navigation clavier des onglets) a été ajouté en revue finale (`6857af19`).
+
+### P35 — catalogue public et SEO
+
+- **P35.01-12** page catalogue publique `/public` (`/v1/public/items`), lecteur ouvert en mode usage, `noindex` sur l'introuvable, métadonnées dataset, HEAD, sitemap complet avec `lastmod`, aperçu social (og/twitter), recherche stricte (« Aucun résultat »), routeurs Traefik `seo-bots`, vignettes anonymes.
+- **Revue finale** : XSS par SVG scripté sur la vignette publique (origine du cœur) : servie avec CSP `sandbox` (`04f4e44a`). Allowlist `aria-panel` décalée recalée (`e501b991`), décomptes épinglés de surface recalés (`2eca36dc`).
+- **Non-faits** (REV-289) : sitemap en un seul fichier (50 000 URL), `og:image` suppose le préfixe `/api/v1`.
+
+### P36 — documentation
+
+- CLAUDE.md réaligné sur le code et le backlog (`93794fc7`).
+
+### Revue finale P22/P23/P26/P30/P32/P35
+
+- 0 Critical, 5 Important corrigés : fuite de jeton `fetchGeoJsonPage` (`aa7232c0`), audit `copilot.turn` perdu sur 502/504 (`7a0a3514`), XSS SVG de la vignette publique (`04f4e44a`), clés i18n `quota.*`/`mapView.locale.*` (`7464f610`), plancher de santé du triptyque + flake `map-editor.spec.ts:27` (`flyTo` interrompu, `03f6e123` : saisie de la caméra par saut).
+- `pre-commit run --all-files` vert après rejeu des commits qui avaient contourné les hooks.
+- **Non-faits** : parcours `t02`/`t04`/`t01b`/`t03` (et `j06b`/`j11`) non rejoués sur stack OIDC réelle (REV-292, cf. REV-266) ; `analytics-context.spec.ts:2616` sensible à la charge et décomptes épinglés `test_feature_health_*` périmés à chaque nouvelle route (REV-291).

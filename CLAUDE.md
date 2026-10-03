@@ -647,7 +647,7 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   `GET /v1/instance/status` ; écriture de pipeline par lots, annulation de run,
   audit des runs planifiés, topologie validée ; moissonnage daté/dédoublonné/purgé,
   recherche STAC tolérante ; alertes (livraison tracée/rejouée/signée, cloche) ; 404/422 en RFC 7807, config stricte à l'écriture seulement, pagination bornée ; index `audit_log`/`configs`/`report_runs`, balayage des configs en 1 requête, catalogue public paginé en SQL, cache d'introspection ; agrégats DuckDB bornés (temps/threads/groupes), `asOf`/`pending`, compaction CDC par niveaux ; CI (base réelle exigée, actions épinglées par SHA, Node 22, timeouts, job `stack-smoke`), sauvegarde bornée + sonde de fraîcheur ; import de fichiers (bornes lat/lon, séparateur, typage CSV, item dataset, sondage borné) ; données complètes (carte importée en tuiles, tuile triée sur la PK, totaux annoncés, export WKT) ; accessibilité transverse (titres de route, repères `<main>`/`<h1>`, menu Actions Radix, `alertdialog`, jeton `--gs-control` 3:1, réglage de thème persistant) ; cohérence UI/i18n (glossaire, formats fr-FR, kit de page/état, détecteur i18n `.ts`). Reste : `REV-273`/`274`/`275`/`276`/`277`/`278`/`279`/`280`/`281`/`282`/`283`/`284`/`285`.
-  P22/P23/P26/P30/P32/P35–P36 non lancés.
+- **Audit pré-release P22/P23/P26/P30/P32/P35/P36 (clôture : plan P01–P36 intégralement exécuté)** — erreurs RFC 7807 et bannière de connectivité à sondage sur tout appel cœur (règle ESLint `fetch`) ; outils MCP hors boucle d'événements + audit `mcp.tool_call`/`copilot.turn` + écritures du copilote confirmées par clic ; quotas items/collections/stockage au point unique de création ; carte via `ItemClient`, fuite luma.gl corrigée, `MapView` découpé ; canevas de pipeline au clavier ; catalogue public `/public`, sitemap/og ; CLAUDE.md réaligné. Revue finale : 5 Important corrigés. Reste : `REV-287` à `REV-293` (journeys non rejoués sur stack OIDC réelle, `REV-266`).
 
 ### Conventions tranchées (2026-09-01)
 
@@ -704,8 +704,9 @@ recoller le détail que le backlog porte déjà :
   (`REV-176`/`177`/`178`).
 - Audit pré-release (P01–P15) : reliquats `REV-266` à `REV-272` du backlog
   (stack réelle non rejouée, perf shell, orphelins S3, release/Keycloak,
-  décisions produit, `If-Match` partiel, tombstone RGPD) ; P22/P23/P26/P30/P32/P35–P36 du plan
-  `docs/revue/audit-2026-09-29/PLAN-CONSOLIDE.md` non exécutés.
+  décisions produit, `If-Match` partiel, tombstone RGPD) ; le plan
+  `docs/revue/audit-2026-09-29/PLAN-CONSOLIDE.md` (P01–P36) est intégralement exécuté,
+  reliquats `REV-266` à `REV-293` du backlog.
 - Bilan de fonctionnalités outillé (SP-61) : `docs/revue/
   bilan-fonctionnalites.{html,md}`, régénéré par
   `feature_health_cli.py --write`, CI refuse toute surface non
