@@ -577,8 +577,10 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   (reader.connector.bigquery/mssql/oracle/blob), catalogue exposé (`GET
   /pipelines/ops`) à 49 op, registre brut (`OPERATIONS`) à 51 ;
   `reader.connector.blob` résout la question « d'où vient le fichier »
-  (Vague 1) par un secret de connexion pré-configuré au bucket, jamais un
-  upload ni une URL arbitraire. 9 lignes `planned_duckdb` de la matrice FME
+  (Vague 1) par un secret de connexion lié à un bucket (`bucketUrl` du secret,
+  préfixe imposé à `params.path`, REV-197), jamais un upload ni une URL
+  arbitraire ; un secret blob antérieur sans `bucketUrl` reste lisible mais son
+  exécution échoue avec un message explicite. 9 lignes `planned_duckdb` de la matrice FME
   passées à `implemented`.
 - **Retrait complet du moteur `transform.qgis` (GPL-2.0-or-later)** — 12 des
   19 lignes `qgis_frozen` migrées (9 op DuckDB/Shapely neuves + composition

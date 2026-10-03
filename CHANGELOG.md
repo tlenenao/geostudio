@@ -146,6 +146,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     and `sitemap.xml` covers all public pages (single file, 50,000 URL cap).
   - MCP tool calls and copilot turns leave `mcp.tool_call` / `copilot.turn`
     rows in `audit_log`; copilot writes require a click confirmation.
+- **Breaking (blob secrets)**: `s3_credentials` / `azure_blob_credentials` /
+  `gcs_credentials` secrets now carry a `bucketUrl`, mandatory on create/update,
+  and `reader.connector.blob` rejects any `path` outside that bucket/prefix
+  (REV-197). An existing secret without `bucketUrl` stays readable, but
+  pipelines using it fail with a message asking for it to be set: edit the
+  secret (no automatic migration).
+
+### Security
+
+- `admin.collections.manage` now opens read access to a collection's items,
+  aggregates, exports, tiles and attachments (REV-185); re-applying the DDL no
+  longer reopens a sensitive column to `gis_rls_masked` (REV-186).
 
 ## [0.1.0] - 2026-07-16
 
