@@ -65,8 +65,8 @@ ansible-vault encrypt group_vars/vault.yml
 
 # éditez éventuellement group_vars/all.yml : geostudio_public_host (vide =
 # découverte auto *.ts.net), geostudio_seed_demo — NE PAS toucher
-# geostudio_profiles (doit rester vide : qgis-worker est mono-arch amd64,
-# incompatible avec cette instance arm64)
+# geostudio_profiles (vide par défaut ; export/appexport/observability sont
+# optionnels, le profil etl a disparu avec qgis-worker)
 
 ansible-playbook -i inventory.ini --ask-vault-pass ../../ansible/playbook.yml
 ```
@@ -80,7 +80,7 @@ Une fois la stack en ligne :
 1. `curl -I https://<nom *.ts.net>/` → répond en HTTPS.
 2. `ssh -i ~/.ssh/geostudio_oci ubuntu@<instance_public_ip> 'cd geostudio && docker compose -f docker-compose.yml -f docker-compose.prod.yml restart'` → tous les services remontent.
 3. Connexion réelle sur l'URL publique avec le compte admin, écriture d'une donnée, relecture.
-4. Vérifier que `qgis-worker` n'apparaît **jamais** dans `docker compose ps` sur cette instance (`geostudio_profiles` vide).
+4. Vérifier que seuls les services du compose par défaut (et des profils activés dans `geostudio_profiles`) apparaissent dans `docker compose ps` sur cette instance.
 5. `tofu destroy` puis `tofu apply` + re-run Ansible → cycle rejouable de bout en bout sans intervention manuelle au-delà de ce README.
 
 Ces vérifications se font sur le vrai tenancy OCI du mainteneur — aucun
