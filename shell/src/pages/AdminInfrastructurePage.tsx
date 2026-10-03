@@ -10,7 +10,7 @@ import { Button } from "../ui/kit/Button";
 import { SettingsNav } from "../shell/chrome/SettingsNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { plural, t } from "../i18n";
-import { formatNumber } from "../lib/format";
+import { formatBytes } from "../lib/format";
 import { PageTitle } from "../ui/kit/PageTitle";
 
 const PROTECTED_TOOLS: { tool: AdminToolName; label: string }[] = [
@@ -43,11 +43,6 @@ export function AdminInfrastructurePage() {
     .filter((q) => q.status === "todo" || q.status === "doing")
     .reduce((n, q) => n + q.count, 0);
   const usage = usageQuery.data;
-
-  function formatBytes(bytes: number): string {
-    const mb = bytes / (1024 * 1024);
-    return mb >= 1024 ? `${formatNumber(mb / 1024, 1, 1)} Go` : `${formatNumber(mb, 1, 1)} Mo`;
-  }
 
   return (
     <div className="-m-6 flex flex-1 flex-col overflow-hidden">
@@ -138,30 +133,59 @@ export function AdminInfrastructurePage() {
               {usage && (
                 <div className="flex flex-col gap-1 text-sm text-ink-2">
                   <p className="font-medium text-ink">{t("infrastructure.usageHeading")}</p>
-                  <p>
-                    {usage.maxItems === null
-                      ? t("infrastructure.usageItems", { count: usage.itemCount })
-                      : t("infrastructure.usageItemsWithLimit", {
-                          count: usage.itemCount,
-                          limit: usage.maxItems,
-                        })}
-                  </p>
-                  <p>
-                    {usage.maxCollections === null
-                      ? t("infrastructure.usageCollections", { count: usage.collectionCount })
-                      : t("infrastructure.usageCollectionsWithLimit", {
-                          count: usage.collectionCount,
-                          limit: usage.maxCollections,
-                        })}
-                  </p>
-                  <p>
-                    {usage.maxStorageBytes === null
-                      ? `${t("infrastructure.usageStorage", { size: formatBytes(usage.storageBytes) })} (${t("infrastructure.usageNoLimit")})`
-                      : t("infrastructure.usageStorageWithLimit", {
-                          size: formatBytes(usage.storageBytes),
-                          limitSize: formatBytes(usage.maxStorageBytes),
-                        })}
-                  </p>
+                  {(
+                    [
+                      [
+                        usage.maxItems === null
+                          ? t("infrastructure.usageItems", { count: usage.itemCount })
+                          : t("infrastructure.usageItemsWithLimit", {
+                              count: usage.itemCount,
+                              limit: usage.maxItems,
+                            }),
+                        usage.itemCount,
+                        usage.maxItems,
+                      ],
+                      [
+                        usage.maxCollections === null
+                          ? t("infrastructure.usageCollections", { count: usage.collectionCount })
+                          : t("infrastructure.usageCollectionsWithLimit", {
+                              count: usage.collectionCount,
+                              limit: usage.maxCollections,
+                            }),
+                        usage.collectionCount,
+                        usage.maxCollections,
+                      ],
+                      [
+                        usage.maxStorageBytes === null
+                          ? `${t("infrastructure.usageStorage", { size: formatBytes(usage.storageBytes) })} (${t("infrastructure.usageNoLimit")})`
+                          : t("infrastructure.usageStorageWithLimit", {
+                              size: formatBytes(usage.storageBytes),
+                              limitSize: formatBytes(usage.maxStorageBytes),
+                            }),
+                        usage.storageBytes,
+                        usage.maxStorageBytes,
+                      ],
+                    ] as [string, number, number | null][]
+                  ).map(([label, value, limit]) => (
+                    <div key={label}>
+                      <p>{label}</p>
+                      {limit !== null && limit > 0 && (
+                        <>
+                          <progress
+                            className="h-2 w-full"
+                            value={Math.min(value, limit)}
+                            max={limit}
+                            aria-label={label}
+                          />
+                          {value / limit >= 0.8 && (
+                            <p role="status" className="text-xs text-danger">
+                              {t("infrastructure.usageAlert")}
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
               {launch.isError && (

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.auth.dependency import get_current_user, is_quotas_enabled
+from app.auth.dependency import get_current_user
 from app.db import get_session
 from app.ingestion import repository as repo
 from app.ingestion.parsers import (
@@ -39,7 +39,7 @@ from app.ingestion.storage import (
     max_upload_bytes,
 )
 from app.ingestion.tasks import run_ingestion_task
-from app.quotas.service import check_storage_quota_or_raise
+from app.quotas.service import enforce_storage_quota
 from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
 from app.users.models import User
@@ -81,7 +81,7 @@ def presign_upload(
     bucket: str = Depends(get_uploads_bucket),
 ) -> PresignResponse:
     require_privilege(session, user, Privilege.DATA_MANAGE.value)
-    ensure_uploads_bucket(s3, bucket)
+    ensure_uploads_bucket(s3, bucket, expire_days=7)
     key = f"{user.tenant_id}/{uuid.uuid4().hex}-{body.filename}"
     url = generate_presigned_put_url(s3, bucket=bucket, key=key, content_type=body.contentType)
     return PresignResponse(uploadUrl=url, key=key)
@@ -191,11 +191,7 @@ def create_upload_job(
     # head_object est le seul moyen de l'apprendre, même patron que
     # confirm_attachment/create_terrain3d_upload. Avant la création du job
     # (fail fast, pas de ligne orpheline).
-    if is_quotas_enabled():
-        head = s3.head_object(Bucket=bucket, Key=body.key)
-        check_storage_quota_or_raise(
-            session, s3, tenant_id=user.tenant_id, additional_bytes=head["ContentLength"]
-        )
+    enforce_storage_quota(session, s3, tenant_id=user.tenant_id, bucket=bucket, key=body.key)
     job = repo.create_job(
         session,
         tenant_id=user.tenant_id,

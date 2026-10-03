@@ -23,6 +23,7 @@ from app.ingestion.storage import (
 )
 from app.jobs import app
 from app.jobs.common import notify_best_effort, session_factory
+from app.quotas.service import QuotaExceededError
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +67,13 @@ def _make_s3_client_from_env():
 
 def _uploads_bucket() -> str:
     return os.environ.get("S3_UPLOADS_BUCKET", "geostudio-uploads")
+
+
+def _delete_source(s3, key: str) -> None:
+    try:
+        s3.delete_object(Bucket=_uploads_bucket(), Key=key)
+    except Exception:  # best-effort : l'import a réussi, le filet est l'expiration S3
+        logger.warning("ingestion : source %s non supprimée", key, exc_info=True)
 
 
 @app.task(queue="ingestion")
@@ -126,6 +134,7 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
                 wkt_field=wkt_field,
                 geometry_mode=geometry_mode,
             )
+        _delete_source(s3, source_key)  # P26.06 : la source ne reste pas comptée à vie
         with request_scoped_session(factory) as session:
             ingestion_repo.mark_done(
                 session,
@@ -141,7 +150,7 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
             item_id=result.item_id,
             collection_title=collection_title,
         )
-    except (IngestionParseError, ObjectTooLarge) as exc:
+    except (IngestionParseError, ObjectTooLarge, QuotaExceededError) as exc:
         # le message utilisateur est volontairement expurgé (P28.03) : le
         # détail GDAL (cause chaînée) reste dans les logs serveur.
         logger.warning("ingestion job %s refusé : %s", job_id, exc, exc_info=True)

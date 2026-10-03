@@ -12,6 +12,9 @@ export class ApiError extends Error {
   readonly title?: string;
   readonly detail?: string;
   readonly retryAfter?: number;
+  // P26.09 : `type` problem+json (« quota-exceeded ») et ses champs, pour un message traduit.
+  readonly problemType?: string;
+  readonly quota?: { kind: string; current: number; limit: number };
   // P22.04 : membre `errors[]` du problem+json (P21 : `{field, code, message}`).
   readonly errors?: { field: string; code: string; message: string }[];
 
@@ -21,6 +24,8 @@ export class ApiError extends Error {
       title?: string;
       detail?: string;
       retryAfter?: number;
+      problemType?: string;
+      quota?: { kind: string; current: number; limit: number };
       errors?: { field: string; code: string; message: string }[];
     },
   ) {
@@ -30,6 +35,8 @@ export class ApiError extends Error {
     this.title = options?.title;
     this.detail = options?.detail;
     this.retryAfter = options?.retryAfter;
+    this.problemType = options?.problemType;
+    this.quota = options?.quota;
     this.errors = options?.errors;
   }
 }

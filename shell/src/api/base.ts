@@ -59,12 +59,26 @@ export async function parseErrorResponse(res: Response): Promise<ApiError> {
   let title: string | undefined;
   let detail: string | undefined;
   let errors: FieldError[] | undefined;
+  let problemType: string | undefined;
+  let quota: { kind: string; current: number; limit: number } | undefined;
   try {
     const problem = (await res.clone().json()) as {
       title?: unknown;
       detail?: unknown;
       errors?: unknown;
+      type?: unknown;
+      quota?: unknown;
+      current?: unknown;
+      limit?: unknown;
     };
+    if (problem.type === "quota-exceeded") {
+      problemType = problem.type;
+      quota = {
+        kind: String(problem.quota),
+        current: Number(problem.current),
+        limit: Number(problem.limit),
+      };
+    }
     if (typeof problem.title === "string") title = problem.title;
     if (typeof problem.detail === "string") detail = problem.detail;
     if (Array.isArray(problem.errors)) errors = problem.errors as FieldError[];
@@ -77,7 +91,7 @@ export async function parseErrorResponse(res: Response): Promise<ApiError> {
     res.status === 429 && retryAfterHeader !== null && !Number.isNaN(Number(retryAfterHeader))
       ? Number(retryAfterHeader)
       : undefined;
-  return new ApiError(res.status, { title, detail, retryAfter, errors });
+  return new ApiError(res.status, { title, detail, retryAfter, errors, problemType, quota });
 }
 
 // P22.04 : garde `!res.ok` unique des sites qui font leur propre fetch (via

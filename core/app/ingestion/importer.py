@@ -39,6 +39,7 @@ from app.ingestion.parsers import (
     parse_xml_generic,
 )
 from app.items import repository as items_repo
+from app.quotas.service import check_quota_or_raise
 from app.sql_ident import quote_ident
 
 # Doit rester synchronisé avec shell/src/map/basemaps.ts DEFAULT_BASEMAP.style.
@@ -257,6 +258,11 @@ def run_import(
     single_type = next(iter(geom_types)) if len(geom_types) == 1 else None
     pg_geom_type = _GEOM_TYPE_MAP.get(single_type, "Geometry") if single_type else "Geometry"
 
+    # Échec rapide avant le CREATE TABLE + INSERT massif (P26.03) : collection
+    # puis items (carte + dataset) sont de toute façon recontrôlés au point
+    # de création (create_collection/create_item).
+    check_quota_or_raise(session, tenant_id=tenant_id, kind="collections")
+    check_quota_or_raise(session, tenant_id=tenant_id, kind="items")
     table_name = f"ingest_{uuid.uuid4().hex[:12]}"
     t = quote_ident(session, table_name)
     col_defs = ", ".join(

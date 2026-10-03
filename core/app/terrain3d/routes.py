@@ -16,13 +16,13 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.auth.dependency import get_current_user, is_quotas_enabled
+from app.auth.dependency import get_current_user
 from app.configs import repository as configs_repo
 from app.db import get_session
 from app.ingestion.routes import get_s3_client
 from app.ingestion.storage import ensure_uploads_bucket, generate_presigned_put_url
 from app.items import repository as items_repo
-from app.quotas.service import check_storage_quota_or_raise
+from app.quotas.service import enforce_storage_quota
 from app.roles.guards import has_privilege, require_privilege
 from app.roles.kind_registry import privilege_for_kind
 from app.roles.privileges import Privilege
@@ -110,11 +110,7 @@ def create_terrain3d_upload(
     # de s3=Depends ici avant cette tâche) — head_object est le seul moyen
     # de l'apprendre, même patron que confirm_attachment. Avant la création
     # du job (fail fast, pas de ligne orpheline).
-    if is_quotas_enabled():
-        head = s3.head_object(Bucket=bucket, Key=body.key)
-        check_storage_quota_or_raise(
-            session, s3, tenant_id=user.tenant_id, additional_bytes=head["ContentLength"]
-        )
+    enforce_storage_quota(session, s3, tenant_id=user.tenant_id, bucket=bucket, key=body.key)
     job = repo.create_job(
         session,
         tenant_id=user.tenant_id,

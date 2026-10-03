@@ -401,6 +401,13 @@ export const fr = {
   "infrastructure.usageNoLimit": "pas de limite configurée",
 
   // Motif partagé : indicateur de chargement générique (role="status").
+  "quota.exceeded.items":
+    "Quota d'éléments atteint ({current}/{limit}) : supprimez des éléments inutiles ou demandez à un administrateur d'augmenter la limite (Administration > Infrastructure).",
+  "quota.exceeded.collections":
+    "Quota de collections atteint ({current}/{limit}) : supprimez des collections inutiles ou demandez à un administrateur d'augmenter la limite (Administration > Infrastructure).",
+  "quota.exceeded.storage":
+    "Quota de stockage atteint ({current}/{limit}) : le fichier a été refusé. Supprimez des fichiers ou demandez à un administrateur d'augmenter la limite (Administration > Infrastructure).",
+  "infrastructure.usageAlert": "Seuil d'alerte atteint (80 %)",
   "common.loading": "Chargement…",
 
   // Motifs partagés supplémentaires (SP-57a, lot builder/widgets) : états

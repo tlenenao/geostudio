@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
 import pytest
-from fastapi import HTTPException
 
 from app.appexport.models import AppExportJob
 from app.collections.models import Collection
@@ -8,11 +7,12 @@ from app.db import init_db, make_engine, make_session_factory
 from app.export.models import ExportJob
 from app.items.models import Item
 from app.quotas.service import (
+    QuotaExceededError,
     check_quota_or_raise,
-    check_storage_quota_or_raise,
     count_collections_for_tenant,
     count_items_for_tenant,
     count_users_for_tenant,
+    enforce_storage_quota,
     job_output_storage_bytes,
     max_collections_per_tenant,
     max_items_per_tenant,
@@ -23,6 +23,11 @@ from app.quotas.service import (
 from app.roles.repository import ensure_built_in_roles
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
+
+
+@pytest.fixture(autouse=True)
+def _quotas_on(monkeypatch):
+    monkeypatch.setenv("CORE_QUOTAS_ENABLED", "true")
 
 
 @pytest.fixture()
@@ -255,7 +260,7 @@ def test_check_quota_or_raise_items_raises_409_at_limit(env, monkeypatch):
     session, tenant_a, _tenant_b, _user_a, _user_b = env
     # tenant_a a déjà 2 items (fixture) — limite à 2 doit refuser le 3e.
     monkeypatch.setenv("CORE_QUOTA_MAX_ITEMS_PER_TENANT", "2")
-    with pytest.raises(HTTPException) as excinfo:
+    with pytest.raises(QuotaExceededError) as excinfo:
         check_quota_or_raise(session, tenant_id=tenant_a, kind="items")
     assert excinfo.value.status_code == 409
 
@@ -270,32 +275,56 @@ def test_check_quota_or_raise_collections_raises_409_at_limit(env, monkeypatch):
     session, tenant_a, _tenant_b, _user_a, _user_b = env
     # tenant_a a déjà 1 collection (fixture) — limite à 1 doit refuser la 2e.
     monkeypatch.setenv("CORE_QUOTA_MAX_COLLECTIONS_PER_TENANT", "1")
-    with pytest.raises(HTTPException) as excinfo:
+    with pytest.raises(QuotaExceededError) as excinfo:
         check_quota_or_raise(session, tenant_id=tenant_a, kind="collections")
     assert excinfo.value.status_code == 409
 
 
-def test_check_storage_quota_or_raise_no_limit_is_a_noop(env, monkeypatch):
+def test_enforce_storage_quota_no_limit_is_a_noop(env, monkeypatch):
     session, tenant_a, _tenant_b, _user_a, _user_b = env
+    monkeypatch.setenv("CORE_QUOTAS_ENABLED", "true")
     monkeypatch.delenv("CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT", raising=False)
-    s3 = _FakeS3Client({})
-    check_storage_quota_or_raise(session, s3, tenant_id=tenant_a, additional_bytes=10**12)
+    enforce_storage_quota(session, _FakeS3Client({"t/x": 10**12}), tenant_id=tenant_a)
 
 
-def test_check_storage_quota_or_raise_rejects_when_it_would_exceed_limit(env, monkeypatch):
+def test_enforce_storage_quota_boundary_plus_one_byte(env, monkeypatch):
+    """P26 : l'objet est déjà compté — exactement la limite passe, +1 octet
+    est refusé (413 quota-exceeded) et l'objet fautif est supprimé."""
     session, tenant_a, _tenant_b, _user_a, _user_b = env
+    monkeypatch.setenv("CORE_QUOTAS_ENABLED", "true")
     monkeypatch.setenv("CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT", "1000")
-    s3 = _FakeS3Client({})
-    with pytest.raises(HTTPException) as excinfo:
-        check_storage_quota_or_raise(session, s3, tenant_id=tenant_a, additional_bytes=1001)
-    assert excinfo.value.status_code == 409
+    monkeypatch.setenv("S3_UPLOADS_BUCKET", "bucket")
+    key = f"{tenant_a}/up.bin"
+    ok = _FakeS3Client({key: 1000})
+    enforce_storage_quota(session, ok, tenant_id=tenant_a, bucket="bucket", key=key)
+    over = _FakeS3Client({key: 1001})
+    deleted = []
+    over.delete_object = lambda *, Bucket, Key: deleted.append(Key)  # noqa: N803
+    with pytest.raises(QuotaExceededError) as excinfo:
+        enforce_storage_quota(session, over, tenant_id=tenant_a, bucket="bucket", key=key)
+    assert excinfo.value.status_code == 413
+    assert (excinfo.value.quota, excinfo.value.current, excinfo.value.limit) == (
+        "storage",
+        1001,
+        1000,
+    )
+    assert deleted == [key]
 
 
-def test_check_storage_quota_or_raise_allows_when_under_limit(env, monkeypatch):
+def test_usage_counts_pipeline_exports_and_cdc(env, monkeypatch):
+    """t03b-006 : sorties writer.export et lakehouse CDC comptés."""
     session, tenant_a, _tenant_b, _user_a, _user_b = env
-    monkeypatch.setenv("CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT", "1000")
-    s3 = _FakeS3Client({})
-    check_storage_quota_or_raise(session, s3, tenant_id=tenant_a, additional_bytes=999)
+    monkeypatch.setenv("S3_EXPORTS_BUCKET", "bucket")
+    s3 = _FakeS3Client(
+        {
+            f"{tenant_a}/pipelines/out.csv": 70,
+            f"{tenant_a}/other": 5,  # hors périmètre (jobs d'export : byte_size)
+            f"cdc/tenant_id={tenant_a}/collection_id=c/dt=1/p.parquet": 30,
+            "cdc/tenant_id=autre/collection_id=c/dt=1/p.parquet": 999,
+        }
+    )
+    monkeypatch.setenv("S3_CDC_BUCKET", "bucket")
+    assert usage_for_tenant(session, s3, tenant_a).storage_bytes == 100
 
 
 def test_count_users_for_tenant_excludes_erased_accounts_j08_013(env):

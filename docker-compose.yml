@@ -491,6 +491,12 @@ services:
       # (file `etl`). Une valeur divergente entre les deux services produit
       # une capacité à moitié allumée — précédent SP-17a.
       CORE_ETL_ENABLED: ${CORE_ETL_ENABLED:-false}
+      # Quotas (P26.03, RC-12) : le worker crée items/collections (import,
+      # pipelines, moissonnage, 3D) — mêmes limites que le service `core`.
+      CORE_QUOTAS_ENABLED: ${CORE_QUOTAS_ENABLED:-false}
+      CORE_QUOTA_MAX_ITEMS_PER_TENANT: ${CORE_QUOTA_MAX_ITEMS_PER_TENANT:-}
+      CORE_QUOTA_MAX_COLLECTIONS_PER_TENANT: ${CORE_QUOTA_MAX_COLLECTIONS_PER_TENANT:-}
+      CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT: ${CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT:-}
       # Parité d'environnement core/worker (RC-2, P02.04) : lues par les
       # tâches de CE process — coffre de secrets (runs de connecteur,
       # secret d'alerte), rapports planifiés/exports (`CORE_EXPORT_ENABLED`),

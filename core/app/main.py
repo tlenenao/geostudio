@@ -60,6 +60,7 @@ from app.pipelines import config_validation as pipelines_config_validation  # no
 from app.pipelines import routes as pipelines_routes
 from app.public import routes as public_routes
 from app.quotas import routes as quotas_routes
+from app.quotas.service import QuotaExceededError
 from app.ratelimit.limiter import RateLimiter, caller_key, route_group
 from app.reports import routes as reports_routes
 from app.roles import routes as roles_routes
@@ -204,6 +205,23 @@ def create_app() -> FastAPI:
                 "title": HTTPStatus(exc.status_code).phrase,
                 "status": exc.status_code,
                 "detail": exc.detail if isinstance(exc.detail, str) else "request failed",
+            },
+        )
+
+    @app.exception_handler(QuotaExceededError)
+    async def _quota_exceeded_handler(request: Request, exc: QuotaExceededError):
+        # P26.09 : type dédié que le shell traite (message i18n + lien d'usage).
+        return JSONResponse(
+            status_code=exc.status_code,
+            media_type="application/problem+json",
+            content={
+                "type": "quota-exceeded",
+                "title": HTTPStatus(exc.status_code).phrase,
+                "status": exc.status_code,
+                "detail": exc.detail,
+                "quota": exc.quota,
+                "current": exc.current,
+                "limit": exc.limit,
             },
         )
 

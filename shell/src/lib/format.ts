@@ -14,3 +14,15 @@ export function formatNumber(n: number, maxDecimals = 2, minDecimals = 0): strin
     minimumFractionDigits: minDecimals,
   });
 }
+
+/** Taille en octets lisible (« 3 Ko », « 1,5 Mo ») : unité adaptée, séparateur décimal fr. */
+export function formatBytes(bytes: number): string {
+  const units = ["o", "Ko", "Mo", "Go", "To"];
+  let value = bytes;
+  let i = 0;
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024;
+    i += 1;
+  }
+  return `${formatNumber(value, i === 0 ? 0 : 1)} ${units[i]}`;
+}

@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useItemClient, useMe } from "../api/hooks";
+import { apiErrorMessage } from "../api/apiErrorMessage";
 import { ApiError } from "../api/ApiError";
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
@@ -46,6 +47,9 @@ type Stage =
 
 // P28.08 : l'étape en échec + le detail RFC 7807 du cœur quand il existe.
 function stageMessage(stage: Stage, err: unknown): string {
+  // P26.09 : un quota atteint a son message traduit et actionnable.
+  if (err instanceof ApiError && err.problemType === "quota-exceeded")
+    return apiErrorMessage(err, t(stage));
   const detail = err instanceof ApiError ? err.detail : undefined;
   return detail ? `${t(stage)} ${detail}` : t(stage);
 }

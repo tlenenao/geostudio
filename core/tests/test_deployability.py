@@ -2220,3 +2220,17 @@ def test_backup_healthcheck_probes_last_success_freshness():
     hc = services(PROD)["backup"]["healthcheck"]["test"]
     assert ".last_success" in " ".join(hc) and "-mmin -1560" in " ".join(hc)
     assert ".last_success" in BACKUP_SH.read_text()
+
+
+def test_worker_gets_the_same_quota_env_as_core():
+    """P26.03 (RC-12) : les jobs du worker créent items/collections ; sans
+    ces variables sur `worker`, le quota ne s'y applique jamais."""
+    svc = services(BASE)
+    for var in (
+        "CORE_QUOTAS_ENABLED",
+        "CORE_QUOTA_MAX_ITEMS_PER_TENANT",
+        "CORE_QUOTA_MAX_COLLECTIONS_PER_TENANT",
+        "CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT",
+    ):
+        for name in ("core", "worker"):
+            assert var in (svc[name].get("environment") or {}), f"{var} absent de `{name}`"

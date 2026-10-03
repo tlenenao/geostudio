@@ -41,7 +41,7 @@ def make_s3_client(*, endpoint_url: str, access_key: str, secret_key: str):
     )
 
 
-def ensure_uploads_bucket(client, bucket: str) -> None:
+def ensure_uploads_bucket(client, bucket: str, *, expire_days: int | None = None) -> None:
     try:
         client.create_bucket(Bucket=bucket)
     except ClientError as exc:
@@ -56,6 +56,26 @@ def ensure_uploads_bucket(client, bucket: str) -> None:
         if exc.response["Error"]["Code"] != "NotImplemented":
             raise
         logger.warning("put_bucket_cors non supporté (%s) : CORS global attendu", bucket)
+    if expire_days:
+        # P26.06 (j08b-011) : filet d'expiration des sources d'import jamais
+        # purgées (job échoué/abandonné) — best-effort, MinIO peut ne pas
+        # l'implémenter.
+        try:
+            client.put_bucket_lifecycle_configuration(
+                Bucket=bucket,
+                LifecycleConfiguration={
+                    "Rules": [
+                        {
+                            "ID": "expire-sources",
+                            "Status": "Enabled",
+                            "Filter": {"Prefix": ""},
+                            "Expiration": {"Days": expire_days},
+                        }
+                    ]
+                },
+            )
+        except ClientError:
+            logger.warning("cycle de vie non posé sur %s", bucket, exc_info=True)
 
 
 def _signing_client(client):

@@ -30,13 +30,13 @@ from app.attachments.schemas import (
     AttachmentRead,
 )
 from app.audit.writer import write_audit
-from app.auth.dependency import get_current_user, get_current_user_optional, is_quotas_enabled
+from app.auth.dependency import get_current_user, get_current_user_optional
 from app.collections.repository import get_access_facts
 from app.collections.routes import get_readable_collection
 from app.configs.guest_access import GuestActor, get_share_link_actor
 from app.db import get_session
 from app.ingestion.storage import ensure_uploads_bucket, generate_presigned_put_url
-from app.quotas.service import check_storage_quota_or_raise
+from app.quotas.service import enforce_storage_quota
 from app.sharing.authorization import can
 from app.users.models import User
 
@@ -233,19 +233,7 @@ def confirm_attachment(
     # SP-58 Tâche 5 (GAP-73/GAP-11) : même patron de nettoyage que le
     # plafond par fichier ci-dessus — un rejet de quota ne doit jamais
     # laisser un objet orphelin en S3.
-    if is_quotas_enabled():
-        try:
-            check_storage_quota_or_raise(
-                session, s3, tenant_id=col.tenant_id, additional_bytes=size
-            )
-        except HTTPException:
-            try:
-                s3.delete_object(Bucket=bucket, Key=body.key)
-            except ClientError:
-                logger.warning(
-                    "attachment over quota %s: objet non supprimé", body.key, exc_info=True
-                )
-            raise
+    enforce_storage_quota(session, s3, tenant_id=col.tenant_id, bucket=bucket, key=body.key)
     attachment = attachments_repo.create_attachment(
         session,
         tenant_id=col.tenant_id,

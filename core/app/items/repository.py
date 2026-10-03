@@ -19,6 +19,7 @@ from app.items.schemas import (
     OwnerFacet,
 )
 from app.items.slug import InvalidSlugError, SlugCollisionError, is_valid_slug, slugify
+from app.quotas.service import check_quota_or_raise
 from app.roles.kind_registry import privilege_for_kind
 from app.roles.repository import get_role
 from app.search.providers import get_embedding_provider
@@ -209,6 +210,9 @@ def create_item(
     title: str,
     slug: str | None = None,
 ) -> Item:
+    # Point unique de création d'item (REST, MCP, import, pipelines, moissonnage,
+    # tileset3d/terrain3d, wizards) : quota d'items (P26.03, RC-12).
+    check_quota_or_raise(session, tenant_id=tenant_id, kind="items")
     resolved_slug = None
     if resource_type == "site":
         resolved_slug = _resolve_site_slug(session, tenant_id=tenant_id, title=title, slug=slug)

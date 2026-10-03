@@ -27,6 +27,9 @@ class _FakeS3Client:
     def put_bucket_cors(self, Bucket, CORSConfiguration):  # noqa: N803
         pass
 
+    def put_bucket_lifecycle_configuration(self, Bucket, LifecycleConfiguration):  # noqa: N803
+        self.lifecycle = LifecycleConfiguration  # P26.06 : expiration des sources
+
     def generate_presigned_url(self, operation, Params, ExpiresIn):  # noqa: N803
         return f"https://minio.test/{Params['Bucket']}/{Params['Key']}"
 
