@@ -44,6 +44,10 @@ _LAT_NAMES = {"lat", "latitude", "y"}
 _LON_NAMES = {"lon", "lng", "longitude", "x"}
 _WGS84 = pyproj.CRS.from_epsg(4326)
 _OGR_ERRORS = (DataSourceError, DataLayerError)
+# Message GDAL brut volontairement écarté (chemin temporaire serveur, jargon).
+_UNREADABLE = (
+    "fichier illisible ou format non reconnu — vérifiez que le fichier n'est pas vide ni corrompu"
+)
 _XLSX_ERRORS = (zipfile.BadZipFile, InvalidFileException)
 # pyarrow.lib.ArrowIOError hérite d'OSError, pas d'ArrowException (vérifié par
 # exécution réelle — les deux hiérarchies divergent) : les deux sont
@@ -99,6 +103,23 @@ def _resolve_latlon_mode_from_fields(mode: GeometryMode, fieldnames: list[str]) 
     return mode
 
 
+def _to_coord(raw) -> float:
+    """Accepte la virgule décimale française ('48,85') ; refuse NaN/inf
+    (float('nan') passerait sinon les bornes ci-dessous, comparaisons fausses)."""
+    value = float(raw.replace(",", ".")) if isinstance(raw, str) else float(raw)
+    if not math.isfinite(value):
+        raise ValueError(raw)
+    return value
+
+
+def sniff_delimiter(text: str) -> str:
+    """Séparateur CSV (',' ';' tab '|') deviné sur la ligne d'en-tête ;
+    ',' par défaut. Même heuristique côté shell (ImportFileButton)."""
+    first = text.split("\n", 1)[0]
+    best = max(",;\t|", key=first.count)
+    return best if first.count(best) else ","
+
+
 def extract_geometry(row: dict, mode: GeometryMode) -> tuple[BaseGeometry | None, dict]:
     """Retourne (géométrie ou None, propriétés restantes — colonnes de
     géométrie retirées). Lève IngestionParseError sans contexte de ligne :
@@ -109,9 +130,13 @@ def extract_geometry(row: dict, mode: GeometryMode) -> tuple[BaseGeometry | None
     if mode.kind == "latlon":
         raw_lat, raw_lon = row.get(mode.lat_field), row.get(mode.lon_field)
         try:
-            lat, lon = float(raw_lat), float(raw_lon)
+            lat, lon = _to_coord(raw_lat), _to_coord(raw_lon)
         except (TypeError, ValueError):
             raise IngestionParseError(f"lat/lon invalide ('{raw_lat}', '{raw_lon}')") from None
+        if not -90.0 <= lat <= 90.0:
+            raise IngestionParseError(f"latitude hors de [-90, 90] : '{raw_lat}'")
+        if not -180.0 <= lon <= 180.0:
+            raise IngestionParseError(f"longitude hors de [-180, 180] : '{raw_lon}'")
         rest = {k: v for k, v in row.items() if k not in (mode.lat_field, mode.lon_field)}
         return Point(lon, lat), rest
     # mode.kind == "wkt"
@@ -166,7 +191,7 @@ def parse_csv_latlon(
         text = content.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise IngestionParseError("encodage invalide, attendu UTF-8") from exc
-    reader = csv.DictReader(io.StringIO(text))
+    reader = csv.DictReader(io.StringIO(text), delimiter=sniff_delimiter(text))
     try:
         fieldnames = reader.fieldnames or []
     except csv.Error as exc:
@@ -354,7 +379,7 @@ def _read_features(path: str, layer_name: str | None) -> Iterator[tuple[BaseGeom
     try:
         raw_layers = pyogrio.list_layers(path)
     except _OGR_ERRORS as exc:
-        raise IngestionParseError(f"fichier illisible : {exc}") from exc
+        raise IngestionParseError(_UNREADABLE) from exc
     available = [str(name) for name, _geom_type in raw_layers]
     if layer_name is None:
         if len(available) != 1:
@@ -382,7 +407,7 @@ def _read_features(path: str, layer_name: str | None) -> Iterator[tuple[BaseGeom
                 path, layer=layer_name, force_2d=True
             )
     except _OGR_ERRORS as exc:
-        raise IngestionParseError(f"couche '{layer_name}' illisible : {exc}") from exc
+        raise IngestionParseError(f"couche '{layer_name}' illisible") from exc
 
     transform = _crs_transform(meta["crs"])
     fields = list(meta["fields"])
@@ -756,13 +781,13 @@ def list_layers(content: bytes, filename: str) -> list[LayerInfo]:
         try:
             raw_layers = pyogrio.list_layers(path)
         except _OGR_ERRORS as exc:
-            raise IngestionParseError(f"fichier illisible : {exc}") from exc
+            raise IngestionParseError(_UNREADABLE) from exc
         layers = []
         for name, _geom_type in raw_layers:
             try:
                 info = pyogrio.read_info(path, layer=name)
             except _OGR_ERRORS as exc:
-                raise IngestionParseError(f"couche '{name}' illisible : {exc}") from exc
+                raise IngestionParseError(f"couche '{name}' illisible") from exc
             layers.append(
                 LayerInfo(
                     name=str(name),

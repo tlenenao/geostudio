@@ -18,6 +18,7 @@ from app.configs import repository as configs_repo
 from app.db import Base, make_session_factory
 from app.ingestion.importer import _resolve_geometry_mode, run_import
 from app.ingestion.parsers import GeometryMode, IngestionParseError
+from app.items.models import Item
 from app.tenants.models import Tenant
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
@@ -699,3 +700,69 @@ def test_geoparquet_import_creates_queryable_collection_and_map_item(env, tmp_pa
             .all()
         )
         assert rows == ["A", "B"]
+
+
+def _import_csv(env, content: bytes, **kw):
+    Session, tenant, user = env
+    with Session() as s:
+        result = run_import(
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            filename="d.csv",
+            content=content,
+            collection_title="D",
+            lat_field=kw.pop("lat_field", None),
+            lon_field=kw.pop("lon_field", None),
+            **kw,
+        )
+        s.commit()
+    return result
+
+
+def test_import_map_carries_bbox_and_render_hints(env):
+    # P28.04 (j03-009) + P28.05 (j03-010)
+    Session, _t, _u = env
+    result = _import_csv(env, b"nom,lat,lon\nParis,48.85,2.35\nLyon,45.76,4.83\n")
+    with Session() as s:
+        item = s.get(Item, result.item_id)
+        assert item.bbox_min_x == pytest.approx(2.35)
+        assert item.bbox_max_y == pytest.approx(48.85)
+        layer = configs_repo.get_config_by_item(s, item_id=result.item_id).config.map.layers[0]
+        assert layer.collectionId == result.collection_id
+        assert (layer.geometryKind, layer.renderAs) == ("point", "circle")
+
+
+def test_tabular_import_creates_dataset_item_in_catalog(env):
+    # P28.06 (j03-021)
+    Session, _t, _u = env
+    result = _import_csv(env, b"a,b\n1,x\n", geometry_mode="none")
+    assert result.item_id is None
+    with Session() as s:
+        ds = s.execute(select(Item).where(Item.resource_type == "dataset")).scalar_one()
+        cfg = configs_repo.get_config_by_item(s, item_id=ds.id).config
+        assert cfg.dataset.collectionId == result.collection_id
+
+
+def test_csv_import_infers_integer_decimal_and_date_columns(env):
+    # P28.07 (j05-025) ; le zéro de tête (code postal) reste du texte
+    Session, _t, _u = env
+    result = _import_csv(
+        env,
+        b"nom,lat,lon,hab,surf,maj,cp,mix\n"
+        b"A,48.8,2.3,100,1.5,2024-01-31,01000,1\n"
+        b"B,45.7,4.8,,2.0,2024-02-01,75001,x\n",
+    )
+    with Session() as s:
+        info = introspect_table(
+            s,
+            collections_repo.get_collection(
+                s, tenant_id=env[1].id, collection_id=result.collection_id
+            ).table_name,
+        )
+        types = {f.name: f.type for f in info.columns}
+    assert types["hab"] == "integer"
+    assert types["surf"] == "number"
+    assert types["maj"] == "date"
+    assert types["cp"] == "string"
+    assert types["mix"] == "string"

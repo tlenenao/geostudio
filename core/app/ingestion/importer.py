@@ -5,8 +5,10 @@ Séparé de tasks.py pour rester testable sans procrastinate ni S3 (postgis
 seulement) — mêmes fonctions internes qu'un admin enregistrant une collection
 à la main (app.collections.routes.register_collection)."""
 
+import datetime
 import math
 import os
+import re
 import uuid
 from dataclasses import dataclass
 
@@ -19,7 +21,7 @@ from app.collections.ddl import apply_collection_ddl
 from app.collections.extent import table_extent
 from app.collections.introspection_pg import introspect_table
 from app.configs import repository as configs_repo
-from app.configs.schemas import BaseMap, BuilderConfig, MapConfig, MapLayer, MapView
+from app.configs.schemas import BaseMap, BuilderConfig, DatasetPayload, MapConfig, MapLayer, MapView
 from app.ingestion.parsers import (
     GeometryMode,
     IngestionParseError,
@@ -97,14 +99,80 @@ def _pick_format(filename: str) -> str:
     raise IngestionParseError(f"format non supporté : {filename}")
 
 
+_INT_RE = re.compile(
+    r"^-?(0|[1-9]\d{0,17})$"
+)  # pas de zéro de tête (codes postaux), tient en bigint
+_FLOAT_RE = re.compile(r"^-?\d+\.\d+$")
+
+
+def _convert_csv_value(value: str, kind: str):
+    if kind == "int":
+        return int(value)
+    if kind == "float":
+        return float(value)
+    return datetime.date.fromisoformat(value)
+
+
+def _csv_column_kind(values: list[str]) -> str | None:
+    if not values:
+        return None
+    if all(_INT_RE.match(v) for v in values):
+        return "int"
+    if all(_INT_RE.match(v) or _FLOAT_RE.match(v) for v in values):
+        return "float"
+    try:
+        if all(len(v) == 10 and datetime.date.fromisoformat(v) for v in values):
+            return "date"
+    except ValueError:
+        pass
+    return None
+
+
+def _infer_csv_types(rows: list) -> None:
+    """P28.07 : un CSV ne livre que des chaînes ; une colonne dont toutes les
+    valeurs non vides sont entières / décimales / dates ISO est typée (rows
+    modifiées en place, vides -> None). Colonnes mixtes : texte inchangé."""
+    keys = {k for _g, props in rows for k in props}
+    for key in keys:
+        raw = [props.get(key) for _g, props in rows]
+        if not all(v is None or isinstance(v, str) for v in raw):
+            continue
+        values = [v.strip() for v in raw if v is not None and v.strip() != ""]
+        kind = _csv_column_kind(values)
+        if kind is None:
+            continue
+        for _g, props in rows:
+            v = props.get(key)
+            props[key] = (
+                None if v is None or v.strip() == "" else _convert_csv_value(v.strip(), kind)
+            )
+
+
 def _sql_type_for(value: object) -> str:
     if isinstance(value, bool):
         return "boolean"
+    if isinstance(value, datetime.date):
+        return "date"
     if isinstance(value, int):
         return "bigint"
     if isinstance(value, float):
         return "double precision"
     return "text"
+
+
+_RENDER_HINTS = {
+    "point": ("point", "circle"),
+    "line": ("line", "line"),
+    "polygon": ("polygon", "fill"),
+}
+
+
+def _render_hints(geom_types: set[str]) -> dict:
+    kinds = {t.removeprefix("Multi").replace("LineString", "line").lower() for t in geom_types}
+    if len(kinds) != 1 or not kinds <= _RENDER_HINTS.keys():
+        return {}
+    geometry_kind, render_as = _RENDER_HINTS[kinds.pop()]
+    return {"geometryKind": geometry_kind, "renderAs": render_as}
 
 
 def _zoom_for_extent(bbox: list[float]) -> float:
@@ -162,6 +230,8 @@ def run_import(
         raise IngestionParseError(f"format non supporté : {filename}")
     if not rows:
         raise IngestionParseError("le fichier ne contient aucune entité")
+    if fmt == "csv":
+        _infer_csv_types(rows)
 
     # Colonnes : union des clés de propriétés rencontrées, type déduit de la
     # première valeur non nulle vue pour chaque clé (repli "text" si toujours
@@ -266,6 +336,35 @@ def run_import(
         # Pas de géométrie => pas de carte à afficher : aucun Item/Config
         # créé (JSON Lines/Parquet/XML génériques en geometry_mode="none",
         # GAP-29 Task 11) — seule la collection tabulaire existe.
+        # P28.06 : ... mais un item « dataset » la rend atteignable depuis le
+        # catalogue « Données » du créateur (item_id reste None : rien à ouvrir
+        # sous /maps/, le shell retombe sur le catalogue).
+        ds_item = items_repo.create_item(
+            session,
+            tenant_id=tenant_id,
+            owner_id=created_by,
+            resource_type="dataset",
+            title=collection_title,
+        )
+        write_audit(
+            session,
+            tenant_id=tenant_id,
+            actor_id=created_by,
+            actor_kind="user",
+            action="item.create",
+            object_type="item",
+            object_id=ds_item.id,
+            payload={"title": collection_title},
+        )
+        configs_repo.create_config(
+            session,
+            BuilderConfig(
+                kind="dataset",
+                dataset=DatasetPayload(source="collection", collectionId=col.id),
+            ),
+            item_id=ds_item.id,
+            tenant_id=tenant_id,
+        )
         return ImportResult(collection_id=col.id, item_id=None)
 
     bbox = table_extent(session, info)
@@ -311,6 +410,11 @@ def run_import(
                     visible=True,
                     kind="feature",
                     url=f"{core_base_url}/collections/{col.id}/items",
+                    # P28.04/05 : collectionId -> emprise de l'item (bbox) ;
+                    # geometryKind/renderAs -> rendu correct (sinon « fill »,
+                    # invisible pour des points).
+                    collectionId=col.id,
+                    **_render_hints(geom_types),
                 )
             ],
         ),
