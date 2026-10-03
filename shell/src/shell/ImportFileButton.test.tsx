@@ -950,3 +950,42 @@ test("P28.09 : un import lent affiche un avertissement et libère l'annulation",
   await userEvent.click(screen.getByRole("button", { name: "Annuler" }));
   vi.restoreAllMocks();
 });
+
+test("P28.02 : un séparateur dans un en-tête entre guillemets ne fausse pas la détection", async () => {
+  render(
+    <Harness>
+      <ImportFileButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Importer un fichier" }));
+  const f = new File(['"a;b;c;d",x1,x2\n1,2,3\n'], "q.csv", { type: "text/csv" });
+  await userEvent.upload(screen.getByLabelText("Fichier à importer"), f);
+  await waitFor(() => expect(screen.getByLabelText("Colonne latitude")).toBeInTheDocument());
+  expect(screen.getAllByRole("option", { name: "x1" }).length).toBeGreaterThan(0);
+});
+
+test("P28.09 : annuler un import lent arrête le sondage", async () => {
+  let offset = 0;
+  let n = 0;
+  const base = Date.now();
+  vi.spyOn(Date, "now").mockImplementation(() => base + offset);
+  stubPipeline(() => {
+    n += 1;
+    offset = 40_000;
+    return HttpResponse.json({
+      status: "pending",
+      errorMessage: null,
+      collectionId: null,
+      itemId: null,
+    });
+  });
+  await startGeojsonImport();
+  await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("plus de temps"), {
+    timeout: 6000,
+  });
+  await userEvent.click(screen.getByRole("button", { name: "Annuler" }));
+  const after = n;
+  await new Promise((r) => setTimeout(r, 2200));
+  expect(n).toBe(after);
+  vi.restoreAllMocks();
+});

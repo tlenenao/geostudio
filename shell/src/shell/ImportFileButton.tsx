@@ -24,7 +24,8 @@ const LON_NAMES = ["lon", "lng", "longitude", "x"];
 
 // P28.02 : même heuristique que le cœur (sniff_delimiter, parsers.py) —
 // séparateur le plus fréquent de la ligne d'en-tête parmi , ; tabulation |.
-function sniffDelimiter(firstLine: string): string {
+function sniffDelimiter(line: string): string {
+  const firstLine = line.replace(/"[^"]*"/g, ""); // séparateurs entre guillemets ignorés
   const count = (c: string) => firstLine.split(c).length - 1;
   const best = [",", ";", "\t", "|"].reduce((a, b) => (count(b) > count(a) ? b : a));
   return count(best) > 0 ? best : ",";
@@ -135,7 +136,8 @@ export function ImportFileButton() {
   const [phase, setPhase] = useState<Phase>("form");
   const [error, setError] = useState("");
   const [slow, setSlow] = useState(false);
-  const abortPollRef = useRef(false);
+  // génération du sondage : close()/nouveau job l'incrémentent, un ancien sondage s'arrête
+  const pollGenRef = useRef(0);
   const client = useItemClient();
   const navigate = useNavigate();
   const mountedRef = useRef(true);
@@ -184,7 +186,7 @@ export function ImportFileButton() {
     setPhase("form");
     setError("");
     setSlow(false);
-    abortPollRef.current = true;
+    pollGenRef.current++;
   }
 
   async function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -210,8 +212,10 @@ export function ImportFileButton() {
   async function poll(jobId: string) {
     const startedAt = Date.now();
     let failures = 0;
+    const gen = pollGenRef.current;
+    const stale = () => !mountedRef.current || pollGenRef.current !== gen;
     for (;;) {
-      if (!mountedRef.current || abortPollRef.current) return;
+      if (stale()) return;
       if (Date.now() - startedAt > MAX_POLL_MS) {
         setPhase("error");
         setError(t("importFile.tooLong"));
@@ -224,13 +228,13 @@ export function ImportFileButton() {
         failures = 0;
       } catch (err) {
         if (++failures >= MAX_POLL_FAILURES) {
-          if (!mountedRef.current || abortPollRef.current) return;
+          if (stale()) return;
           setPhase("error");
           setError(stageMessage("importFile.pollError", err));
           return;
         }
       }
-      if (!mountedRef.current || abortPollRef.current) return;
+      if (stale()) return;
       if (job?.status === "done") {
         close();
         // GAP-29 : une collection sans géométrie (geometryMode="none") n'a
@@ -274,7 +278,8 @@ export function ImportFileButton() {
         ...geometryPayload,
       }),
     );
-    abortPollRef.current = false;
+    pollGenRef.current++;
+    setSlow(false);
     setPhase("polling");
     await poll(jobId);
   }
