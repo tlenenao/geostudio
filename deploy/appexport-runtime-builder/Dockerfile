@@ -4,7 +4,7 @@
 # par export (SP-18a, plan §Architecture). Contexte = racine du dépôt (pas
 # ./shell) : c'est le seul service de la stack dont c'est le cas, pour
 # pouvoir COPY shell/ sans changer le contexte des autres services Node.
-FROM node:20-slim
+FROM node:22-slim
 WORKDIR /build
 # uid/gid FIXE à 1001 (revue finale SP-26 round 2, N2) — même convention que
 # core/Dockerfile (`app`), deploy/qgis-worker/Dockerfile (`qgis`, C1) et
@@ -15,7 +15,7 @@ WORKDIR /build
 # Pas de contrainte de convergence avec `app`/`qgis`/`backup` ici (aucun
 # volume partagé avec eux, `appexport-runtime` n'a que ce service en
 # écriture — `worker` le monte en lecture seule) — 1001 choisi seulement
-# pour la cohérence documentaire. Vérifié libre dans node:20-slim au moment
+# pour la cohérence documentaire. Vérifié libre dans node:22-slim au moment
 # de ce correctif (`getent passwd 1001`/`getent group 1001` échouent tous
 # les deux ; `node` y occupe déjà 1000).
 RUN groupadd --system --gid 1001 builder \

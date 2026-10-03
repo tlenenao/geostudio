@@ -7,7 +7,7 @@
 # de l'app, instantané GeoParquet) ne sont JAMAIS dans l'image — montées au
 # runtime via le volume /data (cf. docker-compose.yml généré par
 # build_standalone_bundle_zip, core/app/appexport/bundler.py).
-FROM node:20-slim AS shell-runtime
+FROM node:22-slim AS shell-runtime
 WORKDIR /build
 COPY shell/package.json shell/package-lock.json ./
 RUN npm ci

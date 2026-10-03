@@ -46,6 +46,7 @@ jobs:
   verify-published:
     needs: build-and-push
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # Spécifier N'IMPORTE quelle permission met TOUTES les autres à `none`
     # (règle GitHub) — `contents: read` doit rester explicite ici pour que
     # `actions/checkout` fonctionne, sinon il aurait silencieusement perdu
@@ -55,8 +56,8 @@ jobs:
       contents: read
       packages: read
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
       - name: Vérifie que les 9 images existent sous le tag edge
         working-directory: core
         env:

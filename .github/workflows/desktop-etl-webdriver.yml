@@ -20,9 +20,10 @@ jobs:
     # (github.com/actions/runner-images/issues/14738, ouverte, sans date de
     # correctif annoncée). windows-2022 (WebView2 131.x) n'a pas ce défaut.
     runs-on: windows-2022
+    timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
       - name: Freeze sidecar
         working-directory: core
         shell: bash
@@ -38,12 +39,12 @@ jobs:
         run: node desktop-etl/scripts/prepare-sidecar-binary.mjs core/dist/pipeline-sidecar.exe
       - name: install msedgedriver
         run: |
-          cargo install --git https://github.com/chippers/msedgedriver-tool
+          cargo install --git https://github.com/chippers/msedgedriver-tool --rev 8c4b34f51b45f5cf08013366d703de464ab871d1
           & "$HOME/.cargo/bin/msedgedriver-tool.exe"
           $PWD.Path >> $env:GITHUB_PATH
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/setup-node@v4
-        with: { node-version: 20 }
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: 22 }
       - name: Build shell desktop runtime
         working-directory: shell
         run: |
@@ -60,7 +61,7 @@ jobs:
           npm test
       - name: Upload failure diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: e2e-failure-diagnostics
           path: desktop-etl/e2e/diagnostics

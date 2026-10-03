@@ -33,10 +33,30 @@ updates:
       shell-production-dependencies:
         dependency-type: "production"
 
-  # Workflows GitHub Actions (.github/workflows/) — un seul emplacement dans ce dépôt,
+  # Workflows GitHub Actions (.github/workflows/) — actions épinglées par SHA (P27.10) ; Dependabot réécrit SHA + commentaire de version.
+  # Un seul emplacement dans ce dépôt,
   # pas d'actions composites réutilisables ailleurs.
   - package-ecosystem: "github-actions"
     directory: "/"
+    target-branch: "dev"
+    schedule:
+      interval: "weekly"
+
+  # P27.11 (c06-009) : images de base des Dockerfile (tags flottants python/
+  # node/nginx/alpine/debian) — jusqu'ici sans surveillance, node:20 est
+  # resté en service après sa fin de vie. `directories` (pas `directory`)
+  # pour couvrir tous les Dockerfile du dépôt en une entrée.
+  - package-ecosystem: "docker"
+    directories:
+      - "/core"
+      - "/shell"
+      - "/deploy/appexport-runtime-builder"
+      - "/deploy/appexport-standalone"
+      - "/deploy/backup"
+      - "/deploy/export-worker"
+      - "/deploy/minio"
+      - "/deploy/postgis"
+      - "/deploy/titiler"
     target-branch: "dev"
     schedule:
       interval: "weekly"
