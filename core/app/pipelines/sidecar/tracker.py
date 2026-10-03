@@ -46,6 +46,16 @@ class RunRegistry:
                     record.update(fields)
                     return
 
+    def _update_if_status(self, item_id: str, run_id: str, expected: str, **fields: object) -> bool:
+        with self._lock:
+            for record in self._records.get(item_id, []):
+                if record["id"] == run_id:
+                    if record["status"] != expected:
+                        return False
+                    record.update(fields)
+                    return True
+        return False
+
 
 class InMemoryRunTracker:
     def __init__(self, registry: RunRegistry, *, item_id: str, run_id: str) -> None:
@@ -53,10 +63,11 @@ class InMemoryRunTracker:
         self._item_id = item_id
         self._run_id = run_id
 
-    def mark_running(self) -> None:
-        self._registry._update(
+    def mark_running(self) -> bool:
+        return self._registry._update_if_status(
             self._item_id,
             self._run_id,
+            "queued",
             status="running",
             startedAt=datetime.now(UTC).isoformat(),
         )

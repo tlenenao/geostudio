@@ -150,7 +150,12 @@ class RunTracker(Protocol):
     2026-09-17 §4, suivi de run en mémoire, sans Postgres) fournira sa
     propre implémentation sans dupliquer app.pipelines.runtime.run_pipeline."""
 
-    def mark_running(self) -> None: ...
+    def mark_running(self) -> bool:
+        """True si le run a été pris en charge (queued -> running) ; False s'il
+        n'est plus prenable (annulé, terminé, inconnu) : l'appelant ne doit
+        alors rien exécuter (REV-275 c)."""
+        ...
+
     def mark_succeeded(self, node_stats: dict) -> None: ...
     def mark_failed(self, error: str) -> None: ...
     def mark_cancelled(self) -> None: ...
@@ -178,9 +183,9 @@ class PostgresRunTracker:
         # sécurité actif ici.
         self._tenant_id = tenant_id
 
-    def mark_running(self) -> None:
+    def mark_running(self) -> bool:
         with request_scoped_session(self._session_factory) as session:
-            pipelines_repo.mark_running(session, run_id=self._run_id)
+            return pipelines_repo.mark_running(session, run_id=self._run_id)
 
     def mark_succeeded(self, node_stats: dict) -> None:
         with request_scoped_session(self._session_factory) as session:
@@ -232,7 +237,8 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
         # test_early_failure_before_item_id_bound_does_not_crash
         # (tests/test_pipeline_jobs.py), qui vérifie précisément l'absence de
         # cette notification.
-        tracker.mark_running()
+        if not tracker.mark_running():  # annulé entre get_run et ici (REV-275 c) : rien à exécuter
+            return
         item_id = pipeline_item_id
 
         with request_scoped_session(factory) as session:

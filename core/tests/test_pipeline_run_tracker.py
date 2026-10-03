@@ -43,7 +43,7 @@ def test_postgres_run_tracker_mark_running_sets_status_and_started_at():
     tenant_id, run_id = _seed_run(factory)
     tracker = pipeline_jobs.PostgresRunTracker(factory, run_id=run_id, tenant_id=tenant_id)
 
-    tracker.mark_running()
+    assert tracker.mark_running() is True
 
     with factory() as session:
         run = pipelines_repo.get_run(session, tenant_id=tenant_id, run_id=run_id)
@@ -85,6 +85,23 @@ def test_postgres_run_tracker_mark_running_on_unknown_run_is_a_noop():
     factory = _session_factory()
     tracker = pipeline_jobs.PostgresRunTracker(factory, run_id="does-not-exist", tenant_id="t1")
 
-    tracker.mark_running()  # ne doit lever aucune exception
+    assert tracker.mark_running() is False  # inconnu : ne lève pas, refuse
     tracker.mark_succeeded({})  # ne doit lever aucune exception
     tracker.mark_failed("boom")  # ne doit lever aucune exception
+
+
+def test_postgres_run_tracker_mark_running_refuses_a_cancelled_run():
+    # REV-275 (c) : le seam respecte la nouvelle sémantique conditionnelle.
+    factory = _session_factory()
+    tenant_id, run_id = _seed_run(factory)
+    tracker = pipeline_jobs.PostgresRunTracker(factory, run_id=run_id, tenant_id=tenant_id)
+    with factory() as session:
+        run = pipelines_repo.get_run(session, tenant_id=tenant_id, run_id=run_id)
+        pipelines_repo.request_cancel(session, run)
+        session.commit()
+
+    assert tracker.mark_running() is False
+
+    with factory() as session:
+        run = pipelines_repo.get_run(session, tenant_id=tenant_id, run_id=run_id)
+        assert run.status == "cancelled"

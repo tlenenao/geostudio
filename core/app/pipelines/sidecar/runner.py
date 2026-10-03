@@ -31,7 +31,8 @@ def _execute(
     registry: RunRegistry, item_id: str, run_id: str, payload: PipelinePayload, base_uri: str
 ) -> None:
     tracker = registry.tracker_for(item_id, run_id)
-    tracker.mark_running()
+    if not tracker.mark_running():
+        return
     try:
         stats = runtime.run_pipeline(
             None,
