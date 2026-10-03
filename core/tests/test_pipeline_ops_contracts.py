@@ -178,3 +178,40 @@ def test_binary_ops_are_covered_by_the_parallel_tables():
     assert all(_JOIN_PARAM_MODELS[op] is OP_PARAMS[op] for op in BINARY_OPS)
     with_collection = {op for op, f in _COLLECTION_PARAM_FIELD.items() if f == "withCollectionId"}
     assert BINARY_OPS <= with_collection
+
+
+def test_compile_and_execute_are_mutually_exclusive():
+    with pytest.raises(ValueError, match="mutuellement exclusifs"):
+        OperationContract(
+            op="transform.fake-both",
+            kind="transform",
+            params_schema=TransformFilterParams,
+            compile=lambda params, **kw: "SELECT 1",
+            execute=lambda conn, **kw: None,
+        )
+
+
+def test_every_registered_transform_has_exactly_one_of_compile_or_execute():
+    from app.pipelines.ops.contracts import OPERATIONS
+
+    for op, contract in OPERATIONS.items():
+        has_both_or_none = (contract.compile is not None) == (contract.execute is not None)
+        if contract.kind == "transform":
+            assert not has_both_or_none, op
+        else:
+            assert contract.compile is None and contract.execute is None, op
+
+
+def test_python_executed_ops_declare_the_shapely_engine():
+    from app.pipelines.ops.contracts import OPERATIONS
+
+    executed = {op: c for op, c in OPERATIONS.items() if c.execute is not None}
+    assert set(executed) == {
+        "transform.triangulate",
+        "transform.densify",
+        "transform.minimumBoundingCircle",
+    }
+    for op, contract in executed.items():
+        assert contract.engine == "shapely", op
+        assert contract.engine_license == "BSD-3-Clause (Shapely)", op
+        assert contract.is_copyleft is False, op

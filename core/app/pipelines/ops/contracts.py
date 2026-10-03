@@ -142,6 +142,8 @@ class OperationContract:
             raise ValueError(
                 f"'{self.op}': moteur copyleft ({self.engine}) exige execution_model='sidecar'"
             )
+        if self.compile is not None and self.execute is not None:
+            raise ValueError(f"'{self.op}': compile et execute sont mutuellement exclusifs")
 
 
 OPERATIONS: dict[str, OperationContract] = {
@@ -573,7 +575,7 @@ OPERATIONS: dict[str, OperationContract] = {
         op="transform.triangulate",
         kind="transform",
         params_schema=TransformTriangulateParams,
-        engine="duckdb",
+        engine="shapely",
         engine_license="BSD-3-Clause (Shapely)",
         execute=_execute._execute_triangulate,
     ),
@@ -581,7 +583,7 @@ OPERATIONS: dict[str, OperationContract] = {
         op="transform.densify",
         kind="transform",
         params_schema=TransformDensifyParams,
-        engine="duckdb",
+        engine="shapely",
         engine_license="BSD-3-Clause (Shapely)",
         execute=_execute._execute_densify,
     ),
@@ -589,7 +591,7 @@ OPERATIONS: dict[str, OperationContract] = {
         op="transform.minimumBoundingCircle",
         kind="transform",
         params_schema=TransformMinimumBoundingCircleParams,
-        engine="duckdb",
+        engine="shapely",
         engine_license="BSD-3-Clause (Shapely)",
         execute=_execute._execute_minimum_bounding_circle,
     ),
