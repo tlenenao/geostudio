@@ -11,7 +11,7 @@ import pytest
 import shapely
 from pyogrio.raw import write as pyogrio_write
 from shapely.geometry import Point
-from sqlalchemy import text
+from sqlalchemy import event, text
 
 from app.db import Base, make_session_factory
 from app.ingestion.importer import run_import
@@ -27,6 +27,11 @@ N_FEATURES = 50_000
 # <0,1s, insertion PostGIS (executemany) <1s — le pipeline complet est de
 # l'ordre de quelques secondes, très loin du seuil.
 PERF_BUDGET_SECONDS = 180
+# P27.03 : la durée mesure la machine (piège n°7) ; la propriété qui détecte
+# une régression de complexité est structurelle — le nombre d'ordres INSERT
+# émis vers la collection (1 aujourd'hui, un executemany). Un retour à une
+# insertion ligne à ligne ferait 50 000.
+MAX_INSERT_STATEMENTS = 5
 
 
 @pytest.fixture()
@@ -78,10 +83,17 @@ def _synthetic_gpkg_bytes(tmp_path) -> bytes:
     return path.read_bytes()
 
 
-def test_gpkg_50k_features_imports_within_m4_budget(env, tmp_path):
+def test_gpkg_50k_features_imports_within_m4_budget(env, tmp_path, pg_engine):
     Session, tenant, user = env
     content = _synthetic_gpkg_bytes(tmp_path)
 
+    inserts: list[str] = []
+
+    def _count(conn, cursor, statement, parameters, context, executemany):
+        if statement.lstrip().upper().startswith("INSERT INTO PUBLIC."):
+            inserts.append(statement)
+
+    event.listen(pg_engine, "before_cursor_execute", _count)
     with Session() as s:
         t0 = time.monotonic()
         result = run_import(
@@ -98,6 +110,10 @@ def test_gpkg_50k_features_imports_within_m4_budget(env, tmp_path):
         s.commit()
         elapsed = time.monotonic() - t0
 
+    event.remove(pg_engine, "before_cursor_execute", _count)
+    assert 1 <= len(inserts) <= MAX_INSERT_STATEMENTS, (
+        f"{len(inserts)} ordres INSERT pour {N_FEATURES} entités (plafond {MAX_INSERT_STATEMENTS})"
+    )
     assert elapsed < PERF_BUDGET_SECONDS, (
         f"import de {N_FEATURES} entités trop lent : {elapsed:.1f}s (budget {PERF_BUDGET_SECONDS}s)"
     )

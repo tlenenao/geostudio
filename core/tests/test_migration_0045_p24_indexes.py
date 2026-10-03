@@ -27,10 +27,8 @@ NAMES = {
 
 
 @pytest.fixture()
-def throwaway_database_url():
-    base_url = os.environ.get("CORE_TEST_DATABASE_URL")
-    if not base_url:
-        pytest.skip("CORE_TEST_DATABASE_URL non défini — test postgis skippé")
+def throwaway_database_url(test_db_url):
+    base_url = test_db_url
     admin_engine = sa.create_engine(base_url, isolation_level="AUTOCOMMIT")
     db_name = f"p24_idx_{uuid.uuid4().hex[:8]}"
     with admin_engine.connect() as conn:

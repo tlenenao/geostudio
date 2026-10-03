@@ -5,7 +5,6 @@
 version committée par le premier, pas celle de son identity map. Postgres réel
 (SQLite ignore FOR UPDATE)."""
 
-import os
 import threading
 import uuid
 
@@ -25,10 +24,8 @@ _MAP = BuilderConfig.model_validate(
 )
 
 
-def test_second_concurrent_writer_sees_version_committed_by_first():
-    url = os.environ.get("CORE_TEST_DATABASE_URL")
-    if not url:
-        pytest.skip("CORE_TEST_DATABASE_URL requis")
+def test_second_concurrent_writer_sees_version_committed_by_first(test_db_url):
+    url = test_db_url
     Session = make_session_factory(make_engine(url))
     from app.items.models import Item
 
