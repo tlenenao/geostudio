@@ -1004,7 +1004,13 @@ def _patch_blob_internals(monkeypatch, captured):
             "parquet": connector_runtime.read_parquet,
         },
     )
-    monkeypatch.setattr(connector_runtime, "_run_dlt_and_attach", lambda *a, **k: None)
+    monkeypatch.setattr(
+        connector_runtime,
+        "_run_dlt_and_attach",
+        lambda c, resource, *, node_id, view_name: c.execute(
+            f'CREATE TEMP TABLE "{view_name}" AS SELECT 1 AS a'
+        ),
+    )
 
 
 def test_materialize_blob_connector_builds_aws_credentials_and_splits_path(
@@ -1297,3 +1303,92 @@ def test_rest_row_cap(conn, session, tenant, user, httpserver, monkeypatch):
             params=params,
             view_name="node_cap",
         )
+
+
+def _blob_secret_and_resolver(session, tenant, user):
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="s3-secret",
+        kind="s3_credentials",
+        payload={
+            "kind": "s3_credentials",
+            "awsAccessKeyId": "AKIA",
+            "awsSecretAccessKey": "shh",
+        },
+    )
+    return connector_runtime.PostgresSecretResolver(session, tenant.id, user)
+
+
+def test_materialize_blob_connector_literal_glob_with_zero_rows_raises(
+    monkeypatch, conn, session, tenant, user
+):
+    resolver = _blob_secret_and_resolver(session, tenant, user)
+    _patch_blob_internals(monkeypatch, {})
+    monkeypatch.setattr(
+        connector_runtime,
+        "_run_dlt_and_attach",
+        lambda c, resource, *, node_id, view_name: c.execute(
+            f'CREATE TEMP TABLE "{view_name}" (a INTEGER)'
+        ),
+    )
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="no row loaded"):
+        connector_runtime.materialize_blob_connector(
+            conn,
+            secret_resolver=resolver,
+            node_id="b10",
+            params=ReaderConnectorBlobParams(
+                secretName="s3-secret", path="s3://bucket/prefix/data.csv", format="csv"
+            ),
+            view_name="node_b10",
+        )
+
+
+def test_materialize_blob_connector_literal_glob_missing_table_gets_a_clear_message(
+    monkeypatch, conn, session, tenant, user
+):
+    resolver = _blob_secret_and_resolver(session, tenant, user)
+    _patch_blob_internals(monkeypatch, {})
+
+    def _dlt_without_table(c, resource, *, node_id, view_name):
+        raise connector_runtime.ConnectorRuntimeError(
+            "reader.connector extraction failed: Catalog Error: Table with name records "
+            "does not exist!"
+        )
+
+    monkeypatch.setattr(connector_runtime, "_run_dlt_and_attach", _dlt_without_table)
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="no row loaded"):
+        connector_runtime.materialize_blob_connector(
+            conn,
+            secret_resolver=resolver,
+            node_id="b11",
+            params=ReaderConnectorBlobParams(
+                secretName="s3-secret", path="s3://bucket/data.csv", format="csv"
+            ),
+            view_name="node_b11",
+        )
+
+
+def test_materialize_blob_connector_wildcard_glob_with_zero_rows_is_accepted(
+    monkeypatch, conn, session, tenant, user
+):
+    resolver = _blob_secret_and_resolver(session, tenant, user)
+    _patch_blob_internals(monkeypatch, {})
+    monkeypatch.setattr(
+        connector_runtime,
+        "_run_dlt_and_attach",
+        lambda c, resource, *, node_id, view_name: c.execute(
+            f'CREATE TEMP TABLE "{view_name}" (a INTEGER)'
+        ),
+    )
+    connector_runtime.materialize_blob_connector(
+        conn,
+        secret_resolver=resolver,
+        node_id="b12",
+        params=ReaderConnectorBlobParams(
+            secretName="s3-secret", path="s3://bucket/prefix/*.csv", format="csv"
+        ),
+        view_name="node_b12",
+    )
+    assert conn.execute('SELECT count(*) FROM "node_b12"').fetchone() == (0,)

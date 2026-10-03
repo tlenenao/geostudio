@@ -586,6 +586,9 @@ def materialize_bigquery_connector(
     _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
 
 
+_GLOB_WILDCARDS = frozenset("*?[")
+
+
 def materialize_blob_connector(
     conn,
     *,
@@ -657,4 +660,21 @@ def materialize_blob_connector(
     )
     resource.apply_hints(table_name="records", write_disposition="replace")
 
-    _run_dlt_and_attach(conn, resource, node_id=node_id, view_name=view_name)
+    # M12 (REV-199) : un `file_glob` littéral (sans joker) vise UN fichier — 0 ligne chargée
+    # signifie chemin faux ou fichier vide, pas un jeu vide légitime. Avec un joker, 0 fichier
+    # apparié reste un résultat acceptable.
+    literal_glob = not set(file_glob) & _GLOB_WILDCARDS
+    no_row_error = ConnectorRuntimeError(
+        f"reader.connector.blob: no row loaded from '{params.path}' — the path matched no "
+        "file or the file is empty (check the bucket and the object key)"
+    )
+    try:
+        _run_dlt_and_attach(conn, resource, node_id=node_id, view_name=view_name)
+    except ConnectorRuntimeError as exc:
+        # dlt ne crée pas la table `records` quand rien n'est extrait : sans ce rattrapage,
+        # l'utilisateur lirait « Catalog Error: Table with name records does not exist ».
+        if literal_glob and "does not exist" in str(exc):
+            raise no_row_error from exc
+        raise
+    if literal_glob and conn.execute(f"SELECT count(*) FROM {_qi(view_name)}").fetchone()[0] == 0:
+        raise no_row_error
