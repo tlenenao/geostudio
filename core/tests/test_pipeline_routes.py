@@ -59,7 +59,7 @@ def test_pipelines_routes_absent_when_disabled(monkeypatch):
     assert client.get("/v1/pipelines/does-not-exist/webhook-tokens").status_code == 404
 
 
-def test_get_pipelines_ops_returns_all_fifty_one(monkeypatch):
+def test_get_pipelines_ops_returns_all_exposed_ops(monkeypatch):
     client = _make_app(monkeypatch, etl_enabled=True)
     response = client.get("/v1/pipelines/ops")
     assert response.status_code == 200
@@ -74,10 +74,10 @@ def test_get_pipelines_ops_returns_all_fifty_one(monkeypatch):
     # transform.minimumBoundingCircle) - transform.qgis lui-même, retiré (Task 28) =
     # 57 total exposées par la route. Les 9 op de retrait QGIS couvrent 10 lignes
     # FME (transform.triangulate mappe TINGenerator ET SurfaceModeller) ; Clipper
-    # et Dissolver sont 2 lignes FME distinctes, sans rapport avec ce compte de 9,
-    # dont la reclassification (composition d'op vs. rester qgis_frozen) reste une
-    # décision ouverte de Task 27 Step 3-4, pas encore tranchée ici — cf. plan
-    # Task 27.
+    # et Dissolver, 2 lignes FME distinctes sans rapport avec ce compte de 9, sont
+    # couverts par composition d'op existantes (transform.intersection avec
+    # outputGeometry="intersection" ; transform.aggregate + ST_Union_Agg), sans op
+    # dédiée — décision tranchée en Task 27 (cf. CHANGELOG.md, section Removed).
     # (reader.file/writer.file restent hors catalogue tant que
     # CORE_PIPELINE_FILE_IO_ENABLED est éteint : registre brut à 59, route à 57).
     assert set(body) == {
