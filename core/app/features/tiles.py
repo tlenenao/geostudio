@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependency import get_current_user_optional
 from app.collections.introspection import TableInfo, TableNotFound, hide_sensitive_columns
-from app.collections.routes import get_introspector, get_readable_collection
+from app.collections.routes import get_collection_for_read, get_introspector
 from app.configs.guest_access import GuestActor, get_share_link_actor
 from app.db import get_session
 from app.features.routes import get_masked_for_user, get_rls_scope
@@ -148,7 +148,7 @@ def get_collection_tile(
 ) -> Response:
     # Même porte que GET /items : 404 avant 403, anonyme accepté sur une
     # collection publique — plus désormais un jeton invité scopé (GAP-19).
-    col = get_readable_collection(session, user, collection_id, guest=guest)
+    col = get_collection_for_read(session, user, collection_id, guest=guest)
     try:
         validate_tile_coords(z, x, y)
     except InvalidTileCoords as exc:
