@@ -167,9 +167,17 @@ def register(server: FastMCP, session_factory) -> None:
 
     @server.tool()
     @write_tool
-    async def save_app_config(ctx: Context, itemId: str, config: BuilderConfig) -> ConfigRead:
+    async def save_app_config(
+        ctx: Context,
+        itemId: str,
+        config: BuilderConfig,
+        expectedVersion: int | None = None,
+    ) -> ConfigRead:
         """Save (and version) the app/dashboard config for an item — mirrors
-        PUT /configs/by-item/{id}."""
+        PUT /configs/by-item/{id}. Pass `expectedVersion` (the `version` read
+        with get_app_config) to refuse the write when someone else saved in
+        between (same guard as the REST If-Match header); omit it to
+        overwrite unconditionally."""
         if is_read_only_mode():
             raise ValueError("Mode démo : lecture seule, écritures désactivées.")
         access_token = get_access_token()
@@ -184,9 +192,19 @@ def register(server: FastMCP, session_factory) -> None:
             _require_capabilities_for_save(config)
             _validate_extension_scope(session, config, tenant_id=user.tenant_id)
             _validate_payload_by_kind(session, config, user=user)
-            result = configs_repo.update_config(
-                session, existing.id, config, tenant_id=user.tenant_id
-            )
+            try:
+                result = configs_repo.update_config(
+                    session,
+                    existing.id,
+                    config,
+                    tenant_id=user.tenant_id,
+                    expected_version=expectedVersion,
+                )
+            except configs_repo.StaleConfigVersion as exc:
+                raise ValueError(
+                    f"stale version: the config is now at version {exc.current}; "
+                    "re-read it with get_app_config and retry"
+                ) from None
             if result is None:
                 raise ValueError("config not found")
             write_audit(

@@ -188,6 +188,45 @@ def test_save_app_config_updates_and_bumps_version(app_client):
     assert result["config"]["layout"]["items"][0]["widget"] == "table"
 
 
+def test_save_app_config_expected_version_guards_stale_writes(app_client):
+    item_id, _ = _seed_config(app_client, owner_id=app_client.mock_user.id)
+
+    with app_client:
+        read = call_tool(app_client, "get_app_config", {"itemId": item_id})
+        assert read["version"] == 1
+
+        # version lue = version courante : accepté, la version avance
+        ok = call_tool(
+            app_client,
+            "save_app_config",
+            {"itemId": item_id, "config": _config_body(widget="table"), "expectedVersion": 1},
+        )
+        assert ok["version"] == 2
+
+        # même version lue rejouée : périmée, refusée, rien n'est écrit
+        error_text = call_tool_expecting_error(
+            app_client,
+            "save_app_config",
+            {"itemId": item_id, "config": _config_body(widget="map"), "expectedVersion": 1},
+        )
+        assert "stale version" in error_text
+        assert "version 2" in error_text
+
+        # sans expectedVersion : comportement historique (dernier écrivain gagne)
+        last = call_tool(
+            app_client,
+            "save_app_config",
+            {"itemId": item_id, "config": _config_body(widget="list")},
+        )
+        assert last["version"] == 3
+
+    with app_client.session_factory() as session:
+        current = configs_repo.get_config_by_item(session, item_id)
+    assert current is not None
+    assert current.version == 3
+    assert current.config.model_dump()["layout"]["items"][0]["widget"] == "list"
+
+
 def test_save_app_config_by_group_viewer_errors(app_client):
     from app.sharing.models import Group, GroupMember, ItemShare
 

@@ -283,6 +283,11 @@ def rollback_config(
         raise HTTPException(status_code=404, detail="config not found")
     _require_access(session, user=user, item_id=existing.itemId, action="write")
 
+    # REV-271 : volontairement SANS garde If-Match. Restaurer une révision est
+    # un geste explicite qui remplace l'état courant par une version choisie
+    # dans l'historique ; il ne peut pas « écraser sans le savoir ». Les
+    # éditeurs du shell relisent la config (donc la nouvelle version) dans
+    # `onRestored` pour que leur prochain PUT porte la bonne version.
     # Le rollback écrit une nouvelle version comme le ferait un PUT, mais
     # sans repasser par aucun validateur de payload — un trou théorique tant
     # que rien n'appelait cette route, réel depuis que le panneau
