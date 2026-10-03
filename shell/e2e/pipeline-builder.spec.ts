@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import { mockCollection, mockCore } from "./mocks";
 
 const OPS_CATALOG = {
@@ -232,18 +232,35 @@ test("un utilisateur relie une seconde source sur la poignée secondaire d'un tr
   const joinNode = nodes.nth(2);
   const writerNode = nodes.nth(3);
 
+  // Le geste de glisser entre poignées React Flow est la seule étape non
+  // déterministe (mousemove synthétiques parfois perdus : arête non créée,
+  // graphe invalide, « Enregistrer » grisé — flake vu 3 fois). On rejoue le
+  // geste tant que l'arête attendue n'existe pas, puis on l'asserte.
+  const edges = page.locator(".react-flow__edge");
+  const connect = async (from: Locator, to: Locator, expected: number) => {
+    await expect(async () => {
+      if ((await edges.count()) < expected) await from.dragTo(to);
+      await expect(edges).toHaveCount(expected, { timeout: 1500 });
+    }).toPass({ timeout: 15_000 });
+  };
   // Primaire : premier reader -> entrée primaire (gauche) du join.
-  await primaryReader
-    .locator(".react-flow__handle-right")
-    .dragTo(joinNode.locator(".react-flow__handle-left"));
+  await connect(
+    primaryReader.locator(".react-flow__handle-right"),
+    joinNode.locator(".react-flow__handle-left"),
+    1,
+  );
   // Secondaire : second reader -> entrée secondaire (haut) du join.
-  await secondaryReader
-    .locator(".react-flow__handle-right")
-    .dragTo(joinNode.locator(".react-flow__handle-top"));
+  await connect(
+    secondaryReader.locator(".react-flow__handle-right"),
+    joinNode.locator(".react-flow__handle-top"),
+    2,
+  );
   // join -> writer.
-  await joinNode
-    .locator(".react-flow__handle-right")
-    .dragTo(writerNode.locator(".react-flow__handle-left"));
+  await connect(
+    joinNode.locator(".react-flow__handle-right"),
+    writerNode.locator(".react-flow__handle-left"),
+    3,
+  );
 
   await primaryReader.click();
   await page.getByLabel("collectionId").selectOption("villes");
