@@ -557,12 +557,26 @@ export async function mockCore(page: Page) {
     });
   });
 
+  // P27.05 : un id non listé ici répond 404 bruyamment (console.error) au lieu
+  // d'une config « app » plausible — c'est ainsi que le test pipeline-builder
+  // a hang des mois (CLAUDE.md). Une spec qui a besoin d'un autre item mocke
+  // sa propre route (prioritaire) ou ajoute son id ici.
+  const KNOWN_CONFIG_ITEM_IDS = new Set(["1", "2", "3", "8", "9", "77", "map-1", "site-1"]);
   await page.route("**/configs/by-item/**", async (route) => {
     const method = route.request().method();
     // .split("?")[0] before .pop(): AppRuntimePage appends "?mode=runtime"
     // (SP-10a), which would otherwise leak into the id and miss every
     // savedConfigs lookup keyed by the plain item id.
     const itemId = route.request().url().split("?")[0].split("/").pop() ?? "";
+
+    if (method !== "DELETE" && !KNOWN_CONFIG_ITEM_IDS.has(itemId)) {
+      console.error(`[e2e mocks] ${method} /configs/by-item/${itemId} non mocké -> 404`);
+      await route.fulfill({
+        status: 404,
+        json: { type: "about:blank", title: "Not Found", status: 404, detail: "item non mocké" },
+      });
+      return;
+    }
 
     if (method === "DELETE") {
       deleted.add(itemId);

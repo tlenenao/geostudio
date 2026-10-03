@@ -505,6 +505,9 @@ test("the analytics context in the URL restores on reload", async ({ page }) => 
 // canaux coexistent (spec §5).
 // -------------------------------------------------------------------------
 test("an existing app without interactions never auto-filters on click", async ({ page }) => {
+  // P27.04 : horloge pilotée — la preuve négative avance le temps (debounce
+  // compris) au lieu de dormir.
+  await page.clock.install();
   await mockCore(page);
 
   await page.route("**/collections/analytics/schema", async (route) => {
@@ -597,7 +600,7 @@ test("an existing app without interactions never auto-filters on click", async (
   // même vide, pour une app qui ne passe jamais en mode auto. On laisse passer
   // le délai du debounce (EXTENT_DEBOUNCE_MS = 500ms) pour s'assurer qu'aucune
   // écriture différée ne survient.
-  await page.waitForTimeout(700);
+  await page.clock.fastForward(1000);
   expect(new URL(page.url()).searchParams.has("ctx")).toBe(false);
 });
 
@@ -1799,6 +1802,7 @@ test("sankey, treemap and sunburst render from a multi-field groupBy dataset (SP
 test("a histogram renders binned data and never cross-filters on click (SP-14f)", async ({
   page,
 }) => {
+  await page.clock.install();
   await mockCore(page);
   await page.route("**/collections/pops/schema", async (route) => {
     await route.fulfill({
@@ -1915,7 +1919,7 @@ test("a histogram renders binned data and never cross-filters on click (SP-14f)"
   // a comfortable margin; x:0.72/y:0.45 sits well inside it.
   const secondBar = { x: box.width * 0.72, y: box.height * 0.45 };
   await chart.click({ position: secondBar });
-  await page.waitForTimeout(300); // no debounce/refetch to await — proving nothing fires
+  await page.clock.fastForward(1000); // vide tout timer différé : prouve qu'aucun refetch ne part
 
   // Primary assertion: the table — a real consuming widget — still shows
   // every original row (it never narrowed), not just "no request was seen".
