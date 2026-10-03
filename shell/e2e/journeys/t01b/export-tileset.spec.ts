@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { bug, focusDesc, getA11ySeed, go, seriousViolations, session } from "./helpers";
+import { focusDesc, getA11ySeed, go, seriousViolations, session } from "./helpers";
 
 test.setTimeout(120_000);
 
@@ -21,36 +21,34 @@ test.describe("t01b export d'app (appexport allumé)", () => {
   });
 
   // t01b-012 : finding. Bascule de panneau en ligne sans aria-expanded/aria-controls (REV-088).
-  bug(
-    "t01b-012 : le déclencheur « Exporter » porte aria-expanded et aria-controls",
-    async ({ browser }) => {
-      const s = await getA11ySeed();
-      const { ctx, page } = await session(browser, "creator");
-      await go(page, `/apps/${s.appId}/edit`, 3000);
-      const trigger = page.getByRole("button", { name: "Exporter", exact: true });
-      await trigger.click();
-      expect(await trigger.getAttribute("aria-expanded")).toBe("true");
-      expect(await trigger.getAttribute("aria-controls")).toBeTruthy();
-      await ctx.close();
-    },
-  );
+  test("t01b-012 : le déclencheur « Exporter » porte aria-expanded et aria-controls", async ({
+    browser,
+  }) => {
+    const s = await getA11ySeed();
+    const { ctx, page } = await session(browser, "creator");
+    await go(page, `/apps/${s.appId}/edit`, 3000);
+    const trigger = page.getByRole("button", { name: "Exporter", exact: true });
+    await trigger.click();
+    expect(await trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(await trigger.getAttribute("aria-controls")).toBeTruthy();
+    await ctx.close();
+  });
 
   // t01b-013 : finding. Choisir un mode ferme le panneau, désactive le déclencheur : le focus
   // tombe sur <body> et le clavier repart du début de la page.
-  bug(
-    "t01b-013 : après le choix d'un mode d'export, le focus reste dans l'éditeur (pas sur body)",
-    async ({ browser }) => {
-      const s = await getA11ySeed();
-      const { ctx, page } = await session(browser, "creator");
-      await go(page, `/apps/${s.appId}/edit`, 3000);
-      await page.getByRole("button", { name: "Exporter", exact: true }).click();
-      await page.getByRole("button", { name: /statique/i }).focus();
-      await page.keyboard.press("Enter");
-      await page.waitForTimeout(2500);
-      expect(await focusDesc(page)).not.toBe("body");
-      await ctx.close();
-    },
-  );
+  test("t01b-013 : après le choix d'un mode d'export, le focus reste dans l'éditeur (pas sur body)", async ({
+    browser,
+  }) => {
+    const s = await getA11ySeed();
+    const { ctx, page } = await session(browser, "creator");
+    await go(page, `/apps/${s.appId}/edit`, 3000);
+    await page.getByRole("button", { name: "Exporter", exact: true }).click();
+    await page.getByRole("button", { name: /statique/i }).focus();
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(2500);
+    expect(await focusDesc(page)).not.toBe("body");
+    await ctx.close();
+  });
 });
 
 test.describe("t01b tileset 3D (tileset3d allumé)", () => {
@@ -112,28 +110,26 @@ test.describe("t01b tileset 3D (tileset3d allumé)", () => {
   }
 
   // t01b-014 : finding. Progression « x / y » et « Validation… » sont des <p> inertes.
-  bug(
-    "t01b-014 : la progression d'envoi et la phase de validation sont annoncées (role=status / aria-live)",
-    async ({ browser }) => {
-      const { ctx, page } = await session(browser, "creator");
-      await uploadWithMockedCore(page);
-      const validating = page.getByText(/Validation/i);
-      await expect(validating).toBeVisible();
-      const live = await validating.evaluate(
-        (e) => !!e.closest("[role=status],[role=alert],[aria-live]"),
-      );
-      expect(live).toBe(true);
-      await ctx.close();
-    },
-  );
+  test("t01b-014 : la progression d'envoi et la phase de validation sont annoncées (role=status / aria-live)", async ({
+    browser,
+  }) => {
+    const { ctx, page } = await session(browser, "creator");
+    await uploadWithMockedCore(page);
+    const validating = page.getByText(/Validation/i);
+    await expect(validating).toBeVisible();
+    const live = await validating.evaluate(
+      (e) => !!e.closest("[role=status],[role=alert],[aria-live]"),
+    );
+    expect(live).toBe(true);
+    await ctx.close();
+  });
 
   // t01b-015 : finding. Le bouton est conditionné par la capacité, pas par le privilège.
-  bug(
-    "t01b-015 : un lecteur (sans droit d'écriture) ne voit pas « Nouveau tileset 3D »",
-    async ({ browser }) => {
-      const { ctx, page } = await session(browser, "reader");
-      await expect(page.getByRole("button", { name: "Nouveau tileset 3D" })).toHaveCount(0);
-      await ctx.close();
-    },
-  );
+  test("t01b-015 : un lecteur (sans droit d'écriture) ne voit pas « Nouveau tileset 3D »", async ({
+    browser,
+  }) => {
+    const { ctx, page } = await session(browser, "reader");
+    await expect(page.getByRole("button", { name: "Nouveau tileset 3D" })).toHaveCount(0);
+    await ctx.close();
+  });
 });

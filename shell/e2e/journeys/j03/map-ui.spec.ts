@@ -170,12 +170,12 @@ test.describe("j03 éditeur de carte — symbologie, popups, terrain", () => {
     await openMap(page, pub.itemId);
     await page.getByLabel("Activer le terrain 3D").check();
     await expect(page.getByLabel("URL de tuiles terrain")).toBeVisible();
-    await expect(page.getByLabel("Exaggeration du terrain")).toBeVisible();
+    await expect(page.getByLabel("Exagération du relief")).toBeVisible();
     await expect(page.getByText("DEM hébergé")).toHaveCount(0);
   });
 
-  bug("j03-014 : le champ d'exagération du terrain est libellé en français", async ({ page }) => {
-    // Défaut j03-014 : libellé « Exaggeration » en dur (TerrainPanel.tsx) et aria « Exaggeration du terrain ».
+  test("j03-014 : le champ d'exagération du terrain est libellé en français", async ({ page }) => {
+    // Défaut j03-014 : libellé « Exaggeration » en dur (TerrainPanel.tsx) et aria « Exagération du relief ».
     await openMap(page, pub.itemId);
     await page.getByLabel("Activer le terrain 3D").check();
     await expect(page.getByText("Exaggeration", { exact: true })).toHaveCount(0);

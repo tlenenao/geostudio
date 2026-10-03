@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { bug, getA11ySeed, go, newSession, type Session } from "./helpers";
+import { getA11ySeed, go, newSession, type Session } from "./helpers";
 
 test.describe("panneaux et formulaires d'administration (admin)", () => {
   let s: Session;
@@ -17,7 +17,7 @@ test.describe("panneaux et formulaires d'administration (admin)", () => {
     await expect(btn).toHaveAttribute("aria-expanded", "true");
   });
 
-  bug("t01-017 : « Ajouter un rôle » expose aria-expanded/aria-controls", async () => {
+  test("t01-017 : « Ajouter un rôle » expose aria-expanded/aria-controls", async () => {
     // Finding t01-017 : bascule d'un formulaire en ligne sans état exposé (cf. REV-088).
     await go(s.page, "/admin/roles", 2000);
     const btn = s.page.getByRole("button", { name: "Ajouter un rôle" });
@@ -26,7 +26,7 @@ test.describe("panneaux et formulaires d'administration (admin)", () => {
     expect(await btn.getAttribute("aria-controls")).not.toBeNull();
   });
 
-  bug("t01-018 : le bouton « Enregistrer » d'un formulaire invalide dit pourquoi", async () => {
+  test("t01-018 : le bouton « Enregistrer » d'un formulaire invalide dit pourquoi", async () => {
     // Finding t01-018 : <button disabled> sans aria-describedby ; champ « Nom » sans aria-required.
     await go(s.page, "/admin/roles", 2000);
     await s.page.getByRole("button", { name: "Ajouter un rôle" }).click();
