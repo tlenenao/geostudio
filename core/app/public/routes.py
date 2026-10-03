@@ -214,11 +214,16 @@ def public_item_thumbnail(
         raise HTTPException(status_code=404, detail="no thumbnail")
     content, content_type = store.read(key)
     # nosniff : un contenu uploadé servi sans authentification ne doit jamais
-    # être interprété comme HTML.
+    # être interprété comme HTML ; sandbox neutralise un SVG scripté (image/*
+    # est accepté à l'upload) ouvert directement dans l'origine du cœur.
     return Response(
         content=content,
         media_type=content_type,
-        headers={**_CACHE, "X-Content-Type-Options": "nosniff"},
+        headers={
+            **_CACHE,
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; sandbox",
+        },
     )
 
 

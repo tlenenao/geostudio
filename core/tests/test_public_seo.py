@@ -261,6 +261,8 @@ def test_item_social_preview_with_public_thumbnail(client):
     img = client.get(f"/v1/public/items/{item_id}/thumbnail")
     assert img.status_code == 200 and img.content == b"PNGDATA"
     assert img.headers["x-content-type-options"] == "nosniff"
+    # un SVG uploadé (image/*) ne doit jamais exécuter de script dans l'origine du cœur
+    assert "sandbox" in img.headers["content-security-policy"]
     listed = client.get("/v1/public/items").json()["items"][0]
     assert listed["thumbnailUrl"] == f"/public/items/{item_id}/thumbnail"
 
