@@ -142,6 +142,36 @@ describe("contraste WCAG AA (texte normal, seuil 4.5)", () => {
   });
 });
 
+describe("contraste des surfaces teintées et des contours (P33.07, P33.08)", () => {
+  const AMBIANCES: [string, Map<string, string>][] = [
+    ["ambiance claire", valuesOf(block(":root {"))],
+    ["ambiance sombre", valuesOf(block(':root[data-theme="dark"]'))],
+  ];
+  const SURFACES = ["background", "surface", "raised", "sunken", "accent-soft"];
+  const TINTS = ["warn-soft", "danger-soft", "ok-soft", "ai-soft"];
+
+  it.each(AMBIANCES)(
+    "%s : ink-3 et warn >= 4.5:1 sur toutes les surfaces où ils servent",
+    (_l, v) => {
+      for (const fg of ["ink-3", "warn"])
+        for (const bg of [...SURFACES, ...(fg === "warn" ? ["warn-soft"] : TINTS)]) {
+          const r = contrastRatio(v.get(fg) as string, v.get(bg) as string);
+          expect(r, `--gs-${fg} sur --gs-${bg} : ${r.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
+        }
+    },
+  );
+
+  it.each(AMBIANCES)(
+    "%s : le contour des champs (--gs-control) >= 3:1 sur background/surface/raised/sunken",
+    (_l, v) => {
+      for (const bg of ["background", "surface", "raised", "sunken"]) {
+        const r = contrastRatio(v.get("control") as string, v.get(bg) as string);
+        expect(r, `--gs-control sur --gs-${bg} : ${r.toFixed(2)}:1`).toBeGreaterThanOrEqual(3);
+      }
+    },
+  );
+});
+
 describe("réduction de mouvement (D42, prefers-reduced-motion)", () => {
   it("neutralise globalement animations et transitions quand le visiteur préfère un mouvement réduit", () => {
     const mediaBlock = block("@media (prefers-reduced-motion: reduce)");

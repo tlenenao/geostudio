@@ -26,7 +26,7 @@ import { AnalyticsContextIndicator } from "./AnalyticsContextIndicator";
 import { ExplorerProvider } from "./ExplorerContext";
 import { ExplorerDrawer } from "./ExplorerDrawer";
 import { useAuth } from "../auth/useAuth";
-import { themeToCssVars } from "./theme";
+import { themeToCssVars, themeToShellTokens } from "./theme";
 
 // A message's payload is whatever shape its emitter chose (Button emits
 // {widgetId}, Filtre emits {[field]: value}, …). For string/number/bool/date
@@ -199,7 +199,7 @@ export function AppRenderer({
     <div
       ref={containerRef}
       className="flex h-full w-full flex-col bg-[var(--gs-color-background)] font-[var(--gs-font)]"
-      style={themeToCssVars(config.theme)}
+      style={{ ...themeToShellTokens(config.theme), ...themeToCssVars(config.theme) }}
     >
       {storyMode && (
         <nav className="flex items-center gap-2 border-b border-[var(--gs-color-border)] p-2 text-sm">

@@ -9,6 +9,7 @@ import { Radio } from "../ui/kit/Radio";
 import { SettingsNav } from "../shell/chrome/SettingsNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
+import { readThemePreference, saveThemePreference, type ThemePreference } from "../lib/theme";
 
 function ProfileSection() {
   const meQuery = useMe();
@@ -77,6 +78,27 @@ function NotificationsSection() {
   );
 }
 
+function AppearanceSection() {
+  const [theme, setTheme] = useState<ThemePreference>(readThemePreference);
+  return (
+    <section className="flex flex-col gap-2">
+      <h2 className="text-base font-semibold text-ink">{t("settings.appearanceTitle")}</h2>
+      <Radio.Group
+        aria-label={t("settings.appearanceTitle")}
+        value={theme}
+        onValueChange={(value) => {
+          setTheme(value as ThemePreference);
+          saveThemePreference(value as ThemePreference);
+        }}
+      >
+        <Radio.Item value="auto">{t("settings.appearanceAuto")}</Radio.Item>
+        <Radio.Item value="light">{t("settings.appearanceLight")}</Radio.Item>
+        <Radio.Item value="dark">{t("settings.appearanceDark")}</Radio.Item>
+      </Radio.Group>
+    </section>
+  );
+}
+
 function AccountSection() {
   const config = useConfig();
   if (config.authMode === "mock") return null;
@@ -112,6 +134,7 @@ export function SettingsPage() {
               <h1 className="text-lg font-bold text-ink">{t("settings.heading")}</h1>
               <ProfileSection />
               <NotificationsSection />
+              <AppearanceSection />
               <AccountSection />
             </div>
           ),

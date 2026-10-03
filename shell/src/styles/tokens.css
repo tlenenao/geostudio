@@ -27,7 +27,7 @@
   --gs-background: #eff2f1;
   --gs-surface: #fbfcfb;
   --gs-text: #0e1a20;
-  --gs-muted: #5f6f75;
+  --gs-muted: #56666c;
   --gs-border: #cfd8d6;
 
   /* Surfaces propres au studio */
@@ -37,11 +37,15 @@
   /* Encre à trois niveaux */
   --gs-ink: #0e1a20;
   --gs-ink-2: #3b4c54;
-  --gs-ink-3: #5f6f75;
+  --gs-ink-3: #56666c;
 
   /* Filets */
   --gs-rule: #cfd8d6;
   --gs-rule-2: #e2e8e6;
+
+  /* Contour des contrôles de saisie : 3:1 minimum contre le fond adjacent
+     (WCAG 1.4.11), ce que --gs-rule (filet décoratif) n'atteint pas */
+  --gs-control: #76868c;
 
   /* Accent — un seul, emprunté à l'hydrographie des planches topographiques */
   --gs-accent: #0b6e77;
@@ -56,7 +60,7 @@
   /* Sémantiques — distinctes de l'accent, jamais décoratives */
   --gs-ok: #2a6a50;
   --gs-ok-soft: #ddeee5;
-  --gs-warn: #8e6410;
+  --gs-warn: #85600f;
   --gs-warn-soft: #f7ebd1;
   --gs-danger: #9a2c45;
   --gs-danger-soft: #f7e1e6;
@@ -80,7 +84,7 @@
     --gs-background: #0a1316;
     --gs-surface: #101a1e;
     --gs-text: #e7eeec;
-    --gs-muted: #7c8f94;
+    --gs-muted: #8a9ca1;
     --gs-border: #243339;
 
     --gs-raised: #182629;
@@ -88,10 +92,11 @@
 
     --gs-ink: #e7eeec;
     --gs-ink-2: #afc0c2;
-    --gs-ink-3: #7c8f94;
+    --gs-ink-3: #8a9ca1;
 
     --gs-rule: #243339;
     --gs-rule-2: #1a272c;
+    --gs-control: #667a80;
 
     --gs-accent: #4fb3bc;
     --gs-accent-soft: #0f3238;
@@ -123,7 +128,7 @@
   --gs-background: #0a1316;
   --gs-surface: #101a1e;
   --gs-text: #e7eeec;
-  --gs-muted: #7c8f94;
+  --gs-muted: #8a9ca1;
   --gs-border: #243339;
 
   --gs-raised: #182629;
@@ -131,10 +136,11 @@
 
   --gs-ink: #e7eeec;
   --gs-ink-2: #afc0c2;
-  --gs-ink-3: #7c8f94;
+  --gs-ink-3: #8a9ca1;
 
   --gs-rule: #243339;
   --gs-rule-2: #1a272c;
+  --gs-control: #667a80;
 
   --gs-accent: #4fb3bc;
   --gs-accent-soft: #0f3238;
@@ -178,6 +184,7 @@
   --color-ink-3: var(--gs-ink-3);
   --color-rule: var(--gs-rule);
   --color-rule-2: var(--gs-rule-2);
+  --color-control: var(--gs-control);
   --color-accent: var(--gs-accent);
   --color-accent-soft: var(--gs-accent-soft);
   --color-accent-ink: var(--gs-accent-ink);

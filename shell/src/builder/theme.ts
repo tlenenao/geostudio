@@ -31,3 +31,24 @@ export function themeToCssVars(theme: Theme): CSSProperties {
     "--gs-space": theme.space ?? DEFAULT_SPACE,
   } as CSSProperties;
 }
+
+// P33.02 : la toile d'une app porte son propre thème (clair par défaut) ; les
+// classes sémantiques du shell (text-ink-2, bg-surface…) qui s'y trouvent
+// doivent le suivre, sinon un shell en thème sombre y dépose du texte clair
+// sur fond clair. On rebranche donc les jetons du shell sur ceux de l'app.
+export function themeToShellTokens(theme: Theme): CSSProperties {
+  const colors = { ...DEFAULT_THEME_COLORS, ...theme.colors };
+  return {
+    "--gs-background": colors.background,
+    "--gs-surface": colors.surface,
+    "--gs-raised": colors.background,
+    "--gs-ink": colors.text,
+    "--gs-ink-2": colors.muted,
+    "--gs-ink-3": colors.muted,
+    "--gs-muted": colors.muted,
+    "--gs-rule": colors.border,
+    "--gs-rule-2": colors.border,
+    "--gs-control": colors.muted,
+    color: colors.text,
+  } as CSSProperties;
+}
