@@ -62,6 +62,7 @@ from app.pipelines.errors import (  # noqa: F401 (réexportés pour compatibilit
     PipelineRuntimeError,
 )
 from app.pipelines.expr_validation import validate_bounded_expr
+from app.pipelines.ops.contracts import BINARY_OPS, OP_PARAMS
 from app.pipelines.ops.schemas import (
     ReaderCollectionParams,
     ReaderConnectorBigQueryParams,
@@ -73,16 +74,9 @@ from app.pipelines.ops.schemas import (
     ReaderConnectorSnowflakeParams,
     ReaderFileParams,
     TransformAggregateParams,
-    TransformCountWithinParams,
     TransformDeriveParams,
-    TransformDetectChangesParams,
     TransformFilterParams,
     TransformH3AggregateParams,
-    TransformIntersectionParams,
-    TransformJoinParams,
-    TransformMergeChildrenParams,
-    TransformMergeParams,
-    TransformSnapToLayerParams,
     WriterCollectionParams,
     WriterDatasetParams,
     WriterExportParams,
@@ -93,15 +87,8 @@ from app.roles.privileges import Privilege
 from app.sharing.authorization import can
 from app.users.models import User
 
-_JOIN_PARAM_MODELS: dict[str, type] = {
-    "transform.join": TransformJoinParams,
-    "transform.intersection": TransformIntersectionParams,
-    "transform.countWithin": TransformCountWithinParams,
-    "transform.merge": TransformMergeParams,
-    "transform.detectChanges": TransformDetectChangesParams,
-    "transform.mergeChildren": TransformMergeChildrenParams,
-    "transform.snapToLayer": TransformSnapToLayerParams,
-}
+# Dérivé de BINARY_OPS (REV-198) : une op binaire ajoutée au registre est ici d'office.
+_JOIN_PARAM_MODELS: dict[str, type] = {op: OP_PARAMS[op] for op in BINARY_OPS}
 
 
 def _qi(name: str) -> str:

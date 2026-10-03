@@ -164,3 +164,17 @@ def test_operations_registry_has_fifty_one_entries_after_vague_2():
     from app.pipelines.ops.contracts import OPERATIONS
 
     assert len(OPERATIONS) == 59
+
+
+def test_binary_ops_are_covered_by_the_parallel_tables():
+    # REV-198 : runtime._JOIN_PARAM_MODELS est dérivé de BINARY_OPS ;
+    # config_validation._COLLECTION_PARAM_FIELD (qui contient aussi reader/writer) doit
+    # désigner `withCollectionId` pour chaque op binaire.
+    from app.pipelines.config_validation import _COLLECTION_PARAM_FIELD
+    from app.pipelines.ops.contracts import BINARY_OPS, OP_PARAMS
+    from app.pipelines.runtime import _JOIN_PARAM_MODELS
+
+    assert set(_JOIN_PARAM_MODELS) == BINARY_OPS
+    assert all(_JOIN_PARAM_MODELS[op] is OP_PARAMS[op] for op in BINARY_OPS)
+    with_collection = {op for op, f in _COLLECTION_PARAM_FIELD.items() if f == "withCollectionId"}
+    assert BINARY_OPS <= with_collection
