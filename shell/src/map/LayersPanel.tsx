@@ -213,6 +213,11 @@ function LayerPaintAdvancedEditor({
   );
 }
 
+// Boutons-icônes d'une couche : 24 px minimum (WCAG 2.5.8), 44 px sur pointeur
+// grossier (P31.08).
+const ICON_BTN =
+  "inline-flex min-h-6 min-w-6 items-center justify-center px-1 pointer-coarse:min-h-11 pointer-coarse:min-w-11";
+
 export function LayersPanel({
   layers,
   onChange,
@@ -316,7 +321,7 @@ export function LayersPanel({
               type="button"
               aria-label={t("layersPanel.moveUpAria", { title: layer.title })}
               disabled={i === 0}
-              className="px-1 disabled:opacity-30"
+              className={`${ICON_BTN} disabled:opacity-30`}
               onClick={() => move(i, -1)}
             >
               ↑
@@ -325,7 +330,7 @@ export function LayersPanel({
               type="button"
               aria-label={t("layersPanel.moveDownAria", { title: layer.title })}
               disabled={i === layers.length - 1}
-              className="px-1 disabled:opacity-30"
+              className={`${ICON_BTN} disabled:opacity-30`}
               onClick={() => move(i, 1)}
             >
               ↓
@@ -337,7 +342,7 @@ export function LayersPanel({
                   ? t("layersPanel.hideAria", { title: layer.title })
                   : t("layersPanel.showAria", { title: layer.title })
               }
-              className="px-1"
+              className={ICON_BTN}
               onClick={() => toggle(layer.id)}
             >
               {layer.visible ? "👁" : "🚫"}
@@ -345,7 +350,7 @@ export function LayersPanel({
             <button
               type="button"
               aria-label={t("layersPanel.removeAria", { title: layer.title })}
-              className="px-1 text-danger"
+              className={`${ICON_BTN} text-danger`}
               onClick={() => remove(layer.id)}
             >
               ✕

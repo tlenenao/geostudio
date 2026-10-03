@@ -53,3 +53,57 @@ test("le bouton « Mesurer » a une cible tactile d'au moins 24x24px", async ({ 
   expect(box?.width).toBeGreaterThanOrEqual(24);
   expect(box?.height).toBeGreaterThanOrEqual(24);
 });
+
+// P31.05 / P31.11 : sur pointeur grossier le bouton Fermer du popup offre 44 px,
+// et un popup ouvert près du bord gauche reste dans le cadre de la carte.
+test("le popup tactile a un bouton Fermer de 44 px et reste dans la carte près du bord", async ({
+  page,
+}) => {
+  await mockCore(page);
+  await page.route("**/collections/communes/tiles/**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/vnd.mapbox-vector-tile",
+      body: TILE,
+    }),
+  );
+  await page.goto("/maps/map-1");
+  const canvas = page.locator("canvas.maplibregl-canvas").first();
+  await expect(canvas).toBeVisible();
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error("map canvas has no bounding box");
+
+  const popup = page.getByRole("dialog", { name: "Attributs de l'entité" });
+  await expect(async () => {
+    await canvas.tap({ position: { x: 6, y: box.height / 4 } });
+    await expect(popup).toBeVisible({ timeout: 300 });
+  }).toPass({ timeout: 10_000 });
+
+  const close = (await popup.getByRole("button", { name: "Fermer" }).boundingBox())!;
+  expect(close.width).toBeGreaterThanOrEqual(44);
+  expect(close.height).toBeGreaterThanOrEqual(44);
+  const pb = (await popup.boundingBox())!;
+  expect(pb.x).toBeGreaterThanOrEqual(box.x);
+  expect(pb.y).toBeGreaterThanOrEqual(box.y);
+  expect(pb.x + pb.width).toBeLessThanOrEqual(box.x + box.width + 1);
+});
+
+// P31.06 : le tracé libre au doigt pose une forme (au lieu de déplacer la carte).
+test("le tracé libre au doigt pose une forme", async ({ page }) => {
+  await mockCore(page);
+  await page.goto("/maps/map-1");
+  const canvas = page.locator("canvas.maplibregl-canvas").first();
+  await expect(canvas).toBeVisible();
+  const box = (await canvas.boundingBox())!;
+  await page.getByRole("button", { name: "Croquis" }).tap();
+  await page.getByRole("button", { name: "Tracé libre" }).tap();
+
+  const cdp = await page.context().newCDPSession(page);
+  const at = (k: number) => [{ x: box.x + 60 + 12 * k, y: box.y + box.height / 2 + 6 * k, id: 0 }];
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: at(0) });
+  for (let k = 1; k <= 10; k++) {
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: at(k) });
+  }
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await expect(page.getByText(/1 tracé/)).toBeVisible();
+});

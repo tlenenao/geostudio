@@ -5,6 +5,11 @@ import { t } from "../i18n";
 import { getWidget } from "./registry";
 import { GRID_COLS, positionsFor, styleForPos, type Breakpoint } from "./grid";
 
+// Commandes d'un widget sélectionné : 24 px minimum (WCAG 2.5.8), 44 px sur
+// pointeur grossier (P31.07).
+const CTL =
+  "min-h-6 min-w-6 px-1 text-xs text-surface pointer-coarse:min-h-11 pointer-coarse:min-w-11";
+
 export function GridCanvas({
   items,
   breakpoint,
@@ -65,7 +70,7 @@ export function GridCanvas({
             data-col={pos.x}
             data-row={pos.y}
             style={styleForPos(pos)}
-            className={`relative overflow-hidden rounded ${selected ? "outline outline-2 outline-blue-500" : ""}`}
+            className={`relative rounded ${selected ? "outline outline-2 outline-blue-500" : ""}`}
           >
             {editable && (
               <button
@@ -78,15 +83,21 @@ export function GridCanvas({
                 }}
               />
             )}
-            <div className={`h-full w-full p-1 ${editable ? "pointer-events-none" : ""}`}>
+            <div
+              className={`h-full w-full overflow-hidden rounded p-1 ${editable ? "pointer-events-none" : ""}`}
+            >
               {renderItem(item)}
             </div>
+            {/* Commandes hors du clipping du widget (seul son contenu est
+                overflow-hidden), sous la cellule et avec retour à la ligne, pour
+                que les 24/44 px ne soient ni rognés ni masqués par la hauteur de
+                ligne de 40 px (P31.07). */}
             {selected && (
-              <div className="absolute right-0 top-0 z-20 flex gap-0.5">
+              <div className="absolute right-0 top-full z-30 flex w-max max-w-[min(24rem,90vw)] flex-wrap justify-end gap-0.5 rounded bg-surface p-0.5 shadow-md">
                 <button
                   type="button"
                   aria-label={t("gridCanvas.moveLeft", { name: nameOf(item) })}
-                  className="bg-accent px-1 text-xs text-surface"
+                  className={`bg-accent ${CTL}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     onMoveItem(item.id, -1, 0);
@@ -97,7 +108,7 @@ export function GridCanvas({
                 <button
                   type="button"
                   aria-label={t("gridCanvas.moveRight", { name: nameOf(item) })}
-                  className="bg-accent px-1 text-xs text-surface"
+                  className={`bg-accent ${CTL}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     onMoveItem(item.id, 1, 0);
@@ -108,7 +119,7 @@ export function GridCanvas({
                 <button
                   type="button"
                   aria-label={t("gridCanvas.moveDown", { name: nameOf(item) })}
-                  className="bg-accent px-1 text-xs text-surface"
+                  className={`bg-accent ${CTL}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     onMoveItem(item.id, 0, 1);
@@ -119,7 +130,7 @@ export function GridCanvas({
                 <button
                   type="button"
                   aria-label={t("gridCanvas.moveUp", { name: nameOf(item) })}
-                  className="bg-accent px-1 text-xs text-surface"
+                  className={`bg-accent ${CTL}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     onMoveItem(item.id, 0, -1);
@@ -132,7 +143,7 @@ export function GridCanvas({
                     <button
                       type="button"
                       aria-label={t("gridCanvas.widen", { name: nameOf(item) })}
-                      className="bg-accent px-1 text-xs text-surface"
+                      className={`bg-accent ${CTL}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         onResizeItem(item.id, 1, 0);
@@ -143,7 +154,7 @@ export function GridCanvas({
                     <button
                       type="button"
                       aria-label={t("gridCanvas.narrow", { name: nameOf(item) })}
-                      className="bg-accent px-1 text-xs text-surface"
+                      className={`bg-accent ${CTL}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         onResizeItem(item.id, -1, 0);
@@ -154,7 +165,7 @@ export function GridCanvas({
                     <button
                       type="button"
                       aria-label={t("gridCanvas.taller", { name: nameOf(item) })}
-                      className="bg-accent px-1 text-xs text-surface"
+                      className={`bg-accent ${CTL}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         onResizeItem(item.id, 0, 1);
@@ -165,7 +176,7 @@ export function GridCanvas({
                     <button
                       type="button"
                       aria-label={t("gridCanvas.shorter", { name: nameOf(item) })}
-                      className="bg-accent px-1 text-xs text-surface"
+                      className={`bg-accent ${CTL}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         onResizeItem(item.id, 0, -1);
@@ -179,7 +190,7 @@ export function GridCanvas({
                   <button
                     type="button"
                     aria-label={t("gridCanvas.duplicate", { name: nameOf(item) })}
-                    className="bg-accent px-1 text-xs text-surface"
+                    className={`bg-accent ${CTL}`}
                     onClick={(e) => {
                       e.stopPropagation();
                       onDuplicateItem(item.id);
@@ -191,7 +202,7 @@ export function GridCanvas({
                 <button
                   type="button"
                   aria-label={t("gridCanvas.remove", { name: nameOf(item) })}
-                  className="bg-danger px-1 text-xs text-surface"
+                  className={`bg-danger ${CTL}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     onRemoveItem(item.id);

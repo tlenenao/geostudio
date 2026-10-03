@@ -241,24 +241,35 @@ test("« Terminer le polygone » n'apparaît qu'avec au moins trois sommets", ()
   expect(screen.getByRole("button", { name: "Terminer le polygone" })).toBeInTheDocument();
 });
 
-test("l'outil Texte demande le texte et l'affiche", () => {
-  const map = makeMapStub();
-  vi.stubGlobal("prompt", vi.fn().mockReturnValue("Point de rendez-vous"));
-  render(<MapMeasureSketchToolbar map={map as never} />);
+// P31.14 : la saisie passe par un champ de la barre, jamais window.prompt.
+function typeSketchText(map: ReturnType<typeof makeMapStub>, text: string | null) {
   fireEvent.click(screen.getByRole("button", { name: "Croquis" }));
   fireEvent.click(screen.getByRole("button", { name: "Texte" }));
   act(() => map.emit("click", { lngLat: { lng: 0, lat: 0 } }));
+  if (text === null) {
+    fireEvent.click(screen.getByRole("button", { name: "Annuler" }));
+    return;
+  }
+  fireEvent.change(screen.getByLabelText("Texte du marqueur :"), { target: { value: text } });
+  fireEvent.click(screen.getByRole("button", { name: "Ajouter" }));
+}
+
+test("l'outil Texte propose un champ de saisie et affiche le texte, sans window.prompt", () => {
+  const map = makeMapStub();
+  const prompt = vi.fn();
+  vi.stubGlobal("prompt", prompt);
+  render(<MapMeasureSketchToolbar map={map as never} />);
+  typeSketchText(map, "Point de rendez-vous");
   expect(screen.getByText("Point de rendez-vous")).toBeInTheDocument();
+  expect(prompt).not.toHaveBeenCalled();
 });
 
 test("un texte annulé n'enregistre rien", () => {
   const map = makeMapStub();
-  vi.stubGlobal("prompt", vi.fn().mockReturnValue(null));
   render(<MapMeasureSketchToolbar map={map as never} />);
-  fireEvent.click(screen.getByRole("button", { name: "Croquis" }));
-  fireEvent.click(screen.getByRole("button", { name: "Texte" }));
-  act(() => map.emit("click", { lngLat: { lng: 0, lat: 0 } }));
-  expect(screen.queryByText(/texte/)).not.toBeInTheDocument();
+  typeSketchText(map, null);
+  expect(screen.queryByLabelText("Texte du marqueur :")).not.toBeInTheDocument();
+  expect(screen.queryByText(/^1 texte$/)).not.toBeInTheDocument();
 });
 
 test("« Effacer tout » efface aussi les formes de croquis", () => {
@@ -423,13 +434,10 @@ test("un style non chargé ne fait rien lever et ne pose aucune couche", () => {
 // liste de la barre d'outils.
 test("une annotation texte atteint la source avec son texte, et sa couche est posée", () => {
   const map = makeMapStub();
-  vi.stubGlobal("prompt", vi.fn().mockReturnValue("Rendez-vous"));
   render(<MapMeasureSketchToolbar map={map as never} />);
   expect(map.layers.map((l) => l.id)).toContain("__sketch__text");
 
-  fireEvent.click(screen.getByRole("button", { name: "Croquis" }));
-  fireEvent.click(screen.getByRole("button", { name: "Texte" }));
-  act(() => map.emit("click", { lngLat: { lng: 0, lat: 0 } }));
+  typeSketchText(map, "Rendez-vous");
 
   const data = sketchData(map);
   expect(data?.features).toHaveLength(1);
@@ -448,4 +456,21 @@ test("sans glyphs dans le style, la couche de texte n'est pas posée et l'auteur
   ]);
   expect(spy).toHaveBeenCalledWith(expect.stringContaining("glyphs"));
   spy.mockRestore();
+});
+
+// P31.06 : au doigt, MapLibre n'émet que touchstart/move/end (jamais mouse*).
+test("le tracé libre fonctionne aux événements tactiles et suspend dragPan pendant l'outil", () => {
+  const map = makeMapStub();
+  const dragPan = { enable: vi.fn(), disable: vi.fn() };
+  render(<MapMeasureSketchToolbar map={{ ...map, dragPan } as never} />);
+  fireEvent.click(screen.getByRole("button", { name: "Croquis" }));
+  expect(dragPan.disable).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Tracé libre" }));
+  expect(dragPan.disable).toHaveBeenCalledTimes(1);
+  act(() => map.emit("touchstart", { lngLat: { lng: 0, lat: 0 } }));
+  act(() => map.emit("touchmove", { lngLat: { lng: 1, lat: 1 } }));
+  act(() => map.emit("touchend", {}));
+  expect(screen.getByText("1 tracé")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Rectangle" }));
+  expect(dragPan.enable).toHaveBeenCalledTimes(1);
 });
