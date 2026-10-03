@@ -101,7 +101,11 @@ def test_geojson_import_creates_queryable_collection_and_map_item(env):
         assert config is not None
         assert config.config.kind == "map"
         assert len(config.config.map.layers) == 1
-        assert result.collection_id in config.config.map.layers[0].url
+        layer = config.config.map.layers[0]
+        # P29.01 : couche géométrique = tuiles MVT (pas de plafond de page /items)
+        assert layer.kind == "vector"
+        assert result.collection_id in layer.tilesUrl
+        assert layer.sourceLayer == result.collection_id
 
     with Session() as s:
         rows = s.execute(

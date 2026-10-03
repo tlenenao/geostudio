@@ -399,6 +399,18 @@ def run_import(
         object_id=item.id,
         payload={"title": collection_title},
     )
+    # P29.01 : une couche « feature » (GeoJSON /items) est plafonnée à une page
+    # (100 entités) ; avec une géométrie on sert donc la collection en tuiles
+    # MVT, sans plafond de page. Sans géométrie, l'ancienne forme est conservée.
+    if col.geometry_column:
+        source: dict = {
+            "kind": "vector",
+            "tilesUrl": f"{core_base_url}/collections/{col.id}/tiles/{{z}}/{{x}}/{{y}}.mvt",
+            "sourceLayer": col.id,
+            "pkColumn": col.pk_column,
+        }
+    else:
+        source = {"kind": "feature", "url": f"{core_base_url}/collections/{col.id}/items"}
     config = BuilderConfig(
         kind="map",
         map=MapConfig(
@@ -409,8 +421,7 @@ def run_import(
                     id=str(uuid.uuid4()),
                     title=collection_title,
                     visible=True,
-                    kind="feature",
-                    url=f"{core_base_url}/collections/{col.id}/items",
+                    **source,
                     # P28.04/05 : collectionId -> emprise de l'item (bbox) ;
                     # geometryKind/renderAs -> rendu correct (sinon « fill »,
                     # invisible pour des points).
