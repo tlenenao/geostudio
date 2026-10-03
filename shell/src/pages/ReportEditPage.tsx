@@ -70,6 +70,7 @@ export function ReportEditPage({
   );
   const [saveError, setSaveError] = useState<string | null>(null);
   const baseVersionRef = useRef<number | undefined>(undefined);
+  const versionSeededRef = useRef(false);
   const [conflict, setConflict] = useState(false);
   // SP-B6d : même patron que MapEditorPage (Tâche 27) — `updateDraft`
   // centralise toute mutation du brouillon issue d'une action utilisateur ;
@@ -85,7 +86,9 @@ export function ReportEditPage({
   const { ConfirmLeaveDialog } = useDirtyGuard(hasUnsavedChanges);
 
   useEffect(() => {
-    if (pk !== null && configQuery.data) {
+    // Seed unique (REV-271) : un refetch ne remplace ni brouillon ni version.
+    if (pk !== null && configQuery.data && !versionSeededRef.current) {
+      versionSeededRef.current = true;
       setDraft(configQuery.data);
       baseVersionRef.current = configQuery.data.baseVersion;
     }

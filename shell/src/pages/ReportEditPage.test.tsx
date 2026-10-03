@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { ApiError } from "../api/ApiError";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { focusManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, Link, RouterProvider, useParams } from "react-router-dom";
@@ -430,6 +430,35 @@ test("REV-271 : persisted mode envoie la version lue puis celle que le cœur ren
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   await waitFor(() => expect(saveReportScheduleConfig).toHaveBeenCalledTimes(2));
   expect(saveReportScheduleConfig.mock.calls[1][1].baseVersion).toBe(4);
+});
+
+test("REV-271 : un refetch (retour d'onglet) ne remplace ni le brouillon ni la version de base", async () => {
+  const saveReportScheduleConfig = vi.fn().mockResolvedValue(4);
+  const getReportScheduleConfig = vi
+    .fn()
+    .mockResolvedValueOnce({ ...REPORT_PAYLOAD, baseVersion: 3 })
+    .mockResolvedValue({
+      ...REPORT_PAYLOAD,
+      refreshPolicy: { enabled: true, cron: "0 9 * * FRI" },
+      baseVersion: 9,
+    });
+  renderPage("r-1", {
+    getItem: vi.fn().mockResolvedValue(item),
+    getReportScheduleConfig,
+    listConfigRevisions: vi.fn().mockResolvedValue([]),
+    saveReportScheduleConfig,
+  });
+  const save = await screen.findByRole("button", { name: "Enregistrer" });
+  act(() => {
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+  });
+  await waitFor(() => expect(getReportScheduleConfig).toHaveBeenCalledTimes(2));
+  await act(async () => {});
+  await userEvent.click(save);
+  await waitFor(() => expect(saveReportScheduleConfig).toHaveBeenCalledTimes(1));
+  expect(saveReportScheduleConfig.mock.calls[0][1].baseVersion).toBe(3);
+  expect(saveReportScheduleConfig.mock.calls[0][1].refreshPolicy.cron).toBe("0 8 * * MON");
 });
 
 test("REV-271 : persisted mode — un 412 affiche le conflit ; « Recharger » reprend la version du cœur", async () => {

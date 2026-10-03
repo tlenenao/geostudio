@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { ApiError } from "../api/ApiError";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { focusManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import * as ToastPrimitive from "@radix-ui/react-toast";
@@ -321,6 +321,30 @@ test("REV-271 : un 412 affiche le conflit ; « Recharger » reprend la dernière
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   await waitFor(() => expect(saveMapConfig).toHaveBeenCalledTimes(2));
   expect(saveMapConfig.mock.calls[1][1].baseVersion).toBe(7);
+});
+
+test("REV-271 : un refetch (retour d'onglet) ne remplace ni le brouillon ni la version de base", async () => {
+  const saveMapConfig = vi.fn().mockResolvedValue(4);
+  const getMapConfig = vi
+    .fn()
+    .mockResolvedValueOnce({ ...config, baseVersion: 3 })
+    .mockResolvedValue({
+      ...config,
+      layers: [{ ...config.layers[0], title: "Ailleurs" }],
+      baseVersion: 9,
+    });
+  renderEditor({ getMapConfig, saveMapConfig, listLayerSources: vi.fn().mockResolvedValue([]) });
+  await screen.findAllByText("Couche A");
+  act(() => {
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+  });
+  await waitFor(() => expect(getMapConfig).toHaveBeenCalledTimes(2));
+  await act(async () => {});
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveMapConfig).toHaveBeenCalledTimes(1));
+  expect(saveMapConfig.mock.calls[0][1].baseVersion).toBe(3);
+  expect(saveMapConfig.mock.calls[0][1].layers[0].title).toBe("Couche A");
 });
 
 test("exportRender=1 hides the builder chrome (no save button/layer removal controls) and marks the page export-ready once the map idles", async () => {

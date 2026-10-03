@@ -65,6 +65,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
   };
   const { ConfirmLeaveDialog } = useDirtyGuard(hasUnsavedChanges);
   const baseVersionRef = useRef<number | undefined>(undefined);
+  const versionSeededRef = useRef(false);
   const mapViewRef = useRef<MapViewHandle>(null);
   const hasAutoFitted = useRef(false);
   // C1 (revue finale) : `onReady` (MapView.tsx:1017-1033/1063) ne se
@@ -80,10 +81,11 @@ export function MapEditorPage({ pk }: { pk: string }) {
   const exportEnabled = instanceQuery.data?.exportEnabled === true;
 
   useEffect(() => {
-    if (query.data) {
+    // Seed unique (REV-271) : un refetch (retour d'onglet) ne doit ni écraser
+    // le brouillon ni rebaser la version — sinon le 412 ne se déclenche jamais.
+    if (query.data && !versionSeededRef.current) {
+      versionSeededRef.current = true;
       setDraft(query.data);
-      // Le brouillon EST l'état serveur à cette version (cet effet réécrase
-      // le brouillon à chaque nouvelle donnée) : la version suit.
       baseVersionRef.current = query.data.baseVersion;
     }
   }, [query.data]);
