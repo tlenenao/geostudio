@@ -229,3 +229,26 @@ test.describe("réglage de thème", () => {
     await expect(html).not.toHaveAttribute("data-theme", /.+/);
   });
 });
+
+test("t01-001 : une route publique (embed) porte un <main>", async ({ page }) => {
+  await page.route("**/v1/share-links/*", (route) =>
+    route.fulfill({
+      json: { itemId: "app-1", title: "App", resourceType: "app", expiresAt: "2099-01-01" },
+    }),
+  );
+  await page.route("**/v1/configs/by-item/app-1*", (route) =>
+    route.fulfill({
+      json: {
+        config: {
+          kind: "app",
+          theme: {},
+          dataSources: [],
+          messages: [],
+          layout: { type: "grid", items: [] },
+        },
+      },
+    }),
+  );
+  await page.goto("/embed/tok");
+  await expect(page.locator("main")).toHaveCount(1);
+});

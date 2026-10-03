@@ -82,7 +82,7 @@ export function DatasetPage({ collectionId }: { collectionId: string }) {
   }
   const col = query.data;
   return (
-    <div className="flex h-full w-full flex-col gap-4 p-6">
+    <main className="flex h-full w-full flex-col gap-4 p-6">
       <header className="flex flex-col gap-1">
         <h1 className="text-xl font-bold text-ink">{col.title}</h1>
         <p className="text-sm text-ink-2">{col.description}</p>
@@ -99,6 +99,6 @@ export function DatasetPage({ collectionId }: { collectionId: string }) {
       <div className="h-[480px] w-full">
         <AppRenderer config={previewConfig(collectionId, attachmentField)} mode="runtime" />
       </div>
-    </div>
+    </main>
   );
 }

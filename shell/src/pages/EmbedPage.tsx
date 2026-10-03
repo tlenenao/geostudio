@@ -64,9 +64,9 @@ function EmbedAppRenderer({ itemId }: { itemId: string }) {
     );
   }
   return (
-    <div className="h-screen w-screen">
+    <main className="h-screen w-screen">
       <AppRenderer config={query.data} mode="runtime" />
-    </div>
+    </main>
   );
 }
 

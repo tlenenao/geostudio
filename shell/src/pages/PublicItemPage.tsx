@@ -48,8 +48,8 @@ export function PublicItemPage({ pk }: { pk: string }) {
     );
   }
   return (
-    <div className="h-full w-full">
+    <main className="h-full w-full">
       <AppRenderer config={configQuery.data} mode="runtime" />
-    </div>
+    </main>
   );
 }
