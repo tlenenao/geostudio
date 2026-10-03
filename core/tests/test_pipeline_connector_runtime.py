@@ -1241,6 +1241,33 @@ def test_materialize_blob_connector_accepts_path_inside_bucket_url(
     assert captured["file_glob"] == "prefix/sub/data.csv"
 
 
+@pytest.mark.parametrize(
+    ("path", "accepted"),
+    [("s3://bucket/x", True), ("s3://bucket-evil/x", False)],
+)
+def test_materialize_blob_connector_bucket_only_scope_name_boundary(
+    monkeypatch, conn, session, tenant, user, path, accepted
+):
+    """REV-197 : « s3://bucket » ne couvre pas « s3://bucket-evil » (préfixe terminé par « / »)."""
+    _blob_s3_secret(session, tenant, user, bucketUrl="s3://bucket")
+    captured: dict = {}
+    _patch_blob_internals(monkeypatch, captured)
+    params = ReaderConnectorBlobParams(secretName="s3-scoped", path=path, format="csv")
+    args = dict(
+        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
+        node_id="bb",
+        params=params,
+        view_name="node_bb",
+    )
+    if accepted:
+        connector_runtime.materialize_blob_connector(conn, **args)
+        assert captured["bucket_url"] == "s3://bucket"
+    else:
+        with pytest.raises(connector_runtime.ConnectorRuntimeError, match="outside"):
+            connector_runtime.materialize_blob_connector(conn, **args)
+        assert "bucket_url" not in captured
+
+
 def test_materialize_blob_connector_legacy_secret_without_bucket_url_fails_clearly(
     monkeypatch, conn, session, tenant, user
 ):
