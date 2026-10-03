@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **39 new pipeline operations**; the exposed catalogue is now 57 operations
+  (59 in the raw registry, which also holds `reader.file` and `writer.file`,
+  hidden unless `CORE_PIPELINE_FILE_IO_ENABLED=true`), all executed in DuckDB
+  or in-process with Shapely (BSD-3-Clause):
+  - 15 geometry/coordinate/SRID transformers: `swapCoordinates`,
+    `translateGeometry`, `scaleGeometry`, `rotateGeometry`, `createGeometry`,
+    `concatCoordinates`, `roundCoordinates`, `extractElevation`,
+    `extractDimension`, `countVertices`, `extractCoordinates`, `extractSrid`,
+    `setSrid`, `reprojectAttribute`, `formatCoordinates`;
+  - 11 schema/cardinality transformers: `bulkRemoveAttributes`,
+    `bulkRenameAttributes`, `scanSchema`, `explodeList`, `explodeGeometry`,
+    `exposeAttributes`, `validateAttributes`, `sort`, `detectChanges`,
+    `mergeChildren`, `mapSchema`;
+  - 4 readers: `reader.connector.bigquery`, `reader.connector.mssql`,
+    `reader.connector.oracle`, `reader.connector.blob`;
+  - 9 replacements for the removed QGIS engine (see *Removed* below):
+    `centroid`, `convexHull`, `simplify`, `boundingGeometry`, `snapToLayer`,
+    `resolveOverlaps`, `triangulate`, `densify`, `minimumBoundingCircle`.
+- `reader.file` / `writer.file` (local files through DuckDB spatial), disabled
+  by default and gated by `CORE_PIPELINE_FILE_IO_ENABLED`.
+- Optional `groupBy` (list of column names) on `transform.triangulate` and
+  `transform.minimumBoundingCircle`: one triangulation / one circle per group
+  instead of a single global result; empty (default) keeps the previous
+  behaviour. Degenerate inputs (NULL geometry, empty input, non-point geometry
+  for `triangulate`) now fail with an explicit pipeline error (HTTP 400 on
+  preview) instead of an internal error.
+
 ### Removed
 
 - **Breaking: the `transform.qgis` pipeline operation and its
