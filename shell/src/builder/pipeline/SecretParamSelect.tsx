@@ -120,6 +120,12 @@ const KIND_LABELS: Record<SecretPayload["kind"], string> = {
   gcs_credentials: t("secretParamSelect.kindGcsCredentials"),
 };
 
+const BUCKET_PLACEHOLDER_KEYS = {
+  s3_credentials: "secretParamSelect.bucketUrlPlaceholderS3",
+  azure_blob_credentials: "secretParamSelect.bucketUrlPlaceholderAz",
+  gcs_credentials: "secretParamSelect.bucketUrlPlaceholderGs",
+} as const;
+
 const ALL_KINDS = Object.keys(KIND_LABELS) as SecretPayload["kind"][];
 
 // Un formulaire minimal par variante, pas un générateur JSON Schema complet —
@@ -181,12 +187,18 @@ function SecretCreateForm({
           awsAccessKeyId: field("awsAccessKeyId"),
           awsSecretAccessKey: field("awsSecretAccessKey"),
           endpointUrl: field("endpointUrl") || undefined,
+          bucketUrl: field("bucketUrl"),
         };
       case "azure_blob_credentials":
-        return { kind, accountName: field("accountName"), accountKey: field("accountKey") };
+        return {
+          kind,
+          accountName: field("accountName"),
+          accountKey: field("accountKey"),
+          bucketUrl: field("bucketUrl"),
+        };
       case "gcs_credentials": {
         const parsed = JSON.parse(field("serviceAccountInfo") || "{}") as Record<string, unknown>;
-        return { kind, serviceAccountInfo: parsed };
+        return { kind, serviceAccountInfo: parsed, bucketUrl: field("bucketUrl") };
       }
       case "smtp":
         return {
@@ -452,6 +464,24 @@ function SecretCreateForm({
             onChange={(e) => setFieldValue("serviceAccountInfo", e.target.value)}
           />
         </label>
+      )}
+      {(kind === "s3_credentials" ||
+        kind === "azure_blob_credentials" ||
+        kind === "gcs_credentials") && (
+        <div className="flex flex-col gap-1 text-xs">
+          <label className="flex flex-col gap-1">
+            {t("secretParamSelect.bucketUrlLabel")}
+            <input
+              aria-label={t("secretParamSelect.bucketUrlAria")}
+              placeholder={t(BUCKET_PLACEHOLDER_KEYS[kind])}
+              required
+              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              value={field("bucketUrl")}
+              onChange={(e) => setFieldValue("bucketUrl", e.target.value)}
+            />
+          </label>
+          <span className="text-ink-2">{t("secretParamSelect.bucketUrlHelp")}</span>
+        </div>
       )}
       {kind === "smtp" && (
         <>

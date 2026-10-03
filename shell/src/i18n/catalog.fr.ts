@@ -1512,6 +1512,13 @@ export const fr = {
   "secretParamSelect.endpointUrlLabel": "URL du point de terminaison (optionnel)",
   "secretParamSelect.endpointUrlAria": "URL du point de terminaison",
   "secretParamSelect.endpointUrlPlaceholder": "https://s3.eu-west-1.amazonaws.com",
+  "secretParamSelect.bucketUrlLabel": "Bucket et préfixe",
+  "secretParamSelect.bucketUrlAria": "Bucket et préfixe",
+  "secretParamSelect.bucketUrlHelp":
+    "Le secret n'ouvre que ce bucket (et ce préfixe) : le chemin d'un lecteur blob doit en faire partie.",
+  "secretParamSelect.bucketUrlPlaceholderS3": "s3://mon-bucket/prefixe",
+  "secretParamSelect.bucketUrlPlaceholderAz": "az://mon-conteneur/prefixe",
+  "secretParamSelect.bucketUrlPlaceholderGs": "gs://mon-bucket/prefixe",
   "secretParamSelect.accountNameLabel": "Nom du compte",
   "secretParamSelect.accountNameAria": "Nom du compte",
   "secretParamSelect.accountNamePlaceholder": "moncompte",
