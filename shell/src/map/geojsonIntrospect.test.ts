@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   fetchFeatureCollection,
+  hostedToken,
   listFields,
   makeSampleFieldFn,
   makeStatQueryFn,
@@ -27,6 +28,24 @@ describe("fetchFeatureCollection", () => {
     const fc = { type: "FeatureCollection", features: [] };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => fc }));
     await expect(fetchFeatureCollection("https://ex.test/d.geojson")).resolves.toEqual(fc);
+  });
+
+  test("attache le jeton quand il est fourni (collection privée, P29.02)", async () => {
+    const f = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ type: "FeatureCollection", features: [] }),
+    });
+    vi.stubGlobal("fetch", f);
+    await fetchFeatureCollection("https://core.test/collections/c/items", "tok");
+    expect(f).toHaveBeenCalledWith("https://core.test/collections/c/items", {
+      headers: { Authorization: "Bearer tok" },
+    });
+  });
+
+  test("hostedToken : jeton seulement pour une URL servie par le cœur", () => {
+    const client = { getCoreUrl: () => "https://core.test", getAuthToken: () => "tok" };
+    expect(hostedToken(client, "https://core.test/collections/c/items")).toBe("tok");
+    expect(hostedToken(client, "https://evil.example/collections/c/items")).toBeUndefined();
   });
 
   test("rejects on a non-OK response", async () => {

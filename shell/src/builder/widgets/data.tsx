@@ -354,6 +354,11 @@ export function registerDataWidgets(): void {
             onSortChange={toggleSort}
             onRowClick={selectRecord}
           />
+          {data.total != null && data.total > data.records.length && (
+            <p role="status" className="pt-1 text-xs text-[var(--gs-color-muted)]">
+              {t("widgetData.truncated", { count: data.records.length, total: data.total })}
+            </p>
+          )}
           {pageCount > 1 && (
             <div className="mt-auto flex items-center justify-between pt-1 text-xs text-[var(--gs-color-muted)]">
               <button

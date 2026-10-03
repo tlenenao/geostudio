@@ -953,6 +953,7 @@ export const fr = {
   "widgetData.removeCalcColumn": "Supprimer la colonne",
   "widgetData.addCalcColumn": "Ajouter une colonne calculée",
   "widgetData.previous": "Précédent",
+  "widgetData.truncated": "Lignes affichées : {count} sur {total}",
   "widgetData.next": "Suivant",
   "widgetData.pageOf": "Page {page} / {totalPages}",
   // Valeur initiale d'une colonne calculée nouvellement ajoutée — littéral de
@@ -1653,6 +1654,8 @@ export const fr = {
   // DatasetDownloadButtons (builder)
   "datasetDownload.geojsonButton": "Télécharger GeoJSON",
   "datasetDownload.csvButton": "Télécharger CSV",
+  "datasetDownload.geojsonTruncated":
+    "Le GeoJSON ne contient que les {count} premières entités sur {total}.",
   "datasetDownload.tooLarge":
     "Jeu de données trop volumineux pour l'export CSV navigateur — export serveur à venir (SP-15).",
 

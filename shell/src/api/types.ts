@@ -632,6 +632,12 @@ export interface ItemClient {
   // schema://app-config (garanti identique par un test dédié côté cœur).
   getAppConfigSchema(): Promise<Record<string, unknown>>;
   queryDataSource(source: DataSource): Promise<DataRecord[]>;
+  // P29.05 : comme queryDataSource, avec le total réel (`numberMatched`) quand
+  // le cœur le donne — pour annoncer « N sur M » au lieu d'une troncature muette.
+  // Optionnel : les clients sans cœur (export statique, desktop) ne l'ont pas.
+  queryDataSourcePage?(
+    source: DataSource,
+  ): Promise<{ records: DataRecord[]; total: number | null }>;
   // Symétrique de sampleCollectionField, mais pour un hôte qui n'a qu'un
   // DataSource (pas déjà un collectionId résolu) : la couche `feature` du
   // widget carte de l'App Builder (Jenks, GAP-52 4/4). Résout collectionId
@@ -1036,6 +1042,8 @@ export type DataSourceState = {
   loading: boolean;
   error: boolean;
   records: DataRecord[];
+  // Total réel côté cœur (numberMatched), null/absent si inconnu.
+  total?: number | null;
   layer?: string;
   url?: string;
   datasetId?: string;

@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { ItemClient, MapLayer } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { t } from "../i18n";
 import { LayersPanel } from "./LayersPanel";
+import { publishViewport } from "./viewportTiles";
 
 // LayersPanel est un composant contrôlé pur (comme PopupEditor/
 // LayerPopupEditor) : sans état local qui répercute onChange dans layers,
@@ -452,4 +453,30 @@ test("n'affiche aucun badge quand la tuile n'est pas tronquée", async () => {
   renderPanelWithAuthToken([vectorLayer], vi.fn());
   await waitFor(() => expect(fetch).toHaveBeenCalled());
   expect(screen.queryByText(t("layersPanel.truncatedBadge"))).not.toBeInTheDocument();
+});
+
+// P29.06 (t03-010) : le badge suit les tuiles de la VUE, pas la seule 0/0/0.
+// En dernier du fichier : le viewport publié est global au module.
+test("sonde les tuiles visibles et le badge disparaît quand elles sont complètes", async () => {
+  const truncatedRoot = (url: string) => url.endsWith("/0/0/0.mvt");
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        new Response(new Uint8Array(), {
+          status: 200,
+          headers: truncatedRoot(url) ? { "X-Tile-Truncated": "true" } : {},
+        }),
+      ),
+    ),
+  );
+  const { unmount } = renderPanelWithAuthToken([vectorLayer], vi.fn());
+  expect(await screen.findByText(t("layersPanel.truncatedBadge"))).toBeInTheDocument();
+  act(() => publishViewport({ zoom: 12.4, bounds: [2.34, 48.85, 2.36, 48.86] }));
+  await waitFor(() =>
+    expect(screen.queryByText(t("layersPanel.truncatedBadge"))).not.toBeInTheDocument(),
+  );
+  const urls = (fetch as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0] as string);
+  expect(urls.some((u) => /\/12\/\d+\/\d+\.mvt$/.test(u))).toBe(true);
+  unmount();
 });

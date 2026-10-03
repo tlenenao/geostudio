@@ -192,6 +192,14 @@ test("table paginates with a configured page size", async () => {
   expect(screen.getByRole("cell", { name: "N3" })).toBeInTheDocument();
 });
 
+test("table annonce la troncature quand le total réel dépasse les lignes reçues (P29.05)", () => {
+  const Table = getWidget("table")!.Component;
+  const records = [1, 2].map((n) => ({ id: n, properties: { nom: `N${n}` } }));
+  const ctx = { mode: "runtime", data: state({ records, total: 500000 }) } as WidgetContext;
+  renderWithItemClient(<Table props={{ dataSourceId: "d", columns: ["nom"] }} ctx={ctx} />);
+  expect(screen.getByRole("status")).toHaveTextContent("Lignes affichées : 2 sur 500000");
+});
+
 test("table cell of a plain field is formatted per its collection schema type (fr-FR)", async () => {
   // D35 (Vague C, SP-C6) : une colonne de champ simple liée à une
   // collection dont le schéma déclare `type: "number"` doit passer par

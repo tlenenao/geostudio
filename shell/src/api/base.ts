@@ -203,6 +203,8 @@ export type ItemClientBase = {
   // domains/datasets.ts (createDatasetItem/saveDatasetConfig).
   invalidateDatasetCache(pk?: string): void;
   fetchGeoJsonFeatures(url: string): Promise<DataRecord[]>;
+  // P29.05 : idem avec `numberMatched` du cœur (total hors page), null si absent.
+  fetchGeoJsonPage(url: string): Promise<{ records: DataRecord[]; total: number | null }>;
   fetchCoreCollections(q?: string): Promise<LayerSource[]>;
   fetchExternalRasterSources(q?: string): Promise<LayerSource[]>;
   fetchHostedTileset3dSources(q?: string): Promise<LayerSource[]>;
@@ -396,23 +398,31 @@ export function createBase(opts: {
   }
 
   async function fetchGeoJsonFeatures(url: string): Promise<DataRecord[]> {
+    return (await fetchGeoJsonPage(url)).records;
+  }
+
+  async function fetchGeoJsonPage(
+    url: string,
+  ): Promise<{ records: DataRecord[]; total: number | null }> {
     const shareToken = getShareLinkToken?.();
     const headers: Record<string, string> = {};
     if (shareToken) headers["X-Share-Link-Token"] = shareToken;
     const res = await authFetch(url, { headers });
     if (!res.ok) throw new Error(`Request failed: ${res.status} features`);
     const data = (await res.json()) as {
+      numberMatched?: number;
       features?: {
         id?: string | number;
         properties?: Record<string, unknown>;
         geometry?: unknown;
       }[];
     };
-    return (data.features ?? []).map((f, i) => ({
+    const records = (data.features ?? []).map((f, i) => ({
       id: f.id ?? i,
       properties: f.properties ?? {},
       geometry: f.geometry,
     }));
+    return { records, total: typeof data.numberMatched === "number" ? data.numberMatched : null };
   }
 
   async function fetchCoreCollections(q?: string): Promise<LayerSource[]> {
@@ -493,6 +503,7 @@ export function createBase(opts: {
     datasetCache,
     invalidateDatasetCache,
     fetchGeoJsonFeatures,
+    fetchGeoJsonPage,
     fetchCoreCollections,
     fetchExternalRasterSources,
     fetchHostedTileset3dSources,

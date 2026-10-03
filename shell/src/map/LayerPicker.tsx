@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useItemClient } from "../api/ItemClientProvider";
 import { useLayerSources } from "../api/hooks";
 import type { LayerSource, MapLayer } from "../api/types";
 import { detectGeometryKind, renderAsFor } from "../builder/widgets/mapSymbology";
-import { fetchFeatureCollection } from "./geojsonIntrospect";
+import { fetchFeatureCollection, hostedToken } from "./geojsonIntrospect";
 import { Button } from "../ui/kit/Button";
 import { plural, t } from "../i18n";
 
@@ -51,6 +52,7 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
   const [deckType, setDeckType] = useState<"heatmap" | "hexbin" | "column">("heatmap");
   const [deckUrl, setDeckUrl] = useState("");
   const queryClient = useQueryClient();
+  const client = useItemClient();
   const { data, isLoading, isError, refetch } = useLayerSources({ q: q || undefined });
 
   async function addFeatureLayer() {
@@ -61,7 +63,7 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
     setFeatureError(null);
     let renderAs: "fill" | "circle" | "line" | undefined;
     try {
-      const fc = await fetchFeatureCollection(url);
+      const fc = await fetchFeatureCollection(url, hostedToken(client, url));
       renderAs = renderAsFor(detectGeometryKind(fc.features[0]?.geometry));
       // Amorce le cache que LayersPanel.tsx lit sous la même clé
       // (useFeatureLayerGeoJson) : ouvrir tout de suite le panneau de

@@ -119,6 +119,7 @@ type DatasetsMethods = Pick<
   | "getDatasetConfig"
   | "saveDatasetConfig"
   | "queryDataSource"
+  | "queryDataSourcePage"
   | "sampleDataSourceField"
   | "invalidateDatasetCache"
   | "featuresUrl"
@@ -136,7 +137,51 @@ export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
     datasetCache,
     invalidateDatasetCache,
     fetchGeoJsonFeatures,
+    fetchGeoJsonPage,
   } = base;
+  // P29.05 : une seule logique de lecture ; `total` = numberMatched du cœur.
+  async function queryPage(
+    source: DataSource,
+  ): Promise<{ records: DataRecord[]; total: number | null }> {
+    const asPage = (records: DataRecord[]) => ({ records, total: null });
+    const cachedDataset = source.datasetId ? await resolveDataset(source.datasetId) : null;
+    if (cachedDataset?.source === "arcgis" && source.datasetId) {
+      if (source.type === "statistics") {
+        const body = buildAggregateBody(source.query);
+        const data = await request<{
+          categoryKey: string | string[];
+          rows: Record<string, unknown>[];
+        }>("POST", `/datasets/${source.datasetId}/arcgis/aggregate`, body);
+        return asPage(
+          data.rows.map((row) => ({
+            id: statRowId(row, data.categoryKey),
+            properties: row,
+          })),
+        );
+      }
+      return asPage(
+        await fetchGeoJsonFeatures(buildArcgisItemsUrl(coreUrl, source.datasetId, source.query)),
+      );
+    }
+    const resolved = source.datasetId
+      ? { ...source, layer: cachedDataset?.collectionId ?? source.layer }
+      : source;
+    if (resolved.type === "static") {
+      return asPage((resolved.query.records as DataRecord[] | undefined) ?? []);
+    }
+    if (resolved.type === "statistics") {
+      const body = buildAggregateBody(resolved.query);
+      const data = await request<{
+        categoryKey: string | string[];
+        rows: Record<string, unknown>[];
+      }>("POST", `/collections/${resolved.layer}/aggregate`, body);
+      return asPage(
+        data.rows.map((row) => ({ id: statRowId(row, data.categoryKey), properties: row })),
+      );
+    }
+    return fetchGeoJsonPage(buildFeaturesUrl(coreUrl, resolved));
+  }
+
   return {
     async createDatasetItem(input: CreateDatasetInput): Promise<Item> {
       const dataset: DatasetConfig =
@@ -234,37 +279,10 @@ export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
     },
 
     async queryDataSource(source: DataSource): Promise<DataRecord[]> {
-      const cachedDataset = source.datasetId ? await resolveDataset(source.datasetId) : null;
-      if (cachedDataset?.source === "arcgis" && source.datasetId) {
-        if (source.type === "statistics") {
-          const body = buildAggregateBody(source.query);
-          const data = await request<{
-            categoryKey: string | string[];
-            rows: Record<string, unknown>[];
-          }>("POST", `/datasets/${source.datasetId}/arcgis/aggregate`, body);
-          return data.rows.map((row) => ({
-            id: statRowId(row, data.categoryKey),
-            properties: row,
-          }));
-        }
-        return fetchGeoJsonFeatures(buildArcgisItemsUrl(coreUrl, source.datasetId, source.query));
-      }
-      const resolved = source.datasetId
-        ? { ...source, layer: cachedDataset?.collectionId ?? source.layer }
-        : source;
-      if (resolved.type === "static") {
-        return (resolved.query.records as DataRecord[] | undefined) ?? [];
-      }
-      if (resolved.type === "statistics") {
-        const body = buildAggregateBody(resolved.query);
-        const data = await request<{
-          categoryKey: string | string[];
-          rows: Record<string, unknown>[];
-        }>("POST", `/collections/${resolved.layer}/aggregate`, body);
-        return data.rows.map((row) => ({ id: statRowId(row, data.categoryKey), properties: row }));
-      }
-      return fetchGeoJsonFeatures(buildFeaturesUrl(coreUrl, resolved));
+      return (await queryPage(source)).records;
     },
+
+    queryDataSourcePage: queryPage,
 
     invalidateDatasetCache(pk?: string): void {
       invalidateDatasetCache(pk);

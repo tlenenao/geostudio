@@ -1,9 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { DataRecord } from "../api/types";
+import type { DataRecord, ItemClient } from "../api/types";
+import { isHostedCollectionUrl } from "./hostedCoreUrl";
 import type { SampleFieldFn, StatQueryFn } from "../builder/widgets/mapSymbology";
 
-export async function fetchFeatureCollection(url: string): Promise<GeoJSON.FeatureCollection> {
-  const res = await fetch(url);
+// `token` : jeton de session, à ne passer que pour une URL réellement servie par
+// le cœur (cf. `hostedToken`) — une collection privée (cas par défaut d'un
+// import) répond 401 sans lui, et le panneau de symbologie restait sans champ.
+export async function fetchFeatureCollection(
+  url: string,
+  token?: string,
+): Promise<GeoJSON.FeatureCollection> {
+  const res = token
+    ? await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    : await fetch(url);
   if (!res.ok) throw new Error(`Impossible de charger ${url} (HTTP ${res.status})`);
   const data: unknown = await res.json();
   if (
@@ -102,4 +111,14 @@ function sampleArray<T>(values: T[], limit: number): T[] {
 
 export function makeSampleFieldFn(fc: GeoJSON.FeatureCollection): SampleFieldFn {
   return async (field, limit) => sampleArray(numericValues(fc, field), limit);
+}
+
+// Jeton de session pour `url` si, et seulement si, le cœur la sert (même garde
+// que la sonde de tuile : jamais le jeton vers une URL libre saisie par
+// l'auteur). `?.()` : certains hôtes/tests passent un ItemClient partiel.
+export function hostedToken(
+  client: Pick<ItemClient, "getCoreUrl" | "getAuthToken">,
+  url: string,
+): string | undefined {
+  return isHostedCollectionUrl(url, client.getCoreUrl?.()) ? client.getAuthToken?.() : undefined;
 }

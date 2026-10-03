@@ -94,7 +94,10 @@ export function DataProvider({
       const merged = mergedQueryFor(s);
       return {
         queryKey: ["datasource", s.id, merged.query],
-        queryFn: () => client.queryDataSource(merged),
+        queryFn: async () =>
+          client.queryDataSourcePage
+            ? client.queryDataSourcePage(merged)
+            : { records: await client.queryDataSource(merged), total: null },
       };
     }),
   });
@@ -118,7 +121,8 @@ export function DataProvider({
     states[s.id] = {
       loading: r.isLoading,
       error: r.isError,
-      records: r.data ?? [],
+      records: r.data?.records ?? [],
+      total: r.data?.total ?? null,
       layer: s.layer,
       url: s.type === "features" ? client.featuresUrl(merged) : undefined,
       datasetId: s.datasetId,

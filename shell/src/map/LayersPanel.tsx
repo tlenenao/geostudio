@@ -5,6 +5,7 @@ import { useItemClient } from "../api/ItemClientProvider";
 import type { MapLayer } from "../api/types";
 import {
   fetchFeatureCollection,
+  hostedToken,
   listFields,
   makeSampleFieldFn,
   makeStatQueryFn,
@@ -13,6 +14,7 @@ import { LayerPicker } from "./LayerPicker";
 import { isHostedCollectionUrl } from "./hostedCoreUrl";
 import { MapSymbologyEditor } from "./MapSymbologyEditor";
 import { PopupEditor } from "./PopupEditor";
+import { tileKeys, useViewport } from "./viewportTiles";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { t } from "../i18n";
 
@@ -22,10 +24,11 @@ import { t } from "../i18n";
 // réseau même si popup et symbologie sont montés en même temps, ce qui est
 // le cas ici).
 function useFeatureLayerGeoJson(layer: Extract<MapLayer, { kind: "vector" | "feature" }>) {
+  const client = useItemClient();
   const url = layer.kind === "feature" ? layer.url : undefined;
   return useQuery({
     queryKey: ["feature-geojson", url],
-    queryFn: () => fetchFeatureCollection(url!),
+    queryFn: () => fetchFeatureCollection(url!, hostedToken(client, url!)),
     enabled: Boolean(url),
   });
 }
@@ -227,7 +230,13 @@ export function LayersPanel({
   // visibilité, réordonnancement, opacité...), ce qui redéclencherait la
   // sonde réseau sur des changements sans rapport avec l'ensemble des
   // couches vecteur réellement affichées.
+  const viewport = useViewport();
+  // Tuiles réellement affichées (vue courante), pas la seule 0/0/0 : le badge
+  // disparaît quand on zoome sur une zone complète (P29.06). Sans vue publiée
+  // (carte pas encore chargée), on retombe sur la tuile racine.
+  const tiles = viewport ? tileKeys(viewport) : ["0/0/0"];
   const vectorLayersKey = vectorLayers.map((l) => `${l.id}::${l.tilesUrl}`).join("|");
+  const probeKey = `${vectorLayersKey}@${tiles.join(",")}`;
 
   useEffect(() => {
     if (vectorLayers.length === 0) {
@@ -237,31 +246,28 @@ export function LayersPanel({
     let cancelled = false;
     void Promise.all(
       vectorLayers.map(async (layer) => {
-        // MapLibre ne remonte pas les en-têtes de réponse au code
-        // applicatif pour une source `vector` déclarative — sonde
-        // ponctuelle sur la tuile racine plutôt qu'un suivi temps réel de
-        // chaque tuile réellement affichée (scope restreint, cf. spec).
-        const rootUrl = layer.tilesUrl.replace("{z}/{x}/{y}", "0/0/0");
-        // `?.()` obligatoire (patron déjà suivi par listCustomIcons plus haut
-        // dans ce fichier) : plusieurs tests de ce composant (et de ses
-        // hôtes, MapEditorPage/mapWidget) rendent LayersPanel avec un
-        // ItemClient PARTIEL, sans `getAuthToken`.
-        // Jeton attaché UNIQUEMENT si la tuile est réellement servie par le
-        // cœur (même origine + chemin /collections/, cf. hostedCoreUrl.ts) :
-        // une couche vecteur externe (URL libre saisie par l'auteur) ne doit
-        // jamais recevoir le jeton de session (revue finale Vague B, C2).
-        // getCoreUrl absent => « non hébergé », jamais l'inverse.
-        const token = isHostedCollectionUrl(rootUrl, client.getCoreUrl?.())
-          ? client.getAuthToken?.()
-          : undefined;
-        try {
-          const res = await fetch(rootUrl, {
-            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-          });
-          return [layer.id, res.headers.get("X-Tile-Truncated") === "true"] as const;
-        } catch {
-          return [layer.id, false] as const;
-        }
+        // MapLibre ne remonte pas les en-têtes de réponse : on sonde nous-mêmes
+        // les tuiles visibles (cache HTTP du navigateur, max-age 300).
+        // `?.()` obligatoire : plusieurs hôtes/tests passent un ItemClient PARTIEL.
+        // Jeton attaché UNIQUEMENT si la tuile est servie par le cœur (revue
+        // finale Vague B, C2) ; getCoreUrl absent => « non hébergé ».
+        const probes = await Promise.all(
+          tiles.map(async (key) => {
+            const url = layer.tilesUrl.replace("{z}/{x}/{y}", key);
+            const token = isHostedCollectionUrl(url, client.getCoreUrl?.())
+              ? client.getAuthToken?.()
+              : undefined;
+            try {
+              const res = await fetch(url, {
+                headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+              });
+              return res.headers.get("X-Tile-Truncated") === "true";
+            } catch {
+              return false;
+            }
+          }),
+        );
+        return [layer.id, probes.some(Boolean)] as const;
       }),
     ).then((results) => {
       if (cancelled) return;
@@ -271,7 +277,7 @@ export function LayersPanel({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vectorLayersKey, client]);
+  }, [probeKey, client]);
 
   function toggle(id: string) {
     onChange(layers.map((l) => (l.id === id ? { ...l, visible: !l.visible } : l)));

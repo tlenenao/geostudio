@@ -1498,6 +1498,26 @@ test("queryDataSource resolves datasetId to the dataset's collectionId before fe
   expect(records).toEqual([{ id: 1, properties: { nom: "Le Parc" }, geometry: undefined }]);
 });
 
+test("queryDataSourcePage returns the real total (numberMatched) beside the truncated page (P29.05)", async () => {
+  server.use(
+    http.get("https://core.test/v1/collections/gros/items", () =>
+      HttpResponse.json({
+        numberMatched: 500000,
+        features: [{ id: 1, properties: { nom: "A" } }],
+      }),
+    ),
+  );
+  const page = await makeClient().queryDataSourcePage!({
+    id: "s1",
+    type: "features",
+    service: "core",
+    layer: "gros",
+    query: {},
+  });
+  expect(page.total).toBe(500000);
+  expect(page.records).toHaveLength(1);
+});
+
 test("featuresUrl routes an arcgis-sourced dataset to /datasets/{datasetItemId}/arcgis/items", async () => {
   server.use(
     http.get("https://core.test/v1/configs/by-item/ds-arcgis-1", () =>

@@ -40,6 +40,7 @@ import {
 } from "../builder/widgets/mapSymbology";
 import { decodeIconImage, rasterizeLucideIcon } from "../builder/widgets/iconLibrary";
 import { buildLabelFeatureCollection } from "./labelSource";
+import { publishViewport } from "./viewportTiles";
 import { t } from "../i18n";
 import { isHostedCollectionUrl, isHostedTerrainUrl, isHostedTilesetUrl } from "./hostedCoreUrl";
 
@@ -1101,6 +1102,10 @@ export const MapView = forwardRef<
     map.on("load", () => {
       styleLoadedRef.current = true;
       setReadyMap(map);
+      publishViewport({
+        zoom: map.getZoom(),
+        bounds: map.getBounds().toArray().flat() as [number, number, number, number],
+      });
       map.addSource(HIGHLIGHT_ID, {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
@@ -1158,10 +1163,11 @@ export const MapView = forwardRef<
     };
     map.on("idle", scheduleLabelRefresh);
     map.on("moveend", () => {
+      const bounds = map.getBounds().toArray().flat() as [number, number, number, number];
+      publishViewport({ zoom: map.getZoom(), bounds });
       const cb = onViewChangeRef.current;
       if (!cb) return;
       const c = map.getCenter();
-      const bounds = map.getBounds().toArray().flat() as [number, number, number, number];
       cb({
         center: [c.lng, c.lat],
         zoom: map.getZoom(),

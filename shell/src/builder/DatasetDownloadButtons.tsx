@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useQuery } from "@tanstack/react-query";
 import { useItemClient } from "../api/ItemClientProvider";
-import { csvAvailable, csvTooLarge, downloadCsv, geojsonDownloadUrl } from "../lib/datasetDownload";
+import {
+  GEOJSON_DOWNLOAD_LIMIT,
+  csvAvailable,
+  csvTooLarge,
+  downloadCsv,
+  geojsonDownloadUrl,
+  geojsonTruncated,
+} from "../lib/datasetDownload";
 import { t } from "../i18n";
 
 // Tokens sémantiques --gs-* globaux (tokens.css, importé sans condition
@@ -46,6 +53,14 @@ export function DatasetDownloadButtons({
       >
         {t("datasetDownload.csvButton")}
       </button>
+      {geojsonTruncated(featureCount) && (
+        <p className="w-full text-xs text-ink-3">
+          {t("datasetDownload.geojsonTruncated", {
+            count: GEOJSON_DOWNLOAD_LIMIT,
+            total: featureCount ?? 0,
+          })}
+        </p>
+      )}
       {csvTooLarge(featureCount) && (
         <p className="w-full text-xs text-ink-3">{t("datasetDownload.tooLarge")}</p>
       )}
