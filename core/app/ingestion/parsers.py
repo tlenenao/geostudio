@@ -10,6 +10,7 @@ import datetime
 import io
 import json
 import math
+import re
 import tempfile
 import warnings
 import zipfile
@@ -115,7 +116,8 @@ def _to_coord(raw) -> float:
 def sniff_delimiter(text: str) -> str:
     """Séparateur CSV (',' ';' tab '|') deviné sur la ligne d'en-tête ;
     ',' par défaut. Même heuristique côté shell (ImportFileButton)."""
-    first = text.split("\n", 1)[0]
+    # entre guillemets : un en-tête "Nom, Prénom";Age ne doit pas voter ','
+    first = re.sub(r'"[^"]*"', "", text.split("\n", 1)[0])
     best = max(",;\t|", key=first.count)
     return best if first.count(best) else ","
 

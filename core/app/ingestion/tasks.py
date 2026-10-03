@@ -142,6 +142,9 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
             collection_title=collection_title,
         )
     except (IngestionParseError, ObjectTooLarge) as exc:
+        # le message utilisateur est volontairement expurgé (P28.03) : le
+        # détail GDAL (cause chaînée) reste dans les logs serveur.
+        logger.warning("ingestion job %s refusé : %s", job_id, exc, exc_info=True)
         with request_scoped_session(factory) as session:
             ingestion_repo.mark_error(session, job_id=job_id, error_message=str(exc))
         _notify(

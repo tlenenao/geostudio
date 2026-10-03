@@ -1144,3 +1144,11 @@ def test_unreadable_zip_message_leaks_no_server_path():
     with pytest.raises(IngestionParseError) as exc:
         list(parse_shapefile_zip(b"PK\x05\x06" + b"\x00" * 18, None))
     assert "/tmp" not in str(exc.value) and "vsizip" not in str(exc.value)
+
+
+def test_sniff_delimiter_ignores_separators_inside_quotes():
+    from app.ingestion.parsers import sniff_delimiter
+
+    assert sniff_delimiter('"a;b;c",d,e\n1,2,3') == ","
+    assert sniff_delimiter('"Nom, Prénom";Age\r\nx;1') == ";"
+    assert sniff_delimiter("seule\n1") == ","
