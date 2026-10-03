@@ -23,6 +23,7 @@ import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { useDirtyGuard } from "../lib/useDirtyGuard";
 import { t } from "../i18n";
 import { LoadingState } from "../ui/kit/LoadingState";
+import { QueryErrorState } from "../ui/kit/QueryErrorState";
 import { PageTitle } from "../ui/kit/PageTitle";
 
 function defaultPayload(bookmarkItemId: string): ReportSchedulePayload {
@@ -94,9 +95,10 @@ export function ReportEditPage({
   // à tort) sans jamais bloquer le rendu complet.
   if (pk !== null && (configQuery.isError || itemQuery.isError || !itemQuery.data))
     return (
-      <p role="alert" className="text-sm text-danger">
-        {t("reportEdit.notFound")}
-      </p>
+      <QueryErrorState
+        queries={[configQuery, itemQuery]}
+        notFoundMessage={t("reportEdit.notFound")}
+      />
     );
 
   async function onSave() {

@@ -228,7 +228,19 @@ test("toggles interactions on and saves it with the app config", async () => {
 
 test("shows an error when loading fails", async () => {
   renderPage({ getAppConfig: vi.fn().mockRejectedValue(new Error("x")) });
+  expect(await screen.findByRole("alert")).toHaveTextContent(/erreur de chargement/i);
+  expect(screen.getByRole("button", { name: "Réessayer" })).toBeInTheDocument();
+});
+
+test("P22.09 : un 404 est « introuvable » (sans Réessayer), un 403 « accès refusé »", async () => {
+  const { unmount } = renderPage({
+    getAppConfig: vi.fn().mockRejectedValue(new ApiError(404)),
+  });
   expect(await screen.findByRole("alert")).toHaveTextContent(/introuvable/i);
+  expect(screen.queryByRole("button", { name: "Réessayer" })).not.toBeInTheDocument();
+  unmount();
+  renderPage({ getAppConfig: vi.fn().mockRejectedValue(new ApiError(403)) });
+  expect(await screen.findByRole("alert")).toHaveTextContent(/accès refusé/i);
 });
 
 test("adds a data source and persists it", async () => {

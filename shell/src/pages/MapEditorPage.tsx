@@ -26,6 +26,7 @@ import { markExportReady } from "../shell/exportReady";
 import { useDirtyGuard } from "../lib/useDirtyGuard";
 import { t } from "../i18n";
 import { LoadingState } from "../ui/kit/LoadingState";
+import { QueryErrorState } from "../ui/kit/QueryErrorState";
 
 export function MapEditorPage({ pk }: { pk: string }) {
   const client = useItemClient();
@@ -105,9 +106,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
   if (query.isLoading || itemQuery.isLoading || (!draft && !query.isError)) return <LoadingState />;
   if (query.isError || itemQuery.isError || !draft || !itemQuery.data)
     return (
-      <p role="alert" className="text-sm text-danger">
-        {t("mapEditor.notFound")}
-      </p>
+      <QueryErrorState queries={[query, itemQuery]} notFoundMessage={t("mapEditor.notFound")} />
     );
 
   const setLayers = (layers: MapLayer[]) => updateDraft({ ...draft, layers });

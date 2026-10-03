@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { ApiError } from "../api/ApiError";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -820,7 +821,7 @@ test("persisted mode: reste en chargement tant que l'item n'est pas résolu, ne 
 test("persisted mode: une config qui échoue à charger affiche une alerte et n'écrase pas l'existant (SP-42/F-shell-pages-05)", async () => {
   const savePipelineConfig = vi.fn().mockResolvedValue(undefined);
   renderPage("p-1", {
-    getPipelineConfig: vi.fn().mockRejectedValue(new Error("403")),
+    getPipelineConfig: vi.fn().mockRejectedValue(new ApiError(403)),
     savePipelineConfig,
     // Isole le défaut sous test : sans ce mock, ConfigHistoryPanel affiche
     // aussi un role="alert" (« Impossible de charger l'historique »),
@@ -830,7 +831,7 @@ test("persisted mode: une config qui échoue à charger affiche une alerte et n'
   });
 
   const alert = await screen.findByRole("alert");
-  expect(alert).toHaveTextContent("introuvable");
+  expect(alert).toHaveTextContent("Accès refusé");
   expect(screen.queryByText("reader.collection")).not.toBeInTheDocument();
   expect(savePipelineConfig).not.toHaveBeenCalled();
 });

@@ -5,6 +5,7 @@ import type { NotificationPreferenceValue } from "../api/types";
 import { roleLabel } from "../auth/roleLabel";
 import { useConfig } from "../ConfigContext";
 import { Badge } from "../ui/kit/Badge";
+import { Banner } from "../ui/kit/Banner";
 import { Radio } from "../ui/kit/Radio";
 import { SettingsNav } from "../shell/chrome/SettingsNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
@@ -19,6 +20,11 @@ function ProfileSection() {
     <section className="flex flex-col gap-2">
       <h2 className="text-base font-semibold text-ink">{t("settings.profileTitle")}</h2>
       {meQuery.isLoading && <LoadingState />}
+      {meQuery.isError && (
+        <Banner variant="danger" onRetry={() => void meQuery.refetch()}>
+          {t("common.loadError")}
+        </Banner>
+      )}
       {meQuery.data && (
         <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-sm text-ink-2">
           <dt>{t("settings.profileUsername")}</dt>
@@ -59,6 +65,11 @@ function NotificationsSection() {
     <section className="flex flex-col gap-2">
       <h2 className="text-base font-semibold text-ink">{t("settings.notificationsTitle")}</h2>
       {preferenceQuery.isLoading && <LoadingState />}
+      {preferenceQuery.isError && (
+        <Banner variant="danger" onRetry={() => void preferenceQuery.refetch()}>
+          {t("common.loadError")}
+        </Banner>
+      )}
       {preferenceQuery.data && (
         <Radio.Group
           aria-label={t("settings.notificationsTitle")}

@@ -11,6 +11,7 @@ import type { AdminExtension } from "../api/types";
 import { SettingsNav } from "../shell/chrome/SettingsNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
+import { Banner } from "../ui/kit/Banner";
 import { Button } from "../ui/kit/Button";
 import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
 import { EmptyState } from "../ui/kit/EmptyState";
@@ -78,9 +79,9 @@ export function AdminExtensionsPage() {
               <PageTitle>{t("extensions.title")}</PageTitle>
               {extensionsQuery.isLoading && <LoadingState />}
               {extensionsQuery.isError && (
-                <p role="alert" className="text-sm text-danger">
+                <Banner variant="danger" onRetry={() => void extensionsQuery.refetch()}>
                   {t("extensions.loadError")}
-                </p>
+                </Banner>
               )}
               {setEnabled.isError && (
                 <p role="alert" className="text-sm text-danger">

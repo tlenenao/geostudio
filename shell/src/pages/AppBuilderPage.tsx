@@ -50,6 +50,7 @@ import { useDirtyGuard } from "../lib/useDirtyGuard";
 import { t } from "../i18n";
 import { ApiError } from "../api/ApiError";
 import { LoadingState } from "../ui/kit/LoadingState";
+import { QueryErrorState } from "../ui/kit/QueryErrorState";
 
 registerBuiltinWidgets();
 registerExampleWidgets();
@@ -244,9 +245,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
     !itemQuery.data
   )
     return (
-      <p role="alert" className="text-sm text-danger">
-        {t("appBuilder.notFound")}
-      </p>
+      <QueryErrorState queries={[query, itemQuery]} notFoundMessage={t("appBuilder.notFound")} />
     );
 
   function addWidget(type: string) {

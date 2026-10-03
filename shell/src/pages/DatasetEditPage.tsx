@@ -18,6 +18,7 @@ import { MetadataForm } from "../ui/kit/MetadataForm";
 import { Button } from "../ui/kit/Button";
 import { Panel } from "../ui/kit/Panel";
 import { LoadingState } from "../ui/kit/LoadingState";
+import { QueryErrorState } from "../ui/kit/QueryErrorState";
 import { CrossFilterLinkEditor } from "../builder/CrossFilterLinkEditor";
 import { AlertRuleEditor } from "../builder/AlertRuleEditor";
 import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
@@ -64,9 +65,10 @@ export function DatasetEditPage({ pk }: { pk: string }) {
     return <LoadingState />;
   if (itemQuery.isError || configQuery.isError || !draft || !itemQuery.data)
     return (
-      <p role="alert" className="text-sm text-danger">
-        {t("datasetEdit.notFound")}
-      </p>
+      <QueryErrorState
+        queries={[itemQuery, configQuery]}
+        notFoundMessage={t("datasetEdit.notFound")}
+      />
     );
 
   const item = itemQuery.data;

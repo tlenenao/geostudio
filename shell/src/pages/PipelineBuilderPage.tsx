@@ -46,6 +46,7 @@ import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { useDirtyGuard } from "../lib/useDirtyGuard";
 import { t } from "../i18n";
 import { LoadingState } from "../ui/kit/LoadingState";
+import { QueryErrorState } from "../ui/kit/QueryErrorState";
 import { PageTitle } from "../ui/kit/PageTitle";
 
 const EMPTY_PAYLOAD: PipelinePayload = { nodes: [], edges: [] };
@@ -213,9 +214,10 @@ export function PipelineBuilderPage({
   // à tort) sans jamais bloquer le rendu complet.
   if (pk !== null && (configQuery.isError || itemQuery.isError || !itemQuery.data))
     return (
-      <p role="alert" className="text-sm text-danger">
-        {t("pipelineBuilder.notFound")}
-      </p>
+      <QueryErrorState
+        queries={[configQuery, itemQuery]}
+        notFoundMessage={t("pipelineBuilder.notFound")}
+      />
     );
   // D09, revue finale (Important) : instanceQuery (/v1/instance) et opsQuery
   // (/v1/pipelines/ops) sont deux requêtes indépendantes sans garantie

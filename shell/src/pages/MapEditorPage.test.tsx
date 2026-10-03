@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { ApiError } from "../api/ApiError";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -196,7 +197,8 @@ test("loads the config and saves edits", async () => {
 
 test("shows an error when loading fails", async () => {
   renderEditor({ getMapConfig: vi.fn().mockRejectedValue(new Error("boom")) });
-  expect(await screen.findByRole("alert")).toHaveTextContent(/carte introuvable/i);
+  expect(await screen.findByRole("alert")).toHaveTextContent(/erreur de chargement/i);
+  expect(screen.getByRole("button", { name: "Réessayer" })).toBeInTheDocument();
 });
 
 test("saving after only changing a layer keeps the previously loaded printLayout", async () => {
@@ -395,7 +397,7 @@ test("SP-42, revue finale (point 2, Critical) : reste en chargement tant que l'i
 
 test("SP-42, revue finale (point 2, Critical) : affiche une erreur si l'item ne charge pas, ne verrouille pas silencieusement", async () => {
   renderEditor({
-    getItem: vi.fn().mockRejectedValue(new Error("boom")),
+    getItem: vi.fn().mockRejectedValue(new ApiError(404)),
     getMapConfig: vi.fn().mockResolvedValue(config),
     listLayerSources: vi.fn().mockResolvedValue([]),
   });

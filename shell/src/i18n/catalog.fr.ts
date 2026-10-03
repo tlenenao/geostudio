@@ -190,6 +190,9 @@ export const fr = {
 
   // Motif partagé : bouton de nouvelle tentative après une erreur de chargement.
   "common.retry": "Réessayer",
+  // Motif partagé : lecture en échec (hors 404/403) et accès refusé.
+  "common.loadError": "Erreur de chargement.",
+  "common.accessDenied": "Accès refusé.",
 
   // NumberField
   "numberField.increase": "Augmenter",
