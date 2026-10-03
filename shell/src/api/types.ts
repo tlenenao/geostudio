@@ -502,6 +502,8 @@ export interface ItemClient {
       currentConfig: Record<string, unknown>;
       clientTools: CopilotToolSchema[];
       surface?: CopilotSurface;
+      // j11-012 : exécution d'un outil d'écriture après clic humain.
+      confirmWrite?: { name: string; arguments: Record<string, unknown> };
     },
   ): Promise<CopilotTurnResult>;
   createConfigItem(input: {

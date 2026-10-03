@@ -19,6 +19,7 @@ import { ActionsPanel } from "../builder/ActionsPanel";
 import { AppExportPanel } from "../builder/appexport/AppExportPanel";
 import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
 import { CopilotPanel } from "../builder/copilot/CopilotPanel";
+import { CopilotUnavailable } from "../builder/copilot/CopilotUnavailable";
 import { PrintLayoutPanel } from "../builder/print/PrintLayoutPanel";
 import { AppRenderer } from "../builder/AppRenderer";
 import { NavigationPanel } from "../builder/NavigationPanel";
@@ -610,17 +611,22 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                     <AppExportPanel itemId={pk} config={draft} />
                   </>
                 )}
-                {copilotEnabled && (
+                {(copilotEnabled || instanceQuery.isSuccess) && (
                   <>
                     <p className="mb-1 mt-3 text-xs font-medium text-ink-2">
                       {t("appBuilder.copilotLabel")}
                     </p>
-                    <CopilotPanel
-                      itemId={pk}
-                      config={draft}
-                      activePageId={activePage}
-                      setDraft={setDraft}
-                    />
+                    {copilotEnabled ? (
+                      <CopilotPanel
+                        itemId={pk}
+                        config={draft}
+                        activePageId={activePage}
+                        setDraft={setDraft}
+                        readOnly={readOnly}
+                      />
+                    ) : (
+                      <CopilotUnavailable />
+                    )}
                   </>
                 )}
                 <div className="mt-3 flex flex-col gap-2 border-t border-rule pt-3">

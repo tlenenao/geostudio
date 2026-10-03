@@ -31,16 +31,33 @@ const OP_LABELS: Record<string, string> = {
   setFilter: t("copilot.opFilterUpdated"),
 };
 
+// Plafond du cœur (MAX_CONFIG_CHARS = 64 000, core/app/copilot/routes.py) avec
+// une marge : au-delà, seule la page active part en entier, les autres sont
+// réduites à {id, name} (j11-013).
+const COMPACT_THRESHOLD_CHARS = 60_000;
+
+export function compactForCopilot(config: AppConfig, activePageId: string): AppConfig {
+  if (JSON.stringify(config).length <= COMPACT_THRESHOLD_CHARS || !config.pages) return config;
+  return {
+    ...config,
+    pages: config.pages.map((p) =>
+      p.id === activePageId ? p : { id: p.id, name: p.name, layout: { ...p.layout, items: [] } },
+    ),
+  };
+}
+
 export function CopilotPanel({
   itemId,
   config,
   activePageId,
   setDraft,
+  readOnly = false,
 }: {
   itemId: string;
   config: AppConfig;
   activePageId: string;
   setDraft: (update: (prev: AppConfig | null) => AppConfig | null) => void;
+  readOnly?: boolean;
 }) {
   // P07.08 : l'historique persistant (par compte et par item) est relisible.
   const [pastExchanges, setPastExchanges] = useState(() => readCopilotHistory(itemId));
@@ -64,7 +81,8 @@ export function CopilotPanel({
       <CopilotChat
         itemId={itemId}
         surface="app_builder"
-        contextPayload={config}
+        contextPayload={compactForCopilot(config, activePageId)}
+        disabled={readOnly}
         clientTools={buildClientToolSchemas()}
         opLabels={OP_LABELS}
         onClientOps={handleClientOps}

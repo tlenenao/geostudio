@@ -12,6 +12,7 @@ import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { Panel } from "../ui/kit/Panel";
 import { VisualQueryCopilotPanel } from "../builder/copilot/VisualQueryCopilotPanel";
+import { CopilotUnavailable } from "../builder/copilot/CopilotUnavailable";
 import { QueryFilterBuilder } from "../builder/visualQuery/QueryFilterBuilder";
 import { QueryJoinPicker } from "../builder/visualQuery/QueryJoinPicker";
 import { QuerySummaryBuilder } from "../builder/visualQuery/QuerySummaryBuilder";
@@ -546,23 +547,26 @@ export function VisualQueryWizardPage({
                   <PipelineScheduleEditor value={refreshPolicy} onChange={setRefreshPolicy} />
                 </div>
               )}
-              {baseSchema && copilotEnabled && (
+              {baseSchema && (copilotEnabled || instanceQuery.isSuccess) && (
                 <div className="border-t border-rule pt-3">
                   <p className="mb-1 text-xs font-medium text-ink-2">
                     {t("appBuilder.copilotLabel")}
                   </p>
-                  <VisualQueryCopilotPanel
-                    baseCollectionId={baseCollectionId}
-                    baseSchema={baseSchema}
-                    joinedSchema={joinedSchema}
-                    collectionIds={(collectionsQuery.data ?? []).map((c) => c.id)}
-                    filters={filters}
-                    join={join}
-                    summary={summary}
-                    setFilters={setFilters}
-                    setJoin={setJoin}
-                    setSummary={setSummary}
-                  />
+                  {!copilotEnabled && <CopilotUnavailable />}
+                  {copilotEnabled && (
+                    <VisualQueryCopilotPanel
+                      baseCollectionId={baseCollectionId}
+                      baseSchema={baseSchema}
+                      joinedSchema={joinedSchema}
+                      collectionIds={(collectionsQuery.data ?? []).map((c) => c.id)}
+                      filters={filters}
+                      join={join}
+                      summary={summary}
+                      setFilters={setFilters}
+                      setJoin={setJoin}
+                      setSummary={setSummary}
+                    />
+                  )}
                 </div>
               )}
               <div className="flex flex-col gap-2 border-t border-rule pt-3">

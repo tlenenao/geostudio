@@ -20,6 +20,7 @@ import {
 } from "../lib/sqlLabHistory";
 import { useUrlSyncedState } from "../lib/useUrlSyncedState";
 import { SqlLabCopilotPanel } from "../builder/copilot/SqlLabCopilotPanel";
+import { CopilotUnavailable } from "../builder/copilot/CopilotUnavailable";
 import { parseDuckDbError } from "../lib/parseDuckDbError";
 import { Banner } from "../ui/kit/Banner";
 import { Button } from "../ui/kit/Button";
@@ -332,19 +333,22 @@ export function SqlLabPage() {
                   ))}
                 </ul>
               )}
-              {copilotEnabled && (
+              {(copilotEnabled || instanceQuery.isSuccess) && (
                 <div className="border-t border-rule pt-3">
                   <p className="mb-1 text-xs font-medium text-ink-2">
                     {t("appBuilder.copilotLabel")}
                   </p>
-                  <SqlLabCopilotPanel
-                    sql={sql}
-                    setSql={setSql}
-                    collections={(collectionsQuery.data ?? []).map((c) => ({
-                      id: c.id,
-                      title: c.title,
-                    }))}
-                  />
+                  {!copilotEnabled && <CopilotUnavailable />}
+                  {copilotEnabled && (
+                    <SqlLabCopilotPanel
+                      sql={sql}
+                      setSql={setSql}
+                      collections={(collectionsQuery.data ?? []).map((c) => ({
+                        id: c.id,
+                        title: c.title,
+                      }))}
+                    />
+                  )}
                 </div>
               )}
             </div>

@@ -1322,6 +1322,15 @@ export const fr = {
   "copilot.messageAria": "Message au copilote",
   "copilot.send": "Envoyer",
   "copilot.pastExchanges": "Échanges précédents ({count})",
+  "copilot.unavailable":
+    "Le copilote est indisponible : aucun fournisseur LLM n'est configuré sur cette instance. Un administrateur peut l'activer en définissant CORE_LLM_PROVIDER (voir .env.example) puis en redémarrant le cœur.",
+  "copilot.readOnly": "Le copilote est désactivé : vous n'avez pas le droit de modifier cette app.",
+  "copilot.contextTooLarge":
+    "La configuration est trop volumineuse pour le copilote, même compactée : seule la page active lui est transmise, réduisez-la ou divisez l'app.",
+  "copilot.confirmWritePrompt": "Le copilote propose d'exécuter l'action « {name} ».",
+  "copilot.confirmWriteYes": "Confirmer",
+  "copilot.confirmWriteNo": "Annuler",
+  "copilot.confirmWriteMessage": "Confirmation de l'action proposée.",
 
   // PipelineCanvas (builder/pipeline)
   "pipelineCanvas.runningAria": "Exécution en cours",

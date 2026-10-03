@@ -197,7 +197,7 @@ test.describe("j11 MCP : permissions de l'utilisateur et parité REST", () => {
 test.describe("j11 MCP : défauts constatés", () => {
   // FINDING j11-002 : une valeur hors bornes atteint PostgreSQL et l'erreur
   // brute (SQL complet, nom de table physique, paramètres) est renvoyée à l'agent.
-  bug(
+  test(
     "j11-002 : query_features avec limit négatif renvoie une erreur d'outil propre, sans SQL",
     async () => {
       const seed = await getSeed();
@@ -211,7 +211,7 @@ test.describe("j11 MCP : défauts constatés", () => {
 
   // FINDING j11-001 : CORE_LLM_PROVIDER vaut "" sur cette stack ; is_copilot_enabled()
   // le traite comme éteint mais get_llm_provider() lève « unknown CORE_LLM_PROVIDER: ».
-  bug(
+  test(
     "j11-001 : generate_sql_query sans fournisseur LLM répond un message d'indisponibilité lisible",
     async () => {
       const seed = await getSeed();
@@ -267,7 +267,7 @@ test.describe("j11 MCP : défauts constatés", () => {
   // FINDING j11-004 : POST /mcp partage le budget « llm » (20 requêtes/60 s/jeton) ; une
   // poignée de main (initialize + initialized + tools/list) en coûte 3, un tour de copilote
   // ouvre une session neuve, donc ~6 tours par minute épuisent le jeton (429).
-  bug(
+  test(
     "j11-004 : 7 tours de copilote successifs (poignée de main + 1 appel d'outil) ne sont pas limités",
     async () => {
       const token = await mcpToken("reader");

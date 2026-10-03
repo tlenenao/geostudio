@@ -7,7 +7,7 @@ import { ItemClientProvider } from "../../api/ItemClientProvider";
 import type { AppConfig, ItemClient } from "../../api/types";
 import { readCopilotHistory } from "../../lib/copilotHistory";
 import { applyClientOp } from "./applyClientOp";
-import { CopilotPanel } from "./CopilotPanel";
+import { CopilotPanel, compactForCopilot } from "./CopilotPanel";
 
 // Implémentation réelle conservée, simplement espionnée : le test de page
 // active ci-dessous a besoin de l'argument `activePageId` réellement reçu.
@@ -157,5 +157,58 @@ describe("CopilotPanel", () => {
     await userEvent.click(screen.getByRole("button", { name: "Envoyer" }));
 
     await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+  });
+});
+
+describe("CopilotPanel : lecture seule, compaction, confirmation d'écriture (P23)", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("désactive la saisie pour un lecteur (j11-010)", () => {
+    render(
+      <ItemClientProvider client={{ copilotTurn: vi.fn() } as unknown as ItemClient}>
+        <CopilotPanel
+          itemId="1"
+          config={emptyConfig()}
+          activePageId="page-1"
+          setDraft={vi.fn()}
+          readOnly
+        />
+      </ItemClientProvider>,
+    );
+    expect(screen.getByLabelText("Message au copilote")).toBeDisabled();
+  });
+
+  it("compacte les pages non actives au-delà du seuil (j11-013)", () => {
+    const big = "x".repeat(70_000);
+    const cfg = {
+      ...emptyConfig(),
+      pages: [
+        { id: "a", name: "A", layout: { type: "grid", breakpoints: {}, items: [{ big }] } },
+        { id: "b", name: "B", layout: { type: "grid", breakpoints: {}, items: [{ big }] } },
+      ],
+    } as unknown as AppConfig;
+    const out = compactForCopilot(cfg, "a");
+    expect(out.pages?.[0].layout.items).toHaveLength(1);
+    expect(out.pages?.[1]).toMatchObject({ id: "b", layout: { items: [] } });
+    expect(compactForCopilot(emptyConfig(), "a")).toEqual(emptyConfig());
+  });
+
+  it("n'exécute une écriture proposée qu'après confirmation (j11-012)", async () => {
+    const copilotTurn = vi
+      .fn()
+      .mockResolvedValueOnce({
+        reply: "Je crée l'app.",
+        clientOps: [{ op: "confirmWrite", args: { name: "create_item", arguments: { a: 1 } } }],
+      })
+      .mockResolvedValueOnce({ reply: "create_item effectué : ok", clientOps: [] });
+    renderPanel({ copilotTurn }, vi.fn());
+    await userEvent.type(screen.getByLabelText("Message au copilote"), "Crée une app");
+    await userEvent.click(screen.getByRole("button", { name: "Envoyer" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Confirmer" }));
+    await waitFor(() => expect(copilotTurn).toHaveBeenCalledTimes(2));
+    expect(copilotTurn.mock.calls[1][1].confirmWrite).toEqual({
+      name: "create_item",
+      arguments: { a: 1 },
+    });
   });
 });

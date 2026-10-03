@@ -87,7 +87,7 @@ test.describe("j11 copilote : capacité éteinte côté UI", () => {
 
   // FINDING j11-006 : aucun texte ne dit que le copilote existe mais n'est pas configuré ;
   // la fonction est simplement invisible, l'utilisateur ne peut pas la découvrir.
-  bug(
+  test(
     "j11-006 : le builder explique que le copilote est indisponible quand aucun fournisseur LLM n'est configuré",
     async ({ page }) => {
       const seed = await getSeed();
@@ -181,7 +181,7 @@ test.describe("j11 copilote : builder avec cœur simulé sur /copilot/turn", () 
 
   // FINDING j11-010 : un lecteur (Enregistrer désactivé) peut néanmoins utiliser le copilote
   // et modifier le brouillon local ; le panneau n'est pas mis en lecture seule.
-  bug(
+  test(
     "j11-010 : un lecteur sur une app partagée ne peut pas utiliser le copilote d'édition",
     async ({ page }) => {
       const pk = await newApp("creator", "aud-j11-ui-7", true);
