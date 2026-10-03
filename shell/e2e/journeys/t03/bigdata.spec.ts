@@ -134,7 +134,7 @@ test.describe("t03 API sur 50 000 et 500 000 entités", () => {
 
   // EXPORT_ITEMS_CAP = 10 000 (core/app/features/routes.py) : un export CSV/GeoJSON d'une
   // collection de 50k est refusé en 413 ; le bouton GeoJSON du shell, lui, ne reçoit que 1000.
-  bug("t03-008 : exporter les 50 000 entités d'une collection (CSV)", async () => {
+  test("t03-008 : exporter les 50 000 entités d'une collection (CSV)", async () => {
     const r = await timed("creator", `/v1/collections/${s50.collectionId}/export/items?format=csv`);
     expect(r.status).toBe(200);
     expect(r.text().split("\n").length).toBeGreaterThan(50_000);
@@ -215,24 +215,23 @@ test.describe("t03 carte et tableau sur gros volumes (navigateur)", () => {
 
   // LayersPanel sonde une seule fois la tuile 0/0/0 : le badge reste affiché après un zoom
   // à z12 où toutes les tuiles visibles sont complètes.
-  bug(
-    "t03-010 : le badge « Tuile tronquée » disparaît quand la vue n'est plus tronquée",
-    async ({ page }) => {
-      test.setTimeout(90_000);
-      const creator = await apiFor("creator");
-      const pk = await createMap(creator, `${stamp("t03")}-badge`, s500.collectionId);
-      await stubBasemap(page);
-      await loginOidc(page, "creator");
-      await spaGo(page, `/maps/${pk}`, 4000);
-      await expect(page.getByText("Tuile tronquée").first()).toBeVisible();
-      await page.evaluate(
-        (find) => (eval(find) as any).jumpTo({ center: [2.35, 48.85], zoom: 12 }),
-        FIND_MAP,
-      );
-      await page.waitForTimeout(4000);
-      await expect(page.getByText("Tuile tronquée")).toHaveCount(0);
-    },
-  );
+  test("t03-010 : le badge « Tuile tronquée » disparaît quand la vue n'est plus tronquée", async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    const creator = await apiFor("creator");
+    const pk = await createMap(creator, `${stamp("t03")}-badge`, s500.collectionId);
+    await stubBasemap(page);
+    await loginOidc(page, "creator");
+    await spaGo(page, `/maps/${pk}`, 4000);
+    await expect(page.getByText("Tuile tronquée").first()).toBeVisible();
+    await page.evaluate(
+      (find) => (eval(find) as any).jumpTo({ center: [2.35, 48.85], zoom: 12 }),
+      FIND_MAP,
+    );
+    await page.waitForTimeout(4000);
+    await expect(page.getByText("Tuile tronquée")).toHaveCount(0);
+  });
 
   test("tableau 50k : une page de 25 lignes s'affiche, DOM borné", async ({ page }, testInfo) => {
     const creator = await apiFor("creator");
@@ -246,7 +245,7 @@ test.describe("t03 carte et tableau sur gros volumes (navigateur)", () => {
 
   // queryDataSource n'envoie aucun limit : le cœur répond 100 entités par défaut ; le widget
   // affiche « Page 1 / 4 » pour 500 000 entités, sans total ni message de troncature.
-  bug("t03-011 : le tableau signale le total réel ou la troncature (500k)", async ({ page }) => {
+  test("t03-011 : le tableau signale le total réel ou la troncature (500k)", async ({ page }) => {
     const creator = await apiFor("creator");
     const pk = await appWithTable(creator, s500.collectionId);
     await loginOidc(page, "creator");

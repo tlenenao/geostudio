@@ -134,15 +134,14 @@ test.describe("j03 éditeur de carte — symbologie, popups, terrain", () => {
     },
   );
 
-  bug(
-    "j03-013 : sur une collection privée, « Champ couleur » propose les champs de la couche importée",
-    async ({ page }) => {
-      // Défaut j03-013 : geojsonIntrospect.fetchFeatureCollection fait un fetch() nu (sans jeton) :
-      // 404 sur une collection privée → liste de champs vide, symbologie par champ inutilisable.
-      await openMap(page, seed.pointsItem);
-      expect(await fieldOptions(page, "Champ couleur")).toBeGreaterThanOrEqual(4);
-    },
-  );
+  test("j03-013 : sur une collection privée, « Champ couleur » propose les champs de la couche importée", async ({
+    page,
+  }) => {
+    // Défaut j03-013 : geojsonIntrospect.fetchFeatureCollection fait un fetch() nu (sans jeton) :
+    // 404 sur une collection privée → liste de champs vide, symbologie par champ inutilisable.
+    await openMap(page, seed.pointsItem);
+    expect(await fieldOptions(page, "Champ couleur")).toBeGreaterThanOrEqual(4);
+  });
 
   test("témoin j03-013 : sur une collection publique la même liste de champs se charge", async ({
     page,

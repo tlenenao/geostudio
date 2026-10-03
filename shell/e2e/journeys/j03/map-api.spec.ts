@@ -37,20 +37,17 @@ const put = (api: Api, pk: string, map: unknown) =>
   api.send("PUT", `/v1/configs/by-item/${pk}`, { version: 1, kind: "map", map, printLayout: null });
 
 test.describe("j03 carte importée — contenu de la config générée", () => {
-  bug(
-    "j03-008 : la couche d'une carte importée charge toutes les entités (250 attendues)",
-    async () => {
-      // Défaut j03-008 : couche « feature » sur /collections/{id}/items sans limit → 100 entités max.
-      const cfg = await mapConfig(creator, big.itemId);
-      const layer = cfg.config.map.layers[0];
-      if (layer.kind === "feature") {
-        const r = await creator.get(new URL(layer.url).pathname + new URL(layer.url).search);
-        expect(r.body.features).toHaveLength(250);
-      } else {
-        expect(layer.kind).toBe("vector"); // couche MVT : pas de plafond de page
-      }
-    },
-  );
+  test("j03-008 : la couche d'une carte importée charge toutes les entités (250 attendues)", async () => {
+    // Défaut j03-008 : couche « feature » sur /collections/{id}/items sans limit → 100 entités max.
+    const cfg = await mapConfig(creator, big.itemId);
+    const layer = cfg.config.map.layers[0];
+    if (layer.kind === "feature") {
+      const r = await creator.get(new URL(layer.url).pathname + new URL(layer.url).search);
+      expect(r.body.features).toHaveLength(250);
+    } else {
+      expect(layer.kind).toBe("vector"); // couche MVT : pas de plafond de page
+    }
+  });
 
   test("j03-009 : la carte importée porte une emprise (item.bbox) exploitable par le catalogue et par « Ajuster à l'emprise »", async () => {
     // Défaut j03-009 : recompute_item_bbox ignore les couches sans collectionId → bbox null.

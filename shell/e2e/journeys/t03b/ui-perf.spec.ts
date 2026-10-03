@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- sondes navigateur */
 import { test, expect, type Page } from "@playwright/test";
-import { bug } from "../_fixtures/verify";
 import { loginOidc, SHELL_URL } from "../_fixtures/env";
 import { installVitals, netLog, readVitals } from "../t03/helpers";
 import {
@@ -142,23 +141,17 @@ test.describe("t03b bundle et écrans pipeline / admin (navigation SPA, cache ch
     expect(body.features).toHaveLength(1000);
   });
 
-  bug(
-    "t03b-005 : le lien GeoJSON d'un dataset de 10 000 entités télécharge les 10 000 entités (ou signale la troncature)",
-    async ({ page }) => {
-      // Le cœur sait exporter 10 000 entités en GeoJSON en 0,5 s (export/items), mais le bouton
-      // passe par /items?limit=1000 sans en informer l'utilisateur (t03-007, mesuré à 10k).
-      const s = await getBigSeed(10_000);
-      await loginOidc(page, "creator");
-      await page.waitForTimeout(1500);
-      await softNav(page, `/public/datasets/${s.collectionId}`);
-      const link = page.getByRole("link", { name: /geojson/i }).first();
-      await link.waitFor({ state: "visible", timeout: 20_000 });
-      const href = (await link.getAttribute("href")) ?? "";
-      const res = await fetch(href, {
-        headers: { authorization: `Bearer ${await token("creator")}` },
-      });
-      const body = (await res.json()) as any;
-      expect(body.features).toHaveLength(10_000);
-    },
-  );
+  test("t03b-005 : le lien GeoJSON d'un dataset de 10 000 entités signale la troncature à 1 000 (P29.03)", async ({
+    page,
+  }) => {
+    const s = await getBigSeed(10_000);
+    await loginOidc(page, "creator");
+    await page.waitForTimeout(1500);
+    await softNav(page, `/public/datasets/${s.collectionId}`);
+    await page
+      .getByRole("link", { name: /geojson/i })
+      .first()
+      .waitFor({ state: "visible", timeout: 20_000 });
+    await expect(page.getByText(/1000 premières entités sur 10000/)).toBeVisible();
+  });
 });

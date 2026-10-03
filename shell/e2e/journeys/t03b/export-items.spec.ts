@@ -1,4 +1,3 @@
-import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { getBigSeed, timed, withPeakMem, type BigSeed } from "./helpers";
 
@@ -59,15 +58,12 @@ test.describe("t03b export d'entités à l'échelle", () => {
     expect(m.peakMb - m.startMb).toBeLessThan(150);
   });
 
-  bug(
-    "t03b-003 : l'export CSV/XLSX d'une collection géométrique conserve la géométrie",
-    async () => {
-      // Constat : features_to_format() ne passe que feature['properties'] à rows_to_format().
-      const r = await timed("creator", exp(s10k.collectionId, "format=csv&bbox=-5,42,-3.7,43"));
-      const header = r.text().split(/\r?\n/)[0].toLowerCase();
-      expect(header).toMatch(/geom|wkt|lon|lat|x,y/);
-    },
-  );
+  test("t03b-003 : l'export CSV/XLSX d'une collection géométrique conserve la géométrie", async () => {
+    // Constat : features_to_format() ne passe que feature['properties'] à rows_to_format().
+    const r = await timed("creator", exp(s10k.collectionId, "format=csv&bbox=-5,42,-3.7,43"));
+    const header = r.text().split(/\r?\n/)[0].toLowerCase();
+    expect(header).toMatch(/geom|wkt|lon|lat|x,y/);
+  });
 
   test("agrégat exporté (POST /export) sur 500 000 entités : CSV en moins de 3 s, 8 catégories", async () => {
     const r = await timed("creator", `/v1/collections/${s500k.collectionId}/export?format=csv`, {
