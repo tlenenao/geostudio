@@ -335,3 +335,21 @@ def test_copilot_write_tools_are_registered_write_tools(monkeypatch):
     assert COPILOT_WRITE_TOOL_NAMES <= WRITE_TOOL_NAMES
     # tout outil d'écriture de l'allowlist doit être soumis à confirmation
     assert ALLOWED_MCP_TOOL_NAMES & WRITE_TOOL_NAMES <= COPILOT_WRITE_TOOL_NAMES
+
+
+def test_failed_copilot_turn_is_still_audited(client, monkeypatch):  # noqa: F811
+    # revue finale : l'audit d'un tour en erreur (502/504) était annulé par le
+    # rollback de la session de requête quand l'HTTPException la traversait.
+    import app.copilot.routes as routes_module
+
+    class _Boom:
+        async def chat(self, messages, tools):
+            raise httpx.ConnectError("down")
+
+    monkeypatch.setattr(routes_module, "get_llm_provider", lambda: _Boom())
+    assert _turn(client, message="boom").status_code == 502
+    from app import db
+
+    s = next(client.app.dependency_overrides[db.get_session]())
+    rows = s.scalars(select(AuditLog).where(AuditLog.action == "copilot.turn")).all()
+    assert any(r.payload["outcome"] == "error" for r in rows)

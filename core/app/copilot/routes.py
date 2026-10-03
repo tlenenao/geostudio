@@ -316,6 +316,9 @@ def _write_turn_audit(
             "outcome": outcome,
         },
     )
+    # Commit explicite : sur 502/504 l'HTTPException traverse la dépendance de
+    # session, qui annulerait sinon la trace du tour en échec.
+    session.commit()
 
 
 async def _run_confirmed_write(
