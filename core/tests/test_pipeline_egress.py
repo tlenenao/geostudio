@@ -109,3 +109,18 @@ def test_dsn_with_internal_host_blocked(dsn, monkeypatch):
     )
     with pytest.raises(EgressBlockedError):
         assert_dsn_egress_allowed(dsn)
+
+
+def test_guarded_session_refuses_dns_rebinding_between_check_and_connect(monkeypatch):
+    """Double résolveur : le contrôle de send() voit une IP publique, la
+    résolution faite au moment de connecter voit 127.0.0.1 → refus."""
+    answers = iter(["93.184.216.34", "127.0.0.1"])
+
+    def fake_getaddrinfo(host, *args, **kwargs):
+        ip = next(answers, "127.0.0.1")
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, 0))]
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
+    session = build_guarded_session()
+    with pytest.raises(EgressBlockedError):
+        session.get("http://rebind.example.com:9/x", timeout=1.0)

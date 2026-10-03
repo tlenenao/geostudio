@@ -15,6 +15,8 @@ from urllib.parse import urlparse
 
 import requests
 
+from app.net_pin import pinned_adapter
+
 logger = logging.getLogger(__name__)
 
 _ALLOWLIST_ENV = "CORE_ALERTS_EGRESS_ALLOWLIST"
@@ -63,7 +65,15 @@ def assert_egress_allowed(url: str) -> str:
     return str(addresses[0])  # REV-273d : adresse validée, à utiliser pour se connecter
 
 
-class _GuardedHTTPAdapter(requests.adapters.HTTPAdapter):
+def _pin_ip(host: str) -> str:
+    # REV-273d : la connexion vise l'IP que la garde vient de valider (anti
+    # DNS-rebinding entre contrôle et connexion). Lookup du nom global à
+    # l'appel : reste neutralisable par les fixtures de tests
+    # (`assert_egress_allowed` remplacé par un lambda → None → pas d'épinglage).
+    return assert_egress_allowed(f"http://[{host}]" if ":" in host else f"http://{host}")
+
+
+class _GuardedHTTPAdapter(pinned_adapter(requests.adapters.HTTPAdapter, _pin_ip)):  # type: ignore[misc]
     def send(self, request, **kwargs):
         assert_egress_allowed(request.url)
         return super().send(request, **kwargs)

@@ -16,6 +16,8 @@ from urllib.parse import urlparse
 import requests
 from sqlalchemy.engine import make_url
 
+from app.net_pin import pinned_adapter
+
 logger = logging.getLogger(__name__)
 
 # Variable dédiée, distincte de CORE_HARVEST_EGRESS_ALLOWLIST (app.harvest) :
@@ -93,7 +95,15 @@ def assert_dsn_egress_allowed(dsn: str) -> None:
                 assert_egress_allowed(f"http://[{host}]" if ":" in host else f"http://{host}")
 
 
-class _GuardedHTTPAdapter(requests.adapters.HTTPAdapter):
+def _pin_ip(host: str) -> str:
+    # REV-273d : la connexion vise l'IP que la garde vient de valider (anti
+    # DNS-rebinding entre contrôle et connexion). Lookup du nom global à
+    # l'appel : reste neutralisable par les fixtures de tests
+    # (`assert_egress_allowed` remplacé par un lambda → None → pas d'épinglage).
+    return assert_egress_allowed(f"http://[{host}]" if ":" in host else f"http://{host}")
+
+
+class _GuardedHTTPAdapter(pinned_adapter(requests.adapters.HTTPAdapter, _pin_ip)):  # type: ignore[misc]
     def send(self, request, **kwargs):
         assert_egress_allowed(request.url)
         # requests n'a aucun délai par défaut (P16.03) : sans cela un serveur
