@@ -353,3 +353,49 @@ def test_p16_06_07_validation_errors_do_not_echo_values_and_reject_empty(env):
         "/v1/secrets", json={"name": "x", "payload": {"kind": "bearer_token", "token": 5}}
     )
     assert r.status_code == 422 and "input" not in r.text
+
+
+def test_rev273c_409_lists_only_items_the_caller_can_read(env):
+    from app.configs.models import Config, ConfigRevision
+    from app.items.repository import create_item
+
+    app, client, Session, admin, _regular = env
+    with Session() as s:
+        bob = get_or_create_user(
+            s,
+            tenant_id=admin.tenant_id,
+            oidc_sub="b",
+            username="bob",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        s.commit()
+        s.refresh(bob)
+    _as(app, bob)
+    sid = client.post("/v1/secrets", json=BEARER_BODY).json()["id"]
+    with Session() as s:
+        for n, (title, owner) in enumerate([("Mine", bob.id), ("Theirs", admin.id)]):
+            item = create_item(
+                s,
+                tenant_id=admin.tenant_id,
+                owner_id=owner,
+                resource_type="pipeline",
+                title=title,
+            )
+            s.add(Config(id=f"c{n}", tenant_id=admin.tenant_id, kind="pipeline", item_id=item.id))
+            s.add(
+                ConfigRevision(
+                    tenant_id=admin.tenant_id,
+                    config_id=f"c{n}",
+                    version=1,
+                    data={"nodes": [{"params": {"secretName": "weather-api"}}]},
+                )
+            )
+        s.commit()
+    r = client.delete(f"/v1/secrets/{sid}")
+    assert r.status_code == 409
+    detail = r.json()["detail"]
+    assert "Mine" in detail
+    assert "Theirs" not in detail
+    assert "1 autre objet non visible" in detail

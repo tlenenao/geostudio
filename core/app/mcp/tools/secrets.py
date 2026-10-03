@@ -45,7 +45,7 @@ def register(server: FastMCP, session_factory) -> None:
                 raise ValueError("secret not found")
             name, kind = secret.name, secret.kind
             try:
-                repo.delete_secret_unless_used(session, secret)
+                repo.delete_secret_unless_used(session, secret, user=user)
             except repo.SecretInUseError as exc:
                 raise ValueError(str(exc)) from exc
             write_audit(
