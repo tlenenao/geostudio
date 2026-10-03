@@ -268,8 +268,9 @@ class ReaderConnectorOracleParams(BaseModel):
 class ReaderConnectorBlobParams(BaseModel):
     """Lecture d'un fichier tabulaire unique (CSV/JSONL/Parquet) depuis un
     objet de stockage cloud (S3, Azure Blob, GCS), résolu par un secret de
-    connexion pré-configuré au bucket — jamais un upload ni une URL
-    arbitraire (Task 15, Vague 2 §6.1). Diffère des autres
+    connexion lié à un bucket (champ `bucketUrl` du secret, REV-197) — jamais
+    un upload ni une URL arbitraire : `path` doit être sous ce `bucketUrl`,
+    sinon `ConnectorRuntimeError` à l'exécution (Task 15, Vague 2 §6.1). Diffère des autres
     `reader.connector.*` : pas de requête SQL, la source dlt `filesystem`
     (fsspec) fournie par le paquet `dlt` de base.
 
@@ -277,6 +278,8 @@ class ReaderConnectorBlobParams(BaseModel):
     `gs://`) : `secretName` doit référencer un secret du kind correspondant
     (`s3_credentials`/`azure_blob_credentials`/`gcs_credentials`), sinon
     `materialize_blob_connector` rejette avant toute extraction.
+    Un secret créé avant REV-197 (sans `bucketUrl`) reste lisible mais
+    l'exécution échoue avec un message demandant de le renseigner.
 
     `path` doit désigner un objet UNIQUE et complet (ex.
     `s3://bucket/prefix/data.csv`), jamais un répertoire ni un motif — vérifié

@@ -1027,6 +1027,7 @@ def test_materialize_blob_connector_builds_aws_credentials_and_splits_path(
             "awsAccessKeyId": "AKIA123",
             "awsSecretAccessKey": "shh",
             "endpointUrl": "http://minio.local:9000",
+            "bucketUrl": "s3://bucket/prefix",
         },
     )
     captured: dict = {}
@@ -1068,6 +1069,7 @@ def test_materialize_blob_connector_blocks_internal_s3_endpoint(
             "awsAccessKeyId": "AKIA123",
             "awsSecretAccessKey": "shh",
             "endpointUrl": "http://169.254.169.254",
+            "bucketUrl": "s3://bucket",
         },
     )
     _patch_blob_internals(monkeypatch, {})
@@ -1097,6 +1099,7 @@ def test_materialize_blob_connector_builds_azure_credentials(
             "kind": "azure_blob_credentials",
             "accountName": "myaccount",
             "accountKey": "base64key==",
+            "bucketUrl": "az://container",
         },
     )
     captured: dict = {}
@@ -1144,7 +1147,11 @@ def test_materialize_blob_connector_builds_gcs_credentials(
         user,
         name="gcs-secret",
         kind="gcs_credentials",
-        payload={"kind": "gcs_credentials", "serviceAccountInfo": service_account_info},
+        payload={
+            "kind": "gcs_credentials",
+            "serviceAccountInfo": service_account_info,
+            "bucketUrl": "gs://bucket",
+        },
     )
     captured: dict = {}
     _patch_blob_internals(monkeypatch, captured)
@@ -1167,6 +1174,89 @@ def test_materialize_blob_connector_builds_gcs_credentials(
     assert isinstance(creds, GcpServiceAccountCredentials)
     assert creds.project_id == "proj1"
     assert creds.client_email == "x@proj1.iam.gserviceaccount.com"
+
+
+def _blob_s3_secret(session, tenant, user, **extra):
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="s3-scoped",
+        kind="s3_credentials",
+        payload={
+            "kind": "s3_credentials",
+            "awsAccessKeyId": "AKIA123",
+            "awsSecretAccessKey": "shh",
+            **extra,
+        },
+    )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "s3://other-bucket/prefix/data.csv",  # autre bucket
+        "s3://bucket-evil/prefix/data.csv",  # préfixe de nom de bucket
+        "s3://bucket/other/data.csv",  # même bucket, hors préfixe
+        "s3://bucket/prefix/../other/data.csv",  # traversée
+        "s3://bucket/prefixe/data.csv",  # préfixe de chaîne, pas de segment
+        "s3://BUCKET/prefix/data.csv",  # casse : refus strict
+    ],
+)
+def test_materialize_blob_connector_refuses_path_outside_bucket_url(
+    monkeypatch, conn, session, tenant, user, path
+):
+    _blob_s3_secret(session, tenant, user, bucketUrl="s3://bucket/prefix")
+    captured: dict = {}
+    _patch_blob_internals(monkeypatch, captured)
+    params = ReaderConnectorBlobParams(secretName="s3-scoped", path=path, format="csv")
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="outside"):
+        connector_runtime.materialize_blob_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
+            node_id="bo",
+            params=params,
+            view_name="node_bo",
+        )
+    assert "bucket_url" not in captured  # jamais allé jusqu'à filesystem()
+
+
+def test_materialize_blob_connector_accepts_path_inside_bucket_url(
+    monkeypatch, conn, session, tenant, user
+):
+    _blob_s3_secret(session, tenant, user, bucketUrl="s3://bucket/prefix/")
+    captured: dict = {}
+    _patch_blob_internals(monkeypatch, captured)
+    params = ReaderConnectorBlobParams(
+        secretName="s3-scoped", path="s3://bucket/prefix/sub/data.csv", format="csv"
+    )
+    connector_runtime.materialize_blob_connector(
+        conn,
+        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
+        node_id="bi",
+        params=params,
+        view_name="node_bi",
+    )
+    assert captured["bucket_url"] == "s3://bucket"
+    assert captured["file_glob"] == "prefix/sub/data.csv"
+
+
+def test_materialize_blob_connector_legacy_secret_without_bucket_url_fails_clearly(
+    monkeypatch, conn, session, tenant, user
+):
+    _blob_s3_secret(session, tenant, user)  # secret chiffré avant REV-197
+    _patch_blob_internals(monkeypatch, {})
+    params = ReaderConnectorBlobParams(
+        secretName="s3-scoped", path="s3://bucket/data.csv", format="csv"
+    )
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="bucketUrl"):
+        connector_runtime.materialize_blob_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
+            node_id="bl",
+            params=params,
+            view_name="node_bl",
+        )
 
 
 # --- P16.02 / P16.03 : garde d'egress du DSN, délais prouvés par un serveur lent ---
@@ -1316,6 +1406,7 @@ def _blob_secret_and_resolver(session, tenant, user):
             "kind": "s3_credentials",
             "awsAccessKeyId": "AKIA",
             "awsSecretAccessKey": "shh",
+            "bucketUrl": "s3://bucket",
         },
     )
     return connector_runtime.PostgresSecretResolver(session, tenant.id, user)

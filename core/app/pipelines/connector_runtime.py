@@ -589,6 +589,27 @@ def materialize_bigquery_connector(
 _GLOB_WILDCARDS = frozenset("*?[")
 
 
+def _assert_path_within_bucket(payload, path: str) -> None:
+    """REV-197 : le secret est LIÉ à `payload.bucketUrl` ; `params.path` (écrit
+    par l'auteur du pipeline) doit en porter le préfixe, sinon un secret S3
+    pourrait lire n'importe quel bucket accessible à ses clés. Comparaison sur
+    un préfixe terminé par `/` (« s3://bucket » ne couvre pas « s3://bucket-evil »)
+    et rejet de tout segment `..`."""
+    bucket_url = payload.bucketUrl
+    if not bucket_url:
+        raise ConnectorRuntimeError(
+            "reader.connector.blob: this secret has no 'bucketUrl' (required since REV-197) — "
+            "edit the secret to set the bucket/prefix it is scoped to "
+            "(e.g. 's3://my-bucket/prefix')"
+        )
+    scope = bucket_url.rstrip("/") + "/"
+    if ".." in urlsplit(path).path.split("/") or not path.startswith(scope):
+        raise ConnectorRuntimeError(
+            f"reader.connector.blob: path '{path}' is outside the bucket scope "
+            f"of the secret ('{bucket_url}')"
+        )
+
+
 def materialize_blob_connector(
     conn,
     *,
@@ -606,7 +627,10 @@ def materialize_blob_connector(
     Le fournisseur est déduit du schéma d'URL de `params.path` (vérifié par
     `urlsplit`, pas par un simple `str.startswith` sur un préfixe littéral).
     Le secret doit être du kind attendu pour ce schéma, sinon rejet avant
-    toute extraction — même patron défensif que les autres readers.
+    toute extraction — même patron défensif que les autres readers. Le secret
+    porte un `bucketUrl` (bucket + préfixe optionnel) et `params.path` doit être
+    sous ce préfixe (REV-197) : un secret blob est lié à un bucket, pas à tout
+    ce que ses clés peuvent atteindre.
 
     `params.path` est découpé en un `bucket_url` racine (schéma + bucket
     seuls) et un `file_glob` (le reste du chemin) : vérifié empiriquement
@@ -629,6 +653,7 @@ def materialize_blob_connector(
             f"secret has kind '{payload.kind}', not usable for this path scheme "
             f"(expected {expected_kind})"
         )
+    _assert_path_within_bucket(payload, params.path)
 
     if payload.kind == "s3_credentials":
         if payload.endpointUrl:  # endpoint S3 compatible = cible réseau libre (P16.02)
