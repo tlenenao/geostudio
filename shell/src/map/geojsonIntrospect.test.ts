@@ -46,6 +46,16 @@ describe("fetchFeatureCollection", () => {
     const client = { getCoreUrl: () => "https://core.test", getAuthToken: () => "tok" };
     expect(hostedToken(client, "https://core.test/collections/c/items")).toBe("tok");
     expect(hostedToken(client, "https://evil.example/collections/c/items")).toBeUndefined();
+    for (const u of [
+      "https://core.test.evil.com/collections/c/items",
+      "https://core.test@evil.com/collections/c/items",
+      "https://evil.com/?https://core.test/collections/c/items",
+      "http://core.test/collections/c/items",
+      "https://core.test:8443/collections/c/items",
+      "//evil.com/collections/c/items",
+    ]) {
+      expect(hostedToken(client, u), u).toBeUndefined();
+    }
   });
 
   test("rejects on a non-OK response", async () => {
