@@ -796,6 +796,14 @@ export const fr = {
   // ImportFileButton
   "importFile.button": "Importer un fichier",
   "importFile.genericError": "Échec de l'import.",
+  "importFile.uploadError": "Échec de l'envoi du fichier.",
+  "importFile.inspectError": "Échec de l'analyse du fichier.",
+  "importFile.jobError": "Échec du lancement de l'import.",
+  "importFile.pollError": "Échec du suivi de l'import.",
+  "importFile.tooLong":
+    "L'import est toujours en cours après 10 minutes ; il continue en arrière-plan, la cloche vous notifiera.",
+  "importFile.slow":
+    "L'import prend plus de temps que prévu ; il continue en arrière-plan, vous pouvez fermer ce tiroir (la cloche vous notifiera).",
   "importFile.latColumn": "Colonne latitude",
   "importFile.lonColumn": "Colonne longitude",
   "importFile.continueButton": "Continuer",

@@ -62,7 +62,7 @@ test.describe("j03 import par le tiroir « Importer un fichier »", () => {
     await dialog.getByLabel("Titre de la collection").fill("aud-j03 import ui");
     await dialog.getByRole("button", { name: "Importer", exact: true }).click();
     // Chemin actuel : le présigné répond 500 (j03-002) → message générique, pas de boucle infinie.
-    await expect(dialog.getByRole("alert")).toContainText("Échec de l'import.", {
+    await expect(dialog.getByRole("alert")).toContainText("Échec de l'envoi du fichier.", {
       timeout: 20_000,
     });
   });
@@ -93,21 +93,20 @@ test.describe("j03 import par le tiroir « Importer un fichier »", () => {
     await expect(dialog.getByLabel("Colonne longitude")).toBeVisible();
   });
 
-  bug(
-    "j03-005 : un CSV séparé par « ; » propose ses vraies colonnes (nom, lat, lon) au choix",
-    async ({ page }) => {
-      // Défaut j03-005 : l'en-tête est découpé sur « , » : une seule « colonne » « nom;lat;lon ».
-      await asCreator(page);
-      await page.getByRole("button", { name: "Importer un fichier" }).click();
-      const dialog = page.getByRole("dialog");
-      await dialog.getByLabel("Fichier à importer").setInputFiles(join(FX, "semi.csv"));
-      const latOptions = await dialog
-        .getByLabel("Colonne latitude")
-        .locator("option")
-        .allInnerTexts();
-      expect(latOptions).toContain("lat");
-    },
-  );
+  test("j03-005 : un CSV séparé par « ; » propose ses vraies colonnes (nom, lat, lon) au choix", async ({
+    page,
+  }) => {
+    // Défaut j03-005 : l'en-tête est découpé sur « , » : une seule « colonne » « nom;lat;lon ».
+    await asCreator(page);
+    await page.getByRole("button", { name: "Importer un fichier" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("Fichier à importer").setInputFiles(join(FX, "semi.csv"));
+    const latOptions = await dialog
+      .getByLabel("Colonne latitude")
+      .locator("option")
+      .allInnerTexts();
+    expect(latOptions).toContain("lat");
+  });
 });
 
 test.describe("j03 éditeur de carte — symbologie, popups, terrain", () => {

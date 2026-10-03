@@ -52,24 +52,18 @@ test.describe("j03 carte importée — contenu de la config générée", () => {
     },
   );
 
-  bug(
-    "j03-009 : la carte importée porte une emprise (item.bbox) exploitable par le catalogue et par « Ajuster à l'emprise »",
-    async () => {
-      // Défaut j03-009 : recompute_item_bbox ignore les couches sans collectionId → bbox null.
-      const item = (await creator.get(`/v1/items/${seed.pointsItem}`)).body;
-      expect(item.bbox).not.toBeNull();
-    },
-  );
+  test("j03-009 : la carte importée porte une emprise (item.bbox) exploitable par le catalogue et par « Ajuster à l'emprise »", async () => {
+    // Défaut j03-009 : recompute_item_bbox ignore les couches sans collectionId → bbox null.
+    const item = (await creator.get(`/v1/items/${seed.pointsItem}`)).body;
+    expect(item.bbox).not.toBeNull();
+  });
 
-  bug(
-    "j03-010 : la couche de points importée déclare un rendu « points » (renderAs/geometryKind)",
-    async () => {
-      // Défaut j03-010 (probable) : renderAs absent → MapView retombe sur « fill », invisible pour des Point.
-      const cfg = await mapConfig(creator, seed.pointsItem);
-      const layer = cfg.config.map.layers[0];
-      expect(layer.renderAs === "circle" || layer.kind === "vector").toBe(true);
-    },
-  );
+  test("j03-010 : la couche de points importée déclare un rendu « points » (renderAs/geometryKind)", async () => {
+    // Défaut j03-010 (probable) : renderAs absent → MapView retombe sur « fill », invisible pour des Point.
+    const cfg = await mapConfig(creator, seed.pointsItem);
+    const layer = cfg.config.map.layers[0];
+    expect(layer.renderAs === "circle" || layer.kind === "vector").toBe(true);
+  });
 });
 
 test.describe("j03 carte — versions et rollback", () => {

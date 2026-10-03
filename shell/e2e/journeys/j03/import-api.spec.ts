@@ -116,20 +116,17 @@ test.describe("j03 import — formats nominaux", () => {
     }
   });
 
-  bug(
-    "j03-021 : une collection tabulaire importée (sans géométrie) est atteignable depuis le catalogue du créateur",
-    async () => {
-      // Défaut j03-021 : run_import ne crée ni Map ni item « dataset » quand geometryMode=none (itemId null) ;
-      // le Créateur n'a pas admin.collections.manage et l'import le renvoie sur « / » : la collection n'a
-      // aucune entrée dans « Données » (0 item dataset) — seul le sélecteur de couches la révèle.
-      const res = await ingest(creator, "nogeom.csv", fixture("nogeom.csv"), {
-        geometryMode: "none",
-      });
-      expect(res.job.status).toBe("done");
-      const mine = (await creator.get("/v1/items?type=dataset&scope=mine&pageSize=100")).body;
-      expect(mine.total).toBeGreaterThan(0);
-    },
-  );
+  test("j03-021 : une collection tabulaire importée (sans géométrie) est atteignable depuis le catalogue du créateur", async () => {
+    // Défaut j03-021 : run_import ne crée ni Map ni item « dataset » quand geometryMode=none (itemId null) ;
+    // le Créateur n'a pas admin.collections.manage et l'import le renvoie sur « / » : la collection n'a
+    // aucune entrée dans « Données » (0 item dataset) — seul le sélecteur de couches la révèle.
+    const res = await ingest(creator, "nogeom.csv", fixture("nogeom.csv"), {
+      geometryMode: "none",
+    });
+    expect(res.job.status).toBe("done");
+    const mine = (await creator.get("/v1/items?type=dataset&scope=mine&pageSize=100")).body;
+    expect(mine.total).toBeGreaterThan(0);
+  });
 });
 
 test.describe("j03 import — erreurs", () => {
@@ -154,7 +151,7 @@ test.describe("j03 import — erreurs", () => {
     expect(csv.job.errorMessage).toMatch(/lat\/lon/);
   });
 
-  bug("j03-004 : latitude hors [-90, 90] dans un CSV est refusée", async () => {
+  test("j03-004 : latitude hors [-90, 90] dans un CSV est refusée", async () => {
     // Défaut j03-004 : POINT(2.1 146.1) est stocké dans geometry(Point,4326), centre de carte lat 96.15.
     const res = await ingest(creator, "badcoords.csv", fixture("badcoords.csv"), {
       latField: "latitude",
@@ -163,28 +160,22 @@ test.describe("j03 import — erreurs", () => {
     expect(res.job.status).toBe("error");
   });
 
-  bug(
-    "j03-005 : un CSV « ; » avec virgule décimale est importé ou reçoit un message exploitable",
-    async () => {
-      // Défaut j03-005 : message « précisez-les » alors que le shell ne peut pas proposer de colonnes
-      // (ImportFileButton découpe l'en-tête sur « , » uniquement) ; aucun moyen de terminer l'import.
-      const res = await ingest(creator, "semi.csv", fixture("semi.csv"), {
-        latField: "lat",
-        lonField: "lon",
-      });
-      expect(res.job.status).toBe("done");
-    },
-  );
+  test("j03-005 : un CSV « ; » avec virgule décimale est importé ou reçoit un message exploitable", async () => {
+    // Défaut j03-005 : message « précisez-les » alors que le shell ne peut pas proposer de colonnes
+    // (ImportFileButton découpe l'en-tête sur « , » uniquement) ; aucun moyen de terminer l'import.
+    const res = await ingest(creator, "semi.csv", fixture("semi.csv"), {
+      latField: "lat",
+      lonField: "lon",
+    });
+    expect(res.job.status).toBe("done");
+  });
 
-  bug(
-    "j03-006 : le message d'erreur d'un zip illisible ne fuit ni chemin temporaire ni jargon GDAL",
-    async () => {
-      // Défaut j03-006 : « '/vsizip//tmp/tmpXXXX.zip' not recognized as being in a supported file format… ».
-      const res = await ingest(creator, "empty.zip", fixture("empty.zip"));
-      expect(res.job.status).toBe("error");
-      expect(res.job.errorMessage).not.toMatch(/\/tmp\/|\/vsizip|driver explicitly/);
-    },
-  );
+  test("j03-006 : le message d'erreur d'un zip illisible ne fuit ni chemin temporaire ni jargon GDAL", async () => {
+    // Défaut j03-006 : « '/vsizip//tmp/tmpXXXX.zip' not recognized as being in a supported file format… ».
+    const res = await ingest(creator, "empty.zip", fixture("empty.zip"));
+    expect(res.job.status).toBe("error");
+    expect(res.job.errorMessage).not.toMatch(/\/tmp\/|\/vsizip|driver explicitly/);
+  });
 });
 
 test.describe("j03 import — droits", () => {
