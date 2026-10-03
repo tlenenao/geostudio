@@ -97,16 +97,15 @@ def build_mvt_sql(quote: Callable[[str], str], info: TableInfo) -> str:
     outer_props = "".join(f", raw.{quote(n)}" for n in names)
     # P29.08/09 : LIMIT max+1 DANS la lecture brute, tri déterministe sur la PK
     # (sinon les entités gardées suivent l'ordre physique et changent après un
-    # VACUUM/UPDATE). La ligne en trop ne part jamais dans la tuile (rn <= max) :
+    # VACUUM/UPDATE). La ligne en trop ne part jamais dans la tuile (LIMIT max externe) :
     # elle sert seulement à prouver qu'il y a eu une vraie omission, donc une
     # collection d'exactement `max` entités n'est plus déclarée tronquée.
     order = f"ORDER BY t.{quote(info.pk_column)}" if info.pk_column else ""
-    window = f"ORDER BY t.{quote(info.pk_column)}" if info.pk_column else ""
     return (
         "WITH raw AS ("
         f"SELECT ST_AsMVTGeom(ST_Transform({geom}, 3857), "
         "ST_TileEnvelope(:z, :x, :y), :extent, :buffer, true) AS geom"
-        f"{props_clause}, row_number() OVER ({window}) AS __rn "
+        f"{props_clause} "
         f"FROM {table} t "
         # Le filtre porte sur la géométrie brute pour rester indexable par le
         # GiST posé par apply_collection_ddl : ST_Transform à gauche du && le
@@ -116,8 +115,8 @@ def build_mvt_sql(quote: Callable[[str], str], info: TableInfo) -> str:
         # transformées qu'il faut borner, pas la sortie de l'agrégat.
         f"{order} LIMIT :max_features + 1"
         ") SELECT (SELECT ST_AsMVT(tile, :layer, :extent, 'geom', :fid) FROM ("
-        f"SELECT raw.geom{outer_props} FROM raw "
-        "WHERE raw.geom IS NOT NULL AND raw.__rn <= :max_features"
+        f"SELECT raw.geom{outer_props} FROM (SELECT * FROM raw LIMIT :max_features) raw "
+        "WHERE raw.geom IS NOT NULL"
         ") AS tile), (SELECT count(*) FROM raw)"
     )
 

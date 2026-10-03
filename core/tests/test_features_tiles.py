@@ -116,6 +116,9 @@ def test_sql_caps_the_number_of_features_read_per_tile():
     assert sql.index("LIMIT :max_features + 1") < sql.index(") AS tile")
     # tri déterministe sur la PK avant le plafond (P29.09)
     assert 'ORDER BY t."id" LIMIT' in sql
+    # Pas de fonction fenêtre : elle forcerait un tri complet de toutes les
+    # lignes de l'emprise AVANT le LIMIT (perf sur grosses collections).
+    assert "row_number" not in sql.lower()
 
 
 def test_the_tile_route_is_mounted_unconditionally():
