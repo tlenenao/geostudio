@@ -119,6 +119,11 @@ test("404: shows a not-found message without leaking whether the slug exists, an
   expect(await screen.findByRole("alert")).toHaveTextContent(/introuvable/i);
   expect(screen.getByRole("alert")).not.toHaveTextContent(/nexiste-pas/i);
   expect(getPublicAppConfig).not.toHaveBeenCalled();
+  // P35.03 : soft-404 — titre explicite + noindex, repère <main>/<h1>.
+  expect(document.title).toBe("Page introuvable.");
+  expect(document.querySelector('meta[name="robots"]')?.getAttribute("content")).toBe("noindex");
+  expect(screen.getByRole("main")).toBeInTheDocument();
+  expect(screen.getByRole("heading", { level: 1 })).toBeInTheDocument();
   // SP-B12b: pas de couleur Tailwind de palette codée en dur. `container`
   // (pas l'élément role="alert" lui-même) : `Element.innerHTML` ne reflète
   // que le balisage des ENFANTS d'un élément, jamais ses propres attributs

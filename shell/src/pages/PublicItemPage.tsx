@@ -4,6 +4,8 @@ import { useItemClient } from "../api/ItemClientProvider";
 import { AppRenderer } from "../builder/AppRenderer";
 import { registerBuiltinWidgets } from "../builder/widgets";
 import { useDocumentMeta } from "../shell/useDocumentMeta";
+import { t } from "../i18n";
+import { PublicNotFound } from "./PublicNotFound";
 import { LoadingState } from "../ui/kit/LoadingState";
 
 registerBuiltinWidgets();
@@ -29,8 +31,11 @@ export function PublicItemPage({ pk }: { pk: string }) {
   // impossible d'afficher le contenu de la config avec un titre/meta encore
   // au repli "GeoStudio" — corrige une fenêtre de titre obsolète trouvée en
   // revue finale de Task 28.
+  const notFound =
+    itemQuery.isError || configQuery.isError || (configQuery.isSuccess && !configQuery.data);
   useDocumentMeta({
-    title: itemQuery.data?.title ?? "GeoStudio",
+    title: notFound ? t("publicPage.notFound") : (itemQuery.data?.title ?? "GeoStudio"),
+    noindex: notFound,
     description: itemQuery.data?.abstract ?? "",
     canonicalUrl: `${window.location.origin}/public/items/${pk}`,
   });
@@ -39,13 +44,7 @@ export function PublicItemPage({ pk }: { pk: string }) {
     return <LoadingState />;
   }
   if (itemQuery.isError || configQuery.isError || !configQuery.data) {
-    return (
-      <div className="p-8 text-center">
-        <p role="alert" className="text-sm text-ink-2">
-          Page introuvable.
-        </p>
-      </div>
-    );
+    return <PublicNotFound />;
   }
   return (
     <main className="h-full w-full">

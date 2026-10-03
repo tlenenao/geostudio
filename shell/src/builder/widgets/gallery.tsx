@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { publicThumbnailSrc } from "../../lib/publicThumbnail";
 import { useQuery } from "@tanstack/react-query";
 import { registerWidget } from "../registry";
 import { useItemClient } from "../../api/ItemClientProvider";
@@ -123,7 +124,11 @@ export function registerGalleryWidget(): void {
               className="flex flex-col overflow-hidden rounded-[var(--gs-radius)] border border-[var(--gs-color-border)] bg-[var(--gs-color-surface)] text-inherit no-underline"
             >
               {item.thumbnailUrl ? (
-                <img src={item.thumbnailUrl} alt="" className="h-32 w-full object-cover" />
+                <img
+                  src={publicThumbnailSrc(item.thumbnailUrl) ?? ""}
+                  alt=""
+                  className="h-32 w-full object-cover"
+                />
               ) : (
                 <div className="h-32 w-full bg-[var(--gs-color-background)]" />
               )}

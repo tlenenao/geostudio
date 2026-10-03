@@ -4,6 +4,8 @@ import { useItemClient } from "../api/ItemClientProvider";
 import { AppRenderer } from "../builder/AppRenderer";
 import { registerBuiltinWidgets } from "../builder/widgets";
 import { useDocumentMeta } from "../shell/useDocumentMeta";
+import { t } from "../i18n";
+import { PublicNotFound } from "./PublicNotFound";
 import { LoadingState } from "../ui/kit/LoadingState";
 
 registerBuiltinWidgets();
@@ -29,8 +31,11 @@ export function SitePublicPage({ slug }: { slug: string }) {
   // n'est appelé qu'une fois les deux valeurs connues (règle des Hooks —
   // pas d'appel conditionnel), donc gardé par `itemQuery.isSuccess` via une
   // valeur de repli plutôt qu'un retour anticipé.
+  const notFound =
+    itemQuery.isError || configQuery.isError || (configQuery.isSuccess && !configQuery.data);
   useDocumentMeta({
-    title: itemQuery.data?.title ?? "GeoStudio",
+    title: notFound ? t("publicPage.notFound") : (itemQuery.data?.title ?? "GeoStudio"),
+    noindex: notFound,
     description: itemQuery.data?.abstract ?? "",
     canonicalUrl: itemQuery.isSuccess
       ? `${window.location.origin}/sites/${slug}`
@@ -41,13 +46,7 @@ export function SitePublicPage({ slug }: { slug: string }) {
     return <LoadingState />;
   }
   if (itemQuery.isError || configQuery.isError || !configQuery.data) {
-    return (
-      <div className="p-8 text-center">
-        <p role="alert" className="text-sm text-ink-2">
-          Page introuvable.
-        </p>
-      </div>
-    );
+    return <PublicNotFound />;
   }
   return (
     <main className="h-full w-full">

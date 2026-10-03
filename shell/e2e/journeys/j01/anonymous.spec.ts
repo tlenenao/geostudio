@@ -25,15 +25,14 @@ test.describe("j01 visiteur anonyme — shell", () => {
     expect(page.url()).toContain("openid-connect/auth");
   });
 
-  // j01-001 : /v1/public/items existe mais aucune page shell ne l'expose.
-  bug(
-    "j01-001 : un visiteur anonyme peut parcourir un catalogue public sans login",
-    async ({ page }) => {
-      await page.goto("/");
-      await page.waitForTimeout(3000);
-      expect(page.url()).not.toMatch(KEYCLOAK_AUTH);
-    },
-  );
+  // j01-001 : /public expose /v1/public/items sans connexion (P35.01).
+  test("j01-001 : un visiteur anonyme peut parcourir un catalogue public sans login", async ({
+    page,
+  }) => {
+    await page.goto("/public");
+    await expect(page.getByRole("heading", { level: 1, name: "Catalogue public" })).toBeVisible();
+    expect(page.url()).not.toMatch(KEYCLOAK_AUTH);
+  });
 
   for (const path of ["/items/abc", "/maps/abc", "/admin/users", "/settings", "/tasks"]) {
     test(`route protégée ${path} : redirection vers Keycloak`, async ({ page }) => {
@@ -55,7 +54,7 @@ test.describe("j01 visiteur anonyme — shell", () => {
   });
 
   // j01-002 : soft-404 — la page introuvable garde un titre générique et n'a pas de noindex.
-  bug("j01-002 : la page site introuvable est marquée noindex", async ({ page }) => {
+  test("j01-002 : la page site introuvable est marquée noindex", async ({ page }) => {
     await page.goto("/sites/aud-j01-inexistant");
     await expect(page.getByRole("alert")).toBeVisible();
     const robots = (await page.locator('meta[name="robots"]').count()) ? "x" : "";
@@ -80,14 +79,13 @@ test.describe("j01 visiteur anonyme — shell", () => {
   });
 
   // j01-003 : la page dataset publique n'a ni titre de document ni méta description.
-  bug(
-    "j01-003 : la page dataset publique définit un titre et une description SEO",
-    async ({ page }) => {
-      await page.goto("/public/datasets/incidents");
-      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Incidents");
-      await expect(page).toHaveTitle(/Incidents/);
-    },
-  );
+  test("j01-003 : la page dataset publique définit un titre et une description SEO", async ({
+    page,
+  }) => {
+    await page.goto("/public/datasets/incidents");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Incidents");
+    await expect(page).toHaveTitle(/Incidents/);
+  });
 
   // j01-004 : lecture des lignes d'une collection publique par un anonyme.
   test("dataset public 'incidents' : en-tête rendu, sans redirection login", async ({ page }) => {
@@ -210,7 +208,7 @@ test.describe("j01 visiteur anonyme — API publique", () => {
   });
 
   // j01-006 : HEAD refusé sur sitemap/robots.
-  bug("j01-006 : HEAD /sitemap.xml et /robots.txt répondent 200", async ({ request }) => {
+  test("j01-006 : HEAD /sitemap.xml et /robots.txt répondent 200", async ({ request }) => {
     for (const p of ["sitemap.xml", "robots.txt"]) {
       const r = await request.head(`${CORE_URL}/v1/public/${p}`);
       expect(r.status(), p).toBe(200);

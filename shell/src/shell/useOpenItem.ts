@@ -4,7 +4,8 @@ import { useNavigate } from "react-router-dom";
 import { useItemClient } from "../api/ItemClientProvider";
 import { encodeAnalyticsContext } from "../lib/analyticsContextUrl";
 import { resolvePipelineEditorPath } from "./resolvePipelineEditorPath";
-import type { ResourceType } from "../api/types";
+import type { Item, ResourceType } from "../api/types";
+import { editorPath } from "./editorPath";
 
 // Shared by CatalogRoute (general catalog) and BookmarksRoute ("Mes vues"):
 // a bookmark has no editor (SP-14m — no edit flow for this kind), so opening
@@ -22,7 +23,7 @@ export function useOpenItem() {
   const navigate = useNavigate();
   const client = useItemClient();
   const [openError, setOpenError] = useState(false);
-  const openItemAsync = async (pk: string, type: ResourceType) => {
+  const openItemAsync = async (pk: string, type: ResourceType, item?: Item) => {
     if (type === "bookmark") {
       try {
         const bookmark = await client.getBookmarkConfig(pk);
@@ -78,16 +79,11 @@ export function useOpenItem() {
       navigate(`/items/${pk}`);
       return;
     }
-    navigate(
-      type === "map"
-        ? `/maps/${pk}`
-        : type === "dataset"
-          ? `/datasets/${pk}/edit`
-          : `/apps/${pk}/edit`,
-    );
+    navigate(editorPath(pk, type, item));
   };
   // Adaptateur synchrone : CatalogPage attend `(pk, type) => void`, pas une
   // Promise (les 3 call sites la passent directement comme handler).
-  const onOpenItem = (pk: string, type: ResourceType) => void openItemAsync(pk, type);
+  const onOpenItem = (pk: string, type: ResourceType, item?: Item) =>
+    void openItemAsync(pk, type, item);
   return { onOpenItem, openError };
 }

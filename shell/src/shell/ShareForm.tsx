@@ -32,7 +32,7 @@ const MAX_SHARE_LINK_TTL_DAYS = 30;
 // embed. `navigator.clipboard.writeText` requiert un contexte sécurisé
 // (HTTPS ou localhost) — repli sur `execCommand("copy")` (dépréciée mais
 // toujours fonctionnelle) sinon.
-async function copyToClipboard(text: string): Promise<void> {
+export async function copyToClipboard(text: string): Promise<void> {
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(text);
     return;

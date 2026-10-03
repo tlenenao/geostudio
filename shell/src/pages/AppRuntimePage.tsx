@@ -9,7 +9,8 @@ import { decodeAnalyticsContext, encodeAnalyticsContext } from "../lib/analytics
 import { registerBuiltinWidgets } from "../builder/widgets";
 import { registerExampleWidgets } from "../builder/examples";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useActiveExtensions, useCreateBookmark } from "../api/hooks";
+import { useActiveExtensions, useCreateBookmark, useMe } from "../api/hooks";
+import { holdsAnyPrivilege } from "../auth/holdsAnyPrivilege";
 import { registerExtensionWidget } from "../builder/extensions/registerExtensionWidget";
 import { ApiError } from "../api/ApiError";
 import { useAuth } from "../auth/useAuth";
@@ -126,6 +127,9 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [viewTitle, setViewTitle] = useState("");
   const createBookmark = useCreateBookmark();
+  // Le cœur exige analytics.view pour créer un signet : sans ce privilège (lecteur,
+  // visiteur anonyme) le bouton échouerait à coup sûr — masqué (P35.09).
+  const canSaveView = holdsAnyPrivilege(useMe().data?.privileges ?? [], "analytics.view");
 
   function handleAnalyticsContextChangeAndTrack(state: AnalyticsContextState) {
     setCurrentAnalyticsContext(state);
@@ -185,7 +189,8 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
   // absent/"manual", which previously trapped ExportPanel inside a condition
   // that hid it on most apps/dashboards. The interactions-gated "Enregistrer
   // la vue" button keeps its own independent gate.
-  const showActionBar = !isExportRender && (exportEnabled || query.data.interactions === "auto");
+  const showActionBar =
+    !isExportRender && (exportEnabled || (query.data.interactions === "auto" && canSaveView));
   // Finition SP-B12/D14 (cf. plan SP-C3) : une app/dashboard n'a pas de
   // `layers` de premier niveau comme MapConfig — ses couches vivent dans les
   // widgets "map" de la page actuellement affichée. `pageId` est absent sur
@@ -202,7 +207,7 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
       {showActionBar && (
         <div className="flex justify-end gap-2 border-b border-rule p-2">
           {exportEnabled && <ExportPanel itemId={pk} />}
-          {query.data.interactions === "auto" && (
+          {query.data.interactions === "auto" && canSaveView && (
             <Button size="sm" variant="outline" onClick={() => setSaveDialogOpen(true)}>
               {t("appRuntime.saveView")}
             </Button>

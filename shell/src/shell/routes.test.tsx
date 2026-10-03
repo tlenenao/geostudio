@@ -115,6 +115,7 @@ test("navigates from catalog to app builder on open (app item)", async () => {
             date: "",
             configId: null,
             isPublished: false,
+            permissions: { read: true, write: true, delete: true, share: true },
           },
         ],
         total: 1,

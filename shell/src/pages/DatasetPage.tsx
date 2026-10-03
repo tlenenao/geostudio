@@ -6,7 +6,8 @@ import { registerBuiltinWidgets } from "../builder/widgets";
 import { DatasetDownloadButtons } from "../builder/DatasetDownloadButtons";
 import type { AppConfig } from "../api/types";
 import { plural, t } from "../i18n";
-import { Banner } from "../ui/kit/Banner";
+import { PublicNotFound } from "./PublicNotFound";
+import { useDocumentMeta } from "../shell/useDocumentMeta";
 import { LoadingState } from "../ui/kit/LoadingState";
 import { PageTitle } from "../ui/kit/PageTitle";
 
@@ -71,15 +72,21 @@ export function DatasetPage({ collectionId }: { collectionId: string }) {
   });
   const attachmentField = schemaQuery.data?.fields.find((f) => f.type === "attachment")?.name;
 
+  // Titre/description/canonical dérivés de la collection (P35.04) ; introuvable
+  // = noindex. Appelé avant les retours anticipés (règle des Hooks).
+  const notFound = query.isError || (query.isSuccess && !query.data);
+  useDocumentMeta({
+    title: notFound ? t("datasetPage.notFound") : (query.data?.title ?? t("docTitle.appName")),
+    noindex: notFound,
+    description: query.data?.description ?? "",
+    canonicalUrl: `${window.location.origin}/public/datasets/${encodeURIComponent(collectionId)}`,
+  });
+
   if (query.isLoading) {
     return <LoadingState />;
   }
   if (query.isError || !query.data) {
-    return (
-      <div className="p-8 text-center">
-        <Banner variant="danger">{t("datasetPage.notFound")}</Banner>
-      </div>
-    );
+    return <PublicNotFound message={t("datasetPage.notFound")} />;
   }
   const col = query.data;
   return (

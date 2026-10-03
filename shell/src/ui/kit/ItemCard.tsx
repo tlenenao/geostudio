@@ -11,7 +11,7 @@ export function ItemCard({
   actions,
 }: {
   item: Item;
-  onOpen: (pk: string, type: ResourceType) => void;
+  onOpen: (pk: string, type: ResourceType, item?: Item) => void;
   actions?: React.ReactNode;
 }) {
   return (
@@ -35,7 +35,7 @@ export function ItemCard({
         size="sm"
         className="mt-2 w-fit"
         aria-label={t("itemCard.openFor", { title: item.title })}
-        onClick={() => onOpen(item.pk, item.resourceType)}
+        onClick={() => onOpen(item.pk, item.resourceType, item)}
       >
         {t("itemCard.open")}
       </Button>

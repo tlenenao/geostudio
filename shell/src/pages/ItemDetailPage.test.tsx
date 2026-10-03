@@ -88,6 +88,7 @@ test("shows 'Ouvrir dans l'éditeur' for a pipeline item and calls onOpenEditor(
         date: "2026-01-01T00:00:00Z",
         configId: null,
         isPublished: false,
+        permissions: { read: true, write: true, delete: true, share: true },
       }),
     ),
   );
@@ -96,7 +97,7 @@ test("shows 'Ouvrir dans l'éditeur' for a pipeline item and calls onOpenEditor(
   const button = await screen.findByRole("button", { name: /éditeur/i });
   expect(button).not.toBeDisabled();
   await userEvent.click(button);
-  expect(onOpenEditor).toHaveBeenCalledWith("pipeline");
+  expect(onOpenEditor).toHaveBeenCalledWith("pipeline", expect.objectContaining({ pk: "7" }));
 });
 
 test("shows 'Ouvrir dans l'éditeur' for a site item and calls onOpenEditor('site')", async () => {
@@ -112,6 +113,7 @@ test("shows 'Ouvrir dans l'éditeur' for a site item and calls onOpenEditor('sit
         date: "2026-01-01T00:00:00Z",
         configId: null,
         isPublished: false,
+        permissions: { read: true, write: true, delete: true, share: true },
       }),
     ),
   );
@@ -120,7 +122,7 @@ test("shows 'Ouvrir dans l'éditeur' for a site item and calls onOpenEditor('sit
   const button = await screen.findByRole("button", { name: /éditeur/i });
   expect(button).not.toBeDisabled();
   await userEvent.click(button);
-  expect(onOpenEditor).toHaveBeenCalledWith("site");
+  expect(onOpenEditor).toHaveBeenCalledWith("site", expect.objectContaining({ pk: "7" }));
 });
 
 test("affiche le formulaire d'édition quand l'URL porte ?panel=edit", async () => {
@@ -241,4 +243,69 @@ test("panel=share sur un item non partageable n'affiche pas le formulaire de par
   // son fieldset le rend inopérant : pas de case ni de bouton actionnable.
   expect(await screen.findByLabelText("Public")).toBeDisabled();
   expect(screen.getByRole("button", { name: "Enregistrer" })).toBeDisabled();
+});
+
+test("expose licence, mots-clés, colonnes et volume d'un jeu de données au lecteur (P35.08)", async () => {
+  server.use(
+    http.get("https://core.test/v1/items/7", () =>
+      HttpResponse.json({
+        pk: "7",
+        resourceType: "dataset",
+        title: "Parcelles",
+        abstract: "",
+        owner: "alice",
+        thumbnailUrl: null,
+        date: "2026-01-01T00:00:00Z",
+        configId: null,
+        isPublished: false,
+        keywords: ["cadastre"],
+        license: "cc-by-4.0",
+        language: "fr",
+        permissions: { read: true, write: false, delete: false, share: false },
+      }),
+    ),
+    http.get("https://core.test/v1/configs/by-item/7", () =>
+      HttpResponse.json({
+        config: { dataset: { source: "collection", collectionId: "parcelles", columns: {} } },
+      }),
+    ),
+    http.get("https://core.test/v1/collections/parcelles/schema", () =>
+      HttpResponse.json({
+        collection: "parcelles",
+        pk: "id",
+        geometry: null,
+        fields: [{ name: "surface", type: "number", required: false }],
+      }),
+    ),
+    http.get("https://core.test/v1/collections/parcelles", () =>
+      HttpResponse.json({ id: "parcelles", featureCount: 12 }),
+    ),
+  );
+  render(<ItemDetailPage pk="7" />, { wrapper });
+  expect(await screen.findByText("cadastre")).toBeInTheDocument();
+  expect(await screen.findByText("surface")).toBeInTheDocument();
+  expect(await screen.findByText(/12 entités/)).toBeInTheDocument();
+});
+
+test("un site publié affiche son URL publique copiable (P35.11)", async () => {
+  server.use(
+    http.get("https://core.test/v1/items/7", () =>
+      HttpResponse.json({
+        pk: "7",
+        resourceType: "site",
+        title: "Portail",
+        abstract: "",
+        owner: "alice",
+        thumbnailUrl: null,
+        date: "2026-01-01T00:00:00Z",
+        configId: null,
+        isPublished: true,
+        slug: "portail",
+        permissions: { read: true, write: true, delete: true, share: true },
+      }),
+    ),
+  );
+  render(<ItemDetailPage pk="7" />, { wrapper });
+  expect(await screen.findByText(`${window.location.origin}/sites/portail`)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Copier l'URL" })).toBeInTheDocument();
 });

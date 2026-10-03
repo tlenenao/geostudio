@@ -667,6 +667,39 @@ test.describe("audit d'accessibilité (axe-core)", () => {
     await runAxeAudit(page, "PublicItemRoute");
   });
 
+  test("PublicCatalogPage (catalogue public, consultation anonyme)", async ({ page }) => {
+    await mockCore(page);
+    await page.route("https://core.test/v1/public/items?*", async (route) => {
+      await route.fulfill({
+        json: {
+          items: [
+            {
+              pk: "m1",
+              resourceType: "map",
+              title: "Carte ouverte",
+              abstract: "Une carte",
+              owner: "alice",
+              thumbnailUrl: null,
+              date: "",
+              configId: null,
+              isPublished: true,
+              keywords: [],
+              license: "",
+              language: "fr",
+              permissions: { read: true, write: false, delete: false, share: false },
+            },
+          ],
+          total: 1,
+          page: 1,
+          pageSize: 12,
+        },
+      });
+    });
+    await page.goto("/public");
+    await expect(page.getByRole("heading", { name: "Carte ouverte" })).toBeVisible();
+    await runAxeAudit(page, "PublicCatalogPage");
+  });
+
   test("DatasetRoute (fiche dataset publique, consultation anonyme)", async ({ page }) => {
     await mockCore(page);
     // "parcs" est déjà publique par défaut dans mocks.ts (collection +

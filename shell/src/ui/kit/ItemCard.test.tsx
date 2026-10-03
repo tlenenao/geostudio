@@ -31,7 +31,7 @@ test("calls onOpen with the pk", async () => {
   const onOpen = vi.fn();
   render(<ItemCard item={item} onOpen={onOpen} />);
   await userEvent.click(screen.getByRole("button", { name: /ouvrir/i }));
-  expect(onOpen).toHaveBeenCalledWith("42", "dashboard");
+  expect(onOpen).toHaveBeenCalledWith("42", "dashboard", item);
 });
 
 test("renders the actions slot when provided", () => {

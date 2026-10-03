@@ -1,20 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { useItemClient } from "../api/ItemClientProvider";
+import { apiErrorMessage } from "../api/apiErrorMessage";
 import { useItem, useMetadataCatalog, useUpdateItem, useUploadThumbnail } from "../api/hooks";
+import type { Item } from "../api/types";
 import { RESOURCE_TYPE_LABELS } from "../api/resourceTypes";
 import { Button } from "../ui/kit/Button";
 import { Panel } from "../ui/kit/Panel";
 import { MetadataForm } from "../ui/kit/MetadataForm";
 import { ThumbnailUpload } from "../ui/kit/ThumbnailUpload";
-import { ShareForm } from "../shell/ShareForm";
+import { ShareForm, copyToClipboard } from "../shell/ShareForm";
 import { ItemActions } from "../shell/ItemActions";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { Gate } from "../auth/Gate";
 import { Locked } from "../auth/Locked";
 import { hasPermission } from "../auth/permissions";
-import { t } from "../i18n";
+import { plural, t } from "../i18n";
 import { formatDateTime } from "../lib/format";
 import { LoadingState } from "../ui/kit/LoadingState";
+import { QueryErrorState } from "../ui/kit/QueryErrorState";
 import { PageTitle } from "../ui/kit/PageTitle";
 
 type PanelKind = "edit" | "thumbnail" | "share" | null;
@@ -26,7 +32,7 @@ export function ItemDetailPage({
 }: {
   pk: string;
   onDeleted?: () => void;
-  onOpenEditor?: (type: string) => void;
+  onOpenEditor?: (type: string, item: Item) => void;
 }) {
   const query = useItem(pk);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -50,11 +56,7 @@ export function ItemDetailPage({
 
   if (query.isLoading) return <LoadingState />;
   if (query.isError || !query.data)
-    return (
-      <p role="alert" className="text-sm text-danger">
-        {t("itemDetail.notFound")}
-      </p>
-    );
+    return <QueryErrorState queries={[query]} notFoundMessage={t("itemDetail.notFound")} />;
 
   const item = query.data;
 
@@ -64,6 +66,7 @@ export function ItemDetailPage({
     keywords: string[];
     license: string;
     language: string;
+    slug?: string;
   }) {
     try {
       await update.mutateAsync(v);
@@ -116,11 +119,20 @@ export function ItemDetailPage({
                 {t("itemDetail.ownerLabel", { owner: item.owner })}
               </p>
               <p className="text-sm text-ink">{item.abstract}</p>
+              <ItemFacts
+                item={item}
+                licenseLabel={catalogQuery.data?.licenses.find((l) => l.id === item.license)?.label}
+                languageLabel={
+                  catalogQuery.data?.languages.find((l) => l.id === item.language)?.label
+                }
+              />
               {["map", "app", "dashboard", "dataset", "pipeline", "site"].includes(
                 item.resourceType,
               ) ? (
-                <Button className="w-fit" onClick={() => onOpenEditor?.(item.resourceType)}>
-                  {t("itemDetail.openEditor")}
+                <Button className="w-fit" onClick={() => onOpenEditor?.(item.resourceType, item)}>
+                  {hasPermission(item, "write") || item.resourceType === "map"
+                    ? t("itemDetail.openEditor")
+                    : t("itemDetail.openView")}
                 </Button>
               ) : (
                 <Button className="w-fit" disabled title={t("itemDetail.editorUnavailableTitle")}>
@@ -150,6 +162,7 @@ export function ItemDetailPage({
                           keywords: item.keywords ?? [],
                           license: item.license,
                           language: item.language,
+                          slug: item.resourceType === "site" ? (item.slug ?? "") : undefined,
                         }}
                         licenses={catalogQuery.data?.licenses ?? []}
                         languages={catalogQuery.data?.languages ?? []}
@@ -159,7 +172,7 @@ export function ItemDetailPage({
                       />
                       {update.isError && (
                         <p role="alert" className="text-sm text-danger">
-                          {t("actions.saveFailed")}
+                          {apiErrorMessage(update.error, t("actions.saveFailed"))}
                         </p>
                       )}
                     </>
@@ -178,6 +191,7 @@ export function ItemDetailPage({
                           keywords: item.keywords ?? [],
                           license: item.license,
                           language: item.language,
+                          slug: item.resourceType === "site" ? (item.slug ?? "") : undefined,
                         }}
                         licenses={catalogQuery.data?.licenses ?? []}
                         languages={catalogQuery.data?.languages ?? []}
@@ -230,5 +244,111 @@ export function ItemDetailPage({
         }}
       />
     </div>
+  );
+}
+
+// Métadonnées ouvertes lisibles par le lecteur (P35.08) + URL publique d'un site
+// publié (P35.11). Volume/colonnes d'un jeu de données : lus via sa collection.
+function ItemFacts({
+  item,
+  licenseLabel,
+  languageLabel,
+}: {
+  item: Item;
+  licenseLabel?: string;
+  languageLabel?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  const publicUrl =
+    item.resourceType === "site" && item.isPublished && item.slug
+      ? `${window.location.origin}/sites/${item.slug}`
+      : null;
+  return (
+    <>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm text-ink-2">
+        {item.license && (
+          <>
+            <dt>{t("itemDetail.licenseLabel")}</dt>
+            <dd>{licenseLabel ?? item.license}</dd>
+          </>
+        )}
+        {(item.keywords ?? []).length > 0 && (
+          <>
+            <dt>{t("itemDetail.keywordsLabel")}</dt>
+            <dd>{(item.keywords ?? []).join(", ")}</dd>
+          </>
+        )}
+        {item.language && (
+          <>
+            <dt>{t("itemDetail.languageLabel")}</dt>
+            <dd>{languageLabel ?? item.language}</dd>
+          </>
+        )}
+        {item.resourceType === "dataset" && <DatasetFacts pk={item.pk} />}
+      </dl>
+      {publicUrl && (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-ink-2">{t("itemDetail.publicUrlLabel")}</span>
+          <code className="rounded bg-sunken px-1.5 py-0.5 text-ink">{publicUrl}</code>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              void copyToClipboard(publicUrl).then(() => setCopied(true));
+            }}
+          >
+            {t("itemDetail.copyUrl")}
+          </Button>
+          {copied && (
+            <span role="status" className="text-xs text-ink-2">
+              {t("itemDetail.urlCopied")}
+            </span>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+function DatasetFacts({ pk }: { pk: string }) {
+  const client = useItemClient();
+  const config = useQuery({
+    queryKey: ["dataset", pk],
+    queryFn: () => client.getDatasetConfig(pk),
+    retry: false,
+  });
+  const collectionId = config.data?.source === "collection" ? config.data.collectionId : undefined;
+  const schema = useQuery({
+    queryKey: ["item-facts-schema", collectionId],
+    queryFn: () => client.getCollectionSchema(collectionId!),
+    enabled: !!collectionId,
+    retry: false,
+  });
+  const collection = useQuery({
+    queryKey: ["item-facts-collection", collectionId],
+    queryFn: () => client.getCollection(collectionId!),
+    enabled: !!collectionId,
+    retry: false,
+  });
+  const count = collection.data?.featureCount;
+  return (
+    <>
+      {schema.data && schema.data.fields.length > 0 && (
+        <>
+          <dt>{t("itemDetail.columnsLabel")}</dt>
+          <dd>{schema.data.fields.map((f) => f.label ?? f.name).join(", ")}</dd>
+        </>
+      )}
+      {typeof count === "number" && (
+        <>
+          <dt>{t("itemDetail.featureCountLabel")}</dt>
+          <dd>
+            {t(plural(count, "datasetPage.featureCountOne", "datasetPage.featureCountMany"), {
+              n: count,
+            })}
+          </dd>
+        </>
+      )}
+    </>
   );
 }

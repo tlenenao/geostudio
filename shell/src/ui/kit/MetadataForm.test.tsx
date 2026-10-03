@@ -102,3 +102,32 @@ test("soumet la licence et la langue choisies", async () => {
     expect.objectContaining({ license: "etalab-2.0", language: "en" }),
   );
 });
+
+test("slug : champ présent seulement pour un site, validé et soumis (P35.11)", async () => {
+  const onSubmit = vi.fn();
+  render(
+    <MetadataForm
+      initial={{
+        title: "Portail",
+        abstract: "",
+        keywords: [],
+        license: "",
+        language: "fr",
+        slug: "portail",
+      }}
+      licenses={LICENSES}
+      languages={LANGUAGES}
+      onSubmit={onSubmit}
+      onCancel={() => {}}
+    />,
+  );
+  const slug = screen.getByLabelText("Slug");
+  await userEvent.clear(slug);
+  await userEvent.type(slug, "Pas Valide");
+  await userEvent.click(screen.getByRole("button", { name: /enregistrer/i }));
+  expect(onSubmit).not.toHaveBeenCalled();
+  await userEvent.clear(slug);
+  await userEvent.type(slug, "nouveau-slug");
+  await userEvent.click(screen.getByRole("button", { name: /enregistrer/i }));
+  expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ slug: "nouveau-slug" }));
+});

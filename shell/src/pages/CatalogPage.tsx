@@ -2,7 +2,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useItemFacets, useItems, useMe } from "../api/hooks";
-import type { ItemScope, ItemSort, ResourceType } from "../api/types";
+import type { Item, ItemScope, ItemSort, ResourceType } from "../api/types";
 import { RESOURCE_TYPE_LABELS, RESOURCE_TYPE_ORDER } from "../api/resourceTypes";
 import { ItemCard } from "../ui/kit/ItemCard";
 import { ItemActions } from "../shell/ItemActions";
@@ -45,7 +45,7 @@ export function CatalogPage({
   fixedType,
   openError,
 }: {
-  onOpenItem: (pk: string, type: ResourceType) => void;
+  onOpenItem: (pk: string, type: ResourceType, item?: Item) => void;
   fixedType?: ResourceType;
   openError?: string;
 }) {

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { editorPath } from "./editorPath";
 import { lazy, Suspense } from "react";
 import {
   Routes,
@@ -49,6 +50,9 @@ const AppRuntimePage = lazy(() =>
 );
 const SitePublicPage = lazy(() =>
   import("../pages/SitePublicPage").then((m) => ({ default: m.SitePublicPage })),
+);
+const PublicCatalogPage = lazy(() =>
+  import("../pages/PublicCatalogPage").then((m) => ({ default: m.PublicCatalogPage })),
 );
 const PublicItemPage = lazy(() =>
   import("../pages/PublicItemPage").then((m) => ({ default: m.PublicItemPage })),
@@ -130,18 +134,12 @@ function ItemDetailRoute() {
     <ItemDetailPage
       pk={pk!}
       onDeleted={() => navigate("/")}
-      onOpenEditor={(type) => {
+      onOpenEditor={(type, item) => {
         if (type === "pipeline") {
           void resolvePipelineEditorPath(client, pk!).then((path) => navigate(path));
           return;
         }
-        navigate(
-          type === "map"
-            ? `/maps/${pk}`
-            : type === "dataset"
-              ? `/datasets/${pk}/edit`
-              : `/apps/${pk}/edit`,
-        );
+        navigate(editorPath(pk!, type, item));
       }}
     />
   );
@@ -380,6 +378,7 @@ function routeElements() {
       <Route path="/apps/:pk/:pageId?" element={<AppRuntimeRoute />} />
       <Route path="/embed/:token" element={<EmbedRoute />} />
       <Route path="/sites/:slug" element={<SitePublicRoute />} />
+      <Route path="/public" element={<PublicCatalogPage />} />
       <Route path="/public/items/:pk" element={<PublicItemRoute />} />
       <Route path="/public/datasets/:collectionId" element={<DatasetRoute />} />
     </>
