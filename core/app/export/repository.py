@@ -58,13 +58,17 @@ def get_job(session: Session, *, tenant_id: str, job_id: str) -> ExportJob | Non
     ).scalar_one_or_none()
 
 
-def mark_running(session: Session, *, job_id: str) -> None:
-    job = session.get(ExportJob, job_id)
-    if job is None:
-        return
-    job.status = "running"
-    job.started_at = _now()
+def mark_running(session: Session, *, job_id: str) -> bool:
+    """REV-295 : transition conditionnelle `pending -> running` (jumelle de
+    pipelines.repository.mark_running). False si le job n'est plus prenable
+    (terminé, en erreur, déjà pris, inconnu) : l'appelant sort sans exécuter."""
+    result = session.execute(
+        update(ExportJob)
+        .where(ExportJob.id == job_id, ExportJob.status == "pending")
+        .values(status="running", started_at=_now())
+    )
     session.flush()
+    return bool(result.rowcount)  # type: ignore[attr-defined]
 
 
 def mark_done(

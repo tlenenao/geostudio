@@ -60,12 +60,17 @@ def get_job(session: Session, *, tenant_id: str, job_id: str) -> IngestionJob | 
 # au tout début de la tâche — pas de re-filtrage par tenant ici, job_id est
 # un identifiant interne non devinable (uuid4) à ce stade, jamais fourni
 # directement par une requête HTTP utilisateur.
-def mark_running(session: Session, *, job_id: str) -> None:
-    job = session.get(IngestionJob, job_id)
-    if job is None:
-        return
-    job.status = "running"
+def mark_running(session: Session, *, job_id: str) -> bool:
+    """REV-295 : transition conditionnelle `pending -> running` (jumelle de
+    pipelines.repository.mark_running). False si le job n'est plus prenable
+    (terminé, en erreur, déjà pris, inconnu) : l'appelant sort sans exécuter."""
+    result = session.execute(
+        update(IngestionJob)
+        .where(IngestionJob.id == job_id, IngestionJob.status == "pending")
+        .values(status="running")
+    )
     session.flush()
+    return bool(result.rowcount)  # type: ignore[attr-defined]
 
 
 def mark_done(session: Session, *, job_id: str, collection_id: str, item_id: str | None) -> None:
