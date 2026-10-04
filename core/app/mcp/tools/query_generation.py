@@ -54,11 +54,26 @@ def _strip_code_fence(text: str) -> str:
     return stripped
 
 
-# REV-183 : références de champ CEL d'un brouillon (vars.x, record.x, user.x).
+# REV-183 : références de champ CEL d'un brouillon (vars.x, record.x, user.x),
+# aussi sous les formes `vars . x`, `vars\n.x`, `vars["x"]`, `record['x']`.
 # Toute référence absente de availableFields est refusée : le modèle ne doit
-# pas inventer de variable. ponytail: une référence citée dans une chaîne
-# littérale est aussi contrôlée (faux positif accepté, jamais un faux négatif).
-_CEL_FIELD_REF_RE = re.compile(r"\b(?:vars|record|user)\.[A-Za-z_]\w*")
+# pas inventer de variable. Un accès par crochets à clé non littérale
+# (`vars[x]`) est refusé car invérifiable. ponytail: une référence citée dans
+# une chaîne littérale est aussi contrôlée (faux positif accepté, jamais un
+# faux négatif).
+_CEL_FIELD_REF_RE = re.compile(
+    r"""\b(vars|record|user)\s*(?:\.\s*([A-Za-z_]\w*)|\[\s*(?:"([^"]*)"|'([^']*)'|([^\]]*)))"""
+)
+
+
+def _cel_refs(expression: str) -> set[str]:
+    refs = set()
+    for root, dotted, dq, sq, _other in _CEL_FIELD_REF_RE.findall(expression):
+        member = dotted or dq or sq
+        refs.add(f"{root}.{member}" if member else f"{root}[…]")
+    return refs
+
+
 _MAX_CEL_QUESTION_CHARS = 2000
 _MAX_CEL_FIELDS = 200
 
@@ -307,7 +322,7 @@ def register(server: FastMCP, session_factory) -> None:
             raise ValueError("le fournisseur LLM n'a renvoyé aucune expression")
         if error := _cel_syntax_error(expression):
             raise ValueError(f"expression CEL invalide : {error}")
-        unknown = sorted(set(_CEL_FIELD_REF_RE.findall(expression)) - set(availableFields))
+        unknown = sorted(_cel_refs(expression) - set(availableFields))
         if unknown:
             raise ValueError(f"champs inconnus dans l'expression : {', '.join(unknown)}")
         return {"expression": expression}

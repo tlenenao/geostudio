@@ -6,6 +6,7 @@ pure : n'écrit ni n'exécute jamais rien (même patron que generate_sql_query).
 import asyncio
 
 import httpx
+import pytest
 from mcp.server.fastmcp import FastMCP
 
 from app.copilot.egress import EgressBlockedError
@@ -105,6 +106,43 @@ def test_rejects_a_draft_referencing_an_unknown_field(app_client, monkeypatch):
     with app_client:
         error = call_tool_expecting_error(app_client, "generate_cel_expression", _args(item_id))
     assert "champs inconnus dans l'expression : vars.inconnu" in error
+
+
+@pytest.mark.parametrize(
+    "draft",
+    [
+        'vars . inconnu == "x"',
+        'vars\n.inconnu == "x"',
+        'vars["inconnu"] == "x"',
+        "record['inconnu'] == 1",
+        'user ["inconnu"] == "a"',
+    ],
+)
+def test_rejects_unknown_field_via_spaced_or_bracket_form(app_client, monkeypatch, draft):
+    item_id = _seed_item(app_client, owner_id=app_client.mock_user.id)
+    _stub(monkeypatch, _StubLLMProvider(draft))
+    with app_client:
+        error = call_tool_expecting_error(app_client, "generate_cel_expression", _args(item_id))
+    assert "champs inconnus dans l'expression" in error
+    assert ".inconnu" in error
+
+
+@pytest.mark.parametrize("draft", ["vars[x] == 1", "user[vars.statut] == 1"])
+def test_rejects_non_literal_index(app_client, monkeypatch, draft):
+    item_id = _seed_item(app_client, owner_id=app_client.mock_user.id)
+    _stub(monkeypatch, _StubLLMProvider(draft))
+    with app_client:
+        error = call_tool_expecting_error(app_client, "generate_cel_expression", _args(item_id))
+    assert "champs inconnus dans l'expression" in error
+
+
+def test_accepts_known_field_via_spaced_and_bracket_forms(app_client, monkeypatch):
+    item_id = _seed_item(app_client, owner_id=app_client.mock_user.id)
+    draft = 'vars . statut == "a" && vars ["statut"] != "b"'
+    _stub(monkeypatch, _StubLLMProvider(draft))
+    with app_client:
+        result = call_tool(app_client, "generate_cel_expression", _args(item_id))
+    assert result == {"expression": draft}
 
 
 def test_empty_llm_answer_is_an_error(app_client, monkeypatch):
