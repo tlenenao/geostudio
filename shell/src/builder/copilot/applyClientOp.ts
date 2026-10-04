@@ -5,6 +5,7 @@
 // l'UI manuelle. Pure : le résultat passe par setDraft (undo SP-19) côté
 // appelant (CopilotPanel), jamais ici.
 import type { AppConfig, DataSource, WidgetItem } from "../../api/types";
+import { pruneMessagesForIds } from "../actionMessages";
 import { nextFreePosition } from "../grid";
 import { getPageLayout, setPageLayout } from "../pages";
 import { getWidget } from "../registry";
@@ -67,10 +68,11 @@ export function applyClientOp(
     }
     case "removeWidget": {
       const widgetId = String(raw.args.widgetId ?? "");
-      return setPageLayout(config, activePageId, {
+      const next = setPageLayout(config, activePageId, {
         ...layout,
         items: layout.items.filter((i) => i.id !== widgetId),
       });
+      return { ...next, messages: pruneMessagesForIds(next.messages, [widgetId]) };
     }
     case "addDataSource": {
       const { id, type, service, layer } = raw.args as {

@@ -151,3 +151,20 @@ describe("applyClientOp", () => {
     expect(result).toBe(config);
   });
 });
+
+describe("applyClientOp removeWidget messages", () => {
+  beforeEach(() => {
+    _resetRegistry();
+    registerBuiltinWidgets();
+  });
+  it("prunes messages wired to the removed widget", () => {
+    const c = emptyConfig();
+    c.layout.items = [
+      { id: "a", widget: "text", x: 0, y: 0, w: 1, h: 1, props: {} },
+      { id: "b", widget: "text", x: 0, y: 0, w: 1, h: 1, props: {} },
+    ];
+    c.messages = [{ id: "m", from: "a", event: "e", to: "b", action: "x" }];
+    const out = applyClientOp({ op: "removeWidget", args: { widgetId: "b" } }, c, "page-1");
+    expect(out.messages).toEqual([]);
+  });
+});
