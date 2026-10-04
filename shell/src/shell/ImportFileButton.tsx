@@ -241,15 +241,18 @@ export function ImportFileButton() {
       if (stale()) return;
       if (job?.status === "done") {
         close();
-        // GAP-29 : une collection sans géométrie (geometryMode="none") n'a
-        // pas de Map associée (core/app/ingestion/importer.py) — itemId
-        // est alors null, il n'y a rien à ouvrir sous /maps/{itemId}.
-        // Revue finale (I2) : /admin/collections n'est atteignable que par
-        // les utilisateurs avec admin.collections.manage — les autres
-        // (dont le rôle Créateur, celui qui importe le plus) retombent sur
-        // le catalogue racine ("/"), seule route toujours accessible.
+        // REV-282b : un import sans géométrie crée un item « dataset »
+        // (core/app/ingestion/importer.py) — on ouvre son éditeur. itemId
+        // null (job antérieur) : repli inchangé. Revue finale GAP-29 (I2) :
+        // /admin/collections n'est atteignable qu'avec
+        // admin.collections.manage, les autres retombent sur le catalogue.
+        const fallback = canManageCollections ? "/admin/collections" : "/";
         navigate(
-          job.itemId ? `/maps/${job.itemId}` : canManageCollections ? "/admin/collections" : "/",
+          !job.itemId
+            ? fallback
+            : job.itemResourceType === "dataset"
+              ? `/datasets/${job.itemId}/edit`
+              : `/maps/${job.itemId}`,
         );
         return;
       }

@@ -17,6 +17,11 @@ function MapProbe() {
   return <div>map-{pk}</div>;
 }
 
+function DatasetProbe() {
+  const { pk } = useParams();
+  return <div>dataset-{pk}</div>;
+}
+
 function Harness({ children }: { children: ReactNode }) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const client = createItemClient({ coreUrl: "https://core.test", getToken: () => "t" });
@@ -27,6 +32,7 @@ function Harness({ children }: { children: ReactNode }) {
           {children}
           <Routes>
             <Route path="/maps/:pk" element={<MapProbe />} />
+            <Route path="/datasets/:pk/edit" element={<DatasetProbe />} />
             <Route path="/admin/collections" element={<div>collections-probe</div>} />
             <Route path="/" element={<div>catalog-probe</div>} />
           </Routes>
@@ -988,4 +994,36 @@ test("P28.09 : annuler un import lent arrête le sondage", async () => {
   await new Promise((r) => setTimeout(r, 2200));
   expect(n).toBe(after);
   vi.restoreAllMocks();
+});
+
+test("REV-282b : un import qui crée un dataset ouvre son éditeur, pas /maps", async () => {
+  server.use(
+    http.post("https://core.test/v1/uploads/presign", () =>
+      HttpResponse.json({ uploadUrl: "https://minio.test/upload-ds", key: "t/ds.geojson" }),
+    ),
+    http.put("https://minio.test/upload-ds", () => new HttpResponse(null, { status: 200 })),
+    http.post("https://core.test/v1/uploads", () => HttpResponse.json({ jobId: "job-ds" })),
+    http.get("https://core.test/v1/uploads/job-ds", () =>
+      HttpResponse.json({
+        status: "done",
+        errorMessage: null,
+        collectionId: "ingest_ds",
+        itemId: "ds-7",
+        itemResourceType: "dataset",
+      }),
+    ),
+  );
+
+  render(
+    <Harness>
+      <ImportFileButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Importer un fichier" }));
+  await userEvent.upload(screen.getByLabelText("Fichier à importer"), geojsonFile());
+  await userEvent.type(screen.getByLabelText("Titre de la collection"), "Tabulaire");
+  await userEvent.click(screen.getByRole("button", { name: "Importer" }));
+
+  await waitFor(() => expect(screen.getByText("dataset-ds-7")).toBeInTheDocument());
+  expect(screen.queryByText("map-ds-7")).not.toBeInTheDocument();
 });

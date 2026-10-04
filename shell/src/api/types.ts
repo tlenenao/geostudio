@@ -714,6 +714,7 @@ export interface ItemClient {
     errorMessage: string | null;
     collectionId: string | null;
     itemId: string | null;
+    itemResourceType?: string | null;
   }>;
   runAnalyticsSql(
     sql: string,
