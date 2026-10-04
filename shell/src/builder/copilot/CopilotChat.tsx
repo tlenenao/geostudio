@@ -46,11 +46,12 @@ export function CopilotChat({
   clientTools: CopilotToolSchema[];
   opLabels: Record<string, string>;
   // Retour optionnel (M1, revue finale de branche GAP-17) : un tableau
-  // aligné sur `ops`, `true` quand l'op a réellement été appliquée. Un
-  // appelant qui ne renvoie rien (CopilotPanel, qui édite via setDraft et
-  // n'a rien à abandonner) garde le comportement historique — tout est
-  // annoncé comme appliqué.
-  onClientOps: (ops: CopilotClientOp[]) => boolean[] | void;
+  // aligné sur `ops`, `true` quand l'op a réellement été appliquée, une
+  // CHAÎNE quand elle ne l'a été qu'en partie (REV-184(1) : libellé affiché
+  // tel quel). Un appelant qui ne renvoie rien (CopilotPanel, qui édite via
+  // setDraft et n'a rien à abandonner) garde le comportement historique —
+  // tout est annoncé comme appliqué.
+  onClientOps: (ops: CopilotClientOp[]) => (boolean | string)[] | void;
   // Callback optionnel (D56, historique persistant) : un appelant qui ne
   // le passe pas garde son comportement actuel inchangé.
   onExchange?: (entry: { message: string; opsCount: number; status: "ok" | "error" }) => void;
@@ -126,8 +127,9 @@ export function CopilotChat({
         const applied = onClientOps(result.clientOps);
         setLastOpsSummary(
           result.clientOps.map((o, i) => {
-            if (Array.isArray(applied) && applied[i] !== true)
-              return t("copilot.opDropped", { op: o.op });
+            const outcome = Array.isArray(applied) ? applied[i] : true;
+            if (typeof outcome === "string") return outcome;
+            if (outcome !== true) return t("copilot.opDropped", { op: o.op });
             return opLabels[o.op] ?? t("copilot.opUnknownIgnored", { op: o.op });
           }),
         );

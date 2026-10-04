@@ -4,13 +4,19 @@
 // wizard sans jamais créer ni exécuter le pipeline (le bouton Créer/Mettre
 // à jour de VisualQueryWizardPage reste l'unique déclencheur).
 import type { CollectionSchema, CopilotClientOp } from "../../api/types";
-import { t } from "../../i18n";
+import { t, type MessageKey } from "../../i18n";
 import type { FilterRow } from "../visualQuery/compileFilter";
 import type { JoinConfig, SummaryConfig } from "../visualQuery/inferSchema";
-import { applyVisualQueryClientOp } from "./applyVisualQueryClientOp";
+import { applyVisualQueryClientOp, type VisualQueryLeg } from "./applyVisualQueryClientOp";
 import type { RawClientOp } from "./applyClientOp";
 import { CopilotChat } from "./CopilotChat";
 import { buildVisualQueryClientToolSchemas } from "./visualQueryClientTools";
+
+const LEG_LABELS: Record<VisualQueryLeg, MessageKey> = {
+  filters: "copilot.legFilters",
+  join: "copilot.legJoin",
+  summary: "copilot.legSummary",
+};
 
 export function VisualQueryCopilotPanel({
   baseCollectionId,
@@ -41,14 +47,21 @@ export function VisualQueryCopilotPanel({
   setJoin: (join: JoinConfig | null) => void;
   setSummary: (summary: SummaryConfig | null) => void;
 }) {
-  function handleClientOps(ops: CopilotClientOp[]): boolean[] {
-    return (ops as RawClientOp[]).map((op) =>
-      applyVisualQueryClientOp(
+  // REV-184(1) : `false` = rien appliqué (CopilotChat annonce l'op abandonnée),
+  // `true` = tout appliqué, chaîne = appliqué en partie, avec les volets ignorés.
+  function handleClientOps(ops: CopilotClientOp[]): (boolean | string)[] {
+    return (ops as RawClientOp[]).map((op) => {
+      const { applied, ignored } = applyVisualQueryClientOp(
         op,
         { setFilters, setJoin, setSummary },
         { baseSchema, joinedSchema, collectionIds },
-      ),
-    );
+      );
+      if (applied.length === 0) return false;
+      if (ignored.length === 0) return true;
+      return t("copilot.opVisualQueryPartial", {
+        legs: ignored.map((leg) => t(LEG_LABELS[leg])).join(", "),
+      });
+    });
   }
 
   return (

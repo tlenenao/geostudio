@@ -65,4 +65,40 @@ describe("VisualQueryCopilotPanel", () => {
       summary: null,
     });
   });
+
+  it("REV-184 : annonce les jambes ignorées quand le brouillon n'est appliqué qu'en partie", async () => {
+    const copilotTurn = vi.fn().mockResolvedValue({
+      reply: "Voici.",
+      clientOps: [
+        {
+          op: "applyVisualQueryDraft",
+          args: {
+            filters: [{ column: "titre", operator: "eq", value: "Nid de poule" }],
+            join: { collectionId: "collection_inventee", on: "titre", how: "inner" },
+          },
+        },
+      ],
+    });
+    render(
+      <ItemClientProvider client={{ copilotTurn } as unknown as ItemClient}>
+        <VisualQueryCopilotPanel
+          baseCollectionId="incidents"
+          baseSchema={BASE_SCHEMA}
+          joinedSchema={null}
+          collectionIds={["incidents"]}
+          filters={[]}
+          join={null}
+          summary={null}
+          setFilters={vi.fn()}
+          setJoin={vi.fn()}
+          setSummary={vi.fn()}
+        />
+      </ItemClientProvider>,
+    );
+    await userEvent.type(screen.getByLabelText("Message au copilote"), "les nids de poule");
+    await userEvent.click(screen.getByRole("button", { name: "Envoyer" }));
+    expect(
+      await screen.findByText("Requête visuelle mise à jour ; ignoré (invalide) : jointure."),
+    ).toBeVisible();
+  });
 });

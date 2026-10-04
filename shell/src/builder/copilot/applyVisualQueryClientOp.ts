@@ -40,10 +40,13 @@ export type VisualQueryKnownContext = {
   collectionIds: string[];
 };
 
-// Miroir exact de `_known_field_names` (core/app/mcp/tools/query_generation.py) :
+// Même règle que `_known_field_names` (core/app/mcp/tools/query_generation.py) :
 // les champs de la collection jointe gardent leur nom, sauf collision avec un
 // champ de base, auquel cas ils sont préfixés `joined_` (même règle que
-// inferOutputColumns/compileVisualQueryToPipeline côté shell).
+// inferOutputColumns/compileVisualQueryToPipeline côté shell). REV-184(4) : PAS
+// un miroir exact — le serveur aliase `base_names = names` (le même ensemble,
+// muté pendant la boucle) là où ce code copie (`new Set(names)`). Écart
+// pratiquement inerte (les noms d'un schéma sont uniques), corrigé ici seulement.
 //
 // Nuance assumée : un filtre est compilé AVANT la jointure
 // (compileVisualQueryToPipeline) et donc contre `baseSchema` seul — accepter
@@ -88,6 +91,10 @@ function isValidGeneratedJoin(join: unknown, ctx: VisualQueryKnownContext): join
     // collection qui n'existe pas. Perte silencieuse de bout en bout.
     ctx.collectionIds.includes(j.collectionId) &&
     typeof j.on === "string" &&
+    // REV-184(3) : la jointure compile en `USING (on)` — la colonne doit
+    // exister côté BASE (schéma d'avant jointure), sinon le pipeline créé
+    // n'échoue qu'à l'exécution.
+    ctx.baseSchema.fields.some((f) => f.name === j.on) &&
     (j.how === "inner" || j.how === "left")
   );
 }
@@ -144,10 +151,31 @@ function isValidGeneratedSummary(summary: unknown, known: Set<string>): summary 
   return s.metrics.every((m) => isValidGeneratedMetric(m, known));
 }
 
+export type VisualQueryLeg = "filters" | "join" | "summary";
+export type VisualQueryApplyResult = { applied: VisualQueryLeg[]; ignored: VisualQueryLeg[] };
+
+// REV-184(2) : METRIC_JSON_SCHEMA n'exige que alias/function — un modèle qui
+// omet sourceColumn/p (au lieu de les envoyer à null) faisait rejeter tout le
+// résumé. Aligné sur GeneratedMetric côté serveur (`is not None`).
+function withNullMetricDefaults(summary: unknown): unknown {
+  if (typeof summary !== "object" || summary === null) return summary;
+  const s = summary as Record<string, unknown>;
+  if (!Array.isArray(s.metrics)) return summary;
+  return {
+    ...s,
+    metrics: s.metrics.map((m) => {
+      if (typeof m !== "object" || m === null) return m;
+      const metric = m as Record<string, unknown>;
+      return { ...metric, sourceColumn: metric.sourceColumn ?? null, p: metric.p ?? null };
+    }),
+  };
+}
+
 /**
- * Applique un brouillon de requête visuelle à l'état du wizard. Retourne
- * `true` si au moins un des trois volets a réellement été appliqué (M1 :
- * CopilotChat n'annonce « Requête visuelle mise à jour. » que dans ce cas).
+ * Applique un brouillon de requête visuelle à l'état du wizard. Retourne,
+ * par volet, ce qui a été appliqué et ce qui a été ignoré (REV-184(1), affiné
+ * depuis M1) : VisualQueryCopilotPanel n'annonce « Requête visuelle mise à
+ * jour. » sans réserve que si rien n'a été ignoré.
  *
  * Limitation assumée (I4, revue finale de branche GAP-17) : ces écritures ne
  * passent PAS par la pile d'annulation SP-19 — contrairement au copilote du
@@ -166,11 +194,11 @@ export function applyVisualQueryClientOp(
     setSummary: (summary: SummaryConfig | null) => void;
   },
   ctx: VisualQueryKnownContext,
-): boolean {
-  if (raw.op !== "applyVisualQueryDraft") return false;
+): VisualQueryApplyResult {
+  const result: VisualQueryApplyResult = { applied: [], ignored: [] };
+  if (raw.op !== "applyVisualQueryDraft") return result;
   const known = knownColumnNames(ctx);
   const args = raw.args as { filters?: unknown; join?: unknown; summary?: unknown };
-  let applied = false;
   if (Array.isArray(args.filters)) {
     const rows = args.filters.filter((r) => isValidGeneratedFilterRow(r, known)) as FilterRow[];
     // I4 : ne jamais vider les filtres existants parce que TOUT ce que le
@@ -178,26 +206,35 @@ export function applyVisualQueryClientOp(
     // reste une demande légitime d'effacement, et passe.
     if (rows.length > 0 || args.filters.length === 0) {
       setters.setFilters(rows);
-      applied = true;
+      result.applied.push("filters");
     }
+    // REV-184(1) : une seule ligne écartée suffit à signaler la jambe.
+    if (rows.length < args.filters.length) result.ignored.push("filters");
   }
   if ("join" in args) {
     if (args.join === null) {
       setters.setJoin(null);
-      applied = true;
+      result.applied.push("join");
     } else if (isValidGeneratedJoin(args.join, ctx)) {
       setters.setJoin(args.join);
-      applied = true;
+      result.applied.push("join");
+    } else {
+      result.ignored.push("join");
     }
   }
   if ("summary" in args) {
     if (args.summary === null) {
       setters.setSummary(null);
-      applied = true;
-    } else if (isValidGeneratedSummary(args.summary, known)) {
-      setters.setSummary(args.summary as SummaryConfig);
-      applied = true;
+      result.applied.push("summary");
+    } else {
+      const summary = withNullMetricDefaults(args.summary);
+      if (isValidGeneratedSummary(summary, known)) {
+        setters.setSummary(summary);
+        result.applied.push("summary");
+      } else {
+        result.ignored.push("summary");
+      }
     }
   }
-  return applied;
+  return result;
 }

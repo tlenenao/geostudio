@@ -1326,6 +1326,10 @@ export const fr = {
   "copilot.opDropped": "Proposition ignorée (invalide) : {op}",
   "copilot.opSqlDraftApplied": "Brouillon SQL inséré.",
   "copilot.opVisualQueryDraftApplied": "Requête visuelle mise à jour.",
+  "copilot.opVisualQueryPartial": "Requête visuelle mise à jour ; ignoré (invalide) : {legs}.",
+  "copilot.legFilters": "filtres",
+  "copilot.legJoin": "jointure",
+  "copilot.legSummary": "résumé",
   "copilot.requestFailed": "Échec de la requête au copilote.",
   "copilot.unavailable":
     "Le copilote est indisponible : aucun fournisseur LLM n'est configuré sur cette instance. Un administrateur peut l'activer en définissant CORE_LLM_PROVIDER (voir .env.example) puis en redémarrant le cœur.",
