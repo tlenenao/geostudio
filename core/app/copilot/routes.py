@@ -2,6 +2,7 @@
 import asyncio
 import hashlib
 import json
+import logging
 import secrets
 from typing import Any, Literal
 
@@ -22,6 +23,8 @@ from app.db import get_session
 from app.users.models import User
 
 router = APIRouter()
+
+logger = logging.getLogger(__name__)
 
 MAX_TOOL_ITERATIONS = 6
 TURN_TIMEOUT_SECONDS = 30.0
@@ -379,5 +382,7 @@ async def copilot_turn(
             await anyio.to_thread.run_sync(
                 _write_turn_audit, session, user, body, tools_called, outcome
             )
-        except Exception:  # pragma: no cover
-            pass
+        except Exception:
+            # REV-287(b) : best-effort (la réponse part quand même), mais jamais
+            # silencieux — une trace d'audit perdue doit se voir dans les logs.
+            logger.exception("copilot.turn audit failed")

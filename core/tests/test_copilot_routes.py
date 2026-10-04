@@ -165,6 +165,38 @@ def test_plain_text_reply_with_no_tool_calls(client, monkeypatch):
     assert body == {"reply": "Ce dataset contient des incidents.", "clientOps": []}
 
 
+def test_turn_audit_failure_is_logged_not_swallowed(client, monkeypatch, caplog):
+    import logging
+
+    import app.copilot.routes as routes_module
+
+    monkeypatch.setattr(
+        routes_module,
+        "get_llm_provider",
+        lambda: FakeLLMProvider(responses=[LLMTurn(text="ok")]),
+    )
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("audit indisponible")
+
+    monkeypatch.setattr(routes_module, "_write_turn_audit", _boom)
+    with caplog.at_level(logging.ERROR, logger="app.copilot.routes"):
+        resp = client.post(
+            "/v1/copilot/turn",
+            json={
+                "itemId": "1",
+                "message": "bonjour",
+                "history": [],
+                "mcpToken": "x",
+                "currentConfig": {},
+                "clientTools": [],
+            },
+        )
+    assert resp.status_code == 200
+    assert "copilot.turn audit failed" in caplog.text
+    assert "audit indisponible" in caplog.text
+
+
 def test_copilot_turn_maps_egress_blocked_to_502(client, monkeypatch):
     import app.copilot.routes as routes_module
     from app.copilot.egress import EgressBlockedError
