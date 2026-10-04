@@ -32,7 +32,8 @@ class ValidatedIp(str):
 
     def __new__(cls, first: str, addresses: Sequence[str]) -> "ValidatedIp":
         obj = super().__new__(cls, first)
-        obj.addresses = tuple(addresses)
+        # getaddrinfo(host, None) renvoie une entrée par type de socket : dédoublonner
+        obj.addresses = tuple(dict.fromkeys(addresses))
         return obj
 
 
