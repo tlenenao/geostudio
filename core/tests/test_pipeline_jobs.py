@@ -529,3 +529,33 @@ def test_run_pipeline_task_does_not_execute_a_run_cancelled_after_get_run(env, m
         fetched = pipelines_repo.get_run(s, tenant_id=tenant.id, run_id=run_id)
         assert fetched.status == "cancelled"
         assert fetched.started_at is None
+
+
+def test_quota_exceeded_during_run_is_a_readable_failure(env, monkeypatch):
+    # REV-288a : refus de quota = échec métier lisible, pas « erreur interne ».
+    from app.quotas.service import QuotaExceededError
+
+    app, Session, tenant, user, item_id = env
+    message = "quota d'items du tenant dépassé : 1/1"
+
+    def _over_quota(*args, **kwargs):
+        raise QuotaExceededError("items", 1, 1, message)
+
+    monkeypatch.setattr(pipeline_jobs, "run_pipeline", _over_quota)
+
+    with Session() as s:
+        run = pipelines_repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_id)
+        s.commit()
+        run_id = run.id
+
+    pipeline_jobs.run_pipeline_task.defer(run_id=run_id, tenant_id=tenant.id)
+    app.run_worker(wait=False, queues=["etl"])
+
+    with Session() as s:
+        fetched = pipelines_repo.get_run(s, tenant_id=tenant.id, run_id=run_id)
+        assert fetched.status == "failed"
+        assert fetched.error == message
+        notification = s.scalar(select(Notification).where(Notification.tenant_id == tenant.id))
+        assert notification is not None
+        assert notification.status == "failure"
+        assert notification.error_message == message
