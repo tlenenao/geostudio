@@ -491,3 +491,19 @@ test("le tracé libre ne réactive pas un dragPan que la carte avait désactivé
   fireEvent.click(screen.getByRole("button", { name: "Rectangle" }));
   expect(dragPan.enable).not.toHaveBeenCalled();
 });
+
+// REV-286(e) : un geste interrompu par le système (appel entrant, geste
+// multi-doigts) n'est pas une intention de dessiner.
+test("touchcancel annule le tracé libre en cours sans l'enregistrer", () => {
+  const map = makeMapStub();
+  render(<MapMeasureSketchToolbar map={map as never} />);
+  fireEvent.click(screen.getByRole("button", { name: "Croquis" }));
+  fireEvent.click(screen.getByRole("button", { name: "Tracé libre" }));
+  act(() => map.emit("touchstart", { lngLat: { lng: 0, lat: 0 } }));
+  act(() => map.emit("touchmove", { lngLat: { lng: 1, lat: 1 } }));
+  act(() => map.emit("touchcancel", {}));
+  expect(screen.queryByText(/\d+ tracés?/)).not.toBeInTheDocument();
+  // Un touchend tardif ne ressuscite pas le geste annulé.
+  act(() => map.emit("touchend", {}));
+  expect(screen.queryByText(/\d+ tracés?/)).not.toBeInTheDocument();
+});
