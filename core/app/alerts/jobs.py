@@ -218,10 +218,6 @@ def _measure_value(session, *, user: User, payload: AlertRulePayload) -> float:
     finally:
         conn.close()
 
-    if not rows and _measures_for(payload.query)[0].agg in _ZERO_ON_EMPTY_AGGS:
-        # P20.02 (j09-013) : collection sans aucun fichier GeoParquet -> pas de
-        # ligne, mais « zéro ligne » compte 0 / somme 0, pas une erreur.
-        return 0.0
     if len(rows) != 1:
         raise AlertEvaluationError(
             f"alert query must reduce to exactly one row (got {len(rows)}) — "
@@ -239,8 +235,8 @@ def _measure_value(session, *, user: User, payload: AlertRulePayload) -> float:
     if label not in row:
         raise AlertEvaluationError(f"expected measure '{label}' not present in aggregate result")
     if row[label] is None and _measures_for(payload.query)[0].agg in _ZERO_ON_EMPTY_AGGS:
-        # P25 : sans groupBy l'agrégat rend toujours UNE ligne ; somme d'un
-        # ensemble vide = NULL -> 0 (même règle que « aucune ligne » ci-dessus).
+        # P25 : sans groupBy l'agrégat rend toujours UNE ligne, lac vide compris
+        # (REV-277c) ; somme d'un ensemble vide = NULL -> 0.
         return 0.0
     if row[label] is None:
         # Depuis SP-23, median/percentile/stddev n'ont pas de COALESCE (design
