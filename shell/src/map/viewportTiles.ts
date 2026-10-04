@@ -5,16 +5,27 @@ import { useSyncExternalStore } from "react";
 // pour sonder les tuiles réellement affichées plutôt que la seule 0/0/0.
 // ponytail: un seul « dernier viewport » global — deux cartes montées en même
 // temps (widgets) se partagent la valeur ; un store par carte si le besoin vient.
+// REV-283d : la carte qui se démonte retire sa vue (clearViewport), sans
+// effacer celle d'une autre carte qui aurait publié depuis.
 export type Viewport = { zoom: number; bounds: [number, number, number, number] };
 
 let current: Viewport | null = null;
+let owner: unknown = null;
 const listeners = new Set<() => void>();
 
-export function publishViewport(v: Viewport): void {
+export function publishViewport(v: Viewport, by?: unknown): void {
+  owner = by ?? null;
   // Clé stable (zoom entier + tuiles couvertes) : un simple pan dans les mêmes
   // tuiles ne doit pas re-notifier.
   if (current && tileKeys(current).join() === tileKeys(v).join()) return;
   current = v;
+  listeners.forEach((l) => l());
+}
+
+export function clearViewport(by: unknown): void {
+  if (owner !== by || current === null) return;
+  current = null;
+  owner = null;
   listeners.forEach((l) => l());
 }
 

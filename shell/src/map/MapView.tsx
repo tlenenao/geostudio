@@ -18,7 +18,7 @@ import { MapMeasureSketchToolbar } from "./MapMeasureSketchToolbar";
 import { MapPopup } from "./MapPopup";
 import { useMapPopup } from "./useMapPopup";
 import { resolvePopupContent } from "./popupContent";
-import { publishViewport } from "./viewportTiles";
+import { clearViewport, publishViewport } from "./viewportTiles";
 import { t } from "../i18n";
 import { isHostedCollectionUrl, isHostedTerrainUrl } from "./hostedCoreUrl";
 import { HIGHLIGHT_ID } from "./mapLayerBuild";
@@ -332,10 +332,13 @@ export const MapView = forwardRef<
     map.on("load", () => {
       styleLoadedRef.current = true;
       setReadyMap(map);
-      publishViewport({
-        zoom: map.getZoom(),
-        bounds: map.getBounds().toArray().flat() as [number, number, number, number],
-      });
+      publishViewport(
+        {
+          zoom: map.getZoom(),
+          bounds: map.getBounds().toArray().flat() as [number, number, number, number],
+        },
+        map,
+      );
       map.addSource(HIGHLIGHT_ID, {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
@@ -394,7 +397,7 @@ export const MapView = forwardRef<
     map.on("idle", scheduleLabelRefresh);
     map.on("moveend", () => {
       const bounds = map.getBounds().toArray().flat() as [number, number, number, number];
-      publishViewport({ zoom: map.getZoom(), bounds });
+      publishViewport({ zoom: map.getZoom(), bounds }, map);
       const cb = onViewChangeRef.current;
       if (!cb) return;
       const c = map.getCenter();
@@ -431,6 +434,7 @@ export const MapView = forwardRef<
       map.off("idle", scheduleLabelRefresh);
       map.removeControl(overlay);
       releaseLumaCanvasObserver(map);
+      clearViewport(map);
       map.remove();
       mapRef.current = null;
       setReadyMap(null);

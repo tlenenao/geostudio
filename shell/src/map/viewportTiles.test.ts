@@ -1,5 +1,6 @@
+import { act, renderHook } from "@testing-library/react";
 import { expect, test } from "vitest";
-import { tileKeys } from "./viewportTiles";
+import { clearViewport, publishViewport, tileKeys, useViewport } from "./viewportTiles";
 
 test("une vue serrée donne les tuiles du zoom entier courant", () => {
   const keys = tileKeys({ zoom: 12.7, bounds: [2.34, 48.85, 2.36, 48.86] });
@@ -15,4 +16,15 @@ test("une vue large à zoom élevé est rabaissée à 12 tuiles au plus", () => 
 
 test("le monde entier à z0 est la tuile 0/0/0", () => {
   expect(tileKeys({ zoom: 0, bounds: [-180, -85, 180, 85] })).toEqual(["0/0/0"]);
+});
+
+test("REV-283d : la vue d'une carte démontée n'est plus publiée", () => {
+  const mapA = {};
+  const mapB = {};
+  const { result } = renderHook(() => useViewport());
+  act(() => publishViewport({ zoom: 5, bounds: [-5, 41, 9, 51] }, mapA));
+  act(() => clearViewport(mapB)); // B n'a pas publié en dernier : sans effet
+  expect(result.current).not.toBeNull();
+  act(() => clearViewport(mapA));
+  expect(result.current).toBeNull();
 });
