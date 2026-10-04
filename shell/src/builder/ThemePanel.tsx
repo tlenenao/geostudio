@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { Theme } from "../api/types";
-import { DEFAULT_THEME_COLORS, DEFAULT_FONT, DEFAULT_RADIUS, DEFAULT_SPACE } from "./theme";
+import {
+  DEFAULT_THEME_COLORS,
+  DEFAULT_FONT,
+  DEFAULT_RADIUS,
+  DEFAULT_SPACE,
+  contrastRatio,
+} from "./theme";
 import { t } from "../i18n";
+import { formatNumber } from "../lib/format";
 
 const FONTS: [string, string][] = [
   [DEFAULT_FONT, t("themePanel.fontSystem")],
@@ -30,6 +37,11 @@ const COLOR_FIELDS: [keyof NonNullable<Theme["colors"]>, string][] = [
   ["border", t("themePanel.colorBorder")],
 ];
 
+// REV-284(e) : paires vérifiées contre le fond — le texte courant et la
+// couleur atténuée (texte secondaire) ; seuil AA texte normal.
+const MIN_CONTRAST = 4.5;
+const CONTRAST_CHECKED: (keyof NonNullable<Theme["colors"]>)[] = ["text", "muted"];
+
 export function ThemePanel({
   theme,
   onChange,
@@ -40,6 +52,14 @@ export function ThemePanel({
   function setColor(key: keyof NonNullable<Theme["colors"]>, value: string) {
     onChange({ ...theme, colors: { ...theme.colors, [key]: value } });
   }
+  const colorOf = (key: keyof NonNullable<Theme["colors"]>) =>
+    theme.colors?.[key] ?? DEFAULT_THEME_COLORS[key];
+  const lowContrast = CONTRAST_CHECKED.flatMap((key) => {
+    const ratio = contrastRatio(colorOf(key), colorOf("background"));
+    if (ratio === null || ratio >= MIN_CONTRAST) return [];
+    const label = COLOR_FIELDS.find(([k]) => k === key)?.[1] ?? key;
+    return [{ key, label, ratio }];
+  });
   return (
     <div className="flex flex-col gap-2 text-sm">
       {COLOR_FIELDS.map(([key, label]) => (
@@ -52,6 +72,11 @@ export function ThemePanel({
             onChange={(e) => setColor(key, e.target.value)}
           />
         </label>
+      ))}
+      {lowContrast.map(({ key, label, ratio }) => (
+        <p key={key} role="status" className="text-xs text-warn">
+          {t("themePanel.lowContrast", { label, ratio: formatNumber(ratio, 1) })}
+        </p>
       ))}
       <label className="flex flex-col gap-1">
         {t("themePanel.fontLabel")}

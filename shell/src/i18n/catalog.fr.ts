@@ -1842,6 +1842,8 @@ export const fr = {
   "themePanel.colorText": "Couleur du texte",
   "themePanel.colorMuted": "Couleur atténuée",
   "themePanel.colorBorder": "Couleur de bordure",
+  "themePanel.lowContrast":
+    "Contraste insuffisant : « {label} » sur la couleur de fond ({ratio}:1, minimum recommandé 4,5:1).",
   "themePanel.fontLabel": "Police",
   "themePanel.radiusFieldLabel": "Arrondi",
   "themePanel.spaceLabel": "Espacement",

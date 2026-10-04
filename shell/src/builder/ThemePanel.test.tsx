@@ -41,3 +41,15 @@ test("changing the radius select emits an updated theme", async () => {
   await userEvent.selectOptions(screen.getByLabelText("Arrondi"), "1rem");
   expect(onChange).toHaveBeenCalledWith({ radius: "1rem" });
 });
+
+test("REV-284(e) : signale une couleur atténuée illisible sur le fond", () => {
+  render(<ThemePanel theme={{ colors: { muted: "#ffffff" } }} onChange={vi.fn()} />);
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "Contraste insuffisant : « Couleur atténuée » sur la couleur de fond (1:1, minimum recommandé 4,5:1).",
+  );
+});
+
+test("REV-284(e) : aucun avertissement avec le thème par défaut", () => {
+  render(<ThemePanel theme={{}} onChange={vi.fn()} />);
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+});
