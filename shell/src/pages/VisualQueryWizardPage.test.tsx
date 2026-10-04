@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { CollectionAdmin, ItemClient, PipelinePayload } from "../api/types";
+import { ApiError } from "../api/ApiError";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { OWNER_PERMISSIONS, READ_ONLY_PERMISSIONS } from "../auth/permissions";
 import { VisualQueryWizardPage } from "./VisualQueryWizardPage";
@@ -652,6 +653,55 @@ describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)
     // Round 2, Important 2 : le renommage tapé par l'utilisateur doit être
     // persisté sur l'item dataset (le Pipeline lui-même ne porte pas de titre).
     expect(client.updateItem).toHaveBeenCalledWith("dataset-1", { title: "Ma requête modifiée" });
+  });
+
+  async function clickUpdateWhenReady() {
+    await screen.findByText("Modifier la requête");
+    await waitFor(() =>
+      expect(screen.getByLabelText("Collection de base")).toHaveValue("incidents"),
+    );
+    await screen.findByText("Filtrer");
+    const button = await screen.findByRole("button", { name: "Mettre à jour" });
+    await waitFor(() => expect(button).not.toBeDisabled());
+    await userEvent.click(button);
+  }
+
+  test("REV-271 : « Mettre à jour » envoie la version lue (If-Match) et retient la version renvoyée", async () => {
+    const client = renderWizardEdit({
+      getPipelineConfig: vi.fn().mockResolvedValue({ ...EXISTING_PIPELINE, baseVersion: 5 }),
+      savePipelineConfig: vi.fn().mockResolvedValue(6),
+    });
+    await clickUpdateWhenReady();
+    await waitFor(() => expect(client.savePipelineConfig).toHaveBeenCalledTimes(1));
+    const [pk, payload] = (client.savePipelineConfig as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(pk).toBe("pipeline-1");
+    expect(payload.baseVersion).toBe(5);
+  });
+
+  test("REV-271 : un 412 affiche le conflit, ne lance pas le run, et « Recharger » ressème la version", async () => {
+    const getPipelineConfig = vi
+      .fn()
+      .mockResolvedValueOnce({ ...EXISTING_PIPELINE, baseVersion: 5 })
+      .mockResolvedValue({ ...EXISTING_PIPELINE, baseVersion: 7 });
+    const savePipelineConfig = vi
+      .fn()
+      .mockRejectedValueOnce(new ApiError(412, { detail: "stale" }))
+      .mockResolvedValue(8);
+    const client = renderWizardEdit({ getPipelineConfig, savePipelineConfig });
+    await clickUpdateWhenReady();
+
+    expect(await screen.findByText(/modifié ailleurs/)).toBeInTheDocument();
+    expect(client.runPipeline).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Recharger la dernière version" }));
+    await waitFor(() => expect(getPipelineConfig).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText(/modifié ailleurs/)).not.toBeInTheDocument());
+
+    const button = await screen.findByRole("button", { name: "Mettre à jour" });
+    await waitFor(() => expect(button).not.toBeDisabled());
+    await userEvent.click(button);
+    await waitFor(() => expect(savePipelineConfig).toHaveBeenCalledTimes(2));
+    expect(savePipelineConfig.mock.calls[1][1].baseVersion).toBe(7);
   });
 
   test("revue finale #2, Important 1 : bloque la soumission si le schéma recompilé ne correspond plus à la sortie déjà provisionnée", async () => {

@@ -2,6 +2,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { isConflictError } from "../api/ApiError";
+import { SaveConflictNotice } from "../builder/SaveConflictNotice";
 import { useAuth } from "../auth/useAuth";
 import { useItemClient } from "../api/ItemClientProvider";
 import { useCollectionsAdmin, useInstanceInfo, useItem, usePipelineConfig } from "../api/hooks";
@@ -83,6 +85,9 @@ export function VisualQueryWizardPage({
   const [summary, setSummary] = useState<SummaryConfig | null>(null);
   const [refreshPolicy, setRefreshPolicy] = useState<PipelineRefreshPolicy | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // REV-271 : version lue du pipeline édité, envoyée en If-Match à l'enregistrement.
+  const baseVersionRef = useRef<number | undefined>(undefined);
+  const [conflict, setConflict] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [createdPipelinePk, setCreatedPipelinePk] = useState<string | null>(null);
   // Objets déjà créés par une tentative précédente (j05b-001) : un échec de
@@ -131,6 +136,8 @@ export function VisualQueryWizardPage({
 
   useEffect(() => {
     if (pipelinePk === null || !existingPipelineQuery.data) return;
+    baseVersionRef.current = existingPipelineQuery.data.baseVersion;
+    setConflict(false);
     const decompiled = decompilePipelineToWizardState(existingPipelineQuery.data);
     if (decompiled === null) {
       setUnrecognizedShape(true);
@@ -304,7 +311,11 @@ export function VisualQueryWizardPage({
           outputCollectionId,
           datasetPk,
         );
-        await client.savePipelineConfig(pipelinePk, pipeline);
+        baseVersionRef.current = await client.savePipelineConfig(pipelinePk, {
+          ...pipeline,
+          baseVersion: baseVersionRef.current,
+        });
+        setConflict(false);
         await client.updateItem(datasetPk, { title });
       } else {
         // baseSchema est garanti défini ici (contrôle en tête de fonction),
@@ -372,6 +383,10 @@ export function VisualQueryWizardPage({
       setCreatedPipelinePk(pipelinePkToRun);
       setCreatedDatasetPk(datasetPk);
     } catch (e) {
+      if (isConflictError(e)) {
+        setConflict(true);
+        return;
+      }
       setError(e instanceof Error ? e.message : t("actions.saveFailed"));
     } finally {
       setSubmitting(false);
@@ -579,6 +594,9 @@ export function VisualQueryWizardPage({
                   <p role="alert" className="text-sm text-danger">
                     {t("visualQuery.outputMismatchText")}
                   </p>
+                )}
+                {conflict && (
+                  <SaveConflictNotice onReload={() => void existingPipelineQuery.refetch()} />
                 )}
                 {error && (
                   <p role="alert" className="text-sm text-danger">
