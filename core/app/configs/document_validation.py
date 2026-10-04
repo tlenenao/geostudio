@@ -125,19 +125,24 @@ def _item_errors(item: LayoutItem, seen: set[str]) -> list[str]:
     return errs
 
 
-def _widget_ids(node: object) -> set[str]:
-    """Ids de tous les widgets d'un arbre de layout, imbriqués compris
-    (props.items d'une modale/d'un tiroir) — REV-278c."""
-    ids: set[str] = set()
+def _widget_nodes(node: object) -> list[dict]:
+    """Tous les nœuds widget (dict portant `widget: str` et `id: str`) d'un
+    arbre de layout, imbriqués compris (props.items d'une modale/d'un
+    tiroir) — REV-278a/c."""
+    nodes: list[dict] = []
     if isinstance(node, dict):
         if isinstance(node.get("widget"), str) and isinstance(node.get("id"), str):
-            ids.add(node["id"])
+            nodes.append(node)
         for value in node.values():
-            ids |= _widget_ids(value)
+            nodes += _widget_nodes(value)
     elif isinstance(node, list):
         for value in node:
-            ids |= _widget_ids(value)
-    return ids
+            nodes += _widget_nodes(value)
+    return nodes
+
+
+def _widget_ids(node: object) -> set[str]:
+    return {n["id"] for n in _widget_nodes(node)}
 
 
 def _layout_errors(config: BuilderConfig) -> list[str]:

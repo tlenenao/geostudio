@@ -49,6 +49,7 @@ from app.configs.terrain3d_validation import (
 from app.configs.tileset3d_validation import (
     validate_tileset3d_payload as _validate_tileset3d_payload,
 )
+from app.configs.widget_registry import validate_widget_types
 from app.db import request_scoped_session
 from app.items import repository as items_repo
 from app.items.schemas import ItemRead
@@ -116,6 +117,7 @@ def _validate_payload_by_kind(session, config: BuilderConfig, *, user: User) -> 
     structural checks, etc."""
     try:
         validate_document(config)
+        validate_widget_types(session, config, tenant_id=user.tenant_id)
         _validate_dataset_payload(session, config, user=user)
         _validate_bookmark_payload(session, config, user=user)
         _validate_pipeline_payload(session, config, user=user)
