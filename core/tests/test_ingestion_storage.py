@@ -2,8 +2,12 @@
 """Wrapper S3 fin — testé avec un client boto3 factice (pas de MinIO réel
 nécessaire), même patron que fake_introspector dans test_collections_routes.py."""
 
+import pytest
+
 from app.ingestion.storage import (
+    ObjectTooLarge,
     download_object,
+    download_object_head,
     ensure_uploads_bucket,
     generate_presigned_get_url,
     generate_presigned_put_url,
@@ -86,3 +90,44 @@ def test_generate_presigned_get_url_calls_boto_with_get_object():
     assert params["Key"] == "renders/job-1.pdf"
     assert expires == 1800
     assert url == "https://minio.test/geostudio-exports/renders/job-1.pdf?presigned=1"
+
+
+class _RangeS3:
+    def __init__(self, data: bytes):
+        self.data = data
+        self.ranges: list[str | None] = []
+
+    def head_object(self, Bucket, Key):  # noqa: N803
+        return {"ContentLength": len(self.data)}
+
+    def get_object(self, Bucket, Key, Range=None):  # noqa: N803
+        self.ranges.append(Range)
+        body = self.data
+        if Range:
+            start, end = Range.removeprefix("bytes=").split("-")
+            body = self.data[int(start) : int(end) + 1]
+
+        class _Body:
+            def read(self_inner):  # noqa: N805
+                return body
+
+        return {"Body": _Body()}
+
+
+def test_download_object_head_reads_only_the_head_and_cuts_on_a_line_boundary():
+    data = b'{"a": 1}\n' * 10  # 90 octets
+    s3 = _RangeS3(data)
+    out = download_object_head(s3, bucket="b", key="k", head_bytes=25)
+    assert s3.ranges == ["bytes=0-24"]
+    assert out == b'{"a": 1}\n' * 2  # 18 octets : 3e ligne tronquée, retirée
+
+
+def test_download_object_head_returns_everything_when_the_object_is_small():
+    s3 = _RangeS3(b'{"a": 1}\n{"b": 2}\n')
+    out = download_object_head(s3, bucket="b", key="k", head_bytes=1024)
+    assert out == b'{"a": 1}\n{"b": 2}\n'
+
+
+def test_download_object_head_still_enforces_the_size_cap():
+    with pytest.raises(ObjectTooLarge):
+        download_object_head(_RangeS3(b"x" * 100), bucket="b", key="k", max_bytes=10)

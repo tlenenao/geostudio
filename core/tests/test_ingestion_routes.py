@@ -40,7 +40,8 @@ class _FakeS3Client:
             raise ClientError({"Error": {"Code": "404", "Message": "nf"}}, "HeadObject")
         return {"ContentLength": len(self.objects[Key])}
 
-    def get_object(self, Bucket, Key):  # noqa: N803
+    def get_object(self, Bucket, Key, Range=None):  # noqa: N803
+        self.last_range = Range
         if Key not in self.objects:
             raise ClientError({"Error": {"Code": "NoSuchKey", "Message": "not found"}}, "GetObject")
 
@@ -51,7 +52,11 @@ class _FakeS3Client:
             def read(self) -> bytes:
                 return self._data
 
-        return {"Body": _Body(self.objects[Key])}
+        data = self.objects[Key]
+        if Range:
+            start, end = Range.removeprefix("bytes=").split("-")
+            data = data[int(start) : int(end) + 1]
+        return {"Body": _Body(data)}
 
 
 @pytest.fixture()
@@ -587,6 +592,18 @@ def test_inspect_upload_jsonlines_returns_fields(env):
     assert body["layers"] == []
     assert "id" in body["fields"] or "jsonl_id" in body["fields"]
     assert "claim" in body["fields"]
+
+
+def test_inspect_upload_jsonlines_reads_only_the_head_of_a_large_object(env):
+    """REV-268 : l'inspection JSONL n'a besoin que des premières lignes."""
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    fake_s3.objects[f"{tenant.id}/big.jsonl"] = b'{"a": 1}\n' * 150_000  # ~1,3 Mio > 1 Mio
+    resp = client.post(
+        "/v1/uploads/inspect", json={"key": f"{tenant.id}/big.jsonl", "filename": "big.jsonl"}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["fields"] == ["a"]
+    assert fake_s3.last_range == "bytes=0-1048575"
 
 
 def test_inspect_upload_jsonlines_422_on_malformed_line(env):

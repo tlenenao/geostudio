@@ -34,6 +34,7 @@ from app.ingestion.schemas import (
 from app.ingestion.storage import (
     ObjectTooLarge,
     download_object,
+    download_object_head,
     ensure_uploads_bucket,
     generate_presigned_put_url,
     max_upload_bytes,
@@ -100,7 +101,9 @@ def inspect_upload(
     if not body.key.startswith(f"{user.tenant_id}/"):
         raise HTTPException(status_code=400, detail="invalid upload key")
     try:
-        content = download_object(s3, bucket=bucket, key=body.key, max_bytes=max_upload_bytes())
+        # REV-268 : JSON Lines n'est inspecté que sur ses premières lignes.
+        load = download_object_head if body.filename.lower().endswith(".jsonl") else download_object
+        content = load(s3, bucket=bucket, key=body.key, max_bytes=max_upload_bytes())
     except ObjectTooLarge as exc:
         raise HTTPException(status_code=413, detail=str(exc)) from exc
     except ClientError as exc:
