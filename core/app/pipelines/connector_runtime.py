@@ -66,6 +66,7 @@ from app.pipelines.ops.schemas import (
 )
 from app.secrets import repository as secrets_repo
 from app.secrets.schemas import SecretPayload
+from app.sql_ident import quote_ident_duckdb as _qi
 from app.users.models import User
 
 # Dialectes dont l'hôte n'est pas un nom DNS contrôlable (compte Snowflake,
@@ -255,13 +256,6 @@ def _stream_sql(dsn: str, query: str):
                 yield dict(row._mapping)
     finally:
         engine.dispose()
-
-
-def _qi(name: str) -> str:
-    # Duplication délibérée (3e copie du dépôt) — cf. runtime.py, même
-    # rationale : helper de 2 lignes, pas un import inter-module d'un nom
-    # `_`-préfixé.
-    return '"' + name.replace('"', '""') + '"'
 
 
 class ConnectorRuntimeError(Exception):

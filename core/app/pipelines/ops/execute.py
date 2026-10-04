@@ -13,12 +13,7 @@ import shapely.wkb
 from shapely.geometry import GeometryCollection, MultiPoint
 
 from app.pipelines.errors import PipelineRuntimeError
-
-
-def _qi(name: str) -> str:
-    # Duplication délibérée (patron déjà établi par compiler.py/runtime.py) — helper de 2
-    # lignes, pas un import inter-module d'un nom `_`-préfixé.
-    return '"' + name.replace('"', '""') + '"'
+from app.sql_ident import quote_ident_duckdb as _qi
 
 
 def _read_geometry_rows(conn, input_view: str) -> pd.DataFrame:

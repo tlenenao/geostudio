@@ -85,17 +85,11 @@ from app.pipelines.ops.schemas import (
 from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
 from app.sharing.authorization import can
+from app.sql_ident import quote_ident_duckdb as _qi
 from app.users.models import User
 
 # Dérivé de BINARY_OPS (REV-198) : une op binaire ajoutée au registre est ici d'office.
 _JOIN_PARAM_MODELS: dict[str, type] = {op: OP_PARAMS[op] for op in BINARY_OPS}
-
-
-def _qi(name: str) -> str:
-    # Duplication délibérée du helper de 2 lignes de app.pipelines.compiler
-    # (lui-même une duplication de app.analytics.aggregate._qi) plutôt qu'un
-    # import inter-module d'un nom privé `_`-préfixé — cf. compiler.py.
-    return '"' + name.replace('"', '""') + '"'
 
 
 def _ql(value: str) -> str:
