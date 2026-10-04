@@ -89,6 +89,11 @@ export function SqlLabPage() {
   // D54 (Vague C) : la liste des collections alimente désormais aussi
   // l'autocomplétion SQL (Tâche 26, D54b), plus seulement le panneau
   // copilote — appel inconditionnel.
+  // REV-184(5) : GET /v1/collections sans `limit` ne renvoie que sa première
+  // page (DEFAULT_LIMIT = 100, core/app/collections/routes.py) — au-delà, ni
+  // l'autocomplétion ni le copilote ne voient les collections suivantes. Et
+  // un tour de copilote envoyé avant la résolution de cette requête part avec
+  // `collections: []` (course de chargement assumée, rare en pratique).
   const collectionsQuery = useCollectionsAdmin();
 
   // SP-B9d : restaure la requête sélectionnée dans l'historique depuis
@@ -160,8 +165,12 @@ export function SqlLabPage() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- knownCollectionIds recalculé chaque rendu depuis collectionsQuery.data, l'inclure re-déclencherait l'effet inutilement à chaque frappe
-  }, [sql]);
+    // REV-265 : `collectionsQuery.data` (référence stable entre rendus) relance
+    // l'effet quand la liste arrive après un SQL restauré depuis l'historique.
+    // knownCollectionIds (tableau neuf à chaque rendu) et schemaByCollection
+    // (garde anti-refetch lue dans l'effet) restent hors dépendances.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- cf. ci-dessus
+  }, [sql, collectionsQuery.data]);
 
   const run = useMutation({
     mutationFn: (query: string) => client.runAnalyticsSql(query),
