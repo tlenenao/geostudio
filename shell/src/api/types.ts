@@ -209,7 +209,7 @@ export type InstanceStatus = {
   minioConsolePublished: boolean;
   postgres: ProbeStatus;
   s3: ProbeStatus;
-  cdc: ProbeStatus & { slotActive?: boolean };
+  cdc: ProbeStatus & { slotActive?: boolean; configured?: boolean };
   jobs: ProbeStatus & {
     queues?: { queue: string; status: string; count: number }[];
     stalled?: number;

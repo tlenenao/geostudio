@@ -24,7 +24,16 @@ from app.roles.privileges import Privilege
 from app.users.models import User
 
 router = APIRouter()
-_CDC_SLOT = "geostudio_cdc_slot"
+_CDC_SLOT = "geostudio_cdc_slot"  # = app.cdc.consumer.SLOT_NAME (import interdit, cf. test)
+_STALLED_DEFAULT_MINUTES = 60
+
+
+def _stalled_minutes() -> int:
+    try:
+        value = int(os.environ.get("CORE_STALLED_JOB_MINUTES", ""))
+    except ValueError:
+        return _STALLED_DEFAULT_MINUTES
+    return value if value > 0 else _STALLED_DEFAULT_MINUTES
 
 
 def get_s3_client():  # overridé dans main.py quand S3_* est configuré
@@ -79,7 +88,9 @@ def get_instance_status(
             text("SELECT active FROM pg_replication_slots WHERE slot_name = :n"),
             {"n": _CDC_SLOT},
         ).first()
-        return {"slotActive": bool(row and row[0])}
+        if row is None:  # worker CDC volontairement absent : pas une panne
+            return {"configured": False}
+        return {"configured": True, "slotActive": bool(row[0])}
 
     def jobs() -> dict:
         rows = session.execute(
@@ -92,8 +103,9 @@ def get_instance_status(
             text(
                 "SELECT COUNT(*) FROM procrastinate_jobs j WHERE j.status = 'doing' "
                 "AND NOT EXISTS (SELECT 1 FROM procrastinate_events e WHERE e.job_id = j.id "
-                "AND e.at > now() - interval '1 hour')"
-            )
+                "AND e.at > now() - make_interval(mins => :m))"
+            ),
+            {"m": _stalled_minutes()},
         ).scalar_one()
         return {
             "queues": [{"queue": q, "status": st, "count": n} for q, st, n in rows],

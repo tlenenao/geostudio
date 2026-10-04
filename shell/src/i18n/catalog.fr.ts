@@ -389,6 +389,7 @@ export const fr = {
   "infrastructure.statusHeading": "État de l'instance",
   "infrastructure.statusOk": "opérationnel",
   "infrastructure.statusDown": "en échec",
+  "infrastructure.statusNotConfigured": "non configuré",
   "infrastructure.statusJobs": "File de jobs",
   "infrastructure.statusJobsDetailOne": "{pending} en attente ou en cours, {stalled} bloqué",
   "infrastructure.statusJobsDetailMany": "{pending} en attente ou en cours, {stalled} bloqués",
