@@ -2879,3 +2879,130 @@ test("a spatial cross-filter link propagates a bbox from one dataset's Table cli
   // substring ambigu avec la valeur "2" de la KPI.
   await expect(page.getByText("2", { exact: true })).toBeVisible();
 });
+
+// -------------------------------------------------------------------------
+// REV-104 — lecteur temporel : Lecture pousse une fenêtre glissante dans le
+// contexte global ; la table liée au dataset timeField refetch à chaque pas.
+// -------------------------------------------------------------------------
+test("a time player steps a sliding window through a timeField-bound dataset", async ({ page }) => {
+  await mockCore(page);
+  let savedDataset: Record<string, unknown> = {};
+  await page.route("**/collections", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    await route.fulfill({
+      json: {
+        collections: [
+          mockCollection({
+            id: "events",
+            title: "Événements",
+            tableName: "events",
+            isPublic: true,
+            geometryType: null,
+            srid: null,
+            permissions: { read: true, write: true, delete: false, share: false },
+            featureCount: 2,
+          }),
+        ],
+      },
+    });
+  });
+  await page.route("**/collections/events/schema", async (route) => {
+    await route.fulfill({
+      json: {
+        collection: "events",
+        pk: "id",
+        geometry: null,
+        fields: [
+          { name: "nom", type: "string" },
+          { name: "date", type: "string" },
+        ],
+      },
+    });
+  });
+  await page.route("**/collections/events/items*", async (route) => {
+    const url = new URL(route.request().url());
+    const gte = url.searchParams.get("date__gte");
+    const lte = url.searchParams.get("date__lte");
+    const all = [
+      { id: 1, properties: { nom: "Ancien", date: "2020-05-01" } },
+      { id: 2, properties: { nom: "Récent", date: "2026-06-01" } },
+    ];
+    const features =
+      gte && lte ? all.filter((f) => f.properties.date >= gte && f.properties.date <= lte) : all;
+    await route.fulfill({ json: { type: "FeatureCollection", features } });
+  });
+  await page.route("**/configs/by-item/dataset-1", async (route) => {
+    if (route.request().method() === "PUT") {
+      savedDataset = (await route.request().postDataJSON()).dataset;
+      await route.fulfill({
+        json: { id: "cfg-dataset", itemId: "dataset-1", kind: "dataset", dataset: savedDataset },
+      });
+      return;
+    }
+    await route.fulfill({
+      json: {
+        id: "cfg-dataset",
+        itemId: "dataset-1",
+        kind: "dataset",
+        config: {
+          kind: "dataset",
+          dataset: { source: "collection", collectionId: "events", columns: {}, ...savedDataset },
+        },
+      },
+    });
+  });
+  await mockItemDetail(page, "dataset-1", {
+    title: "Événements partagés",
+    configId: "cfg-dataset",
+  });
+
+  // Montage : dataset timeField "date", puis app Lecteur temporel + table.
+  await page.goto("/");
+  await page.getByRole("button", { name: "Nouveau" }).click();
+  const dialog = page.getByRole("dialog", { name: "Nouvel élément" });
+  await dialog.getByLabel("Type").selectOption("dataset");
+  await dialog.getByLabel("Collection source").selectOption("events");
+  await dialog.getByLabel("Titre").fill("Événements partagés");
+  await dialog.getByRole("button", { name: "Créer" }).click();
+  await expect(page).toHaveURL(/\/datasets\/dataset-1\/edit$/);
+  await page.getByLabel("Colonne temporelle").selectOption("date");
+  await page.getByRole("button", { name: "Enregistrer les colonnes" }).click();
+
+  await createApp(page, "Lecteur temporel");
+  await addFeaturesSource(page, "events");
+  await promoteLastSource(page, 1);
+
+  await page.getByRole("button", { name: "Lecteur temporel" }).click();
+  await page.getByLabel("Début de l'animation").fill("2026-06-01");
+  await page.getByLabel("Fin de l'animation").fill("2026-06-30");
+  await page.getByLabel("Intervalle (ms)").fill("3000");
+  await page.getByRole("button", { name: "Table", exact: true }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 1 });
+  await page.getByLabel("Interactions automatiques (cross-filter)").check();
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+
+  await page.goto("/apps/9");
+  await expect(page.getByRole("cell", { name: "Ancien" })).toBeVisible();
+
+  // 1re fenêtre (fenêtre de 7 jours par défaut) : 2026-06-01..2026-06-07.
+  const first = page.waitForRequest(
+    (r) =>
+      r.url().includes("/collections/events/items") &&
+      r.url().includes("date__gte=2026-06-01") &&
+      r.url().includes("date__lte=2026-06-07"),
+  );
+  await page.getByRole("button", { name: "Lecture" }).click();
+  await first;
+  await expect(page.getByRole("cell", { name: "Récent" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Ancien" })).toBeHidden();
+
+  // 2e pas (+1 jour) : 2026-06-02..2026-06-08, "Récent" sort de la fenêtre.
+  await page.waitForRequest(
+    (r) =>
+      r.url().includes("/collections/events/items") &&
+      r.url().includes("date__gte=2026-06-02") &&
+      r.url().includes("date__lte=2026-06-08"),
+  );
+  await expect(page.getByRole("cell", { name: "Récent" })).toBeHidden();
+  await page.getByRole("button", { name: "Pause" }).click();
+});

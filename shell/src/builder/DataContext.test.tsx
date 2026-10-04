@@ -6,7 +6,7 @@ import { expect, test, vi } from "vitest";
 import type { DataSource, ItemClient } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { DataProvider, useDataStates, useSetFilter } from "./DataContext";
-import { AnalyticsContextProvider } from "./AnalyticsContext";
+import { AnalyticsContextProvider, useSetTimeRange } from "./AnalyticsContext";
 
 const sources: DataSource[] = [
   { id: "ds1", type: "features", service: "featureserv", layer: "parcs", query: {} },
@@ -442,4 +442,72 @@ test("does not resolve collectionId/pkColumn for a non-core features source with
   await waitFor(() => expect(screen.getByText(/collectionId:none/)).toBeInTheDocument());
   expect(screen.getByText(/pkColumn:none/)).toBeInTheDocument();
   expect(client.getCollectionSchema).not.toHaveBeenCalled();
+});
+
+test("REV-104 : la plage temporelle du contexte atteint l'URL de couche (featuresUrl) d'une source liée à un dataset", async () => {
+  const featuresUrl = vi.fn().mockReturnValue("https://fs/parcs/items.json");
+  const client = {
+    queryDataSource: vi.fn().mockResolvedValue([]),
+    featuresUrl,
+    getDatasetConfig: vi.fn().mockResolvedValue({
+      source: "collection",
+      collectionId: "parcs",
+      columns: {},
+      timeField: "date_releve",
+      reactsToExtent: false,
+    }),
+    getCollectionSchema: vi
+      .fn()
+      .mockResolvedValue({ collection: "parcs", pk: "id", geometry: null, fields: [] }),
+  } as unknown as ItemClient;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const src: DataSource[] = [
+    {
+      id: "ds1",
+      type: "features",
+      service: "featureserv",
+      layer: "parcs",
+      datasetId: "dataset-1",
+      query: {},
+    },
+  ];
+
+  function SetRange() {
+    const setTimeRange = useSetTimeRange();
+    return (
+      <button type="button" onClick={() => setTimeRange({ from: "2026-01-01", to: "2026-01-31" })}>
+        régler
+      </button>
+    );
+  }
+  function Probe() {
+    useDataStates();
+    return <p>rendered</p>;
+  }
+
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <AnalyticsContextProvider interactions="auto">
+          <DataProvider sources={src}>
+            <SetRange />
+            <Probe />
+          </DataProvider>
+        </AnalyticsContextProvider>
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  await screen.findByText("rendered");
+  await waitFor(() => expect(client.getDatasetConfig).toHaveBeenCalledWith("dataset-1"));
+  await userEvent.click(screen.getByRole("button", { name: "régler" }));
+  await waitFor(() =>
+    expect(featuresUrl).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        query: expect.objectContaining({
+          date_releve__gte: "2026-01-01",
+          date_releve__lte: "2026-01-31",
+        }),
+      }),
+    ),
+  );
 });
