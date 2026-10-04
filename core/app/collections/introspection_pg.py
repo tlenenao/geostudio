@@ -4,6 +4,7 @@ Toutes les requêtes sont paramétrées — le nom de table est une *valeur* ici
 jamais un identifiant interpolé."""
 
 import copy
+import threading
 import time
 from collections import OrderedDict
 
@@ -84,6 +85,9 @@ _CACHE_TTL_S = 30.0
 # REV-279d : borné (LRU) — une instance aux milliers de collections ne doit pas
 # faire croître ce cache sans limite au fil des tables touchées.
 _CACHE_MAX = 512
+# Routes sync (threadpool), outils MCP et workers partagent ce cache : verrou court,
+# jamais tenu pendant la requête d'introspection.
+_cache_lock = threading.Lock()
 _cache: OrderedDict[tuple[str, str], tuple[float, str, TableInfo]] = OrderedDict()
 
 _FINGERPRINT_SQL = (
@@ -101,17 +105,20 @@ def introspect_table(session: Session, table_name: str) -> TableInfo:
     key = (str(session.get_bind().url), table_name)
     fingerprint = session.execute(text(_FINGERPRINT_SQL), {"t": table_name}).scalar()
     if fingerprint is None:  # absente : l'erreur vient du chemin non caché
-        _cache.pop(key, None)
+        with _cache_lock:
+            _cache.pop(key, None)
         return _introspect_table_uncached(session, table_name)
-    hit = _cache.get(key)
-    if hit and hit[1] == fingerprint and time.monotonic() - hit[0] < _CACHE_TTL_S:
-        _cache.move_to_end(key)
-        return copy.deepcopy(hit[2])
+    with _cache_lock:
+        hit = _cache.get(key)
+        if hit and hit[1] == fingerprint and time.monotonic() - hit[0] < _CACHE_TTL_S:
+            _cache.move_to_end(key)
+            return copy.deepcopy(hit[2])
     info = _introspect_table_uncached(session, table_name)
-    _cache[key] = (time.monotonic(), fingerprint, info)
-    _cache.move_to_end(key)
-    while len(_cache) > _CACHE_MAX:
-        _cache.popitem(last=False)
+    with _cache_lock:
+        _cache[key] = (time.monotonic(), fingerprint, info)
+        _cache.move_to_end(key)
+        while len(_cache) > _CACHE_MAX:
+            _cache.popitem(last=False)
     return copy.deepcopy(info)
 
 
