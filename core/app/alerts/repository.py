@@ -160,7 +160,9 @@ def list_due_rules(session: Session) -> list[tuple[str, str]]:
     due: list[tuple[str, str]] = []
     candidates = [
         (item_id, tenant_id, config)
-        for item_id, tenant_id, config in configs_repo.list_configs_by_kind(session, kind="alert")
+        for item_id, tenant_id, config in configs_repo.list_configs_by_kind(
+            session, kind="alert", refresh_enabled_only=True
+        )
         if config.alert is not None and config.alert.refreshPolicy.enabled
     ]
     latest_by_item = get_latest_evaluations_for_items(session, item_ids=[c[0] for c in candidates])

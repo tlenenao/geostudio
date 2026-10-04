@@ -236,7 +236,7 @@ def list_due_pipelines(session: Session) -> list[tuple[str, str]]:
     candidates = [
         (item_id, tenant_id, config)
         for item_id, tenant_id, config in configs_repo.list_configs_by_kind(
-            session, kind="pipeline"
+            session, kind="pipeline", refresh_enabled_only=True
         )
         if config.pipeline is not None
         and config.pipeline.refreshPolicy is not None

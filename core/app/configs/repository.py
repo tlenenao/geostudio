@@ -108,13 +108,16 @@ def get_config_by_item(session: Session, item_id: str) -> ConfigRead | None:
 _LENIENT = {"lenient": True}  # relecture: tolère les clés inconnues (cf. schemas.BaseModel)
 
 
-def list_configs_by_kind(session: Session, kind: str) -> list[tuple[str, str, BuilderConfig]]:
+def list_configs_by_kind(
+    session: Session, kind: str, *, refresh_enabled_only: bool = False
+) -> list[tuple[str, str, BuilderConfig]]:
     """Scan cross-tenant (pas de filtre tenant_id) — réservé aux tâches
     système (balayage périodique, SP-15h), jamais exposé via une route :
     contrairement à ConfigRead (response_model public), le tuple retourné
-    porte tenant_id en clair."""
+    porte tenant_id en clair. `refresh_enabled_only` (REV-279b) : ne charge
+    que les configs dont `<kind>.refreshPolicy.enabled` est vrai, en SQL."""
     # Une seule requête (P24.06) : révision courante par jointure, plus de N+1.
-    rows = session.execute(
+    stmt = (
         select(Config, ConfigRevision)
         .join(
             ConfigRevision,
@@ -122,7 +125,11 @@ def list_configs_by_kind(session: Session, kind: str) -> list[tuple[str, str, Bu
             & (ConfigRevision.version == Config.current_version),
         )
         .where(Config.kind == kind)
-    ).all()
+    )
+    if refresh_enabled_only:
+        enabled = ConfigRevision.data[(kind, "refreshPolicy", "enabled")].as_boolean()
+        stmt = stmt.where(enabled.is_(True))
+    rows = session.execute(stmt).all()
     result: list[tuple[str, str, BuilderConfig]] = []
     for record, revision in rows:
         if record.item_id is None:
