@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { useMe } from "../api/hooks";
 import { TopBar } from "./chrome/TopBar";
 import { DomainBar } from "./chrome/DomainBar";
@@ -44,6 +45,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // REV-286(f) : c'est <main> qui défile (P31.03), pas la fenêtre —
+  // ScrollRestoration de React Router n'y peut rien. Nouvelle page = en haut ;
+  // un changement de ?filtre (même pathname) ne fait pas remonter.
+  const mainRef = useRef<HTMLElement>(null);
+  const { pathname } = useLocation();
+  useEffect(() => {
+    if (mainRef.current) mainRef.current.scrollTop = 0;
+  }, [pathname]);
+
   // Cf. commentaire d'origine (conservé à l'identique) : le worker d'export
   // Playwright navigue directement sur une route protégée avec
   // ?exportRender=1 — le chrome (TopBar/DomainBar/StatusBar) ne doit pas
@@ -87,6 +97,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <TopBar tileset3dEnabled={tileset3dEnabled} onOpenPalette={() => setPaletteOpen(true)} />
       {!narrow && <DomainBar profile={profile} />}
       <main
+        ref={mainRef}
         id="main-content"
         tabIndex={-1}
         className="focus:outline-none flex min-h-0 flex-1 flex-col overflow-y-auto p-6 print:overflow-visible"
