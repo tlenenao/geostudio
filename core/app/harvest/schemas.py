@@ -32,7 +32,7 @@ def _check_http_url(value: str | None) -> str | None:
 
 class HarvestSourceCreate(BaseModel):
     type: Literal["stac", "arcgis", "wms", "wfs", "wmts", "csw", "ogc-records", "ckan"]
-    url: str = Field(min_length=1)
+    url: str = Field(min_length=1, max_length=2048)
     mode: Literal["reference", "copy"] = "reference"
     enabled: bool = True
     intervalMinutes: int | None = Field(default=None, ge=1)
@@ -41,7 +41,7 @@ class HarvestSourceCreate(BaseModel):
 
 
 class HarvestSourcePatch(BaseModel):
-    url: str | None = Field(default=None, min_length=1)
+    url: str | None = Field(default=None, min_length=1, max_length=2048)
     mode: Literal["reference", "copy"] | None = None
     enabled: bool | None = None
     intervalMinutes: int | None = Field(default=None, ge=1)

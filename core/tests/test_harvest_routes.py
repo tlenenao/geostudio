@@ -72,6 +72,13 @@ def test_create_requires_admin(env):
     assert client.post("/v1/harvest/sources", json=SOURCE_BODY).status_code == 403
 
 
+def test_create_url_too_long_is_422(env):
+    app, client, _, admin, _regular = env
+    _as(app, admin)
+    body = {**SOURCE_BODY, "url": "https://stac.example.com/" + "a" * 3000}
+    assert client.post("/v1/harvest/sources", json=body).status_code == 422
+
+
 def test_create_and_list(env):
     app, client, _, admin, _regular = env
     _as(app, admin)

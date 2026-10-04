@@ -101,6 +101,13 @@ def test_empty_url_disables_geocoding(app_and_client, monkeypatch):
     assert r.json()["detail"] == "Géocodage désactivé sur cette instance."
 
 
+def test_unauthenticated_with_empty_url_is_401_not_503(app_and_client, monkeypatch):
+    _, client = app_and_client
+    monkeypatch.setenv("CORE_GEOCODING_URL", "")
+    del client.headers["Authorization"]
+    assert client.get("/v1/geocode", params={"q": "cergy"}).status_code == 401
+
+
 def test_egress_guard_failure_is_a_502(app_and_client, monkeypatch):
     _, client = app_and_client
     monkeypatch.setenv("CORE_GEOCODING_URL", "http://127.0.0.1:1/search")

@@ -23,8 +23,8 @@ class GeocodeResponse(BaseModel):
 def geocode(
     q: str = Query(min_length=3, max_length=200),
     limit: int = Query(default=5, ge=1, le=10),
-    geocoder: Geocoder = Depends(get_geocoder),
     _user: User = Depends(get_current_user),
+    geocoder: Geocoder = Depends(get_geocoder),
 ) -> GeocodeResponse:
     try:
         return GeocodeResponse(results=geocoder.search(q, limit))

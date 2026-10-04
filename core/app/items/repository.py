@@ -625,7 +625,7 @@ def list_published_items(
         tag = None
     if tag:
         # Tag en Python (SQLite seulement, Postgres filtre en SQL ci-dessus —
-        # REV-279e), sur sur (id, keywords) seulement : on ne charge
+        # REV-279e), sur (id, keywords) seulement : on ne charge
         # les lignes complètes que pour la page demandée (P24.05).
         tagged = session.execute(
             query.with_only_columns(Item.id, Item.keywords).order_by(*order)
