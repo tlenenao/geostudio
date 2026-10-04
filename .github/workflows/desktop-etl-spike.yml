@@ -28,6 +28,7 @@ jobs:
         shell: bash
         run: |
           extra_args=$(grep -v '^#' scripts/pipeline_sidecar_spike.pyinstaller-args.txt | tr '\n' ' ')
+          # shellcheck disable=SC2086 # découpage voulu : liste d'arguments PyInstaller
           uv run pyinstaller --onefile --name pipeline-sidecar-spike --paths . $extra_args scripts/pipeline_sidecar_spike.py
       - name: Exécuter le binaire gelé
         run: .\dist\pipeline-sidecar-spike.exe

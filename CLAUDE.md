@@ -192,7 +192,7 @@ cd ../shell
 npm run lint && npm run format:check
 node scripts/check-coverage.mjs coverage/coverage-summary.json \
   .coverage-threshold                    # seuil = shell/.coverage-threshold ; nettoyer dist/ + dist-export/ avant
-uvx pre-commit run --all-files           # 6 hooks (commitlint ne sort qu'au commit)
+uvx pre-commit run --all-files           # 7 hooks (commitlint ne sort qu'au commit)
 
 # régénérer la spec OpenAPI + les types TS — À FAIRE dès qu'une route ou un
 # modèle change (classe d'oubli n°1 du dépôt). La commande nue échoue en

@@ -65,7 +65,7 @@ jobs:
             -p 5432:5432 geostudio-postgis-ci:latest \
             -c wal_level=logical \
             -c output_plugin_libraries=wal2json,pgoutput,test_decoding
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             docker exec ci-postgres pg_isready -U gis && break
             sleep 2
           done
@@ -143,7 +143,7 @@ jobs:
             -p 5432:5432 geostudio-postgis-ci:latest \
             -c wal_level=logical \
             -c output_plugin_libraries=wal2json,pgoutput,test_decoding
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             docker exec ci-postgres pg_isready -U gis && break
             sleep 2
           done
@@ -176,7 +176,7 @@ jobs:
         run: |
           docker build -t geostudio-titiler-ci:latest ./deploy/titiler
           docker run -d --name ci-titiler -e PORT=8000 -p 8000:8000 geostudio-titiler-ci:latest
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             curl -sf http://127.0.0.1:8000/healthz && break
             sleep 2
           done
@@ -189,7 +189,7 @@ jobs:
           docker run -d --name ci-minio \
             -e MINIO_ROOT_USER=geostudio -e MINIO_ROOT_PASSWORD=geostudio123 \
             -p 9000:9000 geostudio-minio-ci:latest server /data --console-address ":9001"
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             curl -sf http://127.0.0.1:9000/minio/health/live && break
             sleep 2
           done
