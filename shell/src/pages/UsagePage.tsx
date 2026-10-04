@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { useItemClient, useMe, useUsageSummary, useUsageTasks } from "../api/hooks";
+import { useMe, useUsageSummary, useUsageTasks } from "../api/hooks";
 import { RESOURCE_TYPE_LABELS } from "../api/resourceTypes";
 import type { UsageTask } from "../api/types";
 import { Button } from "../ui/kit/Button";
@@ -18,21 +17,21 @@ import { PageTitle } from "../ui/kit/PageTitle";
 
 const PAGE_SIZE = 50;
 
-// Ressource d'une ligne du journal : titre de l'élément (résolu par `getItem`)
-// et son type en français ; repli sur « type · début d'identifiant » quand
-// l'élément n'existe plus ou n'est pas lisible par ce profil.
-function ResourceLabel({ objectType, objectId }: { objectType: string; objectId: string }) {
-  const client = useItemClient();
+// Ressource d'une ligne du journal : titre de l'élément (résolu par le cœur,
+// REV-285(f), seulement s'il est lisible par ce profil) et son type en
+// français ; repli sur « type · début d'identifiant » sinon.
+function ResourceLabel({
+  objectType,
+  objectId,
+  objectTitle,
+}: {
+  objectType: string;
+  objectId: string;
+  objectTitle?: string | null;
+}) {
   const typeLabel =
     (RESOURCE_TYPE_LABELS as Record<string, string | undefined>)[objectType] ?? objectType;
-  const item = useQuery({
-    queryKey: ["usage-resource", objectId],
-    queryFn: () => client.getItem(objectId),
-    retry: false,
-    staleTime: 5 * 60_000,
-  });
-  if (item.data?.title)
-    return <>{t("usage.resourceLabel", { title: item.data.title, type: typeLabel })}</>;
+  if (objectTitle) return <>{t("usage.resourceLabel", { title: objectTitle, type: typeLabel })}</>;
   return <>{t("usage.resourceFallback", { type: typeLabel, id: objectId.slice(0, 8) })}</>;
 }
 
@@ -159,7 +158,11 @@ export function UsagePage() {
                           key: "resource",
                           label: t("usage.columnResource"),
                           render: (task: UsageTask) => (
-                            <ResourceLabel objectType={task.objectType} objectId={task.objectId} />
+                            <ResourceLabel
+                              objectType={task.objectType}
+                              objectId={task.objectId}
+                              objectTitle={task.objectTitle}
+                            />
                           ),
                         },
                         {
@@ -225,8 +228,12 @@ export function UsagePage() {
                         <ol className="list-inside list-decimal text-sm text-ink-2">
                           {summaryQuery.data.byResource.map((r) => (
                             <li key={`${r.objectType}/${r.objectId}`}>
-                              <ResourceLabel objectType={r.objectType} objectId={r.objectId} /> —{" "}
-                              {r.count}
+                              <ResourceLabel
+                                objectType={r.objectType}
+                                objectId={r.objectId}
+                                objectTitle={r.objectTitle}
+                              />{" "}
+                              — {r.count}
                             </li>
                           ))}
                         </ol>

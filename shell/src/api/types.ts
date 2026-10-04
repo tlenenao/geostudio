@@ -146,6 +146,7 @@ export type UsageTask = {
   action: string;
   objectType: string;
   objectId: string;
+  objectTitle?: string | null;
   createdAt: string;
 };
 
@@ -155,7 +156,12 @@ export type UsageActorStat = {
   count: number;
 };
 
-export type UsageResourceStat = { objectType: string; objectId: string; count: number };
+export type UsageResourceStat = {
+  objectType: string;
+  objectId: string;
+  count: number;
+  objectTitle?: string | null;
+};
 
 export type UsageSummary = {
   byActor: UsageActorStat[];

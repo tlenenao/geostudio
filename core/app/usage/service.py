@@ -6,6 +6,7 @@ réelle à tasks.view/tasks.view_all (GAP-03) ; (2) agrégats pleine largeur
 sur tout audit_log (`summarize`) — vue d'usage GAP-71/GAP-28, activité par
 acteur + popularité des ressources."""
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -13,6 +14,10 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.audit.models import AuditLog
+from app.items import repository as items_repo
+from app.items.models import Item
+from app.sharing.authorization import decide
+from app.sharing.repository import roles_for_items
 from app.users.models import User
 
 # Établi par grep exhaustif sur les sites d'appel de write_audit() (core/app/*/jobs.py,
@@ -122,3 +127,44 @@ def summarize(
     ]
 
     return UsageSummaryData(by_actor=by_actor, by_resource=by_resource, total_actions=total_actions)
+
+
+def readable_item_titles(
+    session: Session, *, user: User, item_ids: Iterable[str]
+) -> dict[str, str]:
+    """Titres des items de `item_ids` LISIBLES par `user` (REV-285(f)) — même
+    règle que GET /v1/items/{id} (propriétaire, public, publié, rôle de
+    partage ; tasks.view_all n'ouvre rien). Trois requêtes quelle que soit la
+    taille de la page, patron groupé de app.harvest.routes (SP-49). Un
+    object_id sans item (collection, job, id supprimé) est simplement absent."""
+    ids = sorted({i for i in item_ids if i})
+    facts_by_id = items_repo.get_access_facts_by_ids(
+        session, tenant_id=user.tenant_id, item_ids=ids
+    )
+    remaining = [
+        item_id
+        for item_id, facts in facts_by_id.items()
+        if not (facts.owner_id == user.id or facts.is_public or facts.is_published)
+    ]
+    roles_by_id = roles_for_items(
+        session, tenant_id=user.tenant_id, user_id=user.id, item_ids=remaining
+    )
+    readable = [
+        item_id
+        for item_id, facts in facts_by_id.items()
+        if decide(
+            action="read",
+            kind="item",
+            is_owner=facts.owner_id == user.id,
+            is_public=facts.is_public,
+            is_published=facts.is_published,
+            roles=roles_by_id.get(item_id, frozenset()),
+            actor_is_admin=False,
+        )
+    ]
+    if not readable:
+        return {}
+    rows = session.execute(
+        select(Item.id, Item.title).where(Item.tenant_id == user.tenant_id, Item.id.in_(readable))
+    ).all()
+    return {row.id: row.title for row in rows}

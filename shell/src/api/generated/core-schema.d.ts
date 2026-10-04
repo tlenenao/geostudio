@@ -3681,6 +3681,8 @@ export interface components {
             count: number;
             /** Objectid */
             objectId: string;
+            /** Objecttitle */
+            objectTitle?: string | null;
             /** Objecttype */
             objectType: string;
         };
@@ -3739,6 +3741,8 @@ export interface components {
             id: number;
             /** Objectid */
             objectId: string;
+            /** Objecttitle */
+            objectTitle?: string | null;
             /** Objecttype */
             objectType: string;
         };

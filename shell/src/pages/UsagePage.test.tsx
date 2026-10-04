@@ -245,3 +245,45 @@ test("tasks.view seul : pas de colonne Utilisateur, titre « Mes tâches récent
   await screen.findByText("Mes tâches récentes");
   expect(screen.queryByRole("columnheader", { name: "Utilisateur" })).not.toBeInTheDocument();
 });
+
+test("REV-285(f) : titre fourni par l'API d'usage, aucun GET /items par ligne", async () => {
+  mockMe(["tasks.view"]);
+  let itemFetches = 0;
+  server.use(
+    http.get("https://core.test/v1/items/:pk", () => {
+      itemFetches += 1;
+      return HttpResponse.json({}, { status: 404 });
+    }),
+    http.get("https://core.test/v1/usage/tasks", () =>
+      HttpResponse.json({
+        tasks: [
+          {
+            id: 1,
+            actorId: "u1",
+            action: "pipeline.run",
+            objectType: "pipeline",
+            objectId: "abcdef1234",
+            objectTitle: "Nettoyage des adresses",
+            createdAt: "2026-09-01T00:00:00Z",
+          },
+          {
+            id: 2,
+            actorId: "u1",
+            action: "pipeline.run",
+            objectType: "pipeline",
+            objectId: "0123456789",
+            objectTitle: null,
+            createdAt: "2026-09-01T00:00:00Z",
+          },
+        ],
+        total: 2,
+        page: 1,
+        pageSize: 50,
+      }),
+    ),
+  );
+  render(<Harness />);
+  expect(await screen.findByText("Nettoyage des adresses (Pipeline)")).toBeInTheDocument();
+  expect(screen.getByText("Pipeline 01234567…")).toBeInTheDocument();
+  expect(itemFetches).toBe(0);
+});

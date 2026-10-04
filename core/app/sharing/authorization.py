@@ -61,7 +61,10 @@ def decide(
       appels directs — ajoutés par SP-49 pour éviter le N+1, sans passer
       par `can()` ni par un `AccessFacts`) : appel direct, sans logique de
       surcharge, donc en phase avec `decide()` par construction, pas par
-      preuve de parité.
+      preuve de parité ;
+    - `app.usage.service.readable_item_titles` (REV-285(f), titres du journal
+      d'usage) : même appel direct groupé que `app.harvest.routes`, sans
+      surcharge.
 
     **Portée de la preuve de parité** : `tests/test_sharing_decide.py`
     prouve `can()` ≡ `decide()` sur le produit cartésien complet des
@@ -70,7 +73,7 @@ def decide(
     avec `decide()` (`test_parity_with_items_permissions_by_id`,
     `test_parity_with_collection_permissions_by_id` — ce dernier vérifie
     aussi explicitement les deux surcharges `delete`/`write` ci-dessus).
-    Les deux appels directs d'`app.harvest.routes` ne sont couverts par
+    Les appels directs d'`app.harvest.routes` et d'`app.usage.service` ne sont couverts par
     aucun test de parité dédié : ils ne réimplémentent rien à comparer,
     ce sont des appels nus à cette fonction.
     """

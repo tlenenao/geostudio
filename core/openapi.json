@@ -5167,6 +5167,17 @@
             "title": "Objectid",
             "type": "string"
           },
+          "objectTitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objecttitle"
+          },
           "objectType": {
             "title": "Objecttype",
             "type": "string"
@@ -5353,6 +5364,17 @@
           "objectId": {
             "title": "Objectid",
             "type": "string"
+          },
+          "objectTitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objecttitle"
           },
           "objectType": {
             "title": "Objecttype",
