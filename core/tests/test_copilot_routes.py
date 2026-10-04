@@ -923,3 +923,38 @@ def test_surface_visual_query_uses_a_distinct_system_message(client, monkeypatch
     assert response.status_code == 200
     assert "generate_visual_query" in captured["system"]
     assert "applyVisualQueryDraft" in captured["system"]
+
+
+def test_surface_visible_when_points_to_cel_generation_and_keeps_item_line(client, monkeypatch):
+    captured = {}
+
+    class _CapturingProvider:
+        async def chat(self, messages, tools):
+            captured["system"] = messages[0]["content"]
+            return LLMTurn(text="ok")
+
+    monkeypatch.setattr("app.copilot.routes.get_llm_provider", lambda: _CapturingProvider())
+    response = client.post(
+        "/v1/copilot/turn",
+        json={
+            "itemId": "1",
+            "message": "visible si le statut est ouvert",
+            "history": [],
+            "mcpToken": "anything",
+            "currentConfig": {"availableFields": ["vars.statut"], "visibleWhen": ""},
+            "clientTools": [],
+            "surface": "visible_when",
+        },
+    )
+    assert response.status_code == 200
+    intro = captured["system"].split("<<<CONFIG-")[0]
+    assert "generate_cel_expression" in intro
+    assert "applyCelDraft" in intro
+    assert "Item en cours d'édition : 1" in captured["system"]
+
+
+def test_cel_generation_is_allowlisted_but_not_a_write_tool():
+    from app.copilot.tools_allowlist import ALLOWED_MCP_TOOL_NAMES, COPILOT_WRITE_TOOL_NAMES
+
+    assert "generate_cel_expression" in ALLOWED_MCP_TOOL_NAMES
+    assert "generate_cel_expression" not in COPILOT_WRITE_TOOL_NAMES

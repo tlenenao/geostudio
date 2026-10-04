@@ -72,7 +72,7 @@ class CopilotTurnRequest(BaseModel):
     clientTools: list[dict[str, Any]] = Field(default_factory=list, max_length=MAX_CLIENT_TOOLS)
     # Sélectionne le message système (cf. `_SURFACE_INTROS`) : `app_builder`
     # reste le défaut pour ne rien changer au comportement existant.
-    surface: Literal["app_builder", "sql_lab", "visual_query"] = "app_builder"
+    surface: Literal["app_builder", "sql_lab", "visual_query", "visible_when"] = "app_builder"
     # j11-012 : un outil d'ÉCRITURE demandé par le LLM n'est jamais exécuté
     # tel quel ; il revient au shell sous forme d'op `confirmWrite`, et c'est
     # le clic humain qui renvoie l'appel ici (sans passage par le LLM).
@@ -138,6 +138,17 @@ _SURFACE_INTROS: dict[str, str] = {
         "applyVisualQueryDraft pour les appliquer au formulaire — ne "
         "crée ni n'exécute jamais rien toi-même, l'utilisateur doit "
         "valider le formulaire."
+    ),
+    # REV-183 : condition d'affichage d'un widget. Le contexte porte
+    # {availableFields, visibleWhen} ; rien n'est appliqué sans clic humain.
+    "visible_when": (
+        "Tu es le copilote qui rédige la condition d'affichage (visibleWhen, "
+        "expression CEL booléenne) d'un widget du builder GeoStudio. Le contexte "
+        'ci-dessous porte un champ "availableFields" : les seules références '
+        "utilisables. Utilise l'outil generate_cel_expression (avec ces "
+        "availableFields et l'itemId en cours d'édition) pour proposer une "
+        "expression, PUIS l'outil applyCelDraft pour la proposer comme brouillon "
+        "— ne l'applique jamais toi-même, l'utilisateur doit cliquer sur Appliquer."
     ),
 }
 
