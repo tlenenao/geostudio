@@ -1743,3 +1743,24 @@ def test_stream_sql_connects_to_the_pinned_ip_for_mssql(monkeypatch):
     with pytest.raises(RuntimeError, match="stop"):
         list(connector_runtime._stream_sql("mssql+pymssql://u:p@db.example.com/app", "select 1"))
     assert "93.184.216.34" in seen["dsn"] and "db.example.com" not in seen["dsn"]
+
+
+def test_capped_reader_close_closes_the_underlying_open_file():
+    import io
+
+    class _OF:  # imite fsspec.OpenFile : flux né à l'entrée, fermé via l'OpenFile
+        def __init__(self):
+            self.closed = False
+            self.fh = io.BytesIO(b"x")
+
+        def __enter__(self):
+            return self.fh
+
+        def close(self):
+            self.closed = True
+
+    of = _OF()
+    reader = connector_runtime._CappedReader(of, {"raw_bytes": 0}, 10)
+    with reader:
+        pass
+    assert of.closed

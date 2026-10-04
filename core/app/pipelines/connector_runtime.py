@@ -173,6 +173,7 @@ class _CappedReader(io.RawIOBase):
     def __init__(self, raw, state: dict, max_bytes: int):
         super().__init__()
         self._raw, self._state, self._max = raw, state, max_bytes
+        self._of = raw if hasattr(raw, "__enter__") else None  # OpenFile à refermer
 
     def readable(self) -> bool:
         return True
@@ -193,6 +194,8 @@ class _CappedReader(io.RawIOBase):
     def close(self) -> None:
         try:
             self._raw.close()
+            if self._of is not None:
+                self._of.close()
         finally:
             super().close()
 
