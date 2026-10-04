@@ -54,6 +54,7 @@ _SUPPORTED_WIDGET_TYPES = frozenset(
         "drawer",
         "filter",
         "variableInput",
+        "timePlayer",
     }
 )
 

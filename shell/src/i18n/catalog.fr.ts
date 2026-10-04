@@ -1072,6 +1072,18 @@ export const fr = {
   // Idem : valeur initiale du libellé (defaultProps/configSchema.default),
   // détectée par le vérificateur — reste un défaut renommable, pas figé.
   "widgetDateRangeFilter.periodDefault": "Période",
+  "widgetTimePlayer.paletteLabel": "Lecteur temporel",
+  "widgetTimePlayer.from": "Début de l'animation",
+  "widgetTimePlayer.to": "Fin de l'animation",
+  "widgetTimePlayer.stepDays": "Pas (jours)",
+  "widgetTimePlayer.windowDays": "Fenêtre (jours)",
+  "widgetTimePlayer.intervalMs": "Intervalle (ms)",
+  "widgetTimePlayer.play": "Lecture",
+  "widgetTimePlayer.pause": "Pause",
+  "widgetTimePlayer.speed": "Vitesse",
+  "widgetTimePlayer.speedOption": "×{speed}",
+  "widgetTimePlayer.notConfigured":
+    "Lecteur temporel non configuré : renseignez le début et la fin.",
 
   // Widget Tiroir (drawer.tsx)
   "widgetDrawer.paletteLabel": "Tiroir",
