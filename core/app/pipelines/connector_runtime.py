@@ -15,6 +15,7 @@ import os
 # téléphoner à l'extérieur par variable d'environnement oubliée.
 os.environ.setdefault("RUNTIME__DLTHUB_TELEMETRY", "false")
 
+import io
 import json
 import shutil
 import tempfile
@@ -163,6 +164,39 @@ def _blob_timeout_s() -> int:
     return _env_int("CORE_PIPELINES_BLOB_TIMEOUT_S", 600)
 
 
+class _CappedReader(io.RawIOBase):
+    """Enveloppe un flux décompressé et lève au-delà du plafond cumulé
+    (REV-273b : la taille annoncée d'un .gz est la taille compressée ; une
+    bombe de décompression la contourne). `RawIOBase` + `readinto` : pandas
+    contourne un simple objet à `read()` délégué."""
+
+    def __init__(self, raw, state: dict, max_bytes: int):
+        super().__init__()
+        self._raw, self._state, self._max = raw, state, max_bytes
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, b) -> int:
+        n = self._raw.readinto(b) or 0
+        self._state["raw_bytes"] += n
+        if self._state["raw_bytes"] > self._max:
+            raise ConnectorRuntimeError(f"plafond de {self._max} octets décompressés dépassé")
+        return n
+
+    def __enter__(self):
+        # fsspec.open() peut renvoyer un OpenFile paresseux : le flux naît à l'entrée.
+        if hasattr(self._raw, "__enter__"):
+            self._raw = self._raw.__enter__()
+        return self
+
+    def close(self) -> None:
+        try:
+            self._raw.close()
+        finally:
+            super().close()
+
+
 def _blob_resource(files, reader):
     """REV-273b : plafonds fichiers/octets/lignes + échéance globale sur la
     chaîne filesystem → reader. dlt applique `add_map` élément par élément (y
@@ -170,12 +204,13 @@ def _blob_resource(files, reader):
     ponytail: gardes entre éléments ; un fichier unique géant n'est borné que
     par sa taille annoncée et les délais réseau fsspec (`_blob_fs_kwargs`) ;
     le listing glob (dlt glob_files -> fs.glob(detail=True)) est chargé en
-    mémoire avant tout plafond : un glob `**` sur un énorme bucket est non
-    borné. Évolution : limiter la profondeur/le préfixe du glob."""
+    mémoire avant tout plafond ; `**` est refusé en amont, un `*` à un seul
+    niveau reste listé en mémoire (borné par le préfixe imposé du secret).
+    Évolution : réécrire la source `filesystem` pour paginer le listing."""
     max_files, max_bytes = _blob_max_files(), _blob_max_bytes()
     max_rows, budget = _max_rows(), _blob_timeout_s()
     deadline = time.monotonic() + budget
-    state = {"files": 0, "bytes": 0, "rows": 0}
+    state = {"files": 0, "bytes": 0, "rows": 0, "raw_bytes": 0}
 
     def _check_deadline() -> None:
         if time.monotonic() > deadline:
@@ -189,6 +224,13 @@ def _blob_resource(files, reader):
         state["bytes"] += int(item["size_in_bytes"])
         if state["bytes"] > max_bytes:
             raise ConnectorRuntimeError(f"plafond de {max_bytes} octets dépassé")
+        if item.get("encoding") == "gzip":
+            real_open = item.open
+
+            def capped_open(*args, **kwargs):
+                return _CappedReader(real_open(*args, **kwargs), state, max_bytes)
+
+            item.open = capped_open
         return item
 
     def _row_guard(row):
@@ -723,6 +765,10 @@ def materialize_blob_connector(
             f"(expected {expected_kind})"
         )
     _assert_path_within_bucket(payload, params.path)
+    if "**" in params.path:
+        # REV-273b : fs.glob(detail=True) matérialise tout le listing avant le
+        # moindre plafond ; un `**` sur un gros bucket est non borné.
+        raise ConnectorRuntimeError("file_glob : le joker récursif '**' est refusé")
 
     if payload.kind == "s3_credentials":
         if payload.endpointUrl:  # endpoint S3 compatible = cible réseau libre (P16.02)

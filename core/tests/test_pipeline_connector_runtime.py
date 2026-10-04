@@ -1556,6 +1556,42 @@ def test_blob_deadline(conn, tmp_path, monkeypatch):
         _run_capped(conn, tmp_path, {"a.csv": 2})
 
 
+def test_materialize_blob_connector_refuses_recursive_glob(
+    monkeypatch, conn, session, tenant, user
+):
+    _blob_s3_secret(session, tenant, user, bucketUrl="s3://bucket/prefix/")
+    captured: dict = {}
+    _patch_blob_internals(monkeypatch, captured)
+    params = ReaderConnectorBlobParams(
+        secretName="s3-scoped", path="s3://bucket/prefix/**/*.csv", format="csv"
+    )
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="joker récursif"):
+        connector_runtime.materialize_blob_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
+            node_id="bg",
+            params=params,
+            view_name="node_bg",
+        )
+    assert "bucket_url" not in captured
+
+
+def test_blob_gzip_decompressed_bytes_are_capped(conn, tmp_path, monkeypatch):
+    import gzip
+
+    from dlt.sources.filesystem import filesystem
+
+    # ~400 Ko décompressés pour ~1 Ko compressé : la taille annoncée passe sous
+    # le plafond, les octets décompressés non.
+    (tmp_path / "a.csv.gz").write_bytes(gzip.compress(b"x\n" + b"0\n" * 200_000))
+    monkeypatch.setenv("CORE_PIPELINES_BLOB_MAX_BYTES", "50000")
+    files = filesystem(bucket_url=str(tmp_path), file_glob="*.csv.gz")
+    resource = connector_runtime._blob_resource(files, connector_runtime.read_csv())
+    resource.apply_hints(table_name="records", write_disposition="replace")
+    with pytest.raises(Exception, match="octets décompressés"):
+        connector_runtime._run_dlt_and_attach(conn, resource, node_id="gz", view_name="node_gz")
+
+
 def test_blob_under_caps_loads_all_rows(conn, tmp_path):
     _run_capped(conn, tmp_path, {"a.csv": 4, "b.csv": 3})
     assert conn.execute("SELECT count(*) FROM node_cap").fetchone()[0] == 7
