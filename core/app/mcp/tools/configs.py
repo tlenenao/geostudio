@@ -49,7 +49,7 @@ from app.configs.terrain3d_validation import (
 from app.configs.tileset3d_validation import (
     validate_tileset3d_payload as _validate_tileset3d_payload,
 )
-from app.configs.widget_registry import validate_widget_types
+from app.configs.widget_registry import validate_widget_types, with_warnings
 from app.db import request_scoped_session
 from app.items import repository as items_repo
 from app.items.schemas import ItemRead
@@ -165,7 +165,7 @@ def register(server: FastMCP, session_factory) -> None:
             result = configs_repo.get_config_by_item(session, itemId)
             if result is None:
                 raise ValueError("config not found")
-            return result
+            return with_warnings(session, result, tenant_id=user.tenant_id)
 
     @server.tool()
     @write_tool

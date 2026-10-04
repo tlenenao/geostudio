@@ -28,7 +28,7 @@ from app.configs.terrain3d_validation import (
 from app.configs.tileset3d_validation import (
     validate_tileset3d_payload as _validate_tileset3d_payload,
 )
-from app.configs.widget_registry import validate_widget_types
+from app.configs.widget_registry import validate_widget_types, with_warnings
 from app.db import get_session
 from app.items import repository as items_repo
 from app.items.models import Item
@@ -212,7 +212,7 @@ def get_config(
     if result is None or result.itemId is None:
         raise HTTPException(status_code=404, detail="config not found")
     _require_access(session, user=user, item_id=result.itemId, action="read")
-    return result
+    return with_warnings(session, result, tenant_id=user.tenant_id)
 
 
 @router.put("/configs/{config_id}", response_model=ConfigRead)
@@ -438,7 +438,8 @@ def get_config_by_item(
         raise HTTPException(status_code=404, detail="config not found")
     if mode == "runtime":
         _apps_runtime_executions_counter.add(1)
-    return result
+    tenant_id = user.tenant_id if user is not None else guest.tenant_id  # type: ignore[union-attr]
+    return with_warnings(session, result, tenant_id=tenant_id)
 
 
 @router.put("/configs/by-item/{item_id}", response_model=ConfigRead)

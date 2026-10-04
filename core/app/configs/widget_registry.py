@@ -12,7 +12,8 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.configs.document_validation import widget_nodes
+from app.configs.document_validation import document_warnings, widget_nodes
+from app.configs.repository import ConfigRead
 from app.configs.schemas import BuilderConfig
 from app.extensions.models import Extension
 
@@ -47,3 +48,12 @@ def validate_widget_types(session: Session, config: BuilderConfig, *, tenant_id:
     errs = widget_type_errors(session, config, tenant_id=tenant_id)
     if errs:
         raise HTTPException(status_code=422, detail="; ".join(errs))
+
+
+def with_warnings(session: Session, read: ConfigRead, *, tenant_id: str) -> ConfigRead:
+    """`ConfigRead` enrichi de ce qu'une écriture refuserait aujourd'hui
+    (REV-278/305) ; la lecture, elle, n'est jamais refusée."""
+    warnings = document_warnings(read.config) + widget_type_errors(
+        session, read.config, tenant_id=tenant_id
+    )
+    return read.model_copy(update={"warnings": warnings})

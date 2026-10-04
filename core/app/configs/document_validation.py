@@ -167,9 +167,14 @@ def _layout_errors(config: BuilderConfig) -> list[str]:
     return errs
 
 
-def validate_document(config: BuilderConfig) -> None:
+def document_warnings(config: BuilderConfig) -> list[str]:
     errs = _layout_errors(config)
     if config.map is not None:
         errs += _map_errors(config.map)
+    return errs
+
+
+def validate_document(config: BuilderConfig) -> None:
+    errs = document_warnings(config)
     if errs:
         raise HTTPException(status_code=422, detail="; ".join(errs))

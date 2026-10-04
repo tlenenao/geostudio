@@ -2319,6 +2319,11 @@ export interface components {
             kind: string;
             /** Version */
             version: number;
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: string[];
         };
         /** ConnectorSecretOut */
         ConnectorSecretOut: {
