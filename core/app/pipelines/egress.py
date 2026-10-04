@@ -87,6 +87,16 @@ def assert_dsn_egress_allowed(dsn: str) -> None:
     # non analysables de façon fiable (descripteur TNS, chaîne ODBC) → refusés.
     if {"server", "dsn", "odbc_connect", "hostname", "address"} & set(url.query):
         raise EgressBlockedError("DSN : hôte porté par un paramètre de pilote, refusé")
+    if not url.get_backend_name().startswith("postgresql") and {
+        "host",
+        "hostaddr",
+        "https_proxy",
+        "https_proxy_port",
+        "config_dir",
+    } & set(url.query):
+        # pymssql/oracledb préfèrent ces paramètres à l'hôte épinglé (rebinding)
+        # ou passent par un proxy non vérifié.
+        raise EgressBlockedError("DSN : hôte ou proxy porté par un paramètre de pilote, refusé")
     hosts = [url.host or ""]
     for key in ("host", "hostaddr"):
         val = url.query.get(key, ())
@@ -146,7 +156,9 @@ def pin_dsn_host(dsn: str) -> str:
     ip = assert_egress_allowed(f"http://{host}")
     if not ip:
         return dsn  # garde neutralisée (fixtures de tests)
-    return url.set(host=str(ip)).render_as_string(hide_password=False)
+    # pymssql ajoute le port par `:` : un littéral IPv6 sans port explicite casse.
+    port = (url.port or 1433) if backend.startswith("mssql") else url.port
+    return url.set(host=str(ip), port=port).render_as_string(hide_password=False)
 
 
 def _pin_ip(host: str) -> str:

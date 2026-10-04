@@ -108,6 +108,14 @@ def test_non_global_addresses_blocked(url):
         "mssql+pymssql://u:p@/db?server=127.0.0.1",
         "oracle+oracledb://u:p@/?dsn=127.0.0.1:1521/x",
         "mssql+pyodbc://u:p@/db?odbc_connect=SERVER%3D127.0.0.1",
+        # `host`/`hostaddr` en query : le pilote les préfère à l'hôte épinglé
+        "mssql+pymssql://u:p@db.example.com/app?host=rebind.example.com",
+        "oracle+oracledb://u:p@/?host=rebind.example.com",
+        "mssql+pymssql://u:p@db.example.com/app?hostaddr=8.8.8.8",
+        # oracledb : proxy / config_dir hors de l'hôte vérifié
+        "oracle+oracledb://u:p@db.example.com/?https_proxy=proxy.example.com",
+        "oracle+oracledb://u:p@db.example.com/?https_proxy_port=3128",
+        "oracle+oracledb://u:p@db.example.com/?config_dir=/tmp/x",
     ],
 )
 def test_dsn_with_internal_host_blocked(dsn, monkeypatch):
@@ -329,3 +337,15 @@ def test_pin_dsn_host_refuses_a_name_that_now_resolves_to_a_private_address(monk
     )
     with pytest.raises(EgressBlockedError):
         pin_dsn_host("oracle+oracledb://u:p@db.example.com:1521/?service_name=s")
+
+
+def test_pin_dsn_host_adds_default_port_for_mssql_so_ipv6_survives(monkeypatch):
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda *a, **k: [(socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("2606:2800::1", 0, 0, 0))],
+    )
+    pinned = pin_dsn_host("mssql+pymssql://u:p@db.example.com/app")
+    from sqlalchemy.engine import make_url
+
+    assert make_url(pinned).port == 1433
