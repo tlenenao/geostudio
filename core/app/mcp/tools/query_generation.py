@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Tools MCP de génération (GAP-17) : produisent un brouillon SQL ou une
+"""Tools MCP de génération (GAP-17, REV-183) : produisent un brouillon SQL, CEL ou une
 requête visuelle (filtres/jointure/résumé) depuis une question en langage
 naturel — ne créent, n'écrivent, ni n'exécutent jamais rien. Le SQL généré
 emprunte le même chemin d'exécution que le SQL manuel
@@ -19,11 +19,13 @@ from pydantic import BaseModel, ValidationError, model_validator
 from app.collections.introspection import TableNotFound, UnsupportedTable
 from app.collections.introspection_pg import introspect_table
 from app.collections.schema_json import table_info_to_schema
+from app.configs.document_validation import _cel_syntax_error
 from app.copilot.egress import EgressBlockedError
 from app.copilot.llm_provider import get_llm_provider
 from app.db import request_scoped_session
 from app.mcp.tools.identity import (
     http_exception_to_value_error,
+    require_access,
     require_collection_read,
     resolve_actor,
     visible_table_info,
@@ -50,6 +52,15 @@ def _strip_code_fence(text: str) -> str:
     if single_line_matches:
         return single_line_matches[-1].group(1).strip()
     return stripped
+
+
+# REV-183 : références de champ CEL d'un brouillon (vars.x, record.x, user.x).
+# Toute référence absente de availableFields est refusée : le modèle ne doit
+# pas inventer de variable. ponytail: une référence citée dans une chaîne
+# littérale est aussi contrôlée (faux positif accepté, jamais un faux négatif).
+_CEL_FIELD_REF_RE = re.compile(r"\b(?:vars|record|user)\.[A-Za-z_]\w*")
+_MAX_CEL_QUESTION_CHARS = 2000
+_MAX_CEL_FIELDS = 200
 
 
 class GeneratedFilterRow(BaseModel):
@@ -258,3 +269,45 @@ def register(server: FastMCP, session_factory) -> None:
                     )
 
         return generated.model_dump()
+
+    @server.tool()
+    async def generate_cel_expression(
+        ctx: Context, itemId: str, question: str, availableFields: list[str]
+    ) -> dict:
+        """Generate a CEL boolean expression draft for a widget's visibleWhen
+        condition from a natural-language question. Only the references
+        listed in availableFields (e.g. "vars.statut", "user.name") may
+        appear in it. Never writes anything: the caller inserts the draft
+        with the client tool applyCelDraft and the human applies it. REV-183."""
+        if len(question) > _MAX_CEL_QUESTION_CHARS:
+            raise ValueError("question trop longue (2000 caractères maximum)")
+        if len(availableFields) > _MAX_CEL_FIELDS:
+            raise ValueError("trop de champs disponibles (200 maximum)")
+        access_token = get_access_token()
+        with request_scoped_session(session_factory) as session:
+            user = resolve_actor(session, access_token)
+            require_access(session, user=user, item_id=itemId, action="write")
+
+        prompt = (
+            "Écris une unique expression CEL booléenne (Common Expression Language) "
+            "servant de condition d'affichage d'un widget. N'utilise QUE les références "
+            f"suivantes (JSON) : {json.dumps(availableFields)}. Réponds uniquement par "
+            "l'expression, sans aucun texte autour (un bloc de code Markdown est toléré "
+            f"mais pas requis). Question : {question}"
+        )
+        provider = get_llm_provider()
+        try:
+            turn = await provider.chat(messages=[{"role": "user", "content": prompt}], tools=[])
+        except EgressBlockedError as exc:
+            raise ValueError("le fournisseur LLM est indisponible") from exc
+        except httpx.HTTPError as exc:
+            raise ValueError("le fournisseur LLM est indisponible") from exc
+        expression = _strip_code_fence(turn.text)
+        if not expression:
+            raise ValueError("le fournisseur LLM n'a renvoyé aucune expression")
+        if error := _cel_syntax_error(expression):
+            raise ValueError(f"expression CEL invalide : {error}")
+        unknown = sorted(set(_CEL_FIELD_REF_RE.findall(expression)) - set(availableFields))
+        if unknown:
+            raise ValueError(f"champs inconnus dans l'expression : {', '.join(unknown)}")
+        return {"expression": expression}
