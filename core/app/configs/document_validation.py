@@ -102,6 +102,21 @@ def _item_errors(item: LayoutItem, seen: set[str]) -> list[str]:
     return errs
 
 
+def _widget_ids(node: object) -> set[str]:
+    """Ids de tous les widgets d'un arbre de layout, imbriqués compris
+    (props.items d'une modale/d'un tiroir) — REV-278c."""
+    ids: set[str] = set()
+    if isinstance(node, dict):
+        if isinstance(node.get("widget"), str) and isinstance(node.get("id"), str):
+            ids.add(node["id"])
+        for value in node.values():
+            ids |= _widget_ids(value)
+    elif isinstance(node, list):
+        for value in node:
+            ids |= _widget_ids(value)
+    return ids
+
+
 def _layout_errors(config: BuilderConfig) -> list[str]:
     errs: list[str] = []
     layouts = ([config.layout] if config.layout else []) + [p.layout for p in config.pages]
@@ -109,10 +124,18 @@ def _layout_errors(config: BuilderConfig) -> list[str]:
         seen: set[str] = set()
         for item in lay.items:
             errs += _item_errors(item, seen)
-    messages = list(config.messages) + [m for p in config.pages for m in p.onEnter]
-    for m in messages:
+    widgets = _widget_ids([lay.model_dump() for lay in layouts])
+    targets = widgets | {f"var:{v.id}" for v in config.variables}
+    on_enter = [m for p in config.pages for m in p.onEnter]
+    for m in list(config.messages) + on_enter:
+        name = m.id or m.event
         if m.when is not None and (e := _cel_syntax_error(m.when)):
-            errs.append(f"message '{m.id or m.event}' when: {e}")
+            errs.append(f"message '{name}' when: {e}")
+        if m.to not in targets:
+            errs.append(f"message '{name}' to: unknown target '{m.to}'")
+    for m in config.messages:  # le from d'un onEnter est l'id de la page
+        if m.from_ not in widgets:
+            errs.append(f"message '{m.id or m.event}' from: unknown widget '{m.from_}'")
     return errs
 
 
