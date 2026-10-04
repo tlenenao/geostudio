@@ -698,6 +698,23 @@ export interface paths {
         patch: operations["patch_extension_v1_extensions__extension_id__patch"];
         trace?: never;
     };
+    "/v1/geocode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Geocode */
+        get: operations["geocode_v1_geocode_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/groups": {
         parameters: {
             query?: never;
@@ -2578,6 +2595,20 @@ export interface components {
             serviceAccountInfo: {
                 [key: string]: unknown;
             };
+        };
+        /** GeocodeResponse */
+        GeocodeResponse: {
+            /** Results */
+            results: components["schemas"]["GeocodeResult"][];
+        };
+        /** GeocodeResult */
+        GeocodeResult: {
+            /** Label */
+            label: string;
+            /** Lat */
+            lat: number;
+            /** Lon */
+            lon: number;
         };
         /** GroupMemberRead */
         GroupMemberRead: {
@@ -5633,6 +5664,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    geocode_v1_geocode_get: {
+        parameters: {
+            query: {
+                q: string;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeocodeResponse"];
                 };
             };
             /** @description Validation Error */

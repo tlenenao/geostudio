@@ -172,6 +172,10 @@ PARITY: dict[str, tuple[str, object]] = {
     "stac": ("excluded", "API de catalogue publique, lisible sans MCP"),
     "public": ("excluded", "routes anonymes (SEO, partage)"),
     "extensions": ("excluded", "chargement de code tiers : humain uniquement"),
+    "geocode": (
+        "excluded",
+        "recherche d'adresse interactive du shell ; outil MCP hors v1 (REV-102)",
+    ),
     "harvest": ("excluded", "sources de moissonnage externes : humain uniquement (SSRF)"),
     "health": ("excluded", "sonde d'infrastructure"),
     "instance": ("excluded", "configuration d'instance, lue par le shell"),
