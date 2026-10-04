@@ -262,3 +262,68 @@ def test_0044_adds_notify_columns_on_a_non_empty_table_both_ways(throwaway_datab
         "AND column_name IN ('notify_status','notify_error')",
     )
     assert cols == 0
+
+
+def _seed_harvest(conn, rows) -> None:
+    for source_id, url in rows:
+        conn.execute(
+            sa.text(
+                "INSERT INTO harvest_sources (id, tenant_id, owner_id, type, url, created_at, "
+                "updated_at) VALUES (:id, 't1', 'u1', 'stac', :url, now(), now())"
+            ),
+            {"id": source_id, "url": url},
+        )
+
+
+def test_0046_adds_unique_source_index_and_failure_counter_both_ways(throwaway_database_url):
+    """REV-276c/d : base non vide, deux sources qui ne diffèrent que par le
+    slash final (pas des doublons exacts : la migration ne réécrit pas les URL)."""
+    url = throwaway_database_url
+    command.upgrade(_cfg(), "0045")
+    eng = sa.create_engine(url)
+    with eng.begin() as conn:
+        _seed_base(conn)
+        _seed_harvest(conn, [("h1", "https://a.example/stac"), ("h2", "https://a.example/stac/")])
+    eng.dispose()
+
+    command.upgrade(_cfg(), "0046")
+    assert _scalar(url, "SELECT sum(consecutive_failures) FROM harvest_sources") == 0
+    url_h2 = _scalar(url, "SELECT url FROM harvest_sources WHERE id='h2'")
+    assert url_h2 == "https://a.example/stac/"
+    eng = sa.create_engine(url)
+    with pytest.raises(sa.exc.IntegrityError), eng.begin() as conn:
+        _seed_harvest(conn, [("h3", "https://a.example/stac")])
+    eng.dispose()
+
+    command.downgrade(_cfg(), "0045")
+    assert _scalar(url, "SELECT count(*) FROM harvest_sources") == 2
+    assert (
+        _scalar(
+            url,
+            "SELECT count(*) FROM information_schema.columns "
+            "WHERE table_name='harvest_sources' AND column_name='consecutive_failures'",
+        )
+        == 0
+    )
+    assert (
+        _scalar(
+            url,
+            "SELECT count(*) FROM pg_indexes WHERE indexname='uq_harvest_sources_tenant_type_url'",
+        )
+        == 0
+    )
+
+
+def test_0046_fails_cleanly_on_exact_duplicates(throwaway_database_url):
+    url = throwaway_database_url
+    command.upgrade(_cfg(), "0045")
+    eng = sa.create_engine(url)
+    with eng.begin() as conn:
+        _seed_base(conn)
+        _seed_harvest(conn, [("h1", "https://a.example/stac"), ("h2", "https://a.example/stac")])
+    eng.dispose()
+
+    with pytest.raises(RuntimeError, match="h1,h2"):
+        command.upgrade(_cfg(), "0046")
+    assert _scalar(url, "SELECT version_num FROM alembic_version") == "0045"
+    assert _scalar(url, "SELECT count(*) FROM harvest_sources") == 2
