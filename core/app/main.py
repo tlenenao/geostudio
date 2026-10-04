@@ -124,6 +124,12 @@ _APPEXPORT_CORS_RULES: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 
 
+def trusted_proxy_hosts() -> str:
+    return os.environ.get(
+        "CORE_TRUSTED_PROXIES", "127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+    )
+
+
 def create_app() -> FastAPI:
     observability.setup()
     secrets_crypto.load_master_key()  # échec rapide si absente/mal formée (design SP-15e §4/§8)
@@ -522,13 +528,14 @@ def create_app() -> FastAPI:
     mcp_app.add_exception_handler(StarletteHTTPException, _http_exception_handler)
     app.mount("/", mcp_app)
 
-    # GAP-61.a : sans cette couche, request.client reflète l'IP du
-    # conteneur Traefik (seul point d'entrée réseau vers ce service — `core`
-    # n'expose aucun port hôte direct), identique pour tous les visiteurs,
-    # ce qui viderait caller_key() de son utilité pour les appelants
-    # anonymes. trusted_hosts="*" est sûr ici : gis-net est un réseau Docker
-    # interne, aucun tiers non maîtrisé ne peut y injecter X-Forwarded-For.
-    app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
+    # GAP-61.a : sans cette couche, request.client reflète l'IP du conteneur
+    # Traefik, identique pour tous les visiteurs, ce qui viderait caller_key()
+    # de son utilité pour les appelants anonymes. REV-299a : X-Forwarded-For
+    # n'est honoré QUE depuis les proxys de confiance (CORE_TRUSTED_PROXIES,
+    # défaut : loopback + RFC 1918, soit le sous-réseau Docker de Traefik) —
+    # « * » le laissait forger par tout pair atteignant core:8000, donc
+    # contourner les budgets par IP (/share-links, /embed, anonymes).
+    app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=trusted_proxy_hosts())
 
     return app
 
