@@ -134,7 +134,7 @@ tierce) :
 |---|---|---|
 | `MIT` | `fastapi`, `sqlalchemy`, `pydantic`, `alembic`, `pyjwt`, `croniter`, `mcp`, `procrastinate`, `pyogrio`, `pyproj`, `pgvector`, `duckdb`, `openpyxl` | permissif |
 | `BSD-3-Clause` | `uvicorn`, `httpx`, `shapely`, `rasterio`, `geopandas`, `rio-cogeo` | permissif |
-| `Apache-2.0` | `requests`, `dlt`, `boto3`, `python-multipart`, `pyarrow`, `playwright`, `opentelemetry-sdk`, `opentelemetry-exporter-otlp-proto-http`, `opentelemetry-instrumentation-{fastapi,sqlalchemy,httpx,botocore}`, `snowflake-sqlalchemy`, `snowflake-connector-python` (dépendance transitive de `snowflake-sqlalchemy`) | permissif |
+| `Apache-2.0` | `requests`, `cel-python` (transitifs `lark` MIT, `google-re2` BSD-3-Clause), `dlt`, `boto3`, `python-multipart`, `pyarrow`, `playwright`, `opentelemetry-sdk`, `opentelemetry-exporter-otlp-proto-http`, `opentelemetry-instrumentation-{fastapi,sqlalchemy,httpx,botocore}`, `snowflake-sqlalchemy`, `snowflake-connector-python` (dépendance transitive de `snowflake-sqlalchemy`) | permissif |
 | `Apache-2.0 OR BSD-3-Clause` (dual, au choix du redistributeur) | `cryptography` | permissif |
 | `PSF-2.0` | `defusedxml` | permissif |
 | **`LGPL-3.0-only`** | `psycopg` | **copyleft faible** |

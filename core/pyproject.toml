@@ -171,6 +171,8 @@ dependencies = [
     "opentelemetry-instrumentation-sqlalchemy>=0.48b0",
     "opentelemetry-instrumentation-httpx>=0.48b0",
     "opentelemetry-instrumentation-botocore>=0.48b0",
+    "cel-python>=0.5,<0.6",  # REV-278b : parseur CEL (syntaxe seulement) pour la validation
+                      # à l'écriture des expressions ; Apache-2.0, tire lark (MIT) et google-re2 (BSD-3).
 ]
 
 [dependency-groups]

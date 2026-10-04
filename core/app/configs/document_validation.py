@@ -9,46 +9,30 @@ créateurs), PUT /configs/{id}, PUT /configs/by-item/{id} et save_app_config
 (MCP). Pas par /rollback : une révision ancienne peut légitimement violer une
 règle ajoutée depuis."""
 
-import re
 from datetime import date
 from urllib.parse import urlparse
 
+import celpy
+from celpy.celparser import CELParseError
 from fastapi import HTTPException
 
 from app.configs.schemas import BuilderConfig, LayoutItem, MapConfig
 
-_PAIRS = {")": "(", "]": "[", "}": "{"}
-_TRAILING_OP = re.compile(r"[-+*/%&|<>=!.,?:^]\s*$")
+_CEL_ENV = celpy.Environment()
 
 
 def _cel_syntax_error(expr: str) -> str | None:
-    """Contrôle syntaxique minimal d'une expression CEL (parenthèses/guillemets
-    équilibrés, pas d'opérateur pendant). ponytail: pas de parseur CEL côté
-    cœur (cel-js vit dans le shell) ; ajouter cel-python si on veut mieux."""
+    """Contrôle syntaxique d'une expression CEL par le parseur cel-python
+    (REV-278b ; remplace le contrôle de parenthèses). Syntaxe seulement : les
+    identifiants inconnus et les erreurs de type restent détectés à
+    l'évaluation par le shell (cel-js), qui est le moteur d'exécution."""
     if not expr.strip():
         return "empty expression"
-    stack: list[str] = []
-    quote: str | None = None
-    i = 0
-    while i < len(expr):
-        c = expr[i]
-        if quote:
-            if c == "\\":
-                i += 1
-            elif c == quote:
-                quote = None
-        elif c in "\"'":
-            quote = c
-        elif c in "([{":
-            stack.append(c)
-        elif c in _PAIRS:
-            if not stack or stack.pop() != _PAIRS[c]:
-                return "unbalanced brackets"
-        i += 1
-    if quote or stack:
-        return "unbalanced quotes or brackets"
-    if _TRAILING_OP.search(expr):
-        return "expression ends with an operator"
+    try:
+        _CEL_ENV.compile(expr)
+    except CELParseError as exc:
+        where = f" at column {exc.column}" if exc.column else ""
+        return f"invalid CEL{where}"
     return None
 
 
