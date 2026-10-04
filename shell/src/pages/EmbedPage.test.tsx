@@ -140,3 +140,29 @@ test("renders the App via AppRenderer for a valid app token, sending only the sh
   });
   expect(sawAuthorization).toBe(false);
 });
+
+test("REV-284(b) : un <h1> (sr-only) porte le titre résolu du lien de partage", async () => {
+  server.use(
+    http.get("https://core.test/v1/share-links/tok-app", () =>
+      HttpResponse.json({
+        itemId: "app-1",
+        title: "Mon App",
+        resourceType: "app",
+        expiresAt: "2026-10-01",
+      }),
+    ),
+    http.get("https://core.test/v1/configs/by-item/app-1", () =>
+      HttpResponse.json({
+        config: {
+          kind: "app",
+          theme: {},
+          dataSources: [],
+          messages: [],
+          layout: { type: "grid", items: [] },
+        },
+      }),
+    ),
+  );
+  renderWithClient("tok-app");
+  expect(await screen.findByRole("heading", { level: 1, name: "Mon App" })).toBeInTheDocument();
+});

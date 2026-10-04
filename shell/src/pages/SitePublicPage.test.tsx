@@ -81,6 +81,14 @@ test("200: renders the published site's runtime layout via AppRenderer", async (
   expect(screen.queryByText(/introuvable/i)).not.toBeInTheDocument();
 });
 
+test("REV-284(b) : un <h1> (sr-only) porte le titre du site", async () => {
+  renderSite({
+    getItemBySlug: vi.fn().mockResolvedValue(siteItem),
+    getPublicAppConfig: vi.fn().mockResolvedValue(config),
+  });
+  expect(await screen.findByRole("heading", { level: 1, name: "Mon Portail" })).toBeInTheDocument();
+});
+
 test("SP-55 : pose document.title/meta description/canonical une fois le site chargé", async () => {
   renderSite({
     getItemBySlug: vi.fn().mockResolvedValue({ ...siteItem, abstract: "Un portail de démo" }),
