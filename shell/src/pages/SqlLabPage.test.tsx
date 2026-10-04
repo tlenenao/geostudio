@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
+import { completionStatus, startCompletion } from "@codemirror/autocomplete";
+import { EditorView, runScopeHandlers } from "@codemirror/view";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -471,4 +473,34 @@ test("P25.14 : buildSqlSchema liste chaque collection avec son titre, colonnes s
     children: ["nom"],
   });
   expect(Object.keys(schema)).toEqual(["ingest_a", "ingest_b"]);
+});
+
+async function openCompletion(): Promise<EditorView> {
+  const { container } = render(<Harness />);
+  const dom = await waitFor(() => {
+    const el = container.querySelector(".cm-editor");
+    if (!el) throw new Error("éditeur absent");
+    return el as HTMLElement;
+  });
+  const view = EditorView.findFromDOM(dom)!;
+  view.dispatch({ changes: { from: 0, insert: "SEL" }, selection: { anchor: 3 } });
+  startCompletion(view);
+  await waitFor(() => expect(completionStatus(view.state)).toBe("active"));
+  // La liste n'accepte une validation qu'après son délai d'interaction
+  // (interactionDelay, 75 ms) : sans cette attente, Entrée passe toujours
+  // et le test donnait un faux positif (constaté pendant la rédaction).
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  return view;
+}
+
+test("Entrée insère une ligne même avec la liste de complétion ouverte (REV-280c)", async () => {
+  const view = await openCompletion();
+  runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Enter" }), "editor");
+  expect(view.state.doc.toString()).toBe("SEL\n");
+});
+
+test("Tab accepte la complétion (REV-280c)", async () => {
+  const view = await openCompletion();
+  runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Tab" }), "editor");
+  expect(view.state.doc.toString().toLowerCase()).toBe("select");
 });

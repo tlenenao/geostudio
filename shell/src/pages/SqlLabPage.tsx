@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import CodeMirror, { Prec, keymap } from "@uiw/react-codemirror";
-import { acceptCompletion } from "@codemirror/autocomplete";
+import { acceptCompletion, autocompletion, completionKeymap } from "@codemirror/autocomplete";
 // Alias `sqlLang` : le fichier a déjà une variable d'état locale `sql` (le
 // texte de la requête) — l'import du snippet du brief, nommé `sql` sans
 // alias, entre en collision de nom avec elle.
@@ -51,18 +51,25 @@ export function buildSqlSchema(
 
 // P25.16 : Entrée insère une nouvelle ligne même quand la liste de complétion
 // est ouverte (elle validait le mot-clé « catalog ») ; Tab accepte la complétion.
-const sqlEditorKeys = Prec.highest(
-  keymap.of([
-    {
-      key: "Enter",
-      run: (view) => {
-        view.dispatch(view.state.replaceSelection("\n"), { scrollIntoView: true });
-        return true;
+// REV-280c : `basicSetup` installe la keymap de complétion avec sa propre
+// priorité, qui gagnait sur Prec.highest — on la désactive et on la remet ici
+// sans sa liaison Entrée.
+const sqlEditorKeys = [
+  autocompletion({ defaultKeymap: false }),
+  Prec.highest(
+    keymap.of([
+      ...completionKeymap.filter((binding) => binding.key !== "Enter"),
+      {
+        key: "Enter",
+        run: (view) => {
+          view.dispatch(view.state.replaceSelection("\n"), { scrollIntoView: true });
+          return true;
+        },
       },
-    },
-    { key: "Tab", run: acceptCompletion },
-  ]),
-);
+      { key: "Tab", run: acceptCompletion },
+    ]),
+  ),
+];
 
 type SqlResult = { columns: string[]; rows: unknown[][]; truncated: boolean };
 
