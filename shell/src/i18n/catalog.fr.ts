@@ -18,8 +18,6 @@ export const fr = {
   "actions.share": "Partager",
   "actions.delete": "Supprimer",
   "actions.scheduleReport": "Programmer un rapport",
-  "actions.editTitle": "Modifier l'élément",
-  "actions.thumbnailTitle": "Miniature",
   "actions.deleteTitle": "Supprimer l'élément",
   "actions.deleteMessage": "Supprimer « {title} » ? Cette action est irréversible.",
   "actions.saveFailed": "Échec de l'enregistrement.",
@@ -30,7 +28,6 @@ export const fr = {
   // Traitement « verrouillé et expliqué » — la raison ET le recours
   "locked.needWrite": "Modification réservée aux éditeurs de cet élément.",
   "locked.needShare": "Partage réservé au propriétaire et aux éditeurs.",
-  "locked.needDelete": "Suppression réservée au propriétaire et aux éditeurs.",
   "locked.capabilityOff": "Désactivé sur cette instance — voir un administrateur.",
 
   // Chrome de page (AppLayout)
@@ -306,7 +303,6 @@ export const fr = {
 
   // AdminExtensionsPage
   "extensions.title": "Extensions",
-  "extensions.loading": "Chargement…",
   "extensions.loadError": "Échec du chargement des extensions.",
   "extensions.updateError": "Échec de la mise à jour de l'extension.",
   "extensions.columnLabel": "Étiquette",
