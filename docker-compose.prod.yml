@@ -202,9 +202,11 @@ services:
       # référencée par `middlewares=` ci-dessus. `CORE_CSP_MODE` (défaut
       # `enforce` dans cet overlay) choisit entre Content-Security-Policy
       # et Content-Security-Policy-Report-Only sans redéployer d'image.
-      # Blocage 3 (script-src pour les widgets d'extension tiers) reste
-      # ouvert — décision produit non tranchée, spec SP-48 §4 : script-src
-      # reste 'self' quel que soit CORE_CSP_MODE.
+      # Blocage 3 (script-src pour les widgets d'extension tiers) tranché
+      # (option A, spec SP-48 §4) : script-src s'élargit à l'origine de
+      # chaque Extension activée du tenant (module_url), jamais à un hôte non
+      # déclaré — voir app/security/traefik_render.py. Valable quel que soit
+      # CORE_CSP_MODE.
       - traefik.http.middlewares.security-headers.headers.customResponseHeaders.Permissions-Policy=camera=(), microphone=(), payment=(), usb=(), geolocation=()
       - traefik.http.middlewares.rate-limit.ratelimit.average=100
       - traefik.http.middlewares.rate-limit.ratelimit.burst=200
