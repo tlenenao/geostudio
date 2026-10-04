@@ -53,13 +53,19 @@ def mark_evaluated(
 
 
 def mark_notified(
-    session: Session, *, evaluation_id: str, status: str, error: str | None = None
+    session: Session,
+    *,
+    evaluation_id: str,
+    status: str,
+    error: str | None = None,
+    channels: dict | None = None,
 ) -> None:
     evaluation = session.get(AlertEvaluation, evaluation_id)
     if evaluation is None:
         return
     evaluation.notify_status = status
     evaluation.notify_error = error
+    evaluation.notify_channels = channels
     session.flush()
 
 
