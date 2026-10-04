@@ -658,3 +658,63 @@ test("clearing the interval sends null (j07-018)", async () => {
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   await waitFor(() => expect(patched).toMatchObject({ intervalMinutes: null }));
 });
+
+test("liste les enregistrements d'une source, avec lien vers l'item, même en lecture seule (REV-276b)", async () => {
+  server.use(
+    http.get("https://core.test/v1/instance", () => HttpResponse.json({ readOnly: true })),
+    http.get("https://core.test/v1/harvest/sources", () =>
+      HttpResponse.json({
+        sources: [
+          {
+            id: "src-1",
+            type: "stac",
+            url: "https://stac.example.com/collections",
+            mode: "reference",
+            enabled: true,
+            intervalMinutes: null,
+            lastRunAt: null,
+            lastStatus: "ok",
+            lastError: null,
+            recordCount: 2,
+            staleCount: 1,
+          },
+        ],
+      }),
+    ),
+    http.get("https://core.test/v1/harvest/sources/src-1/records", () =>
+      HttpResponse.json({
+        total: 2,
+        staleCount: 1,
+        records: [
+          {
+            id: "r1",
+            externalId: "buildings",
+            itemId: "item-a",
+            collectionId: null,
+            state: "ok",
+            harvestedAt: "2026-10-01T10:00:00",
+            externalUrl: "https://stac.example.com/collections/buildings",
+          },
+          {
+            id: "r2",
+            externalId: "roads",
+            itemId: null,
+            collectionId: null,
+            state: "stale",
+            harvestedAt: "2026-10-01T10:00:00",
+            externalUrl: null,
+          },
+        ],
+      }),
+    ),
+  );
+  render(<Harness />);
+  const button = await screen.findByRole("button", { name: "Voir les enregistrements" });
+  expect(screen.queryByRole("button", { name: "Moissonner maintenant" })).not.toBeInTheDocument();
+  await userEvent.click(button);
+  const link = await screen.findByRole("link", { name: "buildings" });
+  expect(link).toHaveAttribute("href", "/items/item-a");
+  expect(screen.getByText("roads")).toBeInTheDocument();
+  expect(screen.getByText("obsolète")).toBeInTheDocument();
+  expect(button).toHaveAttribute("aria-expanded", "true");
+});

@@ -136,7 +136,7 @@ services:
       # SP-24 le shell ne parle plus à Martin (route publique retirée, tuiles
       # servies par le cœur via ST_AsMVT), et docker-compose.prod.yml remet
       # déjà `ports: !reset []` sur ce service.
-      - "3010:3000"
+      - "127.0.0.1:3010:3000"
     networks: [gis-net]
     depends_on:
       pgbouncer:
@@ -199,7 +199,7 @@ services:
       # sonde ci-dessous — d'où ce `PORT` explicite.
       PORT: "8000"
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     networks: [gis-net]
     # Sonde vérifiée à l'exécution (SP-21) : image `titiler:0.18.4` a curl,
     # et `/healthz` répond `{"ping":"pong!"}` sur le port 8000 une fois
@@ -307,6 +307,10 @@ services:
       # (REV-042) — même patron que CORE_LLM_EGRESS_ALLOWLIST ci-dessus,
       # module dédié (app/search/egress.py) propre à ce provider.
       CORE_EMBEDDING_EGRESS_ALLOWLIST: ${CORE_EMBEDDING_EGRESS_ALLOWLIST:-}
+      # Géocodage d'adresse (REV-102) : proxy cœur vers la Géoplateforme (BAN).
+      # URL vide = route /v1/geocode en 503 ; allowlist d'egress dédiée.
+      CORE_GEOCODING_URL: ${CORE_GEOCODING_URL:-https://data.geopf.fr/geocodage/search}
+      CORE_GEOCODING_EGRESS_ALLOWLIST: ${CORE_GEOCODING_EGRESS_ALLOWLIST:-data.geopf.fr}
       # Allowlists des trois gardes d'egress SSRF (pipelines/harvest/alerts,
       # chacune dupliquée délibérément — cf. leurs docstrings respectives).
       # Trouvées non câblées à AUCUN service par l'élargissement de la règle
@@ -339,6 +343,7 @@ services:
       CORE_EXPORT_ENABLED: ${CORE_EXPORT_ENABLED:-false}
       CORE_EXPORT_TOKEN_SECRET: ${CORE_EXPORT_TOKEN_SECRET:-}
       CORE_EXPORT_ITEMS_MAX: ${CORE_EXPORT_ITEMS_MAX:-100000}
+      CORE_STALLED_JOB_MINUTES: ${CORE_STALLED_JOB_MINUTES:-60}
       # Liens de partage à échéance (GAP-12) : résolus entièrement dans ce
       # service (GET /share-links/{token}), contrairement au jeton d'export
       # ci-dessus — aucun worker séparé n'a besoin de cette variable.
@@ -439,13 +444,13 @@ services:
       # exact en labels). `$$1` (pas `$1`) : docker compose interprète
       # `$1` comme sa propre substitution de variable, `$$` échappe vers
       # un `$` littéral transmis à Traefik.
-      - traefik.http.routers.seo-static.rule=Host(`${DOMAIN}`) && (Path(`/sitemap.xml`) || Path(`/robots.txt`))
+      - traefik.http.routers.seo-static.rule=Host(`${DOMAIN}`) && (Path(`/sitemap.xml`) || PathRegexp(`^/sitemap-[0-9]+\.xml$$`) || Path(`/robots.txt`))
       - traefik.http.routers.seo-static.entrypoints=websecure
       - traefik.http.routers.seo-static.tls.certresolver=letsencrypt
       - traefik.http.routers.seo-static.priority=20
       - traefik.http.routers.seo-static.service=core
       - traefik.http.routers.seo-static.middlewares=security-headers@docker,rate-limit@docker,seo-static-rewrite@docker,csp-dynamic@file
-      - traefik.http.middlewares.seo-static-rewrite.replacepathregex.regex=^/(sitemap\.xml|robots\.txt)$$
+      - traefik.http.middlewares.seo-static-rewrite.replacepathregex.regex=^/(sitemap(?:-[0-9]+)?\.xml|robots\.txt)$$
       - traefik.http.middlewares.seo-static-rewrite.replacepathregex.replacement=/v1/public/$$1
       # P35.07 : une règle par famille de pages publiques (sites, items publiés,
       # datasets) — un middleware replacepathregex ne porte qu'une regex.
@@ -772,9 +777,9 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
     ports:
-      - "${GRAFANA_HOST_PORT:-3001}:3000"
-      - "4317:4317"
-      - "4318:4318"
+      - "127.0.0.1:${GRAFANA_HOST_PORT:-3001}:3000"
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
     volumes:
       - ./deploy/observability/otelcol-config.yaml:/otel-lgtm/otelcol-config.yaml
       - ./deploy/observability/grafana/provisioning/dashboards/geostudio-dashboards.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/geostudio-dashboards.yaml

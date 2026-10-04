@@ -944,3 +944,57 @@ def test_audits_carry_the_owner_and_firing_notifies_in_app(env, monkeypatch):
         assert actors == {owner_id}
         notif = s.scalars(select(Notification).where(Notification.kind == "alert")).one()
         assert notif.recipient_user_id == owner_id and notif.item_id == alert_item_id
+
+
+def _set_channels(env_tuple, channels):
+    _, Session, tenant, alert_item_id = env_tuple
+    with Session() as s:
+        cfg = configs_repo.get_config_by_item(s, alert_item_id)
+        body = cfg.config.model_dump()
+        body["alert"]["channels"] = channels
+        configs_repo.update_config(
+            s, cfg.id, BuilderConfig.model_validate(body), tenant_id=tenant.id
+        )
+        s.commit()
+
+
+def test_retry_resends_only_to_channels_that_failed(env, monkeypatch):
+    """REV-277d : le canal a livré au 1er envoi, b a échoué → la relance ne
+    vise que b (plus de doublon sur a)."""
+    a, b = "https://a.example.test/hook", "https://b.example.test/hook"
+    _set_channels(env, [{"kind": "webhook", "url": a}, {"kind": "webhook", "url": b}])
+    calls = []
+
+    def send(channel, payload, **_kw):
+        calls.append(channel.url)
+        if channel.url == b and calls.count(b) == 1:
+            raise alert_jobs.NotifyError("webhook delivery failed: 500")
+
+    monkeypatch.setattr(alert_jobs, "send_webhook", send)
+    e1 = _run_eval(env)
+    assert e1.notify_status == "failed"
+    assert sorted(e1.notify_channels.values()) == ["delivered", "failed"]
+    e2 = _run_eval(env)
+    assert e2.notify_status == "delivered"
+    assert set(e2.notify_channels.values()) == {"delivered"}
+    assert calls == [a, b, b]
+
+
+def test_in_app_notification_is_posted_once_per_episode(env, monkeypatch):
+    """REV-277d : déclenchement + deux relances = une seule notification in-app."""
+    from app.notifications.models import Notification
+
+    _, Session, _tenant, _alert_item_id = env
+    sent = []
+
+    def flaky(channel, payload, **_kw):
+        sent.append(1)
+        if len(sent) < 3:
+            raise alert_jobs.NotifyError("webhook delivery failed: 500")
+
+    monkeypatch.setattr(alert_jobs, "send_webhook", flaky)
+    for _ in range(3):
+        _run_eval(env)
+    assert len(sent) == 3
+    with Session() as s:
+        assert len(s.scalars(select(Notification).where(Notification.kind == "alert")).all()) == 1

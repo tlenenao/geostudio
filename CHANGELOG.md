@@ -35,6 +35,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   behaviour. Degenerate inputs (NULL geometry, empty input, non-point geometry
   for `triangulate`) now fail with an explicit pipeline error (HTTP 400 on
   preview) instead of an internal error.
+- **Address geocoding (BAN)**: `GET /v1/geocode?q=` proxies the French
+  national address base (Géoplateforme, `https://data.geopf.fr/geocodage/search`;
+  the former `api-adresse.data.gouv.fr` host is deprecated) behind a dedicated
+  SSRF egress guard and a `geocode` rate-limit group. New variables
+  `CORE_GEOCODING_URL` (empty = route answers 503) and
+  `CORE_GEOCODING_EGRESS_ALLOWLIST` (default `data.geopf.fr`). The map editor
+  gets an address search that recentres the map.
+- **Natural language to CEL**: new MCP tool `generate_cel_expression` (also in
+  the copilot allowlist) and a "Generate" button under `visibleWhen` in the app
+  builder; the draft is never applied without a click. v1 covers `visibleWhen`
+  only.
+- **Time player widget** (`timePlayer`): play/pause, speed and fixed step
+  animating the global time range of an app.
+- **Sitemap index**: `/sitemap-N.xml` beyond 50,000 URLs (Traefik route added
+  in both compose files); `og:image` is derived from `CORE_BASE_URL`.
+- **Harvest**: records list per source in the admin page; sources are unique
+  per `(tenant, type, url)` (migration 0046) with exponential backoff on
+  repeated failures. Alert evaluations record a delivery status per channel
+  (migration 0047) and retry only failed channels. MVT tiles carry an `ETag`
+  and answer 304. Instance status: `CORE_STALLED_JOB_MINUTES` (default 60) and
+  a distinct "not configured" CDC state. Backup: `BACKUP_ALERT_WEBHOOK_URL`
+  (webhook when a backup day is abandoned).
+- `actionlint` pre-commit hook (workflows fixed accordingly).
 
 ### Removed
 
@@ -171,6 +194,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Pipeline runs**: cancelling an already cancelled run answers 200
   (idempotent); a run cancelled while queued is no longer executed by the
   worker.
+
+- **Upgrade note, migration 0046**: it adds a unique index on harvest sources
+  and **aborts, listing the ids, if exact duplicate sources already exist** —
+  the core will not start until the duplicates are deleted. URLs are not
+  rewritten.
+- **Tooling ports bound to loopback**: the host ports of Martin (3010),
+  TiTiler (8000), Grafana (3001) and the OTLP receivers (4317/4318) are now
+  published on `127.0.0.1` only, and the production Traefik entrypoint
+  (`:8080`) no longer listens on the tailnet. Deployments that reached them
+  from another host must publish them explicitly.
+- **Postgres sessions of the core are forced to UTC** (`SET TIME ZONE`, works
+  behind PgBouncer). The procrastinate connector and the CDC consumer are not
+  covered yet.
+- **Backup**: the off-site rotation now runs even when that day's upload
+  failed (previously skipped until the next success).
+- Writes of an app config referencing an unknown widget/variable target (action
+  wiring, `Message` targets) are now refused with a 422; the shell purges
+  orphan references on save. Existing inconsistent apps written through the
+  API/MCP will be refused until repaired.
+- Shell initial-bundle threshold raised to 733 KB.
 
 ### Security
 

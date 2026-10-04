@@ -242,3 +242,10 @@ def test_share_link_budget_is_per_ip_and_not_bypassed_by_varying_tokens(monkeypa
     # Une autre IP garde un budget frais.
     other = client.get("/v1/share-links/bad-token-0", headers={"X-Forwarded-For": "8.8.8.8"})
     assert other.status_code != 429
+
+
+def test_route_group_covers_geocode_with_its_own_budget():
+    from app.ratelimit.limiter import _BUDGETS
+
+    assert route_group("/v1/geocode", "GET", _EXPORT_PATH_RE) == "geocode"
+    assert _BUDGETS["geocode"] == 60

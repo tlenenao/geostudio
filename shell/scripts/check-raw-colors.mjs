@@ -31,6 +31,12 @@
 // d'export/impression figé en blanc quel que soit le thème ; texte/bouton
 // à contraste fixe sur `--gs-color-primary`, la couleur configurable par
 // l'auteur d'app, pas l'ambiance du studio) — le pragma y est déjà posé.
+//
+// REV-285(d) : les `.ts` sont scannés aussi (palettes de dataviz, thème
+// d'app par défaut). Pour un BLOC de couleurs délibérées (palette), un pragma
+// de région : `// gs-raw-color-ok-begin: <raison>` … `// gs-raw-color-ok-end`.
+// Une région jamais fermée est elle-même une erreur (sinon elle couvrirait
+// silencieusement tout le reste du fichier).
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, extname, relative } from "node:path";
 
@@ -43,7 +49,10 @@ const RAW_COLOR_RE =
 // depuis un jeton --gs-* (lib/theme.ts readToken) ou à justifier par le pragma.
 const HEX_COLOR_RE = /["'`]#[0-9a-fA-F]{3,8}["'`]/;
 
-const PRAGMA_RE = /gs-raw-color-ok/;
+// (?!-) : les marqueurs de région -begin/-end ne sont pas des pragmas de ligne.
+const PRAGMA_RE = /gs-raw-color-ok(?!-)/;
+const REGION_BEGIN_RE = /\/\/\s*gs-raw-color-ok-begin\b/;
+const REGION_END_RE = /\/\/\s*gs-raw-color-ok-end\b/;
 
 /**
  * `true` si `relPath` (relatif à `src/`, séparateurs normalisés en `/`)
@@ -58,7 +67,7 @@ function isExcludedDir(relPath) {
 
 /**
  * Parcours récursif de `dir` (sans dépendance de glob), retourne la
- * liste des fichiers `.tsx` non-test, en sautant `ui/kit/` et `map/`.
+ * liste des fichiers .ts/.tsx non-test (hors .d.ts), en sautant `ui/kit/` et `map/`.
  */
 function walk(dir, root, out = []) {
   for (const entry of readdirSync(dir)) {
@@ -68,7 +77,11 @@ function walk(dir, root, out = []) {
       const rel = relative(root, full);
       if (isExcludedDir(rel)) continue;
       walk(full, root, out);
-    } else if (extname(full) === ".tsx" && !entry.endsWith(".test.tsx")) {
+    } else if (
+      [".ts", ".tsx"].includes(extname(full)) &&
+      !/\.test\.tsx?$/.test(entry) &&
+      !entry.endsWith(".d.ts")
+    ) {
       out.push(full);
     }
   }
@@ -77,7 +90,7 @@ function walk(dir, root, out = []) {
 
 /**
  * Retourne les lignes de `file` qui portent une couleur Tailwind
- * littérale sans pragma `gs-raw-color-ok` (sur la ligne elle-même, ou
+ * littérale sans pragma `gs-raw-color-ok` ou hors région `gs-raw-color-ok-begin`/`-end` (sur la ligne elle-même, ou
  * sur la ligne précédente SI ET SEULEMENT SI celle-ci, une fois
  * retirée des espaces en bordure, est un commentaire pur — commence par
  * `//` et ne porte que ça. Sans cette contrainte, un pragma en fin de
@@ -85,21 +98,38 @@ function walk(dir, root, out = []) {
  * "fuit" à tort sur la ligne suivante, non liée — cf. commentaire de
  * couverture de pragma en tête de fichier).
  */
-function findOffenders(file) {
-  const content = readFileSync(file, "utf8");
+export function findOffendersInSource(content, file) {
   const lines = content.split("\n");
   const offenders = [];
+  let regionStart = -1;
   lines.forEach((line, index) => {
+    if (REGION_BEGIN_RE.test(line)) {
+      regionStart = index;
+      return;
+    }
+    if (REGION_END_RE.test(line)) {
+      regionStart = -1;
+      return;
+    }
+    if (regionStart >= 0) return;
     if (!RAW_COLOR_RE.test(line) && !HEX_COLOR_RE.test(line)) return;
     const coveredBySameLine = PRAGMA_RE.test(line);
-    const prevLine = index > 0 ? lines[index - 1] : "";
-    const prevLineTrimmed = prevLine.trim();
+    const prevLineTrimmed = index > 0 ? lines[index - 1].trim() : "";
     const coveredByPrecedingLine =
       prevLineTrimmed.startsWith("//") && PRAGMA_RE.test(prevLineTrimmed);
     if (coveredBySameLine || coveredByPrecedingLine) return;
     offenders.push(`${file}:${index + 1}: ${line.trim()}`);
   });
+  if (regionStart >= 0) {
+    offenders.push(
+      `${file}:${regionStart + 1}: région gs-raw-color-ok-begin jamais fermée par gs-raw-color-ok-end`,
+    );
+  }
   return offenders;
+}
+
+function findOffenders(file) {
+  return findOffendersInSource(readFileSync(file, "utf8"), file);
 }
 
 export function main() {
@@ -108,7 +138,7 @@ export function main() {
 
   if (offenders.length > 0) {
     console.error(
-      "Couleurs Tailwind brutes détectées hors ui/kit/ et map/, sans pragma gs-raw-color-ok :",
+      "Couleurs Tailwind brutes détectées hors ui/kit/ et map/ (.ts/.tsx), sans pragma gs-raw-color-ok :",
     );
     offenders.forEach((o) => console.error(`  ${o}`));
     console.error(

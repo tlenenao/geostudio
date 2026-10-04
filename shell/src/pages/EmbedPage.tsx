@@ -26,7 +26,7 @@ const embedConfig = loadRuntimeConfig();
 
 const EMBEDDABLE_RESOURCE_TYPES = new Set(["app", "dashboard"]);
 
-function EmbedApp({ itemId, token }: { itemId: string; token: string }) {
+function EmbedApp({ itemId, token, title }: { itemId: string; token: string; title: string }) {
   // Client dédié à l'embed, jamais partagé avec l'ItemClient du shell
   // authentifié : `getToken` renvoie toujours `undefined` — aucune
   // requête émise par ce client ne doit jamais porter d'en-tête
@@ -42,12 +42,12 @@ function EmbedApp({ itemId, token }: { itemId: string; token: string }) {
   );
   return (
     <ItemClientProvider client={client}>
-      <EmbedAppRenderer itemId={itemId} />
+      <EmbedAppRenderer itemId={itemId} title={title} />
     </ItemClientProvider>
   );
 }
 
-function EmbedAppRenderer({ itemId }: { itemId: string }) {
+function EmbedAppRenderer({ itemId, title }: { itemId: string; title: string }) {
   const query = useAppConfig(itemId, { mode: "runtime" });
   if (query.isLoading) {
     return <LoadingState />;
@@ -61,6 +61,8 @@ function EmbedAppRenderer({ itemId }: { itemId: string }) {
   }
   return (
     <main className="h-screen w-screen">
+      {/* REV-284(b) : titre résolu par le lien de partage (AppConfig n'en porte pas). */}
+      <h1 className="sr-only">{title}</h1>
       <AppRenderer config={query.data} mode="runtime" />
     </main>
   );
@@ -90,5 +92,5 @@ export function EmbedPage({ token }: { token: string }) {
       </p>
     );
   }
-  return <EmbedApp itemId={linkQuery.data.itemId} token={token} />;
+  return <EmbedApp itemId={linkQuery.data.itemId} token={token} title={linkQuery.data.title} />;
 }

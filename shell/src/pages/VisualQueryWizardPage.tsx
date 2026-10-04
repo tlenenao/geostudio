@@ -66,7 +66,12 @@ export function VisualQueryWizardPage({
   // `_require_etl_enabled_for_pipeline`, donc pas de trou de sécurité — mais
   // le même anti-pattern D03 que Task 4/5 ont corrigé ailleurs).
   const itemQuery = useItem(pipelinePk ?? "", { enabled: pipelinePk !== null });
-  const readOnly = pipelinePk !== null && !hasPermission(itemQuery.data, "write");
+  // REV-251 : `hasPermission(undefined)` refuse par défaut — on ne conclut à la
+  // lecture seule qu'une fois l'item chargé ; d'ici là (ou en erreur) le bouton
+  // est seulement désactivé, sans message trompeur.
+  const readOnly =
+    pipelinePk !== null && itemQuery.isSuccess && !hasPermission(itemQuery.data, "write");
+  const itemPending = pipelinePk !== null && !itemQuery.isSuccess;
   const instanceQuery = useInstanceInfo();
   const copilotEnabled = instanceQuery.data?.copilotEnabled === true;
   const etlEnabled = instanceQuery.data?.etlEnabled === true;
@@ -593,6 +598,7 @@ export function VisualQueryWizardPage({
                     (pipelinePk !== null && !existingOutput) ||
                     outputSchemaMismatch ||
                     readOnly ||
+                    itemPending ||
                     !etlEnabled
                   }
                   onClick={() => void handleCreate()}

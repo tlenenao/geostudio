@@ -12,7 +12,8 @@ def test_index_finds_every_declared_tool():
     tools = index_mcp_tools(REPO)
     # 29 → 30 : nouvel outil delete_secret (plan
     # 2026-09-24-vague-a-bloquants-decouvrabilite.md, D05).
-    assert len(tools) == 30
+    # 30 → 31 : outil generate_cel_expression (plan B, L5b-183).
+    assert len(tools) == 31
     assert "query_features" in tools
     assert "search_collections" in tools  # SP-54
     assert "delete_secret" in tools

@@ -2,6 +2,7 @@
 import { expect, test } from "vitest";
 import {
   themeToCssVars,
+  contrastRatio,
   DEFAULT_THEME_COLORS,
   DEFAULT_FONT,
   DEFAULT_RADIUS,
@@ -58,4 +59,17 @@ test("a fully specified theme is passed through verbatim", () => {
     "--gs-radius": "0px",
     "--gs-space": "1rem",
   });
+});
+
+test("contrastRatio : ratios WCAG de référence", () => {
+  expect(contrastRatio("#ffffff", "#000000")).toBeCloseTo(21, 5);
+  expect(contrastRatio("#000", "#fff")).toBeCloseTo(21, 5);
+  expect(contrastRatio("#ffffff", "#ffffff")).toBe(1);
+  expect(contrastRatio("red", "#ffffff")).toBeNull();
+});
+
+test("contrastRatio : la couleur atténuée par défaut passe AA sur le fond par défaut", () => {
+  expect(
+    contrastRatio(DEFAULT_THEME_COLORS.muted, DEFAULT_THEME_COLORS.background),
+  ).toBeGreaterThanOrEqual(4.5);
 });

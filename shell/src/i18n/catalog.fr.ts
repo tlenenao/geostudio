@@ -18,8 +18,6 @@ export const fr = {
   "actions.share": "Partager",
   "actions.delete": "Supprimer",
   "actions.scheduleReport": "Programmer un rapport",
-  "actions.editTitle": "Modifier l'élément",
-  "actions.thumbnailTitle": "Miniature",
   "actions.deleteTitle": "Supprimer l'élément",
   "actions.deleteMessage": "Supprimer « {title} » ? Cette action est irréversible.",
   "actions.saveFailed": "Échec de l'enregistrement.",
@@ -30,7 +28,6 @@ export const fr = {
   // Traitement « verrouillé et expliqué » — la raison ET le recours
   "locked.needWrite": "Modification réservée aux éditeurs de cet élément.",
   "locked.needShare": "Partage réservé au propriétaire et aux éditeurs.",
-  "locked.needDelete": "Suppression réservée au propriétaire et aux éditeurs.",
   "locked.capabilityOff": "Désactivé sur cette instance — voir un administrateur.",
 
   // Chrome de page (AppLayout)
@@ -153,6 +150,7 @@ export const fr = {
   "catalog.loadError": "Erreur de chargement.",
   "catalog.emptyFilteredDescription": "Aucun élément ne correspond à ces filtres.",
   "catalog.emptyFilteredTitle": "Aucun résultat",
+  "catalog.resultsHeading": "Résultats",
   "catalog.emptyNoFilterDescription":
     "Créez votre première carte, application ou jeu de données pour commencer.",
   "catalog.emptyBookmarksTitle": "Aucune vue enregistrée pour l'instant",
@@ -306,7 +304,6 @@ export const fr = {
 
   // AdminExtensionsPage
   "extensions.title": "Extensions",
-  "extensions.loading": "Chargement…",
   "extensions.loadError": "Échec du chargement des extensions.",
   "extensions.updateError": "Échec de la mise à jour de l'extension.",
   "extensions.columnLabel": "Étiquette",
@@ -389,6 +386,7 @@ export const fr = {
   "infrastructure.statusHeading": "État de l'instance",
   "infrastructure.statusOk": "opérationnel",
   "infrastructure.statusDown": "en échec",
+  "infrastructure.statusNotConfigured": "non configuré",
   "infrastructure.statusJobs": "File de jobs",
   "infrastructure.statusJobsDetailOne": "{pending} en attente ou en cours, {stalled} bloqué",
   "infrastructure.statusJobsDetailMany": "{pending} en attente ou en cours, {stalled} bloqués",
@@ -579,6 +577,11 @@ export const fr = {
   "harvest.columnRecords": "Enregistrements",
   "harvest.recordsStaleOne": "{count} obsolète",
   "harvest.recordsStaleMany": "{count} obsolètes",
+  "harvest.recordsButton": "Voir les enregistrements",
+  "harvest.recordsHeading": "Enregistrements de {url}",
+  "harvest.recordsEmpty": "Aucun enregistrement moissonné pour cette source.",
+  "harvest.recordsLoadError": "Impossible de charger les enregistrements.",
+  "harvest.recordStale": "obsolète",
   "harvest.neverRun": "Jamais",
   "harvest.runQueued": "Moissonnage mis en file d'attente.",
   "harvest.runFailed": "Échec du lancement du moissonnage.",
@@ -650,6 +653,10 @@ export const fr = {
   "mapEditor.layersLabel": "Couches",
   "mapEditor.mapLabel": "Carte",
   "mapEditor.inspectLabel": "Inspecter",
+  "addressSearch.inputAria": "Rechercher une adresse",
+  "addressSearch.submit": "Localiser",
+  "addressSearch.empty": "Aucune adresse trouvée.",
+  "addressSearch.failed": "Recherche d'adresse indisponible.",
 
   // PipelineBuilderPage
   "pipelineBuilder.etlDisabled":
@@ -1065,6 +1072,18 @@ export const fr = {
   // Idem : valeur initiale du libellé (defaultProps/configSchema.default),
   // détectée par le vérificateur — reste un défaut renommable, pas figé.
   "widgetDateRangeFilter.periodDefault": "Période",
+  "widgetTimePlayer.paletteLabel": "Lecteur temporel",
+  "widgetTimePlayer.from": "Début de l'animation",
+  "widgetTimePlayer.to": "Fin de l'animation",
+  "widgetTimePlayer.stepDays": "Pas (jours)",
+  "widgetTimePlayer.windowDays": "Fenêtre (jours)",
+  "widgetTimePlayer.intervalMs": "Intervalle (ms)",
+  "widgetTimePlayer.play": "Lecture",
+  "widgetTimePlayer.pause": "Pause",
+  "widgetTimePlayer.speed": "Vitesse",
+  "widgetTimePlayer.speedOption": "×{speed}",
+  "widgetTimePlayer.notConfigured":
+    "Lecteur temporel non configuré : renseignez le début et la fin.",
 
   // Widget Tiroir (drawer.tsx)
   "widgetDrawer.paletteLabel": "Tiroir",
@@ -1324,6 +1343,10 @@ export const fr = {
   "copilot.opDropped": "Proposition ignorée (invalide) : {op}",
   "copilot.opSqlDraftApplied": "Brouillon SQL inséré.",
   "copilot.opVisualQueryDraftApplied": "Requête visuelle mise à jour.",
+  "copilot.opVisualQueryPartial": "Requête visuelle mise à jour ; ignoré (invalide) : {legs}.",
+  "copilot.legFilters": "filtres",
+  "copilot.legJoin": "jointure",
+  "copilot.legSummary": "résumé",
   "copilot.requestFailed": "Échec de la requête au copilote.",
   "copilot.unavailable":
     "Le copilote est indisponible : aucun fournisseur LLM n'est configuré sur cette instance. Un administrateur peut l'activer en définissant CORE_LLM_PROVIDER (voir .env.example) puis en redémarrant le cœur.",
@@ -1813,6 +1836,11 @@ export const fr = {
   "propsPanel.unknownWidget": "Widget inconnu : {widget}",
   "propsPanel.visibleWhenLabel": "Condition d'affichage",
   "propsPanel.visibleWhenAria": "Condition d'affichage (visibleWhen)",
+  "celGen.summary": "Générer",
+  "celGen.questionAria": "Décrire la condition",
+  "celGen.propose": "Proposer",
+  "celGen.apply": "Appliquer",
+  "celGen.noDraft": "Aucune condition proposée.",
   "propsPanel.visibleWhenHelpAria": "Aide sur la condition d'affichage",
   "propsPanel.visibleWhenHelpBody":
     "Expression CEL évaluée avec les variables de l'app : le widget n'est visible que si elle est vraie. Laisser vide pour toujours afficher.",
@@ -1835,6 +1863,8 @@ export const fr = {
   "themePanel.colorText": "Couleur du texte",
   "themePanel.colorMuted": "Couleur atténuée",
   "themePanel.colorBorder": "Couleur de bordure",
+  "themePanel.lowContrast":
+    "Contraste insuffisant : « {label} » sur la couleur de fond ({ratio}:1, minimum recommandé 4,5:1).",
   "themePanel.fontLabel": "Police",
   "themePanel.radiusFieldLabel": "Arrondi",
   "themePanel.spaceLabel": "Espacement",

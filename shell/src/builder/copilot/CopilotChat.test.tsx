@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -117,5 +118,35 @@ describe("CopilotChat", () => {
     await userEvent.click(screen.getByRole("button", { name: "Envoyer" }));
 
     expect(await screen.findByText("Brouillon SQL inséré")).toBeVisible();
+  });
+
+  it("REV-287 : une écriture confirmée invalide la liste du catalogue", async () => {
+    const copilotTurn = vi
+      .fn()
+      .mockResolvedValueOnce({
+        reply: "Je crée l'app.",
+        clientOps: [{ op: "confirmWrite", args: { name: "create_item", arguments: { a: 1 } } }],
+      })
+      .mockResolvedValueOnce({ reply: "create_item effectué : ok", clientOps: [] });
+    const queryClient = new QueryClient();
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ItemClientProvider client={{ copilotTurn } as unknown as ItemClient}>
+          <CopilotChat
+            surface="app_builder"
+            contextPayload={{}}
+            clientTools={[]}
+            opLabels={{}}
+            onClientOps={() => {}}
+          />
+        </ItemClientProvider>
+      </QueryClientProvider>,
+    );
+    await userEvent.type(screen.getByLabelText("Message au copilote"), "Crée une app");
+    await userEvent.click(screen.getByRole("button", { name: "Envoyer" }));
+    expect(invalidate).not.toHaveBeenCalled();
+    await userEvent.click(await screen.findByRole("button", { name: "Confirmer" }));
+    await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["items"] }));
   });
 });

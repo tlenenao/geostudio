@@ -555,6 +555,33 @@ describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)
     ).toBeInTheDocument();
   });
 
+  // REV-251 : tant que l'item du pipeline édité charge, `hasPermission(undefined)`
+  // valait faux → le message « lecture seule » s'affichait à tort.
+  test("REV-251 : pendant le chargement de l'item, pas de message lecture seule mais bouton désactivé", async () => {
+    const datasetItem = {
+      pk: "dataset-1",
+      resourceType: "dataset",
+      title: "Ma requête existante",
+      abstract: "",
+      owner: "alice",
+      thumbnailUrl: null,
+      permissions: OWNER_PERMISSIONS,
+      date: "",
+      configId: "cfg-1",
+      isPublished: false,
+    };
+    renderWizardEdit({
+      getItem: vi.fn((pk: string) =>
+        pk === "pipeline-1" ? new Promise(() => {}) : Promise.resolve(datasetItem),
+      ) as unknown as ItemClient["getItem"],
+    });
+    await screen.findByDisplayValue("Ma requête existante");
+    expect(
+      screen.queryByText("Modification réservée aux éditeurs de cet élément."),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mettre à jour" })).toBeDisabled();
+  });
+
   test("j06-012 : instance sans etlEnabled affiche l'indisponibilité en tête de page, sans formulaire", async () => {
     renderWizardEdit({
       getInstanceInfo: () =>

@@ -184,6 +184,7 @@ export const LUCIDE_ICONS: { name: string; category: IconCategory }[] = (
 // valeur initiale de `color`, donc noir. On substitue explicitement pour que
 // l'icône ait la couleur voulue du dépôt, et pour que ce ne soit pas un
 // hasard de résolution.
+// gs-raw-color-ok: trait des icônes Lucide rastérisées pour MapLibre (image figée, pas un jeton CSS)
 const LUCIDE_STROKE = "#1e293b";
 
 const imageCache = new Map<string, Promise<HTMLImageElement>>();

@@ -10,9 +10,10 @@ Ce module est volontairement coupé en deux : des helpers purs (testés sans
 base) et une route mince qui les assemble."""
 
 import functools
+import hashlib
 from collections.abc import Callable
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -133,12 +134,20 @@ def apply_tile_statement_timeout(session: Session) -> None:
     )
 
 
+def _etag_matches(if_none_match: str | None, etag: str) -> bool:
+    """Comparaison faible (RFC 9110 §13.1.2) : liste, `W/` et `*` acceptés."""
+    if not if_none_match:
+        return False
+    return any(t.strip().removeprefix("W/") in (etag, "*") for t in if_none_match.split(","))
+
+
 @router.get("/collections/{collection_id}/tiles/{z}/{x}/{y}.mvt")
 def get_collection_tile(
     collection_id: str,
     z: int,
     x: int,
     y: int,
+    request: Request,
     user=Depends(get_current_user_optional),
     guest: GuestActor | None = Depends(get_share_link_actor),
     session: Session = Depends(get_session, scope="function"),
@@ -188,11 +197,17 @@ def get_collection_tile(
     # Réponse dépendante de l'identité (colonnes sensibles, RLS) : cache
     # partagé seulement pour l'anonyme (c01-007).
     visibility = "public" if col.is_public and user is None and guest is None else "private"
-    headers = {"Cache-Control": f"{visibility}, max-age=300", "Vary": "Authorization"}
+    content = bytes(tile)
+    # REV-283b : revalidation à 304 — même empreinte pour mêmes octets, quelle
+    # que soit l'identité (Vary: Authorization garde les caches séparés).
+    etag = '"' + hashlib.sha256(content).hexdigest()[:32] + '"'
+    headers = {
+        "Cache-Control": f"{visibility}, max-age=300",
+        "Vary": "Authorization",
+        "ETag": etag,
+    }
+    if _etag_matches(request.headers.get("if-none-match"), etag):
+        return Response(status_code=304, headers=headers)
     if feature_count > MAX_TILE_FEATURES:
         headers["X-Tile-Truncated"] = "true"
-    return Response(
-        content=bytes(tile),
-        media_type=MVT_MEDIA_TYPE,
-        headers=headers,
-    )
+    return Response(content=content, media_type=MVT_MEDIA_TYPE, headers=headers)

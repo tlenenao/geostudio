@@ -167,7 +167,7 @@ def test_success_writes_a_notification_for_the_creator(env, monkeypatch):
         assert notification.recipient_user_id == user.id
         assert notification.kind == "ingestion"
         assert notification.status == "success"
-        assert notification.item_resource_type == "dataset"
+        assert notification.item_resource_type == "map"  # REV-282b : GeoJSON géo -> carte
         assert notification.item_title == "Villes notif"
         assert notification.item_id is not None
 

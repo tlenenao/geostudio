@@ -37,6 +37,7 @@ from app.ingestion.parsers import (
     parse_shapefile_zip,
     parse_xlsx_sheet,
     parse_xml_generic,
+    sniff_delimiter,
 )
 from app.items import repository as items_repo
 from app.quotas.service import check_quota_or_raise
@@ -59,6 +60,9 @@ _GEOM_TYPE_MAP = {
 class ImportResult:
     collection_id: str
     item_id: str | None
+    # REV-282b : "map" (géométrie -> carte) ou "dataset" (tabulaire) ; le shell
+    # et la notification choisissent l'éditeur à ouvrir sur ce type.
+    item_resource_type: str | None = None
 
 
 def _resolve_geometry_mode(
@@ -104,6 +108,9 @@ _INT_RE = re.compile(
     r"^-?(0|[1-9]\d{0,17})$"
 )  # pas de zéro de tête (codes postaux), tient en bigint
 _FLOAT_RE = re.compile(r"^-?\d+\.\d+$")
+# REV-282c : virgule décimale (export FR), seulement hors séparateur « , » ;
+# 1 ou 2 décimales — « 1,234 » (milliers ou décimale ?) reste du texte.
+_DECIMAL_COMMA_RE = re.compile(r"^-?\d+,\d{1,2}$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")  # fromisoformat seul accepte aussi « 2026-W01-1 »
 
 
@@ -111,16 +118,19 @@ def _convert_csv_value(value: str, kind: str):
     if kind == "int":
         return int(value)
     if kind == "float":
-        return float(value)
+        return float(value.replace(",", "."))
     return datetime.date.fromisoformat(value)
 
 
-def _csv_column_kind(values: list[str]) -> str | None:
+def _csv_column_kind(values: list[str], decimal_comma: bool = False) -> str | None:
     if not values:
         return None
     if all(_INT_RE.match(v) for v in values):
         return "int"
-    if all(_INT_RE.match(v) or _FLOAT_RE.match(v) for v in values):
+    if all(
+        _INT_RE.match(v) or _FLOAT_RE.match(v) or (decimal_comma and _DECIMAL_COMMA_RE.match(v))
+        for v in values
+    ):
         return "float"
     try:
         if all(_DATE_RE.match(v) and datetime.date.fromisoformat(v) for v in values):
@@ -130,7 +140,7 @@ def _csv_column_kind(values: list[str]) -> str | None:
     return None
 
 
-def _infer_csv_types(rows: list) -> None:
+def _infer_csv_types(rows: list, decimal_comma: bool = False) -> None:
     """P28.07 : un CSV ne livre que des chaînes ; une colonne dont toutes les
     valeurs non vides sont entières / décimales / dates ISO est typée (rows
     modifiées en place, vides -> None). Colonnes mixtes : texte inchangé."""
@@ -140,7 +150,7 @@ def _infer_csv_types(rows: list) -> None:
         if not all(v is None or isinstance(v, str) for v in raw):
             continue
         values = [v.strip() for v in raw if v is not None and v.strip() != ""]
-        kind = _csv_column_kind(values)
+        kind = _csv_column_kind(values, decimal_comma)
         if kind is None:
             continue
         for _g, props in rows:
@@ -233,7 +243,8 @@ def run_import(
     if not rows:
         raise IngestionParseError("le fichier ne contient aucune entité")
     if fmt == "csv":
-        _infer_csv_types(rows)
+        # même détection que parse_csv_latlon (décodage déjà validé par lui)
+        _infer_csv_types(rows, decimal_comma=sniff_delimiter(content.decode("utf-8-sig")) != ",")
 
     # Colonnes : union des clés de propriétés rencontrées, type déduit de la
     # première valeur non nulle vue pour chaque clé (repli "text" si toujours
@@ -344,8 +355,8 @@ def run_import(
         # créé (JSON Lines/Parquet/XML génériques en geometry_mode="none",
         # GAP-29 Task 11) — seule la collection tabulaire existe.
         # P28.06 : ... mais un item « dataset » la rend atteignable depuis le
-        # catalogue « Données » du créateur (item_id reste None : rien à ouvrir
-        # sous /maps/, le shell retombe sur le catalogue).
+        # catalogue « Données » du créateur (l'item dataset est renvoyé avec son
+        # type, REV-282b : le shell ouvre /datasets/{id}/edit).
         ds_item = items_repo.create_item(
             session,
             tenant_id=tenant_id,
@@ -372,7 +383,7 @@ def run_import(
             item_id=ds_item.id,
             tenant_id=tenant_id,
         )
-        return ImportResult(collection_id=col.id, item_id=None)
+        return ImportResult(collection_id=col.id, item_id=ds_item.id, item_resource_type="dataset")
 
     bbox = table_extent(session, info)
     if bbox:
@@ -439,4 +450,4 @@ def run_import(
     )
     configs_repo.create_config(session, config, item_id=item.id, tenant_id=tenant_id)
 
-    return ImportResult(collection_id=col.id, item_id=item.id)
+    return ImportResult(collection_id=col.id, item_id=item.id, item_resource_type="map")

@@ -72,6 +72,13 @@ def test_create_requires_admin(env):
     assert client.post("/v1/harvest/sources", json=SOURCE_BODY).status_code == 403
 
 
+def test_create_url_too_long_is_422(env):
+    app, client, _, admin, _regular = env
+    _as(app, admin)
+    body = {**SOURCE_BODY, "url": "https://stac.example.com/" + "a" * 3000}
+    assert client.post("/v1/harvest/sources", json=body).status_code == 422
+
+
 def test_create_and_list(env):
     app, client, _, admin, _regular = env
     _as(app, admin)
@@ -418,3 +425,33 @@ def test_source_exposes_record_counts_and_records_list(env):
     assert recs["total"] == 2
     assert [(r["externalId"], r["state"]) for r in recs["records"]] == [("a", "ok"), ("b", "stale")]
     assert client.get("/v1/harvest/sources/nope/records").status_code == 404
+
+
+def test_duplicate_detection_normalizes_url(env):
+    """REV-276c : hôte stocké en minuscules, variante slash final/casse → 409."""
+    app, client, _, admin, _regular = env
+    _as(app, admin)
+    created = client.post(
+        "/v1/harvest/sources",
+        json={**SOURCE_BODY, "url": "https://STAC.Example.com/collections"},
+    )
+    assert created.status_code == 201
+    assert created.json()["url"] == "https://stac.example.com/collections"
+    variant = {**SOURCE_BODY, "url": "HTTPS://stac.example.com/collections/"}
+    assert client.post("/v1/harvest/sources", json=variant).status_code == 409
+
+
+def test_concurrent_duplicate_hits_the_unique_index_as_409(env, monkeypatch):
+    """REV-276c : la vérification applicative est contournée (course) → l'index
+    unique lève IntegrityError, transformée en 409 (jamais 500)."""
+    from app.harvest import repository as harvest_repo
+
+    app, client, _, admin, _regular = env
+    _as(app, admin)
+    assert client.post("/v1/harvest/sources", json=SOURCE_BODY).status_code == 201
+    other = client.post("/v1/harvest/sources", json={**SOURCE_BODY, "url": "https://b.example"})
+    monkeypatch.setattr(harvest_repo, "find_duplicate_source", lambda *a, **k: None)
+    r = client.post("/v1/harvest/sources", json=SOURCE_BODY)
+    assert r.status_code == 409 and r.json()["detail"] == "harvest source already exists"
+    r = client.patch(f"/v1/harvest/sources/{other.json()['id']}", json={"url": SOURCE_BODY["url"]})
+    assert r.status_code == 409

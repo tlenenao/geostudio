@@ -103,6 +103,13 @@ test("lists items from the catalog", async () => {
   expect(screen.getAllByText("actions").length).toBeGreaterThan(0);
 });
 
+test("REV-284(c) : un <h2> « Résultats » (sr-only) précède la grille", async () => {
+  mockCatalogItems();
+  render(<CatalogPage onOpenItem={() => {}} />, { wrapper });
+  await screen.findByText("Alpha");
+  expect(screen.getByRole("heading", { level: 2, name: "Résultats" })).toBeInTheDocument();
+});
+
 test("filters by search term", async () => {
   mockCatalogItems();
   render(<CatalogPage onOpenItem={() => {}} />, { wrapper });

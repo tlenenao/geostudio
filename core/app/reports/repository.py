@@ -134,7 +134,9 @@ def list_due_reports(session: Session) -> list[tuple[str, str]]:
     due: list[tuple[str, str]] = []
     candidates = [
         (item_id, tenant_id, config)
-        for item_id, tenant_id, config in configs_repo.list_configs_by_kind(session, kind="report")
+        for item_id, tenant_id, config in configs_repo.list_configs_by_kind(
+            session, kind="report", refresh_enabled_only=True
+        )
         if config.report is not None and config.report.refreshPolicy.enabled
     ]
     item_ids = [c[0] for c in candidates]

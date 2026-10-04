@@ -14,6 +14,11 @@ def _now() -> datetime:
 
 class HarvestSource(Base):
     __tablename__ = "harvest_sources"
+    # Index(unique=True), pas UniqueConstraint : même forme que la migration
+    # 0046 (op.create_index), cf. HarvestRecord ci-dessous.
+    __table_args__ = (
+        Index("uq_harvest_sources_tenant_type_url", "tenant_id", "type", "url", unique=True),
+    )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
@@ -30,6 +35,9 @@ class HarvestSource(Base):
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_status: Mapped[str | None] = mapped_column(String, nullable=True)
     last_error: Mapped[str | None] = mapped_column(String, nullable=True)
+    consecutive_failures: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 

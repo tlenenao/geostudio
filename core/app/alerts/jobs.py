@@ -8,6 +8,7 @@ datasets only — an arcgis-sourced dataset fails cleanly with an
 AlertEvaluationError rather than being silently mis-evaluated (Global
 Constraints)."""
 
+import hashlib
 import logging
 import os
 
@@ -84,9 +85,8 @@ def _previous_terminal_state(evaluations, *, current_evaluation_id: str) -> str 
 
 
 # P20.03 : une livraison échouée est retentée à l'évaluation suivante (même
-# état), au plus _MAX_NOTIFY_RETRIES fois d'affilée.
-# ponytail: renvoie sur TOUS les canaux (y compris ceux déjà livrés) ; un
-# suivi par canal si les doublons gênent.
+# état), au plus _MAX_NOTIFY_RETRIES fois d'affilée — vers les seuls canaux
+# non livrés (REV-277d, notify_channels).
 _MAX_NOTIFY_RETRIES = 5
 
 
@@ -218,10 +218,6 @@ def _measure_value(session, *, user: User, payload: AlertRulePayload) -> float:
     finally:
         conn.close()
 
-    if not rows and _measures_for(payload.query)[0].agg in _ZERO_ON_EMPTY_AGGS:
-        # P20.02 (j09-013) : collection sans aucun fichier GeoParquet -> pas de
-        # ligne, mais « zéro ligne » compte 0 / somme 0, pas une erreur.
-        return 0.0
     if len(rows) != 1:
         raise AlertEvaluationError(
             f"alert query must reduce to exactly one row (got {len(rows)}) — "
@@ -239,8 +235,8 @@ def _measure_value(session, *, user: User, payload: AlertRulePayload) -> float:
     if label not in row:
         raise AlertEvaluationError(f"expected measure '{label}' not present in aggregate result")
     if row[label] is None and _measures_for(payload.query)[0].agg in _ZERO_ON_EMPTY_AGGS:
-        # P25 : sans groupBy l'agrégat rend toujours UNE ligne ; somme d'un
-        # ensemble vide = NULL -> 0 (même règle que « aucune ligne » ci-dessus).
+        # P25 : sans groupBy l'agrégat rend toujours UNE ligne, lac vide compris
+        # (REV-277c) ; somme d'un ensemble vide = NULL -> 0.
         return 0.0
     if row[label] is None:
         # Depuis SP-23, median/percentile/stddev n'ont pas de COALESCE (design
@@ -268,6 +264,11 @@ def _render_message(payload: AlertRulePayload, *, rule_name: str, value: float, 
     )
 
 
+def _channel_key(channel: AlertChannelWebhook | AlertChannelEmail) -> str:
+    # Empreinte, jamais l'URL en clair : une URL de webhook peut porter un jeton.
+    return hashlib.sha256(channel.model_dump_json().encode()).hexdigest()[:16]
+
+
 def _notify(
     session,
     *,
@@ -278,12 +279,20 @@ def _notify(
     value: float,
     state: str,
     actor_id: str | None = None,
-) -> tuple[str, str | None]:
-    """Retourne (notify_status, notify_error) : "delivered" si tous les canaux
-    ont livré, sinon "failed" + motifs joints (P20.01/03)."""
+    skip: frozenset[str] = frozenset(),
+) -> tuple[str, str | None, dict[str, str]]:
+    """Retourne (notify_status, notify_error, statut par canal) : "delivered"
+    si tous les canaux ont livré, sinon "failed" + motifs joints (P20.01/03).
+    Les canaux de `skip` (déjà livrés lors de l'épisode) ne sont pas renvoyés
+    et restent "delivered" (REV-277d)."""
     message = _render_message(payload, rule_name=rule_name, value=value, state=state)
     failures: list[str] = []
+    channels: dict[str, str] = {}
     for channel in payload.channels:
+        key = _channel_key(channel)
+        if key in skip:
+            channels[key] = "delivered"
+            continue
         success = False
         error_detail = None
         try:
@@ -314,6 +323,7 @@ def _notify(
             error_detail = str(exc)
             failures.append(f"{channel.kind}: {exc}")
             logger.warning("alert notification failed for rule %s: %s", item_id, exc)
+        channels[key] = "delivered" if success else "failed"
         write_audit(
             session,
             tenant_id=tenant_id,
@@ -330,8 +340,8 @@ def _notify(
             },
         )
     if failures:
-        return "failed", "; ".join(failures)
-    return "delivered", None
+        return "failed", "; ".join(failures), channels
+    return "delivered", None, channels
 
 
 @app.task(queue="etl")
@@ -397,6 +407,14 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
             retry = not transitioned and _should_retry_notification(
                 history, current_evaluation_id=evaluation_id, new_state=new_state
             )
+            # REV-277d : canaux déjà livrés pendant cet épisode, à ne pas renvoyer.
+            delivered: frozenset[str] = frozenset()
+            if retry:
+                previous = _previous_terminal_evaluation(
+                    history, current_evaluation_id=evaluation_id
+                )
+                done = (previous.notify_channels if previous is not None else None) or {}
+                delivered = frozenset(k for k, s in done.items() if s == "delivered")
 
             alerts_repo.mark_evaluated(
                 session,
@@ -497,8 +515,9 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
             rule_name = item.title if item else item_id
             notify_status: str | None
             notify_error: str | None
+            notify_channels: dict[str, str] | None
             try:
-                notify_status, notify_error = _notify(
+                notify_status, notify_error, notify_channels = _notify(
                     session,
                     tenant_id=tenant_id,
                     item_id=item_id,
@@ -507,6 +526,7 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
                     value=value,
                     state=new_state,
                     actor_id=owner_id,
+                    skip=delivered,
                 )
             except Exception as exc:
                 # _notify itself already catches NotifyError per-channel and
@@ -520,6 +540,7 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
                     "alert notification pipeline %s : erreur inattendue", evaluation_id
                 )
                 notify_status, notify_error = "failed", f"erreur interne : {exc}"
+                notify_channels = None  # inconnu : la relance visera tous les canaux
                 write_audit(
                     session,
                     tenant_id=tenant_id,
@@ -536,11 +557,20 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
                     },
                 )
             alerts_repo.mark_notified(
-                session, evaluation_id=evaluation_id, status=notify_status, error=notify_error
+                session,
+                evaluation_id=evaluation_id,
+                status=notify_status,
+                error=notify_error,
+                channels=notify_channels,
             )
             # P20.12 : notification in-app au propriétaire (alerte déclenchée ou
-            # livraison en échec) — session dédiée, jamais celle de l'évaluation.
-            if owner_id is not None and (notify_status == "failed" or new_state == "firing"):
+            # livraison en échec) — une fois par épisode, à la transition
+            # seulement, jamais à chaque relance (REV-277d). Session dédiée.
+            if (
+                owner_id is not None
+                and not retry
+                and (notify_status == "failed" or new_state == "firing")
+            ):
                 notify_best_effort(
                     _session_factory(),
                     tenant_id=tenant_id,

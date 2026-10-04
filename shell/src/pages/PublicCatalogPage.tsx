@@ -97,13 +97,16 @@ export function PublicCatalogPage() {
       {query.isError && <Banner variant="danger">{t("publicCatalog.loadError")}</Banner>}
       {query.isSuccess && items.length === 0 && <EmptyState title={t("publicCatalog.empty")} />}
       {items.length > 0 && (
-        <ul className="grid list-none grid-cols-1 gap-4 p-0 sm:grid-cols-2 lg:grid-cols-3">
-          {items.map((item) => (
-            <li key={item.pk}>
-              <ItemCard item={item} onOpen={open} />
-            </li>
-          ))}
-        </ul>
+        <>
+          <h2 className="sr-only">{t("catalog.resultsHeading")}</h2>
+          <ul className="grid list-none grid-cols-1 gap-4 p-0 sm:grid-cols-2 lg:grid-cols-3">
+            {items.map((item) => (
+              <li key={item.pk}>
+                <ItemCard item={item} onOpen={open} />
+              </li>
+            ))}
+          </ul>
+        </>
       )}
       {pages > 1 && (
         <nav className="flex items-center justify-between" aria-label={t("publicCatalog.title")}>

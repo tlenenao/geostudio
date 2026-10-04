@@ -352,6 +352,9 @@ export function createDesktopItemClient(connection: {
     async runHarvestSource(..._args: unknown[]) {
       return unsupported();
     },
+    async listHarvestSourceRecords(..._args: unknown[]) {
+      return unsupported();
+    },
     async getInstanceStatus(..._args: unknown[]) {
       return unsupported();
     },
@@ -556,6 +559,9 @@ export function createDesktopItemClient(connection: {
       return unsupported();
     },
     async updateNotificationPreference(..._args: unknown[]) {
+      return unsupported();
+    },
+    async geocode(..._args: unknown[]) {
       return unsupported();
     },
     async listUsageTasks(..._args: unknown[]) {

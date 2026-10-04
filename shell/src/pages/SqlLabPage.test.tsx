@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
+import { completionStatus, startCompletion } from "@codemirror/autocomplete";
+import { EditorView, runScopeHandlers } from "@codemirror/view";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -237,29 +239,33 @@ test("n'affiche pas le panneau copilote quand copilotEnabled est faux (défaut d
   expect(screen.queryByLabelText("Message au copilote")).not.toBeInTheDocument();
 });
 
+function collectionsListBody() {
+  return {
+    collections: [
+      {
+        id: "parcs",
+        title: "Parcs urbains",
+        description: "",
+        tableName: "parcs",
+        isPublic: false,
+        editable: true,
+        geometryType: "Point",
+        srid: 4326,
+        pkColumn: "id",
+        permissions: { read: true, write: true, delete: true, share: true },
+        featureCount: 3,
+        owner: "alice",
+        attachmentFields: [],
+      },
+    ],
+    numberMatched: 1,
+    numberReturned: 1,
+  };
+}
+
 function mockCollectionsList() {
   return http.get("https://core.test/v1/collections", () =>
-    HttpResponse.json({
-      collections: [
-        {
-          id: "parcs",
-          title: "Parcs urbains",
-          description: "",
-          tableName: "parcs",
-          isPublic: false,
-          editable: true,
-          geometryType: "Point",
-          srid: 4326,
-          pkColumn: "id",
-          permissions: { read: true, write: true, delete: true, share: true },
-          featureCount: 3,
-          owner: "alice",
-          attachmentFields: [],
-        },
-      ],
-      numberMatched: 1,
-      numberReturned: 1,
-    }),
+    HttpResponse.json(collectionsListBody()),
   );
 }
 
@@ -471,4 +477,79 @@ test("P25.14 : buildSqlSchema liste chaque collection avec son titre, colonnes s
     children: ["nom"],
   });
   expect(Object.keys(schema)).toEqual(["ingest_a", "ingest_b"]);
+});
+
+async function openCompletion(): Promise<EditorView> {
+  const { container } = render(<Harness />);
+  const dom = await waitFor(() => {
+    const el = container.querySelector(".cm-editor");
+    if (!el) throw new Error("éditeur absent");
+    return el as HTMLElement;
+  });
+  const view = EditorView.findFromDOM(dom)!;
+  view.dispatch({ changes: { from: 0, insert: "SEL" }, selection: { anchor: 3 } });
+  startCompletion(view);
+  await waitFor(() => expect(completionStatus(view.state)).toBe("active"));
+  // La liste n'accepte une validation qu'après son délai d'interaction
+  // (interactionDelay, 75 ms) : sans cette attente, Entrée passe toujours
+  // et le test donnait un faux positif (constaté pendant la rédaction).
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  return view;
+}
+
+test("Entrée insère une ligne même avec la liste de complétion ouverte (REV-280c)", async () => {
+  const view = await openCompletion();
+  runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Enter" }), "editor");
+  expect(view.state.doc.toString()).toBe("SEL\n");
+});
+
+test("Tab accepte la complétion (REV-280c)", async () => {
+  const view = await openCompletion();
+  runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Tab" }), "editor");
+  expect(view.state.doc.toString().toLowerCase()).toBe("select");
+});
+
+// REV-265 : la liste des collections arrive APRÈS la restauration du SQL
+// depuis ?historyId= — l'effet D54b ne dépendait que de [sql] et ne se
+// relançait jamais : aucune autocomplétion sans frappe supplémentaire.
+test("REV-265 : SQL restauré avant la liste des collections → schéma chargé sans frappe", async () => {
+  localStorage.setItem(
+    "geostudio.sqlLab.history.anonymous",
+    JSON.stringify([
+      {
+        id: "h1",
+        sql: "select nom from parcs",
+        executedAt: "2026-09-26T00:00:00Z",
+        status: "ok",
+        rowCount: 1,
+      },
+    ]),
+  );
+  let releaseCollections!: () => void;
+  const collectionsGate = new Promise<void>((resolve) => {
+    releaseCollections = resolve;
+  });
+  const fetchedSchemaIds = new Set<string>();
+  server.use(
+    http.get("https://core.test/v1/collections", async () => {
+      await collectionsGate;
+      return HttpResponse.json(collectionsListBody());
+    }),
+    http.get("https://core.test/v1/collections/parcs/schema", () => {
+      fetchedSchemaIds.add("parcs");
+      return HttpResponse.json({
+        collection: "parcs",
+        pk: "id",
+        geometry: { column: "geom", type: "Point", srid: 4326 },
+        fields: [{ name: "nom", type: "text", required: true }],
+      });
+    }),
+  );
+  render(<Harness initialEntries={["/analytics/sql?historyId=h1"]} />);
+  expect(await screen.findByRole("textbox", { name: /requête/i })).toHaveTextContent(
+    "select nom from parcs",
+  );
+  expect(fetchedSchemaIds.has("parcs")).toBe(false);
+  releaseCollections();
+  await waitFor(() => expect(fetchedSchemaIds.has("parcs")).toBe(true));
 });

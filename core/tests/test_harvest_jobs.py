@@ -195,7 +195,7 @@ def test_run_harvest_task_notifies_the_owner_in_app_on_failure_only(env, monkeyp
     app, Session, tenant, user = env
     ok = Mock(fetch=Mock(return_value=[RECORD]))
     boom = Mock(fetch=Mock(side_effect=RuntimeError("catalogue injoignable")))
-    for connector in (ok, boom):
+    for i, connector in enumerate((ok, boom)):
         monkeypatch.setattr(service, "get_connector", lambda t, c=connector: c)
         with Session() as s:
             source = harvest_repo.create_source(
@@ -203,7 +203,7 @@ def test_run_harvest_task_notifies_the_owner_in_app_on_failure_only(env, monkeyp
                 tenant_id=tenant.id,
                 owner_id=user.id,
                 type="stac",
-                url="https://a",
+                url=f"https://a/{i}",
                 mode="reference",
                 enabled=True,
                 interval_minutes=None,

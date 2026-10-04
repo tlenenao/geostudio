@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.analytics.aggregate import (
@@ -22,6 +23,7 @@ from app.auth.dependency import get_current_user
 from app.configs import repository as configs_repo
 from app.db import get_session
 from app.errors import ValidationHTTPException
+from app.features.routes import EXPORT_ITEMS_CAP as _EXPORT_ITEMS_CAP
 from app.harvest import live_query
 from app.harvest import repository as repo
 from app.harvest.connectors import get_connector
@@ -143,16 +145,20 @@ def create_source(
     require_privilege(session, user, Privilege.ADMIN_HARVEST_MANAGE.value)
     _check_copy_support(body.type, body.mode)
     _reject_duplicate(session, user, body.type, body.url)
-    source = repo.create_source(
-        session,
-        tenant_id=user.tenant_id,
-        owner_id=user.id,
-        type=body.type,
-        url=body.url,
-        mode=body.mode,
-        enabled=body.enabled,
-        interval_minutes=body.intervalMinutes,
-    )
+    try:
+        source = repo.create_source(
+            session,
+            tenant_id=user.tenant_id,
+            owner_id=user.id,
+            type=body.type,
+            url=body.url,
+            mode=body.mode,
+            enabled=body.enabled,
+            interval_minutes=body.intervalMinutes,
+        )
+    except IntegrityError as exc:  # course : l'index unique (0046) a tranché
+        session.rollback()
+        raise HTTPException(status_code=409, detail="harvest source already exists") from exc
     write_audit(
         session,
         tenant_id=user.tenant_id,
@@ -322,7 +328,11 @@ def patch_source(
         _check_copy_support(source.type, "copy")
     if fields.get("url") is not None:
         _reject_duplicate(session, user, source.type, fields["url"], exclude=source.id)
-    repo.update_source(session, source, **fields)
+    try:
+        repo.update_source(session, source, **fields)
+    except IntegrityError as exc:
+        session.rollback()
+        raise HTTPException(status_code=409, detail="harvest source already exists") from exc
     write_audit(
         session,
         tenant_id=user.tenant_id,
@@ -547,7 +557,6 @@ def export_dataset_arcgis_aggregate(
 
 
 _EXPORT_FORMATS_ITEMS = {"csv", "xlsx", "geojson", "gpkg"}
-_EXPORT_ITEMS_CAP = 10_000
 
 
 @router.get("/datasets/{item_id}/arcgis/export/items")

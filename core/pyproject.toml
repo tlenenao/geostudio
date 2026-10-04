@@ -364,6 +364,7 @@ layers = [
     "app.instance",
     "app.roles",
     "app.catalog",
+    "app.geocoding",
     "app.auth",
     "app.audit",
     "app.users",

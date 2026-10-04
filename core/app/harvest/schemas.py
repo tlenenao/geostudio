@@ -1,8 +1,22 @@
 # SPDX-License-Identifier: Apache-2.0
 from typing import Literal
-from urllib.parse import urlsplit
+from urllib.parse import SplitResult, urlsplit, urlunsplit
 
 from pydantic import BaseModel, Field, field_validator
+
+
+def _with_lower_host(parts: SplitResult) -> SplitResult:
+    # urlsplit abaisse déjà le schéma ; l'hôte est insensible à la casse
+    # (RFC 3986 §3.2.2), le userinfo et le chemin ne le sont pas.
+    userinfo, at, hostport = parts.netloc.rpartition("@")
+    return parts._replace(netloc=f"{userinfo}{at}{hostport.lower()}")
+
+
+def normalize_source_url(url: str) -> str:
+    """Clé de comparaison des sources (REV-276c) : hôte en minuscules, slash
+    final retiré. Jamais stockée : le slash final compte pour urljoin."""
+    parts = _with_lower_host(urlsplit(url.strip()))
+    return urlunsplit(parts._replace(path=parts.path.rstrip("/")))
 
 
 def _check_http_url(value: str | None) -> str | None:
@@ -13,12 +27,12 @@ def _check_http_url(value: str | None) -> str | None:
     parts = urlsplit(value.strip())
     if parts.scheme not in ("http", "https") or not parts.hostname:
         raise ValueError("url must be an http(s) URL")
-    return value.strip()
+    return urlunsplit(_with_lower_host(parts))
 
 
 class HarvestSourceCreate(BaseModel):
     type: Literal["stac", "arcgis", "wms", "wfs", "wmts", "csw", "ogc-records", "ckan"]
-    url: str = Field(min_length=1)
+    url: str = Field(min_length=1, max_length=2048)
     mode: Literal["reference", "copy"] = "reference"
     enabled: bool = True
     intervalMinutes: int | None = Field(default=None, ge=1)
@@ -27,7 +41,7 @@ class HarvestSourceCreate(BaseModel):
 
 
 class HarvestSourcePatch(BaseModel):
-    url: str | None = Field(default=None, min_length=1)
+    url: str | None = Field(default=None, min_length=1, max_length=2048)
     mode: Literal["reference", "copy"] | None = None
     enabled: bool | None = None
     intervalMinutes: int | None = Field(default=None, ge=1)

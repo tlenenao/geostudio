@@ -49,6 +49,10 @@ _WEBHOOK_TRIGGER_RE = re.compile(r"^/v1/pipelines/[^/]+/trigger$")
 # dans le chemin ; clé IP seule (cf. caller_key), sinon varier le jeton
 # contournerait le budget (même raisonnement que webhook-trigger, j06b-011).
 _SHARE_LINK_RE = re.compile(r"^/v1/share-links/[^/]+$")
+# REV-102 : GET /v1/geocode déclenche un appel sortant vers la Géoplateforme
+# (BAN, 50 req/s/IP côté amont) — budget propre, le shell n'appelle qu'à la
+# soumission du formulaire, jamais à la frappe.
+_GEOCODE_RE = re.compile(r"^/v1/geocode$")
 
 # Budgets par groupe de coût réel (requêtes / 60s). Réutilise _EXPORT_PATH_RE
 # de app.main pour le groupe "jobs" plutôt que de le redéfinir ici.
@@ -63,6 +67,7 @@ _BUDGETS = {
     "collections_empty": 5,
     "webhook-trigger": 30,
     "share-link": 60,
+    "geocode": 60,
 }
 _WINDOW_SECONDS = 60.0
 
@@ -107,6 +112,8 @@ def route_group(path: str, method: str, export_path_re: re.Pattern[str]) -> str 
         return "webhook-trigger"
     if _SHARE_LINK_RE.match(path) and method == "GET":
         return "share-link"
+    if _GEOCODE_RE.match(path):
+        return "geocode"
     return None
 
 

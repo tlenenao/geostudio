@@ -48,6 +48,8 @@ export function PublicItemPage({ pk }: { pk: string }) {
   }
   return (
     <main className="h-full w-full">
+      {/* REV-284(b) : repère de titre pour les technologies d'assistance. */}
+      <h1 className="sr-only">{itemQuery.data?.title}</h1>
       <AppRenderer config={configQuery.data} mode="runtime" />
     </main>
   );

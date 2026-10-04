@@ -39,6 +39,7 @@ from app.ingestion.storage import (
     max_upload_bytes,
 )
 from app.ingestion.tasks import run_ingestion_task
+from app.items.models import Item
 from app.quotas.service import enforce_storage_quota
 from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
@@ -241,9 +242,11 @@ def get_upload_job(
         job.created_by != user.id and not has_privilege(session, user, Privilege.DATA_MANAGE.value)
     ):
         raise HTTPException(status_code=404, detail="job not found")
+    item = session.get(Item, job.item_id) if job.item_id else None
     return IngestionJobStatus(
         status=job.status,
         errorMessage=job.error_message,
         collectionId=job.collection_id,
         itemId=job.item_id,
+        itemResourceType=item.resource_type if item is not None else None,
     )

@@ -22,3 +22,26 @@ describe("formatBytes (P26.07)", () => {
     expect(formatBytes(2 * 1024 ** 3)).toBe("2 Go");
   });
 });
+
+describe("valeur absente ou non finie (REV-285 g)", () => {
+  it("formatNumber rend « — » pour NaN, ±Infinity, null et undefined", () => {
+    expect(formatNumber(Number.NaN)).toBe("—");
+    expect(formatNumber(Number.POSITIVE_INFINITY)).toBe("—");
+    expect(formatNumber(Number.NEGATIVE_INFINITY)).toBe("—");
+    expect(formatNumber(null)).toBe("—");
+    expect(formatNumber(undefined)).toBe("—");
+    expect(formatNumber(0)).toBe("0");
+  });
+
+  it("formatBytes rend « — » pour une taille non finie", () => {
+    expect(formatBytes(Number.NaN)).toBe("—");
+    expect(formatBytes(null)).toBe("—");
+    expect(formatBytes(0)).toBe("0 o");
+  });
+
+  it("formatDateTime rend « — » pour null, undefined et la chaîne vide (pas 1970)", () => {
+    expect(formatDateTime(null)).toBe("—");
+    expect(formatDateTime(undefined)).toBe("—");
+    expect(formatDateTime("")).toBe("—");
+  });
+});

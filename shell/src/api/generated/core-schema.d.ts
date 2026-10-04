@@ -698,6 +698,23 @@ export interface paths {
         patch: operations["patch_extension_v1_extensions__extension_id__patch"];
         trace?: never;
     };
+    "/v1/geocode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Geocode */
+        get: operations["geocode_v1_geocode_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/groups": {
         parameters: {
             query?: never;
@@ -1319,6 +1336,23 @@ export interface paths {
         };
         /** Public Robots */
         get: operations["public_robots_v1_public_robots_txt_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/sitemap-{n}.xml": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Public Sitemap Slice */
+        get: operations["public_sitemap_slice_v1_public_sitemap__n__xml_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2562,6 +2596,20 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** GeocodeResponse */
+        GeocodeResponse: {
+            /** Results */
+            results: components["schemas"]["GeocodeResult"][];
+        };
+        /** GeocodeResult */
+        GeocodeResult: {
+            /** Label */
+            label: string;
+            /** Lat */
+            lat: number;
+            /** Lon */
+            lon: number;
+        };
         /** GroupMemberRead */
         GroupMemberRead: {
             /** Email */
@@ -2663,6 +2711,8 @@ export interface components {
             errorMessage: string | null;
             /** Itemid */
             itemId: string | null;
+            /** Itemresourcetype */
+            itemResourceType?: string | null;
             /** Status */
             status: string;
         };
@@ -3662,6 +3712,8 @@ export interface components {
             count: number;
             /** Objectid */
             objectId: string;
+            /** Objecttitle */
+            objectTitle?: string | null;
             /** Objecttype */
             objectType: string;
         };
@@ -3720,6 +3772,8 @@ export interface components {
             id: number;
             /** Objectid */
             objectId: string;
+            /** Objecttitle */
+            objectTitle?: string | null;
             /** Objecttype */
             objectType: string;
         };
@@ -5623,6 +5677,40 @@ export interface operations {
             };
         };
     };
+    geocode_v1_geocode_get: {
+        parameters: {
+            query: {
+                q: string;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeocodeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_groups_v1_groups_get: {
         parameters: {
             query?: never;
@@ -7215,6 +7303,35 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    public_sitemap_slice_v1_public_sitemap__n__xml_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                n: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

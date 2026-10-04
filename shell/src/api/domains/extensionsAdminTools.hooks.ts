@@ -82,6 +82,14 @@ export function useInstanceStatus(options?: { enabled?: boolean }) {
   });
 }
 
+export function useHarvestSourceRecords(id: string) {
+  const client = useItemClientInternal();
+  return useQuery({
+    queryKey: ["harvest-source-records", id],
+    queryFn: () => client.listHarvestSourceRecords(id),
+  });
+}
+
 export function useHarvestSources(options?: { enabled?: boolean }) {
   const client = useItemClientInternal();
   return useQuery({

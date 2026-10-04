@@ -14,8 +14,16 @@ EGRESS_MODULES = [
     "app.harvest.egress",
     "app.copilot.egress",
     "app.search.egress",
+    "app.geocoding.egress",
 ]
 PUBLIC = "93.184.216.34"
+
+
+@pytest.fixture(autouse=True)
+def _no_default_geocoding_allowlist(monkeypatch):
+    # app.geocoding.egress a une allowlist par défaut (data.geopf.fr) ; ces tests
+    # exercent la seule garde réseau sur des hôtes arbitraires.
+    monkeypatch.setenv("CORE_GEOCODING_EGRESS_ALLOWLIST", "")
 
 
 def _resolver(*answers):
@@ -77,7 +85,9 @@ class _AsyncRecorder(httpx.AsyncBaseTransport):
         return httpx.Response(200, content=b"ok", request=request)
 
 
-@pytest.mark.parametrize("modname", ["app.harvest.egress", "app.search.egress"])
+@pytest.mark.parametrize(
+    "modname", ["app.harvest.egress", "app.search.egress", "app.geocoding.egress"]
+)
 def test_sync_httpx_transport_connects_to_validated_ip(monkeypatch, modname):
     mod = importlib.import_module(modname)
     fake, _ = _resolver(PUBLIC)

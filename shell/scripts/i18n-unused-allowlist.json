@@ -1,0 +1,6 @@
+[
+  {
+    "prefix": "roles.privilege.",
+    "reason": "clé fournie par le cœur (PRIVILEGE_METADATA.labelKey), résolue par resolveMessageKey"
+  }
+]

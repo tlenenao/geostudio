@@ -40,3 +40,62 @@ test("removing several ids at once prunes every affected message", () => {
   ];
   expect(pruneMessagesForIds(messages, ["w2", "w5"]).map((m) => m.id)).toEqual(["m2"]);
 });
+
+import { sanitizeDanglingMessages } from "./actionMessages";
+import type { AppConfig } from "../api/types";
+
+function cfg(over: Partial<AppConfig>): AppConfig {
+  return {
+    kind: "app",
+    theme: {} as AppConfig["theme"],
+    dataSources: [],
+    messages: [],
+    layout: {
+      type: "grid",
+      breakpoints: {},
+      items: [
+        { id: "w1", widget: "text", x: 0, y: 0, w: 1, h: 1, props: {} },
+        {
+          id: "w2",
+          widget: "modal",
+          x: 0,
+          y: 0,
+          w: 1,
+          h: 1,
+          props: { items: [{ id: "w3", widget: "text", x: 0, y: 0, w: 1, h: 1, props: {} }] },
+        },
+      ],
+    },
+    ...over,
+  };
+}
+
+test("sanitizeDanglingMessages drops dangling from/to, keeps nested widgets and var targets", () => {
+  const c = cfg({
+    variables: [{ id: "v1", name: "v", initialValue: null }],
+    messages: [
+      msg({ id: "ok1", from: "w1", to: "w3" }),
+      msg({ id: "ok2", from: "w1", to: "var:v1" }),
+      msg({ id: "badTo", from: "w1", to: "gone" }),
+      msg({ id: "badFrom", from: "gone", to: "w1" }),
+      msg({ id: "badVar", from: "w1", to: "var:nope" }),
+    ],
+  });
+  expect(sanitizeDanglingMessages(c).messages.map((m) => m.id)).toEqual(["ok1", "ok2"]);
+});
+
+test("sanitizeDanglingMessages returns same ref when clean and prunes page onEnter", () => {
+  const clean = cfg({ messages: [msg({ from: "w1", to: "w2" })] });
+  expect(sanitizeDanglingMessages(clean)).toBe(clean);
+  const withPage = cfg({
+    pages: [
+      {
+        id: "p1",
+        name: "p",
+        layout: { type: "grid", breakpoints: {}, items: [] },
+        onEnter: [msg({ id: "e1", to: "gone" }), msg({ id: "e2", to: "w1" })],
+      },
+    ],
+  });
+  expect(sanitizeDanglingMessages(withPage).pages![0].onEnter!.map((m) => m.id)).toEqual(["e2"]);
+});

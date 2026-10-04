@@ -34,6 +34,7 @@ class IngestionJobStatus(BaseModel):
     errorMessage: str | None
     collectionId: str | None
     itemId: str | None
+    itemResourceType: str | None = None
 
 
 class InspectRequest(BaseModel):

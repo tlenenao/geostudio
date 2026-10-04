@@ -236,7 +236,8 @@ def test_social_preview_is_complete_for_sites(client):
     assert "<h1>Portail</h1>" in body
 
 
-def test_item_social_preview_with_public_thumbnail(client):
+def test_item_social_preview_with_public_thumbnail(client, monkeypatch):
+    monkeypatch.setenv("CORE_BASE_URL", "https://api.gis.example.fr")  # REV-289b
     from app.items import routes as items_routes
     from app.items.storage import InMemoryThumbnailStore
 
@@ -255,7 +256,7 @@ def test_item_social_preview_with_public_thumbnail(client):
     _publish(client, item_id)
     del client.app.dependency_overrides[get_current_user]
     page = client.get(f"/v1/public/items/{item_id}/social-preview").text
-    thumb = f"{_PUBLIC_BASE_URL}/api/v1/public/items/{item_id}/thumbnail"
+    thumb = f"https://api.gis.example.fr/v1/public/items/{item_id}/thumbnail"
     assert f'property="og:image" content="{thumb}"' in page
     assert 'content="summary_large_image"' in page
     img = client.get(f"/v1/public/items/{item_id}/thumbnail")
@@ -277,3 +278,59 @@ def test_dataset_social_preview_public_only_and_escaped(client):
     assert f'rel="canonical" href="{_PUBLIC_BASE_URL}/public/datasets/ouvert"' in ok.text
     assert client.get("/v1/public/datasets/secret/social-preview").status_code == 404
     assert client.get("/v1/public/datasets/nope/social-preview").status_code == 404
+
+
+def test_sitemap_becomes_an_index_beyond_the_cap(client, monkeypatch):
+    # REV-289a : au-delà du plafond (abaissé à 2), index + tranches.
+    from app.public import routes as public_routes
+
+    monkeypatch.setattr(public_routes, "_SITEMAP_MAX_URLS", 2)
+    for slug in ("s1", "s2"):
+        _publish(client, _create_site(client, slug.upper(), slug))
+    _make_collection(client, "ouvert", "Ouvert", is_public=True)  # 3e URL
+
+    del client.app.dependency_overrides[get_current_user]
+    index = client.get("/v1/public/sitemap.xml").text
+    assert "<sitemapindex" in index
+    assert f"<loc>{_PUBLIC_BASE_URL}/sitemap-1.xml</loc>" in index
+    assert f"<loc>{_PUBLIC_BASE_URL}/sitemap-2.xml</loc>" in index
+    assert "sitemap-3.xml" not in index
+
+    first = client.get("/v1/public/sitemap-1.xml")
+    assert first.status_code == 200
+    assert first.text.count("<url>") == 2
+    second = client.get("/v1/public/sitemap-2.xml").text
+    assert second.count("<url>") == 1
+    assert f"{_PUBLIC_BASE_URL}/public/datasets/ouvert</loc>" in second
+    assert client.get("/v1/public/sitemap-3.xml").status_code == 404
+    assert client.get("/v1/public/sitemap-0.xml").status_code == 404
+    assert client.head("/v1/public/sitemap-1.xml").status_code == 200
+
+
+def test_sitemap_slices_partition_items_and_datasets_exactly(client, monkeypatch):
+    # Items (3) non multiple du plafond (2) : les datasets débordent sur la
+    # tranche 2 puis remplissent la 3 — chaque URL apparaît exactement une fois.
+    from app.public import routes as public_routes
+
+    monkeypatch.setattr(public_routes, "_SITEMAP_MAX_URLS", 2)
+    for slug in ("s1", "s2", "s3"):
+        _publish(client, _create_site(client, slug.upper(), slug))
+    for cid in ("d1", "d2"):
+        _make_collection(client, cid, cid, is_public=True)
+
+    del client.app.dependency_overrides[get_current_user]
+    assert client.get("/v1/public/sitemap.xml").text.count("<sitemap>") == 3
+    slices = [client.get(f"/v1/public/sitemap-{n}.xml").text for n in (1, 2, 3)]
+    assert [t.count("<url>") for t in slices] == [2, 2, 1]
+    assert client.get("/v1/public/sitemap-4.xml").status_code == 404
+    locs = [loc for t in slices for loc in t.split("<loc>")[1:]]
+    assert len({loc.split("</loc>")[0] for loc in locs}) == 5
+    assert sum("/public/datasets/" in loc for loc in locs) == 2
+
+
+def test_sitemap_under_the_cap_stays_a_urlset(client):
+    _publish(client, _create_site(client, "Portail", "portail"))
+    del client.app.dependency_overrides[get_current_user]
+    body = client.get("/v1/public/sitemap.xml").text
+    assert "<urlset" in body and "<sitemapindex" not in body
+    assert client.get("/v1/public/sitemap-1.xml").status_code == 404  # pas de tranche

@@ -10,6 +10,7 @@ class UsageTaskRead(BaseModel):
     objectType: str
     objectId: str
     createdAt: str
+    objectTitle: str | None = None
 
 
 class UsageTaskPage(BaseModel):
@@ -29,6 +30,7 @@ class UsageResourceStatRead(BaseModel):
     objectType: str
     objectId: str
     count: int
+    objectTitle: str | None = None
 
 
 class UsageSummaryRead(BaseModel):

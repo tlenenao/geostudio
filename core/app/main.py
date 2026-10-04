@@ -46,6 +46,7 @@ from app.export import routes as export_routes
 from app.extensions import routes as extensions_routes
 from app.features import routes as features_routes
 from app.features import tiles as tiles_routes
+from app.geocoding import routes as geocoding_routes
 from app.harvest import dataset_validation as harvest_dataset_validation  # noqa: F401
 from app.harvest import routes as harvest_routes
 from app.ingestion import routes as ingestion_routes
@@ -397,6 +398,7 @@ def create_app() -> FastAPI:
     v1_router.include_router(usage_routes.router)
     v1_router.include_router(quotas_routes.router)
     v1_router.include_router(compliance_routes.router)
+    v1_router.include_router(geocoding_routes.router)
     if is_etl_enabled():
         v1_router.include_router(pipelines_routes.router)
     if is_export_enabled():

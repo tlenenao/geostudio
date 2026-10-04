@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import {
+  MutationObserver,
   QueryClient,
   QueryClientProvider,
   QueryObserver,
@@ -22,6 +23,13 @@ function setup() {
 const fail = (qc: QueryClient, key: string) =>
   qc
     .fetchQuery({ queryKey: [key], queryFn: () => Promise.reject(new CoreUnreachableError()) })
+    .catch(() => {});
+
+const failMutation = (qc: QueryClient) =>
+  new MutationObserver(qc, {
+    mutationFn: () => Promise.reject(new CoreUnreachableError()),
+  })
+    .mutate()
     .catch(() => {});
 
 afterEach(() => {
@@ -89,4 +97,47 @@ test("t02-007 : hors ligne, une bannière dédiée est affichée", async () => {
   await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/hors ligne/));
   act(() => onlineManager.setOnline(true));
   await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+});
+
+test("REV-254 : une mutation en échec d'injoignabilité lève la bannière, un succès réseau la baisse", async () => {
+  const { queryClient } = setup();
+  await failMutation(queryClient);
+  await waitFor(() =>
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Connexion au serveur perdue — nouvelle tentative en cours…",
+    ),
+  );
+
+  await queryClient.fetchQuery({ queryKey: ["any"], queryFn: () => Promise.resolve("ok") });
+  await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+});
+
+test("REV-254 : un setQueryData (succès manuel) ne prouve pas le retour du cœur", async () => {
+  const { queryClient } = setup();
+  await failMutation(queryClient);
+  await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+  act(() => {
+    queryClient.setQueryData(["local"], "x");
+  });
+  expect(screen.getByRole("alert")).toBeInTheDocument();
+});
+
+test("REV-254 : mutation en échec seule, le sondage relance les requêtes actives et baisse la bannière", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const { queryClient } = setup();
+  const observer = new QueryObserver(queryClient, {
+    queryKey: ["active"],
+    queryFn: () => Promise.resolve("ok"),
+  });
+  const unsubscribe = observer.subscribe(() => {});
+  await waitFor(() => expect(observer.getCurrentResult().isSuccess).toBe(true));
+
+  await failMutation(queryClient);
+  await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(CONNECTIVITY_POLL_MS);
+  });
+  await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  unsubscribe();
 });

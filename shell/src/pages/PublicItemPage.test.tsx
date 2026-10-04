@@ -72,6 +72,16 @@ test("200: renders the published item's runtime layout via AppRenderer", async (
   expect(screen.queryByText(/introuvable/i)).not.toBeInTheDocument();
 });
 
+test("REV-284(b) : un <h1> (sr-only) porte le titre de l'item", async () => {
+  renderPage({
+    getItem: vi.fn().mockResolvedValue(item),
+    getPublicAppConfig: vi.fn().mockResolvedValue(config),
+  });
+  expect(
+    await screen.findByRole("heading", { level: 1, name: "Mon jeu de données" }),
+  ).toBeInTheDocument();
+});
+
 test("D50 : pose document.title/meta description une fois l'item chargé", async () => {
   renderPage({
     getItem: vi.fn().mockResolvedValue(item),

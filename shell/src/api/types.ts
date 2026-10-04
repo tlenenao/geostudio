@@ -146,6 +146,7 @@ export type UsageTask = {
   action: string;
   objectType: string;
   objectId: string;
+  objectTitle?: string | null;
   createdAt: string;
 };
 
@@ -155,7 +156,12 @@ export type UsageActorStat = {
   count: number;
 };
 
-export type UsageResourceStat = { objectType: string; objectId: string; count: number };
+export type UsageResourceStat = {
+  objectType: string;
+  objectId: string;
+  count: number;
+  objectTitle?: string | null;
+};
 
 export type UsageSummary = {
   byActor: UsageActorStat[];
@@ -209,7 +215,7 @@ export type InstanceStatus = {
   minioConsolePublished: boolean;
   postgres: ProbeStatus;
   s3: ProbeStatus;
-  cdc: ProbeStatus & { slotActive?: boolean };
+  cdc: ProbeStatus & { slotActive?: boolean; configured?: boolean };
   jobs: ProbeStatus & {
     queues?: { queue: string; status: string; count: number }[];
     stalled?: number;
@@ -226,7 +232,10 @@ export type CopilotToolSchema = {
   description: string;
   inputSchema: Record<string, unknown>;
 };
-export type CopilotSurface = "app_builder" | "sql_lab" | "visual_query";
+export type CopilotSurface = "app_builder" | "sql_lab" | "visual_query" | "visible_when";
+
+// REV-102 : un résultat de GET /v1/geocode.
+export type GeocodeResult = { label: string; lon: number; lat: number };
 
 export type ItemScope = "all" | "mine" | "shared" | "public";
 
@@ -495,6 +504,8 @@ export interface ItemClient {
     until?: string;
     limit?: number;
   }): Promise<UsageSummary>;
+  // REV-102 : recherche d'adresse (BAN via le cœur).
+  geocode(q: string, limit?: number): Promise<GeocodeResult[]>;
   getInstanceInfo(): Promise<InstanceInfo>;
   getQuotaUsage(): Promise<QuotaUsage>;
   copilotTurn(
@@ -573,6 +584,7 @@ export interface ItemClient {
   updateHarvestSource(id: string, patch: HarvestSourcePatchInput): Promise<HarvestSource>;
   deleteHarvestSource(id: string): Promise<void>;
   runHarvestSource(id: string): Promise<void>;
+  listHarvestSourceRecords(id: string): Promise<HarvestSourceRecordsPage>;
   launchAdminTool(tool: AdminToolName): Promise<{ url: string }>;
   getInstanceStatus(): Promise<InstanceStatus>;
   getCollectionSharing(id: string): Promise<Sharing>;
@@ -713,6 +725,7 @@ export interface ItemClient {
     errorMessage: string | null;
     collectionId: string | null;
     itemId: string | null;
+    itemResourceType?: string | null;
   }>;
   runAnalyticsSql(
     sql: string,
@@ -1044,6 +1057,22 @@ export type HarvestSourcePatchInput = {
   mode?: HarvestSourceMode;
   enabled?: boolean;
   intervalMinutes?: number | null;
+};
+
+export type HarvestSourceRecord = {
+  id: string;
+  externalId: string;
+  itemId: string | null;
+  collectionId: string | null;
+  state: "ok" | "stale";
+  harvestedAt: string | null;
+  externalUrl: string | null;
+};
+
+export type HarvestSourceRecordsPage = {
+  total: number;
+  staleCount: number;
+  records: HarvestSourceRecord[];
 };
 
 export type DataRecord = {

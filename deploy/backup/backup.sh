@@ -29,7 +29,8 @@ if [ "$UPLOAD_ONLY" = 1 ]; then
 fi
 
 DATE="$(date -u +%Y%m%d-%H%M%S)"
-WORKDIR="/backup/work/${DATE}"
+WORK_ROOT="${BACKUP_WORK_DIR:-/backup/work}"
+WORKDIR="${WORK_ROOT}/${DATE}"
 # Purge systématique du répertoire de travail en clair (dump Postgres, export
 # Keycloak, miroir MinIO) et de l'archive intermédiaire non chiffrée, quelle
 # que soit l'issue du script (succès, échec sous `set -e`, signal) — cf. plan
@@ -99,7 +100,7 @@ if ! jq -e '.realm == "geostudio"' "${WORKDIR}/keycloak-realm.json" >/dev/null 2
 fi
 
 # ── 4. Empaqueter + chiffrer (jamais de clair au-delà de cette étape) ──
-tar -czf "/tmp/${DATE}.tar.gz" -C /backup/work "${DATE}"
+tar -czf "/tmp/${DATE}.tar.gz" -C "$WORK_ROOT" "${DATE}"
 if [ -n "${BACKUP_AGE_RECIPIENT:-}" ]; then
   age -r "$BACKUP_AGE_RECIPIENT" -o "${ARCHIVES_DIR}/${DATE}.tar.gz.age" "/tmp/${DATE}.tar.gz"
 else
@@ -118,15 +119,19 @@ for f in $TO_DELETE; do
 done
 
 # ── 6. Envoi hors-site (optionnel — avertissement clair si absent), puis
-#    rotation hors-site sur la même politique ──
+#    rotation hors-site sur la même politique — exécutée MÊME si l'envoi
+#    échoue (REV-281f) : sinon le bucket distant grossit pendant toute la
+#    panne. Code 75 ensuite, pour que l'entrypoint relance l'envoi seul. ──
 if [ -n "${BACKUP_S3_ENDPOINT:-}" ]; then
-  if ! upload_offsite "${DATE}.tar.gz.age"; then
-    echo "[backup] ERREUR: envoi hors-site en échec — archive locale conservée" >&2
-    exit 75
-  fi
+  upload_rc=0
+  upload_offsite "${DATE}.tar.gz.age" || upload_rc=$?
   for f in $TO_DELETE; do
     mc rm --quiet "offsite/${BACKUP_S3_BUCKET}/${f}" 2>/dev/null || true
   done
+  if [ "$upload_rc" != 0 ]; then
+    echo "[backup] ERREUR: envoi hors-site en échec — archive locale conservée" >&2
+    exit 75
+  fi
 else
   echo "[backup] AVERTISSEMENT: aucune cible hors-site configurée (BACKUP_S3_ENDPOINT vide)." >&2
   echo "[backup] Les sauvegardes restent UNIQUEMENT sur cette machine — ne protège ni de" >&2

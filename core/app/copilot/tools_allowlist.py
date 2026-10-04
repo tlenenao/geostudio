@@ -5,11 +5,11 @@
 côté client (clientOps, jamais écrites en base pendant la conversation) ;
 il peut CRÉER un nouvel item (create_item/create_form_app) via les mêmes
 outils qu'un agent MCP externe, jamais muter un item existant directement.
-generate_sql_query/generate_visual_query (GAP-17) sont des outils de
-GÉNÉRATION : ils lisent un schéma de collection et appellent le LLM, ne
-créent et n'écrivent jamais rien — un brouillon qu'ils produisent n'est
-appliqué que via un outil CLIENT (applySqlDraft/applyVisualQueryDraft),
-jamais exécuté côté serveur."""
+generate_sql_query/generate_visual_query (GAP-17) et generate_cel_expression
+(REV-183) sont des outils de GÉNÉRATION : ils lisent un schéma de collection
+et appellent le LLM, ne créent et n'écrivent jamais rien — un brouillon
+qu'ils produisent n'est appliqué que via un outil CLIENT
+(applySqlDraft/applyVisualQueryDraft, applyCelDraft pour un brouillon CEL)."""
 
 ALLOWED_MCP_TOOL_NAMES = frozenset(
     {
@@ -21,6 +21,7 @@ ALLOWED_MCP_TOOL_NAMES = frozenset(
         "create_form_app",
         "generate_sql_query",
         "generate_visual_query",
+        "generate_cel_expression",
     }
 )
 

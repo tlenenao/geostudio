@@ -144,3 +144,26 @@ test("passes theme through to the widget's PropsPanel", () => {
   );
   expect(receivedThemes).toEqual([{ colors: { primary: "#2563eb" } }]);
 });
+
+test("REV-183 : pas de bouton Générer sans generateItemId", () => {
+  render(
+    <PropsPanel item={item} dataSources={[]} onChange={vi.fn()} onVisibleWhenChange={vi.fn()} />,
+    { wrapper },
+  );
+  expect(screen.queryByText("Générer")).not.toBeInTheDocument();
+});
+
+test("REV-183 : bouton Générer (chargé à la demande) avec generateItemId", async () => {
+  render(
+    <PropsPanel
+      item={item}
+      dataSources={[]}
+      variables={[{ id: "v1", name: "statut", initialValue: "" }]}
+      generateItemId="9"
+      onChange={vi.fn()}
+      onVisibleWhenChange={vi.fn()}
+    />,
+    { wrapper },
+  );
+  expect(await screen.findByText("Générer")).toBeInTheDocument();
+});

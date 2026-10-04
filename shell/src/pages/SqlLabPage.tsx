@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import CodeMirror, { Prec, keymap } from "@uiw/react-codemirror";
-import { acceptCompletion } from "@codemirror/autocomplete";
+import { acceptCompletion, autocompletion, completionKeymap } from "@codemirror/autocomplete";
 // Alias `sqlLang` : le fichier a déjà une variable d'état locale `sql` (le
 // texte de la requête) — l'import du snippet du brief, nommé `sql` sans
 // alias, entre en collision de nom avec elle.
@@ -51,18 +51,25 @@ export function buildSqlSchema(
 
 // P25.16 : Entrée insère une nouvelle ligne même quand la liste de complétion
 // est ouverte (elle validait le mot-clé « catalog ») ; Tab accepte la complétion.
-const sqlEditorKeys = Prec.highest(
-  keymap.of([
-    {
-      key: "Enter",
-      run: (view) => {
-        view.dispatch(view.state.replaceSelection("\n"), { scrollIntoView: true });
-        return true;
+// REV-280c : `basicSetup` installe la keymap de complétion avec sa propre
+// priorité, qui gagnait sur Prec.highest — on la désactive et on la remet ici
+// sans sa liaison Entrée.
+const sqlEditorKeys = [
+  autocompletion({ defaultKeymap: false }),
+  Prec.highest(
+    keymap.of([
+      ...completionKeymap.filter((binding) => binding.key !== "Enter"),
+      {
+        key: "Enter",
+        run: (view) => {
+          view.dispatch(view.state.replaceSelection("\n"), { scrollIntoView: true });
+          return true;
+        },
       },
-    },
-    { key: "Tab", run: acceptCompletion },
-  ]),
-);
+      { key: "Tab", run: acceptCompletion },
+    ]),
+  ),
+];
 
 type SqlResult = { columns: string[]; rows: unknown[][]; truncated: boolean };
 
@@ -82,6 +89,11 @@ export function SqlLabPage() {
   // D54 (Vague C) : la liste des collections alimente désormais aussi
   // l'autocomplétion SQL (Tâche 26, D54b), plus seulement le panneau
   // copilote — appel inconditionnel.
+  // REV-184(5) : GET /v1/collections sans `limit` ne renvoie que sa première
+  // page (DEFAULT_LIMIT = 100, core/app/collections/routes.py) — au-delà, ni
+  // l'autocomplétion ni le copilote ne voient les collections suivantes. Et
+  // un tour de copilote envoyé avant la résolution de cette requête part avec
+  // `collections: []` (course de chargement assumée, rare en pratique).
   const collectionsQuery = useCollectionsAdmin();
 
   // SP-B9d : restaure la requête sélectionnée dans l'historique depuis
@@ -153,8 +165,12 @@ export function SqlLabPage() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- knownCollectionIds recalculé chaque rendu depuis collectionsQuery.data, l'inclure re-déclencherait l'effet inutilement à chaque frappe
-  }, [sql]);
+    // REV-265 : `collectionsQuery.data` (référence stable entre rendus) relance
+    // l'effet quand la liste arrive après un SQL restauré depuis l'historique.
+    // knownCollectionIds (tableau neuf à chaque rendu) et schemaByCollection
+    // (garde anti-refetch lue dans l'effet) restent hors dépendances.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- cf. ci-dessus
+  }, [sql, collectionsQuery.data]);
 
   const run = useMutation({
     mutationFn: (query: string) => client.runAnalyticsSql(query),

@@ -268,6 +268,35 @@ def test_empty_collection_returns_empty_rows_without_error(tmp_path, conn):
     assert rows == []
 
 
+def test_empty_lake_without_group_by_returns_a_zero_total_row(tmp_path, conn):
+    """REV-277c : même forme que le SQL sur un lac non vide filtré à vide
+    (P25.07) — count vaut 0, pas « aucune ligne »."""
+    category_key, rows = run_collection_aggregate(
+        conn,
+        base_uri=str(tmp_path),
+        tenant_id="t1",
+        collection_id="villes",
+        table_info=TABLE_INFO,
+        request=AggregateRequestBody(),
+    )
+    assert category_key == "group"
+    assert rows == [{"group": "Total", "value": 0}]
+
+
+def test_empty_lake_sum_is_undefined_not_zero(tmp_path, conn):
+    _, rows = run_collection_aggregate(
+        conn,
+        base_uri=str(tmp_path),
+        tenant_id="t1",
+        collection_id="villes",
+        table_info=TABLE_INFO,
+        request=AggregateRequestBody(
+            measures=[AggregateMeasure(agg="count"), AggregateMeasure(agg="sum", field="pop")]
+        ),
+    )
+    assert rows == [{"group": "Total", "count": 0, "sum_pop": None}]
+
+
 def test_valid_column_names_excludes_tenant_id(tmp_path, conn):
     # REV-014 : introspect_table (app.collections.introspection_pg) ne filtre
     # jamais "tenant_id" hors des colonnes réelles d'une table (seule la

@@ -84,7 +84,15 @@ second volet n'est pas fermable par du code et reste ouvert tel quel.
 
 ## État des 83 gaps — trois parties distinctes (mise à jour 2026-09-16)
 
-**65 fermés, 5 partiels, 13 ouverts** (total 83 — 79 gaps de la revue initiale + GAP-80/81/82/83 trouvés depuis). Chaque ligne a été vérifiée dans le code, pas recopiée d'un récit (piège n°12) ; voir encadré « correction post-passe » ci-dessus pour l'historique de cette vérification.
+**66 fermés, 6 partiels, 11 ouverts** (total 83 — 79 gaps de la revue initiale + GAP-80/81/82/83 trouvés depuis). Chaque ligne a été vérifiée dans le code, pas recopiée d'un récit (piège n°12) ; voir encadré « correction post-passe » ci-dessus pour l'historique de cette vérification.
+
+**Mise à jour du 2026-10-04** : le plan B
+(`docs/superpowers/plans/2026-10-03-backlog-lots-l4-l5.md`, lot L5b) ferme
+GAP-10 (animation temporelle, REV-104, widget `timePlayer`) et fait passer
+GAP-08 (géocodage BAN, REV-102) de ouvert à partiel (`GET /v1/geocode` +
+recherche d'adresse dans l'éditeur de carte ; pas de widget de recherche
+dans une app). Décompte recompté à la main sur les lignes de table : 66
+fermés, 6 partiels, 11 ouverts.
 
 **Mise à jour du 2026-10-03** : GAP-82 fermé par le plan A
 (`docs/superpowers/plans/2026-10-03-backlog-lots-l0-l2-l3.md`, lot L2,
@@ -105,7 +113,7 @@ securite-colonne.md` (16 tâches, spec `docs/superpowers/specs/2026-09-06-
 gap22-securite-colonne-design.md`) — voir l'entrée `GAP-22` de la table
 « ✅ Fermé » ci-dessous pour le détail.
 
-### ✅ Fermé (65)
+### ✅ Fermé (66)
 
 | GAP | Fermé par / statut détaillé |
 |---|---|
@@ -174,8 +182,9 @@ gap22-securite-colonne-design.md`) — voir l'entrée `GAP-22` de la table
 | GAP-81 | Plan `docs/superpowers/plans/2026-09-24-vague-a-bloquants-decouvrabilite.md` (commit `de52497f`, filet anti-régression `4f411029`) — `CatalogPage.tsx` porte désormais un lien réel vers `/analytics/sql` (D01, pas de REV propre — couvert directement par ce GAP) |
 | GAP-82 | Fermé le 2026-10-03 par le plan A (lot L2), REV-185 : helper `get_collection_for_read` (`app/collections/routes.py`) passant `can_manage_collections` sur les 5 lectures de `app/features/routes.py`, les tuiles MVT et la lecture des pièces jointes (commits `737e7677`/`347c9a13`/`e5775246`) ; lecture seulement, écriture (`_get_writable`) inchangée ; MCP déjà aligné (`require_collection_read`) ; le site `reader.collection` des pipelines reste une décision ouverte (REV-296) |
 | GAP-83 | Plan `docs/superpowers/plans/2026-09-20-cloture-rev-190-191-192-193.md` (commits `3ce0dc4c`/`947e9d23`/`2c3ce82a`/`841ce85f`/`9f56757c`/`e3defcfa`/`116bcae3`) — support de bout en bout de la variante liste/array sur `FieldType` (introspection, validation, écriture/lecture, tuiles MVT, schéma JSON, `POST /collections/empty`, exclusion côté formulaire/wizard shell). Voir `REV-191` |
+| GAP-10 | Plan B lot L5b, REV-104 (commits `2d4442ef`/`a56f9538`/`a9451700`/`56f678bb`) — widget `timePlayer` (play/pause, vitesse, pas fixe) qui anime la plage du contexte temps global ; la carte et un graphique liés au même dataset à `timeField` s'animent ensemble. Limite v1 : couches non-dataset non filtrées (`REV-304`) |
 
-### 🟡 Partiel (5)
+### 🟡 Partiel (6)
 
 | GAP | Ce qui est fait / ce qui reste |
 |---|---|
@@ -184,14 +193,13 @@ gap22-securite-colonne-design.md`) — voir l'entrée `GAP-22` de la table
 | GAP-57 | SP-50 ferme la pagination serveur (`/collections`, `/stac/collections`, `/dcat/catalog`, 3 historiques) ; côté shell, aucun des 4 consommateurs concernés n'envoie `limit`/`offset` — les 2 tracks parallèles qui promettaient ce volet (lancement redondant du 2026-09-06) se sont révélées abandonnées sans fusion, reste réellement ouvert (documenté sans être corrigé par SP-50) |
 | GAP-70 | SP-59 ferme le script de restauration (`deploy/backup/restore.sh`, vérifié présent) et la parité des 7 buckets ; la vérification OIDC réelle reste non rejouée (REV-164, limite d'environnement) |
 | GAP-72 | SP-48 ferme `img-src`/`connect-src` en enforcing (`CORE_CSP_MODE`, vérifié dans `docker-compose.yml`/`security/jobs.py`) ; `script-src` widgets d'extension tiers reste une décision produit ouverte (`traefik_render.py:29`, toujours `'self'` en dur, gardé par 2 tests intentionnels) | P17 (2026-10-02) : routeur Grafana retiré de `csp-dynamic` (scripts en ligne), ne ferme pas le point `script-src` widgets.
+| GAP-08 | Plan B lot L5b, REV-102 (commits `d9dea114`/`ca55bc42`/`f6942dca`/`558a5e94`) — `GET /v1/geocode` (proxy cœur BAN Géoplateforme, garde d'egress dédiée) et recherche d'adresse + `flyTo` dans l'éditeur de carte ; reste un widget de recherche d'adresse dans une app et un outil MCP |
 
-### 🔴 Ouvert / non implémenté (13)
+### 🔴 Ouvert / non implémenté (11)
 
 | GAP | Manque |
 |---|---|
 | GAP-04 | Aucune SP n'a traité `stac-api-validator` en CI |
-| GAP-08 | Géocodage BAN non traité |
-| GAP-10 | Animation temporelle non traitée |
 | GAP-18 | Référentiel 2 (benchmark), aucune décision produit prise |
 | GAP-20 | Référentiel 2 (benchmark), aucune décision produit prise |
 | GAP-21 | Référentiel 2 (benchmark), aucune décision produit prise |
@@ -203,12 +211,12 @@ gap22-securite-colonne-design.md`) — voir l'entrée `GAP-22` de la table
 | GAP-37 | `scripts/generate-pmtiles.sh` toujours orphelin |
 | GAP-55 | Éditeur d'actions narratif toujours limité à un payload de centrage carte |
 
-Répartition par référentiel des 13 ouverts (GAP-17/19/22 fermés depuis,
+Répartition par référentiel des 11 ouverts (au 2026-10-04 ; GAP-08/10 sortis, cf. mise à jour du 2026-10-04) (GAP-17/19/22 fermés depuis,
 retirés du décompte de référentiel 2 ; GAP-82 ajouté le 2026-09-13, trouvé
 par la Task 10 du plan GAP-22, fermé le 2026-10-03 par le plan A ; GAP-83, ajouté le 2026-09-16, fermé le
 2026-09-20 ; GAP-80/81, ajoutés le 2026-09-06, fermés le 2026-09-25 par le
-plan `2026-09-24-vague-a-bloquants-decouvrabilite.md`) : 6 items isolés du
-référentiel 1 (GAP-04/08/10/34/37/55 — chantiers non lancés ou décisions
+plan `2026-09-24-vague-a-bloquants-decouvrabilite.md`) : 4 items isolés du
+référentiel 1 (GAP-04/34/37/55 — chantiers non lancés ou décisions
 produit non tranchées), 7 du référentiel 2 (GAP-18/20/21/23/25/26/27,
 benchmark concurrentiel — aucune décision produit prise, non vérifiables
 dans le code de GeoStudio).

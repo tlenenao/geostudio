@@ -619,7 +619,20 @@ def _run_collection_aggregate(
         category_key = fields if len(fields) > 1 else (fields[0] if fields else "group")
 
     if not _has_any_file(conn, base_uri, tenant_id, collection_id):
-        return category_key, []
+        if fields or request.sample is not None or request.bins is not None or request.split:
+            return category_key, []
+        # REV-277c : sans groupBy, le SQL rend toujours UNE ligne (P25.07) ;
+        # le lac vide doit rendre la même, pas « aucune ligne ».
+        zero = ("count", "countDistinct")
+        return category_key, [
+            {
+                "group": "Total",
+                **{
+                    _measure_label(m): (0 if m.agg in zero else None)
+                    for m in _measures_for(request)
+                },
+            }
+        ]
 
     conn.execute("SET TimeZone='UTC'")  # P25.12 : comparaisons de dates en UTC
     dedup_cte = _dedup_cte(conn, table_info, base_uri, tenant_id, collection_id)

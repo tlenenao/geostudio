@@ -67,6 +67,9 @@ def list_usage_tasks(
         if actor_ids
         else {}
     )
+    # REV-285(f) : titres résolus ici en une passe groupée (plus de getItem
+    # par ligne côté shell), filtrés par le droit de lecture du demandeur.
+    titles = service.readable_item_titles(session, user=user, item_ids=[r.object_id for r in rows])
     return UsageTaskPage(
         tasks=[
             UsageTaskRead(
@@ -76,6 +79,7 @@ def list_usage_tasks(
                 action=r.action,
                 objectType=r.object_type,
                 objectId=r.object_id,
+                objectTitle=titles.get(r.object_id),
                 createdAt=r.created_at.isoformat(),
             )
             for r in rows
@@ -102,13 +106,21 @@ def get_usage_summary(
     summary = service.summarize(
         session, tenant_id=user.tenant_id, since=since_dt, until=until_dt, limit=limit
     )
+    titles = service.readable_item_titles(
+        session, user=user, item_ids=[r.object_id for r in summary.by_resource]
+    )
     return UsageSummaryRead(
         byActor=[
             UsageActorStatRead(actorId=a.actor_id, actorUsername=a.actor_username, count=a.count)
             for a in summary.by_actor
         ],
         byResource=[
-            UsageResourceStatRead(objectType=r.object_type, objectId=r.object_id, count=r.count)
+            UsageResourceStatRead(
+                objectType=r.object_type,
+                objectId=r.object_id,
+                count=r.count,
+                objectTitle=titles.get(r.object_id),
+            )
             for r in summary.by_resource
         ],
         totalActions=summary.total_actions,

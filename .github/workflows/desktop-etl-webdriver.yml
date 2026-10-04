@@ -34,6 +34,7 @@ jobs:
         run: |
           uv sync
           extra_args=$(grep -v '^#' scripts/pipeline_sidecar.pyinstaller-args.txt | tr '\n' ' ')
+          # shellcheck disable=SC2086 # découpage voulu : liste d'arguments PyInstaller
           uv run pyinstaller --onefile --name pipeline-sidecar --paths . $extra_args scripts/pipeline_sidecar.py
       - name: Prepare sidecar binary
         run: node desktop-etl/scripts/prepare-sidecar-binary.mjs core/dist/pipeline-sidecar.exe

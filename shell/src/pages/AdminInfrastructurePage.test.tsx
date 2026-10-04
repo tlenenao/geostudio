@@ -169,3 +169,14 @@ test("affiche l'état de l'instance (santé, file de jobs)", async () => {
     screen.getByText(/File de jobs : en échec \(4 en attente ou en cours, 1 bloqué/),
   ).toBeInTheDocument();
 });
+
+test("affiche « non configuré » quand le slot CDC est absent (REV-274c)", async () => {
+  server.use(
+    http.get("https://core.test/v1/instance", () => HttpResponse.json({ adminToolsEnabled: true })),
+    http.get("https://core.test/v1/instance/status", () =>
+      HttpResponse.json({ ...statusBody(false), cdc: { ok: true, configured: false } }),
+    ),
+  );
+  render(<Harness />);
+  expect(await screen.findByText("CDC : non configuré")).toBeInTheDocument();
+});

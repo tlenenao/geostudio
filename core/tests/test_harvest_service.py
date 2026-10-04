@@ -636,3 +636,32 @@ def test_failed_run_dates_the_attempt_so_interval_is_respected(
     assert source.last_status == "error"
     assert source.last_run_at is not None
     assert source not in harvest_repo.list_due_sources(session)
+
+
+def test_consecutive_failures_count_up_and_reset_on_success(session, tenant_and_user, monkeypatch):
+    """REV-276d : compteur d'échecs consécutifs alimentant le backoff."""
+    tenant, user = tenant_and_user
+
+    def _raise(t):
+        connector = Mock()
+        connector.fetch = Mock(side_effect=RuntimeError("boom"))
+        return connector
+
+    monkeypatch.setattr(service, "get_connector", _raise)
+    source = harvest_repo.create_source(
+        session,
+        tenant_id=tenant.id,
+        owner_id=user.id,
+        type="stac",
+        url="https://a",
+        mode="reference",
+        enabled=True,
+        interval_minutes=None,
+    )
+    service.harvest_source(session, source)
+    service.harvest_source(session, source)
+    assert source.consecutive_failures == 2
+    monkeypatch.setattr(service, "get_connector", lambda t: _fake_connector([]))
+    service.harvest_source(session, source)
+    assert source.last_status == "ok"
+    assert source.consecutive_failures == 0

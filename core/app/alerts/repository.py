@@ -53,13 +53,19 @@ def mark_evaluated(
 
 
 def mark_notified(
-    session: Session, *, evaluation_id: str, status: str, error: str | None = None
+    session: Session,
+    *,
+    evaluation_id: str,
+    status: str,
+    error: str | None = None,
+    channels: dict | None = None,
 ) -> None:
     evaluation = session.get(AlertEvaluation, evaluation_id)
     if evaluation is None:
         return
     evaluation.notify_status = status
     evaluation.notify_error = error
+    evaluation.notify_channels = channels
     session.flush()
 
 
@@ -154,7 +160,9 @@ def list_due_rules(session: Session) -> list[tuple[str, str]]:
     due: list[tuple[str, str]] = []
     candidates = [
         (item_id, tenant_id, config)
-        for item_id, tenant_id, config in configs_repo.list_configs_by_kind(session, kind="alert")
+        for item_id, tenant_id, config in configs_repo.list_configs_by_kind(
+            session, kind="alert", refresh_enabled_only=True
+        )
         if config.alert is not None and config.alert.refreshPolicy.enabled
     ]
     latest_by_item = get_latest_evaluations_for_items(session, item_ids=[c[0] for c in candidates])

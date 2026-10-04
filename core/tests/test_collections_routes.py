@@ -572,7 +572,10 @@ def test_delete_collection_refuses_when_a_dataset_still_references_it(env):
 
     response = client.delete("/v1/collections/incidents")
     assert response.status_code == 409
-    assert "dataset" in response.json()["detail"]
+    assert response.json()["detail"] == (
+        "Suppression impossible : encore utilisé par un jeu de données. "
+        "Supprimez d'abord ces éléments."
+    )
     # la collection n'a pas été supprimée (refus, pas suppression partielle) :
     assert client.get("/v1/collections/incidents").status_code == 200
 

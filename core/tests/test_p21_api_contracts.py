@@ -103,6 +103,90 @@ def test_invalid_app_rejected(client):
     assert _post(client, app([{**ok, "visibleWhen": "a == 'x' && (b > 1)"}])).status_code == 201
 
 
+def test_time_player_props_are_validated_on_write(client):
+    def app(props):
+        item = {"id": "tp", "widget": "timePlayer", "x": 0, "y": 0, "w": 6, "h": 1, "props": props}
+        return {"kind": "app", "layout": {"type": "grid", "items": [item]}}
+
+    ok = {
+        "from": "2026-06-01",
+        "to": "2026-06-30",
+        "stepDays": 1,
+        "windowDays": 7,
+        "intervalMs": 1000,
+    }
+    assert _post(client, app(ok)).status_code == 201
+    assert _post(client, app({})).status_code == 201  # non configuré : accepté, le widget le dit
+    for bad in (
+        {**ok, "from": "01/06/2026"},
+        {**ok, "from": "2026-07-01"},  # from > to
+        {**ok, "stepDays": 0},
+        {**ok, "windowDays": 3661},
+        {**ok, "intervalMs": 100},
+        {**ok, "stepDays": 1.5},
+        {**ok, "stepDays": True},
+    ):
+        r = _post(client, app(bad))
+        assert r.status_code == 422, bad
+        assert "timePlayer" in r.json()["detail"] or "tp" in r.json()["detail"], bad
+
+
+def test_app_messages_must_target_existing_widgets_or_variables(client):
+    """REV-278c : un câblage vers un widget/une variable inexistants est refusé."""
+    items = [
+        {"id": "btn", "widget": "button", "x": 0, "y": 0, "w": 2, "h": 1},
+        {"id": "map", "widget": "map", "x": 2, "y": 0, "w": 4, "h": 4},
+    ]
+
+    def app(messages, variables=()):
+        return {
+            "kind": "app",
+            "layout": {"type": "grid", "items": items},
+            "messages": messages,
+            "variables": list(variables),
+        }
+
+    msg = {"from": "btn", "event": "clicked", "to": "map", "action": "flyTo"}
+    assert _post(client, app([msg])).status_code == 201
+    r = _post(client, app([{**msg, "to": "ghost"}]))
+    assert r.status_code == 422 and "ghost" in r.json()["detail"]
+    r = _post(client, app([{**msg, "from": "nobody"}]))
+    assert r.status_code == 422 and "nobody" in r.json()["detail"]
+    var = {"id": "v1", "name": "Ville"}
+    to_var = {**msg, "action": "set"}
+    assert _post(client, app([{**to_var, "to": "var:v1"}], [var])).status_code == 201
+    assert _post(client, app([{**to_var, "to": "var:v2"}], [var])).status_code == 422
+
+
+def test_app_messages_accept_nested_widgets_and_page_on_enter(client):
+    nested = {"id": "inner", "widget": "text", "x": 0, "y": 0, "w": 2, "h": 1}
+    modal = {
+        "id": "dlg",
+        "widget": "modal",
+        "x": 0,
+        "y": 0,
+        "w": 2,
+        "h": 1,
+        "props": {"title": "M", "items": [nested]},
+    }
+    page = {
+        "id": "p1",
+        "name": "P1",
+        "layout": {"type": "grid", "items": [modal]},
+        "onEnter": [{"from": "p1", "event": "enter", "to": "dlg", "action": "open"}],
+    }
+    config = {
+        "kind": "app",
+        "layout": {"type": "grid", "items": []},
+        "pages": [page],
+        "messages": [{"from": "inner", "event": "clicked", "to": "dlg", "action": "close"}],
+    }
+    assert _post(client, config).status_code == 201
+    bad = copy.deepcopy(config)
+    bad["pages"][0]["onEnter"][0]["to"] = "nowhere"
+    assert _post(client, bad).status_code == 422
+
+
 @pytest.mark.parametrize(
     "path",
     [

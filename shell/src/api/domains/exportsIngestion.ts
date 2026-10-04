@@ -96,6 +96,7 @@ export function createExportsIngestionMethods(base: ItemClientBase): ExportsInge
         errorMessage: string | null;
         collectionId: string | null;
         itemId: string | null;
+        itemResourceType?: string | null;
       }>("GET", `/uploads/${jobId}`);
     },
 

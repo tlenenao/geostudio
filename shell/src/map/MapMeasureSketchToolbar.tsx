@@ -368,6 +368,13 @@ export function MapMeasureSketchToolbar({
         setShapes((s) => [...s, { kind: "freehand", points: captured, color: colorRef.current }]);
       }
     }
+    // REV-286(e) : touchcancel = geste interrompu par le système, pas validé.
+    function onCancel() {
+      if (!drawingRef.current) return;
+      drawingRef.current = false;
+      freehandRef.current = [];
+      setFreehandPoints([]);
+    }
     // P31.06 : MapLibre n'émet mousedown/move/up QUE pour la souris ; au doigt
     // il émet touchstart/move/end (même `lngLat`). Mêmes handlers.
     const events: [string, (e: unknown) => void][] = [
@@ -377,7 +384,7 @@ export function MapMeasureSketchToolbar({
       ["touchstart", onMouseDown],
       ["touchmove", onMouseMove],
       ["touchend", onMouseUp],
-      ["touchcancel", onMouseUp],
+      ["touchcancel", onCancel],
     ];
     for (const [ev, h] of events) map.on(ev as never, h as never);
     return () => {

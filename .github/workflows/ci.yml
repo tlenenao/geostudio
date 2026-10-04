@@ -29,7 +29,7 @@ jobs:
           docker run -d --name ci-postgres \
             -e POSTGRES_USER=gis -e POSTGRES_PASSWORD=gis -e POSTGRES_DB=gis \
             -p 5432:5432 geostudio-postgis-ci:latest
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             docker exec ci-postgres pg_isready -U gis && break
             sleep 2
           done
@@ -60,7 +60,7 @@ jobs:
             -p 5432:5432 geostudio-postgis-ci:latest \
             -c wal_level=logical \
             -c output_plugin_libraries=wal2json,pgoutput,test_decoding
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             docker exec ci-postgres pg_isready -U gis && break
             sleep 2
           done
@@ -129,7 +129,7 @@ jobs:
           docker run -d --name ci-postgres \
             -e POSTGRES_USER=gis -e POSTGRES_PASSWORD=gis -e POSTGRES_DB=gis_stac \
             -p 5432:5432 geostudio-postgis-ci:latest
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             docker exec ci-postgres pg_isready -U gis && break
             sleep 2
           done
@@ -149,7 +149,7 @@ jobs:
         run: |
           nohup uv run uvicorn app.main:app --host 0.0.0.0 --port 8200 \
             > core-stac.log 2>&1 &
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             curl -sf http://localhost:8200/health > /dev/null && break
             sleep 2
           done
@@ -264,7 +264,7 @@ jobs:
           docker compose up -d postgis keycloak core shell
       - name: Wait for shell to be reachable
         run: |
-          for i in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             curl -sf http://localhost:8300/ > /dev/null && break
             sleep 5
           done

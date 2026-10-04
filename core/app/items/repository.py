@@ -6,7 +6,8 @@ from datetime import UTC, datetime
 
 import procrastinate
 from opentelemetry import metrics
-from sqlalchemy import func, or_, select
+from sqlalchemy import cast, func, or_, select
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session, defer
 
 from app.items.models import Item
@@ -617,9 +618,14 @@ def list_published_items(
 
     # id en départage : OFFSET SQL instable sinon sur created_at égaux (P24.05).
     order = (Item.created_at.desc(), Item.id)
+    if tag and session.get_bind().dialect.name == "postgresql":
+        # REV-279e : filtre en SQL sur Postgres (jsonb @>), pagination et total
+        # en SQL ; le chemin Python ci-dessous ne sert plus qu'à SQLite (tests).
+        query = query.where(cast(Item.keywords, JSONB).contains([tag]))
+        tag = None
     if tag:
-        # Tag en Python (colonne JSON générique, pas d'opérateur portable
-        # SQLite/Postgres) mais sur (id, keywords) seulement : on ne charge
+        # Tag en Python (SQLite seulement, Postgres filtre en SQL ci-dessus —
+        # REV-279e), sur (id, keywords) seulement : on ne charge
         # les lignes complètes que pour la page demandée (P24.05).
         tagged = session.execute(
             query.with_only_columns(Item.id, Item.keywords).order_by(*order)

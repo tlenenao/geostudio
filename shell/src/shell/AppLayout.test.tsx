@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, vi } from "vitest";
-import { MemoryRouter } from "react-router-dom";
+import { Link, MemoryRouter } from "react-router-dom";
 import { http, HttpResponse } from "msw";
 import { server } from "../test/msw/server";
 import { createItemClient } from "../api/itemClient";
@@ -140,4 +140,25 @@ test("Ctrl/Cmd+K ouvre la palette de commandes (montage paresseux)", async () =>
   expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   await userEvent.keyboard("{Control>}k{/Control}");
   expect(await screen.findByRole("combobox")).toBeInTheDocument();
+});
+
+test("REV-286(f) : changer de route remet le défilement de <main> en haut", async () => {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = createItemClient({ coreUrl: "https://core.test", getToken: () => "t" });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <ItemClientProvider client={client}>
+        <MemoryRouter initialEntries={["/a"]}>
+          <AppLayout>
+            <Link to="/b">aller plus loin</Link>
+          </AppLayout>
+        </MemoryRouter>
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  const main = screen.getByRole("main");
+  main.scrollTop = 500;
+  expect(main.scrollTop).toBe(500);
+  await userEvent.click(screen.getByRole("link", { name: "aller plus loin" }));
+  expect(main.scrollTop).toBe(0);
 });

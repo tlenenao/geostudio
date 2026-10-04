@@ -19,10 +19,25 @@ const PROTECTED_TOOLS: { tool: AdminToolName; label: string }[] = [
   { tool: "grafana", label: "Grafana" },
 ];
 
-function Probe({ label, ok, detail }: { label: string; ok: boolean; detail?: string }) {
+function Probe({
+  label,
+  ok,
+  detail,
+  notConfigured,
+}: {
+  label: string;
+  ok: boolean;
+  detail?: string;
+  notConfigured?: boolean;
+}) {
+  const state = notConfigured
+    ? t("infrastructure.statusNotConfigured")
+    : ok
+      ? t("infrastructure.statusOk")
+      : t("infrastructure.statusDown");
   return (
     <li>
-      {label} : {ok ? t("infrastructure.statusOk") : t("infrastructure.statusDown")}
+      {label} : {state}
       {detail ? ` (${detail})` : ""}
     </li>
   );
@@ -89,7 +104,11 @@ export function AdminInfrastructurePage() {
                   <ul>
                     <Probe label="PostgreSQL" ok={status.postgres.ok} />
                     <Probe label="S3" ok={status.s3.ok} />
-                    <Probe label="CDC" ok={status.cdc.ok && status.cdc.slotActive === true} />
+                    <Probe
+                      label="CDC"
+                      ok={status.cdc.ok && status.cdc.slotActive === true}
+                      notConfigured={status.cdc.ok && status.cdc.configured === false}
+                    />
                     <Probe
                       label={t("infrastructure.statusJobs")}
                       ok={status.jobs.ok && !status.jobs.stalled}

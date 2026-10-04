@@ -6,6 +6,7 @@ from app import db
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user, get_current_user_optional
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
+from app.items.repository import create_item
 from app.main import create_app
 from app.roles.repository import create_role
 from app.tenants.repository import get_or_create_default_tenant
@@ -136,3 +137,64 @@ def test_summary_requires_tasks_view_all_not_just_tasks_view(env):
     body = resp.json()
     assert body["totalActions"] == 2
     assert len(body["byActor"]) == 2
+
+
+def test_tasks_carry_title_of_readable_items_only(env):
+    app, client, Session, creator, admin, reader = env
+    with Session() as s:
+        tenant_id = s.get(User, creator.id).tenant_id
+        item = create_item(
+            s,
+            tenant_id=tenant_id,
+            owner_id=creator.id,
+            resource_type="dataset",
+            title="Nettoyage des adresses",
+        )
+        write_audit(
+            s,
+            tenant_id=tenant_id,
+            actor_id=creator.id,
+            actor_kind="user",
+            action="pipeline.run",
+            object_type="pipeline",
+            object_id=item.id,
+        )
+        s.commit()
+        item_id = item.id
+
+    _as(app, Session, creator)
+    tasks = client.get("/v1/usage/tasks").json()["tasks"]
+    titles = {t["objectId"]: t["objectTitle"] for t in tasks}
+    assert titles[item_id] == "Nettoyage des adresses"
+    assert titles["p1"] is None  # objet sans item correspondant
+
+    # tasks.view_all n'ouvre pas la lecture d'un item privé d'un autre.
+    _as(app, Session, admin)
+    tasks = client.get(f"/v1/usage/tasks?actorId={creator.id}").json()["tasks"]
+    assert {t["objectId"]: t["objectTitle"] for t in tasks}[item_id] is None
+
+
+def test_summary_by_resource_carries_readable_title(env):
+    app, client, Session, creator, admin, reader = env
+    with Session() as s:
+        tenant_id = s.get(User, admin.id).tenant_id
+        item = create_item(
+            s, tenant_id=tenant_id, owner_id=admin.id, resource_type="dataset", title="Parcs"
+        )
+        write_audit(
+            s,
+            tenant_id=tenant_id,
+            actor_id=admin.id,
+            actor_kind="user",
+            action="export.run",
+            object_type="dataset",
+            object_id=item.id,
+        )
+        s.commit()
+        item_id = item.id
+
+    _as(app, Session, admin)
+    by_resource = client.get("/v1/usage/summary").json()["byResource"]
+    titles = {r["objectId"]: r["objectTitle"] for r in by_resource}
+    assert titles[item_id] == "Parcs"
+    assert titles["d1"] is None

@@ -218,6 +218,9 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async runHarvestSource(..._args: unknown[]) {
       return unsupported();
     },
+    async listHarvestSourceRecords(..._args: unknown[]) {
+      return unsupported();
+    },
     async getInstanceStatus(..._args: unknown[]) {
       return unsupported();
     },
@@ -452,6 +455,9 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
       return unsupported();
     },
     async updateNotificationPreference(..._args: unknown[]) {
+      return unsupported();
+    },
+    async geocode(..._args: unknown[]) {
       return unsupported();
     },
     async listUsageTasks(..._args: unknown[]) {

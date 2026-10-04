@@ -215,12 +215,12 @@ services:
       # `labels: !override` remplace intégralement la liste du fichier de
       # base, donc ces deux routeurs doivent être redéclarés ici pour ne
       # pas disparaître silencieusement en production, piège CLAUDE.md n°2).
-      - traefik.http.routers.seo-static.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && (Path(`/sitemap.xml`) || Path(`/robots.txt`))
+      - traefik.http.routers.seo-static.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && (Path(`/sitemap.xml`) || PathRegexp(`^/sitemap-[0-9]+\.xml$$`) || Path(`/robots.txt`))
       - traefik.http.routers.seo-static.entrypoints=web
       - traefik.http.routers.seo-static.priority=20
       - traefik.http.routers.seo-static.service=core
       - traefik.http.routers.seo-static.middlewares=security-headers@docker,rate-limit@docker,compress@docker,seo-static-rewrite@docker,csp-dynamic@file
-      - traefik.http.middlewares.seo-static-rewrite.replacepathregex.regex=^/(sitemap\.xml|robots\.txt)$$
+      - traefik.http.middlewares.seo-static-rewrite.replacepathregex.regex=^/(sitemap(?:-[0-9]+)?\.xml|robots\.txt)$$
       - traefik.http.middlewares.seo-static-rewrite.replacepathregex.replacement=/v1/public/$$1
       - traefik.http.routers.seo-bots.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && PathPrefix(`/sites/`) && HeaderRegexp(`User-Agent`, `(?i)(facebookexternalhit|Twitterbot|Slackbot|LinkedInBot|Discordbot|WhatsApp|TelegramBot|Googlebot|bingbot)`)
       - traefik.http.routers.seo-bots.entrypoints=web
@@ -326,6 +326,7 @@ services:
       - --providers.file.watch=true
       - --ping=true
       - --entrypoints.web.address=:80
+      - --entrypoints.traefik.address=127.0.0.1:8080
     depends_on:
       - docker-socket-proxy
     ports: !reset []
@@ -395,13 +396,15 @@ services:
       BACKUP_S3_ACCESS_KEY: ${BACKUP_S3_ACCESS_KEY:-}
       BACKUP_S3_SECRET_KEY: ${BACKUP_S3_SECRET_KEY:-}
       BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-geostudio-backups}
+      BACKUP_ALERT_WEBHOOK_URL: ${BACKUP_ALERT_WEBHOOK_URL:-}
     volumes:
       - backup-archives:/backup/archives
     # P27.08 : fraîcheur — `.last_success` est touché par backup.sh après un
     # succès COMPLET (envoi hors-site compris s'il est configuré). Plus vieux
     # que 26 h (1560 min) = unhealthy. start_period couvre le premier cycle
     # (planifié une fois par jour, BACKUP_HOUR). Pas de règle Grafana : le
-    # profil observability ne scrape pas l'état Docker.
+    # profil observability ne scrape pas l'état Docker — l'alerte part de
+    # l'entrypoint (BACKUP_ALERT_WEBHOOK_URL) quand un jour est abandonné.
     healthcheck:
       test: ["CMD-SHELL", "test -n \"$$(find /backup/archives/.last_success -mmin -1560 2>/dev/null)\""]
       interval: 15m

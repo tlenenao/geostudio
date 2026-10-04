@@ -27,6 +27,8 @@ def test_make_engine_disables_psycopg_autoprepare_on_postgres(monkeypatch):
         return _StubEngine()
 
     monkeypatch.setattr(db_module, "create_engine", fake_create_engine)
+    # the stub is not a real Engine: neutralise the UTC "connect" listener (REV-280g)
+    monkeypatch.setattr(db_module.event, "listens_for", lambda *a, **k: lambda fn: fn)
 
     make_engine("postgresql+psycopg://user:pass@unreachable-host:1/db")
 

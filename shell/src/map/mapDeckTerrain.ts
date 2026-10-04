@@ -82,6 +82,11 @@ export function applyDeckLayers(
 // canvas, donc tout le DOM détaché de l'éditeur (~380 nœuds par ouverture).
 // ponytail: accès à `gl.luma` (détail interne de luma.gl 9) ; à retirer si
 // deck.gl détruit lui-même ce contexte à `MapboxOverlay.onRemove`.
+// REV-293 : en `vite dev`, StrictMode double-monte MapView ; une croissance
+// résiduelle y a été mesurée (cf. .superpowers/sdd/backlogB-L5a-293-mesure.txt),
+// absente du build de production (e2e/map-editor-leak.spec.ts). Acceptée :
+// chaque montage a sa propre carte, la libération n'est appelée qu'une fois
+// par carte — une garde d'idempotence (WeakSet) n'y changerait rien.
 export function releaseLumaCanvasObserver(map: maplibregl.Map): void {
   try {
     const gl = map.getCanvas().getContext("webgl2") as {

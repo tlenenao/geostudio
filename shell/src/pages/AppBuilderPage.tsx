@@ -40,7 +40,7 @@ import { getWidget } from "../builder/registry";
 import { BREAKPOINTS, nextFreePosition, type Breakpoint } from "../builder/grid";
 import { getPages, getPageLayout, setPageLayout } from "../builder/pages";
 import { getConfigExpressionErrors } from "../builder/configExpressionErrors";
-import { pruneMessagesForIds } from "../builder/actionMessages";
+import { pruneMessagesForIds, sanitizeDanglingMessages } from "../builder/actionMessages";
 import { Button } from "../ui/kit/Button";
 import { IconButton } from "../ui/kit/IconButton";
 import { Popover } from "../ui/kit/Popover";
@@ -538,6 +538,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                   variables={draft.variables ?? []}
                   onChange={updateSelectedProps}
                   onVisibleWhenChange={updateSelectedVisibleWhen}
+                  generateItemId={copilotEnabled && !readOnly ? pk : undefined}
                 />
                 <p className="mb-1 mt-3 text-xs font-medium text-ink-2">
                   {t("appBuilder.dataSourcesLabel")}
@@ -640,17 +641,24 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                     size="sm"
                     className="w-fit"
                     disabled={save.isPending || expressionErrors.length > 0 || readOnly}
-                    onClick={() =>
+                    onClick={() => {
+                      // Le cœur refuse (422) les câblages orphelins : on les
+                      // retire à l'enregistrement (apps anciennes, ops copilote).
+                      const clean = sanitizeDanglingMessages(draft);
                       save.mutate(
-                        { ...draft, baseVersion: baseVersionRef.current },
+                        { ...clean, baseVersion: baseVersionRef.current },
                         {
                           onSuccess: (version) => {
                             baseVersionRef.current = version;
+                            if (clean !== draft) {
+                              skipDirtyRef.current = true;
+                              setDraft(clean);
+                            }
                             setHasUnsavedChanges(false);
                           },
                         },
-                      )
-                    }
+                      );
+                    }}
                   >
                     {t("appBuilder.save")}
                   </Button>

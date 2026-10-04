@@ -379,16 +379,20 @@ export function CatalogPage({
                   );
                 })()}
               {query.isSuccess && query.data.items.length > 0 && (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {query.data.items.map((item) => (
-                    <ItemCard
-                      key={item.pk}
-                      item={item}
-                      onOpen={onOpenItem}
-                      actions={<ItemActions item={item} />}
-                    />
-                  ))}
-                </div>
+                <>
+                  {/* REV-284(c) : repère de section pour la navigation par titres. */}
+                  <h2 className="sr-only">{t("catalog.resultsHeading")}</h2>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {query.data.items.map((item) => (
+                      <ItemCard
+                        key={item.pk}
+                        item={item}
+                        onOpen={onOpenItem}
+                        actions={<ItemActions item={item} />}
+                      />
+                    ))}
+                  </div>
+                </>
               )}
               {total > 0 && (
                 <div className="mt-auto flex items-center gap-3">

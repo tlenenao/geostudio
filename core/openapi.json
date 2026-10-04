@@ -2145,6 +2145,45 @@
         "title": "GcsCredentialsPayload",
         "type": "object"
       },
+      "GeocodeResponse": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/GeocodeResult"
+            },
+            "title": "Results",
+            "type": "array"
+          }
+        },
+        "required": [
+          "results"
+        ],
+        "title": "GeocodeResponse",
+        "type": "object"
+      },
+      "GeocodeResult": {
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "lat": {
+            "title": "Lat",
+            "type": "number"
+          },
+          "lon": {
+            "title": "Lon",
+            "type": "number"
+          }
+        },
+        "required": [
+          "label",
+          "lon",
+          "lat"
+        ],
+        "title": "GeocodeResult",
+        "type": "object"
+      },
       "GroupMemberRead": {
         "properties": {
           "email": {
@@ -2281,6 +2320,7 @@
             "type": "string"
           },
           "url": {
+            "maxLength": 2048,
             "minLength": 1,
             "title": "Url",
             "type": "string"
@@ -2336,6 +2376,7 @@
           "url": {
             "anyOf": [
               {
+                "maxLength": 2048,
                 "minLength": 1,
                 "type": "string"
               },
@@ -2483,6 +2524,17 @@
               }
             ],
             "title": "Itemid"
+          },
+          "itemResourceType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Itemresourcetype"
           },
           "status": {
             "title": "Status",
@@ -5156,6 +5208,17 @@
             "title": "Objectid",
             "type": "string"
           },
+          "objectTitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objecttitle"
+          },
           "objectType": {
             "title": "Objecttype",
             "type": "string"
@@ -5342,6 +5405,17 @@
           "objectId": {
             "title": "Objectid",
             "type": "string"
+          },
+          "objectTitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objecttitle"
           },
           "objectType": {
             "title": "Objecttype",
@@ -8621,6 +8695,72 @@
         "summary": "Patch Extension"
       }
     },
+    "/v1/geocode": {
+      "get": {
+        "operationId": "geocode_v1_geocode_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 3,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 5,
+              "maximum": 10,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeocodeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Geocode",
+        "tags": [
+          "geocoding"
+        ]
+      }
+    },
     "/v1/groups": {
       "get": {
         "operationId": "list_groups_v1_groups_get",
@@ -11070,6 +11210,38 @@
           }
         },
         "summary": "Public Robots"
+      }
+    },
+    "/v1/public/sitemap-{n}.xml": {
+      "get": {
+        "operationId": "public_sitemap_slice_v1_public_sitemap__n__xml_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "n",
+            "required": true,
+            "schema": {
+              "title": "N",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Public Sitemap Slice"
       }
     },
     "/v1/public/sitemap.xml": {

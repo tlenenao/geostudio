@@ -1445,6 +1445,19 @@ def test_seo_router_is_not_gated_by_admin_auth(compose, router):
 
 
 @pytest.mark.parametrize("compose", [BASE, PROD], ids=["base", "prod"])
+def test_seo_static_router_serves_sitemap_slices(compose):
+    """REV-289a : /sitemap-N.xml (tranches de l'index) doit atteindre le cœur,
+    sinon le catch-all shell répond le HTML de la SPA aux robots."""
+    labels = _traefik_labels(services(compose)["core"])
+    assert "sitemap-[0-9]+" in labels["traefik.http.routers.seo-static.rule"]
+    prefix = "traefik.http.middlewares.seo-static-rewrite.replacepathregex"
+    regex = labels[f"{prefix}.regex"].replace("$$", "$")
+    replacement = labels[f"{prefix}.replacement"].replace("$$1", r"\1")
+    for path in ("/sitemap.xml", "/sitemap-3.xml", "/robots.txt"):
+        assert re.sub(regex, replacement, path) == f"/v1/public{path}", path
+
+
+@pytest.mark.parametrize("compose", [BASE, PROD], ids=["base", "prod"])
 def test_embed_router_is_exempted_from_frame_deny(compose):
     """GAP-19 : /embed/:token doit rester chargeable dans l'<iframe> d'un
     site tiers. security-headers (frameDeny=true, sur le routeur shell
@@ -1549,6 +1562,21 @@ def test_prod_traefik_command_also_enables_file_provider():
         "l'overlay prod ne doit jamais perdre --providers.docker=true en "
         "ajoutant le provider fichier (command: remplace, ne fusionne pas)"
     )
+
+
+def test_dev_tooling_host_ports_bind_loopback_only():
+    """REV-274d : Grafana (Viewer anonyme), OTLP, Martin et TiTiler ne
+    doivent pas être joignables depuis le réseau sur un poste de dev."""
+    svc = services(BASE)
+    for name in ("martin", "titiler", "otel-lgtm"):
+        for port in svc[name]["ports"]:
+            assert str(port).startswith("127.0.0.1:"), f"{name}: port {port!r} exposé sur 0.0.0.0"
+
+
+def test_prod_traefik_api_entrypoint_is_loopback_only():
+    """REV-281g : l'entrypoint `traefik` (:8080, /ping) partage le réseau
+    tailscale en prod — il doit écouter sur la boucle locale seulement."""
+    assert "--entrypoints.traefik.address=127.0.0.1:8080" in services(PROD)["traefik"]["command"]
 
 
 def test_prod_traefik_volumes_also_carries_csp_dynamic_conf():

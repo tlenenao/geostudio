@@ -85,7 +85,10 @@ def test_delete_item_refuses_when_an_alert_rule_still_references_it(monkeypatch,
     response = client.delete(f"/v1/items/{dataset_item_id}")
 
     assert response.status_code == 409
-    assert "alert" in response.json()["detail"]
+    assert response.json()["detail"] == (
+        "Suppression impossible : encore utilisé par une règle d'alerte. "
+        "Supprimez d'abord ces éléments."
+    )
     # ni le Dataset ni sa config n'ont été supprimés (refus, pas suppression
     # partielle) :
     assert client.get(f"/v1/items/{dataset_item_id}").status_code == 200

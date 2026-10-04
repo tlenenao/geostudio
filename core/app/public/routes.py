@@ -20,8 +20,8 @@ from app.tenants.repository import DEFAULT_TENANT_SLUG
 router = APIRouter(prefix="/public")
 
 # Plafond du protocole sitemaps (50 000 URL par fichier). Appel interne : la
-# borne pageSize<=100 ne vaut que pour la route anonyme /items.
-# ponytail: un seul fichier ; index de sitemaps au-delà de 50 000 pages publiques.
+# borne pageSize<=100 ne vaut que pour la route anonyme /items. REV-289a :
+# au-delà, /sitemap.xml devient un index de tranches /sitemap-{n}.xml.
 _SITEMAP_MAX_URLS = 50_000
 
 # Surfaces anonymes : cache partagé court (aucune donnée privée n'y figure).
@@ -82,8 +82,13 @@ def _render_social_preview_html(
     )
 
 
-def _thumb_url(base_url: str, item: ItemRead) -> str | None:
-    return f"{base_url}/api/v1{item.thumbnailUrl}" if item.thumbnailUrl else None
+def _thumb_url(item: ItemRead) -> str | None:
+    # REV-289b : URL publique du cœur = réglage de déploiement (comme l'importeur),
+    # plus de préfixe Traefik « /api » codé en dur.
+    if not item.thumbnailUrl:
+        return None
+    core = os.environ.get("CORE_BASE_URL", "http://localhost:8200").rstrip("/")
+    return f"{core}/v1{item.thumbnailUrl}"
 
 
 @router.get("/items", response_model=ItemPage)
@@ -124,20 +129,53 @@ def get_public_site(
     return result
 
 
+def _sitemap_slice(session: Session, n: int) -> tuple[list[ItemRead], list[str], int]:
+    """Tranche n (1-based) de _SITEMAP_MAX_URLS URL — items publiés puis
+    datasets publics — et le nombre total d'URL publiques."""
+    cap = _SITEMAP_MAX_URLS
+    page = items_repo.list_published_items(session, page=n, page_size=cap)
+    datasets = [
+        c.id
+        for c in collections_repo.list_visible_collections(
+            session, tenant_id=DEFAULT_TENANT_SLUG, user_id=None, can_see_all=False
+        )
+    ]
+    start = max(0, (n - 1) * cap - page.total)
+    return page.items, datasets[start : start + cap - len(page.items)], page.total + len(datasets)
+
+
+def _xml(body: str) -> Response:
+    return Response(content=body, media_type="application/xml", headers=_CACHE)
+
+
 @router.get("/sitemap.xml", response_class=Response)
 @router.head("/sitemap.xml", include_in_schema=False)
 def public_sitemap(session: Session = Depends(get_session, scope="function")) -> Response:
-    page = items_repo.list_published_items(session, page=1, page_size=_SITEMAP_MAX_URLS)
-    datasets = collections_repo.list_visible_collections(
-        session, tenant_id=DEFAULT_TENANT_SLUG, user_id=None, can_see_all=False
-    )
     base_url = os.environ["PUBLIC_BASE_URL"]
-    body = _render_sitemap_xml(
-        base_url,
-        page.items,
-        [c.id for c in datasets][: max(0, _SITEMAP_MAX_URLS - len(page.items))],
+    items, dataset_ids, total = _sitemap_slice(session, 1)
+    if total <= _SITEMAP_MAX_URLS:
+        return _xml(_render_sitemap_xml(base_url, items, dataset_ids))
+    slices = -(-total // _SITEMAP_MAX_URLS)  # division entière par excès
+    entries = "".join(
+        f"<sitemap><loc>{xml_escape(f'{base_url}/sitemap-{n}.xml')}</loc></sitemap>"
+        for n in range(1, slices + 1)
     )
-    return Response(content=body, media_type="application/xml", headers=_CACHE)
+    ns = "http://www.sitemaps.org/schemas/sitemap/0.9"
+    return _xml(
+        f'<?xml version="1.0" encoding="UTF-8"?><sitemapindex xmlns="{ns}">{entries}</sitemapindex>'
+    )
+
+
+@router.get("/sitemap-{n}.xml", response_class=Response)
+@router.head("/sitemap-{n}.xml", include_in_schema=False)
+def public_sitemap_slice(
+    n: int, session: Session = Depends(get_session, scope="function")
+) -> Response:
+    items, dataset_ids, total = _sitemap_slice(session, max(n, 1))
+    # Pas de tranche sous le plafond (/sitemap.xml est alors un urlset), ni hors plage.
+    if n < 1 or total <= _SITEMAP_MAX_URLS or not (items or dataset_ids):
+        raise HTTPException(status_code=404, detail="sitemap slice not found")
+    return _xml(_render_sitemap_xml(os.environ["PUBLIC_BASE_URL"], items, dataset_ids))
 
 
 @router.get("/robots.txt", response_class=Response)
@@ -163,12 +201,11 @@ def public_site_social_preview(
     item = items_repo.get_published_site_by_slug(session, slug=slug)
     if item is None:
         raise HTTPException(status_code=404, detail="site not found")
-    base_url = os.environ["PUBLIC_BASE_URL"]
     return _preview(
         title=item.title,
         description=item.abstract or "",
         path=f"/sites/{item.slug}",
-        image_url=_thumb_url(base_url, item),
+        image_url=_thumb_url(item),
     )
 
 
@@ -179,13 +216,12 @@ def public_item_social_preview(
     item = items_repo.get_published_item(session, item_id=item_id, tenant_id=DEFAULT_TENANT_SLUG)
     if item is None:
         raise HTTPException(status_code=404, detail="item not found")
-    base_url = os.environ["PUBLIC_BASE_URL"]
     return _preview(
         title=item.title,
         description=item.abstract or "",
         path=f"/public/items/{item.pk}",
         og_type="article",
-        image_url=_thumb_url(base_url, item),
+        image_url=_thumb_url(item),
     )
 
 

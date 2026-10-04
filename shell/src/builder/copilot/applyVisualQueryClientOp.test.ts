@@ -130,7 +130,7 @@ describe("applyVisualQueryClientOp", () => {
 
   it("applies a valid join object on a known collection", () => {
     const s = setters();
-    const join = { collectionId: "communes", on: "code_insee", how: "inner" as const };
+    const join = { collectionId: "communes", on: "titre", how: "inner" as const };
     applyVisualQueryClientOp({ op: "applyVisualQueryDraft", args: { join } }, s, KNOWN);
     expect(s.setJoin).toHaveBeenCalledWith(join);
   });
@@ -275,10 +275,7 @@ describe("applyVisualQueryClientOp", () => {
     expect(s.setSummary).not.toHaveBeenCalled();
   });
 
-  // M1 (revue finale de branche GAP-17) : CopilotChat affichait « Requête
-  // visuelle mise à jour. » même quand tout avait été rejeté. Le retour dit
-  // si quelque chose a réellement été appliqué.
-  it("reports whether anything was actually applied", () => {
+  it("reports per leg what was applied and what was ignored (REV-184 1)", () => {
     expect(
       applyVisualQueryClientOp(
         {
@@ -288,7 +285,7 @@ describe("applyVisualQueryClientOp", () => {
         setters(),
         KNOWN,
       ),
-    ).toBe(true);
+    ).toEqual({ applied: ["filters"], ignored: [] });
     expect(
       applyVisualQueryClientOp(
         {
@@ -298,9 +295,80 @@ describe("applyVisualQueryClientOp", () => {
         setters(),
         KNOWN,
       ),
-    ).toBe(false);
-    expect(applyVisualQueryClientOp({ op: "somethingElse", args: {} }, setters(), KNOWN)).toBe(
-      false,
+    ).toEqual({ applied: [], ignored: ["filters"] });
+    expect(applyVisualQueryClientOp({ op: "somethingElse", args: {} }, setters(), KNOWN)).toEqual({
+      applied: [],
+      ignored: [],
+    });
+  });
+
+  it("flags the filters leg as ignored when only some rows were dropped", () => {
+    expect(
+      applyVisualQueryClientOp(
+        {
+          op: "applyVisualQueryDraft",
+          args: {
+            filters: [
+              { column: "titre", operator: "eq", value: "y" },
+              { column: "colonne_hallucinee", operator: "eq", value: "x" },
+            ],
+          },
+        },
+        setters(),
+        KNOWN,
+      ),
+    ).toEqual({ applied: ["filters"], ignored: ["filters"] });
+  });
+
+  it("valid summary + invalid join: summary applied, join reported as ignored", () => {
+    const s = setters();
+    const result = applyVisualQueryClientOp(
+      {
+        op: "applyVisualQueryDraft",
+        args: {
+          join: { collectionId: "collection_inventee", on: "titre", how: "inner" },
+          summary: {
+            groupBy: ["titre"],
+            metrics: [{ alias: "n", function: "count", sourceColumn: null, p: null }],
+          },
+        },
+      },
+      s,
+      KNOWN,
     );
+    expect(result).toEqual({ applied: ["summary"], ignored: ["join"] });
+    expect(s.setJoin).not.toHaveBeenCalled();
+  });
+
+  // REV-184(3) : `USING (on)` — la colonne doit exister côté base.
+  it("ignores a join on a real collection whose `on` column is not a base column", () => {
+    const s = setters();
+    applyVisualQueryClientOp(
+      {
+        op: "applyVisualQueryDraft",
+        args: { join: { collectionId: "communes", on: "colonne_hallucinee", how: "inner" } },
+      },
+      s,
+      KNOWN,
+    );
+    expect(s.setJoin).not.toHaveBeenCalled();
+  });
+
+  // REV-184(2) : le schéma client n'exige que alias/function — un LLM qui
+  // omet sourceColumn/p (au lieu de null) ne doit pas faire rejeter le résumé.
+  it("accepts a count metric that omits sourceColumn and p, normalized to null", () => {
+    const s = setters();
+    applyVisualQueryClientOp(
+      {
+        op: "applyVisualQueryDraft",
+        args: { summary: { groupBy: ["titre"], metrics: [{ alias: "n", function: "count" }] } },
+      },
+      s,
+      KNOWN,
+    );
+    expect(s.setSummary).toHaveBeenCalledWith({
+      groupBy: ["titre"],
+      metrics: [{ alias: "n", function: "count", sourceColumn: null, p: null }],
+    });
   });
 });

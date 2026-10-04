@@ -21,6 +21,7 @@ import { registerTabsWidget } from "./tabs";
 import { registerModalWidget } from "./modal";
 import { registerDrawerWidget } from "./drawer";
 import { registerVariableInputWidget } from "./variableInput";
+import { registerTimePlayerWidget } from "./timePlayer";
 import { t } from "../../i18n";
 
 // Replaces {{var:nom}} tokens from ctx.variables (always, regardless of any
@@ -212,4 +213,5 @@ export function registerBuiltinWidgets(): void {
   registerModalWidget();
   registerDrawerWidget();
   registerVariableInputWidget();
+  registerTimePlayerWidget();
 }

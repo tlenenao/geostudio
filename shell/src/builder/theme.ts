@@ -2,6 +2,7 @@
 import type { CSSProperties } from "react";
 import type { Theme, ThemeColors } from "../api/types";
 
+// gs-raw-color-ok-begin: couleurs par défaut du thème d'APP (choisies par l'auteur, pas l'ambiance du studio)
 export const DEFAULT_THEME_COLORS: Required<ThemeColors> = {
   primary: "#2563eb",
   background: "#ffffff",
@@ -10,6 +11,7 @@ export const DEFAULT_THEME_COLORS: Required<ThemeColors> = {
   muted: "#64748b",
   border: "#e2e8f0",
 };
+// gs-raw-color-ok-end
 // i18n-ok: pile de polices CSS (« sans-serif »), pas du français
 export const DEFAULT_FONT = "system-ui, sans-serif";
 export const DEFAULT_RADIUS = "0.375rem";
@@ -52,4 +54,25 @@ export function themeToShellTokens(theme: Theme): CSSProperties {
     "--gs-control": colors.muted,
     color: colors.text,
   } as CSSProperties;
+}
+
+// REV-284(e) : ratio de contraste WCAG 2.x entre deux couleurs #rgb/#rrggbb
+// (format de <input type="color">) ; null pour tout autre format.
+export function contrastRatio(a: string, b: string): number | null {
+  const la = relativeLuminance(a);
+  const lb = relativeLuminance(b);
+  if (la === null || lb === null) return null;
+  const [hi, lo] = la > lb ? [la, lb] : [lb, la];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+function relativeLuminance(color: string): number | null {
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color.trim());
+  if (!m) return null;
+  const hex = m[1].length === 3 ? [...m[1]].map((c) => c + c).join("") : m[1];
+  const [r, g, b] = [0, 2, 4].map((i) => {
+    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }

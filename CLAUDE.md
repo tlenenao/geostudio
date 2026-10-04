@@ -192,7 +192,7 @@ cd ../shell
 npm run lint && npm run format:check
 node scripts/check-coverage.mjs coverage/coverage-summary.json \
   .coverage-threshold                    # seuil = shell/.coverage-threshold ; nettoyer dist/ + dist-export/ avant
-uvx pre-commit run --all-files           # 6 hooks (commitlint ne sort qu'au commit)
+uvx pre-commit run --all-files           # 7 hooks (commitlint ne sort qu'au commit)
 
 # régénérer la spec OpenAPI + les types TS — À FAIRE dès qu'une route ou un
 # modèle change (classe d'oubli n°1 du dépôt). La commande nue échoue en
@@ -651,6 +651,7 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   recherche STAC tolérante ; alertes (livraison tracée/rejouée/signée, cloche) ; 404/422 en RFC 7807, config stricte à l'écriture seulement, pagination bornée ; index `audit_log`/`configs`/`report_runs`, balayage des configs en 1 requête, catalogue public paginé en SQL, cache d'introspection ; agrégats DuckDB bornés (temps/threads/groupes), `asOf`/`pending`, compaction CDC par niveaux ; CI (base réelle exigée, actions épinglées par SHA, Node 22, timeouts, job `stack-smoke`), sauvegarde bornée + sonde de fraîcheur ; import de fichiers (bornes lat/lon, séparateur, typage CSV, item dataset, sondage borné) ; données complètes (carte importée en tuiles, tuile triée sur la PK, totaux annoncés, export WKT) ; accessibilité transverse (titres de route, repères `<main>`/`<h1>`, menu Actions Radix, `alertdialog`, jeton `--gs-control` 3:1, réglage de thème persistant) ; cohérence UI/i18n (glossaire, formats fr-FR, kit de page/état, détecteur i18n `.ts`). Reste : `REV-273`/`274`/`275`/`276`/`277`/`278`/`279`/`280`/`281`/`282`/`283`/`284`/`285`.
 - **Audit pré-release P22/P23/P26/P30/P32/P35/P36 (clôture : plan P01–P36 intégralement exécuté)** — erreurs RFC 7807 et bannière de connectivité à sondage sur tout appel cœur (règle ESLint `fetch`) ; outils MCP hors boucle d'événements + audit `mcp.tool_call`/`copilot.turn` + écritures du copilote confirmées par clic ; quotas items/collections/stockage au point unique de création ; carte via `ItemClient`, fuite luma.gl corrigée, `MapView` découpé ; canevas de pipeline au clavier ; catalogue public `/public`, sitemap/og ; CLAUDE.md réaligné. Revue finale : 5 Important corrigés. Reste : `REV-287` à `REV-293` (journeys non rejoués sur stack OIDC réelle, `REV-266`).
 - **Backlog plan A (L0 clôtures, L2 sécurité/intégrité, L3 pipelines)** — ferme REV-111/116/185/186/188/195/196/197/198/199/239/290 (`admin.collections.manage` en lecture, `bucketUrl` du secret blob, `authFetch` borné au cœur, `groupBy` + entrées dégénérées des transformers géométriques) ; partiels REV-271 (`If-Match` sur 4 éditeurs + MCP), REV-273 (épinglage DNS de l'egress, plafonds blob, SMTP TLS), REV-272/275 ; REV-269 inchangée ; reliquats `REV-294` à `REV-300`.
+- **Backlog plan B (L4 reliquats backend, L5 shell UX/copilote/features)** — ferme REV-104/184/251/254/265/287/289/293 ; partiels REV-102/183 (géocodage BAN `GET /v1/geocode`, NL→CEL `generate_cel_expression` pour `visibleWhen`, animation temporelle `timePlayer`) et REV-274/276 à 286/288 (lettres restantes L1/L6) ; reliquats `REV-301` à `REV-307`.
 
 ### Conventions tranchées (2026-09-01)
 

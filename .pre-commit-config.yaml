@@ -81,3 +81,11 @@ repos:
         language: system
         files: ^CLAUDE\.md$
         pass_filenames: false
+      # REV-281e : les workflows n'étaient validés que par yaml.safe_load.
+      # Image Docker (et non le hook Go distant) : elle embarque shellcheck,
+      # sans lequel les constats SC* des blocs `run:` sautent en silence.
+      - id: actionlint
+        name: actionlint (workflows GitHub)
+        language: docker_image
+        entry: rhysd/actionlint:1.7.7
+        files: ^\.github/workflows/.*\.ya?ml$

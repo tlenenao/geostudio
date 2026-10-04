@@ -579,7 +579,7 @@ def test_run_import_jsonlines_no_geometry_creates_tabular_collection_without_map
             geometry_mode="none",
         )
         s.commit()
-        assert result.item_id is None
+        assert result.item_id is not None and result.item_resource_type == "dataset"
         assert result.collection_id is not None
         info = introspect_table(s, result.collection_id)
         assert info.geometry_column is None
@@ -634,7 +634,7 @@ def test_run_import_xml_generic_no_geometry_creates_tabular_collection(env):
             geometry_mode="none",
         )
         s.commit()
-        assert result.item_id is None
+        assert result.item_id is not None and result.item_resource_type == "dataset"
     with Session() as s:
         rows = (
             s.execute(text(f"SELECT author FROM public.{result.collection_id} ORDER BY author"))
@@ -665,7 +665,7 @@ def test_run_import_parquet_tabular_no_geometry_creates_collection(env, tmp_path
             geometry_mode="none",
         )
         s.commit()
-        assert result.item_id is None
+        assert result.item_id is not None and result.item_resource_type == "dataset"
     with Session() as s:
         rows = s.execute(text(f"SELECT nom FROM public.{result.collection_id}")).scalars().all()
         assert rows == ["Paris"]
@@ -728,6 +728,7 @@ def test_import_map_carries_bbox_and_render_hints(env):
     # P28.04 (j03-009) + P28.05 (j03-010)
     Session, _t, _u = env
     result = _import_csv(env, b"nom,lat,lon\nParis,48.85,2.35\nLyon,45.76,4.83\n")
+    assert result.item_resource_type == "map"
     with Session() as s:
         item = s.get(Item, result.item_id)
         assert item.bbox_min_x == pytest.approx(2.35)
@@ -738,14 +739,15 @@ def test_import_map_carries_bbox_and_render_hints(env):
 
 
 def test_tabular_import_creates_dataset_item_in_catalog(env):
-    # P28.06 (j03-021)
+    # P28.06 (j03-021) ; REV-282b : le résultat porte l'item dataset et son type
     Session, _t, _u = env
     result = _import_csv(env, b"a,b\n1,x\n", geometry_mode="none")
-    assert result.item_id is None
     with Session() as s:
         ds = s.execute(select(Item).where(Item.resource_type == "dataset")).scalar_one()
         cfg = configs_repo.get_config_by_item(s, item_id=ds.id).config
         assert cfg.dataset.collectionId == result.collection_id
+    assert result.item_id == ds.id
+    assert result.item_resource_type == "dataset"
 
 
 def test_csv_import_infers_integer_decimal_and_date_columns(env):
@@ -781,3 +783,26 @@ def test_csv_column_kind_edge_cases():
     assert _csv_column_kind(["2026-W01-1"]) is None
     assert _csv_column_kind(["2026-02-30"]) is None  # date impossible
     assert _csv_column_kind(["2026-01-31"]) == "date"
+
+
+def test_csv_column_kind_decimal_comma_only_when_separator_is_not_comma():
+    # REV-282c : « 1,5 » est décimal seulement si la virgule n'est pas le séparateur ;
+    # « 1,234 » (milliers ou décimale ?) reste ambigu, donc texte.
+    from app.ingestion.importer import _csv_column_kind
+
+    assert _csv_column_kind(["1,5", "2,25", "3"], decimal_comma=True) == "float"
+    assert _csv_column_kind(["1,5"]) is None
+    assert _csv_column_kind(["1,234"], decimal_comma=True) is None
+
+
+def test_semicolon_csv_with_decimal_comma_imports_numbers(env):
+    # REV-282c : export Excel FR typique (« ; » + virgule décimale)
+    Session, _t, _u = env
+    result = _import_csv(env, b"nom;surf\nA;1,5\nB;2,25\n", geometry_mode="none")
+    with Session() as s:
+        rows = (
+            s.execute(text(f"SELECT surf FROM public.{result.collection_id} ORDER BY surf"))
+            .scalars()
+            .all()
+        )
+    assert rows == [1.5, 2.25]
