@@ -327,3 +327,53 @@ def test_0046_fails_cleanly_on_exact_duplicates(throwaway_database_url):
         command.upgrade(_cfg(), "0046")
     assert _scalar(url, "SELECT version_num FROM alembic_version") == "0045"
     assert _scalar(url, "SELECT count(*) FROM harvest_sources") == 2
+
+
+def test_0047_adds_notify_channels_on_a_non_empty_table_both_ways(throwaway_database_url):
+    """REV-277d : statut de livraison par canal (base non vide)."""
+    url = throwaway_database_url
+    command.upgrade(_cfg(), "0046")
+    eng = sa.create_engine(url)
+    with eng.begin() as conn:
+        _seed_base(conn)
+        conn.execute(
+            sa.text(
+                "INSERT INTO items (id, tenant_id, owner_id, resource_type, title, keywords, "
+                "created_at, updated_at) VALUES ('a1','t1','u1','alert','A','[]',now(),now())"
+            )
+        )
+        conn.execute(
+            sa.text(
+                "INSERT INTO alert_evaluations (id, tenant_id, alert_rule_item_id, state, "
+                "transitioned, notify_status, created_at) "
+                "VALUES ('ev1','t1','a1','firing',true,'failed',now())"
+            )
+        )
+    eng.dispose()
+
+    command.upgrade(_cfg(), "0047")
+    assert _scalar(url, "SELECT notify_channels FROM alert_evaluations WHERE id='ev1'") is None
+    eng = sa.create_engine(url)
+    with eng.begin() as conn:
+        conn.execute(
+            sa.text(
+                'UPDATE alert_evaluations SET notify_channels=\'{"k": "delivered"}\' '
+                "WHERE id='ev1'"
+            )
+        )
+    eng.dispose()
+    assert (
+        _scalar(url, "SELECT notify_channels->>'k' FROM alert_evaluations WHERE id='ev1'")
+        == "delivered"
+    )
+
+    command.downgrade(_cfg(), "0046")
+    assert _scalar(url, "SELECT notify_status FROM alert_evaluations WHERE id='ev1'") == "failed"
+    assert (
+        _scalar(
+            url,
+            "SELECT count(*) FROM information_schema.columns "
+            "WHERE table_name='alert_evaluations' AND column_name='notify_channels'",
+        )
+        == 0
+    )

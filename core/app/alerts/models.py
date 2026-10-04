@@ -40,4 +40,6 @@ class AlertEvaluation(Base):
     # P20.01/03 : None = aucune notification tentée ; "delivered" | "failed".
     notify_status: Mapped[str | None] = mapped_column(String, nullable=True)
     notify_error: Mapped[str | None] = mapped_column(String, nullable=True)
+    # REV-277d : {empreinte de canal: "delivered" | "failed"} (cf. 0047).
+    notify_channels: Mapped[dict | None] = mapped_column(sa.JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
