@@ -62,3 +62,15 @@ export function useCreateAlertRule() {
     },
   });
 }
+
+export function useSaveAlertRule() {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { itemId: string; datasetItemId: string; payload: AlertRulePayload }) =>
+      client.saveAlertRuleConfig(input.itemId, input.payload),
+    onSuccess: (_version, variables) => {
+      void queryClient.invalidateQueries({ queryKey: ["alert-rules", variables.datasetItemId] });
+    },
+  });
+}

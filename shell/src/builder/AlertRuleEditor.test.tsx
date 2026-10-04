@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, test, vi } from "vitest";
+import { expect, test, vi, type Mock } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ApiError } from "../api/ApiError";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import type { AlertEvaluation, AlertRuleSummary, ItemClient } from "../api/types";
 import { AlertRuleEditor } from "./AlertRuleEditor";
@@ -230,4 +231,81 @@ test("shows the delivery failure of the latest evaluation (P20.01) and the evalu
   expect(await screen.findByText(/Notification non livrée : webhook: 500/)).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "Exécuter maintenant" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Impossible de lancer l'évaluation.");
+});
+
+const EXISTING_ALERT = {
+  datasetItemId: "ds-1",
+  query: { agg: "count" },
+  condition: { expr: "value > 100" },
+  refreshPolicy: { enabled: true, cron: "*/15 * * * *" },
+  channels: [{ kind: "webhook", url: "https://example.test/hook" }],
+  messageTemplate: "m",
+  baseVersion: 3,
+};
+
+function editableClient(overrides: Record<string, Mock> = {}) {
+  return {
+    listAlertRulesForDataset: vi
+      .fn()
+      .mockResolvedValue([{ itemId: "rule-1", title: "High counts" }]),
+    getAlertEvaluations: vi.fn().mockResolvedValue([]),
+    getAlertRuleConfig: vi.fn().mockResolvedValue(EXISTING_ALERT),
+    saveAlertRuleConfig: vi.fn().mockResolvedValue(4),
+    ...overrides,
+  };
+}
+
+test("REV-271 : Modifier charge la règle, Mettre à jour envoie la version lue puis revient en création", async () => {
+  const client = editableClient();
+  renderWithClient(client);
+
+  await userEvent.click(await screen.findByRole("button", { name: "Modifier" }));
+  const expr = await screen.findByDisplayValue("value > 100");
+  await userEvent.clear(expr);
+  await userEvent.type(expr, "value > 200");
+  await userEvent.click(screen.getByRole("button", { name: "Mettre à jour la règle" }));
+
+  await waitFor(() => expect(client.saveAlertRuleConfig).toHaveBeenCalledTimes(1));
+  const [pk, payload] = client.saveAlertRuleConfig.mock.calls[0];
+  expect(pk).toBe("rule-1");
+  expect(payload.baseVersion).toBe(3);
+  expect(payload.condition.expr).toBe("value > 200");
+  expect(payload.messageTemplate).toBe("m");
+  expect(await screen.findByRole("button", { name: "Créer la règle" })).toBeInTheDocument();
+});
+
+test("REV-271 : un 412 affiche le conflit ; Recharger relit la règle avec la nouvelle version", async () => {
+  const client = editableClient({
+    getAlertRuleConfig: vi
+      .fn()
+      .mockResolvedValueOnce(EXISTING_ALERT)
+      .mockResolvedValue({ ...EXISTING_ALERT, condition: { expr: "value > 999" }, baseVersion: 9 }),
+    saveAlertRuleConfig: vi
+      .fn()
+      .mockRejectedValueOnce(new ApiError(412, { detail: "stale" }))
+      .mockResolvedValue(10),
+  });
+  renderWithClient(client);
+
+  await userEvent.click(await screen.findByRole("button", { name: "Modifier" }));
+  await screen.findByDisplayValue("value > 100");
+  await userEvent.click(screen.getByRole("button", { name: "Mettre à jour la règle" }));
+
+  expect(await screen.findByText(/modifié ailleurs/)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Recharger la dernière version" }));
+  expect(await screen.findByDisplayValue("value > 999")).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("button", { name: "Mettre à jour la règle" }));
+  await waitFor(() => expect(client.saveAlertRuleConfig).toHaveBeenCalledTimes(2));
+  expect(client.saveAlertRuleConfig.mock.calls[1][1].baseVersion).toBe(9);
+});
+
+test("REV-271 : Annuler la modification revient au formulaire de création sans enregistrer", async () => {
+  const client = editableClient();
+  renderWithClient(client);
+  await userEvent.click(await screen.findByRole("button", { name: "Modifier" }));
+  await screen.findByDisplayValue("value > 100");
+  await userEvent.click(screen.getByRole("button", { name: "Annuler la modification" }));
+  expect(await screen.findByRole("button", { name: "Créer la règle" })).toBeInTheDocument();
+  expect(client.saveAlertRuleConfig).not.toHaveBeenCalled();
 });
