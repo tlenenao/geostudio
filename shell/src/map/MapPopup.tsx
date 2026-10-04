@@ -50,15 +50,26 @@ export function MapPopup({
     const el = containerRef.current;
     const parent = el?.offsetParent as HTMLElement | null;
     if (!el || !parent) return;
-    const w = el.offsetWidth;
-    const h = el.offsetHeight;
-    const pw = parent.clientWidth;
-    const ph = parent.clientHeight;
-    if (pw === 0 || ph === 0) return; // pas de mise en page mesurable (jsdom, conteneur masqué)
-    const left = Math.max(0, Math.min(x - w / 2, pw - w));
-    const above = y - h;
-    const top = above >= 0 ? above : Math.max(0, Math.min(y, ph - h));
-    setPlaced((p) => (p && p.left === left && p.top === top ? p : { left, top }));
+    const popup: HTMLElement = el;
+    const box: HTMLElement = parent;
+    function place() {
+      const w = popup.offsetWidth;
+      const h = popup.offsetHeight;
+      const pw = box.clientWidth;
+      const ph = box.clientHeight;
+      if (pw === 0 || ph === 0) return; // pas de mise en page mesurable (jsdom, conteneur masqué)
+      const left = Math.max(0, Math.min(x - w / 2, pw - w));
+      const above = y - h;
+      const top = above >= 0 ? above : Math.max(0, Math.min(y, ph - h));
+      setPlaced((p) => (p && p.left === left && p.top === top ? p : { left, top }));
+    }
+    place();
+    // REV-286(d) : volet replié, rotation d'écran — le conteneur change de
+    // taille sans que x/y bougent ; on recalcule le clamp.
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(place);
+    observer.observe(box);
+    return () => observer.disconnect();
   }, [x, y, content, attachments]);
 
   // D41 : composant présentationnel sans Radix (positionné en x/y absolus

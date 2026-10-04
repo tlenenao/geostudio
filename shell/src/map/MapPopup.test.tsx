@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 import { MapPopup } from "./MapPopup";
@@ -120,4 +120,51 @@ test("D41 : le focus est posé sur le premier élément interactif (bouton Ferme
     />,
   );
   expect(screen.getByRole("button", { name: "Fermer" })).toHaveFocus();
+});
+
+// REV-286(d) : stub de ResizeObserver LOCAL au test (piège n°10, jamais
+// dans setup.ts) ; mise en page simulée par des getters espionnés.
+test("le clamp horizontal est recalculé quand le conteneur rétrécit", () => {
+  const ro = { callback: () => {}, observe: vi.fn(), disconnect: vi.fn() };
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      constructor(cb: () => void) {
+        ro.callback = cb;
+      }
+      observe = ro.observe;
+      disconnect = ro.disconnect;
+      unobserve() {}
+    },
+  );
+  const parent = document.createElement("div");
+  let parentWidth = 400;
+  Object.defineProperty(parent, "clientWidth", { get: () => parentWidth });
+  Object.defineProperty(parent, "clientHeight", { get: () => 300 });
+  const spies = [
+    vi.spyOn(HTMLElement.prototype, "offsetParent", "get").mockReturnValue(parent),
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(100),
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(50),
+  ];
+  try {
+    const { unmount } = render(
+      <MapPopup
+        content={{ title: "T", rows: [], html: null }}
+        x={350}
+        y={200}
+        onClose={() => {}}
+      />,
+    );
+    const popup = screen.getByRole("dialog");
+    expect(popup.style.left).toBe("300px"); // min(350 - 50, 400 - 100)
+    expect(ro.observe).toHaveBeenCalledWith(parent);
+    parentWidth = 200;
+    act(() => ro.callback());
+    expect(popup.style.left).toBe("100px"); // min(300, 200 - 100)
+    unmount();
+    expect(ro.disconnect).toHaveBeenCalled();
+  } finally {
+    spies.forEach((s) => s.mockRestore());
+    vi.unstubAllGlobals();
+  }
 });
