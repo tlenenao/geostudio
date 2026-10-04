@@ -1820,6 +1820,11 @@ export const fr = {
   "propsPanel.unknownWidget": "Widget inconnu : {widget}",
   "propsPanel.visibleWhenLabel": "Condition d'affichage",
   "propsPanel.visibleWhenAria": "Condition d'affichage (visibleWhen)",
+  "celGen.summary": "Générer",
+  "celGen.questionAria": "Décrire la condition",
+  "celGen.propose": "Proposer",
+  "celGen.apply": "Appliquer",
+  "celGen.noDraft": "Aucune condition proposée.",
   "propsPanel.visibleWhenHelpAria": "Aide sur la condition d'affichage",
   "propsPanel.visibleWhenHelpBody":
     "Expression CEL évaluée avec les variables de l'app : le widget n'est visible que si elle est vraie. Laisser vide pour toujours afficher.",

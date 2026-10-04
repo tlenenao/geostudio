@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { lazy, Suspense } from "react";
 import { HelpCircle } from "lucide-react";
 import type { DataSource, Theme, Variable, WidgetItem } from "../api/types";
 import { getWidget } from "./registry";
@@ -8,6 +9,11 @@ import { IconButton } from "../ui/kit/IconButton";
 import { Popover } from "../ui/kit/Popover";
 import { t } from "../i18n";
 
+// REV-183 : lazy — n'alourdit pas la charge initiale (marge de bundle).
+const VisibleWhenGenerator = lazy(() =>
+  import("./copilot/VisibleWhenGenerator").then((m) => ({ default: m.VisibleWhenGenerator })),
+);
+
 export function PropsPanel({
   item,
   dataSources,
@@ -15,6 +21,7 @@ export function PropsPanel({
   variables,
   onChange,
   onVisibleWhenChange,
+  generateItemId,
 }: {
   item: WidgetItem | null;
   dataSources: DataSource[];
@@ -22,6 +29,9 @@ export function PropsPanel({
   variables?: Variable[];
   onChange: (props: Record<string, unknown>) => void;
   onVisibleWhenChange: (expr: string) => void;
+  // REV-183 : id de l'item à passer au copilote ; absent = pas de bouton Générer
+  // (copilote désactivé, lecture seule, ou éditeur sans item).
+  generateItemId?: string;
 }) {
   if (!item) {
     return <p className="text-xs text-ink-2">{t("propsPanel.noWidgetSelected")}</p>;
@@ -65,6 +75,16 @@ export function PropsPanel({
           </span>
         )}
       </label>
+      {generateItemId && (
+        <Suspense fallback={null}>
+          <VisibleWhenGenerator
+            itemId={generateItemId}
+            availableFields={[...(variables ?? []).map((v) => `vars.${v.name}`), "user.name"]}
+            current={visibleWhen}
+            onApply={onVisibleWhenChange}
+          />
+        </Suspense>
+      )}
       <Panel
         props={item.props}
         dataSources={dataSources}

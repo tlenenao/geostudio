@@ -232,7 +232,7 @@ export type CopilotToolSchema = {
   description: string;
   inputSchema: Record<string, unknown>;
 };
-export type CopilotSurface = "app_builder" | "sql_lab" | "visual_query";
+export type CopilotSurface = "app_builder" | "sql_lab" | "visual_query" | "visible_when";
 
 export type ItemScope = "all" | "mine" | "shared" | "public";
 
