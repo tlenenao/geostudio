@@ -783,3 +783,26 @@ def test_csv_column_kind_edge_cases():
     assert _csv_column_kind(["2026-W01-1"]) is None
     assert _csv_column_kind(["2026-02-30"]) is None  # date impossible
     assert _csv_column_kind(["2026-01-31"]) == "date"
+
+
+def test_csv_column_kind_decimal_comma_only_when_separator_is_not_comma():
+    # REV-282c : « 1,5 » est décimal seulement si la virgule n'est pas le séparateur ;
+    # « 1,234 » (milliers ou décimale ?) reste ambigu, donc texte.
+    from app.ingestion.importer import _csv_column_kind
+
+    assert _csv_column_kind(["1,5", "2,25", "3"], decimal_comma=True) == "float"
+    assert _csv_column_kind(["1,5"]) is None
+    assert _csv_column_kind(["1,234"], decimal_comma=True) is None
+
+
+def test_semicolon_csv_with_decimal_comma_imports_numbers(env):
+    # REV-282c : export Excel FR typique (« ; » + virgule décimale)
+    Session, _t, _u = env
+    result = _import_csv(env, b"nom;surf\nA;1,5\nB;2,25\n", geometry_mode="none")
+    with Session() as s:
+        rows = (
+            s.execute(text(f"SELECT surf FROM public.{result.collection_id} ORDER BY surf"))
+            .scalars()
+            .all()
+        )
+    assert rows == [1.5, 2.25]
