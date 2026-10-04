@@ -150,6 +150,7 @@ export const fr = {
   "catalog.loadError": "Erreur de chargement.",
   "catalog.emptyFilteredDescription": "Aucun élément ne correspond à ces filtres.",
   "catalog.emptyFilteredTitle": "Aucun résultat",
+  "catalog.resultsHeading": "Résultats",
   "catalog.emptyNoFilterDescription":
     "Créez votre première carte, application ou jeu de données pour commencer.",
   "catalog.emptyBookmarksTitle": "Aucune vue enregistrée pour l'instant",

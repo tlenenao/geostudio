@@ -81,3 +81,14 @@ test("état vide et pagination", async () => {
   expect(await screen.findByText("Aucun contenu public pour le moment.")).toBeVisible();
   expect(list).toHaveBeenCalledWith(expect.objectContaining({ tag: "zzz" }));
 });
+
+test("REV-284(c) : un <h2> « Résultats » (sr-only) précède la grille publique", async () => {
+  const list = vi.fn().mockResolvedValue({
+    items: [item("2", "map")],
+    total: 1,
+    page: 1,
+    pageSize: 12,
+  });
+  renderCatalog(list);
+  expect(await screen.findByRole("heading", { level: 2, name: "Résultats" })).toBeInTheDocument();
+});
