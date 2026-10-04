@@ -1175,3 +1175,20 @@ test("D47 : le toggle Édition/Aperçu et les boutons de largeur d'écran ne son
   expect(editButton.className).not.toMatch(/(^|\s)bg-sunken(\s|$)/);
   expect(previewButton.className).not.toMatch(/(^|\s)bg-accent(\s|$)/);
 });
+
+test("REV-271 : après « Recharger » (412), quitter la page ne déclenche pas la garde", async () => {
+  renderPageWithNavigation({
+    getAppConfig: vi
+      .fn()
+      .mockResolvedValueOnce({ ...config, baseVersion: 1 })
+      .mockResolvedValue({ ...config, baseVersion: 7 }),
+    saveAppConfig: vi.fn().mockRejectedValue(new ApiError(412, { detail: "stale" })),
+  });
+  await userEvent.click(await screen.findByRole("button", { name: "Texte" }));
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await screen.findByText(t("appBuilder.conflict"));
+  await userEvent.click(screen.getByRole("button", { name: t("appBuilder.conflictReload") }));
+  await waitFor(() => expect(screen.queryByText(t("appBuilder.conflict"))).toBeNull());
+  await userEvent.click(screen.getByRole("link", { name: "Autre page" }));
+  expect(await screen.findByText("Autre page ouverte")).toBeInTheDocument();
+});

@@ -18,6 +18,7 @@ os.environ.setdefault("RUNTIME__DLTHUB_TELEMETRY", "false")
 import json
 import shutil
 import tempfile
+import time
 import uuid
 from typing import Protocol
 from urllib.parse import urlsplit
@@ -48,9 +49,11 @@ from sqlalchemy.orm import Session
 from app.analytics.sql_sandbox import SqlSandboxError, parse_ast, validate_select_only
 from app.pipelines.egress import (
     EgressBlockedError,
+    PinnedAioResolver,
     assert_dsn_egress_allowed,
     assert_egress_allowed,
     build_guarded_session,
+    dsn_pin_connect_args,
 )
 from app.pipelines.ops.schemas import (
     ReaderConnectorBigQueryParams,
@@ -126,7 +129,8 @@ class PostgresSecretResolver:
 
 def _env_int(name: str, default: int) -> int:
     raw = os.environ.get(name, "").strip()
-    return int(raw) if raw else default
+    value = int(raw) if raw else default
+    return value if value > 0 else default
 
 
 def _connect_timeout_s() -> int:
@@ -143,6 +147,74 @@ def _max_rows() -> int:
 
 def _max_pages() -> int:
     return _env_int("CORE_PIPELINES_CONNECTOR_MAX_PAGES", 1000)
+
+
+def _blob_max_files() -> int:
+    return _env_int("CORE_PIPELINES_BLOB_MAX_FILES", 100)
+
+
+def _blob_max_bytes() -> int:
+    return _env_int("CORE_PIPELINES_BLOB_MAX_BYTES", 1_073_741_824)
+
+
+def _blob_timeout_s() -> int:
+    return _env_int("CORE_PIPELINES_BLOB_TIMEOUT_S", 600)
+
+
+def _blob_resource(files, reader):
+    """REV-273b : plafonds fichiers/octets/lignes + échéance globale sur la
+    chaîne filesystem → reader. dlt applique `add_map` élément par élément (y
+    compris sur les pages) ; compteurs frais à chaque appel.
+    ponytail: gardes entre éléments ; un fichier unique géant n'est borné que
+    par sa taille annoncée et les délais réseau fsspec (`_blob_fs_kwargs`) ;
+    le listing glob (dlt glob_files -> fs.glob(detail=True)) est chargé en
+    mémoire avant tout plafond : un glob `**` sur un énorme bucket est non
+    borné. Évolution : limiter la profondeur/le préfixe du glob."""
+    max_files, max_bytes = _blob_max_files(), _blob_max_bytes()
+    max_rows, budget = _max_rows(), _blob_timeout_s()
+    deadline = time.monotonic() + budget
+    state = {"files": 0, "bytes": 0, "rows": 0}
+
+    def _check_deadline() -> None:
+        if time.monotonic() > deadline:
+            raise ConnectorRuntimeError(f"délai de {budget}s dépassé")
+
+    def _file_guard(item):
+        _check_deadline()
+        state["files"] += 1
+        if state["files"] > max_files:
+            raise ConnectorRuntimeError(f"plafond de {max_files} fichiers dépassé")
+        state["bytes"] += int(item["size_in_bytes"])
+        if state["bytes"] > max_bytes:
+            raise ConnectorRuntimeError(f"plafond de {max_bytes} octets dépassé")
+        return item
+
+    def _row_guard(row):
+        _check_deadline()
+        state["rows"] += 1
+        if state["rows"] > max_rows:
+            raise ConnectorRuntimeError(f"plafond de {max_rows} lignes dépassé")
+        return row
+
+    files.add_map(_file_guard)
+    resource = files | reader
+    resource.add_map(_row_guard)
+    return resource
+
+
+def _blob_fs_kwargs(payload) -> dict:
+    """Délais réseau fsspec par fournisseur (P16.03, REV-273b) : s3fs
+    `config_kwargs` → botocore Config ; adlfs `connection_timeout`/`read_timeout` ;
+    gcsfs `requests_timeout`."""
+    t, q = _connect_timeout_s(), _query_timeout_s()
+    if payload.kind == "s3_credentials":
+        cfg: dict = {"connect_timeout": t, "read_timeout": q}
+        if payload.endpointUrl:  # cible réseau libre : épingler la résolution (REV-273d)
+            cfg["connector_args"] = {"resolver": PinnedAioResolver()}
+        return {"kwargs": {"config_kwargs": cfg}}
+    if payload.kind == "azure_blob_credentials":
+        return {"kwargs": {"connection_timeout": t, "read_timeout": q}}
+    return {"kwargs": {"requests_timeout": q}}
 
 
 def _timeout_connect_args(backend: str) -> dict:
@@ -164,7 +236,8 @@ def _stream_sql(dsn: str, query: str):
     backend = sa.engine.make_url(dsn).get_backend_name()
     if backend not in _NO_HOST_BACKENDS:
         assert_dsn_egress_allowed(dsn)
-    engine = sa.create_engine(dsn, connect_args=_timeout_connect_args(backend))
+    connect_args = {**_timeout_connect_args(backend), **dsn_pin_connect_args(dsn)}
+    engine = sa.create_engine(dsn, connect_args=connect_args)
     if backend == "oracle":
         # python-oracledb : délai d'appel par requête, en ms.
         sa.event.listen(
@@ -586,6 +659,30 @@ def materialize_bigquery_connector(
     _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
 
 
+_GLOB_WILDCARDS = frozenset("*?[")
+
+
+def _assert_path_within_bucket(payload, path: str) -> None:
+    """REV-197 : le secret est LIÉ à `payload.bucketUrl` ; `params.path` (écrit
+    par l'auteur du pipeline) doit en porter le préfixe, sinon un secret S3
+    pourrait lire n'importe quel bucket accessible à ses clés. Comparaison sur
+    un préfixe terminé par `/` (« s3://bucket » ne couvre pas « s3://bucket-evil »)
+    et rejet de tout segment `..`."""
+    bucket_url = payload.bucketUrl
+    if not bucket_url:
+        raise ConnectorRuntimeError(
+            "reader.connector.blob: this secret has no 'bucketUrl' (required since REV-197) — "
+            "edit the secret to set the bucket/prefix it is scoped to "
+            "(e.g. 's3://my-bucket/prefix')"
+        )
+    scope = bucket_url.rstrip("/") + "/"
+    if ".." in urlsplit(path).path.split("/") or not path.startswith(scope):
+        raise ConnectorRuntimeError(
+            f"reader.connector.blob: path '{path}' is outside the bucket scope "
+            f"of the secret ('{bucket_url}')"
+        )
+
+
 def materialize_blob_connector(
     conn,
     *,
@@ -603,7 +700,10 @@ def materialize_blob_connector(
     Le fournisseur est déduit du schéma d'URL de `params.path` (vérifié par
     `urlsplit`, pas par un simple `str.startswith` sur un préfixe littéral).
     Le secret doit être du kind attendu pour ce schéma, sinon rejet avant
-    toute extraction — même patron défensif que les autres readers.
+    toute extraction — même patron défensif que les autres readers. Le secret
+    porte un `bucketUrl` (bucket + préfixe optionnel) et `params.path` doit être
+    sous ce préfixe (REV-197) : un secret blob est lié à un bucket, pas à tout
+    ce que ses clés peuvent atteindre.
 
     `params.path` est découpé en un `bucket_url` racine (schéma + bucket
     seuls) et un `file_glob` (le reste du chemin) : vérifié empiriquement
@@ -626,6 +726,7 @@ def materialize_blob_connector(
             f"secret has kind '{payload.kind}', not usable for this path scheme "
             f"(expected {expected_kind})"
         )
+    _assert_path_within_bucket(payload, params.path)
 
     if payload.kind == "s3_credentials":
         if payload.endpointUrl:  # endpoint S3 compatible = cible réseau libre (P16.02)
@@ -651,10 +752,30 @@ def materialize_blob_connector(
 
     bucket_url = f"{parsed.scheme}://{parsed.netloc}"
     file_glob = parsed.path.lstrip("/")
-    resource = (
-        filesystem(bucket_url=bucket_url, credentials=credentials, file_glob=file_glob)
-        | _BLOB_READERS[params.format]()
+    files = filesystem(
+        bucket_url=bucket_url,
+        credentials=credentials,
+        file_glob=file_glob,
+        **_blob_fs_kwargs(payload),
     )
+    resource = _blob_resource(files, _BLOB_READERS[params.format]())
     resource.apply_hints(table_name="records", write_disposition="replace")
 
-    _run_dlt_and_attach(conn, resource, node_id=node_id, view_name=view_name)
+    # M12 (REV-199) : un `file_glob` littéral (sans joker) vise UN fichier — 0 ligne chargée
+    # signifie chemin faux ou fichier vide, pas un jeu vide légitime. Avec un joker, 0 fichier
+    # apparié reste un résultat acceptable.
+    literal_glob = not set(file_glob) & _GLOB_WILDCARDS
+    no_row_error = ConnectorRuntimeError(
+        f"reader.connector.blob: no row loaded from '{params.path}' — the path matched no "
+        "file or the file is empty (check the bucket and the object key)"
+    )
+    try:
+        _run_dlt_and_attach(conn, resource, node_id=node_id, view_name=view_name)
+    except ConnectorRuntimeError as exc:
+        # dlt ne crée pas la table `records` quand rien n'est extrait : sans ce rattrapage,
+        # l'utilisateur lirait « Catalog Error: Table with name records does not exist ».
+        if literal_glob and "does not exist" in str(exc):
+            raise no_row_error from exc
+        raise
+    if literal_glob and conn.execute(f"SELECT count(*) FROM {_qi(view_name)}").fetchone()[0] == 0:
+        raise no_row_error

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { ifMatchHeader } from "../ifMatch";
 import type {
   CollectionSchema,
   CreateDatasetInput,
@@ -243,15 +244,19 @@ export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
         reactsToExtent: resolved.reactsToExtent,
         crossFilterLinks: resolved.crossFilterLinks,
         sourcePipelineId: resolved.sourcePipelineId ?? null,
+        baseVersion: resolved.version,
       };
     },
 
-    async saveDatasetConfig(pk: string, config: DatasetConfig): Promise<void> {
-      await request<void>("PUT", `/configs/by-item/${pk}`, {
-        version: 1,
-        kind: "dataset",
-        dataset: config,
-      });
+    async saveDatasetConfig(pk: string, config: DatasetConfig): Promise<number | undefined> {
+      const { baseVersion, ...dataset } = config;
+      const saved = await request<{ version?: number }>(
+        "PUT",
+        `/configs/by-item/${pk}`,
+        { version: 1, kind: "dataset", dataset },
+        undefined,
+        ifMatchHeader(baseVersion),
+      );
       datasetCache.set(pk, {
         source: config.source,
         collectionId: config.source === "collection" ? config.collectionId : null,
@@ -261,7 +266,9 @@ export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
         reactsToExtent: config.reactsToExtent ?? false,
         crossFilterLinks: config.crossFilterLinks ?? [],
         sourcePipelineId: config.sourcePipelineId ?? null,
+        version: saved?.version,
       });
+      return saved?.version;
     },
 
     featuresUrl(source: DataSource): string {

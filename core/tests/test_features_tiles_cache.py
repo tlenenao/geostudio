@@ -56,7 +56,7 @@ def test_privileged_tile_of_public_collection_is_private_and_varies(monkeypatch)
     )
     app = create_app()
     session = _RecordingSession()
-    monkeypatch.setattr(tiles_module, "get_readable_collection", lambda s, u, c, *, guest=None: col)
+    monkeypatch.setattr(tiles_module, "get_collection_for_read", lambda s, u, c, *, guest=None: col)
     monkeypatch.setattr(tiles_module, "quote_ident", lambda s, name: f'"{name}"')
     app.dependency_overrides[db.get_session] = lambda: session
     app.dependency_overrides[get_current_user_optional] = lambda: SimpleNamespace(id="u")

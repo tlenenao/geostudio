@@ -2036,12 +2036,17 @@ export interface components {
          *     `AzureCredentialsWithoutDefaults(...)` à partir de ces 2 champs — c'est
          *     cette classe qui produit ensuite les kwargs adlfs réels
          *     (`.to_adlfs_credentials()` → `account_name`/`account_key`).
+         *
+         *     `bucketUrl` lie le secret à un bucket/préfixe : `params.path` d'un
+         *     `reader.connector.blob` doit en porter le préfixe (REV-197).
          */
         AzureBlobCredentialsPayload: {
             /** Accountkey */
             accountKey: string;
             /** Accountname */
             accountName: string;
+            /** Bucketurl */
+            bucketUrl?: string | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -2540,8 +2545,13 @@ export interface components {
          *     `universe_domain`, etc., piège CLAUDE.md n°3 : pas supposé, testé), donc
          *     un JSON de compte de service copié-collé tel quel depuis la console GCP
          *     fonctionne sans filtrage manuel.
+         *
+         *     `bucketUrl` lie le secret à un bucket/préfixe : `params.path` d'un
+         *     `reader.connector.blob` doit en porter le préfixe (REV-197).
          */
         GcsCredentialsPayload: {
+            /** Bucketurl */
+            bucketUrl?: string | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -3484,12 +3494,17 @@ export interface components {
          *     et le passe tel quel à `dlt.sources.filesystem.filesystem(credentials=)` —
          *     c'est CETTE classe, jamais ce payload, qui sait produire les kwargs réels
          *     de s3fs (`.to_s3fs_credentials()` → `key`/`secret`/`endpoint_url`).
+         *
+         *     `bucketUrl` lie le secret à un bucket/préfixe : `params.path` d'un
+         *     `reader.connector.blob` doit en porter le préfixe (REV-197).
          */
         S3CredentialsPayload: {
             /** Awsaccesskeyid */
             awsAccessKeyId: string;
             /** Awssecretaccesskey */
             awsSecretAccessKey: string;
+            /** Bucketurl */
+            bucketUrl?: string | null;
             /** Endpointurl */
             endpointUrl?: string | null;
             /**

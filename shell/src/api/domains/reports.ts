@@ -8,6 +8,7 @@ import type {
 } from "../types";
 import type { ItemClientBase } from "../base";
 import { OWNER_PERMISSIONS } from "../../auth/permissions";
+import { ifMatchHeader } from "../ifMatch";
 
 type ReportsMethods = Pick<
   ItemClient,
@@ -50,21 +51,28 @@ export function createReportsMethods(base: ItemClientBase): ReportsMethods {
     },
 
     async getReportScheduleConfig(pk: string): Promise<ReportSchedulePayload> {
-      const data = await request<{ config?: { report?: ReportSchedulePayload } }>(
+      const data = await request<{ version?: number; config?: { report?: ReportSchedulePayload } }>(
         "GET",
         `/configs/by-item/${pk}`,
       );
       if (!data.config?.report)
         throw new Error("getReportScheduleConfig: config has no report payload");
-      return data.config.report;
+      return { ...data.config.report, baseVersion: data.version };
     },
 
-    async saveReportScheduleConfig(pk: string, payload: ReportSchedulePayload): Promise<void> {
-      await request<void>("PUT", `/configs/by-item/${pk}`, {
-        version: 1,
-        kind: "report",
-        report: payload,
-      });
+    async saveReportScheduleConfig(
+      pk: string,
+      payload: ReportSchedulePayload,
+    ): Promise<number | undefined> {
+      const { baseVersion, ...report } = payload;
+      const saved = await request<{ version?: number }>(
+        "PUT",
+        `/configs/by-item/${pk}`,
+        { version: 1, kind: "report", report },
+        undefined,
+        ifMatchHeader(baseVersion),
+      );
+      return saved?.version;
     },
 
     async getReportRuns(pk: string, params?: PageParams): Promise<ReportRunStatus[]> {

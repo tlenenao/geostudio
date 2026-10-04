@@ -32,6 +32,23 @@ async function fetchWithTimeout(
   }
 }
 
+// REV-290 : une URL n'est « servie par le cœur » que si, résolue contre
+// `coreUrl` (déjà suffixé /v1), elle a la même origine ET un chemin `/v1` ou
+// `/v1/…` (le `startsWith` nu acceptait `/v1evil`). Renvoie l'URL résolue (à
+// envoyer telle quelle : une URL relative fetchée brute viserait l'origine de
+// la page, pas celle du cœur) ou null.
+function toCoreHref(coreUrl: string, url: string): string | null {
+  try {
+    const core = new URL(coreUrl);
+    const target = new URL(url, core);
+    const base = core.pathname.replace(/\/+$/, "");
+    const inBase = target.pathname === base || target.pathname.startsWith(`${base}/`);
+    return target.origin === core.origin && inBase ? target.href : null;
+  } catch {
+    return null;
+  }
+}
+
 // AbortSignal.timeout() couvre tout le cycle de vie du fetch, lecture du
 // corps comprise : un timeout qui tombe pendant res.json()/res.blob() rejette
 // en DOMException AbortError HORS du try/catch de fetchWithTimeout. On le
@@ -212,6 +229,7 @@ export type ResolvedDataset = {
   reactsToExtent: boolean;
   crossFilterLinks: CrossFilterLink[];
   sourcePipelineId: string | null;
+  version?: number;
 };
 
 export type ItemClientBase = {
@@ -330,10 +348,15 @@ export function createBase(opts: {
     init: RequestInit = {},
     timeoutMs?: number,
   ): Promise<Response> {
+    // REV-290 : jamais de jeton hors du cœur — on lève AVANT getToken()/fetch.
+    const href = toCoreHref(coreUrl, url);
+    if (href === null) {
+      throw new Error(`authFetch: URL not served by the core, refused: ${url}`);
+    }
     const send = (tok: string | undefined) => {
       const headers = new Headers(init.headers);
       if (tok) headers.set("Authorization", `Bearer ${tok}`);
-      return fetchWithTimeout(url, { ...init, headers }, timeoutMs);
+      return fetchWithTimeout(href, { ...init, headers }, timeoutMs);
     };
     const token = getToken();
     let res = await send(token);
@@ -406,6 +429,7 @@ export function createBase(opts: {
     const expiresAt = expiryByPk.get(pk);
     if (cached && expiresAt !== undefined && Date.now() < expiresAt) return cached;
     const data = await request<{
+      version?: number;
       config?: {
         dataset?: {
           source: "collection" | "arcgis";
@@ -430,6 +454,7 @@ export function createBase(opts: {
       reactsToExtent: dataset.reactsToExtent ?? false,
       crossFilterLinks: dataset.crossFilterLinks ?? [],
       sourcePipelineId: dataset.sourcePipelineId ?? null,
+      version: data.version,
     };
     datasetCache.set(pk, resolved);
     expiryByPk.set(pk, Date.now() + DATASET_CACHE_TTL_MS);
@@ -440,16 +465,6 @@ export function createBase(opts: {
     if (!opts?.authenticated) return fetchWithTimeout(url);
     const shareToken = getShareLinkToken?.();
     return authFetch(url, shareToken ? { headers: { "X-Share-Link-Token": shareToken } } : {});
-  }
-
-  function isCoreServed(url: string): boolean {
-    try {
-      const target = new URL(url);
-      const core = new URL(coreUrl);
-      return target.origin === core.origin && target.pathname.startsWith(core.pathname);
-    } catch {
-      return false;
-    }
   }
 
   async function fetchGeoJsonFeatures(url: string): Promise<DataRecord[]> {
@@ -463,9 +478,10 @@ export function createBase(opts: {
     const headers: Record<string, string> = {};
     if (shareToken) headers["X-Share-Link-Token"] = shareToken;
     // Jeton uniquement pour une URL servie par le cœur (jamais vers un hôte tiers).
-    const res = isCoreServed(url)
-      ? await authFetch(url, { headers })
-      : await fetchWithTimeout(url, { headers });
+    const res =
+      toCoreHref(coreUrl, url) !== null
+        ? await authFetch(url, { headers })
+        : await fetchWithTimeout(url, { headers });
     await ensureOk(res);
     const data = (await res.json()) as {
       numberMatched?: number;

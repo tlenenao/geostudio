@@ -973,12 +973,16 @@ class _FakeBlobResource:
     def __or__(self, other):
         return self
 
+    def add_map(self, fn):
+        return self
+
     def apply_hints(self, **kwargs):
         pass
 
 
 def _patch_blob_internals(monkeypatch, captured):
-    def _fake_filesystem(*, bucket_url, credentials=None, file_glob="*"):
+    def _fake_filesystem(*, bucket_url, credentials=None, file_glob="*", kwargs=None):
+        captured["fs_kwargs"] = kwargs
         captured["bucket_url"] = bucket_url
         captured["credentials"] = credentials
         captured["file_glob"] = file_glob
@@ -1004,7 +1008,13 @@ def _patch_blob_internals(monkeypatch, captured):
             "parquet": connector_runtime.read_parquet,
         },
     )
-    monkeypatch.setattr(connector_runtime, "_run_dlt_and_attach", lambda *a, **k: None)
+    monkeypatch.setattr(
+        connector_runtime,
+        "_run_dlt_and_attach",
+        lambda c, resource, *, node_id, view_name: c.execute(
+            f'CREATE TEMP TABLE "{view_name}" AS SELECT 1 AS a'
+        ),
+    )
 
 
 def test_materialize_blob_connector_builds_aws_credentials_and_splits_path(
@@ -1021,6 +1031,7 @@ def test_materialize_blob_connector_builds_aws_credentials_and_splits_path(
             "awsAccessKeyId": "AKIA123",
             "awsSecretAccessKey": "shh",
             "endpointUrl": "http://minio.local:9000",
+            "bucketUrl": "s3://bucket/prefix",
         },
     )
     captured: dict = {}
@@ -1062,6 +1073,7 @@ def test_materialize_blob_connector_blocks_internal_s3_endpoint(
             "awsAccessKeyId": "AKIA123",
             "awsSecretAccessKey": "shh",
             "endpointUrl": "http://169.254.169.254",
+            "bucketUrl": "s3://bucket",
         },
     )
     _patch_blob_internals(monkeypatch, {})
@@ -1091,6 +1103,7 @@ def test_materialize_blob_connector_builds_azure_credentials(
             "kind": "azure_blob_credentials",
             "accountName": "myaccount",
             "accountKey": "base64key==",
+            "bucketUrl": "az://container",
         },
     )
     captured: dict = {}
@@ -1138,7 +1151,11 @@ def test_materialize_blob_connector_builds_gcs_credentials(
         user,
         name="gcs-secret",
         kind="gcs_credentials",
-        payload={"kind": "gcs_credentials", "serviceAccountInfo": service_account_info},
+        payload={
+            "kind": "gcs_credentials",
+            "serviceAccountInfo": service_account_info,
+            "bucketUrl": "gs://bucket",
+        },
     )
     captured: dict = {}
     _patch_blob_internals(monkeypatch, captured)
@@ -1161,6 +1178,116 @@ def test_materialize_blob_connector_builds_gcs_credentials(
     assert isinstance(creds, GcpServiceAccountCredentials)
     assert creds.project_id == "proj1"
     assert creds.client_email == "x@proj1.iam.gserviceaccount.com"
+
+
+def _blob_s3_secret(session, tenant, user, **extra):
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="s3-scoped",
+        kind="s3_credentials",
+        payload={
+            "kind": "s3_credentials",
+            "awsAccessKeyId": "AKIA123",
+            "awsSecretAccessKey": "shh",
+            **extra,
+        },
+    )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "s3://other-bucket/prefix/data.csv",  # autre bucket
+        "s3://bucket-evil/prefix/data.csv",  # préfixe de nom de bucket
+        "s3://bucket/other/data.csv",  # même bucket, hors préfixe
+        "s3://bucket/prefix/../other/data.csv",  # traversée
+        "s3://bucket/prefixe/data.csv",  # préfixe de chaîne, pas de segment
+        "s3://BUCKET/prefix/data.csv",  # casse : refus strict
+    ],
+)
+def test_materialize_blob_connector_refuses_path_outside_bucket_url(
+    monkeypatch, conn, session, tenant, user, path
+):
+    _blob_s3_secret(session, tenant, user, bucketUrl="s3://bucket/prefix")
+    captured: dict = {}
+    _patch_blob_internals(monkeypatch, captured)
+    params = ReaderConnectorBlobParams(secretName="s3-scoped", path=path, format="csv")
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="outside"):
+        connector_runtime.materialize_blob_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
+            node_id="bo",
+            params=params,
+            view_name="node_bo",
+        )
+    assert "bucket_url" not in captured  # jamais allé jusqu'à filesystem()
+
+
+def test_materialize_blob_connector_accepts_path_inside_bucket_url(
+    monkeypatch, conn, session, tenant, user
+):
+    _blob_s3_secret(session, tenant, user, bucketUrl="s3://bucket/prefix/")
+    captured: dict = {}
+    _patch_blob_internals(monkeypatch, captured)
+    params = ReaderConnectorBlobParams(
+        secretName="s3-scoped", path="s3://bucket/prefix/sub/data.csv", format="csv"
+    )
+    connector_runtime.materialize_blob_connector(
+        conn,
+        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
+        node_id="bi",
+        params=params,
+        view_name="node_bi",
+    )
+    assert captured["bucket_url"] == "s3://bucket"
+    assert captured["file_glob"] == "prefix/sub/data.csv"
+
+
+@pytest.mark.parametrize(
+    ("path", "accepted"),
+    [("s3://bucket/x", True), ("s3://bucket-evil/x", False)],
+)
+def test_materialize_blob_connector_bucket_only_scope_name_boundary(
+    monkeypatch, conn, session, tenant, user, path, accepted
+):
+    """REV-197 : « s3://bucket » ne couvre pas « s3://bucket-evil » (préfixe terminé par « / »)."""
+    _blob_s3_secret(session, tenant, user, bucketUrl="s3://bucket")
+    captured: dict = {}
+    _patch_blob_internals(monkeypatch, captured)
+    params = ReaderConnectorBlobParams(secretName="s3-scoped", path=path, format="csv")
+    args = dict(
+        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
+        node_id="bb",
+        params=params,
+        view_name="node_bb",
+    )
+    if accepted:
+        connector_runtime.materialize_blob_connector(conn, **args)
+        assert captured["bucket_url"] == "s3://bucket"
+    else:
+        with pytest.raises(connector_runtime.ConnectorRuntimeError, match="outside"):
+            connector_runtime.materialize_blob_connector(conn, **args)
+        assert "bucket_url" not in captured
+
+
+def test_materialize_blob_connector_legacy_secret_without_bucket_url_fails_clearly(
+    monkeypatch, conn, session, tenant, user
+):
+    _blob_s3_secret(session, tenant, user)  # secret chiffré avant REV-197
+    _patch_blob_internals(monkeypatch, {})
+    params = ReaderConnectorBlobParams(
+        secretName="s3-scoped", path="s3://bucket/data.csv", format="csv"
+    )
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="bucketUrl"):
+        connector_runtime.materialize_blob_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
+            node_id="bl",
+            params=params,
+            view_name="node_bl",
+        )
 
 
 # --- P16.02 / P16.03 : garde d'egress du DSN, délais prouvés par un serveur lent ---
@@ -1297,3 +1424,260 @@ def test_rest_row_cap(conn, session, tenant, user, httpserver, monkeypatch):
             params=params,
             view_name="node_cap",
         )
+
+
+def _blob_secret_and_resolver(session, tenant, user):
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="s3-secret",
+        kind="s3_credentials",
+        payload={
+            "kind": "s3_credentials",
+            "awsAccessKeyId": "AKIA",
+            "awsSecretAccessKey": "shh",
+            "bucketUrl": "s3://bucket",
+        },
+    )
+    return connector_runtime.PostgresSecretResolver(session, tenant.id, user)
+
+
+def test_materialize_blob_connector_literal_glob_with_zero_rows_raises(
+    monkeypatch, conn, session, tenant, user
+):
+    resolver = _blob_secret_and_resolver(session, tenant, user)
+    _patch_blob_internals(monkeypatch, {})
+    monkeypatch.setattr(
+        connector_runtime,
+        "_run_dlt_and_attach",
+        lambda c, resource, *, node_id, view_name: c.execute(
+            f'CREATE TEMP TABLE "{view_name}" (a INTEGER)'
+        ),
+    )
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="no row loaded"):
+        connector_runtime.materialize_blob_connector(
+            conn,
+            secret_resolver=resolver,
+            node_id="b10",
+            params=ReaderConnectorBlobParams(
+                secretName="s3-secret", path="s3://bucket/prefix/data.csv", format="csv"
+            ),
+            view_name="node_b10",
+        )
+
+
+def test_materialize_blob_connector_literal_glob_missing_table_gets_a_clear_message(
+    monkeypatch, conn, session, tenant, user
+):
+    resolver = _blob_secret_and_resolver(session, tenant, user)
+    _patch_blob_internals(monkeypatch, {})
+
+    def _dlt_without_table(c, resource, *, node_id, view_name):
+        raise connector_runtime.ConnectorRuntimeError(
+            "reader.connector extraction failed: Catalog Error: Table with name records "
+            "does not exist!"
+        )
+
+    monkeypatch.setattr(connector_runtime, "_run_dlt_and_attach", _dlt_without_table)
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="no row loaded"):
+        connector_runtime.materialize_blob_connector(
+            conn,
+            secret_resolver=resolver,
+            node_id="b11",
+            params=ReaderConnectorBlobParams(
+                secretName="s3-secret", path="s3://bucket/data.csv", format="csv"
+            ),
+            view_name="node_b11",
+        )
+
+
+def test_materialize_blob_connector_wildcard_glob_with_zero_rows_is_accepted(
+    monkeypatch, conn, session, tenant, user
+):
+    resolver = _blob_secret_and_resolver(session, tenant, user)
+    _patch_blob_internals(monkeypatch, {})
+    monkeypatch.setattr(
+        connector_runtime,
+        "_run_dlt_and_attach",
+        lambda c, resource, *, node_id, view_name: c.execute(
+            f'CREATE TEMP TABLE "{view_name}" (a INTEGER)'
+        ),
+    )
+    connector_runtime.materialize_blob_connector(
+        conn,
+        secret_resolver=resolver,
+        node_id="b12",
+        params=ReaderConnectorBlobParams(
+            secretName="s3-secret", path="s3://bucket/prefix/*.csv", format="csv"
+        ),
+        view_name="node_b12",
+    )
+    assert conn.execute('SELECT count(*) FROM "node_b12"').fetchone() == (0,)
+
+
+def _local_csv_files(tmp_path, sizes):
+    """sizes = {nom: nb_lignes}. `filesystem` dlt réel sur un dossier local."""
+    from dlt.sources.filesystem import filesystem
+
+    for name, n in sizes.items():
+        (tmp_path / name).write_text("x\n" + "\n".join(str(i) for i in range(n)) + "\n")
+    return filesystem(bucket_url=str(tmp_path), file_glob="*.csv")
+
+
+def _run_capped(conn, tmp_path, sizes):
+    files = _local_csv_files(tmp_path, sizes)
+    resource = connector_runtime._blob_resource(files, connector_runtime.read_csv())
+    resource.apply_hints(table_name="records", write_disposition="replace")
+    connector_runtime._run_dlt_and_attach(conn, resource, node_id="cap", view_name="node_cap")
+
+
+def test_blob_file_cap(conn, tmp_path, monkeypatch):
+    monkeypatch.setenv("CORE_PIPELINES_BLOB_MAX_FILES", "2")
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="plafond de 2 fichiers"):
+        _run_capped(conn, tmp_path, {"a.csv": 1, "b.csv": 1, "c.csv": 1})
+
+
+def test_blob_byte_cap(conn, tmp_path, monkeypatch):
+    monkeypatch.setenv("CORE_PIPELINES_BLOB_MAX_BYTES", "10")
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="plafond de 10 octets"):
+        _run_capped(conn, tmp_path, {"a.csv": 50})
+
+
+def test_blob_row_cap(conn, tmp_path, monkeypatch):
+    monkeypatch.setenv("CORE_PIPELINES_CONNECTOR_MAX_ROWS", "3")
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="plafond de 3 lignes"):
+        _run_capped(conn, tmp_path, {"a.csv": 10})
+
+
+def test_blob_deadline(conn, tmp_path, monkeypatch):
+    monkeypatch.setattr(connector_runtime, "_blob_timeout_s", lambda: -1)  # échéance déjà passée
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="délai de -1s dépassé"):
+        _run_capped(conn, tmp_path, {"a.csv": 2})
+
+
+def test_blob_under_caps_loads_all_rows(conn, tmp_path):
+    _run_capped(conn, tmp_path, {"a.csv": 4, "b.csv": 3})
+    assert conn.execute("SELECT count(*) FROM node_cap").fetchone()[0] == 7
+
+
+def test_materialize_blob_connector_passes_provider_timeouts(
+    monkeypatch, conn, session, tenant, user
+):
+    monkeypatch.setenv("CORE_PIPELINES_CONNECT_TIMEOUT_S", "7")
+    monkeypatch.setenv("CORE_PIPELINES_QUERY_TIMEOUT_S", "42")
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="s3-t",
+        kind="s3_credentials",
+        payload={
+            "kind": "s3_credentials",
+            "awsAccessKeyId": "AKIA123",
+            "awsSecretAccessKey": "shh",
+            "bucketUrl": "s3://bucket",
+        },
+    )
+    captured: dict = {}
+    _patch_blob_internals(monkeypatch, captured)
+    connector_runtime.materialize_blob_connector(
+        conn,
+        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
+        node_id="bt",
+        params=ReaderConnectorBlobParams(
+            secretName="s3-t", path="s3://bucket/data.csv", format="csv"
+        ),
+        view_name="node_bt",
+    )
+    cfg = captured["fs_kwargs"]["config_kwargs"]
+    assert cfg["connect_timeout"] == 7 and cfg["read_timeout"] == 42
+
+
+def test_materialize_blob_connector_pins_the_s3_endpoint_resolver(
+    monkeypatch, conn, session, tenant, user
+):
+    from app.pipelines.egress import PinnedAioResolver
+
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="s3-pin",
+        kind="s3_credentials",
+        payload={
+            "kind": "s3_credentials",
+            "awsAccessKeyId": "AKIA123",
+            "awsSecretAccessKey": "shh",
+            "bucketUrl": "s3://bucket",
+            "endpointUrl": "http://minio.local:9000",
+        },
+    )
+    captured: dict = {}
+    _patch_blob_internals(monkeypatch, captured)
+    monkeypatch.setattr("socket.getaddrinfo", lambda *a, **k: [(2, 1, 6, "", ("93.184.216.34", 0))])
+    connector_runtime.materialize_blob_connector(
+        conn,
+        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
+        node_id="bp",
+        params=ReaderConnectorBlobParams(
+            secretName="s3-pin", path="s3://bucket/data.csv", format="csv"
+        ),
+        view_name="node_bp",
+    )
+    cfg = captured["fs_kwargs"]["config_kwargs"]
+    assert isinstance(cfg["connector_args"]["resolver"], PinnedAioResolver)
+
+
+def test_materialize_blob_connector_without_endpoint_has_no_custom_resolver(
+    monkeypatch, conn, session, tenant, user
+):
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="s3-aws",
+        kind="s3_credentials",
+        payload={
+            "kind": "s3_credentials",
+            "awsAccessKeyId": "AKIA123",
+            "awsSecretAccessKey": "shh",
+            "bucketUrl": "s3://bucket",
+        },
+    )
+    captured: dict = {}
+    _patch_blob_internals(monkeypatch, captured)
+    connector_runtime.materialize_blob_connector(
+        conn,
+        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
+        node_id="ba",
+        params=ReaderConnectorBlobParams(
+            secretName="s3-aws", path="s3://bucket/data.csv", format="csv"
+        ),
+        view_name="node_ba",
+    )
+    assert "connector_args" not in captured["fs_kwargs"]["config_kwargs"]
+
+
+@pytest.mark.parametrize("raw", ["0", "-5"])
+def test_env_int_non_positive_falls_back_to_default(monkeypatch, raw):
+    monkeypatch.setenv("CORE_PIPELINES_BLOB_MAX_FILES", raw)
+    assert connector_runtime._blob_max_files() == 100
+
+
+def test_stream_sql_passes_hostaddr_pin_to_the_driver(monkeypatch):
+    seen: dict = {}
+
+    def fake_create_engine(dsn, connect_args=None, **kw):
+        seen["connect_args"] = connect_args
+        raise RuntimeError("stop")
+
+    monkeypatch.setattr(connector_runtime.sa, "create_engine", fake_create_engine)
+    monkeypatch.setattr(connector_runtime, "assert_dsn_egress_allowed", lambda dsn: None)
+    monkeypatch.setattr(
+        connector_runtime, "dsn_pin_connect_args", lambda dsn: {"hostaddr": "93.184.216.34"}
+    )
+    with pytest.raises(RuntimeError, match="stop"):
+        list(connector_runtime._stream_sql("postgresql://u:p@db.example.com/d", "SELECT 1"))
+    assert seen["connect_args"]["hostaddr"] == "93.184.216.34"
+    assert "connect_timeout" in seen["connect_args"]  # les délais P16.03 sont conservés

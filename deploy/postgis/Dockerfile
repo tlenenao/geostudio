@@ -22,8 +22,8 @@ RUN apt-get update \
 # fuzzystrmatch) contre $POSTGRES_DB au premier démarrage. postgres:16-bookworm
 # n'a AUCUN script de ce genre — installer le paquet APT rend l'extension
 # seulement DISPONIBLE, il ne la crée jamais dans aucune base. Sans ce script,
-# tout `docker run` nu de cette image (CI core/core-qgis/stac-conformance,
-# release.yml test-gate + test-gate-arm64, scripts/run-qgis-tests.sh) démarre
+# tout `docker run` nu de cette image (CI core/stac-conformance,
+# release.yml test-gate + test-gate-arm64) démarre
 # avec un Postgres nu, pas un PostGIS — trouvé en revue finale de branche
 # (`CREATE TABLE t (geom geometry(...))` échouait en
 # `type "geometry" does not exist`). Seul `postgis` est recréé ici : rien

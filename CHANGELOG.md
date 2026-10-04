@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **39 new pipeline operations**; the exposed catalogue is now 57 operations
+  (59 in the raw registry, which also holds `reader.file` and `writer.file`,
+  hidden unless `CORE_PIPELINE_FILE_IO_ENABLED=true`), all executed in DuckDB
+  or in-process with Shapely (BSD-3-Clause):
+  - 15 geometry/coordinate/SRID transformers: `swapCoordinates`,
+    `translateGeometry`, `scaleGeometry`, `rotateGeometry`, `createGeometry`,
+    `concatCoordinates`, `roundCoordinates`, `extractElevation`,
+    `extractDimension`, `countVertices`, `extractCoordinates`, `extractSrid`,
+    `setSrid`, `reprojectAttribute`, `formatCoordinates`;
+  - 11 schema/cardinality transformers: `bulkRemoveAttributes`,
+    `bulkRenameAttributes`, `scanSchema`, `explodeList`, `explodeGeometry`,
+    `exposeAttributes`, `validateAttributes`, `sort`, `detectChanges`,
+    `mergeChildren`, `mapSchema`;
+  - 4 readers: `reader.connector.bigquery`, `reader.connector.mssql`,
+    `reader.connector.oracle`, `reader.connector.blob`;
+  - 9 replacements for the removed QGIS engine (see *Removed* below):
+    `centroid`, `convexHull`, `simplify`, `boundingGeometry`, `snapToLayer`,
+    `resolveOverlaps`, `triangulate`, `densify`, `minimumBoundingCircle`.
+- `reader.file` / `writer.file` (local files through DuckDB spatial), disabled
+  by default and gated by `CORE_PIPELINE_FILE_IO_ENABLED`.
+- Optional `groupBy` (list of column names) on `transform.triangulate` and
+  `transform.minimumBoundingCircle`: one triangulation / one circle per group
+  instead of a single global result; empty (default) keeps the previous
+  behaviour. Degenerate inputs (NULL geometry, empty input, non-point geometry
+  for `triangulate`) now fail with an explicit pipeline error (HTTP 400 on
+  preview) instead of an internal error.
+
 ### Removed
 
 - **Breaking: the `transform.qgis` pipeline operation and its
@@ -99,7 +128,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Database: migration 0043 adds `ON DELETE` to the foreign keys on `items`
     (deleting an item with history now succeeds); writes to a config
     (`PUT /v1/configs/{id}` and `PUT /v1/configs/by-item/{id}`) honour `If-Match` and answer 412 on a stale version
-    (app builder only for now); config write bodies are capped at 5 MB (413).
+    (app builder at the time; extended to the other editors below); config write bodies are capped at 5 MB (413).
   - Self-contained export: the bundled mini-server answers under `/v1` and the
     image is pinned to the core version that produced the bundle.
   - Authorization: role assignment is capped to the caller's own privileges;
@@ -117,6 +146,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     and `sitemap.xml` covers all public pages (single file, 50,000 URL cap).
   - MCP tool calls and copilot turns leave `mcp.tool_call` / `copilot.turn`
     rows in `audit_log`; copilot writes require a click confirmation.
+- **Breaking (blob secrets)**: `s3_credentials` / `azure_blob_credentials` /
+  `gcs_credentials` secrets now carry a `bucketUrl`, mandatory on create/update,
+  and `reader.connector.blob` rejects any `path` outside that bucket/prefix
+  (REV-197). An existing secret without `bucketUrl` stays readable, but
+  pipelines using it fail with a message asking for it to be set: edit the
+  secret (no automatic migration). There is no secret edit form in the shell
+  yet: use `PUT /v1/secrets/{id}` or delete and re-create the secret. Glob
+  wildcards are refused in `bucketUrl`.
+- **Breaking (SMTP secrets)**: an SMTP secret with `useTls=false` is refused
+  at write time and at send time unless its host is `localhost`; existing
+  ones must be re-created with TLS. Port 465 now uses implicit TLS
+  (`SMTP_SSL`); STARTTLS certificates are verified.
+- **Blob reader limits**: `reader.connector.blob` is capped by
+  `CORE_PIPELINES_BLOB_MAX_FILES` (default 100), `CORE_PIPELINES_BLOB_MAX_BYTES`
+  (default 1 GiB) and `CORE_PIPELINES_BLOB_TIMEOUT_S` (default 600 s), wired on
+  `core` and `worker`. The worker container gets `mem_limit:
+  ${WORKER_MEM_LIMIT:-2g}`.
+- **Optimistic concurrency on editors**: the map, dataset, pipeline and
+  scheduled-report editors send the version they read (`If-Match`) and show a
+  conflict notice on 412 instead of silently overwriting; the MCP tool
+  `save_app_config` accepts `expectedVersion`. Not yet covered: the edit path
+  of the visual query wizard.
+- **Pipeline runs**: cancelling an already cancelled run answers 200
+  (idempotent); a run cancelled while queued is no longer executed by the
+  worker.
+
+### Security
+
+- Egress (pipelines, alerts, harvest, search, copilot, Postgres DSN, S3
+  endpoint): connections are pinned to the IP address validated by the SSRF
+  guard (no DNS rebinding between check and connect). MSSQL/Oracle DSNs are
+  not pinned yet.
+- The shell's `authFetch` only sends the token to the core's origin and throws
+  on any other URL; a relative `VITE_CORE_URL` (`/api`) is resolved against the
+  page origin.
+- `GET /v1/share-links/{token}` is rate limited per client IP (new
+  `share-link` group, 60/min).
+- Deleting a referenced secret answers 409 listing only the objects the
+  caller can read.
+
+- `admin.collections.manage` now opens read access to a collection's items,
+  aggregates, exports, tiles and attachments (REV-185); re-applying the DDL no
+  longer reopens a sensitive column to `gis_rls_masked` (REV-186).
 
 ## [0.1.0] - 2026-07-16
 

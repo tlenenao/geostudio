@@ -155,7 +155,7 @@ def _client(monkeypatch, info: TableInfo | None = None, collection=None):
         is_public=True,
         sensitive_fields=[],
     )
-    monkeypatch.setattr(tiles_module, "get_readable_collection", lambda s, u, c, *, guest=None: col)
+    monkeypatch.setattr(tiles_module, "get_collection_for_read", lambda s, u, c, *, guest=None: col)
     app.dependency_overrides[db.get_session] = lambda: None
     app.dependency_overrides[get_current_user_optional] = lambda: None
     app.dependency_overrides[get_introspector] = lambda: (
@@ -231,7 +231,7 @@ def _recording_client(monkeypatch):
         is_public=True,
         sensitive_fields=[],
     )
-    monkeypatch.setattr(tiles_module, "get_readable_collection", lambda s, u, c, *, guest=None: col)
+    monkeypatch.setattr(tiles_module, "get_collection_for_read", lambda s, u, c, *, guest=None: col)
     monkeypatch.setattr(tiles_module, "quote_ident", lambda s, name: f'"{name}"')
     app.dependency_overrides[db.get_session] = lambda: session
     app.dependency_overrides[get_current_user_optional] = lambda: None

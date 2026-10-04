@@ -12,6 +12,9 @@ import {
 import type { DataSource } from "./types";
 import { OWNER_PERMISSIONS } from "../auth/permissions";
 
+// Les tests qui stubbent `fetch` (copilotTurn…) ne doivent pas fuir sur les suivants.
+afterEach(() => vi.unstubAllGlobals());
+
 // jsdom's Blob shim (used by this test environment) has no .text()/.arrayBuffer();
 // Node's own Blob (from node:buffer) does — swap it in so exportDataSource tests
 // can read the fetched blob's content. No effect in real browsers.
@@ -4462,4 +4465,198 @@ test("copilotTurn accepts an undefined itemId and a non-AppConfig currentConfig"
   expect(body.itemId).toBeUndefined();
   expect(body.surface).toBe("sql_lab");
   expect(body.currentConfig).toEqual({ sql: "SELECT 1" });
+});
+
+test("REV-271 : getMapConfig expose la version lue ; saveMapConfig l'envoie en If-Match, ne la persiste pas et rend la nouvelle ; 412 → ApiError", async () => {
+  let ifMatch: string | null = "unset";
+  let body: any;
+  server.use(
+    http.get("https://core.test/v1/configs/by-item/77", () =>
+      HttpResponse.json({
+        id: "cfg-1",
+        itemId: "77",
+        kind: "map",
+        version: 3,
+        config: {
+          kind: "map",
+          map: { basemap: { style: "s" }, view: { center: [0, 0], zoom: 3 }, layers: [] },
+        },
+      }),
+    ),
+    http.put("https://core.test/v1/configs/by-item/77", async ({ request }) => {
+      ifMatch = request.headers.get("If-Match");
+      body = await request.json();
+      return HttpResponse.json({ id: "cfg-1", itemId: "77", kind: "map", version: 4 });
+    }),
+  );
+  const client = makeClient();
+  const loaded = await client.getMapConfig("77");
+  expect(loaded.baseVersion).toBe(3);
+  expect(await client.saveMapConfig("77", loaded)).toBe(4);
+  expect(ifMatch).toBe('"3"');
+  expect("baseVersion" in body).toBe(false);
+  expect("baseVersion" in body.map).toBe(false);
+  // client sans version connue : pas d'en-tête (dernier écrivain gagne)
+  await client.saveMapConfig("77", { ...loaded, baseVersion: undefined });
+  expect(ifMatch).toBeNull();
+  server.use(
+    http.put("https://core.test/v1/configs/by-item/77", () =>
+      HttpResponse.json(
+        { title: "Precondition Failed", detail: "stale version: the config is now at version 5" },
+        { status: 412 },
+      ),
+    ),
+  );
+  await expect(client.saveMapConfig("77", loaded)).rejects.toMatchObject({ status: 412 });
+});
+
+test("REV-271 : getDatasetConfig expose la version, saveDatasetConfig l'envoie en If-Match et la met en cache ; rollbackConfig invalide le cache", async () => {
+  let reads = 0;
+  let ifMatch: string | null = "unset";
+  server.use(
+    http.get("https://core.test/v1/configs/by-item/ds-71", () => {
+      reads += 1;
+      return HttpResponse.json({
+        id: "cfg-ds71",
+        itemId: "ds-71",
+        kind: "dataset",
+        version: reads,
+        config: { kind: "dataset", dataset: { source: "collection", collectionId: "parcs" } },
+      });
+    }),
+    http.put("https://core.test/v1/configs/by-item/ds-71", async ({ request }) => {
+      ifMatch = request.headers.get("If-Match");
+      return HttpResponse.json({ id: "cfg-ds71", itemId: "ds-71", kind: "dataset", version: 10 });
+    }),
+    http.post("https://core.test/v1/configs/cfg-ds71/rollback", () =>
+      HttpResponse.json({ id: "cfg-ds71", itemId: "ds-71", kind: "dataset", version: 11 }),
+    ),
+  );
+  const client = makeClient();
+  const loaded = await client.getDatasetConfig("ds-71");
+  expect(loaded.baseVersion).toBe(1);
+  expect(await client.saveDatasetConfig("ds-71", loaded)).toBe(10);
+  expect(ifMatch).toBe('"1"');
+  // la lecture suivante (cache) voit la version écrite, pas l'ancienne
+  expect((await client.getDatasetConfig("ds-71")).baseVersion).toBe(10);
+  expect(reads).toBe(1);
+  // rollbackConfig relit by-item (reads=2) puis invalide le cache dataset
+  await client.rollbackConfig("ds-71", 1);
+  expect((await client.getDatasetConfig("ds-71")).baseVersion).toBe(3);
+  // le corps PUT ne contient jamais baseVersion
+  let body: any;
+  server.use(
+    http.put("https://core.test/v1/configs/by-item/ds-71", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ version: 12 });
+    }),
+  );
+  await client.saveDatasetConfig("ds-71", loaded);
+  expect("baseVersion" in body.dataset).toBe(false);
+});
+
+test("REV-271 : getPipelineConfig expose la version, savePipelineConfig l'envoie en If-Match sans la persister ; previewPipeline ne l'envoie pas", async () => {
+  let ifMatch: string | null = "unset";
+  let putBody: any;
+  let previewBody: any;
+  const graph = { nodes: [], edges: [] };
+  server.use(
+    http.get("https://core.test/v1/configs/by-item/p-71", () =>
+      HttpResponse.json({
+        id: "cfg-p71",
+        itemId: "p-71",
+        kind: "pipeline",
+        version: 6,
+        config: { kind: "pipeline", pipeline: graph },
+      }),
+    ),
+    http.put("https://core.test/v1/configs/by-item/p-71", async ({ request }) => {
+      ifMatch = request.headers.get("If-Match");
+      putBody = await request.json();
+      return HttpResponse.json({ id: "cfg-p71", itemId: "p-71", kind: "pipeline", version: 7 });
+    }),
+    http.post("https://core.test/v1/pipelines/p-71/preview", async ({ request }) => {
+      previewBody = await request.json();
+      return HttpResponse.json([]);
+    }),
+  );
+  const client = makeClient();
+  const loaded = await client.getPipelineConfig("p-71");
+  expect(loaded.baseVersion).toBe(6);
+  expect(await client.savePipelineConfig("p-71", loaded)).toBe(7);
+  expect(ifMatch).toBe('"6"');
+  expect(putBody).toEqual({ version: 1, kind: "pipeline", pipeline: graph });
+  await client.previewPipeline("p-71", "n1", loaded);
+  expect(previewBody).toEqual({ pipeline: graph });
+  await client.savePipelineConfig("p-71", { ...loaded, baseVersion: undefined });
+  expect(ifMatch).toBeNull();
+});
+
+test("REV-271 : getReportScheduleConfig expose la version, saveReportScheduleConfig l'envoie en If-Match sans la persister", async () => {
+  let ifMatch: string | null = "unset";
+  let body: any;
+  const report = {
+    bookmarkItemId: "bm-1",
+    refreshPolicy: { enabled: true, cron: "0 8 * * MON" },
+    channels: [],
+  };
+  server.use(
+    http.get("https://core.test/v1/configs/by-item/r-71", () =>
+      HttpResponse.json({
+        id: "cfg-r71",
+        itemId: "r-71",
+        kind: "report",
+        version: 2,
+        config: { kind: "report", report },
+      }),
+    ),
+    http.put("https://core.test/v1/configs/by-item/r-71", async ({ request }) => {
+      ifMatch = request.headers.get("If-Match");
+      body = await request.json();
+      return HttpResponse.json({ id: "cfg-r71", itemId: "r-71", kind: "report", version: 3 });
+    }),
+  );
+  const client = makeClient();
+  const loaded = await client.getReportScheduleConfig("r-71");
+  expect(loaded.baseVersion).toBe(2);
+  expect(await client.saveReportScheduleConfig("r-71", loaded)).toBe(3);
+  expect(ifMatch).toBe('"2"');
+  expect(body).toEqual({ version: 1, kind: "report", report });
+  await client.saveReportScheduleConfig("r-71", { ...loaded, baseVersion: undefined });
+  expect(ifMatch).toBeNull();
+});
+
+test("REV-271 : getAlertRuleConfig expose la version, saveAlertRuleConfig l'envoie en If-Match sans la persister", async () => {
+  let ifMatch: string | null = "unset";
+  let body: any;
+  const alert = {
+    datasetItemId: "ds-1",
+    query: { agg: "count" },
+    condition: { expr: "value > 100" },
+    refreshPolicy: { enabled: true, cron: "*/5 * * * *" },
+    channels: [{ kind: "webhook" as const, url: "https://example.test/hook" }],
+    messageTemplate: "Alert {ruleName}",
+  };
+  server.use(
+    http.get("https://core.test/v1/configs/by-item/a-71", () =>
+      HttpResponse.json({
+        id: "cfg-a71",
+        itemId: "a-71",
+        kind: "alert",
+        version: 5,
+        config: { kind: "alert", alert },
+      }),
+    ),
+    http.put("https://core.test/v1/configs/by-item/a-71", async ({ request }) => {
+      ifMatch = request.headers.get("If-Match");
+      body = await request.json();
+      return HttpResponse.json({ id: "cfg-a71", itemId: "a-71", kind: "alert", version: 6 });
+    }),
+  );
+  const client = makeClient();
+  const loaded = await client.getAlertRuleConfig("a-71");
+  expect(loaded.baseVersion).toBe(5);
+  expect(await client.saveAlertRuleConfig("a-71", loaded)).toBe(6);
+  expect(ifMatch).toBe('"5"');
+  expect(body).toEqual({ version: 1, kind: "alert", alert });
 });

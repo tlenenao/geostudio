@@ -21,6 +21,7 @@ import hashlib
 import hmac
 import json
 import smtplib
+import ssl
 from email.message import EmailMessage
 
 import requests
@@ -31,6 +32,7 @@ from app.alerts.egress import EgressBlockedError, assert_egress_allowed, build_g
 from app.configs.schemas import AlertChannelEmail, AlertChannelWebhook
 from app.items.models import Item
 from app.secrets import repository as secrets_repo
+from app.secrets.schemas import smtp_tls_violation
 from app.users.models import User
 
 
@@ -125,10 +127,24 @@ def send_email(
     message["To"] = channel.to
     message.set_content(body)
 
+    violation = smtp_tls_violation(payload)
+    if violation:
+        # Secret stocké avant la validation d'écriture (REV-273e) : refus explicite,
+        # jamais de bascule silencieuse vers TLS (le serveur peut ne pas le supporter).
+        raise NotifyError(
+            f"secret '{channel.smtpSecretName}' : {violation} — "
+            "mettez à jour le secret (PUT /v1/secrets/{id}) avec useTls=true"
+        )
+
+    ctx = ssl.create_default_context()
     try:
-        with smtplib.SMTP(payload.host, payload.port, timeout=10) as smtp:
-            if payload.useTls:
-                smtp.starttls()
+        if payload.useTls and payload.port == 465:
+            server_cm = smtplib.SMTP_SSL(payload.host, payload.port, timeout=10, context=ctx)
+        else:
+            server_cm = smtplib.SMTP(payload.host, payload.port, timeout=10)
+        with server_cm as smtp:
+            if payload.useTls and payload.port != 465:
+                smtp.starttls(context=ctx)
             smtp.login(payload.username, payload.password)
             smtp.send_message(message)
     except (smtplib.SMTPException, OSError) as exc:

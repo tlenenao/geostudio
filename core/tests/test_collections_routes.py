@@ -1024,3 +1024,76 @@ def test_sensitive_fields_hidden_from_fiche_and_schema_without_privilege(env):
     assert "titre" not in client.get("/v1/collections/incidents/schema").text
     listed = client.get("/v1/collections").json()["collections"]
     assert all(c["sensitiveFields"] == [] for c in listed)
+
+
+def test_get_collection_for_read_lifts_visibility_only_with_the_privilege():
+    """REV-185 : porteur de admin.collections.manage = lecture d'une collection
+    privée non partagée ; sans le privilège (ou anonyme) = 404 non-fuyant."""
+    from fastapi import HTTPException
+
+    from app.collections.routes import get_collection_for_read
+    from app.roles.privileges import Privilege
+    from app.roles.repository import create_role
+    from app.users.models import User
+    from app.users.repository import set_user_role
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    Session = make_session_factory(engine)
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        owner = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="o",
+            username="owner",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=True,
+        )
+        other = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="x",
+            username="other",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        col = repo.create_collection(
+            s,
+            tenant_id=tenant.id,
+            owner_id=owner.id,
+            table_name="priv",
+            title="Priv",
+            description="",
+            is_public=False,
+            pk_column="id",
+            geometry_column=None,
+            geometry_type=None,
+            srid=None,
+        )
+        s.commit()
+        col_id, other_id, tenant_id = col.id, other.id, tenant.id
+
+    with Session() as s:
+        other = s.get(User, other_id)
+        with pytest.raises(HTTPException) as exc:
+            get_collection_for_read(s, other, col_id)
+        assert exc.value.status_code == 404
+        with pytest.raises(HTTPException):
+            get_collection_for_read(s, None, col_id)
+
+        role = create_role(
+            s,
+            tenant_id=tenant_id,
+            name="Gestionnaire",
+            privileges=[Privilege.ADMIN_COLLECTIONS_MANAGE.value],
+        )
+        set_user_role(
+            s, tenant_id=tenant_id, user_id=other_id, role_id=role.id, role_slug=role.slug
+        )
+        s.commit()
+        other = s.get(User, other_id)
+        assert get_collection_for_read(s, other, col_id).id == col_id

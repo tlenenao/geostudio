@@ -138,6 +138,7 @@ test("un secret s3_credentials créé est immédiatement sélectionné (Vague 2,
   await userEvent.type(screen.getByLabelText("Nom"), "s3-prod");
   await userEvent.type(screen.getByLabelText("Access key ID"), "AKIA123");
   await userEvent.type(screen.getByLabelText("Secret access key"), "sekret");
+  await userEvent.type(screen.getByLabelText("Bucket et préfixe"), "s3://mon-bucket/data");
   await userEvent.click(screen.getByText("Créer"));
 
   await waitFor(() => expect(onChange).toHaveBeenCalledWith("s3-prod"));
@@ -148,7 +149,57 @@ test("un secret s3_credentials créé est immédiatement sélectionné (Vague 2,
       awsAccessKeyId: "AKIA123",
       awsSecretAccessKey: "sekret",
       endpointUrl: undefined,
+      bucketUrl: "s3://mon-bucket/data",
     },
+  });
+});
+
+test("un secret azure_blob_credentials porte son bucketUrl (REV-197)", async () => {
+  const createSecret = vi.fn().mockResolvedValue({
+    id: "s12",
+    name: "az-prod",
+    kind: "azure_blob_credentials",
+    createdAt: "",
+    updatedAt: "",
+  });
+  renderSelect({ kindFilter: "azure_blob_credentials" }, { createSecret });
+  await userEvent.click(screen.getByText("Créer un secret"));
+  await userEvent.type(screen.getByLabelText("Nom"), "az-prod");
+  await userEvent.type(screen.getByLabelText("Nom du compte"), "moncompte");
+  await userEvent.type(screen.getByLabelText("Clé du compte"), "k==");
+  await userEvent.type(screen.getByLabelText("Bucket et préfixe"), "az://conteneur");
+  await userEvent.click(screen.getByText("Créer"));
+
+  await waitFor(() => expect(createSecret).toHaveBeenCalled());
+  expect(createSecret.mock.calls[0][0].payload).toEqual({
+    kind: "azure_blob_credentials",
+    accountName: "moncompte",
+    accountKey: "k==",
+    bucketUrl: "az://conteneur",
+  });
+});
+
+test("un secret gcs_credentials porte son bucketUrl (REV-197)", async () => {
+  const createSecret = vi.fn().mockResolvedValue({
+    id: "s13",
+    name: "gcs-prod",
+    kind: "gcs_credentials",
+    createdAt: "",
+    updatedAt: "",
+  });
+  renderSelect({ kindFilter: "gcs_credentials" }, { createSecret });
+  await userEvent.click(screen.getByText("Créer un secret"));
+  await userEvent.type(screen.getByLabelText("Nom"), "gcs-prod");
+  await userEvent.click(screen.getByLabelText("JSON du compte de service"));
+  await userEvent.paste('{"type":"service_account"}');
+  await userEvent.type(screen.getByLabelText("Bucket et préfixe"), "gs://mon-bucket");
+  await userEvent.click(screen.getByText("Créer"));
+
+  await waitFor(() => expect(createSecret).toHaveBeenCalled());
+  expect(createSecret.mock.calls[0][0].payload).toEqual({
+    kind: "gcs_credentials",
+    serviceAccountInfo: { type: "service_account" },
+    bucketUrl: "gs://mon-bucket",
   });
 });
 

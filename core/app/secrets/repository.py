@@ -7,11 +7,13 @@ from sqlalchemy.orm import Session
 
 from app.configs.models import Config, ConfigRevision
 from app.items.models import Item
+from app.items.repository import get_access_facts_by_ids
 from app.roles.guards import has_privilege
 from app.roles.privileges import Privilege
 from app.secrets.crypto import decrypt
 from app.secrets.models import ConnectorSecret
 from app.secrets.schemas import SECRET_PAYLOAD_ADAPTER, SecretPayload
+from app.sharing.authorization import can
 from app.users.models import User
 
 
@@ -116,14 +118,31 @@ class SecretInUseError(Exception):
     pass
 
 
-def delete_secret_unless_used(session: Session, secret: ConnectorSecret) -> None:
-    """Refuse (SecretInUseError, message = liste des usages) si une config
-    cite encore le secret (P16.05)."""
+def delete_secret_unless_used(session: Session, secret: ConnectorSecret, *, user: User) -> None:
+    """Refuse (SecretInUseError) si une config cite encore le secret (P16.05).
+    REV-273c : le message ne liste que les objets que `user` peut lire
+    (`can(read)`) ; les autres sont comptés, jamais nommés."""
     usages = find_usages(session, tenant_id=secret.tenant_id, name=secret.name)
-    if usages:
-        titles = ", ".join(u["title"] for u in usages)
-        raise SecretInUseError(f"secret encore utilisé par : {titles}")
-    delete_secret(session, secret)
+    if not usages:
+        delete_secret(session, secret)
+        return
+    facts = get_access_facts_by_ids(
+        session, tenant_id=secret.tenant_id, item_ids=[u["itemId"] for u in usages]
+    )
+    visible = [
+        u["title"]
+        for u in usages
+        if (f := facts.get(u["itemId"])) is not None
+        and can(session, user_id=user.id, action="read", item=f)
+    ]
+    hidden = len(usages) - len(visible)
+    parts: list[str] = []
+    if visible:
+        parts.append(", ".join(visible))
+    if hidden:
+        s = "s" if hidden > 1 else ""
+        parts.append(f"{hidden} autre{s} objet{s} non visible{s}")
+    raise SecretInUseError("secret encore utilisé par : " + " et ".join(parts))
 
 
 def delete_secret(session: Session, secret: ConnectorSecret) -> None:

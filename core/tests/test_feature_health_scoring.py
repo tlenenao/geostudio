@@ -95,7 +95,7 @@ def test_thresholds_load_the_medium_priority_floor():
 def test_quality_facts_read_the_real_repository():
     facts = collect_quality_facts(REPO)
     assert "app/auth" in facts.mypy_strict_modules
-    assert len(facts.mypy_strict_modules) == 6
+    assert len(facts.mypy_strict_modules) == 7  # + app/net_pin.py (REV-273d)
     assert any("->" in exemption for exemption in facts.layer_exemptions)
     # 15 depuis la Vague C (revue finale, point 1) : MapPopup.tsx (Tâche 2)
     # et SqlLabPage.tsx (Tâche 26) ajoutent chacun un eslint-disable

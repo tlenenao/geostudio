@@ -214,3 +214,31 @@ def test_webhook_trigger_key_ignores_presented_token():
     assert a == caller_key("Bearer b", "1.2.3.4", "webhook-trigger", path)
     assert a != caller_key("Bearer a", "1.2.3.4", "webhook-trigger", "/v1/pipelines/p2/trigger")
     assert a != caller_key("Bearer a", "5.6.7.8", "webhook-trigger", path)
+
+
+def test_route_group_covers_share_link_resolution():
+    # REV-275 (e) : route publique à jeton dans le chemin, jusque-là hors limiteur.
+    assert route_group("/v1/share-links/abc.def", "GET", _EXPORT_PATH_RE) == "share-link"
+    assert route_group("/v1/items/i1/share-links", "GET", _EXPORT_PATH_RE) is None
+    assert route_group("/v1/share-links/abc.def", "POST", _EXPORT_PATH_RE) is None
+
+
+def test_share_link_key_ignores_token_and_authorization():
+    a = caller_key("Bearer a", "1.2.3.4", "share-link", "/v1/share-links/tok1")
+    assert a == caller_key(None, "1.2.3.4", "share-link", "/v1/share-links/tok2")
+    assert a == "share:1.2.3.4"
+    assert a != caller_key(None, "5.6.7.8", "share-link", "/v1/share-links/tok1")
+
+
+def test_share_link_budget_is_per_ip_and_not_bypassed_by_varying_tokens(monkeypatch):
+    monkeypatch.setenv("CORE_AUTH_MODE", "mock")
+    client = TestClient(create_app(), raise_server_exceptions=False)
+    headers = {"X-Forwarded-For": "9.9.9.9"}
+    # Jetons invalides tous différents (401 attendu, jamais 429, sur les 60 premiers).
+    for i in range(60):
+        r = client.get(f"/v1/share-links/bad-token-{i}", headers=headers)
+        assert r.status_code != 429
+    assert client.get("/v1/share-links/bad-token-60", headers=headers).status_code == 429
+    # Une autre IP garde un budget frais.
+    other = client.get("/v1/share-links/bad-token-0", headers={"X-Forwarded-For": "8.8.8.8"})
+    assert other.status_code != 429

@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import socket
+import ssl
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -261,3 +262,108 @@ def test_secret_references_include_webhook_signing_secret():
 
     cfg = {"alert": {"channels": [{"kind": "webhook", "signingSecretName": "sig"}]}}
     assert _references(cfg, "sig")
+
+
+@pytest.fixture()
+def smtp_variant_session(monkeypatch, request):
+    """Comme smtp_secret_session mais host/port/useTls pilotés par request.param."""
+    host, port, use_tls = request.param
+    monkeypatch.setenv("CORE_SECRETS_MASTER_KEY", TEST_KEY_B64)
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    Session = make_session_factory(engine)
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        # Construit via model_construct : simule un secret STOCKÉ avant L2c-2
+        # (la validation d'écriture de SecretCreate ne s'applique pas à la lecture).
+        payload = SmtpCredentialsPayload.model_construct(
+            kind="smtp",
+            host=host,
+            port=port,
+            username="alerts@example.test",
+            password="s3cret",
+            useTls=use_tls,
+            fromAddress="alerts@example.test",
+        )
+        ciphertext, nonce = secrets_crypto.encrypt(SECRET_PAYLOAD_ADAPTER.dump_python(payload))
+        secrets_repo.create_secret(
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            name="smtp-main",
+            kind="smtp",
+            ciphertext=ciphertext,
+            nonce=nonce,
+        )
+        from app.items import repository as items_repo
+
+        item_id = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=user.id, resource_type="alert", title="rule"
+        ).id
+        s.commit()
+        tenant_id = tenant.id
+    yield Session, tenant_id, item_id
+    engine.dispose()
+
+
+def _send(Session, tenant_id, item_id):
+    channel = AlertChannelEmail(to="ops@example.test", smtpSecretName="smtp-main")
+    with Session() as s:
+        send_email(s, tenant_id=tenant_id, item_id=item_id, channel=channel, subject="A", body="b")
+
+
+@pytest.mark.parametrize("smtp_variant_session", [("smtp.example.test", 25, False)], indirect=True)
+def test_send_email_refuses_stored_secret_without_tls_on_remote_host(smtp_variant_session):
+    with (
+        patch("app.alerts.notify.smtplib.SMTP") as smtp_cls,
+        patch("app.alerts.notify.smtplib.SMTP_SSL") as ssl_cls,
+    ):
+        with pytest.raises(NotifyError, match="useTls=false.*PUT /v1/secrets"):
+            _send(*smtp_variant_session)
+    smtp_cls.assert_not_called()
+    ssl_cls.assert_not_called()
+
+
+@pytest.mark.parametrize("smtp_variant_session", [("smtp.example.test", 465, True)], indirect=True)
+def test_send_email_uses_smtp_ssl_on_port_465(smtp_variant_session):
+    with (
+        patch("app.alerts.notify.smtplib.SMTP") as smtp_cls,
+        patch("app.alerts.notify.smtplib.SMTP_SSL") as ssl_cls,
+    ):
+        server = ssl_cls.return_value.__enter__.return_value
+        _send(*smtp_variant_session)
+    smtp_cls.assert_not_called()
+    ctx = ssl_cls.call_args.kwargs["context"]
+    assert ctx.verify_mode == ssl.CERT_REQUIRED and ctx.check_hostname is True
+    server.starttls.assert_not_called()
+    server.login.assert_called_once_with("alerts@example.test", "s3cret")
+    server.send_message.assert_called_once()
+
+
+@pytest.mark.parametrize("smtp_variant_session", [("smtp.example.test", 587, True)], indirect=True)
+def test_send_email_starttls_verifies_the_certificate(smtp_variant_session):
+    import ssl
+
+    with patch("app.alerts.notify.smtplib.SMTP") as smtp_cls:
+        server = smtp_cls.return_value.__enter__.return_value
+        _send(*smtp_variant_session)
+    ctx = server.starttls.call_args.kwargs["context"]
+    assert ctx.verify_mode == ssl.CERT_REQUIRED and ctx.check_hostname is True
+
+
+@pytest.mark.parametrize("smtp_variant_session", [("localhost", 25, False)], indirect=True)
+def test_send_email_allows_plain_smtp_on_localhost(smtp_variant_session):
+    with patch("app.alerts.notify.smtplib.SMTP") as smtp_cls:
+        server = smtp_cls.return_value.__enter__.return_value
+        _send(*smtp_variant_session)
+    server.starttls.assert_not_called()
+    server.send_message.assert_called_once()

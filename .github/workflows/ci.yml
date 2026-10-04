@@ -68,7 +68,7 @@ jobs:
       - run: uv sync
       - run: uv run ruff check .
       - run: uv run ruff format --check .
-      - run: uv run mypy --strict app/auth app/secrets app/analytics app/copilot app/admin_tools app/roles
+      - run: uv run mypy --strict app/auth app/secrets app/analytics app/copilot app/admin_tools app/roles app/net_pin.py
       - run: uv run pytest --cov=app --cov-report=xml:coverage.xml
       # P27.09 : retention.py (rotation des sauvegardes) vit hors de
       # `testpaths = ["tests"]` — sans cette ligne, aucun job ne le garde.

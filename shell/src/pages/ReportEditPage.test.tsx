@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { ApiError } from "../api/ApiError";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { focusManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, Link, RouterProvider, useParams } from "react-router-dom";
@@ -404,4 +404,82 @@ test("le round-trip de création (pk=null -> Enregistrer -> redirection) n'affic
 
   await waitFor(() => expect(createReportScheduleItem).toHaveBeenCalledTimes(1));
   expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+});
+
+const REPORT_PAYLOAD: ReportSchedulePayload = {
+  bookmarkItemId: "bm-1",
+  refreshPolicy: { enabled: true, cron: "0 8 * * MON" },
+  channels: [{ kind: "webhook", url: "" }],
+};
+
+test("REV-271 : persisted mode envoie la version lue puis celle que le cœur renvoie", async () => {
+  const saveReportScheduleConfig = vi.fn().mockResolvedValueOnce(4).mockResolvedValueOnce(5);
+  renderPage("r-1", {
+    getItem: vi.fn().mockResolvedValue(item),
+    getReportScheduleConfig: vi
+      .fn()
+      .mockResolvedValueOnce({ ...REPORT_PAYLOAD, baseVersion: 3 })
+      .mockResolvedValueOnce({ ...REPORT_PAYLOAD, baseVersion: 4 })
+      .mockResolvedValue({ ...REPORT_PAYLOAD, baseVersion: 5 }),
+    listConfigRevisions: vi.fn().mockResolvedValue([]),
+    saveReportScheduleConfig,
+  });
+  await userEvent.click(await screen.findByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveReportScheduleConfig).toHaveBeenCalledTimes(1));
+  expect(saveReportScheduleConfig.mock.calls[0][1].baseVersion).toBe(3);
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveReportScheduleConfig).toHaveBeenCalledTimes(2));
+  expect(saveReportScheduleConfig.mock.calls[1][1].baseVersion).toBe(4);
+});
+
+test("REV-271 : un refetch (retour d'onglet) ne remplace ni le brouillon ni la version de base", async () => {
+  const saveReportScheduleConfig = vi.fn().mockResolvedValue(4);
+  const getReportScheduleConfig = vi
+    .fn()
+    .mockResolvedValueOnce({ ...REPORT_PAYLOAD, baseVersion: 3 })
+    .mockResolvedValue({
+      ...REPORT_PAYLOAD,
+      refreshPolicy: { enabled: true, cron: "0 9 * * FRI" },
+      baseVersion: 9,
+    });
+  renderPage("r-1", {
+    getItem: vi.fn().mockResolvedValue(item),
+    getReportScheduleConfig,
+    listConfigRevisions: vi.fn().mockResolvedValue([]),
+    saveReportScheduleConfig,
+  });
+  const save = await screen.findByRole("button", { name: "Enregistrer" });
+  act(() => {
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+  });
+  await waitFor(() => expect(getReportScheduleConfig).toHaveBeenCalledTimes(2));
+  await act(async () => {});
+  await userEvent.click(save);
+  await waitFor(() => expect(saveReportScheduleConfig).toHaveBeenCalledTimes(1));
+  expect(saveReportScheduleConfig.mock.calls[0][1].baseVersion).toBe(3);
+  expect(saveReportScheduleConfig.mock.calls[0][1].refreshPolicy.cron).toBe("0 8 * * MON");
+});
+
+test("REV-271 : persisted mode — un 412 affiche le conflit ; « Recharger » reprend la version du cœur", async () => {
+  const saveReportScheduleConfig = vi
+    .fn()
+    .mockRejectedValueOnce(new ApiError(412, { detail: "stale" }))
+    .mockResolvedValue(8);
+  renderPage("r-1", {
+    getItem: vi.fn().mockResolvedValue(item),
+    getReportScheduleConfig: vi
+      .fn()
+      .mockResolvedValueOnce({ ...REPORT_PAYLOAD, baseVersion: 1 })
+      .mockResolvedValue({ ...REPORT_PAYLOAD, baseVersion: 7 }),
+    listConfigRevisions: vi.fn().mockResolvedValue([]),
+    saveReportScheduleConfig,
+  });
+  await userEvent.click(await screen.findByRole("button", { name: "Enregistrer" }));
+  await screen.findByText(t("common.saveConflict"));
+  await userEvent.click(screen.getByRole("button", { name: t("common.saveConflictReload") }));
+  await waitFor(() => expect(screen.queryByText(t("common.saveConflict"))).toBeNull());
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveReportScheduleConfig).toHaveBeenCalledTimes(2));
+  expect(saveReportScheduleConfig.mock.calls[1][1].baseVersion).toBe(7);
 });

@@ -489,3 +489,43 @@ def test_run_pipeline_task_marks_cancel_requested_run_cancelled(env):
     with Session() as s:
         assert pipelines_repo.get_run(s, tenant_id=tenant.id, run_id=run_id).status == "cancelled"
         assert s.execute(text("SELECT count(*) FROM villes_propres")).scalar() == 0
+
+
+def test_run_pipeline_task_does_not_execute_a_run_cancelled_after_get_run(env, monkeypatch, caplog):
+    # REV-275 (c) : annulation arrivant entre get_run (statut lu « queued ») et
+    # mark_running — la garde `run.status == "cancelled"` ne la voit pas ; seul
+    # le UPDATE conditionnel la ferme. Le run reste « cancelled », rien ne s'exécute.
+    app, Session, tenant, user, item_id = env
+    with Session() as s:
+        run = pipelines_repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_id)
+        s.commit()
+        run_id = run.id
+
+    real_get_run = pipelines_repo.get_run
+    calls = {"n": 0}
+
+    def _get_run_then_cancel(session, *, tenant_id, run_id):
+        run = real_get_run(session, tenant_id=tenant_id, run_id=run_id)
+        calls["n"] += 1
+        if calls["n"] == 1:  # lecture initiale de run_pipeline_task
+            with Session() as other:
+                fresh = real_get_run(other, tenant_id=tenant_id, run_id=run_id)
+                pipelines_repo.request_cancel(other, fresh)
+                other.commit()
+        return run  # instantané périmé : status == "queued"
+
+    def _must_not_run(*args, **kwargs):
+        raise AssertionError("run_pipeline ne doit pas être appelé")
+
+    monkeypatch.setattr(pipelines_repo, "get_run", _get_run_then_cancel)
+    monkeypatch.setattr(pipeline_jobs, "run_pipeline", _must_not_run)
+
+    with caplog.at_level("INFO", logger=pipeline_jobs.logger.name):
+        pipeline_jobs.run_pipeline_task(run_id=run_id, tenant_id=tenant.id)
+    assert any(run_id in r.getMessage() and r.levelname == "INFO" for r in caplog.records)
+
+    monkeypatch.setattr(pipelines_repo, "get_run", real_get_run)
+    with Session() as s:
+        fetched = pipelines_repo.get_run(s, tenant_id=tenant.id, run_id=run_id)
+        assert fetched.status == "cancelled"
+        assert fetched.started_at is None

@@ -23,10 +23,8 @@ appel bloquant gèlerait la boucle d'événements du process, qui tourne sans
 les trois autres gardes : c'est un appel rapide (un seul `socket.getaddrinfo`),
 même compromis qu'ailleurs.
 
-Résiduel documenté (identique à `app.harvest.egress`) : TOCTOU DNS-rebinding
-— la garde valide l'IP résolue avant la requête, httpx re-résout au connect.
-`CORE_LLM_API_URL` est un réglage opérateur (pas une entrée utilisateur), donc
-la surface d'attaque réelle est plus étroite que pour le moissonnage."""
+DNS-rebinding TOCTOU fermé par REV-273d (comme `app.harvest.egress`) : le
+transport connecte sur l'IP validée (`app.net_pin.pin_httpx_request`)."""
 
 import ipaddress
 import logging
@@ -35,6 +33,8 @@ import socket
 from urllib.parse import urlparse
 
 import httpx
+
+from app.net_pin import pin_httpx_request
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +56,7 @@ def _is_internal(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     return not ip.is_global or ip.is_multicast
 
 
-def assert_egress_allowed(url: str) -> None:
+def assert_egress_allowed(url: str) -> str:
     parsed = urlparse(url)
     if parsed.scheme.lower() not in {"http", "https"}:
         raise EgressBlockedError(f"schéma d'egress interdit : {parsed.scheme!r}")
@@ -73,6 +73,8 @@ def assert_egress_allowed(url: str) -> None:
             raise EgressBlockedError(f"hôte non résoluble : {host!r}") from exc
         addresses = [ipaddress.ip_address(info[4][0]) for info in infos]
 
+    if not addresses:
+        raise EgressBlockedError(f"hôte non résoluble : {host!r}")
     for ip in addresses:
         if _is_internal(ip):
             raise EgressBlockedError(f"cible réseau interne bloquée : {host!r} → {ip}")
@@ -80,6 +82,7 @@ def assert_egress_allowed(url: str) -> None:
     allowlist = _allowlist()
     if allowlist and host not in allowlist:
         raise EgressBlockedError(f"hôte hors allowlist d'egress : {host!r}")
+    return str(addresses[0])  # REV-273d : adresse validée, à utiliser pour se connecter
 
 
 class _GuardedAsyncTransport(httpx.AsyncBaseTransport):
@@ -87,7 +90,7 @@ class _GuardedAsyncTransport(httpx.AsyncBaseTransport):
         self._inner = inner
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-        assert_egress_allowed(str(request.url))
+        pin_httpx_request(request, assert_egress_allowed(str(request.url)))
         return await self._inner.handle_async_request(request)
 
 

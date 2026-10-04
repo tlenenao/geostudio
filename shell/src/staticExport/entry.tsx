@@ -29,6 +29,7 @@ import { ItemClientProvider } from "../api/ItemClientProvider";
 import { AppRenderer } from "../builder/AppRenderer";
 import { registerBuiltinWidgets } from "../builder/widgets";
 import { registerExtensionWidget } from "../builder/extensions/registerExtensionWidget";
+import { resolveCoreUrl } from "../config";
 import { createStaticItemClient } from "./StaticItemClient";
 import type { AppConfig, ExtensionManifest, ItemClient } from "../api/types";
 import "../index.css";
@@ -75,7 +76,10 @@ async function loadConnection(): Promise<{ coreUrl: string } | null> {
 
 function buildClient(config: AppConfig, connection: { coreUrl: string } | null): ItemClient {
   if (connection) {
-    return createItemClient({ coreUrl: connection.coreUrl, getToken: () => undefined });
+    return createItemClient({
+      coreUrl: resolveCoreUrl(connection.coreUrl),
+      getToken: () => undefined,
+    });
   }
   return createStaticItemClient(config);
 }

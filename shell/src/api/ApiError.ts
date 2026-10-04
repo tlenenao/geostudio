@@ -40,3 +40,9 @@ export class ApiError extends Error {
     this.errors = options?.errors;
   }
 }
+
+// REV-271 : 412 = le cœur a refusé une écriture dont `If-Match` n'est plus la
+// version courante (conflit d'édition) — distinct d'un échec d'enregistrement.
+export function isConflictError(err: unknown): err is ApiError {
+  return err instanceof ApiError && err.status === 412;
+}

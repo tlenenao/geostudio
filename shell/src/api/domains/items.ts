@@ -268,6 +268,9 @@ export function createItemsMethods(base: ItemClientBase): ItemsMethods {
     async rollbackConfig(pk: string, version: number): Promise<void> {
       const { id } = await request<{ id: string }>("GET", `/configs/by-item/${pk}`);
       await request<unknown>("POST", `/configs/${id}/rollback`, { version });
+      // REV-271 : le cache dataset (5 min) porte l'ancien contenu ET l'ancienne
+      // version — sans cette invalidation `onRestored` relirait l'état d'avant.
+      base.invalidateDatasetCache(pk);
     },
 
     async createBookmarkItem(input: CreateBookmarkInput): Promise<Item> {

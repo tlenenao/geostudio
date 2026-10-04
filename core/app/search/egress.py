@@ -28,11 +28,8 @@ sibling), pas la version async. La garde enveloppe un `httpx.BaseTransport`
 appel) : `OpenAICompatibleProvider.__init__` construit son client gardé et le
 réutilise sur chaque `embed()`.
 
-Résiduel documenté (identique à `app.harvest.egress`) : DNS-rebinding TOCTOU —
-la garde valide l'IP résolue AVANT la requête, httpx re-résout au connect.
-`CORE_EMBEDDING_API_URL` est un réglage opérateur (pas une entrée
-utilisateur), donc la surface d'attaque réelle est plus étroite que pour le
-moissonnage — même compromis que documenté par `app.copilot.egress`."""
+DNS-rebinding TOCTOU fermé par REV-273d (comme `app.harvest.egress`) : le
+transport connecte sur l'IP validée (`app.net_pin.pin_httpx_request`)."""
 
 import ipaddress
 import logging
@@ -41,6 +38,8 @@ import socket
 from urllib.parse import urlparse
 
 import httpx
+
+from app.net_pin import pin_httpx_request
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +61,7 @@ def _is_internal(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     return not ip.is_global or ip.is_multicast
 
 
-def assert_egress_allowed(url: str) -> None:
+def assert_egress_allowed(url: str) -> str:
     parsed = urlparse(url)
     if parsed.scheme.lower() not in {"http", "https"}:
         raise EgressBlockedError(f"schéma d'egress interdit : {parsed.scheme!r}")
@@ -79,6 +78,8 @@ def assert_egress_allowed(url: str) -> None:
             raise EgressBlockedError(f"hôte non résoluble : {host!r}") from exc
         addresses = [ipaddress.ip_address(info[4][0]) for info in infos]
 
+    if not addresses:
+        raise EgressBlockedError(f"hôte non résoluble : {host!r}")
     for ip in addresses:
         if _is_internal(ip):
             raise EgressBlockedError(f"cible réseau interne bloquée : {host!r} → {ip}")
@@ -86,6 +87,7 @@ def assert_egress_allowed(url: str) -> None:
     allowlist = _allowlist()
     if allowlist and host not in allowlist:
         raise EgressBlockedError(f"hôte hors allowlist d'egress : {host!r}")
+    return str(addresses[0])  # REV-273d : adresse validée, à utiliser pour se connecter
 
 
 class _GuardedTransport(httpx.BaseTransport):
@@ -93,7 +95,7 @@ class _GuardedTransport(httpx.BaseTransport):
         self._inner = inner
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
-        assert_egress_allowed(str(request.url))
+        pin_httpx_request(request, assert_egress_allowed(str(request.url)))
         return self._inner.handle_request(request)
 
 

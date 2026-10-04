@@ -80,3 +80,18 @@ def test_list_returns_a_snapshot_not_the_live_record():
 
     records_again = registry.list("item-1", limit=10, offset=0)
     assert records_again[0]["nodeStats"] == {}
+
+
+def test_tracker_mark_running_only_from_queued():
+    registry = RunRegistry()
+    run_id = registry.create("item-1")
+    tracker = registry.tracker_for("item-1", run_id)
+    assert tracker.mark_running() is True
+    tracker.mark_cancelled()
+    assert tracker.mark_running() is False
+    assert registry.list("item-1", limit=10, offset=0)[0]["status"] == "cancelled"
+
+
+def test_tracker_mark_running_on_unknown_run_returns_false():
+    registry = RunRegistry()
+    assert registry.tracker_for("item-1", "nope").mark_running() is False

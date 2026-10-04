@@ -5,10 +5,9 @@ URL fournie par un admin ; cette garde bloque les cibles réseau internes
 allowlist optionnelle par env. Point d'enforcement : le transport du client
 HTTP par défaut de tous les connecteurs et de la récupération copie.
 
-Résiduel documenté (§3, §8) : DNS-rebinding TOCTOU — la garde valide l'IP
-résolue AVANT la requête, httpx re-résout au connect. Le pinning-IP est différé
-(fragile avec TLS/vhosts). Les cibles SSRF à forte valeur (métadonnées cloud,
-localhost) sont des IP-littérales ou résolvent stablement : couvertes en v0."""
+DNS-rebinding TOCTOU (§3, §8) fermé par REV-273d : le transport connecte sur
+l'IP validée par la garde (`app.net_pin.pin_httpx_request`, Host/SNI/certificat
+sur le nom d'origine), chaque redirection repasse par le transport."""
 
 import ipaddress
 import logging
@@ -17,6 +16,8 @@ import socket
 from urllib.parse import urlparse
 
 import httpx
+
+from app.net_pin import pin_httpx_request
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,7 @@ def _is_internal(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     return not ip.is_global or ip.is_multicast
 
 
-def assert_egress_allowed(url: str) -> None:
+def assert_egress_allowed(url: str) -> str:
     parsed = urlparse(url)
     if parsed.scheme.lower() not in {"http", "https"}:
         raise EgressBlockedError(f"schéma d'egress interdit : {parsed.scheme!r}")
@@ -69,6 +70,8 @@ def assert_egress_allowed(url: str) -> None:
             raise EgressBlockedError(f"hôte non résoluble : {host!r}") from exc
         addresses = [ipaddress.ip_address(info[4][0]) for info in infos]
 
+    if not addresses:
+        raise EgressBlockedError(f"hôte non résoluble : {host!r}")
     for ip in addresses:
         if _is_internal(ip):
             raise EgressBlockedError(f"cible réseau interne bloquée : {host!r} → {ip}")
@@ -76,6 +79,7 @@ def assert_egress_allowed(url: str) -> None:
     allowlist = _allowlist()
     if allowlist and host not in allowlist:
         raise EgressBlockedError(f"hôte hors allowlist d'egress : {host!r}")
+    return str(addresses[0])  # REV-273d : adresse validée, à utiliser pour se connecter
 
 
 class _GuardedTransport(httpx.BaseTransport):
@@ -83,7 +87,7 @@ class _GuardedTransport(httpx.BaseTransport):
         self._inner = inner
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
-        assert_egress_allowed(str(request.url))
+        pin_httpx_request(request, assert_egress_allowed(str(request.url)))
         response = self._inner.handle_request(request)
         cap = _max_response_bytes()
         chunks: list[bytes] = []

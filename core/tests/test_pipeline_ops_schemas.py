@@ -105,7 +105,7 @@ def test_non_collection_fields_carry_no_format_hint():
     assert "format" not in catalog["transform.join"]["paramsSchema"]["properties"]["on"]
 
 
-def test_all_fifty_one_ops_are_registered():
+def test_all_known_ops_are_registered():
     assert set(OP_PARAMS) == {
         "reader.collection",
         "transform.filter",

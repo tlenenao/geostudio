@@ -355,6 +355,10 @@ export type MapConfig = {
   layers: MapLayer[];
   printLayout?: PrintLayoutConfig | null;
   terrain?: MapTerrainConfig | null;
+  // Version serveur lue au chargement (REV-271) : renvoyée en `If-Match` à
+  // l'enregistrement pour que le cœur refuse (412) une écriture périmée.
+  // Jamais persistée dans le corps de la config.
+  baseVersion?: number;
 };
 
 export type LayerSource = {
@@ -575,7 +579,7 @@ export interface ItemClient {
   setCollectionSharing(id: string, sharing: Sharing): Promise<void>;
   createMapItem(input: { title: string; owner: string }): Promise<Item>;
   getMapConfig(pk: string): Promise<MapConfig>;
-  saveMapConfig(pk: string, config: MapConfig): Promise<void>;
+  saveMapConfig(pk: string, config: MapConfig): Promise<number | undefined>;
   // Historique de versions (SP-23, chantier 4.18). Clés par `pk` d'item et
   // non par `configId` : aucun éditeur du shell ne connaît son configId.
   listConfigRevisions(pk: string): Promise<ConfigRevisionInfo[]>;
@@ -589,7 +593,7 @@ export interface ItemClient {
     pipeline: PipelinePayload;
   }): Promise<Item>;
   getPipelineConfig(pk: string): Promise<PipelinePayload>;
-  savePipelineConfig(pk: string, payload: PipelinePayload): Promise<void>;
+  savePipelineConfig(pk: string, payload: PipelinePayload): Promise<number | undefined>;
   getPipelineOps(): Promise<PipelineOpsCatalog>;
   getPipelineNextRun(cron: string): Promise<{ nextRun: string }>;
   runPipeline(pk: string): Promise<{ runId: string }>;
@@ -610,7 +614,7 @@ export interface ItemClient {
     alert: AlertRulePayload;
   }): Promise<Item>;
   getAlertRuleConfig(pk: string): Promise<AlertRulePayload>;
-  saveAlertRuleConfig(pk: string, payload: AlertRulePayload): Promise<void>;
+  saveAlertRuleConfig(pk: string, payload: AlertRulePayload): Promise<number | undefined>;
   listAlertRulesForDataset(datasetItemId: string): Promise<AlertRuleSummary[]>;
   getAlertEvaluations(alertItemId: string, params?: PageParams): Promise<AlertEvaluation[]>;
   evaluateAlertRule(itemId: string): Promise<{ evaluationId: string; created: boolean }>;
@@ -620,11 +624,11 @@ export interface ItemClient {
     report: ReportSchedulePayload;
   }): Promise<Item>;
   getReportScheduleConfig(pk: string): Promise<ReportSchedulePayload>;
-  saveReportScheduleConfig(pk: string, payload: ReportSchedulePayload): Promise<void>;
+  saveReportScheduleConfig(pk: string, payload: ReportSchedulePayload): Promise<number | undefined>;
   getReportRuns(pk: string, params?: PageParams): Promise<ReportRunStatus[]>;
   listFeatureLayers(params?: { q?: string }): Promise<FeatureLayerSource[]>;
   getDatasetConfig(pk: string): Promise<DatasetConfig>;
-  saveDatasetConfig(pk: string, config: DatasetConfig): Promise<void>;
+  saveDatasetConfig(pk: string, config: DatasetConfig): Promise<number | undefined>;
   getAppConfig(pk: string, mode?: "runtime"): Promise<AppConfig>;
   getPublicAppConfig(pk: string): Promise<AppConfig>;
   // Retourne la nouvelle version serveur (absente si le cœur ne la renvoie pas).
@@ -803,9 +807,10 @@ export type SecretPayload =
       awsAccessKeyId: string;
       awsSecretAccessKey: string;
       endpointUrl?: string;
+      bucketUrl: string;
     }
-  | { kind: "azure_blob_credentials"; accountName: string; accountKey: string }
-  | { kind: "gcs_credentials"; serviceAccountInfo: Record<string, unknown> };
+  | { kind: "azure_blob_credentials"; accountName: string; accountKey: string; bucketUrl: string }
+  | { kind: "gcs_credentials"; serviceAccountInfo: Record<string, unknown>; bucketUrl: string };
 
 export type RenderMode = "edit" | "preview" | "runtime";
 
@@ -863,7 +868,7 @@ export type CrossFilterLink =
   | { targetDatasetId: string; mode: "attribute"; sourceField: string; targetField: string }
   | { targetDatasetId: string; mode: "spatial"; precision: "bbox" | "exact" };
 
-export type DatasetConfig =
+export type DatasetConfig = (
   | {
       source: "collection";
       collectionId: string;
@@ -881,7 +886,11 @@ export type DatasetConfig =
       reactsToExtent?: boolean;
       crossFilterLinks?: CrossFilterLink[];
       sourcePipelineId?: string | null;
-    };
+    }
+) & {
+  // Version serveur lue au chargement (REV-271) — jamais persistée.
+  baseVersion?: number;
+};
 
 export type FeatureLayerSource = { id: string; title: string };
 
@@ -1147,6 +1156,7 @@ export type PipelinePayload = {
   edges: PipelineEdge[];
   refreshPolicy?: PipelineRefreshPolicy | null;
   notes?: PipelineCanvasNote[];
+  baseVersion?: number; // version serveur lue (REV-271), jamais persistée
 };
 
 export interface AlertCondition {
@@ -1167,6 +1177,7 @@ export interface AlertRulePayload {
   refreshPolicy: PipelineRefreshPolicy; // reused verbatim, same shape as pipeline scheduling
   channels: AlertChannel[];
   messageTemplate: string;
+  baseVersion?: number; // version serveur lue (REV-271), jamais persistée
 }
 
 export interface AlertRuleSummary {
@@ -1190,6 +1201,7 @@ export interface ReportSchedulePayload {
   bookmarkItemId: string;
   refreshPolicy: PipelineRefreshPolicy; // réutilisé tel quel, même forme que la planification pipeline/alerte
   channels: AlertChannel[]; // réutilisé tel quel depuis AlertRule (SP-16b)
+  baseVersion?: number; // version serveur lue (REV-271), jamais persistée
 }
 
 export interface ReportRunStatus {

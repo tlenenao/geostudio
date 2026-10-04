@@ -7,6 +7,7 @@ l'importer. Point d'application différent de l'original : dlt.sources.rest_api
 utilise `requests`, pas `httpx` — copier le transport httpx de
 app.harvest.egress ne garderait rien en pratique."""
 
+import asyncio
 import ipaddress
 import logging
 import os
@@ -14,7 +15,10 @@ import socket
 from urllib.parse import urlparse
 
 import requests
+from aiohttp.abc import AbstractResolver, ResolveResult
 from sqlalchemy.engine import make_url
+
+from app.net_pin import pinned_adapter
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +50,7 @@ def _is_internal(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     return not ip.is_global or ip.is_multicast
 
 
-def assert_egress_allowed(url: str) -> None:
+def assert_egress_allowed(url: str) -> str:
     parsed = urlparse(url)
     if parsed.scheme.lower() not in {"http", "https"}:
         raise EgressBlockedError(f"schéma d'egress interdit : {parsed.scheme!r}")
@@ -63,6 +67,8 @@ def assert_egress_allowed(url: str) -> None:
             raise EgressBlockedError(f"hôte non résoluble : {host!r}") from exc
         addresses = [ipaddress.ip_address(info[4][0]) for info in infos]
 
+    if not addresses:
+        raise EgressBlockedError(f"hôte non résoluble : {host!r}")
     for ip in addresses:
         if _is_internal(ip):
             raise EgressBlockedError(f"cible réseau interne bloquée : {host!r} → {ip}")
@@ -70,6 +76,7 @@ def assert_egress_allowed(url: str) -> None:
     allowlist = _allowlist()
     if allowlist and host not in allowlist:
         raise EgressBlockedError(f"hôte hors allowlist d'egress : {host!r}")
+    return str(addresses[0])  # REV-273d : adresse validée, à utiliser pour se connecter
 
 
 def assert_dsn_egress_allowed(dsn: str) -> None:
@@ -90,7 +97,40 @@ def assert_dsn_egress_allowed(dsn: str) -> None:
                 assert_egress_allowed(f"http://[{host}]" if ":" in host else f"http://{host}")
 
 
-class _GuardedHTTPAdapter(requests.adapters.HTTPAdapter):
+def dsn_pin_connect_args(dsn: str) -> dict[str, str]:
+    """REV-273d : épingle la connexion Postgres sur l'IP validée par la garde
+    (paramètre libpq `hostaddr` ; `host` reste le nom → `verify-full` intact).
+    `{}` quand il n'y a rien à épingler. ponytail: mssql/oracle sans
+    équivalent fiable (descripteur TNS/ODBC) — seule la garde amont s'applique."""
+    url = make_url(dsn)
+    host = url.host or ""
+    if (
+        not url.get_backend_name().startswith("postgresql")
+        or not host
+        or host.startswith("/")
+        or "," in host
+        or "host" in url.query
+        or "hostaddr" in url.query
+    ):
+        return {}
+    try:
+        ipaddress.ip_address(host)
+        return {}  # littéral : déjà validé par assert_dsn_egress_allowed
+    except ValueError:
+        pass
+    ip = assert_egress_allowed(f"http://{host}")
+    return {"hostaddr": ip} if ip else {}
+
+
+def _pin_ip(host: str) -> str:
+    # REV-273d : la connexion vise l'IP que la garde vient de valider (anti
+    # DNS-rebinding entre contrôle et connexion). Lookup du nom global à
+    # l'appel : reste neutralisable par les fixtures de tests
+    # (`assert_egress_allowed` remplacé par un lambda → None → pas d'épinglage).
+    return assert_egress_allowed(f"http://[{host}]" if ":" in host else f"http://{host}")
+
+
+class _GuardedHTTPAdapter(pinned_adapter(requests.adapters.HTTPAdapter, _pin_ip)):  # type: ignore[misc]
     def send(self, request, **kwargs):
         assert_egress_allowed(request.url)
         # requests n'a aucun délai par défaut (P16.03) : sans cela un serveur
@@ -107,3 +147,31 @@ def build_guarded_session() -> requests.Session:
     session.mount("http://", adapter)
     session.mount("https://", adapter)
     return session
+
+
+class PinnedAioResolver(AbstractResolver):
+    """Résolveur aiohttp (donc aiobotocore/s3fs, endpoint S3 compatible) qui
+    n'accepte que l'adresse validée par la garde d'egress au moment même de
+    la connexion (REV-273d). `hostname` reste le nom d'origine : SNI et
+    vérification de certificat inchangés. aiohttp (connector._resolve_host)
+    n'appelle pas le résolveur pour un littéral IP : celui-ci est validé en
+    amont par assert_egress_allowed(endpointUrl). Le cache DNS d'aiohttp
+    (use_dns_cache, 10 s) ne réutilise que des réponses déjà validées."""
+
+    async def resolve(
+        self, host: str, port: int = 0, family: socket.AddressFamily = socket.AF_INET
+    ) -> list[ResolveResult]:
+        ip = await asyncio.to_thread(_pin_ip, host)  # getaddrinfo bloquant hors boucle
+        return [
+            {
+                "hostname": host,
+                "host": ip,
+                "port": port,
+                "family": socket.AF_INET6 if ":" in ip else socket.AF_INET,
+                "proto": 0,
+                "flags": socket.AI_NUMERICHOST,
+            }
+        ]
+
+    async def close(self) -> None:
+        return None

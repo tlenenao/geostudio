@@ -6,6 +6,7 @@ import * as ToastPrimitive from "@radix-ui/react-toast";
 import { createMemoryRouter, Link, RouterProvider, useParams } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { CollectionSchema, DatasetConfig, Item, ItemClient } from "../api/types";
+import { ApiError } from "../api/ApiError";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { ToastProvider } from "../ui/kit/ToastProvider";
 import { DatasetEditPage } from "./DatasetEditPage";
@@ -462,4 +463,49 @@ test("ne bloque pas la navigation juste après une sauvegarde réussie des colon
 
   await userEvent.click(screen.getByRole("link", { name: "Autre page" }));
   expect(await screen.findByText("Autre page ouverte")).toBeInTheDocument();
+});
+
+test("REV-271 : envoie la version lue puis celle que le cœur renvoie", async () => {
+  const saveDatasetConfig = vi.fn().mockResolvedValueOnce(4).mockResolvedValueOnce(5);
+  renderPage({
+    getItem: vi.fn().mockResolvedValue(item),
+    getDatasetConfig: vi.fn().mockResolvedValue({ ...datasetConfig, baseVersion: 3 }),
+    getCollectionSchema: vi.fn().mockResolvedValue(schema),
+    saveDatasetConfig,
+  });
+  await screen.findByLabelText("Libellé de nom");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer les colonnes" }));
+  await waitFor(() => expect(saveDatasetConfig).toHaveBeenCalledTimes(1));
+  expect(saveDatasetConfig.mock.calls[0][1].baseVersion).toBe(3);
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer les colonnes" }));
+  await waitFor(() => expect(saveDatasetConfig).toHaveBeenCalledTimes(2));
+  expect(saveDatasetConfig.mock.calls[1][1].baseVersion).toBe(4);
+});
+
+test("REV-271 : un 412 affiche le conflit ; « Recharger » invalide le cache dataset et reprend la version du cœur", async () => {
+  const saveDatasetConfig = vi
+    .fn()
+    .mockRejectedValueOnce(new ApiError(412, { detail: "stale" }))
+    .mockResolvedValue(8);
+  const invalidateDatasetCache = vi.fn();
+  const getDatasetConfig = vi
+    .fn()
+    .mockResolvedValueOnce({ ...datasetConfig, baseVersion: 1 })
+    .mockResolvedValue({ ...datasetConfig, baseVersion: 7 });
+  renderPage({
+    getItem: vi.fn().mockResolvedValue(item),
+    getDatasetConfig,
+    invalidateDatasetCache,
+    getCollectionSchema: vi.fn().mockResolvedValue(schema),
+    saveDatasetConfig,
+  });
+  await screen.findByLabelText("Libellé de nom");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer les colonnes" }));
+  await screen.findByText(t("common.saveConflict"));
+  await userEvent.click(screen.getByRole("button", { name: t("common.saveConflictReload") }));
+  await waitFor(() => expect(screen.queryByText(t("common.saveConflict"))).toBeNull());
+  expect(invalidateDatasetCache).toHaveBeenCalledWith("ds-1");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer les colonnes" }));
+  await waitFor(() => expect(saveDatasetConfig).toHaveBeenCalledTimes(2));
+  expect(saveDatasetConfig.mock.calls[1][1].baseVersion).toBe(7);
 });

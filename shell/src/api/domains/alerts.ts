@@ -9,6 +9,7 @@ import type {
 } from "../types";
 import type { ItemClientBase } from "../base";
 import { OWNER_PERMISSIONS } from "../../auth/permissions";
+import { ifMatchHeader } from "../ifMatch";
 
 type AlertsMethods = Pick<
   ItemClient,
@@ -53,20 +54,24 @@ export function createAlertsMethods(base: ItemClientBase): AlertsMethods {
     },
 
     async getAlertRuleConfig(pk: string): Promise<AlertRulePayload> {
-      const data = await request<{ config?: { alert?: AlertRulePayload } }>(
+      const data = await request<{ version?: number; config?: { alert?: AlertRulePayload } }>(
         "GET",
         `/configs/by-item/${pk}`,
       );
       if (!data.config?.alert) throw new Error("getAlertRuleConfig: config has no alert payload");
-      return data.config.alert;
+      return { ...data.config.alert, baseVersion: data.version };
     },
 
-    async saveAlertRuleConfig(pk: string, payload: AlertRulePayload): Promise<void> {
-      await request<void>("PUT", `/configs/by-item/${pk}`, {
-        version: 1,
-        kind: "alert",
-        alert: payload,
-      });
+    async saveAlertRuleConfig(pk: string, payload: AlertRulePayload): Promise<number | undefined> {
+      const { baseVersion, ...alert } = payload;
+      const saved = await request<{ version?: number }>(
+        "PUT",
+        `/configs/by-item/${pk}`,
+        { version: 1, kind: "alert", alert },
+        undefined,
+        ifMatchHeader(baseVersion),
+      );
+      return saved?.version;
     },
 
     async listAlertRulesForDataset(datasetItemId: string): Promise<AlertRuleSummary[]> {

@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import update
+
 from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig
 from app.db import init_db, make_engine, make_session_factory
@@ -164,6 +166,51 @@ def test_mark_running_then_succeeded():
         assert fetched.finished_at is not None
 
 
+def test_mark_running_returns_true_from_queued():
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        item_id = _make_pipeline_item(s, tenant_id=tenant.id)
+        s.commit()
+        run = repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_id)
+        s.commit()
+        assert repo.mark_running(s, run_id=run.id) is True
+
+
+def test_mark_running_does_not_overwrite_a_cancelled_run():
+    # REV-275 (c) : course request_cancel (queued -> cancelled) puis mark_running du worker.
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        item_id = _make_pipeline_item(s, tenant_id=tenant.id)
+        s.commit()
+        run = repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_id)
+        s.commit()
+        assert repo.request_cancel(s, run) == "cancelled"
+        s.commit()
+        assert repo.mark_running(s, run_id=run.id) is False
+        s.commit()
+        s.expire_all()
+        fetched = repo.get_run(s, tenant_id=tenant.id, run_id=run.id)
+        assert fetched.status == "cancelled"
+        assert fetched.started_at is None
+
+
+def test_mark_running_refuses_cancel_requested_and_unknown_run():
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        item_id = _make_pipeline_item(s, tenant_id=tenant.id)
+        s.commit()
+        run = repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_id)
+        s.commit()
+        assert repo.mark_running(s, run_id=run.id) is True
+        repo.request_cancel(s, run)  # running -> cancel_requested
+        s.commit()
+        assert repo.mark_running(s, run_id=run.id) is False
+        assert repo.mark_running(s, run_id="does-not-exist") is False
+
+
 def test_a_reclaimed_run_that_really_finishes_loses_its_stale_error():
     Session = _make_session()
     with Session() as s:
@@ -181,10 +228,13 @@ def test_a_reclaimed_run_that_really_finishes_loses_its_stale_error():
         s.commit()
         fetched = repo.get_run(s, tenant_id=tenant.id, run_id=run.id)
         assert (fetched.status, fetched.error) == ("succeeded", None)
-        repo.mark_running(s, run_id=run.id)
+        # REV-275 (c) : un run terminé n'est plus jamais ressuscité par un
+        # mark_running tardif (le balayage cron a déjà redéféré un run neuf).
+        assert repo.mark_running(s, run_id=run.id) is False
         s.commit()
+        s.expire_all()
         fetched = repo.get_run(s, tenant_id=tenant.id, run_id=run.id)
-        assert (fetched.status, fetched.error, fetched.finished_at) == ("running", None, None)
+        assert (fetched.status, fetched.error) == ("succeeded", None)
 
 
 def test_mark_failed_records_error():
@@ -466,3 +516,26 @@ def test_get_latest_runs_for_items_returns_empty_dict_for_empty_input():
     Session = _make_session()
     with Session() as s:
         assert repo.get_latest_runs_for_items(s, item_ids=[]) == {}
+
+
+def test_request_cancel_on_stale_queued_snapshot_does_not_overwrite_running():
+    # REV-275 (c) : le worker passe queued -> running entre la lecture du run et request_cancel.
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        item_id = _make_pipeline_item(s, tenant_id=tenant.id)
+        s.commit()
+        run = repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_id)
+        s.commit()
+        assert run.status == "queued"
+        s.execute(
+            update(repo.PipelineRun)
+            .where(repo.PipelineRun.id == run.id)
+            .values(status="running")
+            .execution_options(synchronize_session=False)
+        )  # instantané ORM resté « queued »
+        assert run.status == "queued"
+        assert repo.request_cancel(s, run) == "cancel_requested"
+        s.commit()
+        s.expire_all()
+        assert repo.get_run(s, tenant_id=tenant.id, run_id=run.id).status == "cancel_requested"

@@ -718,6 +718,17 @@ def test_core_env_default_cannot_silently_satisfy_the_mock_mode_guard():
     )
 
 
+def test_worker_has_a_resolved_memory_limit():
+    """REV-275 (d) : borner la mémoire du PROCESS worker (t03b-008 ne borne que
+    l'écrivain). Vérifie la valeur RÉSOLUE sans `.env` (piège n°2 : une
+    substitution déclarée mais jamais appliquée ne prouve rien) ET que le nom
+    est documenté pour l'opérateur."""
+    raw = services(BASE)["worker"].get("mem_limit")
+    assert raw is not None, "service `worker` sans mem_limit"
+    assert _resolve_effective_value(str(raw), "WORKER_MEM_LIMIT") == "2g"
+    assert "WORKER_MEM_LIMIT" in documented_env_vars(include_commented=False)
+
+
 CI = REPO / ".github/workflows/ci.yml"
 
 

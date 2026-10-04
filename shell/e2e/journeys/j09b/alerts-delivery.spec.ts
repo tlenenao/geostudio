@@ -53,10 +53,14 @@ async function smtpSecret(
     payload: {
       kind: "smtp",
       host: "audit-j09b-recv",
-      port: 2525,
+      // Règle 3c9f5f0d : useTls=false refusé hors localhost. On cible donc le port STARTTLS (2526) ;
+      // MAIS le certificat du récepteur (recv.py) est auto-signé, non vérifiable par le cœur
+      // (add915de) : la livraison échouera tant que recv.py n'a pas un cert signé par une CA de confiance.
+      // À corriger côté récepteur, jamais en affaiblissant le cœur.
+      port: 2526,
       username: "alerts",
       password: "s3cret-pw",
-      useTls: false,
+      useTls: true,
       fromAddress: "alerts@audit.test",
       ...over,
     },

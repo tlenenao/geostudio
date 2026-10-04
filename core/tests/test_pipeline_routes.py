@@ -59,7 +59,7 @@ def test_pipelines_routes_absent_when_disabled(monkeypatch):
     assert client.get("/v1/pipelines/does-not-exist/webhook-tokens").status_code == 404
 
 
-def test_get_pipelines_ops_returns_all_fifty_one(monkeypatch):
+def test_get_pipelines_ops_returns_all_exposed_ops(monkeypatch):
     client = _make_app(monkeypatch, etl_enabled=True)
     response = client.get("/v1/pipelines/ops")
     assert response.status_code == 200
@@ -74,10 +74,10 @@ def test_get_pipelines_ops_returns_all_fifty_one(monkeypatch):
     # transform.minimumBoundingCircle) - transform.qgis lui-même, retiré (Task 28) =
     # 57 total exposées par la route. Les 9 op de retrait QGIS couvrent 10 lignes
     # FME (transform.triangulate mappe TINGenerator ET SurfaceModeller) ; Clipper
-    # et Dissolver sont 2 lignes FME distinctes, sans rapport avec ce compte de 9,
-    # dont la reclassification (composition d'op vs. rester qgis_frozen) reste une
-    # décision ouverte de Task 27 Step 3-4, pas encore tranchée ici — cf. plan
-    # Task 27.
+    # et Dissolver, 2 lignes FME distinctes sans rapport avec ce compte de 9, sont
+    # couverts par composition d'op existantes (transform.intersection avec
+    # outputGeometry="intersection" ; transform.aggregate + ST_Union_Agg), sans op
+    # dédiée — décision tranchée en Task 27 (cf. CHANGELOG.md, section Removed).
     # (reader.file/writer.file restent hors catalogue tant que
     # CORE_PIPELINE_FILE_IO_ENABLED est éteint : registre brut à 59, route à 57).
     assert set(body) == {
@@ -754,5 +754,78 @@ def test_cancel_run_route_queued_then_conflict_when_terminal(monkeypatch):
     assert r.status_code == 200 and r.json()["status"] == "cancel_requested"
     with Session() as s:
         assert pipelines_repo.is_cancel_requested(s, run_id=running_id)
+    # REV-275 (c) : un 2e cancel sur cancelled / cancel_requested est idempotent.
+    again = client.post(f"/v1/pipelines/{item_id}/runs/{queued_id}/cancel")
+    assert again.status_code == 200 and again.json()["status"] == "cancelled"
+    again = client.post(f"/v1/pipelines/{item_id}/runs/{running_id}/cancel")
+    assert again.status_code == 200 and again.json()["status"] == "cancel_requested"
+    # Un run réellement terminé reste en 409.
+    with Session() as s:
+        pipelines_repo.mark_succeeded(s, run_id=queued_id, node_stats={})
+        s.commit()
     assert client.post(f"/v1/pipelines/{item_id}/runs/{queued_id}/cancel").status_code == 409
     assert client.post(f"/v1/pipelines/{item_id}/runs/nope/cancel").status_code == 404
+
+
+def test_cancel_run_route_409_without_audit_when_run_finishes_during_cancel(monkeypatch):
+    # Course : le run passe succeeded entre la lecture et l'UPDATE conditionnel
+    # de request_cancel -> 409 et aucune entrée d'audit « pipeline.run.cancel ».
+    from sqlalchemy import select
+
+    from app.audit.models import AuditLog
+    from app.pipelines import repository as pipelines_repo
+
+    client = _make_app(monkeypatch, etl_enabled=True)
+    item_id = _seed_webhook_pipeline(client)
+    Session = client.session_factory  # type: ignore[attr-defined]
+    with Session() as s:
+        run = pipelines_repo.create_run(
+            s,
+            tenant_id=client.tenant.id,
+            pipeline_item_id=item_id,  # type: ignore[attr-defined]
+        )
+        pipelines_repo.mark_running(s, run_id=run.id)
+        s.commit()
+        run_id = run.id
+
+    def finished_meanwhile(session, run):
+        pipelines_repo.mark_succeeded(session, run_id=run.id, node_stats={})
+        session.refresh(run)
+        return run.status
+
+    monkeypatch.setattr("app.pipelines.routes.pipelines_repo.request_cancel", finished_meanwhile)
+    r = client.post(f"/v1/pipelines/{item_id}/runs/{run_id}/cancel")
+    assert r.status_code == 409
+    with Session() as s:
+        audits = s.scalars(
+            select(AuditLog).where(
+                AuditLog.action == "pipeline.run.cancel", AuditLog.object_id == run_id
+            )
+        ).all()
+        assert audits == []
+
+
+def test_preview_route_maps_degenerate_op_input_to_400(monkeypatch):
+    # REV-196 : une op `execute` qui reçoit une entrée inadaptée (polygone passé à
+    # `transform.triangulate`) lève PipelineRuntimeError -> 400 explicite, plus de 500.
+    import duckdb
+
+    from app.pipelines.ops.execute import _execute_triangulate
+
+    client = _make_app(monkeypatch, etl_enabled=True)
+    item_id = _seed_preview_pipeline(client)
+
+    def fake_preview_pipeline(**kwargs):
+        conn = duckdb.connect(":memory:")
+        conn.execute("INSTALL spatial; LOAD spatial;")
+        conn.execute("CREATE TABLE poly (id INTEGER, geometry GEOMETRY)")
+        conn.execute(
+            "INSERT INTO poly VALUES (1, ST_GeomFromText('POLYGON ((0 0, 1 0, 1 1, 0 0))'))"
+        )
+        _execute_triangulate(conn, input_view="poly", view_name="out", params={})
+        return []
+
+    monkeypatch.setattr("app.pipelines.routes.preview_pipeline", fake_preview_pipeline)
+    response = client.post(f"/v1/pipelines/{item_id}/preview?upTo=r1")
+    assert response.status_code == 400
+    assert "Point" in response.text

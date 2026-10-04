@@ -37,7 +37,11 @@ from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user, get_current_user_optional
 from app.collections.introspection import TableNotFound, hide_sensitive_columns
 from app.collections.repository import get_access_facts, list_visible_collections
-from app.collections.routes import get_introspector, get_readable_collection
+from app.collections.routes import (
+    get_collection_for_read,
+    get_introspector,
+    get_readable_collection,
+)
 from app.configs.guest_access import GuestActor, get_share_link_actor
 from app.db import get_session
 from app.errors import ValidationHTTPException
@@ -216,7 +220,7 @@ def list_features(
     rls=Depends(get_rls_scope),
     masked=Depends(get_masked_for_user),
 ):
-    col = get_readable_collection(session, user, collection_id, guest=guest)
+    col = get_collection_for_read(session, user, collection_id, guest=guest)
     info = introspect(session, col.table_name)
     if masked:
         info = hide_sensitive_columns(info, col.sensitive_fields)
@@ -278,7 +282,7 @@ def aggregate_features(
     conn_factory=Depends(get_duckdb_connection_factory),
     base_uri: str = Depends(get_analytics_base_uri),
 ):
-    col = get_readable_collection(session, user, collection_id, guest=guest)
+    col = get_collection_for_read(session, user, collection_id, guest=guest)
     info = introspect(session, col.table_name)
     masked_fields = (
         frozenset()
@@ -333,7 +337,7 @@ def export_collection_aggregate(
                 }
             ]
         )
-    col = get_readable_collection(session, user, collection_id)
+    col = get_collection_for_read(session, user, collection_id)
     info = introspect(session, col.table_name)
     masked_fields = (
         frozenset()
@@ -407,7 +411,7 @@ def export_collection_items(
                 }
             ]
         )
-    col = get_readable_collection(session, user, collection_id)
+    col = get_collection_for_read(session, user, collection_id)
     info = introspect(session, col.table_name)
     if masked:
         info = hide_sensitive_columns(info, col.sensitive_fields)
@@ -553,7 +557,7 @@ def get_single_feature(
     rls=Depends(get_rls_scope),
     masked=Depends(get_masked_for_user),
 ):
-    col = get_readable_collection(session, user, collection_id, guest=guest)
+    col = get_collection_for_read(session, user, collection_id, guest=guest)
     info = introspect(session, col.table_name)
     if masked:
         info = hide_sensitive_columns(info, col.sensitive_fields)

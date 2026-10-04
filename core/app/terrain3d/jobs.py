@@ -28,7 +28,8 @@ from app.terrain3d.storage import download_to_file, upload_file
 
 logger = logging.getLogger(__name__)
 
-_TERRAIN3D_SCRATCH_ROOT = "/scratch"  # même volume que qgis-worker/pipelines ; monkeypatché en test
+# Volume nommé `etl-scratch` du service worker (docker-compose.yml) ; monkeypatché en test.
+_TERRAIN3D_SCRATCH_ROOT = "/scratch"
 
 
 def s3_client_from_env():

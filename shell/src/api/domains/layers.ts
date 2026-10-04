@@ -10,6 +10,7 @@ import type {
 } from "../types";
 import type { ItemClientBase, RawMapLayer } from "../base";
 import { ensureOk, parseErrorResponse, toFrontLayer } from "../base";
+import { ifMatchHeader } from "../ifMatch";
 import { ApiError } from "../ApiError";
 import { DEFAULT_BASEMAP } from "../../map/basemaps";
 import { OWNER_PERMISSIONS } from "../../auth/permissions";
@@ -72,6 +73,7 @@ export function createLayersMethods(base: ItemClientBase): LayersMethods {
       // ConfigRead nests the builder config under "config"; the map is config.map,
       // printLayout is a sibling top-level field (core/app/configs/schemas.py::BuilderConfig).
       const data = await request<{
+        version?: number;
         config?: {
           map?: {
             basemap: { style: string };
@@ -103,6 +105,7 @@ export function createLayersMethods(base: ItemClientBase): LayersMethods {
         },
         layers: (map.layers ?? []).map(toFrontLayer),
         printLayout: data.config?.printLayout ?? null,
+        baseVersion: data.version,
         terrain: map.terrain
           ? {
               tilesUrl: map.terrain.tilesUrl,
@@ -115,14 +118,16 @@ export function createLayersMethods(base: ItemClientBase): LayersMethods {
       };
     },
 
-    async saveMapConfig(pk: string, config: MapConfig): Promise<void> {
-      const { printLayout, ...map } = config;
-      await request<void>("PUT", `/configs/by-item/${pk}`, {
-        version: 1,
-        kind: "map",
-        map,
-        printLayout: printLayout ?? null,
-      });
+    async saveMapConfig(pk: string, config: MapConfig): Promise<number | undefined> {
+      const { printLayout, baseVersion, ...map } = config;
+      const saved = await request<{ version?: number }>(
+        "PUT",
+        `/configs/by-item/${pk}`,
+        { version: 1, kind: "map", map, printLayout: printLayout ?? null },
+        undefined,
+        ifMatchHeader(baseVersion),
+      );
+      return saved?.version;
     },
 
     async listLayerSources(params?: { q?: string }): Promise<LayerSource[]> {

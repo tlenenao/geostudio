@@ -1,6 +1,6 @@
 // shell/src/pages/ReportEditPage.tsx
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -9,6 +9,8 @@ import {
   useReportScheduleConfig,
   useSaveReportSchedule,
 } from "../api/hooks";
+import { isConflictError } from "../api/ApiError";
+import { SaveConflictNotice } from "../builder/SaveConflictNotice";
 import { useAuth } from "../auth/useAuth";
 import { useItemClient } from "../api/ItemClientProvider";
 import type { ReportSchedulePayload } from "../api/types";
@@ -67,6 +69,9 @@ export function ReportEditPage({
     defaultPayload(initialBookmarkItemId ?? ""),
   );
   const [saveError, setSaveError] = useState<string | null>(null);
+  const baseVersionRef = useRef<number | undefined>(undefined);
+  const versionSeededRef = useRef(false);
+  const [conflict, setConflict] = useState(false);
   // SP-B6d : même patron que MapEditorPage (Tâche 27) — `updateDraft`
   // centralise toute mutation du brouillon issue d'une action utilisateur ;
   // l'effet de synchronisation initiale ci-dessous passe volontairement par
@@ -81,7 +86,12 @@ export function ReportEditPage({
   const { ConfirmLeaveDialog } = useDirtyGuard(hasUnsavedChanges);
 
   useEffect(() => {
-    if (pk !== null && configQuery.data) setDraft(configQuery.data);
+    // Seed unique (REV-271) : un refetch ne remplace ni brouillon ni version.
+    if (pk !== null && configQuery.data && !versionSeededRef.current) {
+      versionSeededRef.current = true;
+      setDraft(configQuery.data);
+      baseVersionRef.current = configQuery.data.baseVersion;
+    }
   }, [pk, configQuery.data]);
 
   if (pk !== null && (configQuery.isLoading || itemQuery.isLoading)) return <LoadingState />;
@@ -123,11 +133,29 @@ export function ReportEditPage({
         navigate(`/reports/${item.pk}/edit`, { replace: true });
         return;
       }
-      await saveReport.mutateAsync(draft);
+      const version = await saveReport.mutateAsync({
+        ...draft,
+        baseVersion: baseVersionRef.current,
+      });
+      baseVersionRef.current = version;
+      setConflict(false);
       setHasUnsavedChanges(false);
     } catch (e) {
+      if (isConflictError(e)) {
+        setConflict(true);
+        return;
+      }
       setSaveError(e instanceof Error ? e.message : t("actions.saveFailed"));
     }
+  }
+
+  async function reloadLatest() {
+    if (pk === null) return;
+    const latest = await client.getReportScheduleConfig(pk);
+    setDraft(latest);
+    baseVersionRef.current = latest.baseVersion;
+    setConflict(false);
+    setHasUnsavedChanges(false);
   }
 
   return (
@@ -179,7 +207,11 @@ export function ReportEditPage({
                 <ConfigHistoryPanel
                   pk={pk}
                   currentVersion={null}
-                  onRestored={async () => updateDraft(await client.getReportScheduleConfig(pk))}
+                  onRestored={async () => {
+                    const restored = await client.getReportScheduleConfig(pk);
+                    updateDraft(restored);
+                    baseVersionRef.current = restored.baseVersion;
+                  }}
                 />
               )}
               <div className="flex flex-col gap-2 border-t border-rule pt-3">
@@ -197,6 +229,7 @@ export function ReportEditPage({
                     {saveError}
                   </p>
                 )}
+                {conflict && <SaveConflictNotice onReload={() => void reloadLatest()} />}
               </div>
             </div>
           ),

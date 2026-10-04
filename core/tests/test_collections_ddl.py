@@ -218,3 +218,26 @@ def test_sync_masked_role_grants_revokes_sensitive_column(pg_table, pg_session_f
 
         with pytest.raises(sqlalchemy.exc.DBAPIError):
             session.execute(text("SELECT salary FROM t_rls")).first()
+
+
+def test_reapplying_ddl_with_sensitive_fields_keeps_the_column_masked(pg_table, pg_session_factory):
+    """REV-186 : apply_collection_ddl codait `[]` en dur → ré-appliquer la DDL
+    sur une collection sensible rouvrait la colonne à gis_rls_masked."""
+    with pg_session_factory() as session:
+        apply_collection_ddl(session, pg_table)
+        session.execute(text("ALTER TABLE t_rls ADD COLUMN salary integer"))
+        sync_masked_role_grants(session, pg_table, ["salary"])
+        # Ré-application de la DDL (idempotente) en déclarant le champ sensible.
+        apply_collection_ddl(session, pg_table, sensitive_fields=["salary"])
+        session.execute(
+            text("INSERT INTO t_rls (titre, tenant_id, salary) VALUES ('a', 'default', 100)")
+        )
+        session.commit()
+    with pg_session_factory() as session:
+        session.execute(text("SELECT set_config('app.tenant_id', 'default', true)"))
+        session.execute(text("SET LOCAL ROLE gis_rls_masked"))
+        assert session.execute(text("SELECT titre FROM t_rls")).scalar() == "a"
+        import sqlalchemy.exc
+
+        with pytest.raises(sqlalchemy.exc.DBAPIError):
+            session.execute(text("SELECT salary FROM t_rls")).first()

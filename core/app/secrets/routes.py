@@ -123,7 +123,7 @@ def delete_secret_route(
         raise HTTPException(status_code=404, detail="secret not found")
     name, kind = secret.name, secret.kind
     try:
-        repo.delete_secret_unless_used(session, secret)
+        repo.delete_secret_unless_used(session, secret, user=user)
     except repo.SecretInUseError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from None
     write_audit(

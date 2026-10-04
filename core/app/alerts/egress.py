@@ -15,6 +15,8 @@ from urllib.parse import urlparse
 
 import requests
 
+from app.net_pin import pinned_adapter
+
 logger = logging.getLogger(__name__)
 
 _ALLOWLIST_ENV = "CORE_ALERTS_EGRESS_ALLOWLIST"
@@ -34,7 +36,7 @@ def _is_internal(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     return not ip.is_global or ip.is_multicast
 
 
-def assert_egress_allowed(url: str) -> None:
+def assert_egress_allowed(url: str) -> str:
     parsed = urlparse(url)
     if parsed.scheme.lower() not in {"http", "https"}:
         raise EgressBlockedError(f"schéma d'egress interdit : {parsed.scheme!r}")
@@ -51,6 +53,8 @@ def assert_egress_allowed(url: str) -> None:
             raise EgressBlockedError(f"hôte non résoluble : {host!r}") from exc
         addresses = [ipaddress.ip_address(info[4][0]) for info in infos]
 
+    if not addresses:
+        raise EgressBlockedError(f"hôte non résoluble : {host!r}")
     for ip in addresses:
         if _is_internal(ip):
             raise EgressBlockedError(f"cible réseau interne bloquée : {host!r} → {ip}")
@@ -58,9 +62,18 @@ def assert_egress_allowed(url: str) -> None:
     allowlist = _allowlist()
     if allowlist and host not in allowlist:
         raise EgressBlockedError(f"hôte hors allowlist d'egress : {host!r}")
+    return str(addresses[0])  # REV-273d : adresse validée, à utiliser pour se connecter
 
 
-class _GuardedHTTPAdapter(requests.adapters.HTTPAdapter):
+def _pin_ip(host: str) -> str:
+    # REV-273d : la connexion vise l'IP que la garde vient de valider (anti
+    # DNS-rebinding entre contrôle et connexion). Lookup du nom global à
+    # l'appel : reste neutralisable par les fixtures de tests
+    # (`assert_egress_allowed` remplacé par un lambda → None → pas d'épinglage).
+    return assert_egress_allowed(f"http://[{host}]" if ":" in host else f"http://{host}")
+
+
+class _GuardedHTTPAdapter(pinned_adapter(requests.adapters.HTTPAdapter, _pin_ip)):  # type: ignore[misc]
     def send(self, request, **kwargs):
         assert_egress_allowed(request.url)
         return super().send(request, **kwargs)

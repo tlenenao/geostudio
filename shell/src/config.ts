@@ -26,6 +26,15 @@ function mergeRuntimeEnv(
   return merged;
 }
 
+// REV-272b : `VITE_CORE_URL=/api` (cœur servi sous le même hôte que le shell,
+// derrière un reverse-proxy) est une configuration légitime. Toute la chaîne
+// aval (`new URL(coreUrl)` dans client/hostedCoreUrl/tuiles) exige une URL
+// absolue : on la résout ici, une seule fois, contre l'origine de la page.
+export function resolveCoreUrl(value: string): string {
+  if (!value.startsWith("/")) return value;
+  return new URL(value, window.location.origin).href.replace(/\/+$/, "");
+}
+
 export function loadConfig(
   env: Record<string, string | undefined>,
   runtimeEnv?: Record<string, string | undefined>,
@@ -50,7 +59,7 @@ export function loadConfig(
   }
 
   return {
-    coreUrl: merged.VITE_CORE_URL!,
+    coreUrl: resolveCoreUrl(merged.VITE_CORE_URL!),
     oidcAuthority: merged.VITE_OIDC_AUTHORITY ?? "",
     oidcClientId: merged.VITE_OIDC_CLIENT_ID ?? "",
     oidcRedirectUri: merged.VITE_OIDC_REDIRECT_URI ?? "",

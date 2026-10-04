@@ -45,6 +45,10 @@ _ARCGIS_LIVE_QUERY_RE = re.compile(r"^/v1/datasets/[^/]+/arcgis/(items|aggregate
 # CI ou capteur, peut avoir un profil d'appel différent des groupes
 # existants).
 _WEBHOOK_TRIGGER_RE = re.compile(r"^/v1/pipelines/[^/]+/trigger$")
+# REV-275 (e) : GET /v1/share-links/{token} — route PUBLIQUE dont le jeton est
+# dans le chemin ; clé IP seule (cf. caller_key), sinon varier le jeton
+# contournerait le budget (même raisonnement que webhook-trigger, j06b-011).
+_SHARE_LINK_RE = re.compile(r"^/v1/share-links/[^/]+$")
 
 # Budgets par groupe de coût réel (requêtes / 60s). Réutilise _EXPORT_PATH_RE
 # de app.main pour le groupe "jobs" plutôt que de le redéfinir ici.
@@ -58,6 +62,7 @@ _BUDGETS = {
     "harvest": 10,
     "collections_empty": 5,
     "webhook-trigger": 30,
+    "share-link": 60,
 }
 _WINDOW_SECONDS = 60.0
 
@@ -74,9 +79,12 @@ def caller_key(
     app.main, cf. commentaire dédié) — jamais la chaîne vide partagée par
     tous les anonymes (GAP-61.a). Exception (j06b-011) : la route webhook-trigger
     est indexée sur IP + chemin (donc pipeline), jamais sur le jeton présenté —
-    sinon varier le jeton à chaque essai contourne le budget (brute-force)."""
+    sinon varier le jeton à chaque essai contourne le budget (brute-force) ;
+    idem pour share-link, indexée sur la seule IP."""
     if group == "webhook-trigger":
         return f"trigger:{client_host or 'unknown'}:{path}"
+    if group == "share-link":
+        return f"share:{client_host or 'unknown'}"
     if auth_header:
         return auth_header
     return f"anon:{client_host or 'unknown'}"
@@ -97,6 +105,8 @@ def route_group(path: str, method: str, export_path_re: re.Pattern[str]) -> str 
         return "harvest"
     if _WEBHOOK_TRIGGER_RE.match(path) and method == "POST":
         return "webhook-trigger"
+    if _SHARE_LINK_RE.match(path) and method == "GET":
+        return "share-link"
     return None
 
 

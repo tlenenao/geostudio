@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
+import { vi } from "vitest";
 import { loadConfig } from "./config";
+import { createBase } from "./api/base";
+import { isHostedCollectionUrl } from "./map/hostedCoreUrl";
 
 const base = {
   VITE_CORE_URL: "https://core.test",
@@ -65,5 +68,38 @@ test("loadRuntimeConfig lit __GEOSTUDIO_ENV__ (P22.03)", async () => {
     expect(loadRuntimeConfig().coreUrl).toBe("http://rt.test");
   } finally {
     delete (window as unknown as { __GEOSTUDIO_ENV__?: unknown }).__GEOSTUDIO_ENV__;
+  }
+});
+
+test("REV-272b : un VITE_CORE_URL relatif est résolu contre l'origine de la page", () => {
+  expect(loadConfig({ ...base, VITE_CORE_URL: "/api" }).coreUrl).toBe(
+    `${window.location.origin}/api`,
+  );
+  expect(loadConfig({ ...base, VITE_CORE_URL: "/api/" }).coreUrl).toBe(
+    `${window.location.origin}/api`,
+  );
+  expect(loadConfig({ ...base, VITE_CORE_URL: "/" }).coreUrl).toBe(window.location.origin);
+});
+
+test("REV-272b : une URL absolue reste inchangée (runtime env compris)", () => {
+  expect(loadConfig(base).coreUrl).toBe("https://core.test");
+  expect(loadConfig(base, { VITE_CORE_URL: "https://prod.example/api" }).coreUrl).toBe(
+    "https://prod.example/api",
+  );
+});
+
+test("REV-272b : le client bâti sur un coreUrl relatif résolu garde le jeton sur les URL du cœur", async () => {
+  const { coreUrl } = loadConfig({ ...base, VITE_CORE_URL: "/api" });
+  const client = createBase({ coreUrl, getToken: () => "tok" });
+  const tile = `${client.coreUrl}/collections/c/tiles/0/0/0.mvt`;
+  expect(client.coreUrl).toBe(`${window.location.origin}/api/v1`);
+  expect(isHostedCollectionUrl(tile, client.coreUrl)).toBe(true);
+  const fetchSpy = vi.fn().mockResolvedValue(new Response("{}"));
+  vi.stubGlobal("fetch", fetchSpy);
+  try {
+    await client.fetchUrl(tile, { authenticated: true });
+    expect((fetchSpy.mock.calls[0][1].headers as Headers).get("Authorization")).toBe("Bearer tok");
+  } finally {
+    vi.unstubAllGlobals();
   }
 });

@@ -10,6 +10,7 @@ import type {
 } from "../types";
 import type { ItemClientBase } from "../base";
 import { OWNER_PERMISSIONS } from "../../auth/permissions";
+import { ifMatchHeader } from "../ifMatch";
 
 type PipelinesMethods = Pick<
   ItemClient,
@@ -26,6 +27,13 @@ type PipelinesMethods = Pick<
   | "createPipelineWebhookToken"
   | "revokePipelineWebhookToken"
 >;
+
+// `baseVersion` est un détail de transport (If-Match) : jamais dans un corps.
+function withoutBaseVersion(payload: PipelinePayload): PipelinePayload {
+  const rest = { ...payload };
+  delete rest.baseVersion;
+  return rest;
+}
 
 export function createPipelinesMethods(base: ItemClientBase): PipelinesMethods {
   const { request } = base;
@@ -60,21 +68,24 @@ export function createPipelinesMethods(base: ItemClientBase): PipelinesMethods {
     },
 
     async getPipelineConfig(pk: string): Promise<PipelinePayload> {
-      const data = await request<{ config?: { pipeline?: PipelinePayload } }>(
+      const data = await request<{ version?: number; config?: { pipeline?: PipelinePayload } }>(
         "GET",
         `/configs/by-item/${pk}`,
       );
       if (!data.config?.pipeline)
         throw new Error("getPipelineConfig: config has no pipeline payload");
-      return data.config.pipeline;
+      return { ...data.config.pipeline, baseVersion: data.version };
     },
 
-    async savePipelineConfig(pk: string, payload: PipelinePayload): Promise<void> {
-      await request<void>("PUT", `/configs/by-item/${pk}`, {
-        version: 1,
-        kind: "pipeline",
-        pipeline: payload,
-      });
+    async savePipelineConfig(pk: string, payload: PipelinePayload): Promise<number | undefined> {
+      const saved = await request<{ version?: number }>(
+        "PUT",
+        `/configs/by-item/${pk}`,
+        { version: 1, kind: "pipeline", pipeline: withoutBaseVersion(payload) },
+        undefined,
+        ifMatchHeader(payload.baseVersion),
+      );
+      return saved?.version;
     },
 
     async getPipelineOps(): Promise<PipelineOpsCatalog> {
@@ -112,7 +123,7 @@ export function createPipelinesMethods(base: ItemClientBase): PipelinesMethods {
       return request<Record<string, unknown>[]>(
         "POST",
         `/pipelines/${pk}/preview?upTo=${encodeURIComponent(upToNodeId)}`,
-        draft !== undefined ? { pipeline: draft } : undefined,
+        draft !== undefined ? { pipeline: withoutBaseVersion(draft) } : undefined,
       );
     },
 

@@ -185,7 +185,7 @@ uv run pytest        # doit être entièrement vert, couverture ≥ seuil
 # portes de qualité (mêmes invocations qu'en CI — cf. .github/workflows/ci.yml)
 cd core
 uv run ruff check . && uv run ruff format --check .
-uv run mypy --strict app/auth app/secrets app/analytics app/copilot app/admin_tools app/roles
+uv run mypy --strict app/auth app/secrets app/analytics app/copilot app/admin_tools app/roles app/net_pin.py
 uv run lint-imports                      # contrat de couches (40 entrées)
 uv run python scripts/check_coverage.py coverage.xml .coverage-threshold   # 85
 cd ../shell
@@ -577,8 +577,10 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   (reader.connector.bigquery/mssql/oracle/blob), catalogue exposé (`GET
   /pipelines/ops`) à 49 op, registre brut (`OPERATIONS`) à 51 ;
   `reader.connector.blob` résout la question « d'où vient le fichier »
-  (Vague 1) par un secret de connexion pré-configuré au bucket, jamais un
-  upload ni une URL arbitraire. 9 lignes `planned_duckdb` de la matrice FME
+  (Vague 1) par un secret de connexion lié à un bucket (`bucketUrl` du secret,
+  préfixe imposé à `params.path`, REV-197), jamais un upload ni une URL
+  arbitraire ; un secret blob antérieur sans `bucketUrl` reste lisible mais son
+  exécution échoue avec un message explicite. 9 lignes `planned_duckdb` de la matrice FME
   passées à `implemented`.
 - **Retrait complet du moteur `transform.qgis` (GPL-2.0-or-later)** — 12 des
   19 lignes `qgis_frozen` migrées (9 op DuckDB/Shapely neuves + composition
@@ -648,6 +650,7 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   audit des runs planifiés, topologie validée ; moissonnage daté/dédoublonné/purgé,
   recherche STAC tolérante ; alertes (livraison tracée/rejouée/signée, cloche) ; 404/422 en RFC 7807, config stricte à l'écriture seulement, pagination bornée ; index `audit_log`/`configs`/`report_runs`, balayage des configs en 1 requête, catalogue public paginé en SQL, cache d'introspection ; agrégats DuckDB bornés (temps/threads/groupes), `asOf`/`pending`, compaction CDC par niveaux ; CI (base réelle exigée, actions épinglées par SHA, Node 22, timeouts, job `stack-smoke`), sauvegarde bornée + sonde de fraîcheur ; import de fichiers (bornes lat/lon, séparateur, typage CSV, item dataset, sondage borné) ; données complètes (carte importée en tuiles, tuile triée sur la PK, totaux annoncés, export WKT) ; accessibilité transverse (titres de route, repères `<main>`/`<h1>`, menu Actions Radix, `alertdialog`, jeton `--gs-control` 3:1, réglage de thème persistant) ; cohérence UI/i18n (glossaire, formats fr-FR, kit de page/état, détecteur i18n `.ts`). Reste : `REV-273`/`274`/`275`/`276`/`277`/`278`/`279`/`280`/`281`/`282`/`283`/`284`/`285`.
 - **Audit pré-release P22/P23/P26/P30/P32/P35/P36 (clôture : plan P01–P36 intégralement exécuté)** — erreurs RFC 7807 et bannière de connectivité à sondage sur tout appel cœur (règle ESLint `fetch`) ; outils MCP hors boucle d'événements + audit `mcp.tool_call`/`copilot.turn` + écritures du copilote confirmées par clic ; quotas items/collections/stockage au point unique de création ; carte via `ItemClient`, fuite luma.gl corrigée, `MapView` découpé ; canevas de pipeline au clavier ; catalogue public `/public`, sitemap/og ; CLAUDE.md réaligné. Revue finale : 5 Important corrigés. Reste : `REV-287` à `REV-293` (journeys non rejoués sur stack OIDC réelle, `REV-266`).
+- **Backlog plan A (L0 clôtures, L2 sécurité/intégrité, L3 pipelines)** — ferme REV-111/116/185/186/188/195/196/197/198/199/239/290 (`admin.collections.manage` en lecture, `bucketUrl` du secret blob, `authFetch` borné au cœur, `groupBy` + entrées dégénérées des transformers géométriques) ; partiels REV-271 (`If-Match` sur 4 éditeurs + MCP), REV-273 (épinglage DNS de l'egress, plafonds blob, SMTP TLS), REV-272/275 ; REV-269 inchangée ; reliquats `REV-294` à `REV-300`.
 
 ### Conventions tranchées (2026-09-01)
 
