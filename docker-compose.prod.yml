@@ -326,6 +326,7 @@ services:
       - --providers.file.watch=true
       - --ping=true
       - --entrypoints.web.address=:80
+      - --entrypoints.traefik.address=127.0.0.1:8080
     depends_on:
       - docker-socket-proxy
     ports: !reset []

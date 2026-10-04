@@ -1551,6 +1551,21 @@ def test_prod_traefik_command_also_enables_file_provider():
     )
 
 
+def test_dev_tooling_host_ports_bind_loopback_only():
+    """REV-274d : Grafana (Viewer anonyme), OTLP, Martin et TiTiler ne
+    doivent pas être joignables depuis le réseau sur un poste de dev."""
+    svc = services(BASE)
+    for name in ("martin", "titiler", "otel-lgtm"):
+        for port in svc[name]["ports"]:
+            assert str(port).startswith("127.0.0.1:"), f"{name}: port {port!r} exposé sur 0.0.0.0"
+
+
+def test_prod_traefik_api_entrypoint_is_loopback_only():
+    """REV-281g : l'entrypoint `traefik` (:8080, /ping) partage le réseau
+    tailscale en prod — il doit écouter sur la boucle locale seulement."""
+    assert "--entrypoints.traefik.address=127.0.0.1:8080" in services(PROD)["traefik"]["command"]
+
+
 def test_prod_traefik_volumes_also_carries_csp_dynamic_conf():
     """docker-compose.prod.yml déclare traefik: volumes: !override — un
     remplacement intégral (pas une fusion) : csp-dynamic-conf doit donc être
