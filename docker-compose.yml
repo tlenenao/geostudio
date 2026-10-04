@@ -307,6 +307,10 @@ services:
       # (REV-042) — même patron que CORE_LLM_EGRESS_ALLOWLIST ci-dessus,
       # module dédié (app/search/egress.py) propre à ce provider.
       CORE_EMBEDDING_EGRESS_ALLOWLIST: ${CORE_EMBEDDING_EGRESS_ALLOWLIST:-}
+      # Géocodage d'adresse (REV-102) : proxy cœur vers la Géoplateforme (BAN).
+      # URL vide = route /v1/geocode en 503 ; allowlist d'egress dédiée.
+      CORE_GEOCODING_URL: ${CORE_GEOCODING_URL:-https://data.geopf.fr/geocodage/search}
+      CORE_GEOCODING_EGRESS_ALLOWLIST: ${CORE_GEOCODING_EGRESS_ALLOWLIST:-data.geopf.fr}
       # Allowlists des trois gardes d'egress SSRF (pipelines/harvest/alerts,
       # chacune dupliquée délibérément — cf. leurs docstrings respectives).
       # Trouvées non câblées à AUCUN service par l'élargissement de la règle
