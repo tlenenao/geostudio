@@ -3,7 +3,8 @@
 // CopilotPanel.tsx (SP-20), neutre vis-à-vis du type de contexte
 // (AppConfig, SQL brut, état de requête visuelle...). Chaque appelant
 // fournit son propre contextPayload/clientTools/onClientOps.
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
+import { QueryClientContext } from "@tanstack/react-query";
 import { ApiError } from "../../api/ApiError";
 import { useItemClient } from "../../api/ItemClientProvider";
 import type {
@@ -58,6 +59,9 @@ export function CopilotChat({
 }) {
   const client = useItemClient();
   const getMcpToken = useMcpToken();
+  // REV-287(a) : contexte lu sans exiger de provider (plusieurs montages de
+  // test n'en ont pas) — useQueryClient() lèverait.
+  const queryClient = useContext(QueryClientContext);
   const contextPayloadRef = useRef(contextPayload);
   useEffect(() => {
     contextPayloadRef.current = contextPayload;
@@ -88,6 +92,9 @@ export function CopilotChat({
         confirmWrite: write,
       });
       setHistory((h) => [...h, { role: "assistant", content: result.reply }]);
+      // Les écritures confirmables (create_item, create_form_app) CRÉENT un
+      // item : la liste du catalogue est périmée.
+      void queryClient?.invalidateQueries({ queryKey: ["items"] });
     } catch {
       setError(t("copilot.requestFailed"));
     } finally {
