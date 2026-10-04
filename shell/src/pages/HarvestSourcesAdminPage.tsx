@@ -2,11 +2,14 @@
 import { useMemo, useState } from "react";
 import {
   useDeleteHarvestSource,
+  useHarvestSourceRecords,
   useHarvestSources,
   useInstanceInfo,
   useRunHarvestSource,
 } from "../api/hooks";
 import type { HarvestSource } from "../api/types";
+import { Link } from "react-router-dom";
+import { Badge } from "../ui/kit/Badge";
 import { Button } from "../ui/kit/Button";
 import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
 import { DataTable } from "../ui/kit/DataTable";
@@ -21,6 +24,38 @@ import { LoadingState } from "../ui/kit/LoadingState";
 import { Banner } from "../ui/kit/Banner";
 import { PageTitle } from "../ui/kit/PageTitle";
 
+function HarvestRecordsPanel({ source }: { source: HarvestSource }) {
+  const query = useHarvestSourceRecords(source.id);
+  return (
+    <section aria-label={t("harvest.recordsHeading", { url: source.url })}>
+      <h2 className="mb-2 text-sm font-medium text-ink">
+        {t("harvest.recordsHeading", { url: source.url })}
+      </h2>
+      {query.isLoading && <LoadingState />}
+      {query.isError && <Banner variant="danger">{t("harvest.recordsLoadError")}</Banner>}
+      {query.data && query.data.records.length === 0 && (
+        <p className="text-sm text-ink-2">{t("harvest.recordsEmpty")}</p>
+      )}
+      {query.data && query.data.records.length > 0 && (
+        <ul className="flex flex-col gap-1 text-sm">
+          {query.data.records.map((record) => (
+            <li key={record.id} className="flex flex-wrap items-center gap-2">
+              {record.itemId ? (
+                <Link to={`/items/${record.itemId}`} className="text-accent hover:underline">
+                  {record.externalId}
+                </Link>
+              ) : (
+                <span>{record.externalId}</span>
+              )}
+              {record.state === "stale" && <Badge variant="warn">{t("harvest.recordStale")}</Badge>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 export function HarvestSourcesAdminPage() {
   const instanceQuery = useInstanceInfo();
   const readOnly = instanceQuery.data?.readOnly === true;
@@ -30,6 +65,8 @@ export function HarvestSourcesAdminPage() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<HarvestSource | null>(null);
   const [deleting, setDeleting] = useState<HarvestSource | null>(null);
+  const [viewingRecords, setViewingRecords] = useState<HarvestSource | null>(null);
+  const recordsPanel = usePanelTrigger(viewingRecords !== null);
   const createPanel = usePanelTrigger(creating);
   const editPanel = usePanelTrigger(editing !== null);
   const [sortKey, setSortKey] = useState<string | undefined>(undefined);
@@ -78,6 +115,7 @@ export function HarvestSourcesAdminPage() {
       // supprimer si l'utilisateur clique Supprimer sans le fermer d'abord.
       // Fermer explicitement s'il pointait vers l'objet supprimé.
       if (editing?.id === deleting.id) setEditing(null);
+      if (viewingRecords?.id === deleting.id) setViewingRecords(null);
       setDeleting(null);
     } catch {
       // surfaced via deleteSource.isError
@@ -107,6 +145,7 @@ export function HarvestSourcesAdminPage() {
                       // Exclusivité mutuelle avec editing (décision 5, plan
                       // SP-30j) : plus de barrière modale pour l'empêcher.
                       setEditing(null);
+                      setViewingRecords(null);
                       setCreating(true);
                     }}
                   >
@@ -204,40 +243,58 @@ export function HarvestSourcesAdminPage() {
                     {
                       key: "actions",
                       label: t("collectionsAdmin.columnActions"),
-                      render: (source: HarvestSource) =>
-                        !readOnly && (
-                          <div className="flex gap-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => runSource.mutate(source.id)}
-                            >
-                              {t("harvest.runNow")}
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              aria-controls={editPanel.panelId}
-                              aria-expanded={editing?.id === source.id}
-                              onClick={() => {
-                                setCreating(false);
-                                setEditing(source);
-                              }}
-                            >
-                              {t("collectionsAdmin.edit")}
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setDeleting(source)}
-                            >
-                              {t("actions.delete")}
-                            </Button>
-                          </div>
-                        ),
+                      render: (source: HarvestSource) => (
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            aria-controls={recordsPanel.panelId}
+                            aria-expanded={viewingRecords?.id === source.id}
+                            onClick={() => {
+                              setCreating(false);
+                              setEditing(null);
+                              setViewingRecords(source);
+                            }}
+                          >
+                            {t("harvest.recordsButton")}
+                          </Button>
+                          {!readOnly && (
+                            <>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => runSource.mutate(source.id)}
+                              >
+                                {t("harvest.runNow")}
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                aria-controls={editPanel.panelId}
+                                aria-expanded={editing?.id === source.id}
+                                onClick={() => {
+                                  setCreating(false);
+                                  setViewingRecords(null);
+                                  setEditing(source);
+                                }}
+                              >
+                                {t("collectionsAdmin.edit")}
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setDeleting(source)}
+                              >
+                                {t("actions.delete")}
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      ),
                     },
                   ]}
                   rows={sortedSources}
@@ -271,6 +328,11 @@ export function HarvestSourcesAdminPage() {
                     source={editing}
                     onClose={() => setEditing(null)}
                   />
+                </div>
+              )}
+              {viewingRecords && (
+                <div id={recordsPanel.panelId}>
+                  <HarvestRecordsPanel key={viewingRecords.id} source={viewingRecords} />
                 </div>
               )}
             </div>

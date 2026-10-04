@@ -7,6 +7,7 @@ import type {
   HarvestSource,
   HarvestSourceCreateInput,
   HarvestSourcePatchInput,
+  HarvestSourceRecordsPage,
   InstanceStatus,
   ItemClient,
 } from "../types";
@@ -27,6 +28,7 @@ type ExtensionsAdminToolsMethods = Pick<
   | "updateHarvestSource"
   | "deleteHarvestSource"
   | "runHarvestSource"
+  | "listHarvestSourceRecords"
 >;
 
 export function createExtensionsAdminToolsMethods(
@@ -133,6 +135,10 @@ export function createExtensionsAdminToolsMethods(
 
     async runHarvestSource(id: string): Promise<void> {
       await request<void>("POST", `/harvest/sources/${id}/run`);
+    },
+
+    async listHarvestSourceRecords(id: string): Promise<HarvestSourceRecordsPage> {
+      return request<HarvestSourceRecordsPage>("GET", `/harvest/sources/${id}/records`);
     },
   };
 }

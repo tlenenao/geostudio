@@ -573,6 +573,7 @@ export interface ItemClient {
   updateHarvestSource(id: string, patch: HarvestSourcePatchInput): Promise<HarvestSource>;
   deleteHarvestSource(id: string): Promise<void>;
   runHarvestSource(id: string): Promise<void>;
+  listHarvestSourceRecords(id: string): Promise<HarvestSourceRecordsPage>;
   launchAdminTool(tool: AdminToolName): Promise<{ url: string }>;
   getInstanceStatus(): Promise<InstanceStatus>;
   getCollectionSharing(id: string): Promise<Sharing>;
@@ -1044,6 +1045,22 @@ export type HarvestSourcePatchInput = {
   mode?: HarvestSourceMode;
   enabled?: boolean;
   intervalMinutes?: number | null;
+};
+
+export type HarvestSourceRecord = {
+  id: string;
+  externalId: string;
+  itemId: string | null;
+  collectionId: string | null;
+  state: "ok" | "stale";
+  harvestedAt: string | null;
+  externalUrl: string | null;
+};
+
+export type HarvestSourceRecordsPage = {
+  total: number;
+  staleCount: number;
+  records: HarvestSourceRecord[];
 };
 
 export type DataRecord = {
