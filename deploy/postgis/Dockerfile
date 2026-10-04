@@ -7,7 +7,7 @@
 # postgresql-16-wal2json (SP-11a, décodage JSON du flux de réplication
 # logique — pas de protocole binaire pgoutput à implémenter côté client) —
 # tous les quatre publiés en arm64 sur bookworm-pgdg (vérifié).
-FROM postgres:16-bookworm
+FROM postgres:18-bookworm
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
