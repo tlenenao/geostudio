@@ -867,7 +867,7 @@ def unregister_collection(
     if referencing:
         raise HTTPException(
             status_code=409,
-            detail=f"still referenced by config kind(s): {', '.join(referencing)}",
+            detail=configs_repo.referencing_message(referencing),
         )
     remove_table_from_publication(session, col.table_name)
     # SP-42/F-securite-tenant-rls-03 : sans cette purge explicite (lignes +

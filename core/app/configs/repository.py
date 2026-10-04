@@ -246,6 +246,19 @@ class StaleConfigVersion(Exception):
         self.current = current
 
 
+_KIND_LABELS = {
+    "alert": "une règle d'alerte",
+    "report": "un rapport planifié",
+    "dataset": "un jeu de données",
+}
+
+
+def referencing_message(kinds: list[str]) -> str:
+    """REV-282e : detail du 409 de suppression, lisible par l'utilisateur."""
+    labels = ", ".join(_KIND_LABELS.get(k, k) for k in kinds)
+    return f"Suppression impossible : encore utilisé par {labels}. Supprimez d'abord ces éléments."
+
+
 def update_config(
     session: Session,
     config_id: str,

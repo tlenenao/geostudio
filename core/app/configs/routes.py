@@ -107,7 +107,7 @@ def _require_no_reverse_references(session: Session, *, tenant_id: str, item_id:
     if referencing:
         raise HTTPException(
             status_code=409,
-            detail=f"still referenced by config kind(s): {', '.join(referencing)}",
+            detail=repo.referencing_message(referencing),
         )
 
 
