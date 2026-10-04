@@ -385,8 +385,9 @@ services:
       # Hôte public du stockage pour les liens signés remis à un navigateur ou à un
       # destinataire externe (RC-13) ; vide = hôte interne (liens injoignables hors Docker).
       S3_PUBLIC_ENDPOINT_URL: ${S3_PUBLIC_ENDPOINT_URL:-}
-      # Plafond de lecture d'un fichier importé (octets) ; vide = 512 Mio (P03.05).
+      # Pairs dont X-Forwarded-For est honoré (réseau Traefik) ; jamais `*` en production.
       CORE_TRUSTED_PROXIES: ${CORE_TRUSTED_PROXIES:-127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
+      # Plafond de lecture d'un fichier importé (octets) ; vide = 512 Mio (P03.05).
       CORE_UPLOAD_MAX_BYTES: ${CORE_UPLOAD_MAX_BYTES:-}
       S3_ACCESS_KEY: ${MINIO_USER}
       S3_SECRET_KEY: ${MINIO_PASSWORD}
