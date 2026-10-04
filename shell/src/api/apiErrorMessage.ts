@@ -4,7 +4,8 @@ import { formatBytes } from "../lib/format";
 import { ApiError } from "./ApiError";
 
 // Message affichable d'une erreur de mutation : le `detail` RFC 7807 du cœur, avec
-// « Réessayez dans N s » sur un 429 ; `fallback` pour toute autre erreur.
+// « Réessayez dans N s » sur un 429, les `errors[]` par champ quand présents
+// (REV-278e) ; `fallback` pour toute autre erreur.
 export function apiErrorMessage(error: unknown, fallback: string): string {
   if (!(error instanceof ApiError)) return fallback;
   if (error.problemType === "quota-exceeded" && error.quota) {
@@ -19,5 +20,7 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
     return `${error.detail ?? fallback} ${
       error.retryAfter !== undefined ? t("errors.retryAfter", { seconds: error.retryAfter }) : ""
     }`.trim();
+  if (error.errors?.length)
+    return error.errors.map((e) => (e.field ? `${e.field} : ${e.message}` : e.message)).join(" ; ");
   return error.detail ?? fallback;
 }
