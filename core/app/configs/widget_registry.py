@@ -6,6 +6,7 @@ l'id d'une extension activée du tenant (l'id sous lequel le shell enregistre
 un widget d'extension)."""
 
 import json
+import logging
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -16,6 +17,8 @@ from app.configs.document_validation import document_warnings, widget_nodes
 from app.configs.repository import ConfigRead
 from app.configs.schemas import BuilderConfig
 from app.extensions.models import Extension
+
+_logger = logging.getLogger(__name__)
 
 BUILTIN_WIDGET_TYPES: frozenset[str] = frozenset(
     json.loads((Path(__file__).parent / "builtin_widget_types.json").read_text(encoding="utf-8"))
@@ -53,7 +56,13 @@ def validate_widget_types(session: Session, config: BuilderConfig, *, tenant_id:
 def with_warnings(session: Session, read: ConfigRead, *, tenant_id: str) -> ConfigRead:
     """`ConfigRead` enrichi de ce qu'une écriture refuserait aujourd'hui
     (REV-278/305) ; la lecture, elle, n'est jamais refusée."""
-    warnings = document_warnings(read.config) + widget_type_errors(
-        session, read.config, tenant_id=tenant_id
-    )
+    try:
+        warnings = document_warnings(read.config) + widget_type_errors(
+            session, read.config, tenant_id=tenant_id
+        )
+    except Exception:
+        # REV-305 : le calcul des avertissements ne doit jamais empêcher une
+        # lecture. Si le calcul échoue, retourner la config sans avertissements.
+        _logger.warning("failed to compute config warnings", exc_info=True)
+        warnings = []
     return read.model_copy(update={"warnings": warnings})

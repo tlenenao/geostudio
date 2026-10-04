@@ -70,3 +70,24 @@ def test_healthy_config_has_no_warnings(client):
     created = client.post("/v1/configs", json={"title": "t", "config": _APP}).json()
     r = client.get(f"/v1/configs/by-item/{created['itemId']}")
     assert r.json()["warnings"] == []
+
+
+def test_config_read_resilient_to_warning_calculation_error(client, monkeypatch):
+    """REV-305 : le calcul des avertissements ne doit jamais empêcher une
+    lecture. Si le calcul échoue, retourner la config sans avertissements."""
+    created = client.post("/v1/configs", json={"title": "t", "config": _APP}).json()
+    item_id = created["itemId"]
+
+    # Monkeypatch document_warnings in widget_registry module (where it's imported)
+    # to raise an exception during warning calculation
+    from app.configs import widget_registry
+
+    def failing_warnings(config):
+        raise RuntimeError("synthetic error in document_warnings")
+
+    monkeypatch.setattr(widget_registry, "document_warnings", failing_warnings)
+
+    # Reading should still succeed with empty warnings
+    r = client.get(f"/v1/configs/by-item/{item_id}")
+    assert r.status_code == 200
+    assert r.json()["warnings"] == []

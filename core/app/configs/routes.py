@@ -438,7 +438,9 @@ def get_config_by_item(
         raise HTTPException(status_code=404, detail="config not found")
     if mode == "runtime":
         _apps_runtime_executions_counter.add(1)
-    tenant_id = user.tenant_id if user is not None else guest.tenant_id  # type: ignore[union-attr]
+    if user is None:
+        assert guest is not None, "guest must not be None when user is None"
+    tenant_id = user.tenant_id if user is not None else guest.tenant_id
     return with_warnings(session, result, tenant_id=tenant_id)
 
 
