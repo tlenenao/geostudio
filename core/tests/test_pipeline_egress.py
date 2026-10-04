@@ -257,3 +257,44 @@ def test_real_s3fs_client_goes_through_the_pinned_resolver(monkeypatch, local_ht
     with pytest.raises(HTTPClientError, match="cible réseau interne bloquée"):
         fs.ls("bucket")
     assert seen == {}
+
+
+def test_blocked_message_does_not_leak_the_resolved_ip(monkeypatch):
+    with pytest.raises(EgressBlockedError) as exc:
+        assert_egress_allowed("http://127.0.0.1/x")
+    assert "127.0.0.1" in str(exc.value)  # le littéral saisi par l'appelant
+    # hôte nommé résolu en interne : l'adresse n'est pas rappelée
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda *a, **k: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.1.2.3", 0))],
+    )
+    with pytest.raises(EgressBlockedError) as exc:
+        assert_egress_allowed("http://internal.example.com/x")
+    assert "10.1.2.3" not in str(exc.value)
+    assert "internal.example.com" in str(exc.value)
+
+
+def _dual_stack(host, *a, **k):
+    return [
+        (socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("2606:2800:220:1::1", 0, 0, 0)),
+        (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0)),
+    ]
+
+
+def test_assert_egress_allowed_returns_every_validated_address(monkeypatch):
+    from app.net_pin import candidate_ips
+
+    monkeypatch.setattr(socket, "getaddrinfo", _dual_stack)
+    ip = assert_egress_allowed("http://dual.example.com/")
+    assert ip == "2606:2800:220:1::1"
+    assert candidate_ips(ip) == ("2606:2800:220:1::1", "93.184.216.34")
+
+
+def test_pinned_aio_resolver_offers_every_validated_address(monkeypatch):
+    monkeypatch.setattr(socket, "getaddrinfo", _dual_stack)
+    infos = asyncio.run(PinnedAioResolver().resolve("dual.example.com", 443))
+    assert [(i["host"], i["family"]) for i in infos] == [
+        ("2606:2800:220:1::1", socket.AF_INET6),
+        ("93.184.216.34", socket.AF_INET),
+    ]

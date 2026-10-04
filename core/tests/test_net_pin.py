@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+import asyncio
 import datetime
 import ssl
 import threading
@@ -13,7 +14,14 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID
 from requests.adapters import HTTPAdapter
 
-from app.net_pin import pin_httpx_request, pinned_adapter
+from app.net_pin import (
+    ValidatedIp,
+    candidate_ips,
+    pin_httpx_request,
+    pinned_adapter,
+    send_pinned,
+    send_pinned_async,
+)
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -193,3 +201,92 @@ def test_harvest_guarded_httpx_https_keeps_sni_and_verifies_cert_against_hostnam
         assert c.get(f"https://pinned.test:{port}/").status_code == 200
         with pytest.raises(httpx.ConnectError, match="CERTIFICATE_VERIFY_FAILED"):
             c.get(f"https://other.test:{port}/")
+
+
+def test_validated_ip_is_a_str_carrying_every_validated_address():
+    ip = ValidatedIp("1.2.3.4", ["1.2.3.4", "2001:db8::1"])
+    assert ip == "1.2.3.4" and isinstance(ip, str)
+    assert candidate_ips(ip) == ("1.2.3.4", "2001:db8::1")
+    assert candidate_ips("5.6.7.8") == ("5.6.7.8",)
+    assert candidate_ips(None) == ()
+
+
+def test_pinned_adapter_falls_back_to_the_next_validated_address():
+    srv = HTTPServer(("127.0.0.1", 0), _Handler)  # n'écoute QUE sur 127.0.0.1
+    port = _serve(srv)
+
+    def resolve(host: str) -> ValidatedIp:
+        # 127.0.0.2 : connexion refusée immédiatement (rien n'y écoute) ; la
+        # 2e adresse validée doit alors être essayée.
+        return ValidatedIp("127.0.0.2", ["127.0.0.2", "127.0.0.1"])
+
+    try:
+        session = requests.Session()
+        session.mount("http://", pinned_adapter(HTTPAdapter, resolve)())
+        resp = session.get(f"http://pinned.invalid:{port}/", timeout=5)
+    finally:
+        srv.shutdown()
+    assert resp.status_code == 200
+
+
+def test_send_pinned_falls_back_and_restores_the_original_url():
+    srv = HTTPServer(("127.0.0.1", 0), _Handler)
+    port = _serve(srv)
+    transport = httpx.HTTPTransport()
+    request = httpx.Request("GET", f"http://pinned.invalid:{port}/")
+    try:
+        response = send_pinned(
+            transport.handle_request,
+            request,
+            ValidatedIp("127.0.0.2", ["127.0.0.2", "127.0.0.1"]),
+        )
+        response.read()
+    finally:
+        srv.shutdown()
+    assert response.status_code == 200
+    assert _Handler.seen["host"] == f"pinned.invalid:{port}"
+    # `Location` relatif sous follow_redirects=True : repart du nom d'origine.
+    assert request.url.host == "pinned.invalid"
+
+
+def test_send_pinned_raises_the_last_error_when_every_address_fails():
+    transport = httpx.HTTPTransport()
+    request = httpx.Request("GET", "http://pinned.invalid:9/")
+    with pytest.raises(httpx.ConnectError):
+        send_pinned(transport.handle_request, request, ValidatedIp("127.0.0.2", ["127.0.0.2"]))
+    assert request.url.host == "pinned.invalid"
+
+
+def test_send_pinned_without_pin_sends_as_is():
+    seen = []
+
+    def send(req):
+        seen.append(str(req.url))
+        return httpx.Response(200, request=req)
+
+    request = httpx.Request("GET", "http://pinned.invalid:9/")
+    assert send_pinned(send, request, None).status_code == 200
+    assert seen == ["http://pinned.invalid:9/"]
+
+
+def test_send_pinned_async_falls_back_too():
+    srv = HTTPServer(("127.0.0.1", 0), _Handler)
+    port = _serve(srv)
+    transport = httpx.AsyncHTTPTransport()
+    request = httpx.Request("GET", f"http://pinned.invalid:{port}/")
+
+    async def run():
+        response = await send_pinned_async(
+            transport.handle_async_request,
+            request,
+            ValidatedIp("127.0.0.2", ["127.0.0.2", "127.0.0.1"]),
+        )
+        await response.aread()
+        return response
+
+    try:
+        response = asyncio.run(run())
+    finally:
+        srv.shutdown()
+    assert response.status_code == 200
+    assert request.url.host == "pinned.invalid"

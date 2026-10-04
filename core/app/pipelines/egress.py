@@ -18,7 +18,7 @@ import requests
 from aiohttp.abc import AbstractResolver, ResolveResult
 from sqlalchemy.engine import make_url
 
-from app.net_pin import pinned_adapter
+from app.net_pin import ValidatedIp, candidate_ips, pinned_adapter
 
 logger = logging.getLogger(__name__)
 
@@ -71,12 +71,12 @@ def assert_egress_allowed(url: str) -> str:
         raise EgressBlockedError(f"hôte non résoluble : {host!r}")
     for ip in addresses:
         if _is_internal(ip):
-            raise EgressBlockedError(f"cible réseau interne bloquée : {host!r} → {ip}")
+            raise EgressBlockedError(f"cible réseau interne bloquée : {host!r}")
 
     allowlist = _allowlist()
     if allowlist and host not in allowlist:
         raise EgressBlockedError(f"hôte hors allowlist d'egress : {host!r}")
-    return str(addresses[0])  # REV-273d : adresse validée, à utiliser pour se connecter
+    return ValidatedIp(str(addresses[0]), [str(a) for a in addresses])  # REV-273d
 
 
 def assert_dsn_egress_allowed(dsn: str) -> None:
@@ -151,7 +151,7 @@ def build_guarded_session() -> requests.Session:
 
 class PinnedAioResolver(AbstractResolver):
     """Résolveur aiohttp (donc aiobotocore/s3fs, endpoint S3 compatible) qui
-    n'accepte que l'adresse validée par la garde d'egress au moment même de
+    n'accepte que les adresses validées par la garde d'egress au moment même de
     la connexion (REV-273d). `hostname` reste le nom d'origine : SNI et
     vérification de certificat inchangés. aiohttp (connector._resolve_host)
     n'appelle pas le résolveur pour un littéral IP : celui-ci est validé en
@@ -162,15 +162,18 @@ class PinnedAioResolver(AbstractResolver):
         self, host: str, port: int = 0, family: socket.AddressFamily = socket.AF_INET
     ) -> list[ResolveResult]:
         ip = await asyncio.to_thread(_pin_ip, host)  # getaddrinfo bloquant hors boucle
+        # Toutes les adresses validées : aiohttp essaie la suivante si la 1re
+        # est injoignable (double pile, REV-273d).
         return [
             {
                 "hostname": host,
-                "host": ip,
+                "host": addr,
                 "port": port,
-                "family": socket.AF_INET6 if ":" in ip else socket.AF_INET,
+                "family": socket.AF_INET6 if ":" in addr else socket.AF_INET,
                 "proto": 0,
                 "flags": socket.AI_NUMERICHOST,
             }
+            for addr in candidate_ips(ip)
         ]
 
     async def close(self) -> None:

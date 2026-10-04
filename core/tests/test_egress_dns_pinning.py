@@ -67,12 +67,20 @@ def test_second_resolution_to_loopback_is_refused(monkeypatch, modname):
         mod.assert_egress_allowed("https://rebind.example.com/x")
 
 
+def _snapshot(request: httpx.Request) -> httpx.Request:
+    # Copie à l'instant de l'envoi : send_pinned restaure ensuite `request.url`
+    # (Location relatif, REV-273d), la requête d'origine ne montre plus l'IP.
+    return httpx.Request(
+        request.method, request.url, headers=request.headers, extensions=dict(request.extensions)
+    )
+
+
 class _Recorder(httpx.BaseTransport):
     def __init__(self):
         self.seen: list[httpx.Request] = []
 
     def handle_request(self, request):
-        self.seen.append(request)
+        self.seen.append(_snapshot(request))
         return httpx.Response(200, content=b"ok", request=request)
 
 
@@ -81,7 +89,7 @@ class _AsyncRecorder(httpx.AsyncBaseTransport):
         self.seen: list[httpx.Request] = []
 
     async def handle_async_request(self, request):
-        self.seen.append(request)
+        self.seen.append(_snapshot(request))
         return httpx.Response(200, content=b"ok", request=request)
 
 

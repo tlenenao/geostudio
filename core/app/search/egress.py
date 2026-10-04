@@ -29,7 +29,7 @@ appel) : `OpenAICompatibleProvider.__init__` construit son client gardé et le
 réutilise sur chaque `embed()`.
 
 DNS-rebinding TOCTOU fermé par REV-273d (comme `app.harvest.egress`) : le
-transport connecte sur l'IP validée (`app.net_pin.pin_httpx_request`)."""
+transport connecte sur l'IP validée (`app.net_pin.send_pinned`)."""
 
 import ipaddress
 import logging
@@ -39,7 +39,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from app.net_pin import pin_httpx_request
+from app.net_pin import ValidatedIp, send_pinned
 
 logger = logging.getLogger(__name__)
 
@@ -82,12 +82,12 @@ def assert_egress_allowed(url: str) -> str:
         raise EgressBlockedError(f"hôte non résoluble : {host!r}")
     for ip in addresses:
         if _is_internal(ip):
-            raise EgressBlockedError(f"cible réseau interne bloquée : {host!r} → {ip}")
+            raise EgressBlockedError(f"cible réseau interne bloquée : {host!r}")
 
     allowlist = _allowlist()
     if allowlist and host not in allowlist:
         raise EgressBlockedError(f"hôte hors allowlist d'egress : {host!r}")
-    return str(addresses[0])  # REV-273d : adresse validée, à utiliser pour se connecter
+    return ValidatedIp(str(addresses[0]), [str(a) for a in addresses])  # REV-273d
 
 
 class _GuardedTransport(httpx.BaseTransport):
@@ -95,8 +95,9 @@ class _GuardedTransport(httpx.BaseTransport):
         self._inner = inner
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
-        pin_httpx_request(request, assert_egress_allowed(str(request.url)))
-        return self._inner.handle_request(request)
+        return send_pinned(
+            self._inner.handle_request, request, assert_egress_allowed(str(request.url))
+        )
 
 
 def build_guarded_client(timeout: float = _DEFAULT_TIMEOUT_SECONDS) -> httpx.Client:

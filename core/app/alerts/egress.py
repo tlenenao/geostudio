@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 
 import requests
 
-from app.net_pin import pinned_adapter
+from app.net_pin import ValidatedIp, pinned_adapter
 
 logger = logging.getLogger(__name__)
 
@@ -57,12 +57,12 @@ def assert_egress_allowed(url: str) -> str:
         raise EgressBlockedError(f"hôte non résoluble : {host!r}")
     for ip in addresses:
         if _is_internal(ip):
-            raise EgressBlockedError(f"cible réseau interne bloquée : {host!r} → {ip}")
+            raise EgressBlockedError(f"cible réseau interne bloquée : {host!r}")
 
     allowlist = _allowlist()
     if allowlist and host not in allowlist:
         raise EgressBlockedError(f"hôte hors allowlist d'egress : {host!r}")
-    return str(addresses[0])  # REV-273d : adresse validée, à utiliser pour se connecter
+    return ValidatedIp(str(addresses[0]), [str(a) for a in addresses])  # REV-273d
 
 
 def _pin_ip(host: str) -> str:
