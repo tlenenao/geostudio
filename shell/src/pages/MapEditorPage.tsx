@@ -12,6 +12,10 @@ import type { MapViewHandle } from "../map/MapView";
 // module dans son propre chunk tant qu'un site l'importe statiquement),
 // visible au build via le warning INEFFECTIVE_DYNAMIC_IMPORT (GAP-68).
 const MapView = lazy(() => import("../map/MapView").then((m) => ({ default: m.MapView })));
+// REV-102 : lazy, hors charge initiale (marge de bundle).
+const AddressSearch = lazy(() =>
+  import("../map/AddressSearch").then((m) => ({ default: m.AddressSearch })),
+);
 import { LayersPanel } from "../map/LayersPanel";
 import { BasemapSelect } from "../map/BasemapSelect";
 import { TerrainPanel } from "../map/TerrainPanel";
@@ -134,6 +138,11 @@ export function MapEditorPage({ pk }: { pk: string }) {
     updateDraft((d) => (d ? { ...d, terrain } : d));
   }
   const currentDraft = draft;
+  function goToAddress(center: [number, number]) {
+    updateDraft((d) => (d ? { ...d, view: { ...d.view, center, zoom: 16 } } : d));
+    mapViewRef.current?.flyTo({ center, zoom: 16 });
+  }
+
   function setCamera(next: { pitch: number; bearing: number }) {
     updateDraft((d) => (d ? { ...d, view: { ...d.view, ...next } } : d));
     mapViewRef.current?.flyTo(
@@ -281,6 +290,9 @@ export function MapEditorPage({ pk }: { pk: string }) {
             <div className="flex flex-col gap-4 p-3">
               <BasemapSelect value={draft.basemap.style} onChange={setStyle} />
               <TerrainPanel value={draft.terrain ?? null} onChange={setTerrain} />
+              <Suspense fallback={null}>
+                <AddressSearch onSelect={goToAddress} />
+              </Suspense>
               <CameraControls
                 pitch={draft.view.pitch ?? 0}
                 bearing={draft.view.bearing ?? 0}

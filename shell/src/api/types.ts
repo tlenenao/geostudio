@@ -234,6 +234,9 @@ export type CopilotToolSchema = {
 };
 export type CopilotSurface = "app_builder" | "sql_lab" | "visual_query" | "visible_when";
 
+// REV-102 : un résultat de GET /v1/geocode.
+export type GeocodeResult = { label: string; lon: number; lat: number };
+
 export type ItemScope = "all" | "mine" | "shared" | "public";
 
 export type ItemSort = "date_desc" | "date_asc" | "updated_desc" | "title_asc" | "title_desc";
@@ -501,6 +504,8 @@ export interface ItemClient {
     until?: string;
     limit?: number;
   }): Promise<UsageSummary>;
+  // REV-102 : recherche d'adresse (BAN via le cœur).
+  geocode(q: string, limit?: number): Promise<GeocodeResult[]>;
   getInstanceInfo(): Promise<InstanceInfo>;
   getQuotaUsage(): Promise<QuotaUsage>;
   copilotTurn(

@@ -561,6 +561,9 @@ export function createDesktopItemClient(connection: {
     async updateNotificationPreference(..._args: unknown[]) {
       return unsupported();
     },
+    async geocode(..._args: unknown[]) {
+      return unsupported();
+    },
     async listUsageTasks(..._args: unknown[]) {
       return unsupported();
     },

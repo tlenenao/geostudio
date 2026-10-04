@@ -653,6 +653,10 @@ export const fr = {
   "mapEditor.layersLabel": "Couches",
   "mapEditor.mapLabel": "Carte",
   "mapEditor.inspectLabel": "Inspecter",
+  "addressSearch.inputAria": "Rechercher une adresse",
+  "addressSearch.submit": "Localiser",
+  "addressSearch.empty": "Aucune adresse trouvée.",
+  "addressSearch.failed": "Recherche d'adresse indisponible.",
 
   // PipelineBuilderPage
   "pipelineBuilder.etlDisabled":
