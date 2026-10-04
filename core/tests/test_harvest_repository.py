@@ -529,3 +529,52 @@ def test_delete_source_keeps_copied_dataset_items(session, tenant_and_user):
     assert repo.delete_source(session, source) == 0
     session.expire_all()
     assert session.get(Item, item.id) is not None
+
+
+def test_list_due_backs_off_exponentially_after_failures(session, tenant_and_user):
+    """REV-276d : intervalle 15 min, 1 échec → 30 min avant la relance."""
+    tenant, user = tenant_and_user
+    now = datetime.now(UTC)
+    src = _make_source(session, tenant.id, user.id, last_run_at=now - timedelta(minutes=20))
+    assert src in repo.list_due_sources(session)
+    src.consecutive_failures = 1
+    session.flush()
+    assert src not in repo.list_due_sources(session)
+    src.last_run_at = now - timedelta(minutes=31)
+    session.flush()
+    assert src in repo.list_due_sources(session)
+
+
+def test_list_due_backoff_is_capped_at_one_day(session, tenant_and_user):
+    tenant, user = tenant_and_user
+    now = datetime.now(UTC)
+    src = _make_source(
+        session,
+        tenant.id,
+        user.id,
+        consecutive_failures=50,
+        last_run_at=now - timedelta(hours=24, minutes=1),
+    )
+    assert src in repo.list_due_sources(session)
+
+
+def test_find_duplicate_source_compares_normalized_urls(session, tenant_and_user):
+    """REV-276c : slash final et casse du schéma/hôte ne font pas une autre source."""
+    tenant, user = tenant_and_user
+    src = repo.create_source(
+        session,
+        tenant_id=tenant.id,
+        owner_id=user.id,
+        type="stac",
+        url="https://stac.example/api/",
+        mode="reference",
+        enabled=True,
+        interval_minutes=None,
+    )
+
+    def dup(url, **kw):
+        return repo.find_duplicate_source(session, tenant_id=tenant.id, type="stac", url=url, **kw)
+
+    assert dup("HTTPS://STAC.Example/api") is src
+    assert dup("https://stac.example/API") is None  # le chemin reste sensible à la casse
+    assert dup("https://stac.example/api", exclude_id=src.id) is None

@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.harvest.models import HarvestRecord, HarvestSource
+from app.harvest.schemas import normalize_source_url
 from app.items.models import Item
 
 
@@ -77,16 +78,20 @@ def find_duplicate_source(
     url: str,
     exclude_id: str | None = None,
 ) -> HarvestSource | None:
-    # ponytail: vérification applicative (course possible entre deux POST
-    # simultanés) ; contrainte unique + migration si le cas se présente.
+    # La course entre deux POST simultanés est bornée par l'index unique
+    # uq_harvest_sources_tenant_type_url (0046) → 409 dans les routes.
+    # ponytail: comparaison normalisée en Python sur les sources du tenant et
+    # du type (quelques dizaines) ; colonne normalisée indexée si ça grossit.
     stmt = select(HarvestSource).where(
-        HarvestSource.tenant_id == tenant_id,
-        HarvestSource.type == type,
-        HarvestSource.url == url,
+        HarvestSource.tenant_id == tenant_id, HarvestSource.type == type
     )
     if exclude_id is not None:
         stmt = stmt.where(HarvestSource.id != exclude_id)
-    return session.scalars(stmt.limit(1)).first()
+    wanted = normalize_source_url(url)
+    for source in session.scalars(stmt):
+        if normalize_source_url(source.url) == wanted:
+            return source
+    return None
 
 
 def delete_source(session: Session, source: HarvestSource) -> int:
@@ -273,6 +278,18 @@ def list_feature_layer_records(session: Session, *, tenant_id: str, q: str | Non
     return list(session.execute(stmt).all())
 
 
+_BACKOFF_CAP = timedelta(hours=24)
+
+
+def _effective_interval(source: HarvestSource) -> timedelta:
+    """REV-276d : intervalle × 2^échecs consécutifs, plafonné à max(intervalle, 24 h)."""
+    base = timedelta(minutes=source.interval_minutes)
+    failures = source.consecutive_failures or 0
+    if failures <= 0:
+        return base
+    return min(base * 2 ** min(failures, 10), max(base, _BACKOFF_CAP))
+
+
 def list_due_sources(session: Session) -> list[HarvestSource]:
     now = _now()
     candidates = session.scalars(
@@ -303,7 +320,7 @@ def list_due_sources(session: Session) -> list[HarvestSource]:
         last_run_at = source.last_run_at
         if last_run_at.tzinfo is None:
             last_run_at = last_run_at.replace(tzinfo=UTC)
-        threshold = last_run_at + timedelta(minutes=source.interval_minutes)
+        threshold = last_run_at + _effective_interval(source)
         if threshold <= now:
             due.append(source)
     return due

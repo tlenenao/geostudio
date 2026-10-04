@@ -72,6 +72,7 @@ def harvest_source(
         # en erreur à chaque balayage quel que soit son intervalle.
         source.last_run_at = _now()
         source.last_status = "error"
+        source.consecutive_failures = (source.consecutive_failures or 0) + 1
         source.last_error = str(exc)[:500]
         session.flush()
         return
@@ -130,12 +131,14 @@ def harvest_source(
             return
         source.last_run_at = _now()
         source.last_status = "error"
+        source.consecutive_failures = (source.consecutive_failures or 0) + 1
         source.last_error = str(exc)[:500]
         session.flush()
         return
 
     source.last_run_at = _now()
     source.last_status = "ok"
+    source.consecutive_failures = 0
     source.last_error = None
     session.flush()
 
