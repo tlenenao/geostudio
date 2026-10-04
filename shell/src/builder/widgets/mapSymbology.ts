@@ -166,6 +166,7 @@ export type LegendSpec = {
   icon?: { field: string; entries: { value: string; imageId: string }[] };
 };
 
+// gs-raw-color-ok-begin: palette catégorielle et rampe numérique par défaut de la symbologie (SP-25)
 const CATEGORICAL_PALETTE = [
   "#2563eb",
   "#dc2626",
@@ -178,6 +179,7 @@ const CATEGORICAL_PALETTE = [
 ];
 const NUMERIC_COLOR_LOW = "#dbeafe";
 const NUMERIC_COLOR_HIGH = "#1e3a8a";
+// gs-raw-color-ok-end
 const SIZE_RADIUS_MIN = 4;
 const SIZE_RADIUS_MAX = 24;
 

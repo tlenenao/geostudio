@@ -10,6 +10,7 @@ export type ResolvedPalette =
 // "categorical-a" is mapSymbology.ts's existing CATEGORICAL_PALETTE,
 // unchanged — the default when an author picks no palette at all keeps
 // rendering identically to pre-SP-25 maps.
+// gs-raw-color-ok-begin: palettes de dataviz curatées (SP-25), choix de l'auteur d'app
 export const CURATED_PALETTES: Record<Exclude<PaletteId, "theme-primary">, ResolvedPalette> = {
   "categorical-a": {
     kind: "categorical",
@@ -40,6 +41,7 @@ export const CURATED_PALETTES: Record<Exclude<PaletteId, "theme-primary">, Resol
   "sequential-blue": { kind: "sequential", low: "#dbeafe", high: "#1e3a8a" },
   "sequential-warm": { kind: "sequential", low: "#fef3c7", high: "#7c2d12" },
 };
+// gs-raw-color-ok-end
 
 function hexToRgb(hex: string): [number, number, number] {
   const n = parseInt(hex.replace("#", ""), 16);
@@ -67,6 +69,7 @@ export function resolvePalette(
   if (id === "theme-primary") {
     const primary = themeColors?.primary;
     if (!primary) return null;
+    // gs-raw-color-ok: borne basse blanche de la rampe séquentielle sur la couleur primaire de l'app
     return { kind: "sequential", low: "#ffffff", high: primary };
   }
   return CURATED_PALETTES[id];
