@@ -3,7 +3,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.harvest.models import HarvestRecord, HarvestSource
@@ -148,12 +148,48 @@ def list_source_records(
     )
 
 
-def mark_running(session: Session, *, tenant_id: str, source_id: str) -> None:
+def _is_stale_running(source: HarvestSource, now: datetime) -> bool:
+    """Run « running » présumé planté (crash entre le commit de mark_running et
+    la fin de harvest_source) : plus vieux que _RUNNING_RECLAIM_MINUTES."""
+    updated = source.updated_at
+    if updated is not None and updated.tzinfo is None:
+        updated = updated.replace(tzinfo=UTC)
+    return updated is not None and (now - updated) >= timedelta(minutes=_RUNNING_RECLAIM_MINUTES)
+
+
+def _refresh(session: Session, source_id: str) -> None:
+    # l'UPDATE en masse ne rafraîchit pas l'objet déjà chargé dans la session
+    loaded = session.get(HarvestSource, source_id)
+    if loaded is not None:
+        session.refresh(loaded)
+
+
+def mark_running(session: Session, *, tenant_id: str, source_id: str) -> bool:
+    """REV-295 : prise conditionnelle (UPDATE ... WHERE, jumelle de
+    pipelines.repository.mark_running). False si la source est inconnue,
+    étrangère au tenant, ou déjà « running » et non périmée : l'appelant sort
+    sans moissonner."""
+    claim = update(HarvestSource).where(
+        HarvestSource.id == source_id, HarvestSource.tenant_id == tenant_id
+    )
+    result = session.execute(
+        claim.where(
+            (HarvestSource.last_status.is_(None)) | (HarvestSource.last_status != "running")
+        )
+        .values(last_status="running")
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount:  # type: ignore[attr-defined]
+        _refresh(session, source_id)
+        return True
     source = get_source(session, tenant_id=tenant_id, source_id=source_id)
-    if source is None:
-        return
-    source.last_status = "running"
-    session.flush()
+    if source is None or not _is_stale_running(source, _now()):
+        return False
+    session.execute(
+        claim.values(last_status="running").execution_options(synchronize_session=False)
+    )
+    _refresh(session, source_id)
+    return True
 
 
 def get_record(
@@ -307,10 +343,7 @@ def list_due_sources(session: Session) -> list[HarvestSource]:
             # harvest_source). Reclaim par âge : si le run est plus vieux que
             # _RUNNING_RECLAIM_MINUTES, il est présumé planté et redevient
             # éligible — sinon un crash la coincerait en "running" à jamais.
-            updated = source.updated_at
-            if updated is not None and updated.tzinfo is None:
-                updated = updated.replace(tzinfo=UTC)
-            if updated is None or (now - updated) < timedelta(minutes=_RUNNING_RECLAIM_MINUTES):
+            if not _is_stale_running(source, now):
                 continue
             due.append(source)
             continue

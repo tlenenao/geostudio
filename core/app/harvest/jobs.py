@@ -29,7 +29,9 @@ def run_harvest_task(source_id: str, tenant_id: str) -> None:
         return
     session_factory = _session_factory()
     with request_scoped_session(session_factory) as session:
-        harvest_repo.mark_running(session, tenant_id=tenant_id, source_id=source_id)
+        if not harvest_repo.mark_running(session, tenant_id=tenant_id, source_id=source_id):
+            logger.warning("harvest source %s non prenable (déjà en cours ?)", source_id)
+            return
     with request_scoped_session(session_factory) as session:
         source = harvest_repo.get_source(session, tenant_id=tenant_id, source_id=source_id)
         if source is None:
