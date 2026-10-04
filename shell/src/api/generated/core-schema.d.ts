@@ -2663,6 +2663,8 @@ export interface components {
             errorMessage: string | null;
             /** Itemid */
             itemId: string | null;
+            /** Itemresourcetype */
+            itemResourceType?: string | null;
             /** Status */
             status: string;
         };

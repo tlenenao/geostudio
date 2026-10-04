@@ -59,6 +59,9 @@ _GEOM_TYPE_MAP = {
 class ImportResult:
     collection_id: str
     item_id: str | None
+    # REV-282b : "map" (géométrie -> carte) ou "dataset" (tabulaire) ; le shell
+    # et la notification choisissent l'éditeur à ouvrir sur ce type.
+    item_resource_type: str | None = None
 
 
 def _resolve_geometry_mode(
@@ -344,8 +347,8 @@ def run_import(
         # créé (JSON Lines/Parquet/XML génériques en geometry_mode="none",
         # GAP-29 Task 11) — seule la collection tabulaire existe.
         # P28.06 : ... mais un item « dataset » la rend atteignable depuis le
-        # catalogue « Données » du créateur (item_id reste None : rien à ouvrir
-        # sous /maps/, le shell retombe sur le catalogue).
+        # catalogue « Données » du créateur (l'item dataset est renvoyé avec son
+        # type, REV-282b : le shell ouvre /datasets/{id}/edit).
         ds_item = items_repo.create_item(
             session,
             tenant_id=tenant_id,
@@ -372,7 +375,7 @@ def run_import(
             item_id=ds_item.id,
             tenant_id=tenant_id,
         )
-        return ImportResult(collection_id=col.id, item_id=None)
+        return ImportResult(collection_id=col.id, item_id=ds_item.id, item_resource_type="dataset")
 
     bbox = table_extent(session, info)
     if bbox:
@@ -439,4 +442,4 @@ def run_import(
     )
     configs_repo.create_config(session, config, item_id=item.id, tenant_id=tenant_id)
 
-    return ImportResult(collection_id=col.id, item_id=item.id)
+    return ImportResult(collection_id=col.id, item_id=item.id, item_resource_type="map")

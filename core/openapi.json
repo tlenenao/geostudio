@@ -2484,6 +2484,17 @@
             ],
             "title": "Itemid"
           },
+          "itemResourceType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Itemresourcetype"
+          },
           "status": {
             "title": "Status",
             "type": "string"

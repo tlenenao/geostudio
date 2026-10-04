@@ -35,6 +35,7 @@ def _notify(
     created_by: str,
     status: str,
     item_id: str | None,
+    item_resource_type: str | None = None,
     collection_title: str,
     error: str | None = None,
 ) -> None:
@@ -51,7 +52,7 @@ def _notify(
         kind="ingestion",
         status=status,
         item_id=item_id,
-        item_resource_type="dataset" if item_id is not None else None,
+        item_resource_type=item_resource_type,
         item_title=collection_title,
         error=error,
     )
@@ -148,6 +149,7 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
             created_by=created_by,
             status="success",
             item_id=result.item_id,
+            item_resource_type=result.item_resource_type,
             collection_title=collection_title,
         )
     except (IngestionParseError, ObjectTooLarge, QuotaExceededError) as exc:

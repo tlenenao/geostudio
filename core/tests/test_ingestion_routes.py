@@ -8,8 +8,10 @@ from fastapi.testclient import TestClient
 from app import db
 from app.auth.dependency import get_current_user
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
+from app.ingestion import repository as ingestion_repo
 from app.ingestion import routes as ingestion_routes
 from app.ingestion.parsers import list_xlsx_sheets
+from app.items import repository as items_repo
 from app.main import create_app
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
@@ -120,6 +122,7 @@ def test_create_upload_job_defers_task_and_returns_job_id(env):
         "errorMessage": None,
         "collectionId": None,
         "itemId": None,
+        "itemResourceType": None,
     }
 
 
@@ -686,3 +689,28 @@ def test_create_upload_job_accepts_layer_name(env):
 
         job = ingestion_repo.get_job(s, tenant_id=tenant.id, job_id=job_id)
         assert job.layer_name == "villes"
+
+
+def test_get_upload_job_reports_the_created_item_resource_type(env):
+    # REV-282b : le shell choisit /maps/{id} ou /datasets/{id}/edit sur ce champ.
+    client, session_factory, tenant, user = env[:4]
+    with session_factory() as s:
+        item = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=user.id, resource_type="dataset", title="T"
+        )
+        job = ingestion_repo.create_job(
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            source_key="k",
+            filename="t.csv",
+            collection_title="T",
+            lat_field=None,
+            lon_field=None,
+        )
+        ingestion_repo.mark_done(s, job_id=job.id, collection_id="ingest_t", item_id=item.id)
+        s.commit()
+        job_id = job.id
+    body = client.get(f"/v1/uploads/{job_id}").json()
+    assert body["itemId"] == item.id
+    assert body["itemResourceType"] == "dataset"
