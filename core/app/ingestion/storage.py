@@ -167,6 +167,8 @@ def download_object_head(
     size = client.head_object(Bucket=bucket, Key=key)["ContentLength"]
     if max_bytes is not None and size > max_bytes:
         raise ObjectTooLarge(f"fichier trop volumineux ({size} > {max_bytes} octets)")
+    if size == 0:  # S3 répond 416 à tout Range sur un objet vide
+        return b""
     obj = client.get_object(Bucket=bucket, Key=key, Range=f"bytes=0-{head_bytes - 1}")
     data = obj["Body"].read()
     if size > head_bytes:

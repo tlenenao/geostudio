@@ -131,3 +131,9 @@ def test_download_object_head_returns_everything_when_the_object_is_small():
 def test_download_object_head_still_enforces_the_size_cap():
     with pytest.raises(ObjectTooLarge):
         download_object_head(_RangeS3(b"x" * 100), bucket="b", key="k", max_bytes=10)
+
+
+def test_download_object_head_empty_object_does_not_issue_a_range_request():
+    s3 = _RangeS3(b"")  # S3 répondrait 416 à Range bytes=0-N sur 0 octet
+    assert download_object_head(s3, bucket="b", key="k") == b""
+    assert s3.ranges == []
