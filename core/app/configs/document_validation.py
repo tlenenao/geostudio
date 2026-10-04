@@ -10,6 +10,7 @@ créateurs), PUT /configs/{id}, PUT /configs/by-item/{id} et save_app_config
 règle ajoutée depuis."""
 
 import re
+from datetime import date
 from urllib.parse import urlparse
 
 from fastapi import HTTPException
@@ -88,6 +89,42 @@ def _map_errors(m: MapConfig) -> list[str]:
     return errs
 
 
+# REV-104 : bornes des props du widget timePlayer (lecteur temporel). Les
+# props de widget sont un dict non typé (LayoutItem.props) : bornes à
+# l'écriture seulement, comme le reste de ce module.
+_TIME_PLAYER_INT_BOUNDS = {
+    "stepDays": (1, 3660),
+    "windowDays": (1, 3660),
+    "intervalMs": (500, 10000),
+}
+
+
+def _time_player_errors(props: dict, name: str) -> list[str]:
+    errs: list[str] = []
+    dates: dict[str, date] = {}
+    for key in ("from", "to"):
+        value = props.get(key)
+        if value in (None, ""):
+            continue
+        # Strict format: YYYY-MM-DD only (length check + fromisoformat)
+        if not isinstance(value, str) or len(value) != 10:
+            errs.append(f"widget '{name}' {key}: must be an ISO date (YYYY-MM-DD)")
+            continue
+        try:
+            dates[key] = date.fromisoformat(value)
+        except (TypeError, ValueError):
+            errs.append(f"widget '{name}' {key}: must be an ISO date (YYYY-MM-DD)")
+    if len(dates) == 2 and dates["from"] > dates["to"]:
+        errs.append(f"widget '{name}': from must be <= to")
+    for key, (lo, hi) in _TIME_PLAYER_INT_BOUNDS.items():
+        value = props.get(key)
+        if value is None:
+            continue
+        if isinstance(value, bool) or not isinstance(value, int) or not lo <= value <= hi:
+            errs.append(f"widget '{name}' {key}: must be an integer within {lo}..{hi}")
+    return errs
+
+
 def _item_errors(item: LayoutItem, seen: set[str]) -> list[str]:
     errs: list[str] = []
     name = item.id or item.widget
@@ -99,6 +136,8 @@ def _item_errors(item: LayoutItem, seen: set[str]) -> list[str]:
         errs.append(f"widget '{name}': w/h must be >= 1 and x/y >= 0")
     if item.visibleWhen is not None and (e := _cel_syntax_error(item.visibleWhen)):
         errs.append(f"widget '{name}' visibleWhen: {e}")
+    if item.widget == "timePlayer":
+        errs += _time_player_errors(item.props, name)
     return errs
 
 

@@ -103,6 +103,34 @@ def test_invalid_app_rejected(client):
     assert _post(client, app([{**ok, "visibleWhen": "a == 'x' && (b > 1)"}])).status_code == 201
 
 
+def test_time_player_props_are_validated_on_write(client):
+    def app(props):
+        item = {"id": "tp", "widget": "timePlayer", "x": 0, "y": 0, "w": 6, "h": 1, "props": props}
+        return {"kind": "app", "layout": {"type": "grid", "items": [item]}}
+
+    ok = {
+        "from": "2026-06-01",
+        "to": "2026-06-30",
+        "stepDays": 1,
+        "windowDays": 7,
+        "intervalMs": 1000,
+    }
+    assert _post(client, app(ok)).status_code == 201
+    assert _post(client, app({})).status_code == 201  # non configuré : accepté, le widget le dit
+    for bad in (
+        {**ok, "from": "01/06/2026"},
+        {**ok, "from": "2026-07-01"},  # from > to
+        {**ok, "stepDays": 0},
+        {**ok, "windowDays": 3661},
+        {**ok, "intervalMs": 100},
+        {**ok, "stepDays": 1.5},
+        {**ok, "stepDays": True},
+    ):
+        r = _post(client, app(bad))
+        assert r.status_code == 422, bad
+        assert "timePlayer" in r.json()["detail"] or "tp" in r.json()["detail"], bad
+
+
 def test_app_messages_must_target_existing_widgets_or_variables(client):
     """REV-278c : un câblage vers un widget/une variable inexistants est refusé."""
     items = [
