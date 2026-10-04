@@ -12,7 +12,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.configs.document_validation import _widget_nodes
+from app.configs.document_validation import widget_nodes
 from app.configs.schemas import BuilderConfig
 from app.extensions.models import Extension
 
@@ -23,7 +23,7 @@ BUILTIN_WIDGET_TYPES: frozenset[str] = frozenset(
 
 def widget_type_errors(session: Session, config: BuilderConfig, *, tenant_id: str) -> list[str]:
     layouts = ([config.layout] if config.layout else []) + [p.layout for p in config.pages]
-    nodes = _widget_nodes([lay.model_dump() for lay in layouts])
+    nodes = widget_nodes([lay.model_dump() for lay in layouts])
     unknown = [n for n in nodes if n["widget"] not in BUILTIN_WIDGET_TYPES]
     if not unknown:
         return []
@@ -37,7 +37,7 @@ def widget_type_errors(session: Session, config: BuilderConfig, *, tenant_id: st
         )
     )
     return [
-        f"widget '{n['id']}': unknown widget type '{n['widget']}'"
+        f"widget '{n.get('id') or '<sans id>'}': unknown widget type '{n['widget']}'"
         for n in unknown
         if n["widget"] not in registered
     ]

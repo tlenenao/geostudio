@@ -13,6 +13,7 @@ from app.configs.widget_registry import (
 )
 from app.db import init_db, make_engine, make_session_factory
 from app.extensions.models import Extension
+from app.tenants.models import Tenant
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
@@ -26,6 +27,8 @@ def _make_session():
 def _cfg(*widgets):
     items = [
         {"id": wid, "widget": wtype, "x": 0, "y": i, "w": 4, "h": 2, "props": props}
+        if wid
+        else {"widget": wtype, "x": 0, "y": i, "w": 4, "h": 2, "props": props}
         for i, (wid, wtype, props) in enumerate(widgets)
     ]
     return BuilderConfig.model_validate({"kind": "app", "layout": {"type": "grid", "items": items}})
@@ -85,6 +88,36 @@ def test_unknown_nested_widget_in_a_modal_is_refused():
     ]
 
 
+def test_unknown_widget_without_id_is_refused_root_and_nested():
+    s, tid = _tenant_session()
+    assert widget_type_errors(s, _cfg((None, "hologram", {})), tenant_id=tid) == [
+        "widget '<sans id>': unknown widget type 'hologram'"
+    ]
+    inner = {"widget": "hologram", "x": 0, "y": 0, "w": 1, "h": 1}
+    tabs = {"tabs": [{"id": "t", "label": "T", "items": [inner]}]}
+    assert widget_type_errors(s, _cfg(("t", "tabs", tabs)), tenant_id=tid) == [
+        "widget '<sans id>': unknown widget type 'hologram'"
+    ]
+
+
 def test_extension_of_another_tenant_is_refused():
-    s, _tid = _tenant_session()
-    assert widget_type_errors(s, _cfg(("g", "acme.gauge", {})), tenant_id="other-tenant")
+    s, tid = _tenant_session()
+    other = Tenant(id="other-tenant", name="Autre", slug="autre")
+    s.add(other)
+    s.flush()
+    owner = get_or_create_user(
+        s, tenant_id=other.id, oidc_sub="o", username="o", email=None, first_name="", last_name=""
+    )
+    s.add(
+        Extension(
+            id="other.gauge", tenant_id=other.id, owner_id=owner.id, tag="other-gauge",
+            label="Jauge", module_url="https://cdn.example.com/o.js", props=[], events=None,
+            actions=None, default_size={"w": 2, "h": 2}, permissions={}, enabled=True,
+        )
+    )  # fmt: skip
+    s.commit()
+    cfg = _cfg(("g", "other.gauge", {}))
+    assert widget_type_errors(s, cfg, tenant_id=other.id) == []
+    assert widget_type_errors(s, cfg, tenant_id=tid) == [
+        "widget 'g': unknown widget type 'other.gauge'"
+    ]

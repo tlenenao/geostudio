@@ -188,6 +188,19 @@ def test_save_app_config_updates_and_bumps_version(app_client):
     assert result["config"]["layout"]["items"][0]["widget"] == "table"
 
 
+def test_save_app_config_rejects_unknown_widget_type(app_client):
+    item_id, _ = _seed_config(app_client, owner_id=app_client.mock_user.id)
+
+    with app_client:
+        error_text = call_tool_expecting_error(
+            app_client,
+            "save_app_config",
+            {"itemId": item_id, "config": _config_body(widget="hologram")},
+        )
+
+    assert "hologram" in error_text
+
+
 def test_save_app_config_expected_version_guards_stale_writes(app_client):
     item_id, _ = _seed_config(app_client, owner_id=app_client.mock_user.id)
 
