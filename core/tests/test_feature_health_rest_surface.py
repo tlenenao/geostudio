@@ -51,7 +51,7 @@ def _feature(**overrides) -> Feature:
 
 
 def test_index_finds_every_declared_route():
-    assert len(index_rest_routes(REPO)) == 163
+    assert len(index_rest_routes(REPO)) == 166  # +3 plan B: geocode, sitemap-{n} GET+HEAD
 
 
 def test_every_openapi_operation_is_resolved_by_the_index():
@@ -73,7 +73,7 @@ def test_flagged_routes_are_indexed_although_absent_from_openapi():
     ignorerait 26 routes réelles — dont tout le domaine Automatisation."""
     indexed = {(fact.method, fact.path) for fact in index_rest_routes(REPO)}
     flagged = sorted(indexed - _openapi_operations())
-    assert len(flagged) == 29
+    assert len(flagged) == 30
     assert ("GET", "/v1/pipelines/{item_id}/runs") in flagged
 
 
@@ -120,7 +120,7 @@ def test_public_by_design_routes_carry_no_guard():
     facts = [f for f in index_rest_routes(REPO) if not f.guards and f.auth == "none"]
     unguarded = {f.function for f in facts}
     assert {"public_sitemap", "public_robots", "get_public_item", "conformance"} <= unguarded
-    assert len({(f.module, f.function) for f in facts}) == 17
+    assert len({(f.module, f.function) for f in facts}) == 18
 
 
 def test_surface_id_is_method_space_path():
@@ -139,7 +139,7 @@ def test_surface_id_is_method_space_path():
 def test_rest_surface_ids_feeds_the_reachability_facts():
     ids = rest_surface_ids(index_rest_routes(REPO))
     assert "GET /v1/items" in ids
-    assert len(ids) == 163
+    assert len(ids) == 166
 
 
 def _fact(function, guards, auth):
