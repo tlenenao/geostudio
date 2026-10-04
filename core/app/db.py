@@ -108,6 +108,17 @@ def make_engine(url: str) -> Engine:
             cursor.execute("PRAGMA foreign_keys=ON")
             cursor.close()
 
+    if engine.dialect.name == "postgresql":
+        # REV-280g : horodatages et now() en UTC quel que soit le fuseau du
+        # client ou du rôle. Pas de `-c timezone=UTC` au démarrage : PgBouncer
+        # refuse `options` ; il suit en revanche TimeZone (ParameterStatus) et
+        # le rejoue sur chaque backend attribué.
+        @event.listens_for(engine, "connect")
+        def _utc_session(dbapi_connection, connection_record):
+            with dbapi_connection.cursor() as cur:
+                cur.execute("SET TIME ZONE 'UTC'")
+            dbapi_connection.commit()
+
     return engine
 
 
