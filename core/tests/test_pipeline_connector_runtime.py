@@ -1681,3 +1681,29 @@ def test_stream_sql_passes_hostaddr_pin_to_the_driver(monkeypatch):
         list(connector_runtime._stream_sql("postgresql://u:p@db.example.com/d", "SELECT 1"))
     assert seen["connect_args"]["hostaddr"] == "93.184.216.34"
     assert "connect_timeout" in seen["connect_args"]  # les délais P16.03 sont conservés
+
+
+def test_stream_sql_connects_to_the_pinned_ip_for_mssql(monkeypatch):
+    monkeypatch.setattr(connector_runtime, "assert_dsn_egress_allowed", lambda dsn: None)
+    monkeypatch.setattr(
+        connector_runtime,
+        "pin_dsn_host",
+        lambda dsn: dsn.replace("db.example.com", "93.184.216.34"),
+    )
+    seen: dict = {}
+
+    class _Engine:
+        def connect(self):
+            raise RuntimeError("stop")  # on ne vérifie que le DSN
+
+        def dispose(self):
+            pass
+
+    def fake_create_engine(dsn, **kw):
+        seen["dsn"] = dsn
+        return _Engine()
+
+    monkeypatch.setattr(connector_runtime.sa, "create_engine", fake_create_engine)
+    with pytest.raises(RuntimeError, match="stop"):
+        list(connector_runtime._stream_sql("mssql+pymssql://u:p@db.example.com/app", "select 1"))
+    assert "93.184.216.34" in seen["dsn"] and "db.example.com" not in seen["dsn"]

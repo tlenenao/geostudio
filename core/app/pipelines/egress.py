@@ -100,8 +100,7 @@ def assert_dsn_egress_allowed(dsn: str) -> None:
 def dsn_pin_connect_args(dsn: str) -> dict[str, str]:
     """REV-273d : épingle la connexion Postgres sur l'IP validée par la garde
     (paramètre libpq `hostaddr` ; `host` reste le nom → `verify-full` intact).
-    `{}` quand il n'y a rien à épingler. ponytail: mssql/oracle sans
-    équivalent fiable (descripteur TNS/ODBC) — seule la garde amont s'applique."""
+    `{}` quand il n'y a rien à épingler. mssql/oracle : voir `pin_dsn_host`."""
     url = make_url(dsn)
     host = url.host or ""
     if (
@@ -120,6 +119,34 @@ def dsn_pin_connect_args(dsn: str) -> dict[str, str]:
         pass
     ip = assert_egress_allowed(f"http://{host}")
     return {"hostaddr": ip} if ip else {}
+
+
+def pin_dsn_host(dsn: str) -> str:
+    """REV-273d : épingle l'hôte d'un DSN mssql/oracle sur l'IP validée par la
+    garde (anti DNS-rebinding entre le contrôle et la connexion) en la
+    substituant au nom dans l'URL. Ces pilotes n'ont pas de `hostaddr` : le
+    nom est perdu pour la vérification TLS du certificat — l'opérateur qui
+    l'exige indique l'hôte littéral. ponytail: hôte unique résolu une fois
+    (1re adresse validée) ; pas de repli multi-adresses pour ces pilotes."""
+    url = make_url(dsn)
+    host = url.host or ""
+    backend = url.get_backend_name()
+    if (
+        not (backend.startswith("mssql") or backend.startswith("oracle"))
+        or not host
+        or host.startswith("/")
+        or "," in host
+    ):
+        return dsn
+    try:
+        ipaddress.ip_address(host)
+        return dsn  # littéral : déjà validé par assert_dsn_egress_allowed
+    except ValueError:
+        pass
+    ip = assert_egress_allowed(f"http://{host}")
+    if not ip:
+        return dsn  # garde neutralisée (fixtures de tests)
+    return url.set(host=str(ip)).render_as_string(hide_password=False)
 
 
 def _pin_ip(host: str) -> str:

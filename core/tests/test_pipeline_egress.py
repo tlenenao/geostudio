@@ -16,6 +16,7 @@ from app.pipelines.egress import (
     assert_egress_allowed,
     build_guarded_session,
     dsn_pin_connect_args,
+    pin_dsn_host,
 )
 
 
@@ -298,3 +299,33 @@ def test_pinned_aio_resolver_offers_every_validated_address(monkeypatch):
         ("2606:2800:220:1::1", socket.AF_INET6),
         ("93.184.216.34", socket.AF_INET),
     ]
+
+
+def test_pin_dsn_host_replaces_a_named_mssql_host_by_the_validated_ip(monkeypatch):
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda *a, **k: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))],
+    )
+    pinned = pin_dsn_host("mssql+pymssql://u:p%40ss@db.example.com:1433/app")
+    assert pinned == "mssql+pymssql://u:p%40ss@93.184.216.34:1433/app"
+
+
+def test_pin_dsn_host_leaves_other_dsns_untouched():
+    for dsn in (
+        "postgresql+psycopg2://u:p@db.example.com/app",  # hostaddr s'en charge
+        "mssql+pymssql://u:p@93.184.216.34/app",  # littéral déjà validé
+        "oracle+oracledb://u:p@/?dsn=x",  # pas d'hôte
+        "snowflake://u:p@acct/db",  # hors périmètre (NO_HOST_BACKENDS)
+    ):
+        assert pin_dsn_host(dsn) == dsn
+
+
+def test_pin_dsn_host_refuses_a_name_that_now_resolves_to_a_private_address(monkeypatch):
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda *a, **k: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.5", 0))],
+    )
+    with pytest.raises(EgressBlockedError):
+        pin_dsn_host("oracle+oracledb://u:p@db.example.com:1521/?service_name=s")
