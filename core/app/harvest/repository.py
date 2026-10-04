@@ -185,9 +185,18 @@ def mark_running(session: Session, *, tenant_id: str, source_id: str) -> bool:
     source = get_source(session, tenant_id=tenant_id, source_id=source_id)
     if source is None or not _is_stale_running(source, _now()):
         return False
-    session.execute(
-        claim.values(last_status="running").execution_options(synchronize_session=False)
+    # compare-and-swap : seul le worker dont la lecture périmée est encore
+    # exacte (updated_at inchangé) reprend la source.
+    result = session.execute(
+        claim.where(
+            HarvestSource.last_status == "running",
+            HarvestSource.updated_at == source.updated_at,
+        )
+        .values(last_status="running")
+        .execution_options(synchronize_session=False)
     )
+    if not result.rowcount:  # type: ignore[attr-defined]
+        return False
     _refresh(session, source_id)
     return True
 

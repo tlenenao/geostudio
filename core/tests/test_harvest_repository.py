@@ -618,6 +618,19 @@ def test_mark_running_refuses_a_foreign_tenant_and_an_unknown_source(session, te
     assert repo.mark_running(session, tenant_id=tenant.id, source_id="ghost") is False
 
 
+def test_mark_running_reclaim_is_compare_and_swap(session, tenant_and_user, monkeypatch):
+    """Deux workers lisent la même source périmée : un seul doit la reprendre."""
+    tenant, user = tenant_and_user
+    old = datetime.now(UTC) - timedelta(minutes=90)
+    src = _idle_source(session, tenant, user, status="running", updated_at=old)
+    stale = repo.get_source(session, tenant_id=tenant.id, source_id=src.id)
+    session.expunge(stale)
+    assert repo.mark_running(session, tenant_id=tenant.id, source_id=src.id) is True
+    session.commit()
+    monkeypatch.setattr(repo, "get_source", lambda *a, **k: stale)  # lecture périmée du 2e worker
+    assert repo.mark_running(session, tenant_id=tenant.id, source_id=src.id) is False
+
+
 def test_mark_running_reclaims_a_stale_running_source(session, tenant_and_user):
     tenant, user = tenant_and_user
     old = datetime.now(UTC) - timedelta(minutes=90)
