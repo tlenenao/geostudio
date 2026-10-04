@@ -320,3 +320,11 @@ def test_export_items_caps_at_10000_entities(client, monkeypatch):
     )
     resp = client.get(f"/v1/datasets/{dataset_item_id}/arcgis/export/items?format=geojson")
     assert resp.status_code == 413
+
+
+def test_export_items_cap_is_the_shared_core_export_cap():
+    # REV-283c : une seule source (CORE_EXPORT_ITEMS_MAX), pas un 10 000 local.
+    from app.features.routes import EXPORT_ITEMS_CAP
+    from app.harvest import routes as harvest_routes_module
+
+    assert harvest_routes_module._EXPORT_ITEMS_CAP == EXPORT_ITEMS_CAP

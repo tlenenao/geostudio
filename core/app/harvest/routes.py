@@ -23,6 +23,7 @@ from app.auth.dependency import get_current_user
 from app.configs import repository as configs_repo
 from app.db import get_session
 from app.errors import ValidationHTTPException
+from app.features.routes import EXPORT_ITEMS_CAP as _EXPORT_ITEMS_CAP
 from app.harvest import live_query
 from app.harvest import repository as repo
 from app.harvest.connectors import get_connector
@@ -556,7 +557,6 @@ def export_dataset_arcgis_aggregate(
 
 
 _EXPORT_FORMATS_ITEMS = {"csv", "xlsx", "geojson", "gpkg"}
-_EXPORT_ITEMS_CAP = 10_000
 
 
 @router.get("/datasets/{item_id}/arcgis/export/items")
