@@ -169,3 +169,26 @@ def test_cached_info_is_isolated_from_caller_mutation(pg_session):
     a = introspect_table(pg_session, "t_incidents")
     a.columns.clear()
     assert introspect_table(pg_session, "t_incidents").columns
+
+
+def test_cache_is_bounded_lru_and_forgets_dropped_tables(pg_session, pg_engine, monkeypatch):
+    """REV-279d : plafond LRU, et une table supprimée ne laisse pas d'entrée."""
+    from collections import OrderedDict
+
+    from app.collections import introspection_pg
+
+    monkeypatch.setattr(introspection_pg, "_CACHE_MAX", 2)
+    monkeypatch.setattr(introspection_pg, "_cache", OrderedDict())
+    url = str(pg_session.get_bind().url)
+    introspection_pg._cache[(url, "old_a")] = (0.0, "x", None)
+    introspection_pg._cache[(url, "old_b")] = (0.0, "x", None)
+    introspect_table(pg_session, "t_incidents")
+    keys = list(introspection_pg._cache)
+    assert len(keys) == 2 and (url, "old_a") not in keys and keys[-1] == (url, "t_incidents")
+
+    with pg_engine.begin() as conn:
+        conn.execute(text("DROP TABLE t_incidents"))
+    pg_session.rollback()
+    with pytest.raises(TableNotFound):
+        introspect_table(pg_session, "t_incidents")
+    assert (url, "t_incidents") not in introspection_pg._cache
