@@ -440,13 +440,13 @@ services:
       # exact en labels). `$$1` (pas `$1`) : docker compose interprète
       # `$1` comme sa propre substitution de variable, `$$` échappe vers
       # un `$` littéral transmis à Traefik.
-      - traefik.http.routers.seo-static.rule=Host(`${DOMAIN}`) && (Path(`/sitemap.xml`) || Path(`/robots.txt`))
+      - traefik.http.routers.seo-static.rule=Host(`${DOMAIN}`) && (Path(`/sitemap.xml`) || PathRegexp(`^/sitemap-[0-9]+\.xml$$`) || Path(`/robots.txt`))
       - traefik.http.routers.seo-static.entrypoints=websecure
       - traefik.http.routers.seo-static.tls.certresolver=letsencrypt
       - traefik.http.routers.seo-static.priority=20
       - traefik.http.routers.seo-static.service=core
       - traefik.http.routers.seo-static.middlewares=security-headers@docker,rate-limit@docker,seo-static-rewrite@docker,csp-dynamic@file
-      - traefik.http.middlewares.seo-static-rewrite.replacepathregex.regex=^/(sitemap\.xml|robots\.txt)$$
+      - traefik.http.middlewares.seo-static-rewrite.replacepathregex.regex=^/(sitemap(?:-[0-9]+)?\.xml|robots\.txt)$$
       - traefik.http.middlewares.seo-static-rewrite.replacepathregex.replacement=/v1/public/$$1
       # P35.07 : une règle par famille de pages publiques (sites, items publiés,
       # datasets) — un middleware replacepathregex ne porte qu'une regex.

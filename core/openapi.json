@@ -11083,6 +11083,38 @@
         "summary": "Public Robots"
       }
     },
+    "/v1/public/sitemap-{n}.xml": {
+      "get": {
+        "operationId": "public_sitemap_slice_v1_public_sitemap__n__xml_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "n",
+            "required": true,
+            "schema": {
+              "title": "N",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Public Sitemap Slice"
+      }
+    },
     "/v1/public/sitemap.xml": {
       "get": {
         "operationId": "public_sitemap_v1_public_sitemap_xml_get",

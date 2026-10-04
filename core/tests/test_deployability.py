@@ -1445,6 +1445,19 @@ def test_seo_router_is_not_gated_by_admin_auth(compose, router):
 
 
 @pytest.mark.parametrize("compose", [BASE, PROD], ids=["base", "prod"])
+def test_seo_static_router_serves_sitemap_slices(compose):
+    """REV-289a : /sitemap-N.xml (tranches de l'index) doit atteindre le cœur,
+    sinon le catch-all shell répond le HTML de la SPA aux robots."""
+    labels = _traefik_labels(services(compose)["core"])
+    assert "sitemap-[0-9]+" in labels["traefik.http.routers.seo-static.rule"]
+    prefix = "traefik.http.middlewares.seo-static-rewrite.replacepathregex"
+    regex = labels[f"{prefix}.regex"].replace("$$", "$")
+    replacement = labels[f"{prefix}.replacement"].replace("$$1", r"\1")
+    for path in ("/sitemap.xml", "/sitemap-3.xml", "/robots.txt"):
+        assert re.sub(regex, replacement, path) == f"/v1/public{path}", path
+
+
+@pytest.mark.parametrize("compose", [BASE, PROD], ids=["base", "prod"])
 def test_embed_router_is_exempted_from_frame_deny(compose):
     """GAP-19 : /embed/:token doit rester chargeable dans l'<iframe> d'un
     site tiers. security-headers (frameDeny=true, sur le routeur shell

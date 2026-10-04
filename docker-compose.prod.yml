@@ -215,12 +215,12 @@ services:
       # `labels: !override` remplace intégralement la liste du fichier de
       # base, donc ces deux routeurs doivent être redéclarés ici pour ne
       # pas disparaître silencieusement en production, piège CLAUDE.md n°2).
-      - traefik.http.routers.seo-static.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && (Path(`/sitemap.xml`) || Path(`/robots.txt`))
+      - traefik.http.routers.seo-static.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && (Path(`/sitemap.xml`) || PathRegexp(`^/sitemap-[0-9]+\.xml$$`) || Path(`/robots.txt`))
       - traefik.http.routers.seo-static.entrypoints=web
       - traefik.http.routers.seo-static.priority=20
       - traefik.http.routers.seo-static.service=core
       - traefik.http.routers.seo-static.middlewares=security-headers@docker,rate-limit@docker,compress@docker,seo-static-rewrite@docker,csp-dynamic@file
-      - traefik.http.middlewares.seo-static-rewrite.replacepathregex.regex=^/(sitemap\.xml|robots\.txt)$$
+      - traefik.http.middlewares.seo-static-rewrite.replacepathregex.regex=^/(sitemap(?:-[0-9]+)?\.xml|robots\.txt)$$
       - traefik.http.middlewares.seo-static-rewrite.replacepathregex.replacement=/v1/public/$$1
       - traefik.http.routers.seo-bots.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && PathPrefix(`/sites/`) && HeaderRegexp(`User-Agent`, `(?i)(facebookexternalhit|Twitterbot|Slackbot|LinkedInBot|Discordbot|WhatsApp|TelegramBot|Googlebot|bingbot)`)
       - traefik.http.routers.seo-bots.entrypoints=web

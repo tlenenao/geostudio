@@ -1327,6 +1327,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/public/sitemap-{n}.xml": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Public Sitemap Slice */
+        get: operations["public_sitemap_slice_v1_public_sitemap__n__xml_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/public/sitemap.xml": {
         parameters: {
             query?: never;
@@ -7217,6 +7234,35 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    public_sitemap_slice_v1_public_sitemap__n__xml_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                n: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };
