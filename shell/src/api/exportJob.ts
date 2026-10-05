@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 import { t } from "../i18n";
 import { jobStatusLabel } from "../lib/jobStatusLabel";
-import { fetchWithTimeout, parseErrorResponse, readBody } from "./base";
+import { parseErrorResponse, type ExportedFile } from "./base";
 
 // REV-283e : `export/items` répond 202 `{jobId}` au-delà du seuil synchrone ;
-// on sonde `.../export/jobs/{id}` jusqu'à `done`, puis on télécharge `resultUrl`
-// (lien S3 présigné, sans Authorization). Abandon après 15 min.
+// on sonde `.../export/jobs/{id}` jusqu'à `done`, puis on renvoie `resultUrl`
+// (lien S3 présigné) : le navigateur le télécharge par navigation, jamais par fetch
+// (CSP connect-src, pas de Blob en mémoire). Abandon après 15 min.
 const EXPORT_POLL_INTERVAL_MS = 2_000;
 const EXPORT_POLL_DEADLINE_MS = 15 * 60_000;
 
@@ -14,7 +15,7 @@ export async function pollExportJob(
   path: string,
   get: (path: string) => Promise<Response>,
   signal?: AbortSignal,
-): Promise<{ blob: Blob; filename: string }> {
+): Promise<ExportedFile> {
   const { jobId } = (await accepted.json()) as { jobId: string };
   const statusPath = `${path.split("/export")[0]}/export/jobs/${jobId}`;
   const deadline = Date.now() + EXPORT_POLL_DEADLINE_MS;
@@ -31,11 +32,11 @@ export async function pollExportJob(
       error?: string | null;
     };
     if (job.status === "failed")
-      throw new Error(t("exportJob.failed", { status: jobStatusLabel(job.status) }));
+      throw new Error(
+        `${t("exportJob.failed", { status: jobStatusLabel(job.status) })}${job.error ? ` ${job.error}` : ""}`,
+      );
     if (job.status === "done" && job.resultUrl) {
-      const file = await fetchWithTimeout(job.resultUrl, {}, 120_000);
-      if (!file.ok) throw await parseErrorResponse(file);
-      return { blob: await readBody(() => file.blob()), filename: job.filename ?? "export" };
+      return { url: job.resultUrl, filename: job.filename ?? "export" };
     }
     if (Date.now() > deadline) throw new Error("export timed out");
     await new Promise<void>((resolve) => {

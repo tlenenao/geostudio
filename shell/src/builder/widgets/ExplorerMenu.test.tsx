@@ -171,6 +171,43 @@ test("clicking an export format calls exportDataSource and triggers a download",
   expect(createObjectURL).toHaveBeenCalledWith(blob);
 });
 
+test("un export asynchrone (URL présignée) se télécharge par ancre, sans Blob", async () => {
+  const exportDataSource = vi
+    .fn()
+    .mockResolvedValue({ url: "https://s3.test/f.csv", filename: "parcs.csv" });
+  const client = { exportDataSource } as unknown as ItemClient;
+  const source: DataSource = {
+    id: "s1",
+    type: "features",
+    service: "core",
+    layer: "parcs",
+    query: {},
+  };
+  const createObjectURL = vi.spyOn(URL, "createObjectURL");
+  const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+    this: HTMLAnchorElement,
+  ) {
+    expect(this.href).toBe("https://s3.test/f.csv");
+    expect(this.download).toBe("parcs.csv");
+  });
+  render(
+    <ItemClientProvider client={client}>
+      <ExplorerProvider enabled>
+        <ExplorerMenu
+          datasetId="ds1"
+          dataSourceId="s1"
+          resolvedSource={source}
+          hasGeometry={false}
+        />
+      </ExplorerProvider>
+    </ItemClientProvider>,
+  );
+  await userEvent.click(screen.getByLabelText("Explorer"));
+  await userEvent.click(screen.getByLabelText("Exporter en CSV"));
+  await vi.waitFor(() => expect(click).toHaveBeenCalledTimes(1));
+  expect(createObjectURL).not.toHaveBeenCalled();
+});
+
 test("a failed export surfaces an inline error message instead of failing silently", async () => {
   const exportDataSource = vi
     .fn()

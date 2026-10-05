@@ -3680,7 +3680,7 @@ test("exportDataSource posts the aggregate body and extracts the filename for a 
   };
   const { blob, filename } = await makeClient("tok").exportDataSource(source, "csv");
   expect(filename).toBe("parcs-20260807-120000.csv");
-  expect(await blob.text()).toBe("region,count\nNord,3\n");
+  expect(await blob?.text()).toBe("region,count\nNord,3\n");
   expect(posted).toEqual({ groupBy: "region", agg: "count" });
 });
 

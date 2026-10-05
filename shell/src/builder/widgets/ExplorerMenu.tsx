@@ -4,6 +4,7 @@ import { useExplorerEnabled, useOpenExplorer } from "../ExplorerContext";
 import { useOptionalItemClient } from "../../api/ItemClientProvider";
 import type { DataSource } from "../../api/types";
 import { t } from "../../i18n";
+import { saveExportedFile } from "../../api/saveExportedFile";
 import { ApiError } from "../../api/ApiError";
 
 const AGGREGATE_FORMATS = ["csv", "xlsx"];
@@ -75,13 +76,8 @@ export function ExplorerMenu({
     const ac = new AbortController();
     exportAbort.current = ac;
     try {
-      const { blob, filename } = await client.exportDataSource(resolvedSource, format, ac.signal);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
+      const file = await client.exportDataSource(resolvedSource, format, ac.signal);
+      saveExportedFile(file);
     } catch (err) {
       if (ac.signal.aborted) return;
       setExportError(exportErrorMessage(err));

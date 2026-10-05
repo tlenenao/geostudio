@@ -132,7 +132,7 @@ describe("requestBlob — export asynchrone 202 (REV-283e)", () => {
   const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-  it("sonde le statut puis télécharge resultUrl", async () => {
+  it("sonde le statut puis renvoie resultUrl sans la télécharger par fetch", async () => {
     vi.useFakeTimers();
     const fetchMock = vi
       .fn()
@@ -140,8 +140,7 @@ describe("requestBlob — export asynchrone 202 (REV-283e)", () => {
       .mockResolvedValueOnce(json({ status: "running" }))
       .mockResolvedValueOnce(
         json({ status: "done", resultUrl: "https://s3.test/f", filename: "v.geojson" }),
-      )
-      .mockResolvedValueOnce(new Response("DATA"));
+      );
     vi.stubGlobal("fetch", fetchMock);
     const p = requestBlob(
       "http://core.test/v1",
@@ -152,10 +151,9 @@ describe("requestBlob — export asynchrone 202 (REV-283e)", () => {
     await vi.advanceTimersByTimeAsync(5000);
     const out = await p;
     expect(out.filename).toBe("v.geojson");
-    expect(out.blob.size).toBe(4);
+    expect(out).toEqual({ url: "https://s3.test/f", filename: "v.geojson" });
     expect(fetchMock.mock.calls[1][0]).toBe("http://core.test/v1/collections/c1/export/jobs/j1");
-    expect(fetchMock.mock.calls[3][0]).toBe("https://s3.test/f");
-    expect(fetchMock.mock.calls[3][1].headers).toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledTimes(3); // jamais de fetch sur l'URL S3
   });
 
   it("rejette avec le message d'un job failed", async () => {
@@ -168,7 +166,7 @@ describe("requestBlob — export asynchrone 202 (REV-283e)", () => {
     );
     await expect(
       requestBlob("http://core.test", () => "t", "GET", "/collections/c1/export/items"),
-    ).rejects.toThrow("Échec de l'export de données (statut : Échoué)");
+    ).rejects.toThrow("Échec de l'export de données (statut : Échoué). too many");
   });
 
   it("relit le jeton à chaque tour de sondage", async () => {
@@ -178,8 +176,7 @@ describe("requestBlob — export asynchrone 202 (REV-283e)", () => {
       .fn()
       .mockResolvedValueOnce(json({ jobId: "j1" }, 202))
       .mockResolvedValueOnce(json({ status: "running" }))
-      .mockResolvedValueOnce(json({ status: "done", resultUrl: "https://s3.test/f" }))
-      .mockResolvedValueOnce(new Response("D"));
+      .mockResolvedValueOnce(json({ status: "done", resultUrl: "https://s3.test/f" }));
     vi.stubGlobal("fetch", fetchMock);
     const p = requestBlob("http://core.test", () => tok, "GET", "/collections/c1/export/items");
     await vi.advanceTimersByTimeAsync(0);
@@ -195,8 +192,7 @@ describe("requestBlob — export asynchrone 202 (REV-283e)", () => {
       .fn()
       .mockResolvedValueOnce(json({ jobId: "j1" }, 202))
       .mockResolvedValueOnce(new Response("", { status: 401 }))
-      .mockResolvedValueOnce(json({ status: "done", resultUrl: "https://s3.test/f" }))
-      .mockResolvedValueOnce(new Response("D"));
+      .mockResolvedValueOnce(json({ status: "done", resultUrl: "https://s3.test/f" }));
     vi.stubGlobal("fetch", fetchMock);
     const renew = vi.fn().mockResolvedValue("fresh");
     await requestBlob(

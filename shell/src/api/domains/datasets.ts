@@ -10,7 +10,7 @@ import type {
   ItemClient,
 } from "../types";
 import type { ItemClientBase } from "../base";
-import { requestBlob } from "../base";
+import { requestBlob, type ExportedFile } from "../base";
 import { OWNER_PERMISSIONS } from "../../auth/permissions";
 
 // Statistics config keys carried in DataSource.query; excluded from the fetch
@@ -314,7 +314,7 @@ export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
       source: DataSource,
       format: string,
       signal?: AbortSignal,
-    ): Promise<{ blob: Blob; filename: string }> {
+    ): Promise<ExportedFile> {
       const cachedDataset = source.datasetId ? await resolveDataset(source.datasetId) : null;
       const isArcgis = cachedDataset?.source === "arcgis" && Boolean(source.datasetId);
       if (source.type === "statistics") {

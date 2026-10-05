@@ -27,6 +27,7 @@ import { SaveConflictNotice } from "../builder/SaveConflictNotice";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { useDirtyGuard } from "../lib/useDirtyGuard";
 import { t } from "../i18n";
+import { saveExportedFile } from "../api/saveExportedFile";
 import { PageTitle } from "../ui/kit/PageTitle";
 
 export function DatasetEditPage({ pk }: { pk: string }) {
@@ -163,13 +164,8 @@ export function DatasetEditPage({ pk }: { pk: string }) {
     const ac = new AbortController();
     exportAbort.current = ac;
     try {
-      const { blob, filename } = await client.exportDataSource(source, format, ac.signal);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
+      const file = await client.exportDataSource(source, format, ac.signal);
+      saveExportedFile(file);
     } catch (err) {
       if (!ac.signal.aborted) {
         setExportError(err instanceof Error ? err.message : t("datasetEdit.exportError"));

@@ -280,6 +280,12 @@ export const GEOMETRY_KINDS: Record<string, "point" | "line" | "polygon"> = {
   MultiPolygon: "polygon",
 };
 
+// Fichier à enregistrer : Blob (réponse synchrone) ou URL présignée (export
+// asynchrone, téléchargé par navigation — cf. saveExportedFile).
+export type ExportedFile =
+  | { blob: Blob; filename: string; url?: undefined }
+  | { url: string; filename: string; blob?: undefined };
+
 export async function requestBlob(
   coreUrl: string,
   getToken: () => string | undefined,
@@ -289,7 +295,7 @@ export async function requestBlob(
   getShareLinkToken?: () => string | undefined,
   renewToken?: () => Promise<string | undefined>,
   signal?: AbortSignal,
-): Promise<{ blob: Blob; filename: string }> {
+): Promise<ExportedFile> {
   const token = getToken();
   const shareToken = getShareLinkToken?.();
   const send = (tok: string | undefined, m = method, p = path, b = body) => {
