@@ -324,12 +324,19 @@ def aggregate_features(
         as_of = lake_as_of(conn, base_uri, col.tenant_id, col.id)
     finally:
         conn.close()
+    # Retard slot-global de l'instance : reserve aux exploitants authentifies.
+    lag_bytes = (
+        lake_lag_bytes(session)
+        if user is not None
+        and has_privilege(session, user, Privilege.SETTINGS_INSTANCE_MANAGE.value)
+        else None
+    )
     return AggregateResponse(
         categoryKey=category_key,
         rows=rows,
         asOf=as_of,
         pending=as_of is None,
-        lagBytes=lake_lag_bytes(session),
+        lagBytes=lag_bytes,
     )
 
 
