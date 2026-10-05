@@ -14,6 +14,21 @@ export function readToken(name: string, fallback: string): string {
   return v || fallback;
 }
 
+/**
+ * REV-285(e) : notifie un changement d'ambiance (réglage explicite via
+ * `data-theme`, OU `prefers-color-scheme` en « auto »). Retourne le désabonnement.
+ */
+export function onThemeChange(cb: () => void): () => void {
+  const observer = new MutationObserver(cb);
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  const mql = window.matchMedia?.("(prefers-color-scheme: dark)"); // absent de jsdom
+  mql?.addEventListener("change", cb);
+  return () => {
+    observer.disconnect();
+    mql?.removeEventListener("change", cb);
+  };
+}
+
 const STORAGE_KEY = "gs-theme";
 
 export function readThemePreference(): ThemePreference {

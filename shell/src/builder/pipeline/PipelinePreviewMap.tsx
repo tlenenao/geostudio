@@ -7,7 +7,7 @@ import { DEFAULT_BASEMAP } from "../../map/basemaps";
 import { t } from "../../i18n";
 import type { MessageKey } from "../../i18n";
 import { bboxFromFeatureCollection } from "../../lib/geometryBbox";
-import { readToken } from "../../lib/theme";
+import { onThemeChange, readToken } from "../../lib/theme";
 
 const SOURCE_ID = "pipeline-preview";
 
@@ -69,6 +69,7 @@ export function PipelinePreviewMap({
       zoom: 1,
     });
     mapRef.current = map;
+    let offTheme: (() => void) | undefined;
     map.on("load", () => {
       map.addSource(SOURCE_ID, { type: "geojson", data: featureCollection });
       map.addLayer({
@@ -115,6 +116,18 @@ export function PipelinePreviewMap({
         const idx = e.features?.[0]?.properties?.__rowIndex;
         if (typeof idx === "number") onSelectIndex?.(idx);
       };
+      const repaint = () => {
+        const paint: [string, "fill-color" | "line-color" | "circle-color", string, string][] = [
+          ["fill", "fill-color", "--gs-accent", "#0b6e77"], // gs-raw-color-ok: repli jsdom
+          ["line", "line-color", "--gs-ok", "#2a6a50"], // gs-raw-color-ok: repli jsdom
+          ["circle", "circle-color", "--gs-danger", "#9a2c45"], // gs-raw-color-ok: repli jsdom
+          ["selected", "line-color", "--gs-warn", "#85600f"], // gs-raw-color-ok: repli jsdom
+        ];
+        for (const [suffix, prop, token, fallback] of paint) {
+          map.setPaintProperty(`${SOURCE_ID}-${suffix}`, prop, readToken(token, fallback));
+        }
+      };
+      offTheme = onThemeChange(repaint);
       map.on("click", `${SOURCE_ID}-fill`, handleClick);
       map.on("click", `${SOURCE_ID}-line`, handleClick);
       map.on("click", `${SOURCE_ID}-circle`, handleClick);
@@ -130,6 +143,7 @@ export function PipelinePreviewMap({
       }
     });
     return () => {
+      offTheme?.();
       mapRef.current = null;
       map.remove();
     };

@@ -127,3 +127,27 @@ test("filters the selection outline layer to the selectedIndex", () => {
   const map = mapInstances[0];
   expect(map.getLayer("pipeline-preview-selected")).toBeDefined();
 });
+
+test("recolore les couches quand l'ambiance change, plus après démontage (REV-285 e)", async () => {
+  const { unmount } = render(
+    <PipelinePreviewMap rows={[{ id: 1, geometry: { type: "Point", coordinates: [1, 1] } }]} />,
+  );
+  const map = mapInstances[0];
+  document.documentElement.style.setProperty("--gs-accent", "#010203");
+  document.documentElement.dataset.theme = "dark";
+  await new Promise((r) => setTimeout(r, 0));
+  try {
+    const fill = map.getLayer("pipeline-preview-fill") as unknown as {
+      paint: { "fill-color": string };
+    };
+    expect(fill.paint["fill-color"]).toBe("#010203");
+    unmount();
+    document.documentElement.style.setProperty("--gs-accent", "#040506");
+    document.documentElement.dataset.theme = "light";
+    await new Promise((r) => setTimeout(r, 0));
+    expect(fill.paint["fill-color"]).toBe("#010203"); // désabonné
+  } finally {
+    document.documentElement.style.removeProperty("--gs-accent");
+    delete document.documentElement.dataset.theme;
+  }
+});
