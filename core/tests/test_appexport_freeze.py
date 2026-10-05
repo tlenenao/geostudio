@@ -88,7 +88,7 @@ def test_static_source_passes_through_unchanged(pg_session):
     assert frozen.dataSources[0].query["records"] == [{"id": 1}]
 
 
-def test_features_source_is_frozen_into_static_records(pg_session):
+def test_features_source_is_frozen_into_static_records(pg_session, monkeypatch):
     s = pg_session
     s.execute(
         text("CREATE TABLE t_freeze_x (id serial PRIMARY KEY, tenant_id text NOT NULL, name text)")
@@ -134,6 +134,17 @@ def test_features_source_is_frozen_into_static_records(pg_session):
             DataSource(id="s1", type="features", service="core", layer=col.id, query={}),
         ]
     )
+    # REV-280 : l'export ne consomme pas le total -> pas de count(*) par page.
+    import app.appexport.freeze as _mod
+
+    _real = _mod.select_features
+    _modes: list[str] = []
+
+    def _spy(*a, **k):
+        _modes.append(k.get("count_mode"))
+        return _real(*a, **k)
+
+    monkeypatch.setattr(_mod, "select_features", _spy)
     frozen = freeze_config(s, tenant_id=tenant.id, config=config)
 
     out = frozen.dataSources[0]
@@ -152,6 +163,7 @@ def test_features_source_is_frozen_into_static_records(pg_session):
     )
     assert len(frozen.dataSources[0].query["records"]) == 1
     assert len(warnings) == 1 and "tronquée" in warnings[0]
+    assert _modes and set(_modes) == {"none"}
 
 
 def test_config_shape_is_otherwise_unchanged(pg_session):

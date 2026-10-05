@@ -211,6 +211,7 @@ def register(server: FastMCP, session_factory) -> None:
                         bbox=parsed_bbox,
                         geom_intersects=geomIntersects,
                         filters=filters or None,
+                        count_mode="capped",
                     )
             except FilterError as exc:
                 raise ValueError(f"unknown filter field: {exc.field}") from exc
@@ -218,6 +219,7 @@ def register(server: FastMCP, session_factory) -> None:
                 "type": "FeatureCollection",
                 "features": page.features,
                 "numberMatched": page.number_matched,
+                "numberMatchedLowerBound": page.number_matched_lower_bound,
                 "numberReturned": page.number_returned,
             }
 
