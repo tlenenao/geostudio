@@ -100,7 +100,10 @@ def test_quality_facts_read_the_real_repository():
     # 15 depuis la Vague C (revue finale, point 1) : MapPopup.tsx (Tâche 2)
     # et SqlLabPage.tsx (Tâche 26) ajoutent chacun un eslint-disable
     # légitime, portant le compte réel de 13 à 15. Ferme REV-255.
-    assert len(facts.eslint_disabled) == 16
+    # 24 depuis la clôture des 38 REV (C3/C5) : les règles locales
+    # panel-trigger-aria et label-no-aria-label ont 8 fichiers de plus avec
+    # un eslint-disable motivé sur la ligne (modale/toast, nom accessible).
+    assert len(facts.eslint_disabled) == 24
     assert len(facts.typing_escapes) == 7
 
 
