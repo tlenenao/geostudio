@@ -43,7 +43,9 @@ def fake_introspector(session, table_name):
 def make_fake_repo(matched=3):
     calls = {}
 
-    def select_features(session, info, *, limit, offset, bbox=None, filters=None):
+    def select_features(
+        session, info, *, limit, offset, bbox=None, filters=None, after=None, count_mode="exact"
+    ):
         calls.update(limit=limit, offset=offset, bbox=bbox, filters=filters)
         if filters and "inconnu" in filters:
             raise FilterError("inconnu", "unknown filter property 'inconnu'")

@@ -1591,6 +1591,22 @@ test("queryDataSourcePage returns the real total (numberMatched) beside the trun
   expect(page.records).toHaveLength(1);
 });
 
+test("queryDataSourcePage reports total null when the page is keyset (no numberMatched, REV-279a)", async () => {
+  server.use(
+    http.get("https://core.test/v1/collections/gros/items", () =>
+      HttpResponse.json({ features: [{ id: 1, properties: { nom: "A" } }] }),
+    ),
+  );
+  const page = await makeClient().queryDataSourcePage!({
+    id: "s1",
+    type: "features",
+    service: "core",
+    layer: "gros",
+    query: {},
+  });
+  expect(page.total).toBeNull();
+});
+
 test("featuresUrl routes an arcgis-sourced dataset to /datasets/{datasetItemId}/arcgis/items", async () => {
   server.use(
     http.get("https://core.test/v1/configs/by-item/ds-arcgis-1", () =>

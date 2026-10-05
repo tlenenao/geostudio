@@ -12,7 +12,7 @@ from app.collections import routes as collections_routes
 from app.collections.introspection import ColumnInfo, TableInfo, TableNotFound
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.features import routes as features_routes
-from app.features.repository import FeaturePage, FilterError
+from app.features.repository import FeaturePage, FilterError, encode_cursor
 from app.main import create_app
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
@@ -39,14 +39,36 @@ def make_fake_repo(matched=3):
     calls = {}
 
     def select_features(
-        session, info, *, limit, offset, bbox=None, geom_intersects=None, filters=None
+        session,
+        info,
+        *,
+        limit,
+        offset,
+        bbox=None,
+        geom_intersects=None,
+        filters=None,
+        after=None,
+        count_mode="exact",
     ):
         calls.update(
-            limit=limit, offset=offset, bbox=bbox, geom_intersects=geom_intersects, filters=filters
+            limit=limit,
+            offset=offset,
+            bbox=bbox,
+            geom_intersects=geom_intersects,
+            filters=filters,
+            after=after,
         )
+        if after == "boom":
+            raise ValueError("invalid cursor")
         if filters and "inconnu" in filters:
             raise FilterError("inconnu", "unknown filter property 'inconnu'")
-        return FeaturePage(features=[FEAT], number_matched=matched, number_returned=1)
+        nxt = encode_cursor(1) if matched > offset + 1 else None
+        return FeaturePage(
+            features=[FEAT],
+            number_matched=None if after else matched,
+            number_returned=1,
+            next_cursor=nxt,
+        )
 
     def get_feature(session, info, *, fid):
         return FEAT if fid == "1" else None
@@ -119,7 +141,8 @@ def test_items_returns_feature_collection_with_links(env):
     assert body["type"] == "FeatureCollection"
     assert body["numberMatched"] == 3 and body["numberReturned"] == 1
     rels = {link["rel"]: link["href"] for link in body["links"]}
-    assert "offset=2" in rels["next"] and "offset=0" in rels["prev"]
+    assert "cursor=" in rels["next"] and "offset=" not in rels["next"]
+    assert "offset=0" in rels["prev"]
     assert repo.calls["limit"] == 1 and repo.calls["offset"] == 1
 
 
@@ -214,3 +237,25 @@ def test_anonymous_reads_public_only(env):
     # spec) : sans cette ligne, une réponse à liste vide passait aussi.
     assert res.json()["numberReturned"] == 1
     assert res.json()["features"][0]["id"] == 1
+
+
+def test_cursor_and_offset_rejected(env):
+    app, client, admin, _r, _repo = env
+    _register(app, client, admin)
+    r = client.get("/v1/collections/incidents/items?cursor=abc&offset=5")
+    assert r.status_code == 400 and r.json()["errors"][0]["code"] == "invalid_cursor"
+
+
+def test_invalid_cursor_is_400(env):
+    app, client, admin, _r, _repo = env
+    _register(app, client, admin)
+    r = client.get("/v1/collections/incidents/items?cursor=boom")
+    assert r.status_code == 400 and r.json()["errors"][0]["code"] == "invalid_cursor"
+
+
+def test_cursor_page_omits_number_matched_and_prev(env):
+    app, client, admin, _r, repo = env
+    _register(app, client, admin)
+    body = client.get("/v1/collections/incidents/items?limit=1&cursor=abc").json()
+    assert "numberMatched" not in body and repo.calls["after"] == "abc"
+    assert {link["rel"] for link in body["links"]} == {"self", "next"}

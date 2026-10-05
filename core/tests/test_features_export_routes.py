@@ -54,7 +54,16 @@ def make_fake_items_repo():
         return fid
 
     def select_features(
-        session, info, *, limit, offset, bbox=None, geom_intersects=None, filters=None
+        session,
+        info,
+        *,
+        limit,
+        offset,
+        bbox=None,
+        geom_intersects=None,
+        filters=None,
+        after=None,
+        count_mode="exact",
     ):
         items = sorted(state["rows"].items())
         page_items = items[offset : offset + limit]

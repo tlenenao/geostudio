@@ -65,7 +65,7 @@ class SqlQueryBody(BaseModel):
     sql: str
 
 
-RESERVED_QUERY_PARAMS = {"limit", "offset", "bbox", "geom_intersects", "f", "format"}
+RESERVED_QUERY_PARAMS = {"limit", "offset", "cursor", "bbox", "geom_intersects", "f", "format"}
 MAX_LIMIT = 1000
 
 CONFORMANCE_CLASSES = [
@@ -190,17 +190,17 @@ def _collect_filters(request: Request) -> dict[str, str]:
     return {k: v for k, v in request.query_params.items() if k not in RESERVED_QUERY_PARAMS}
 
 
-def _page_links(request: Request, *, limit: int, offset: int, page) -> list[dict]:
-    def href(o: int) -> str:
-        return str(request.url.include_query_params(limit=limit, offset=o))
-
+def _page_links(request: Request, *, limit: int, offset: int, page, cursor=None) -> list[dict]:
     links = [{"rel": "self", "type": "application/geo+json", "href": str(request.url)}]
-    if offset + page.number_returned < page.number_matched:
-        links.append({"rel": "next", "type": "application/geo+json", "href": href(offset + limit)})
-    if offset > 0:
-        links.append(
-            {"rel": "prev", "type": "application/geo+json", "href": href(max(0, offset - limit))}
+    if page.next_cursor:
+        # REV-279a : next par curseur keyset, jamais par offset.
+        url = request.url.remove_query_params("offset").include_query_params(
+            limit=limit, cursor=page.next_cursor
         )
+        links.append({"rel": "next", "type": "application/geo+json", "href": str(url)})
+    if offset > 0 and cursor is None:
+        href = str(request.url.include_query_params(limit=limit, offset=max(0, offset - limit)))
+        links.append({"rel": "prev", "type": "application/geo+json", "href": href})
     return links
 
 
@@ -210,6 +210,7 @@ def list_features(
     request: Request,
     limit: int = Query(100, ge=1),
     offset: int = Query(0, ge=0),
+    cursor: str | None = None,
     bbox: str | None = None,
     geom_intersects: str | None = None,
     user=Depends(get_current_user_optional),
@@ -228,6 +229,10 @@ def list_features(
     parsed_bbox = _parse_bbox(bbox)
     parsed_geom_intersects = _parse_geom_intersects(geom_intersects)
     filters = _collect_filters(request)
+    if cursor is not None and offset > 0:
+        raise _validation_error(
+            [{"field": "cursor", "code": "invalid_cursor", "message": "cursor excludes offset"}]
+        )
     try:
         with rls(session, col.tenant_id, masked=masked):
             page = repo.select_features(
@@ -238,19 +243,26 @@ def list_features(
                 bbox=parsed_bbox,
                 geom_intersects=parsed_geom_intersects,
                 filters=filters or None,
+                after=cursor,
+                count_mode="capped",
             )
+    except ValueError as exc:
+        raise _validation_error(
+            [{"field": "cursor", "code": "invalid_cursor", "message": "invalid cursor"}]
+        ) from exc
     except FilterError as exc:
         raise _validation_error(
             [{"field": exc.field, "code": "unknown_filter", "message": exc.message}]
         ) from exc
-    return {
-        "type": "FeatureCollection",
-        "features": page.features,
-        "numberMatched": page.number_matched,
-        "numberReturned": page.number_returned,
-        "timeStamp": datetime.now(UTC).isoformat(),
-        "links": _page_links(request, limit=limit, offset=offset, page=page),
-    }
+    body: dict = {"type": "FeatureCollection", "features": page.features}
+    if page.number_matched is not None:
+        body["numberMatched"] = page.number_matched
+    if page.number_matched_lower_bound:
+        body["numberMatchedLowerBound"] = True
+    body["numberReturned"] = page.number_returned
+    body["timeStamp"] = datetime.now(UTC).isoformat()
+    body["links"] = _page_links(request, limit=limit, offset=offset, page=page, cursor=cursor)
+    return body
 
 
 def get_duckdb_connection_factory():  # overridé en test
@@ -420,7 +432,7 @@ def export_collection_items(
     filters = _collect_filters(request)
 
     features: list[dict] = []
-    offset = 0
+    cursor = None
     while True:
         try:
             with rls(session, col.tenant_id, masked=masked):
@@ -428,10 +440,12 @@ def export_collection_items(
                     session,
                     info,
                     limit=MAX_LIMIT,
-                    offset=offset,
+                    offset=0,
                     bbox=parsed_bbox,
                     geom_intersects=parsed_geom_intersects,
                     filters=filters or None,
+                    after=cursor,
+                    count_mode="capped",
                 )
         except FilterError as exc:
             raise _validation_error(
@@ -442,9 +456,9 @@ def export_collection_items(
             raise HTTPException(
                 status_code=413, detail="too many entities matched, refine your filters"
             )
-        if page.number_returned < MAX_LIMIT:
+        cursor = page.next_cursor
+        if cursor is None:
             break
-        offset += MAX_LIMIT
 
     if format == "gpkg":
         conn = open_spatial_connection()

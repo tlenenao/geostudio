@@ -342,7 +342,9 @@ FEAT = {
 def make_fake_repo(matched=3):
     calls = {}
 
-    def select_features(session, info, *, limit, offset, bbox=None, filters=None):
+    def select_features(
+        session, info, *, limit, offset, bbox=None, filters=None, after=None, count_mode="exact"
+    ):
         calls.update(limit=limit, offset=offset, bbox=bbox)
         return FeaturePage(features=[FEAT], number_matched=matched, number_returned=1)
 
