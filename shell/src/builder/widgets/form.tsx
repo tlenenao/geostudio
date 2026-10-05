@@ -9,7 +9,7 @@ import { useBusAction } from "../ActionBusContext";
 import { FeatureValidationError } from "../../api/itemClient";
 import type { CollectionSchema, DataRecord, DataSource } from "../../api/types";
 import type { WidgetContext } from "../registry";
-import { t } from "../../i18n";
+import { plural, t } from "../../i18n";
 import { ConfirmDialog } from "../../ui/kit/ConfirmDialog";
 import { LoadingState } from "../../ui/kit/LoadingState";
 
@@ -539,6 +539,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
   const [genericError, setGenericError] = useState(false);
   const [editingId, setEditingId] = useState<string | number | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
 
   const collectionId = ctx.data?.layer ?? "";
   const permissionQuery = useQuery({
@@ -642,8 +643,13 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
       allTouched[f.name] = true;
     });
     setTouched(allTouched);
-    const hasClientErrors = fields.some((f) => validateField(f, values[f.name]) !== null);
-    if (hasClientErrors) return;
+    setSubmitAttempted(true);
+    const firstInvalid = fields.find((f) => validateField(f, values[f.name]) !== null);
+    if (firstInvalid) {
+      // REV-223 : focus sur le premier champ invalide (les contrôles portent id=field-<name>).
+      document.getElementById(`field-${firstInvalid.name}`)?.focus();
+      return;
+    }
     setServerErrors({});
     setGenericError(false);
     const properties: Record<string, unknown> = {};
@@ -689,6 +695,40 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
       onSubmit={(e) => void handleSubmit(e)}
       noValidate
     >
+      {submitAttempted &&
+        (() => {
+          const invalid = fields.filter((f) => errorFor(f) !== null);
+          if (invalid.length === 0) return null;
+          const title = t(
+            plural(invalid.length, "widgetForm.errorSummaryOne", "widgetForm.errorSummaryMany"),
+            { count: invalid.length },
+          );
+          return (
+            <div
+              role="alert"
+              aria-label={title}
+              className="rounded border border-danger bg-danger-soft p-2 text-xs text-danger"
+            >
+              <p className="font-medium">{title}</p>
+              <ul className="list-disc pl-4">
+                {invalid.map((f) => (
+                  <li key={f.name}>
+                    <a
+                      href={`#field-${f.name}`}
+                      className="underline"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        document.getElementById(`field-${f.name}`)?.focus();
+                      }}
+                    >
+                      {f.label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })()}
       {fields.map((f) =>
         f.type === "attachment" ? (
           <div key={f.name} className="flex flex-col gap-1">

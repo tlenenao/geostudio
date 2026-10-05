@@ -108,3 +108,23 @@ test("un viewer ne voit pas les boutons d'écriture ; une écriture forcée est 
   });
   expect(status).toBe(403);
 });
+
+test("REV-223 : un formulaire invalide affiche un résumé d'erreurs et focalise le premier champ invalide", async ({
+  page,
+}) => {
+  await mockCore(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Nouveau" }).click();
+  const dialog = page.getByRole("dialog", { name: "Nouvel élément" });
+  await dialog.getByLabel("Type").selectOption("app");
+  await dialog.getByLabel("Modèle").selectOption("application-de-saisie");
+  await dialog.getByLabel("Titre").fill("Déclarer un incident");
+  await page.getByRole("button", { name: "Créer" }).click();
+  await page.getByRole("button", { name: "Sélectionner Formulaire" }).click();
+  await page.getByRole("button", { name: "Charger les champs du schéma" }).click();
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await page.goto("/apps/9");
+  await page.getByRole("button", { name: "Déclarer l'incident" }).click();
+  await expect(page.getByRole("alert", { name: /à corriger/ })).toBeVisible();
+  await expect(page.locator("[aria-invalid='true']").first()).toBeFocused();
+});

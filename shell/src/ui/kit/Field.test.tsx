@@ -33,3 +33,25 @@ test("affiche l'indice quand fourni et pas d'erreur", () => {
   expect(screen.getByText("Visible dans le catalogue")).toBeInTheDocument();
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
+
+test("pose aria-invalid et aria-describedby sur le contrôle quand une erreur est fournie", () => {
+  render(
+    <Field label="Titre" htmlFor="titre" error="Champ requis" hint="ignoré">
+      <Input id="titre" />
+    </Field>,
+  );
+  const input = screen.getByLabelText("Titre");
+  expect(input).toHaveAttribute("aria-invalid", "true");
+  expect(input).toHaveAccessibleDescription("Champ requis");
+});
+
+test("sans erreur : l'indice décrit le contrôle, pas d'aria-invalid", () => {
+  render(
+    <Field label="Titre" htmlFor="titre" hint="Visible dans le catalogue">
+      <Input id="titre" />
+    </Field>,
+  );
+  const input = screen.getByLabelText("Titre");
+  expect(input).not.toHaveAttribute("aria-invalid");
+  expect(input).toHaveAccessibleDescription("Visible dans le catalogue");
+});

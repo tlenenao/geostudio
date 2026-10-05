@@ -1129,6 +1129,8 @@ export const fr = {
   "widgetForm.deleteAttachmentAria": "Supprimer {filename}",
   "widgetForm.addFilesAria": "Ajouter des fichiers",
   "widgetForm.requiredError": "Champ requis",
+  "widgetForm.errorSummaryOne": "1 champ à corriger",
+  "widgetForm.errorSummaryMany": "{count} champs à corriger",
   "widgetForm.invalidNumber": "Nombre invalide",
   "widgetForm.minError": "Doit être ≥ {min}",
   "widgetForm.maxError": "Doit être ≤ {max}",
