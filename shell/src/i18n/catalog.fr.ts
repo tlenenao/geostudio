@@ -968,6 +968,7 @@ export const fr = {
   // « Explorer », voir les entités, export par format)
   "explorerMenu.tooManyEntities": "Trop d'entités : affinez vos filtres.",
   "explorerMenu.accessDenied": "Accès refusé.",
+  "exportJob.failed": "Échec de l'export de données (statut : {status}).",
   "explorerMenu.exportFailed": "Échec de l'export.",
   "explorerMenu.trigger": "Explorer",
   "explorerMenu.viewRecords": "Voir les entités",
