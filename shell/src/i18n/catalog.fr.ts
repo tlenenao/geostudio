@@ -1480,6 +1480,7 @@ export const fr = {
   "secretParamSelect.kindBigqueryDsn": "DSN BigQuery",
   "secretParamSelect.kindMssqlDsn": "DSN SQL Server",
   "secretParamSelect.kindOracleDsn": "DSN Oracle",
+  "secretParamSelect.kindDatabricksDsn": "DSN Databricks",
   "secretParamSelect.kindS3Credentials": "Identifiants S3",
   "secretParamSelect.kindAzureBlobCredentials": "Identifiants Azure Blob",
   "secretParamSelect.kindGcsCredentials": "Identifiants Google Cloud Storage",

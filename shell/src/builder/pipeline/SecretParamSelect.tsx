@@ -115,6 +115,7 @@ const KIND_LABELS: Record<SecretPayload["kind"], string> = {
   bigquery_dsn: t("secretParamSelect.kindBigqueryDsn"),
   mssql_dsn: t("secretParamSelect.kindMssqlDsn"),
   oracle_dsn: t("secretParamSelect.kindOracleDsn"),
+  databricks_dsn: t("secretParamSelect.kindDatabricksDsn"),
   s3_credentials: t("secretParamSelect.kindS3Credentials"),
   azure_blob_credentials: t("secretParamSelect.kindAzureBlobCredentials"),
   gcs_credentials: t("secretParamSelect.kindGcsCredentials"),
@@ -180,6 +181,7 @@ function SecretCreateForm({
       case "bigquery_dsn":
       case "mssql_dsn":
       case "oracle_dsn":
+      case "databricks_dsn":
         return { kind, dsn: field("dsn") };
       case "s3_credentials":
         return {
@@ -380,7 +382,8 @@ function SecretCreateForm({
         kind === "snowflake_dsn" ||
         kind === "bigquery_dsn" ||
         kind === "mssql_dsn" ||
-        kind === "oracle_dsn") && (
+        kind === "oracle_dsn" ||
+        kind === "databricks_dsn") && (
         <label className="flex flex-col gap-1 text-xs">
           {t("secretParamSelect.dsnLabel")}
           <input

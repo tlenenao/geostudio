@@ -60,6 +60,7 @@ from app.pipelines.egress import (
 from app.pipelines.ops.schemas import (
     ReaderConnectorBigQueryParams,
     ReaderConnectorBlobParams,
+    ReaderConnectorDatabricksParams,
     ReaderConnectorMssqlParams,
     ReaderConnectorOracleParams,
     ReaderConnectorPostgresParams,
@@ -275,6 +276,8 @@ def _timeout_connect_args(backend: str) -> dict:
         "mssql": {"login_timeout": t, "timeout": q},
         "oracle": {"tcp_connect_timeout": float(t)},
         "snowflake": {"login_timeout": t, "network_timeout": q},
+        # databricks-sql-connector : délai de socket (s) appliqué à chaque appel Thrift/HTTP.
+        "databricks": {"_socket_timeout": q},
     }.get(backend, {})
 
 
@@ -653,6 +656,38 @@ def materialize_oracle_connector(
         # mssql (et contrairement à bigquery) : sa.create_engine() reste
         # paresseux pour ce dialecte, aucun appel réseau avant .connect()
         # (vérifié empiriquement).
+        yield from _stream_sql(payload.dsn, params.query)
+
+    _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
+
+
+def materialize_databricks_connector(
+    conn,
+    *,
+    secret_resolver: SecretResolver | None,
+    node_id: str,
+    params: ReaderConnectorDatabricksParams,
+    view_name: str,
+) -> None:
+    # Pendant de materialize_snowflake_connector (REV-110) : même heuristique
+    # SELECT-only (dialecte DuckDB, pas Spark SQL), même garde d'egress par
+    # l'hôte du workspace dans _stream_sql.
+    try:
+        validate_select_only(parse_ast(conn, params.query))
+    except SqlSandboxError as exc:
+        raise ConnectorRuntimeError(f"reader.connector.databricks query rejected: {exc}") from exc
+
+    payload = _resolve_secret(secret_resolver, params.secretName)
+    if payload.kind != "databricks_dsn":
+        raise ConnectorRuntimeError(
+            f"secret has kind '{payload.kind}', not usable by reader.connector.databricks "
+            "(expected databricks_dsn)"
+        )
+
+    @dlt.resource(name="records", write_disposition="replace")
+    def _records():
+        # Dialecte "databricks" enregistré par entry point (databricks-sqlalchemy),
+        # jamais importé explicitement ; create_engine reste paresseux.
         yield from _stream_sql(payload.dsn, params.query)
 
     _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)

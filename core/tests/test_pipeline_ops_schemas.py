@@ -128,6 +128,7 @@ def test_all_known_ops_are_registered():
         "reader.connector.bigquery",
         "reader.connector.mssql",
         "reader.connector.oracle",
+        "reader.connector.databricks",
         "reader.connector.blob",
         "transform.swapCoordinates",
         "transform.translateGeometry",

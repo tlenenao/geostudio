@@ -1779,3 +1779,67 @@ def test_blob_gzip_jsonl_still_loads_rows_through_the_buffered_cap(conn, tmp_pat
     resource.apply_hints(table_name="records", write_disposition="replace")
     connector_runtime._run_dlt_and_attach(conn, resource, node_id="gz2", view_name="node_gz2")
     assert conn.execute("SELECT count(*) FROM node_gz2").fetchone()[0] == 5
+
+
+# --- REV-110 : Databricks ---------------------------------------------------
+
+from app.pipelines.ops.schemas import ReaderConnectorDatabricksParams  # noqa: E402
+
+_DBX_DSN = "databricks://token:dapi1@adb-1.azuredatabricks.net?http_path=/sql/1.0/warehouses/a"
+
+
+def test_materialize_databricks_connector_rejects_non_select(conn, session, tenant):
+    params = ReaderConnectorDatabricksParams(secretName="x", query="DELETE FROM t")
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="query rejected"):
+        connector_runtime.materialize_databricks_connector(
+            conn,
+            secret_resolver=None,
+            node_id="dbx1",
+            params=params,
+            view_name="node_dbx1",
+        )
+
+
+def test_materialize_databricks_connector_wrong_secret_kind_raises(conn, session, tenant, user):
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="bearer-dbx",
+        kind="bearer_token",
+        payload={"kind": "bearer_token", "token": "tok"},
+    )
+    params = ReaderConnectorDatabricksParams(secretName="bearer-dbx", query="SELECT 1")
+    with pytest.raises(
+        connector_runtime.ConnectorRuntimeError, match="not usable by reader.connector.databricks"
+    ):
+        connector_runtime.materialize_databricks_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
+            node_id="dbx2",
+            params=params,
+            view_name="node_dbx2",
+        )
+
+
+def test_databricks_dialect_resolves_lazily_and_stream_applies_guard_and_timeout(monkeypatch):
+    # Le dialecte se résout par entry point, sans réseau avant .connect().
+    import sqlalchemy as sa
+
+    engine = sa.create_engine(_DBX_DSN)
+    assert engine.dialect.name == "databricks"
+    engine.dispose()
+    seen: dict = {"guarded": []}
+
+    def fake_create_engine(dsn, connect_args=None, **kw):
+        seen["connect_args"] = connect_args
+        raise RuntimeError("stop")
+
+    monkeypatch.setattr(connector_runtime.sa, "create_engine", fake_create_engine)
+    monkeypatch.setattr(
+        connector_runtime, "assert_dsn_egress_allowed", lambda d: seen["guarded"].append(d)
+    )
+    with pytest.raises(RuntimeError, match="stop"):
+        list(connector_runtime._stream_sql(_DBX_DSN, "SELECT 1"))
+    assert seen["guarded"] == [_DBX_DSN]  # hôte du workspace : garde d'egress appliquée
+    assert "_socket_timeout" in seen["connect_args"]

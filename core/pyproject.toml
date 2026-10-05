@@ -173,6 +173,12 @@ dependencies = [
     "opentelemetry-instrumentation-botocore>=0.48b0",
     "cel-python>=0.5,<0.6",  # REV-278b : parseur CEL (syntaxe seulement) pour la validation
                       # à l'écriture des expressions ; Apache-2.0, tire lark (MIT) et google-re2 (BSD-3).
+    "databricks-sqlalchemy>=2,<3",  # REV-110 : reader.connector.databricks — dialecte
+                      # SQLAlchemy "databricks://" (entry point, aucun import
+                      # explicite). Apache-2.0 (METADATA vérifié) ; tire
+                      # databricks-sql-connector (Apache-2.0), thrift (Apache-2.0),
+                      # lz4 (BSD, wheel aarch64 présente), pybreaker (BSD) et épingle
+                      # oauthlib<4 (3.3.1, BSD-3).
 ]
 
 [dependency-groups]

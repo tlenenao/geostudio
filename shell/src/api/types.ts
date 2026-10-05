@@ -815,6 +815,7 @@ export type SecretPayload =
   | { kind: "bigquery_dsn"; dsn: string }
   | { kind: "mssql_dsn"; dsn: string }
   | { kind: "oracle_dsn"; dsn: string }
+  | { kind: "databricks_dsn"; dsn: string }
   | {
       kind: "s3_credentials";
       awsAccessKeyId: string;

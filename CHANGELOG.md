@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **39 new pipeline operations**; the exposed catalogue is now 57 operations
-  (59 in the raw registry, which also holds `reader.file` and `writer.file`,
+- **40 new pipeline operations**; the exposed catalogue is now 58 operations
+  (60 in the raw registry, which also holds `reader.file` and `writer.file`,
   hidden unless `CORE_PIPELINE_FILE_IO_ENABLED=true`), all executed in DuckDB
   or in-process with Shapely (BSD-3-Clause):
   - 15 geometry/coordinate/SRID transformers: `swapCoordinates`,
@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `mergeChildren`, `mapSchema`;
   - 4 readers: `reader.connector.bigquery`, `reader.connector.mssql`,
     `reader.connector.oracle`, `reader.connector.blob`;
+  - `reader.connector.databricks` (Databricks SQL warehouse, secret
+    `databricks_dsn`, `databricks-sqlalchemy` Apache-2.0; REV-110) ;
   - 9 replacements for the removed QGIS engine (see *Removed* below):
     `centroid`, `convexHull`, `simplify`, `boundingGeometry`, `snapToLayer`,
     `resolveOverlaps`, `triangulate`, `densify`, `minimumBoundingCircle`.

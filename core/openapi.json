@@ -1462,6 +1462,27 @@
         "title": "DataSource",
         "type": "object"
       },
+      "DatabricksDsnPayload": {
+        "description": "DSN SQLAlchemy vers un entrep\u00f4t Databricks SQL (REV-110), forme\n`databricks://token:<jeton>@<h\u00f4te>?http_path=<chemin>&catalog=..&schema=..`\n\u2014 v\u00e9rifi\u00e9e contre `databricks/sqlalchemy/base.py::create_connect_args`\n(databricks-sqlalchemy 2.0.10 install\u00e9 : h\u00f4te = `server_hostname`, mot de\npasse = jeton d'acc\u00e8s, `http_path` lu dans la requ\u00eate). `http_path` est\nobligatoire (le pilote \u00e9chouerait sinon \u00e0 la connexion) : refus\u00e9 ici. L'h\u00f4te\nest un vrai nom DNS : garde d'egress SSRF appliqu\u00e9e comme pour Postgres.\nComme les autres DSN, `query` n'est valid\u00e9e SELECT-only qu'avec le dialecte\nDuckDB (heuristique, cf. ReaderConnectorDatabricksParams).",
+        "properties": {
+          "dsn": {
+            "minLength": 1,
+            "title": "Dsn",
+            "type": "string"
+          },
+          "kind": {
+            "const": "databricks_dsn",
+            "default": "databricks_dsn",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dsn"
+        ],
+        "title": "DatabricksDsnPayload",
+        "type": "object"
+      },
       "DatasetColumnMeta": {
         "properties": {
           "description": {
@@ -4817,6 +4838,7 @@
                 "basic_auth": "#/components/schemas/BasicAuthPayload",
                 "bearer_token": "#/components/schemas/BearerTokenPayload",
                 "bigquery_dsn": "#/components/schemas/BigQueryDsnPayload",
+                "databricks_dsn": "#/components/schemas/DatabricksDsnPayload",
                 "gcs_credentials": "#/components/schemas/GcsCredentialsPayload",
                 "mssql_dsn": "#/components/schemas/MssqlDsnPayload",
                 "oauth2_client_credentials": "#/components/schemas/OAuth2ClientCredentialsPayload",
@@ -4858,6 +4880,9 @@
               },
               {
                 "$ref": "#/components/schemas/OracleDsnPayload"
+              },
+              {
+                "$ref": "#/components/schemas/DatabricksDsnPayload"
               },
               {
                 "$ref": "#/components/schemas/S3CredentialsPayload"
@@ -4889,6 +4914,7 @@
                 "basic_auth": "#/components/schemas/BasicAuthPayload",
                 "bearer_token": "#/components/schemas/BearerTokenPayload",
                 "bigquery_dsn": "#/components/schemas/BigQueryDsnPayload",
+                "databricks_dsn": "#/components/schemas/DatabricksDsnPayload",
                 "gcs_credentials": "#/components/schemas/GcsCredentialsPayload",
                 "mssql_dsn": "#/components/schemas/MssqlDsnPayload",
                 "oauth2_client_credentials": "#/components/schemas/OAuth2ClientCredentialsPayload",
@@ -4930,6 +4956,9 @@
               },
               {
                 "$ref": "#/components/schemas/OracleDsnPayload"
+              },
+              {
+                "$ref": "#/components/schemas/DatabricksDsnPayload"
               },
               {
                 "$ref": "#/components/schemas/S3CredentialsPayload"
@@ -6435,6 +6464,22 @@
               "minimum": 0,
               "title": "Offset",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
             }
           },
           {
