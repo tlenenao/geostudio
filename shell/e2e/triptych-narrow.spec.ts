@@ -394,9 +394,11 @@ for (const screen of SCREENS) {
 // ancienne valeur laisserait toute la suite committée verte, puisque les
 // groupes 390px/900px ci-dessus ne testent jamais un viewport à l'intérieur
 // de la bande 391-899px. 700px est choisi à l'intérieur de cette bande :
-// sous le seuil actuel (899px) il doit rendre le mode ÉTROIT (BottomNav
-// "Navigation" + onglets), pas la grille desktop (DomainBar "Domaines",
-// aucun role="tab"). Si le seuil régressait sous 700px, AppLayout.tsx
+// sous le seuil actuel (899px) le chrome doit rester mobile (BottomNav
+// "Navigation", pas DomainBar "Domaines") et TriptychLayout rendre le mode
+// MEDIUM (REV-286 a : deux volets, onglets Couches/Inspecter dans le volet
+// latéral) — ni les onglets à un seul volet de <640px, ni la grille
+// desktop. Si le seuil régressait sous 700px, AppLayout.tsx
 // basculerait sur DomainBar et TriptychLayout.tsx sur sa grille — ce test
 // échouerait pour de vrai (vérifié : DomainBar/BottomNav utilisent des
 // libellés aria-label distincts, "Domaines"/"Navigation",
@@ -411,6 +413,9 @@ test("700 px (bande 640-899) : chrome mobile, mais deux volets côte à côte", 
   // Deux volets : la carte ET un volet latéral à deux onglets, simultanément visibles.
   await expect(page.getByRole("tab")).toHaveCount(2);
   await expect(page.locator(".maplibregl-canvas").first()).toBeVisible();
+  // Plancher SP-33 : le volet central (carte) garde au moins 360 px à 700 px.
+  const centre = await page.locator(".maplibregl-canvas").first().boundingBox();
+  expect(centre?.width ?? 0).toBeGreaterThanOrEqual(360);
   await expect(page.getByRole("tab", { name: "Couches", selected: true })).toBeVisible();
   await page.getByRole("tab", { name: "Inspecter" }).click();
   await expect(page.getByRole("tab", { name: "Inspecter", selected: true })).toBeVisible();

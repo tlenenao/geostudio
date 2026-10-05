@@ -105,3 +105,24 @@ test("medium, mode contrôlé : activeTabId = inspect ouvre le volet latéral su
   render(<TriptychLayout {...TABS} activeTabId="inspect" />);
   expect(screen.getByText("Contenu Inspecter")).toBeVisible();
 });
+
+test("medium : le volet latéral suit le patron WAI-ARIA (flèches, Home, End, tabindex itinérant)", async () => {
+  vi.mocked(useViewportMode).mockReturnValue("medium");
+  render(<TriptychLayout {...TABS} />);
+  const browseTab = screen.getByRole("tab", { name: "Parcourir" });
+  const inspectTab = screen.getByRole("tab", { name: "Inspecter" });
+  browseTab.focus();
+  expect(browseTab).toHaveAttribute("tabindex", "0");
+  expect(inspectTab).toHaveAttribute("tabindex", "-1");
+  await userEvent.keyboard("{ArrowRight}");
+  expect(inspectTab).toHaveAttribute("aria-selected", "true");
+  expect(inspectTab).toHaveFocus();
+  await userEvent.keyboard("{ArrowRight}");
+  expect(browseTab).toHaveAttribute("aria-selected", "true");
+  await userEvent.keyboard("{End}");
+  expect(inspectTab).toHaveFocus();
+  await userEvent.keyboard("{Home}");
+  expect(browseTab).toHaveFocus();
+  await userEvent.keyboard("{ArrowLeft}");
+  expect(inspectTab).toHaveAttribute("aria-selected", "true");
+});

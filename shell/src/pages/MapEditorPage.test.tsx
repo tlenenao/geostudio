@@ -129,11 +129,6 @@ function renderEditor(client: Partial<ItemClient>, initialEntries: string[] = ["
   );
 }
 
-// Harnais dédié aux tests de garde de navigation (Tâche 27) : le lien "Retour
-// au catalogue" fait normalement partie du chrome (AppLayout/TopBar), hors
-// périmètre de ce fichier qui monte `MapEditorPage` isolément — un lien
-// factice suffit à prouver que le blocker engage bien la navigation, quelle
-// que soit son origine réelle dans l'app.
 test("REV-207 : l'onglet actif (mode étroit) est lu depuis ?tab= et réécrit dans l'URL", async () => {
   stubMatchMedia(true);
   renderEditor(
@@ -149,7 +144,7 @@ test("REV-207 : l'onglet actif (mode étroit) est lu depuis ?tab= et réécrit d
   expect(screen.getByRole("tab", { name: "Carte" })).toHaveAttribute("aria-selected", "true");
 });
 
-test("REV-207 : une valeur ?tab= inconnue retombe sur l'onglet Carte", async () => {
+test("REV-207 : une valeur ?tab= inconnue retombe sur l'onglet Carte, un seul onglet sélectionné", async () => {
   stubMatchMedia(true);
   renderEditor(
     {
@@ -158,12 +153,44 @@ test("REV-207 : une valeur ?tab= inconnue retombe sur l'onglet Carte", async () 
     },
     ["/maps/77?tab=n-importe-quoi"],
   );
-  expect(await screen.findByRole("tab", { name: "Carte" })).toHaveAttribute(
+  await screen.findByRole("tab", { name: "Carte" });
+  const selected = screen
+    .getAllByRole("tab")
+    .filter((t) => t.getAttribute("aria-selected") === "true");
+  expect(selected.map((t) => t.textContent)).toEqual(["Carte"]);
+});
+
+test("REV-207 + REV-286 : en mode medium, ?tab=settings ouvre le volet latéral sur Réglages, ?tab invalide sur Couches", async () => {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn((q: string) => ({
+      matches: q === "(max-width: 899px)",
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })),
+  );
+  const client = {
+    getMapConfig: vi.fn().mockResolvedValue(config),
+    listLayerSources: vi.fn().mockResolvedValue([]),
+  };
+  const first = renderEditor(client, ["/maps/77?tab=settings"]);
+  expect(await screen.findByRole("tab", { name: "Inspecter" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  first.unmount();
+  renderEditor(client, ["/maps/77?tab=n-importe-quoi"]);
+  expect(await screen.findByRole("tab", { name: "Couches" })).toHaveAttribute(
     "aria-selected",
     "true",
   );
 });
 
+// Harnais dédié aux tests de garde de navigation (Tâche 27) : le lien "Retour
+// au catalogue" fait normalement partie du chrome (AppLayout/TopBar), hors
+// périmètre de ce fichier qui monte `MapEditorPage` isolément — un lien
+// factice suffit à prouver que le blocker engage bien la navigation, quelle
+// que soit son origine réelle dans l'app.
 function renderEditorWithNavigation(client: Partial<ItemClient>) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const merged: Partial<ItemClient> = {

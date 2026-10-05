@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import { renderHook, act } from "@testing-library/react";
-import { vi } from "vitest";
+import { afterEach, vi } from "vitest";
 import { useNarrowViewport, useViewportMode, NARROW_QUERY, PHONE_QUERY } from "./useNarrowViewport";
+
+afterEach(() => vi.unstubAllGlobals());
 
 function mockMatchMedia(initialMatches: boolean) {
   let listener: (() => void) | null = null;
@@ -67,5 +69,27 @@ test("useViewportMode : wide / medium / narrow selon les deux requêtes", () => 
   expect(renderHook(() => useViewportMode()).result.current).toBe("medium");
   stubQueries({ [NARROW_QUERY]: true, [PHONE_QUERY]: true });
   expect(renderHook(() => useViewportMode()).result.current).toBe("narrow");
-  vi.unstubAllGlobals();
+});
+
+test("useViewportMode : rebascule sur l'événement change des deux requêtes", () => {
+  const state = { [NARROW_QUERY]: false, [PHONE_QUERY]: false };
+  const listeners: (() => void)[] = [];
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn((q: keyof typeof state) => ({
+      get matches() {
+        return state[q];
+      },
+      addEventListener: (_: string, cb: () => void) => listeners.push(cb),
+      removeEventListener: () => {},
+    })),
+  );
+  const { result } = renderHook(() => useViewportMode());
+  expect(result.current).toBe("wide");
+  state[NARROW_QUERY] = true;
+  act(() => listeners.forEach((l) => l()));
+  expect(result.current).toBe("medium");
+  state[PHONE_QUERY] = true;
+  act(() => listeners.forEach((l) => l()));
+  expect(result.current).toBe("narrow");
 });
