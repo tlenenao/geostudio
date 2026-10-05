@@ -514,6 +514,8 @@ services:
       S3_UPLOADS_BUCKET: geostudio-uploads
       S3_CDC_BUCKET: geostudio-cdc
       CORE_CDC_COMPACTION_RECENT_DAYS: ${CORE_CDC_COMPACTION_RECENT_DAYS:-7}
+      # Balayage mensuel de toutes les partitions CDC (REV-280e), éteint par défaut.
+      CORE_CDC_COMPACTION_MONTHLY: ${CORE_CDC_COMPACTION_MONTHLY:-false}
       # Snapshot horaire d'état courant du lac (REV-280a), éteint par défaut.
       CORE_LAKE_SNAPSHOT_ENABLED: ${CORE_LAKE_SNAPSHOT_ENABLED:-false}
       CORE_LAKE_SNAPSHOT_MIN_DELTA_FILES: ${CORE_LAKE_SNAPSHOT_MIN_DELTA_FILES:-20}

@@ -27,9 +27,7 @@ from app.jobs.common import session_factory
 logger = logging.getLogger(__name__)
 
 
-@app.periodic(cron="*/10 * * * *")
-@app.task(queue="cdc", queueing_lock="run_compaction_cycle_task")
-def run_compaction_cycle_task(timestamp: int) -> None:
+def _compact(recent_days: int | None) -> None:
     bucket = os.environ.get("S3_CDC_BUCKET", "geostudio-cdc")
     client = storage.make_s3_client(
         endpoint_url=os.environ["S3_ENDPOINT_URL"],
@@ -37,11 +35,7 @@ def run_compaction_cycle_task(timestamp: int) -> None:
         secret_key=os.environ["S3_SECRET_KEY"],
     )
     storage.ensure_cdc_bucket(client, bucket)
-    report = compaction.run_compaction_cycle(
-        client,
-        bucket=bucket,
-        recent_days=int(os.environ.get("CORE_CDC_COMPACTION_RECENT_DAYS") or 7),
-    )
+    report = compaction.run_compaction_cycle(client, bucket=bucket, recent_days=recent_days)
     logger.info(
         "compaction cycle: %s partitions scanned, %s compacted, %s files removed, %s failed",
         report.partitions_scanned,
@@ -49,6 +43,25 @@ def run_compaction_cycle_task(timestamp: int) -> None:
         report.files_removed,
         report.partitions_failed,
     )
+
+
+@app.periodic(cron="*/10 * * * *")
+@app.task(queue="cdc", queueing_lock="run_compaction_cycle_task")
+def run_compaction_cycle_task(timestamp: int) -> None:
+    _compact(int(os.environ.get("CORE_CDC_COMPACTION_RECENT_DAYS") or 7))
+
+
+@app.periodic(cron="30 3 1 * *")
+@app.task(queue="cdc", queueing_lock="run_compaction_monthly_task")
+def run_compaction_monthly_task(timestamp: int) -> None:
+    """REV-280e : balayage mensuel de TOUTES les partitions (le cycle de 10 min
+    ne voit que les `recent_days` derniers jours). Flag CORE_CDC_COMPACTION_MONTHLY,
+    éteint par défaut. Sûr sans condition de snapshot : la compaction fusionne des
+    fichiers d'une même partition `dt=` sans jamais supprimer de ligne (ni toucher
+    `snapshot/`), `_ts` est conservé donc le delta du snapshot est inchangé."""
+    if (os.environ.get("CORE_CDC_COMPACTION_MONTHLY") or "false").lower() not in ("1", "true"):
+        return
+    _compact(None)
 
 
 _SNAPSHOT_TIMEOUT_S = 900  # ponytail: plafond fixe, variable CORE_* si un lac l'exige
