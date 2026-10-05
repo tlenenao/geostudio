@@ -9,7 +9,7 @@ test("un widget Web Component se pose dans le builder, suit le thème, émet un 
 
   await page.getByRole("button", { name: "Nouveau" }).click();
   await page.getByRole("dialog", { name: "Nouvel élément" }).getByLabel("Type").selectOption("app");
-  await page.getByLabel("Titre").fill("App WC");
+  await page.getByLabel("Titre", { exact: true }).fill("App WC");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 

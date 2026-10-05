@@ -24,7 +24,7 @@ test("REV-183 : générer une condition d'affichage, l'appliquer seulement sur c
   await page.getByRole("button", { name: "Nouveau" }).click();
   const dialog = page.getByRole("dialog", { name: "Nouvel élément" });
   await dialog.getByLabel("Type").selectOption("app");
-  await page.getByLabel("Titre").fill("Mon app");
+  await page.getByLabel("Titre", { exact: true }).fill("Mon app");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 

@@ -10,7 +10,7 @@ test("publishing an item, capturing a thumbnail, and the runtime route still wor
   // Create an app (lands on /apps/9/edit, per every other E2E spec's convention).
   await page.getByRole("button", { name: "Nouveau" }).click();
   await page.getByRole("dialog", { name: "Nouvel élément" }).getByLabel("Type").selectOption("app");
-  await page.getByLabel("Titre").fill("App publication");
+  await page.getByLabel("Titre", { exact: true }).fill("App publication");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 

@@ -24,7 +24,7 @@ test("un widget d'extension chargé dynamiquement par URL se pose dans le builde
 
   await page.getByRole("button", { name: "Nouveau" }).click();
   await page.getByRole("dialog", { name: "Nouvel élément" }).getByLabel("Type").selectOption("app");
-  await page.getByLabel("Titre").fill("App extension");
+  await page.getByLabel("Titre", { exact: true }).fill("App extension");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 
@@ -84,7 +84,7 @@ test("désactiver une extension affiche un placeholder au lieu de casser une app
   await page.goto("/");
   await page.getByRole("button", { name: "Nouveau" }).click();
   await page.getByRole("dialog", { name: "Nouvel élément" }).getByLabel("Type").selectOption("app");
-  await page.getByLabel("Titre").fill("App extension désactivée");
+  await page.getByLabel("Titre", { exact: true }).fill("App extension désactivée");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
   await page.getByRole("button", { name: "Jauge (extension)" }).click();

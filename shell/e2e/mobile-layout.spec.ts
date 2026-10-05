@@ -143,7 +143,7 @@ test("les commandes d'un widget sélectionné font au moins 24x24 px (j12-006)",
   await page.goto("/");
   await page.getByRole("button", { name: "Nouveau" }).click();
   await page.getByRole("dialog", { name: "Nouvel élément" }).getByLabel("Type").selectOption("app");
-  await page.getByLabel("Titre").fill("App tactile");
+  await page.getByLabel("Titre", { exact: true }).fill("App tactile");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
   await page.getByRole("button", { name: "Texte", exact: true }).click();

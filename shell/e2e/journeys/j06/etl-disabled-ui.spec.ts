@@ -47,7 +47,7 @@ test.describe("j06 ETL désactivé — shell (créateur)", () => {
   test("requête visuelle : formulaire affiché mais « Créer » reste désactivé", async ({ page }) => {
     await spaGoto(page, "/datasets/visual-query/new");
     await expect(page.getByRole("heading", { name: "Nouvelle requête visuelle" })).toBeVisible();
-    await page.getByLabel("Titre").fill("aud-j06 requête");
+    await page.getByLabel("Titre", { exact: true }).fill("aud-j06 requête");
     await expect(page.getByRole("button", { name: "Créer" })).toBeDisabled();
     await expect(page.getByText("Fonction indisponible sur cette instance")).toBeVisible();
   });

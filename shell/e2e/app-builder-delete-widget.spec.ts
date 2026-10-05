@@ -7,7 +7,7 @@ test("a widget can be removed from the canvas and the removal is undoable", asyn
   await page.getByRole("button", { name: "Nouveau" }).click();
   const dialog = page.getByRole("dialog", { name: "Nouvel élément" });
   await dialog.getByLabel("Type").selectOption("app");
-  await page.getByLabel("Titre").fill("Mon app");
+  await page.getByLabel("Titre", { exact: true }).fill("Mon app");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 
@@ -35,7 +35,7 @@ test("REV-285 h : supprimer le 1er de deux widgets ne renumérote pas le surviva
   await page.getByRole("button", { name: "Nouveau" }).click();
   const dialog = page.getByRole("dialog", { name: "Nouvel élément" });
   await dialog.getByLabel("Type").selectOption("app");
-  await page.getByLabel("Titre").fill("Mon app");
+  await page.getByLabel("Titre", { exact: true }).fill("Mon app");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 

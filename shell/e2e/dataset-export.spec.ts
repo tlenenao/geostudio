@@ -10,7 +10,7 @@ async function createApp(page: Page, title: string) {
   await page.goto("/");
   await page.getByRole("button", { name: "Nouveau" }).click();
   await page.getByRole("dialog", { name: "Nouvel élément" }).getByLabel("Type").selectOption("app");
-  await page.getByLabel("Titre").fill(title);
+  await page.getByLabel("Titre", { exact: true }).fill(title);
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 }

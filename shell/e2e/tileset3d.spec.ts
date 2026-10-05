@@ -87,7 +87,7 @@ test("upload a tileset, add it to a map via LayerPicker, the proxy request succe
     mimeType: "application/zip",
     buffer: Buffer.from("PK\x03\x04fake"),
   });
-  await page.getByLabel("Titre").fill("Ville de test E2E");
+  await page.getByLabel("Titre", { exact: true }).fill("Ville de test E2E");
   // "Importer" (non-exact) would also match the header's "Importer un
   // fichier" trigger button, which stays in the DOM behind the dialog
   // overlay — scope to the exact submit button's accessible name, same

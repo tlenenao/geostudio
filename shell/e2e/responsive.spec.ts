@@ -9,7 +9,7 @@ test("a per-breakpoint position is applied by the runtime at the matching viewpo
 
   await page.getByRole("button", { name: "Nouveau" }).click();
   await page.getByRole("dialog", { name: "Nouvel élément" }).getByLabel("Type").selectOption("app");
-  await page.getByLabel("Titre").fill("App responsive");
+  await page.getByLabel("Titre", { exact: true }).fill("App responsive");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 

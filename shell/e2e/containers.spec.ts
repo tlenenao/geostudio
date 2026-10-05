@@ -8,7 +8,7 @@ test("Onglets switches which nested widget is visible", async ({ page }) => {
 
   await page.getByRole("button", { name: "Nouveau" }).click();
   await page.getByRole("dialog", { name: "Nouvel élément" }).getByLabel("Type").selectOption("app");
-  await page.getByLabel("Titre").fill("App onglets");
+  await page.getByLabel("Titre", { exact: true }).fill("App onglets");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 
@@ -38,7 +38,7 @@ test("a Tabs widget shows its active tab's content directly on the edit canvas",
 
   await page.getByRole("button", { name: "Nouveau" }).click();
   await page.getByRole("dialog", { name: "Nouvel élément" }).getByLabel("Type").selectOption("app");
-  await page.getByLabel("Titre").fill("App onglets aperçu");
+  await page.getByLabel("Titre", { exact: true }).fill("App onglets aperçu");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 
@@ -62,7 +62,7 @@ test("Bouton opens a Modale via the action bus, and Escape closes it", async ({ 
 
   await page.getByRole("button", { name: "Nouveau" }).click();
   await page.getByRole("dialog", { name: "Nouvel élément" }).getByLabel("Type").selectOption("app");
-  await page.getByLabel("Titre").fill("App modale");
+  await page.getByLabel("Titre", { exact: true }).fill("App modale");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 
@@ -98,7 +98,7 @@ test("Bouton opens a Tiroir via the action bus, and Escape closes it", async ({ 
 
   await page.getByRole("button", { name: "Nouveau" }).click();
   await page.getByRole("dialog", { name: "Nouvel élément" }).getByLabel("Type").selectOption("app");
-  await page.getByLabel("Titre").fill("App tiroir");
+  await page.getByLabel("Titre", { exact: true }).fill("App tiroir");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 

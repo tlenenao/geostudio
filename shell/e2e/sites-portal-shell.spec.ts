@@ -12,7 +12,7 @@ test("créer un site, le publier, le consulter en anonyme", async ({ page }) => 
     .getByRole("dialog", { name: "Nouvel élément" })
     .getByLabel("Type")
     .selectOption("site");
-  await page.getByLabel("Titre").fill("Mon Portail");
+  await page.getByLabel("Titre", { exact: true }).fill("Mon Portail");
   await expect(page.getByLabel("Slug")).toHaveValue("mon-portail");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/site-1\/edit$/);

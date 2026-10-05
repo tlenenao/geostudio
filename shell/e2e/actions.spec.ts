@@ -7,7 +7,7 @@ test("Filtre widget filters a bound List through the action bus", async ({ page 
 
   await page.getByRole("button", { name: "Nouveau" }).click();
   await page.getByRole("dialog", { name: "Nouvel élément" }).getByLabel("Type").selectOption("app");
-  await page.getByLabel("Titre").fill("App actions");
+  await page.getByLabel("Titre", { exact: true }).fill("App actions");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 
