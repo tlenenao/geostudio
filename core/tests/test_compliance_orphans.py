@@ -177,3 +177,51 @@ def test_sweep_attachments_deletes_only_unreferenced_old_objects(session, monkey
     )
     assert sweep_orphan_job_objects(session, s3, now=NOW) == 1
     assert s3.deleted == [("geostudio-attachments", "t/c/1/orphan.pdf")]
+
+
+def test_sweep_skips_attachments_and_uploads_when_reference_table_is_empty(session, monkeypatch):
+    monkeypatch.delenv("S3_ATTACHMENTS_BUCKET", raising=False)
+    monkeypatch.delenv("S3_UPLOADS_BUCKET", raising=False)
+    s3 = FakeS3(
+        {
+            "geostudio-attachments": {"t/c/1/a.pdf": OLD},
+            "geostudio-uploads": {"t/a.csv": OLD},
+        }
+    )
+    assert sweep_orphan_job_objects(session, s3, now=NOW) == 0
+    assert s3.deleted == []
+
+
+def test_sweep_aborts_when_a_full_page_is_entirely_condemned(session, monkeypatch):
+    monkeypatch.delenv("S3_ATTACHMENTS_BUCKET", raising=False)
+    session.add(
+        Attachment(
+            id="a1",
+            tenant_id="t",
+            collection_id="c",
+            fid="1",
+            field_key="f",
+            filename="a.pdf",
+            content_type="application/pdf",
+            byte_size=1,
+            s3_key="t/c/1/other.pdf",  # table non vide mais désynchronisée du bucket
+            created_by="u",
+        )
+    )
+    session.commit()
+    objs = {f"t/c/1/o{i:03}.pdf": OLD for i in range(150)}
+
+    class Big(FakeS3):
+        def list_objects_v2(self, *, Bucket, Prefix="", ContinuationToken=None):
+            if Bucket not in self.buckets:
+                return super().list_objects_v2(Bucket=Bucket)
+            keys = sorted(self.buckets[Bucket])
+            return {
+                "Contents": [{"Key": k, "LastModified": OLD} for k in keys[:100]],
+                "IsTruncated": True,
+                "NextContinuationToken": keys[99],
+            }
+
+    s3 = Big({"geostudio-attachments": objs})
+    assert sweep_orphan_job_objects(session, s3, now=NOW) == 0
+    assert s3.deleted == []
