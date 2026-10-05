@@ -23,6 +23,9 @@ class Group(Base):
 
 class GroupMember(Base):
     __tablename__ = "group_members"
+    # PK = (group_id, user_id) : sans cet index, `WHERE user_id = ?` (can(),
+    # catalogue) fait un Seq Scan (REV-279 c, trouvé au rejeu sur Postgres réel).
+    __table_args__ = (Index("ix_group_members_user_id", "user_id"),)
 
     group_id: Mapped[str] = mapped_column(
         ForeignKey("groups.id", ondelete="CASCADE"), primary_key=True
