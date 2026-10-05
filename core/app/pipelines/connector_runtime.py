@@ -231,7 +231,9 @@ def _blob_resource(files, reader):
             real_open = item.open
 
             def capped_open(*args, **kwargs):
-                return _CappedReader(real_open(*args, **kwargs), state, max_bytes)
+                return io.BufferedReader(
+                    _CappedReader(real_open(*args, **kwargs), state, max_bytes)
+                )
 
             item.open = capped_open
         return item

@@ -1764,3 +1764,18 @@ def test_capped_reader_close_closes_the_underlying_open_file():
     with reader:
         pass
     assert of.closed
+
+
+def test_blob_gzip_jsonl_still_loads_rows_through_the_buffered_cap(conn, tmp_path):
+    import gzip
+    import json
+
+    from dlt.sources.filesystem import filesystem
+
+    raw = b"".join(json.dumps({"a": i}).encode() + b"\n" for i in range(5))
+    (tmp_path / "a.jsonl.gz").write_bytes(gzip.compress(raw))
+    files = filesystem(bucket_url=str(tmp_path), file_glob="*.jsonl.gz")
+    resource = connector_runtime._blob_resource(files, connector_runtime.read_jsonl())
+    resource.apply_hints(table_name="records", write_disposition="replace")
+    connector_runtime._run_dlt_and_attach(conn, resource, node_id="gz2", view_name="node_gz2")
+    assert conn.execute("SELECT count(*) FROM node_gz2").fetchone()[0] == 5
