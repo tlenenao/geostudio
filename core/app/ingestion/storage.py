@@ -111,10 +111,16 @@ def generate_presigned_put_url(
     )
 
 
-def generate_presigned_get_url(client, *, bucket: str, key: str, expires_in: int = 3600) -> str:
+def generate_presigned_get_url(
+    client, *, bucket: str, key: str, expires_in: int = 3600, filename: str | None = None
+) -> str:
+    params = {"Bucket": bucket, "Key": key}
+    if filename:
+        safe = filename.replace('"', "")
+        params["ResponseContentDisposition"] = f'attachment; filename="{safe}"'
     return _signing_client(client).generate_presigned_url(
         "get_object",
-        Params={"Bucket": bucket, "Key": key},
+        Params=params,
         ExpiresIn=expires_in,
     )
 

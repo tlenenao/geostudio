@@ -2,11 +2,14 @@
 import pytest
 from fastapi.testclient import TestClient  # noqa: F401
 
-from app.attachments.routes import get_s3_client
 from app.dataexport import repository as dx_repo
 from app.dataexport import routes as dx_routes
 from app.dataexport.models import CollectionExportJob
 from app.features import routes as features_routes
+from app.ingestion.routes import get_s3_client
+from app.roles.repository import create_role
+from app.tenants.models import Tenant
+from app.users.repository import get_or_create_user
 from tests.test_features_export_routes import _as, _register
 from tests.test_features_export_routes import env as _env
 
@@ -15,7 +18,8 @@ env = _env
 
 class _FakeS3:
     def generate_presigned_url(self, operation, Params, ExpiresIn):  # noqa: N803
-        return f"https://s3.test/{Params['Bucket']}/{Params['Key']}"
+        cd = Params.get("ResponseContentDisposition")
+        return f"https://s3.test/{Params['Bucket']}/{Params['Key']}" + (f"?cd={cd}" if cd else "")
 
 
 @pytest.fixture()
@@ -134,6 +138,7 @@ def test_status_returns_presigned_url_when_done(env, starter, monkeypatch):
     assert (
         body["resultUrl"]
         == f"https://s3.test/geostudio-exports/{tenant_id}/data-exports/{job_id}.csv"
+        '?cd=attachment; filename="v.csv"'
     )
 
 
@@ -146,3 +151,85 @@ def test_status_of_another_user_or_collection_is_404(env, starter, monkeypatch):
     assert client.get(f"/v1/collections/other/export/jobs/{job_id}").status_code == 404
     _as(app, regular)  # lecteur de la collection publique, mais pas demandeur
     assert client.get(f"/v1/collections/{col['id']}/export/jobs/{job_id}").status_code == 404
+
+
+def _done_job_as_admin(env, monkeypatch):
+    app, client, admin, regular, _p, tenant_id, Session = env
+    monkeypatch.setenv("CORE_EXPORT_SYNC_MAX", "1")
+    col = _register(app, client, admin, public=True)
+    _add_items(client, col["id"], 2)
+    job_id = client.get(f"/v1/collections/{col['id']}/export/items?format=csv").json()["jobId"]
+    with Session() as s:
+        dx_repo.mark_running(s, job_id)
+        dx_repo.mark_done(s, job_id, result_key=f"{tenant_id}/x/{job_id}.csv", filename="v.csv")
+        s.commit()
+    return f"/v1/collections/{col['id']}/export/jobs/{job_id}"
+
+
+def _with_privileges(Session, user, tenant_id, privileges):
+    with Session() as s:
+        role = create_role(
+            s, tenant_id=tenant_id, name="r" + "".join(privileges), privileges=privileges
+        )
+        s.commit()
+        user.role_id = role.id  # l'objet est celui que renvoie get_current_user
+
+
+def test_tasks_view_all_without_view_sensitive_cannot_get_unmasked_result(
+    env, starter, monkeypatch
+):
+    # GAP-22 : le job a été créé masked=False par l'admin ; le lien présigné
+    # contient les colonnes sensibles, un non-demandeur ne le reçoit que s'il
+    # pourrait lui-même les lire.
+    app, client, admin, regular, _p, tenant_id, Session = env
+    url = _done_job_as_admin(env, monkeypatch)
+    _with_privileges(Session, regular, tenant_id, ["tasks.view_all", "data.read"])
+    _as(app, regular)
+    assert client.get(url).status_code == 404
+
+
+def test_tasks_view_all_with_view_sensitive_gets_unmasked_result(env, starter, monkeypatch):
+    app, client, admin, regular, _p, tenant_id, Session = env
+    url = _done_job_as_admin(env, monkeypatch)
+    _with_privileges(Session, regular, tenant_id, ["tasks.view_all", "data.view_sensitive"])
+    _as(app, regular)
+    assert client.get(url).json()["resultUrl"]
+
+
+def test_tasks_view_all_gets_masked_result_without_view_sensitive(env, starter, monkeypatch):
+    app, client, admin, regular, _p, tenant_id, Session = env
+    monkeypatch.setenv("CORE_EXPORT_SYNC_MAX", "1")
+    col = _register(app, client, admin, public=True)
+    _add_items(client, col["id"], 2)
+    _as(app, regular)
+    job_id = client.get(f"/v1/collections/{col['id']}/export/items?format=csv").json()["jobId"]
+    requester = _requester_view(client, col["id"], job_id)
+    assert requester == 200
+    other = admin  # un autre utilisateur, tasks.view_all (admin), lit le job masqué
+    _as(app, other)
+    assert client.get(f"/v1/collections/{col['id']}/export/jobs/{job_id}").status_code == 200
+
+
+def _requester_view(client, col_id, job_id):
+    return client.get(f"/v1/collections/{col_id}/export/jobs/{job_id}").status_code
+
+
+def test_status_of_another_tenant_is_404(env, starter, monkeypatch):
+    app, client, admin, regular, _p, tenant_id, Session = env
+    url = _done_job_as_admin(env, monkeypatch)
+    with Session() as s:
+        s.add(Tenant(id="t2", slug="t2", name="T2"))
+        s.flush()
+        stranger = get_or_create_user(
+            s,
+            tenant_id="t2",
+            oidc_sub="x",
+            username="x",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=True,
+        )
+        s.commit()
+    _as(app, stranger)
+    assert client.get(url).status_code == 404

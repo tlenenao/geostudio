@@ -8,13 +8,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.attachments.routes import get_s3_client
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
 from app.collections.routes import get_collection_for_read
 from app.dataexport import repository as repo
 from app.dataexport.jobs import exports_bucket, run_collection_export
 from app.db import get_session
+from app.ingestion.routes import get_s3_client  # même dépendance que export/routes.py
 from app.ingestion.storage import generate_presigned_get_url
 from app.roles.guards import has_privilege
 from app.roles.privileges import Privilege
@@ -71,12 +71,25 @@ def default_starter(session: Session, **kwargs) -> str:
     return start_export(session, **kwargs)
 
 
+def _may_see(session: Session, user: User, job) -> bool:
+    if job.requested_by == user.id:
+        return True
+    if not has_privilege(session, user, Privilege.TASKS_VIEW_ALL.value):
+        return False
+    # GAP-22 : le fichier d'un job non masqué contient les colonnes sensibles.
+    return job.masked or has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)
+
+
 class CollectionExportJobStatus(BaseModel):
     id: str
     status: str
     resultUrl: str | None = None
     error: str | None = None
     filename: str | None = None
+
+
+def get_exports_bucket() -> str:  # surchargeable, comme export/routes.py
+    return exports_bucket()
 
 
 @router.get(
@@ -88,22 +101,18 @@ def get_collection_export_job(
     session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
     s3=Depends(get_s3_client),
+    bucket: str = Depends(get_exports_bucket),
 ) -> CollectionExportJobStatus:
     job = repo.get_job(session, job_id, user.tenant_id)
-    if (
-        job is None
-        or job.collection_id != collection_id
-        or (
-            job.requested_by != user.id
-            and not has_privilege(session, user, Privilege.TASKS_VIEW_ALL.value)
-        )
-    ):
+    if job is None or job.collection_id != collection_id or not _may_see(session, user, job):
         raise HTTPException(status_code=404, detail="export job not found")
     # Lecture de la collection revérifiée (404 si le droit a été retiré depuis).
     get_collection_for_read(session, user, collection_id)
     url = None
     if job.status == "done" and job.result_key:
-        url = generate_presigned_get_url(s3, bucket=exports_bucket(), key=job.result_key)
+        url = generate_presigned_get_url(
+            s3, bucket=bucket, key=job.result_key, filename=job.filename
+        )
     return CollectionExportJobStatus(
         id=job.id, status=job.status, resultUrl=url, error=job.error, filename=job.filename
     )
