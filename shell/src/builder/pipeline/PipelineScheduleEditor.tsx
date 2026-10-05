@@ -125,7 +125,7 @@ export function PipelineScheduleEditor({
           <label className="flex flex-col gap-1">
             {t("pipelineSchedule.modeAria")}
             <select
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={form.mode}
               onChange={(e) => {
                 const mode = e.target.value as ScheduleForm["mode"];
@@ -156,7 +156,7 @@ export function PipelineScheduleEditor({
               <input
                 type="number"
                 min={1}
-                className="h-8 rounded border border-control bg-surface px-2 text-ink"
+                className="h-9 rounded border border-control bg-surface px-2 text-ink"
                 value={form.minutes}
                 onChange={(e) => handleSetForm({ mode: "interval", minutes: e.target.value })}
                 disabled={readOnly}
@@ -168,7 +168,7 @@ export function PipelineScheduleEditor({
               {t("pipelineSchedule.executionTimeLabel")}
               <input
                 type="time"
-                className="h-8 rounded border border-control bg-surface px-2 text-ink"
+                className="h-9 rounded border border-control bg-surface px-2 text-ink"
                 value={form.time}
                 onChange={(e) => handleSetForm({ mode: "daily", time: e.target.value })}
                 disabled={readOnly}
@@ -180,7 +180,7 @@ export function PipelineScheduleEditor({
               <label className="flex flex-col gap-1">
                 {t("pipelineSchedule.dayAria")}
                 <select
-                  className="h-8 rounded border border-control bg-surface px-2 text-ink"
+                  className="h-9 rounded border border-control bg-surface px-2 text-ink"
                   value={form.day}
                   onChange={(e) =>
                     handleSetForm({ mode: "weekly", day: e.target.value, time: form.time })
@@ -198,7 +198,7 @@ export function PipelineScheduleEditor({
                 {t("pipelineSchedule.executionTimeLabel")}
                 <input
                   type="time"
-                  className="h-8 rounded border border-control bg-surface px-2 text-ink"
+                  className="h-9 rounded border border-control bg-surface px-2 text-ink"
                   value={form.time}
                   onChange={(e) =>
                     handleSetForm({ mode: "weekly", day: form.day, time: e.target.value })
@@ -214,7 +214,7 @@ export function PipelineScheduleEditor({
               <input
                 aria-invalid={!ADVANCED_CRON_RE.test(form.raw)}
                 aria-describedby={!ADVANCED_CRON_RE.test(form.raw) ? `${cronErrorId}` : undefined}
-                className="h-8 rounded border border-control bg-surface px-2 font-mono text-ink"
+                className="h-9 rounded border border-control bg-surface px-2 font-mono text-ink"
                 value={form.raw}
                 onChange={(e) => handleSetForm({ mode: "advanced", raw: e.target.value })}
                 disabled={readOnly}

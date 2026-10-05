@@ -153,7 +153,7 @@ function ShareLinksPanel({ itemId }: { itemId: string }) {
             aria-label={t("shareForm.ttlAria")}
             min={1}
             max={MAX_SHARE_LINK_TTL_DAYS}
-            className="h-8 w-16 rounded-md border border-control bg-surface px-2 text-xs text-ink"
+            className="h-9 w-16 rounded-md border border-control bg-surface px-2 text-xs text-ink"
             value={ttlDays}
             onChange={(e) => setTtlDays(Number(e.target.value))}
           />
@@ -250,7 +250,7 @@ function AddGroupMemberControl({ groupId, groupTitle }: { groupId: string; group
         type="search"
         aria-label={t("shareForm.memberSearchAria", { group: groupTitle })}
         placeholder={t("shareForm.memberSearchPlaceholder")}
-        className="h-8 rounded-md border border-control bg-surface px-2 text-xs text-ink"
+        className="h-9 rounded-md border border-control bg-surface px-2 text-xs text-ink"
         value={q}
         onChange={(e) => setQ(e.target.value)}
       />
@@ -333,7 +333,7 @@ function GroupManageControl({ group }: { group: Group }) {
         <input
           type="text"
           aria-label={t("shareForm.renameGroupAria", { group: group.title })}
-          className="h-8 flex-1 rounded-md border border-control bg-surface px-2 text-xs text-ink"
+          className="h-9 flex-1 rounded-md border border-control bg-surface px-2 text-xs text-ink"
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
@@ -522,7 +522,7 @@ export function ShareForm({ item, onDone }: { item: Item; onDone: () => void }) 
                   </label>
                   <select
                     aria-label={t("sharePanel.roleAria", { group: g.title })}
-                    className="h-8 rounded-md border border-control bg-surface px-2 text-sm text-ink"
+                    className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink"
                     disabled={!roles[g.id]}
                     value={roles[g.id] ?? "viewer"}
                     onChange={(e) =>
@@ -561,7 +561,7 @@ export function ShareForm({ item, onDone }: { item: Item; onDone: () => void }) 
                 type="text"
                 aria-label={t("shareForm.newGroupNameLabel")}
                 placeholder={t("shareForm.newGroupNameLabel")}
-                className="h-8 flex-1 rounded-md border border-control bg-surface px-2 text-sm text-ink"
+                className="h-9 flex-1 rounded-md border border-control bg-surface px-2 text-sm text-ink"
                 value={newGroupName}
                 onChange={(e) => setNewGroupName(e.target.value)}
               />

@@ -32,7 +32,7 @@ function resolvesOnThisPage(items: WidgetItem[], variables: Variable[], id: stri
   return items.some((i) => i.id === id);
 }
 
-const selectCls = "h-8 rounded border border-rule bg-surface text-xs";
+const selectCls = "h-9 rounded border border-rule bg-surface text-xs";
 
 export function ActionsPanel({
   items,

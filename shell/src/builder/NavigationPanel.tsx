@@ -6,7 +6,7 @@ import { validateExpression } from "./expr";
 import { formatCelError } from "./celError";
 import { t } from "../i18n";
 
-const selectCls = "h-8 rounded border border-rule bg-surface text-xs";
+const selectCls = "h-9 rounded border border-rule bg-surface text-xs";
 
 function widgetLabel(items: WidgetItem[], id: string): string {
   const it = items.find((i) => i.id === id);
@@ -173,14 +173,14 @@ export function NavigationPanel({
               <input
                 aria-label={t("widgetForm.longitude")}
                 placeholder={t("widgetForm.longitude")}
-                className="h-8 w-1/2 rounded border border-rule px-1 text-xs"
+                className="h-9 w-1/2 rounded border border-rule px-1 text-xs"
                 value={lon}
                 onChange={(e) => setLon(e.target.value)}
               />
               <input
                 aria-label={t("widgetForm.latitude")}
                 placeholder={t("widgetForm.latitude")}
-                className="h-8 w-1/2 rounded border border-rule px-1 text-xs"
+                className="h-9 w-1/2 rounded border border-rule px-1 text-xs"
                 value={lat}
                 onChange={(e) => setLat(e.target.value)}
               />

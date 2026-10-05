@@ -250,7 +250,7 @@ function SecretCreateForm({
         {t("secretParamSelect.nameLabel")}
         <input
           placeholder={t("secretParamSelect.namePlaceholder")}
-          className="h-8 rounded border border-control bg-surface px-2 text-ink"
+          className="h-9 rounded border border-control bg-surface px-2 text-ink"
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
@@ -259,7 +259,7 @@ function SecretCreateForm({
         <label className="flex flex-col gap-1 text-xs">
           {t("secretParamSelect.typeAria")}
           <select
-            className="h-8 rounded border border-control bg-surface px-2 text-ink"
+            className="h-9 rounded border border-control bg-surface px-2 text-ink"
             value={kind}
             onChange={(e) => setKind(e.target.value as SecretPayload["kind"])}
           >
@@ -276,7 +276,7 @@ function SecretCreateForm({
           <label className="flex flex-col gap-1 text-xs">
             {t("secretParamSelect.locationLabel")}
             <select
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("location") || "header"}
               onChange={(e) => setFieldValue("location", e.target.value)}
             >
@@ -288,7 +288,7 @@ function SecretCreateForm({
             {t("secretParamSelect.keyLabel")}
             <input
               placeholder={t("secretParamSelect.keyPlaceholder")}
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("key")}
               onChange={(e) => setFieldValue("key", e.target.value)}
             />
@@ -298,7 +298,7 @@ function SecretCreateForm({
             <input
               placeholder={t("secretParamSelect.valuePlaceholder")}
               type="password"
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("value")}
               onChange={(e) => setFieldValue("value", e.target.value)}
             />
@@ -311,7 +311,7 @@ function SecretCreateForm({
           <input
             placeholder={t("secretParamSelect.tokenPlaceholder")}
             type="password"
-            className="h-8 rounded border border-control bg-surface px-2 text-ink"
+            className="h-9 rounded border border-control bg-surface px-2 text-ink"
             value={field("token")}
             onChange={(e) => setFieldValue("token", e.target.value)}
           />
@@ -323,7 +323,7 @@ function SecretCreateForm({
             {t("secretParamSelect.usernameLabel")}
             <input
               placeholder={t("secretParamSelect.usernamePlaceholder")}
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("username")}
               onChange={(e) => setFieldValue("username", e.target.value)}
             />
@@ -333,7 +333,7 @@ function SecretCreateForm({
             <input
               placeholder={t("secretParamSelect.passwordPlaceholder")}
               type="password"
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("password")}
               onChange={(e) => setFieldValue("password", e.target.value)}
             />
@@ -346,7 +346,7 @@ function SecretCreateForm({
             {t("secretParamSelect.tokenUrlLabel")}
             <input
               placeholder={t("secretParamSelect.tokenUrlPlaceholder")}
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("tokenUrl")}
               onChange={(e) => setFieldValue("tokenUrl", e.target.value)}
             />
@@ -355,7 +355,7 @@ function SecretCreateForm({
             {t("secretParamSelect.clientIdLabel")}
             <input
               placeholder={t("secretParamSelect.clientIdPlaceholder")}
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("clientId")}
               onChange={(e) => setFieldValue("clientId", e.target.value)}
             />
@@ -365,7 +365,7 @@ function SecretCreateForm({
             <input
               placeholder={t("secretParamSelect.clientSecretPlaceholder")}
               type="password"
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("clientSecret")}
               onChange={(e) => setFieldValue("clientSecret", e.target.value)}
             />
@@ -383,7 +383,7 @@ function SecretCreateForm({
           <input
             placeholder={t("secretParamSelect.dsnPlaceholder")}
             type="password"
-            className="h-8 rounded border border-control bg-surface px-2 text-ink"
+            className="h-9 rounded border border-control bg-surface px-2 text-ink"
             value={field("dsn")}
             onChange={(e) => setFieldValue("dsn", e.target.value)}
           />
@@ -395,7 +395,7 @@ function SecretCreateForm({
             {t("secretParamSelect.awsAccessKeyIdLabel")}
             <input
               placeholder={t("secretParamSelect.awsAccessKeyIdPlaceholder")}
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("awsAccessKeyId")}
               onChange={(e) => setFieldValue("awsAccessKeyId", e.target.value)}
             />
@@ -405,7 +405,7 @@ function SecretCreateForm({
             <input
               placeholder={t("secretParamSelect.awsSecretAccessKeyPlaceholder")}
               type="password"
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("awsSecretAccessKey")}
               onChange={(e) => setFieldValue("awsSecretAccessKey", e.target.value)}
             />
@@ -414,7 +414,7 @@ function SecretCreateForm({
             {t("secretParamSelect.endpointUrlLabel")}
             <input
               placeholder={t("secretParamSelect.endpointUrlPlaceholder")}
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("endpointUrl")}
               onChange={(e) => setFieldValue("endpointUrl", e.target.value)}
             />
@@ -427,7 +427,7 @@ function SecretCreateForm({
             {t("secretParamSelect.accountNameLabel")}
             <input
               placeholder={t("secretParamSelect.accountNamePlaceholder")}
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("accountName")}
               onChange={(e) => setFieldValue("accountName", e.target.value)}
             />
@@ -437,7 +437,7 @@ function SecretCreateForm({
             <input
               placeholder={t("secretParamSelect.accountKeyPlaceholder")}
               type="password"
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("accountKey")}
               onChange={(e) => setFieldValue("accountKey", e.target.value)}
             />
@@ -464,7 +464,7 @@ function SecretCreateForm({
             <input
               placeholder={t(BUCKET_PLACEHOLDER_KEYS[kind])}
               required
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("bucketUrl")}
               onChange={(e) => setFieldValue("bucketUrl", e.target.value)}
             />
@@ -478,7 +478,7 @@ function SecretCreateForm({
             {t("secretParamSelect.hostLabel")}
             <input
               placeholder={t("secretParamSelect.hostPlaceholder")}
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("host")}
               onChange={(e) => setFieldValue("host", e.target.value)}
             />
@@ -488,7 +488,7 @@ function SecretCreateForm({
             <input
               placeholder={t("secretParamSelect.portPlaceholder")}
               type="number"
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("port")}
               onChange={(e) => setFieldValue("port", e.target.value)}
             />
@@ -497,7 +497,7 @@ function SecretCreateForm({
             {t("secretParamSelect.usernameLabel")}
             <input
               placeholder={t("secretParamSelect.usernamePlaceholder")}
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("username")}
               onChange={(e) => setFieldValue("username", e.target.value)}
             />
@@ -507,7 +507,7 @@ function SecretCreateForm({
             <input
               placeholder={t("secretParamSelect.passwordPlaceholder")}
               type="password"
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("password")}
               onChange={(e) => setFieldValue("password", e.target.value)}
             />
@@ -516,7 +516,7 @@ function SecretCreateForm({
             {t("secretParamSelect.fromAddressLabel")}
             <input
               placeholder={t("secretParamSelect.fromAddressPlaceholder")}
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("fromAddress")}
               onChange={(e) => setFieldValue("fromAddress", e.target.value)}
             />

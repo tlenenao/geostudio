@@ -55,7 +55,7 @@ export function CrossFilterLinkEditor({
       <label className="flex flex-col gap-1">
         {t("crossFilterLink.targetDatasetLabel")}
         <select
-          className="h-8 rounded border border-control bg-surface px-2 text-ink"
+          className="h-9 rounded border border-control bg-surface px-2 text-ink"
           value={link.targetDatasetId}
           onChange={(e) => onChange({ ...link, targetDatasetId: e.target.value })}
         >
@@ -70,7 +70,7 @@ export function CrossFilterLinkEditor({
       <label className="flex flex-col gap-1">
         {t("crossFilterLink.modeLabel")}
         <select
-          className="h-8 rounded border border-control bg-surface px-2 text-ink"
+          className="h-9 rounded border border-control bg-surface px-2 text-ink"
           value={link.mode}
           onChange={(e) => changeMode(e.target.value as "attribute" | "spatial")}
         >
@@ -83,7 +83,7 @@ export function CrossFilterLinkEditor({
           <label className="flex flex-col gap-1">
             {t("crossFilterLink.sourceFieldLabel")}
             <select
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={link.sourceField}
               onChange={(e) => onChange({ ...link, sourceField: e.target.value })}
             >
@@ -98,7 +98,7 @@ export function CrossFilterLinkEditor({
           <label className="flex flex-col gap-1">
             {t("crossFilterLink.targetFieldLabel")}
             <select
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={link.targetField}
               onChange={(e) => onChange({ ...link, targetField: e.target.value })}
             >
@@ -116,7 +116,7 @@ export function CrossFilterLinkEditor({
           <label className="flex flex-col gap-1">
             {t("crossFilterLink.precisionLabel")}
             <select
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={link.precision}
               onChange={(e) => onChange({ ...link, precision: e.target.value as "bbox" | "exact" })}
             >

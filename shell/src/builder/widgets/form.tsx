@@ -40,7 +40,7 @@ function fieldsFromSchema(schema: CollectionSchema): FormField[] {
   }));
 }
 
-const overrideInputCls = "h-8 w-full rounded border border-rule px-2 text-xs";
+const overrideInputCls = "h-9 w-full rounded border border-rule px-2 text-xs";
 
 function FieldOverrides({
   fields,
