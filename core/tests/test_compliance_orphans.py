@@ -225,3 +225,33 @@ def test_sweep_aborts_when_a_full_page_is_entirely_condemned(session, monkeypatc
     s3 = Big({"geostudio-attachments": objs})
     assert sweep_orphan_job_objects(session, s3, now=NOW) == 0
     assert s3.deleted == []
+
+
+def test_sweep_deletes_orphan_collection_export_files(session):
+    from app.dataexport.models import CollectionExportJob
+
+    session.add(
+        CollectionExportJob(
+            id="alive",
+            tenant_id="t",
+            collection_id="c",
+            requested_by="u",
+            format="csv",
+            status="done",
+            masked=True,
+        )
+    )
+    session.commit()
+    s3 = FakeS3(
+        {
+            "geostudio-exports": {
+                "t/data-exports/alive.csv": OLD,  # job vivant : gardé
+                "t/data-exports/gone.csv": OLD,  # collection supprimée : supprimé
+                "t/data-exports/new.csv": FRESH,  # grâce : gardé
+                "t/data-exports/a/b.csv": OLD,  # forme inattendue : jamais touchée
+                "t/pipelines/p1": OLD,
+            },
+        }
+    )
+    assert sweep_orphan_job_objects(session, s3, now=NOW) == 1
+    assert s3.deleted == [("geostudio-exports", "t/data-exports/gone.csv")]

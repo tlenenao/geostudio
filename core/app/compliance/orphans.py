@@ -7,6 +7,8 @@ objets sans ligne en base dans les buckets uploads et attachments).
 Seules des clés dont on sait reconstruire la ligne propriétaire sont
 candidates :
 - bucket exports : `renders/{job_id}.{ext}` ↔ `ExportJob.id` ;
+- bucket exports : `{tenant}/data-exports/{job_id}.{fmt}` ↔ `CollectionExportJob.id`
+  (la suppression d'une collection supprime ses jobs en CASCADE) ;
 - bucket appexports : `appexports/{job_id}.zip` ↔ `AppExportJob.id` ;
 - bucket uploads : `{tenant}/{uuid}-{fichier}` ↔ `IngestionJob.source_key`
   d'un job NON terminé avec succès (un job `pending`/`running`/`error` garde
@@ -29,6 +31,7 @@ from sqlalchemy.orm import Session
 
 from app.appexport.models import AppExportJob
 from app.attachments.models import Attachment
+from app.dataexport.models import CollectionExportJob
 from app.export.models import ExportJob
 from app.ingestion.models import IngestionJob
 
@@ -50,6 +53,12 @@ def _job_id(key: str, prefix: str) -> str | None:
         return None
     stem, dot, _ext = key[len(prefix) :].rpartition(".")
     return stem if dot and stem and "/" not in stem else None
+
+
+def _data_export_id(key: str) -> str | None:
+    """`{tenant}/data-exports/{job_id}.{fmt}` -> job_id (REV-283e)."""
+    tenant, _, rest = key.partition("/data-exports/")
+    return _job_id(f"x/{rest}", "x/") if tenant and "/" not in tenant and rest else None
 
 
 def _whole_key(key: str) -> str | None:
@@ -139,6 +148,13 @@ def sweep_orphan_job_objects(
     n = 0
     for bucket, prefix, ident, alive, ref_model in (
         (exports, "renders/", lambda k: _job_id(k, "renders/"), _alive_by_id(ExportJob), None),
+        (
+            exports,
+            "",
+            _data_export_id,
+            _alive_by_id(CollectionExportJob),
+            CollectionExportJob,
+        ),
         (
             appexports,
             "appexports/",
