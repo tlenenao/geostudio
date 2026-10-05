@@ -67,6 +67,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   probe decides first, so a dense tile is read once. The aggregation reads every
   row of the tile envelope: it has its own 3 s statement timeout and answers
   `503` + `Retry-After` when exceeded.
+- **Keyset pagination on `GET /collections/{id}/items`** (REV-279a): `cursor`
+  query parameter (opaque, in the `next` link; an invalid one answers 400
+  `invalid_cursor`); the total is capped, `numberMatched` is omitted and
+  `numberMatchedLowerBound: true` is set when it was not counted exactly.
+  Offset pagination is still accepted. The data export no longer runs a
+  `count(*)` per page.
+- **Lake snapshot** (REV-280a): hourly current-state GeoParquet snapshot of the
+  CDC lake read by aggregates, DuckDB materialisation and the SQL sandbox
+  (`CORE_LAKE_SNAPSHOT_ENABLED`, default `false`; `CORE_LAKE_SNAPSHOT_MIN_DELTA_FILES`
+  default 20; `CORE_LAKE_SNAPSHOT_KEEP` default 2; worker only). Tombstones are
+  kept; an unreadable snapshot falls back to the raw partitions.
+- **Monthly CDC compaction sweep** (REV-280e): `CORE_CDC_COMPACTION_MONTHLY`
+  (default `false`, worker) compacts every partition, not only the recent days.
+  It never deletes data.
+- **`lagBytes` on `POST /collections/{id}/aggregate`** (REV-280f): replication
+  lag of the CDC slot in bytes, an instance-wide figure. It is only returned to
+  authenticated callers holding `settings.instance.manage`; anonymous and
+  share-link callers never see it (`null`).
+- **Asynchronous collection export** (REV-283e): migration `0048` creates
+  `collection_export_jobs`. New variable `CORE_EXPORT_RUNNING_TIMEOUT_MINUTES`
+  (default 60, worker): an export left `running` longer is marked failed.
+  Finished exports are purged by the hygiene sweep. Details in *Changed* below.
+- **Second geocoding provider and MCP tool** (REV-102): `CORE_GEOCODING_PROVIDER`
+  (`ban` default, or `nominatim`), MCP tool `geocode` (same bounds and guards as
+  the REST route) and an `addressSearch` widget in the app builder. The
+  static and standalone app exports refuse that widget (no core geocoding there).
+- **CEL generator extended** (REV-183): the "Generate" assistant now also
+  covers table calculated columns and action conditions (`record.*` root
+  allowed for a condition); raw CEL strings and bare roots are validated.
+- **ADR 0012, connector positioning** (REV-123): documents the choice of
+  Databricks/Redshift support, the manual Databricks test and the CloudFetch
+  limits.
 
 - `reader.connector.postgres` against Amazon Redshift (REV-110): when the DSN
   host matches `*.redshift.amazonaws.com`, `*.redshift-serverless.amazonaws.com`
@@ -238,7 +270,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wiring, `Message` targets) are now refused with a 422; the shell purges
   orphan references on save. Existing inconsistent apps written through the
   API/MCP will be refused until repaired.
-- Shell initial-bundle threshold raised to 733 KB.
+- Shell initial-bundle threshold raised to 735 KB (address search, export job polling).
 
 ### Security
 
