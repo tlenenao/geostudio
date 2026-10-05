@@ -86,14 +86,18 @@ def test_failure_on_one_collection_does_not_stop_the_next(tmp_path, conn, monkey
     assert n == 1 and calls == ["bad", "ok"]
 
 
-def test_task_wires_env_collections_and_thresholds(monkeypatch):
+def test_keep_floor_is_two(monkeypatch):
+    test_task_wires_env_collections_and_thresholds(monkeypatch, keep="1", expect=2)
+
+
+def test_task_wires_env_collections_and_thresholds(monkeypatch, keep="3", expect=3):
     from contextlib import contextmanager
     from types import SimpleNamespace
 
     for k, v in {
         "CORE_LAKE_SNAPSHOT_ENABLED": "true",
         "CORE_LAKE_SNAPSHOT_MIN_DELTA_FILES": "7",
-        "CORE_LAKE_SNAPSHOT_KEEP": "3",
+        "CORE_LAKE_SNAPSHOT_KEEP": keep,
         "S3_ENDPOINT_URL": "http://minio:9000",
         "S3_ACCESS_KEY": "ak",
         "S3_SECRET_KEY": "sk",
@@ -114,4 +118,41 @@ def test_task_wires_env_collections_and_thresholds(monkeypatch):
     monkeypatch.setattr(jobs, "run_snapshot_cycle", lambda conn, client, **kw: seen.update(kw) or 0)
     jobs.run_snapshot_cycle_task(timestamp=0)
     assert seen["collections"] == [("t", "c", "pk")]
-    assert (seen["bucket"], seen["min_delta_files"], seen["keep"]) == ("bk", 7, 3)
+    assert (seen["bucket"], seen["min_delta_files"], seen["keep"]) == ("bk", 7, expect)
+
+
+def test_purge_passes_exact_s3_keys_and_cleanup_deletes_final_key(monkeypatch):
+    from unittest.mock import MagicMock
+
+    snaps = [
+        (f"s3://bk/cdc/tenant_id=t/collection_id=c/snapshot/snap-{i}-1.parquet", i, 1)
+        for i in (3, 2, 1)
+    ]
+    monkeypatch.setattr(jobs, "_delta_file_count", lambda *a: 99)
+    monkeypatch.setattr(jobs, "list_snapshots", lambda *a: snaps)
+    seen = {}
+
+    def fake_write(conn, base, t, c, pk, *, now_ms, cleanup):
+        seen["cleanup"] = cleanup
+        return snaps[0][0]
+
+    monkeypatch.setattr(jobs, "write_snapshot", fake_write)
+    client = MagicMock()
+    jobs.run_snapshot_cycle(
+        MagicMock(), client, bucket="bk", collections=[("t", "c", "id")],
+        now_ms=1, min_delta_files=1, keep=2,
+    )  # fmt: skip
+    client.delete_objects.assert_called_once_with(
+        Bucket="bk",
+        Delete={"Objects": [{"Key": "cdc/tenant_id=t/collection_id=c/snapshot/snap-1-1.parquet"}]},
+    )
+    client.reset_mock()
+    seen["cleanup"](snaps[0][0])
+    client.delete_objects.assert_called_once_with(
+        Bucket="bk",
+        Delete={"Objects": [{"Key": "cdc/tenant_id=t/collection_id=c/snapshot/snap-3-1.parquet"}]},
+    )
+
+
+def test_task_is_serialized():
+    assert jobs.run_snapshot_cycle_task.lock == "run_snapshot_cycle"

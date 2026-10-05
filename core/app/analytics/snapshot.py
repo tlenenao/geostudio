@@ -18,13 +18,16 @@ perdu pour lui — d'où la marge `grace_s` (cut = maintenant − grace).
 Publication : une écriture S3 (COPY → upload multipart) n'est visible qu'une
 fois complète ; en local, écriture sous `.tmp` puis `os.replace`."""
 
+import logging
 import os
 import re
+from collections.abc import Callable
 
 import duckdb
 
 from app.sql_ident import quote_ident_duckdb as _qi
 
+logger = logging.getLogger(__name__)
 _SNAP_RE = re.compile(r"snap-(\d+)-(\d+)\.parquet$")
 _HIVE_COLS = "tenant_id, collection_id, dt"
 
@@ -54,11 +57,28 @@ def list_snapshots(
     return sorted(found, key=lambda s: s[1], reverse=True)
 
 
+def _readable(conn: duckdb.DuckDBPyConnection, uri: str) -> bool:
+    """Pied de page Parquet lisible ? Sinon le snapshot n'est jamais « le dernier »."""
+    try:
+        conn.execute(f"SELECT count(*) FROM parquet_metadata({_lit(uri)})").fetchone()
+        return True
+    except duckdb.Error:
+        return False
+
+
 def latest_snapshot(
     conn: duckdb.DuckDBPyConnection, base_uri: str, tenant_id: str, collection_id: str
 ) -> tuple[str, int] | None:
-    snaps = list_snapshots(conn, base_uri, tenant_id, collection_id)
-    return (snaps[0][0], snaps[0][1]) if snaps else None
+    """Dernier snapshot lisible ; None (=> lecture brute, M7) si aucun ou si le
+    listage échoue. # ponytail: valide le pied de page seulement, pas le corps."""
+    try:
+        for uri, cut, _ in list_snapshots(conn, base_uri, tenant_id, collection_id):
+            if _readable(conn, uri):
+                return uri, cut
+            logger.warning("snapshot du lac illisible ignoré: %s", uri)
+    except duckdb.Error:
+        logger.warning("listage des snapshots du lac impossible, lecture brute", exc_info=True)
+    return None
 
 
 def cut_seconds(cut_ts_ms: int) -> float:
@@ -76,11 +96,18 @@ def write_snapshot(
     *,
     now_ms: int,
     grace_s: int = 300,
+    cleanup: Callable[[str], None] | None = None,
 ) -> str | None:
     """Écrit un nouveau snapshot = précédent ∪ delta, réduit à la dernière
     version par PK. None si rien de neuf (ou lac vide)."""
     cut_ms = now_ms - grace_s * 1000
-    prev = list_snapshots(conn, base_uri, tenant_id, collection_id)
+    prev = []
+    for snap in list_snapshots(conn, base_uri, tenant_id, collection_id):
+        if _readable(conn, snap[0]):
+            prev.append(snap)
+        else:  # fichier partiel d'un cycle interrompu : on repart d'un prev sain
+            logger.warning("snapshot du lac illisible supprimé: %s", snap[0])
+            _drop(snap[0], cleanup)
     prev_cut_ms = prev[0][1] if prev else None
     if prev_cut_ms is not None and prev_cut_ms >= cut_ms:
         return None
@@ -118,7 +145,23 @@ def write_snapshot(
     target = uri + ".tmp" if local else uri
     if local:
         os.makedirs(os.path.dirname(uri), exist_ok=True)
-    conn.execute(f"COPY ({reduced}) TO {_lit(target)} (FORMAT PARQUET)")
-    if local:
-        os.replace(target, uri)
+    try:
+        conn.execute(f"COPY ({reduced}) TO {_lit(target)} (FORMAT PARQUET)")
+        if not _readable(conn, target):
+            raise OSError(f"snapshot illisible après écriture: {target}")
+        if local:
+            os.replace(target, uri)
+    except BaseException:
+        _drop(target, cleanup)  # best-effort : jamais de fichier partiel publié
+        raise
     return uri
+
+
+def _drop(uri: str, cleanup: Callable[[str], None] | None) -> None:
+    try:
+        if "://" not in uri:
+            os.remove(uri)
+        elif cleanup:
+            cleanup(uri)
+    except Exception:
+        logger.warning("suppression du snapshot %s impossible", uri, exc_info=True)

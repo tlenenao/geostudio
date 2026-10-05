@@ -134,3 +134,33 @@ def test_no_snapshot_keeps_raw_behaviour_and_as_of_ignores_snapshot(tmp_path, co
     _put(tmp_path, "d2", "b", [_r(2, "b", ts=900.0)])
     # asOf = max(_ts) des partitions brutes : un snapshot (cut 700) ne le tire pas en arrière.
     assert lake_as_of(conn, str(tmp_path), T, C).startswith("1970-01-01T00:15:00")
+
+
+def _fake_snap(base, name="snap-999999-999.parquet"):
+    d = base / f"tenant_id={T}" / f"collection_id={C}" / "snapshot"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / name).write_bytes(b"pas du parquet")
+    return d / name
+
+
+def test_unreadable_snapshot_is_ignored_on_read_and_replaced_on_write(tmp_path, conn):
+    _seed(tmp_path, conn)
+    raw_dir = snapshot_dir(str(tmp_path), T, C)
+    shutil.rmtree(raw_dir)
+    raw = _live(conn, tmp_path)
+    bad = _fake_snap(tmp_path)
+    assert _live(conn, tmp_path) == raw  # repli brut, pas d'erreur
+    assert "snap-999999-" not in _dedup_cte(conn, INFO, str(tmp_path), T, C)
+    uri = write_snapshot(conn, str(tmp_path), T, C, "id", now_ms=1_000_000, grace_s=300)
+    assert uri and not bad.exists()  # prev invalide supprime, cycle reparti d'un prev sain
+    assert _live(conn, tmp_path) == raw
+
+
+def test_failed_copy_leaves_no_snapshot(tmp_path, conn, monkeypatch):
+    _put(tmp_path, "d1", "a", [_r(1, "a", ts=100.0)])
+    import app.analytics.snapshot as snap
+
+    monkeypatch.setattr(snap, "_readable", lambda c, u: "tmp" not in u)  # le .tmp est « illisible »
+    with pytest.raises(OSError):
+        write_snapshot(conn, str(tmp_path), T, C, "id", now_ms=1_000_000)
+    assert not list(tmp_path.rglob("snap-*"))

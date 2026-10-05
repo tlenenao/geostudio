@@ -86,6 +86,11 @@ def run_snapshot_cycle(
     Isolation par collection : un échec n'empêche pas les suivantes. Idempotent
     (relancé à l'heure suivante si le cycle meurt) ; renvoie le nombre écrit."""
     base_uri = _base_uri(bucket)
+    prefix = f"s3://{bucket}/"
+
+    def drop(uri: str) -> None:
+        storage.delete_objects(client, bucket=bucket, keys=[uri.removeprefix(prefix)])
+
     written = 0
     for tenant_id, collection_id, pk_column in collections:
         try:
@@ -93,14 +98,13 @@ def run_snapshot_cycle(
                 continue
             with statement_timeout(conn, _SNAPSHOT_TIMEOUT_S):
                 uri = write_snapshot(
-                    conn, base_uri, tenant_id, collection_id, pk_column, now_ms=now_ms
+                    conn, base_uri, tenant_id, collection_id, pk_column, now_ms=now_ms, cleanup=drop
                 )
             if uri is None:
                 continue
             written += 1
             old = list_snapshots(conn, base_uri, tenant_id, collection_id)[keep:]
             if old:
-                prefix = f"s3://{bucket}/"
                 storage.delete_objects(
                     client, bucket=bucket, keys=[u.removeprefix(prefix) for u, _, _ in old]
                 )
@@ -110,7 +114,7 @@ def run_snapshot_cycle(
 
 
 @app.periodic(cron="0 * * * *")
-@app.task(queue="cdc", queueing_lock="run_snapshot_cycle_task")
+@app.task(queue="cdc", queueing_lock="run_snapshot_cycle_task", lock="run_snapshot_cycle")
 def run_snapshot_cycle_task(timestamp: int) -> None:
     """REV-280a : snapshot horaire d'état courant (flag CORE_LAKE_SNAPSHOT_ENABLED,
     éteint par défaut). Tourne dans `worker` (accès base pour lister les
@@ -138,7 +142,7 @@ def run_snapshot_cycle_task(timestamp: int) -> None:
             collections=collections,
             now_ms=int(time.time() * 1000),
             min_delta_files=int(os.environ.get("CORE_LAKE_SNAPSHOT_MIN_DELTA_FILES") or 20),
-            keep=max(1, int(os.environ.get("CORE_LAKE_SNAPSHOT_KEEP") or 2)),
+            keep=max(2, int(os.environ.get("CORE_LAKE_SNAPSHOT_KEEP") or 2)),
         )
     finally:
         conn.close()
