@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from "react";
+import { useId, useState } from "react";
 import { t } from "../../i18n";
 import { Button } from "./Button";
 import { Input } from "./Input";
@@ -38,6 +38,7 @@ export function MetadataForm({
   onCancel: () => void;
   pending?: boolean;
 }) {
+  const slugErrorId = useId();
   const [title, setTitle] = useState(initial.title);
   const [abstract, setAbstract] = useState(initial.abstract);
   const [keywords, setKeywords] = useState(initial.keywords.join(", "));
@@ -106,13 +107,21 @@ export function MetadataForm({
         />
       </label>
       {initial.slug !== undefined && (
-        <label className="flex flex-col gap-1 text-sm text-ink">
-          {t("newItem.slugLabel")}
-          <Input value={slug} onChange={(e) => setSlug(e.target.value)} />
+        <div className="flex flex-col gap-1 text-sm text-ink">
+          <label className="flex flex-col gap-1">
+            {t("newItem.slugLabel")}
+            <Input
+              aria-describedby={slugErrorId}
+              value={slug}
+              onChange={(e) => setSlug(e.target.value)}
+            />
+          </label>
           {slugInvalid && (
-            <span className="text-xs text-danger">{t("itemDetail.slugInvalid")}</span>
+            <span id={slugErrorId} className="text-xs text-danger">
+              {t("itemDetail.slugInvalid")}
+            </span>
           )}
-        </label>
+        </div>
       )}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" size="sm" onClick={onCancel}>

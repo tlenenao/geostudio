@@ -10,11 +10,11 @@ import { labelCls, inputCls } from "./formFieldStyles";
 import { t } from "../i18n";
 
 // Contrôle répété une fois par champ disponible dans une liste dense
-// (`PopupEditor` ci-dessous) : reste en h-9 par exception, même hauteur que
-// les contrôles denses équivalents de QueryFilterBuilder.tsx/
-// CrossFilterLinkEditor.tsx (convention de hauteur tranchée le 2026-09-01,
-// CLAUDE.md) — seule cette hauteur est partagée, pas leur recette complète
-// (ces deux fichiers portent aussi `bg-surface text-ink`, absents ici).
+// (`PopupEditor` ci-dessous) : h-9, la hauteur par défaut des contrôles
+// (convention du 2026-09-01, CLAUDE.md), identique aux contrôles denses de
+// QueryFilterBuilder.tsx/CrossFilterLinkEditor.tsx — seule la hauteur est
+// partagée, pas leur recette complète (ces deux fichiers portent aussi
+// `bg-surface text-ink`, absents ici).
 const denseInputCls = "h-9 rounded-md border border-rule px-2 text-sm";
 
 // Vérifie les placeholders d'un gabarit sans le rendre. Réutilise le scanner
@@ -54,6 +54,7 @@ export function PopupEditor({
   const advancedPanel = usePanelTrigger(advanced);
   const [draftField, setDraftField] = useState("");
   const listId = useId();
+  const hintId = useId();
   const selected = value?.fields;
   const error = value?.template ? templateError(value.template) : null;
 
@@ -204,15 +205,20 @@ export function PopupEditor({
       )}
       {value !== undefined && advanced && (
         <div {...advancedPanel.panelProps}>
-          <label className={labelCls}>
-            {t("popupEditor.templateLabel")}
-            <textarea
-              className="min-h-24 rounded-md border border-rule p-2 font-mono text-xs"
-              value={value.template ?? ""}
-              onChange={(e) => onChange({ ...value, template: e.target.value })}
-            />
-            <span className="text-xs text-ink-3">{t("popupEditor.exprHint")}</span>
-          </label>
+          <div className={labelCls}>
+            <label className="flex flex-col gap-1">
+              {t("popupEditor.templateLabel")}
+              <textarea
+                className="min-h-24 rounded-md border border-rule p-2 font-mono text-xs"
+                value={value.template ?? ""}
+                aria-describedby={hintId}
+                onChange={(e) => onChange({ ...value, template: e.target.value })}
+              />
+            </label>
+            <span id={hintId} className="text-xs text-ink-3">
+              {t("popupEditor.exprHint")}
+            </span>
+          </div>
         </div>
       )}
       {error && (

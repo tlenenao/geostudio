@@ -199,3 +199,12 @@ test("le bouton « Avancé » est câblé à son panneau (aria-expanded/aria-con
   await userEvent.click(trigger);
   expectAriaWired(screen.getByRole("button", { name: "Liste de champs" }), panelId, true);
 });
+
+test("le nom accessible du gabarit n'inclut pas le texte d'aide, relié par aria-describedby", async () => {
+  render(
+    <PopupEditor value={{}} availableFields={fields} attachmentFields={[]} onChange={vi.fn()} />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Avancé (gabarit)" }));
+  const box = screen.getByRole("textbox", { name: "Gabarit" });
+  expect(box).toHaveAccessibleDescription(/\$\{/);
+});

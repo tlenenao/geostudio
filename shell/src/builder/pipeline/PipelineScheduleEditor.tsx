@@ -210,22 +210,24 @@ export function PipelineScheduleEditor({
             </>
           )}
           {form.mode === "advanced" && (
-            <label className="flex flex-col gap-1">
-              {t("pipelineSchedule.cronExpressionLabel")}
-              <input
-                aria-invalid={!ADVANCED_CRON_RE.test(form.raw)}
-                aria-describedby={!ADVANCED_CRON_RE.test(form.raw) ? `${cronErrorId}` : undefined}
-                className="h-9 rounded border border-control bg-surface px-2 font-mono text-ink"
-                value={form.raw}
-                onChange={(e) => handleSetForm({ mode: "advanced", raw: e.target.value })}
-                disabled={readOnly}
-              />
+            <div className="flex flex-col gap-1">
+              <label className="flex flex-col gap-1">
+                {t("pipelineSchedule.cronExpressionLabel")}
+                <input
+                  aria-invalid={!ADVANCED_CRON_RE.test(form.raw)}
+                  aria-describedby={!ADVANCED_CRON_RE.test(form.raw) ? `${cronErrorId}` : undefined}
+                  className="h-9 rounded border border-control bg-surface px-2 font-mono text-ink"
+                  value={form.raw}
+                  onChange={(e) => handleSetForm({ mode: "advanced", raw: e.target.value })}
+                  disabled={readOnly}
+                />
+              </label>
               {!ADVANCED_CRON_RE.test(form.raw) && (
                 <p id={cronErrorId} role="alert" className="text-danger">
                   {t("pipelineSchedule.invalidCronFormat")}
                 </p>
               )}
-            </label>
+            </div>
           )}
         </div>
       )}
