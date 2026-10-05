@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { renderHook, act } from "@testing-library/react";
 import { vi } from "vitest";
-import { useNarrowViewport, NARROW_QUERY } from "./useNarrowViewport";
+import { useNarrowViewport, useViewportMode, NARROW_QUERY, PHONE_QUERY } from "./useNarrowViewport";
 
 function mockMatchMedia(initialMatches: boolean) {
   let listener: (() => void) | null = null;
@@ -47,4 +47,25 @@ test("interroge la vraie chaîne de media query, pas seulement le booléen mock�
 
 test("NARROW_QUERY correspond au seuil documenté par SP-33 (899px)", () => {
   expect(NARROW_QUERY).toBe("(max-width: 899px)");
+});
+
+function stubQueries(matchesByQuery: Record<string, boolean>) {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn((q: string) => ({
+      matches: matchesByQuery[q] ?? false,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })),
+  );
+}
+
+test("useViewportMode : wide / medium / narrow selon les deux requêtes", () => {
+  stubQueries({ [NARROW_QUERY]: false, [PHONE_QUERY]: false });
+  expect(renderHook(() => useViewportMode()).result.current).toBe("wide");
+  stubQueries({ [NARROW_QUERY]: true, [PHONE_QUERY]: false });
+  expect(renderHook(() => useViewportMode()).result.current).toBe("medium");
+  stubQueries({ [NARROW_QUERY]: true, [PHONE_QUERY]: true });
+  expect(renderHook(() => useViewportMode()).result.current).toBe("narrow");
+  vi.unstubAllGlobals();
 });

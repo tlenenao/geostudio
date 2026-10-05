@@ -4,8 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 import { TriptychLayout } from "./TriptychLayout";
 
-vi.mock("./useNarrowViewport", () => ({ useNarrowViewport: vi.fn() }));
-import { useNarrowViewport } from "./useNarrowViewport";
+vi.mock("./useNarrowViewport", () => ({ useViewportMode: vi.fn() }));
+import { useViewportMode } from "./useNarrowViewport";
 
 const TABS = {
   browse: { id: "browse", label: "Parcourir", content: <p>Contenu Parcourir</p> },
@@ -14,7 +14,7 @@ const TABS = {
 };
 
 test("large : les trois volets sont visibles en même temps", () => {
-  vi.mocked(useNarrowViewport).mockReturnValue(false);
+  vi.mocked(useViewportMode).mockReturnValue("wide");
   render(<TriptychLayout {...TABS} />);
   expect(screen.getByText("Contenu Parcourir")).toBeVisible();
   expect(screen.getByText("Contenu Travailler")).toBeVisible();
@@ -23,7 +23,7 @@ test("large : les trois volets sont visibles en même temps", () => {
 });
 
 test("large : la colonne centrale a un plancher CSS explicite, pas un 1fr nu", () => {
-  vi.mocked(useNarrowViewport).mockReturnValue(false);
+  vi.mocked(useViewportMode).mockReturnValue("wide");
   const { container } = render(<TriptychLayout {...TABS} />);
   const grid = container.querySelector(".grid");
   expect(grid).not.toBeNull();
@@ -33,14 +33,14 @@ test("large : la colonne centrale a un plancher CSS explicite, pas un 1fr nu", (
 });
 
 test("étroit : un seul volet à la fois, par défaut Travailler", () => {
-  vi.mocked(useNarrowViewport).mockReturnValue(true);
+  vi.mocked(useViewportMode).mockReturnValue("narrow");
   render(<TriptychLayout {...TABS} />);
   expect(screen.getByText("Contenu Travailler")).toBeVisible();
   expect(screen.queryByText("Contenu Parcourir")).not.toBeInTheDocument();
 });
 
 test("étroit : basculer d'onglet change le volet affiché", async () => {
-  vi.mocked(useNarrowViewport).mockReturnValue(true);
+  vi.mocked(useViewportMode).mockReturnValue("narrow");
   render(<TriptychLayout {...TABS} />);
   await userEvent.click(screen.getByRole("tab", { name: "Parcourir" }));
   expect(screen.getByText("Contenu Parcourir")).toBeVisible();
@@ -48,13 +48,13 @@ test("étroit : basculer d'onglet change le volet affiché", async () => {
 });
 
 test("étroit : respecte defaultTabId quand fourni", () => {
-  vi.mocked(useNarrowViewport).mockReturnValue(true);
+  vi.mocked(useViewportMode).mockReturnValue("narrow");
   render(<TriptychLayout {...TABS} defaultTabId="browse" />);
   expect(screen.getByText("Contenu Parcourir")).toBeVisible();
 });
 
 test("étroit : flèches, Home et End déplacent sélection et focus (WAI-ARIA tablist)", async () => {
-  vi.mocked(useNarrowViewport).mockReturnValue(true);
+  vi.mocked(useViewportMode).mockReturnValue("narrow");
   render(<TriptychLayout {...TABS} />);
   const user = userEvent.setup();
   screen.getByRole("tab", { name: "Travailler" }).focus();
@@ -74,10 +74,34 @@ test("étroit : flèches, Home et End déplacent sélection et focus (WAI-ARIA t
 });
 
 test("étroit, mode contrôlé : activeTabId gouverne l'onglet et le clic notifie", async () => {
-  vi.mocked(useNarrowViewport).mockReturnValue(true);
+  vi.mocked(useViewportMode).mockReturnValue("narrow");
   const onActiveTabChange = vi.fn();
   render(<TriptychLayout {...TABS} activeTabId="inspect" onActiveTabChange={onActiveTabChange} />);
   expect(screen.getByText("Contenu Inspecter")).toBeVisible();
   await userEvent.click(screen.getByRole("tab", { name: "Parcourir" }));
   expect(onActiveTabChange).toHaveBeenCalledWith("browse");
+});
+
+test("medium : travail + volet latéral à onglets (Parcourir/Inspecter), pas la grille 3 colonnes", async () => {
+  vi.mocked(useViewportMode).mockReturnValue("medium");
+  const { container } = render(<TriptychLayout {...TABS} />);
+  expect(screen.getByText("Contenu Travailler")).toBeVisible();
+  expect(screen.getByText("Contenu Parcourir")).toBeVisible();
+  expect(screen.queryByText("Contenu Inspecter")).not.toBeInTheDocument();
+  expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+    "Parcourir",
+    "Inspecter",
+  ]);
+  expect(container.querySelector(".grid")?.className).toContain(
+    "grid-cols-[minmax(360px,1fr)_minmax(240px,300px)]",
+  );
+  await userEvent.click(screen.getByRole("tab", { name: "Inspecter" }));
+  expect(screen.getByText("Contenu Inspecter")).toBeVisible();
+  expect(screen.queryByText("Contenu Parcourir")).not.toBeInTheDocument();
+});
+
+test("medium, mode contrôlé : activeTabId = inspect ouvre le volet latéral sur Inspecter", () => {
+  vi.mocked(useViewportMode).mockReturnValue("medium");
+  render(<TriptychLayout {...TABS} activeTabId="inspect" />);
+  expect(screen.getByText("Contenu Inspecter")).toBeVisible();
 });

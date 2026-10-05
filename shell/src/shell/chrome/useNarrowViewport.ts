@@ -32,3 +32,28 @@ export function useNarrowViewport(): boolean {
 
   return narrow;
 }
+
+// REV-286(a) : entre 640 et 899 px le chrome reste en mode mobile (BottomNav)
+// mais TriptychLayout affiche deux volets (travail + volet latéral à onglets)
+// au lieu d'un seul. `phone` n'est évalué que si `narrow` l'est : un stub
+// matchMedia à valeur unique (tests) reste cohérent.
+export const PHONE_QUERY = "(max-width: 639px)";
+export type ViewportMode = "wide" | "medium" | "narrow";
+
+function readViewportMode(): ViewportMode {
+  if (!window.matchMedia(NARROW_QUERY).matches) return "wide";
+  return window.matchMedia(PHONE_QUERY).matches ? "narrow" : "medium";
+}
+
+export function useViewportMode(): ViewportMode {
+  const [mode, setMode] = useState<ViewportMode>(readViewportMode);
+
+  useEffect(() => {
+    const queries = [window.matchMedia(NARROW_QUERY), window.matchMedia(PHONE_QUERY)];
+    const onChange = () => setMode(readViewportMode());
+    queries.forEach((q) => q.addEventListener("change", onChange));
+    return () => queries.forEach((q) => q.removeEventListener("change", onChange));
+  }, []);
+
+  return mode;
+}

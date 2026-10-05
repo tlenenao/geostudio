@@ -401,16 +401,20 @@ for (const screen of SCREENS) {
 // échouerait pour de vrai (vérifié : DomainBar/BottomNav utilisent des
 // libellés aria-label distincts, "Domaines"/"Navigation",
 // catalog.fr.ts:48-49 — pas une coïncidence de sélecteur).
-test("700 px (bande 391-899, sous le seuil relevé) : mode étroit, pas la grille desktop", async ({
-  page,
-}) => {
+test("700 px (bande 640-899) : chrome mobile, mais deux volets côte à côte", async ({ page }) => {
   await page.setViewportSize({ width: 700, height: 900 });
   await mockCore(page);
-  await page.goto("/");
+  await page.goto("/maps/map-1");
 
   await expect(page.getByRole("navigation", { name: "Navigation" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Domaines" })).toHaveCount(0);
-  await expect(page.getByRole("tab").first()).toBeVisible();
+  // Deux volets : la carte ET un volet latéral à deux onglets, simultanément visibles.
+  await expect(page.getByRole("tab")).toHaveCount(2);
+  await expect(page.locator(".maplibregl-canvas").first()).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Couches", selected: true })).toBeVisible();
+  await page.getByRole("tab", { name: "Inspecter" }).click();
+  await expect(page.getByRole("tab", { name: "Inspecter", selected: true })).toBeVisible();
+  await expectNoClippedContent(page);
 });
 
 // SP-37 (docs/superpowers/specs/2026-09-04-sp37-layerspanel-colonne-browse-design.md) :
