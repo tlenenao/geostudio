@@ -210,3 +210,44 @@ def test_check_snapshot_applies_floors_without_coverage_artifacts(tmp_path):
     assert feature_health_cli.main(["--repo", str(tmp_path), "--check-snapshot"]) == 1
     snapshot("c2", 95.0)
     assert feature_health_cli.main(["--repo", str(tmp_path), "--check-snapshot"]) == 0
+
+
+def test_check_snapshot_fails_on_feature_missing_from_journal(tmp_path, capsys):
+    """Cohérence inventaire<->journal : toute fonctionnalité inventoriée doit avoir une
+    santé dans le dernier instantané ; journal absent/vide = échec explicite."""
+    import json
+
+    (tmp_path / "docs/revue").mkdir(parents=True)
+    (tmp_path / "core/scripts").mkdir(parents=True)
+    feature = {
+        "domaine": "Catalogue",
+        "fonctionnalite": "Lister",
+        "preuve": ["core/app/items/routes.py"],
+        "surfaces": {"rest": ["GET /v1/items"]},
+        "priorite": "basse",
+    }
+    (tmp_path / "docs/revue/inventaire-fonctionnalites.jsonl").write_text(
+        "".join(json.dumps({"id": i, **feature}) + "\n" for i in ("f1", "f2")),
+        encoding="utf-8",
+    )
+    (tmp_path / "core/scripts/feature_health_thresholds.json").write_text(
+        '{"ponderations": {"tests": 0.3, "atteignabilite": 0.25, "garde": 0.25, "dette": 0.2},'
+        ' "plancher_priorite_haute": 90, "plancher_priorite_moyenne": 89.9,'
+        ' "plancher_sante_mediane": 50, "exceptions_priorite_moyenne": []}',
+        encoding="utf-8",
+    )
+    journal = tmp_path / "docs/revue/historique-sante.jsonl"
+    args = ["--repo", str(tmp_path), "--check-snapshot"]
+
+    assert feature_health_cli.main(args) == 1  # journal absent
+    journal.write_text("", encoding="utf-8")
+    assert feature_health_cli.main(args) == 1  # journal vide
+    row = {"date": "2026-10-04", "commit": "c1", "sante": 95.0}
+    journal.write_text(json.dumps({**row, "id": "f1"}) + "\n", encoding="utf-8")
+    capsys.readouterr()
+    assert feature_health_cli.main(args) == 1  # f2 absent
+    assert "f2" in capsys.readouterr().err
+    journal.write_text(
+        "".join(json.dumps({**row, "id": i}) + "\n" for i in ("f1", "f2")), encoding="utf-8"
+    )
+    assert feature_health_cli.main(args) == 0

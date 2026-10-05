@@ -15,8 +15,10 @@ la santé médiane. `--write` regénère
 au dernier instantané committé de `historique-sante.jsonl` (écrit par
 `--write`, à régénérer à la clôture d'un SP) : aucun artefact de couverture
 local requis, donc reproductible dans n'importe quel checkout. Une
-fonctionnalité absente de l'instantané est ignorée, comme une santé non
-mesurée dans `--check`. `--check-fresh` (REV-181) est un
+fonctionnalité inventoriée sans santé dans l'instantané (journal absent, vide ou
+périmé) fait ÉCHOUER la garde, avec la liste : cohérence inventaire<->journal. La
+fraîcheur du journal par rapport au code reste, elle, non bloquante.
+`--check-fresh` (REV-181) est un
 troisième mode, DIFFÉRENT de `--check` : il ne dit rien sur les planchers,
 il vérifie que les deux rendus committés ont bien été régénérés après le
 dernier changement de code/inventaire — en recalculant les deux rendus en
@@ -189,7 +191,15 @@ def main(argv: list[str]) -> int:
     arguments = parser.parse_args(argv)
     repo = arguments.repo.resolve()
     if arguments.check_snapshot:
-        return _check(*_rows_from_snapshot(repo))
+        rows, thresholds = _rows_from_snapshot(repo)
+        missing = [r["feature"].identifier for r in rows if r["sante"] is None]
+        for identifier in missing:
+            print(
+                f"ÉCHEC : {identifier} inventoriée sans santé dans le dernier instantané "
+                "(régénérer avec --write)",
+                file=sys.stderr,
+            )
+        return max(_check(rows, thresholds), 1 if missing else 0)
     rows, thresholds = compute(repo)
     if arguments.check_fresh:
         # Mode indépendant de --check/--write (jamais combiné en pratique,
