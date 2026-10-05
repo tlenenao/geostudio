@@ -64,6 +64,12 @@ def pg_app(pg_engine):
         )
 
 
+@pytest.fixture(autouse=True)
+def _no_aggregation_by_default(monkeypatch):
+    # Les tests historiques de troncature visent z=0 : agrégation coupée sauf demande.
+    monkeypatch.setenv("CORE_TILE_AGG_MAX_ZOOM", "0")
+
+
 def _insert(client, titre: str, lon: float = 2.35, lat: float = 48.85):
     r = client.post(
         "/v1/collections/demo_incidents/items",
@@ -441,3 +447,23 @@ def test_serving_a_tile_writes_no_audit_row(pg_app):
     assert b"Auditee a l'ecriture seulement" in r.content
     with Session() as s:
         assert s.execute(text("SELECT count(*) FROM audit_log")).scalar() == before
+
+
+def test_dense_tile_is_aggregated_below_threshold_and_truncated_above(pg_app, monkeypatch):
+    """REV-283a : sous le zoom seuil, cellules + en-tête dédié, sans valeur de colonne."""
+    from app.features import tiles as tiles_module
+
+    client, _, _ = pg_app
+    monkeypatch.setenv("CORE_TILE_AGG_MAX_ZOOM", "7")
+    monkeypatch.setattr(tiles_module, "MAX_TILE_FEATURES", 3)
+    for i in range(6):
+        _insert(client, f"Secret{i}")
+    low = client.get("/v1/collections/demo_incidents/tiles/0/0/0.mvt")
+    assert low.status_code == 200
+    assert low.headers.get("X-Tile-Aggregated") == "true"
+    assert "X-Tile-Truncated" not in low.headers
+    assert b"point_count" in low.content and b"Secret" not in low.content
+    high = client.get("/v1/collections/demo_incidents/tiles/10/518/352.mvt")
+    assert high.status_code == 200
+    assert high.headers.get("X-Tile-Truncated") == "true"
+    assert "X-Tile-Aggregated" not in high.headers

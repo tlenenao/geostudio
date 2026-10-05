@@ -600,6 +600,8 @@ services:
       # (Task 5), cohérent avec le fait que GAP-72 et son commentaire
       # d'origine ne visaient que docker-compose.prod.yml.
       CORE_CSP_MODE: ${CORE_CSP_MODE:-report-only}
+      # REV-283a : zoom max d'agrégation des tuiles denses (0 = désactivé).
+      CORE_TILE_AGG_MAX_ZOOM: ${CORE_TILE_AGG_MAX_ZOOM:-7}
     volumes:
       - etl-scratch:/scratch
       - appexport-runtime:/export-runtime:ro

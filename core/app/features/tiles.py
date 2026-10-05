@@ -11,6 +11,7 @@ base) et une route mince qui les assemble."""
 
 import functools
 import hashlib
+import os
 from collections.abc import Callable
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -122,6 +123,37 @@ def build_mvt_sql(quote: Callable[[str], str], info: TableInfo) -> str:
     )
 
 
+def agg_cell_size(z: int) -> float:
+    # ponytail: grille de 16 cellules par tuile ; réglable si le rendu est trop grossier
+    return 40075016.685578488 / (2**z) / 16
+
+
+def tile_agg_max_zoom() -> int:
+    """REV-283a : zoom max (inclus) sous lequel une tuile dense est agrégée ; 0 désactive."""
+    return int(os.environ.get("CORE_TILE_AGG_MAX_ZOOM", "7"))
+
+
+def build_agg_mvt_sql(quote: Callable[[str], str], info: TableInfo) -> str:
+    """Cellules `count(*)` d'une tuile dense. Ne projette AUCUNE colonne de
+    données (ni valeur masquée GAP-22) : seulement la géométrie et un compte,
+    lus sous la même `rls_scope` que la tuile normale (RLS avant agrégation)."""
+    assert info.geometry_column is not None, "build_agg_mvt_sql exige une géométrie"
+    table = f"public.{quote(info.table_name)}"
+    geom = f"t.{quote(info.geometry_column)}"
+    return (
+        "WITH cells AS ("
+        f"SELECT ST_SnapToGrid(ST_PointOnSurface(ST_Transform({geom}, 3857)), :cell) AS cg, "
+        "count(*) AS point_count "
+        f"FROM {table} t "
+        f"WHERE {geom} && ST_Transform(ST_TileEnvelope(:z, :x, :y), :srid) "
+        "GROUP BY 1"
+        "), q AS ("
+        "SELECT point_count, ST_AsMVTGeom(cg, ST_TileEnvelope(:z, :x, :y), :extent, :buffer, true) "
+        "AS geom FROM cells"
+        ") SELECT ST_AsMVT(q, :layer, :extent, 'geom') FROM q WHERE q.geom IS NOT NULL"
+    )
+
+
 def apply_tile_statement_timeout(session: Session) -> None:
     """Borne la durée d'UNE requête de tuile, dans la transaction courante.
 
@@ -173,6 +205,8 @@ def get_collection_tile(
 
     quote = functools.partial(quote_ident, session)
     sql = build_mvt_sql(quote, info)
+    agg_sql = build_agg_mvt_sql(quote, info)
+    aggregated = False
     # L'isolation tenant vient de la RLS (rôle gis_rls + GUC app.tenant_id),
     # jamais d'un WHERE applicatif.
     with rls(session, col.tenant_id, masked=masked):
@@ -191,6 +225,23 @@ def get_collection_tile(
                 "max_features": MAX_TILE_FEATURES,
             },
         ).first()
+        # REV-283a : tuile dense à bas zoom => cellules, dans le même scope RLS.
+        if row is not None and row[1] > MAX_TILE_FEATURES and 0 < tile_agg_max_zoom() >= z:
+            aggregated = True
+            row = session.execute(
+                text(agg_sql),
+                {
+                    "z": z,
+                    "x": x,
+                    "y": y,
+                    "layer": col.id,
+                    "extent": MVT_EXTENT,
+                    "buffer": MVT_BUFFER,
+                    "srid": info.srid or 4326,
+                    "cell": agg_cell_size(z),
+                },
+            ).first()
+            row = (row[0], 0) if row is not None else None
     if row is None or not row[0]:
         return Response(status_code=204)
     tile, feature_count = row[0], row[1]
@@ -200,7 +251,9 @@ def get_collection_tile(
     content = bytes(tile)
     # REV-283b : revalidation à 304 — même empreinte pour mêmes octets, quelle
     # que soit l'identité (Vary: Authorization garde les caches séparés).
-    etag = '"' + hashlib.sha256(content).hexdigest()[:32] + '"'
+    # Le mode agrégé est salé dans l'empreinte : mêmes octets ≠ même sémantique.
+    digest = hashlib.sha256((b"agg:" if aggregated else b"") + content)
+    etag = '"' + digest.hexdigest()[:32] + '"'
     headers = {
         "Cache-Control": f"{visibility}, max-age=300",
         "Vary": "Authorization",
@@ -208,6 +261,8 @@ def get_collection_tile(
     }
     if _etag_matches(request.headers.get("if-none-match"), etag):
         return Response(status_code=304, headers=headers)
-    if feature_count > MAX_TILE_FEATURES:
+    if aggregated:
+        headers["X-Tile-Aggregated"] = "true"
+    elif feature_count > MAX_TILE_FEATURES:
         headers["X-Tile-Truncated"] = "true"
     return Response(content=content, media_type=MVT_MEDIA_TYPE, headers=headers)

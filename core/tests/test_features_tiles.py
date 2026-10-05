@@ -257,3 +257,26 @@ def test_the_tile_query_binds_the_feature_cap(monkeypatch):
     tile_sql, tile_params = session.calls[1]
     assert "LIMIT :max_features" in tile_sql
     assert tile_params["max_features"] == MAX_TILE_FEATURES
+
+
+def test_agg_cell_size_halves_per_zoom():
+    from app.features.tiles import agg_cell_size
+
+    assert agg_cell_size(3) == pytest.approx(agg_cell_size(2) / 2)
+
+
+def test_agg_sql_groups_on_snapped_grid():
+    from app.features.tiles import build_agg_mvt_sql
+
+    sql = build_agg_mvt_sql(lambda n: f'"{n}"', _info())
+    assert "ST_SnapToGrid" in sql and "point_count" in sql and "GROUP BY" in sql
+    assert "titre" not in sql
+
+
+def test_tile_agg_zoom_default_and_disabled(monkeypatch):
+    from app.features.tiles import tile_agg_max_zoom
+
+    monkeypatch.delenv("CORE_TILE_AGG_MAX_ZOOM", raising=False)
+    assert tile_agg_max_zoom() == 7
+    monkeypatch.setenv("CORE_TILE_AGG_MAX_ZOOM", "0")
+    assert tile_agg_max_zoom() == 0
