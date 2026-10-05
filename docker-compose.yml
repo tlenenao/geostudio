@@ -344,6 +344,8 @@ services:
       CORE_EXPORT_ENABLED: ${CORE_EXPORT_ENABLED:-false}
       CORE_EXPORT_TOKEN_SECRET: ${CORE_EXPORT_TOKEN_SECRET:-}
       CORE_EXPORT_ITEMS_MAX: ${CORE_EXPORT_ITEMS_MAX:-100000}
+      CORE_EXPORT_SYNC_MAX: ${CORE_EXPORT_SYNC_MAX:-100000}
+      CORE_EXPORT_JOB_MAX: ${CORE_EXPORT_JOB_MAX:-500000}
       CORE_STALLED_JOB_MINUTES: ${CORE_STALLED_JOB_MINUTES:-60}
       # Liens de partage à échéance (GAP-12) : résolus entièrement dans ce
       # service (GET /share-links/{token}), contrairement au jeton d'export
@@ -498,7 +500,7 @@ services:
     command: >
       sh -c "python -m scripts.ensure_procrastinate_schema &&
              python -m procrastinate --app app.jobs.app worker -c ${CORE_WORKER_CONCURRENCY:-4}
-             -q ingestion,search,cdc,etl,tileset3d,terrain3d,appexport,harvest"
+             -q ingestion,search,cdc,etl,tileset3d,terrain3d,appexport,harvest,dataexport"
     environment:
       DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
       S3_ENDPOINT_URL: http://minio:9000
@@ -573,6 +575,8 @@ services:
       # Python 10 Mio si absent/vide, cf. app/harvest/egress.py.
       CORE_HARVEST_MAX_RESPONSE_BYTES: ${CORE_HARVEST_MAX_RESPONSE_BYTES:-}
       CORE_ALERTS_EGRESS_ALLOWLIST: ${CORE_ALERTS_EGRESS_ALLOWLIST:-}
+      # Plafond d'un export asynchrone de collection (REV-283e, app/dataexport/jobs.py).
+      CORE_EXPORT_JOB_MAX: ${CORE_EXPORT_JOB_MAX:-500000}
       CORE_TILESET3D_MAX_ENTRY_BYTES: ${CORE_TILESET3D_MAX_ENTRY_BYTES:-2147483648}
       S3_TERRAIN3D_BUCKET: geostudio-terrain3d
       # Plafonds terrain3d (convert_terrain3d_task, app/terrain3d/jobs.py) —

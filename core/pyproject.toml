@@ -345,6 +345,10 @@ layers = [
     "app.alerts",
     "app.export",
     "app.appexport",
+    # app.dataexport (REV-283e) : export asynchrone de collection ; comme app.export, il
+    # relit features et téléverse en S3. La route de features le démarre par injection
+    # (get_export_job_starter, câblé dans main.py) : aucune arête vers le haut.
+    "app.dataexport",
     "app.tileset3d",
     "app.terrain3d",
     "app.mapicons",
@@ -357,9 +361,6 @@ layers = [
     "app.dcat",
     "app.stac",
     "app.features",
-    # app.dataexport (REV-283e) : l'export asynchrone est déféré par une route de
-    # features, d'où sa place juste dessous ; son job relit via features.repository.
-    "app.dataexport",
     "app.attachments",
     "app.collections",
     "app.configs",
