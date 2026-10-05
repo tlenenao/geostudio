@@ -128,3 +128,9 @@ def test_regular_cycle_keeps_recent_window(calls, monkeypatch):
     monkeypatch.setenv("CORE_CDC_COMPACTION_RECENT_DAYS", "3")
     jobs.run_compaction_cycle_task(0)
     assert calls == [3]
+
+
+def test_compaction_tasks_share_one_lock():
+    """Cycle de 10 min et balayage mensuel ne compactent jamais en parallèle."""
+    assert jobs.run_compaction_cycle_task.lock == "cdc_compaction"
+    assert jobs.run_compaction_monthly_task.lock == "cdc_compaction"

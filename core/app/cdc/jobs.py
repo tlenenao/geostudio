@@ -46,13 +46,13 @@ def _compact(recent_days: int | None) -> None:
 
 
 @app.periodic(cron="*/10 * * * *")
-@app.task(queue="cdc", queueing_lock="run_compaction_cycle_task")
+@app.task(queue="cdc", queueing_lock="run_compaction_cycle_task", lock="cdc_compaction")
 def run_compaction_cycle_task(timestamp: int) -> None:
     _compact(int(os.environ.get("CORE_CDC_COMPACTION_RECENT_DAYS") or 7))
 
 
 @app.periodic(cron="30 3 1 * *")
-@app.task(queue="cdc", queueing_lock="run_compaction_monthly_task")
+@app.task(queue="cdc", queueing_lock="run_compaction_monthly_task", lock="cdc_compaction")
 def run_compaction_monthly_task(timestamp: int) -> None:
     """REV-280e : balayage mensuel de TOUTES les partitions (le cycle de 10 min
     ne voit que les `recent_days` derniers jours). Flag CORE_CDC_COMPACTION_MONTHLY,
