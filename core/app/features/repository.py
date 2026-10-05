@@ -34,7 +34,7 @@ EXACT_COUNT_CAP = 100_000
 
 
 def encode_cursor(pk: Any) -> str:
-    raw = json.dumps({"pk": pk}, separators=(",", ":")).encode()
+    raw = json.dumps({"pk": pk}, separators=(",", ":"), default=str).encode()
     return base64.urlsafe_b64encode(raw).decode().rstrip("=")
 
 

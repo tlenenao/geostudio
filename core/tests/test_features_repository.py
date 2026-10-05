@@ -459,3 +459,63 @@ def test_capped_count_reports_lower_bound(info, pg_session_factory, monkeypatch)
     with pg_session_factory() as s, rls_scope(s, "default"):
         page = repo.select_features(s, info, limit=1, offset=0, count_mode="capped")
     assert page.number_matched == 1 and page.number_matched_lower_bound is True
+
+
+def test_encode_cursor_supports_uuid_decimal_date_pks():
+    import uuid
+    from decimal import Decimal
+
+    u = uuid.uuid4()
+    assert decode_cursor(encode_cursor(u)) == str(u)
+    assert decode_cursor(encode_cursor(Decimal("1.5"))) == "1.5"
+    assert decode_cursor(encode_cursor(date(2026, 1, 2))) == "2026-01-02"
+
+
+@pytest.fixture()
+def info_uuid(pg_engine, pg_session_factory):
+    with pg_engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS t_feat_uuid"))
+        conn.execute(
+            text(
+                "CREATE TABLE t_feat_uuid (id uuid PRIMARY KEY, titre text NOT NULL, "
+                "tenant_id text NOT NULL DEFAULT 'default')"
+            )
+        )
+        conn.execute(text("ALTER TABLE t_feat_uuid ENABLE ROW LEVEL SECURITY"))
+        conn.execute(
+            text(
+                "CREATE POLICY tenant_isolation ON t_feat_uuid "
+                "USING (tenant_id = current_setting('app.tenant_id'))"
+            )
+        )
+        conn.execute(text("GRANT SELECT ON t_feat_uuid TO gis_rls"))
+        conn.execute(
+            text(
+                "INSERT INTO t_feat_uuid (id, titre) VALUES "
+                "('00000000-0000-0000-0000-000000000001', 'x'), "
+                "('00000000-0000-0000-0000-000000000002', 'x'), "
+                "('00000000-0000-0000-0000-000000000003', 'y')"
+            )
+        )
+    with pg_session_factory() as session:
+        yield introspect_table(session, "t_feat_uuid")
+    with pg_engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS t_feat_uuid"))
+
+
+def test_keyset_on_uuid_pk_with_filter(info_uuid, pg_session_factory):
+    seen: list = []
+    cursor = None
+    with pg_session_factory() as s, rls_scope(s, "default"):
+        while True:
+            page = select_features(
+                s, info_uuid, limit=1, offset=0, after=cursor, filters={"titre": "x"}
+            )
+            seen += [str(f["id"]) for f in page.features]
+            cursor = page.next_cursor
+            if cursor is None:
+                break
+    assert seen == [
+        "00000000-0000-0000-0000-000000000001",
+        "00000000-0000-0000-0000-000000000002",
+    ]
