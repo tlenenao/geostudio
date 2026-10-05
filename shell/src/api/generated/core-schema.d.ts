@@ -1933,6 +1933,8 @@ export interface components {
             asOf?: string | null;
             /** Categorykey */
             categoryKey: string | string[];
+            /** Lagbytes */
+            lagBytes?: number | null;
             /**
              * Pending
              * @default false

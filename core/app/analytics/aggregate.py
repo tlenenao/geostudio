@@ -68,6 +68,8 @@ class AggregateResponse(BaseModel):
     rows: list[dict[str, Any]]
     asOf: str | None = None
     pending: bool = False
+    # REV-280f : retard du lac en octets de WAL (None = slot absent/illisible).
+    lagBytes: int | None = None
 
 
 # P25.01 : plafond de groupes d'un agrégat (au-delà : 400, jamais une réponse

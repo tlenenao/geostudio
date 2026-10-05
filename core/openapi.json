@@ -249,6 +249,17 @@
             ],
             "title": "Categorykey"
           },
+          "lagBytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lagbytes"
+          },
           "pending": {
             "default": false,
             "title": "Pending",

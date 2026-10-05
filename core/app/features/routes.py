@@ -31,6 +31,7 @@ from app.analytics.export import (
     features_to_format,
     rows_to_format,
 )
+from app.analytics.lake_lag import lake_lag_bytes
 from app.analytics.sql_sandbox import SqlSandboxError, run_analyst_sql
 from app.attachments import repository as attachments_repo
 from app.attachments.routes import get_attachments_bucket, get_s3_client
@@ -323,7 +324,13 @@ def aggregate_features(
         as_of = lake_as_of(conn, base_uri, col.tenant_id, col.id)
     finally:
         conn.close()
-    return AggregateResponse(categoryKey=category_key, rows=rows, asOf=as_of, pending=as_of is None)
+    return AggregateResponse(
+        categoryKey=category_key,
+        rows=rows,
+        asOf=as_of,
+        pending=as_of is None,
+        lagBytes=lake_lag_bytes(session),
+    )
 
 
 EXPORT_FORMATS_AGGREGATE = {"csv", "xlsx"}
