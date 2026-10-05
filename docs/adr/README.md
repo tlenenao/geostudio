@@ -54,3 +54,4 @@ plus.
 | [0009](0009-tenant-id-audit-log-partout.md) | `tenant_id`+`audit_log` sur toute table dès la première migration | acceptée | CLAUDE.md « Décisions figées » |
 | [0010](0010-client-ts-genere-openapi.md) | Client TS généré depuis l'OpenAPI du cœur | acceptée | A11 |
 | [0011](0011-sortie-geonode-superset-redis.md) | Sortie de GeoNode/Superset/Redis, jalon M1 | acceptée | CLAUDE.md « Décisions figées » |
+| [0012](0012-positionnement-connecteurs.md) | Positionnement des connecteurs : entrepôts/SQL/objet d'abord, le reste à la demande | acceptée | Q2 (2026-09-15), REV-123 |
