@@ -40,7 +40,7 @@ def refresh_csp_dynamic_conf_task(timestamp: int) -> None:
         f.write(rendered)
     logger.info(
         "allowlist CSP recalculée (mode=%s) : %d hôte(s) img/connect, %d hôte(s) script "
-        "(calculés, jamais enforcés — blocage 3 ouvert)",
+        "(img/connect enforcés si mode=enforce ; hôtes script calculés mais jamais enforcés)",
         mode,
         len(allowlist.img_hosts),
         len(allowlist.script_hosts),
