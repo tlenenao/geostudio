@@ -37,7 +37,7 @@ import { registerExampleWidgets } from "../builder/examples";
 import { useActiveExtensions } from "../api/hooks";
 import { registerExtensionWidget } from "../builder/extensions/registerExtensionWidget";
 import { getWidget } from "../builder/registry";
-import { BREAKPOINTS, nextFreePosition, type Breakpoint } from "../builder/grid";
+import { BREAKPOINTS, nextFreePosition, nextOrdinal, type Breakpoint } from "../builder/grid";
 import { getPages, getPageLayout, setPageLayout } from "../builder/pages";
 import { getConfigExpressionErrors } from "../builder/configExpressionErrors";
 import { pruneMessagesForIds, sanitizeDanglingMessages } from "../builder/actionMessages";
@@ -276,6 +276,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
         w: def.defaultSize.w,
         h: def.defaultSize.h,
         props: { ...def.defaultProps },
+        ordinal: nextOrdinal(layout.items, type),
       };
       return setPageLayout(d, activePage, { ...layout, items: [...layout.items, item] });
     });

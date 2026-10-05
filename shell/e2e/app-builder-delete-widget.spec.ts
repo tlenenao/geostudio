@@ -26,3 +26,24 @@ test("a widget can be removed from the canvas and the removal is undoable", asyn
   await page.keyboard.press("Control+z");
   await expect(page.getByRole("button", { name: /^Sélectionner / })).toBeVisible();
 });
+
+test("REV-285 h : supprimer le 1er de deux widgets ne renumérote pas le survivant", async ({
+  page,
+}) => {
+  await mockCore(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Nouveau" }).click();
+  const dialog = page.getByRole("dialog", { name: "Nouvel élément" });
+  await dialog.getByLabel("Type").selectOption("app");
+  await page.getByLabel("Titre").fill("Mon app");
+  await page.getByRole("button", { name: "Créer" }).click();
+  await expect(page).toHaveURL(/\/apps\/9\/edit$/);
+
+  await page.getByRole("button", { name: "Texte", exact: true }).click();
+  await page.getByRole("button", { name: "Texte", exact: true }).click();
+  await expect(page.getByRole("button", { name: /^Sélectionner Texte 2/ })).toBeVisible();
+  await page.getByRole("button", { name: /^Sélectionner Texte 1/ }).click();
+  await page.getByRole("button", { name: /^Supprimer / }).click();
+  await expect(page.getByRole("button", { name: /^Sélectionner Texte 1/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Sélectionner Texte 2/ })).toBeVisible();
+});

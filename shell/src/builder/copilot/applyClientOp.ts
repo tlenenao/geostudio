@@ -6,7 +6,7 @@
 // appelant (CopilotPanel), jamais ici.
 import type { AppConfig, DataSource, WidgetItem } from "../../api/types";
 import { pruneMessagesForIds } from "../actionMessages";
-import { nextFreePosition } from "../grid";
+import { nextFreePosition, nextOrdinal } from "../grid";
 import { getPageLayout, setPageLayout } from "../pages";
 import { getWidget } from "../registry";
 
@@ -43,6 +43,7 @@ export function applyClientOp(
         w: def.defaultSize.w,
         h: def.defaultSize.h,
         props: { ...def.defaultProps },
+        ordinal: nextOrdinal(layout.items, type),
       };
       return setPageLayout(config, activePageId, { ...layout, items: [...layout.items, item] });
     }
