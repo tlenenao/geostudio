@@ -58,7 +58,16 @@ def _write_partition(base_dir, *, tenant_id, collection_id, rows):
 
 def fake_repo():
     def select_features(
-        session, info, *, limit, offset, bbox=None, geom_intersects=None, filters=None
+        session,
+        info,
+        *,
+        limit,
+        offset,
+        bbox=None,
+        geom_intersects=None,
+        filters=None,
+        after=None,
+        count_mode="exact",
     ):
         return FeaturePage(features=[FEAT], number_matched=1, number_returned=1)
 

@@ -51,7 +51,9 @@ def _feature(**overrides) -> Feature:
 
 
 def test_index_finds_every_declared_route():
-    assert len(index_rest_routes(REPO)) == 166  # +3 plan B: geocode, sitemap-{n} GET+HEAD
+    assert (
+        len(index_rest_routes(REPO)) == 167
+    )  # +3 plan B: geocode, sitemap-{n} GET+HEAD ; +1 lot B: export/jobs/{job_id}
 
 
 def test_every_openapi_operation_is_resolved_by_the_index():
@@ -139,7 +141,7 @@ def test_surface_id_is_method_space_path():
 def test_rest_surface_ids_feeds_the_reachability_facts():
     ids = rest_surface_ids(index_rest_routes(REPO))
     assert "GET /v1/items" in ids
-    assert len(ids) == 166
+    assert len(ids) == 167
 
 
 def _fact(function, guards, auth):
