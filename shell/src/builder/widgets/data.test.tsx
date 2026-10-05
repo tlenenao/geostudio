@@ -545,7 +545,7 @@ test("table PropsPanel offers the CEL generator on a calculated column (REV-183)
     </QueryClientProvider>,
   );
   await userEvent.click(await screen.findByText("Générer"));
-  await userEvent.type(screen.getByLabelText("Décrire la condition"), "double de pop");
+  await userEvent.type(screen.getByLabelText("Décrire l'expression"), "double de pop");
   await userEvent.click(screen.getByRole("button", { name: "Proposer" }));
   await screen.findByText("record.pop * 2");
   expect(copilotTurn.mock.calls[0][1].surface).toBe("computed_column");
