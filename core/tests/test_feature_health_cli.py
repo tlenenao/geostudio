@@ -168,3 +168,45 @@ def test_check_exception_does_not_apply_outside_priorite_moyenne(capsys):
     )
     assert feature_health_cli._check(rows, thresholds) == 1
     assert "catalogue-mes-vues-signets" in capsys.readouterr().err
+
+
+def test_check_snapshot_applies_floors_without_coverage_artifacts(tmp_path):
+    """REV-288 b : planchers lus du dernier instantané committé — aucun
+    coverage.xml / coverage-summary.json n'existe dans ce dépôt factice."""
+    import json
+
+    (tmp_path / "docs/revue").mkdir(parents=True)
+    (tmp_path / "core/scripts").mkdir(parents=True)
+    (tmp_path / "docs/revue/inventaire-fonctionnalites.jsonl").write_text(
+        json.dumps(
+            {
+                "id": "f1",
+                "domaine": "Catalogue",
+                "fonctionnalite": "Lister",
+                "preuve": ["core/app/items/routes.py"],
+                "surfaces": {"rest": ["GET /v1/items"]},
+                "priorite": "haute",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "core/scripts/feature_health_thresholds.json").write_text(
+        '{"ponderations": {"tests": 0.3, "atteignabilite": 0.25, "garde": 0.25, "dette": 0.2},'
+        ' "plancher_priorite_haute": 90, "plancher_priorite_moyenne": 89.9,'
+        ' "plancher_sante_mediane": 50, "exceptions_priorite_moyenne": []}',
+        encoding="utf-8",
+    )
+    journal = tmp_path / "docs/revue/historique-sante.jsonl"
+
+    def snapshot(commit: str, health: float) -> None:
+        journal.write_text(
+            json.dumps({"date": "2026-10-04", "commit": commit, "id": "f1", "sante": health})
+            + "\n",
+            encoding="utf-8",
+        )
+
+    snapshot("c1", 80.0)
+    assert feature_health_cli.main(["--repo", str(tmp_path), "--check-snapshot"]) == 1
+    snapshot("c2", 95.0)
+    assert feature_health_cli.main(["--repo", str(tmp_path), "--check-snapshot"]) == 0

@@ -362,6 +362,12 @@ jobs:
         working-directory: core
         env:
           PYTHONPATH: .
+      # REV-288 b : mêmes planchers lus du snapshot committé (reproductible
+      # hors CI, sans coverage.xml local).
+      - run: uv run python scripts/feature_health_cli.py --repo .. --check-snapshot
+        working-directory: core
+        env:
+          PYTHONPATH: .
       # Fraîcheur des rendus committés (docs/revue/bilan-fonctionnalites.*) :
       # l'ancien dispositif (commit bot sur chaque push + diff octet-à-octet
       # bloquant sur la PR) ne pouvait pas converger — le bot committait un
