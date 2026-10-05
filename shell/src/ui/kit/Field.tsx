@@ -19,8 +19,15 @@ export function Field({
   // annoncé une fois par role="alert". Le contrôle relaie ses props (Input/Select/Textarea du kit).
   const control = isValidElement<Record<string, unknown>>(children)
     ? cloneElement(children, {
-        "aria-invalid": error ? true : undefined,
-        "aria-describedby": error || hint ? messageId : undefined,
+        // Ne pose que les clés utiles : ne jamais écraser celles de l'enfant.
+        ...(error && children.props["aria-invalid"] === undefined ? { "aria-invalid": true } : {}),
+        ...(error || hint
+          ? {
+              "aria-describedby": [children.props["aria-describedby"], messageId]
+                .filter(Boolean)
+                .join(" "),
+            }
+          : {}),
       })
     : children;
   return (

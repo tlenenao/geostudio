@@ -55,3 +55,28 @@ test("sans erreur : l'indice décrit le contrôle, pas d'aria-invalid", () => {
   expect(input).not.toHaveAttribute("aria-invalid");
   expect(input).toHaveAccessibleDescription("Visible dans le catalogue");
 });
+
+test("ne pose rien sur l'enfant sans erreur ni indice", () => {
+  render(
+    <Field label="Titre" htmlFor="titre">
+      <Input id="titre" aria-describedby="ext" aria-invalid />
+    </Field>,
+  );
+  const input = screen.getByLabelText("Titre");
+  expect(input).toHaveAttribute("aria-describedby", "ext");
+  expect(input).toHaveAttribute("aria-invalid", "true");
+});
+
+test("fusionne aria-describedby de l'enfant et conserve son aria-invalid", () => {
+  render(
+    <>
+      <p id="ext">Aide externe</p>
+      <Field label="Titre" htmlFor="titre" error="Champ requis">
+        <Input id="titre" aria-describedby="ext" aria-invalid="grammar" />
+      </Field>
+    </>,
+  );
+  const input = screen.getByLabelText("Titre");
+  expect(input).toHaveAttribute("aria-describedby", "ext titre-error");
+  expect(input).toHaveAttribute("aria-invalid", "grammar");
+});
