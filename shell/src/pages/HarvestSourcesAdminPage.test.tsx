@@ -718,3 +718,49 @@ test("liste les enregistrements d'une source, avec lien vers l'item, même en le
   expect(screen.getByText("obsolète")).toBeInTheDocument();
   expect(button).toHaveAttribute("aria-expanded", "true");
 });
+
+test("REV-151 : « Charger plus » double la limite des enregistrements tant que le total n'est pas atteint", async () => {
+  const limits: string[] = [];
+  server.use(
+    http.get("https://core.test/v1/instance", () => HttpResponse.json({ readOnly: true })),
+    http.get("https://core.test/v1/harvest/sources", () =>
+      HttpResponse.json({
+        sources: [
+          {
+            id: "src-1",
+            type: "stac",
+            url: "https://stac.example.com/collections",
+            mode: "reference",
+            enabled: true,
+            intervalMinutes: null,
+            lastRunAt: null,
+            lastStatus: "ok",
+            lastError: null,
+            recordCount: 150,
+            staleCount: 0,
+          },
+        ],
+      }),
+    ),
+    http.get("https://core.test/v1/harvest/sources/src-1/records", ({ request }) => {
+      const limit = Number(new URL(request.url).searchParams.get("limit"));
+      limits.push(String(limit));
+      const records = Array.from({ length: Math.min(limit, 150) }, (_, i) => ({
+        id: `r${i}`,
+        externalId: `ext-${i}`,
+        itemId: null,
+        collectionId: null,
+        state: "ok",
+        harvestedAt: null,
+        externalUrl: null,
+      }));
+      return HttpResponse.json({ total: 150, staleCount: 0, records });
+    }),
+  );
+  render(<Harness />);
+  await userEvent.click(await screen.findByRole("button", { name: "Voir les enregistrements" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Charger plus" }));
+  await screen.findByText("ext-149");
+  expect(limits).toEqual(["100", "200"]);
+  expect(screen.queryByRole("button", { name: "Charger plus" })).not.toBeInTheDocument();
+});

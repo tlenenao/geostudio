@@ -592,7 +592,10 @@ export interface ItemClient {
   updateHarvestSource(id: string, patch: HarvestSourcePatchInput): Promise<HarvestSource>;
   deleteHarvestSource(id: string): Promise<void>;
   runHarvestSource(id: string): Promise<void>;
-  listHarvestSourceRecords(id: string): Promise<HarvestSourceRecordsPage>;
+  listHarvestSourceRecords(
+    id: string,
+    params?: { limit?: number; offset?: number },
+  ): Promise<HarvestSourceRecordsPage>;
   launchAdminTool(tool: AdminToolName): Promise<{ url: string }>;
   getInstanceStatus(): Promise<InstanceStatus>;
   getCollectionSharing(id: string): Promise<Sharing>;

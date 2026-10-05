@@ -137,8 +137,15 @@ export function createExtensionsAdminToolsMethods(
       await request<void>("POST", `/harvest/sources/${id}/run`);
     },
 
-    async listHarvestSourceRecords(id: string): Promise<HarvestSourceRecordsPage> {
-      return request<HarvestSourceRecordsPage>("GET", `/harvest/sources/${id}/records`);
+    async listHarvestSourceRecords(
+      id: string,
+      params?: { limit?: number; offset?: number },
+    ): Promise<HarvestSourceRecordsPage> {
+      const query = new URLSearchParams();
+      if (params?.limit !== undefined) query.set("limit", String(params.limit));
+      if (params?.offset !== undefined) query.set("offset", String(params.offset));
+      const suffix = query.size > 0 ? `?${query.toString()}` : "";
+      return request<HarvestSourceRecordsPage>("GET", `/harvest/sources/${id}/records${suffix}`);
     },
   };
 }

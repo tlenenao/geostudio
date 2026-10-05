@@ -581,6 +581,7 @@ export const fr = {
   "harvest.recordsButton": "Voir les enregistrements",
   "harvest.recordsHeading": "Enregistrements de {url}",
   "harvest.recordsEmpty": "Aucun enregistrement moissonné pour cette source.",
+  "harvest.loadMore": "Charger plus",
   "harvest.recordsLoadError": "Impossible de charger les enregistrements.",
   "harvest.recordStale": "obsolète",
   "harvest.neverRun": "Jamais",

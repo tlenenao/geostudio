@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useItemClient as useItemClientInternal } from "../ItemClientProvider";
 import type {
   AdminToolName,
@@ -82,11 +82,13 @@ export function useInstanceStatus(options?: { enabled?: boolean }) {
   });
 }
 
-export function useHarvestSourceRecords(id: string) {
+export function useHarvestSourceRecords(id: string, options?: { limit?: number }) {
   const client = useItemClientInternal();
   return useQuery({
-    queryKey: ["harvest-source-records", id],
-    queryFn: () => client.listHarvestSourceRecords(id),
+    // limit dans la clé : « Charger plus » déclenche un vrai fetch.
+    queryKey: ["harvest-source-records", id, options?.limit],
+    queryFn: () => client.listHarvestSourceRecords(id, { limit: options?.limit }),
+    placeholderData: keepPreviousData,
   });
 }
 

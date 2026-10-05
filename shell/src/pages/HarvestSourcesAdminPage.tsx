@@ -24,8 +24,11 @@ import { LoadingState } from "../ui/kit/LoadingState";
 import { Banner } from "../ui/kit/Banner";
 import { PageTitle } from "../ui/kit/PageTitle";
 
+const RECORDS_PAGE_SIZE = 100;
+
 function HarvestRecordsPanel({ source }: { source: HarvestSource }) {
-  const query = useHarvestSourceRecords(source.id);
+  const [limit, setLimit] = useState(RECORDS_PAGE_SIZE);
+  const query = useHarvestSourceRecords(source.id, { limit });
   return (
     <section aria-label={t("harvest.recordsHeading", { url: source.url })}>
       <h2 className="mb-2 text-sm font-medium text-ink">
@@ -52,6 +55,19 @@ function HarvestRecordsPanel({ source }: { source: HarvestSource }) {
           ))}
         </ul>
       )}
+      {query.data &&
+        query.data.records.length >= limit &&
+        query.data.records.length < query.data.total && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-2"
+            onClick={() => setLimit((l) => l + RECORDS_PAGE_SIZE)}
+          >
+            {t("harvest.loadMore")}
+          </Button>
+        )}
     </section>
   );
 }

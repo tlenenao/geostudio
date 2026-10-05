@@ -3399,6 +3399,18 @@ test("runPipeline posts with no body and returns the runId", async () => {
   expect(result).toEqual({ runId: "run-1" });
 });
 
+test("listHarvestSourceRecords transmet limit et offset", async () => {
+  let seen = "";
+  server.use(
+    http.get("https://core.test/v1/harvest/sources/s-1/records", ({ request }) => {
+      seen = new URL(request.url).search;
+      return HttpResponse.json({ total: 0, staleCount: 0, records: [] });
+    }),
+  );
+  await makeClient().listHarvestSourceRecords("s-1", { limit: 200, offset: 100 });
+  expect(seen).toBe("?limit=200&offset=100");
+});
+
 test("cancelPipelineRun posts to the run's cancel route", async () => {
   server.use(
     http.post("https://core.test/v1/pipelines/p-5/runs/run-1/cancel", () =>
