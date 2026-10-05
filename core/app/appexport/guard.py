@@ -153,4 +153,11 @@ def check_export_guard(
                 "(extension tierce, non prise en charge)"
             )
 
+    elif "addressSearch" in _collect_widget_types(config):
+        # /v1/geocode exige un utilisateur authentifié (REV-102) : inutilisable
+        # depuis un export connecté anonyme. (Modes stricts : déjà hors allowlist.)
+        reasons.append(
+            "widget 'addressSearch' non supporté par l'export connecté (géocodage authentifié)"
+        )
+
     return ExportGuardResult(allowed=not reasons, reasons=reasons)
