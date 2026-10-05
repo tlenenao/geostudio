@@ -26,9 +26,9 @@ describe("buildClientToolSchemas", () => {
       .properties.type.enum;
     expect(enumValues).toContain("text");
     expect(enumValues).toContain("chart");
-    // 24 depuis le widget "timePlayer" (REV-104), après "variableInput" (SP-52) — mettre à jour
+    // 25 depuis le widget "addressSearch" (REV-102), après "timePlayer" (REV-104) et "variableInput" (SP-52) — mettre à jour
     // ce compte à chaque widget builtin ajouté au catalogue.
-    expect(enumValues).toHaveLength(24);
+    expect(enumValues).toHaveLength(25);
   });
 
   it("updateWidgetProps' schema includes chart's scalar fields", () => {

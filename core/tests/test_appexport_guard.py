@@ -325,7 +325,10 @@ def test_allowlist_matches_shell_builtin_widget_registry():
             continue
         registered |= set(re.findall(r'registerWidget\(\{\s*type:\s*"([^"]+)"', f.read_text()))
     assert registered, "aucun widget lu — chemin du registre shell périmé"
-    assert registered == _SUPPORTED_WIDGET_TYPES
+    # REV-102 : addressSearch appelle GET /v1/geocode du cœur, absent d'un export
+    # statique/autoporté — exclusion volontaire de l'allowlist.
+    assert "addressSearch" in registered and "addressSearch" not in _SUPPORTED_WIDGET_TYPES
+    assert registered - {"addressSearch"} == _SUPPORTED_WIDGET_TYPES
 
 
 def _nested_config(widget: str, props: dict) -> BuilderConfig:

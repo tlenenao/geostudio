@@ -1072,6 +1072,10 @@ export const fr = {
   // Idem : valeur initiale du libellé (defaultProps/configSchema.default),
   // détectée par le vérificateur — reste un défaut renommable, pas figé.
   "widgetDateRangeFilter.periodDefault": "Période",
+  "widgetAddressSearch.paletteLabel": "Recherche d'adresse",
+  "widgetAddressSearch.propsHint":
+    "Câblez l'événement « addressSelected » à l'action « flyTo » d'un widget carte.",
+  "widgetAddressSearch.editHint": "Recherche d'adresse (active en aperçu et en exécution)",
   "widgetTimePlayer.paletteLabel": "Lecteur temporel",
   "widgetTimePlayer.from": "Début de l'animation",
   "widgetTimePlayer.to": "Fin de l'animation",
