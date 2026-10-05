@@ -72,12 +72,13 @@ def default_starter(session: Session, **kwargs) -> str:
 
 
 def _may_see(session: Session, user: User, job) -> bool:
-    if job.requested_by == user.id:
-        return True
-    if not has_privilege(session, user, Privilege.TASKS_VIEW_ALL.value):
+    # GAP-22 : le fichier d'un job non masqué contient les colonnes sensibles ;
+    # le demandeur lui-même doit encore y avoir droit (rôle rétrogradé depuis).
+    if not (job.masked or has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)):
         return False
-    # GAP-22 : le fichier d'un job non masqué contient les colonnes sensibles.
-    return job.masked or has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)
+    return job.requested_by == user.id or has_privilege(
+        session, user, Privilege.TASKS_VIEW_ALL.value
+    )
 
 
 class CollectionExportJobStatus(BaseModel):

@@ -233,3 +233,17 @@ def test_status_of_another_tenant_is_404(env, starter, monkeypatch):
         s.commit()
     _as(app, stranger)
     assert client.get(url).status_code == 404
+
+
+def test_requester_demoted_without_view_sensitive_cannot_get_unmasked_result(
+    env, starter, monkeypatch
+):
+    app, client, admin, regular, _p, tenant_id, Session = env
+    url = _done_job_as_admin(env, monkeypatch)
+    job_id = url.rsplit("/", 1)[1]
+    with Session() as s:  # le job non masqué appartient désormais à `regular`
+        s.get(CollectionExportJob, job_id).requested_by = regular.id
+        s.commit()
+    _with_privileges(Session, regular, tenant_id, ["data.read"])
+    _as(app, regular)
+    assert client.get(url).status_code == 404
