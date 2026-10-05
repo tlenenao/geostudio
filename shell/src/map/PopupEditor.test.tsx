@@ -120,7 +120,7 @@ test("the advanced mode posts a template", async () => {
     <PopupEditor value={{}} availableFields={fields} attachmentFields={[]} onChange={onChange} />,
   );
   await userEvent.click(screen.getByRole("button", { name: "Avancé (gabarit)" }));
-  await userEvent.type(screen.getByLabelText("Gabarit"), "x");
+  await userEvent.type(screen.getByLabelText(/Gabarit/), "x");
   expect(onChange).toHaveBeenLastCalledWith({ template: "x" });
 });
 

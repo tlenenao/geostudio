@@ -78,6 +78,7 @@ export function QuerySummaryBuilder({
       <p className="text-xs font-medium text-ink-2">{t("querySummaryBuilder.groupByHeading")}</p>
       {schema.fields.map((f) => (
         <label key={f.name} className="flex items-center gap-2 text-xs">
+          {/* eslint-disable-next-line geostudio/label-no-aria-label -- le nom accessible contient le texte visible et ajoute le contexte dynamique (champ/ligne) */}
           <input
             type="checkbox"
             aria-label={t("querySummaryBuilder.groupByAria", { name: f.name })}

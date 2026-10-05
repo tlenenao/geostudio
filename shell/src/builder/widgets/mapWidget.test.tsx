@@ -346,7 +346,7 @@ test("Component transmet props.terrain à MapView (GAP-52/terrain)", async () =>
 test("PropsPanel expose les contrôles de caméra (GAP-52/camera)", () => {
   const onChange = vi.fn();
   renderPropsPanel({ props: { dataSourceId: "" }, onChange });
-  const pitchSlider = screen.getByRole("slider", { name: "Inclinaison de la caméra" });
+  const pitchSlider = screen.getByRole("slider", { name: /Inclinaison/ });
   fireEvent.change(pitchSlider, { target: { value: "30" } });
   expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ cameraPitch: 30 }));
 });

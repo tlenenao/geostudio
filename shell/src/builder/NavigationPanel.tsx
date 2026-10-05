@@ -80,7 +80,6 @@ export function NavigationPanel({
       <label className="flex flex-col gap-1 text-xs">
         {t("navigationPanel.modeLabel")}
         <select
-          aria-label={t("navigationPanel.modeLabel")}
           className={selectCls}
           value={navigationMode}
           onChange={(e) => onNavigationModeChange(e.target.value as "tabs" | "story")}

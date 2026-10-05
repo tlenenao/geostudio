@@ -2841,8 +2841,8 @@ test("a spatial cross-filter link propagates a bbox from one dataset's Table cli
   // qui compte les lignes de résultat — toujours 1 ici, une seule ligne
   // "Total") : il faut sommer la colonne `value` que le mock d'agrégat
   // renvoie pour observer réellement 5 puis 2.
-  await page.getByLabel("Agrégation", { exact: true }).selectOption("sum");
-  await page.getByLabel("Champ agrégé", { exact: true }).fill("value");
+  await page.getByLabel(/^Agrégation(?! \(source)/).selectOption("sum");
+  await page.getByLabel(/^Champ agrégé \(pour la somme\)/).fill("value");
 
   await page.getByLabel("Interactions automatiques (cross-filter)").check();
   await page.getByRole("button", { name: "Enregistrer" }).click();

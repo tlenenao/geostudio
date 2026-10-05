@@ -63,6 +63,7 @@ export function PropsPanel({
             {t("propsPanel.visibleWhenHelpBody")}
           </Popover>
         </span>
+        {/* eslint-disable-next-line geostudio/label-no-aria-label -- le label englobe un bouton d'aide et une alerte : le nom accessible doit les exclure */}
         <textarea
           aria-label={t("propsPanel.visibleWhenAria")}
           className="rounded-md border border-rule p-2 font-mono text-xs"

@@ -261,11 +261,11 @@ test("edits terrain and camera, then saves both", async () => {
 
   await userEvent.click(screen.getByLabelText("Activer le terrain 3D"));
   await userEvent.type(
-    screen.getByLabelText("URL de tuiles terrain"),
+    screen.getByLabelText(/URL de tuiles terrain/),
     "https://example.test/dem/{{z}/{{x}/{{y}.png",
   );
-  fireEvent.change(screen.getByLabelText("Inclinaison de la caméra"), { target: { value: "40" } });
-  fireEvent.change(screen.getByLabelText("Orientation de la caméra"), { target: { value: "200" } });
+  fireEvent.change(screen.getByLabelText(/Inclinaison/), { target: { value: "40" } });
+  fireEvent.change(screen.getByLabelText(/Orientation \(bearing\)/), { target: { value: "200" } });
 
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   await waitFor(() => expect(saveMapConfig).toHaveBeenCalled());

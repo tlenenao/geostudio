@@ -112,6 +112,7 @@ function FieldOverrides({
               onChange={(e) => patch(f.name, { label: e.target.value })}
             />
             <label className="flex items-center gap-1 whitespace-nowrap text-xs">
+              {/* eslint-disable-next-line geostudio/label-no-aria-label -- le nom accessible contient le texte visible et ajoute le contexte dynamique (champ/ligne) */}
               <input
                 type="checkbox"
                 aria-label={t("widgetForm.hideFieldAria", { name: f.name })}
@@ -122,6 +123,7 @@ function FieldOverrides({
             </label>
             {f.type !== "unsupported" && f.type !== "attachment" && f.type !== "list" && (
               <label className="flex items-center gap-1 whitespace-nowrap text-xs">
+                {/* eslint-disable-next-line geostudio/label-no-aria-label -- le nom accessible contient le texte visible et ajoute le contexte dynamique (champ/ligne) */}
                 <input
                   type="checkbox"
                   aria-label={t("widgetForm.requireFieldAria", { name: f.name })}
@@ -728,7 +730,6 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
             <input
               type="number"
               step="any"
-              aria-label={t("widgetForm.longitude")}
               className={fieldInputCls}
               value={lon}
               onChange={(e) => setLon(e.target.value)}
@@ -739,7 +740,6 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
             <input
               type="number"
               step="any"
-              aria-label={t("widgetForm.latitude")}
               className={fieldInputCls}
               value={lat}
               onChange={(e) => setLat(e.target.value)}

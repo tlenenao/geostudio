@@ -146,7 +146,6 @@ export function CatalogPage({
               <label className="flex flex-col gap-1 text-sm text-ink">
                 {t("catalog.searchLabel")}
                 <Input
-                  aria-label={t("catalog.searchLabel")}
                   value={q}
                   onChange={(e) => {
                     setQ(e.target.value);
@@ -158,7 +157,6 @@ export function CatalogPage({
                 <label className="flex flex-col gap-1 text-sm text-ink">
                   {t("catalog.typeLabel")}
                   <select
-                    aria-label={t("catalog.typeLabel")}
                     className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                     value={type}
                     onChange={(e) => setType(e.target.value as ResourceType | "")}
@@ -192,7 +190,6 @@ export function CatalogPage({
               <label className="flex flex-col gap-1 text-sm text-ink">
                 {t("catalog.scopeLabel")}
                 <select
-                  aria-label={t("catalog.scopeLabel")}
                   className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                   value={scope}
                   onChange={(e) => {
@@ -210,7 +207,6 @@ export function CatalogPage({
               <label className="flex flex-col gap-1 text-sm text-ink">
                 {t("catalog.sortByLabel")}
                 <select
-                  aria-label={t("catalog.sortByLabel")}
                   className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                   value={sort}
                   onChange={(e) => {
@@ -228,7 +224,6 @@ export function CatalogPage({
               <label className="flex flex-col gap-1 text-sm text-ink">
                 {t("catalog.ownerLabel")}
                 <select
-                  aria-label={t("catalog.ownerLabel")}
                   className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                   value={ownerFilter}
                   onChange={(e) => {

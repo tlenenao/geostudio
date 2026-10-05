@@ -272,7 +272,6 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                 <label className="mt-2 flex flex-col gap-1 text-xs">
                   {t("datasetEdit.timeFieldLabel")}
                   <select
-                    aria-label={t("datasetEdit.timeFieldLabel")}
                     className="h-9 w-full rounded border border-control bg-surface px-2 text-xs text-ink"
                     value={draft.timeField ?? ""}
                     onChange={(e) =>
@@ -290,7 +289,6 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                 <label className="flex items-center gap-2 text-xs">
                   <input
                     type="checkbox"
-                    aria-label={t("datasetEdit.reactsToExtentLabel")}
                     checked={Boolean(draft.reactsToExtent)}
                     onChange={(e) =>
                       updateDraft((d) => (d ? { ...d, reactsToExtent: e.target.checked } : d))

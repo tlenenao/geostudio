@@ -96,7 +96,6 @@ export function registerDataWidgets(): void {
         <label className="flex flex-col gap-1">
           {t("widgetData.titleField")}
           <input
-            aria-label={t("widgetData.titleField")}
             className="h-9 rounded-md border border-rule px-2"
             value={String(props.titleField ?? "")}
             onChange={(e) => onChange({ ...props, titleField: e.target.value })}
@@ -214,7 +213,6 @@ export function registerDataWidgets(): void {
           <label className="flex flex-col gap-1">
             {t("widgetData.columnsLabel")}
             <input
-              aria-label={t("widgetData.columnsAria")}
               className="h-9 rounded-md border border-rule px-2"
               value={plainColumns.join(",")}
               onChange={(e) =>
@@ -231,6 +229,7 @@ export function registerDataWidgets(): void {
             <div key={i} className="flex flex-col gap-1 rounded border border-rule p-2">
               <label className="flex flex-col gap-1">
                 {t("widgetData.calcColumnLabelText")}
+                {/* eslint-disable-next-line geostudio/label-no-aria-label -- le nom accessible contient le texte visible et ajoute le contexte dynamique (champ/ligne) */}
                 <input
                   aria-label={t("widgetData.calcColumnLabelAria", { n: i + 1 })}
                   className="h-9 rounded-md border border-rule px-2"
@@ -240,6 +239,7 @@ export function registerDataWidgets(): void {
               </label>
               <label className="flex flex-col gap-1">
                 {t("widgetData.calcColumnExprText")}
+                {/* eslint-disable-next-line geostudio/label-no-aria-label -- le nom accessible contient le texte visible et ajoute le contexte dynamique (champ/ligne) */}
                 <input
                   aria-label={t("widgetData.calcColumnExprAria", { n: i + 1 })}
                   className="h-9 rounded-md border border-rule px-2 font-mono"

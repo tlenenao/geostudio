@@ -113,7 +113,6 @@ export function PipelineScheduleEditor({
       <label className="flex items-center gap-2 text-xs font-medium text-ink-2">
         <input
           type="checkbox"
-          aria-label={t("pipelineSchedule.autoSchedulingAria")}
           className="h-6 w-6"
           checked={enabled}
           onChange={(e) => setEnabled(e.target.checked)}
@@ -124,9 +123,8 @@ export function PipelineScheduleEditor({
       {enabled && (
         <div className="flex flex-col gap-2 text-xs">
           <label className="flex flex-col gap-1">
-            {t("pipelineSchedule.modeLabel")}
+            {t("pipelineSchedule.modeAria")}
             <select
-              aria-label={t("pipelineSchedule.modeAria")}
               className="h-8 rounded border border-control bg-surface px-2 text-ink"
               value={form.mode}
               onChange={(e) => {
@@ -156,7 +154,6 @@ export function PipelineScheduleEditor({
             <label className="flex flex-col gap-1">
               {t("pipelineSchedule.intervalLabel")}
               <input
-                aria-label={t("pipelineSchedule.intervalAria")}
                 type="number"
                 min={1}
                 className="h-8 rounded border border-control bg-surface px-2 text-ink"
@@ -170,7 +167,6 @@ export function PipelineScheduleEditor({
             <label className="flex flex-col gap-1">
               {t("pipelineSchedule.executionTimeLabel")}
               <input
-                aria-label={t("pipelineSchedule.executionTimeAria")}
                 type="time"
                 className="h-8 rounded border border-control bg-surface px-2 text-ink"
                 value={form.time}
@@ -182,9 +178,8 @@ export function PipelineScheduleEditor({
           {form.mode === "weekly" && (
             <>
               <label className="flex flex-col gap-1">
-                {t("pipelineSchedule.dayLabel")}
+                {t("pipelineSchedule.dayAria")}
                 <select
-                  aria-label={t("pipelineSchedule.dayAria")}
                   className="h-8 rounded border border-control bg-surface px-2 text-ink"
                   value={form.day}
                   onChange={(e) =>
@@ -202,7 +197,6 @@ export function PipelineScheduleEditor({
               <label className="flex flex-col gap-1">
                 {t("pipelineSchedule.executionTimeLabel")}
                 <input
-                  aria-label={t("pipelineSchedule.executionTimeAria")}
                   type="time"
                   className="h-8 rounded border border-control bg-surface px-2 text-ink"
                   value={form.time}
@@ -218,7 +212,6 @@ export function PipelineScheduleEditor({
             <label className="flex flex-col gap-1">
               {t("pipelineSchedule.cronExpressionLabel")}
               <input
-                aria-label={t("pipelineSchedule.cronExpressionAria")}
                 aria-invalid={!ADVANCED_CRON_RE.test(form.raw)}
                 aria-describedby={!ADVANCED_CRON_RE.test(form.raw) ? `${cronErrorId}` : undefined}
                 className="h-8 rounded border border-control bg-surface px-2 font-mono text-ink"

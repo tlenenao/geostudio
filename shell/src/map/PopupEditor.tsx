@@ -77,7 +77,6 @@ export function PopupEditor({
       <label className="flex items-center gap-2">
         <input
           type="checkbox"
-          aria-label={t("popupEditor.showAttributesLabel")}
           checked={value !== undefined}
           onChange={(e) => onChange(e.target.checked ? {} : undefined)}
         />
@@ -93,7 +92,6 @@ export function PopupEditor({
                 enregistrements) et quand il est renseigné (éditeur de
                 cartes, où le schéma de la collection est chargé). */}
             <input
-              aria-label={t("popupEditor.titleFieldLabel")}
               list={`${listId}-titre`}
               className={inputCls}
               value={value.titleField ?? ""}
@@ -181,7 +179,6 @@ export function PopupEditor({
         <label className={labelCls}>
           {t("popupEditor.attachmentsLabel")}
           <select
-            aria-label={t("popupEditor.attachmentsLabel")}
             className={inputCls}
             value={value.attachmentField ?? ""}
             onChange={(e) => onChange({ ...value, attachmentField: e.target.value || undefined })}
@@ -210,7 +207,6 @@ export function PopupEditor({
           <label className={labelCls}>
             {t("popupEditor.templateLabel")}
             <textarea
-              aria-label={t("popupEditor.templateLabel")}
               className="min-h-24 rounded-md border border-rule p-2 font-mono text-xs"
               value={value.template ?? ""}
               onChange={(e) => onChange({ ...value, template: e.target.value })}

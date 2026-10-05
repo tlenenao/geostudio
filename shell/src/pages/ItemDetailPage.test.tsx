@@ -241,7 +241,7 @@ test("panel=share sur un item non partageable n'affiche pas le formulaire de par
   expect(await screen.findByText(/Partage réservé au propriétaire/)).toBeInTheDocument();
   // Le formulaire reste visible (traitement « verrouillé et expliqué ») mais
   // son fieldset le rend inopérant : pas de case ni de bouton actionnable.
-  expect(await screen.findByLabelText("Public")).toBeDisabled();
+  expect(await screen.findByLabelText(/Visible par tous/)).toBeDisabled();
   expect(screen.getByRole("button", { name: "Enregistrer" })).toBeDisabled();
 });
 

@@ -227,7 +227,6 @@ export function NewItemButton() {
           <label className="flex flex-col gap-1 text-sm text-ink">
             {t("catalog.typeLabel")}
             <select
-              aria-label={t("catalog.typeLabel")}
               className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
               value={kind}
               onChange={(e) => {
@@ -252,7 +251,6 @@ export function NewItemButton() {
             <label className="flex flex-col gap-1 text-sm text-ink">
               {t("newItem.templateLabel")}
               <select
-                aria-label={t("newItem.templateLabel")}
                 className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                 value={templateId}
                 onChange={(e) => setTemplateId(e.target.value)}
@@ -270,7 +268,6 @@ export function NewItemButton() {
             <label className="flex flex-col gap-1 text-sm text-ink">
               {t("newItem.datasetSourceTypeLabel")}
               <select
-                aria-label={t("newItem.datasetSourceTypeLabel")}
                 className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                 value={datasetSource}
                 onChange={(e) => setDatasetSource(e.target.value as "collection" | "arcgis")}
@@ -284,7 +281,6 @@ export function NewItemButton() {
             <label className="flex flex-col gap-1 text-sm text-ink">
               {t("newItem.collectionSourceLabel")}
               <select
-                aria-label={t("newItem.collectionSourceLabel")}
                 className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                 value={collectionId}
                 onChange={(e) => setCollectionId(e.target.value)}
@@ -302,7 +298,6 @@ export function NewItemButton() {
             <label className="flex flex-col gap-1 text-sm text-ink">
               {t("newItem.arcgisLayerLabel")}
               <select
-                aria-label={t("newItem.arcgisLayerLabel")}
                 className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                 value={arcgisItemId}
                 onChange={(e) => setArcgisItemId(e.target.value)}
@@ -321,17 +316,12 @@ export function NewItemButton() {
           )}
           <label className="flex flex-col gap-1 text-sm text-ink">
             {t("visualQuery.titleLabel")}
-            <Input
-              aria-label={t("visualQuery.titleLabel")}
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-            />
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} />
           </label>
           {kind === "site" && (
             <label className="flex flex-col gap-1 text-sm text-ink">
               {t("newItem.slugLabel")}
               <Input
-                aria-label={t("newItem.slugLabel")}
                 value={slug}
                 onChange={(e) => {
                   setSlug(e.target.value);

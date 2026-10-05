@@ -83,17 +83,17 @@ test("an unrecognized existing cron opens in advanced mode with the raw value in
   const value: PipelineRefreshPolicy = { enabled: true, cron: "0 0 1 * *" };
   renderEditor(value, vi.fn());
   expect(screen.getByLabelText("Mode de planification")).toHaveValue("advanced");
-  expect(screen.getByLabelText("Expression cron")).toHaveValue("0 0 1 * *");
+  expect(screen.getByLabelText(/Expression cron/)).toHaveValue("0 0 1 * *");
 });
 
 test("an invalid advanced cron shows an inline error", async () => {
   const value: PipelineRefreshPolicy = { enabled: true, cron: "0 0 1 * *" };
   renderEditor(value, vi.fn());
-  await userEvent.clear(screen.getByLabelText("Expression cron"));
-  await userEvent.type(screen.getByLabelText("Expression cron"), "not a cron");
+  await userEvent.clear(screen.getByLabelText(/Expression cron/));
+  await userEvent.type(screen.getByLabelText(/Expression cron/), "not a cron");
   expect(screen.getByRole("alert")).toHaveTextContent("Format cron invalide");
   // P32.09 : le champ est marqué invalide et relié à son message.
-  const field = screen.getByLabelText("Expression cron");
+  const field = screen.getByLabelText(/Expression cron/);
   expect(field).toHaveAttribute("aria-invalid", "true");
   expect(field).toHaveAccessibleDescription(/Format cron invalide/);
 });
@@ -112,7 +112,7 @@ test("changing the weekly day recompiles the cron with the new day", async () =>
   const onChange = vi.fn();
   const value: PipelineRefreshPolicy = { enabled: true, cron: "30 9 * * 1" };
   renderEditor(value, onChange);
-  await userEvent.selectOptions(screen.getByLabelText("Jour"), "3");
+  await userEvent.selectOptions(screen.getByLabelText(/Jour de la semaine/), "3");
   expect(onChange).toHaveBeenLastCalledWith({ enabled: true, cron: "30 9 * * 3" });
 });
 
@@ -128,7 +128,7 @@ test("changing the interval minutes recompiles the cron", async () => {
   const onChange = vi.fn();
   const value: PipelineRefreshPolicy = { enabled: true, cron: "*/15 * * * *" };
   renderEditor(value, onChange);
-  fireEvent.change(screen.getByLabelText("Intervalle en minutes"), { target: { value: "5" } });
+  fireEvent.change(screen.getByLabelText(/Toutes les combien/), { target: { value: "5" } });
   expect(onChange).toHaveBeenLastCalledWith({ enabled: true, cron: "*/5 * * * *" });
 });
 
@@ -138,7 +138,7 @@ test("switching to advanced mode keeps the current cron as the raw value", async
   renderEditor(value, onChange);
   await userEvent.selectOptions(screen.getByLabelText("Mode de planification"), "advanced");
   expect(onChange).toHaveBeenLastCalledWith({ enabled: true, cron: "*/15 * * * *" });
-  expect(screen.getByLabelText("Expression cron")).toHaveValue("*/15 * * * *");
+  expect(screen.getByLabelText(/Expression cron/)).toHaveValue("*/15 * * * *");
 });
 
 test("shows the next scheduled run time when scheduling is enabled", async () => {

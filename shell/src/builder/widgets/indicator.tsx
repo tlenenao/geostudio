@@ -264,9 +264,8 @@ export function registerIndicatorWidget(): void {
           onChange={(id) => onChange({ ...props, dataSourceId: id })}
         />
         <label className="flex flex-col gap-1">
-          {t("widgetIndicator.labelConfig")}
+          {t("widgetIndicator.labelAria")}
           <input
-            aria-label={t("widgetIndicator.labelAria")}
             className="h-9 rounded-md border border-rule px-2"
             value={String(props.label ?? "")}
             onChange={(e) => onChange({ ...props, label: e.target.value })}
@@ -275,7 +274,6 @@ export function registerIndicatorWidget(): void {
         <label className="flex flex-col gap-1">
           {t("widgetIndicator.aggConfig")}
           <select
-            aria-label={t("widgetIndicator.aggConfig")}
             className="h-9 rounded-md border border-rule px-2"
             value={String(props.agg ?? "count")}
             onChange={(e) => onChange({ ...props, agg: e.target.value })}
@@ -287,7 +285,6 @@ export function registerIndicatorWidget(): void {
         <label className="flex flex-col gap-1">
           {t("widgetIndicator.fieldLabel")}
           <input
-            aria-label={t("widgetIndicator.fieldAria")}
             className="h-9 rounded-md border border-rule px-2"
             value={String(props.field ?? "")}
             onChange={(e) => onChange({ ...props, field: e.target.value })}
@@ -296,7 +293,6 @@ export function registerIndicatorWidget(): void {
         <label className="flex flex-col gap-1">
           {t("widgetIndicator.compareToLabel")}
           <select
-            aria-label={t("widgetIndicator.compareToLabel")}
             className="h-9 rounded-md border border-rule px-2"
             value={String(props.referencePeriod ?? "")}
             onChange={(e) => onChange({ ...props, referencePeriod: e.target.value || undefined })}
@@ -309,7 +305,6 @@ export function registerIndicatorWidget(): void {
         <label className="flex items-center gap-2">
           <input
             type="checkbox"
-            aria-label={t("widgetIndicator.sparklineToggle")}
             checked={Boolean(props.sparkline)}
             onChange={(e) => onChange({ ...props, sparkline: e.target.checked })}
           />
@@ -318,7 +313,6 @@ export function registerIndicatorWidget(): void {
         <label className="flex flex-col gap-1">
           {t("widgetIndicator.criticalThreshold")}
           <input
-            aria-label={t("widgetIndicator.criticalThreshold")}
             className="h-9 rounded-md border border-rule px-2"
             value={String(props.criticalWhen ?? "")}
             onChange={(e) => onChange({ ...props, criticalWhen: e.target.value })}
@@ -327,7 +321,6 @@ export function registerIndicatorWidget(): void {
         <label className="flex flex-col gap-1">
           {t("widgetIndicator.warningThreshold")}
           <input
-            aria-label={t("widgetIndicator.warningThreshold")}
             className="h-9 rounded-md border border-rule px-2"
             value={String(props.warningWhen ?? "")}
             onChange={(e) => onChange({ ...props, warningWhen: e.target.value })}

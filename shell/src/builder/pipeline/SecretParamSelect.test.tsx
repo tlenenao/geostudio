@@ -275,7 +275,7 @@ test("le champ dsn a un placeholder d'exemple", async () => {
   });
   renderSelect({ kindFilter: "postgres_dsn" }, { createSecret });
   await userEvent.click(screen.getByText("Créer un secret"));
-  const dsnInput = screen.getByLabelText(t("secretParamSelect.dsnAria"));
+  const dsnInput = screen.getByLabelText(t("secretParamSelect.dsnLabel"));
   expect(dsnInput).toHaveAttribute("placeholder", "postgresql://user:pass@host:5432/db");
 });
 
@@ -289,7 +289,7 @@ test("le champ host SMTP a un placeholder d'exemple", async () => {
   });
   renderSelect({ kindFilter: "smtp" }, { createSecret });
   await userEvent.click(screen.getByText("Créer un secret"));
-  const hostInput = screen.getByLabelText(t("secretParamSelect.hostAria"));
+  const hostInput = screen.getByLabelText(t("secretParamSelect.hostLabel"));
   expect(hostInput).toHaveAttribute("placeholder", "smtp.example.com");
 });
 

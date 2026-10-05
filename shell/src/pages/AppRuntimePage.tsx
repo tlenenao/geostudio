@@ -264,11 +264,7 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
         <div className="flex flex-col gap-3">
           <label className="flex flex-col gap-1 text-sm">
             {t("appRuntime.viewNameLabel")}
-            <Input
-              aria-label={t("appRuntime.viewNameLabel")}
-              value={viewTitle}
-              onChange={(e) => setViewTitle(e.target.value)}
-            />
+            <Input value={viewTitle} onChange={(e) => setViewTitle(e.target.value)} />
           </label>
           {createBookmark.isError && (
             <p role="alert" className="text-sm text-danger">

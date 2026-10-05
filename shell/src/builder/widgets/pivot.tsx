@@ -49,7 +49,6 @@ export function registerPivotWidget(): void {
           <label className={labelCls}>
             {t("widgetPivot.rowsFieldConfig")}
             <input
-              aria-label={t("widgetPivot.rowsFieldConfig")}
               className={inputCls}
               value={String(encodings.rows ?? "")}
               onChange={(e) => setEncodings({ rows: e.target.value })}
@@ -58,16 +57,14 @@ export function registerPivotWidget(): void {
           <label className={labelCls}>
             {t("widgetPivot.columnsFieldConfig")}
             <input
-              aria-label={t("widgetPivot.columnsFieldConfig")}
               className={inputCls}
               value={String(encodings.columns ?? "")}
               onChange={(e) => setEncodings({ columns: e.target.value })}
             />
           </label>
           <label className={labelCls}>
-            {t("widgetPivot.titleConfig")}
+            {t("widgetPivot.titleAria")}
             <input
-              aria-label={t("widgetPivot.titleAria")}
               className={inputCls}
               value={String(props.title ?? "")}
               onChange={(e) => onChange({ ...props, title: e.target.value })}

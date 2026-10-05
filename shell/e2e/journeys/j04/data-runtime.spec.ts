@@ -106,7 +106,7 @@ test.describe("j04 sources de données et widgets de données au runtime", () =>
     );
     await openRuntime(page, `/apps/${id}`);
     await expect(page.getByText("Beta")).toBeVisible();
-    await page.getByLabel("Valeur du filtre").fill("Alpha");
+    await page.getByLabel("Filtrer", { exact: true }).fill("Alpha");
     await page.waitForTimeout(2000);
     await expect(page.getByText("Beta")).toHaveCount(0);
     await expect(page.getByText("Alpha")).toBeVisible();
@@ -126,7 +126,7 @@ test.describe("j04 sources de données et widgets de données au runtime", () =>
       }),
     );
     await openRuntime(page, `/apps/${id}`);
-    await page.getByLabel("Valeur du filtre").fill("ZZZ-inexistant");
+    await page.getByLabel("Filtrer", { exact: true }).fill("ZZZ-inexistant");
     await page.waitForTimeout(2000);
     await expect(page.getByText(/Aucune donnée|Aucun/i).first()).toBeVisible();
   });

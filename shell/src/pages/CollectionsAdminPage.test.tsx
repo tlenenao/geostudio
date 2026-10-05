@@ -346,7 +346,7 @@ test("shares a collection via the row action", async () => {
   const shareButton = await screen.findByRole("button", { name: "Partager" });
   expectAriaWired(shareButton, shareButton.getAttribute("aria-controls")!, false);
   await userEvent.click(shareButton);
-  await userEvent.click(await screen.findByLabelText("Public"));
+  await userEvent.click(await screen.findByLabelText(/Visible par tous/));
   expectAriaWired(shareButton, shareButton.getAttribute("aria-controls")!, true);
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   await waitFor(() => expect(putBody).toEqual({ public: true, groups: [] }));

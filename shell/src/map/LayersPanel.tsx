@@ -382,7 +382,6 @@ export function LayersPanel({
                   <label className="flex flex-col gap-1 text-sm">
                     {t("layersPanel.radiusPixelsLabel")}
                     <input
-                      aria-label={t("layersPanel.radiusPixelsLabel")}
                       type="number"
                       min={1}
                       value={Number(
@@ -407,7 +406,6 @@ export function LayersPanel({
                   <label className="flex flex-col gap-1 text-sm">
                     {t("layersPanel.radiusMetersLabel")}
                     <input
-                      aria-label={t("layersPanel.radiusMetersLabel")}
                       type="number"
                       min={1}
                       value={Number(
@@ -432,7 +430,6 @@ export function LayersPanel({
                   <label className="flex flex-col gap-1 text-sm">
                     {t("layersPanel.elevationScaleLabel")}
                     <input
-                      aria-label={t("layersPanel.elevationScaleLabel")}
                       type="number"
                       min={0}
                       value={Number(
@@ -463,7 +460,6 @@ export function LayersPanel({
                     percent: Math.round((layer.opacity ?? 1) * 100),
                   })}
                   <input
-                    aria-label={t("layersPanel.opacityAria")}
                     type="range"
                     min={0}
                     max={1}

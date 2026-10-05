@@ -147,6 +147,7 @@ function ShareLinksPanel({ itemId }: { itemId: string }) {
       )}
       <div className="flex items-center gap-2">
         <label className="flex items-center gap-1 text-xs text-ink">
+          {/* eslint-disable-next-line geostudio/label-no-aria-label -- le texte visible n'est que l'unité (jours) ; le nom accessible la contient */}
           <input
             type="number"
             aria-label={t("shareForm.ttlAria")}
@@ -491,7 +492,6 @@ export function ShareForm({ item, onDone }: { item: Item; onDone: () => void }) 
           <label className="flex items-center gap-2 text-sm text-ink">
             <input
               type="checkbox"
-              aria-label={t("collectionsAdmin.columnPublic")}
               checked={isPublic}
               onChange={(e) => setIsPublic(e.target.checked)}
             />
@@ -506,6 +506,7 @@ export function ShareForm({ item, onDone }: { item: Item; onDone: () => void }) 
               <div key={g.id} className="flex flex-col gap-1 border-b border-rule pb-2 text-sm">
                 <div className="flex items-center justify-between gap-2">
                   <label className="flex items-center gap-2 text-ink">
+                    {/* eslint-disable-next-line geostudio/label-no-aria-label -- le nom accessible contient le texte visible et ajoute le contexte dynamique (champ/ligne) */}
                     <input
                       type="checkbox"
                       aria-label={t("sharePanel.groupAria", { group: g.title })}

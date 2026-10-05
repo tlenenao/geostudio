@@ -165,7 +165,7 @@ export function CopilotChat({
           </p>
         ))}
       </div>
-      <label className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1">
         <textarea
           aria-label={t("copilot.messageAria")}
           className="min-h-16 rounded-md border border-rule bg-surface p-2 text-sm text-ink"
@@ -174,7 +174,7 @@ export function CopilotChat({
           maxLength={MAX_MESSAGE_CHARS}
           onChange={(e) => setInput(e.target.value)}
         />
-      </label>
+      </div>
       <Button size="sm" disabled={disabled || sending || !input.trim()} onClick={() => void send()}>
         {t("copilot.send")}
       </Button>

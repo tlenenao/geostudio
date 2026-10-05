@@ -84,7 +84,7 @@ test.describe("j04 câblage, variables, actions", () => {
       }),
     );
     await openRuntime(page, `/apps/${id}`);
-    await page.getByLabel("Valeur du filtre").fill("hello");
+    await page.getByLabel("Filtrer", { exact: true }).fill("hello");
     await expect(page.getByText("Valeur : hello")).toBeVisible();
   });
 
@@ -106,7 +106,7 @@ test.describe("j04 câblage, variables, actions", () => {
     );
     await openRuntime(page, `/apps/${id}`);
     await expect(page.getByText("Secret visible")).toHaveCount(0);
-    await page.getByLabel("Valeur du filtre").fill("ok");
+    await page.getByLabel("Filtrer", { exact: true }).fill("ok");
     await expect(page.getByText("Secret visible")).toBeVisible();
   });
 

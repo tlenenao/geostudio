@@ -81,7 +81,6 @@ function StringListField({
     <label className="flex flex-col gap-1 text-xs">
       {name}
       <input
-        aria-label={name}
         className="h-8 rounded border border-control bg-surface px-2 text-ink"
         defaultValue={value.join(", ")}
         disabled={readOnly}
@@ -177,7 +176,6 @@ export function PipelineNodeInspector({
         <label key={name} className="flex flex-col gap-1 text-xs">
           {name}
           <select
-            aria-label={name}
             className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink"
             value={String(params[name] ?? prop.default ?? "")}
             onChange={(e) => setField(name, e.target.value)}
@@ -200,7 +198,6 @@ export function PipelineNodeInspector({
         <label key={name} className="flex items-center gap-2 text-xs">
           <input
             type="checkbox"
-            aria-label={name}
             checked={Boolean(params[name])}
             onChange={(e) => setField(name, e.target.checked)}
             disabled={readOnly}
@@ -236,7 +233,6 @@ export function PipelineNodeInspector({
         {name}
         <input
           type={prop.type === "number" || prop.type === "integer" ? "number" : "text"}
-          aria-label={name}
           className="h-8 rounded border border-control bg-surface px-2 text-ink"
           value={String(params[name] ?? "")}
           onChange={(e) =>

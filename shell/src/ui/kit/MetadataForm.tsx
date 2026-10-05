@@ -73,12 +73,11 @@ export function MetadataForm({
     <form onSubmit={submit} className="flex flex-col gap-3">
       <label className="flex flex-col gap-1 text-sm text-ink">
         Titre
-        <Input aria-label="Titre" value={title} onChange={(e) => setTitle(e.target.value)} />
+        <Input value={title} onChange={(e) => setTitle(e.target.value)} />
       </label>
       <label className="flex flex-col gap-1 text-sm text-ink">
         {t("catalog.summaryLabel")}
         <textarea
-          aria-label={t("catalog.summaryLabel")}
           className="min-h-20 rounded-md border border-control bg-surface px-3 py-2 text-sm text-ink"
           value={abstract}
           onChange={(e) => setAbstract(e.target.value)}
@@ -86,11 +85,7 @@ export function MetadataForm({
       </label>
       <label className="flex flex-col gap-1 text-sm text-ink">
         {t("catalog.keywordsLabel")}
-        <Input
-          aria-label={t("catalog.keywordsLabel")}
-          value={keywords}
-          onChange={(e) => setKeywords(e.target.value)}
-        />
+        <Input value={keywords} onChange={(e) => setKeywords(e.target.value)} />
       </label>
       <label className="flex flex-col gap-1 text-sm text-ink">
         Licence
@@ -113,11 +108,7 @@ export function MetadataForm({
       {initial.slug !== undefined && (
         <label className="flex flex-col gap-1 text-sm text-ink">
           {t("newItem.slugLabel")}
-          <Input
-            aria-label={t("newItem.slugLabel")}
-            value={slug}
-            onChange={(e) => setSlug(e.target.value)}
-          />
+          <Input value={slug} onChange={(e) => setSlug(e.target.value)} />
           {slugInvalid && (
             <span className="text-xs text-danger">{t("itemDetail.slugInvalid")}</span>
           )}

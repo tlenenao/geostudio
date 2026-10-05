@@ -14,7 +14,6 @@ export function registerCounterExampleWidget(): void {
       <label className="flex flex-col gap-1 text-sm">
         Valeur initiale
         <input
-          aria-label="Valeur initiale"
           type="number"
           className="h-9 rounded-md border border-rule px-2"
           value={String(props.initial ?? 0)}

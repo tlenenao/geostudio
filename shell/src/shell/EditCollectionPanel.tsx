@@ -151,24 +151,15 @@ export function EditCollectionPanel({
                 <div className="flex flex-col gap-3 pt-3">
                   <label className="flex flex-col gap-1 text-sm text-ink">
                     {t("collectionsAdmin.columnTitle")}
-                    <Input
-                      aria-label={t("collectionsAdmin.columnTitle")}
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                    />
+                    <Input value={title} onChange={(e) => setTitle(e.target.value)} />
                   </label>
                   <label className="flex flex-col gap-1 text-sm text-ink">
                     {t("kitGallery.descriptionFieldLabel")}
-                    <Input
-                      aria-label={t("kitGallery.descriptionFieldLabel")}
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                    />
+                    <Input value={description} onChange={(e) => setDescription(e.target.value)} />
                   </label>
                   <label className="flex items-center gap-2 text-sm text-ink">
                     <input
                       type="checkbox"
-                      aria-label={t("collectionsAdmin.columnPublic")}
                       checked={isPublic}
                       onChange={(e) => setIsPublic(e.target.checked)}
                     />
@@ -177,7 +168,6 @@ export function EditCollectionPanel({
                   <label className="flex items-center gap-2 text-sm text-ink">
                     <input
                       type="checkbox"
-                      aria-label={t("collectionsAdmin.columnEditable")}
                       checked={editable}
                       onChange={(e) => setEditable(e.target.checked)}
                     />
@@ -203,28 +193,16 @@ export function EditCollectionPanel({
                   {license === "other" && (
                     <label className="flex flex-col gap-1 text-sm text-ink">
                       {t("editCollection.licenseUriLabel")}
-                      <Input
-                        aria-label={t("editCollection.licenseUriLabel")}
-                        value={licenseUri}
-                        onChange={(e) => setLicenseUri(e.target.value)}
-                      />
+                      <Input value={licenseUri} onChange={(e) => setLicenseUri(e.target.value)} />
                     </label>
                   )}
                   <label className="flex flex-col gap-1 text-sm text-ink">
                     {t("editCollection.producerLabel")}
-                    <Input
-                      aria-label={t("editCollection.producerLabel")}
-                      value={producer}
-                      onChange={(e) => setProducer(e.target.value)}
-                    />
+                    <Input value={producer} onChange={(e) => setProducer(e.target.value)} />
                   </label>
                   <label className="flex flex-col gap-1 text-sm text-ink">
                     {t("editCollection.contactLabel")}
-                    <Input
-                      aria-label={t("editCollection.contactLabel")}
-                      value={contact}
-                      onChange={(e) => setContact(e.target.value)}
-                    />
+                    <Input value={contact} onChange={(e) => setContact(e.target.value)} />
                   </label>
                   <label className="flex flex-col gap-1 text-sm text-ink">
                     {t("editCollection.updateFrequencyLabel")}
@@ -237,11 +215,7 @@ export function EditCollectionPanel({
                   </label>
                   <label className="flex flex-col gap-1 text-sm text-ink">
                     {t("editCollection.lineageLabel")}
-                    <Textarea
-                      aria-label={t("editCollection.lineageLabel")}
-                      value={lineage}
-                      onChange={(e) => setLineage(e.target.value)}
-                    />
+                    <Textarea value={lineage} onChange={(e) => setLineage(e.target.value)} />
                   </label>
                   <label className="flex flex-col gap-1 text-sm text-ink">
                     {t("editCollection.languageLabel")}
@@ -254,27 +228,21 @@ export function EditCollectionPanel({
                   </label>
                   <label className="flex flex-col gap-1 text-sm text-ink">
                     {t("editCollection.versionLabel")}
-                    <Input
-                      aria-label={t("editCollection.versionLabel")}
-                      value={version}
-                      onChange={(e) => setVersion(e.target.value)}
-                    />
+                    <Input value={version} onChange={(e) => setVersion(e.target.value)} />
                   </label>
                   <div className="flex gap-2">
                     <label className="flex flex-1 flex-col gap-1 text-sm text-ink">
-                      {t("editCollection.temporalStartLabel")}
+                      {t("editCollection.temporalStartAria")}
                       <Input
                         type="date"
-                        aria-label={t("editCollection.temporalStartAria")}
                         value={temporalStart}
                         onChange={(e) => setTemporalStart(e.target.value)}
                       />
                     </label>
                     <label className="flex flex-1 flex-col gap-1 text-sm text-ink">
-                      {t("editCollection.temporalEndLabel")}
+                      {t("editCollection.temporalEndAria")}
                       <Input
                         type="date"
-                        aria-label={t("editCollection.temporalEndAria")}
                         value={temporalEnd}
                         onChange={(e) => setTemporalEnd(e.target.value)}
                       />
@@ -349,7 +317,6 @@ export function EditCollectionPanel({
                         <label className="flex items-center gap-2 text-sm text-ink">
                           <input
                             type="checkbox"
-                            aria-label={f.name}
                             checked={sensitiveFields.includes(f.name)}
                             onChange={(e) => toggleSensitiveField(f.name, e.target.checked)}
                           />

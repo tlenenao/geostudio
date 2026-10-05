@@ -441,7 +441,6 @@ export function VisualQueryWizardPage({
               <label className="flex flex-col gap-1 text-sm">
                 {t("visualQuery.titleLabel")}
                 <Input
-                  aria-label={t("visualQuery.titleLabel")}
                   value={title}
                   onChange={(e) => {
                     setTitle(e.target.value);
@@ -452,7 +451,6 @@ export function VisualQueryWizardPage({
               <label className="flex flex-col gap-1 text-sm">
                 {t("visualQuery.baseCollectionLabel")}
                 <select
-                  aria-label={t("visualQuery.baseCollectionLabel")}
                   className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                   value={baseCollectionId}
                   onChange={(e) => {

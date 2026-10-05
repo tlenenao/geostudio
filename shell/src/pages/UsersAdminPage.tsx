@@ -103,7 +103,6 @@ export function UsersAdminPage() {
               <label className="flex flex-col gap-1 text-sm text-ink">
                 {t("catalog.searchLabel")}
                 <Input
-                  aria-label={t("catalog.searchLabel")}
                   value={q}
                   onChange={(e) => {
                     setQ(e.target.value);

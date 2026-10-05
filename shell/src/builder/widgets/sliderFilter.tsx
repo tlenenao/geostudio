@@ -38,18 +38,16 @@ export function registerSliderFilterWidget(): void {
           onChange={(id) => onChange({ ...props, dataSourceId: id })}
         />
         <label className="flex flex-col gap-1">
-          {t("widgetSliderFilter.fieldConfig")}
+          {t("widgetSliderFilter.fieldAria")}
           <input
-            aria-label={t("widgetSliderFilter.fieldAria")}
             className="h-9 rounded-md border border-rule px-2"
             value={String(props.field ?? "")}
             onChange={(e) => onChange({ ...props, field: e.target.value })}
           />
         </label>
         <label className="flex flex-col gap-1">
-          {t("widgetSliderFilter.labelConfig")}
+          {t("widgetSliderFilter.labelAria")}
           <input
-            aria-label={t("widgetSliderFilter.labelAria")}
             className="h-9 rounded-md border border-rule px-2"
             value={String(props.label ?? "")}
             onChange={(e) => onChange({ ...props, label: e.target.value })}

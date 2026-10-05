@@ -23,7 +23,6 @@ export function CameraControls({
       <label className="flex flex-col gap-1 text-sm">
         {t("cameraControls.pitchLabel", { pitch })}
         <input
-          aria-label={t("cameraControls.pitchAria")}
           type="range"
           min={0}
           max={60}
@@ -35,7 +34,6 @@ export function CameraControls({
       <label className="flex flex-col gap-1 text-sm">
         {t("cameraControls.bearingLabel", { bearing: displayBearing })}
         <input
-          aria-label={t("cameraControls.bearingAria")}
           type="range"
           min={0}
           max={360}

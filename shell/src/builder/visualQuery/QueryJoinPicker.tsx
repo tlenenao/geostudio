@@ -26,7 +26,6 @@ export function QueryJoinPicker({
       <label className="flex flex-col gap-1 text-xs">
         {t("queryJoinPicker.collectionLabel")}
         <select
-          aria-label={t("queryJoinPicker.collectionAria")}
           className="h-8 rounded border border-control bg-surface px-2 text-xs text-ink"
           value={value.collectionId}
           onChange={(e) => onChange({ ...value, collectionId: e.target.value, on: "" })}
@@ -46,7 +45,6 @@ export function QueryJoinPicker({
         <label className="flex flex-col gap-1 text-xs">
           {t("queryJoinPicker.joinColumnLabel")}
           <select
-            aria-label={t("queryJoinPicker.joinColumnAria")}
             className="h-8 rounded border border-control bg-surface px-2 text-xs text-ink"
             value={value.on}
             onChange={(e) => onChange({ ...value, on: e.target.value })}
@@ -63,7 +61,6 @@ export function QueryJoinPicker({
       <label className="flex flex-col gap-1 text-xs">
         {t("queryJoinPicker.joinTypeLabel")}
         <select
-          aria-label={t("queryJoinPicker.joinTypeAria")}
           className="h-8 rounded border border-control bg-surface px-2 text-xs text-ink"
           value={value.how}
           onChange={(e) => onChange({ ...value, how: e.target.value as "inner" | "left" })}

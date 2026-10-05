@@ -64,14 +64,12 @@ export function makeGeneratedPropsPanel(manifest: WcWidgetManifest) {
               {p.type === "boolean" ? (
                 <input
                   type="checkbox"
-                  aria-label={p.label}
                   checked={Boolean(props[p.name])}
                   onChange={(e) => onChange({ ...props, [p.name]: e.target.checked })}
                 />
               ) : (
                 <input
                   type={p.type === "number" ? "number" : "text"}
-                  aria-label={p.label}
                   className="h-9 rounded-md border border-rule px-2"
                   value={String(props[p.name] ?? "")}
                   onChange={(e) =>

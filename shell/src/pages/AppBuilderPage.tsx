@@ -580,7 +580,6 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                 <label className="flex items-center gap-2 text-xs">
                   <input
                     type="checkbox"
-                    aria-label={t("appBuilder.autoInteractionsLabel")}
                     checked={draft.interactions === "auto"}
                     onChange={(e) => setInteractions(e.target.checked ? "auto" : "manual")}
                   />

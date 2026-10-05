@@ -18,16 +18,14 @@ export function registerFilterWidget(): void {
         <label className="flex flex-col gap-1">
           {t("widgetFilter.fieldConfig")}
           <input
-            aria-label={t("widgetFilter.fieldConfig")}
             className="h-9 rounded-md border border-rule px-2"
             value={String(props.field ?? "")}
             onChange={(e) => onChange({ ...props, field: e.target.value })}
           />
         </label>
         <label className="flex flex-col gap-1">
-          {t("widgetFilter.labelConfig")}
+          {t("widgetFilter.labelAria")}
           <input
-            aria-label={t("widgetFilter.labelAria")}
             className="h-9 rounded-md border border-rule px-2"
             value={String(props.label ?? "")}
             onChange={(e) => onChange({ ...props, label: e.target.value })}
@@ -41,7 +39,6 @@ export function registerFilterWidget(): void {
         <label className="flex flex-col gap-1 text-sm text-[var(--gs-color-text)]">
           {String(props.label ?? "Filtrer")}
           <input
-            aria-label={t("widgetFilter.valueAria")}
             className="h-9 rounded-md border border-[var(--gs-color-border)] px-2"
             onChange={(e) => {
               const value = e.target.value;

@@ -54,7 +54,6 @@ export function PrintLayoutPanel({
       <label className="flex flex-col gap-1 text-sm">
         {t("printLayout.titleLabel")}
         <Input
-          aria-label={t("printLayout.titleAria")}
           type="text"
           value={current.title ?? ""}
           onChange={(e) => patch({ title: e.target.value || null })}
@@ -62,7 +61,6 @@ export function PrintLayoutPanel({
       </label>
       <label className="flex items-center gap-2 text-sm">
         <input
-          aria-label={t("printLayout.legendAria")}
           type="checkbox"
           checked={current.showLegend}
           onChange={(e) => patch({ showLegend: e.target.checked })}
@@ -79,7 +77,6 @@ export function PrintLayoutPanel({
       <label className="flex flex-col gap-1 text-sm">
         {t("printLayout.cartoucheLabel")}
         <Textarea
-          aria-label={t("printLayout.cartoucheAria")}
           value={current.cartouche ?? ""}
           onChange={(e) => patch({ cartouche: e.target.value || null })}
         />

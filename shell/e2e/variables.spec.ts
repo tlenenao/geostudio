@@ -34,7 +34,7 @@ test("a Filtre wired to a variable updates a Texte widget reading it, in the run
 
   // Runtime: typing into the Filtre updates the Texte widget's {{var:message}} binding.
   await page.goto("/apps/9");
-  await page.getByLabel("Valeur du filtre").fill("bonjour");
+  await page.getByLabel("Filtrer", { exact: true }).fill("bonjour");
   await expect(page.getByText("Valeur : bonjour")).toBeVisible();
 });
 

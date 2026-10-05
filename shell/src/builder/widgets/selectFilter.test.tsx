@@ -79,8 +79,8 @@ test("fetches distinct values via a groupBy statistics query and renders one che
     { id: "Sud", properties: { region: "Sud", value: 5 } },
   ]);
   renderSelect({}, queryDataSource);
-  expect(await screen.findByLabelText("Nord")).toBeInTheDocument();
-  expect(screen.getByLabelText("Sud")).toBeInTheDocument();
+  expect(await screen.findByLabelText(/^Nord/)).toBeInTheDocument();
+  expect(screen.getByLabelText(/^Sud/)).toBeInTheDocument();
   expect(screen.getByText("Nord (3)")).toBeInTheDocument();
   expect(queryDataSource).toHaveBeenCalledWith(
     expect.objectContaining({
@@ -97,7 +97,7 @@ test("checking a value sets a single-element array cross-filter", async () => {
     { id: "Sud", properties: { region: "Sud", value: 5 } },
   ]);
   renderSelect({}, queryDataSource);
-  await userEvent.click(await screen.findByLabelText("Nord"));
+  await userEvent.click(await screen.findByLabelText(/^Nord/));
   expect(
     screen.getByText(/"ds-1":\{"field":"region","value":\["Nord"\],"originSourceId":"src-1"\}/),
   ).toBeInTheDocument();
@@ -109,11 +109,11 @@ test("checking two values accumulates them, unchecking the last one clears the f
     { id: "Sud", properties: { region: "Sud", value: 5 } },
   ]);
   renderSelect({}, queryDataSource);
-  await userEvent.click(await screen.findByLabelText("Nord"));
-  await userEvent.click(screen.getByLabelText("Sud"));
+  await userEvent.click(await screen.findByLabelText(/^Nord/));
+  await userEvent.click(screen.getByLabelText(/^Sud/));
   expect(screen.getByText(/"value":\["Nord","Sud"\]/)).toBeInTheDocument();
-  await userEvent.click(screen.getByLabelText("Nord"));
-  await userEvent.click(screen.getByLabelText("Sud"));
+  await userEvent.click(screen.getByLabelText(/^Nord/));
+  await userEvent.click(screen.getByLabelText(/^Sud/));
   expect(screen.getByText("crossFilter:{}")).toBeInTheDocument();
 });
 
@@ -140,9 +140,9 @@ test("PropsPanel edits dataSourceId, field and label", async () => {
   expectTokenizedClasses(container);
   await userEvent.selectOptions(screen.getByRole("combobox"), "src-1");
   expect(onChange).toHaveBeenLastCalledWith({ dataSourceId: "src-1", field: "", label: "" });
-  await userEvent.type(screen.getByLabelText("Champ"), "region");
+  await userEvent.type(screen.getByLabelText("Champ du sélecteur"), "region");
   expect(onChange).toHaveBeenLastCalledWith({ dataSourceId: "", field: "n", label: "" });
-  await userEvent.type(screen.getByLabelText("Libellé"), "Région");
+  await userEvent.type(screen.getByLabelText("Libellé du sélecteur"), "Région");
   expect(onChange).toHaveBeenLastCalledWith({ dataSourceId: "", field: "", label: "n" });
 });
 
