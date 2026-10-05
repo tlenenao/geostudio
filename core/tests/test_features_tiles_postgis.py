@@ -467,3 +467,136 @@ def test_dense_tile_is_aggregated_below_threshold_and_truncated_above(pg_app, mo
     assert high.status_code == 200
     assert high.headers.get("X-Tile-Truncated") == "true"
     assert "X-Tile-Aggregated" not in high.headers
+
+
+def _pb(buf: bytes):
+    """Décodeur protobuf minimal : (champ, valeur) ; varint -> int, len -> bytes."""
+    i = 0
+    while i < len(buf):
+        key, i = _varint(buf, i)
+        field, wire = key >> 3, key & 7
+        if wire == 0:
+            v, i = _varint(buf, i)
+        elif wire == 2:
+            n, i = _varint(buf, i)
+            v, i = buf[i : i + n], i + n
+        else:  # pragma: no cover - fixe/32/64 bits absents des champs lus ici
+            raise AssertionError(f"wire type {wire} inattendu")
+        yield field, v
+
+
+def _varint(buf: bytes, i: int):
+    n = shift = 0
+    while True:
+        b = buf[i]
+        i += 1
+        n |= (b & 0x7F) << shift
+        if not b & 0x80:
+            return n, i
+        shift += 7
+
+
+def _zz(n: int) -> int:
+    return (n >> 1) ^ -(n & 1)
+
+
+def _decode_cells(mvt: bytes) -> list[tuple[int, int, int]]:
+    """(point_count, x, y) de chaque cellule d'une tuile agrégée (1 couche, points)."""
+    out = []
+    for f, layer in _pb(mvt):
+        assert f == 3
+        keys, values, feats = [], [], []
+        for lf, lv in _pb(layer):
+            if lf == 3:
+                keys.append(lv.decode())
+            elif lf == 4:
+                values.append(next(v for _, v in _pb(lv)))
+            elif lf == 2:
+                feats.append(lv)
+        assert keys == ["point_count"]
+        for feat in feats:
+            tags, geom = [], b""
+            for ff, fv in _pb(feat):
+                if ff == 2:
+                    tags = [v for _, v in _pb_packed(fv)]
+                elif ff == 4:
+                    geom = fv
+            cmd, i = _varint(geom, 0)
+            assert cmd == 9  # MoveTo x1
+            x, i = _varint(geom, i)
+            y, i = _varint(geom, i)
+            out.append((values[tags[1]], _zz(x), _zz(y)))
+    return sorted(out)
+
+
+def _pb_packed(buf: bytes):
+    i = 0
+    while i < len(buf):
+        v, i = _varint(buf, i)
+        yield 0, v
+
+
+def _dense(monkeypatch, cap: int = 2):
+    from app.features import tiles as tiles_module
+
+    monkeypatch.setenv("CORE_TILE_AGG_MAX_ZOOM", "7")
+    monkeypatch.setattr(tiles_module, "MAX_TILE_FEATURES", cap)
+
+
+def test_aggregated_tile_carries_exact_counts_at_cell_centres(pg_app, monkeypatch):
+    """Valeurs, pas seulement présence : 3 points dans une cellule, 2 dans une autre ;
+    la cellule émise est son CENTRE (z0 : cellules de 256 unités, centre = 256k+128)."""
+    client, _, _ = pg_app
+    _dense(monkeypatch)
+    for _ in range(3):
+        _insert(client, "a", 2.35, 48.85)
+    for _ in range(2):
+        _insert(client, "b", -100.0, 40.0)
+    r = client.get(TILE_PATH)
+    assert r.headers.get("X-Tile-Aggregated") == "true"
+    cells = _decode_cells(r.content)
+    assert [c[0] for c in cells] == [2, 3]
+    assert all(x % 256 == 128 and y % 256 == 128 for _, x, y in cells)
+
+
+def test_aggregation_counts_neither_other_tenant_rows(pg_app, monkeypatch):
+    client, _, Session = pg_app
+    _dense(monkeypatch)
+    for _ in range(3):
+        _insert(client, "a")
+    with Session() as s:
+        s.execute(
+            text(
+                "INSERT INTO demo_incidents (titre, geom, tenant_id) "
+                "SELECT 'v', ST_SetSRID(ST_MakePoint(2.35, 48.85), 4326), 'autre' "
+                "FROM generate_series(1, 4)"
+            )
+        )
+        s.commit()
+    cells = _decode_cells(client.get(TILE_PATH).content)
+    assert [c[0] for c in cells] == [3]
+
+
+def test_aggregation_of_a_polygon_collection(pg_app, pg_engine, monkeypatch):
+    client, _, _ = pg_app
+    with pg_engine.begin() as conn:
+        conn.execute(
+            text("ALTER TABLE demo_incidents ALTER COLUMN geom TYPE geometry(Polygon, 4326)")
+        )
+    _dense(monkeypatch)
+    for _ in range(3):
+        r = client.post(
+            "/v1/collections/demo_incidents/items",
+            json={
+                "type": "Feature",
+                "properties": {"titre": "p"},
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[2, 48], [3, 48], [3, 49], [2, 49], [2, 48]]],
+                },
+            },
+        )
+        assert r.status_code == 201, r.text
+    r = client.get(TILE_PATH)
+    assert r.headers.get("X-Tile-Aggregated") == "true"
+    assert [c[0] for c in _decode_cells(r.content)] == [3]

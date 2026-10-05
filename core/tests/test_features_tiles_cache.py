@@ -31,6 +31,8 @@ class _RecordingSession:
 
 
 def _tile_client(monkeypatch):
+    monkeypatch.setenv("CORE_TILE_AGG_MAX_ZOOM", "0")  # hors sujet ici : pas de sonde
+
     @contextmanager
     def null_scope(session, tenant_id, *, masked=False):
         yield

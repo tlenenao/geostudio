@@ -11,11 +11,13 @@ base) et une route mince qui les assemble."""
 
 import functools
 import hashlib
+import logging
 import os
 from collections.abc import Callable
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.auth.dependency import get_current_user_optional
@@ -42,6 +44,14 @@ MVT_MEDIA_TYPE = "application/vnd.mapbox-vector-tile"
 # quelques dizaines ; au-delà, le rendu client décroche de toute façon.
 MAX_TILE_FEATURES = 5000
 TILE_STATEMENT_TIMEOUT_MS = 10_000
+# REV-283a : l'agrégation par cellules lit TOUTES les lignes de l'enveloppe (pas
+# de LIMIT, c'est son but) et la route est atteignable anonymement : budget
+# dédié, plus court que celui d'une tuile normale. Expiration => 503 +
+# Retry-After (une tuile tronquée tromperait : l'agrégat ne se dégrade pas
+# en lecture partielle, et le client réessaie).
+TILE_AGG_STATEMENT_TIMEOUT_MS = 3_000
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -129,32 +139,60 @@ def agg_cell_size(z: int) -> float:
 
 
 def tile_agg_max_zoom() -> int:
-    """REV-283a : zoom max (inclus) sous lequel une tuile dense est agrégée ; 0 désactive."""
-    return int(os.environ.get("CORE_TILE_AGG_MAX_ZOOM", "7"))
+    """REV-283a : zoom max (inclus) sous lequel une tuile dense est agrégée ; 0 désactive.
+    Valeur invalide (non entière, négative) : 7 + avertissement, jamais un 500."""
+    raw = os.environ.get("CORE_TILE_AGG_MAX_ZOOM", "7")
+    try:
+        value = int(raw)
+        if value >= 0:
+            return value
+    except ValueError:
+        pass
+    logger.warning("CORE_TILE_AGG_MAX_ZOOM=%r invalide, repli sur 7", raw)
+    return 7
+
+
+def build_probe_sql(quote: Callable[[str], str], info: TableInfo) -> str:
+    """Sonde bornée (LIMIT max+1, aucune colonne lue) : « l'enveloppe dépasse-t-elle
+    le plafond ? » sans lire ni sérialiser les 5001 lignes de la tuile normale."""
+    assert info.geometry_column is not None, "build_probe_sql exige une géométrie"
+    geom = f"t.{quote(info.geometry_column)}"
+    return (
+        f"SELECT count(*) FROM (SELECT 1 FROM public.{quote(info.table_name)} t "
+        f"WHERE {geom} && ST_Transform(ST_TileEnvelope(:z, :x, :y), :srid) "
+        "LIMIT :max_features + 1) s"
+    )
 
 
 def build_agg_mvt_sql(quote: Callable[[str], str], info: TableInfo) -> str:
     """Cellules `count(*)` d'une tuile dense. Ne projette AUCUNE colonne de
     données (ni valeur masquée GAP-22) : seulement la géométrie et un compte,
-    lus sous la même `rls_scope` que la tuile normale (RLS avant agrégation)."""
+    lus sous la même `rls_scope` que la tuile normale (RLS avant agrégation).
+
+    Coût : lit toutes les lignes de l'enveloppe (index GiST, un seul passage),
+    d'où le timeout dédié `TILE_AGG_STATEMENT_TIMEOUT_MS`. La cellule émise est
+    son CENTRE (floor(x/c)*c + c/2) : une cellule n'appartient qu'à une tuile,
+    pas de nœud de grille partagé entre deux voisines."""
     assert info.geometry_column is not None, "build_agg_mvt_sql exige une géométrie"
     table = f"public.{quote(info.table_name)}"
     geom = f"t.{quote(info.geometry_column)}"
     return (
-        "WITH cells AS ("
-        f"SELECT ST_SnapToGrid(ST_PointOnSurface(ST_Transform({geom}, 3857)), :cell) AS cg, "
-        "count(*) AS point_count "
+        "WITH pts AS ("
+        f"SELECT ST_PointOnSurface(ST_Transform({geom}, 3857)) AS p "
         f"FROM {table} t "
-        f"WHERE {geom} && ST_Transform(ST_TileEnvelope(:z, :x, :y), :srid) "
-        "GROUP BY 1"
+        f"WHERE {geom} && ST_Transform(ST_TileEnvelope(:z, :x, :y), :srid)"
+        "), cells AS ("
+        "SELECT floor(ST_X(p) / :cell) AS cx, floor(ST_Y(p) / :cell) AS cy, "
+        "count(*) AS point_count FROM pts GROUP BY 1, 2"
         "), q AS ("
-        "SELECT point_count, ST_AsMVTGeom(cg, ST_TileEnvelope(:z, :x, :y), :extent, :buffer, true) "
-        "AS geom FROM cells"
+        "SELECT point_count, ST_AsMVTGeom("
+        "ST_SetSRID(ST_MakePoint((cx + 0.5) * :cell, (cy + 0.5) * :cell), 3857), "
+        "ST_TileEnvelope(:z, :x, :y), :extent, :buffer, true) AS geom FROM cells"
         ") SELECT ST_AsMVT(q, :layer, :extent, 'geom') FROM q WHERE q.geom IS NOT NULL"
     )
 
 
-def apply_tile_statement_timeout(session: Session) -> None:
+def apply_tile_statement_timeout(session: Session, ms: int = TILE_STATEMENT_TIMEOUT_MS) -> None:
     """Borne la durée d'UNE requête de tuile, dans la transaction courante.
 
     `set_config(..., true)` paramétré plutôt qu'un `SET LOCAL` interpolé —
@@ -162,7 +200,7 @@ def apply_tile_statement_timeout(session: Session) -> None:
     rien ne fuit sur la connexion suivante à travers PgBouncer."""
     session.execute(
         text("SELECT set_config('statement_timeout', :ms, true)"),
-        {"ms": str(TILE_STATEMENT_TIMEOUT_MS)},
+        {"ms": str(ms)},
     )
 
 
@@ -207,41 +245,52 @@ def get_collection_tile(
     sql = build_mvt_sql(quote, info)
     agg_sql = build_agg_mvt_sql(quote, info)
     aggregated = False
+    params = {
+        "z": z,
+        "x": x,
+        "y": y,
+        "layer": col.id,
+        "extent": MVT_EXTENT,
+        "buffer": MVT_BUFFER,
+        "srid": info.srid or 4326,
+    }
     # L'isolation tenant vient de la RLS (rôle gis_rls + GUC app.tenant_id),
     # jamais d'un WHERE applicatif.
     with rls(session, col.tenant_id, masked=masked):
         apply_tile_statement_timeout(session)
-        row = session.execute(
-            text(sql),
-            {
-                "z": z,
-                "x": x,
-                "y": y,
-                "layer": col.id,
-                "extent": MVT_EXTENT,
-                "buffer": MVT_BUFFER,
-                "srid": info.srid or 4326,
-                "fid": mvt_feature_id_column(info),
-                "max_features": MAX_TILE_FEATURES,
-            },
-        ).first()
-        # REV-283a : tuile dense à bas zoom => cellules, dans le même scope RLS.
-        if row is not None and row[1] > MAX_TILE_FEATURES and 0 < tile_agg_max_zoom() >= z:
+        # REV-283a : à bas zoom, une sonde bornée décide AVANT toute lecture
+        # lourde ; tuile dense => agrégation seule (pas de lecture brute jetée).
+        if 0 < tile_agg_max_zoom() >= z and (
+            session.execute(
+                text(build_probe_sql(quote, info)), {**params, "max_features": MAX_TILE_FEATURES}
+            ).scalar()
+            > MAX_TILE_FEATURES
+        ):
             aggregated = True
+            apply_tile_statement_timeout(session, TILE_AGG_STATEMENT_TIMEOUT_MS)
+            try:
+                row = session.execute(text(agg_sql), {**params, "cell": agg_cell_size(z)}).first()
+            except DBAPIError as exc:
+                if getattr(exc.orig, "sqlstate", None) != "57014":  # query_canceled
+                    raise
+                # Réponse construite ici : le gestionnaire RFC 7807 global ne
+                # relaie pas les en-têtes d'une HTTPException (Retry-After perdu).
+                return Response(
+                    content=b'{"title":"tile aggregation timed out","status":503}',
+                    status_code=503,
+                    media_type="application/problem+json",
+                    headers={"Retry-After": "5"},
+                )
+            row = (row[0], 0) if row is not None else None
+        else:
             row = session.execute(
-                text(agg_sql),
+                text(sql),
                 {
-                    "z": z,
-                    "x": x,
-                    "y": y,
-                    "layer": col.id,
-                    "extent": MVT_EXTENT,
-                    "buffer": MVT_BUFFER,
-                    "srid": info.srid or 4326,
-                    "cell": agg_cell_size(z),
+                    **params,
+                    "fid": mvt_feature_id_column(info),
+                    "max_features": MAX_TILE_FEATURES,
                 },
             ).first()
-            row = (row[0], 0) if row is not None else None
     if row is None or not row[0]:
         return Response(status_code=204)
     tile, feature_count = row[0], row[1]
