@@ -17,6 +17,7 @@ os.environ.setdefault("RUNTIME__DLTHUB_TELEMETRY", "false")
 
 import io
 import json
+import re
 import shutil
 import tempfile
 import time
@@ -267,12 +268,25 @@ def _blob_fs_kwargs(payload) -> dict:
     return {"kwargs": {"requests_timeout": q}}
 
 
-def _timeout_connect_args(backend: str) -> dict:
+_REDSHIFT_HOST = re.compile(r"\.redshift(-serverless)?\.amazonaws\.com(\.cn)?$", re.IGNORECASE)
+
+
+def _is_redshift(backend: str, host: str | None) -> bool:
+    return backend.startswith("postgresql") and bool(host and _REDSHIFT_HOST.search(host))
+
+
+def _timeout_connect_args(backend: str, host: str | None = None) -> dict:
     """Délais de connexion/requête par pilote (P16.03). BigQuery : aucun
-    réglage équivalent côté dialecte, borné par le plafond de lignes."""
+    réglage équivalent côté dialecte, borné par le plafond de lignes.
+    Redshift (REV-110) : pas de paramètre de démarrage `options` (rejeté par
+    le serveur) ; le délai passe par `SET statement_timeout` (cf. `_stream_sql`).
+    Support non vérifié sur un cluster réel."""
     t, q = _connect_timeout_s(), _query_timeout_s()
+    pg = {"connect_timeout": t}
+    if not _is_redshift(backend, host):
+        pg["options"] = f"-c statement_timeout={q * 1000}"
     return {
-        "postgresql": {"connect_timeout": t, "options": f"-c statement_timeout={q * 1000}"},
+        "postgresql": pg,
         "mssql": {"login_timeout": t, "timeout": q},
         "oracle": {"tcp_connect_timeout": float(t)},
         "snowflake": {"login_timeout": t, "network_timeout": q},
@@ -289,8 +303,20 @@ def _stream_sql(dsn: str, query: str):
     if backend not in _NO_HOST_BACKENDS:
         assert_dsn_egress_allowed(dsn)
         dsn = pin_dsn_host(dsn)  # REV-273d : mssql/oracle visent l'IP validée
-    connect_args = {**_timeout_connect_args(backend), **dsn_pin_connect_args(dsn)}
+    host = sa.engine.make_url(dsn).host
+    connect_args = {**_timeout_connect_args(backend, host), **dsn_pin_connect_args(dsn)}
     engine = sa.create_engine(dsn, connect_args=connect_args)
+    if _is_redshift(backend, host):
+        ms = int(_query_timeout_s() * 1000)
+
+        def _set_timeout(dbapi_conn, _rec):
+            cur = dbapi_conn.cursor()
+            try:
+                cur.execute(f"SET statement_timeout TO {ms}")
+            finally:
+                cur.close()
+
+        sa.event.listen(engine, "connect", _set_timeout)
     if backend == "oracle":
         # python-oracledb : délai d'appel par requête, en ms.
         sa.event.listen(

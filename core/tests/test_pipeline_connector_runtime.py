@@ -1843,3 +1843,67 @@ def test_databricks_dialect_resolves_lazily_and_stream_applies_guard_and_timeout
         list(connector_runtime._stream_sql(_DBX_DSN, "SELECT 1"))
     assert seen["guarded"] == [_DBX_DSN]  # hôte du workspace : garde d'egress appliquée
     assert "_socket_timeout" in seen["connect_args"]
+
+
+# --- REV-110 : Redshift (délai d'attente) -----------------------------------
+
+_RS = "postgresql://u:p@c1.abc.eu-west-1.redshift.amazonaws.com:5439/dev"
+
+
+def test_timeout_args_drop_options_for_redshift_host_only():
+    pg = connector_runtime._timeout_connect_args("postgresql", "db.example.com")
+    assert "options" in pg  # PostgreSQL ordinaire : inchangé
+    for host in (
+        "c1.abc.eu-west-1.redshift.amazonaws.com",
+        "wg.123.eu-west-1.redshift-serverless.amazonaws.com",
+        "c1.abc.cn-north-1.redshift.amazonaws.com.cn",
+    ):
+        rs = connector_runtime._timeout_connect_args("postgresql", host)
+        assert "options" not in rs and "connect_timeout" in rs
+
+
+def test_stream_sql_sets_statement_timeout_by_listener_on_redshift(monkeypatch):
+    seen: dict = {}
+
+    def fake_create_engine(dsn, connect_args=None, **kw):
+        seen["connect_args"] = connect_args
+        return "engine"
+
+    def fake_listen(engine, event, fn):
+        seen["listener"] = (event, fn)
+        raise RuntimeError("stop")
+
+    monkeypatch.setattr(connector_runtime.sa, "create_engine", fake_create_engine)
+    monkeypatch.setattr(connector_runtime.sa.event, "listen", fake_listen)
+    monkeypatch.setattr(connector_runtime, "assert_dsn_egress_allowed", lambda dsn: None)
+    monkeypatch.setattr(connector_runtime, "dsn_pin_connect_args", lambda dsn: {})
+    monkeypatch.setenv("CORE_PIPELINES_QUERY_TIMEOUT_S", "7")
+    with pytest.raises(RuntimeError, match="stop"):
+        list(connector_runtime._stream_sql(_RS, "SELECT 1"))
+    assert "options" not in seen["connect_args"]
+    event, fn = seen["listener"]
+    assert event == "connect"
+    executed: list[str] = []
+
+    class Cur:
+        def execute(self, sql):
+            executed.append(sql)
+
+        def close(self):
+            pass
+
+    class Dbapi:
+        def cursor(self):
+            return Cur()
+
+    fn(Dbapi(), None)
+    assert executed == ["SET statement_timeout TO 7000"]
+
+
+@pytest.mark.redshift_manual
+def test_redshift_real_cluster_round_trip():
+    # Manuel uniquement (aucun émulateur Redshift) : CORE_TEST_REDSHIFT_DSN.
+    dsn = os.environ.get("CORE_TEST_REDSHIFT_DSN")
+    if not dsn:
+        pytest.skip("CORE_TEST_REDSHIFT_DSN non défini — test Redshift manuel (REV-110)")
+    assert list(connector_runtime._stream_sql(dsn, "SELECT 1 AS x")) == [{"x": 1}]

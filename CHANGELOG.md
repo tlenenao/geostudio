@@ -61,6 +61,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (webhook when a backup day is abandoned).
 - `actionlint` pre-commit hook (workflows fixed accordingly).
 
+- `reader.connector.postgres` against Amazon Redshift (REV-110): when the DSN
+  host matches `*.redshift.amazonaws.com`, `*.redshift-serverless.amazonaws.com`
+  (or the `.cn` variant), the PostgreSQL startup option `-c statement_timeout`
+  (assumed rejected by Redshift) is no longer sent; the timeout is applied with
+  `SET statement_timeout TO <ms>` on connect instead. **Not verified against a
+  real Redshift cluster** (none available): covered by unit tests only; run
+  `pytest -m redshift_manual` with `CORE_TEST_REDSHIFT_DSN` set to check it by hand.
+
 ### Removed
 
 - **Breaking: the `transform.qgis` pipeline operation and its
