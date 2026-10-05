@@ -313,6 +313,7 @@ export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
     async exportDataSource(
       source: DataSource,
       format: string,
+      signal?: AbortSignal,
     ): Promise<{ blob: Blob; filename: string }> {
       const cachedDataset = source.datasetId ? await resolveDataset(source.datasetId) : null;
       const isArcgis = cachedDataset?.source === "arcgis" && Boolean(source.datasetId);
@@ -321,7 +322,7 @@ export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
         const path = isArcgis
           ? `/datasets/${source.datasetId}/arcgis/export?format=${format}`
           : `/collections/${cachedDataset?.collectionId ?? source.layer}/export?format=${format}`;
-        return requestBlob(coreUrl, getToken, "POST", path, body, undefined, renewToken);
+        return requestBlob(coreUrl, getToken, "POST", path, body, undefined, renewToken, signal);
       }
       const resolved = source.datasetId
         ? { ...source, layer: cachedDataset?.collectionId ?? source.layer }
@@ -331,7 +332,7 @@ export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
       const path = isArcgis
         ? `/datasets/${source.datasetId}/arcgis/export/items?format=${format}${suffix}`
         : `/collections/${resolved.layer}/export/items?format=${format}${suffix}`;
-      return requestBlob(coreUrl, getToken, "GET", path, undefined, undefined, renewToken);
+      return requestBlob(coreUrl, getToken, "GET", path, undefined, undefined, renewToken, signal);
     },
 
     async getCollectionSchema(collectionId: string): Promise<CollectionSchema> {

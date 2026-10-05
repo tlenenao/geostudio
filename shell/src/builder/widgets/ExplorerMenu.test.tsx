@@ -167,7 +167,7 @@ test("clicking an export format calls exportDataSource and triggers a download",
   );
   await userEvent.click(screen.getByLabelText("Explorer"));
   await userEvent.click(screen.getByLabelText("Exporter en CSV"));
-  expect(exportDataSource).toHaveBeenCalledWith(source, "csv");
+  expect(exportDataSource).toHaveBeenCalledWith(source, "csv", expect.any(AbortSignal));
   expect(createObjectURL).toHaveBeenCalledWith(blob);
 });
 
@@ -244,4 +244,29 @@ test("no export entries when resolvedSource is absent (backward compatible with 
   );
   await userEvent.click(screen.getByLabelText("Explorer"));
   expect(screen.queryByLabelText(/^Exporter en/)).not.toBeInTheDocument();
+});
+
+test("le démontage abandonne le sondage d'export sans afficher d'erreur", async () => {
+  let signal: AbortSignal | undefined;
+  const exportDataSource = vi.fn().mockImplementation(
+    (_s: DataSource, _f: string, sig: AbortSignal) =>
+      new Promise((_resolve, reject) => {
+        signal = sig;
+        sig.addEventListener("abort", () => reject(new DOMException("x", "AbortError")));
+      }),
+  );
+  const client = { exportDataSource } as unknown as ItemClient;
+  const source: DataSource = { id: "s1", type: "features", service: "core", layer: "p", query: {} };
+  const { unmount } = render(
+    <ItemClientProvider client={client}>
+      <ExplorerProvider enabled>
+        <ExplorerMenu datasetId="ds1" dataSourceId="s1" resolvedSource={source} hasGeometry />
+      </ExplorerProvider>
+    </ItemClientProvider>,
+  );
+  await userEvent.click(screen.getByLabelText("Explorer"));
+  await userEvent.click(screen.getByLabelText("Exporter en CSV"));
+  expect(signal?.aborted).toBe(false);
+  unmount();
+  expect(signal?.aborted).toBe(true);
 });

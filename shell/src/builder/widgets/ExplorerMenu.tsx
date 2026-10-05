@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useExplorerEnabled, useOpenExplorer } from "../ExplorerContext";
 import { useOptionalItemClient } from "../../api/ItemClientProvider";
 import type { DataSource } from "../../api/types";
@@ -49,6 +49,9 @@ export function ExplorerMenu({
   const client = useOptionalItemClient();
   const [menuOpen, setMenuOpen] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  // SP-60 : le sondage d'un export asynchrone s'arrête au démontage.
+  const exportAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => exportAbort.current?.abort(), []);
 
   if (!enabled || !datasetId) return null;
 
@@ -68,8 +71,11 @@ export function ExplorerMenu({
     // button, unmount right away) — there is no pending/disabled state to
     // show on the button itself, so none is tracked here.
     closeMenu();
+    exportAbort.current?.abort();
+    const ac = new AbortController();
+    exportAbort.current = ac;
     try {
-      const { blob, filename } = await client.exportDataSource(resolvedSource, format);
+      const { blob, filename } = await client.exportDataSource(resolvedSource, format, ac.signal);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -77,6 +83,7 @@ export function ExplorerMenu({
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
+      if (ac.signal.aborted) return;
       setExportError(exportErrorMessage(err));
     }
   }

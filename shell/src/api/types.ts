@@ -679,7 +679,11 @@ export interface ItemClient {
   // un appelant qui saurait qu'un dataset a changé ailleurs.
   invalidateDatasetCache(pk?: string): void;
   featuresUrl(source: DataSource): string;
-  exportDataSource(source: DataSource, format: string): Promise<{ blob: Blob; filename: string }>;
+  exportDataSource(
+    source: DataSource,
+    format: string,
+    signal?: AbortSignal,
+  ): Promise<{ blob: Blob; filename: string }>;
   getCollectionSchema(collectionId: string): Promise<CollectionSchema>;
   presignAttachmentUpload(
     collectionId: string,

@@ -6,7 +6,7 @@
   },
   {
     "file": "src/builder/widgets/ExplorerMenu.tsx",
-    "line": 86,
+    "line": 93,
     "reason": "Pré-existant : le bouton \"⋮\" ouvre/ferme un menu déroulant en ligne (menuOpen && <div>...) via un onClick ternaire (menuOpen ? closeMenu() : setMenuOpen(true)), sans aria-expanded/aria-controls. Dette REV-088 (ligne décalée de 79 à 86 par les tâches de tokenisation Tailwind de Vague B, aucun changement du déclencheur lui-même — vérifié en clôture de Vague B)."
   },
   {
