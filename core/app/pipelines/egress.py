@@ -136,7 +136,9 @@ def pin_dsn_host(dsn: str) -> str:
     garde (anti DNS-rebinding entre le contrôle et la connexion) en la
     substituant au nom dans l'URL. Ces pilotes n'ont pas de `hostaddr` : le
     nom est perdu pour la vérification TLS du certificat — l'opérateur qui
-    l'exige indique l'hôte littéral. ponytail: hôte unique résolu une fois
+    l'exige indique l'hôte littéral. Oracle `protocol=tcps` n'est PAS épinglé
+    (la vérification du DN du certificat porte sur l'hôte) : la garde amont
+    reste appliquée, résidu TOCTOU (DNS-rebinding) assumé. ponytail: hôte unique résolu une fois
     (1re adresse validée) ; pas de repli multi-adresses pour ces pilotes."""
     url = make_url(dsn)
     host = url.host or ""
@@ -146,6 +148,7 @@ def pin_dsn_host(dsn: str) -> str:
         or not host
         or host.startswith("/")
         or "," in host
+        or str(url.query.get("protocol", "")).lower() == "tcps"
     ):
         return dsn
     try:

@@ -349,3 +349,13 @@ def test_pin_dsn_host_adds_default_port_for_mssql_so_ipv6_survives(monkeypatch):
     from sqlalchemy.engine import make_url
 
     assert make_url(pinned).port == 1433
+
+
+def test_pin_dsn_host_skips_oracle_tcps_so_the_certificate_dn_is_checked(monkeypatch):
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda *a, **k: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))],
+    )
+    dsn = "oracle+oracledb://u:p@db.example.com:2484/?service_name=s&protocol=tcps"
+    assert pin_dsn_host(dsn) == dsn
