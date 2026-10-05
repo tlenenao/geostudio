@@ -365,3 +365,14 @@ def test_third_party_widget_nested_in_container_is_blocked():
                 )
                 assert result.allowed is False, (widget, mode)
                 assert any("acme-gauge" in r for r in result.reasons)
+
+
+def test_address_search_widget_is_refused_in_static_and_standalone():
+    """REV-102 : addressSearch appelle GET /v1/geocode (authentifie) - pas bundlable hors ligne."""
+    Session = _session()
+    for mode in ("static", "standalone"):
+        with Session() as s:
+            config = _app_config(data_sources=[], widget_types=("addressSearch",))
+            result = check_export_guard(s, tenant_id="t1", config=config, mode=mode)
+        assert result.allowed is False
+        assert any("addressSearch" in r for r in result.reasons)

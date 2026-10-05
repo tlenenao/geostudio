@@ -19,6 +19,19 @@ DEFAULT_GEOCODING_URL = "https://data.geopf.fr/geocodage/search"
 DEFAULT_NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 
 
+# Borne de taille de la reponse amont (10 resultats = quelques Kio) ; refusee
+# apres lecture (ValueError -> 502). ponytail: pas de lecture en flux, la
+# garde d'egress + timeout 10 s limitent deja l'exposition.
+MAX_RESPONSE_BYTES = 1_048_576
+
+
+def _checked_json(response: httpx.Response):
+    response.raise_for_status()
+    if len(response.content) > MAX_RESPONSE_BYTES:
+        raise ValueError("réponse de géocodage trop volumineuse")
+    return response.json()
+
+
 class GeocodeResult(BaseModel):
     label: str
     lon: float
@@ -39,14 +52,13 @@ class BanGeocoder:
     def search(self, q: str, limit: int) -> list[GeocodeResult]:
         with self._client_factory() as client:
             response = client.get(self._url, params={"q": q, "limit": limit})
-        response.raise_for_status()
         return [
             GeocodeResult(
                 label=f["properties"]["label"],
                 lon=f["geometry"]["coordinates"][0],
                 lat=f["geometry"]["coordinates"][1],
             )
-            for f in response.json()["features"]
+            for f in _checked_json(response)["features"]
         ]
 
 
@@ -62,13 +74,15 @@ class NominatimGeocoder:
             response = client.get(
                 self._url,
                 params={"q": q, "format": "jsonv2", "limit": limit},
-                # Nominatim (politique d'usage OSM) exige un User-Agent identifiant.
+                # Nominatim (politique d'usage OSM) exige un User-Agent identifiant
+                # (fixe, non configurable) ; pas de cache serveur : l'instance
+                # publique impose <= 1 req/s, a l'operateur de pointer sa propre
+                # instance via CORE_GEOCODING_URL si le trafic le justifie.
                 headers={"User-Agent": "GeoStudio/1 (geocoding)"},
             )
-        response.raise_for_status()
         return [
             GeocodeResult(label=i["display_name"], lon=float(i["lon"]), lat=float(i["lat"]))
-            for i in response.json()
+            for i in _checked_json(response)
         ]
 
 

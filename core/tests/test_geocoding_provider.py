@@ -60,3 +60,9 @@ def test_unknown_provider_is_503_with_explicit_message(monkeypatch):
         get_geocoder()
     assert exc.value.status_code == 503
     assert "google" in exc.value.detail
+
+
+def test_oversized_upstream_response_is_refused():
+    g, _ = _geocoder(lambda r: httpx.Response(200, content=b"[" + b" " * 1_100_000 + b"]"))
+    with pytest.raises(ValueError, match="volumineuse"):
+        g.search("tulle", 3)

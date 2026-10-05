@@ -9,6 +9,7 @@ from sqlalchemy import select
 from app.audit.models import AuditLog
 from app.geocoding.egress import EgressBlockedError
 from app.geocoding.provider import GeocodeResult
+from app.ratelimit.limiter import _BUDGETS
 from tests.test_mcp_tools_create import (  # noqa: F401
     app_client,
     call_tool,
@@ -72,3 +73,16 @@ def test_call_is_audited(app_client, monkeypatch):
     with app_client.session_factory() as session:
         rows = [r for r in session.scalars(select(AuditLog)) if r.action == "mcp.tool_call"]
     assert [r.object_id for r in rows] == ["geocode"]
+
+
+def test_rate_limited_after_budget(app_client, monkeypatch):
+    """REV-102 : budget propre a l'outil, comme le groupe REST geocode."""
+    stub = _Stub()
+    _use(monkeypatch, stub)
+    monkeypatch.setitem(_BUDGETS, "geocode", 3)  # le middleware /mcp plafonne avant 60
+    with app_client:
+        for _ in range(3):
+            call_tool(app_client, "geocode", {"query": "tulle"})
+        error = call_tool_expecting_error(app_client, "geocode", {"query": "tulle"})
+    assert "[429]" in error
+    assert len(stub.calls) == 3
