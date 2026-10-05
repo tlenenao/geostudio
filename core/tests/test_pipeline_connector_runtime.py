@@ -1857,6 +1857,8 @@ def test_timeout_args_drop_options_for_redshift_host_only():
         "c1.abc.eu-west-1.redshift.amazonaws.com",
         "wg.123.eu-west-1.redshift-serverless.amazonaws.com",
         "c1.abc.cn-north-1.redshift.amazonaws.com.cn",
+        "C1.ABC.EU-WEST-1.REDSHIFT.AMAZONAWS.COM",
+        "c1.abc.eu-west-1.redshift.amazonaws.com.",  # FQDN à point final
     ):
         rs = connector_runtime._timeout_connect_args("postgresql", host)
         assert "options" not in rs and "connect_timeout" in rs
@@ -1906,4 +1908,13 @@ def test_redshift_real_cluster_round_trip():
     dsn = os.environ.get("CORE_TEST_REDSHIFT_DSN")
     if not dsn:
         pytest.skip("CORE_TEST_REDSHIFT_DSN non défini — test Redshift manuel (REV-110)")
+    assert list(connector_runtime._stream_sql(dsn, "SELECT 1 AS x")) == [{"x": 1}]
+
+
+@pytest.mark.databricks_manual
+def test_databricks_real_warehouse_round_trip():
+    # Manuel uniquement (aucun émulateur Databricks) : CORE_TEST_DATABRICKS_DSN.
+    dsn = os.environ.get("CORE_TEST_DATABRICKS_DSN")
+    if not dsn:
+        pytest.skip("CORE_TEST_DATABRICKS_DSN non défini — test Databricks manuel (REV-110)")
     assert list(connector_runtime._stream_sql(dsn, "SELECT 1 AS x")) == [{"x": 1}]

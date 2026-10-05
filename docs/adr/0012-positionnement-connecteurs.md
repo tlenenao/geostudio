@@ -9,7 +9,7 @@ aux 450+ connecteurs FME).
 ## Contexte
 
 FME couvre plus de 450 formats et connecteurs ; GeoNode 5 propose un import
-multi-formats unifié. GeoStudio en couvrait 4 à l'origine, puis a ajouté des
+multi-formats unifié. GeoStudio avait un jeu restreint de formats à l'origine, puis a ajouté des
 formats d'import (SP-56, GAP-29) et des lecteurs de pipeline (REST, PostgreSQL,
 Snowflake, BigQuery, SQL Server, Oracle, stockage objet, Databricks). L'écart de
 largeur restera réel : viser l'exhaustivité est inatteignable et n'est pas
@@ -35,7 +35,12 @@ l'écart reste la matrice `docs/revue/matrice-couverture-fme.{jsonl,md}`.
   et la vérification arm64 avant fusion.
 - Un connecteur non vérifiable sans compte/cluster réel (Databricks, Redshift,
   Snowflake) est livré avec la mention explicite « non vérifié sur instance
-  réelle » et un test manuel skippé par défaut, jamais câblé en CI.
+  réelle » et un test manuel skippé par défaut (`snowflake`/`databricks_manual`/
+  `redshift_manual`), jamais câblé en CI.
+- Databricks : les gros résultats sont récupérés par le connecteur via des URL
+  pré-signées du stockage cloud (CloudFetch), hors de la garde d'egress SSRF ;
+  ses retries internes peuvent dépasser le « délai borné » (le timeout est par
+  appel, pas global).
 - Redshift n'a pas d'op dédiée : il passe par `reader.connector.postgres`, avec
   un traitement spécifique du délai d'attente (REV-110).
 - `REV-123` reste « Partiel » par construction : cette décision l'assume au lieu
