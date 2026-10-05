@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.responses import JSONResponse
 from opentelemetry import metrics
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -399,7 +400,14 @@ EXPORT_FORMATS_ITEMS = {"csv", "xlsx", "geojson", "gpkg"}
 EXPORT_ITEMS_CAP = int(os.environ.get("CORE_EXPORT_ITEMS_MAX", "100000"))
 
 
-@router.get("/collections/{collection_id}/export/items")
+def get_export_job_starter():  # câblé dans main.py (app.dataexport) : pas d'arête vers le haut
+    raise RuntimeError("collection export job starter not configured")
+
+
+@router.get(
+    "/collections/{collection_id}/export/items",
+    responses={202: {"description": "Export asynchrone : {jobId}, suivre via export/jobs/{jobId}"}},
+)
 def export_collection_items(
     collection_id: str,
     request: Request,
@@ -412,6 +420,7 @@ def export_collection_items(
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
     masked=Depends(get_masked_for_user),
+    start_job=Depends(get_export_job_starter),
 ):
     if format not in EXPORT_FORMATS_ITEMS:
         raise _validation_error(
@@ -430,6 +439,8 @@ def export_collection_items(
     parsed_bbox = _parse_bbox(bbox)
     parsed_geom_intersects = _parse_geom_intersects(geom_intersects)
     filters = _collect_filters(request)
+    sync_max = int(os.environ.get("CORE_EXPORT_SYNC_MAX") or "100000")
+    job_max = int(os.environ.get("CORE_EXPORT_JOB_MAX") or "500000")
 
     features: list[dict] = []
     cursor = None
@@ -445,14 +456,39 @@ def export_collection_items(
                     geom_intersects=parsed_geom_intersects,
                     filters=filters or None,
                     after=cursor,
-                    count_mode="none",
+                    # Total exact sur la 1re page : il tranche sync / asynchrone.
+                    count_mode="exact" if cursor is None else "none",
                 )
         except FilterError as exc:
             raise _validation_error(
                 [{"field": exc.field, "code": "unknown_filter", "message": exc.message}]
             ) from exc
+        if cursor is None and page.number_matched is not None:
+            if page.number_matched > job_max:
+                raise HTTPException(
+                    status_code=413, detail="too many entities matched, refine your filters"
+                )
+            if page.number_matched > sync_max:
+                job_id = start_job(
+                    session,
+                    tenant_id=col.tenant_id,
+                    collection_id=col.id,
+                    user_id=user.id,
+                    fmt=format,
+                    masked=bool(masked),
+                    query={
+                        "bbox": list(parsed_bbox) if parsed_bbox else None,
+                        "geomIntersects": parsed_geom_intersects,
+                        "filters": filters,
+                    },
+                )
+                return JSONResponse(
+                    status_code=202,
+                    content={"jobId": job_id},
+                    headers={"Location": f"/v1/collections/{col.id}/export/jobs/{job_id}"},
+                )
         features.extend(page.features)
-        if len(features) > EXPORT_ITEMS_CAP:
+        if len(features) > sync_max:
             raise HTTPException(
                 status_code=413, detail="too many entities matched, refine your filters"
             )

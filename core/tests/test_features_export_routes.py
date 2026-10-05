@@ -345,9 +345,8 @@ def test_export_items_rejects_unknown_format(env):
 
 def test_export_items_caps_at_10000_entities(env, monkeypatch):
     app, client, admin, _r, tmp_path, tenant_id, _Session = env
-    import app.features.routes as routes_module
-
-    monkeypatch.setattr(routes_module, "EXPORT_ITEMS_CAP", 1)
+    # REV-283e : 413 au-delà du plafond du job asynchrone (CORE_EXPORT_JOB_MAX).
+    monkeypatch.setenv("CORE_EXPORT_JOB_MAX", "1")
     col = _register(app, client, admin, public=True)
     _as(app, admin)
     client.post(

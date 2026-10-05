@@ -39,6 +39,7 @@ from app.collections.introspection import TableNotFound, UnsupportedTable
 from app.compliance import routes as compliance_routes
 from app.configs import routes as configs_routes
 from app.copilot import routes as copilot_routes
+from app.dataexport import routes as dataexport_routes
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.dcat import routes as dcat_routes
 from app.errors import ValidationHTTPException
@@ -392,6 +393,7 @@ def create_app() -> FastAPI:
     v1_router.include_router(collections_routes.router)
     v1_router.include_router(catalog_routes.router)
     v1_router.include_router(features_routes.router)
+    v1_router.include_router(dataexport_routes.router)
     v1_router.include_router(tiles_routes.router)
     v1_router.include_router(attachments_routes.router)
     v1_router.include_router(ingestion_routes.router)
@@ -434,6 +436,10 @@ def create_app() -> FastAPI:
             secret_key=s3_secret_key,
             bucket=s3_bucket,
         )
+
+    app.dependency_overrides[features_routes.get_export_job_starter] = lambda: (
+        dataexport_routes.default_starter
+    )
 
     s3_uploads_bucket = os.environ.get("S3_UPLOADS_BUCKET", "geostudio-uploads")
     s3_exports_bucket = os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports")
