@@ -5,6 +5,7 @@ import { validateExpression } from "../builder/expr";
 import { formatCelError } from "../builder/celError";
 import { closingBrace } from "./popupTemplate";
 import { Button } from "../ui/kit/Button";
+import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { labelCls, inputCls } from "./formFieldStyles";
 import { t } from "../i18n";
 
@@ -50,6 +51,7 @@ export function PopupEditor({
   onChange: (next: PopupConfig | undefined) => void;
 }) {
   const [advanced, setAdvanced] = useState(Boolean(value?.template));
+  const advancedPanel = usePanelTrigger(advanced);
   const [draftField, setDraftField] = useState("");
   const listId = useId();
   const selected = value?.fields;
@@ -197,22 +199,25 @@ export function PopupEditor({
         <button
           type="button"
           className="self-start text-xs text-accent underline"
+          {...advancedPanel.triggerProps}
           onClick={() => setAdvanced((a) => !a)}
         >
           {advanced ? t("popupEditor.fieldsListButton") : t("popupEditor.advancedButton")}
         </button>
       )}
       {value !== undefined && advanced && (
-        <label className={labelCls}>
-          {t("popupEditor.templateLabel")}
-          <textarea
-            aria-label={t("popupEditor.templateLabel")}
-            className="min-h-24 rounded-md border border-rule p-2 font-mono text-xs"
-            value={value.template ?? ""}
-            onChange={(e) => onChange({ ...value, template: e.target.value })}
-          />
-          <span className="text-xs text-ink-3">{t("popupEditor.exprHint")}</span>
-        </label>
+        <div {...advancedPanel.panelProps}>
+          <label className={labelCls}>
+            {t("popupEditor.templateLabel")}
+            <textarea
+              aria-label={t("popupEditor.templateLabel")}
+              className="min-h-24 rounded-md border border-rule p-2 font-mono text-xs"
+              value={value.template ?? ""}
+              onChange={(e) => onChange({ ...value, template: e.target.value })}
+            />
+            <span className="text-xs text-ink-3">{t("popupEditor.exprHint")}</span>
+          </label>
+        </div>
       )}
       {error && (
         <p role="alert" className="whitespace-pre-line text-xs text-danger">

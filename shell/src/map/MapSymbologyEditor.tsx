@@ -13,6 +13,7 @@ import {
 import { LUCIDE_ICONS, type IconCategory } from "../builder/widgets/iconLibrary";
 import { Button } from "../ui/kit/Button";
 import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
+import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { FieldClassificationPicker, type ClassifiedEncoding } from "./FieldClassificationPicker";
 import { labelCls, inputCls } from "./formFieldStyles";
 import type { ThemeColors } from "../api/types";
@@ -206,6 +207,7 @@ export function MapSymbologyEditor({
   // toujours vrai, donc le bloc s'affichait en permanence et le bouton
   // « Ajouter des icônes » n'avait aucun effet observable.
   const [iconDraft, setIconDraft] = useState(false);
+  const iconPanel = usePanelTrigger(Boolean(icon || iconDraft));
   const [iconField, setIconField] = useState(icon?.field ?? "");
   // Fix I4 de la revue finale SP-27 : `iconField` ne se resynchronisait
   // qu'au montage (initialiseur de useState, jamais réévalué) — TOUS les
@@ -569,13 +571,17 @@ export function MapSymbologyEditor({
           size="sm"
           variant="outline"
           className="self-start"
+          {...iconPanel.triggerProps}
           onClick={() => setIconDraft(true)}
         >
           {t("mapSymbology.addIconsButton")}
         </Button>
       )}
       {(icon || iconDraft) && (
-        <div className="flex flex-col gap-2 border-l-2 border-rule-2 pl-2">
+        <div
+          {...iconPanel.panelProps}
+          className="flex flex-col gap-2 border-l-2 border-rule-2 pl-2"
+        >
           <label className={labelCls}>
             {t("mapSymbology.iconFieldLabel")}
             <input

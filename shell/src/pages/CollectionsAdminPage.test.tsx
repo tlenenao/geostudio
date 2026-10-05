@@ -561,3 +561,18 @@ test("affiche un état vide quand aucune collection n'existe", async () => {
   expect(await screen.findByText("Aucune collection pour l'instant")).toBeInTheDocument();
   expect(screen.queryByRole("table")).not.toBeInTheDocument();
 });
+
+test("« Enregistrer une table » est câblé à son panneau (aria-expanded/aria-controls)", async () => {
+  server.use(
+    http.get("https://core.test/v1/collections", () => HttpResponse.json({ collections: [] })),
+    http.get("https://core.test/v1/collections/candidates", () =>
+      HttpResponse.json({ candidates: [] }),
+    ),
+  );
+  render(<Harness />);
+  const trigger = await screen.findByRole("button", { name: "Enregistrer une table" });
+  const panelId = trigger.getAttribute("aria-controls")!;
+  expectAriaWired(trigger, panelId, false);
+  await userEvent.click(trigger);
+  expectAriaWired(trigger, panelId, true);
+});

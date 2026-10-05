@@ -6,8 +6,8 @@
 // (ex. `bg-red-600`, `text-white`) hors `ui/kit/` (design system, seul
 // endroit qui a le droit de définir les tokens `--gs-*`) et `map/`
 // (symbologie choisie par l'utilisateur final, pas l'ambiance studio).
-// Même patron architectural que check-i18n-coverage.mjs /
-// check-aria-panel-coverage.mjs (SP-57a/SP-43) : parcourt le code
+// Même patron architectural que check-i18n-coverage.mjs
+// (SP-57a) : parcourt le code
 // source, calcule une mesure, échoue si elle régresse — câblé dans
 // `npm run lint`.
 //
@@ -19,7 +19,7 @@
 // silencieusement en CI. `fast-glob` n'est PAS une dépendance de ce
 // dépôt (vérifié dans package.json avant d'écrire ce script) : ajouter
 // une dépendance neuve pour un script utilitaire n'est pas justifié
-// quand le patron `walk()` déjà utilisé par check-aria-panel-coverage.mjs
+// quand le patron `walk()` déjà utilisé par les autres scripts de scripts/
 // fait le travail sans dépendance et sans contrainte de version Node.
 //
 // Allowlist — un pragma EN LIGNE, pas un allowlist par fichier (un

@@ -4,6 +4,7 @@ import { useCreateSecret, useDeleteSecret, useListSecrets } from "../../api/doma
 import type { SecretPayload } from "../../api/types";
 import { t } from "../../i18n";
 import { ConfirmDialog } from "../../ui/kit/ConfirmDialog";
+import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
 
 // Filtre d'affichage : ne montre jamais le payload déchiffré (le cœur ne le
 // retourne de toute façon jamais, ConnectorSecretOut = {id,name,kind,
@@ -31,6 +32,7 @@ export function SecretParamSelect({
   const createSecret = useCreateSecret();
   const deleteSecret = useDeleteSecret();
   const [creating, setCreating] = useState(false);
+  const createPanel = usePanelTrigger(creating);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const options = (secretsQuery.data ?? []).filter((s) => !kindFilter || s.kind === kindFilter);
 
@@ -69,6 +71,7 @@ export function SecretParamSelect({
           <button
             type="button"
             className="w-fit text-xs text-accent hover:underline"
+            {...createPanel.triggerProps}
             onClick={() => setCreating(true)}
           >
             {t("secretParamSelect.createSecretButton")}
@@ -76,15 +79,17 @@ export function SecretParamSelect({
         </>
       )}
       {creating && (
-        <SecretCreateForm
-          kindFilter={kindFilter}
-          onCreated={(name) => {
-            onChange(name);
-            setCreating(false);
-          }}
-          onCancel={() => setCreating(false)}
-          createSecret={(input) => createSecret.mutateAsync(input)}
-        />
+        <div {...createPanel.panelProps}>
+          <SecretCreateForm
+            kindFilter={kindFilter}
+            onCreated={(name) => {
+              onChange(name);
+              setCreating(false);
+            }}
+            onCancel={() => setCreating(false)}
+            createSecret={(input) => createSecret.mutateAsync(input)}
+          />
+        </div>
       )}
       <ConfirmDialog
         open={pendingDeleteId !== null}

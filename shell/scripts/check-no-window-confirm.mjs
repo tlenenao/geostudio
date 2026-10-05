@@ -7,7 +7,7 @@
 // `ui/kit/ConfirmDialog.tsx` lui-même et hors fichiers de test. Sans ce
 // garde, un futur ajout peut réintroduire un `window.confirm` sans
 // qu'aucun test ne le remarque. Même patron architectural que
-// check-raw-colors.mjs / check-aria-panel-coverage.mjs /
+// check-raw-colors.mjs /
 // check-i18n-coverage.mjs (SP-34/SP-43/SP-57a) : parcourt le code source,
 // échoue si l'invariant est violé, câblé dans `npm run lint`.
 //

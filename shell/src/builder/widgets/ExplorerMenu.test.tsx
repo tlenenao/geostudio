@@ -8,6 +8,7 @@ import { ItemClientProvider } from "../../api/ItemClientProvider";
 import type { DataSource, ItemClient } from "../../api/types";
 import { ApiError } from "../../api/ApiError";
 import { expectTokenizedClasses } from "../../ui/kit/testUtils";
+import { expectAriaWired } from "../../test/expectAriaWired";
 
 // REV-079 : `vi.spyOn` (au lieu de `vi.stubGlobal("URL", { ...URL, ... })`)
 // laisse le constructeur `URL` intact — un `{ ...URL }` produit un objet
@@ -306,4 +307,17 @@ test("le démontage abandonne le sondage d'export sans afficher d'erreur", async
   expect(signal?.aborted).toBe(false);
   unmount();
   expect(signal?.aborted).toBe(true);
+});
+
+test("le déclencheur du menu est câblé à son panneau (aria-expanded/aria-controls)", async () => {
+  render(
+    <ExplorerProvider enabled>
+      <ExplorerMenu datasetId="ds1" dataSourceId="src1" />
+    </ExplorerProvider>,
+  );
+  const trigger = screen.getByLabelText("Explorer");
+  const panelId = trigger.getAttribute("aria-controls")!;
+  expectAriaWired(trigger, panelId, false);
+  await userEvent.click(trigger);
+  expectAriaWired(trigger, panelId, true);
 });

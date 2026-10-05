@@ -7,6 +7,7 @@ import type { ItemClient, SecretSummary } from "../../api/types";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
 import { t } from "../../i18n";
 import { SecretParamSelect } from "./SecretParamSelect";
+import { expectAriaWired } from "../../test/expectAriaWired";
 
 const SECRETS: SecretSummary[] = [
   { id: "s1", name: "arcgis", kind: "api_key", createdAt: "", updatedAt: "" },
@@ -290,4 +291,14 @@ test("le champ host SMTP a un placeholder d'exemple", async () => {
   await userEvent.click(screen.getByText("Créer un secret"));
   const hostInput = screen.getByLabelText(t("secretParamSelect.hostAria"));
   expect(hostInput).toHaveAttribute("placeholder", "smtp.example.com");
+});
+
+test("« Créer un secret » est câblé au formulaire qu'il révèle (aria-expanded/aria-controls)", async () => {
+  renderSelect();
+  await waitFor(() => expect(screen.getByRole("option", { name: "arcgis" })).toBeInTheDocument());
+  const trigger = screen.getByRole("button", { name: "Créer un secret" });
+  const panelId = trigger.getAttribute("aria-controls")!;
+  expectAriaWired(trigger, panelId, false);
+  await userEvent.click(trigger);
+  expectAriaWired(trigger, panelId, true);
 });

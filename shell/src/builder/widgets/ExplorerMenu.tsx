@@ -6,6 +6,7 @@ import type { DataSource } from "../../api/types";
 import { t } from "../../i18n";
 import { saveExportedFile } from "../../api/saveExportedFile";
 import { ApiError } from "../../api/ApiError";
+import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
 
 const AGGREGATE_FORMATS = ["csv", "xlsx"];
 const ITEMS_FORMATS_WITH_GEOMETRY = ["csv", "xlsx", "geojson", "gpkg"];
@@ -49,6 +50,7 @@ export function ExplorerMenu({
   const open = useOpenExplorer();
   const client = useOptionalItemClient();
   const [menuOpen, setMenuOpen] = useState(false);
+  const menu = usePanelTrigger(menuOpen);
   const [exportError, setExportError] = useState<string | null>(null);
   // SP-60 : le sondage d'un export asynchrone s'arrête au démontage.
   const exportAbort = useRef<AbortController | null>(null);
@@ -90,12 +92,16 @@ export function ExplorerMenu({
         type="button"
         aria-label={t("explorerMenu.trigger")}
         className="rounded px-1 text-xs text-[var(--gs-color-muted)] hover:bg-[var(--gs-color-surface)]"
+        {...menu.triggerProps}
         onClick={() => (menuOpen ? closeMenu() : setMenuOpen(true))}
       >
         ⋮
       </button>
       {menuOpen && (
-        <div className="absolute right-0 top-full mt-1 whitespace-nowrap rounded border border-[var(--gs-color-border)] bg-[var(--gs-color-background)] shadow-sm">
+        <div
+          {...menu.panelProps}
+          className="absolute right-0 top-full mt-1 whitespace-nowrap rounded border border-[var(--gs-color-border)] bg-[var(--gs-color-background)] shadow-sm"
+        >
           <button
             type="button"
             aria-label={t("explorerMenu.viewRecords")}
