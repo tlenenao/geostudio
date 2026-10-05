@@ -8,7 +8,12 @@ import logging
 import os
 
 from app.analytics.duckdb_conn import open_spatial_connection
-from app.analytics.export import EXPORT_MEDIA_TYPES, export_filename, features_to_format
+from app.analytics.export import (
+    EXPORT_MEDIA_TYPES,
+    export_filename,
+    export_job_max,
+    features_to_format,
+)
 from app.auth.dependency import is_read_only_mode
 from app.collections import repository as collections_repo
 from app.collections.introspection import hide_sensitive_columns
@@ -63,7 +68,7 @@ def _build_file(factory, job) -> tuple[bytes, str, str]:
             info = hide_sensitive_columns(info, col.sensitive_fields)
         q = job.query or {}
         bbox = tuple(q["bbox"]) if q.get("bbox") else None
-        job_max = repo.export_job_max()
+        job_max = export_job_max()
         features: list[dict] = []
         cursor = None
         while True:
@@ -136,7 +141,11 @@ def run_collection_export(job_id: str, tenant_id: str) -> None:
             Bucket=bucket, Key=key, Body=content, ContentType=EXPORT_MEDIA_TYPES[job.format]
         )
         with request_scoped_session(factory) as session:
-            repo.mark_done(session, job_id, result_key=key, filename=filename)
+            done = repo.mark_done(session, job_id, result_key=key, filename=filename)
+        if not done:  # repris en `failed` pendant l'envoi : l'objet serait orphelin
+            logger.warning("collection export job %s terminé tardivement, objet supprimé", job_id)
+            s3.delete_object(Bucket=bucket, Key=key)
+            return
     except Exception as exc:
         logger.exception("collection export job %s : échec", job_id)
         with request_scoped_session(factory) as session:

@@ -11,16 +11,6 @@ from app.dataexport.models import CollectionExportJob, _now
 _TERMINAL = ("done", "failed")
 
 
-def export_sync_max() -> int:
-    """Au-delà (total exact), `export/items` répond 202 au lieu d'un fichier."""
-    return int(os.environ.get("CORE_EXPORT_SYNC_MAX") or "100000")
-
-
-def export_job_max() -> int:
-    """Plafond d'entités d'un export asynchrone (413 / job `failed` au-delà)."""
-    return int(os.environ.get("CORE_EXPORT_JOB_MAX") or "500000")
-
-
 def create_job(
     session: Session,
     *,
@@ -67,13 +57,15 @@ def mark_running(session: Session, job_id: str) -> bool:
     return bool(result.rowcount)  # type: ignore[attr-defined]
 
 
-def mark_done(session: Session, job_id: str, *, result_key: str, filename: str) -> None:
-    session.execute(
+def mark_done(session: Session, job_id: str, *, result_key: str, filename: str) -> bool:
+    """False si le job est deja terminal (ex. repris en `failed` pendant l'envoi)."""
+    result = session.execute(
         update(CollectionExportJob)
         .where(CollectionExportJob.id == job_id, CollectionExportJob.status.notin_(_TERMINAL))
         .values(status="done", result_key=result_key, filename=filename, finished_at=_now())
     )
     session.flush()
+    return bool(result.rowcount)  # type: ignore[attr-defined]
 
 
 def mark_failed(session: Session, job_id: str, error: str) -> None:
@@ -87,7 +79,12 @@ def mark_failed(session: Session, job_id: str, error: str) -> None:
 
 BATCH = 100
 PENDING_RETRY_MINUTES = 5
-RUNNING_RECLAIM_MINUTES = 60
+RUNNING_RECLAIM_MINUTES = 60  # defaut ; CORE_EXPORT_RUNNING_TIMEOUT_MINUTES le surcharge
+
+
+def running_reclaim_minutes() -> int:
+    """Duree max d'un export `running` avant reprise en `failed` (worker tue)."""
+    return int(os.environ.get("CORE_EXPORT_RUNNING_TIMEOUT_MINUTES") or RUNNING_RECLAIM_MINUTES)
 
 
 def stale_pending_ids(session: Session, *, older_than_minutes: int = PENDING_RETRY_MINUTES):
@@ -101,13 +98,11 @@ def stale_pending_ids(session: Session, *, older_than_minutes: int = PENDING_RET
     return [(r.id, r.tenant_id) for r in rows]
 
 
-def reclaim_stuck_running(
-    session: Session, *, older_than_minutes: int = RUNNING_RECLAIM_MINUTES
-) -> list[str]:
+def reclaim_stuck_running(session: Session, *, older_than_minutes: int | None = None) -> list[str]:
     """`running` sans fin depuis trop longtemps (worker tué) -> `failed`.
     Compare-and-swap sur started_at : un job terminé ou repris entre-temps
     n'est pas écrasé."""
-    threshold = _now() - timedelta(minutes=older_than_minutes)
+    threshold = _now() - timedelta(minutes=older_than_minutes or running_reclaim_minutes())
     rows = session.execute(
         select(CollectionExportJob.id, CollectionExportJob.started_at)
         .where(CollectionExportJob.status == "running", CollectionExportJob.started_at < threshold)

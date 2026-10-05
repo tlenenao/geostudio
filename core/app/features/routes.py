@@ -28,6 +28,8 @@ from app.analytics.duckdb_conn import open_spatial_connection
 from app.analytics.export import (
     EXPORT_MEDIA_TYPES,
     export_filename,
+    export_job_max,
+    export_sync_max,
     features_to_format,
     rows_to_format,
 )
@@ -453,8 +455,8 @@ def export_collection_items(
     parsed_bbox = _parse_bbox(bbox)
     parsed_geom_intersects = _parse_geom_intersects(geom_intersects)
     filters = _collect_filters(request)
-    sync_max = int(os.environ.get("CORE_EXPORT_SYNC_MAX") or "100000")
-    job_max = int(os.environ.get("CORE_EXPORT_JOB_MAX") or "500000")
+    sync_max = export_sync_max()
+    job_max = export_job_max()
 
     features: list[dict] = []
     cursor = None

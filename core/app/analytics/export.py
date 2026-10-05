@@ -5,6 +5,7 @@ vers CSV/XLSX/GeoJSON/GPKG. Fonctions pures, réutilisables telles quelles
 par SP-16b (rapports planifiés) sans passer par un appel HTTP interne."""
 
 import json
+import os
 import re
 import tempfile
 import unicodedata
@@ -18,6 +19,17 @@ from uuid import UUID
 
 import duckdb
 from openpyxl import Workbook
+
+
+def export_sync_max() -> int:
+    """Au-delà (total exact), `export/items` répond 202 au lieu d'un fichier."""
+    return int(os.environ.get("CORE_EXPORT_SYNC_MAX") or "100000")
+
+
+def export_job_max() -> int:
+    """Plafond d'entités d'un export asynchrone (413 / job `failed` au-delà)."""
+    return int(os.environ.get("CORE_EXPORT_JOB_MAX") or "500000")
+
 
 EXPORT_MEDIA_TYPES = {
     "csv": "text/csv",

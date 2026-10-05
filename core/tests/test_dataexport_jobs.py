@@ -39,6 +39,9 @@ class _FakeS3:
     def put_object(self, *, Bucket, Key, Body, ContentType):
         self.objects[(Bucket, Key)] = (Body, ContentType)
 
+    def delete_object(self, *, Bucket, Key):
+        self.objects.pop((Bucket, Key), None)
+
 
 class _FakeRepo:
     """Pages keyset de 2 sur n lignes ; enregistre les appels (masquage, filtres)."""
@@ -186,3 +189,30 @@ def test_collection_deleted_meanwhile_fails(env, monkeypatch):
     dx_jobs.run_collection_export(job_id, ids[0])
     job = _job(factory, ids, job_id)
     assert job.status == "failed" and "collection not found" in job.error
+
+
+def test_late_upload_after_reclaim_deletes_orphan_and_does_not_notify_success(env, monkeypatch):
+    """Job passe `failed` (reprise) pendant l'envoi : l'objet S3 est supprime."""
+    factory, ids, s3, _repo = env
+    job_id = _new_job(factory, ids)
+    real_put = s3.put_object
+
+    def put_then_reclaimed(**kw):
+        real_put(**kw)
+        with factory() as s:
+            dx_repo.mark_failed(s, job_id, "export timed out (worker crashed or hung)")
+            s.commit()
+
+    monkeypatch.setattr(s3, "put_object", put_then_reclaimed)
+    dx_jobs.run_collection_export(job_id, ids[0])
+    assert _job(factory, ids, job_id).status == "failed"
+    assert not s3.objects
+    with factory() as s:
+        assert s.scalars(select(Notification)).all() == []
+
+
+def test_running_reclaim_minutes_is_configurable(monkeypatch):
+    monkeypatch.setenv("CORE_EXPORT_RUNNING_TIMEOUT_MINUTES", "7")
+    assert dx_repo.running_reclaim_minutes() == 7
+    monkeypatch.delenv("CORE_EXPORT_RUNNING_TIMEOUT_MINUTES")
+    assert dx_repo.running_reclaim_minutes() == 60
