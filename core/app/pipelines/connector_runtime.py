@@ -272,7 +272,10 @@ _REDSHIFT_HOST = re.compile(r"\.redshift(-serverless)?\.amazonaws\.com(\.cn)?$",
 
 
 def _is_redshift(backend: str, host: str | None) -> bool:
-    return backend.startswith("postgresql") and bool(host and _REDSHIFT_HOST.search(host))
+    # Les alias/CNAME personnalisés ne sont pas détectés (seul le suffixe AWS l'est).
+    return backend.startswith("postgresql") and bool(
+        host and _REDSHIFT_HOST.search(host.rstrip("."))
+    )
 
 
 def _timeout_connect_args(backend: str, host: str | None = None) -> dict:

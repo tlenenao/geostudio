@@ -68,6 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `SET statement_timeout TO <ms>` on connect instead. **Not verified against a
   real Redshift cluster** (none available): covered by unit tests only; run
   `pytest -m redshift_manual` with `CORE_TEST_REDSHIFT_DSN` set to check it by hand.
+  Custom aliases/CNAMEs of a cluster are not detected (only the AWS host suffix is).
 
 ### Removed
 
