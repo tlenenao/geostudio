@@ -102,7 +102,7 @@ _CEL_CONTEXT_ROOTS: dict[str, frozenset[str]] = {
     "visibleWhen": frozenset({"vars", "user"}),
     "binding": frozenset({"vars", "user"}),
     "computedColumn": frozenset({"record", "vars", "user"}),
-    "actionCondition": frozenset({"vars", "user", "ctx"}),
+    "actionCondition": frozenset({"vars", "user", "ctx", "record"}),
 }
 _CEL_CONTEXT_PROMPTS: dict[str, str] = {
     "visibleWhen": "Écris une unique expression CEL booléenne (Common Expression Language) "
