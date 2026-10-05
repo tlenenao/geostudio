@@ -1092,6 +1092,57 @@
         "title": "CollectionCreate",
         "type": "object"
       },
+      "CollectionExportJobStatus": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "resultUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resulturl"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status"
+        ],
+        "title": "CollectionExportJobStatus",
+        "type": "object"
+      },
       "CollectionPatch": {
         "properties": {
           "attachmentFields": {
@@ -6417,6 +6468,9 @@
             },
             "description": "Successful Response"
           },
+          "202": {
+            "description": "Export asynchrone : {jobId}, suivre via export/jobs/{jobId}"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -6429,6 +6483,64 @@
           }
         },
         "summary": "Export Collection Items"
+      }
+    },
+    "/v1/collections/{collection_id}/export/jobs/{job_id}": {
+      "get": {
+        "operationId": "get_collection_export_job_v1_collections__collection_id__export_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionExportJobStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Collection Export Job"
       }
     },
     "/v1/collections/{collection_id}/items": {

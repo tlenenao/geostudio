@@ -280,6 +280,40 @@ export const GEOMETRY_KINDS: Record<string, "point" | "line" | "polygon"> = {
   MultiPolygon: "polygon",
 };
 
+// REV-283e : `export/items` répond 202 `{jobId}` au-delà du seuil synchrone ;
+// on sonde `.../export/jobs/{id}` jusqu'à `done`, puis on télécharge `resultUrl`
+// (lien S3 présigné, sans Authorization). Abandon après 15 min.
+const EXPORT_POLL_INTERVAL_MS = 2_000;
+const EXPORT_POLL_DEADLINE_MS = 15 * 60_000;
+
+async function pollExportJob(
+  accepted: Response,
+  path: string,
+  get: (path: string) => Promise<Response>,
+): Promise<{ blob: Blob; filename: string }> {
+  const { jobId } = (await accepted.json()) as { jobId: string };
+  const statusPath = `${path.split("/export")[0]}/export/jobs/${jobId}`;
+  const deadline = Date.now() + EXPORT_POLL_DEADLINE_MS;
+  for (;;) {
+    const res = await get(statusPath);
+    if (!res.ok) throw await parseErrorResponse(res);
+    const job = (await res.json()) as {
+      status: string;
+      resultUrl?: string | null;
+      filename?: string | null;
+      error?: string | null;
+    };
+    if (job.status === "failed") throw new Error(job.error ?? "export failed");
+    if (job.status === "done" && job.resultUrl) {
+      const file = await fetchWithTimeout(job.resultUrl, {}, 120_000);
+      if (!file.ok) throw await parseErrorResponse(file);
+      return { blob: await readBody(() => file.blob()), filename: job.filename ?? "export" };
+    }
+    if (Date.now() > deadline) throw new Error("export timed out");
+    await new Promise((r) => setTimeout(r, EXPORT_POLL_INTERVAL_MS));
+  }
+}
+
 export async function requestBlob(
   coreUrl: string,
   getToken: () => string | undefined,
@@ -291,22 +325,27 @@ export async function requestBlob(
 ): Promise<{ blob: Blob; filename: string }> {
   const token = getToken();
   const shareToken = getShareLinkToken?.();
-  const send = (tok: string | undefined) => {
+  const send = (tok: string | undefined, m = method, p = path, b = body) => {
     const headers: Record<string, string> = {};
     if (tok) headers.Authorization = `Bearer ${tok}`;
     else if (shareToken) headers["X-Share-Link-Token"] = shareToken;
-    if (body !== undefined) headers["Content-Type"] = "application/json";
-    return fetchWithTimeout(`${coreUrl}${path}`, {
-      method,
+    if (b !== undefined) headers["Content-Type"] = "application/json";
+    return fetchWithTimeout(`${coreUrl}${p}`, {
+      method: m,
       headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: b !== undefined ? JSON.stringify(b) : undefined,
     });
   };
   let res = await send(token);
+  let activeToken = token;
   if (res.status === 401 && token && renewToken) {
     const fresh = await renewToken();
-    if (fresh) res = await send(fresh);
+    if (fresh) {
+      activeToken = fresh;
+      res = await send(fresh);
+    }
   }
+  if (res.status === 202) return pollExportJob(res, path, (p) => send(activeToken, "GET", p));
   if (!res.ok) throw await parseErrorResponse(res);
   const disposition = res.headers.get("Content-Disposition") ?? "";
   const match = /filename="([^"]+)"/.exec(disposition);

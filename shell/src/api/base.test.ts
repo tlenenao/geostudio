@@ -121,6 +121,70 @@ describe("requestBlob — ApiError RFC 7807 (SP-B5)", () => {
   });
 });
 
+describe("requestBlob — export asynchrone 202 (REV-283e)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+
+  it("sonde le statut puis télécharge resultUrl", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(json({ jobId: "j1" }, 202))
+      .mockResolvedValueOnce(json({ status: "running" }))
+      .mockResolvedValueOnce(
+        json({ status: "done", resultUrl: "https://s3.test/f", filename: "v.geojson" }),
+      )
+      .mockResolvedValueOnce(new Response("DATA"));
+    vi.stubGlobal("fetch", fetchMock);
+    const p = requestBlob(
+      "http://core.test/v1",
+      () => "tok",
+      "GET",
+      "/collections/c1/export/items?format=geojson",
+    );
+    await vi.advanceTimersByTimeAsync(5000);
+    const out = await p;
+    expect(out.filename).toBe("v.geojson");
+    expect(out.blob.size).toBe(4);
+    expect(fetchMock.mock.calls[1][0]).toBe("http://core.test/v1/collections/c1/export/jobs/j1");
+    expect(fetchMock.mock.calls[3][0]).toBe("https://s3.test/f");
+    expect(fetchMock.mock.calls[3][1].headers).toBeUndefined();
+  });
+
+  it("rejette avec le message d'un job failed", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(json({ jobId: "j1" }, 202))
+        .mockResolvedValueOnce(json({ status: "failed", error: "too many" })),
+    );
+    await expect(
+      requestBlob("http://core.test", () => "t", "GET", "/collections/c1/export/items"),
+    ).rejects.toThrow("too many");
+  });
+
+  it("abandonne après 15 min", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(json({ jobId: "j1" }, 202))
+        .mockImplementation(async () => json({ status: "running" })),
+    );
+    const p = requestBlob("http://core.test", () => "t", "GET", "/collections/c1/export/items");
+    const assertion = expect(p).rejects.toThrow("export timed out");
+    await vi.advanceTimersByTimeAsync(16 * 60_000);
+    await assertion;
+  });
+});
+
 // Revue finale Vague B, I2 : fetch simulé qui honore réellement le signal
 // d'abandon (comme un vrai fetch) et ne répond qu'après `delayMs`.
 function slowFetch(delayMs: number, body: unknown) {

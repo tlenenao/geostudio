@@ -252,6 +252,7 @@ export const fr = {
   "notifications.kindHarvest": "Moissonnage",
   "notifications.kindTileset3d": "Tileset 3D",
   "notifications.kindTerrain3d": "Terrain 3D",
+  "notifications.kindDataExport": "Export de données",
   "notifications.panel": "Centre de notifications",
   "notifications.preference": "Préférence de notification",
   "notifications.unread": "Non lue",

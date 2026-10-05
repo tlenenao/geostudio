@@ -315,3 +315,36 @@ test(
   },
   OPEN_TIMEOUT,
 );
+
+test(
+  "libelle une notification d'export de données (REV-283e)",
+  async () => {
+    server.use(
+      http.get("https://core.test/v1/notifications/unread-count", () =>
+        HttpResponse.json({ count: 1 }),
+      ),
+      http.get("https://core.test/v1/notifications", () =>
+        HttpResponse.json({
+          notifications: [
+            {
+              id: "n9",
+              kind: "data_export",
+              status: "success",
+              itemId: null,
+              itemResourceType: null,
+              itemTitle: "Villes",
+              errorMessage: null,
+              createdAt: "2026-09-04T10:00:00Z",
+              readAt: null,
+            },
+          ],
+          total: 1,
+        }),
+      ),
+    );
+    render(<Harness />);
+    await userEvent.click(await screen.findByRole("button", { name: /Notifications/ }));
+    expect(await screen.findByText("Export de données")).toBeInTheDocument();
+  },
+  OPEN_TIMEOUT,
+);

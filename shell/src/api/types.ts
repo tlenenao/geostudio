@@ -127,7 +127,8 @@ export type NotificationSummary = {
     | "alert"
     | "harvest"
     | "tileset3d"
-    | "terrain3d";
+    | "terrain3d"
+    | "data_export";
   status: "success" | "failure";
   itemId: string | null;
   itemResourceType: ResourceType | null;

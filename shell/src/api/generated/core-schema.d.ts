@@ -228,6 +228,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/collections/{collection_id}/export/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Collection Export Job */
+        get: operations["get_collection_export_job_v1_collections__collection_id__export_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/collections/{collection_id}/items": {
         parameters: {
             query?: never;
@@ -2272,6 +2289,19 @@ export interface components {
             tableName: string;
             /** Title */
             title?: string | null;
+        };
+        /** CollectionExportJobStatus */
+        CollectionExportJobStatus: {
+            /** Error */
+            error?: string | null;
+            /** Filename */
+            filename?: string | null;
+            /** Id */
+            id: string;
+            /** Resulturl */
+            resultUrl?: string | null;
+            /** Status */
+            status: string;
         };
         /** CollectionPatch */
         CollectionPatch: {
@@ -4366,6 +4396,47 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Export asynchrone : {jobId}, suivre via export/jobs/{jobId} */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_collection_export_job_v1_collections__collection_id__export_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                collection_id: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionExportJobStatus"];
                 };
             };
             /** @description Validation Error */
