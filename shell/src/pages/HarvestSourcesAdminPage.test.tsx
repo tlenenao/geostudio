@@ -764,3 +764,93 @@ test("REV-151 : « Charger plus » double la limite des enregistrements tant que
   expect(limits).toEqual(["100", "200"]);
   expect(screen.queryByRole("button", { name: "Charger plus" })).not.toBeInTheDocument();
 });
+
+const mkRecords = (n: number) =>
+  Array.from({ length: n }, (_, i) => ({
+    id: `r${i}`,
+    externalId: `ext-${i}`,
+    itemId: null,
+    collectionId: null,
+    state: "ok",
+    harvestedAt: null,
+    externalUrl: null,
+  }));
+
+test("REV-151 : au plafond du cœur (1000) plus de « Charger plus », mention « N sur total »", async () => {
+  const limits: number[] = [];
+  server.use(
+    http.get("https://core.test/v1/instance", () => HttpResponse.json({ readOnly: true })),
+    http.get("https://core.test/v1/harvest/sources", () =>
+      HttpResponse.json({
+        sources: [
+          {
+            id: "src-1",
+            type: "stac",
+            url: "https://stac.example.com/collections",
+            mode: "reference",
+            enabled: true,
+            intervalMinutes: null,
+            lastRunAt: null,
+            lastStatus: "ok",
+            lastError: null,
+            recordCount: 5000,
+            staleCount: 0,
+          },
+        ],
+      }),
+    ),
+    http.get("https://core.test/v1/harvest/sources/src-1/records", ({ request }) => {
+      const limit = Number(new URL(request.url).searchParams.get("limit"));
+      limits.push(limit);
+      return HttpResponse.json({
+        total: 5000,
+        staleCount: 0,
+        records: mkRecords(Math.min(limit, 1000)),
+      });
+    }),
+  );
+  render(<Harness />);
+  await userEvent.click(await screen.findByRole("button", { name: "Voir les enregistrements" }));
+  for (let n = 100; n < 1000; n += 100) {
+    await userEvent.click(await screen.findByRole("button", { name: "Charger plus" }));
+    await screen.findByText(`ext-${n}`);
+  }
+  await screen.findByText("1000 sur 5000 enregistrements affichés");
+  expect(screen.queryByRole("button", { name: "Charger plus" })).not.toBeInTheDocument();
+  expect(Math.max(...limits)).toBe(1000);
+}, 30000);
+
+test("REV-151 : échec du chargement des enregistrements, « Réessayer » relance la requête", async () => {
+  let calls = 0;
+  server.use(
+    http.get("https://core.test/v1/instance", () => HttpResponse.json({ readOnly: true })),
+    http.get("https://core.test/v1/harvest/sources", () =>
+      HttpResponse.json({
+        sources: [
+          {
+            id: "src-1",
+            type: "stac",
+            url: "https://stac.example.com/collections",
+            mode: "reference",
+            enabled: true,
+            intervalMinutes: null,
+            lastRunAt: null,
+            lastStatus: "ok",
+            lastError: null,
+            recordCount: 5000,
+            staleCount: 0,
+          },
+        ],
+      }),
+    ),
+    http.get("https://core.test/v1/harvest/sources/src-1/records", () => {
+      calls += 1;
+      if (calls === 1) return new HttpResponse(null, { status: 500 });
+      return HttpResponse.json({ total: 2, staleCount: 0, records: mkRecords(2) });
+    }),
+  );
+  render(<Harness />);
+  await userEvent.click(await screen.findByRole("button", { name: "Voir les enregistrements" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Réessayer" }));
+  await screen.findByText("ext-1");
+});

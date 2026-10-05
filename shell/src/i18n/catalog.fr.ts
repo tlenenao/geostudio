@@ -582,6 +582,7 @@ export const fr = {
   "harvest.recordsHeading": "Enregistrements de {url}",
   "harvest.recordsEmpty": "Aucun enregistrement moissonné pour cette source.",
   "harvest.loadMore": "Charger plus",
+  "harvest.recordsShown": "{count} sur {total} enregistrements affichés",
   "harvest.recordsLoadError": "Impossible de charger les enregistrements.",
   "harvest.recordStale": "obsolète",
   "harvest.neverRun": "Jamais",
