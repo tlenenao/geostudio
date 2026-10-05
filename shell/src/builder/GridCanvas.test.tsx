@@ -155,3 +155,25 @@ test("à sm, deux widgets 6/12 sans layouts.sm s'empilent pleine largeur (P10.16
   expect(cells.map((c) => c.dataset.row)).toEqual(["0", "2"]);
   expect(cells[0].style.gridColumn).toBe("1 / span 12");
 });
+
+test("REV-285 h : supprimer le 1er widget ne renumérote pas le suivant (nom accessible stable)", () => {
+  const two: WidgetItem[] = [
+    { id: "a", widget: "text", x: 0, y: 0, w: 4, h: 2, props: {}, ordinal: 1 },
+    { id: "b", widget: "text", x: 0, y: 2, w: 4, h: 2, props: {}, ordinal: 2 },
+  ];
+  const { rerender } = renderCanvas({ items: two });
+  expect(screen.getByRole("button", { name: "Sélectionner text 2" })).toBeInTheDocument();
+  rerender(
+    <GridCanvas
+      items={[two[1]]}
+      breakpoint="lg"
+      editable
+      selectedId={null}
+      onSelect={vi.fn()}
+      onMoveItem={vi.fn()}
+      onRemoveItem={vi.fn()}
+      renderItem={(item) => <div>widget-{item.id}</div>}
+    />,
+  );
+  expect(screen.getByRole("button", { name: "Sélectionner text 2" })).toBeInTheDocument();
+});

@@ -2,7 +2,14 @@
 import { useState } from "react";
 import type { DataSource, Variable, WidgetItem } from "../api/types";
 import { getWidget } from "./registry";
-import { duplicateItem, moveItemAt, nextFreePosition, resizeItemAt, type Breakpoint } from "./grid";
+import {
+  duplicateItem,
+  moveItemAt,
+  nextFreePosition,
+  nextOrdinal,
+  resizeItemAt,
+  type Breakpoint,
+} from "./grid";
 import { WidgetPalette } from "./WidgetPalette";
 import { GridCanvas } from "./GridCanvas";
 import { WidgetHost } from "./WidgetHost";
@@ -38,6 +45,7 @@ export function LayoutEditor({
       w: def.defaultSize.w,
       h: def.defaultSize.h,
       props: { ...def.defaultProps },
+      ordinal: nextOrdinal(items, type),
     };
     onChange([...items, item]);
     setSelectedId(item.id);

@@ -3106,6 +3106,17 @@
             ],
             "title": "Layouts"
           },
+          "ordinal": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ordinal"
+          },
           "props": {
             "additionalProperties": true,
             "title": "Props",

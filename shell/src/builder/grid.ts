@@ -77,6 +77,14 @@ export function resizeItemAt(
 }
 
 // Copy of an item with a fresh id, placed below all existing items.
+// REV-285(h) : rang stocké (pas dérivé de l'ordre) du widget parmi ceux de son type.
+export function nextOrdinal(items: WidgetItem[], widget: string): number {
+  return (
+    items.filter((i) => i.widget === widget).reduce((max, i) => Math.max(max, i.ordinal ?? 0), 0) +
+    1
+  );
+}
+
 export function duplicateItem(item: WidgetItem, items: WidgetItem[]): WidgetItem {
   const { x, y } = nextFreePosition(items);
   return {
@@ -85,6 +93,7 @@ export function duplicateItem(item: WidgetItem, items: WidgetItem[]): WidgetItem
     x,
     y,
     layouts: undefined,
+    ordinal: nextOrdinal(items, item.widget),
   };
 }
 

@@ -2937,6 +2937,8 @@ export interface components {
                     [key: string]: unknown;
                 };
             } | null;
+            /** Ordinal */
+            ordinal?: number | null;
             /** Props */
             props?: {
                 [key: string]: unknown;

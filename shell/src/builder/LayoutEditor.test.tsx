@@ -170,3 +170,16 @@ test("moving the selected item updates its position via onChange", async () => {
   const items = onChange.mock.calls.at(-1)![0] as WidgetItem[];
   expect(items[0].x).toBe(1);
 });
+
+test("REV-285 h : l'ordinal d'un widget ajouté suit le max stocké, pas le nombre d'items", async () => {
+  const onChange = vi.fn();
+  const existing = [
+    { id: "b", widget: "text", x: 0, y: 0, w: 4, h: 2, props: {}, ordinal: 2 },
+  ] as WidgetItem[];
+  render(<LayoutEditor items={existing} onChange={onChange} dataSources={[]} breakpoint="lg" />, {
+    wrapper,
+  });
+  await userEvent.click(screen.getByRole("button", { name: "Texte" }));
+  const items = onChange.mock.calls[0][0] as WidgetItem[];
+  expect(items[1].ordinal).toBe(3);
+});

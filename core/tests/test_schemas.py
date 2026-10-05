@@ -110,6 +110,15 @@ def test_layout_item_id_defaults_to_none():
     assert item.id is None
 
 
+def test_layout_item_accepts_and_round_trips_ordinal():
+    item = LayoutItem(widget="table", x=0, y=0, w=4, h=3, ordinal=2)
+    assert item.model_dump()["ordinal"] == 2
+    assert LayoutItem(widget="table", x=0, y=0, w=4, h=3).ordinal is None
+    payload = _valid_payload("app")
+    payload["layout"]["items"][0]["ordinal"] = 3
+    assert BuilderConfig.model_validate(payload).layout.items[0].ordinal == 3
+
+
 def test_layout_item_layouts_round_trip():
     payload = _valid_payload("app")
     payload["layout"]["items"][0]["layouts"] = {"sm": {"x": 1, "y": 2, "w": 6, "h": 3}}

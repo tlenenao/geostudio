@@ -56,6 +56,9 @@ class LayoutItem(BaseModel):
     props: dict = Field(default_factory=dict)
     layouts: dict[str, dict] | None = None
     visibleWhen: str | None = None
+    # REV-285(h) : rang stable du widget parmi ceux de son type (nom accessible
+    # « Table 2 »). Additif ; absent des configs antérieures (repli côté shell).
+    ordinal: int | None = None
 
 
 class Layout(BaseModel):

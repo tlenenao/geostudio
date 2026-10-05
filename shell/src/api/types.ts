@@ -849,6 +849,8 @@ export type WidgetItem = {
   props: Record<string, unknown>;
   layouts?: Partial<Record<"sm" | "md" | "lg", { x: number; y: number; w: number; h: number }>>;
   visibleWhen?: string;
+  // REV-285(h) : rang stable parmi les widgets du même type (nom accessible).
+  ordinal?: number | null;
 };
 
 export type AppLayout = {
