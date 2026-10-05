@@ -177,3 +177,70 @@ def test_bounds_question_and_field_list(app_client, monkeypatch):
         )
     assert "question trop longue" in long_q
     assert "trop de champs" in many
+
+
+def test_computed_column_context_accepts_record_field_and_refuses_unknown(app_client, monkeypatch):
+    item_id = _seed_item(app_client, owner_id=app_client.mock_user.id)
+    args = _args(item_id, availableFields=["record.population"], context="computedColumn")
+    _stub(monkeypatch, _StubLLMProvider("record.population * 2"))
+    with app_client:
+        assert call_tool(app_client, "generate_cel_expression", args) == {
+            "expression": "record.population * 2"
+        }
+        _stub(monkeypatch, _StubLLMProvider("record.inconnu * 2"))
+        error = call_tool_expecting_error(app_client, "generate_cel_expression", args)
+    assert "record.inconnu" in error
+
+
+def test_record_root_refused_outside_computed_column(app_client, monkeypatch):
+    item_id = _seed_item(app_client, owner_id=app_client.mock_user.id)
+    _stub(monkeypatch, _StubLLMProvider("record.population > 1"))
+    with app_client:
+        error = call_tool_expecting_error(
+            app_client,
+            "generate_cel_expression",
+            _args(item_id, availableFields=["record.population"]),
+        )
+    assert "racine non autorisée" in error
+
+
+def test_action_condition_allows_ctx_root(app_client, monkeypatch):
+    item_id = _seed_item(app_client, owner_id=app_client.mock_user.id)
+    _stub(monkeypatch, _StubLLMProvider("ctx.selected == 1"))
+    with app_client:
+        result = call_tool(
+            app_client,
+            "generate_cel_expression",
+            _args(item_id, availableFields=["ctx.selected"], context="actionCondition"),
+        )
+    assert result == {"expression": "ctx.selected == 1"}
+
+
+def test_string_literal_is_not_a_reference(app_client, monkeypatch):
+    item_id = _seed_item(app_client, owner_id=app_client.mock_user.id)
+    draft = '"vars.inconnue" == vars.statut'
+    _stub(monkeypatch, _StubLLMProvider(draft))
+    with app_client:
+        result = call_tool(app_client, "generate_cel_expression", _args(item_id))
+    assert result == {"expression": draft}
+
+
+@pytest.mark.parametrize(
+    "draft", ['vars["inconnu"]["b"] == 1', "vars.statut[vars.x] == 1", 'vars["statut"][x] == 1']
+)
+def test_chained_access_is_fully_traversed(app_client, monkeypatch, draft):
+    item_id = _seed_item(app_client, owner_id=app_client.mock_user.id)
+    _stub(monkeypatch, _StubLLMProvider(draft))
+    with app_client:
+        error = call_tool_expecting_error(app_client, "generate_cel_expression", _args(item_id))
+    assert "champs inconnus dans l'expression" in error
+
+
+def test_chained_known_access_passes(app_client, monkeypatch):
+    item_id = _seed_item(app_client, owner_id=app_client.mock_user.id)
+    draft = 'vars["statut"]["b"][0] == 1'
+    _stub(monkeypatch, _StubLLMProvider(draft))
+    with app_client:
+        assert call_tool(app_client, "generate_cel_expression", _args(item_id)) == {
+            "expression": draft
+        }

@@ -72,7 +72,15 @@ class CopilotTurnRequest(BaseModel):
     clientTools: list[dict[str, Any]] = Field(default_factory=list, max_length=MAX_CLIENT_TOOLS)
     # Sélectionne le message système (cf. `_SURFACE_INTROS`) : `app_builder`
     # reste le défaut pour ne rien changer au comportement existant.
-    surface: Literal["app_builder", "sql_lab", "visual_query", "visible_when"] = "app_builder"
+    surface: Literal[
+        "app_builder",
+        "sql_lab",
+        "visual_query",
+        "visible_when",
+        "computed_column",
+        "action_condition",
+        "binding",
+    ] = "app_builder"
     # j11-012 : un outil d'ÉCRITURE demandé par le LLM n'est jamais exécuté
     # tel quel ; il revient au shell sous forme d'op `confirmWrite`, et c'est
     # le clic humain qui renvoie l'appel ici (sans passage par le LLM).
@@ -151,6 +159,26 @@ _SURFACE_INTROS: dict[str, str] = {
         "— ne l'applique jamais toi-même, l'utilisateur doit cliquer sur Appliquer."
     ),
 }
+
+
+def _cel_intro(what: str, context: str) -> str:
+    return (
+        f"Tu es le copilote qui rédige {what} (expression CEL) dans le builder "
+        'GeoStudio. Le contexte ci-dessous porte un champ "availableFields" : les '
+        "seules références utilisables. Utilise l'outil generate_cel_expression "
+        f'(avec ces availableFields, context="{context}" et l\'itemId en cours '
+        "d'édition) pour proposer une expression, PUIS l'outil applyCelDraft pour "
+        "la proposer comme brouillon — ne l'applique jamais toi-même, "
+        "l'utilisateur doit cliquer sur Appliquer."
+    )
+
+
+# REV-183 : colonnes calculées, conditions d'actions, bindings.
+_SURFACE_INTROS["computed_column"] = _cel_intro(
+    "l'expression d'une colonne calculée", "computedColumn"
+)
+_SURFACE_INTROS["action_condition"] = _cel_intro("la condition d'une action", "actionCondition")
+_SURFACE_INTROS["binding"] = _cel_intro("une liaison dynamique (binding)", "binding")
 
 
 def _system_message(
