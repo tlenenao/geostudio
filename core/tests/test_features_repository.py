@@ -530,6 +530,12 @@ def test_cursor_invalid_for_pk_type_is_cursor_error_and_session_stays_usable(
         with pytest.raises(CursorError):
             select_features(s, info_uuid, limit=1, offset=0, after=encode_cursor("pas-un-uuid"))
         with pytest.raises(CursorError):
-            select_features(s, info, limit=1, offset=0, after=encode_cursor(2**70))
+            select_features(s, info, limit=1, offset=0, after=encode_cursor("abc"))
         # transaction/RLS toujours sains
         assert select_features(s, info, limit=1, offset=0).number_returned == 1
+
+
+def test_count_mode_none_skips_the_count(info, pg_session_factory):
+    with pg_session_factory() as s, rls_scope(s, "default"):
+        page = select_features(s, info, limit=1, offset=0, count_mode="none")
+    assert page.next_cursor is not None and page.number_matched is None

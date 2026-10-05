@@ -228,16 +228,14 @@ def test_cursor_invalid_for_pk_type_is_400_and_uuid_keyset_with_filter(pg_app, p
         conn.execute(text("CREATE TABLE demo_uuid (id uuid PRIMARY KEY, titre text NOT NULL)"))
     try:
         assert client.post("/v1/collections", json={"tableName": "demo_uuid"}).status_code == 201
-        for i in range(1, 4):
-            r = client.post(
-                "/v1/collections/demo_uuid/items",
-                json={
-                    "type": "Feature",
-                    "properties": {"id": f"00000000-0000-0000-0000-00000000000{i}", "titre": "x"},
-                    "geometry": None,
-                },
+        with pg_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO demo_uuid (id, titre, tenant_id) SELECT "
+                    "('00000000-0000-0000-0000-00000000000' || g)::uuid, 'x', "
+                    "(SELECT id FROM tenants LIMIT 1) FROM generate_series(1, 3) g"
+                )
             )
-            assert r.status_code == 201, r.text
         url = "/v1/collections/demo_uuid/items?titre=x&limit=1"
         p1 = client.get(url).json()
         nxt = [lk["href"] for lk in p1["links"] if lk["rel"] == "next"][0]
@@ -249,3 +247,36 @@ def test_cursor_invalid_for_pk_type_is_400_and_uuid_keyset_with_filter(pg_app, p
     finally:
         with pg_engine.begin() as conn:
             conn.execute(text("DROP TABLE IF EXISTS demo_uuid"))
+
+
+def test_export_items_walks_several_keyset_pages_without_count(pg_app, monkeypatch):
+    import app.features.repository as repository
+    from app.features import routes as features_routes
+
+    client = pg_app
+    assert client.post("/v1/collections", json={"tableName": "demo_incidents"}).status_code == 201
+    for i in range(3):
+        r = client.post(
+            "/v1/collections/demo_incidents/items",
+            json={
+                "type": "Feature",
+                "properties": {"titre": f"t{i}"},
+                "geometry": {"type": "Point", "coordinates": [1.0, 45.0]},
+            },
+        )
+        assert r.status_code == 201
+    monkeypatch.setattr(features_routes, "MAX_LIMIT", 1)
+    calls: list[dict] = []
+    real = repository.select_features
+
+    def spy(*a, **kw):
+        calls.append(kw)
+        return real(*a, **kw)
+
+    monkeypatch.setattr(repository, "select_features", spy)
+    r = client.get("/v1/collections/demo_incidents/export/items?format=geojson")
+    assert r.status_code == 200
+    assert len(r.json()["features"]) == 3
+    assert len(calls) == 3  # une page par ligne : la boucle tourne vraiment
+    assert all(c["count_mode"] == "none" for c in calls)
+    assert [c["after"] is None for c in calls] == [True, False, False]

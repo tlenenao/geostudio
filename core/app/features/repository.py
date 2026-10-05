@@ -225,6 +225,8 @@ def select_features(
         matched = offset + len(features)
     elif count_mode == "none":
         matched = None  # l'appelant (export) ne consomme pas le total
+    elif count_mode == "none":
+        matched = None  # l'appelant (export) ne consomme pas le total
     elif count_mode == "capped":
         n = session.execute(
             text(f"SELECT count(*) FROM (SELECT 1 FROM public.{t}{where} LIMIT :__cap) q"),

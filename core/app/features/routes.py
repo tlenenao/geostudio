@@ -445,7 +445,7 @@ def export_collection_items(
                     geom_intersects=parsed_geom_intersects,
                     filters=filters or None,
                     after=cursor,
-                    count_mode="capped",
+                    count_mode="none",
                 )
         except FilterError as exc:
             raise _validation_error(
