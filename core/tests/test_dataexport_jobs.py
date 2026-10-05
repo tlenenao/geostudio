@@ -136,7 +136,7 @@ def test_job_done_uploads_pages_and_notifies(env):
     job_id = _new_job(factory, ids, query={"bbox": [0, 0, 1, 1], "filters": {"region": "r"}})
     dx_jobs.run_collection_export(job_id, ids[0])
     job = _job(factory, ids, job_id)
-    assert job.status == "done"
+    assert job.status == "done" and job.started_at and job.finished_at
     assert job.result_key == f"{ids[0]}/data-exports/{job_id}.geojson"
     assert ("geostudio-exports", job.result_key) in s3.objects
     assert len(repo.calls) == 3  # 5 lignes, pages de 2 : le curseur est suivi
@@ -172,7 +172,7 @@ def test_over_job_max_fails(env, monkeypatch):
     job_id = _new_job(factory, ids)
     dx_jobs.run_collection_export(job_id, ids[0])
     job = _job(factory, ids, job_id)
-    assert job.status == "failed" and "too many entities" in job.error
+    assert job.status == "failed" and "too many entities" in job.error and job.finished_at
     assert not s3.objects
 
 

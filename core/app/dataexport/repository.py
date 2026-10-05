@@ -5,7 +5,7 @@ import uuid
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from app.dataexport.models import CollectionExportJob
+from app.dataexport.models import CollectionExportJob, _now
 
 _TERMINAL = ("done", "failed")
 
@@ -60,7 +60,7 @@ def mark_running(session: Session, job_id: str) -> bool:
     result = session.execute(
         update(CollectionExportJob)
         .where(CollectionExportJob.id == job_id, CollectionExportJob.status == "pending")
-        .values(status="running")
+        .values(status="running", started_at=_now())
     )
     session.flush()
     return bool(result.rowcount)  # type: ignore[attr-defined]
@@ -70,7 +70,7 @@ def mark_done(session: Session, job_id: str, *, result_key: str, filename: str) 
     session.execute(
         update(CollectionExportJob)
         .where(CollectionExportJob.id == job_id, CollectionExportJob.status.notin_(_TERMINAL))
-        .values(status="done", result_key=result_key, filename=filename)
+        .values(status="done", result_key=result_key, filename=filename, finished_at=_now())
     )
     session.flush()
 
@@ -79,6 +79,6 @@ def mark_failed(session: Session, job_id: str, error: str) -> None:
     session.execute(
         update(CollectionExportJob)
         .where(CollectionExportJob.id == job_id, CollectionExportJob.status.notin_(_TERMINAL))
-        .values(status="failed", error=error)
+        .values(status="failed", error=error, finished_at=_now())
     )
     session.flush()

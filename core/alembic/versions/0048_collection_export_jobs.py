@@ -40,8 +40,12 @@ def upgrade() -> None:
         sa.Column("filename", sa.String(), nullable=True),
         sa.Column("error", sa.String(), nullable=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.Column("started_at", sa.DateTime(), nullable=True),
+        sa.Column("finished_at", sa.DateTime(), nullable=True),
         sa.Column("expires_at", sa.DateTime(), nullable=False),
     )
+    # Balayage de reprise (B3-5) : tous tenants confondus, par statut.
+    op.create_index("ix_collection_export_jobs_status", "collection_export_jobs", ["status"])
     op.create_index(
         "ix_collection_export_jobs_tenant_status", "collection_export_jobs", ["tenant_id", "status"]
     )

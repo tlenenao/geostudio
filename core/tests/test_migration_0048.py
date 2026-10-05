@@ -41,6 +41,9 @@ def test_0048_round_trip_on_non_empty_database(throwaway_database_url):
         )
     eng.dispose()
     assert _scalar(url, "SELECT status FROM collection_export_jobs") == "pending"
+    assert _scalar(
+        url, "SELECT started_at IS NULL AND finished_at IS NULL FROM collection_export_jobs"
+    )
 
     command.downgrade(_cfg(), "0047")
     assert _scalar(url, "SELECT count(*) FROM tenants WHERE id = 't1'") == 1

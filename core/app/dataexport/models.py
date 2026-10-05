@@ -22,6 +22,7 @@ class CollectionExportJob(Base):
     __tablename__ = "collection_export_jobs"
     __table_args__ = (
         Index("ix_collection_export_jobs_tenant_status", "tenant_id", "status"),
+        Index("ix_collection_export_jobs_status", "status"),
         Index("ix_collection_export_jobs_expires_at", "expires_at"),
     )
 
@@ -44,4 +45,6 @@ class CollectionExportJob(Base):
     filename: Mapped[str | None] = mapped_column(String, nullable=True)
     error: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_default_expiry)
