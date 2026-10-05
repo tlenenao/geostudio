@@ -9,7 +9,9 @@ from app.collections.extent import table_extent
 from app.collections.introspection_pg import introspect_table
 from app.features.repository import (
     FilterError,
+    decode_cursor,
     delete_feature,
+    encode_cursor,
     get_feature,
     insert_feature,
     replace_feature,
@@ -423,3 +425,37 @@ def test_impossible_day_bound_is_a_filter_error_not_a_db_error(
     with pg_session_factory() as session, rls_scope(session, "default"):
         with pytest.raises(FilterError):
             select_features(session, info, limit=10, offset=0, filters={"at__lte": "2026-13-45"})
+
+
+def test_keyset_pages_cover_all_rows_without_overlap(info, pg_session_factory):
+    seen: list = []
+    cursor = None
+    with pg_session_factory() as s, rls_scope(s, "default"):
+        while True:
+            page = select_features(s, info, limit=1, offset=0, after=cursor, count_mode="capped")
+            seen += [f["id"] for f in page.features]
+            cursor = page.next_cursor
+            if cursor is None:
+                break
+    assert len(seen) == len(set(seen)) and len(seen) >= 2
+
+
+def test_cursor_roundtrip_and_invalid():
+    assert decode_cursor(encode_cursor(42)) == 42
+    with pytest.raises(ValueError):
+        decode_cursor("pas-un-curseur")
+
+
+def test_cursor_with_offset_rejected(info, pg_session_factory):
+    with pg_session_factory() as s, rls_scope(s, "default"):
+        with pytest.raises(ValueError):
+            select_features(s, info, limit=1, offset=1, after=encode_cursor(1))
+
+
+def test_capped_count_reports_lower_bound(info, pg_session_factory, monkeypatch):
+    import app.features.repository as repo
+
+    monkeypatch.setattr(repo, "EXACT_COUNT_CAP", 1)
+    with pg_session_factory() as s, rls_scope(s, "default"):
+        page = repo.select_features(s, info, limit=1, offset=0, count_mode="capped")
+    assert page.number_matched == 1 and page.number_matched_lower_bound is True

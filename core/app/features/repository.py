@@ -6,10 +6,12 @@ fid et filtres arrivent en str (URL) et sont coercés selon le type
 introspecté. Les colonnes de type "unsupported" sont read-only (contrat de
 validation.py) : jamais écrites ici."""
 
+import base64
 import json
 import re
 from dataclasses import dataclass
 from datetime import date
+from typing import Any, Literal
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -21,8 +23,27 @@ from app.sql_ident import quote_ident
 @dataclass(frozen=True)
 class FeaturePage:
     features: list[dict]
-    number_matched: int
+    number_matched: int | None
     number_returned: int
+    next_cursor: str | None = None
+    number_matched_lower_bound: bool = False
+
+
+# REV-279a : au-delà, number_matched est une borne basse (count(*) borné).
+EXACT_COUNT_CAP = 100_000
+
+
+def encode_cursor(pk: Any) -> str:
+    raw = json.dumps({"pk": pk}, separators=(",", ":")).encode()
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def decode_cursor(value: str) -> Any:
+    try:
+        pad = "=" * (-len(value) % 4)
+        return json.loads(base64.urlsafe_b64decode(value + pad))["pk"]
+    except Exception as exc:  # noqa: BLE001 - tout échec de décodage = curseur invalide
+        raise ValueError("invalid cursor") from exc
 
 
 class FilterError(Exception):
@@ -158,25 +179,53 @@ def select_features(
     bbox=None,
     geom_intersects=None,
     filters=None,
+    after: str | None = None,
+    count_mode: Literal["exact", "capped"] = "exact",
 ) -> FeaturePage:
+    if after is not None and offset > 0:
+        raise ValueError("after and offset are mutually exclusive")
     t = quote_ident(session, info.table_name)
+    pk = quote_ident(session, info.pk_column)
     where, params = _where(session, info, bbox, geom_intersects, filters)
+    page_where, page_params = where, dict(params)
+    if after is not None:
+        value = _coerce_fid(info, str(decode_cursor(after)))
+        if value is None:
+            raise ValueError("invalid cursor")
+        page_where += (" AND " if where else " WHERE ") + f"{pk} > :__after"
+        page_params["__after"] = value
     rows = session.execute(
         text(
-            f"SELECT {_select_list(session, info)} FROM public.{t}{where} "
-            f"ORDER BY {quote_ident(session, info.pk_column)} LIMIT :__l OFFSET :__o"
+            f"SELECT {_select_list(session, info)} FROM public.{t}{page_where} "
+            f"ORDER BY {pk} LIMIT :__l OFFSET :__o"
         ),
-        {**params, "__l": limit, "__o": offset},
+        {**page_params, "__l": limit + 1, "__o": offset},
     ).all()
-    features = [_row_to_feature(info, r) for r in rows]
-    if len(rows) < limit and (rows or offset == 0):
-        # Page courte : le total est connu sans count(*) (P24.09). Exact, pas
-        # une estimation. ponytail: page pleine = count(*) exact ; keyset sur la
-        # PK si l'offset profond devient le goulot.
-        matched = offset + len(rows)
+    has_more = len(rows) > limit
+    features = [_row_to_feature(info, r) for r in rows[:limit]]
+    next_cursor = encode_cursor(features[-1]["id"]) if has_more else None
+    lower_bound = False
+    if after is not None:
+        matched = None  # le total d'une page keyset n'est pas calculé
+    elif not has_more and (features or offset == 0):
+        # Page courte : le total est connu sans count(*) (P24.09). Exact.
+        matched = offset + len(features)
+    elif count_mode == "capped":
+        n = session.execute(
+            text(f"SELECT count(*) FROM (SELECT 1 FROM public.{t}{where} LIMIT :__cap) q"),
+            {**params, "__cap": EXACT_COUNT_CAP + 1},
+        ).scalar()
+        lower_bound = n > EXACT_COUNT_CAP
+        matched = EXACT_COUNT_CAP if lower_bound else n
     else:
         matched = session.execute(text(f"SELECT count(*) FROM public.{t}{where}"), params).scalar()
-    return FeaturePage(features=features, number_matched=matched, number_returned=len(features))
+    return FeaturePage(
+        features=features,
+        number_matched=matched,
+        number_returned=len(features),
+        next_cursor=next_cursor,
+        number_matched_lower_bound=lower_bound,
+    )
 
 
 def _coerce_fid(info: TableInfo, fid: str):
