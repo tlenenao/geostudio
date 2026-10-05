@@ -25,6 +25,7 @@ import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { plural, t } from "../i18n";
 import { useReferencedCollectionIds } from "./referencedCollections";
 import { LoadingState } from "../ui/kit/LoadingState";
+import { formatDateTime } from "../lib/format";
 
 const MAX_SHARE_LINK_TTL_DAYS = 30;
 
@@ -54,7 +55,7 @@ function parseUtc(iso: string): Date {
 }
 
 function formatUtc(iso: string): string {
-  return parseUtc(iso).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
+  return formatDateTime(parseUtc(iso));
 }
 
 // GAP-12 (chantier 4.23) : section distincte du partage groupe/rôle plat

@@ -6,6 +6,7 @@ import { t } from "../../i18n";
 import { jobStatusLabel } from "../../lib/jobStatusLabel";
 import { Button } from "../../ui/kit/Button";
 import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
+import { formatDateTime } from "../../lib/format";
 
 // GET /pipelines/{id}/runs pagine déjà côté cœur (limit/offset, SP-50) mais ce
 // panneau tronquait silencieusement l'historique à la limite par défaut du
@@ -68,9 +69,7 @@ function RunRow({
             {t("pipelineRun.cancelButton")}
           </button>
         )}
-        {run.startedAt && (
-          <span className="text-ink-2">{new Date(run.startedAt).toLocaleString("fr-FR")}</span>
-        )}
+        {run.startedAt && <span className="text-ink-2">{formatDateTime(run.startedAt)}</span>}
         {formatDuration(run.startedAt, run.finishedAt) && (
           <span className="text-ink-2">{formatDuration(run.startedAt, run.finishedAt)}</span>
         )}

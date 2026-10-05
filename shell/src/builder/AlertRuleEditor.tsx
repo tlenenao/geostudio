@@ -19,6 +19,7 @@ import type { PipelineRefreshPolicy } from "../api/types";
 import { Button } from "../ui/kit/Button";
 import { ANALYTICS_AGGREGATES, aggregateNeedsP, DEFAULT_PERCENTILE } from "./aggregates";
 import { PercentileInput } from "./PercentileInput";
+import { formatDateTime } from "../lib/format";
 
 // GET /alerts/{id}/evaluations pagine déjà côté cœur (limit/offset, SP-50)
 // mais cette ligne tronquait silencieusement l'historique à la limite par
@@ -68,7 +69,7 @@ function AlertRuleRow({
       {latest && (
         <p className="text-ink-2">
           {latest.value !== null && `${t("alertRule.value", { value: latest.value })} · `}
-          {new Date(latest.createdAt).toLocaleString()}
+          {formatDateTime(latest.createdAt)}
         </p>
       )}
       {latest?.error && (

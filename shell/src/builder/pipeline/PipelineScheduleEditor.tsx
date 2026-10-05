@@ -3,6 +3,7 @@ import { useEffect, useId, useState } from "react";
 import { usePipelineNextRun } from "../../api/hooks";
 import type { PipelineRefreshPolicy } from "../../api/types";
 import { t } from "../../i18n";
+import { formatDateTime } from "../../lib/format";
 
 export type ScheduleForm =
   | { mode: "interval"; minutes: string }
@@ -146,7 +147,7 @@ export function PipelineScheduleEditor({
           {enabled && nextRunQuery.data && (
             <p className="text-xs text-ink-2">
               {t("pipelineSchedule.nextRun", {
-                when: new Date(nextRunQuery.data.nextRun).toLocaleString("fr-FR"),
+                when: formatDateTime(nextRunQuery.data.nextRun),
               })}
             </p>
           )}

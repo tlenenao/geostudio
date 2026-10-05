@@ -8,6 +8,7 @@ import { Button } from "../../ui/kit/Button";
 import { DataTable } from "../../ui/kit/DataTable";
 import { LoadingState } from "../../ui/kit/LoadingState";
 import { PipelinePreviewMap } from "./PipelinePreviewMap";
+import { formatDateTime } from "../../lib/format";
 
 const PAGE_SIZE = 20;
 
@@ -28,7 +29,7 @@ function formatCell(value: unknown): string {
   if (typeof value === "number") return value.toLocaleString("fr-FR");
   if (typeof value === "string" && ISO_DATE_RE.test(value)) {
     const parsed = new Date(value);
-    if (!Number.isNaN(parsed.getTime())) return parsed.toLocaleString("fr-FR");
+    if (!Number.isNaN(parsed.getTime())) return formatDateTime(parsed);
   }
   return String(value);
 }

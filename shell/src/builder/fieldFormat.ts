@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { CollectionFieldType } from "../api/types";
+import { APP_TIME_ZONE, formatDateTime } from "../lib/format";
 
 // D35 (Vague C, SP-C6) : formatage fr-FR des valeurs de champ affichées en
 // lecture seule (widget table, popup carte en mode `fields`). Le mode
@@ -34,6 +35,8 @@ import type { CollectionFieldType } from "../api/types";
 const NUMBER_FORMAT = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 6 });
 const YEAR_FORMAT = new Intl.NumberFormat("fr-FR", { useGrouping: false });
 const DATE_FORMAT = new Intl.DateTimeFormat("fr-FR");
+// Instant (non « date seule ») : fuseau d'affichage fixé comme formatDateTime.
+const INSTANT_DATE_FORMAT = new Intl.DateTimeFormat("fr-FR", { timeZone: APP_TIME_ZONE });
 
 const PLAUSIBLE_YEAR_MIN = 1000;
 const PLAUSIBLE_YEAR_MAX = 9999;
@@ -58,11 +61,11 @@ export function formatFieldValue(value: unknown, fieldType?: CollectionFieldType
       return DATE_FORMAT.format(localMidnight);
     }
     const parsed = new Date(value);
-    if (!Number.isNaN(parsed.getTime())) return DATE_FORMAT.format(parsed);
+    if (!Number.isNaN(parsed.getTime())) return INSTANT_DATE_FORMAT.format(parsed);
   }
   if (fieldType === "datetime" && typeof value === "string") {
     const parsed = new Date(value);
-    if (!Number.isNaN(parsed.getTime())) return parsed.toLocaleString("fr-FR");
+    if (!Number.isNaN(parsed.getTime())) return formatDateTime(parsed);
   }
   return String(value);
 }
