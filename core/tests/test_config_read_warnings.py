@@ -63,7 +63,9 @@ def test_stored_config_failing_validation_is_readable_with_warnings(client):
         w = " | ".join(r.json()["warnings"])
         assert "ghost" in w and "inexistant" in w and "visibleWhen" in w
     doc = client.get(f"/v1/configs/by-item/{item_id}").json()["config"]
-    assert client.put(f"/v1/configs/by-item/{item_id}", json={"config": doc}).status_code == 422
+    r = client.put(f"/v1/configs/by-item/{item_id}", json=doc)
+    assert r.status_code == 422
+    assert "ghost" in r.text
 
 
 def test_healthy_config_has_no_warnings(client):
