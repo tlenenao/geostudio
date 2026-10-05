@@ -357,6 +357,9 @@ layers = [
     "app.dcat",
     "app.stac",
     "app.features",
+    # app.dataexport (REV-283e) : l'export asynchrone est déféré par une route de
+    # features, d'où sa place juste dessous ; son job relit via features.repository.
+    "app.dataexport",
     "app.attachments",
     "app.collections",
     "app.configs",
@@ -495,4 +498,5 @@ ignore_imports = [
     "app.db -> app.roles.models",
     "app.db -> app.attachments.models",
     "app.db -> app.compliance.models",
+    "app.db -> app.dataexport.models",
 ]
