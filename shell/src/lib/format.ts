@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Formats d'affichage fr-FR, indépendants de la locale du navigateur (P34.10/13/21).
 
+/** Fuseau d'affichage unique (REV-285 g) : seule la locale était fixée, pas le fuseau. */
+export const APP_TIME_ZONE = "Europe/Paris";
+
 // REV-285(g) : une valeur absente ou non finie s'affiche « — », jamais « NaN »,
 // « ∞ » ni le 01/01/1970 de `new Date(null)`.
 const MISSING = "—";
@@ -9,7 +12,9 @@ const MISSING = "—";
 export function formatDateTime(iso: string | number | Date | null | undefined): string {
   if (iso === null || iso === undefined || iso === "") return MISSING;
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? String(iso) : d.toLocaleString("fr-FR");
+  return Number.isNaN(d.getTime())
+    ? String(iso)
+    : d.toLocaleString("fr-FR", { timeZone: APP_TIME_ZONE });
 }
 
 /** Nombre fr-FR (« 1 234 567,75 ») ; au plus `maxDecimals` décimales (2 par défaut). */
