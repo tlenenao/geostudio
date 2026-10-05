@@ -329,6 +329,7 @@ export function addAggregateLayer(
   map: maplibregl.Map,
   parentId: string,
   sourceLayer: string,
+  // gs-raw-color-ok: couleur de couche par défaut, valeur de symbologie utilisateur
   color = "#3b6fb6",
 ) {
   map.addLayer({

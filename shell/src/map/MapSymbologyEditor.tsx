@@ -118,6 +118,7 @@ export function MapSymbologyEditor({
     onChange({
       ...value,
       stroke: {
+        // gs-raw-color-ok: contour par défaut de symbologie utilisateur
         color: stroke?.color ?? { fixed: "#000000" },
         width: stroke?.width ?? { fixed: 1 },
         style: stroke?.style ?? "solid",
@@ -455,6 +456,7 @@ export function MapSymbologyEditor({
                 // contour survivait au passage en mode fixe et réapparaissait
                 // telle quelle au retour en mode « par attribut ».
                 setStrokeError(null);
+                // gs-raw-color-ok: contour par défaut de symbologie utilisateur
                 setStroke({ color: { fixed: "#000000" } });
               }}
             >
@@ -496,6 +498,7 @@ export function MapSymbologyEditor({
               {t("mapSymbology.strokeColorLabel")}
               <input
                 type="color"
+                // gs-raw-color-ok: contour par défaut de symbologie utilisateur
                 value={"fixed" in stroke.color ? stroke.color.fixed : "#000000"}
                 onChange={(e) => setStroke({ color: { fixed: e.target.value } })}
               />
@@ -760,7 +763,9 @@ export function MapSymbologyEditor({
               label: {
                 template: "",
                 size: 12,
+                // gs-raw-color-ok: étiquette par défaut de symbologie utilisateur
                 color: "#1e293b",
+                // gs-raw-color-ok: halo d'étiquette par défaut de symbologie utilisateur
                 haloColor: "#ffffff",
                 haloWidth: 1,
               },

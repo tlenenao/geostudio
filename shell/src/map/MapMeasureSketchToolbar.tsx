@@ -83,6 +83,7 @@ export function MapMeasureSketchToolbar({
   const [points, setPoints] = useState<LngLat[]>([]);
   const [sketchTool, setSketchTool] = useState<SketchTool>(null);
   const [shapes, setShapes] = useState<SketchShape[]>([]);
+  // gs-raw-color-ok: couleur de croquis par défaut choisie par l'utilisateur
   const [color, setColor] = useState("#dc2626");
   // Aperçu du tracé libre en cours : lu par l'effet de synchronisation de
   // Task 18 ci-dessous, pour que le geste soit visible sur la carte avant
@@ -197,6 +198,7 @@ export function MapMeasureSketchToolbar({
         },
         paint: {
           "text-color": ["get", "color"],
+          // gs-raw-color-ok: halo d'étiquette de mesure, lisible sur fond de carte arbitraire
           "text-halo-color": "#ffffff",
           "text-halo-width": 1,
         },
