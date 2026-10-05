@@ -83,3 +83,14 @@ test("add a 3D tileset + terrain, set the camera, save, and reload — everythin
   await expect(page.getByLabel("Inclinaison de la caméra")).toHaveValue("45");
   await expect(page.getByLabel("Orientation de la caméra")).toHaveValue("90");
 });
+
+test("REV-207 : l'onglet actif de l'éditeur de carte survit à un rechargement (390 px)", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockCore(page);
+  await page.goto("/maps/map-1?tab=layers");
+  await expect(page.getByRole("tab", { name: "Couches", selected: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("tab", { name: "Couches", selected: true })).toBeVisible();
+});

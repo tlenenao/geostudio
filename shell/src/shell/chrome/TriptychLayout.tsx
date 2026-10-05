@@ -9,15 +9,25 @@ export function TriptychLayout({
   work,
   inspect,
   defaultTabId,
+  activeTabId,
+  onActiveTabChange,
 }: {
   browse: TriptychTab;
   work: TriptychTab;
   inspect: TriptychTab;
   defaultTabId?: string;
+  /** Mode contrôlé facultatif (REV-207) : l'appelant porte l'onglet actif (ex. dans l'URL). */
+  activeTabId?: string;
+  onActiveTabChange?: (id: string) => void;
 }) {
   const narrow = useNarrowViewport();
   const tabs = [browse, work, inspect];
-  const [activeId, setActiveId] = useState(defaultTabId ?? work.id);
+  const [innerId, setInnerId] = useState(defaultTabId ?? work.id);
+  const activeId = activeTabId ?? innerId;
+  const setActiveId = (id: string) => {
+    setInnerId(id);
+    onActiveTabChange?.(id);
+  };
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   if (!narrow) {

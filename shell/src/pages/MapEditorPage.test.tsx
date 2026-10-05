@@ -134,6 +134,36 @@ function renderEditor(client: Partial<ItemClient>, initialEntries: string[] = ["
 // périmètre de ce fichier qui monte `MapEditorPage` isolément — un lien
 // factice suffit à prouver que le blocker engage bien la navigation, quelle
 // que soit son origine réelle dans l'app.
+test("REV-207 : l'onglet actif (mode étroit) est lu depuis ?tab= et réécrit dans l'URL", async () => {
+  stubMatchMedia(true);
+  renderEditor(
+    {
+      getMapConfig: vi.fn().mockResolvedValue(config),
+      listLayerSources: vi.fn().mockResolvedValue([]),
+    },
+    ["/maps/77?tab=layers"],
+  );
+  const layersTab = await screen.findByRole("tab", { name: "Couches" });
+  expect(layersTab).toHaveAttribute("aria-selected", "true");
+  await userEvent.click(screen.getByRole("tab", { name: "Carte" }));
+  expect(screen.getByRole("tab", { name: "Carte" })).toHaveAttribute("aria-selected", "true");
+});
+
+test("REV-207 : une valeur ?tab= inconnue retombe sur l'onglet Carte", async () => {
+  stubMatchMedia(true);
+  renderEditor(
+    {
+      getMapConfig: vi.fn().mockResolvedValue(config),
+      listLayerSources: vi.fn().mockResolvedValue([]),
+    },
+    ["/maps/77?tab=n-importe-quoi"],
+  );
+  expect(await screen.findByRole("tab", { name: "Carte" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+});
+
 function renderEditorWithNavigation(client: Partial<ItemClient>) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const merged: Partial<ItemClient> = {

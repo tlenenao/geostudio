@@ -72,3 +72,12 @@ test("étroit : flèches, Home et End déplacent sélection et focus (WAI-ARIA t
   await user.keyboard("a");
   expect(screen.getByRole("tab", { name: "Inspecter" })).toHaveAttribute("aria-selected", "true");
 });
+
+test("étroit, mode contrôlé : activeTabId gouverne l'onglet et le clic notifie", async () => {
+  vi.mocked(useNarrowViewport).mockReturnValue(true);
+  const onActiveTabChange = vi.fn();
+  render(<TriptychLayout {...TABS} activeTabId="inspect" onActiveTabChange={onActiveTabChange} />);
+  expect(screen.getByText("Contenu Inspecter")).toBeVisible();
+  await userEvent.click(screen.getByRole("tab", { name: "Parcourir" }));
+  expect(onActiveTabChange).toHaveBeenCalledWith("browse");
+});
