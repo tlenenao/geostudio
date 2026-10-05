@@ -2373,6 +2373,27 @@ export interface components {
             /** Type */
             type: string;
         };
+        /**
+         * DatabricksDsnPayload
+         * @description DSN SQLAlchemy vers un entrepôt Databricks SQL (REV-110), forme
+         *     `databricks://token:<jeton>@<hôte>?http_path=<chemin>&catalog=..&schema=..`
+         *     — vérifiée contre `databricks/sqlalchemy/base.py::create_connect_args`
+         *     (databricks-sqlalchemy 2.0.10 installé : hôte = `server_hostname`, mot de
+         *     passe = jeton d'accès, `http_path` lu dans la requête). `http_path` est
+         *     obligatoire (le pilote échouerait sinon à la connexion) : refusé ici. L'hôte
+         *     est un vrai nom DNS : garde d'egress SSRF appliquée comme pour Postgres.
+         *     Comme les autres DSN, `query` n'est validée SELECT-only qu'avec le dialecte
+         *     DuckDB (heuristique, cf. ReaderConnectorDatabricksParams).
+         */
+        DatabricksDsnPayload: {
+            /** Dsn */
+            dsn: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "databricks_dsn";
+        };
         /** DatasetColumnMeta */
         DatasetColumnMeta: {
             /** Description */
@@ -3591,12 +3612,12 @@ export interface components {
             /** Name */
             name: string;
             /** Payload */
-            payload: components["schemas"]["ApiKeyPayload"] | components["schemas"]["BearerTokenPayload"] | components["schemas"]["BasicAuthPayload"] | components["schemas"]["OAuth2ClientCredentialsPayload"] | components["schemas"]["PostgresDsnPayload"] | components["schemas"]["SmtpCredentialsPayload"] | components["schemas"]["SnowflakeDsnPayload"] | components["schemas"]["BigQueryDsnPayload"] | components["schemas"]["MssqlDsnPayload"] | components["schemas"]["OracleDsnPayload"] | components["schemas"]["S3CredentialsPayload"] | components["schemas"]["AzureBlobCredentialsPayload"] | components["schemas"]["GcsCredentialsPayload"];
+            payload: components["schemas"]["ApiKeyPayload"] | components["schemas"]["BearerTokenPayload"] | components["schemas"]["BasicAuthPayload"] | components["schemas"]["OAuth2ClientCredentialsPayload"] | components["schemas"]["PostgresDsnPayload"] | components["schemas"]["SmtpCredentialsPayload"] | components["schemas"]["SnowflakeDsnPayload"] | components["schemas"]["BigQueryDsnPayload"] | components["schemas"]["MssqlDsnPayload"] | components["schemas"]["OracleDsnPayload"] | components["schemas"]["DatabricksDsnPayload"] | components["schemas"]["S3CredentialsPayload"] | components["schemas"]["AzureBlobCredentialsPayload"] | components["schemas"]["GcsCredentialsPayload"];
         };
         /** SecretUpdate */
         SecretUpdate: {
             /** Payload */
-            payload: components["schemas"]["ApiKeyPayload"] | components["schemas"]["BearerTokenPayload"] | components["schemas"]["BasicAuthPayload"] | components["schemas"]["OAuth2ClientCredentialsPayload"] | components["schemas"]["PostgresDsnPayload"] | components["schemas"]["SmtpCredentialsPayload"] | components["schemas"]["SnowflakeDsnPayload"] | components["schemas"]["BigQueryDsnPayload"] | components["schemas"]["MssqlDsnPayload"] | components["schemas"]["OracleDsnPayload"] | components["schemas"]["S3CredentialsPayload"] | components["schemas"]["AzureBlobCredentialsPayload"] | components["schemas"]["GcsCredentialsPayload"];
+            payload: components["schemas"]["ApiKeyPayload"] | components["schemas"]["BearerTokenPayload"] | components["schemas"]["BasicAuthPayload"] | components["schemas"]["OAuth2ClientCredentialsPayload"] | components["schemas"]["PostgresDsnPayload"] | components["schemas"]["SmtpCredentialsPayload"] | components["schemas"]["SnowflakeDsnPayload"] | components["schemas"]["BigQueryDsnPayload"] | components["schemas"]["MssqlDsnPayload"] | components["schemas"]["OracleDsnPayload"] | components["schemas"]["DatabricksDsnPayload"] | components["schemas"]["S3CredentialsPayload"] | components["schemas"]["AzureBlobCredentialsPayload"] | components["schemas"]["GcsCredentialsPayload"];
         };
         /** ShareLinkCreated */
         ShareLinkCreated: {
@@ -4363,6 +4384,7 @@ export interface operations {
             query?: {
                 limit?: number;
                 offset?: number;
+                cursor?: string | null;
                 bbox?: string | null;
                 geom_intersects?: string | null;
             };
