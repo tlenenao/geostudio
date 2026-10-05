@@ -2084,6 +2084,7 @@ export const fr = {
   "layersPanel.opacityAria": "Opacité",
   "layersPanel.emptyText": "Aucune couche.",
   "layersPanel.truncatedBadge": "Tuile tronquée (trop d'entités)",
+  "layersPanel.aggregatedBadge": "Tuiles agrégées : zoomez pour le détail",
   "layersPanel.addLayerHeading": "Ajouter une couche",
 
   // MapMeasureSketchToolbar (map)

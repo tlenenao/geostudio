@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import * as maplibregl from "maplibre-gl";
-import { type FilterSpecification } from "maplibre-gl";
+import { type ExpressionSpecification, type FilterSpecification } from "maplibre-gl";
 import type { DataRecord, MapLayer, ThemeColors } from "../api/types";
 import {
   buildMapPaint,
@@ -61,6 +61,7 @@ export const SUBLAYER_SUFFIXES = [
   "__outline",
   "__icon",
   "__label",
+  "__agg",
 ] as const;
 
 // Les sources auxiliaires posées par applyLayers, à retirer avec la couche.
@@ -314,4 +315,32 @@ export function makeFeatureClickHandler(
     if (id == null) return;
     onFeatureClick({ id, properties, geometry: f.geometry });
   };
+}
+
+// REV-283a : sous le zoom seuil, le cœur remplace une tuile dense par des
+// cellules (propriété `point_count`, même couche source). Les couches de
+// données les excluent ; `__agg` les dessine seules.
+export function notAggregated(filter?: ExpressionSpecification): ExpressionSpecification {
+  const not: ExpressionSpecification = ["!", ["has", "point_count"]];
+  return filter ? ["all", filter, not] : not;
+}
+
+export function addAggregateLayer(
+  map: maplibregl.Map,
+  parentId: string,
+  sourceLayer: string,
+  color = "#3b6fb6",
+) {
+  map.addLayer({
+    id: `${parentId}__agg`,
+    type: "circle",
+    source: parentId,
+    "source-layer": sourceLayer,
+    filter: ["has", "point_count"],
+    paint: {
+      "circle-radius": ["interpolate", ["linear"], ["get", "point_count"], 1, 6, 1000, 22],
+      "circle-color": color,
+      "circle-opacity": 0.6,
+    },
+  });
 }

@@ -225,7 +225,7 @@ export function LayersPanel({
   onChange: (layers: MapLayer[]) => void;
 }) {
   const client = useItemClient();
-  const [truncatedLayerIds, setTruncatedLayerIds] = useState<Set<string>>(new Set());
+  const [tileState, setTileState] = useState<Map<string, "aggregated" | "truncated">>(new Map());
   const vectorLayers = layers.filter(
     (l): l is Extract<MapLayer, { kind: "vector" }> => l.kind === "vector",
   );
@@ -244,7 +244,7 @@ export function LayersPanel({
 
   useEffect(() => {
     if (vectorLayers.length === 0) {
-      setTruncatedLayerIds(new Set());
+      setTileState(new Map());
       return;
     }
     let cancelled = false;
@@ -265,23 +265,40 @@ export function LayersPanel({
             }
             try {
               const res = await client.fetchUrl(url, { authenticated: true });
-              return res.headers.get("X-Tile-Truncated") === "true";
+              // REV-283a : agrégée (zoom bas) ou tronquée — badge distinct.
+              return res.headers.get("X-Tile-Aggregated") === "true"
+                ? "aggregated"
+                : res.headers.get("X-Tile-Truncated") === "true"
+                  ? "truncated"
+                  : false;
             } catch {
               return false;
             }
           }),
         );
-        return [layer.id, probes.some(Boolean)] as const;
+        const state = probes.includes("aggregated")
+          ? ("aggregated" as const)
+          : probes.includes("truncated")
+            ? ("truncated" as const)
+            : undefined;
+        return [layer.id, state] as const;
       }),
     ).then((results) => {
       if (cancelled) return;
-      setTruncatedLayerIds(new Set(results.filter(([, truncated]) => truncated).map(([id]) => id)));
+      setTileState(
+        new Map(results.flatMap(([id, state]) => (state ? [[id, state] as const] : []))),
+      );
     });
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [probeKey, client]);
+
+  const badgeFor = (id: string) =>
+    tileState.get(id) === "aggregated"
+      ? t("layersPanel.aggregatedBadge")
+      : t("layersPanel.truncatedBadge");
 
   function toggle(id: string) {
     onChange(layers.map((l) => (l.id === id ? { ...l, visible: !l.visible } : l)));
@@ -308,12 +325,12 @@ export function LayersPanel({
             // largeur 0 à la place (SP-36).
           >
             <span className="flex-1 truncate">{layer.title}</span>
-            {layer.kind === "vector" && truncatedLayerIds.has(layer.id) && (
+            {layer.kind === "vector" && tileState.has(layer.id) && (
               <span
                 className="rounded bg-warn-soft px-1.5 py-0.5 text-xs text-warn"
-                title={t("layersPanel.truncatedBadge")}
+                title={badgeFor(layer.id)}
               >
-                {t("layersPanel.truncatedBadge")}
+                {badgeFor(layer.id)}
               </span>
             )}
             <button
