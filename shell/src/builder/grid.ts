@@ -76,15 +76,18 @@ export function resizeItemAt(
   return { ...item, layouts: { ...item.layouts, [bp]: { ...cur, w, h } } };
 }
 
-// Copy of an item with a fresh id, placed below all existing items.
 // REV-285(h) : rang stocké (pas dérivé de l'ordre) du widget parmi ceux de son type.
+// Un widget sans ordinal (config antérieure) compte pour son rang d'ordre (repli de
+// GridCanvas) : on part donc du max de ces rangs effectifs pour ne jamais dupliquer un nom.
 export function nextOrdinal(items: WidgetItem[], widget: string): number {
   return (
-    items.filter((i) => i.widget === widget).reduce((max, i) => Math.max(max, i.ordinal ?? 0), 0) +
-    1
+    items
+      .filter((i) => i.widget === widget)
+      .reduce((max, i, idx) => Math.max(max, i.ordinal ?? idx + 1), 0) + 1
   );
 }
 
+// Copy of an item with a fresh id, placed below all existing items.
 export function duplicateItem(item: WidgetItem, items: WidgetItem[]): WidgetItem {
   const { x, y } = nextFreePosition(items);
   return {

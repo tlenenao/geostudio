@@ -107,6 +107,17 @@ test("nextOrdinal : 1 + max des ordinaux du même type, jamais dérivé de l'ord
     { ...baseItem, id: "c", widget: "chart" },
   ];
   expect(nextOrdinal(items, "table")).toBe(4);
-  expect(nextOrdinal(items, "chart")).toBe(1);
+  expect(nextOrdinal(items, "chart")).toBe(2); // seul chart sans ordinal = rang 1
   expect(nextOrdinal([], "table")).toBe(1);
+});
+
+test("nextOrdinal : config mixte (widgets sans ordinal) part du rang effectif", () => {
+  const items = [
+    { ...baseItem, id: "a", widget: "table" },
+    { ...baseItem, id: "b", widget: "table" },
+  ];
+  expect(nextOrdinal(items, "table")).toBe(3);
+  const mixed = [...items, { ...baseItem, id: "c", widget: "table", ordinal: 3 }];
+  expect(nextOrdinal(mixed, "table")).toBe(4);
+  expect(duplicateItem(items[0]!, items).ordinal).toBe(3);
 });
