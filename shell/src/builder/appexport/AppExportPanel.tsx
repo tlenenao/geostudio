@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import { useItemClient } from "../../api/ItemClientProvider";
 import type { AppConfig, AppExportJobStatus, AppExportMode } from "../../api/types";
 import { t } from "../../i18n";
+import { jobStatusLabel } from "../../lib/jobStatusLabel";
 import { Button } from "../../ui/kit/Button";
 import { Panel } from "../../ui/kit/Panel";
 import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
@@ -124,8 +125,12 @@ export function AppExportPanel({ itemId, config }: { itemId: string; config: App
       )}
       {/* Région live permanente : l'annonce de « en cours » n'est lue que si
           la région existe déjà avant que son texte change. */}
-      <p role="status" className={running ? "text-sm text-ink-2" : "sr-only"}>
-        {running ? t("appExport.running") : ""}
+      <p role="status" className={running || job ? "text-sm text-ink-2" : "sr-only"}>
+        {job
+          ? t("appExport.statusLine", { status: jobStatusLabel(job.status) })
+          : running
+            ? t("appExport.running")
+            : ""}
       </p>
       {pendingWarningMode && (
         <div

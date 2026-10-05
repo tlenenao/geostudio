@@ -17,6 +17,30 @@ function renderPanel(overrides: Partial<ItemClient>) {
 }
 
 describe("ExportPanel", () => {
+  it("REV-216 : annonce l'état du job avec le vocabulaire partagé", async () => {
+    const createExport = vi.fn().mockResolvedValue({ jobId: "job-1" });
+    let call = 0;
+    const getExportJob = vi.fn().mockImplementation(() => {
+      call += 1;
+      return Promise.resolve({
+        id: "job-1",
+        status: call < 2 ? "running" : "done",
+        resultUrl: call < 2 ? null : "https://minio.test/x.pdf",
+        error: null,
+      });
+    });
+    renderPanel({ createExport, getExportJob });
+    await userEvent.click(screen.getByRole("button", { name: "Exporter" }));
+    await userEvent.click(screen.getByRole("button", { name: "PDF" }));
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent("État de l'export : En cours"),
+    );
+    await waitFor(
+      () => expect(screen.getByRole("status")).toHaveTextContent("État de l'export : Terminé"),
+      { timeout: 5000 },
+    );
+  });
+
   it("creates an export job on click and polls until done, then shows a download link", async () => {
     const createExport = vi.fn().mockResolvedValue({ jobId: "job-1" });
     let call = 0;

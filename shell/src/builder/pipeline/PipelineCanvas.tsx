@@ -32,6 +32,7 @@ import type {
 import { genEdgeId, hasIncomingEdge, topologicalOrder, wouldCreateCycle } from "./graphOps";
 import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
 import { plural, t } from "../../i18n";
+import { jobStatusLabel } from "../../lib/jobStatusLabel";
 
 // SP-B12c : pas de token catégoriel à 3 valeurs dans tokens.css — ok/warn/
 // accent réutilisés ici pour leur distinction visuelle (vert/ambre/teal),
@@ -497,6 +498,15 @@ function PipelineCanvasInner({
 
   return (
     <div className="h-full" role="presentation" onKeyDown={onCanvasKeyDown}>
+      {runStatus && (
+        <p
+          role="status"
+          aria-label={t("pipelineCanvas.runStatusAria", { status: jobStatusLabel(runStatus) })}
+          className="sr-only"
+        >
+          {jobStatusLabel(runStatus)}
+        </p>
+      )}
       <ReactFlow
         nodes={[
           ...nodes.map((n) =>

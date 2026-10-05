@@ -80,6 +80,10 @@ test("exporter une carte en PDF depuis la visionneuse : le job atteint 'done' et
   // en attendant, ni erreur ni lien prématuré.
   await expect(page.getByRole("alert")).toHaveCount(0);
 
+  await expect(
+    page.getByRole("status").filter({ hasText: "État de l'export : En cours" }),
+  ).toBeVisible();
+
   const downloadLink = page.getByRole("link", { name: /Télécharger l.export/i });
   await expect(downloadLink).toHaveAttribute(
     "href",

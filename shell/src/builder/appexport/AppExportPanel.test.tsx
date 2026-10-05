@@ -307,4 +307,28 @@ describe("AppExportPanel : accessibilité (P33.23, P33.24)", () => {
     await act(async () => finish({ jobId: "j" }));
     await waitFor(() => expect(trigger).toHaveAttribute("aria-disabled", "false"));
   });
+
+  it("REV-216 : annonce l'état du job (En cours puis Échoué) avec le vocabulaire partagé", async () => {
+    const client = makeClient({
+      createAppExport: vi.fn().mockResolvedValue({ jobId: "j" }),
+      getAppExportJob: vi
+        .fn()
+        .mockResolvedValueOnce({ id: "j", status: "running", resultUrl: null })
+        .mockResolvedValue({ id: "j", status: "error", resultUrl: null }),
+    });
+    render(
+      <ItemClientProvider client={client}>
+        <AppExportPanel itemId="item1" config={config()} />
+      </ItemClientProvider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /exporter/i }));
+    await userEvent.click(screen.getByRole("button", { name: /statique/i }));
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent("État de l'export : En cours"),
+    );
+    await waitFor(
+      () => expect(screen.getByRole("status")).toHaveTextContent("État de l'export : Échoué"),
+      { timeout: 5000 },
+    );
+  });
 });
