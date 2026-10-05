@@ -232,7 +232,13 @@ export type CopilotToolSchema = {
   description: string;
   inputSchema: Record<string, unknown>;
 };
-export type CopilotSurface = "app_builder" | "sql_lab" | "visual_query" | "visible_when";
+export type CopilotSurface =
+  | "app_builder"
+  | "sql_lab"
+  | "visual_query"
+  | "visible_when"
+  | "computed_column"
+  | "action_condition";
 
 // REV-102 : un résultat de GET /v1/geocode.
 export type GeocodeResult = { label: string; lon: number; lat: number };

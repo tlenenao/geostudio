@@ -90,6 +90,7 @@ export function PropsPanel({
         dataSources={dataSources}
         theme={theme}
         variables={variables ?? []}
+        generateItemId={generateItemId}
         onChange={(p) => onChange(p)}
       />
     </div>

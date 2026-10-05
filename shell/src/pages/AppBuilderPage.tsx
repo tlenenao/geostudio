@@ -563,6 +563,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                   variables={draft.variables ?? []}
                   messages={draft.messages}
                   onChange={setMessages}
+                  generateItemId={copilotEnabled && !readOnly ? pk : undefined}
                 />
                 <p className="mb-1 mt-3 text-xs font-medium text-ink-2">
                   {t("appBuilder.navigationLabel")}

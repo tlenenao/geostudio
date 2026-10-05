@@ -8,7 +8,7 @@ import type { CopilotToolSchema } from "../../api/types";
 export const CEL_DRAFT_TOOL: CopilotToolSchema = {
   name: "applyCelDraft",
   description:
-    "Propose une expression CEL comme brouillon de condition d'affichage (visibleWhen). " +
+    "Propose une expression CEL comme brouillon (condition d'affichage, colonne calculée ou condition d'action). " +
     "Ne l'applique jamais — l'utilisateur doit cliquer sur Appliquer.",
   inputSchema: {
     type: "object",

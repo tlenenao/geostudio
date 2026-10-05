@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-// REV-183 : brouillon de condition d'affichage (CEL) généré par le copilote
-// (surface visible_when → outil MCP generate_cel_expression → op client
-// applyCelDraft). Validé par validateExpression ; n'est appliqué que sur
+// REV-183 : brouillon d'expression CEL généré par le copilote (condition
+// d'affichage, colonne calculée, condition d'action ; surface correspondante →
+// outil MCP generate_cel_expression → op client applyCelDraft). Validé par validateExpression ; n'est appliqué que sur
 // clic « Appliquer », jamais automatiquement. Chargé par lazy() depuis
 // PropsPanel (marge de bundle initial).
 import { useState } from "react";
@@ -13,12 +13,23 @@ import { validateExpression } from "../expr";
 import { CEL_DRAFT_TOOL } from "./celClientTools";
 import { useMcpToken } from "./useMcpToken";
 
-export function VisibleWhenGenerator({
+export type CelGeneratorContext = "visibleWhen" | "computedColumn" | "actionCondition";
+
+const SURFACE = {
+  visibleWhen: "visible_when",
+  computedColumn: "computed_column",
+  actionCondition: "action_condition",
+} as const;
+const CURRENT_KEY = { visibleWhen: "visibleWhen", computedColumn: "expr", actionCondition: "when" };
+
+export function CelGenerator({
   itemId,
   availableFields,
   current,
+  context = "visibleWhen",
   onApply,
 }: {
+  context?: CelGeneratorContext;
   itemId: string;
   availableFields: string[];
   current: string;
@@ -40,9 +51,9 @@ export function VisibleWhenGenerator({
         message: question,
         history: [],
         mcpToken: await getMcpToken(),
-        currentConfig: { availableFields, visibleWhen: current },
+        currentConfig: { availableFields, [CURRENT_KEY[context]]: current },
         clientTools: [CEL_DRAFT_TOOL],
-        surface: "visible_when",
+        surface: SURFACE[context],
       });
       const op = result.clientOps.find((o) => o.op === CEL_DRAFT_TOOL.name);
       const expression = typeof op?.args.expression === "string" ? op.args.expression.trim() : "";
@@ -102,3 +113,5 @@ export function VisibleWhenGenerator({
     </details>
   );
 }
+
+export const VisibleWhenGenerator = CelGenerator;

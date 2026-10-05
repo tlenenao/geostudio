@@ -6,6 +6,9 @@ import type { ActionMessage, Variable, WidgetItem } from "../api/types";
 import { _resetRegistry } from "./registry";
 import { registerBuiltinWidgets } from "./widgets";
 import { ActionsPanel } from "./ActionsPanel";
+import { enableMockAuth } from "../auth/useAuth";
+import { ItemClientProvider } from "../api/ItemClientProvider";
+import type { ItemClient } from "../api/types";
 import { expectTokenizedClasses } from "../ui/kit/testUtils";
 
 beforeEach(() => {
@@ -111,4 +114,47 @@ test("shows no validation error for a valid message condition", () => {
   ];
   render(<ActionsPanel items={items} messages={messages} onChange={vi.fn()} />);
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
+test("offers the CEL generator on an action condition; invalid draft not applied (REV-183)", async () => {
+  enableMockAuth();
+  const copilotTurn = vi
+    .fn()
+    .mockResolvedValueOnce({
+      reply: "",
+      clientOps: [{ op: "applyCelDraft", args: { expression: 'vars.statut == "ok"' } }],
+    })
+    .mockResolvedValueOnce({
+      reply: "",
+      clientOps: [{ op: "applyCelDraft", args: { expression: "vars.statut ==" } }],
+    });
+  const onChange = vi.fn();
+  const messages: ActionMessage[] = [
+    { id: "m1", from: "f1", event: "changed", to: "l1", action: "setFilter" },
+  ];
+  const variables: Variable[] = [{ id: "v1", name: "statut", initialValue: "" }];
+  render(
+    <ItemClientProvider client={{ copilotTurn } as unknown as ItemClient}>
+      <ActionsPanel
+        items={items}
+        variables={variables}
+        messages={messages}
+        onChange={onChange}
+        generateItemId="9"
+      />
+    </ItemClientProvider>,
+  );
+  await userEvent.click(await screen.findByText("Générer"));
+  await userEvent.type(screen.getByLabelText("Décrire la condition"), "statut ok");
+  await userEvent.click(screen.getByRole("button", { name: "Proposer" }));
+  await screen.findByText('vars.statut == "ok"');
+  expect(copilotTurn.mock.calls[0][1].surface).toBe("action_condition");
+  expect(copilotTurn.mock.calls[0][1].currentConfig.availableFields).toContain("vars.statut");
+  await userEvent.click(screen.getByRole("button", { name: "Appliquer" }));
+  expect(onChange.mock.calls.at(-1)![0][0].when).toBe('vars.statut == "ok"');
+  onChange.mockClear();
+  await userEvent.click(screen.getByRole("button", { name: "Proposer" }));
+  await screen.findByText("vars.statut ==");
+  expect(screen.getByRole("button", { name: "Appliquer" })).toBeDisabled();
+  expect(onChange).not.toHaveBeenCalled();
 });
