@@ -59,6 +59,16 @@ def test_purge_ttl_deletes_s3_object_and_row_but_never_a_running_job(env, monkey
     assert _job(factory, ids, fresh) is not None
 
 
+def test_delete_job_never_deletes_a_running_job(env):
+    factory, ids, _s3, _ = env
+    running = _new_job(factory, ids)
+    _set(factory, running, status="running")
+    with factory() as s:
+        dx_repo.delete_job(s, running)
+        s.commit()
+    assert _job(factory, ids, running) is not None
+
+
 def test_purge_ttl_keeps_row_when_s3_delete_fails(env, monkeypatch):
     factory, ids, _s3, _ = env
 

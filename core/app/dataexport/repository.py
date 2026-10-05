@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import os
 import uuid
-from datetime import UTC, timedelta
+from datetime import timedelta
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
@@ -88,10 +88,6 @@ def mark_failed(session: Session, job_id: str, error: str) -> None:
 BATCH = 100
 PENDING_RETRY_MINUTES = 5
 RUNNING_RECLAIM_MINUTES = 60
-
-
-def _aware(dt):
-    return dt if dt is None or dt.tzinfo else dt.replace(tzinfo=UTC)
 
 
 def stale_pending_ids(session: Session, *, older_than_minutes: int = PENDING_RETRY_MINUTES):
