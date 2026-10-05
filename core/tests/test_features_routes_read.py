@@ -12,7 +12,7 @@ from app.collections import routes as collections_routes
 from app.collections.introspection import ColumnInfo, TableInfo, TableNotFound
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.features import routes as features_routes
-from app.features.repository import FeaturePage, FilterError, encode_cursor
+from app.features.repository import CursorError, FeaturePage, FilterError, encode_cursor
 from app.main import create_app
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
@@ -35,7 +35,7 @@ def fake_introspector(session, table_name):
     return INFO
 
 
-def make_fake_repo(matched=3):
+def make_fake_repo(matched=3, lower_bound=False):
     calls = {}
 
     def select_features(
@@ -59,7 +59,9 @@ def make_fake_repo(matched=3):
             after=after,
         )
         if after == "boom":
-            raise ValueError("invalid cursor")
+            raise CursorError("invalid cursor")
+        if after == "bug":
+            raise ValueError("bug interne sans rapport avec le curseur")
         if filters and "inconnu" in filters:
             raise FilterError("inconnu", "unknown filter property 'inconnu'")
         nxt = encode_cursor(1) if matched > offset + 1 else None
@@ -68,6 +70,7 @@ def make_fake_repo(matched=3):
             number_matched=None if after else matched,
             number_returned=1,
             next_cursor=nxt,
+            number_matched_lower_bound=lower_bound,
         )
 
     def get_feature(session, info, *, fid):
@@ -259,3 +262,20 @@ def test_cursor_page_omits_number_matched_and_prev(env):
     body = client.get("/v1/collections/incidents/items?limit=1&cursor=abc").json()
     assert "numberMatched" not in body and repo.calls["after"] == "abc"
     assert {link["rel"] for link in body["links"]} == {"self", "next"}
+
+
+def test_non_cursor_value_error_is_not_masked_as_invalid_cursor(env):
+    app, client, admin, _r, _repo = env
+    _register(app, client, admin)
+    with pytest.raises(ValueError, match="bug interne"):
+        client.get("/v1/collections/incidents/items?cursor=bug")
+
+
+def test_lower_bound_flag_is_exposed_on_the_route(env):
+    app, client, admin, _r, _repo = env
+    app.dependency_overrides[features_routes.get_features_repo] = lambda: make_fake_repo(
+        matched=100_000, lower_bound=True
+    )
+    _register(app, client, admin)
+    body = client.get("/v1/collections/incidents/items?limit=1").json()
+    assert body["numberMatched"] == 100_000 and body["numberMatchedLowerBound"] is True

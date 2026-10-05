@@ -14,6 +14,7 @@ from datetime import date
 from typing import Any, Literal
 
 from sqlalchemy import text
+from sqlalchemy.exc import DataError
 from sqlalchemy.orm import Session
 
 from app.collections.introspection import ColumnInfo, TableInfo
@@ -33,6 +34,10 @@ class FeaturePage:
 EXACT_COUNT_CAP = 100_000
 
 
+class CursorError(ValueError):
+    """Curseur keyset mal formé ou invalide pour le type de PK (→ 400 invalid_cursor)."""
+
+
 def encode_cursor(pk: Any) -> str:
     raw = json.dumps({"pk": pk}, separators=(",", ":"), default=str).encode()
     return base64.urlsafe_b64encode(raw).decode().rstrip("=")
@@ -43,7 +48,7 @@ def decode_cursor(value: str) -> Any:
         pad = "=" * (-len(value) % 4)
         return json.loads(base64.urlsafe_b64decode(value + pad))["pk"]
     except Exception as exc:  # noqa: BLE001 - tout échec de décodage = curseur invalide
-        raise ValueError("invalid cursor") from exc
+        raise CursorError("invalid cursor") from exc
 
 
 class FilterError(Exception):
@@ -180,10 +185,10 @@ def select_features(
     geom_intersects=None,
     filters=None,
     after: str | None = None,
-    count_mode: Literal["exact", "capped"] = "exact",
+    count_mode: Literal["exact", "capped", "none"] = "exact",
 ) -> FeaturePage:
     if after is not None and offset > 0:
-        raise ValueError("after and offset are mutually exclusive")
+        raise CursorError("after and offset are mutually exclusive")
     t = quote_ident(session, info.table_name)
     pk = quote_ident(session, info.pk_column)
     where, params = _where(session, info, bbox, geom_intersects, filters)
@@ -191,16 +196,24 @@ def select_features(
     if after is not None:
         value = _coerce_fid(info, str(decode_cursor(after)))
         if value is None:
-            raise ValueError("invalid cursor")
+            raise CursorError("invalid cursor")
         page_where += (" AND " if where else " WHERE ") + f"{pk} > :__after"
         page_params["__after"] = value
-    rows = session.execute(
-        text(
-            f"SELECT {_select_list(session, info)} FROM public.{t}{page_where} "
-            f"ORDER BY {pk} LIMIT :__l OFFSET :__o"
-        ),
-        {**page_params, "__l": limit + 1, "__o": offset},
-    ).all()
+    page_sql = text(
+        f"SELECT {_select_list(session, info)} FROM public.{t}{page_where} "
+        f"ORDER BY {pk} LIMIT :__l OFFSET :__o"
+    )
+    page_args = {**page_params, "__l": limit + 1, "__o": offset}
+    if after is None:
+        rows = session.execute(page_sql, page_args).all()
+    else:
+        # Valeur de curseur inadaptée au type de PK (hors int8, non-UUID…) :
+        # DataError PG → 400. SAVEPOINT pour garder transaction et GUC RLS sains.
+        try:
+            with session.begin_nested():
+                rows = session.execute(page_sql, page_args).all()
+        except DataError as exc:
+            raise CursorError("invalid cursor") from exc
     has_more = len(rows) > limit
     features = [_row_to_feature(info, r) for r in rows[:limit]]
     next_cursor = encode_cursor(features[-1]["id"]) if has_more else None
@@ -210,6 +223,8 @@ def select_features(
     elif not has_more and (features or offset == 0):
         # Page courte : le total est connu sans count(*) (P24.09). Exact.
         matched = offset + len(features)
+    elif count_mode == "none":
+        matched = None  # l'appelant (export) ne consomme pas le total
     elif count_mode == "capped":
         n = session.execute(
             text(f"SELECT count(*) FROM (SELECT 1 FROM public.{t}{where} LIMIT :__cap) q"),

@@ -45,7 +45,7 @@ from app.collections.routes import (
 from app.configs.guest_access import GuestActor, get_share_link_actor
 from app.db import get_session
 from app.errors import ValidationHTTPException
-from app.features.repository import FilterError
+from app.features.repository import CursorError, FilterError
 from app.features.validation import validate_feature
 from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
@@ -246,7 +246,7 @@ def list_features(
                 after=cursor,
                 count_mode="capped",
             )
-    except ValueError as exc:
+    except CursorError as exc:
         raise _validation_error(
             [{"field": "cursor", "code": "invalid_cursor", "message": "invalid cursor"}]
         ) from exc

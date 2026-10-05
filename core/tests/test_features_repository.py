@@ -519,3 +519,17 @@ def test_keyset_on_uuid_pk_with_filter(info_uuid, pg_session_factory):
         "00000000-0000-0000-0000-000000000001",
         "00000000-0000-0000-0000-000000000002",
     ]
+
+
+def test_cursor_invalid_for_pk_type_is_cursor_error_and_session_stays_usable(
+    info, info_uuid, pg_session_factory
+):
+    from app.features.repository import CursorError
+
+    with pg_session_factory() as s, rls_scope(s, "default"):
+        with pytest.raises(CursorError):
+            select_features(s, info_uuid, limit=1, offset=0, after=encode_cursor("pas-un-uuid"))
+        with pytest.raises(CursorError):
+            select_features(s, info, limit=1, offset=0, after=encode_cursor(2**70))
+        # transaction/RLS toujours sains
+        assert select_features(s, info, limit=1, offset=0).number_returned == 1

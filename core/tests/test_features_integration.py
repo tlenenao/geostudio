@@ -219,3 +219,33 @@ def test_list_features_masks_sensitive_column_under_real_grant_revoke(pg_engine)
             conn.execute(
                 text("TRUNCATE collection_shares, collections, audit_log, users, tenants CASCADE")
             )
+
+
+def test_cursor_invalid_for_pk_type_is_400_and_uuid_keyset_with_filter(pg_app, pg_engine):
+    client = pg_app
+    with pg_engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS demo_uuid"))
+        conn.execute(text("CREATE TABLE demo_uuid (id uuid PRIMARY KEY, titre text NOT NULL)"))
+    try:
+        assert client.post("/v1/collections", json={"tableName": "demo_uuid"}).status_code == 201
+        for i in range(1, 4):
+            r = client.post(
+                "/v1/collections/demo_uuid/items",
+                json={
+                    "type": "Feature",
+                    "properties": {"id": f"00000000-0000-0000-0000-00000000000{i}", "titre": "x"},
+                    "geometry": None,
+                },
+            )
+            assert r.status_code == 201, r.text
+        url = "/v1/collections/demo_uuid/items?titre=x&limit=1"
+        p1 = client.get(url).json()
+        nxt = [lk["href"] for lk in p1["links"] if lk["rel"] == "next"][0]
+        p2 = client.get(nxt).json()
+        assert p1["features"][0]["id"] != p2["features"][0]["id"]
+        bad = client.get(url + "&cursor=eyJwayI6InBhcy11biB1dWlkIn0")  # {"pk":"pas-un uuid"}
+        assert bad.status_code == 400 and bad.json()["errors"][0]["code"] == "invalid_cursor"
+        assert client.get(url).status_code == 200  # session saine ensuite
+    finally:
+        with pg_engine.begin() as conn:
+            conn.execute(text("DROP TABLE IF EXISTS demo_uuid"))
