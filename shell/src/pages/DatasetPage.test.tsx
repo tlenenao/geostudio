@@ -144,3 +144,17 @@ test("titre, description et canonical dérivés de la collection (P35.04)", asyn
   );
   expect(document.querySelector('meta[name="robots"]')).toBeNull();
 });
+
+test("la carte et la table de l'aperçu portent un ordinal (nom stable)", async () => {
+  renderPage({
+    getCollection: vi.fn().mockResolvedValue(collection),
+    getCollectionSchema: vi
+      .fn()
+      .mockResolvedValue({ collection: "parcs", pk: "id", geometry: null, fields: [] }),
+    featuresUrl: vi.fn().mockReturnValue("https://core.test/collections/parcs/items?limit=1000"),
+    queryDataSource: vi.fn().mockResolvedValue([]),
+  });
+  await screen.findByRole("heading", { name: "Parcs" });
+  const lastCall = appRendererMock.mock.calls.at(-1)?.[0] as { config: AppConfig };
+  expect(lastCall.config.layout.items.map((i: WidgetItem) => i.ordinal)).toEqual([1, 1]);
+});

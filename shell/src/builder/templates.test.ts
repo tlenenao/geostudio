@@ -73,3 +73,12 @@ test("portail-de-donnees template wires Hero, Gallery, DatasetCard, and a Carte/
     }
   }
 });
+
+test("les widgets d'un même type d'un modèle portent un ordinal croissant (nom stable après suppression)", () => {
+  for (const t of TEMPLATES) {
+    const seen = new Map<string, number[]>();
+    for (const i of t.layout.items.filter((i) => i.widget === "text"))
+      seen.set(i.widget, [...(seen.get(i.widget) ?? []), i.ordinal ?? 0]);
+    for (const ords of seen.values()) expect(ords).toEqual(ords.map((_, k) => k + 1));
+  }
+});

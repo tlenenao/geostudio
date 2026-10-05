@@ -32,6 +32,7 @@ function previewConfig(collectionId: string, attachmentField: string | undefined
         {
           id: "dataset-preview-map",
           widget: "map",
+          ordinal: 1,
           x: 0,
           y: 0,
           w: 6,
@@ -44,6 +45,7 @@ function previewConfig(collectionId: string, attachmentField: string | undefined
         {
           id: "dataset-preview-table",
           widget: "table",
+          ordinal: 1,
           x: 6,
           y: 0,
           w: 6,
