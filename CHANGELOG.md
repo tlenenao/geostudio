@@ -60,6 +60,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a distinct "not configured" CDC state. Backup: `BACKUP_ALERT_WEBHOOK_URL`
   (webhook when a backup day is abandoned).
 - `actionlint` pre-commit hook (workflows fixed accordingly).
+- **Dense vector tiles aggregated at low zoom** (REV-283a): at zoom <=
+  `CORE_TILE_AGG_MAX_ZOOM` (default 7, `0` disables, invalid value falls back to
+  7 with a warning), a tile with more than 5000 features is served as grid cells
+  carrying `point_count` (cell centre, `X-Tile-Aggregated: true`). A bounded
+  probe decides first, so a dense tile is read once. The aggregation reads every
+  row of the tile envelope: it has its own 3 s statement timeout and answers
+  `503` + `Retry-After` when exceeded.
 
 - `reader.connector.postgres` against Amazon Redshift (REV-110): when the DSN
   host matches `*.redshift.amazonaws.com`, `*.redshift-serverless.amazonaws.com`
