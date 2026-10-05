@@ -88,6 +88,7 @@ def env(monkeypatch, tmp_path):
             email=None,
             first_name="A",
             last_name="",
+            bootstrap_admin=True,  # data.view_sensitive : le verdict est recalculé à l'exécution
         )
         s.add(
             Collection(

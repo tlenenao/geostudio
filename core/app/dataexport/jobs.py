@@ -20,6 +20,8 @@ from app.features.rls import rls_scope
 from app.ingestion.storage import ensure_uploads_bucket, make_s3_client
 from app.jobs import app
 from app.jobs.common import notify_best_effort, session_factory
+from app.roles.guards import has_privilege
+from app.roles.privileges import Privilege
 from app.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -53,7 +55,10 @@ def _build_file(factory, job) -> tuple[bytes, str, str]:
         # can() revérifié à l'exécution : un droit retiré entre-temps = échec.
         get_collection_for_read(session, user, job.collection_id)
         info = introspect_table(session, col.table_name)
-        if job.masked:
+        # GAP-22 : verdict recalculé à l'exécution (comme alerts/pipelines) — le
+        # privilège a pu être retiré depuis la création ; jamais moins strict.
+        masked = job.masked or not has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)
+        if masked:
             info = hide_sensitive_columns(info, col.sensitive_fields)
         q = job.query or {}
         bbox = tuple(q["bbox"]) if q.get("bbox") else None
@@ -61,7 +66,7 @@ def _build_file(factory, job) -> tuple[bytes, str, str]:
         features: list[dict] = []
         cursor = None
         while True:
-            with rls_scope(session, job.tenant_id, masked=job.masked):
+            with rls_scope(session, job.tenant_id, masked=masked):
                 page = features_repo.select_features(
                     session,
                     info,
