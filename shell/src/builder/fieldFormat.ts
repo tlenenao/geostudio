@@ -10,8 +10,8 @@ import { APP_TIME_ZONE, formatDateTime } from "../lib/format";
 // Revue finale Vague C (point 5), 4 défauts corrigés :
 //  - `datetime` ne montrait que la date : `Intl.DateTimeFormat("fr-FR")`
 //    sans options n'inclut ni heure ni minute — l'heure disparaissait
-//    silencieusement. Formaté à part via `toLocaleString("fr-FR")`, même
-//    convention que le reste du dépôt (ConfigHistoryPanel,
+//    silencieusement. Formaté désormais via `formatDateTime` (lib/format,
+//    fuseau Europe/Paris), comme le reste du dépôt (ConfigHistoryPanel,
 //    PipelineRunPanel, ReportRunPanel, NotificationBell…) ;
 //  - `Intl.NumberFormat` limite par défaut à 3 décimales
 //    (`maximumFractionDigits` implicite) — une valeur géospatiale (aire,
