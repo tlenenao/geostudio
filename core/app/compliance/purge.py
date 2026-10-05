@@ -35,6 +35,7 @@ from app.collections.models import Collection
 from app.collections.publication import remove_table_from_publication
 from app.compliance.models import PurgeReceipt
 from app.configs.models import Config, ConfigRevision
+from app.dataexport.models import CollectionExportJob
 from app.export.models import ExportJob
 from app.extensions.models import Extension
 from app.harvest.models import HarvestRecord, HarvestSource
@@ -135,6 +136,7 @@ def purge_tenant(
     ]
     counts["app_export_jobs"] = _delete_all(session, AppExportJob, tenant_id)
     counts["export_jobs"] = _delete_all(session, ExportJob, tenant_id)
+    counts["collection_export_jobs"] = _delete_all(session, CollectionExportJob, tenant_id)
     counts["pipeline_runs"] = _delete_all(session, PipelineRun, tenant_id)
     counts["report_runs"] = _delete_all(session, ReportRun, tenant_id)
     counts["harvest_records"] = _delete_all(session, HarvestRecord, tenant_id)
@@ -183,6 +185,8 @@ def purge_tenant(
     # la suppression des lignes ExportJob/AppExportJob — sinon perdus.
     exports_bucket = os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports")
     appexports_bucket = os.environ.get("S3_APPEXPORTS_BUCKET", "geostudio-appexports")
+    # REV-283e : exports de données sous `{tenant}/data-exports/` (préfixe tenant).
+    counts["s3_objects_deleted"] += _delete_tenant_prefixed_objects(s3, exports_bucket, tenant_id)
     for bucket, keys in (
         (exports_bucket, export_result_keys),
         (appexports_bucket, appexport_result_keys),

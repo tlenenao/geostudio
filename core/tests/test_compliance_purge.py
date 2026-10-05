@@ -28,6 +28,7 @@ from app.collections.models import Collection
 from app.collections.publication import remove_table_from_publication
 from app.compliance.purge import purge_tenant
 from app.configs.models import Config, ConfigRevision
+from app.dataexport.models import CollectionExportJob
 from app.db import Base
 from app.export.models import ExportJob
 from app.extensions.models import Extension
@@ -234,6 +235,19 @@ def _create_tenant_with_one_row_in_every_model(session) -> str:
     )
     session.add(appexport_job)
     session.flush()
+    session.add(
+        CollectionExportJob(
+            id=f"{tenant_id}-dxjob",
+            tenant_id=tenant_id,
+            collection_id=collection.id,
+            requested_by=user.id,
+            format="geojson",
+            status="done",
+            masked=True,
+            result_key=f"{tenant_id}/data-exports/{tenant_id}-dxjob.geojson",
+        )
+    )
+    session.flush()
 
     attachment = Attachment(
         id=f"{tenant_id}-att",
@@ -410,6 +424,22 @@ def test_purge_tenant_paginates_past_1000_s3_objects(pg_engine, monkeypatch):
     # IsTruncated/NextContinuationToken n'en supprimerait que les 1000
     # premiers (ordre lexicographique), laissant 500 orphelins.
     assert len(s3.objects) == 0, f"{len(s3.objects)} objets S3 orphelins après la purge"
+
+
+def test_purge_tenant_deletes_data_export_objects_in_exports_bucket(pg_engine, monkeypatch):
+    from app.db import make_session_factory
+
+    Session = make_session_factory(pg_engine)
+    with Session() as session:
+        tenant_id = _create_tenant_with_one_row_in_every_model(session)
+    monkeypatch.setenv("S3_EXPORTS_BUCKET", "geostudio-exports")
+    s3 = _PaginatingFakeS3Client(
+        {f"{tenant_id}/data-exports/x.geojson": b"x"}, bucket="geostudio-exports"
+    )
+    with Session() as session:
+        purge_tenant(session, s3, tenant_id=tenant_id, requested_by_user_id="requester")
+        session.commit()
+    assert s3.objects == {}
 
 
 def test_purge_tenant_is_resumable_after_a_crash_mid_way(pg_engine):

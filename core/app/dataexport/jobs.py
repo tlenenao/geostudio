@@ -9,6 +9,7 @@ import os
 
 from app.analytics.duckdb_conn import open_spatial_connection
 from app.analytics.export import EXPORT_MEDIA_TYPES, export_filename, features_to_format
+from app.auth.dependency import is_read_only_mode
 from app.collections import repository as collections_repo
 from app.collections.introspection import hide_sensitive_columns
 from app.collections.introspection_pg import introspect_table
@@ -143,3 +144,45 @@ def run_collection_export(job_id: str, tenant_id: str) -> None:
         _notify(factory, job, title=title, status="failure", error=str(exc))
         return
     _notify(factory, job, title=title, status="success")
+
+
+@app.periodic(cron="*/10 * * * *")
+@app.task(queue="dataexport", queueing_lock="sweep_collection_exports_task")
+def sweep_collection_exports_task(timestamp: int) -> None:
+    """Reprise : `pending` dont le defer a échoué (commit puis defer, piège 14)
+    redéférés ; `running` bloqués passés `failed`. mark_running rend un double
+    defer inoffensif."""
+    if is_read_only_mode():
+        return
+    factory = session_factory()
+    with request_scoped_session(factory) as session:
+        repo.reclaim_stuck_running(session)
+        pending = repo.stale_pending_ids(session)
+        session.commit()
+    for job_id, tenant_id in pending:
+        try:
+            run_collection_export.defer(job_id=job_id, tenant_id=tenant_id)
+        except Exception:
+            logger.exception("collection export %s : redefer impossible", job_id)
+
+
+@app.periodic(cron="17 * * * *")
+@app.task(queue="dataexport", queueing_lock="purge_collection_exports_task")
+def purge_expired_exports_task(timestamp: int) -> None:
+    """TTL : supprime l'objet S3 puis la ligne des exports terminés expirés.
+    Échec S3 = la ligne reste (nouvel essai au prochain passage)."""
+    if is_read_only_mode():
+        return
+    factory = session_factory()
+    with request_scoped_session(factory) as session:
+        expired = repo.expired_terminal_jobs(session)
+    s3 = s3_client_from_env() if any(k for _, k in expired) else None
+    for job_id, key in expired:
+        try:
+            if key:
+                s3.delete_object(Bucket=exports_bucket(), Key=key)  # type: ignore[union-attr]
+        except Exception:
+            logger.exception("collection export %s : suppression S3 impossible", job_id)
+            continue
+        with request_scoped_session(factory) as session:
+            repo.delete_job(session, job_id)
