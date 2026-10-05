@@ -498,15 +498,18 @@ function PipelineCanvasInner({
 
   return (
     <div className="h-full" role="presentation" onKeyDown={onCanvasKeyDown}>
-      {runStatus && (
-        <p
-          role="status"
-          aria-label={t("pipelineCanvas.runStatusAria", { status: jobStatusLabel(runStatus) })}
-          className="sr-only"
-        >
-          {jobStatusLabel(runStatus)}
-        </p>
-      )}
+      {/* Région live permanente : une région insérée avec son contenu n'est pas annoncée de façon fiable. */}
+      <p
+        role="status"
+        aria-label={
+          runStatus
+            ? t("pipelineCanvas.runStatusAria", { status: jobStatusLabel(runStatus) })
+            : undefined
+        }
+        className="sr-only"
+      >
+        {runStatus ? jobStatusLabel(runStatus) : ""}
+      </p>
       <ReactFlow
         nodes={[
           ...nodes.map((n) =>

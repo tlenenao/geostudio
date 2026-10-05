@@ -775,3 +775,24 @@ test("REV-216 : l'état de l'exécution est annoncé avec le vocabulaire partag�
   );
   expect(screen.getByRole("status", { name: /État de l'exécution/ })).toHaveTextContent("En cours");
 });
+
+test("la région d'état d'exécution est permanente : vide sans runStatus, renseignée ensuite", () => {
+  const props = {
+    nodes: NODES,
+    edges: EDGES,
+    selectedNodeId: null,
+    onSelectNode: vi.fn(),
+    onNodesChange: vi.fn(),
+    onEdgesChange: vi.fn(),
+    onInsertOnEdge: vi.fn(),
+    opsCatalog: {},
+    notes: [],
+    onNotesChange: vi.fn(),
+  };
+  const { container, rerender } = render(<PipelineCanvas {...props} />);
+  const region = container.querySelector("p[role=status]")!;
+  expect(region).toBeEmptyDOMElement();
+  rerender(<PipelineCanvas {...props} runStatus="running" />);
+  expect(container.querySelector("p[role=status]")).toBe(region);
+  expect(region).toHaveTextContent("En cours");
+});
