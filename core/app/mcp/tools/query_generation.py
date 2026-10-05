@@ -62,9 +62,10 @@ def _strip_code_fence(text: str) -> str:
 # chaîne) est refusé car invérifiable. REV-303a : un littéral de chaîne isolé
 # n'est jamais une référence (l'alternative `_STR` le consomme en premier) ;
 # seule une chaîne en position d'index (`vars["x"]`) en est une.
-_STR = r""""(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'"""
+# Une chaîne brute CEL (r"..", R'..') n'a pas d'échappement : `r"\"` est complète.
+_STR = r"""(?<!\w)[rR]"[^"]*"|(?<!\w)[rR]'[^']*'|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'"""
 _CEL_REF_RE = re.compile(
-    rf"""(?P<str>{_STR})|\b(?P<root>vars|record|user|ctx)\s*(?:\.\s*(?P<dot>[A-Za-z_]\w*)|\[\s*(?:"(?P<dq>[^"]*)"|'(?P<sq>[^']*)'|(?P<other>[^\]]*))\])"""
+    rf"""(?P<str>{_STR})|\b(?P<root>vars|record|user|ctx)\s*(?:\.\s*(?P<dot>[A-Za-z_]\w*)|\[\s*(?:"(?P<dq>[^"]*)"|'(?P<sq>[^']*)'|(?P<other>[^\]]*))\])|(?<![.\w])(?P<bare>vars|record|user|ctx)\b"""
 )
 _CEL_TAIL_RE = re.compile(r"""\s*\[\s*(?:"[^"]*"|'[^']*')\s*\]|\s*\.\s*\w+|\s*\[[^\]]*\]""")
 
@@ -76,7 +77,12 @@ def _cel_refs(
     pos = 0
     while m := _CEL_REF_RE.search(expression, pos):
         pos = m.end()
-        if m.group("str") is not None or m.group("root") is None:
+        if m.group("str") is not None:
+            continue
+        if bare := m.group("bare"):  # racine nue (`size(vars)`) : invérifiable
+            refs.add(f"{bare} (racine nue)")
+            if bare not in roots:
+                refs.add(f"{bare} (racine non autorisée)")
             continue
         root = m.group("root")
         member = m.group("dot") or m.group("dq") or m.group("sq")

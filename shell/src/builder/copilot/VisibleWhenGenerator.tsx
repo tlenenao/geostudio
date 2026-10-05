@@ -72,7 +72,9 @@ export function CelGenerator({
       <summary className="cursor-pointer text-xs text-ink-2">{t("celGen.summary")}</summary>
       <div className="mt-2 flex flex-col gap-2">
         <textarea
-          aria-label={t("celGen.questionAria")}
+          aria-label={t(
+            context === "computedColumn" ? "celGen.questionAriaExpr" : "celGen.questionAria",
+          )}
           className="rounded-md border border-rule p-2 text-xs"
           value={question}
           onChange={(e) => setQuestion(e.target.value)}

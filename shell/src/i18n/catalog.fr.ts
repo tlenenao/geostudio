@@ -1849,6 +1849,7 @@ export const fr = {
   "propsPanel.visibleWhenAria": "Condition d'affichage (visibleWhen)",
   "celGen.summary": "Générer",
   "celGen.questionAria": "Décrire la condition",
+  "celGen.questionAriaExpr": "Décrire l'expression",
   "celGen.propose": "Proposer",
   "celGen.apply": "Appliquer",
   "celGen.noDraft": "Aucune condition proposée.",

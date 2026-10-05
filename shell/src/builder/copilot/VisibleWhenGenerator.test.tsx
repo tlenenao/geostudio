@@ -30,6 +30,22 @@ async function ask() {
 }
 
 describe("VisibleWhenGenerator", () => {
+  it("labels the textarea per context", async () => {
+    render(
+      <ItemClientProvider client={{ copilotTurn: vi.fn() } as never}>
+        <VisibleWhenGenerator
+          itemId="9"
+          context="computedColumn"
+          availableFields={[]}
+          current=""
+          onApply={vi.fn()}
+        />
+      </ItemClientProvider>,
+    );
+    await userEvent.click(screen.getByText("Générer"));
+    expect(screen.getByLabelText("Décrire l'expression")).toBeInTheDocument();
+  });
+
   it("shows the draft and applies it only on click", async () => {
     const copilotTurn = vi.fn().mockResolvedValue({
       reply: "Voici une condition.",

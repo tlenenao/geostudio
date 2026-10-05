@@ -244,3 +244,49 @@ def test_chained_known_access_passes(app_client, monkeypatch):
         assert call_tool(app_client, "generate_cel_expression", _args(item_id)) == {
             "expression": draft
         }
+
+
+def test_raw_string_literal_does_not_hide_a_reference():
+    from app.mcp.tools.query_generation import _cel_refs
+
+    # r"\" est une chaine brute complete : `vars.inconnu` est bien hors chaine.
+    assert _cel_refs('r"\\" + vars.inconnu + "x"') == {"vars.inconnu"}
+    assert _cel_refs("r'vars.dedans' == vars.statut") == {"vars.statut"}
+    assert _cel_refs('"a" + parvars.x') == set()  # \b : pas une racine
+
+
+@pytest.mark.parametrize("draft", ["size(vars) > 0", "has(record) && vars.statut == 1"])
+def test_bare_root_is_refused(app_client, monkeypatch, draft):
+    item_id = _seed_item(app_client, owner_id=app_client.mock_user.id)
+    _stub(monkeypatch, _StubLLMProvider(draft))
+    with app_client:
+        error = call_tool_expecting_error(app_client, "generate_cel_expression", _args(item_id))
+    assert "racine nue" in error
+
+
+def test_action_condition_allows_record_root(app_client, monkeypatch):
+    item_id = _seed_item(app_client, owner_id=app_client.mock_user.id)
+    _stub(monkeypatch, _StubLLMProvider("record.nom == 'A'"))
+    with app_client:
+        result = call_tool(
+            app_client,
+            "generate_cel_expression",
+            _args(item_id, availableFields=["record.nom"], context="actionCondition"),
+        )
+    assert result == {"expression": "record.nom == 'A'"}
+
+
+def test_binding_context_accepts_vars_and_refuses_record(app_client, monkeypatch):
+    item_id = _seed_item(app_client, owner_id=app_client.mock_user.id)
+    _stub(monkeypatch, _StubLLMProvider("vars.statut"))
+    with app_client:
+        assert call_tool(
+            app_client, "generate_cel_expression", _args(item_id, context="binding")
+        ) == {"expression": "vars.statut"}
+        _stub(monkeypatch, _StubLLMProvider("record.nom"))
+        error = call_tool_expecting_error(
+            app_client,
+            "generate_cel_expression",
+            _args(item_id, availableFields=["record.nom"], context="binding"),
+        )
+    assert "racine non autorisée" in error
