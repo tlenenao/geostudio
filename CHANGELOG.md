@@ -128,6 +128,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`CORE_EXPORT_ITEMS_MAX` no longer caps `GET /collections/{id}/export/items`**
+  (REV-283e): above `CORE_EXPORT_SYNC_MAX` (default 100000, exact total) the
+  route answers `202 {jobId}` and a worker produces the file (queue
+  `dataexport`, presigned link valid 24 h, status at
+  `GET /collections/{id}/export/jobs/{jobId}`); `CORE_EXPORT_JOB_MAX` (default
+  500000) caps that job (413 beyond). `CORE_EXPORT_ITEMS_MAX` is still read by
+  the ArcGIS FS harvest connector.
 - **`geostudio-minio`'s image source changed from a pulled third-party image
   to a from-source AGPL rebuild**: `quay.io/minio/minio` and `minio/minio`
   (Docker Hub) are both locked out of anonymous pull on every tag (401/pull
