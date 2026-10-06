@@ -243,6 +243,13 @@ test.describe("j07 moissonnage — défauts constatés", () => {
 
   // Finding j07-007 : la suppression d'une source laisse ses items « external » orphelins.
   test("j07-007 : supprimer une source retire ou signale les items qu'elle avait créés", async () => {
+    // L'URL est unique par source : retire celle laissée par le test de moissonnage réel ci-dessus.
+    const existing = await admin.get("/v1/harvest/sources");
+    for (const s of existing.body.sources ?? existing.body.items ?? existing.body) {
+      if (s.url === "https://earth-search.aws.element84.com/v1") {
+        await admin.send("DELETE", `/v1/harvest/sources/${s.id}`);
+      }
+    }
     const src = await createSource(admin, {
       type: "stac",
       url: "https://earth-search.aws.element84.com/v1",

@@ -146,10 +146,18 @@ test.describe("j11 copilote : builder avec cœur simulé sur /copilot/turn", () 
       }));
       await openBuilder(page, "creator", pk);
       await page.getByRole("button", { name: "Texte" }).click();
-      await expect(page.getByRole("button", { name: /^Sélectionner widget-/ })).toHaveCount(1);
+      await expect(
+        page.getByRole("button", {
+          name: /^Sélectionner (Texte|Table|Bouton|Filtre|Formulaire|Carte|Section riche)/,
+        }),
+      ).toHaveCount(1);
       await ask(page, "Ajoute un indicateur");
       await expect(page.getByText("Fait.")).toBeVisible();
-      await expect(page.getByRole("button", { name: /^Sélectionner widget-/ })).toHaveCount(2);
+      await expect(
+        page.getByRole("button", {
+          name: /^Sélectionner (Texte|Table|Bouton|Filtre|Formulaire|Carte|Section riche)/,
+        }),
+      ).toHaveCount(2);
       await expect(page.getByText("Action inconnue ignorée : save_app_config")).toBeVisible();
     },
   );

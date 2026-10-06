@@ -139,7 +139,7 @@ test.describe("j13 masquage UI selon le rôle de partage", () => {
     const resp = page.waitForResponse(
       (r) => r.url().endsWith(`/v1/configs/by-item/${it.pk}`) && r.request().method() === "DELETE",
     );
-    await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Supprimer" }).click();
     expect((await resp).status()).toBe(403);
     await expect(page.getByText("Échec de la suppression.")).toBeVisible();
     expect((await creator.get(`/v1/items/${it.pk}`)).status).toBe(200);

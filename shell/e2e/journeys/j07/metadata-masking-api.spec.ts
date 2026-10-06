@@ -29,7 +29,8 @@ async function anonGet(path: string): Promise<{ status: number; body: any }> {
 }
 
 async function newCollection(title: string): Promise<{ id: string; table: string }> {
-  const made = await creator.send("POST", "/v1/collections/empty", {
+  // POST /collections/empty a son propre budget (DDL, SP-45) : sous 429, attendre le renouvellement de la fenêtre.
+  const body = {
     title,
     columns: [
       { name: "nom", sqlType: "text" },
@@ -37,7 +38,12 @@ async function newCollection(title: string): Promise<{ id: string; table: string
     ],
     geometryType: "Point",
     srid: 4326,
-  });
+  };
+  let made = await creator.send("POST", "/v1/collections/empty", body);
+  for (let i = 0; i < 3 && made.status === 429; i++) {
+    await new Promise((r) => setTimeout(r, 20_000));
+    made = await creator.send("POST", "/v1/collections/empty", body);
+  }
   expect(made.status).toBe(201);
   return { id: made.body.id, table: made.body.tableName };
 }
@@ -193,7 +199,8 @@ test.describe("j07 masquage de champ sensible", () => {
   test("déclarer un champ inconnu, réservé ou en double comme sensible est refusé", async () => {
     const { id } = await newCollection(`${tag}-sens-invalid`);
     for (const fields of [["inexistant"], ["id"], ["tenant_id"], ["geom"], ["secret", "secret"]]) {
-      const r = await creator.send("PATCH", `/v1/collections/${id}`, { sensitiveFields: fields });
+      // Déclarer un champ sensible exige l'administration (P13) : un Créateur reçoit 403 avant toute validation.
+      const r = await admin.send("PATCH", `/v1/collections/${id}`, { sensitiveFields: fields });
       expect([400, 422], JSON.stringify(fields)).toContain(r.status);
     }
   });

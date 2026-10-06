@@ -153,7 +153,7 @@ test.describe("j08 rôles — UI", () => {
     expect(updated.privileges.sort()).toEqual(["tasks.view", "tasks.view_all"]);
 
     await row.getByRole("button", { name: "Supprimer" }).click();
-    await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Supprimer" }).click();
     await expect(row).toHaveCount(0);
     expect((await admin.get("/v1/roles")).body.some((r: any) => r.name === name)).toBe(false);
   });
@@ -170,7 +170,7 @@ test.describe("j08 rôles — UI", () => {
       await go(page, "/admin/roles");
       const row = page.getByRole("row").filter({ hasText: name });
       await row.getByRole("button", { name: "Supprimer" }).click();
-      await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
+      await page.getByRole("alertdialog").getByRole("button", { name: "Supprimer" }).click();
       await expect(page.getByText(/Encore attribué à 1 utilisateur/)).toBeVisible();
     },
   );

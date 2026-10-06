@@ -107,6 +107,7 @@ test.describe("j12 chrome sur téléphone (360 px)", () => {
   }) => {
     await openAs(page, "creator");
     await page.setViewportSize({ width: 360, height: 300 });
+    await page.getByRole("button", { name: "Actions", exact: true }).click(); // actions repliées sous 640 px
     await page.getByRole("button", { name: "Importer un fichier" }).click({ force: true });
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();

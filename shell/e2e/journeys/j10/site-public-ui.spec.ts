@@ -169,7 +169,7 @@ test.describe("j10 sites : édition côté auteur", () => {
     browser,
   }) => {
     await openAs(page, "creator");
-    await page.getByRole("button", { name: "Nouveau" }).click();
+    await page.getByRole("button", { name: "Nouveau" }).first().click();
     await page.locator("select").first().selectOption("site");
     await page.getByLabel("Modèle").selectOption({ label: "Portail de données" });
     await page.getByLabel("Titre", { exact: true }).fill(`${tag} Portail UI`);
