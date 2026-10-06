@@ -264,8 +264,10 @@ test.describe("t02 UI : enregistrement d'une app", () => {
         : r.continue(),
     );
     await s.page.getByRole("button", { name: "Enregistrer" }).click();
-    await expect(s.page.getByRole("alert").filter({ hasText: /Échec/ })).toBeVisible();
-    expect(await alerts(s.page)).toContain("collection inconnue");
+    // le détail RFC 7807 du cœur est restitué tel quel (B5), sans préfixe « Échec »
+    await expect(
+      s.page.getByRole("alert").filter({ hasText: /collection inconnue/ }),
+    ).toBeVisible();
   });
 
   test("un échec d'enregistrement garde le brouillon et un nouvel essai réussit", async () => {
