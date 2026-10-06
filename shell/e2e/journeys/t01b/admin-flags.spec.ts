@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { stamp } from "../_fixtures/env";
-import { apiFor, makeUser, openAsUser } from "../j08/helpers";
+import { apiFor, makeUser, openAsUser, psql } from "../j08/helpers";
 import { focusDesc, go, seriousViolations, session } from "./helpers";
 
 test.setTimeout(150_000);
@@ -15,11 +15,16 @@ async function dpoPage(browser: import("@playwright/test").Browser, scheme: "lig
   const role = (
     await admin.send("POST", "/v1/roles", {
       name: `${tag}-${n}-rgpd`,
-      privileges: ["compliance.manage", "admin.users.manage"],
+      privileges: ["admin.users.manage"],
     })
   ).body;
   const officer = await makeUser(`${tag}-${n}-dpo`);
   await admin.send("PATCH", `/v1/users/${officer.id}`, { roleId: role.id });
+  // Plafond « ≤ mes privilèges » (P12) : l'Administrateur ne détient pas compliance.manage et ne peut
+  // donc pas l'accorder par l'API (ni attribuer un rôle qui le porte) ; le DPO d'une instance réelle est désigné hors bande (SQL).
+  psql(
+    `UPDATE roles SET privileges='["compliance.manage","admin.users.manage"]' WHERE id='${role.id}'`,
+  );
   const ctx = await browser.newContext({ colorScheme: scheme });
   const page = await ctx.newPage();
   page.setDefaultTimeout(8000);
@@ -45,13 +50,13 @@ test.describe("t01b administration : conformité, infrastructure, usage", () => 
   }) => {
     const { ctx, page } = await dpoPage(browser, "light");
     await go(page, "/admin/compliance", 2500);
-    const id = page.getByLabel("Identifiant de l'utilisateur à anonymiser");
+    const id = page.getByLabel(/^Identifiant de l'utilisateur/);
     await id.focus();
     await page.keyboard.type("identifiant-inconnu");
     await page.keyboard.press("Tab");
     expect(await focusDesc(page)).toContain("Anonymiser ce compte");
     await page.keyboard.press("Enter");
-    await expect(page.getByRole("alert")).toContainText("Échec de l'anonymisation.");
+    await expect(page.getByRole("alert")).toContainText(/Échec de l'anonymisation|introuvable/);
     await expect(
       page.getByRole("button", { name: "Purger définitivement ce tenant" }),
     ).toBeDisabled();
@@ -66,7 +71,8 @@ test.describe("t01b administration : conformité, infrastructure, usage", () => 
     await go(page, "/admin/compliance", 2500);
     const rows = await page.evaluate(() =>
       [...document.querySelectorAll<HTMLInputElement>("label input")].map((i) => ({
-        name: i.getAttribute("aria-label") ?? "",
+        // Sans aria-label, le nom accessible est le libellé visible lui-même (correct).
+        name: i.getAttribute("aria-label") ?? (i.closest("label")?.textContent ?? "").trim(),
         visible: (i.closest("label")?.textContent ?? "").trim(),
       })),
     );

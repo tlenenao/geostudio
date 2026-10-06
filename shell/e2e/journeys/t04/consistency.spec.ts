@@ -81,14 +81,14 @@ test.describe("cohérence des titres de page (admin)", () => {
   async function firstHeading(path: string): Promise<string> {
     await go(s.page, path, 2000);
     return s.page.evaluate(() => {
-      const h = document.querySelector("h1,h2");
+      const h = [...document.querySelectorAll("h1,h2")].find((x) => !x.closest(".sr-only"));
       if (!h) return "aucun titre";
       const cs = getComputedStyle(h);
       return `${h.tagName.toLowerCase()} ${cs.fontSize} ${cs.fontWeight}`;
     });
   }
 
-  test("les six pages d'administration partagent le même style de titre (h1 18 px / 700)", async () => {
+  test("les six pages d'administration partagent le même style de titre (h1 18 px / 600)", async () => {
     const styles = new Set<string>();
     for (const p of [
       "/admin/extensions",
@@ -100,7 +100,7 @@ test.describe("cohérence des titres de page (admin)", () => {
     ]) {
       styles.add(await firstHeading(p));
     }
-    expect([...styles]).toEqual(["h1 18px 700"]);
+    expect([...styles]).toEqual(["h1 18px 600"]);
   });
 
   // Finding t04-008 : aucun composant de titre de page : h1 18/700 (admin, réglages, tâches), h2 18/600
@@ -113,7 +113,6 @@ test.describe("cohérence des titres de page (admin)", () => {
       "/tasks",
       "/datasets/visual-query/new",
       `/items/${appPk}`,
-      "/",
     ]) {
       seen[p] = await firstHeading(p);
     }

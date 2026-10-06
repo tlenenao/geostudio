@@ -166,7 +166,8 @@ export async function withPeakMem<T>(
 }
 
 // Nombre de lignes d'un objet du bucket des exports, compté dans le conteneur (execFileSync
-// plafonne stdout à 1 Mo : s3Get() rend "" sur un gros objet).
+// plafonne stdout à 1 Mo : s3Get() rend "" sur un gros objet). `key` est la clé du writer :
+// le cœur la range sous `<tenant>/pipelines/` (P03.03).
 export function s3Lines(key: string): number {
   const py =
     "import sys,boto3,os;c=boto3.client('s3',endpoint_url=os.environ['S3_ENDPOINT_URL']," +
@@ -174,8 +175,12 @@ export function s3Lines(key: string): number {
     "b=os.environ['S3_EXPORTS_BUCKET'];" +
     "print(sum(1 for _ in c.get_object(Bucket=b,Key=sys.argv[1])['Body'].iter_lines()))";
   return Number(
-    execFileSync("docker", ["exec", "geostudio-core-1", "python", "-c", py, key], {
-      encoding: "utf8",
-    }).trim(),
+    execFileSync(
+      "docker",
+      ["exec", "geostudio-core-1", "python", "-c", py, `default/pipelines/${key}`],
+      {
+        encoding: "utf8",
+      },
+    ).trim(),
   );
 }
