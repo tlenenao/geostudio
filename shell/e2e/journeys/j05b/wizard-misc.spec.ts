@@ -62,18 +62,22 @@ test.describe("j05b requête visuelle — géométrie, réouverture, droits", ()
   }) => {
     test.setTimeout(120_000);
     const title = stamp("j05b");
-    const before = Number(psql("SELECT count(*) FROM items WHERE resource_type='dataset'").trim());
     await loginOidc(page, "analyst");
     await page.waitForTimeout(800);
     await spaGo(page, "/datasets/visual-query/new", 2500);
     // Depuis la garde `automation.manage` (vague A) la page n'offre plus de formulaire à l'Analyste.
     await expect(page.getByLabel("Titre", { exact: true })).toHaveCount(0);
     void title;
-    const after = Number(psql("SELECT count(*) FROM items WHERE resource_type='dataset'").trim());
+    // borné au titre du test : les autres parcours (workers parallèles) créent des datasets en même temps
+    const created = Number(
+      psql(
+        `SELECT count(*) FROM items WHERE resource_type='dataset' AND title LIKE '${title}%'`,
+      ).trim(),
+    );
     const orphanColl = Number(
       psql(`SELECT count(*) FROM collections WHERE title='${title} (données)'`).trim(),
     );
-    expect(after).toBe(before);
+    expect(created).toBe(0);
     expect(orphanColl).toBe(0);
   });
 
