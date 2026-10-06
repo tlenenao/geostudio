@@ -129,8 +129,8 @@ test.describe("j06b builder de pipeline (UI réelle)", () => {
     await expect.soft(page.getByText(/aucun(e)? (résultat|opération)/i)).toBeVisible();
     await page.getByRole("searchbox", { name: "Rechercher une opération" }).fill("");
 
-    // j06b-015 : un writer.export fraîchement déposé affiche « geojson » dans le select « format »
-    // alors que la valeur n'est pas posée (« format est requis. » s'affiche sous le select).
+    // j06b-015 : un writer.export fraîchement déposé n'affiche plus « geojson » alors que rien n'est
+    // posé : le select montre l'option vide « — » et « format est requis. » reste signalé.
     const search = page.getByRole("searchbox", { name: "Rechercher une opération" });
     await search.fill("writer.export");
     await page
@@ -139,8 +139,10 @@ test.describe("j06b builder de pipeline (UI réelle)", () => {
       .dragTo(page.locator(".react-flow__pane"), { targetPosition: { x: 0, y: 250 } });
     await search.fill("");
     await page.locator(".react-flow__node").last().click();
-    await expect(page.locator("label", { hasText: /^format/ }).locator("select")).toBeVisible();
-    await expect.soft(page.getByText("format est requis.")).toHaveCount(0);
+    const formatSelect = page.locator("label", { hasText: /^format/ }).locator("select");
+    await expect(formatSelect).toBeVisible();
+    await expect.soft(formatSelect).toHaveValue("");
+    await expect.soft(page.getByText("format est requis.")).toHaveCount(1);
 
     // j06b-016 : la commande d'appel webhook affichée est copiable (URL réelle, avec /v1).
     await page.getByRole("button", { name: "Générer un jeton" }).click();
@@ -150,6 +152,6 @@ test.describe("j06b builder de pipeline (UI réelle)", () => {
 
     // j06b-001 : « Exécuter » mène à un statut terminal (le run est créé mais jamais déféré).
     await page.getByRole("button", { name: "Exécuter" }).click();
-    await expect(page.getByText("Terminé")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("status", { name: /Terminé/ })).toBeVisible({ timeout: 20_000 });
   });
 });
