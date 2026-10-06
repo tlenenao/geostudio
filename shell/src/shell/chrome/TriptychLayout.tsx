@@ -35,8 +35,9 @@ export function TriptychLayout({
       // grid-rows-[minmax(0,1fr)] (P31.03) : sans piste bornée, la ligne
       // implicite (auto) grandit avec la colonne la plus haute et les
       // `overflow-y-auto` des colonnes ne défilent jamais — la page entière
-      // dépasse alors la fenêtre.
-      <div className="grid flex-1 grid-cols-[minmax(220px,280px)_minmax(360px,1fr)_minmax(260px,320px)] grid-rows-[minmax(0,1fr)] overflow-hidden">
+      // dépasse alors la fenêtre. `relative` : un `.sr-only` (absolute) garde sa position
+      // statique sous le contenu long et, sans bloc positionné, échappe au clip (j12-003).
+      <div className="relative grid flex-1 grid-cols-[minmax(220px,280px)_minmax(360px,1fr)_minmax(260px,320px)] grid-rows-[minmax(0,1fr)] overflow-hidden">
         <div className="overflow-y-auto border-r border-rule">{browse.content}</div>
         <div className="overflow-hidden">{work.content}</div>
         <div className="overflow-y-auto border-l border-rule">{inspect.content}</div>
@@ -49,7 +50,7 @@ export function TriptychLayout({
     const side = [browse, inspect];
     const sideActive = side.find((s) => s.id === activeId) ?? browse;
     return (
-      <div className="grid flex-1 grid-cols-[minmax(360px,1fr)_minmax(240px,300px)] grid-rows-[minmax(0,1fr)] overflow-hidden">
+      <div className="relative grid flex-1 grid-cols-[minmax(360px,1fr)_minmax(240px,300px)] grid-rows-[minmax(0,1fr)] overflow-hidden">
         <div className="overflow-hidden">{work.content}</div>
         <div className="flex min-h-0 flex-col overflow-hidden border-l border-rule">
           <div role="tablist" className="flex border-b border-rule">
@@ -153,7 +154,7 @@ export function TriptychLayout({
         role="tabpanel"
         id="triptych-panel"
         aria-labelledby={`triptych-tab-${active.id}`}
-        className="grid flex-1 grid-rows-[minmax(0,1fr)] overflow-y-auto"
+        className="relative grid flex-1 grid-rows-[minmax(0,1fr)] overflow-y-auto"
       >
         {active.content}
       </div>
