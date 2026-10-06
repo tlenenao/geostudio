@@ -58,7 +58,8 @@ def _allowlist() -> set[str]:
 
 def _is_internal(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     # tout ce qui n'est pas globalement routable (CGNAT 100.64/10, TEST-NET, 6to4…)
-    return not ip.is_global or ip.is_multicast
+    # fec0::/10 (site-local déprécié) : is_global le laisse passer (j06-003)
+    return not ip.is_global or ip.is_multicast or getattr(ip, "is_site_local", False)
 
 
 def assert_egress_allowed(url: str) -> str:
