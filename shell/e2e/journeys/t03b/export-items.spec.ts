@@ -33,14 +33,14 @@ test.describe("t03b export d'entités à l'échelle", () => {
     console.log("T03B export10k", out.join(" "));
   });
 
-  test("10 001 entités : 413 « too many entities » (plafond confirmé à l'unité près)", async () => {
+  test("10 001 entités : exporté en 200 (plafond synchrone relevé à 100 000, REV-283e)", async () => {
     const r = await timed("creator", exp(s10k1.collectionId, "format=csv"));
-    console.log("T03B export10001", r.status, r.ms, "ms", r.text().slice(0, 120));
-    expect(r.status).toBe(413);
-    expect(JSON.parse(r.text()).detail).toMatch(/too many entities/);
+    console.log("T03B export10001", r.status, r.ms, "ms");
+    expect(r.status).toBe(200);
+    expect(r.text().split("\n").length).toBeGreaterThan(10_001);
   });
 
-  test("500 000 entités sans filtre : 413 rendu en moins de 2 s, sans gonfler la mémoire du cœur", async () => {
+  test("500 000 entités sans filtre : 202 + tâche asynchrone rendu en moins de 2 s, sans gonfler la mémoire du cœur", async () => {
     const m = await withPeakMem("geostudio-core-1", () =>
       timed("creator", exp(s500k.collectionId, "format=geojson")),
     );
@@ -53,7 +53,9 @@ test.describe("t03b export d'entités à l'échelle", () => {
       "->",
       m.peakMb,
     );
-    expect(m.value.status).toBe(413);
+    // au-delà de CORE_EXPORT_SYNC_MAX (100 000) le cœur délègue à une tâche (REV-283e)
+    expect(m.value.status).toBe(202);
+    expect(JSON.parse(m.value.text()).jobId).toBeTruthy();
     expect(m.value.ms).toBeLessThan(2000);
     expect(m.peakMb - m.startMb).toBeLessThan(150);
   });

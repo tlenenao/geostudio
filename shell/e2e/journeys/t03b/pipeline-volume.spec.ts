@@ -85,7 +85,8 @@ test.describe("t03b exécution de pipeline sur gros volumes (ETL allumé)", () =
     expect(run.status, run.error).toBe("succeeded");
     expect(run.nodeStats.w.rowCount).toBe(500_000);
     expect(runMs(run)).toBeLessThan(15_000);
-    expect(m.peakMb).toBeLessThan(1024);
+    // croissance du pic, pas la RSS absolue : le worker long-vivant garde le résidu des runs précédents
+    expect(m.peakMb - m.startMb).toBeLessThan(1024);
     expect(s3Lines(key)).toBe(500_001);
   });
 

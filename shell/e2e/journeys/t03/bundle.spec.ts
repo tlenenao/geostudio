@@ -6,24 +6,17 @@ import { gzipSync } from "node:zlib";
 import { SHELL_URL, loginOidc } from "../_fixtures/env";
 import { netLog } from "./helpers";
 
-// Charge JS/CSS initiale du build servi (même définition que
-// scripts/check-bundle-size.mjs : entrée + imports statiques, pas de dynamicImports).
-async function initialFiles(request: any): Promise<{ manifest: any; files: string[] }> {
-  const res = await request.get(`${SHELL_URL}/.vite/manifest.json`);
+// Charge JS/CSS initiale du build servi : le manifeste Vite n'est plus servi (retiré de l'image,
+// t03-004) ; index.html liste exactement l'entrée, ses imports statiques (modulepreload) et son CSS.
+async function initialFiles(request: any): Promise<{ files: string[] }> {
+  const res = await request.get(`${SHELL_URL}/index.html`);
   expect(res.status()).toBe(200);
-  const manifest = await res.json();
-  const entry = Object.keys(manifest).find((k) => manifest[k].isEntry) as string;
-  const seen = new Set<string>();
+  const html: string = await res.text();
   const files = new Set<string>();
-  const walk = (k: string) => {
-    if (seen.has(k) || !manifest[k]) return;
-    seen.add(k);
-    files.add(manifest[k].file);
-    (manifest[k].css ?? []).forEach((c: string) => files.add(c));
-    (manifest[k].imports ?? []).forEach(walk);
-  };
-  walk(entry);
-  return { manifest, files: [...files] };
+  for (const m of html.matchAll(/<(?:script|link)\b[^>]*?(?:src|href)="\/(assets\/[^"]+)"/g))
+    files.add(m[1]);
+  expect(files.size).toBeGreaterThan(3);
+  return { files: [...files] };
 }
 
 test.describe("t03 bundle et livraison statique", () => {
@@ -61,14 +54,11 @@ test.describe("t03 bundle et livraison statique", () => {
   test("les chunks lourds (carte, SQL Lab, pipelines) ne sont pas dans la charge initiale", async ({
     request,
   }) => {
-    const { manifest, files } = await initialFiles(request);
-    const heavy = Object.values<any>(manifest)
-      .filter((e) =>
-        /MapView|SqlLab|PipelineBuilder|vendor-map|vendor-echarts|AppBuilder/.test(e.file),
-      )
-      .map((e) => e.file);
-    expect(heavy.length).toBeGreaterThan(3);
-    for (const h of heavy) expect(files, h).not.toContain(h);
+    const { files } = await initialFiles(request);
+    for (const f of files)
+      expect(f, f).not.toMatch(
+        /MapView|SqlLab|PipelineBuilder|vendor-map|vendor-echarts|AppBuilder/,
+      );
   });
 
   test("catalogue : aucune charge des chunks d'éditeurs, transfert mesuré", async ({
