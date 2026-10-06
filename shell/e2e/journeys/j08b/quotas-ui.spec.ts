@@ -65,7 +65,7 @@ bug("j08b-008 : l'écran d'usage signale un quota atteint", async ({ page }) => 
   await spaGoto(page, "/settings");
   await page.getByRole("link", { name: "Outils d'infrastructure →" }).click();
   await expect(page.getByText(`Éléments : ${usage.itemCount} / ${usage.itemCount}`)).toBeVisible();
-  await expect(page.getByRole("status").or(page.getByRole("alert"))).toContainText(/quota/i);
+  await expect(page.getByText(/Seuil d'alerte atteint|quota atteint/i).first()).toBeVisible();
 });
 
 test("création d'une App au quota d'items : le dialogue reste ouvert et affiche le motif du refus", async ({
@@ -79,5 +79,5 @@ test("création d'une App au quota d'items : le dialogue reste ouvert et affiche
   await dialog.getByLabel("Titre").fill("aud-j08b-quota-ui");
   await dialog.getByRole("button", { name: "Créer" }).click();
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByText(/quota d'items du tenant dépassé/)).toBeVisible();
+  await expect(dialog.getByText(/Quota d'éléments atteint/)).toBeVisible();
 });

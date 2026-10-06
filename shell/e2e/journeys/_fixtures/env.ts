@@ -42,7 +42,11 @@ export function stamp(agentId: string): string {
 
 // Capacité ETL de la stack rejouée (GET /v1/instance, public) : les parcours
 // « ETL éteint » n'ont de sens que si elle est coupée.
-export async function etlEnabled(): Promise<boolean> {
+export async function instanceFlag(key: string): Promise<boolean> {
   const r = await fetch(`${CORE_URL}/v1/instance`);
-  return Boolean((await r.json()).etlEnabled);
+  return Boolean((await r.json())[key]);
+}
+
+export async function etlEnabled(): Promise<boolean> {
+  return instanceFlag("etlEnabled");
 }

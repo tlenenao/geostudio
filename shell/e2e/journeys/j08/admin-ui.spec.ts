@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
 import { bug } from "../_fixtures/verify";
 import { test, expect, type Page } from "@playwright/test";
-import { stamp } from "../_fixtures/env";
+import { instanceFlag, stamp } from "../_fixtures/env";
 import { openAs } from "../j06/helpers";
 import { apiFor, makeUser, openAsUser, psql, spaGoto, type Api } from "./helpers";
 
@@ -26,7 +26,7 @@ async function go(page: Page, path: string): Promise<void> {
 }
 
 test.describe("j08 SettingsNav et droits d'accès", () => {
-  test("l'Administrateur prédéfini voit Général + 6 destinations ; l'infrastructure affiche l'usage sans limite", async ({
+  test("l'Administrateur prédéfini voit Général + 7 destinations ; l'infrastructure affiche l'usage sans limite", async ({
     page,
   }) => {
     await openAs(page, "admin");
@@ -39,11 +39,16 @@ test.describe("j08 SettingsNav et droits d'accès", () => {
       "Utilisateurs →",
       "Collections →",
       "Moissonnage →",
+      // j08-002 : l'anonymisation relève d'admin.users.manage, le lien est donc visible de l'Administrateur.
+      "Conformité (RGPD) →",
     ]);
     await page.getByRole("link", { name: "Outils d'infrastructure →" }).click();
     await expect(page.getByText("Utilisation", { exact: true })).toBeVisible();
     await expect(page.getByText(/Stockage : .*pas de limite configurée/)).toBeVisible();
-    await expect(page.getByText("Non activé sur cette instance")).toBeVisible();
+    // la mention n'existe que si les outils d'infrastructure sont coupés sur l'instance
+    await expect(page.getByText("Non activé sur cette instance")).toHaveCount(
+      (await instanceFlag("adminToolsEnabled")) ? 0 : 1,
+    );
   });
 
   // Finding j08-002 : l'écran d'anonymisation exige compliance.manage, absent de l'Administrateur.
@@ -155,7 +160,9 @@ test.describe("j08 rôles — UI", () => {
     await row.getByRole("button", { name: "Supprimer" }).click();
     await page.getByRole("alertdialog").getByRole("button", { name: "Supprimer" }).click();
     await expect(row).toHaveCount(0);
-    expect((await admin.get("/v1/roles")).body.some((r: any) => r.name === name)).toBe(false);
+    await expect
+      .poll(async () => (await admin.get("/v1/roles")).body.some((r: any) => r.name === name))
+      .toBe(false);
   });
 
   // Finding j08-011 : le 409 « N utilisateur(s) ont ce rôle » est réduit à un échec générique.
@@ -183,22 +190,27 @@ test.describe("j08 conformité — UI", () => {
     const role = (
       await admin.send("POST", "/v1/roles", {
         name: `${tag}-rgpd`,
-        privileges: ["compliance.manage", "admin.users.manage"],
+        privileges: ["admin.users.manage"],
       })
     ).body;
     const officer = await makeUser(`${tag}-dpo`);
     await admin.send("PATCH", `/v1/users/${officer.id}`, { roleId: role.id });
+    // Plafond « ≤ mes privilèges » (P12) : l'Administrateur ne détient pas compliance.manage et ne peut
+    // ni l'accorder ni affecter un rôle qui le contient ; on élargit le rôle en base après l'affectation.
+    psql(
+      `UPDATE roles SET privileges='["compliance.manage","admin.users.manage"]' WHERE id='${role.id}'`,
+    );
     const victim = await makeUser(`${tag}-victim-ui`);
 
     await openAsUser(page, officer.username);
     await go(page, "/admin/compliance");
     await expect(page.getByRole("heading", { name: "Conformité (RGPD)" })).toBeVisible();
-    const id = page.getByLabel("Identifiant de l'utilisateur à anonymiser");
+    const id = page.getByLabel(/Identifiant de l'utilisateur/);
     const erase = page.getByRole("button", { name: "Anonymiser ce compte" });
     await expect(erase).toBeDisabled();
     await id.fill("identifiant-inconnu");
     await erase.click();
-    await expect(page.getByText("Échec de l'anonymisation.")).toBeVisible();
+    await expect(page.getByText("Utilisateur introuvable dans ce tenant.")).toBeVisible();
     await id.fill(victim.id);
     await erase.click();
     await expect(page.getByText("Compte anonymisé.")).toBeVisible();
@@ -209,7 +221,7 @@ test.describe("j08 conformité — UI", () => {
     // Purge : le bouton reste désactivé tant que le slug n'est pas retapé exactement (jamais cliqué).
     const purge = page.getByRole("button", { name: "Purger définitivement ce tenant" });
     await expect(purge).toBeDisabled();
-    const slug = page.getByLabel("Confirmer le slug du tenant");
+    const slug = page.getByLabel(/Retapez le slug du tenant/);
     await slug.fill("defaul");
     await expect(purge).toBeDisabled();
     await slug.fill("default");

@@ -11,7 +11,7 @@ function inCore(code: string, args: string[] = []): string {
   return execFileSync("docker", ["exec", "-i", "geostudio-core-1", "python", "-", ...args], {
     input: code,
     encoding: "utf8",
-    stdio: ["pipe", "pipe", "ignore"], // stderr : traces AppNotOpen connues, sans rapport
+    stdio: ["pipe", "pipe", "pipe"], // stderr capté : QuotaExceededError attendue (j08b-010)
   });
 }
 
@@ -23,12 +23,16 @@ bug(
     const creator = await apiFor("creator");
     const me = await creator.get("/v1/me");
     const code = readFileSync(join(process.cwd(), "e2e/journeys/j08b/import_sim.py"), "utf8");
-    const out = JSON.parse(
-      inCore(code, ["default", me.body.id, `aud-j08b-imp-${Date.now().toString(36)}`])
-        .trim()
-        .split("\n")
-        .pop() as string,
-    );
+    let raw: string;
+    try {
+      raw = inCore(code, ["default", me.body.id, `aud-j08b-imp-${Date.now().toString(36)}`]);
+    } catch (e) {
+      // Corrigé côté produit : run_import refuse (QuotaExceededError) au lieu de dépasser le quota.
+      const stderr = String((e as { stderr?: unknown }).stderr ?? "");
+      expect(stderr).toMatch(/QuotaExceededError/);
+      return;
+    }
+    const out = JSON.parse(raw.trim().split("\n").pop() as string);
     expect(out.items_after).toBeLessThanOrEqual(Number(out.limit_items));
     expect(out.collections_after).toBeLessThanOrEqual(Number(out.limit_collections));
   },
