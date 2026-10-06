@@ -114,8 +114,11 @@ test.describe("j04 droits, historique, concurrence", () => {
       .getByRole("button", { name: /Restaurer/ })
       .first()
       .click();
-    const confirm = page.getByRole("button", { name: /Restaurer|Confirmer/ }).last();
-    if (await page.getByRole("dialog").count()) await confirm.click();
+    // Confirmation systématique (ConfirmDialog, alertdialog).
+    await page
+      .getByRole("alertdialog")
+      .getByRole("button", { name: /Restaurer/ })
+      .click();
     await page.waitForTimeout(2000);
     await expect(page.getByText("Version un")).toBeVisible();
   });
@@ -127,7 +130,7 @@ test.describe("j04 droits, historique, concurrence", () => {
     const s = await getSeed();
     const id = await s.mkApp("resize", baseApp({ layout: grid([text("a", "A")]) }));
     await openBuilder(page, id);
-    await page.getByRole("button", { name: "Sélectionner widget-a" }).click();
+    await page.getByRole("button", { name: "Sélectionner Texte" }).click();
     const controls =
       (await page
         .getByRole("button", { name: /(Redimensionner|Élargir|Agrandir|Largeur|Hauteur)/i })
@@ -144,9 +147,9 @@ test.describe("j04 droits, historique, concurrence", () => {
       baseApp({ layout: grid([text("a", "A", 0), text("b", "B", 2)]) }),
     );
     await openBuilder(page, id);
-    await page.getByRole("button", { name: "Sélectionner widget-b" }).click();
-    await page.getByRole("button", { name: "Déplacer widget-b en haut" }).click();
-    await page.getByRole("button", { name: "Déplacer widget-b en haut" }).click();
+    await page.getByRole("button", { name: "Sélectionner Texte 2" }).click();
+    await page.getByRole("button", { name: "Déplacer Texte 2 en haut" }).click();
+    await page.getByRole("button", { name: "Déplacer Texte 2 en haut" }).click();
     const rows = await page
       .locator("[data-col]")
       .evaluateAll((els) => els.map((e) => e.getAttribute("data-row")));

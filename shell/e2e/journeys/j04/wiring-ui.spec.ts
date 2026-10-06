@@ -186,7 +186,7 @@ test.describe("j04 câblage, variables, actions", () => {
     );
     await openBuilder(page, id);
     await page.getByRole("button", { name: /^Retirer la page p2/ }).click();
-    await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Supprimer" }).click();
     await page.getByRole("button", { name: "Enregistrer" }).click();
     await page.waitForTimeout(1500);
     const saved = await s.creator.get(`/v1/configs/by-item/${id}`);
@@ -216,7 +216,7 @@ test.describe("j04 câblage, variables, actions", () => {
       .getByRole("button", { name: /^Retirer la page/ })
       .first()
       .click();
-    await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Supprimer" }).click();
     await expect(page.getByRole("button", { name: /^Ouvrir la page/ })).toHaveCount(1);
   });
 

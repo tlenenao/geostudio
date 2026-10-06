@@ -80,8 +80,11 @@ test.describe("j04 sources de données et widgets de données au runtime", () =>
       }),
     );
     await openBuilder(page, id);
-    await page.getByRole("button", { name: "Sélectionner widget-tbl" }).click();
-    await page.getByRole("button", { name: `Retirer ${s.colId}` }).click();
+    await page.getByRole("button", { name: "Sélectionner Table" }).click();
+    await page
+      .locator('button[aria-label^="Retirer"]:not([disabled]):not([aria-label^="Retirer la page"])')
+      .first()
+      .click();
     await page.waitForTimeout(800);
     // Attendu : la propriété du widget est remise à « Aucune » ou un avertissement apparaît.
     const hasWarning = (await page.getByRole("alert").count()) > 0;
