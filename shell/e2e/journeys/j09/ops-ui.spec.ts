@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { instanceFlag } from "../_fixtures/env";
 import { openAs, spaGoto } from "./helpers";
 
 // Pages Infrastructure et Tâches (shell + cœur réels).
@@ -8,6 +9,10 @@ test.describe("j09 pages d'exploitation", () => {
   test("l'administrateur voit l'infrastructure sans boutons de lancement quand la passerelle est éteinte", async ({
     page,
   }) => {
+    test.skip(
+      await instanceFlag("adminToolsEnabled"),
+      "stack avec CORE_ADMIN_TOOLS_ENABLED=true : parcours « passerelle éteinte » sans objet",
+    );
     await openAs(page, "admin");
     await spaGoto(page, "/admin/infrastructure");
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();

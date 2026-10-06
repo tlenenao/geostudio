@@ -118,6 +118,8 @@ test.describe("j09 notifications : cloche du shell", () => {
     await openAs(page, "reader");
     await page.getByRole("button", { name: /Notifications/ }).click();
     await expect(page.getByText(`${tag}-n0`)).toBeVisible();
+    // La page initiale en compte 20 : « Charger plus » donne accès aux plus anciennes.
+    await page.getByRole("button", { name: "Charger plus" }).click();
     await expect(page.getByText(`${tag}-n24`)).toBeVisible();
   });
 });

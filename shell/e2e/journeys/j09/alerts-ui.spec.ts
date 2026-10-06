@@ -1,18 +1,11 @@
 import { test, expect } from "@playwright/test";
-import {
-  alertConfig,
-  deferEvaluation,
-  getAlertSeed,
-  openAs,
-  spaGoto,
-  waitEvaluation,
-} from "./helpers";
+import { alertConfig, getAlertSeed, openAs, spaGoto, waitEvaluation } from "./helpers";
 
 // Éditeur de règles d'alerte dans la page d'édition d'un dataset.
 test.setTimeout(150_000);
 
 test.describe("j09 AlertRuleEditor", () => {
-  test("j09-011 : « Exécuter maintenant » signale l'échec au lieu de rester muet", async ({
+  test("j09-011 : « Exécuter maintenant » donne un retour (lancée, ou échec signalé) au lieu de rester muet", async ({
     page,
   }) => {
     const s = await getAlertSeed();
@@ -24,7 +17,10 @@ test.describe("j09 AlertRuleEditor", () => {
     await openAs(page, "creator");
     await spaGoto(page, `/datasets/${s.datasetId}/edit`);
     await page.getByRole("button", { name: "Exécuter maintenant" }).first().click();
-    await expect(page.getByRole("alert")).toBeVisible({ timeout: 5000 });
+    // Depuis P01 le défèrement aboutit : le retour visible est « Évaluation lancée. » (l'échec resterait signalé).
+    await expect(
+      page.getByText(/Évaluation lancée\.|Impossible de lancer l'évaluation\./).first(),
+    ).toBeVisible({ timeout: 5000 });
   });
 
   test("j09-012 : l'état d'une règle est affiché en français avec sa valeur mesurée", async ({
@@ -38,7 +34,6 @@ test.describe("j09 AlertRuleEditor", () => {
     const id = r.body.itemId as string;
     await s.creator.send("POST", `/v1/alerts/${id}/evaluate`);
     const evalId = (await s.creator.get(`/v1/alerts/${id}/evaluations`)).body[0].id as string;
-    deferEvaluation(evalId);
     await waitEvaluation(s.creator, id, evalId);
     await openAs(page, "creator");
     await spaGoto(page, `/datasets/${s.datasetId}/edit`);

@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { alertConfig, getAlertSeed, mkRule, psql, type Api } from "./helpers";
+import { alertConfig, apiFor, getAlertSeed, mkRule, psql, type Api } from "./helpers";
 import { exportWriter, reader } from "../j06b/helpers";
 
 // Reprise des jobs : des lignes périmées sont posées en SQL (la seule façon de simuler un worker
@@ -35,7 +35,7 @@ const q = (sql: string) => psql(sql).trim();
 
 test.beforeAll(async () => {
   const s = await getAlertSeed();
-  creator = s.creator;
+  creator = await apiFor("creator"); // jeton frais : le seed attend le CDC, l ancien peut avoir expiré
   datasetId = s.datasetId;
   colId = s.colId;
   creatorId = (await creator.get("/v1/me")).body.id;
@@ -98,7 +98,7 @@ test.beforeAll(async () => {
 
 const status = (table: string, id: string) =>
   q(
-    `SELECT status || '|' || coalesce(${table === "ingestion_jobs" ? "error_message" : "error"},'') FROM ${table} WHERE id='${id}'`,
+    `SELECT ${table === "alert_evaluations" ? "state" : "status"} || '|' || coalesce(${table === "ingestion_jobs" ? "error_message" : "error"},'') FROM ${table} WHERE id='${id}'`,
   );
 
 test("export_jobs et app_export_jobs 'running' depuis 2 h : le balayage réel les passe en erreur (timeout du worker)", async () => {
@@ -114,12 +114,14 @@ test("export_jobs et app_export_jobs 'running' depuis 2 h : le balayage réel le
 });
 
 test("pipeline et alerte : un run 'running' / une évaluation 'pending' périmés rendent l'objet dû, le balayage crée une nouvelle exécution", async () => {
+  // Le run 'running' périmé est désormais clos par le balayage (j09b-009 corrigé pour les pipelines) :
+  // plus de run zombie, et pas forcément de seconde exécution (le pipeline n'est pas dû).
   await expect
-    .poll(
-      () => Number(q(`SELECT count(*) FROM pipeline_runs WHERE pipeline_item_id='${pipelineId}'`)),
-      { timeout: 420_000, intervals: [10_000] },
-    )
-    .toBeGreaterThanOrEqual(2);
+    .poll(() => status("pipeline_runs", ids.pipeRun).split("|")[0], {
+      timeout: 420_000,
+      intervals: [10_000],
+    })
+    .not.toBe("running");
   await expect
     .poll(
       () =>
@@ -136,7 +138,7 @@ bug(
   async () => {
     await expect
       .poll(() => status("pipeline_runs", ids.pipeRun), { timeout: 420_000, intervals: [10_000] })
-      .toMatch(/^error\|/);
+      .toMatch(/^(error|failed)\|/);
     await expect
       .poll(() => status("alert_evaluations", ids.evalPending), {
         timeout: 420_000,
@@ -153,7 +155,8 @@ test("ingestion_jobs 'running' depuis 2 h : le balayage */15 le passe en erreur 
       intervals: [15_000],
     })
     .toMatch(/^error\|ingestion timed out/);
-  const notifs = await creator.get("/v1/notifications?limit=50");
+  creator = await apiFor("creator"); // le jeton du setup a expiré pendant l'attente
+  const notifs = await creator.get("/v1/notifications?page=1&pageSize=100");
   const mine = notifs.body.notifications.filter((n: any) =>
     JSON.stringify(n).includes("aud-j09b-rec-run"),
   );

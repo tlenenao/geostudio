@@ -193,7 +193,7 @@ test("webhook : une redirection vers 169.254.169.254 est bloquée sur le saut ; 
   const b = notifyAudit(slowId);
   expect(b[0]).toMatchObject({ success: false });
   expect(b[0].error).toMatch(/timed out|Read timed out/i);
-  expect(took).toBeLessThan(25_000);
+  expect(took).toBeLessThan(35_000); // runnerEvaluate attend aussi la fin de l évaluation (≤ 8 s de plus)
 });
 
 // Finding j09b-002 : le service `worker` n'a pas CORE_SECRETS_MASTER_KEY (docker-compose.yml ne la
