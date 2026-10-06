@@ -1,4 +1,3 @@
-import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { stamp, CORE_URL } from "../_fixtures/env";
 import { apiFor, type Api } from "../j03/api";
@@ -178,12 +177,7 @@ test.describe("j06 coffre de secrets — défauts constatés", () => {
     expect(r.status).toBe(422);
   });
 
-  // Finding j06-004 : un DSN vers un hôte interne est accepté d'un Créateur (aucune garde d'egress).
-  bug("j06-004 : un DSN postgres vers un hôte interne du compose est refusé", async () => {
-    const r = await creator.send("POST", "/v1/secrets", {
-      name: `${tag}-dsn-interne`,
-      payload: { kind: "postgres_dsn", dsn: "postgresql://gis:x@postgis:5432/gis" },
-    });
-    expect(r.status).toBe(422);
-  });
+  // j06-004 (REV-273a) : la garde d'egress s'applique à l'exécution (connector_runtime), pas à la création
+  // du secret ; la preuve d'exécution est j06b-010 (preview-authz-api.spec.ts). L'ancien bug() attendait un
+  // 422 à la création, ce que l'intention documentée n'exige pas : retiré.
 });

@@ -16,7 +16,7 @@ import {
 const tag = stamp("j06b");
 
 test.describe("j06b builder de pipeline (UI réelle)", () => {
-  test("palette 57 op + recherche, construction glisser-déposer, connexion, annuler/rétablir, zone, enregistrement persistant", async ({
+  test("palette 58 op + recherche, construction glisser-déposer, connexion, annuler/rétablir, zone, enregistrement persistant", async ({
     page,
   }) => {
     const seed = await getPlainSeed();
@@ -28,16 +28,16 @@ test.describe("j06b builder de pipeline (UI réelle)", () => {
     await dialog.getByRole("button", { name: "Créer" }).click();
     await expect(page).toHaveURL(/\/pipelines\/new$/);
 
-    // Palette : 57 opérations (sections permanentes), la recherche filtre.
+    // Palette : 58 opérations (sections permanentes), la recherche filtre.
     const items = page.locator(".cursor-grab");
     await expect(items.first()).toBeVisible();
-    expect(await items.count()).toBe(57);
+    expect(await items.count()).toBe(58);
     const search = page.getByRole("searchbox", { name: "Rechercher une opération" });
     await search.fill("buffer");
     await expect(items).toHaveCount(1);
     await search.fill("zzzz-rien");
     await search.fill("");
-    await expect(items).toHaveCount(57);
+    await expect(items).toHaveCount(58);
 
     const canvas = page.locator(".react-flow__pane");
     const palette = (op: string) => page.locator(".cursor-grab", { hasText: op }).last();
@@ -64,7 +64,10 @@ test.describe("j06b builder de pipeline (UI réelle)", () => {
     await nodes.nth(0).click();
     await page.getByLabel("collectionId").selectOption(seed.collection);
     await nodes.nth(1).click();
-    await page.getByLabel("format").selectOption("csv");
+    await page
+      .locator("label", { hasText: /^format/ })
+      .locator("select")
+      .selectOption("csv");
     await page.getByLabel("key").fill(`j06b/${tag}-ui.csv`);
 
     await page.getByRole("button", { name: "Ajouter une zone" }).click();
@@ -136,7 +139,7 @@ test.describe("j06b builder de pipeline (UI réelle)", () => {
       .dragTo(page.locator(".react-flow__pane"), { targetPosition: { x: 0, y: 250 } });
     await search.fill("");
     await page.locator(".react-flow__node").last().click();
-    await expect(page.getByLabel("format")).toBeVisible();
+    await expect(page.locator("label", { hasText: /^format/ }).locator("select")).toBeVisible();
     await expect.soft(page.getByText("format est requis.")).toHaveCount(0);
 
     // j06b-016 : la commande d'appel webhook affichée est copiable (URL réelle, avec /v1).

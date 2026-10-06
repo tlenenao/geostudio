@@ -1,5 +1,6 @@
 import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
+import { etlEnabled } from "../_fixtures/env";
 import { openAs, spaGoto } from "./helpers";
 
 // Expérience utilisateur quand la capacité ETL est coupée (etlEnabled=false, stack d'audit).
@@ -7,6 +8,12 @@ import { openAs, spaGoto } from "./helpers";
 // destination après la reconnexion OIDC (défaut j02-004).
 
 test.describe("j06 ETL désactivé — shell (créateur)", () => {
+  test.beforeAll(async () => {
+    test.skip(
+      await etlEnabled(),
+      "stack avec CORE_ETL_ENABLED=true : parcours « ETL éteint » sans objet",
+    );
+  });
   test.beforeEach(async ({ page }) => {
     await openAs(page, "creator");
   });

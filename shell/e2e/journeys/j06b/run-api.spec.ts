@@ -94,7 +94,7 @@ test.describe("j06b exécution de pipelines", () => {
     expect(Object.keys(fin.nodeStats).sort()).toEqual(["d", "f", "r", "w"]);
     expect(fin.nodeStats.r.rowCount).toBe(6);
     expect(fin.nodeStats.f.rowCount).toBe(4);
-    const csv = s3Get(key) ?? "";
+    const csv = s3Get(`default/pipelines/${key}`) ?? "";
     const lines = csv.trim().split(/\r?\n/);
     expect(lines).toHaveLength(5);
     expect(lines[0]).toContain("pop2");

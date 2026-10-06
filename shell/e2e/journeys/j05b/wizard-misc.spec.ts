@@ -66,15 +66,9 @@ test.describe("j05b requête visuelle — géométrie, réouverture, droits", ()
     await loginOidc(page, "analyst");
     await page.waitForTimeout(800);
     await spaGo(page, "/datasets/visual-query/new", 2500);
-    // Constat : la page s'ouvre, le formulaire se remplit et « Créer » est actif (seul le garde
-    // serveur refuse), cf. j05-022 pour le Lecteur. On vérifie au moins l'absence d'objet orphelin.
-    await page.getByLabel("Titre", { exact: true }).fill(title);
-    await page.getByLabel("Collection de base").selectOption(seed.ventes);
-    const create = page.getByRole("button", { name: "Créer", exact: true });
-    if (await create.isEnabled()) {
-      await create.click();
-      await page.waitForTimeout(3000);
-    }
+    // Depuis la garde `automation.manage` (vague A) la page n'offre plus de formulaire à l'Analyste.
+    await expect(page.getByLabel("Titre", { exact: true })).toHaveCount(0);
+    void title;
     const after = Number(psql("SELECT count(*) FROM items WHERE resource_type='dataset'").trim());
     const orphanColl = Number(
       psql(`SELECT count(*) FROM collections WHERE title='${title} (données)'`).trim(),

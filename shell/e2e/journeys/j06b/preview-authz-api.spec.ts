@@ -147,13 +147,13 @@ test.describe("j06b aperçu, historique des runs, catalogue", () => {
     expect(r.status).toBe(401);
   });
 
-  test("catalogue (57 op), enregistrement et next-run : op inconnue, params invalides, cron invalide refusés", async () => {
-    // Catalogue : 57 op, schéma de params pour chacune, reader.file/writer.file absents (flag éteint).
+  test("catalogue (58 op), enregistrement et next-run : op inconnue, params invalides, cron invalide refusés", async () => {
+    // Catalogue : 58 op, schéma de params pour chacune, reader.file/writer.file absents (flag éteint).
 
     const cat = await creator.get("/v1/pipelines/ops");
     expect(cat.status).toBe(200);
     const ops = Object.keys(cat.body);
-    expect(ops).toHaveLength(57);
+    expect(ops).toHaveLength(58);
     for (const [op, c] of Object.entries<any>(cat.body)) {
       expect(c.kind, op).toMatch(/^(reader|transform|writer)$/);
       expect(c.paramsSchema, op).toBeTruthy();

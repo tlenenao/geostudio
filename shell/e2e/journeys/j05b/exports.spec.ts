@@ -29,19 +29,23 @@ test.beforeAll(async () => {
   bigCollection = c.body.id;
   bigTable = c.body.tableName;
   psql(
-    `INSERT INTO public.${bigTable} (tenant_id, n, txt, geom) SELECT 'default', g, 'ligne ' || g, ST_SetSRID(ST_MakePoint(1 + (g % 100) / 100.0, 45 + (g / 100) / 1000.0), 4326) FROM generate_series(1,10001) g`,
+    `INSERT INTO public.${bigTable} (tenant_id, n, txt, geom) SELECT 'default', g, 'ligne ' || g, ST_SetSRID(ST_MakePoint(1 + (g % 100) / 100.0, 45 + (g / 100) / 1000.0), 4326) FROM generate_series(1,100001) g`,
   );
 });
 
 test.describe("j05b exports — plafond, GPKG, tâche /v1/export (flags allumés)", () => {
-  test("GET export/items : 10 000 entités passent, 10 001 → 413 ; un filtre ramène sous le plafond", async () => {
+  // REV-283e : au-delà de CORE_EXPORT_SYNC_MAX (100 000) l'export devient asynchrone (202 + jobId) ;
+  // le 413 n'intervient plus qu'au-delà de CORE_EXPORT_JOB_MAX (500 000).
+  test("GET export/items : 100 001 entités → 202 asynchrone ; un filtre ramène sous le plafond synchrone", async () => {
     test.setTimeout(240_000);
+    const creator = await apiFor("creator");
     const path = `/v1/collections/${bigCollection}/export/items`;
-    const over = await download("creator", "GET", `${path}?format=csv`);
-    expect(over.status).toBe(413);
-    const exact = await download("creator", "GET", `${path}?format=csv&n__lte=10000`);
+    const over = await creator.send("GET", `${path}?format=csv`);
+    expect(over.status).toBe(202);
+    expect(over.body.jobId).toBeTruthy();
+    const exact = await download("creator", "GET", `${path}?format=csv&n__lte=1000`);
     expect(exact.status).toBe(200);
-    expect(exact.buf.toString().split("\n").filter(Boolean)).toHaveLength(10001); // en-tête + 10 000
+    expect(exact.buf.toString().split("\n").filter(Boolean)).toHaveLength(1001); // en-tête + 1 000
   });
 
   test("GPKG : fichier SQLite valide, table d'entités, nombre de lignes et géométries", async () => {
@@ -180,10 +184,12 @@ print(json.dumps(out))
   test("GET /v1/export/jobs/{id} : invisible pour un lecteur sans accès à l'item, 404 sur id inconnu", async () => {
     const creator = await apiFor("creator");
     const reader = await apiFor("reader");
-    const id = psql(
-      `SELECT id FROM export_jobs WHERE item_id='${seed.eventsItem}' ORDER BY created_at DESC LIMIT 1`,
-    ).trim();
-    expect(id).not.toBe("");
+    const started = await creator.send("POST", "/v1/export", {
+      itemId: seed.eventsItem,
+      format: "png",
+    });
+    expect(started.status).toBe(202);
+    const id = started.body.jobId;
     expect((await creator.get(`/v1/export/jobs/${id}`)).status).toBe(200);
     expect((await reader.get(`/v1/export/jobs/${id}`)).status).toBe(404);
     expect((await creator.get(`/v1/export/jobs/inconnu`)).status).toBe(404);

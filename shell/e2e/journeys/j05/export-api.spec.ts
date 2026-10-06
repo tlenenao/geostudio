@@ -28,7 +28,7 @@ test.describe("j05 exports — API", () => {
     expect(csv.status).toBe(200);
     expect(csv.type).toContain("text/csv");
     expect(csv.disposition).toMatch(/attachment; filename="[^"]+\.csv"/);
-    expect(csv.buf.toString().split(/\r?\n/)[0]).toBe("nom,cat,zone,date,note,montant");
+    expect(csv.buf.toString().split(/\r?\n/)[0]).toBe("nom,cat,zone,date,note,montant,geometry");
     const gj = await download("analyst", "GET", `${base}?format=geojson`);
     expect(gj.type).toContain("application/geo+json");
     const fc = JSON.parse(gj.buf.toString());

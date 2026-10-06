@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { CORE_URL, stamp } from "../_fixtures/env";
+import { CORE_URL, etlEnabled, stamp } from "../_fixtures/env";
 import { apiFor, type Api } from "../j03/api";
 
 // Comportement du cœur quand CORE_ETL_ENABLED est faux (cas de la stack d'audit) :
@@ -11,6 +11,10 @@ let creator: Api;
 let reader: Api;
 
 test.beforeAll(async () => {
+  test.skip(
+    await etlEnabled(),
+    "stack avec CORE_ETL_ENABLED=true : parcours « ETL éteint » sans objet",
+  );
   [admin, creator, reader] = await Promise.all([
     apiFor("admin"),
     apiFor("creator"),
