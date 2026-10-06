@@ -38,6 +38,10 @@ export function startHarness(): void {
   args.push("geostudio-core", "sleep", "infinity");
   docker(args);
   docker(["network", "connect", "--ip", PUB_IP, NET, RECV]);
+  // Depuis P01 la route /evaluate défère réellement la tâche : le vrai worker prend l'évaluation (le
+  // récepteur ne la rejoue que si elle est encore pending, réclamation atomique) ; il lui faut donc
+  // aussi un chemin vers le sous-réseau routable.
+  docker(["network", "connect", NET, "geostudio-worker-1"]);
   docker(["cp", join(process.cwd(), "e2e/journeys/j09b/recv.py"), `${RECV}:/tmp/recv.py`]);
   docker(["exec", "-d", RECV, "python", "/tmp/recv.py"]);
   for (let i = 0; i < 20; i++) {
@@ -49,6 +53,7 @@ export function startHarness(): void {
         "-c",
         `import socket;socket.create_connection(("${PUB_IP}",8080),1)`,
       ]);
+      trustReceiverCert();
       return;
     } catch {
       execFileSync("sleep", ["0.5"]);
@@ -57,8 +62,34 @@ export function startHarness(): void {
   throw new Error("récepteur j09b injoignable");
 }
 
+const CA_BUNDLE = "/etc/ssl/certs/ca-certificates.crt";
+
+// Le cœur vérifie désormais la chaîne et le nom d'hôte STARTTLS : le certificat du récepteur (bon nom,
+// auto-signé) est ajouté aux CA de confiance du worker et du récepteur-exécuteur le temps de la spec.
+function trustReceiverCert(): void {
+  const pem = docker(["exec", RECV, "cat", "/tmp/recv/cert.pem"]);
+  for (const c of ["geostudio-worker-1", RECV]) {
+    docker(["exec", "-u", "0", c, "cp", CA_BUNDLE, `${CA_BUNDLE}.j09b.bak`]);
+    docker(["exec", "-u", "0", "-i", c, "sh", "-c", `cat >> ${CA_BUNDLE}`], pem);
+  }
+}
+
 export function stopHarness(): void {
+  try {
+    docker([
+      "exec",
+      "-u",
+      "0",
+      "geostudio-worker-1",
+      "sh",
+      "-c",
+      `[ -f ${CA_BUNDLE}.j09b.bak ] && mv ${CA_BUNDLE}.j09b.bak ${CA_BUNDLE}`,
+    ]);
+  } catch {
+    /* worker absent ou déjà restauré */
+  }
   for (const cmd of [
+    ["network", "disconnect", "-f", NET, "geostudio-worker-1"],
     ["rm", "-f", RECV],
     ["network", "rm", NET],
   ]) {
@@ -86,6 +117,24 @@ export function recvLog(name: "http" | "smtp" | "smtp_auth_fail"): any[] {
 // Exécute la tâche d'évaluation (son corps) dans le conteneur jetable : mêmes fonctions que le
 // worker, mais avec un chemin réseau vers le récepteur routable.
 export function runnerEvaluate(evaluationId: string): string {
+  // Le vrai worker (relié au sous-réseau) prend l'évaluation déférée par la route : on ne la rejoue
+  // depuis le récepteur que si, après un délai, elle est toujours pending (sinon double livraison).
+  for (let i = 0; i < 16; i++) {
+    execFileSync("sleep", ["0.5"]);
+    const st = docker([
+      "exec",
+      "geostudio-postgis-1",
+      "psql",
+      "-U",
+      "gis",
+      "-d",
+      "gis",
+      "-At",
+      "-c",
+      `SELECT state FROM alert_evaluations WHERE id='${evaluationId}'`,
+    ]).trim();
+    if (st !== "pending") return "";
+  }
   return docker(
     ["exec", "-i", RECV, "python", "-"],
     [

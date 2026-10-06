@@ -115,18 +115,28 @@ class Plain(Smtp):
 
 
 class Tls(Smtp):
+    # Certificat au bon nom (SAN audit-j09b-recv) : le harnais l'ajoute aux CA de confiance du worker.
     tls_cert = ("/tmp/recv/cert.pem", "/tmp/recv/key.pem")
 
 
+class TlsBad(Smtp):
+    # Certificat auto-signé au MAUVAIS nom, jamais approuvé : la livraison doit être refusée (j09b-005).
+    tls_cert = ("/tmp/recv/bad-cert.pem", "/tmp/recv/bad-key.pem")
+
+
 socketserver.ThreadingTCPServer.allow_reuse_address = True
-subprocess.run(
-    "openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/recv/key.pem -out /tmp/recv/cert.pem "
-    "-days 1 -subj /CN=not-the-real-host",
-    shell=True,
-    check=True,
-    capture_output=True,
-)
-for port, h in ((2525, Plain), (2526, Tls)):
+for name, cn, san in (
+    ("", "audit-j09b-recv", "-addext subjectAltName=DNS:audit-j09b-recv"),
+    ("bad-", "not-the-real-host", ""),
+):
+    subprocess.run(
+        f"openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/recv/{name}key.pem "
+        f"-out /tmp/recv/{name}cert.pem -days 1 -subj /CN={cn} {san}",
+        shell=True,
+        check=True,
+        capture_output=True,
+    )
+for port, h in ((2525, Plain), (2526, Tls), (2527, TlsBad)):
     threading.Thread(
         target=socketserver.ThreadingTCPServer(("0.0.0.0", port), h).serve_forever, daemon=True
     ).start()
