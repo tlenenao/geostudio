@@ -37,8 +37,10 @@ import { jobStatusLabel } from "../../lib/jobStatusLabel";
 // SP-B12c : pas de token catégoriel à 3 valeurs dans tokens.css — ok/warn/
 // accent réutilisés ici pour leur distinction visuelle (vert/ambre/teal),
 // pas pour leur sens sémantique de statut.
+// `!` : React Flow pose `.react-flow__node.selectable:focus-visible { outline: none }` (plus
+// spécifique, chargé après) — sans lui l'anneau n'apparaît jamais (t01b-002, vu au rejeu réel).
 const FOCUS_RING =
-  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
+  "focus-visible:outline-2! focus-visible:outline-offset-2! focus-visible:outline-accent!";
 
 const KIND_COLOR: Record<PipelineNode["kind"], string> = {
   reader: "border-ok bg-ok-soft",
