@@ -57,6 +57,22 @@ describe("AppExportPanel", () => {
     expect(client.createAppExport).toHaveBeenCalledWith("item1", "static");
   });
 
+  it("returns focus to the trigger once a mode is chosen (t01b-013)", async () => {
+    const client = makeClient({
+      createAppExport: vi.fn().mockResolvedValue({ jobId: "job1" }),
+      getAppExportJob: vi.fn().mockResolvedValue({ id: "job1", status: "running", error: null }),
+    });
+    render(
+      <ItemClientProvider client={client}>
+        <AppExportPanel itemId="item1" config={config()} />
+      </ItemClientProvider>,
+    );
+    const trigger = screen.getByRole("button", { name: /exporter/i });
+    await userEvent.click(trigger);
+    await userEvent.click(screen.getByRole("button", { name: /statique/i }));
+    expect(trigger).toHaveFocus();
+  });
+
   it("shows the warning of a job done with truncation", async () => {
     const client = makeClient({
       createAppExport: vi.fn().mockResolvedValue({ jobId: "job1" }),
