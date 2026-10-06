@@ -59,12 +59,13 @@ test.describe("j02 lecteur — catalogue, fiches, éditeurs", () => {
     await expect(page.getByText(/Aucun (résultat|élément)/).first()).toBeVisible();
   });
 
-  // j02-012 : la recherche hybride renvoie toujours des candidats, même pour une requête absurde.
+  // j02-012 : une requête absurde ne renvoie rien (sans « j02 » : ce jeton ressemble par trigrammes
+  // aux titres « aud-j02-… » du semis, ce qui est un vrai résultat).
   test("j02-012 : une requête sans aucun rapport avec le catalogue ne renvoie aucun résultat", async ({
     page,
   }) => {
     await asReader(page);
-    await searchCatalog(page, "zzz-introuvable-j02-xyz");
+    await searchCatalog(page, "zzz-introuvable-xyz");
     await expect(page.getByRole("button", { name: "Ouvrir" })).toHaveCount(0);
     await expect(page.getByText("Aucun résultat").first()).toBeVisible();
   });

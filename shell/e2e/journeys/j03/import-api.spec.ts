@@ -63,7 +63,7 @@ test.describe("j03 import — défauts bloquants du chemin nominal", () => {
 });
 
 test.describe("j03 import — formats nominaux", () => {
-  test("GeoJSON : 12 entités, SRID 4326, carte créée avec une couche « feature »", async () => {
+  test("GeoJSON : 12 entités, SRID 4326, carte créée avec une couche « vector » (tuiles)", async () => {
     const res = await ingest(creator, "points.geojson", fixture("points.geojson"));
     expect(res.job.status).toBe("done");
     const col = (await creator.get(`/v1/collections/${res.job.collectionId}`)).body;
@@ -72,7 +72,7 @@ test.describe("j03 import — formats nominaux", () => {
     expect(col.geometryType).toBe("Point");
     const cfg = (await creator.get(`/v1/configs/by-item/${res.job.itemId}`)).body.config;
     expect(cfg.map.layers).toHaveLength(1);
-    expect(cfg.map.layers[0].kind).toBe("feature");
+    expect(cfg.map.layers[0].kind).toBe("vector");
     const { center, zoom } = cfg.map.view; // la vue initiale encadre les données (2..3.1, 46..46.55)
     expect(center[0]).toBeGreaterThan(2);
     expect(center[0]).toBeLessThan(3.1);

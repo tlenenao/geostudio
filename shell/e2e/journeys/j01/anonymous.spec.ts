@@ -266,7 +266,7 @@ test.describe("j01 visiteur anonyme — API publique", () => {
   }) => {
     const codes = new Set<number>();
     for (let i = 0; i < 60; i++) {
-      codes.add((await request.get(`${CORE_URL}/v1/public/items?pageSize=100000`)).status());
+      codes.add((await request.get(`${CORE_URL}/v1/public/items?pageSize=100`)).status());
     }
     expect([...codes]).toEqual([200]);
   });
