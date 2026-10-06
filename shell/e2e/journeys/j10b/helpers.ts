@@ -147,7 +147,10 @@ export async function makeCollection(
   );
   psql(`UPDATE collections SET feature_count=${rows} WHERE id='${c.body.id}'`);
   if (opts.sensitive) {
-    const p = await api.send("PATCH", `/v1/collections/${c.body.id}`, {
+    // REV P13 : sensitiveFields exige data.view_sensitive ou admin.collections.manage.
+    const p = await (
+      await apiFor("admin")
+    ).send("PATCH", `/v1/collections/${c.body.id}`, {
       sensitiveFields: ["secret"],
     });
     if (p.status !== 200) throw new Error(`sensitive ${p.status}`);
