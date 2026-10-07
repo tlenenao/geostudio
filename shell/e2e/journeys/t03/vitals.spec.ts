@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- sondes navigateur */
-import { bug } from "../_fixtures/verify";
 import { test, expect, type Page } from "@playwright/test";
 import { loginOidc, stamp } from "../_fixtures/env";
 import {
@@ -142,17 +141,16 @@ test.describe("t03 LCP / CLS", () => {
 
   // Profil Lighthouse mobile (4G lente, CPU x4). LCP mesuré : ~4,64 s ; 2,6 s quand vendor-map est bloqué
   // (carte MapLibre du filtre spatial) : voir t03-005.
-  bug(
-    "t03-005 : catalogue à froid sous 4G lente + CPU x4 : LCP sous 4 s",
-    async ({ page }, testInfo) => {
-      await loginOidc(page, "creator");
-      await page.waitForTimeout(1500);
-      await throttle(page);
-      const r = await coldLoad(page, "/", 6000);
-      note(testInfo, "catalogue-4g", r);
-      expect(r.v.lcp as number).toBeLessThan(4000);
-    },
-  );
+  test("t03-005 : catalogue à froid sous 4G lente + CPU x4 : LCP sous 4 s", async ({
+    page,
+  }, testInfo) => {
+    await loginOidc(page, "creator");
+    await page.waitForTimeout(1500);
+    await throttle(page);
+    const r = await coldLoad(page, "/", 6000);
+    note(testInfo, "catalogue-4g", r);
+    expect(r.v.lcp as number).toBeLessThan(4000);
+  });
 
   test("éditeur de carte (vide) : prêt en moins de 3 s, CLS < 0,1", async ({ page }, testInfo) => {
     await loginOidc(page, "creator");

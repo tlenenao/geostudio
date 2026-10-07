@@ -83,7 +83,7 @@ test.describe("t03 bundle et livraison statique", () => {
 
   // CatalogSpatialFilter monte une vraie carte MapLibre (WebGL + worker) dans le
   // panneau de filtres de la page d'accueil, chargeant vendor-map (932 Ko bruts + 83 Ko CSS).
-  bug("t03-005 : le catalogue ne charge pas MapLibre à l'ouverture", async ({ page }) => {
+  test("t03-005 : le catalogue ne charge pas MapLibre à l'ouverture", async ({ page }) => {
     const log = await netLog(page);
     await loginOidc(page, "creator");
     await page.waitForTimeout(2500);
@@ -93,18 +93,17 @@ test.describe("t03 bundle et livraison statique", () => {
 
   // Aucun Cache-Control sur /assets/* : chaque visite revalide (If-None-Match) les
   // ~110 chunks à hachage de contenu au lieu de les servir depuis le cache.
-  bug(
-    "t03-001 : les assets à hachage de contenu sont servis en Cache-Control immutable",
-    async ({ request }) => {
-      const { files } = await initialFiles(request);
-      const js = files.find((f) => f.endsWith(".js")) as string;
-      const res = await request.get(`${SHELL_URL}/${js}`);
-      expect(res.headers()["cache-control"] ?? "").toMatch(/immutable|max-age=\d{6,}/);
-    },
-  );
+  test("t03-001 : les assets à hachage de contenu sont servis en Cache-Control immutable", async ({
+    request,
+  }) => {
+    const { files } = await initialFiles(request);
+    const js = files.find((f) => f.endsWith(".js")) as string;
+    const res = await request.get(`${SHELL_URL}/${js}`);
+    expect(res.headers()["cache-control"] ?? "").toMatch(/immutable|max-age=\d{6,}/);
+  });
 
   // Le worker MapLibre est en octet-stream (j12-001) donc hors gzip_types : 482 Ko bruts.
-  bug("t03-002 : maplibre-gl-shared.mjs est servi compressé", async ({ request }) => {
+  test("t03-002 : maplibre-gl-shared.mjs est servi compressé", async ({ request }) => {
     const res = await request.get(`${SHELL_URL}/assets/maplibre-gl-shared.mjs`, {
       headers: { "accept-encoding": "gzip" },
     });
@@ -113,17 +112,16 @@ test.describe("t03 bundle et livraison statique", () => {
 
   // try_files ... /index.html : un chunk absent (déploiement pendant une session)
   // reçoit index.html en 200 au lieu d'un 404.
-  bug("t03-003 : un asset hachagé inexistant répond 404, pas index.html", async ({ request }) => {
+  test("t03-003 : un asset hachagé inexistant répond 404, pas index.html", async ({ request }) => {
     const res = await request.get(`${SHELL_URL}/assets/CatalogPage-inexistant.js`);
     expect(res.status()).toBe(404);
   });
 
-  bug(
-    "t03-004 : ni manifeste de build ni fixtures de test dans l'image de production",
-    async ({ request }) => {
-      const m = await request.get(`${SHELL_URL}/.vite/manifest.json`);
-      const f = await request.get(`${SHELL_URL}/fixtures/gauge-extension-widget.js`);
-      expect([m.status(), f.status()]).toEqual([404, 404]);
-    },
-  );
+  test("t03-004 : ni manifeste de build ni fixtures de test dans l'image de production", async ({
+    request,
+  }) => {
+    const m = await request.get(`${SHELL_URL}/.vite/manifest.json`);
+    const f = await request.get(`${SHELL_URL}/fixtures/gauge-extension-widget.js`);
+    expect([m.status(), f.status()]).toEqual([404, 404]);
+  });
 });
