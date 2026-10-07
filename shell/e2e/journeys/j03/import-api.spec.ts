@@ -17,7 +17,7 @@ test.beforeAll(async () => {
 });
 
 test.describe("j03 import — défauts bloquants du chemin nominal", () => {
-  bug("j03-001 : POST /uploads répond 201 et défère le job d'ingestion", async () => {
+  test("j03-001 : POST /uploads répond 201 et défère le job d'ingestion", async () => {
     // Défaut j03-001 : procrastinate.exceptions.AppNotOpen → 500 après commit du job.
     const res = await ingest(
       creator,
@@ -31,7 +31,7 @@ test.describe("j03 import — défauts bloquants du chemin nominal", () => {
     expect(res.job?.status).toBe("done");
   });
 
-  bug("j03-002 : POST /uploads/presign répond 200 avec une URL d'envoi", async () => {
+  test("j03-002 : POST /uploads/presign répond 200 avec une URL d'envoi", async () => {
     // Défaut j03-002 (déjà relevé par j02-002) : put_bucket_cors NotImplemented côté MinIO → 500.
     const r = await creator.send("POST", "/v1/uploads/presign", {
       filename: "a.geojson",
@@ -199,18 +199,15 @@ test.describe("j03 import — droits", () => {
     expect(i.status).toBe(404);
   });
 
-  bug(
-    "j03-007 : le présigné d'upload est réservé à data.manage (le lecteur reçoit 403)",
-    async () => {
-      // Défaut j03-007 (code-read) : presign_upload n'appelle aucun require_privilege ; un lecteur obtient
-      // une URL PUT vers le bucket d'imports dès que j03-002 est corrigé. Aujourd'hui : 500 pour tous.
-      const r = await reader.send("POST", "/v1/uploads/presign", {
-        filename: "a.geojson",
-        contentType: "application/geo+json",
-      });
-      expect(r.status).toBe(403);
-    },
-  );
+  test("j03-007 : le présigné d'upload est réservé à data.manage (le lecteur reçoit 403)", async () => {
+    // Défaut j03-007 (code-read) : presign_upload n'appelle aucun require_privilege ; un lecteur obtient
+    // une URL PUT vers le bucket d'imports dès que j03-002 est corrigé. Aujourd'hui : 500 pour tous.
+    const r = await reader.send("POST", "/v1/uploads/presign", {
+      filename: "a.geojson",
+      contentType: "application/geo+json",
+    });
+    expect(r.status).toBe(403);
+  });
 });
 
 test.describe("j03 import — volumétrie", () => {

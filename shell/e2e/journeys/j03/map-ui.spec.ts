@@ -189,23 +189,22 @@ test.describe("j03 éditeur de carte — symbologie, popups, terrain", () => {
 });
 
 test.describe("j03 sauvegarde, historique, publication", () => {
-  bug(
-    "j03-015 : après Enregistrer, le panneau Historique liste aussitôt la nouvelle version comme courante",
-    async ({ page }) => {
-      // Défaut j03-015 : ConfigHistoryPanel ne charge qu'au montage et après restauration, jamais après
-      // une sauvegarde : il affiche encore « Version N (courante) » alors que le serveur est en N+1.
-      await openMap(page, pub.itemId);
-      const before = await mapConfig(creator, pub.itemId);
-      await page.getByRole("slider", { name: "Opacité" }).first().press("ArrowLeft");
-      await page.getByRole("button", { name: "Enregistrer" }).click();
-      await expect
-        .poll(async () => (await mapConfig(creator, pub.itemId)).version, { timeout: 15_000 })
-        .toBeGreaterThan(before.version);
-      await expect(page.getByText(new RegExp(`Version ${before.version + 1} —`))).toBeVisible({
-        timeout: 5_000,
-      });
-    },
-  );
+  test("j03-015 : après Enregistrer, le panneau Historique liste aussitôt la nouvelle version comme courante", async ({
+    page,
+  }) => {
+    // Défaut j03-015 : ConfigHistoryPanel ne charge qu'au montage et après restauration, jamais après
+    // une sauvegarde : il affiche encore « Version N (courante) » alors que le serveur est en N+1.
+    await openMap(page, pub.itemId);
+    const before = await mapConfig(creator, pub.itemId);
+    await page.getByRole("slider", { name: "Opacité" }).first().press("ArrowLeft");
+    await page.getByRole("button", { name: "Enregistrer" }).click();
+    await expect
+      .poll(async () => (await mapConfig(creator, pub.itemId)).version, { timeout: 15_000 })
+      .toBeGreaterThan(before.version);
+    await expect(page.getByText(new RegExp(`Version ${before.version + 1} —`))).toBeVisible({
+      timeout: 5_000,
+    });
+  });
 
   test("modifier l'opacité, Enregistrer, recharger, « Restaurer » la version précédente réécrit la config", async ({
     page,
