@@ -1,4 +1,3 @@
-import { bug } from "../_fixtures/verify";
 import { test, expect, type Page } from "@playwright/test";
 import { getSeed } from "./seed";
 import { loginOidc, SHELL_URL } from "../_fixtures/env";
@@ -145,7 +144,7 @@ test.describe("j02 lecteur — catalogue, fiches, éditeurs", () => {
 
 test.describe("j02 lecteur — liens directs, runtime, bookmarks", () => {
   // j02-004 : un rechargement (ou un lien) perd la destination après le retour Keycloak.
-  bug("j02-004 : un lien direct vers une fiche survit à la reconnexion OIDC", async ({ page }) => {
+  test("j02-004 : un lien direct vers une fiche survit à la reconnexion OIDC", async ({ page }) => {
     const s = await getSeed();
     await asReader(page);
     await page.goto(`/items/${s.sharedMap}`);
@@ -154,25 +153,25 @@ test.describe("j02 lecteur — liens directs, runtime, bookmarks", () => {
   });
 
   // j02-010 : /apps/:pk est hors RequireAuth, un rechargement part sans jeton → 401 « Accès refusé ».
-  bug(
-    "j02-010 : recharger (ou ouvrir sans session) une app en mode usage affiche l'app ou la connexion, pas « Accès refusé »",
-    async ({ page, browser }) => {
-      const s = await getSeed();
-      await asReader(page);
-      await spaGo(page, `/apps/${s.sharedApp}/p1`, 3000);
-      await expect(page.getByText("Bonjour lecteur")).toBeVisible();
-      await page.reload();
-      await expect(page.getByText("Bonjour lecteur")).toBeVisible({ timeout: 15_000 });
-      // 2e volet : sans aucune session, le lien ne renvoie pas vers la connexion.
-      const ctx = await browser.newContext({ baseURL: SHELL_URL });
-      const cold = await ctx.newPage();
-      await cold.goto(`/apps/${s.sharedApp}/p1`);
-      await cold.waitForTimeout(4000);
-      const onLogin = /openid-connect\/auth/.test(cold.url());
-      await ctx.close();
-      expect(onLogin, "lien d'app sans session : redirection vers Keycloak attendue").toBe(true);
-    },
-  );
+  test("j02-010 : recharger (ou ouvrir sans session) une app en mode usage affiche l'app ou la connexion, pas « Accès refusé »", async ({
+    page,
+    browser,
+  }) => {
+    const s = await getSeed();
+    await asReader(page);
+    await spaGo(page, `/apps/${s.sharedApp}/p1`, 3000);
+    await expect(page.getByText("Bonjour lecteur")).toBeVisible();
+    await page.reload();
+    await expect(page.getByText("Bonjour lecteur")).toBeVisible({ timeout: 15_000 });
+    // 2e volet : sans aucune session, le lien ne renvoie pas vers la connexion.
+    const ctx = await browser.newContext({ baseURL: SHELL_URL });
+    const cold = await ctx.newPage();
+    await cold.goto(`/apps/${s.sharedApp}/p1`);
+    await cold.waitForTimeout(4000);
+    const onLogin = /openid-connect\/auth/.test(cold.url());
+    await ctx.close();
+    expect(onLogin, "lien d'app sans session : redirection vers Keycloak attendue").toBe(true);
+  });
 
   test("bookmark : « Ouvrir » rejoue l'app, la page et le contexte (?ctx=)", async ({ page }) => {
     const s = await getSeed();
