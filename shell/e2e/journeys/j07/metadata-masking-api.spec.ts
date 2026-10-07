@@ -221,15 +221,12 @@ test.describe("j07 masquage de champ sensible", () => {
   });
 
   // Finding j07-015 : le schéma et la fiche collection exposent les noms des champs masqués.
-  bug(
-    "j07-015 : le schéma servi à un lecteur ou un anonyme ne liste pas le champ sensible",
-    async () => {
-      const anon = await anonGet(`/v1/collections/${seed.collectionId}/schema`);
-      expect(anon.body.fields.map((f: any) => f.name)).not.toContain("pop");
-      const rd = await reader.get(`/v1/collections/${seed.collectionId}`);
-      expect(rd.body.sensitiveFields).toEqual([]);
-    },
-  );
+  test("j07-015 : le schéma servi à un lecteur ou un anonyme ne liste pas le champ sensible", async () => {
+    const anon = await anonGet(`/v1/collections/${seed.collectionId}/schema`);
+    expect(anon.body.fields.map((f: any) => f.name)).not.toContain("pop");
+    const rd = await reader.get(`/v1/collections/${seed.collectionId}`);
+    expect(rd.body.sensitiveFields).toEqual([]);
+  });
 
   // Finding j07-016 : le propriétaire lui-même ne voit pas ses champs sensibles.
   bug(
