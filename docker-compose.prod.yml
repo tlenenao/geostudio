@@ -204,7 +204,7 @@ services:
       # et Content-Security-Policy-Report-Only sans redéployer d'image.
       # Blocage 3 (script-src pour les widgets d'extension tiers) tranché
       # (option A, spec SP-48 §4) : script-src s'élargit à l'origine de
-      # chaque Extension activée du tenant (module_url), jamais à un hôte non
+      # chaque Extension activée, tous tenants confondus (module_url ; ADR 0013), jamais à un hôte non
       # déclaré — voir app/security/traefik_render.py. Valable quel que soit
       # CORE_CSP_MODE.
       - traefik.http.middlewares.security-headers.headers.customResponseHeaders.Permissions-Policy=camera=(), microphone=(), payment=(), usb=(), geolocation=()
