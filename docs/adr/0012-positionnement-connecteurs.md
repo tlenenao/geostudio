@@ -43,5 +43,6 @@ l'écart reste la matrice `docs/revue/matrice-couverture-fme.{jsonl,md}`.
   appel, pas global).
 - Redshift n'a pas d'op dédiée : il passe par `reader.connector.postgres`, avec
   un traitement spécifique du délai d'attente (REV-110).
-- `REV-123` reste « Partiel » par construction : cette décision l'assume au lieu
-  de promettre une parité qu'on ne tiendra pas.
+- `REV-123` est close par cette décision (clôture des 38 REV, 2026-10-07) : la
+  parité de connecteurs est un objectif continu suivi par la matrice FME, pas un
+  défaut fermable ; l'écart de largeur reste réel (GAP-29 reste « Partiel »).
