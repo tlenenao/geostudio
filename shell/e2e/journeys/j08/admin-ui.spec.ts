@@ -52,14 +52,13 @@ test.describe("j08 SettingsNav et droits d'accès", () => {
   });
 
   // Finding j08-002 : l'écran d'anonymisation exige compliance.manage, absent de l'Administrateur.
-  bug(
-    "j08-002 : l'Administrateur atteint l'anonymisation depuis la navigation",
-    async ({ page }) => {
-      await openAs(page, "admin");
-      await go(page, "/settings");
-      expect(await navLinks(page)).toContain("Conformité (RGPD) →");
-    },
-  );
+  test("j08-002 : l'Administrateur atteint l'anonymisation depuis la navigation", async ({
+    page,
+  }) => {
+    await openAs(page, "admin");
+    await go(page, "/settings");
+    expect(await navLinks(page)).toContain("Conformité (RGPD) →");
+  });
 
   test("lecteur : navigation réduite à Général, pages d'administration et tâches refusées", async ({
     page,
@@ -118,7 +117,7 @@ test.describe("j08 utilisateurs — UI", () => {
   });
 
   // Finding j08-006 : aucune action d'anonymisation depuis la liste des utilisateurs.
-  bug("j08-006 : chaque ligne d'utilisateur propose d'anonymiser le compte", async ({ page }) => {
+  test("j08-006 : chaque ligne d'utilisateur propose d'anonymiser le compte", async ({ page }) => {
     const u = await makeUser(`${tag}-pick`);
     await openAs(page, "admin");
     await go(page, "/admin/users");
@@ -166,21 +165,20 @@ test.describe("j08 rôles — UI", () => {
   });
 
   // Finding j08-011 : le 409 « N utilisateur(s) ont ce rôle » est réduit à un échec générique.
-  bug(
-    "j08-011 : supprimer un rôle encore attribué explique combien d'utilisateurs le portent",
-    async ({ page }) => {
-      const name = `${tag}-held-ui`;
-      const role = (await admin.send("POST", "/v1/roles", { name, privileges: [] })).body;
-      const u = await makeUser(`${tag}-held-ui`);
-      await admin.send("PATCH", `/v1/users/${u.id}`, { roleId: role.id });
-      await openAs(page, "admin");
-      await go(page, "/admin/roles");
-      const row = page.getByRole("row").filter({ hasText: name });
-      await row.getByRole("button", { name: "Supprimer" }).click();
-      await page.getByRole("alertdialog").getByRole("button", { name: "Supprimer" }).click();
-      await expect(page.getByText(/Encore attribué à 1 utilisateur/)).toBeVisible();
-    },
-  );
+  test("j08-011 : supprimer un rôle encore attribué explique combien d'utilisateurs le portent", async ({
+    page,
+  }) => {
+    const name = `${tag}-held-ui`;
+    const role = (await admin.send("POST", "/v1/roles", { name, privileges: [] })).body;
+    const u = await makeUser(`${tag}-held-ui`);
+    await admin.send("PATCH", `/v1/users/${u.id}`, { roleId: role.id });
+    await openAs(page, "admin");
+    await go(page, "/admin/roles");
+    const row = page.getByRole("row").filter({ hasText: name });
+    await row.getByRole("button", { name: "Supprimer" }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Supprimer" }).click();
+    await expect(page.getByText(/Encore attribué à 1 utilisateur/)).toBeVisible();
+  });
 });
 
 test.describe("j08 conformité — UI", () => {
