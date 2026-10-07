@@ -321,6 +321,8 @@ def rollback_config(
     try:
         _require_etl_enabled_for_pipeline(candidate)
         _require_export_enabled_for_report(candidate)
+        validate_document(candidate)
+        validate_widget_types(session, candidate, tenant_id=user.tenant_id)
         _validate_extension_scope(session, candidate, tenant_id=user.tenant_id)
         _validate_dataset_payload(session, candidate, user=user)
         _validate_bookmark_payload(session, candidate, user=user)
