@@ -7,6 +7,7 @@ import { ExplorerProvider, useExplorerTarget } from "../ExplorerContext";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
 import type { DataSource, ItemClient } from "../../api/types";
 import { ApiError } from "../../api/ApiError";
+import { ExportJobError } from "../../api/exportJob";
 import { expectTokenizedClasses } from "../../ui/kit/testUtils";
 import { expectAriaWired } from "../../test/expectAriaWired";
 
@@ -320,4 +321,31 @@ test("le déclencheur du menu est câblé à son panneau (aria-expanded/aria-con
   expectAriaWired(trigger, panelId, false);
   await userEvent.click(trigger);
   expectAriaWired(trigger, panelId, true);
+});
+
+test("un export asynchrone en échec affiche le message du job", async () => {
+  const exportDataSource = vi.fn().mockRejectedValue(new ExportJobError("Échec : disque plein"));
+  const client = { exportDataSource } as unknown as ItemClient;
+  const source: DataSource = {
+    id: "s1",
+    type: "features",
+    service: "core",
+    layer: "parcs",
+    query: {},
+  };
+  render(
+    <ItemClientProvider client={client}>
+      <ExplorerProvider enabled>
+        <ExplorerMenu
+          datasetId="ds1"
+          dataSourceId="s1"
+          resolvedSource={source}
+          hasGeometry={false}
+        />
+      </ExplorerProvider>
+    </ItemClientProvider>,
+  );
+  await userEvent.click(screen.getByLabelText("Explorer"));
+  await userEvent.click(screen.getByLabelText("Exporter en CSV"));
+  expect(await screen.findByText("Échec : disque plein")).toBeTruthy();
 });

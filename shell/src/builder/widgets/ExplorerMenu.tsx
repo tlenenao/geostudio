@@ -6,6 +6,7 @@ import type { DataSource } from "../../api/types";
 import { t } from "../../i18n";
 import { saveExportedFile } from "../../api/saveExportedFile";
 import { ApiError } from "../../api/ApiError";
+import { ExportJobError } from "../../api/exportJob";
 import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
 
 const AGGREGATE_FORMATS = ["csv", "xlsx"];
@@ -23,6 +24,7 @@ function formatsFor(source: DataSource, hasGeometry: boolean): string[] {
 // tests qui mockent exportDataSource() directement avec une Error brute
 // ("Request failed: <status> ...") sans traverser requestBlob.
 function exportErrorMessage(err: unknown): string {
+  if (err instanceof ExportJobError) return err.message;
   const status = err instanceof ApiError ? err.status : legacyStatus(err);
   if (status === 413) return t("explorerMenu.tooManyEntities");
   if (status === 403) return t("explorerMenu.accessDenied");

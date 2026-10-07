@@ -244,7 +244,7 @@ describe("requestBlob — export asynchrone 202 (REV-283e)", () => {
         .mockImplementation(async () => json({ status: "running" })),
     );
     const p = requestBlob("http://core.test", () => "t", "GET", "/collections/c1/export/items");
-    const assertion = expect(p).rejects.toThrow("export timed out");
+    const assertion = expect(p).rejects.toThrow("toujours en cours");
     await vi.advanceTimersByTimeAsync(16 * 60_000);
     await assertion;
   });
