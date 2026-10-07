@@ -161,25 +161,22 @@ test.describe("t03b exécution de pipeline sur gros volumes (ETL allumé)", () =
     expect(r.ms).toBeLessThan(5000);
   });
 
-  bug(
-    "t03b-001 : writer.collection écrit 50 000 lignes en moins de 10 s (>= 5 000 lignes/s)",
-    async () => {
-      // Constat : _write_collection valide et INSERT ligne par ligne (validate_feature + insert_feature) :
-      // ~2 000 lignes/s, soit 24,8 s pour 50k et 243,6 s pour 500k.
-      const out = await outCollection("w50k");
-      const r = await runAndTime(
-        creator,
-        `${tag}-w50k`,
-        [reader(p50k.id), collWriter(out)],
-        [edge("r", "c")],
-      );
-      console.log("T03B writer50k", r.run.status, runMs(r.run), "ms", r.run.error ?? "");
-      expect(r.run.status, r.run.error).toBe("succeeded");
-      expect(runMs(r.run)).toBeLessThan(10_000);
-    },
-  );
+  test("t03b-001 : writer.collection écrit 50 000 lignes en moins de 10 s (>= 5 000 lignes/s)", async () => {
+    // Constat : _write_collection valide et INSERT ligne par ligne (validate_feature + insert_feature) :
+    // ~2 000 lignes/s, soit 24,8 s pour 50k et 243,6 s pour 500k.
+    const out = await outCollection("w50k");
+    const r = await runAndTime(
+      creator,
+      `${tag}-w50k`,
+      [reader(p50k.id), collWriter(out)],
+      [edge("r", "c")],
+    );
+    console.log("T03B writer50k", r.run.status, runMs(r.run), "ms", r.run.error ?? "");
+    expect(r.run.status, r.run.error).toBe("succeeded");
+    expect(runMs(r.run)).toBeLessThan(10_000);
+  });
 
-  bug("t03b-001 (500k) : writer.collection écrit 500 000 lignes en moins de 60 s", async () => {
+  test("t03b-001 (500k) : writer.collection écrit 500 000 lignes en moins de 60 s", async () => {
     test.setTimeout(900_000);
     const out = await outCollection("w500k");
     const r = await runAndTime(
