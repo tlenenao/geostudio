@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
-import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import {
   HOOK,
@@ -198,19 +197,16 @@ test("webhook : une redirection vers 169.254.169.254 est bloquée sur le saut ; 
 
 // Finding j09b-002 : le service `worker` n'a pas CORE_SECRETS_MASTER_KEY (docker-compose.yml ne la
 // passe qu'au cœur) : le secret SMTP ne peut pas être déchiffré, aucun e-mail d'alerte n'est livré.
-bug(
-  "j09b-002 : le worker réel livre l'e-mail d'une alerte (secret SMTP déchiffrable)",
-  async () => {
-    const title = `${tag}-mail-worker`;
-    const id = await mkRule(creator, datasetId, title, {
-      channels: [{ kind: "email", to: "ops@audit.test", smtpSecretName: smtpName }],
-    });
-    // Depuis P01 la route /evaluate défère elle-même la tâche : plus de défèrement manuel (il doublait l'e-mail).
-    const e = await newEvaluation(creator, id);
-    await waitEvaluation(creator, id, e);
-    expect(recvLog("smtp").filter((m) => m.data.includes(title))).toHaveLength(1);
-  },
-);
+test("j09b-002 : le worker réel livre l'e-mail d'une alerte (secret SMTP déchiffrable)", async () => {
+  const title = `${tag}-mail-worker`;
+  const id = await mkRule(creator, datasetId, title, {
+    channels: [{ kind: "email", to: "ops@audit.test", smtpSecretName: smtpName }],
+  });
+  // Depuis P01 la route /evaluate défère elle-même la tâche : plus de défèrement manuel (il doublait l'e-mail).
+  const e = await newEvaluation(creator, id);
+  await waitEvaluation(creator, id, e);
+  expect(recvLog("smtp").filter((m) => m.data.includes(title))).toHaveLength(1);
+});
 
 test("e-mail : livré au SMTP authentifié (expéditeur, destinataire, sujet, corps) ; identifiants refusés -> échec audité sans fuite du mot de passe", async () => {
   const title = `${tag}-mail-now`;
@@ -244,7 +240,7 @@ test("e-mail : livré au SMTP authentifié (expéditeur, destinataire, sujet, co
 });
 
 // Finding j09b-005 : smtp.starttls() sans contexte ne vérifie ni la chaîne ni le nom d'hôte.
-bug("j09b-005 : STARTTLS refuse un certificat auto-signé au mauvais nom d'hôte", async () => {
+test("j09b-005 : STARTTLS refuse un certificat auto-signé au mauvais nom d'hôte", async () => {
   const name = `${tag}-smtp-tls`;
   expect(await smtpSecret(creator, name, { port: 2527, useTls: true })).toBe(201);
   const title = `${tag}-mail-tls`;

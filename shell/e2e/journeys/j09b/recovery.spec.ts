@@ -166,15 +166,12 @@ test("ingestion_jobs 'running' depuis 2 h : le balayage */15 le passe en erreur 
 // Finding j09b-010 : seuls les jobs 'running' sont repris ; un job resté 'pending' (file jamais
 // consommée, déféré perdu, POST en 500 après commit) n'est jamais clos et reste « en attente »
 // indéfiniment, pour les trois types de jobs.
-bug(
-  "j09b-010 : des jobs 'pending' vieux de 2 h (export, appexport, ingestion) finissent clos en erreur",
-  async () => {
-    const states = () =>
-      [
-        status("export_jobs", ids.exportPending),
-        status("app_export_jobs", ids.appPending),
-        status("ingestion_jobs", ids.ingPending),
-      ].map((s) => s.split("|")[0]);
-    expect(states()).not.toContain("pending");
-  },
-);
+test("j09b-010 : des jobs 'pending' vieux de 2 h (export, appexport, ingestion) finissent clos en erreur", async () => {
+  const states = () =>
+    [
+      status("export_jobs", ids.exportPending),
+      status("app_export_jobs", ids.appPending),
+      status("ingestion_jobs", ids.ingPending),
+    ].map((s) => s.split("|")[0]);
+  expect(states()).not.toContain("pending");
+});

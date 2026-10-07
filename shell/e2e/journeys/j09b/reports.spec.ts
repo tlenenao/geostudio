@@ -257,12 +257,9 @@ test.describe("balayage réel du worker", () => {
 
   // Finding j09b-013 : comme pour les pipelines (j06b-013), un rapport sans run antérieur est
   // dû au premier balayage quel que soit son cron (« 0 3 1 1 * » = 1er janvier, 3 h).
-  bug(
-    "j09b-013 : un rapport au cron « 0 3 1 1 * » n'est pas déclenché au premier balayage",
-    async () => {
-      expect(Number(q(`SELECT count(*) FROM report_runs WHERE report_item_id='${repB}'`))).toBe(0);
-    },
-  );
+  test("j09b-013 : un rapport au cron « 0 3 1 1 * » n'est pas déclenché au premier balayage", async () => {
+    expect(Number(q(`SELECT count(*) FROM report_runs WHERE report_item_id='${repB}'`))).toBe(0);
+  });
 });
 
 test("chaîne complète hors balayage du worker (déclenchement exécuté avec l'env du cœur) : run + export_jobs + tâche de rendu, puis notification du résultat réel", async () => {
