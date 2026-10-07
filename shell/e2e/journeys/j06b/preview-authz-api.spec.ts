@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
-import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { apiFor, type Api } from "./seeds";
 import { stamp, CORE_URL } from "../_fixtures/env";
@@ -142,7 +141,7 @@ test.describe("j06b aperçu, historique des runs, catalogue", () => {
   });
 
   // Finding j06b-009 : le catalogue n'exige aucune authentification (route sans get_current_user).
-  bug("j06b-009 : GET /pipelines/ops exige une session", async () => {
+  test("j06b-009 : GET /pipelines/ops exige une session", async () => {
     const r = await fetch(`${CORE_URL}/v1/pipelines/ops`);
     expect(r.status).toBe(401);
   });

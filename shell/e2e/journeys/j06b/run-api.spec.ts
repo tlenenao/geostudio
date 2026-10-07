@@ -45,7 +45,7 @@ const filter = (expr: string, id = "f"): PNode => ({
 
 test.describe("j06b exécution de pipelines", () => {
   // Finding j06b-001 (racine j03-001) : defer() hors app.open() → 500 alors que le run est créé.
-  bug("j06b-001 : POST /pipelines/{id}/run répond 202 avec le runId", async () => {
+  test("j06b-001 : POST /pipelines/{id}/run répond 202 avec le runId", async () => {
     const p = await createPipeline(
       creator,
       `${tag}-run202`,
@@ -102,7 +102,7 @@ test.describe("j06b exécution de pipelines", () => {
   });
 
   // Finding j06b-004 : la clé de writer.export n'est ni préfixée par le tenant ni restreinte.
-  bug("j06b-004 : writer.export n'écrase pas un objet étranger du bucket des exports", async () => {
+  test("j06b-004 : writer.export n'écrase pas un objet étranger du bucket des exports", async () => {
     const victim = `renders/${tag}-victim.txt`;
     s3Put(victim, "ORIGINAL");
     const p = await createPipeline(
@@ -210,33 +210,30 @@ test.describe("j06b exécution de pipelines", () => {
   });
 
   // Finding j06b-005 : le service `worker` n'a pas CORE_SECRETS_MASTER_KEY (docker-compose.yml, bloc worker).
-  bug(
-    "j06b-005 : un run dont un reader référence un secret valide déchiffre ce secret dans le worker",
-    async () => {
-      const secretName = `${tag}-bearer`;
-      const s = await creator.send("POST", "/v1/secrets", {
-        name: secretName,
-        payload: { kind: "bearer_token", token: "tok-j06b" },
-      });
-      expect(s.status).toBe(201);
-      const p = await createPipeline(
-        creator,
-        `${tag}-secret`,
-        [
-          {
-            id: "r",
-            kind: "reader",
-            op: "reader.connector.rest",
-            params: { baseUrl: "https://example.org", secretName },
-          },
-          exportWriter(`j06b/${tag}-secret.csv`),
-        ],
-        [edge("r", "w")],
-      );
-      const fin = await runAndWait(p.itemId!);
-      expect(fin.error ?? "").not.toContain("CORE_SECRETS_MASTER_KEY");
-    },
-  );
+  test("j06b-005 : un run dont un reader référence un secret valide déchiffre ce secret dans le worker", async () => {
+    const secretName = `${tag}-bearer`;
+    const s = await creator.send("POST", "/v1/secrets", {
+      name: secretName,
+      payload: { kind: "bearer_token", token: "tok-j06b" },
+    });
+    expect(s.status).toBe(201);
+    const p = await createPipeline(
+      creator,
+      `${tag}-secret`,
+      [
+        {
+          id: "r",
+          kind: "reader",
+          op: "reader.connector.rest",
+          params: { baseUrl: "https://example.org", secretName },
+        },
+        exportWriter(`j06b/${tag}-secret.csv`),
+      ],
+      [edge("r", "w")],
+    );
+    const fin = await runAndWait(p.itemId!);
+    expect(fin.error ?? "").not.toContain("CORE_SECRETS_MASTER_KEY");
+  });
 
   // Confirme j06-015 : deux /run successifs créent deux runs simultanés du même pipeline.
   bug("j06b-006 : un second /run pendant qu'un run est en cours est refusé (409)", async () => {
