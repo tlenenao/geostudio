@@ -1,4 +1,3 @@
-import { bug } from "../_fixtures/verify";
 import { test, expect, type Page } from "@playwright/test";
 import { openAs, spaGoto } from "../j06/helpers";
 import { apiFor, startQuotaCore, stopQuotaCore, waitQuotaCore } from "./helpers";
@@ -47,7 +46,7 @@ test("Infrastructure : l'usage affiche éléments et collections avec leur limit
 
 // Finding j08b-007 : stockage affiché en Mo à une décimale, donc « 0,0 Mo / 0,0 Mo » tant que
 // l'usage et la limite sont sous ~50 Ko : l'écran ne permet pas de voir qu'on approche du quota.
-bug("j08b-007 : le stockage affiche une valeur lisible sous le méga-octet", async ({ page }) => {
+test("j08b-007 : le stockage affiche une valeur lisible sous le méga-octet", async ({ page }) => {
   await openAs(page, "admin");
   await toQuotaCore(page);
   await spaGoto(page, "/settings");
@@ -59,7 +58,7 @@ bug("j08b-007 : le stockage affiche une valeur lisible sous le méga-octet", asy
 
 // Finding j08b-008 : aucune alerte visuelle d'approche ou d'atteinte du quota (et le refus à la
 // création n'indique pas quoi faire).
-bug("j08b-008 : l'écran d'usage signale un quota atteint", async ({ page }) => {
+test("j08b-008 : l'écran d'usage signale un quota atteint", async ({ page }) => {
   await openAs(page, "admin");
   await toQuotaCore(page);
   await spaGoto(page, "/settings");

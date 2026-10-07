@@ -111,7 +111,7 @@ test("au quota de collections, POST /collections/empty répond 409", async () =>
 });
 
 // Finding j08b-001 : POST /collections (enregistrement d'une table existante) ne vérifie pas le quota.
-bug("j08b-001 : enregistrer une table existante respecte le quota de collections", async () => {
+test("j08b-001 : enregistrer une table existante respecte le quota de collections", async () => {
   const t = `audj08b_reg_${Date.now().toString(36)}`;
   psql(`CREATE TABLE public.${t} (id serial primary key, geom geometry(Point,4326))`);
   const r = await admin.send("POST", "/v1/collections", { tableName: t, title: `${tag}-reg` });
@@ -119,7 +119,7 @@ bug("j08b-001 : enregistrer une table existante respecte le quota de collections
 });
 
 // Finding j08b-003 : l'objet déjà téléversé est compté deux fois (dans l'usage ET dans additional_bytes).
-bug("j08b-003 : un fichier de 3 Ko tient dans 5 Ko de marge de stockage", async () => {
+test("j08b-003 : un fichier de 3 Ko tient dans 5 Ko de marge de stockage", async () => {
   const pre = (await admin.get("/v1/admin/usage")).body.storageBytes;
   const fileSize = Buffer.byteLength(csvOfSize(3000));
   // Marge réelle suffisante : pre + fileSize <= limite tant que pre <= base + 5000 - fileSize.
