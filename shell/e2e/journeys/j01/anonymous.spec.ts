@@ -1,4 +1,3 @@
-import { bug } from "../_fixtures/verify";
 import { test, expect, type Page } from "@playwright/test";
 import { CORE_URL, SHELL_URL } from "../_fixtures/env";
 
@@ -94,13 +93,12 @@ test.describe("j01 visiteur anonyme — shell", () => {
     expect(page.url()).not.toMatch(KEYCLOAK_AUTH);
   });
 
-  bug(
-    "j01-004 : les lignes d'une collection publique se lisent en anonyme (pas de 500)",
-    async ({ request }) => {
-      const r = await request.get(`${CORE_URL}/v1/collections/incidents/items`);
-      expect(r.status()).toBe(200);
-    },
-  );
+  test("j01-004 : les lignes d'une collection publique se lisent en anonyme (pas de 500)", async ({
+    request,
+  }) => {
+    const r = await request.get(`${CORE_URL}/v1/collections/incidents/items`);
+    expect(r.status()).toBe(200);
+  });
 
   test("embed : jeton invalide → message expiré/révoqué", async ({ page }) => {
     await page.goto("/embed/jeton-bidon");
