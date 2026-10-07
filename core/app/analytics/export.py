@@ -28,7 +28,7 @@ def export_sync_max() -> int:
 
 def export_job_max() -> int:
     """Plafond d'entités d'un export asynchrone (413 / job `failed` au-delà)."""
-    return int(os.environ.get("CORE_EXPORT_JOB_MAX") or "500000")
+    return int(os.environ.get("CORE_EXPORT_JOB_MAX") or "200000")
 
 
 EXPORT_MEDIA_TYPES = {

@@ -216,3 +216,11 @@ def test_running_reclaim_minutes_is_configurable(monkeypatch):
     assert dx_repo.running_reclaim_minutes() == 7
     monkeypatch.delenv("CORE_EXPORT_RUNNING_TIMEOUT_MINUTES")
     assert dx_repo.running_reclaim_minutes() == 60
+
+
+def test_export_job_max_default_stays_within_worker_memory(monkeypatch):
+    # REV-324 : 500 000 entités mesurées à 73 % des 2 Go du worker ; le défaut ne remonte pas.
+    from app.analytics.export import export_job_max
+
+    monkeypatch.delenv("CORE_EXPORT_JOB_MAX", raising=False)
+    assert export_job_max() == 200_000

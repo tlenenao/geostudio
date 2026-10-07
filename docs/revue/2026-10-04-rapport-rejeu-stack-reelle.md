@@ -94,3 +94,18 @@ Falsification (piège n°10) : `t03-004` (`j06-004` n'existe plus). Défaut inje
 ## 7. Limites assumées
 
 Les lettres 164 (`down -v`), 281 (d) (push), 284 (d) et 286 (c) (humain) ne sont pas fermées. Aucune lettre n'est marquée fermée sur la foi d'un récit : chaque verdict `fermé` cite un chemin de log ou de JSON.
+
+## 8. Export asynchrone de collection : run réel de bout en bout (revue finale, I2)
+
+Stack docker déjà up (worker `mem_limit` 2 Go, concurrence 4). Collection jetable `zz_exp500k` (500 000 points, 4 colonnes, créée en SQL puis enregistrée via `create_collection` + `apply_collection_ddl`, supprimée ensuite avec ses objets S3). Job créé par `start_export`, déféré à la file `dataexport` consommée par le vrai `worker`, suivi en base jusqu'à `done` ; GeoJSON téléchargé par l'URL présignée (HTTP 200, 95 125 439 octets, `FeatureCollection` valide). Mémoire du conteneur `worker` : `docker stats --no-stream` en boucle (cadence ~1-2 s ; pic possiblement sous-estimé). Ligne de base du worker au repos : 1,008 Go.
+
+| Format | Statut | Durée (~) | Pic mémoire worker |
+|---|---|---|---|
+| GeoJSON | done | 40 s | 1,327 Go (66 %) |
+| GPKG | done | < 1 min | 1,418 Go (71 %) |
+| XLSX | done | < 1 min | 1,442 Go (72 %) |
+| CSV | done | < 1 min | 1,463 Go (73 %) |
+
+Pas d'OOM (`OOMKilled=false`, 0 redémarrage). Un premier essai a échoué en `failed` (`permission denied for table`) : table non passée par `apply_collection_ddl`, artefact du montage, pas du produit.
+
+Verdict : un seul job de 500 000 entités consomme ~0,3 à 0,45 Go au-dessus d'une base déjà à 50 % ; au-dessus du seuil de 60 % fixé pour la revue, et quatre jobs concurrents dépasseraient les 2 Go. `CORE_EXPORT_JOB_MAX` passe de 500 000 à 200 000 (REV-324, `partiellement fermé` : l'écriture en flux et la mesure en concurrence restent à faire). Le parcours `t03b/export-items` (500 000 sans filtre) attend désormais 413.

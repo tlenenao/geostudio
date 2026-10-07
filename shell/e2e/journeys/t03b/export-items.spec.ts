@@ -40,7 +40,7 @@ test.describe("t03b export d'entités à l'échelle", () => {
     expect(r.text().split("\n").length).toBeGreaterThan(10_001);
   });
 
-  test("500 000 entités sans filtre : 202 + tâche asynchrone rendu en moins de 2 s, sans gonfler la mémoire du cœur", async () => {
+  test("500 000 entités sans filtre : refus 413 (plafond du job, REV-324) rendu en moins de 2 s, sans gonfler la mémoire du cœur", async () => {
     const m = await withPeakMem("geostudio-core-1", () =>
       timed("creator", exp(s500k.collectionId, "format=geojson")),
     );
@@ -53,9 +53,8 @@ test.describe("t03b export d'entités à l'échelle", () => {
       "->",
       m.peakMb,
     );
-    // au-delà de CORE_EXPORT_SYNC_MAX (100 000) le cœur délègue à une tâche (REV-283e)
-    expect(m.value.status).toBe(202);
-    expect(JSON.parse(m.value.text()).jobId).toBeTruthy();
+    // au-delà de CORE_EXPORT_JOB_MAX (200 000, REV-324) : 413 ; entre SYNC_MAX et JOB_MAX : tâche (REV-283e)
+    expect(m.value.status).toBe(413);
     expect(m.value.ms).toBeLessThan(2000);
     expect(m.peakMb - m.startMb).toBeLessThan(150);
   });

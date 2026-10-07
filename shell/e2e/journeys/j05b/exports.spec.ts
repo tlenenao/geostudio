@@ -35,7 +35,7 @@ test.beforeAll(async () => {
 
 test.describe("j05b exports — plafond, GPKG, tâche /v1/export (flags allumés)", () => {
   // REV-283e : au-delà de CORE_EXPORT_SYNC_MAX (100 000) l'export devient asynchrone (202 + jobId) ;
-  // le 413 n'intervient plus qu'au-delà de CORE_EXPORT_JOB_MAX (500 000).
+  // le 413 n'intervient plus qu'au-delà de CORE_EXPORT_JOB_MAX (200 000).
   test("GET export/items : 100 001 entités → 202 asynchrone ; un filtre ramène sous le plafond synchrone", async () => {
     test.setTimeout(240_000);
     const creator = await apiFor("creator");
