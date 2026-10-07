@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
-import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { alertConfig, apiFor, getAlertSeed, psql, waitEvaluation, type Api } from "./helpers";
 
@@ -59,14 +58,14 @@ test.describe("j09 AlertRule : évaluation et historique", () => {
   });
 
   // Bug confirmé : voir docs/revue/audit-2026-09-29/j09/findings.jsonl
-  bug("j09-001 : POST /alerts/{id}/evaluate répond 202", async () => {
+  test("j09-001 : POST /alerts/{id}/evaluate répond 202", async () => {
     const id = await mkRule("evaluate-route");
     const r = await creator.send("POST", `/v1/alerts/${id}/evaluate`);
     expect(r.status).toBe(202);
   });
 
   // Bug confirmé : voir docs/revue/audit-2026-09-29/j09/findings.jsonl
-  bug("j09-002 : une évaluation créée par la route REST quitte l'état pending", async () => {
+  test("j09-002 : une évaluation créée par la route REST quitte l'état pending", async () => {
     const id = await mkRule("orphan");
     await creator.send("POST", `/v1/alerts/${id}/evaluate`);
     await new Promise((res) => setTimeout(res, 15_000));
