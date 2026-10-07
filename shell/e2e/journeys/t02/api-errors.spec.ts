@@ -185,7 +185,7 @@ test.describe("t02 API : 409, 429 et charges limites", () => {
   });
 
   // Finding t02-001 : aucune borne de taille de corps côté cœur (40 Mo de JSON acceptés et stockés).
-  bug("t02-001 : un corps de 40 Mo sur POST /configs est refusé (413/422)", async () => {
+  test("t02-001 : un corps de 40 Mo sur POST /configs est refusé (413/422)", async () => {
     const creator = await apiFor("creator");
     const cfg = { ...APP_CFG, theme: { k: "x".repeat(40 * 1024 * 1024) } };
     const r = await creator.send("POST", "/v1/configs", {
@@ -208,7 +208,7 @@ test.describe("t02 API : écritures concurrentes", () => {
   }
 
   // Finding t02-002 : dix PUT simultanés produisent dix révisions portant le même numéro de version.
-  bug("t02-002 : des PUT concurrents ne créent jamais deux révisions de même version", async () => {
+  test("t02-002 : des PUT concurrents ne créent jamais deux révisions de même version", async () => {
     const creator = await apiFor("creator");
     const { itemId, configId } = await newApp(creator, "conc");
     const rs = await Promise.all(
@@ -248,7 +248,7 @@ test.describe("t02 API : écritures concurrentes", () => {
   });
 
   // Finding t02-004 : l'écriture d'un item/collection défère un calcul d'embedding dont l'échec est avalé.
-  bug("t02-004 : la création d'un item met réellement en file le calcul d'embedding", async () => {
+  test("t02-004 : la création d'un item met réellement en file le calcul d'embedding", async () => {
     const before = Number(
       psql(
         "SELECT count(*) FROM procrastinate_jobs WHERE task_name LIKE '%embed_item_task'",
@@ -270,17 +270,14 @@ test.describe("t02 API : écritures concurrentes", () => {
 
 test.describe("t02 API : surface d'enregistrement de collections", () => {
   // Finding t02-005 : les tables Keycloak et procrastinate du même schéma sont proposées à l'enregistrement.
-  bug(
-    "t02-005 : GET /collections/candidates n'expose aucune table étrangère au produit",
-    async () => {
-      const admin = await apiFor("admin");
-      const r = await admin.get("/v1/collections/candidates");
-      expect(r.status).toBe(200);
-      const foreign = (r.body.candidates as any[])
-        .filter((c) => c.registrable)
-        .map((c) => c.tableName as string)
-        .filter((n) => /^(user_entity|credential|realm|client|procrastinate_)/.test(n));
-      expect(foreign).toEqual([]);
-    },
-  );
+  test("t02-005 : GET /collections/candidates n'expose aucune table étrangère au produit", async () => {
+    const admin = await apiFor("admin");
+    const r = await admin.get("/v1/collections/candidates");
+    expect(r.status).toBe(200);
+    const foreign = (r.body.candidates as any[])
+      .filter((c) => c.registrable)
+      .map((c) => c.tableName as string)
+      .filter((n) => /^(user_entity|credential|realm|client|procrastinate_)/.test(n));
+    expect(foreign).toEqual([]);
+  });
 });

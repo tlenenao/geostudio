@@ -302,20 +302,17 @@ test.describe("t02 UI : enregistrement d'une app", () => {
   });
 
   // Finding t02-003 (volet UI) : un second onglet ouvert avant la modification écrase celle-ci en enregistrant.
-  bug(
-    "t02-003 : enregistrer depuis un onglet périmé n'écrase pas la modification d'un autre onglet",
-    async () => {
-      const api = await (await import("../j03/api")).apiFor("creator");
-      const cur = await api.get(`/v1/configs/by-item/${appId}`);
-      const marker = `#${Date.now().toString(16).slice(-6).padStart(6, "0")}`;
-      const changed = { ...cur.body.config, theme: { ...cur.body.config.theme, primary: marker } };
-      const r = await api.send("PUT", `/v1/configs/by-item/${appId}`, changed);
-      expect(r.status).toBe(200);
-      // L'onglet B (déjà ouvert sur la version précédente) enregistre sans rien avoir modifié.
-      await s.page.getByRole("button", { name: "Enregistrer" }).click();
-      await s.page.waitForTimeout(1500);
-      const after = await api.get(`/v1/configs/by-item/${appId}`);
-      expect(after.body.config.theme?.primary).toBe(marker);
-    },
-  );
+  test("t02-003 : enregistrer depuis un onglet périmé n'écrase pas la modification d'un autre onglet", async () => {
+    const api = await (await import("../j03/api")).apiFor("creator");
+    const cur = await api.get(`/v1/configs/by-item/${appId}`);
+    const marker = `#${Date.now().toString(16).slice(-6).padStart(6, "0")}`;
+    const changed = { ...cur.body.config, theme: { ...cur.body.config.theme, primary: marker } };
+    const r = await api.send("PUT", `/v1/configs/by-item/${appId}`, changed);
+    expect(r.status).toBe(200);
+    // L'onglet B (déjà ouvert sur la version précédente) enregistre sans rien avoir modifié.
+    await s.page.getByRole("button", { name: "Enregistrer" }).click();
+    await s.page.waitForTimeout(1500);
+    const after = await api.get(`/v1/configs/by-item/${appId}`);
+    expect(after.body.config.theme?.primary).toBe(marker);
+  });
 });
