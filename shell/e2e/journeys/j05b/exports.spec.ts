@@ -136,7 +136,7 @@ print(json.dumps(out))
 
   // Finding j05b-005 : AppNotOpen (comme j03-001) sur POST /v1/export : la ligne export_jobs est
   // commitée « pending » puis le différé échoue en 500 ; le job ne s'exécutera jamais.
-  bug("j05b-005 : POST /v1/export valide répond 202 et le job quitte l'état pending", async () => {
+  test("j05b-005 : POST /v1/export valide répond 202 et le job quitte l'état pending", async () => {
     test.setTimeout(60_000);
     const creator = await apiFor("creator");
     const r = await creator.send("POST", "/v1/export", { itemId: seed.eventsItem, format: "png" });
