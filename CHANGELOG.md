@@ -59,6 +59,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and answer 304. Instance status: `CORE_STALLED_JOB_MINUTES` (default 60) and
   a distinct "not configured" CDC state. Backup: `BACKUP_ALERT_WEBHOOK_URL`
   (webhook when a backup day is abandoned).
+- Migration `0049` (index `group_members(user_id)`, `CREATE INDEX CONCURRENTLY
+  IF NOT EXISTS`, reversible): a sequential scan found by the real-stack replay.
+  Migration `0048` creates `collection_export_jobs`; the worker command must
+  listen on the `dataexport` queue (`-q ...,harvest,dataexport`, already in the
+  bundled compose files).
+- `scripts/replay/run.sh`: orchestrator replaying the user journeys, the OIDC
+  suites, the index-plan and memory probes and the restore-with-OIDC
+  reconnection on a real stack (runbook
+  `docs/runbooks/2026-10-04-rejeu-stack-reelle.md`, report
+  `docs/revue/2026-10-04-rapport-rejeu-stack-reelle.md`).
 - `actionlint` pre-commit hook (workflows fixed accordingly).
 - **Dense vector tiles aggregated at low zoom** (REV-283a): at zoom <=
   `CORE_TILE_AGG_MAX_ZOOM` (default 7, `0` disables, invalid value falls back to
@@ -270,14 +280,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wiring, `Message` targets) are now refused with a 422; the shell purges
   orphan references on save. Existing inconsistent apps written through the
   API/MCP will be refused until repaired.
+- **Writes of an app config with a widget of unknown type are refused with a
+  422** (native types are listed in `core/app/configs/builtin_widget_types.json`,
+  checked against the shell registry by a parity test; an enabled extension of
+  the tenant is accepted). Existing apps keep loading (the read answers 200 with
+  `warnings`) but cannot be saved again until the unknown widget is removed or
+  its extension registered. CEL expressions of a config are now parsed by a real
+  parser (`cel-python`, syntax only): an invalid expression is refused on write.
+- **Optimistic concurrency**: the visual-query wizard and the alert editor send
+  `If-Match` and show the 412 conflict message.
+- **Job state guards**: `mark_running` is conditional on import, data export,
+  app export and harvest jobs, and a stale harvest source is resumed by
+  compare-and-swap; a redelivered finished job has no effect. The orphan-object
+  sweep now also covers the `uploads` and `attachments` buckets and refuses to
+  delete in bulk when the reference list is empty or out of sync. JSON Lines
+  upload inspection reads a bounded range instead of the whole object.
+- **Shell**: two-pane triptych between 640 and 899 px; map editor tab in the URL
+  (`?tab=`); form error summary with focus on the first invalid field; shared
+  job-status vocabulary on export, pipeline canvas and SQL Lab; "Load more" on
+  harvest records (capped at the core maximum, 1000); dates displayed in
+  Europe/Paris; widgets carry a stored `ordinal` (additive, no migration) so
+  accessible names such as "Table 2" stay stable; text controls default to
+  `h-9` (guard test `hGuard.test.ts`). Dev tooling: ESLint rules
+  `geostudio/panel-trigger-aria` and `geostudio/label-no-aria-label` replace
+  `check-aria-panel-coverage.mjs`/`lint:aria-panel`, and
+  `check-raw-colors.mjs` scans `map/`.
+- `feature_health_cli.py --check-snapshot` applies the health floors to the
+  committed snapshot (no local coverage artefact needed).
+
 - Shell initial-bundle threshold raised to 735 KB (address search, export job polling).
 
 ### Security
 
 - Egress (pipelines, alerts, harvest, search, copilot, Postgres DSN, S3
   endpoint): connections are pinned to the IP address validated by the SSRF
-  guard (no DNS rebinding between check and connect). MSSQL/Oracle DSNs are
-  not pinned yet.
+  guard (no DNS rebinding between check and connect). MSSQL and Oracle DSNs
+  are pinned too, and `host`/`hostaddr`/proxy options in a DSN query string are
+  refused; an Oracle `tcps` DSN is not pinned (the certificate DN is verified
+  instead). The `fec0::/10` site-local range is refused by the six egress
+  guards.
 - The shell's `authFetch` only sends the token to the core's origin and throws
   on any other URL; a relative `VITE_CORE_URL` (`/api`) is resolved against the
   page origin.
@@ -285,6 +326,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `share-link` group, 60/min).
 - Deleting a referenced secret answers 409 listing only the objects the
   caller can read.
+
+- `X-Forwarded-For` is only honoured from trusted proxies
+  (`CORE_TRUSTED_PROXIES`, default loopback + RFC 1918 ranges, i.e. the Docker
+  network of Traefik; set explicitly if the core is reachable by other means:
+  rate-limit keys are the client IP). IPv6 ULA (`fc00::/7`) is not in the
+  default.
+- `script-src` allows the origin of each **enabled** extension of the
+  `extensions` table (a disabled one no longer widens it); ADR 0013.
+- Blob connector: the recursive glob `**` is refused and decompressed gzip bytes
+  are capped.
 
 - `admin.collections.manage` now opens read access to a collection's items,
   aggregates, exports, tiles and attachments (REV-185); re-applying the DDL no
