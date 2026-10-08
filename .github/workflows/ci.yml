@@ -187,7 +187,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
       - run: uv sync
-      - run: uv run pip-audit --strict
+      # PYSEC-2026-4114 (oauthlib, timing PKCE) : ne touche que la grant
+      # serveur `AuthorizationCode`, jamais utilisée ici (oauthlib n'entre que
+      # comme client via databricks-sql-connector, qui épingle <4). À retirer
+      # dès que databricks-sql-connector accepte oauthlib>=4.
+      - run: uv run pip-audit --strict --ignore-vuln PYSEC-2026-4114
 
   api-types-drift:
     runs-on: ubuntu-latest

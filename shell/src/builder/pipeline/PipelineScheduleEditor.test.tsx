@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { formatDateTime } from "../../lib/format";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -147,7 +148,7 @@ test("shows the next scheduled run time when scheduling is enabled", async () =>
   renderEditor(value, vi.fn(), getPipelineNextRun);
   await waitFor(() =>
     expect(
-      screen.getByText(new Date("2026-08-07T02:00:00.000Z").toLocaleString("fr-FR"), {
+      screen.getByText(formatDateTime("2026-08-07T02:00:00.000Z"), {
         exact: false,
       }),
     ).toBeInTheDocument(),

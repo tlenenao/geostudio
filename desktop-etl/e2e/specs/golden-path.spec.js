@@ -57,6 +57,11 @@ describe("desktop-etl golden path", () => {
     }
   });
 
+  // Le champ de paramètre est un <input> dans un <label> dont le texte débute
+  // par le nom du paramètre (le doublon aria-label a été retiré, REV-226).
+  const paramInput = (name) =>
+    $(`//label[starts-with(normalize-space(.), "${name}")]//input`);
+
   // Connecte la poignée source d'un nœud à la poignée cible d'un autre.
   // Essaie d'abord `dragAndDrop` (WebdriverIO dispatche de vrais événements
   // pointer natifs sous le capot, ce qui a des chances de suffire à
@@ -150,7 +155,7 @@ describe("desktop-etl golden path", () => {
 
     // 4. Sélection + paramétrage de reader.file.
     await readerNode.click();
-    const readerPathInput = await $('input[aria-label="path"]');
+    const readerPathInput = await paramInput('path');
     await readerPathInput.waitForExist({ timeout: 10_000 });
     await readerPathInput.setValue(inputPath);
 
@@ -159,10 +164,10 @@ describe("desktop-etl golden path", () => {
     // (params: {} à la création du nœud) -- le remplir explicitement est
     // nécessaire, pas seulement prudent.
     await writerNode.click();
-    const writerPathInput = await $('input[aria-label="path"]');
+    const writerPathInput = await paramInput('path');
     await writerPathInput.waitForExist({ timeout: 10_000 });
     await writerPathInput.setValue(outputPath);
-    const writerDriverInput = await $('input[aria-label="driver"]');
+    const writerDriverInput = await paramInput('driver');
     await writerDriverInput.setValue("GPKG");
 
     // 6. Enregistrement -- fait passer la page de /pipelines/new à
