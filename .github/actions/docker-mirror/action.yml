@@ -1,8 +1,19 @@
 # Évite le 429 « toomanyrequests » de Docker Hub (pulls anonymes depuis les
 # runners GitHub partagés) : le démon passe par le miroir public de Google pour
-# les images docker.io, avec repli automatique sur Docker Hub si l'image manque.
+# les images docker.io, avec repli automatique sur Docker Hub si l'image manque
+# (le miroir ne couvre pas les images tierces comme edoburu/pgbouncer). Si les
+# secrets DOCKERHUB_USERNAME / DOCKERHUB_TOKEN existent, login authentifié.
 name: docker-mirror
 description: Configure mirror.gcr.io comme registry-mirror du démon Docker
+inputs:
+  dockerhub-username:
+    description: Compte Docker Hub (optionnel) — un pull authentifié a un quota bien plus haut
+    required: false
+    default: ""
+  dockerhub-token:
+    description: Jeton d'accès Docker Hub (optionnel)
+    required: false
+    default: ""
 runs:
   using: composite
   steps:
@@ -11,3 +22,9 @@ runs:
         echo '{"registry-mirrors":["https://mirror.gcr.io"]}' | sudo tee /etc/docker/daemon.json
         sudo systemctl restart docker
         docker info --format '{{.RegistryConfig.Mirrors}}'
+    - if: inputs.dockerhub-username != '' && inputs.dockerhub-token != ''
+      shell: bash
+      env:
+        DH_USER: ${{ inputs.dockerhub-username }}
+        DH_TOKEN: ${{ inputs.dockerhub-token }}
+      run: echo "$DH_TOKEN" | docker login -u "$DH_USER" --password-stdin
