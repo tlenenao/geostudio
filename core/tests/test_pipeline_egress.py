@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import asyncio
+import re
 import socket
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -281,7 +282,7 @@ def test_blocked_message_does_not_leak_the_resolved_ip(monkeypatch):
     with pytest.raises(EgressBlockedError) as exc:
         assert_egress_allowed("http://internal.example.com/x")
     assert "10.1.2.3" not in str(exc.value)
-    assert "internal.example.com" in str(exc.value)
+    assert re.search(r"\binternal\.example\.com\b", str(exc.value))
 
 
 def _dual_stack(host, *a, **k):
