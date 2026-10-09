@@ -65,7 +65,10 @@ def ensure_built_in_roles(session: Session, *, tenant_id: str) -> dict[str, Role
             session.flush()
     except IntegrityError:
         for role in created:
-            session.expunge(role)
+            # Le rollback du SAVEPOINT a déjà détaché les rôles perdants ;
+            # `expunge` lèverait InvalidRequestError (flake CI 2026-10-09).
+            if role in session:
+                session.expunge(role)
         existing = _existing_built_in_roles(session, tenant_id=tenant_id)
         for slug, privileges in BUILT_IN_ROLE_PRIVILEGES.items():
             if slug not in existing:
