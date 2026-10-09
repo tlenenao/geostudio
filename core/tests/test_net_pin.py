@@ -135,6 +135,7 @@ def tls_server(tmp_path):
         protocol_version = "HTTP/1.1"  # garde la connexion ouverte entre requêtes
 
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2  # py/insecure-protocol (CodeQL)
     ctx.load_cert_chain(cert_path, key_path)
     ctx.sni_callback = lambda sock, server_name, _ctx: sni.append(server_name)
     srv = ThreadingHTTPServer(("127.0.0.1", 0), KeepAlive)
