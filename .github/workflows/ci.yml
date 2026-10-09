@@ -34,7 +34,7 @@ jobs:
             docker exec ci-postgres pg_isready -U gis && break
             sleep 2
           done
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - run: uv sync
       - run: uv run alembic upgrade head
       - run: uv run alembic downgrade base
@@ -66,7 +66,7 @@ jobs:
             docker exec ci-postgres pg_isready -U gis && break
             sleep 2
           done
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - run: uv sync
       - run: uv run ruff check .
       - run: uv run ruff format --check .
@@ -136,7 +136,7 @@ jobs:
             docker exec ci-postgres pg_isready -U gis && break
             sleep 2
           done
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - run: uv sync
       - run: uv run alembic upgrade head
       - name: Créer une table physique et une collection STAC de démonstration
@@ -188,7 +188,7 @@ jobs:
         working-directory: core
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - run: uv sync
       # PYSEC-2026-4114 (oauthlib, timing PKCE) : ne touche que la grant
       # serveur `AuthorizationCode`, jamais utilisée ici (oauthlib n'entre que
@@ -202,7 +202,7 @@ jobs:
     needs: core
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
@@ -353,7 +353,7 @@ jobs:
     needs: [core, shell]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with: {name: core-coverage, path: core}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
