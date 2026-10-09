@@ -100,6 +100,9 @@ test.describe("menu « Actions » d'une carte", () => {
 
     // clic extérieur
     await trigger.click();
+    // Radix n'écoute le pointerdown extérieur qu'après le montage du menu
+    // (setTimeout 0) : cliquer avant que le menu soit visible est une course.
+    await expect(page.getByRole("menu")).toBeVisible();
     await page.mouse.click(5, 400);
     await expect(page.getByRole("menu")).toHaveCount(0);
 
