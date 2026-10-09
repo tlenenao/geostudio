@@ -70,7 +70,6 @@ class Smtp(socketserver.StreamRequestHandler):
             elif cmd.startswith("STARTTLS") and self.tls_cert:
                 self.send("220 go ahead")
                 ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-                ctx.minimum_version = ssl.TLSVersion.TLSv1_2  # py/insecure-protocol (CodeQL)
                 ctx.minimum_version = ssl.TLSVersion.TLSv1_2
                 ctx.load_cert_chain(*self.tls_cert)
                 self.connection = ctx.wrap_socket(self.connection, server_side=True)
