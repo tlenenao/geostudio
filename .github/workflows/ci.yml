@@ -22,6 +22,7 @@ jobs:
       DATABASE_URL: postgresql+psycopg://gis:gis@localhost:5432/gis
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/docker-mirror
       - name: Build postgis+pgvector image
         run: docker build -t geostudio-postgis-ci:latest ../deploy/postgis
       - name: Start Postgres
@@ -51,6 +52,7 @@ jobs:
       CORE_REQUIRE_DB: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/docker-mirror
       - name: Build postgis+pgvector image
         run: docker build -t geostudio-postgis-ci:latest ../deploy/postgis
       - name: Start Postgres
@@ -122,6 +124,7 @@ jobs:
       CORE_SECRETS_MASTER_KEY: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/docker-mirror
       - name: Build postgis+pgvector image
         run: docker build -t geostudio-postgis-ci:latest ../deploy/postgis
       - name: Start Postgres
@@ -247,6 +250,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/docker-mirror
       - name: Build postgis+pgvector image
         run: docker build -t geostudio-postgis-ci:latest deploy/postgis
       - name: Bring up postgis, keycloak, core, shell (real OIDC)
@@ -298,6 +302,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/docker-mirror
       - name: Écrit le .env de la stack de fumée
         run: |
           cat > .env <<EOF
