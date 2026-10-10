@@ -2269,6 +2269,69 @@
         "title": "GcsCredentialsPayload",
         "type": "object"
       },
+      "GeoLimitList": {
+        "properties": {
+          "limits": {
+            "items": {
+              "$ref": "#/components/schemas/GeoLimitRead"
+            },
+            "title": "Limits",
+            "type": "array"
+          }
+        },
+        "required": [
+          "limits"
+        ],
+        "title": "GeoLimitList",
+        "type": "object"
+      },
+      "GeoLimitPut": {
+        "properties": {
+          "geometry": {
+            "additionalProperties": true,
+            "title": "Geometry",
+            "type": "object"
+          }
+        },
+        "required": [
+          "geometry"
+        ],
+        "title": "GeoLimitPut",
+        "type": "object"
+      },
+      "GeoLimitRead": {
+        "properties": {
+          "geometry": {
+            "additionalProperties": true,
+            "title": "Geometry",
+            "type": "object"
+          },
+          "targetId": {
+            "title": "Targetid",
+            "type": "string"
+          },
+          "targetType": {
+            "enum": [
+              "role",
+              "group"
+            ],
+            "title": "Targettype",
+            "type": "string"
+          },
+          "updatedAt": {
+            "title": "Updatedat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "targetType",
+          "targetId",
+          "geometry",
+          "updatedAt"
+        ],
+        "title": "GeoLimitRead",
+        "type": "object"
+      },
       "GeocodeResponse": {
         "properties": {
           "results": {
@@ -5919,6 +5982,22 @@
               "title": "Authorization",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
           }
         ],
         "requestBody": {
@@ -6004,6 +6083,22 @@
               "default": "",
               "title": "Authorization",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
             }
           }
         ],
@@ -6426,6 +6521,22 @@
               "title": "Authorization",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
           }
         ],
         "requestBody": {
@@ -6524,6 +6635,22 @@
               "title": "Authorization",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
           }
         ],
         "responses": {
@@ -6612,7 +6739,7 @@
     },
     "/v1/collections/{collection_id}/export/jobs/{job_id}/cancel": {
       "post": {
-        "description": "D6 : annule un export asynchrone en attente ou en cours. M\u00eame autorisation\nque la lecture du statut (demandeur, ou `tasks.view_all` sous r\u00e9serve du\nmasquage) ; idempotent ; 409 si d\u00e9j\u00e0 termin\u00e9.",
+        "description": "D6 : annule un export asynchrone en attente ou en cours. M\u00eame autorisation\nque la lecture du statut, mais l'annulation reste r\u00e9serv\u00e9e au demandeur ou \u00e0\n`data.manage` (pas `tasks.view_all`) ; idempotent ; 409 si d\u00e9j\u00e0 termin\u00e9.",
         "operationId": "cancel_collection_export_job_v1_collections__collection_id__export_jobs__job_id__cancel_post",
         "parameters": [
           {
@@ -6667,6 +6794,207 @@
           }
         },
         "summary": "Cancel Collection Export Job"
+      }
+    },
+    "/v1/collections/{collection_id}/geo-limits": {
+      "get": {
+        "operationId": "list_geo_limits_v1_collections__collection_id__geo_limits_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeoLimitList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Geo Limits",
+        "tags": [
+          "geo-limits"
+        ]
+      }
+    },
+    "/v1/collections/{collection_id}/geo-limits/{target_type}/{target_id}": {
+      "delete": {
+        "operationId": "delete_geo_limit_v1_collections__collection_id__geo_limits__target_type___target_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "target_type",
+            "required": true,
+            "schema": {
+              "enum": [
+                "role",
+                "group"
+              ],
+              "title": "Target Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "target_id",
+            "required": true,
+            "schema": {
+              "title": "Target Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Geo Limit",
+        "tags": [
+          "geo-limits"
+        ]
+      },
+      "put": {
+        "operationId": "put_geo_limit_v1_collections__collection_id__geo_limits__target_type___target_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "target_type",
+            "required": true,
+            "schema": {
+              "enum": [
+                "role",
+                "group"
+              ],
+              "title": "Target Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "target_id",
+            "required": true,
+            "schema": {
+              "title": "Target Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GeoLimitPut"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeoLimitRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Geo Limit",
+        "tags": [
+          "geo-limits"
+        ]
       }
     },
     "/v1/collections/{collection_id}/items": {
@@ -6822,6 +7150,22 @@
               "title": "Authorization",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
           }
         ],
         "requestBody": {
@@ -6889,6 +7233,22 @@
               "default": "",
               "title": "Authorization",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
             }
           }
         ],
@@ -7008,6 +7368,22 @@
               "default": "",
               "title": "Authorization",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
             }
           }
         ],
@@ -7160,6 +7536,22 @@
               "title": "Authorization",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
           }
         ],
         "requestBody": {
@@ -7227,6 +7619,22 @@
               "default": "",
               "title": "Authorization",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
             }
           }
         ],
@@ -7304,6 +7712,22 @@
               "default": "",
               "title": "Authorization",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
             }
           }
         ],
@@ -8717,6 +9141,22 @@
               "title": "Authorization",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
           }
         ],
         "responses": {
@@ -8766,6 +9206,22 @@
               "default": "",
               "title": "Authorization",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
             }
           }
         ],
@@ -12255,6 +12711,22 @@
               "title": "Authorization",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
           }
         ],
         "responses": {
@@ -12304,6 +12776,22 @@
               "default": "",
               "title": "Authorization",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
             }
           }
         ],
@@ -12393,6 +12881,22 @@
               "title": "Authorization",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
           }
         ],
         "responses": {
@@ -12451,6 +12955,22 @@
               "default": "",
               "title": "Authorization",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
             }
           }
         ],
@@ -12603,6 +13123,22 @@
               "title": "Authorization",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
           }
         ],
         "responses": {
@@ -12641,6 +13177,22 @@
               "default": "",
               "title": "Authorization",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
             }
           }
         ],

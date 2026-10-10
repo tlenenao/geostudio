@@ -294,6 +294,19 @@ export const admin = {
   // CollectionSharePanel
   "collectionShare.title": "Partager la collection",
 
+  // GeoLimitsSection (limite géographique de lecture par groupe)
+  "geoLimits.title": "Limite géographique de lecture",
+  "geoLimits.help":
+    "Un groupe limité ne voit et n'écrit que les entités contenues dans le polygone (GeoJSON, WGS84). Les agrégats, pièces jointes et exports sont refusés pour lui sur cette collection.",
+  "geoLimits.none": "Aucune limite définie.",
+  "geoLimits.groupLabel": "Groupe",
+  "geoLimits.geometryLabel": "Polygone GeoJSON (Polygon ou MultiPolygon)",
+  "geoLimits.save": "Enregistrer la limite",
+  "geoLimits.remove": "Retirer la limite de {group}",
+  "geoLimits.invalidJson": "Le polygone n'est pas un JSON valide.",
+  "geoLimits.saveFailed": "Échec de l'enregistrement de la limite.",
+  "geoLimits.deleteFailed": "Échec du retrait de la limite.",
+
   // ShareForm (partage d'item : groupes, membres, liens à échéance)
   "shareForm.heading": "Partager l'élément",
   "shareForm.createGroupHelp":

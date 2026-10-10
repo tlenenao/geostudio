@@ -257,11 +257,46 @@ export interface paths {
         /**
          * Cancel Collection Export Job
          * @description D6 : annule un export asynchrone en attente ou en cours. Même autorisation
-         *     que la lecture du statut (demandeur, ou `tasks.view_all` sous réserve du
-         *     masquage) ; idempotent ; 409 si déjà terminé.
+         *     que la lecture du statut, mais l'annulation reste réservée au demandeur ou à
+         *     `data.manage` (pas `tasks.view_all`) ; idempotent ; 409 si déjà terminé.
          */
         post: operations["cancel_collection_export_job_v1_collections__collection_id__export_jobs__job_id__cancel_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/geo-limits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Geo Limits */
+        get: operations["list_geo_limits_v1_collections__collection_id__geo_limits_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/geo-limits/{target_type}/{target_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put Geo Limit */
+        put: operations["put_geo_limit_v1_collections__collection_id__geo_limits__target_type___target_id__put"];
+        post?: never;
+        /** Delete Geo Limit */
+        delete: operations["delete_geo_limit_v1_collections__collection_id__geo_limits__target_type___target_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2704,6 +2739,34 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** GeoLimitList */
+        GeoLimitList: {
+            /** Limits */
+            limits: components["schemas"]["GeoLimitRead"][];
+        };
+        /** GeoLimitPut */
+        GeoLimitPut: {
+            /** Geometry */
+            geometry: {
+                [key: string]: unknown;
+            };
+        };
+        /** GeoLimitRead */
+        GeoLimitRead: {
+            /** Geometry */
+            geometry: {
+                [key: string]: unknown;
+            };
+            /** Targetid */
+            targetId: string;
+            /**
+             * Targettype
+             * @enum {string}
+             */
+            targetType: "role" | "group";
+            /** Updatedat */
+            updatedAt: string;
+        };
         /** GeocodeResponse */
         GeocodeResponse: {
             /** Results */
@@ -4083,6 +4146,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -4122,6 +4186,7 @@ export interface operations {
             };
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -4396,6 +4461,7 @@ export interface operations {
             };
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -4437,6 +4503,7 @@ export interface operations {
             };
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -4540,6 +4607,111 @@ export interface operations {
             };
         };
     };
+    list_geo_limits_v1_collections__collection_id__geo_limits_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeoLimitList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_geo_limit_v1_collections__collection_id__geo_limits__target_type___target_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                collection_id: string;
+                target_type: "role" | "group";
+                target_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GeoLimitPut"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeoLimitRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_geo_limit_v1_collections__collection_id__geo_limits__target_type___target_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                collection_id: string;
+                target_type: "role" | "group";
+                target_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_features_v1_collections__collection_id__items_get: {
         parameters: {
             query?: {
@@ -4585,6 +4757,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -4659,6 +4832,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -4697,6 +4871,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -4766,6 +4941,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -4804,6 +4980,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -4842,6 +5019,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -5670,6 +5848,7 @@ export interface operations {
             };
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -5701,6 +5880,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -8028,6 +8208,7 @@ export interface operations {
             };
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -8059,6 +8240,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -8096,6 +8278,7 @@ export interface operations {
             };
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -8129,6 +8312,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -8190,6 +8374,7 @@ export interface operations {
             };
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -8221,6 +8406,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path?: never;
             cookie?: never;
