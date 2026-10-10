@@ -149,6 +149,7 @@ def register(server: FastMCP, session_factory) -> None:
                 can_see_all=can_see_all,
                 q=q,
             )
+            pageSize = min(pageSize, items_repo.MAX_PAGE_SIZE)
             start = (page - 1) * pageSize
             page_cols = cols[start : start + pageSize]
             return [
