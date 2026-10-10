@@ -521,6 +521,8 @@ services:
       # Snapshot horaire d'état courant du lac (REV-280a), éteint par défaut.
       CORE_LAKE_SNAPSHOT_ENABLED: ${CORE_LAKE_SNAPSHOT_ENABLED:-false}
       CORE_LAKE_SNAPSHOT_MIN_DELTA_FILES: ${CORE_LAKE_SNAPSHOT_MIN_DELTA_FILES:-20}
+      CORE_LAKE_SNAPSHOT_GRACE_S: ${CORE_LAKE_SNAPSHOT_GRACE_S:-300}
+      CORE_LAKE_SNAPSHOT_MAX_AGE_HOURS: ${CORE_LAKE_SNAPSHOT_MAX_AGE_HOURS:-24}
       CORE_LAKE_SNAPSHOT_KEEP: ${CORE_LAKE_SNAPSHOT_KEEP:-2}
       S3_TILESET3D_BUCKET: geostudio-tileset3d
       # Plafonds de validation tileset3d (finalize_tileset3d_task,
