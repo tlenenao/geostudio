@@ -539,3 +539,12 @@ def test_count_mode_none_skips_the_count(info, pg_session_factory):
     with pg_session_factory() as s, rls_scope(s, "default"):
         page = select_features(s, info, limit=1, offset=0, count_mode="none")
     assert page.next_cursor is not None and page.number_matched is None
+
+
+def test_integer_filter_beyond_int8_is_a_filter_error_not_an_empty_page(info, pg_session_factory):
+    """REV-323 B : 9999999999999999999 > int8 ne doit pas renvoyer 0 ligne en silence."""
+    big = "9999999999999999999"
+    with pg_session_factory() as s, rls_scope(s, "default"):
+        for filters in ({"nb": big}, {"nb__gte": big}, {"nb__in": f"1,{big}"}):
+            with pytest.raises(FilterError):
+                select_features(s, info, limit=5, offset=0, filters=filters)
