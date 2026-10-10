@@ -11,6 +11,13 @@ from app.geocoding.provider import BanGeocoder, GeocodeResult, NominatimGeocoder
 URL = "https://nominatim.openstreetmap.org/search"
 
 
+@pytest.fixture(autouse=True)
+def _clear_cache():
+    from app.geocoding import provider
+
+    provider._nominatim_cache.clear()
+
+
 def _geocoder(handler):
     seen: list[httpx.Request] = []
 
@@ -66,3 +73,20 @@ def test_oversized_upstream_response_is_refused():
     g, _ = _geocoder(lambda r: httpx.Response(200, content=b"[" + b" " * 1_100_000 + b"]"))
     with pytest.raises(ValueError, match="volumineuse"):
         g.search("tulle", 3)
+
+
+def test_nominatim_without_url_fails_explicitly(monkeypatch):
+    monkeypatch.setenv("CORE_GEOCODING_PROVIDER", "nominatim")
+    monkeypatch.delenv("CORE_GEOCODING_URL", raising=False)
+    with pytest.raises(HTTPException) as exc:
+        get_geocoder()
+    assert exc.value.status_code == 503 and "CORE_GEOCODING_URL" in exc.value.detail
+
+
+def test_nominatim_user_agent_is_configurable_and_results_are_cached(monkeypatch):
+    monkeypatch.setenv("CORE_GEOCODING_USER_AGENT", "Acme/2 (ops@acme.test)")
+    g, seen = _geocoder(
+        lambda r: httpx.Response(200, json=[{"display_name": "Tulle", "lon": "1.7", "lat": "45.2"}])
+    )
+    assert g.search("Tulle", 3) == g.search(" tulle ", 3)
+    assert [r.headers["user-agent"] for r in seen] == ["Acme/2 (ops@acme.test)"]  # 2e : cache

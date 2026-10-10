@@ -372,6 +372,7 @@ def test_items_returns_stac_item_collection_with_next(env_repo):
     assert it["properties"]["datetime"].endswith("Z")
     rels = {link["rel"]: link["href"] for link in body["links"]}
     assert "offset=1" in rels["next"]  # 1 renvoyé sur 3 → next
+    assert body["numberReturned"] == 1 and body["numberMatched"] == 3  # REV-323 B
     assert repo.calls["limit"] == 1 and repo.calls["offset"] == 0
 
 

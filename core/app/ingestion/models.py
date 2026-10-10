@@ -20,7 +20,7 @@ class IngestionJob(Base):
     status: Mapped[str] = mapped_column(
         String, nullable=False, default="pending", server_default="pending"
     )
-    # "pending" | "running" | "done" | "error"
+    # "pending" | "running" | "cancel_requested" | "done" | "error" | "cancelled"
     source_key: Mapped[str] = mapped_column(String, nullable=False)
     filename: Mapped[str] = mapped_column(String, nullable=False)
     collection_title: Mapped[str] = mapped_column(String, nullable=False)

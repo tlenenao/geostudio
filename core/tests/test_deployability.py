@@ -2275,7 +2275,7 @@ def test_worker_gets_the_same_quota_env_as_core():
             assert var in (svc[name].get("environment") or {}), f"{var} absent de `{name}`"
 
 
-def test_core_trusted_proxies_is_wired_documented_and_not_a_wildcard():
+def test_core_trusted_proxies_is_wired_documented_and_not_a_wildcard(monkeypatch):
     """REV-299a (piège n°2) : la variable est dans l'environment: du service
     core, documentée dans .env.example, et sa valeur résolue n'est jamais
     « * » (X-Forwarded-For forgeable)."""
@@ -2283,6 +2283,12 @@ def test_core_trusted_proxies_is_wired_documented_and_not_a_wildcard():
     value = _resolve_effective_value(str(raw), "CORE_TRUSTED_PROXIES")
     assert value and value != "*"
     assert "10.0.0.0/8" in value
+    # REV-323 A : réseau Docker en IPv6 (ULA fc00::/7) ; défaut du code identique.
+    assert "fc00::/7" in value
+    from app.main import trusted_proxy_hosts
+
+    monkeypatch.delenv("CORE_TRUSTED_PROXIES", raising=False)
+    assert value == trusted_proxy_hosts()
     assert "CORE_TRUSTED_PROXIES" in documented_env_vars()
 
 
@@ -2303,3 +2309,16 @@ def test_core_start_period_covers_migrations_and_martin_restarts():
     start = services(BASE)["core"]["healthcheck"]["start_period"]
     assert int(str(start).rstrip("s")) >= 180, start
     assert services(BASE)["martin"].get("restart") == "unless-stopped"
+
+
+def test_playbook_forwards_the_public_s3_host_to_the_installer():
+    """REV-315 : le playbook partagé Proxmox/OCI transmet l'hôte S3 public à
+    install.sh, qui l'écrit dans .env (S3_PUBLIC_HOST + S3_PUBLIC_ENDPOINT_URL)."""
+    playbook = (REPO / "deploy/ansible/playbook.yml").read_text()
+    assert "GEOSTUDIO_S3_PUBLIC_HOST:" in playbook
+    install = INSTALL_SH.read_text()
+    assert "set_env_var S3_PUBLIC_HOST" in install
+    assert "set_env_var S3_PUBLIC_ENDPOINT_URL" in install
+    for target in ("proxmox", "oci"):
+        vars_ = (REPO / f"deploy/{target}/ansible/group_vars/all.yml").read_text()
+        assert "geostudio_s3_public_host:" in vars_, target

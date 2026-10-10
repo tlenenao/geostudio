@@ -121,3 +121,15 @@ def test_extension_of_another_tenant_is_refused():
     assert widget_type_errors(s, cfg, tenant_id=tid) == [
         "widget 'g': unknown widget type 'other.gauge'"
     ]
+
+
+def test_example_widgets_accepted_only_in_mock_auth_mode(monkeypatch):
+    """REV-323 A : le shell enregistre example.counter* en mode mock (dev/E2E) ;
+    le cœur ne doit pas les refuser en 422 dans ce mode, et les refuse sinon."""
+    s, tid = _tenant_session()
+    cfg = _cfg(("a", "example.counter", {}), ("b", "example.counter-wc", {}))
+    monkeypatch.setenv("CORE_AUTH_MODE", "oidc")
+    assert len(widget_type_errors(s, cfg, tenant_id=tid)) == 2
+    monkeypatch.setenv("CORE_AUTH_MODE", "mock")
+    assert widget_type_errors(s, cfg, tenant_id=tid) == []
+    assert len(widget_type_errors(s, _cfg(("c", "example.other", {})), tenant_id=tid)) == 1

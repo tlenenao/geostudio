@@ -381,6 +381,8 @@ def run_source(
     source = repo.get_source(session, tenant_id=user.tenant_id, source_id=source_id)
     if source is None:
         raise HTTPException(status_code=404, detail="harvest source not found")
+    if repo.is_run_active(source):
+        raise HTTPException(status_code=409, detail="harvest source is already running")
     write_audit(
         session,
         tenant_id=user.tenant_id,

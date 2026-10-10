@@ -245,6 +245,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/collections/{collection_id}/export/jobs/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Collection Export Job
+         * @description D6 : annule un export asynchrone en attente ou en cours. Même autorisation
+         *     que la lecture du statut (demandeur, ou `tasks.view_all` sous réserve du
+         *     masquage) ; idempotent ; 409 si déjà terminé.
+         */
+        post: operations["cancel_collection_export_job_v1_collections__collection_id__export_jobs__job_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/collections/{collection_id}/items": {
         parameters: {
             query?: never;
@@ -1762,6 +1784,28 @@ export interface paths {
         get: operations["get_upload_job_v1_uploads__job_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/uploads/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Upload Job
+         * @description D6 : annule un import. `pending` -> `cancelled` (source supprimée) ; `running`
+         *     -> `cancel_requested` (le worker s'arrête avant l'import, sinon l'import
+         *     s'achève). Même autorisation que la lecture ; idempotent ; 409 si terminé.
+         */
+        post: operations["cancel_upload_job_v1_uploads__job_id__cancel_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4429,6 +4473,40 @@ export interface operations {
         };
     };
     get_collection_export_job_v1_collections__collection_id__export_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                collection_id: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionExportJobStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_collection_export_job_v1_collections__collection_id__export_jobs__job_id__cancel_post: {
         parameters: {
             query?: never;
             header?: {
@@ -8279,6 +8357,39 @@ export interface operations {
         };
     };
     get_upload_job_v1_uploads__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestionJobStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_upload_job_v1_uploads__job_id__cancel_post: {
         parameters: {
             query?: never;
             header?: {

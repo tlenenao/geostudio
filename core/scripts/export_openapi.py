@@ -1,7 +1,12 @@
 import json
+import os
 import sys
 
-from app.main import create_app
+# Export de documentation, aucun lien présigné n'est signé : la garde de démarrage
+# REV-315 (S3_PUBLIC_ENDPOINT_URL vide) ne doit pas bloquer la génération (CI api-types-drift).
+os.environ.setdefault("S3_PUBLIC_ENDPOINT_URL", "http://localhost:9000")
+
+from app.main import create_app  # noqa: E402
 
 
 def main(output_path: str) -> None:

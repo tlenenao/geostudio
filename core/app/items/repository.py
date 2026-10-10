@@ -385,6 +385,11 @@ def _visible_items_base_query(
     return query
 
 
+# REV-323 B : plafond au point unique (REST /items + outils MCP list_items/
+# search_catalog) ; 200 = plus grand pageSize demandé par le shell.
+MAX_PAGE_SIZE = 200
+
+
 def list_items(
     session: Session,
     *,
@@ -400,6 +405,7 @@ def list_items(
     keywords: list[str] | None = None,
     bbox: tuple[float, float, float, float] | None = None,
 ) -> ItemPage:
+    page_size = min(page_size, MAX_PAGE_SIZE)
     query = _visible_items_base_query(
         tenant_id=tenant_id,
         current_user_id=current_user_id,
