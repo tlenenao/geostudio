@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
+from app.analytics import lake_purge
 from app.attachments import repository as attachments_repo
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user, get_current_user_optional
@@ -881,6 +882,15 @@ def unregister_collection(
         get_attachments_bucket(),
         tenant_id=col.tenant_id,
         collection_id=col.id,
+    )
+    # REV-322 : le lac (partitions + snapshots) de la collection est purgé, sinon
+    # une collection ré-enregistrée sous le même id (id = table_name) hériterait
+    # d'anciennes partitions. Après la suppression des pièces jointes, avant la
+    # ligne catalogue : un échec S3 annule la requête sans rien avoir supprimé.
+    lake_purge.purge_prefix(
+        s3,
+        bucket=os.environ.get("S3_CDC_BUCKET", "geostudio-cdc"),
+        prefix=lake_purge.lake_prefix(col.tenant_id, col.id),
     )
     repo.delete_collection(session, col)
     write_audit(
