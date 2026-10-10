@@ -483,6 +483,16 @@ def test_explicit_count_cap_bounds_the_count(info, pg_session_factory):
     assert page.number_matched == 1 and page.number_matched_lower_bound is True
 
 
+def test_count_cap_above_default_cap_still_detects_overflow(info, pg_session_factory, monkeypatch):
+    """Le LIMIT du compte suit count_cap, pas EXACT_COUNT_CAP (sinon jamais de 413 au-delà)."""
+    import app.features.repository as repo
+
+    monkeypatch.setattr(repo, "EXACT_COUNT_CAP", 0)
+    with pg_session_factory() as s, rls_scope(s, "default"):
+        page = repo.select_features(s, info, limit=1, offset=0, count_mode="capped", count_cap=1)
+    assert page.number_matched == 1 and page.number_matched_lower_bound is True
+
+
 def test_encode_cursor_supports_uuid_decimal_date_pks():
     import uuid
     from decimal import Decimal

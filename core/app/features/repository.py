@@ -240,7 +240,7 @@ def select_features(
         count_cap = EXACT_COUNT_CAP if count_cap is None else count_cap
         n = session.execute(
             text(f"SELECT count(*) FROM (SELECT 1 FROM public.{t}{where} LIMIT :__cap) q"),
-            {**params, "__cap": EXACT_COUNT_CAP + 1},
+            {**params, "__cap": count_cap + 1},
         ).scalar()
         lower_bound = n > count_cap
         matched = count_cap if lower_bound else n
