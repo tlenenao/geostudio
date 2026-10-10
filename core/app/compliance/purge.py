@@ -27,6 +27,7 @@ from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session
 
 from app.alerts.models import AlertEvaluation
+from app.analytics import lake_purge
 from app.appexport.models import AppExportJob
 from app.attachments import repository as attachments_repo
 from app.attachments.models import Attachment
@@ -181,6 +182,13 @@ def purge_tenant(
         counts["s3_objects_deleted"] += _delete_tenant_prefixed_objects(
             s3, bucket_getter(), tenant_id
         )
+    # REV-322 : le lac CDC (bucket geostudio-cdc, préfixe cdc/tenant_id=<t>/ :
+    # partitions + snapshots de toutes les collections du tenant).
+    counts["s3_objects_deleted"] += lake_purge.purge_prefix(
+        s3,
+        bucket=os.environ.get("S3_CDC_BUCKET", "geostudio-cdc"),
+        prefix=lake_purge.lake_prefix(tenant_id),
+    )
     # export_result_keys/appexport_result_keys capturés à l'étape 1, avant
     # la suppression des lignes ExportJob/AppExportJob — sinon perdus.
     exports_bucket = os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports")

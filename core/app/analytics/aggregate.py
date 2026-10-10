@@ -454,12 +454,16 @@ def lake_geometry_rename(table_info: TableInfo) -> str | None:
     return f"{_qi(LAKE_GEOMETRY_COLUMN)} AS {_qi(geom)}"
 
 
-def _has_lake_geometry(conn: duckdb.DuckDBPyConnection, glob: str) -> bool:
+def _lake_column_names(conn: duckdb.DuckDBPyConnection, glob: str) -> set[str]:
     cols = conn.execute(
         f"SELECT * FROM read_parquet({_sql_lit(glob)}, hive_partitioning=true, "
         f"union_by_name=true) LIMIT 0"
     ).description
-    return any(c[0] == LAKE_GEOMETRY_COLUMN for c in cols)
+    return {c[0] for c in cols}
+
+
+def _has_lake_geometry(conn: duckdb.DuckDBPyConnection, glob: str) -> bool:
+    return LAKE_GEOMETRY_COLUMN in _lake_column_names(conn, glob)
 
 
 def _dedup_cte(
@@ -494,7 +498,17 @@ def _dedup_cte(
     # (`geom` si importée) : renommé ici, donc `live` parle partout le nom de
     # la table. Parquet déjà au nom de la table (ou sans géométrie) : intact.
     rename = lake_geometry_rename(table_info)
-    star = f"* RENAME ({rename})" if rename and _has_lake_geometry(conn, glob) else "*"
+    lake_cols = _lake_column_names(conn, glob)
+    star = f"* RENAME ({rename})" if rename and LAKE_GEOMETRY_COLUMN in lake_cols else "*"
+    # REV-311 : une colonne déclarée après l'écriture de TOUTES les partitions
+    # est absente du schéma (union_by_name ne suffit pas : BinderException).
+    # Rendue NULL ici, au point unique où tous les lecteurs du lac passent.
+    if snap is not None:
+        lake_cols |= _lake_column_names(conn, snap[0])
+    skip = {table_info.pk_column, table_info.geometry_column}
+    missing = [c.name for c in table_info.columns if c.name not in lake_cols and c.name not in skip]
+    if missing:
+        star += ", " + ", ".join(f"NULL AS {_qi(c)}" for c in missing)
     raw_files = f"read_parquet({_sql_lit(glob)}, hive_partitioning=true, union_by_name=true)"
     if snap is not None:
         # REV-280a : dernier snapshot d'état courant + lignes brutes plus
