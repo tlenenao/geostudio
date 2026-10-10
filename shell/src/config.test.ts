@@ -71,6 +71,10 @@ test("loadRuntimeConfig lit __GEOSTUDIO_ENV__ (P22.03)", async () => {
   }
 });
 
+test("REV-300 M5 : un VITE_CORE_URL relatif sans « / » initial est refusé avec un message clair", () => {
+  expect(() => loadConfig({ ...base, VITE_CORE_URL: "api" })).toThrow(/VITE_CORE_URL invalide/);
+});
+
 test("REV-272b : un VITE_CORE_URL relatif est résolu contre l'origine de la page", () => {
   expect(loadConfig({ ...base, VITE_CORE_URL: "/api" }).coreUrl).toBe(
     `${window.location.origin}/api`,

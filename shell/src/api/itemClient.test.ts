@@ -4422,6 +4422,28 @@ test("createSecret posts the payload and returns the summary (no ciphertext echo
   });
 });
 
+test("updateSecret envoie PUT /secrets/{id} avec le payload entier (REV-297)", async () => {
+  let body: any;
+  let method = "";
+  server.use(
+    http.put("https://core.test/v1/secrets/s1", async ({ request }) => {
+      method = request.method;
+      body = await request.json();
+      return HttpResponse.json({
+        id: "s1",
+        name: "n",
+        kind: "bearer_token",
+        createdAt: "t",
+        updatedAt: "t2",
+      });
+    }),
+  );
+  const result = await makeClient().updateSecret("s1", { kind: "bearer_token", token: "y" });
+  expect(method).toBe("PUT");
+  expect(body).toEqual({ payload: { kind: "bearer_token", token: "y" } });
+  expect(result.updatedAt).toBe("t2");
+});
+
 test("deleteSecret calls DELETE /secrets/{id}", async () => {
   let method = "";
   server.use(

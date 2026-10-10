@@ -1,8 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from "react";
-import { useCreateSecret, useDeleteSecret, useListSecrets } from "../../api/domains/secrets.hooks";
-import type { SecretPayload } from "../../api/types";
+import { useId, useState } from "react";
+import {
+  useCreateSecret,
+  useDeleteSecret,
+  useListSecrets,
+  useUpdateSecret,
+} from "../../api/domains/secrets.hooks";
+import { ApiError } from "../../api/ApiError";
+import type { SecretPayload, SecretSummary } from "../../api/types";
 import { t } from "../../i18n";
+import { Button } from "../../ui/kit/Button";
 import { ConfirmDialog } from "../../ui/kit/ConfirmDialog";
 import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
 
@@ -30,8 +37,12 @@ export function SecretParamSelect({
 }) {
   const secretsQuery = useListSecrets();
   const createSecret = useCreateSecret();
+  const updateSecret = useUpdateSecret();
   const deleteSecret = useDeleteSecret();
   const [creating, setCreating] = useState(false);
+  // REV-297 : secret en cours de remplacement (PUT) — son formulaire remplace celui de création.
+  const [editing, setEditing] = useState<SecretSummary | null>(null);
+  const editPanel = usePanelTrigger(editing !== null);
   const createPanel = usePanelTrigger(creating);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const options = (secretsQuery.data ?? []).filter((s) => !kindFilter || s.kind === kindFilter);
@@ -58,13 +69,26 @@ export function SecretParamSelect({
             {options.map((s) => (
               <li key={s.id} className="flex items-center justify-between gap-2 text-xs text-ink-2">
                 <span>{s.name}</span>
-                <button
-                  type="button"
-                  className="text-danger hover:underline"
-                  onClick={() => setPendingDeleteId(s.id)}
-                >
-                  {t("secretParamSelect.deleteButton", { name: s.name })}
-                </button>
+                <span className="flex gap-2">
+                  <button
+                    type="button"
+                    className="text-accent hover:underline"
+                    {...(editing?.id === s.id ? editPanel.triggerProps : {})}
+                    onClick={() => {
+                      setCreating(false);
+                      setEditing(s);
+                    }}
+                  >
+                    {t("secretParamSelect.editButton", { name: s.name })}
+                  </button>
+                  <button
+                    type="button"
+                    className="text-danger hover:underline"
+                    onClick={() => setPendingDeleteId(s.id)}
+                  >
+                    {t("secretParamSelect.deleteButton", { name: s.name })}
+                  </button>
+                </span>
               </li>
             ))}
           </ul>
@@ -72,7 +96,10 @@ export function SecretParamSelect({
             type="button"
             className="w-fit text-xs text-accent hover:underline"
             {...createPanel.triggerProps}
-            onClick={() => setCreating(true)}
+            onClick={() => {
+              setEditing(null);
+              setCreating(true);
+            }}
           >
             {t("secretParamSelect.createSecretButton")}
           </button>
@@ -88,6 +115,20 @@ export function SecretParamSelect({
             }}
             onCancel={() => setCreating(false)}
             createSecret={(input) => createSecret.mutateAsync(input)}
+          />
+        </div>
+      )}
+      {editing && (
+        <div {...editPanel.panelProps}>
+          <SecretCreateForm
+            key={editing.id}
+            editing={editing}
+            kindFilter={editing.kind as SecretPayload["kind"]}
+            onCreated={() => setEditing(null)}
+            onCancel={() => setEditing(null)}
+            createSecret={(input) =>
+              updateSecret.mutateAsync({ id: editing.id, payload: input.payload })
+            }
           />
         </div>
       )}
@@ -140,16 +181,21 @@ const ALL_KINDS = Object.keys(KIND_LABELS) as SecretPayload["kind"][];
 // azure_blob_credentials/gcs_credentials en plus des 7 précédentes).
 function SecretCreateForm({
   kindFilter,
+  editing,
   onCreated,
   onCancel,
   createSecret,
 }: {
   kindFilter?: SecretPayload["kind"];
+  // Mode remplacement (REV-297) : nom et type figés, valeur ressaisie en entier
+  // (le cœur ne relit jamais l'ancienne) ; `createSecret` porte alors le PUT.
+  editing?: SecretSummary;
   onCreated: (name: string) => void;
   onCancel: () => void;
   createSecret: (input: { name: string; payload: SecretPayload }) => Promise<{ name: string }>;
 }) {
-  const [name, setName] = useState("");
+  const [name, setName] = useState(editing?.name ?? "");
+  const bucketHelpId = useId();
   const [kind, setKind] = useState<SecretPayload["kind"]>(kindFilter ?? ALL_KINDS[0]);
   const [fields, setFields] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -236,8 +282,13 @@ function SecretCreateForm({
     try {
       const created = await createSecret({ name, payload });
       onCreated(created.name);
-    } catch {
-      setError(t("secretParamSelect.createFailed"));
+    } catch (err) {
+      // Le cœur motive ses refus (ex. 422 SMTP useTls=false vers un hôte distant) : on l'affiche.
+      setError(
+        err instanceof ApiError && err.detail
+          ? err.detail
+          : t(editing ? "secretParamSelect.updateFailed" : "secretParamSelect.createFailed"),
+      );
     }
   }
 
@@ -252,9 +303,11 @@ function SecretCreateForm({
           placeholder={t("secretParamSelect.namePlaceholder")}
           className="h-9 rounded border border-control bg-surface px-2 text-ink"
           value={name}
+          disabled={editing !== undefined}
           onChange={(e) => setName(e.target.value)}
         />
       </label>
+      {editing && <p className="text-xs text-ink-2">{t("secretParamSelect.editHint")}</p>}
       {!kindFilter && (
         <label className="flex flex-col gap-1 text-xs">
           {t("secretParamSelect.typeAria")}
@@ -464,12 +517,15 @@ function SecretCreateForm({
             <input
               placeholder={t(BUCKET_PLACEHOLDER_KEYS[kind])}
               required
+              aria-describedby={bucketHelpId}
               className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("bucketUrl")}
               onChange={(e) => setFieldValue("bucketUrl", e.target.value)}
             />
           </label>
-          <span className="text-ink-2">{t("secretParamSelect.bucketUrlHelp")}</span>
+          <span id={bucketHelpId} className="text-ink-2">
+            {t("secretParamSelect.bucketUrlHelp")}
+          </span>
         </div>
       )}
       {kind === "smtp" && (
@@ -529,12 +585,12 @@ function SecretCreateForm({
         </p>
       )}
       <div className="flex justify-end gap-2">
-        <button type="button" className="text-xs text-ink-2 hover:underline" onClick={onCancel}>
+        <Button type="button" variant="outline" size="sm" onClick={onCancel}>
           {t("secretParamSelect.cancelButton")}
-        </button>
-        <button type="submit" className="text-xs font-medium text-accent hover:underline">
-          {t("secretParamSelect.createButton")}
-        </button>
+        </Button>
+        <Button type="submit" size="sm">
+          {t(editing ? "secretParamSelect.saveButton" : "secretParamSelect.createButton")}
+        </Button>
       </div>
     </form>
   );

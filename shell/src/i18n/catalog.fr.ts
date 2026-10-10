@@ -740,6 +740,8 @@ export const fr = {
   "visualQuery.titleLabel": "Titre",
   "visualQuery.baseCollectionLabel": "Collection de base",
   "visualQuery.chooseOption": "Choisir…",
+  "visualQuery.baseCollectionSearchAria": "Rechercher parmi les collections",
+  "visualQuery.baseCollectionSearchPlaceholder": "Rechercher une collection…",
   "visualQuery.filterLabel": "Filtrer",
   "visualQuery.joinLabel": "Joindre",
   "visualQuery.removeJoin": "Supprimer la jointure",
@@ -1536,6 +1538,11 @@ export const fr = {
   "secretParamSelect.serviceAccountInfoInvalid": "JSON invalide.",
   "secretParamSelect.cancelButton": "Annuler",
   "secretParamSelect.createButton": "Créer",
+  "secretParamSelect.saveButton": "Enregistrer",
+  "secretParamSelect.editButton": "Modifier {name}",
+  "secretParamSelect.updateFailed": "Échec de la modification du secret.",
+  "secretParamSelect.editHint":
+    "La valeur d'un secret n'est jamais relue : ressaisissez-la en entier pour la remplacer.",
   "secretParamSelect.deleteButton": "Supprimer {name}",
   "secretParamSelect.deleteConfirmTitle": "Supprimer ce secret ?",
   "secretParamSelect.deleteConfirmMessage":

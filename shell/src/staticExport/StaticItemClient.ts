@@ -472,6 +472,9 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async createSecret(..._args: unknown[]) {
       return unsupported();
     },
+    async updateSecret(..._args: unknown[]) {
+      return unsupported();
+    },
     async deleteSecret(..._args: unknown[]) {
       return unsupported();
     },

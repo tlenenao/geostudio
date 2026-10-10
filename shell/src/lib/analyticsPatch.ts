@@ -75,3 +75,21 @@ function applyCrossFilterValue(
     patch[field] = value;
   }
 }
+
+// REV-304 : applique la plage du contexte temps global à une couche `feature`
+// de `props.layers` qui déclare son `timeField` (mêmes suffixes __gte/__lte que
+// derivePatch). Neutre sans plage ni champ.
+// ponytail: URL traitée en chaîne (relative possible) ; couches vector/raster
+// non filtrées (pas de query côté tuiles).
+export function withTimeRange(
+  url: string,
+  timeField: string | undefined,
+  range: { from: string; to: string } | null,
+): string {
+  if (!timeField || !range) return url;
+  const q = new URLSearchParams({
+    [`${timeField}__gte`]: range.from,
+    [`${timeField}__lte`]: range.to,
+  });
+  return `${url}${url.includes("?") ? "&" : "?"}${q}`;
+}

@@ -576,6 +576,9 @@ export function createDesktopItemClient(connection: {
     async createSecret(..._args: unknown[]) {
       return unsupported();
     },
+    async updateSecret(..._args: unknown[]) {
+      return unsupported();
+    },
     async deleteSecret(..._args: unknown[]) {
       return unsupported();
     },
