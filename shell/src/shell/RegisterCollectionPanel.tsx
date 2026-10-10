@@ -49,7 +49,6 @@ export function RegisterCollectionPanel({ onClose }: { onClose: () => void }) {
           <label className="flex flex-col gap-1 text-sm text-ink">
             {t("registerCollection.tableLabel")}
             <select
-              aria-label={t("registerCollection.tableLabel")}
               className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
               value={tableName}
               onChange={(e) => setTableName(e.target.value)}
@@ -64,24 +63,15 @@ export function RegisterCollectionPanel({ onClose }: { onClose: () => void }) {
           </label>
           <label className="flex flex-col gap-1 text-sm text-ink">
             {t("collectionsAdmin.columnTitle")}
-            <Input
-              aria-label={t("collectionsAdmin.columnTitle")}
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-            />
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} />
           </label>
           <label className="flex flex-col gap-1 text-sm text-ink">
             {t("kitGallery.descriptionFieldLabel")}
-            <Input
-              aria-label={t("kitGallery.descriptionFieldLabel")}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
+            <Input value={description} onChange={(e) => setDescription(e.target.value)} />
           </label>
           <label className="flex items-center gap-2 text-sm text-ink">
             <input
               type="checkbox"
-              aria-label={t("collectionsAdmin.columnPublic")}
               checked={isPublic}
               onChange={(e) => setIsPublic(e.target.checked)}
             />

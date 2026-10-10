@@ -25,6 +25,7 @@ import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { plural, t } from "../i18n";
 import { useReferencedCollectionIds } from "./referencedCollections";
 import { LoadingState } from "../ui/kit/LoadingState";
+import { formatDateTime } from "../lib/format";
 
 const MAX_SHARE_LINK_TTL_DAYS = 30;
 
@@ -54,7 +55,7 @@ function parseUtc(iso: string): Date {
 }
 
 function formatUtc(iso: string): string {
-  return parseUtc(iso).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
+  return formatDateTime(parseUtc(iso));
 }
 
 // GAP-12 (chantier 4.23) : section distincte du partage groupe/rôle plat
@@ -147,12 +148,13 @@ function ShareLinksPanel({ itemId }: { itemId: string }) {
       )}
       <div className="flex items-center gap-2">
         <label className="flex items-center gap-1 text-xs text-ink">
+          {/* eslint-disable-next-line geostudio/label-no-aria-label -- le texte visible n'est que l'unité (jours) ; le nom accessible la contient */}
           <input
             type="number"
             aria-label={t("shareForm.ttlAria")}
             min={1}
             max={MAX_SHARE_LINK_TTL_DAYS}
-            className="h-8 w-16 rounded-md border border-control bg-surface px-2 text-xs text-ink"
+            className="h-9 w-16 rounded-md border border-control bg-surface px-2 text-xs text-ink"
             value={ttlDays}
             onChange={(e) => setTtlDays(Number(e.target.value))}
           />
@@ -249,7 +251,7 @@ function AddGroupMemberControl({ groupId, groupTitle }: { groupId: string; group
         type="search"
         aria-label={t("shareForm.memberSearchAria", { group: groupTitle })}
         placeholder={t("shareForm.memberSearchPlaceholder")}
-        className="h-8 rounded-md border border-control bg-surface px-2 text-xs text-ink"
+        className="h-9 rounded-md border border-control bg-surface px-2 text-xs text-ink"
         value={q}
         onChange={(e) => setQ(e.target.value)}
       />
@@ -332,7 +334,7 @@ function GroupManageControl({ group }: { group: Group }) {
         <input
           type="text"
           aria-label={t("shareForm.renameGroupAria", { group: group.title })}
-          className="h-8 flex-1 rounded-md border border-control bg-surface px-2 text-xs text-ink"
+          className="h-9 flex-1 rounded-md border border-control bg-surface px-2 text-xs text-ink"
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
@@ -491,7 +493,6 @@ export function ShareForm({ item, onDone }: { item: Item; onDone: () => void }) 
           <label className="flex items-center gap-2 text-sm text-ink">
             <input
               type="checkbox"
-              aria-label={t("collectionsAdmin.columnPublic")}
               checked={isPublic}
               onChange={(e) => setIsPublic(e.target.checked)}
             />
@@ -506,6 +507,7 @@ export function ShareForm({ item, onDone }: { item: Item; onDone: () => void }) 
               <div key={g.id} className="flex flex-col gap-1 border-b border-rule pb-2 text-sm">
                 <div className="flex items-center justify-between gap-2">
                   <label className="flex items-center gap-2 text-ink">
+                    {/* eslint-disable-next-line geostudio/label-no-aria-label -- le nom accessible contient le texte visible et ajoute le contexte dynamique (champ/ligne) */}
                     <input
                       type="checkbox"
                       aria-label={t("sharePanel.groupAria", { group: g.title })}
@@ -521,7 +523,7 @@ export function ShareForm({ item, onDone }: { item: Item; onDone: () => void }) 
                   </label>
                   <select
                     aria-label={t("sharePanel.roleAria", { group: g.title })}
-                    className="h-8 rounded-md border border-control bg-surface px-2 text-sm text-ink"
+                    className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink"
                     disabled={!roles[g.id]}
                     value={roles[g.id] ?? "viewer"}
                     onChange={(e) =>
@@ -560,7 +562,7 @@ export function ShareForm({ item, onDone }: { item: Item; onDone: () => void }) 
                 type="text"
                 aria-label={t("shareForm.newGroupNameLabel")}
                 placeholder={t("shareForm.newGroupNameLabel")}
-                className="h-8 flex-1 rounded-md border border-control bg-surface px-2 text-sm text-ink"
+                className="h-9 flex-1 rounded-md border border-control bg-surface px-2 text-sm text-ink"
                 value={newGroupName}
                 onChange={(e) => setNewGroupName(e.target.value)}
               />

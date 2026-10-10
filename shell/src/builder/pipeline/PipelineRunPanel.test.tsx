@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { formatDateTime } from "../../lib/format";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -265,9 +266,7 @@ test("shows a computed duration and a localized date for a finished run", async 
   });
   await waitFor(() => expect(screen.getByText("Terminé")).toBeInTheDocument());
   expect(screen.getByText("5 s")).toBeInTheDocument();
-  expect(
-    screen.getByText(new Date("2026-08-06T10:00:00.000Z").toLocaleString("fr-FR")),
-  ).toBeInTheDocument();
+  expect(screen.getByText(formatDateTime("2026-08-06T10:00:00.000Z"))).toBeInTheDocument();
 });
 
 test("affiche la progression N/M nœuds pendant une exécution en cours quand totalNodes est fourni", async () => {

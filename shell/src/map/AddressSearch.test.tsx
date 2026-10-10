@@ -45,7 +45,7 @@ describe("AddressSearch", () => {
     const { container } = renderWith(geocode);
     await userEvent.type(screen.getByLabelText("Rechercher une adresse"), "nulle part");
     await userEvent.click(screen.getByRole("button", { name: "Localiser" }));
-    expect(await screen.findByText("Aucune adresse trouvée.")).toBeInTheDocument();
+    expect(await screen.findByText("Aucune adresse trouvée.")).toHaveAttribute("role", "status");
     await userEvent.click(screen.getByRole("button", { name: "Localiser" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Recherche d'adresse indisponible.");
     expectTokenizedClasses(container);

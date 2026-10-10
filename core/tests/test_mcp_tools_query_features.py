@@ -114,6 +114,7 @@ def test_query_features_returns_geojson_for_a_readable_collection(app_client):
 
     assert result["type"] == "FeatureCollection"
     assert result["numberReturned"] == 1
+    assert result["numberMatchedLowerBound"] is False  # total plafonné, drapeau honnête
     assert result["features"][0]["properties"]["titre"] == "Nid de poule"
 
 

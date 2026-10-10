@@ -9,7 +9,7 @@ test("une condition sur une action ne déclenche celle-ci que si l'expression s'
 
   await page.getByRole("button", { name: "Nouveau" }).click();
   await page.getByRole("dialog", { name: "Nouvel élément" }).getByLabel("Type").selectOption("app");
-  await page.getByLabel("Titre").fill("App conditions");
+  await page.getByLabel("Titre", { exact: true }).fill("App conditions");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 
@@ -43,11 +43,11 @@ test("une condition sur une action ne déclenche celle-ci que si l'expression s'
   await expect(page.getByText("Sélection :")).toBeVisible();
 
   // Taper "Nord" : la condition est vraie, l'action se déclenche.
-  await page.getByLabel("Valeur du filtre").fill("Nord");
+  await page.getByLabel("Filtrer", { exact: true }).fill("Nord");
   await expect(page.getByText("Sélection : Nord")).toBeVisible();
 
   // Taper "Sud" : la condition est fausse, l'action ne se déclenche pas —
   // la variable garde sa valeur précédente ("Nord").
-  await page.getByLabel("Valeur du filtre").fill("Sud");
+  await page.getByLabel("Filtrer", { exact: true }).fill("Sud");
   await expect(page.getByText("Sélection : Nord")).toBeVisible();
 });

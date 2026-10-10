@@ -54,25 +54,72 @@ def _strip_code_fence(text: str) -> str:
     return stripped
 
 
-# REV-183 : références de champ CEL d'un brouillon (vars.x, record.x, user.x),
-# aussi sous les formes `vars . x`, `vars\n.x`, `vars["x"]`, `record['x']`.
-# Toute référence absente de availableFields est refusée : le modèle ne doit
-# pas inventer de variable. Un accès par crochets à clé non littérale
-# (`vars[x]`) est refusé car invérifiable. ponytail: une référence citée dans
-# une chaîne littérale est aussi contrôlée (faux positif accepté, jamais un
-# faux négatif).
-_CEL_FIELD_REF_RE = re.compile(
-    r"""\b(vars|record|user)\s*(?:\.\s*([A-Za-z_]\w*)|\[\s*(?:"([^"]*)"|'([^']*)'|([^\]]*)))"""
+# REV-183/303 : références de champ CEL d'un brouillon (vars.x, record.x,
+# user.x, ctx.x), aussi sous les formes `vars . x`, `vars\n.x`, `vars["x"]`,
+# `record['x']`, chaînées (`vars["a"]["b"]`, `vars.a.b`). Toute référence absente
+# de availableFields est refusée : le modèle ne doit pas inventer de variable.
+# Un accès par crochets à clé non littérale (`vars[x]`, y compris en queue de
+# chaîne) est refusé car invérifiable. REV-303a : un littéral de chaîne isolé
+# n'est jamais une référence (l'alternative `_STR` le consomme en premier) ;
+# seule une chaîne en position d'index (`vars["x"]`) en est une.
+# Une chaîne brute CEL (r"..", R'..') n'a pas d'échappement : `r"\"` est complète.
+_STR = r"""(?<!\w)[rR]"[^"]*"|(?<!\w)[rR]'[^']*'|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'"""
+_CEL_REF_RE = re.compile(
+    rf"""(?P<str>{_STR})|\b(?P<root>vars|record|user|ctx)\s*(?:\.\s*(?P<dot>[A-Za-z_]\w*)|\[\s*(?:"(?P<dq>[^"]*)"|'(?P<sq>[^']*)'|(?P<other>[^\]]*))\])|(?<![.\w])(?P<bare>vars|record|user|ctx)\b"""
 )
+_CEL_TAIL_RE = re.compile(r"""\s*\[\s*(?:"[^"]*"|'[^']*')\s*\]|\s*\.\s*\w+|\s*\[[^\]]*\]""")
 
 
-def _cel_refs(expression: str) -> set[str]:
-    refs = set()
-    for root, dotted, dq, sq, _other in _CEL_FIELD_REF_RE.findall(expression):
-        member = dotted or dq or sq
-        refs.add(f"{root}.{member}" if member else f"{root}[…]")
+def _cel_refs(
+    expression: str, roots: frozenset[str] = frozenset({"vars", "record", "user", "ctx"})
+) -> set[str]:
+    refs: set[str] = set()
+    pos = 0
+    while m := _CEL_REF_RE.search(expression, pos):
+        pos = m.end()
+        if m.group("str") is not None:
+            continue
+        if bare := m.group("bare"):  # racine nue (`size(vars)`) : invérifiable
+            refs.add(f"{bare} (racine nue)")
+            if bare not in roots:
+                refs.add(f"{bare} (racine non autorisée)")
+            continue
+        root = m.group("root")
+        member = m.group("dot") or m.group("dq") or m.group("sq")
+        if m.group("other") is not None and not member:
+            refs.add(f"{root}[…]")
+        else:
+            refs.add(f"{root}.{member}")
+        if root not in roots:
+            refs.add(f"{root} (racine non autorisée)")
+        # queue chaînée : chaque indexation non littérale est invérifiable.
+        while t := _CEL_TAIL_RE.match(expression, pos):
+            pos = t.end()
+            seg = t.group(0).strip()
+            if seg.startswith("[") and not re.fullmatch(
+                r"""\[\s*("[^"]*"|'[^']*'|\d+)\s*\]""", seg
+            ):
+                refs.add(f"{root}[…]")
     return refs
 
+
+CelContext = Literal["visibleWhen", "computedColumn", "actionCondition", "binding"]
+_CEL_CONTEXT_ROOTS: dict[str, frozenset[str]] = {
+    "visibleWhen": frozenset({"vars", "user"}),
+    "binding": frozenset({"vars", "user"}),
+    "computedColumn": frozenset({"record", "vars", "user"}),
+    "actionCondition": frozenset({"vars", "user", "ctx", "record"}),
+}
+_CEL_CONTEXT_PROMPTS: dict[str, str] = {
+    "visibleWhen": "Écris une unique expression CEL booléenne (Common Expression Language) "
+    "servant de condition d'affichage d'un widget.",
+    "computedColumn": "Écris une unique expression CEL (Common Expression Language) "
+    "calculant la valeur d'une colonne calculée à partir de l'enregistrement `record`.",
+    "actionCondition": "Écris une unique expression CEL booléenne (Common Expression Language) "
+    "servant de condition d'exécution d'une action.",
+    "binding": "Écris une unique expression CEL (Common Expression Language) "
+    "servant de liaison dynamique (binding) d'une propriété de widget.",
+}
 
 _MAX_CEL_QUESTION_CHARS = 2000
 _MAX_CEL_FIELDS = 200
@@ -287,13 +334,18 @@ def register(server: FastMCP, session_factory) -> None:
 
     @server.tool()
     async def generate_cel_expression(
-        ctx: Context, itemId: str, question: str, availableFields: list[str]
+        ctx: Context,
+        itemId: str,
+        question: str,
+        availableFields: list[str],
+        context: CelContext = "visibleWhen",
     ) -> dict:
-        """Generate a CEL boolean expression draft for a widget's visibleWhen
-        condition from a natural-language question. Only the references
-        listed in availableFields (e.g. "vars.statut", "user.name") may
-        appear in it. Never writes anything: the caller inserts the draft
-        with the client tool applyCelDraft and the human applies it. REV-183."""
+        """Generate a CEL expression draft from a natural-language question,
+        for the given context (visibleWhen, computedColumn, actionCondition,
+        binding). Only the references listed in availableFields (e.g.
+        "vars.statut", "user.name", "record.population") may appear in it.
+        Never writes anything: the caller inserts the
+        draft with the client tool applyCelDraft and the human applies it. REV-183."""
         if len(question) > _MAX_CEL_QUESTION_CHARS:
             raise ValueError("question trop longue (2000 caractères maximum)")
         if len(availableFields) > _MAX_CEL_FIELDS:
@@ -304,8 +356,7 @@ def register(server: FastMCP, session_factory) -> None:
             require_access(session, user=user, item_id=itemId, action="write")
 
         prompt = (
-            "Écris une unique expression CEL booléenne (Common Expression Language) "
-            "servant de condition d'affichage d'un widget. N'utilise QUE les références "
+            f"{_CEL_CONTEXT_PROMPTS[context]} N'utilise QUE les références "
             f"suivantes (JSON) : {json.dumps(availableFields)}. Réponds uniquement par "
             "l'expression, sans aucun texte autour (un bloc de code Markdown est toléré "
             f"mais pas requis). Question : {question}"
@@ -322,7 +373,7 @@ def register(server: FastMCP, session_factory) -> None:
             raise ValueError("le fournisseur LLM n'a renvoyé aucune expression")
         if error := _cel_syntax_error(expression):
             raise ValueError(f"expression CEL invalide : {error}")
-        unknown = sorted(_cel_refs(expression) - set(availableFields))
+        unknown = sorted(_cel_refs(expression, _CEL_CONTEXT_ROOTS[context]) - set(availableFields))
         if unknown:
             raise ValueError(f"champs inconnus dans l'expression : {', '.join(unknown)}")
         return {"expression": expression}

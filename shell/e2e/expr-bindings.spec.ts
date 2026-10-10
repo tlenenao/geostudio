@@ -54,7 +54,7 @@ test("un binding { $expr } sur une prop non-Texte lit un champ imbriqué d'une v
 
   await page.getByRole("button", { name: "Nouveau" }).click();
   await page.getByRole("dialog", { name: "Nouvel élément" }).getByLabel("Type").selectOption("app");
-  await page.getByLabel("Titre").fill("App bindings");
+  await page.getByLabel("Titre", { exact: true }).fill("App bindings");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 

@@ -69,12 +69,7 @@ export function TerrainPanel({
     <div className="flex flex-col gap-2">
       <p className="mb-1 mt-3 text-xs font-medium text-ink-2">{t("terrainPanel.heading")}</p>
       <label className="flex items-center gap-2 text-sm">
-        <input
-          aria-label={t("terrainPanel.enableLabel")}
-          type="checkbox"
-          checked={enabled}
-          onChange={(e) => toggle(e.target.checked)}
-        />
+        <input type="checkbox" checked={enabled} onChange={(e) => toggle(e.target.checked)} />
         {t("terrainPanel.enableLabel")}
       </label>
       {enabled && value && (
@@ -83,11 +78,7 @@ export function TerrainPanel({
             <>
               <label className="flex flex-col gap-1 text-sm">
                 {t("terrainPanel.hostedLabel")}
-                <select
-                  aria-label={t("terrainPanel.hostedLabel")}
-                  defaultValue=""
-                  onChange={(e) => selectHosted(e.target.value)}
-                >
+                <select defaultValue="" onChange={(e) => selectHosted(e.target.value)}>
                   <option value="">{t("terrainPanel.chooseHostedOption")}</option>
                   {hostedSources.map((s) => (
                     <option key={s.id} value={s.id}>
@@ -107,7 +98,6 @@ export function TerrainPanel({
           <label className="flex flex-col gap-1 text-sm">
             {t("terrainPanel.tilesUrlLabel")}
             <input
-              aria-label={t("terrainPanel.tilesUrlAria")}
               type="text"
               placeholder="https://…/{z}/{x}/{y}.png"
               value={value.tilesUrl}

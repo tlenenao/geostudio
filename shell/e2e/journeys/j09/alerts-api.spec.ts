@@ -1,15 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
-import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
-import {
-  alertConfig,
-  apiFor,
-  deferEvaluation,
-  getAlertSeed,
-  psql,
-  waitEvaluation,
-  type Api,
-} from "./helpers";
+import { alertConfig, apiFor, getAlertSeed, psql, waitEvaluation, type Api } from "./helpers";
 
 // AlertRule : CRUD via /configs, évaluation (route REST + tâche worker), historique, droits.
 test.setTimeout(120_000);
@@ -67,14 +58,14 @@ test.describe("j09 AlertRule : évaluation et historique", () => {
   });
 
   // Bug confirmé : voir docs/revue/audit-2026-09-29/j09/findings.jsonl
-  bug("j09-001 : POST /alerts/{id}/evaluate répond 202", async () => {
+  test("j09-001 : POST /alerts/{id}/evaluate répond 202", async () => {
     const id = await mkRule("evaluate-route");
     const r = await creator.send("POST", `/v1/alerts/${id}/evaluate`);
     expect(r.status).toBe(202);
   });
 
   // Bug confirmé : voir docs/revue/audit-2026-09-29/j09/findings.jsonl
-  bug("j09-002 : une évaluation créée par la route REST quitte l'état pending", async () => {
+  test("j09-002 : une évaluation créée par la route REST quitte l'état pending", async () => {
     const id = await mkRule("orphan");
     await creator.send("POST", `/v1/alerts/${id}/evaluate`);
     await new Promise((res) => setTimeout(res, 15_000));
@@ -86,7 +77,6 @@ test.describe("j09 AlertRule : évaluation et historique", () => {
   test("une évaluation exécutée par le worker donne firing puis ne renotifie pas sans transition", async () => {
     const id = await mkRule("firing");
     const first = await pendingEvaluation(id);
-    deferEvaluation(first);
     const ev1 = await waitEvaluation(creator, id, first);
     expect(ev1.state).toBe("firing");
     expect(ev1.value).toBe(3);
@@ -97,18 +87,18 @@ test.describe("j09 AlertRule : évaluation et historique", () => {
     // La ligne pending orpheline de la route REST (j09-002) est ignorée par _previous_terminal_state.
     const second = await pendingEvaluation(id).catch(() => first);
     if (second !== first) {
-      deferEvaluation(second);
       const ev2 = await waitEvaluation(creator, id, second);
       expect(ev2.state).toBe("firing");
       expect(ev2.transitioned).toBe(false);
     }
-    expect(notifyRows(id)).toHaveLength(1);
+    // Pas de nouvelle notification sur la valeur inchangée, SAUF le rejeu d'une livraison échouée
+    // (la cible interne est bloquée par la garde d'egress : la 1re livraison a échoué, alerts/jobs.py `retry`).
+    expect(notifyRows(id)).toHaveLength(second !== first ? 2 : 1);
   });
 
   test("le webhook vers une cible interne est bloqué par la garde d'egress et tracé dans l'audit", async () => {
     const id = await mkRule("egress");
     const ev = await pendingEvaluation(id);
-    deferEvaluation(ev);
     await waitEvaluation(creator, id, ev);
     const rows = notifyRows(id);
     expect(rows[0]).toMatchObject({ channel: "webhook", success: false });
@@ -136,7 +126,6 @@ test.describe("j09 AlertRule : évaluation et historique", () => {
     });
     const id = rule.body.itemId as string;
     const ev = await pendingEvaluation(id);
-    deferEvaluation(ev);
     const done = await waitEvaluation(creator, id, ev);
     expect(done.state).toBe("firing");
     expect(done.value).toBe(0);
@@ -145,17 +134,15 @@ test.describe("j09 AlertRule : évaluation et historique", () => {
   test("j09-003 : un échec de notification est visible dans l'historique d'évaluation", async () => {
     const id = await mkRule("silent-failure");
     const ev = await pendingEvaluation(id);
-    deferEvaluation(ev);
     const done = await waitEvaluation(creator, id, ev);
-    // Le canal a échoué (audit_log) mais l'API d'historique n'expose rien à l'auteur de la règle.
+    // Le canal a échoué (audit_log) et l'historique l'expose à l'auteur (`notifyError`, `error` = échec d'évaluation).
     expect(notifyRows(id)[0].success).toBe(false);
-    expect(done.error).not.toBeNull();
+    expect(done.notifyError).not.toBeNull();
   });
 
   test("j09-004 : une première évaluation à l'état ok n'envoie pas de notification", async () => {
     const id = await mkRule("first-ok", { condition: { expr: "value > 100" } });
     const ev = await pendingEvaluation(id);
-    deferEvaluation(ev);
     const done = await waitEvaluation(creator, id, ev);
     expect(done.state).toBe("ok");
     expect(notifyRows(id)).toHaveLength(0);

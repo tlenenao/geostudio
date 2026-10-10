@@ -40,6 +40,10 @@ export function GridCanvas({
   const nameOf = (item: WidgetItem) => {
     const label = labelOf(item);
     const same = items.filter((i) => labelOf(i) === label);
+    // REV-285(h) : ordinal stocké (stable après suppression/réordonnancement) ;
+    // repli sur l'ordre pour les configs antérieures sans ordinal.
+    if (item.ordinal != null)
+      return same.length > 1 || item.ordinal > 1 ? `${label} ${item.ordinal}` : label;
     return same.length > 1 ? `${label} ${same.indexOf(item) + 1}` : label;
   };
   return (

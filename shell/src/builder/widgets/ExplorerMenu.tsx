@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useExplorerEnabled, useOpenExplorer } from "../ExplorerContext";
 import { useOptionalItemClient } from "../../api/ItemClientProvider";
 import type { DataSource } from "../../api/types";
 import { t } from "../../i18n";
+import { saveExportedFile } from "../../api/saveExportedFile";
 import { ApiError } from "../../api/ApiError";
+import { ExportJobError } from "../../api/exportJob";
+import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
 
 const AGGREGATE_FORMATS = ["csv", "xlsx"];
 const ITEMS_FORMATS_WITH_GEOMETRY = ["csv", "xlsx", "geojson", "gpkg"];
@@ -21,6 +24,7 @@ function formatsFor(source: DataSource, hasGeometry: boolean): string[] {
 // tests qui mockent exportDataSource() directement avec une Error brute
 // ("Request failed: <status> ...") sans traverser requestBlob.
 function exportErrorMessage(err: unknown): string {
+  if (err instanceof ExportJobError) return err.message;
   const status = err instanceof ApiError ? err.status : legacyStatus(err);
   if (status === 413) return t("explorerMenu.tooManyEntities");
   if (status === 403) return t("explorerMenu.accessDenied");
@@ -48,7 +52,11 @@ export function ExplorerMenu({
   const open = useOpenExplorer();
   const client = useOptionalItemClient();
   const [menuOpen, setMenuOpen] = useState(false);
+  const menu = usePanelTrigger(menuOpen);
   const [exportError, setExportError] = useState<string | null>(null);
+  // SP-60 : le sondage d'un export asynchrone s'arrête au démontage.
+  const exportAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => exportAbort.current?.abort(), []);
 
   if (!enabled || !datasetId) return null;
 
@@ -68,15 +76,14 @@ export function ExplorerMenu({
     // button, unmount right away) — there is no pending/disabled state to
     // show on the button itself, so none is tracked here.
     closeMenu();
+    exportAbort.current?.abort();
+    const ac = new AbortController();
+    exportAbort.current = ac;
     try {
-      const { blob, filename } = await client.exportDataSource(resolvedSource, format);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
+      const file = await client.exportDataSource(resolvedSource, format, ac.signal);
+      saveExportedFile(file);
     } catch (err) {
+      if (ac.signal.aborted) return;
       setExportError(exportErrorMessage(err));
     }
   }
@@ -87,12 +94,16 @@ export function ExplorerMenu({
         type="button"
         aria-label={t("explorerMenu.trigger")}
         className="rounded px-1 text-xs text-[var(--gs-color-muted)] hover:bg-[var(--gs-color-surface)]"
+        {...menu.triggerProps}
         onClick={() => (menuOpen ? closeMenu() : setMenuOpen(true))}
       >
         ⋮
       </button>
       {menuOpen && (
-        <div className="absolute right-0 top-full mt-1 whitespace-nowrap rounded border border-[var(--gs-color-border)] bg-[var(--gs-color-background)] shadow-sm">
+        <div
+          {...menu.panelProps}
+          className="absolute right-0 top-full mt-1 whitespace-nowrap rounded border border-[var(--gs-color-border)] bg-[var(--gs-color-background)] shadow-sm"
+        >
           <button
             type="button"
             aria-label={t("explorerMenu.viewRecords")}

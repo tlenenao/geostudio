@@ -42,7 +42,6 @@ export function CreateHarvestSourcePanel({ onClose }: { onClose: () => void }) {
         <label className="flex flex-col gap-1 text-sm text-ink">
           {t("catalog.typeLabel")}
           <select
-            aria-label={t("catalog.typeLabel")}
             className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
             value={type}
             onChange={(e) => {
@@ -63,16 +62,11 @@ export function CreateHarvestSourcePanel({ onClose }: { onClose: () => void }) {
         </label>
         <label className="flex flex-col gap-1 text-sm text-ink">
           {t("harvest.columnUrl")}
-          <Input
-            aria-label={t("harvest.columnUrl")}
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-          />
+          <Input value={url} onChange={(e) => setUrl(e.target.value)} />
         </label>
         <label className="flex flex-col gap-1 text-sm text-ink">
           {t("harvest.columnMode")}
           <select
-            aria-label={t("harvest.columnMode")}
             className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
             value={mode}
             onChange={(e) => setMode(e.target.value as "reference" | "copy")}
@@ -86,7 +80,6 @@ export function CreateHarvestSourcePanel({ onClose }: { onClose: () => void }) {
         <label className="flex flex-col gap-1 text-sm text-ink">
           {t("harvest.intervalLabel")}
           <Input
-            aria-label={t("harvest.intervalLabel")}
             type="number"
             min={1}
             value={intervalMinutes}

@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 import { PopupEditor } from "./PopupEditor";
+import { expectAriaWired } from "../test/expectAriaWired";
 
 const fields = ["id", "nom", "population"];
 
@@ -119,7 +120,7 @@ test("the advanced mode posts a template", async () => {
     <PopupEditor value={{}} availableFields={fields} attachmentFields={[]} onChange={onChange} />,
   );
   await userEvent.click(screen.getByRole("button", { name: "Avancé (gabarit)" }));
-  await userEvent.type(screen.getByLabelText("Gabarit"), "x");
+  await userEvent.type(screen.getByLabelText(/Gabarit/), "x");
   expect(onChange).toHaveBeenLastCalledWith({ template: "x" });
 });
 
@@ -186,4 +187,24 @@ test("n'affiche aucun sélecteur pièces jointes si attachmentFields est vide", 
     />,
   );
   expect(screen.queryByLabelText("Pièces jointes")).not.toBeInTheDocument();
+});
+
+test("le bouton « Avancé » est câblé à son panneau (aria-expanded/aria-controls)", async () => {
+  render(
+    <PopupEditor value={{}} availableFields={fields} attachmentFields={[]} onChange={vi.fn()} />,
+  );
+  const trigger = screen.getByRole("button", { name: "Avancé (gabarit)" });
+  const panelId = trigger.getAttribute("aria-controls")!;
+  expectAriaWired(trigger, panelId, false);
+  await userEvent.click(trigger);
+  expectAriaWired(screen.getByRole("button", { name: "Liste de champs" }), panelId, true);
+});
+
+test("le nom accessible du gabarit n'inclut pas le texte d'aide, relié par aria-describedby", async () => {
+  render(
+    <PopupEditor value={{}} availableFields={fields} attachmentFields={[]} onChange={vi.fn()} />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Avancé (gabarit)" }));
+  const box = screen.getByRole("textbox", { name: "Gabarit" });
+  expect(box).toHaveAccessibleDescription(/\$\{/);
 });

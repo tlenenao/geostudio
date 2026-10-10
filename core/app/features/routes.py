@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.responses import JSONResponse
 from opentelemetry import metrics
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -27,9 +28,12 @@ from app.analytics.duckdb_conn import open_spatial_connection
 from app.analytics.export import (
     EXPORT_MEDIA_TYPES,
     export_filename,
+    export_job_max,
+    export_sync_max,
     features_to_format,
     rows_to_format,
 )
+from app.analytics.lake_lag import lake_lag_bytes
 from app.analytics.sql_sandbox import SqlSandboxError, run_analyst_sql
 from app.attachments import repository as attachments_repo
 from app.attachments.routes import get_attachments_bucket, get_s3_client
@@ -45,7 +49,7 @@ from app.collections.routes import (
 from app.configs.guest_access import GuestActor, get_share_link_actor
 from app.db import get_session
 from app.errors import ValidationHTTPException
-from app.features.repository import FilterError
+from app.features.repository import CursorError, FilterError
 from app.features.validation import validate_feature
 from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
@@ -65,7 +69,7 @@ class SqlQueryBody(BaseModel):
     sql: str
 
 
-RESERVED_QUERY_PARAMS = {"limit", "offset", "bbox", "geom_intersects", "f", "format"}
+RESERVED_QUERY_PARAMS = {"limit", "offset", "cursor", "bbox", "geom_intersects", "f", "format"}
 MAX_LIMIT = 1000
 
 CONFORMANCE_CLASSES = [
@@ -190,17 +194,17 @@ def _collect_filters(request: Request) -> dict[str, str]:
     return {k: v for k, v in request.query_params.items() if k not in RESERVED_QUERY_PARAMS}
 
 
-def _page_links(request: Request, *, limit: int, offset: int, page) -> list[dict]:
-    def href(o: int) -> str:
-        return str(request.url.include_query_params(limit=limit, offset=o))
-
+def _page_links(request: Request, *, limit: int, offset: int, page, cursor=None) -> list[dict]:
     links = [{"rel": "self", "type": "application/geo+json", "href": str(request.url)}]
-    if offset + page.number_returned < page.number_matched:
-        links.append({"rel": "next", "type": "application/geo+json", "href": href(offset + limit)})
-    if offset > 0:
-        links.append(
-            {"rel": "prev", "type": "application/geo+json", "href": href(max(0, offset - limit))}
+    if page.next_cursor:
+        # REV-279a : next par curseur keyset, jamais par offset.
+        url = request.url.remove_query_params("offset").include_query_params(
+            limit=limit, cursor=page.next_cursor
         )
+        links.append({"rel": "next", "type": "application/geo+json", "href": str(url)})
+    if offset > 0 and cursor is None:
+        href = str(request.url.include_query_params(limit=limit, offset=max(0, offset - limit)))
+        links.append({"rel": "prev", "type": "application/geo+json", "href": href})
     return links
 
 
@@ -210,6 +214,7 @@ def list_features(
     request: Request,
     limit: int = Query(100, ge=1),
     offset: int = Query(0, ge=0),
+    cursor: str | None = None,
     bbox: str | None = None,
     geom_intersects: str | None = None,
     user=Depends(get_current_user_optional),
@@ -228,6 +233,10 @@ def list_features(
     parsed_bbox = _parse_bbox(bbox)
     parsed_geom_intersects = _parse_geom_intersects(geom_intersects)
     filters = _collect_filters(request)
+    if cursor is not None and offset > 0:
+        raise _validation_error(
+            [{"field": "cursor", "code": "invalid_cursor", "message": "cursor excludes offset"}]
+        )
     try:
         with rls(session, col.tenant_id, masked=masked):
             page = repo.select_features(
@@ -238,19 +247,26 @@ def list_features(
                 bbox=parsed_bbox,
                 geom_intersects=parsed_geom_intersects,
                 filters=filters or None,
+                after=cursor,
+                count_mode="capped",
             )
+    except CursorError as exc:
+        raise _validation_error(
+            [{"field": "cursor", "code": "invalid_cursor", "message": "invalid cursor"}]
+        ) from exc
     except FilterError as exc:
         raise _validation_error(
             [{"field": exc.field, "code": "unknown_filter", "message": exc.message}]
         ) from exc
-    return {
-        "type": "FeatureCollection",
-        "features": page.features,
-        "numberMatched": page.number_matched,
-        "numberReturned": page.number_returned,
-        "timeStamp": datetime.now(UTC).isoformat(),
-        "links": _page_links(request, limit=limit, offset=offset, page=page),
-    }
+    body: dict = {"type": "FeatureCollection", "features": page.features}
+    if page.number_matched is not None:
+        body["numberMatched"] = page.number_matched
+    if page.number_matched_lower_bound:
+        body["numberMatchedLowerBound"] = True
+    body["numberReturned"] = page.number_returned
+    body["timeStamp"] = datetime.now(UTC).isoformat()
+    body["links"] = _page_links(request, limit=limit, offset=offset, page=page, cursor=cursor)
+    return body
 
 
 def get_duckdb_connection_factory():  # overridé en test
@@ -310,7 +326,20 @@ def aggregate_features(
         as_of = lake_as_of(conn, base_uri, col.tenant_id, col.id)
     finally:
         conn.close()
-    return AggregateResponse(categoryKey=category_key, rows=rows, asOf=as_of, pending=as_of is None)
+    # Retard slot-global de l'instance : reserve aux exploitants authentifies.
+    lag_bytes = (
+        lake_lag_bytes(session)
+        if user is not None
+        and has_privilege(session, user, Privilege.SETTINGS_INSTANCE_MANAGE.value)
+        else None
+    )
+    return AggregateResponse(
+        categoryKey=category_key,
+        rows=rows,
+        asOf=as_of,
+        pending=as_of is None,
+        lagBytes=lag_bytes,
+    )
 
 
 EXPORT_FORMATS_AGGREGATE = {"csv", "xlsx"}
@@ -387,7 +416,14 @@ EXPORT_FORMATS_ITEMS = {"csv", "xlsx", "geojson", "gpkg"}
 EXPORT_ITEMS_CAP = int(os.environ.get("CORE_EXPORT_ITEMS_MAX", "100000"))
 
 
-@router.get("/collections/{collection_id}/export/items")
+def get_export_job_starter():  # câblé dans main.py (app.dataexport) : pas d'arête vers le haut
+    raise RuntimeError("collection export job starter not configured")
+
+
+@router.get(
+    "/collections/{collection_id}/export/items",
+    responses={202: {"description": "Export asynchrone : {jobId}, suivre via export/jobs/{jobId}"}},
+)
 def export_collection_items(
     collection_id: str,
     request: Request,
@@ -400,6 +436,7 @@ def export_collection_items(
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
     masked=Depends(get_masked_for_user),
+    start_job=Depends(get_export_job_starter),
 ):
     if format not in EXPORT_FORMATS_ITEMS:
         raise _validation_error(
@@ -418,9 +455,11 @@ def export_collection_items(
     parsed_bbox = _parse_bbox(bbox)
     parsed_geom_intersects = _parse_geom_intersects(geom_intersects)
     filters = _collect_filters(request)
+    sync_max = export_sync_max()
+    job_max = export_job_max()
 
     features: list[dict] = []
-    offset = 0
+    cursor = None
     while True:
         try:
             with rls(session, col.tenant_id, masked=masked):
@@ -428,23 +467,50 @@ def export_collection_items(
                     session,
                     info,
                     limit=MAX_LIMIT,
-                    offset=offset,
+                    offset=0,
                     bbox=parsed_bbox,
                     geom_intersects=parsed_geom_intersects,
                     filters=filters or None,
+                    after=cursor,
+                    # Total exact sur la 1re page : il tranche sync / asynchrone.
+                    count_mode="exact" if cursor is None else "none",
                 )
         except FilterError as exc:
             raise _validation_error(
                 [{"field": exc.field, "code": "unknown_filter", "message": exc.message}]
             ) from exc
+        if cursor is None and page.number_matched is not None:
+            if page.number_matched > job_max:
+                raise HTTPException(
+                    status_code=413, detail="too many entities matched, refine your filters"
+                )
+            if page.number_matched > sync_max:
+                job_id = start_job(
+                    session,
+                    tenant_id=col.tenant_id,
+                    collection_id=col.id,
+                    user_id=user.id,
+                    fmt=format,
+                    masked=bool(masked),
+                    query={
+                        "bbox": list(parsed_bbox) if parsed_bbox else None,
+                        "geomIntersects": parsed_geom_intersects,
+                        "filters": filters,
+                    },
+                )
+                return JSONResponse(
+                    status_code=202,
+                    content={"jobId": job_id},
+                    headers={"Location": f"/v1/collections/{col.id}/export/jobs/{job_id}"},
+                )
         features.extend(page.features)
-        if len(features) > EXPORT_ITEMS_CAP:
+        if len(features) > sync_max:
             raise HTTPException(
                 status_code=413, detail="too many entities matched, refine your filters"
             )
-        if page.number_returned < MAX_LIMIT:
+        cursor = page.next_cursor
+        if cursor is None:
             break
-        offset += MAX_LIMIT
 
     if format == "gpkg":
         conn = open_spatial_connection()

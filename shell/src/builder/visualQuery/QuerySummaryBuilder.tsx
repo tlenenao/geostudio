@@ -78,6 +78,7 @@ export function QuerySummaryBuilder({
       <p className="text-xs font-medium text-ink-2">{t("querySummaryBuilder.groupByHeading")}</p>
       {schema.fields.map((f) => (
         <label key={f.name} className="flex items-center gap-2 text-xs">
+          {/* eslint-disable-next-line geostudio/label-no-aria-label -- le nom accessible contient le texte visible et ajoute le contexte dynamique (champ/ligne) */}
           <input
             type="checkbox"
             aria-label={t("querySummaryBuilder.groupByAria", { name: f.name })}
@@ -92,7 +93,7 @@ export function QuerySummaryBuilder({
         <div key={i} className="flex items-center gap-2">
           <select
             aria-label={t("querySummaryBuilder.metricFunctionAria", { n: i + 1 })}
-            className="h-8 rounded border border-control bg-surface px-2 text-xs text-ink"
+            className="h-9 rounded border border-control bg-surface px-2 text-xs text-ink"
             value={metric.function}
             onChange={(e) => updateMetric(i, { function: e.target.value as MetricFunction })}
           >
@@ -105,7 +106,7 @@ export function QuerySummaryBuilder({
           {metric.function !== "count" && (
             <select
               aria-label={t("querySummaryBuilder.metricColumnAria", { n: i + 1 })}
-              className="h-8 rounded border border-control bg-surface px-2 text-xs text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-xs text-ink"
               value={metric.sourceColumn ?? ""}
               onChange={(e) => updateMetric(i, { sourceColumn: e.target.value })}
             >

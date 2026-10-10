@@ -265,6 +265,18 @@ class ReaderConnectorOracleParams(BaseModel):
     query: str
 
 
+class ReaderConnectorDatabricksParams(BaseModel):
+    """Lecture d'une requête SQL libre (SELECT uniquement) sur un entrepôt
+    Databricks SQL, via un secret de connexion dédié (databricks_dsn) — REV-110,
+    pendant de ReaderConnectorSnowflakeParams/ReaderConnectorOracleParams.
+    `query` n'est validée SELECT-only qu'à l'exécution, avec le dialecte DuckDB :
+    le Spark SQL de Databricks diverge (backticks, `LATERAL VIEW`…) et une
+    requête acceptée ici peut échouer côté serveur avec une erreur explicite."""
+
+    secretName: str = Field(..., json_schema_extra={"format": "secret-name"})
+    query: str
+
+
 class ReaderConnectorBlobParams(BaseModel):
     """Lecture d'un fichier tabulaire unique (CSV/JSONL/Parquet) depuis un
     objet de stockage cloud (S3, Azure Blob, GCS), résolu par un secret de

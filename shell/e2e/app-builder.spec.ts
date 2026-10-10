@@ -9,7 +9,7 @@ test("create an App → add a Text widget → save → runtime shows it", async 
   // Scope to the dialog to avoid collision with the catalog's "Type" filter select.
   const dialog = page.getByRole("dialog", { name: "Nouvel élément" });
   await dialog.getByLabel("Type").selectOption("app");
-  await page.getByLabel("Titre").fill("Mon app");
+  await page.getByLabel("Titre", { exact: true }).fill("Mon app");
   await page.getByRole("button", { name: "Créer" }).click();
 
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
@@ -31,7 +31,7 @@ test("undo/redo: adding a widget can be undone and redone", async ({ page }) => 
   await page.getByRole("button", { name: "Nouveau" }).click();
   const dialog = page.getByRole("dialog", { name: "Nouvel élément" });
   await dialog.getByLabel("Type").selectOption("app");
-  await page.getByLabel("Titre").fill("Mon app");
+  await page.getByLabel("Titre", { exact: true }).fill("Mon app");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 

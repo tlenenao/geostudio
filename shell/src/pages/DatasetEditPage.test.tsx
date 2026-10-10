@@ -315,6 +315,7 @@ test("offers CSV/XLSX/GeoJSON/GPKG export when the collection has geometry, and 
   expect(exportDataSource).toHaveBeenCalledWith(
     expect.objectContaining({ type: "features", datasetId: "ds-1", query: {} }),
     "csv",
+    expect.any(AbortSignal),
   );
   expect(createObjectURL).toHaveBeenCalledWith(blob);
 });

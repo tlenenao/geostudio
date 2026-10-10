@@ -7,6 +7,7 @@ import {
   moveItemAt,
   resizeItemAt,
   duplicateItem,
+  nextOrdinal,
   breakpointForWidth,
   type Breakpoint,
 } from "./grid";
@@ -97,4 +98,26 @@ test("positionsFor stacks items full width at sm unless they have an explicit sm
   expect(sm.get("a")).toEqual({ x: 0, y: 2, w: 12, h: 3 });
   expect(sm.get("c")).toEqual({ x: 1, y: 9, w: 3, h: 1 });
   expect(positionsFor([a, b], "md").get("a")).toEqual({ x: 6, y: 0, w: 6, h: 3 });
+});
+
+test("nextOrdinal : 1 + max des ordinaux du même type, jamais dérivé de l'ordre", () => {
+  const items = [
+    { ...baseItem, id: "a", widget: "table", ordinal: 1 },
+    { ...baseItem, id: "b", widget: "table", ordinal: 3 },
+    { ...baseItem, id: "c", widget: "chart" },
+  ];
+  expect(nextOrdinal(items, "table")).toBe(4);
+  expect(nextOrdinal(items, "chart")).toBe(2); // seul chart sans ordinal = rang 1
+  expect(nextOrdinal([], "table")).toBe(1);
+});
+
+test("nextOrdinal : config mixte (widgets sans ordinal) part du rang effectif", () => {
+  const items = [
+    { ...baseItem, id: "a", widget: "table" },
+    { ...baseItem, id: "b", widget: "table" },
+  ];
+  expect(nextOrdinal(items, "table")).toBe(3);
+  const mixed = [...items, { ...baseItem, id: "c", widget: "table", ordinal: 3 }];
+  expect(nextOrdinal(mixed, "table")).toBe(4);
+  expect(duplicateItem(items[0]!, items).ordinal).toBe(3);
 });

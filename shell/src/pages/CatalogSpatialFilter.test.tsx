@@ -78,3 +78,20 @@ test("mousemove sans mousedown préalable n'appelle pas onChange", () => {
 
   expect(onChange).not.toHaveBeenCalled();
 });
+
+test("le rectangle suit la bascule d'ambiance (REV-285 e)", async () => {
+  render(<CatalogSpatialFilter onChange={vi.fn()} />);
+  const map = mapInstances[0];
+  document.documentElement.style.setProperty("--gs-accent", "#010203");
+  document.documentElement.dataset.theme = "dark";
+  await new Promise((r) => setTimeout(r, 0));
+  try {
+    const fill = map.getLayer("catalog-spatial-filter-rect-fill") as unknown as {
+      paint: { "fill-color": string };
+    };
+    expect(fill.paint["fill-color"]).toBe("#010203");
+  } finally {
+    document.documentElement.style.removeProperty("--gs-accent");
+    delete document.documentElement.dataset.theme;
+  }
+});

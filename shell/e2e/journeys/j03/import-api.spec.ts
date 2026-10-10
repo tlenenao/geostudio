@@ -17,7 +17,7 @@ test.beforeAll(async () => {
 });
 
 test.describe("j03 import — défauts bloquants du chemin nominal", () => {
-  bug("j03-001 : POST /uploads répond 201 et défère le job d'ingestion", async () => {
+  test("j03-001 : POST /uploads répond 201 et défère le job d'ingestion", async () => {
     // Défaut j03-001 : procrastinate.exceptions.AppNotOpen → 500 après commit du job.
     const res = await ingest(
       creator,
@@ -31,7 +31,7 @@ test.describe("j03 import — défauts bloquants du chemin nominal", () => {
     expect(res.job?.status).toBe("done");
   });
 
-  bug("j03-002 : POST /uploads/presign répond 200 avec une URL d'envoi", async () => {
+  test("j03-002 : POST /uploads/presign répond 200 avec une URL d'envoi", async () => {
     // Défaut j03-002 (déjà relevé par j02-002) : put_bucket_cors NotImplemented côté MinIO → 500.
     const r = await creator.send("POST", "/v1/uploads/presign", {
       filename: "a.geojson",
@@ -63,7 +63,7 @@ test.describe("j03 import — défauts bloquants du chemin nominal", () => {
 });
 
 test.describe("j03 import — formats nominaux", () => {
-  test("GeoJSON : 12 entités, SRID 4326, carte créée avec une couche « feature »", async () => {
+  test("GeoJSON : 12 entités, SRID 4326, carte créée avec une couche « vector » (tuiles)", async () => {
     const res = await ingest(creator, "points.geojson", fixture("points.geojson"));
     expect(res.job.status).toBe("done");
     const col = (await creator.get(`/v1/collections/${res.job.collectionId}`)).body;
@@ -72,7 +72,7 @@ test.describe("j03 import — formats nominaux", () => {
     expect(col.geometryType).toBe("Point");
     const cfg = (await creator.get(`/v1/configs/by-item/${res.job.itemId}`)).body.config;
     expect(cfg.map.layers).toHaveLength(1);
-    expect(cfg.map.layers[0].kind).toBe("feature");
+    expect(cfg.map.layers[0].kind).toBe("vector");
     const { center, zoom } = cfg.map.view; // la vue initiale encadre les données (2..3.1, 46..46.55)
     expect(center[0]).toBeGreaterThan(2);
     expect(center[0]).toBeLessThan(3.1);
@@ -199,18 +199,15 @@ test.describe("j03 import — droits", () => {
     expect(i.status).toBe(404);
   });
 
-  bug(
-    "j03-007 : le présigné d'upload est réservé à data.manage (le lecteur reçoit 403)",
-    async () => {
-      // Défaut j03-007 (code-read) : presign_upload n'appelle aucun require_privilege ; un lecteur obtient
-      // une URL PUT vers le bucket d'imports dès que j03-002 est corrigé. Aujourd'hui : 500 pour tous.
-      const r = await reader.send("POST", "/v1/uploads/presign", {
-        filename: "a.geojson",
-        contentType: "application/geo+json",
-      });
-      expect(r.status).toBe(403);
-    },
-  );
+  test("j03-007 : le présigné d'upload est réservé à data.manage (le lecteur reçoit 403)", async () => {
+    // Défaut j03-007 (code-read) : presign_upload n'appelle aucun require_privilege ; un lecteur obtient
+    // une URL PUT vers le bucket d'imports dès que j03-002 est corrigé. Aujourd'hui : 500 pour tous.
+    const r = await reader.send("POST", "/v1/uploads/presign", {
+      filename: "a.geojson",
+      contentType: "application/geo+json",
+    });
+    expect(r.status).toBe(403);
+  });
 });
 
 test.describe("j03 import — volumétrie", () => {

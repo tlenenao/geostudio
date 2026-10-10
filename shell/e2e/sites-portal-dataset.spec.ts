@@ -14,7 +14,7 @@ test("créer un site, y ajouter un DatasetCard lié à une collection publique, 
     .getByRole("dialog", { name: "Nouvel élément" })
     .getByLabel("Type")
     .selectOption("site");
-  await page.getByLabel("Titre").fill("Portail Parcs");
+  await page.getByLabel("Titre", { exact: true }).fill("Portail Parcs");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/site-1\/edit$/);
 

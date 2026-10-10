@@ -14,7 +14,7 @@ test("créer un site, y ajouter Hero+RichSection+Gallery, publier, consulter en 
     .getByRole("dialog", { name: "Nouvel élément" })
     .getByLabel("Type")
     .selectOption("site");
-  await page.getByLabel("Titre").fill("Mon Portail");
+  await page.getByLabel("Titre", { exact: true }).fill("Mon Portail");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/site-1\/edit$/);
 

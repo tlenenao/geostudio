@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import type { ExportedFile } from "./base";
 import type { ItemPermissions } from "../auth/permissions";
 
 export type ResourceType =
@@ -127,7 +128,8 @@ export type NotificationSummary = {
     | "alert"
     | "harvest"
     | "tileset3d"
-    | "terrain3d";
+    | "terrain3d"
+    | "data_export";
   status: "success" | "failure";
   itemId: string | null;
   itemResourceType: ResourceType | null;
@@ -232,7 +234,13 @@ export type CopilotToolSchema = {
   description: string;
   inputSchema: Record<string, unknown>;
 };
-export type CopilotSurface = "app_builder" | "sql_lab" | "visual_query" | "visible_when";
+export type CopilotSurface =
+  | "app_builder"
+  | "sql_lab"
+  | "visual_query"
+  | "visible_when"
+  | "computed_column"
+  | "action_condition";
 
 // REV-102 : un résultat de GET /v1/geocode.
 export type GeocodeResult = { label: string; lon: number; lat: number };
@@ -584,7 +592,10 @@ export interface ItemClient {
   updateHarvestSource(id: string, patch: HarvestSourcePatchInput): Promise<HarvestSource>;
   deleteHarvestSource(id: string): Promise<void>;
   runHarvestSource(id: string): Promise<void>;
-  listHarvestSourceRecords(id: string): Promise<HarvestSourceRecordsPage>;
+  listHarvestSourceRecords(
+    id: string,
+    params?: { limit?: number; offset?: number },
+  ): Promise<HarvestSourceRecordsPage>;
   launchAdminTool(tool: AdminToolName): Promise<{ url: string }>;
   getInstanceStatus(): Promise<InstanceStatus>;
   getCollectionSharing(id: string): Promise<Sharing>;
@@ -672,7 +683,7 @@ export interface ItemClient {
   // un appelant qui saurait qu'un dataset a changé ailleurs.
   invalidateDatasetCache(pk?: string): void;
   featuresUrl(source: DataSource): string;
-  exportDataSource(source: DataSource, format: string): Promise<{ blob: Blob; filename: string }>;
+  exportDataSource(source: DataSource, format: string, signal?: AbortSignal): Promise<ExportedFile>;
   getCollectionSchema(collectionId: string): Promise<CollectionSchema>;
   presignAttachmentUpload(
     collectionId: string,
@@ -815,6 +826,7 @@ export type SecretPayload =
   | { kind: "bigquery_dsn"; dsn: string }
   | { kind: "mssql_dsn"; dsn: string }
   | { kind: "oracle_dsn"; dsn: string }
+  | { kind: "databricks_dsn"; dsn: string }
   | {
       kind: "s3_credentials";
       awsAccessKeyId: string;
@@ -837,6 +849,8 @@ export type WidgetItem = {
   props: Record<string, unknown>;
   layouts?: Partial<Record<"sm" | "md" | "lg", { x: number; y: number; w: number; h: number }>>;
   visibleWhen?: string;
+  // REV-285(h) : rang stable parmi les widgets du même type (nom accessible).
+  ordinal?: number | null;
 };
 
 export type AppLayout = {

@@ -34,7 +34,10 @@ export async function getPublicSeed(): Promise<PublicSeed> {
   });
   if (res.job?.status !== "done") throw new Error(`seed ingest: ${JSON.stringify(res)}`);
   const collectionId = res.job.collectionId as string;
-  const patch = await creator.send("PATCH", `/v1/collections/${collectionId}`, {
+  // REV P13 : sensitiveFields exige data.view_sensitive ou admin.collections.manage.
+  const patch = await (
+    await apiFor("admin")
+  ).send("PATCH", `/v1/collections/${collectionId}`, {
     isPublic: true,
     sensitiveFields: ["pop"],
     license: "cc-by-4.0",

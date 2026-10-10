@@ -44,6 +44,7 @@ from app.configs.repository import ConfigRead
 from app.configs.schemas import BuilderConfig
 from app.configs.terrain3d_validation import validate_terrain3d_payload
 from app.configs.tileset3d_validation import validate_tileset3d_payload
+from app.configs.widget_registry import validate_widget_types
 from app.items import repository as items_repo
 from app.items.models import Item
 from app.items.slug import InvalidSlugError, SlugCollisionError
@@ -106,6 +107,7 @@ def create_config_service(
     _require_etl_enabled_for_pipeline(config)
     _require_export_enabled_for_report(config)
     validate_document(config)
+    validate_widget_types(session, config, tenant_id=user.tenant_id)
     _validate_extension_scope(session, config, tenant_id=user.tenant_id)
     validate_dataset_payload(session, config, user=user)
     validate_bookmark_payload(session, config, user=user)

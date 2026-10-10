@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { registerWidget } from "../registry";
 import { DataSourceSelect } from "../DataSourceSelect";
 import { useBusAction } from "../ActionBusContext";
@@ -15,6 +15,11 @@ import { DataTable } from "../../ui/kit/DataTable";
 import { SourceMissing } from "./SourceMissing";
 import { t } from "../../i18n";
 import { LoadingState } from "../../ui/kit/LoadingState";
+
+// REV-183 : lazy — n'alourdit pas la charge initiale (marge de bundle).
+const CelGenerator = lazy(() =>
+  import("../copilot/VisibleWhenGenerator").then((m) => ({ default: m.CelGenerator })),
+);
 
 type CalculatedColumn = { label: string; expr: string };
 type TableColumn = string | CalculatedColumn;
@@ -91,7 +96,6 @@ export function registerDataWidgets(): void {
         <label className="flex flex-col gap-1">
           {t("widgetData.titleField")}
           <input
-            aria-label={t("widgetData.titleField")}
             className="h-9 rounded-md border border-rule px-2"
             value={String(props.titleField ?? "")}
             onChange={(e) => onChange({ ...props, titleField: e.target.value })}
@@ -170,7 +174,7 @@ export function registerDataWidgets(): void {
     ],
     events: ["itemSelected"],
     actions: ["setFilter"],
-    PropsPanel: ({ props, onChange, dataSources }) => {
+    PropsPanel: ({ props, onChange, dataSources, variables, generateItemId }) => {
       const columns = (props.columns as TableColumn[] | undefined) ?? [];
       const plainColumns = columns.filter((c): c is string => typeof c === "string");
       const calculatedColumns = columns.filter(isCalculatedColumn);
@@ -209,7 +213,6 @@ export function registerDataWidgets(): void {
           <label className="flex flex-col gap-1">
             {t("widgetData.columnsLabel")}
             <input
-              aria-label={t("widgetData.columnsAria")}
               className="h-9 rounded-md border border-rule px-2"
               value={plainColumns.join(",")}
               onChange={(e) =>
@@ -226,6 +229,7 @@ export function registerDataWidgets(): void {
             <div key={i} className="flex flex-col gap-1 rounded border border-rule p-2">
               <label className="flex flex-col gap-1">
                 {t("widgetData.calcColumnLabelText")}
+                {/* eslint-disable-next-line geostudio/label-no-aria-label -- le nom accessible contient le texte visible et ajoute le contexte dynamique (champ/ligne) */}
                 <input
                   aria-label={t("widgetData.calcColumnLabelAria", { n: i + 1 })}
                   className="h-9 rounded-md border border-rule px-2"
@@ -235,6 +239,7 @@ export function registerDataWidgets(): void {
               </label>
               <label className="flex flex-col gap-1">
                 {t("widgetData.calcColumnExprText")}
+                {/* eslint-disable-next-line geostudio/label-no-aria-label -- le nom accessible contient le texte visible et ajoute le contexte dynamique (champ/ligne) */}
                 <input
                   aria-label={t("widgetData.calcColumnExprAria", { n: i + 1 })}
                   className="h-9 rounded-md border border-rule px-2 font-mono"
@@ -242,6 +247,21 @@ export function registerDataWidgets(): void {
                   onChange={(e) => updateCalculatedColumn(i, { expr: e.target.value })}
                 />
               </label>
+              {generateItemId && (
+                <Suspense fallback={null}>
+                  <CelGenerator
+                    itemId={generateItemId}
+                    context="computedColumn"
+                    availableFields={[
+                      ...plainColumns.map((c) => `record.${c}`),
+                      ...(variables ?? []).map((v) => `vars.${v.name}`),
+                      "user.name",
+                    ]}
+                    current={col.expr}
+                    onApply={(expr) => updateCalculatedColumn(i, { expr })}
+                  />
+                </Suspense>
+              )}
               <button
                 type="button"
                 className="self-start text-xs text-danger underline"

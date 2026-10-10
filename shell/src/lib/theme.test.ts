@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-import { afterEach, expect, test } from "vitest";
-import { applyThemePreference, readThemePreference, saveThemePreference } from "./theme";
+import { afterEach, expect, test, vi } from "vitest";
+import {
+  applyThemePreference,
+  onThemeChange,
+  readThemePreference,
+  saveThemePreference,
+} from "./theme";
 
 afterEach(() => {
   localStorage.clear();
@@ -44,5 +49,26 @@ test("un stockage qui lève ne casse ni la lecture ni l'écriture", () => {
   } finally {
     spy.getItem = get;
     spy.setItem = set;
+  }
+});
+
+test("onThemeChange : notifie quand data-theme change, puis plus après désabonnement (REV-285 e)", async () => {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockReturnValue({ addEventListener: () => {}, removeEventListener: () => {} }),
+  );
+  try {
+    const cb = vi.fn();
+    const off = onThemeChange(cb);
+    document.documentElement.dataset.theme = "dark";
+    await new Promise((r) => setTimeout(r, 0));
+    expect(cb).toHaveBeenCalledTimes(1);
+    off();
+    document.documentElement.dataset.theme = "light";
+    await new Promise((r) => setTimeout(r, 0));
+    expect(cb).toHaveBeenCalledTimes(1);
+  } finally {
+    vi.unstubAllGlobals();
+    delete document.documentElement.dataset.theme;
   }
 });

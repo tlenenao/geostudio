@@ -27,6 +27,7 @@ import { SaveConflictNotice } from "../builder/SaveConflictNotice";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { useDirtyGuard } from "../lib/useDirtyGuard";
 import { t } from "../i18n";
+import { saveExportedFile } from "../api/saveExportedFile";
 import { PageTitle } from "../ui/kit/PageTitle";
 
 export function DatasetEditPage({ pk }: { pk: string }) {
@@ -42,6 +43,9 @@ export function DatasetEditPage({ pk }: { pk: string }) {
   const versionSeededRef = useRef(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportingFormat, setExportingFormat] = useState<string | null>(null);
+  // SP-60 : le sondage d'un export asynchrone s'arrête au démontage.
+  const exportAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => exportAbort.current?.abort(), []);
   // SP-B6d : même patron que MapEditorPage (Tâche 27) — `updateDraft`
   // centralise toute mutation du brouillon issue d'une action utilisateur ;
   // l'effet de synchronisation initiale ci-dessous passe volontairement par
@@ -156,18 +160,18 @@ export function DatasetEditPage({ pk }: { pk: string }) {
     };
     setExportError(null);
     setExportingFormat(format);
+    exportAbort.current?.abort();
+    const ac = new AbortController();
+    exportAbort.current = ac;
     try {
-      const { blob, filename } = await client.exportDataSource(source, format);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
+      const file = await client.exportDataSource(source, format, ac.signal);
+      saveExportedFile(file);
     } catch (err) {
-      setExportError(err instanceof Error ? err.message : t("datasetEdit.exportError"));
+      if (!ac.signal.aborted) {
+        setExportError(err instanceof Error ? err.message : t("datasetEdit.exportError"));
+      }
     } finally {
-      setExportingFormat(null);
+      if (!ac.signal.aborted) setExportingFormat(null);
     }
   }
 
@@ -268,7 +272,6 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                 <label className="mt-2 flex flex-col gap-1 text-xs">
                   {t("datasetEdit.timeFieldLabel")}
                   <select
-                    aria-label={t("datasetEdit.timeFieldLabel")}
                     className="h-9 w-full rounded border border-control bg-surface px-2 text-xs text-ink"
                     value={draft.timeField ?? ""}
                     onChange={(e) =>
@@ -286,7 +289,6 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                 <label className="flex items-center gap-2 text-xs">
                   <input
                     type="checkbox"
-                    aria-label={t("datasetEdit.reactsToExtentLabel")}
                     checked={Boolean(draft.reactsToExtent)}
                     onChange={(e) =>
                       updateDraft((d) => (d ? { ...d, reactsToExtent: e.target.checked } : d))

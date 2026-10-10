@@ -43,7 +43,11 @@ export function AddressSearch({ onSelect }: { onSelect: (center: [number, number
           {t("addressSearch.failed")}
         </p>
       )}
-      {results?.length === 0 && <p className="text-xs text-ink-2">{t("addressSearch.empty")}</p>}
+      {results?.length === 0 && (
+        <p role="status" className="text-xs text-ink-2">
+          {t("addressSearch.empty")}
+        </p>
+      )}
       {results && results.length > 0 && (
         <ul className="flex flex-col gap-1">
           {results.map((r) => (

@@ -117,6 +117,23 @@ def test_guest_token_grants_access_to_the_root_app_config(env):
     assert response.json()["itemId"] == item_id
 
 
+def test_guest_read_does_not_compute_config_warnings(env, monkeypatch):
+    from app.configs import routes
+
+    app, client = env
+    item_id = _create_app_config(client, data_sources=[])
+    token = _create_link_token(client, item_id)
+    app.dependency_overrides.pop(get_current_user)
+
+    def boom(*a, **k):
+        raise AssertionError("avertissements calculés pour un invité")
+
+    monkeypatch.setattr(routes, "with_warnings", boom)
+    r = client.get(f"/v1/configs/by-item/{item_id}", headers={"X-Share-Link-Token": token})
+    assert r.status_code == 200
+    assert r.json()["warnings"] == []
+
+
 def test_guest_token_for_a_non_app_dashboard_item_gets_404(env):
     app, client = env
     body = {

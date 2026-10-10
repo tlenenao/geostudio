@@ -134,7 +134,10 @@ export function getSeed(): Promise<Seed> {
         `('default','B',2,'s2',ST_SetSRID(ST_MakePoint(1.6,45.3),4326))`,
     );
     psql(`UPDATE collections SET feature_count=2 WHERE id='${c.body.id}'`);
-    const p = await creator.send("PATCH", `/v1/collections/${c.body.id}`, {
+    // REV P13 : sensitiveFields exige data.view_sensitive ou admin.collections.manage.
+    const p = await (
+      await apiFor("admin")
+    ).send("PATCH", `/v1/collections/${c.body.id}`, {
       sensitiveFields: ["secret"],
     });
     if (p.status !== 200) throw new Error(`sensitive ${p.status}`);

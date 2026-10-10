@@ -23,6 +23,7 @@ import duckdb
 from pydantic import BaseModel
 
 from app.analytics.duckdb_conn import StatementTimeout, statement_timeout
+from app.analytics.snapshot import cut_seconds, latest_snapshot
 from app.collections.introspection import TableInfo
 from app.sql_ident import quote_ident_duckdb as _qi
 
@@ -67,6 +68,8 @@ class AggregateResponse(BaseModel):
     rows: list[dict[str, Any]]
     asOf: str | None = None
     pending: bool = False
+    # REV-280f : retard du lac en octets de WAL (None = slot absent/illisible).
+    lagBytes: int | None = None
 
 
 # P25.01 : plafond de groupes d'un agrégat (au-delà : 400, jamais une réponse
@@ -482,16 +485,28 @@ def _dedup_cte(
     # `_seq` (collection inactive depuis avant ce correctif), la colonne est
     # absente du schéma tout court : retomber sur `_lsn` seul plutôt que de
     # référencer une colonne qui n'existe nulle part (échouerait à la liaison).
-    has_seq = _has_seq_column(conn, glob, union_by_name=True)
+    snap = latest_snapshot(conn, base_uri, tenant_id, collection_id)
+    has_seq = _has_seq_column(conn, glob, union_by_name=True) or (
+        snap is not None and _has_seq_column(conn, snap[0], union_by_name=True)
+    )
     order_by = "_lsn DESC, COALESCE(_seq, -1) DESC" if has_seq else "_lsn DESC"
     # Les Parquet portent `geometry` ; le reste du code lit geometry_column
     # (`geom` si importée) : renommé ici, donc `live` parle partout le nom de
     # la table. Parquet déjà au nom de la table (ou sans géométrie) : intact.
     rename = lake_geometry_rename(table_info)
     star = f"* RENAME ({rename})" if rename and _has_lake_geometry(conn, glob) else "*"
+    raw_files = f"read_parquet({_sql_lit(glob)}, hive_partitioning=true, union_by_name=true)"
+    if snap is not None:
+        # REV-280a : dernier snapshot d'état courant + lignes brutes plus
+        # récentes que sa coupure (`_ts`, jamais la LSN : cf. app.analytics.
+        # snapshot). Même réduction derrière ; sans snapshot, glob complet.
+        raw_files = (
+            f"(SELECT * FROM read_parquet({_sql_lit(snap[0])}, hive_partitioning=true, "
+            f"union_by_name=true) UNION ALL BY NAME "
+            f"SELECT * FROM {raw_files} WHERE _ts > {cut_seconds(snap[1])!r})"
+        )
     return (
-        f"WITH raw AS (SELECT {star} FROM read_parquet({_sql_lit(glob)}, "
-        f"hive_partitioning=true, union_by_name=true)), "
+        f"WITH raw AS (SELECT {star} FROM {raw_files}), "
         f"current AS (SELECT * FROM raw QUALIFY row_number() OVER "
         f"(PARTITION BY {pk} ORDER BY {order_by}) = 1), "
         f"live AS (SELECT * FROM current WHERE _op != 'delete')"

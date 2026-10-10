@@ -1,11 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
-import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import {
   HOOK,
   alertConfig,
   apiFor,
-  deferEvaluation,
   getAlertSeed,
   mkRule,
   newEvaluation,
@@ -29,6 +27,7 @@ let creator: Api;
 let admin: Api;
 let datasetId: string;
 let smtpName: string;
+let adminSmtpName: string;
 let sweepRuleId: string;
 const SWEEP_TITLE = `${tag}-sweep-mail`;
 
@@ -53,10 +52,8 @@ async function smtpSecret(
     payload: {
       kind: "smtp",
       host: "audit-j09b-recv",
-      // Règle 3c9f5f0d : useTls=false refusé hors localhost. On cible donc le port STARTTLS (2526) ;
-      // MAIS le certificat du récepteur (recv.py) est auto-signé, non vérifiable par le cœur
-      // (add915de) : la livraison échouera tant que recv.py n'a pas un cert signé par une CA de confiance.
-      // À corriger côté récepteur, jamais en affaiblissant le cœur.
+      // Port STARTTLS : le certificat de recv.py (bon nom) est approuvé par le harnais ; 2527 sert un
+      // certificat au mauvais nom, refusé par le cœur (j09b-005).
       port: 2526,
       username: "alerts",
       password: "s3cret-pw",
@@ -75,7 +72,11 @@ test.beforeAll(async () => {
   datasetId = s.datasetId;
   admin = await apiFor("admin");
   smtpName = `${tag}-smtp`;
-  expect(await smtpSecret(admin, smtpName)).toBe(201);
+  // Coffre à propriétaire (P16.08) : le secret utilisé par une règle est celui du propriétaire de la
+  // règle (le Créateur) ; celui de l'administrateur sert au test d'usurpation j09b-006.
+  expect(await smtpSecret(creator, smtpName)).toBe(201);
+  adminSmtpName = `${tag}-smtp-admin`;
+  expect(await smtpSecret(admin, adminSmtpName)).toBe(201);
   // Règle à balayage périodique réel (*/5) : le worker évalue puis envoie l'e-mail sans aide.
   sweepRuleId = await mkRule(creator, datasetId, SWEEP_TITLE, {
     refreshPolicy: { enabled: true, cron: "*/5 * * * *" },
@@ -129,7 +130,7 @@ test("j09b-003 : le webhook porte une signature vérifiable (en-tête HMAC)", as
   const secretName = `${tag}-sign-key`;
   expect(
     (
-      await admin.send("POST", "/v1/secrets", {
+      await creator.send("POST", "/v1/secrets", {
         name: secretName,
         payload: { kind: "bearer_token", token: "signing-key" },
       })
@@ -191,24 +192,21 @@ test("webhook : une redirection vers 169.254.169.254 est bloquée sur le saut ; 
   const b = notifyAudit(slowId);
   expect(b[0]).toMatchObject({ success: false });
   expect(b[0].error).toMatch(/timed out|Read timed out/i);
-  expect(took).toBeLessThan(25_000);
+  expect(took).toBeLessThan(35_000); // runnerEvaluate attend aussi la fin de l évaluation (≤ 8 s de plus)
 });
 
 // Finding j09b-002 : le service `worker` n'a pas CORE_SECRETS_MASTER_KEY (docker-compose.yml ne la
 // passe qu'au cœur) : le secret SMTP ne peut pas être déchiffré, aucun e-mail d'alerte n'est livré.
-bug(
-  "j09b-002 : le worker réel livre l'e-mail d'une alerte (secret SMTP déchiffrable)",
-  async () => {
-    const title = `${tag}-mail-worker`;
-    const id = await mkRule(creator, datasetId, title, {
-      channels: [{ kind: "email", to: "ops@audit.test", smtpSecretName: smtpName }],
-    });
-    const e = await newEvaluation(creator, id);
-    deferEvaluation(e);
-    await waitEvaluation(creator, id, e);
-    expect(recvLog("smtp").filter((m) => m.data.includes(title))).toHaveLength(1);
-  },
-);
+test("j09b-002 : le worker réel livre l'e-mail d'une alerte (secret SMTP déchiffrable)", async () => {
+  const title = `${tag}-mail-worker`;
+  const id = await mkRule(creator, datasetId, title, {
+    channels: [{ kind: "email", to: "ops@audit.test", smtpSecretName: smtpName }],
+  });
+  // Depuis P01 la route /evaluate défère elle-même la tâche : plus de défèrement manuel (il doublait l'e-mail).
+  const e = await newEvaluation(creator, id);
+  await waitEvaluation(creator, id, e);
+  expect(recvLog("smtp").filter((m) => m.data.includes(title))).toHaveLength(1);
+});
 
 test("e-mail : livré au SMTP authentifié (expéditeur, destinataire, sujet, corps) ; identifiants refusés -> échec audité sans fuite du mot de passe", async () => {
   const title = `${tag}-mail-now`;
@@ -220,7 +218,7 @@ test("e-mail : livré au SMTP authentifié (expéditeur, destinataire, sujet, co
   expect((await waitEvaluation(creator, id, e)).state).toBe("firing");
   const mails = recvLog("smtp").filter((m) => m.data.includes(title));
   expect(mails).toHaveLength(1);
-  expect(mails[0]).toMatchObject({ user: "alerts", pass: "s3cret-pw", tls: false });
+  expect(mails[0]).toMatchObject({ user: "alerts", pass: "s3cret-pw", tls: true });
   expect(mails[0].from).toContain("alerts@audit.test");
   expect(mails[0].rcpt[0]).toContain("ops@audit.test");
   expect(mails[0].data).toContain(`Subject: [GeoStudio] ${title}: firing`);
@@ -228,7 +226,7 @@ test("e-mail : livré au SMTP authentifié (expéditeur, destinataire, sujet, co
   expect(notifyAudit(id)[0]).toMatchObject({ channel: "email", success: true });
 
   const name = `${tag}-smtp-bad`;
-  expect(await smtpSecret(admin, name, { password: "wrong" })).toBe(201);
+  expect(await smtpSecret(creator, name, { password: "wrong" })).toBe(201);
   const badId = await mkRule(creator, datasetId, `${tag}-mail-bad`, {
     channels: [{ kind: "email", to: "ops@audit.test", smtpSecretName: name }],
   });
@@ -242,9 +240,9 @@ test("e-mail : livré au SMTP authentifié (expéditeur, destinataire, sujet, co
 });
 
 // Finding j09b-005 : smtp.starttls() sans contexte ne vérifie ni la chaîne ni le nom d'hôte.
-bug("j09b-005 : STARTTLS refuse un certificat auto-signé au mauvais nom d'hôte", async () => {
+test("j09b-005 : STARTTLS refuse un certificat auto-signé au mauvais nom d'hôte", async () => {
   const name = `${tag}-smtp-tls`;
-  expect(await smtpSecret(admin, name, { port: 2526, useTls: true })).toBe(201);
+  expect(await smtpSecret(creator, name, { port: 2527, useTls: true })).toBe(201);
   const title = `${tag}-mail-tls`;
   const id = await mkRule(creator, datasetId, title, {
     channels: [{ kind: "email", to: "ops@audit.test", smtpSecretName: name }],
@@ -262,7 +260,7 @@ bug("j09b-005 : STARTTLS refuse un certificat auto-signé au mauvais nom d'hôte
 test("j09b-006 : un Créateur ne peut pas utiliser le secret SMTP d'un autre pour envoyer", async () => {
   const title = `${tag}-mail-relay`;
   const id = await mkRule(creator, datasetId, title, {
-    channels: [{ kind: "email", to: "victime@autre-domaine.test", smtpSecretName: smtpName }],
+    channels: [{ kind: "email", to: "victime@autre-domaine.test", smtpSecretName: adminSmtpName }],
     messageTemplate: "Hameçonnage : {ruleName}",
   });
   const e = await newEvaluation(creator, id);

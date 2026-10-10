@@ -346,7 +346,7 @@ test("shares a collection via the row action", async () => {
   const shareButton = await screen.findByRole("button", { name: "Partager" });
   expectAriaWired(shareButton, shareButton.getAttribute("aria-controls")!, false);
   await userEvent.click(shareButton);
-  await userEvent.click(await screen.findByLabelText("Public"));
+  await userEvent.click(await screen.findByLabelText(/Visible par tous/));
   expectAriaWired(shareButton, shareButton.getAttribute("aria-controls")!, true);
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   await waitFor(() => expect(putBody).toEqual({ public: true, groups: [] }));
@@ -560,4 +560,19 @@ test("affiche un état vide quand aucune collection n'existe", async () => {
   render(<Harness />);
   expect(await screen.findByText("Aucune collection pour l'instant")).toBeInTheDocument();
   expect(screen.queryByRole("table")).not.toBeInTheDocument();
+});
+
+test("« Enregistrer une table » est câblé à son panneau (aria-expanded/aria-controls)", async () => {
+  server.use(
+    http.get("https://core.test/v1/collections", () => HttpResponse.json({ collections: [] })),
+    http.get("https://core.test/v1/collections/candidates", () =>
+      HttpResponse.json({ candidates: [] }),
+    ),
+  );
+  render(<Harness />);
+  const trigger = await screen.findByRole("button", { name: "Enregistrer une table" });
+  const panelId = trigger.getAttribute("aria-controls")!;
+  expectAriaWired(trigger, panelId, false);
+  await userEvent.click(trigger);
+  expectAriaWired(trigger, panelId, true);
 });

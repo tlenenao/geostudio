@@ -30,6 +30,7 @@ import { Panel } from "../ui/kit/Panel";
 import { EmptyState } from "../ui/kit/EmptyState";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
+import { jobStatusLabel } from "../lib/jobStatusLabel";
 import { PageTitle } from "../ui/kit/PageTitle";
 
 // P25.14 : toutes les collections interrogeables sont proposées à la saisie
@@ -334,6 +335,11 @@ export function SqlLabPage() {
                   {history.map((entry) => (
                     <li key={entry.id} className="flex items-center gap-2 text-xs">
                       <span aria-hidden="true">{entry.status === "error" ? "✕" : "✓"}</span>
+                      <span className="sr-only">
+                        {t("sqlLab.historyStatusAria", {
+                          status: jobStatusLabel(entry.status === "error" ? "error" : "done"),
+                        })}
+                      </span>
                       <button
                         type="button"
                         aria-label={t("sqlLab.reloadQueryAria", { sql: entry.sql })}

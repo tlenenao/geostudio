@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import type { ActionMessage, Variable, WidgetItem } from "../api/types";
 import { t } from "../i18n";
 import { getWidget } from "./registry";
 import { validateExpression } from "./expr";
 import { formatCelError } from "./celError";
 import { Button } from "../ui/kit/Button";
+
+// REV-183 : lazy — n'alourdit pas la charge initiale (marge de bundle).
+const CelGenerator = lazy(() =>
+  import("./copilot/VisibleWhenGenerator").then((m) => ({ default: m.CelGenerator })),
+);
 
 function widgetLabel(items: WidgetItem[], variables: Variable[], id: string): string {
   if (id.startsWith("var:")) {
@@ -27,14 +32,17 @@ function resolvesOnThisPage(items: WidgetItem[], variables: Variable[], id: stri
   return items.some((i) => i.id === id);
 }
 
-const selectCls = "h-8 rounded border border-rule bg-surface text-xs";
+const selectCls = "h-9 rounded border border-rule bg-surface text-xs";
 
 export function ActionsPanel({
   items,
   variables = [],
   messages,
   onChange,
+  generateItemId,
 }: {
+  // REV-183 : id d'item pour le copilote ; absent = pas de bouton Générer.
+  generateItemId?: string;
   items: WidgetItem[];
   variables?: Variable[];
   messages: ActionMessage[];
@@ -104,6 +112,17 @@ export function ActionsPanel({
                 <span role="alert" className="whitespace-pre-line text-danger">
                   {formatCelError(error)}
                 </span>
+              )}
+              {generateItemId && (
+                <Suspense fallback={null}>
+                  <CelGenerator
+                    itemId={generateItemId}
+                    context="actionCondition"
+                    availableFields={[...variables.map((v) => `vars.${v.name}`), "user.name"]}
+                    current={when}
+                    onApply={(expr) => updateWhen(m.id, expr)}
+                  />
+                </Suspense>
               )}
             </li>
           );

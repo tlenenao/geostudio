@@ -129,7 +129,9 @@ def build_app_export_task(job_id: str, tenant_id: str) -> None:
             if job is None:
                 logger.error("app export job %s introuvable (tenant %s)", job_id, tenant_id)
                 return
-            appexport_repo.mark_running(session, job_id=job_id)
+            if not appexport_repo.mark_running(session, job_id=job_id):
+                logger.warning("app export job %s non prenable (déjà pris ou terminé)", job_id)
+                return
             item_id = job.item_id
             mode = job.mode
             user_id = job.user_id

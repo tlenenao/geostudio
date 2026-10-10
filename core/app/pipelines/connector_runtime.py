@@ -15,7 +15,9 @@ import os
 # téléphoner à l'extérieur par variable d'environnement oubliée.
 os.environ.setdefault("RUNTIME__DLTHUB_TELEMETRY", "false")
 
+import io
 import json
+import re
 import shutil
 import tempfile
 import time
@@ -54,10 +56,12 @@ from app.pipelines.egress import (
     assert_egress_allowed,
     build_guarded_session,
     dsn_pin_connect_args,
+    pin_dsn_host,
 )
 from app.pipelines.ops.schemas import (
     ReaderConnectorBigQueryParams,
     ReaderConnectorBlobParams,
+    ReaderConnectorDatabricksParams,
     ReaderConnectorMssqlParams,
     ReaderConnectorOracleParams,
     ReaderConnectorPostgresParams,
@@ -66,6 +70,7 @@ from app.pipelines.ops.schemas import (
 )
 from app.secrets import repository as secrets_repo
 from app.secrets.schemas import SecretPayload
+from app.sql_ident import quote_ident_duckdb as _qi
 from app.users.models import User
 
 # Dialectes dont l'hôte n'est pas un nom DNS contrôlable (compte Snowflake,
@@ -161,6 +166,42 @@ def _blob_timeout_s() -> int:
     return _env_int("CORE_PIPELINES_BLOB_TIMEOUT_S", 600)
 
 
+class _CappedReader(io.RawIOBase):
+    """Enveloppe un flux décompressé et lève au-delà du plafond cumulé
+    (REV-273b : la taille annoncée d'un .gz est la taille compressée ; une
+    bombe de décompression la contourne). `RawIOBase` + `readinto` : pandas
+    contourne un simple objet à `read()` délégué."""
+
+    def __init__(self, raw, state: dict, max_bytes: int):
+        super().__init__()
+        self._raw, self._state, self._max = raw, state, max_bytes
+        self._of = raw if hasattr(raw, "__enter__") else None  # OpenFile à refermer
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, b) -> int:
+        n = self._raw.readinto(b) or 0
+        self._state["raw_bytes"] += n
+        if self._state["raw_bytes"] > self._max:
+            raise ConnectorRuntimeError(f"plafond de {self._max} octets décompressés dépassé")
+        return n
+
+    def __enter__(self):
+        # fsspec.open() peut renvoyer un OpenFile paresseux : le flux naît à l'entrée.
+        if hasattr(self._raw, "__enter__"):
+            self._raw = self._raw.__enter__()
+        return self
+
+    def close(self) -> None:
+        try:
+            self._raw.close()
+            if self._of is not None:
+                self._of.close()
+        finally:
+            super().close()
+
+
 def _blob_resource(files, reader):
     """REV-273b : plafonds fichiers/octets/lignes + échéance globale sur la
     chaîne filesystem → reader. dlt applique `add_map` élément par élément (y
@@ -168,12 +209,13 @@ def _blob_resource(files, reader):
     ponytail: gardes entre éléments ; un fichier unique géant n'est borné que
     par sa taille annoncée et les délais réseau fsspec (`_blob_fs_kwargs`) ;
     le listing glob (dlt glob_files -> fs.glob(detail=True)) est chargé en
-    mémoire avant tout plafond : un glob `**` sur un énorme bucket est non
-    borné. Évolution : limiter la profondeur/le préfixe du glob."""
+    mémoire avant tout plafond ; `**` est refusé en amont, un `*` à un seul
+    niveau reste listé en mémoire (borné par le préfixe imposé du secret).
+    Évolution : réécrire la source `filesystem` pour paginer le listing."""
     max_files, max_bytes = _blob_max_files(), _blob_max_bytes()
     max_rows, budget = _max_rows(), _blob_timeout_s()
     deadline = time.monotonic() + budget
-    state = {"files": 0, "bytes": 0, "rows": 0}
+    state = {"files": 0, "bytes": 0, "rows": 0, "raw_bytes": 0}
 
     def _check_deadline() -> None:
         if time.monotonic() > deadline:
@@ -187,6 +229,15 @@ def _blob_resource(files, reader):
         state["bytes"] += int(item["size_in_bytes"])
         if state["bytes"] > max_bytes:
             raise ConnectorRuntimeError(f"plafond de {max_bytes} octets dépassé")
+        if item.get("encoding") == "gzip":
+            real_open = item.open
+
+            def capped_open(*args, **kwargs):
+                return io.BufferedReader(
+                    _CappedReader(real_open(*args, **kwargs), state, max_bytes)
+                )
+
+            item.open = capped_open
         return item
 
     def _row_guard(row):
@@ -217,15 +268,33 @@ def _blob_fs_kwargs(payload) -> dict:
     return {"kwargs": {"requests_timeout": q}}
 
 
-def _timeout_connect_args(backend: str) -> dict:
+_REDSHIFT_HOST = re.compile(r"\.redshift(-serverless)?\.amazonaws\.com(\.cn)?$", re.IGNORECASE)
+
+
+def _is_redshift(backend: str, host: str | None) -> bool:
+    # Les alias/CNAME personnalisés ne sont pas détectés (seul le suffixe AWS l'est).
+    return backend.startswith("postgresql") and bool(
+        host and _REDSHIFT_HOST.search(host.rstrip("."))
+    )
+
+
+def _timeout_connect_args(backend: str, host: str | None = None) -> dict:
     """Délais de connexion/requête par pilote (P16.03). BigQuery : aucun
-    réglage équivalent côté dialecte, borné par le plafond de lignes."""
+    réglage équivalent côté dialecte, borné par le plafond de lignes.
+    Redshift (REV-110) : pas de paramètre de démarrage `options` (rejeté par
+    le serveur) ; le délai passe par `SET statement_timeout` (cf. `_stream_sql`).
+    Support non vérifié sur un cluster réel."""
     t, q = _connect_timeout_s(), _query_timeout_s()
+    pg = {"connect_timeout": t}
+    if not _is_redshift(backend, host):
+        pg["options"] = f"-c statement_timeout={q * 1000}"
     return {
-        "postgresql": {"connect_timeout": t, "options": f"-c statement_timeout={q * 1000}"},
+        "postgresql": pg,
         "mssql": {"login_timeout": t, "timeout": q},
         "oracle": {"tcp_connect_timeout": float(t)},
         "snowflake": {"login_timeout": t, "network_timeout": q},
+        # databricks-sql-connector : délai de socket (s) appliqué à chaque appel Thrift/HTTP.
+        "databricks": {"_socket_timeout": q},
     }.get(backend, {})
 
 
@@ -236,8 +305,21 @@ def _stream_sql(dsn: str, query: str):
     backend = sa.engine.make_url(dsn).get_backend_name()
     if backend not in _NO_HOST_BACKENDS:
         assert_dsn_egress_allowed(dsn)
-    connect_args = {**_timeout_connect_args(backend), **dsn_pin_connect_args(dsn)}
+        dsn = pin_dsn_host(dsn)  # REV-273d : mssql/oracle visent l'IP validée
+    host = sa.engine.make_url(dsn).host
+    connect_args = {**_timeout_connect_args(backend, host), **dsn_pin_connect_args(dsn)}
     engine = sa.create_engine(dsn, connect_args=connect_args)
+    if _is_redshift(backend, host):
+        ms = int(_query_timeout_s() * 1000)
+
+        def _set_timeout(dbapi_conn, _rec):
+            cur = dbapi_conn.cursor()
+            try:
+                cur.execute(f"SET statement_timeout TO {ms}")
+            finally:
+                cur.close()
+
+        sa.event.listen(engine, "connect", _set_timeout)
     if backend == "oracle":
         # python-oracledb : délai d'appel par requête, en ms.
         sa.event.listen(
@@ -255,13 +337,6 @@ def _stream_sql(dsn: str, query: str):
                 yield dict(row._mapping)
     finally:
         engine.dispose()
-
-
-def _qi(name: str) -> str:
-    # Duplication délibérée (3e copie du dépôt) — cf. runtime.py, même
-    # rationale : helper de 2 lignes, pas un import inter-module d'un nom
-    # `_`-préfixé.
-    return '"' + name.replace('"', '""') + '"'
 
 
 class ConnectorRuntimeError(Exception):
@@ -615,6 +690,38 @@ def materialize_oracle_connector(
     _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
 
 
+def materialize_databricks_connector(
+    conn,
+    *,
+    secret_resolver: SecretResolver | None,
+    node_id: str,
+    params: ReaderConnectorDatabricksParams,
+    view_name: str,
+) -> None:
+    # Pendant de materialize_snowflake_connector (REV-110) : même heuristique
+    # SELECT-only (dialecte DuckDB, pas Spark SQL), même garde d'egress par
+    # l'hôte du workspace dans _stream_sql.
+    try:
+        validate_select_only(parse_ast(conn, params.query))
+    except SqlSandboxError as exc:
+        raise ConnectorRuntimeError(f"reader.connector.databricks query rejected: {exc}") from exc
+
+    payload = _resolve_secret(secret_resolver, params.secretName)
+    if payload.kind != "databricks_dsn":
+        raise ConnectorRuntimeError(
+            f"secret has kind '{payload.kind}', not usable by reader.connector.databricks "
+            "(expected databricks_dsn)"
+        )
+
+    @dlt.resource(name="records", write_disposition="replace")
+    def _records():
+        # Dialecte "databricks" enregistré par entry point (databricks-sqlalchemy),
+        # jamais importé explicitement ; create_engine reste paresseux.
+        yield from _stream_sql(payload.dsn, params.query)
+
+    _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
+
+
 def materialize_bigquery_connector(
     conn,
     *,
@@ -727,6 +834,10 @@ def materialize_blob_connector(
             f"(expected {expected_kind})"
         )
     _assert_path_within_bucket(payload, params.path)
+    if "**" in params.path:
+        # REV-273b : fs.glob(detail=True) matérialise tout le listing avant le
+        # moindre plafond ; un `**` sur un gros bucket est non borné.
+        raise ConnectorRuntimeError("file_glob : le joker récursif '**' est refusé")
 
     if payload.kind == "s3_credentials":
         if payload.endpointUrl:  # endpoint S3 compatible = cible réseau libre (P16.02)

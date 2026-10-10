@@ -37,7 +37,6 @@ export function registerGalleryWidget(): void {
           <label className={labelCls}>
             {t("widgetGallery.typeLabel")}
             <select
-              aria-label={t("widgetGallery.typeLabel")}
               className={inputCls}
               value={String(props.type ?? "")}
               onChange={(e) => set({ type: e.target.value })}
@@ -52,7 +51,6 @@ export function registerGalleryWidget(): void {
           <label className={labelCls}>
             {t("widgetGallery.tagConfig")}
             <input
-              aria-label={t("widgetGallery.tagConfig")}
               className={inputCls}
               value={String(props.tag ?? "")}
               onChange={(e) => set({ tag: e.target.value })}
@@ -61,7 +59,6 @@ export function registerGalleryWidget(): void {
           <label className={labelCls}>
             {t("widgetGallery.limitLabel")}
             <input
-              aria-label={t("widgetGallery.limitLabel")}
               type="number"
               className={inputCls}
               value={String(props.limit ?? 12)}
@@ -71,7 +68,6 @@ export function registerGalleryWidget(): void {
           <label className={labelCls}>
             {t("widgetGallery.columnsConfig")}
             <input
-              aria-label={t("widgetGallery.columnsConfig")}
               type="number"
               className={inputCls}
               value={String(props.columns ?? 3)}

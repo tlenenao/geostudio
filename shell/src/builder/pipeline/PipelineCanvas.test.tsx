@@ -756,3 +756,43 @@ test("P32.03/P32.08 : texte de nœud hérite de text-ink, commandes de 24 px", (
     expect(screen.getByRole("button", { name }).className).toMatch(/\bh-6 w-6\b/);
   }
 });
+
+test("REV-216 : l'état de l'exécution est annoncé avec le vocabulaire partagé", () => {
+  render(
+    <PipelineCanvas
+      nodes={NODES}
+      edges={EDGES}
+      selectedNodeId={null}
+      onSelectNode={vi.fn()}
+      onNodesChange={vi.fn()}
+      onEdgesChange={vi.fn()}
+      onInsertOnEdge={vi.fn()}
+      opsCatalog={{}}
+      runStatus="running"
+      notes={[]}
+      onNotesChange={vi.fn()}
+    />,
+  );
+  expect(screen.getByRole("status", { name: /État de l'exécution/ })).toHaveTextContent("En cours");
+});
+
+test("la région d'état d'exécution est permanente : vide sans runStatus, renseignée ensuite", () => {
+  const props = {
+    nodes: NODES,
+    edges: EDGES,
+    selectedNodeId: null,
+    onSelectNode: vi.fn(),
+    onNodesChange: vi.fn(),
+    onEdgesChange: vi.fn(),
+    onInsertOnEdge: vi.fn(),
+    opsCatalog: {},
+    notes: [],
+    onNotesChange: vi.fn(),
+  };
+  const { container, rerender } = render(<PipelineCanvas {...props} />);
+  const region = container.querySelector("p[role=status]")!;
+  expect(region).toBeEmptyDOMElement();
+  rerender(<PipelineCanvas {...props} runStatus="running" />);
+  expect(container.querySelector("p[role=status]")).toBe(region);
+  expect(region).toHaveTextContent("En cours");
+});

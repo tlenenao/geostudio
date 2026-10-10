@@ -70,7 +70,7 @@ def test_no_data_sources_writes_empty_manifest(pg_session, tmp_path):
     assert read_manifest(str(tmp_path / "manifest.json")) == []
 
 
-def test_features_source_is_written_as_geoparquet(pg_session, tmp_path):
+def test_features_source_is_written_as_geoparquet(pg_session, tmp_path, monkeypatch):
     s = pg_session
     s.execute(
         text(
@@ -118,6 +118,17 @@ def test_features_source_is_written_as_geoparquet(pg_session, tmp_path):
             DataSource(id="s1", type="features", service="core", layer=col.id, query={}),
         ]
     )
+    # REV-280 : l'export ne consomme pas le total -> pas de count(*) par page.
+    import app.appexport.snapshot as _mod
+
+    _real = _mod.select_features
+    _modes: list[str] = []
+
+    def _spy(*a, **k):
+        _modes.append(k.get("count_mode"))
+        return _real(*a, **k)
+
+    monkeypatch.setattr(_mod, "select_features", _spy)
     # j10b-005 : N+1 lignes → avertissement et featureCount plafonné ; N → rien.
     warnings: list[str] = []
     capped = write_snapshot(
@@ -150,6 +161,7 @@ def test_features_source_is_written_as_geoparquet(pg_session, tmp_path):
     assert entry.collection_json["isPublic"] is True
     assert entry.collection_json["canWrite"] is False
     assert entry.schema_json["pk"] == "id"
+    assert _modes and set(_modes) == {"none"}
 
     parquet_path = (
         tmp_path

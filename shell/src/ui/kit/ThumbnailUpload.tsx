@@ -32,13 +32,7 @@ export function ThumbnailUpload({
     <div className="flex flex-col gap-1 text-sm text-ink">
       <label className="flex flex-col gap-1">
         Miniature
-        <input
-          aria-label="Miniature"
-          type="file"
-          accept="image/*"
-          disabled={pending}
-          onChange={onChange}
-        />
+        <input type="file" accept="image/*" disabled={pending} onChange={onChange} />
       </label>
       {error && (
         <p role="alert" className="text-sm text-danger">

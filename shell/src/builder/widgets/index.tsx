@@ -22,6 +22,7 @@ import { registerModalWidget } from "./modal";
 import { registerDrawerWidget } from "./drawer";
 import { registerVariableInputWidget } from "./variableInput";
 import { registerTimePlayerWidget } from "./timePlayer";
+import { registerAddressSearchWidget } from "./addressSearch";
 import { t } from "../../i18n";
 
 // Replaces {{var:nom}} tokens from ctx.variables (always, regardless of any
@@ -74,9 +75,8 @@ export function registerBuiltinWidgets(): void {
     PropsPanel: ({ props, onChange, dataSources }) => (
       <div className="flex flex-col gap-2 text-sm">
         <label className="flex flex-col gap-1">
-          {t("widgetIndex.textConfig")}
+          {t("widgetIndex.textAria")}
           <textarea
-            aria-label={t("widgetIndex.textAria")}
             className="rounded-md border border-rule p-2 text-sm"
             value={String(props.text ?? "")}
             onChange={(e) => onChange({ ...props, text: e.target.value })}
@@ -109,9 +109,8 @@ export function registerBuiltinWidgets(): void {
     PropsPanel: ({ props, onChange }) => (
       <div className="flex flex-col gap-2 text-sm">
         <label className="flex flex-col gap-1">
-          {t("widgetIndex.urlConfig")}
+          {t("widgetIndex.urlAria")}
           <input
-            aria-label={t("widgetIndex.urlAria")}
             className="h-9 rounded-md border border-rule px-2"
             value={String(props.src ?? "")}
             onChange={(e) => onChange({ ...props, src: e.target.value })}
@@ -120,7 +119,6 @@ export function registerBuiltinWidgets(): void {
         <label className="flex flex-col gap-1">
           {t("widgetIndex.altConfig")}
           <input
-            aria-label={t("widgetIndex.altConfig")}
             className="h-9 rounded-md border border-rule px-2"
             value={String(props.alt ?? "")}
             onChange={(e) => onChange({ ...props, alt: e.target.value })}
@@ -155,18 +153,16 @@ export function registerBuiltinWidgets(): void {
     PropsPanel: ({ props, onChange }) => (
       <div className="flex flex-col gap-2 text-sm">
         <label className="flex flex-col gap-1">
-          {t("widgetIndex.labelConfig")}
+          {t("widgetIndex.labelAria")}
           <input
-            aria-label={t("widgetIndex.labelAria")}
             className="h-9 rounded-md border border-rule px-2"
             value={String(props.label ?? "")}
             onChange={(e) => onChange({ ...props, label: e.target.value })}
           />
         </label>
         <label className="flex flex-col gap-1">
-          {t("widgetIndex.hrefConfig")}
+          {t("widgetIndex.hrefAria")}
           <input
-            aria-label={t("widgetIndex.hrefAria")}
             className="h-9 rounded-md border border-rule px-2"
             value={String(props.href ?? "")}
             onChange={(e) => onChange({ ...props, href: e.target.value })}
@@ -214,4 +210,5 @@ export function registerBuiltinWidgets(): void {
   registerDrawerWidget();
   registerVariableInputWidget();
   registerTimePlayerWidget();
+  registerAddressSearchWidget();
 }

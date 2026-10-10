@@ -28,6 +28,7 @@ from app.configs.terrain3d_validation import (
 from app.configs.tileset3d_validation import (
     validate_tileset3d_payload as _validate_tileset3d_payload,
 )
+from app.configs.widget_registry import validate_widget_types, with_warnings
 from app.db import get_session
 from app.items import repository as items_repo
 from app.items.models import Item
@@ -211,7 +212,7 @@ def get_config(
     if result is None or result.itemId is None:
         raise HTTPException(status_code=404, detail="config not found")
     _require_access(session, user=user, item_id=result.itemId, action="read")
-    return result
+    return with_warnings(session, result, tenant_id=user.tenant_id)
 
 
 @router.put("/configs/{config_id}", response_model=ConfigRead)
@@ -231,6 +232,7 @@ def update_config(
     _require_etl_enabled_for_pipeline(config)
     _require_export_enabled_for_report(config)
     validate_document(config)
+    validate_widget_types(session, config, tenant_id=user.tenant_id)
     _validate_extension_scope(session, config, tenant_id=user.tenant_id)
     _validate_dataset_payload(session, config, user=user)
     _validate_bookmark_payload(session, config, user=user)
@@ -319,6 +321,8 @@ def rollback_config(
     try:
         _require_etl_enabled_for_pipeline(candidate)
         _require_export_enabled_for_report(candidate)
+        validate_document(candidate)
+        validate_widget_types(session, candidate, tenant_id=user.tenant_id)
         _validate_extension_scope(session, candidate, tenant_id=user.tenant_id)
         _validate_dataset_payload(session, candidate, user=user)
         _validate_bookmark_payload(session, candidate, user=user)
@@ -436,7 +440,11 @@ def get_config_by_item(
         raise HTTPException(status_code=404, detail="config not found")
     if mode == "runtime":
         _apps_runtime_executions_counter.add(1)
-    return result
+    if user is None:
+        if guest is None:  # inatteignable : authorize_guest_item_read l'a déjà exigé
+            raise HTTPException(status_code=401, detail="authentication required")
+        return result  # invité : pas d'avertissements d'édition (REV-278)
+    return with_warnings(session, result, tenant_id=user.tenant_id)
 
 
 @router.put("/configs/by-item/{item_id}", response_model=ConfigRead)
@@ -456,6 +464,7 @@ def update_config_by_item(
     _require_etl_enabled_for_pipeline(config)
     _require_export_enabled_for_report(config)
     validate_document(config)
+    validate_widget_types(session, config, tenant_id=user.tenant_id)
     _validate_extension_scope(session, config, tenant_id=user.tenant_id)
     _validate_dataset_payload(session, config, user=user)
     _validate_bookmark_payload(session, config, user=user)

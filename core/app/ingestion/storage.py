@@ -111,10 +111,16 @@ def generate_presigned_put_url(
     )
 
 
-def generate_presigned_get_url(client, *, bucket: str, key: str, expires_in: int = 3600) -> str:
+def generate_presigned_get_url(
+    client, *, bucket: str, key: str, expires_in: int = 3600, filename: str | None = None
+) -> str:
+    params = {"Bucket": bucket, "Key": key}
+    if filename:
+        safe = filename.replace('"', "")
+        params["ResponseContentDisposition"] = f'attachment; filename="{safe}"'
     return _signing_client(client).generate_presigned_url(
         "get_object",
-        Params={"Bucket": bucket, "Key": key},
+        Params=params,
         ExpiresIn=expires_in,
     )
 
@@ -144,3 +150,35 @@ def download_object(client, *, bucket: str, key: str, max_bytes: int | None = No
             raise ObjectTooLarge(f"fichier trop volumineux ({size} > {max_bytes} octets)")
     obj = client.get_object(Bucket=bucket, Key=key)
     return obj["Body"].read()
+
+
+# REV-268 : l'inspection d'un fichier ligne à ligne (JSONL) n'a besoin que de
+# ses premières lignes — inutile de rapatrier jusqu'à CORE_UPLOAD_MAX_BYTES.
+INSPECT_HEAD_BYTES = 1024 * 1024
+
+
+def download_object_head(
+    client,
+    *,
+    bucket: str,
+    key: str,
+    max_bytes: int | None = None,
+    head_bytes: int = INSPECT_HEAD_BYTES,
+) -> bytes:
+    """Lit au plus `head_bytes` octets (requête S3 `Range`) d'un objet dont
+    la taille reste plafonnée par `max_bytes` (même garde que
+    `download_object`). Si l'objet est plus gros que la tête lue, on coupe à
+    la dernière fin de ligne : une ligne tronquée ferait échouer l'analyse
+    JSON de l'échantillon."""
+    size = client.head_object(Bucket=bucket, Key=key)["ContentLength"]
+    if max_bytes is not None and size > max_bytes:
+        raise ObjectTooLarge(f"fichier trop volumineux ({size} > {max_bytes} octets)")
+    if size == 0:  # S3 répond 416 à tout Range sur un objet vide
+        return b""
+    obj = client.get_object(Bucket=bucket, Key=key, Range=f"bytes=0-{head_bytes - 1}")
+    data = obj["Body"].read()
+    if size > head_bytes:
+        cut = data.rfind(b"\n")
+        if cut >= 0:
+            data = data[: cut + 1]
+    return data

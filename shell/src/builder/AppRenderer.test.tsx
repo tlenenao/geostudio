@@ -400,7 +400,7 @@ test("a variable.set action updates the value read by a Texte widget", async () 
     },
   };
   render(<AppRenderer config={cfg} mode="runtime" />, { wrapper: Wrapper });
-  await userEvent.type(screen.getByLabelText("Valeur du filtre"), "hello");
+  await userEvent.type(screen.getByLabelText("Message"), "hello");
   expect(await screen.findByText("hello")).toBeInTheDocument();
 });
 
@@ -477,7 +477,7 @@ test("a message's condition gates the action on the emitting event's payload", a
   };
   render(<AppRenderer config={cfg} mode="runtime" />, { wrapper: Wrapper });
   expect(screen.getByText("Statut:")).toBeInTheDocument();
-  await userEvent.type(screen.getByLabelText("Valeur du filtre"), "Nord");
+  await userEvent.type(screen.getByLabelText("Filtre"), "Nord");
   expect(await screen.findByText("Statut: Nord")).toBeInTheDocument();
 });
 
@@ -524,7 +524,7 @@ test("a message's condition can reference live vars, not just the payload", asyn
     },
   };
   render(<AppRenderer config={cfg} mode="runtime" />, { wrapper: Wrapper });
-  await userEvent.type(screen.getByLabelText("Valeur du filtre"), "hi");
+  await userEvent.type(screen.getByLabelText("Filtre"), "hi");
   expect(await screen.findByText("Msg: hi")).toBeInTheDocument();
 });
 
@@ -570,7 +570,7 @@ test("a message's condition prevents the action from firing when it evaluates fa
   // No "gate" variable exists on this config, so vars.gate is undefined → the
   // condition evaluates falsy (evaluateExpression warns + returns undefined).
   render(<AppRenderer config={cfg} mode="runtime" />, { wrapper: Wrapper });
-  await userEvent.type(screen.getByLabelText("Valeur du filtre"), "hi");
+  await userEvent.type(screen.getByLabelText("Filtre"), "hi");
   expect(screen.getByText("Msg: initial")).toBeInTheDocument();
 });
 
@@ -605,7 +605,7 @@ test("a number-typed variable coerces the payload's matching field to a number",
     },
   };
   render(<AppRenderer config={cfg} mode="runtime" />, { wrapper: Wrapper });
-  await userEvent.type(screen.getByLabelText("Valeur du filtre"), "42");
+  await userEvent.type(screen.getByLabelText("Filtre"), "42");
   expect(await screen.findByText("Total : 42")).toBeInTheDocument();
 });
 
@@ -640,7 +640,7 @@ test("a number-typed variable keeps its previous value when the payload is not a
     },
   };
   render(<AppRenderer config={cfg} mode="runtime" />, { wrapper: Wrapper });
-  await userEvent.type(screen.getByLabelText("Valeur du filtre"), "abc");
+  await userEvent.type(screen.getByLabelText("Filtre"), "abc");
   expect(screen.getByText("Total : 7")).toBeInTheDocument();
 });
 

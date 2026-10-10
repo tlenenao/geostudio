@@ -39,6 +39,7 @@ from app.collections.introspection import TableNotFound, UnsupportedTable
 from app.compliance import routes as compliance_routes
 from app.configs import routes as configs_routes
 from app.copilot import routes as copilot_routes
+from app.dataexport import routes as dataexport_routes
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.dcat import routes as dcat_routes
 from app.errors import ValidationHTTPException
@@ -122,6 +123,12 @@ _APPEXPORT_CORS_RULES: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"^/v1/extensions$"), "GET"),
     (re.compile(r"^/v1/public/items$"), "GET"),
 )
+
+
+def trusted_proxy_hosts() -> str:
+    return os.environ.get(
+        "CORE_TRUSTED_PROXIES", "127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+    )
 
 
 def create_app() -> FastAPI:
@@ -386,6 +393,7 @@ def create_app() -> FastAPI:
     v1_router.include_router(collections_routes.router)
     v1_router.include_router(catalog_routes.router)
     v1_router.include_router(features_routes.router)
+    v1_router.include_router(dataexport_routes.router)
     v1_router.include_router(tiles_routes.router)
     v1_router.include_router(attachments_routes.router)
     v1_router.include_router(ingestion_routes.router)
@@ -428,6 +436,10 @@ def create_app() -> FastAPI:
             secret_key=s3_secret_key,
             bucket=s3_bucket,
         )
+
+    app.dependency_overrides[features_routes.get_export_job_starter] = lambda: (
+        dataexport_routes.default_starter
+    )
 
     s3_uploads_bucket = os.environ.get("S3_UPLOADS_BUCKET", "geostudio-uploads")
     s3_exports_bucket = os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports")
@@ -522,13 +534,14 @@ def create_app() -> FastAPI:
     mcp_app.add_exception_handler(StarletteHTTPException, _http_exception_handler)
     app.mount("/", mcp_app)
 
-    # GAP-61.a : sans cette couche, request.client reflète l'IP du
-    # conteneur Traefik (seul point d'entrée réseau vers ce service — `core`
-    # n'expose aucun port hôte direct), identique pour tous les visiteurs,
-    # ce qui viderait caller_key() de son utilité pour les appelants
-    # anonymes. trusted_hosts="*" est sûr ici : gis-net est un réseau Docker
-    # interne, aucun tiers non maîtrisé ne peut y injecter X-Forwarded-For.
-    app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
+    # GAP-61.a : sans cette couche, request.client reflète l'IP du conteneur
+    # Traefik, identique pour tous les visiteurs, ce qui viderait caller_key()
+    # de son utilité pour les appelants anonymes. REV-299a : X-Forwarded-For
+    # n'est honoré QUE depuis les proxys de confiance (CORE_TRUSTED_PROXIES,
+    # défaut : loopback + RFC 1918, soit le sous-réseau Docker de Traefik) —
+    # « * » le laissait forger par tout pair atteignant core:8000, donc
+    # contourner les budgets par IP (/share-links, /embed, anonymes).
+    app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=trusted_proxy_hosts())
 
     return app
 

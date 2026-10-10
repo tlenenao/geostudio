@@ -116,45 +116,39 @@ test.describe("j05 agrégats — API", () => {
   });
 
   // Finding j05-003 : d__lte « YYYY-MM-DD » compare à « YYYY-MM-DD hh:mm… » en texte.
-  bug(
-    "j05-003 : une plage temporelle d'un seul jour contient les événements de ce jour",
-    async () => {
-      // Le shell (derivePatch) envoie timeRange.from/to tels quels en d__gte / d__lte.
-      const r = await aggregate(analyst, seed.ventes, {
-        agg: "count",
-        filters: { d__gte: "2025-01-15", d__lte: "2025-01-15" },
-      });
-      expect(r.body.rows[0]?.value).toBe(3);
-    },
-  );
+  test("j05-003 : une plage temporelle d'un seul jour contient les événements de ce jour", async () => {
+    // Le shell (derivePatch) envoie timeRange.from/to tels quels en d__gte / d__lte.
+    const r = await aggregate(analyst, seed.ventes, {
+      agg: "count",
+      filters: { d__gte: "2025-01-15", d__lte: "2025-01-15" },
+    });
+    expect(r.body.rows[0]?.value).toBe(3);
+  });
 
   // Finding j05-002 : la colonne géométrie du lac s'appelle « geometry », pas « geom ».
-  bug(
-    "j05-002 : un agrégat filtré par emprise ou intersection d'une collection importée répond 200",
-    async () => {
-      const bbox = await aggregate(analyst, seed.eventsCollection, {
-        agg: "count",
-        bbox: [0, 40, 5, 50],
-      });
-      expect(bbox.status).toBe(200);
-      const inter = await aggregate(analyst, seed.eventsCollection, {
-        agg: "count",
-        geomIntersects: {
-          type: "Polygon",
-          coordinates: [
-            [
-              [0, 40],
-              [5, 40],
-              [5, 50],
-              [0, 50],
-              [0, 40],
-            ],
+  test("j05-002 : un agrégat filtré par emprise ou intersection d'une collection importée répond 200", async () => {
+    const bbox = await aggregate(analyst, seed.eventsCollection, {
+      agg: "count",
+      bbox: [0, 40, 5, 50],
+    });
+    expect(bbox.status).toBe(200);
+    const inter = await aggregate(analyst, seed.eventsCollection, {
+      agg: "count",
+      geomIntersects: {
+        type: "Polygon",
+        coordinates: [
+          [
+            [0, 40],
+            [5, 40],
+            [5, 50],
+            [0, 50],
+            [0, 40],
           ],
-        },
-      });
-      expect(inter.status).toBe(200);
-    },
-  );
+        ],
+      },
+    });
+    expect(inter.status).toBe(200);
+  });
 
   // Finding j05-006 : erreur de conversion DuckDB non mappée en 400.
   test("j05-006 : un filtre numérique non convertible répond 400", async () => {

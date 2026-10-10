@@ -9,7 +9,7 @@ import { useBusAction } from "../ActionBusContext";
 import { FeatureValidationError } from "../../api/itemClient";
 import type { CollectionSchema, DataRecord, DataSource } from "../../api/types";
 import type { WidgetContext } from "../registry";
-import { t } from "../../i18n";
+import { plural, t } from "../../i18n";
 import { ConfirmDialog } from "../../ui/kit/ConfirmDialog";
 import { LoadingState } from "../../ui/kit/LoadingState";
 
@@ -40,7 +40,7 @@ function fieldsFromSchema(schema: CollectionSchema): FormField[] {
   }));
 }
 
-const overrideInputCls = "h-8 w-full rounded border border-rule px-2 text-xs";
+const overrideInputCls = "h-9 w-full rounded border border-rule px-2 text-xs";
 
 function FieldOverrides({
   fields,
@@ -112,6 +112,7 @@ function FieldOverrides({
               onChange={(e) => patch(f.name, { label: e.target.value })}
             />
             <label className="flex items-center gap-1 whitespace-nowrap text-xs">
+              {/* eslint-disable-next-line geostudio/label-no-aria-label -- le nom accessible contient le texte visible et ajoute le contexte dynamique (champ/ligne) */}
               <input
                 type="checkbox"
                 aria-label={t("widgetForm.hideFieldAria", { name: f.name })}
@@ -122,6 +123,7 @@ function FieldOverrides({
             </label>
             {f.type !== "unsupported" && f.type !== "attachment" && f.type !== "list" && (
               <label className="flex items-center gap-1 whitespace-nowrap text-xs">
+                {/* eslint-disable-next-line geostudio/label-no-aria-label -- le nom accessible contient le texte visible et ajoute le contexte dynamique (champ/ligne) */}
                 <input
                   type="checkbox"
                   aria-label={t("widgetForm.requireFieldAria", { name: f.name })}
@@ -537,6 +539,11 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
   const [genericError, setGenericError] = useState(false);
   const [editingId, setEditingId] = useState<string | number | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // Résumé d'erreurs figé à la soumission (REV-223) : ne se recalcule pas à chaque frappe,
+  // sinon le role=alert serait réannoncé en continu. null = aucune soumission en cours.
+  // Les alertes par champ restent : double annonce assumée (résumé = vue d'ensemble + liens,
+  // champ = message local relu au focus via aria-describedby).
+  const [summaryNames, setSummaryNames] = useState<string[] | null>(null);
 
   const collectionId = ctx.data?.layer ?? "";
   const permissionQuery = useQuery({
@@ -601,6 +608,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     setLat("");
     setLoadedGeometry(null);
     setEditingId(null);
+    setSummaryNames(null);
     write.reset();
   }
   useBusAction(ctx.bus, ctx.widgetId, "reset", resetTo);
@@ -613,6 +621,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     setTouched({});
     setServerErrors({});
     setGenericError(false);
+    setSummaryNames(null);
     setLoadedGeometry(record.geometry ?? null);
     const geom = record.geometry as { type?: string; coordinates?: number[] } | undefined;
     if (geometryType === "Point" && geom?.type === "Point" && Array.isArray(geom.coordinates)) {
@@ -640,8 +649,14 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
       allTouched[f.name] = true;
     });
     setTouched(allTouched);
-    const hasClientErrors = fields.some((f) => validateField(f, values[f.name]) !== null);
-    if (hasClientErrors) return;
+    const invalidNow = fields.filter((f) => validateField(f, values[f.name]) !== null);
+    setSummaryNames(invalidNow.map((f) => f.name));
+    const firstInvalid = invalidNow[0];
+    if (firstInvalid) {
+      // REV-223 : focus sur le premier champ invalide (les contrôles portent id=field-<name>).
+      document.getElementById(`field-${firstInvalid.name}`)?.focus();
+      return;
+    }
     setServerErrors({});
     setGenericError(false);
     const properties: Record<string, unknown> = {};
@@ -668,6 +683,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
           byField[fe.field] = fe.message;
         });
         setServerErrors(byField);
+        setSummaryNames(fields.filter((f) => f.name in byField).map((f) => f.name));
         // P10.02 : une erreur sur un champ absent du formulaire (tenant_id,
         // champ masqué, géométrie…) n'a aucun emplacement visible : message générique.
         const shown = new Set(fields.map((f) => f.name));
@@ -687,6 +703,40 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
       onSubmit={(e) => void handleSubmit(e)}
       noValidate
     >
+      {summaryNames !== null &&
+        (() => {
+          const invalid = fields.filter((f) => summaryNames.includes(f.name));
+          if (invalid.length === 0) return null;
+          const title = t(
+            plural(invalid.length, "widgetForm.errorSummaryOne", "widgetForm.errorSummaryMany"),
+            { count: invalid.length },
+          );
+          return (
+            <div
+              role="alert"
+              aria-label={title}
+              className="rounded border border-danger bg-danger-soft p-2 text-xs text-danger"
+            >
+              <p className="font-medium">{title}</p>
+              <ul className="list-disc pl-4">
+                {invalid.map((f) => (
+                  <li key={f.name}>
+                    <a
+                      href={`#field-${f.name}`}
+                      className="underline"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        document.getElementById(`field-${f.name}`)?.focus();
+                      }}
+                    >
+                      {f.label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })()}
       {fields.map((f) =>
         f.type === "attachment" ? (
           <div key={f.name} className="flex flex-col gap-1">
@@ -728,7 +778,6 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
             <input
               type="number"
               step="any"
-              aria-label={t("widgetForm.longitude")}
               className={fieldInputCls}
               value={lon}
               onChange={(e) => setLon(e.target.value)}
@@ -739,7 +788,6 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
             <input
               type="number"
               step="any"
-              aria-label={t("widgetForm.latitude")}
               className={fieldInputCls}
               value={lat}
               onChange={(e) => setLat(e.target.value)}
@@ -754,6 +802,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
             {t("widgetForm.cancel")}
           </button>
           {canWrite && (
+            // eslint-disable-next-line geostudio/panel-trigger-aria -- ConfirmDialog modal, pas un panneau en ligne
             <button
               type="button"
               className="ml-2 text-xs text-danger underline"

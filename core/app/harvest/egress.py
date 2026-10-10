@@ -6,7 +6,7 @@ allowlist optionnelle par env. Point d'enforcement : le transport du client
 HTTP par défaut de tous les connecteurs et de la récupération copie.
 
 DNS-rebinding TOCTOU (§3, §8) fermé par REV-273d : le transport connecte sur
-l'IP validée par la garde (`app.net_pin.pin_httpx_request`, Host/SNI/certificat
+l'IP validée par la garde (`app.net_pin.send_pinned`, Host/SNI/certificat
 sur le nom d'origine), chaque redirection repasse par le transport."""
 
 import ipaddress
@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from app.net_pin import pin_httpx_request
+from app.net_pin import ValidatedIp, send_pinned
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,8 @@ def _allowlist() -> set[str]:
 
 def _is_internal(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     # tout ce qui n'est pas globalement routable (CGNAT 100.64/10, TEST-NET, 6to4…)
-    return not ip.is_global or ip.is_multicast
+    # fec0::/10 (site-local déprécié) : is_global le laisse passer (j06-003)
+    return not ip.is_global or ip.is_multicast or getattr(ip, "is_site_local", False)
 
 
 def assert_egress_allowed(url: str) -> str:
@@ -74,12 +75,12 @@ def assert_egress_allowed(url: str) -> str:
         raise EgressBlockedError(f"hôte non résoluble : {host!r}")
     for ip in addresses:
         if _is_internal(ip):
-            raise EgressBlockedError(f"cible réseau interne bloquée : {host!r} → {ip}")
+            raise EgressBlockedError(f"cible réseau interne bloquée : {host!r}")
 
     allowlist = _allowlist()
     if allowlist and host not in allowlist:
         raise EgressBlockedError(f"hôte hors allowlist d'egress : {host!r}")
-    return str(addresses[0])  # REV-273d : adresse validée, à utiliser pour se connecter
+    return ValidatedIp(str(addresses[0]), [str(a) for a in addresses])  # REV-273d
 
 
 class _GuardedTransport(httpx.BaseTransport):
@@ -87,8 +88,9 @@ class _GuardedTransport(httpx.BaseTransport):
         self._inner = inner
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
-        pin_httpx_request(request, assert_egress_allowed(str(request.url)))
-        response = self._inner.handle_request(request)
+        response = send_pinned(
+            self._inner.handle_request, request, assert_egress_allowed(str(request.url))
+        )
         cap = _max_response_bytes()
         chunks: list[bytes] = []
         total = 0

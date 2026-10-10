@@ -24,7 +24,7 @@ test("un widget hébergé sur une origine distincte (CORS) se charge, respecte l
 
   await page.getByRole("button", { name: "Nouveau" }).click();
   await page.getByRole("dialog", { name: "Nouvel élément" }).getByLabel("Type").selectOption("app");
-  await page.getByLabel("Titre").fill("App widget externe");
+  await page.getByLabel("Titre", { exact: true }).fill("App widget externe");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 

@@ -10,22 +10,6 @@ import { bug, docker, go, newSession, serviceHealth, withServiceStopped } from "
 
 test.describe.configure({ mode: "serial" });
 
-function deferIngestionFromCore(jobId: string): void {
-  // Met le job en file depuis le conteneur core (le POST /uploads est cassé, cf. j03-001).
-  execFileSync(
-    "docker",
-    [
-      "exec",
-      "geostudio-core-1",
-      "python",
-      "-c",
-      "import sys\nfrom app.jobs import app\nfrom app.ingestion.tasks import run_ingestion_task\nwith app.open():\n run_ingestion_task.defer(job_id=sys.argv[1],tenant_id='default')",
-      jobId,
-    ],
-    { stdio: ["ignore", "ignore", "pipe"] },
-  );
-}
-
 async function putCsv(name: string, csv: string): Promise<string> {
   const key = `default/${Math.random().toString(16).slice(2)}${Date.now().toString(16)}-${name}`;
   const py =
@@ -56,19 +40,20 @@ test.describe("t02 : worker arrêté", () => {
     const creator = await apiFor("creator");
     const s = await newSession(browser, "creator");
     const tag = stamp("t02");
-    const key = await putCsv(`${tag}.csv`, "nom,latitude,longitude\na,46.2,2.5\nb,46.3,2.6\n");
-    const create = await creator.send("POST", "/v1/uploads", {
-      key,
-      filename: `${tag}.csv`,
-      collectionTitle: `${tag}-worker`,
-    });
-    // POST /uploads répond 500 après avoir commité le job (j03-001) : on retrouve son id en base.
-    const jobId =
-      create.body?.jobId ?? psql(`SELECT id FROM ingestion_jobs WHERE source_key='${key}'`).trim();
-    expect(jobId).toBeTruthy();
-
+    let jobId = "";
     const during = await withServiceStopped("worker", async () => {
-      deferIngestionFromCore(jobId);
+      // Le cœur défère lui-même le job (P01) : on crée l'import worker arrêté, sinon le worker le
+      // consomme avant son arrêt.
+      const key = await putCsv(`${tag}.csv`, "nom,latitude,longitude\na,46.2,2.5\nb,46.3,2.6\n");
+      const create = await creator.send("POST", "/v1/uploads", {
+        key,
+        filename: `${tag}.csv`,
+        collectionTitle: `${tag}-worker`,
+      });
+      jobId =
+        create.body?.jobId ??
+        psql(`SELECT id FROM ingestion_jobs WHERE source_key='${key}'`).trim();
+      expect(jobId).toBeTruthy();
       await go(s.page, "/", 2000);
       const catalog = await creator.get("/v1/items");
       const health = await fetch(`${CORE_URL}/health`);

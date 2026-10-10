@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import { useItemClient } from "../../api/ItemClientProvider";
 import type { AppConfig, AppExportJobStatus, AppExportMode } from "../../api/types";
 import { t } from "../../i18n";
+import { jobStatusLabel } from "../../lib/jobStatusLabel";
 import { Button } from "../../ui/kit/Button";
 import { Panel } from "../../ui/kit/Panel";
 import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
@@ -28,6 +29,7 @@ export function AppExportPanel({ itemId, config }: { itemId: string; config: App
   const picker = usePanelTrigger(pickerOpen);
   const mountedRef = useRef(true);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(
     () => () => {
@@ -56,6 +58,8 @@ export function AppExportPanel({ itemId, config }: { itemId: string; config: App
 
   async function runExport(mode: AppExportMode) {
     setPendingWarningMode(null);
+    // Le panneau (et le bouton focalisé) se démonte : le focus revient sur le déclencheur (t01b-013).
+    triggerRef.current?.focus();
     setPickerOpen(false);
     setRunning(true);
     setError(null);
@@ -79,6 +83,7 @@ export function AppExportPanel({ itemId, config }: { itemId: string; config: App
       WRITE_CAPABLE_WIDGET_TYPES.has(t),
     );
     if (hasWriteWidget) {
+      triggerRef.current?.focus();
       setPickerOpen(false);
       setPendingWarningMode(mode);
       return;
@@ -95,6 +100,7 @@ export function AppExportPanel({ itemId, config }: { itemId: string; config: App
         // le focus clavier au moment même où l'export démarre.
         onClick={() => !running && setPickerOpen((open) => !open)}
         aria-disabled={running}
+        ref={triggerRef}
         className="aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
         {...picker.triggerProps}
       >
@@ -124,8 +130,12 @@ export function AppExportPanel({ itemId, config }: { itemId: string; config: App
       )}
       {/* Région live permanente : l'annonce de « en cours » n'est lue que si
           la région existe déjà avant que son texte change. */}
-      <p role="status" className={running ? "text-sm text-ink-2" : "sr-only"}>
-        {running ? t("appExport.running") : ""}
+      <p role="status" className={running || job ? "text-sm text-ink-2" : "sr-only"}>
+        {job
+          ? t("appExport.statusLine", { status: jobStatusLabel(job.status) })
+          : running
+            ? t("appExport.running")
+            : ""}
       </p>
       {pendingWarningMode && (
         <div

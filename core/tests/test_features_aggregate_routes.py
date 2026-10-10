@@ -271,6 +271,21 @@ def test_aggregate_reports_lake_freshness_and_pending(env):
     full = client.post(f"/v1/collections/{col['id']}/aggregate", json=body).json()
     assert full["pending"] is False and full["asOf"].startswith("1970-01-01T00:00:05")
     assert full["rows"][0]["value"] == 1
+    # REV-280f : champ additif, None sans slot CDC ; asOf/pending inchangés.
+    assert "lagBytes" in full and full["lagBytes"] is None  # sqlite de test : pas de slot
+
+
+def test_aggregate_lag_bytes_reserved_to_privileged_users(env, monkeypatch):
+    """REV-280f : le retard du slot est global a l'instance, pas expose a un anonyme."""
+    app, client, admin, regular, _tmp, _t = env
+    monkeypatch.setattr(features_routes, "lake_lag_bytes", lambda session: 123)
+    col = _register(app, client, admin, public=True)
+    url = f"/v1/collections/{col['id']}/aggregate"
+    assert client.post(url, json={"agg": "count"}).json()["lagBytes"] == 123  # admin
+    _as(app, regular)
+    assert client.post(url, json={"agg": "count"}).json()["lagBytes"] is None
+    app.dependency_overrides[get_current_user_optional] = lambda: None  # anonyme
+    assert client.post(url, json={"agg": "count"}).json()["lagBytes"] is None
 
 
 def test_aggregate_invalid_filter_value_is_400_and_empty_export_has_header(env):

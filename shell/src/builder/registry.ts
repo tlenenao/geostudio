@@ -37,6 +37,8 @@ export type WidgetDefinition<P extends Record<string, unknown> = Record<string, 
     dataSources: DataSource[];
     theme?: Theme;
     variables?: Variable[];
+    // REV-183 : présent = le panneau peut proposer le générateur CEL.
+    generateItemId?: string;
   }) => ReactNode;
   Component: (p: { props: P; ctx: WidgetContext }) => ReactNode;
 };

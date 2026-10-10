@@ -108,12 +108,15 @@ test("j08b-005 : /admin/titiler/ derrière la passerelle répond 200", async () 
 // retombent sur le cœur (:8200) qui ne sert pas /admin : 404 dans le compose de dev.
 test("j08b-006 : suivre l'URL de lancement aboutit à l'outil, pas à un 404 du cœur", async () => {
   const launch = await admin.send("POST", "/v1/admin-tools/launch/grafana");
-  const r = await fetch(launch.body.url, { redirect: "manual" });
-  const target = new URL(r.headers.get("location") ?? "", launch.body.url).toString();
-  const final = await fetch(target, {
-    headers: { cookie: r.headers.get("set-cookie")?.split(";")[0] ?? "" },
+  // Traefik sert un certificat auto-signé : contexte Playwright avec ignoreHTTPSErrors (comme gateway()).
+  const ctx = await request.newContext({ ignoreHTTPSErrors: true });
+  const r = await ctx.get(launch.body.url, { maxRedirects: 0 });
+  const target = new URL(r.headers()["location"] ?? "", launch.body.url).toString();
+  const final = await ctx.get(target, {
+    headers: { cookie: (r.headers()["set-cookie"] ?? "").split(";")[0] },
   });
-  expect(final.status).toBe(200);
+  await ctx.dispose();
+  expect(final.status()).toBe(200);
 });
 
 // Finding j08b-004 : un compte anonymisé garde son rôle et compte comme titulaire : la garde

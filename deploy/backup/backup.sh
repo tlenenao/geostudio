@@ -81,8 +81,11 @@ done
 # ── 3. Keycloak (export du realm — filet de sécurité redondant, cf. §4.1
 #    du plan : Keycloak persiste déjà dans `gis`, donc déjà couvert par le
 #    pg_dump ci-dessus ; ce JSON est un secours portable/lisible en plus) ──
+# Préfixe /auth = overlay prod (KC_HTTP_RELATIVE_PATH) ; la stack de rejeu (compose seul) sert Keycloak
+# à la racine : KEYCLOAK_BASE_URL=http://keycloak:8080 (scripts/replay/restore-oidc.sh).
+KC_BASE="${KEYCLOAK_BASE_URL:-http://keycloak:8080/auth}"
 KC_TOKEN="$(curl -sf -X POST \
-  "http://keycloak:8080/auth/realms/master/protocol/openid-connect/token" \
+  "${KC_BASE}/realms/master/protocol/openid-connect/token" \
   -d "client_id=admin-cli" -d "username=${KEYCLOAK_ADMIN}" \
   -d "password=${KEYCLOAK_ADMIN_PASSWORD}" -d "grant_type=password" \
   | jq -r .access_token)"
@@ -91,7 +94,7 @@ if [ -z "$KC_TOKEN" ] || [ "$KC_TOKEN" = "null" ]; then
   exit 1
 fi
 curl -sf -X POST \
-  "http://keycloak:8080/auth/admin/realms/geostudio/partial-export?exportClients=true&exportGroupsAndRoles=true" \
+  "${KC_BASE}/admin/realms/geostudio/partial-export?exportClients=true&exportGroupsAndRoles=true" \
   -H "Authorization: Bearer ${KC_TOKEN}" -H "Content-Type: application/json" -d '{}' \
   -o "${WORKDIR}/keycloak-realm.json"
 if ! jq -e '.realm == "geostudio"' "${WORKDIR}/keycloak-realm.json" >/dev/null 2>&1; then

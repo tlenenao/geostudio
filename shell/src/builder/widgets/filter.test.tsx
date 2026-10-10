@@ -24,7 +24,7 @@ test("filter widget emits changed with the configured field", async () => {
       ctx={{ mode: "runtime", bus, widgetId: "flt1" } as WidgetContext}
     />,
   );
-  await userEvent.type(screen.getByLabelText("Valeur du filtre"), "A");
+  await userEvent.type(screen.getByLabelText("Filtrer"), "A");
   expect(handler).toHaveBeenLastCalledWith({ nom: "A" });
 });
 
@@ -47,5 +47,5 @@ test("filter label and input use the theme text/border tokens", () => {
   const Filter = getWidget("filter")!.Component;
   render(<Filter props={{ label: "Rechercher" }} ctx={{ mode: "runtime" } as WidgetContext} />);
   expect(screen.getByText("Rechercher")).toHaveClass("text-[var(--gs-color-text)]");
-  expect(screen.getByLabelText("Valeur du filtre")).toHaveClass("border-[var(--gs-color-border)]");
+  expect(screen.getByLabelText("Rechercher")).toHaveClass("border-[var(--gs-color-border)]");
 });

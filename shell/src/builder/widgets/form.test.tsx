@@ -391,7 +391,7 @@ test("un champ valide n'a pas aria-invalid (SP-B8)", () => {
 test("form blocks submit and surfaces one error per invalid required field", async () => {
   renderForm();
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
-  expect(screen.getAllByRole("alert")).toHaveLength(2); // titre + gravite, tous deux requis et vides
+  expect(screen.getAllByRole("alert")).toHaveLength(3); // 1 résumé (REV-223) + 2 alertes par champ (titre, gravité requis et vides) : double annonce assumée
   // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
   // --gs-* à la place. Le conteneur entier n'est pas testable via
   // expectTokenizedClasses ici : le bouton "Enregistrer" voisin porte
@@ -1321,4 +1321,28 @@ test("filet : aria-required posé sur les 6 branches non-attachment de FieldInpu
   expect(screen.getByLabelText("Gravité")).toHaveAttribute("aria-required", "true");
   expect(screen.getByLabelText("Titre")).toHaveAttribute("aria-required", "true");
   expect(screen.getByLabelText("Nombre")).not.toHaveAttribute("aria-required");
+});
+
+test("REV-223 : un submit invalide affiche un résumé d'erreurs et focalise le 1er champ invalide", async () => {
+  renderConnectedForm();
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  const summary = await screen.findByRole("alert", { name: /champs à corriger/i });
+  const links = within(summary).getAllByRole("link");
+  expect(links).toHaveLength(2);
+  expect(screen.getByLabelText("Titre")).toHaveFocus();
+  await userEvent.click(links[1]!);
+  expect(screen.getByLabelText("Gravité")).toHaveFocus();
+});
+
+test("REV-223 : le résumé est figé à la soumission (pas recalculé à chaque frappe) et disparaît au reset", async () => {
+  renderConnectedForm();
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  const summary = await screen.findByRole("alert", { name: /champs à corriger/i });
+  expect(within(summary).getAllByRole("link")).toHaveLength(2);
+  await userEvent.type(screen.getByLabelText("Titre"), "a");
+  const after = screen.getByRole("alert", { name: /champs à corriger/i });
+  expect(after).toBe(summary);
+  expect(within(after).getAllByRole("link")).toHaveLength(2);
+  await userEvent.click(screen.getByRole("button", { name: "Réinitialiser" }));
+  expect(screen.queryByRole("alert", { name: /champs à corriger/i })).not.toBeInTheDocument();
 });

@@ -9,7 +9,7 @@ test("un Filtre pilote par expression la visibilité d'un widget et une colonne 
 
   await page.getByRole("button", { name: "Nouveau" }).click();
   await page.getByRole("dialog", { name: "Nouvel élément" }).getByLabel("Type").selectOption("app");
-  await page.getByLabel("Titre").fill("App expressions");
+  await page.getByLabel("Titre", { exact: true }).fill("App expressions");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 
@@ -51,7 +51,7 @@ test("un Filtre pilote par expression la visibilité d'un widget et une colonne 
   await expect(page.getByRole("cell", { name: "true" })).toHaveCount(0);
 
   // Taper "Nord" dans le Filtre : le Texte apparaît, la colonne calculée distingue Nord/Sud.
-  await page.getByLabel("Valeur du filtre").fill("Nord");
+  await page.getByLabel("Filtrer", { exact: true }).fill("Nord");
   await expect(page.getByText("Région Nord sélectionnée")).toBeVisible();
   await expect(page.getByRole("cell", { name: "true" })).toHaveCount(2);
   await expect(page.getByRole("cell", { name: "false" })).toHaveCount(2);

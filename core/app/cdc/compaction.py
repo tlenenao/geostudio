@@ -76,6 +76,8 @@ def list_recent_partition_objects(client, *, bucket: str, recent_days: int) -> l
     for tenant in storage.list_prefixes(client, bucket=bucket, prefix=CDC_PREFIX):
         for coll in storage.list_prefixes(client, bucket=bucket, prefix=tenant):
             for part in storage.list_prefixes(client, bucket=bucket, prefix=coll):
+                if "/dt=" not in part:  # snapshot/ (REV-280a) : jamais compacté
+                    continue
                 if part.rstrip("/").rsplit("=", 1)[-1] >= cutoff:
                     objects += storage.list_objects(client, bucket=bucket, prefix=part)
     return objects

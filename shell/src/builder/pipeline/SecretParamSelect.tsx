@@ -4,6 +4,7 @@ import { useCreateSecret, useDeleteSecret, useListSecrets } from "../../api/doma
 import type { SecretPayload } from "../../api/types";
 import { t } from "../../i18n";
 import { ConfirmDialog } from "../../ui/kit/ConfirmDialog";
+import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
 
 // Filtre d'affichage : ne montre jamais le payload déchiffré (le cœur ne le
 // retourne de toute façon jamais, ConnectorSecretOut = {id,name,kind,
@@ -31,6 +32,7 @@ export function SecretParamSelect({
   const createSecret = useCreateSecret();
   const deleteSecret = useDeleteSecret();
   const [creating, setCreating] = useState(false);
+  const createPanel = usePanelTrigger(creating);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const options = (secretsQuery.data ?? []).filter((s) => !kindFilter || s.kind === kindFilter);
 
@@ -69,6 +71,7 @@ export function SecretParamSelect({
           <button
             type="button"
             className="w-fit text-xs text-accent hover:underline"
+            {...createPanel.triggerProps}
             onClick={() => setCreating(true)}
           >
             {t("secretParamSelect.createSecretButton")}
@@ -76,15 +79,17 @@ export function SecretParamSelect({
         </>
       )}
       {creating && (
-        <SecretCreateForm
-          kindFilter={kindFilter}
-          onCreated={(name) => {
-            onChange(name);
-            setCreating(false);
-          }}
-          onCancel={() => setCreating(false)}
-          createSecret={(input) => createSecret.mutateAsync(input)}
-        />
+        <div {...createPanel.panelProps}>
+          <SecretCreateForm
+            kindFilter={kindFilter}
+            onCreated={(name) => {
+              onChange(name);
+              setCreating(false);
+            }}
+            onCancel={() => setCreating(false)}
+            createSecret={(input) => createSecret.mutateAsync(input)}
+          />
+        </div>
       )}
       <ConfirmDialog
         open={pendingDeleteId !== null}
@@ -115,6 +120,7 @@ const KIND_LABELS: Record<SecretPayload["kind"], string> = {
   bigquery_dsn: t("secretParamSelect.kindBigqueryDsn"),
   mssql_dsn: t("secretParamSelect.kindMssqlDsn"),
   oracle_dsn: t("secretParamSelect.kindOracleDsn"),
+  databricks_dsn: t("secretParamSelect.kindDatabricksDsn"),
   s3_credentials: t("secretParamSelect.kindS3Credentials"),
   azure_blob_credentials: t("secretParamSelect.kindAzureBlobCredentials"),
   gcs_credentials: t("secretParamSelect.kindGcsCredentials"),
@@ -180,6 +186,7 @@ function SecretCreateForm({
       case "bigquery_dsn":
       case "mssql_dsn":
       case "oracle_dsn":
+      case "databricks_dsn":
         return { kind, dsn: field("dsn") };
       case "s3_credentials":
         return {
@@ -242,19 +249,17 @@ function SecretCreateForm({
       <label className="flex flex-col gap-1 text-xs">
         {t("secretParamSelect.nameLabel")}
         <input
-          aria-label={t("secretParamSelect.nameAria")}
           placeholder={t("secretParamSelect.namePlaceholder")}
-          className="h-8 rounded border border-control bg-surface px-2 text-ink"
+          className="h-9 rounded border border-control bg-surface px-2 text-ink"
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
       </label>
       {!kindFilter && (
         <label className="flex flex-col gap-1 text-xs">
-          {t("secretParamSelect.typeLabel")}
+          {t("secretParamSelect.typeAria")}
           <select
-            aria-label={t("secretParamSelect.typeAria")}
-            className="h-8 rounded border border-control bg-surface px-2 text-ink"
+            className="h-9 rounded border border-control bg-surface px-2 text-ink"
             value={kind}
             onChange={(e) => setKind(e.target.value as SecretPayload["kind"])}
           >
@@ -271,8 +276,7 @@ function SecretCreateForm({
           <label className="flex flex-col gap-1 text-xs">
             {t("secretParamSelect.locationLabel")}
             <select
-              aria-label={t("secretParamSelect.locationAria")}
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("location") || "header"}
               onChange={(e) => setFieldValue("location", e.target.value)}
             >
@@ -283,9 +287,8 @@ function SecretCreateForm({
           <label className="flex flex-col gap-1 text-xs">
             {t("secretParamSelect.keyLabel")}
             <input
-              aria-label={t("secretParamSelect.keyAria")}
               placeholder={t("secretParamSelect.keyPlaceholder")}
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("key")}
               onChange={(e) => setFieldValue("key", e.target.value)}
             />
@@ -293,10 +296,9 @@ function SecretCreateForm({
           <label className="flex flex-col gap-1 text-xs">
             {t("secretParamSelect.valueLabel")}
             <input
-              aria-label={t("secretParamSelect.valueAria")}
               placeholder={t("secretParamSelect.valuePlaceholder")}
               type="password"
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("value")}
               onChange={(e) => setFieldValue("value", e.target.value)}
             />
@@ -307,10 +309,9 @@ function SecretCreateForm({
         <label className="flex flex-col gap-1 text-xs">
           {t("secretParamSelect.tokenLabel")}
           <input
-            aria-label={t("secretParamSelect.tokenAria")}
             placeholder={t("secretParamSelect.tokenPlaceholder")}
             type="password"
-            className="h-8 rounded border border-control bg-surface px-2 text-ink"
+            className="h-9 rounded border border-control bg-surface px-2 text-ink"
             value={field("token")}
             onChange={(e) => setFieldValue("token", e.target.value)}
           />
@@ -321,9 +322,8 @@ function SecretCreateForm({
           <label className="flex flex-col gap-1 text-xs">
             {t("secretParamSelect.usernameLabel")}
             <input
-              aria-label={t("secretParamSelect.usernameAria")}
               placeholder={t("secretParamSelect.usernamePlaceholder")}
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("username")}
               onChange={(e) => setFieldValue("username", e.target.value)}
             />
@@ -331,10 +331,9 @@ function SecretCreateForm({
           <label className="flex flex-col gap-1 text-xs">
             {t("secretParamSelect.passwordLabel")}
             <input
-              aria-label={t("secretParamSelect.passwordAria")}
               placeholder={t("secretParamSelect.passwordPlaceholder")}
               type="password"
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("password")}
               onChange={(e) => setFieldValue("password", e.target.value)}
             />
@@ -346,9 +345,8 @@ function SecretCreateForm({
           <label className="flex flex-col gap-1 text-xs">
             {t("secretParamSelect.tokenUrlLabel")}
             <input
-              aria-label={t("secretParamSelect.tokenUrlAria")}
               placeholder={t("secretParamSelect.tokenUrlPlaceholder")}
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("tokenUrl")}
               onChange={(e) => setFieldValue("tokenUrl", e.target.value)}
             />
@@ -356,9 +354,8 @@ function SecretCreateForm({
           <label className="flex flex-col gap-1 text-xs">
             {t("secretParamSelect.clientIdLabel")}
             <input
-              aria-label={t("secretParamSelect.clientIdAria")}
               placeholder={t("secretParamSelect.clientIdPlaceholder")}
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("clientId")}
               onChange={(e) => setFieldValue("clientId", e.target.value)}
             />
@@ -366,10 +363,9 @@ function SecretCreateForm({
           <label className="flex flex-col gap-1 text-xs">
             {t("secretParamSelect.clientSecretLabel")}
             <input
-              aria-label={t("secretParamSelect.clientSecretAria")}
               placeholder={t("secretParamSelect.clientSecretPlaceholder")}
               type="password"
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("clientSecret")}
               onChange={(e) => setFieldValue("clientSecret", e.target.value)}
             />
@@ -380,14 +376,14 @@ function SecretCreateForm({
         kind === "snowflake_dsn" ||
         kind === "bigquery_dsn" ||
         kind === "mssql_dsn" ||
-        kind === "oracle_dsn") && (
+        kind === "oracle_dsn" ||
+        kind === "databricks_dsn") && (
         <label className="flex flex-col gap-1 text-xs">
           {t("secretParamSelect.dsnLabel")}
           <input
-            aria-label={t("secretParamSelect.dsnAria")}
             placeholder={t("secretParamSelect.dsnPlaceholder")}
             type="password"
-            className="h-8 rounded border border-control bg-surface px-2 text-ink"
+            className="h-9 rounded border border-control bg-surface px-2 text-ink"
             value={field("dsn")}
             onChange={(e) => setFieldValue("dsn", e.target.value)}
           />
@@ -398,9 +394,8 @@ function SecretCreateForm({
           <label className="flex flex-col gap-1 text-xs">
             {t("secretParamSelect.awsAccessKeyIdLabel")}
             <input
-              aria-label={t("secretParamSelect.awsAccessKeyIdAria")}
               placeholder={t("secretParamSelect.awsAccessKeyIdPlaceholder")}
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("awsAccessKeyId")}
               onChange={(e) => setFieldValue("awsAccessKeyId", e.target.value)}
             />
@@ -408,10 +403,9 @@ function SecretCreateForm({
           <label className="flex flex-col gap-1 text-xs">
             {t("secretParamSelect.awsSecretAccessKeyLabel")}
             <input
-              aria-label={t("secretParamSelect.awsSecretAccessKeyAria")}
               placeholder={t("secretParamSelect.awsSecretAccessKeyPlaceholder")}
               type="password"
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("awsSecretAccessKey")}
               onChange={(e) => setFieldValue("awsSecretAccessKey", e.target.value)}
             />
@@ -419,9 +413,8 @@ function SecretCreateForm({
           <label className="flex flex-col gap-1 text-xs">
             {t("secretParamSelect.endpointUrlLabel")}
             <input
-              aria-label={t("secretParamSelect.endpointUrlAria")}
               placeholder={t("secretParamSelect.endpointUrlPlaceholder")}
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("endpointUrl")}
               onChange={(e) => setFieldValue("endpointUrl", e.target.value)}
             />
@@ -433,9 +426,8 @@ function SecretCreateForm({
           <label className="flex flex-col gap-1 text-xs">
             {t("secretParamSelect.accountNameLabel")}
             <input
-              aria-label={t("secretParamSelect.accountNameAria")}
               placeholder={t("secretParamSelect.accountNamePlaceholder")}
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("accountName")}
               onChange={(e) => setFieldValue("accountName", e.target.value)}
             />
@@ -443,10 +435,9 @@ function SecretCreateForm({
           <label className="flex flex-col gap-1 text-xs">
             {t("secretParamSelect.accountKeyLabel")}
             <input
-              aria-label={t("secretParamSelect.accountKeyAria")}
               placeholder={t("secretParamSelect.accountKeyPlaceholder")}
               type="password"
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("accountKey")}
               onChange={(e) => setFieldValue("accountKey", e.target.value)}
             />
@@ -457,7 +448,6 @@ function SecretCreateForm({
         <label className="flex flex-col gap-1 text-xs">
           {t("secretParamSelect.serviceAccountInfoLabel")}
           <textarea
-            aria-label={t("secretParamSelect.serviceAccountInfoAria")}
             placeholder={t("secretParamSelect.serviceAccountInfoPlaceholder")}
             className="h-24 rounded border border-control bg-surface px-2 py-1 text-ink"
             value={field("serviceAccountInfo")}
@@ -472,10 +462,9 @@ function SecretCreateForm({
           <label className="flex flex-col gap-1">
             {t("secretParamSelect.bucketUrlLabel")}
             <input
-              aria-label={t("secretParamSelect.bucketUrlAria")}
               placeholder={t(BUCKET_PLACEHOLDER_KEYS[kind])}
               required
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("bucketUrl")}
               onChange={(e) => setFieldValue("bucketUrl", e.target.value)}
             />
@@ -488,9 +477,8 @@ function SecretCreateForm({
           <label className="flex flex-col gap-1 text-xs">
             {t("secretParamSelect.hostLabel")}
             <input
-              aria-label={t("secretParamSelect.hostAria")}
               placeholder={t("secretParamSelect.hostPlaceholder")}
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("host")}
               onChange={(e) => setFieldValue("host", e.target.value)}
             />
@@ -498,10 +486,9 @@ function SecretCreateForm({
           <label className="flex flex-col gap-1 text-xs">
             {t("secretParamSelect.portLabel")}
             <input
-              aria-label={t("secretParamSelect.portAria")}
               placeholder={t("secretParamSelect.portPlaceholder")}
               type="number"
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("port")}
               onChange={(e) => setFieldValue("port", e.target.value)}
             />
@@ -509,9 +496,8 @@ function SecretCreateForm({
           <label className="flex flex-col gap-1 text-xs">
             {t("secretParamSelect.usernameLabel")}
             <input
-              aria-label={t("secretParamSelect.usernameAria")}
               placeholder={t("secretParamSelect.usernamePlaceholder")}
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("username")}
               onChange={(e) => setFieldValue("username", e.target.value)}
             />
@@ -519,10 +505,9 @@ function SecretCreateForm({
           <label className="flex flex-col gap-1 text-xs">
             {t("secretParamSelect.passwordLabel")}
             <input
-              aria-label={t("secretParamSelect.passwordAria")}
               placeholder={t("secretParamSelect.passwordPlaceholder")}
               type="password"
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("password")}
               onChange={(e) => setFieldValue("password", e.target.value)}
             />
@@ -530,9 +515,8 @@ function SecretCreateForm({
           <label className="flex flex-col gap-1 text-xs">
             {t("secretParamSelect.fromAddressLabel")}
             <input
-              aria-label={t("secretParamSelect.fromAddressAria")}
               placeholder={t("secretParamSelect.fromAddressPlaceholder")}
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field("fromAddress")}
               onChange={(e) => setFieldValue("fromAddress", e.target.value)}
             />

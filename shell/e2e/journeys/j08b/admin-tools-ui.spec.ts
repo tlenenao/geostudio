@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { openAs, spaGoto } from "../j06/helpers";
 
 test.setTimeout(120_000);
+test.use({ ignoreHTTPSErrors: true }); // gateway Traefik en certificat auto-signé
 
 async function openInfra(page: import("@playwright/test").Page): Promise<void> {
   await openAs(page, "admin");

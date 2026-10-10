@@ -142,3 +142,42 @@ def test_compute_csp_allowlist_still_separates_script_hosts_from_tile_hosts():
     assert allowlist.script_hosts == {"https://script-only.example.com"}
     assert allowlist.img_hosts == set()
     assert allowlist.connect_hosts == set()
+
+
+def test_compute_csp_allowlist_ignores_disabled_extensions():
+    """REV-166 : une extension désactivée ne doit pas élargir script-src."""
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="c",
+            username="carol",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        for ext_id, host, enabled in (
+            ("acme.on", "https://on.example.com/w.js", True),
+            ("acme.off", "https://off.example.com/w.js", False),
+        ):
+            s.add(
+                Extension(
+                    id=ext_id,
+                    tenant_id=tenant.id,
+                    owner_id=user.id,
+                    tag="x",
+                    label=ext_id,
+                    module_url=host,
+                    props=[],
+                    events=None,
+                    actions=None,
+                    default_size={"w": 1, "h": 1},
+                    permissions={},
+                    enabled=enabled,
+                )
+            )
+        s.commit()
+        allowlist = compute_csp_allowlist(s)
+    assert allowlist.script_hosts == {"https://on.example.com"}

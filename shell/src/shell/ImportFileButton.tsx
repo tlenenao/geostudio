@@ -502,7 +502,6 @@ export function ImportFileButton() {
                 <label className="flex flex-col gap-1 text-sm text-ink">
                   {t("importFile.latColumn")}
                   <select
-                    aria-label={t("importFile.latColumn")}
                     className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                     value={latField}
                     onChange={(e) => setLatField(e.target.value)}
@@ -518,7 +517,6 @@ export function ImportFileButton() {
                 <label className="flex flex-col gap-1 text-sm text-ink">
                   {t("importFile.lonColumn")}
                   <select
-                    aria-label={t("importFile.lonColumn")}
                     className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                     value={lonField}
                     onChange={(e) => setLonField(e.target.value)}
@@ -537,7 +535,6 @@ export function ImportFileButton() {
               <label className="flex flex-col gap-1 text-sm text-ink">
                 {t("importFile.wktColumn")}
                 <select
-                  aria-label={t("importFile.wktColumn")}
                   className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                   value={wktField}
                   onChange={(e) => setWktField(e.target.value)}
@@ -565,7 +562,6 @@ export function ImportFileButton() {
             <label className="flex flex-col gap-1 text-sm text-ink">
               {t("importFile.layerColumn")}
               <select
-                aria-label={t("importFile.layerColumn")}
                 className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                 value={layerName}
                 onChange={(e) => setLayerName(e.target.value)}
@@ -599,7 +595,6 @@ export function ImportFileButton() {
             <label className="flex flex-col gap-1 text-sm text-ink">
               {t("importFile.fileToImport")}
               <input
-                aria-label={t("importFile.fileToImport")}
                 type="file"
                 accept=".geojson,.json,.csv,.xlsx,.kml,.kmz,.gpkg,.zip,.parquet,.jsonl,.gml,.xml"
                 onChange={(e) => void onFileChange(e)}
@@ -607,18 +602,13 @@ export function ImportFileButton() {
             </label>
             <label className="flex flex-col gap-1 text-sm text-ink">
               {t("importFile.collectionTitleLabel")}
-              <Input
-                aria-label={t("importFile.collectionTitleLabel")}
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-              />
+              <Input value={title} onChange={(e) => setTitle(e.target.value)} />
             </label>
             {needsManualLatLon && (
               <>
                 <label className="flex flex-col gap-1 text-sm text-ink">
                   {t("importFile.latColumn")}
                   <select
-                    aria-label={t("importFile.latColumn")}
                     className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                     value={latField}
                     onChange={(e) => setLatField(e.target.value)}
@@ -634,7 +624,6 @@ export function ImportFileButton() {
                 <label className="flex flex-col gap-1 text-sm text-ink">
                   {t("importFile.lonColumn")}
                   <select
-                    aria-label={t("importFile.lonColumn")}
                     className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                     value={lonField}
                     onChange={(e) => setLonField(e.target.value)}

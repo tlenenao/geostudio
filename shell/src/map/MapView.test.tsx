@@ -103,6 +103,30 @@ test("adds a vector source and fill layer for a vector layer", () => {
   });
 });
 
+test("adds an aggregate circle layer and keeps data layers off aggregated cells", () => {
+  const cfg: MapConfig = {
+    ...config,
+    layers: [
+      {
+        id: "communes",
+        title: "Communes",
+        visible: true,
+        kind: "vector",
+        tilesUrl: "https://martin/communes/{z}/{x}/{y}",
+        sourceLayer: "communes",
+        geometryKind: "point",
+      },
+    ],
+  };
+  render(<MapView config={cfg} />);
+  const map = mapInstances[0];
+  expect(map.getLayer("communes__agg")).toMatchObject({
+    type: "circle",
+    filter: ["has", "point_count"],
+  });
+  expect(map.getLayer("communes")).toMatchObject({ filter: ["!", ["has", "point_count"]] });
+});
+
 test("skips non-visible and deck layers", () => {
   const cfg: MapConfig = {
     ...config,
@@ -1054,15 +1078,27 @@ test("a tiled layer without geometryKind renders three typed sub-layers, not a s
     type: "circle",
     source: "communes",
     "source-layer": "communes",
-    filter: ["match", ["geometry-type"], ["Point", "MultiPoint"], true, false],
+    filter: [
+      "all",
+      ["match", ["geometry-type"], ["Point", "MultiPoint"], true, false],
+      ["!", ["has", "point_count"]],
+    ],
   });
   expect(map.getLayer("communes__line")).toMatchObject({
     type: "line",
-    filter: ["match", ["geometry-type"], ["LineString", "MultiLineString"], true, false],
+    filter: [
+      "all",
+      ["match", ["geometry-type"], ["LineString", "MultiLineString"], true, false],
+      ["!", ["has", "point_count"]],
+    ],
   });
   expect(map.getLayer("communes__polygon")).toMatchObject({
     type: "fill",
-    filter: ["match", ["geometry-type"], ["Polygon", "MultiPolygon"], true, false],
+    filter: [
+      "all",
+      ["match", ["geometry-type"], ["Polygon", "MultiPolygon"], true, false],
+      ["!", ["has", "point_count"]],
+    ],
   });
 });
 

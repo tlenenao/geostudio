@@ -1,13 +1,13 @@
 # Matrice de couverture FME→GeoStudio
 
-289 transformers FME recensés.
+290 transformers FME recensés.
 
 ## Résumé par statut
 
 | Statut | Nombre |
 |---|---|
 | `capability_removed` | 7 |
-| `implemented` | 108 |
+| `implemented` | 109 |
 | `license_blocked` | 10 |
 | `out_of_scope` | 25 |
 | `planned_duckdb` | 51 |
@@ -21,7 +21,7 @@
 
 | Moteur | Nombre |
 |---|---|
-| `duckdb` | 159 |
+| `duckdb` | 160 |
 | `gdal` | 59 |
 | `n/a` | 49 |
 | `otb` | 3 |
@@ -257,7 +257,7 @@ Sommaire : [Attribute](#attribute) · [Coordinate System](#coordinate-system) ·
 | VectorOnRasterOverlayer |  | gdal | MIT/X (GDAL/OGR) | `planned_gdal` | niche | Pas un match qgis_frozen : gdal:rasterize (QGIS) ne prend pas de raster existant en entrée (il crée toujours un nouveau raster de sortie depuis un WIDTH/HEIGHT/EXTENT) et ne gère pas les nuages de points — deux différences de comportement réelles, pas une simple divergence de nommage. gdal_rasterize en ligne de commande sait bien burn onto an existing raster (-a sur un fichier pré-existant), d'où planned_gdal plutôt qu'un abandon en unknown. |
 | WebMapTiler |  | gdal | MIT/X (GDAL/OGR) | `planned_gdal` | courant | Territoire classique gdal2tiles.py — absent des 50 algorithmes QGIS gelés. Distinct du service de tuiles vectorielles ST_AsMVT déjà servi par le cœur (SP-24) : ici il s'agit de produire des tuiles RASTER statiques depuis un fichier, pas de servir des tuiles vectorielles dynamiques depuis une collection. |
 
-### Readers/Writers (51)
+### Readers/Writers (52)
 
 | Transformer FME | Équivalent GeoStudio | Moteur | Licence | Statut | Fréquence | Notes |
 |---|---|---|---|---|---|---|
@@ -273,6 +273,7 @@ Sommaire : [Attribute](#attribute) · [Coordinate System](#coordinate-system) ·
 | CityGML |  | gdal | MIT/X (GDAL, lisible partiellement via le pilote générique GML ou le pilote GMLAS — aucun pilote CityGML dédié) ; une intégration dédiée utiliserait plus probablement libcitygml directement (LGPL-2.1, bibliothèque distincte, pas une dépendance de GDAL) | `planned_gdal` | niche | GDAL n'a pas de pilote CityGML dédié : la lecture partielle passe par le pilote générique GML (schéma non interprété sémantiquement) ou par le pilote GMLAS depuis GDAL 2.2 (mapping piloté par schéma XSD, tous deux MIT/X). Une intégration dédiée et complète du modèle CityGML (LOD1-4, sémantique des objets) utiliserait plus probablement libcitygml directement (LGPL-2.1) — une bibliothèque séparée qui peut optionnellement s'appuyer sur GDAL pour les transformations de coordonnées (LIBCITYGML_USE_GDAL), pas l'inverse. Écriture non couverte par cette voie. |
 | CityJSON |  | gdal | MIT/X (GDAL/OGR, pilote CityJSON) | `planned_gdal` | niche |  |
 | DICOM (Digital Imaging and Communications in Medicine) |  | n/a |  | `out_of_scope` | niche | Format d'imagerie médicale (radiologie, pathologie) — hors du domaine géospatial couvert par GeoStudio malgré un pilote GDAL existant pour ce format à d'autres fins. |
+| Databricks | reader.connector.databricks | duckdb | MIT (DuckDB) + Apache-2.0 (dlt) + Apache-2.0 (databricks-sqlalchemy / databricks-sql-connector) | `implemented` | niche | Dialecte SQLAlchemy databricks-sqlalchemy (Apache-2.0), DSN databricks://token:<jeton>@<hôte>?http_path=…; garde d'egress par l'hôte du workspace. Non vérifié sur un workspace réel (aucun compte disponible) : dialecte et formes de DSN vérifiés contre le code installé seulement. |
 | ER Mapper ECW |  | gdal | SDK Hexagon ERDAS ECW/JP2 (propriétaire) requis pour l'écriture et pour une lecture complète — licence commerciale, decodeur gratuit limité | `license_blocked` | niche |  |
 | ERDAS IMAGINE (.img) |  | gdal | MIT/X (GDAL, pilote HFA — spécification ouverte, aucune SDK requise) | `planned_gdal` | niche |  |
 | Entwine Point Tile (EPT) |  | pdal | BSD-3-Clause (PDAL, pilote natif EPT) | `planned_pdal` | niche |  |

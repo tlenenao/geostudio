@@ -67,6 +67,7 @@ def test_operations_registry_has_exactly_the_known_ops():
         "reader.connector.bigquery",
         "reader.connector.mssql",
         "reader.connector.oracle",
+        "reader.connector.databricks",
         "reader.connector.blob",
         "transform.merge",
         "transform.swapCoordinates",
@@ -120,6 +121,7 @@ def test_connector_and_writer_ops_are_not_classified_by_engine():
         "reader.connector.bigquery",
         "reader.connector.mssql",
         "reader.connector.oracle",
+        "reader.connector.databricks",
         "reader.connector.blob",
         "writer.collection",
         "writer.export",
@@ -160,10 +162,10 @@ def test_ops_catalog_never_exposes_the_exchange_field():
         assert set(entry) == {"kind", "paramsSchema", "acceptsSecondaryInput"}, op
 
 
-def test_operations_registry_has_59_entries():
+def test_operations_registry_has_60_entries():
     from app.pipelines.ops.contracts import OPERATIONS
 
-    assert len(OPERATIONS) == 59
+    assert len(OPERATIONS) == 60
 
 
 def test_binary_ops_are_covered_by_the_parallel_tables():

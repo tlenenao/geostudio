@@ -21,10 +21,10 @@ test.describe("j04 raccourcis clavier du builder", () => {
     const s = await getSeed();
     const id = await s.mkApp("kbd-select", baseApp({ layout: grid([text("a", "A")]) }));
     await openBuilder(page, id);
-    await page.getByRole("button", { name: "Sélectionner widget-a" }).click();
+    await page.getByRole("button", { name: "Sélectionner Texte" }).click();
     await page.getByLabel("Widget émetteur").focus();
     await page.keyboard.press("Backspace");
-    await expect(page.getByRole("button", { name: "Sélectionner widget-a" })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Sélectionner Texte" })).toHaveCount(1);
   });
 
   // finding j04-012
@@ -37,11 +37,11 @@ test.describe("j04 raccourcis clavier du builder", () => {
       baseApp({ layout: grid([text("a", "Visible en aperçu")]) }),
     );
     await openBuilder(page, id);
-    await page.getByRole("button", { name: "Sélectionner widget-a" }).click();
+    await page.getByRole("button", { name: "Sélectionner Texte" }).click();
     await page.getByRole("button", { name: "Aperçu" }).click();
     await page.keyboard.press("Delete");
     await page.getByRole("button", { name: "Édition" }).click();
-    await expect(page.getByRole("button", { name: "Sélectionner widget-a" })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Sélectionner Texte" })).toHaveCount(1);
   });
 
   test("Ctrl+Z après une saisie de texte annule la saisie entière (coalescing) et pas un caractère", async ({
@@ -50,7 +50,7 @@ test.describe("j04 raccourcis clavier du builder", () => {
     const s = await getSeed();
     const id = await s.mkApp("kbd-undo-text", baseApp({ layout: grid([text("a", "Base")]) }));
     await openBuilder(page, id);
-    await page.getByRole("button", { name: "Sélectionner widget-a" }).click();
+    await page.getByRole("button", { name: "Sélectionner Texte" }).click();
     const f = page.getByLabel("Texte du widget");
     await f.fill("");
     await page.waitForTimeout(600);

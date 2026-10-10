@@ -6,9 +6,11 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.appexport.models import AppExportJob
+from app.attachments.models import Attachment
 from app.compliance.orphans import sweep_orphan_job_objects
 from app.db import init_db, make_engine, make_session_factory
 from app.export.models import ExportJob
+from app.ingestion.models import IngestionJob
 
 NOW = datetime(2026, 10, 2, tzinfo=UTC)
 OLD = NOW - timedelta(hours=48)
@@ -21,6 +23,10 @@ class FakeS3:
         self.deleted: list[tuple[str, str]] = []
 
     def list_objects_v2(self, *, Bucket, Prefix="", ContinuationToken=None):
+        if Bucket not in self.buckets:
+            from botocore.exceptions import ClientError
+
+            raise ClientError({"Error": {"Code": "NoSuchBucket"}}, "ListObjectsV2")
         objs = self.buckets[Bucket]
         keys = sorted(k for k in objs if k.startswith(Prefix))
         keys = [k for k in keys if ContinuationToken is None or k > ContinuationToken]
@@ -104,3 +110,148 @@ def test_sweep_ignores_a_missing_bucket(session):
             raise ClientError({"Error": {"Code": "NoSuchBucket"}}, "ListObjectsV2")
 
     assert sweep_orphan_job_objects(session, NoBucket({}), now=NOW) == 0
+
+
+def _ingestion(jid, key, status):
+    return IngestionJob(
+        id=jid,
+        tenant_id="t",
+        created_by="u",
+        status=status,
+        source_key=key,
+        filename="f.csv",
+        collection_title="T",
+    )
+
+
+def test_sweep_uploads_keeps_sources_of_unfinished_jobs_and_deletes_the_rest(session, monkeypatch):
+    monkeypatch.delenv("S3_UPLOADS_BUCKET", raising=False)
+    session.add(_ingestion("j1", "t/pending.csv", "pending"))
+    session.add(_ingestion("j2", "t/error.csv", "error"))  # source gardée (filet = lifecycle 7 j)
+    session.add(_ingestion("j3", "t/done.csv", "done"))  # suppression S3 ratée après succès
+    session.commit()
+    s3 = FakeS3(
+        {
+            "geostudio-uploads": {
+                "t/pending.csv": OLD,  # job vivant : gardé
+                "t/error.csv": OLD,  # job en erreur : gardé
+                "t/done.csv": OLD,  # job terminé, objet resté : supprimé
+                "t/never-registered.csv": OLD,  # presign sans POST /uploads : supprimé
+                "t/fresh.csv": FRESH,  # dans le délai de grâce : gardé
+            },
+        }
+    )
+    n = sweep_orphan_job_objects(session, s3, now=NOW)
+    assert n == 2
+    assert sorted(s3.deleted) == [
+        ("geostudio-uploads", "t/done.csv"),
+        ("geostudio-uploads", "t/never-registered.csv"),
+    ]
+
+
+def test_sweep_attachments_deletes_only_unreferenced_old_objects(session, monkeypatch):
+    monkeypatch.delenv("S3_ATTACHMENTS_BUCKET", raising=False)
+    session.add(
+        Attachment(
+            id="a1",
+            tenant_id="t",
+            collection_id="c",
+            fid="1",
+            field_key="f",
+            filename="a.pdf",
+            content_type="application/pdf",
+            byte_size=1,
+            s3_key="t/c/1/alive.pdf",
+            created_by="u",
+        )
+    )
+    session.commit()
+    s3 = FakeS3(
+        {
+            "geostudio-attachments": {
+                "t/c/1/alive.pdf": OLD,  # référencé : gardé
+                "t/c/1/orphan.pdf": OLD,  # upload jamais finalisé : supprimé
+                "t/c/1/new-orphan.pdf": FRESH,  # grâce : gardé
+            },
+        }
+    )
+    assert sweep_orphan_job_objects(session, s3, now=NOW) == 1
+    assert s3.deleted == [("geostudio-attachments", "t/c/1/orphan.pdf")]
+
+
+def test_sweep_skips_attachments_and_uploads_when_reference_table_is_empty(session, monkeypatch):
+    monkeypatch.delenv("S3_ATTACHMENTS_BUCKET", raising=False)
+    monkeypatch.delenv("S3_UPLOADS_BUCKET", raising=False)
+    s3 = FakeS3(
+        {
+            "geostudio-attachments": {"t/c/1/a.pdf": OLD},
+            "geostudio-uploads": {"t/a.csv": OLD},
+        }
+    )
+    assert sweep_orphan_job_objects(session, s3, now=NOW) == 0
+    assert s3.deleted == []
+
+
+def test_sweep_aborts_when_a_full_page_is_entirely_condemned(session, monkeypatch):
+    monkeypatch.delenv("S3_ATTACHMENTS_BUCKET", raising=False)
+    session.add(
+        Attachment(
+            id="a1",
+            tenant_id="t",
+            collection_id="c",
+            fid="1",
+            field_key="f",
+            filename="a.pdf",
+            content_type="application/pdf",
+            byte_size=1,
+            s3_key="t/c/1/other.pdf",  # table non vide mais désynchronisée du bucket
+            created_by="u",
+        )
+    )
+    session.commit()
+    objs = {f"t/c/1/o{i:03}.pdf": OLD for i in range(150)}
+
+    class Big(FakeS3):
+        def list_objects_v2(self, *, Bucket, Prefix="", ContinuationToken=None):
+            if Bucket not in self.buckets:
+                return super().list_objects_v2(Bucket=Bucket)
+            keys = sorted(self.buckets[Bucket])
+            return {
+                "Contents": [{"Key": k, "LastModified": OLD} for k in keys[:100]],
+                "IsTruncated": True,
+                "NextContinuationToken": keys[99],
+            }
+
+    s3 = Big({"geostudio-attachments": objs})
+    assert sweep_orphan_job_objects(session, s3, now=NOW) == 0
+    assert s3.deleted == []
+
+
+def test_sweep_deletes_orphan_collection_export_files(session):
+    from app.dataexport.models import CollectionExportJob
+
+    session.add(
+        CollectionExportJob(
+            id="alive",
+            tenant_id="t",
+            collection_id="c",
+            requested_by="u",
+            format="csv",
+            status="done",
+            masked=True,
+        )
+    )
+    session.commit()
+    s3 = FakeS3(
+        {
+            "geostudio-exports": {
+                "t/data-exports/alive.csv": OLD,  # job vivant : gardé
+                "t/data-exports/gone.csv": OLD,  # collection supprimée : supprimé
+                "t/data-exports/new.csv": FRESH,  # grâce : gardé
+                "t/data-exports/a/b.csv": OLD,  # forme inattendue : jamais touchée
+                "t/pipelines/p1": OLD,
+            },
+        }
+    )
+    assert sweep_orphan_job_objects(session, s3, now=NOW) == 1
+    assert s3.deleted == [("geostudio-exports", "t/data-exports/gone.csv")]

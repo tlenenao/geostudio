@@ -38,18 +38,16 @@ export function registerSelectFilterWidget(): void {
           onChange={(id) => onChange({ ...props, dataSourceId: id })}
         />
         <label className="flex flex-col gap-1">
-          {t("widgetSelectFilter.fieldConfig")}
+          {t("widgetSelectFilter.fieldAria")}
           <input
-            aria-label={t("widgetSelectFilter.fieldAria")}
             className="h-9 rounded-md border border-rule px-2"
             value={String(props.field ?? "")}
             onChange={(e) => onChange({ ...props, field: e.target.value })}
           />
         </label>
         <label className="flex flex-col gap-1">
-          {t("widgetSelectFilter.labelConfig")}
+          {t("widgetSelectFilter.labelAria")}
           <input
-            aria-label={t("widgetSelectFilter.labelAria")}
             className="h-9 rounded-md border border-rule px-2"
             value={String(props.label ?? "")}
             onChange={(e) => onChange({ ...props, label: e.target.value })}
@@ -116,7 +114,6 @@ export function registerSelectFilterWidget(): void {
             <label key={opt.value} className="flex items-center gap-2">
               <input
                 type="checkbox"
-                aria-label={opt.value}
                 checked={checked.includes(opt.value)}
                 onChange={(e) => toggle(opt.value, e.target.checked)}
               />

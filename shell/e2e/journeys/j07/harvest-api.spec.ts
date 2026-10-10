@@ -1,4 +1,3 @@
-import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { CORE_URL, stamp } from "../_fixtures/env";
 import {
@@ -194,19 +193,16 @@ test.describe("j07 moissonnage — exécution", () => {
 
 test.describe("j07 moissonnage — défauts constatés", () => {
   // Finding j07-001 : la file `harvest` n'est consommée par aucun worker du compose.
-  bug(
-    "j07-001 : un job de moissonnage déféré est consommé par le worker (file `harvest`)",
-    async () => {
-      const src = await createSource(admin, {
-        type: "stac",
-        url: `https://x.invalid/${tag}-queue`,
-      });
-      expect(await deferHarvestAndPoll(src.id)).not.toBe("todo");
-    },
-  );
+  test("j07-001 : un job de moissonnage déféré est consommé par le worker (file `harvest`)", async () => {
+    const src = await createSource(admin, {
+      type: "stac",
+      url: `https://x.invalid/${tag}-queue`,
+    });
+    expect(await deferHarvestAndPoll(src.id)).not.toBe("todo");
+  });
 
   // Finding j07-002 : POST …/run répond 500 (procrastinate AppNotOpen), comme j03-001 pour les imports.
-  bug("j07-002 : POST /harvest/sources/{id}/run répond 202", async () => {
+  test("j07-002 : POST /harvest/sources/{id}/run répond 202", async () => {
     const src = await createSource(admin, { type: "stac", url: `https://x.invalid/${tag}-run` });
     const r = await admin.send("POST", `/v1/harvest/sources/${src.id}/run`);
     expect(r.status).toBe(202);
@@ -243,6 +239,13 @@ test.describe("j07 moissonnage — défauts constatés", () => {
 
   // Finding j07-007 : la suppression d'une source laisse ses items « external » orphelins.
   test("j07-007 : supprimer une source retire ou signale les items qu'elle avait créés", async () => {
+    // L'URL est unique par source : retire celle laissée par le test de moissonnage réel ci-dessus.
+    const existing = await admin.get("/v1/harvest/sources");
+    for (const s of existing.body.sources ?? existing.body.items ?? existing.body) {
+      if (s.url === "https://earth-search.aws.element84.com/v1") {
+        await admin.send("DELETE", `/v1/harvest/sources/${s.id}`);
+      }
+    }
     const src = await createSource(admin, {
       type: "stac",
       url: "https://earth-search.aws.element84.com/v1",

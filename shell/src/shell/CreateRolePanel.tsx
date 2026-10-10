@@ -51,7 +51,6 @@ export function CreateRolePanel({ onClose }: { onClose: () => void }) {
         <label className="flex flex-col gap-1 text-sm text-ink">
           {t("roles.nameLabel")}
           <Input
-            aria-label={t("roles.nameLabel")}
             aria-required="true"
             aria-describedby={name ? undefined : nameHintId}
             value={name}

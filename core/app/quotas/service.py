@@ -145,6 +145,13 @@ def usage_for_tenant(session: Session, s3, tenant_id: str) -> UsageSnapshot:
         tenant_id,
         prefix=f"{tenant_id}/pipelines/",
     )
+    # REV-283e : exports de collection asynchrones (TTL 24 h, mais comptés).
+    storage += tenant_prefixed_storage_bytes(
+        s3,
+        os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports"),
+        tenant_id,
+        prefix=f"{tenant_id}/data-exports/",
+    )
     storage += tenant_prefixed_storage_bytes(
         s3,
         os.environ.get("S3_CDC_BUCKET", "geostudio-cdc"),

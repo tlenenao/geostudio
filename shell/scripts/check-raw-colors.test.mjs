@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from "vitest";
-import { findOffendersInSource } from "./check-raw-colors.mjs";
+import { findOffendersInSource, isExcludedDir } from "./check-raw-colors.mjs";
 
 describe("findOffendersInSource", () => {
   it("signale un hexadécimal littéral sans pragma", () => {
@@ -37,4 +37,11 @@ describe("findOffendersInSource", () => {
       'b.tsx:1: <p className="text-white" />',
     ]);
   });
+});
+
+it("map/ est scanné : seul ui/kit/ reste exclu (REV-285 d)", () => {
+  expect(isExcludedDir("map")).toBe(false);
+  expect(isExcludedDir("map/MapView.tsx")).toBe(false);
+  expect(isExcludedDir("ui/kit")).toBe(true);
+  expect(isExcludedDir("ui/kit/Button")).toBe(true);
 });

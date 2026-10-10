@@ -94,7 +94,9 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
             if job is None:
                 logger.error("ingestion job %s introuvable (tenant %s)", job_id, tenant_id)
                 return
-            ingestion_repo.mark_running(session, job_id=job_id)
+            if not ingestion_repo.mark_running(session, job_id=job_id):
+                logger.warning("ingestion job %s non prenable (déjà pris ou terminé)", job_id)
+                return
             (
                 filename,
                 source_key,

@@ -24,7 +24,7 @@ les trois autres gardes : c'est un appel rapide (un seul `socket.getaddrinfo`),
 même compromis qu'ailleurs.
 
 DNS-rebinding TOCTOU fermé par REV-273d (comme `app.harvest.egress`) : le
-transport connecte sur l'IP validée (`app.net_pin.pin_httpx_request`)."""
+transport connecte sur l'IP validée (`app.net_pin.send_pinned_async`)."""
 
 import ipaddress
 import logging
@@ -34,7 +34,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from app.net_pin import pin_httpx_request
+from app.net_pin import ValidatedIp, send_pinned_async
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,8 @@ def _allowlist() -> set[str]:
 
 def _is_internal(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     # tout ce qui n'est pas globalement routable (CGNAT 100.64/10, TEST-NET, 6to4…)
-    return not ip.is_global or ip.is_multicast
+    # fec0::/10 (site-local déprécié) : is_global le laisse passer (j06-003)
+    return not ip.is_global or ip.is_multicast or getattr(ip, "is_site_local", False)
 
 
 def assert_egress_allowed(url: str) -> str:
@@ -77,12 +78,12 @@ def assert_egress_allowed(url: str) -> str:
         raise EgressBlockedError(f"hôte non résoluble : {host!r}")
     for ip in addresses:
         if _is_internal(ip):
-            raise EgressBlockedError(f"cible réseau interne bloquée : {host!r} → {ip}")
+            raise EgressBlockedError(f"cible réseau interne bloquée : {host!r}")
 
     allowlist = _allowlist()
     if allowlist and host not in allowlist:
         raise EgressBlockedError(f"hôte hors allowlist d'egress : {host!r}")
-    return str(addresses[0])  # REV-273d : adresse validée, à utiliser pour se connecter
+    return ValidatedIp(str(addresses[0]), [str(a) for a in addresses])  # REV-273d
 
 
 class _GuardedAsyncTransport(httpx.AsyncBaseTransport):
@@ -90,8 +91,9 @@ class _GuardedAsyncTransport(httpx.AsyncBaseTransport):
         self._inner = inner
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-        pin_httpx_request(request, assert_egress_allowed(str(request.url)))
-        return await self._inner.handle_async_request(request)
+        return await send_pinned_async(
+            self._inner.handle_async_request, request, assert_egress_allowed(str(request.url))
+        )
 
 
 def build_guarded_async_client(timeout: float = _DEFAULT_TIMEOUT_SECONDS) -> httpx.AsyncClient:

@@ -304,3 +304,38 @@ def test_early_failure_before_created_by_bound_does_not_crash(env, monkeypatch):
         # notification, pas sur le statut du job.
         notification = s.scalar(select(Notification).where(Notification.tenant_id == tenant.id))
         assert notification is None
+
+
+def test_redelivery_on_a_done_job_executes_nothing(env, monkeypatch):
+    """REV-295 : une redélivrance procrastinate sur un job déjà `done` ne le
+    repasse pas `running` et ne ré-exécute ni téléchargement ni import."""
+    app, Session, tenant, user = env
+    touched: list[str] = []
+
+    def _no_s3():
+        touched.append("s3")
+        raise AssertionError("aucun accès S3 attendu")
+
+    monkeypatch.setattr(ingestion_tasks, "_make_s3_client_from_env", _no_s3)
+    monkeypatch.setattr(ingestion_tasks, "run_import", lambda *a, **k: touched.append("import"))
+
+    with Session() as s:
+        job = ingestion_repo.create_job(
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            source_key="k-done",
+            filename="x.geojson",
+            collection_title="T",
+            lat_field=None,
+            lon_field=None,
+        )
+        job.status = "done"
+        s.commit()
+        job_id = job.id
+
+    ingestion_tasks.run_ingestion_task(job_id=job_id, tenant_id=tenant.id)
+
+    assert touched == []
+    with Session() as s:
+        assert ingestion_repo.get_job(s, tenant_id=tenant.id, job_id=job_id).status == "done"

@@ -67,12 +67,20 @@ def test_second_resolution_to_loopback_is_refused(monkeypatch, modname):
         mod.assert_egress_allowed("https://rebind.example.com/x")
 
 
+def _snapshot(request: httpx.Request) -> httpx.Request:
+    # Copie à l'instant de l'envoi : send_pinned restaure ensuite `request.url`
+    # (Location relatif, REV-273d), la requête d'origine ne montre plus l'IP.
+    return httpx.Request(
+        request.method, request.url, headers=request.headers, extensions=dict(request.extensions)
+    )
+
+
 class _Recorder(httpx.BaseTransport):
     def __init__(self):
         self.seen: list[httpx.Request] = []
 
     def handle_request(self, request):
-        self.seen.append(request)
+        self.seen.append(_snapshot(request))
         return httpx.Response(200, content=b"ok", request=request)
 
 
@@ -81,7 +89,7 @@ class _AsyncRecorder(httpx.AsyncBaseTransport):
         self.seen: list[httpx.Request] = []
 
     async def handle_async_request(self, request):
-        self.seen.append(request)
+        self.seen.append(_snapshot(request))
         return httpx.Response(200, content=b"ok", request=request)
 
 
@@ -128,3 +136,47 @@ def test_httpx_transport_neutralised_guard_does_not_pin(monkeypatch):
     httpx.Client(transport=mod._GuardedTransport(inner)).get("http://127.0.0.1:1234/x")
     assert inner.seen[0].url.host == "127.0.0.1"
     assert "sni_hostname" not in inner.seen[0].extensions
+
+
+@pytest.mark.parametrize("modname", EGRESS_MODULES)
+def test_getaddrinfo_triples_are_deduplicated(monkeypatch, modname):
+    """getaddrinfo(host, None) renvoie STREAM/DGRAM/RAW par IP : `.addresses`
+    ne doit contenir chaque IP qu'une fois (sinon 3 tentatives par IP morte)."""
+    mod = importlib.import_module(modname)
+    other = "93.184.216.35"
+
+    def fake(host, *a, **k):
+        return [
+            (socket.AF_INET, t, 0, "", (ip, 0))
+            for ip in (PUBLIC, other)
+            for t in (socket.SOCK_STREAM, socket.SOCK_DGRAM, socket.SOCK_RAW)
+        ]
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake)
+    assert mod.assert_egress_allowed("https://dup.example.com/x").addresses == (PUBLIC, other)
+
+
+def test_send_pinned_tries_each_ip_once(monkeypatch):
+    from app.net_pin import ValidatedIp, send_pinned
+
+    ip = ValidatedIp(PUBLIC, [PUBLIC, PUBLIC, PUBLIC, "93.184.216.35"])
+    tried = []
+
+    def send(req):
+        tried.append(req.url.host)
+        if len(tried) < 2:
+            raise httpx.ConnectError("down")
+        return httpx.Response(200)
+
+    send_pinned(send, httpx.Request("GET", "https://api.example.com/x"), ip)
+    assert tried == [PUBLIC, "93.184.216.35"]
+
+
+@pytest.mark.parametrize("modname", EGRESS_MODULES)
+def test_block_message_does_not_leak_resolved_ip(monkeypatch, modname):
+    mod = importlib.import_module(modname)
+    fake, _ = _resolver("10.1.2.3")
+    monkeypatch.setattr(socket, "getaddrinfo", fake)
+    with pytest.raises(mod.EgressBlockedError) as exc:
+        mod.assert_egress_allowed("https://internal.example.com/x")
+    assert "10.1.2.3" not in str(exc.value)

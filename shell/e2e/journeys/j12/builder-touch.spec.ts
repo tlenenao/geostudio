@@ -40,9 +40,9 @@ test.describe("j12 éditeur d'app au toucher", () => {
     await openAs(page, "creator");
     await go(page, `/apps/${app}/edit`, 3500);
     await page.getByRole("tab", { name: "Canevas" }).tap();
-    await page.getByRole("button", { name: /Sélectionner widget-tbl/ }).tap();
+    await page.getByRole("button", { name: /Sélectionner Table/ }).tap();
     const boxes = await page
-      .locator('[aria-label^="Déplacer widget-tbl"], [aria-label^="Supprimer widget-tbl"]')
+      .locator('[aria-label^="Déplacer Table"], [aria-label^="Supprimer Table"]')
       .evaluateAll((els) =>
         els.map((e) => {
           const r = e.getBoundingClientRect();

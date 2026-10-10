@@ -69,7 +69,7 @@ export function createAttachmentsMethods(base: ItemClientBase): AttachmentsMetho
       fid: string,
       attachmentId: string,
     ): Promise<{ blob: Blob; filename: string }> {
-      return requestBlob(
+      const file = await requestBlob(
         coreUrl,
         getToken,
         "GET",
@@ -78,6 +78,8 @@ export function createAttachmentsMethods(base: ItemClientBase): AttachmentsMetho
         getShareLinkToken,
         renewToken,
       );
+      if (!file.blob) throw new Error("unexpected async response");
+      return file;
     },
   };
 }

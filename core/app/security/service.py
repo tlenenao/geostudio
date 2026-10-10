@@ -50,7 +50,9 @@ def _latest_map_config_bodies(session: Session) -> list[dict]:
 
 def compute_csp_allowlist(session: Session) -> CspAllowlist:
     sources = session.scalars(select(HarvestSource)).all()
-    extensions = session.scalars(select(Extension)).all()
+    # REV-166 : une extension désactivée n'est jamais chargée par le shell ;
+    # son origine n'a donc pas à rester autorisée dans script-src.
+    extensions = session.scalars(select(Extension).where(Extension.enabled.is_(True))).all()
     tile_hosts = extract_harvest_hosts(sources)
     for body in _latest_map_config_bodies(session):
         tile_hosts |= extract_config_external_hosts(body)

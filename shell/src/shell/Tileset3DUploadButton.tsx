@@ -156,7 +156,6 @@ export function Tileset3DUploadButton({
           <label className="flex flex-col gap-1 text-sm text-ink">
             {t("tileset3d.archiveLabel")}
             <input
-              aria-label={t("tileset3d.archiveLabel")}
               type="file"
               accept=".zip"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
@@ -164,11 +163,7 @@ export function Tileset3DUploadButton({
           </label>
           <label className="flex flex-col gap-1 text-sm text-ink">
             {t("visualQuery.titleLabel")}
-            <Input
-              aria-label={t("visualQuery.titleLabel")}
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-            />
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} />
           </label>
           {progress && (
             <p role="status" className="text-sm text-ink-2">

@@ -22,6 +22,7 @@ const TWO_COLUMN_LAYOUT: AppLayout = {
     {
       id: "tpl-two-col-a",
       widget: "text",
+      ordinal: 1,
       x: 0,
       y: 0,
       w: 3,
@@ -31,6 +32,7 @@ const TWO_COLUMN_LAYOUT: AppLayout = {
     {
       id: "tpl-two-col-b",
       widget: "text",
+      ordinal: 2,
       x: 3,
       y: 0,
       w: 3,
@@ -47,6 +49,7 @@ const BASIC_DASHBOARD_LAYOUT: AppLayout = {
     {
       id: "tpl-dash-title",
       widget: "text",
+      ordinal: 1,
       x: 0,
       y: 0,
       w: 6,
@@ -132,13 +135,14 @@ function storyChapter(idx: number, title: string, center: [number, number]): Pag
         {
           id: `tpl-story-text-${idx}`,
           widget: "text",
+          ordinal: 1,
           x: 0,
           y: 0,
           w: 4,
           h: 6,
           props: { text: `## ${title}\n\nRacontez ce chapitre ici.` },
         },
-        { id: mapId, widget: "map", x: 4, y: 0, w: 8, h: 6, props: {} },
+        { id: mapId, widget: "map", ordinal: 1, x: 4, y: 0, w: 8, h: 6, props: {} },
       ],
     },
     onEnter: [

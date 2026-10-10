@@ -18,7 +18,7 @@ import requests
 from aiohttp.abc import AbstractResolver, ResolveResult
 from sqlalchemy.engine import make_url
 
-from app.net_pin import pinned_adapter
+from app.net_pin import ValidatedIp, candidate_ips, pinned_adapter
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,8 @@ def _allowlist() -> set[str]:
 
 def _is_internal(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     # tout ce qui n'est pas globalement routable (CGNAT 100.64/10, TEST-NET, 6to4…)
-    return not ip.is_global or ip.is_multicast
+    # fec0::/10 (site-local déprécié) : is_global le laisse passer (j06-003)
+    return not ip.is_global or ip.is_multicast or getattr(ip, "is_site_local", False)
 
 
 def assert_egress_allowed(url: str) -> str:
@@ -71,12 +72,12 @@ def assert_egress_allowed(url: str) -> str:
         raise EgressBlockedError(f"hôte non résoluble : {host!r}")
     for ip in addresses:
         if _is_internal(ip):
-            raise EgressBlockedError(f"cible réseau interne bloquée : {host!r} → {ip}")
+            raise EgressBlockedError(f"cible réseau interne bloquée : {host!r}")
 
     allowlist = _allowlist()
     if allowlist and host not in allowlist:
         raise EgressBlockedError(f"hôte hors allowlist d'egress : {host!r}")
-    return str(addresses[0])  # REV-273d : adresse validée, à utiliser pour se connecter
+    return ValidatedIp(str(addresses[0]), [str(a) for a in addresses])  # REV-273d
 
 
 def assert_dsn_egress_allowed(dsn: str) -> None:
@@ -87,6 +88,16 @@ def assert_dsn_egress_allowed(dsn: str) -> None:
     # non analysables de façon fiable (descripteur TNS, chaîne ODBC) → refusés.
     if {"server", "dsn", "odbc_connect", "hostname", "address"} & set(url.query):
         raise EgressBlockedError("DSN : hôte porté par un paramètre de pilote, refusé")
+    if not url.get_backend_name().startswith("postgresql") and {
+        "host",
+        "hostaddr",
+        "https_proxy",
+        "https_proxy_port",
+        "config_dir",
+    } & set(url.query):
+        # pymssql/oracledb préfèrent ces paramètres à l'hôte épinglé (rebinding)
+        # ou passent par un proxy non vérifié.
+        raise EgressBlockedError("DSN : hôte ou proxy porté par un paramètre de pilote, refusé")
     hosts = [url.host or ""]
     for key in ("host", "hostaddr"):
         val = url.query.get(key, ())
@@ -100,8 +111,7 @@ def assert_dsn_egress_allowed(dsn: str) -> None:
 def dsn_pin_connect_args(dsn: str) -> dict[str, str]:
     """REV-273d : épingle la connexion Postgres sur l'IP validée par la garde
     (paramètre libpq `hostaddr` ; `host` reste le nom → `verify-full` intact).
-    `{}` quand il n'y a rien à épingler. ponytail: mssql/oracle sans
-    équivalent fiable (descripteur TNS/ODBC) — seule la garde amont s'applique."""
+    `{}` quand il n'y a rien à épingler. mssql/oracle : voir `pin_dsn_host`."""
     url = make_url(dsn)
     host = url.host or ""
     if (
@@ -120,6 +130,39 @@ def dsn_pin_connect_args(dsn: str) -> dict[str, str]:
         pass
     ip = assert_egress_allowed(f"http://{host}")
     return {"hostaddr": ip} if ip else {}
+
+
+def pin_dsn_host(dsn: str) -> str:
+    """REV-273d : épingle l'hôte d'un DSN mssql/oracle sur l'IP validée par la
+    garde (anti DNS-rebinding entre le contrôle et la connexion) en la
+    substituant au nom dans l'URL. Ces pilotes n'ont pas de `hostaddr` : le
+    nom est perdu pour la vérification TLS du certificat — l'opérateur qui
+    l'exige indique l'hôte littéral. Oracle `protocol=tcps` n'est PAS épinglé
+    (la vérification du DN du certificat porte sur l'hôte) : la garde amont
+    reste appliquée, résidu TOCTOU (DNS-rebinding) assumé. ponytail: hôte unique résolu une fois
+    (1re adresse validée) ; pas de repli multi-adresses pour ces pilotes."""
+    url = make_url(dsn)
+    host = url.host or ""
+    backend = url.get_backend_name()
+    if (
+        not (backend.startswith("mssql") or backend.startswith("oracle"))
+        or not host
+        or host.startswith("/")
+        or "," in host
+        or str(url.query.get("protocol", "")).lower() == "tcps"
+    ):
+        return dsn
+    try:
+        ipaddress.ip_address(host)
+        return dsn  # littéral : déjà validé par assert_dsn_egress_allowed
+    except ValueError:
+        pass
+    ip = assert_egress_allowed(f"http://{host}")
+    if not ip:
+        return dsn  # garde neutralisée (fixtures de tests)
+    # pymssql ajoute le port par `:` : un littéral IPv6 sans port explicite casse.
+    port = (url.port or 1433) if backend.startswith("mssql") else url.port
+    return url.set(host=str(ip), port=port).render_as_string(hide_password=False)
 
 
 def _pin_ip(host: str) -> str:
@@ -151,7 +194,7 @@ def build_guarded_session() -> requests.Session:
 
 class PinnedAioResolver(AbstractResolver):
     """Résolveur aiohttp (donc aiobotocore/s3fs, endpoint S3 compatible) qui
-    n'accepte que l'adresse validée par la garde d'egress au moment même de
+    n'accepte que les adresses validées par la garde d'egress au moment même de
     la connexion (REV-273d). `hostname` reste le nom d'origine : SNI et
     vérification de certificat inchangés. aiohttp (connector._resolve_host)
     n'appelle pas le résolveur pour un littéral IP : celui-ci est validé en
@@ -162,15 +205,18 @@ class PinnedAioResolver(AbstractResolver):
         self, host: str, port: int = 0, family: socket.AddressFamily = socket.AF_INET
     ) -> list[ResolveResult]:
         ip = await asyncio.to_thread(_pin_ip, host)  # getaddrinfo bloquant hors boucle
+        # Toutes les adresses validées : aiohttp essaie la suivante si la 1re
+        # est injoignable (double pile, REV-273d).
         return [
             {
                 "hostname": host,
-                "host": ip,
+                "host": addr,
                 "port": port,
-                "family": socket.AF_INET6 if ":" in ip else socket.AF_INET,
+                "family": socket.AF_INET6 if ":" in addr else socket.AF_INET,
                 "proto": 0,
                 "flags": socket.AI_NUMERICHOST,
             }
+            for addr in candidate_ips(ip)
         ]
 
     async def close(self) -> None:

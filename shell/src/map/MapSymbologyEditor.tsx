@@ -13,6 +13,7 @@ import {
 import { LUCIDE_ICONS, type IconCategory } from "../builder/widgets/iconLibrary";
 import { Button } from "../ui/kit/Button";
 import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
+import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { FieldClassificationPicker, type ClassifiedEncoding } from "./FieldClassificationPicker";
 import { labelCls, inputCls } from "./formFieldStyles";
 import type { ThemeColors } from "../api/types";
@@ -117,6 +118,7 @@ export function MapSymbologyEditor({
     onChange({
       ...value,
       stroke: {
+        // gs-raw-color-ok: contour par défaut de symbologie utilisateur
         color: stroke?.color ?? { fixed: "#000000" },
         width: stroke?.width ?? { fixed: 1 },
         style: stroke?.style ?? "solid",
@@ -206,6 +208,7 @@ export function MapSymbologyEditor({
   // toujours vrai, donc le bloc s'affichait en permanence et le bouton
   // « Ajouter des icônes » n'avait aucun effet observable.
   const [iconDraft, setIconDraft] = useState(false);
+  const iconPanel = usePanelTrigger(Boolean(icon || iconDraft));
   const [iconField, setIconField] = useState(icon?.field ?? "");
   // Fix I4 de la revue finale SP-27 : `iconField` ne se resynchronisait
   // qu'au montage (initialiseur de useState, jamais réévalué) — TOUS les
@@ -348,7 +351,6 @@ export function MapSymbologyEditor({
       <label className={labelCls}>
         {t("mapSymbology.sizeFieldLabel")}
         <input
-          aria-label={t("mapSymbology.sizeFieldLabel")}
           list={`${listId}-fields`}
           className={inputCls}
           value={size?.field ?? ""}
@@ -414,7 +416,6 @@ export function MapSymbologyEditor({
       <label className={labelCls}>
         {t("mapSymbology.opacityLabel")}
         <input
-          aria-label={t("mapSymbology.opacityLabel")}
           type="range"
           min={0}
           max={100}
@@ -455,6 +456,7 @@ export function MapSymbologyEditor({
                 // contour survivait au passage en mode fixe et réapparaissait
                 // telle quelle au retour en mode « par attribut ».
                 setStrokeError(null);
+                // gs-raw-color-ok: contour par défaut de symbologie utilisateur
                 setStroke({ color: { fixed: "#000000" } });
               }}
             >
@@ -495,8 +497,8 @@ export function MapSymbologyEditor({
             <label className={labelCls}>
               {t("mapSymbology.strokeColorLabel")}
               <input
-                aria-label={t("mapSymbology.strokeColorLabel")}
                 type="color"
+                // gs-raw-color-ok: contour par défaut de symbologie utilisateur
                 value={"fixed" in stroke.color ? stroke.color.fixed : "#000000"}
                 onChange={(e) => setStroke({ color: { fixed: e.target.value } })}
               />
@@ -532,7 +534,6 @@ export function MapSymbologyEditor({
           <label className={labelCls}>
             {t("mapSymbology.strokeWidthLabel")}
             <input
-              aria-label={t("mapSymbology.strokeWidthLabel")}
               type="number"
               min={0}
               max={20}
@@ -544,7 +545,6 @@ export function MapSymbologyEditor({
           <label className={labelCls}>
             {t("mapSymbology.strokeStyleLabel")}
             <select
-              aria-label={t("mapSymbology.strokeStyleLabel")}
               className={inputCls}
               value={stroke.style}
               onChange={(e) => setStroke({ style: e.target.value as StrokeStyle })}
@@ -569,17 +569,20 @@ export function MapSymbologyEditor({
           size="sm"
           variant="outline"
           className="self-start"
+          {...iconPanel.triggerProps}
           onClick={() => setIconDraft(true)}
         >
           {t("mapSymbology.addIconsButton")}
         </Button>
       )}
       {(icon || iconDraft) && (
-        <div className="flex flex-col gap-2 border-l-2 border-rule-2 pl-2">
+        <div
+          {...iconPanel.panelProps}
+          className="flex flex-col gap-2 border-l-2 border-rule-2 pl-2"
+        >
           <label className={labelCls}>
             {t("mapSymbology.iconFieldLabel")}
             <input
-              aria-label={t("mapSymbology.iconFieldLabel")}
               list={`${listId}-fields`}
               className={inputCls}
               value={iconField}
@@ -712,7 +715,6 @@ export function MapSymbologyEditor({
             <label className={labelCls}>
               {t("mapSymbology.uploadIconLabel")}
               <input
-                aria-label={t("mapSymbology.uploadIconLabel")}
                 type="file"
                 className="w-full"
                 accept="image/png,image/svg+xml"
@@ -761,7 +763,9 @@ export function MapSymbologyEditor({
               label: {
                 template: "",
                 size: 12,
+                // gs-raw-color-ok: étiquette par défaut de symbologie utilisateur
                 color: "#1e293b",
+                // gs-raw-color-ok: halo d'étiquette par défaut de symbologie utilisateur
                 haloColor: "#ffffff",
                 haloWidth: 1,
               },
@@ -776,7 +780,6 @@ export function MapSymbologyEditor({
           <label className={labelCls}>
             {t("mapSymbology.labelTemplateLabel")}
             <textarea
-              aria-label={t("mapSymbology.labelTemplateLabel")}
               className={inputCls}
               rows={2}
               value={value.label.template}
@@ -789,7 +792,6 @@ export function MapSymbologyEditor({
           <label className={labelCls}>
             {t("mapSymbology.labelSizeLabel")}
             <input
-              aria-label={t("mapSymbology.labelSizeLabel")}
               type="number"
               min={8}
               max={32}
@@ -806,7 +808,6 @@ export function MapSymbologyEditor({
           <label className={labelCls}>
             {t("mapSymbology.labelColorLabel")}
             <input
-              aria-label={t("mapSymbology.labelColorLabel")}
               type="color"
               value={value.label.color}
               onChange={(e) =>

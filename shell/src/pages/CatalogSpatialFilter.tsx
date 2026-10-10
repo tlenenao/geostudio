@@ -6,7 +6,7 @@ import { DEFAULT_BASEMAP } from "../map/basemaps";
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { t } from "../i18n";
-import { readToken } from "../lib/theme";
+import { onThemeChange, readToken } from "../lib/theme";
 
 export type Bbox = [number, number, number, number]; // [minLon, minLat, maxLon, maxLat]
 
@@ -158,12 +158,24 @@ export function CatalogSpatialFilter({ onChange }: { onChange: (bbox: Bbox | nul
       onChange(result);
     }
 
+    function repaintRect() {
+      for (const [id, prop] of [
+        [RECT_LAYER_ID, "fill-color"],
+        [RECT_OUTLINE_LAYER_ID, "line-color"],
+      ] as const) {
+        // gs-raw-color-ok: repli jsdom
+        if (map.getLayer(id)) map.setPaintProperty(id, prop, readToken("--gs-accent", "#0b6e77"));
+      }
+    }
+    const offTheme = onThemeChange(repaintRect);
+
     map.on("load", ensureRectLayer);
     map.on("mousedown", onMouseDown as never);
     map.on("mousemove", onMouseMove as never);
     map.on("mouseup", onMouseUp as never);
 
     return () => {
+      offTheme();
       map.off("load", ensureRectLayer);
       map.off("mousedown", onMouseDown as never);
       map.off("mousemove", onMouseMove as never);

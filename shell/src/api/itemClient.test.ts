@@ -1591,6 +1591,22 @@ test("queryDataSourcePage returns the real total (numberMatched) beside the trun
   expect(page.records).toHaveLength(1);
 });
 
+test("queryDataSourcePage reports total null when the page is keyset (no numberMatched, REV-279a)", async () => {
+  server.use(
+    http.get("https://core.test/v1/collections/gros/items", () =>
+      HttpResponse.json({ features: [{ id: 1, properties: { nom: "A" } }] }),
+    ),
+  );
+  const page = await makeClient().queryDataSourcePage!({
+    id: "s1",
+    type: "features",
+    service: "core",
+    layer: "gros",
+    query: {},
+  });
+  expect(page.total).toBeNull();
+});
+
 test("featuresUrl routes an arcgis-sourced dataset to /datasets/{datasetItemId}/arcgis/items", async () => {
   server.use(
     http.get("https://core.test/v1/configs/by-item/ds-arcgis-1", () =>
@@ -3383,6 +3399,18 @@ test("runPipeline posts with no body and returns the runId", async () => {
   expect(result).toEqual({ runId: "run-1" });
 });
 
+test("listHarvestSourceRecords transmet limit et offset", async () => {
+  let seen = "";
+  server.use(
+    http.get("https://core.test/v1/harvest/sources/s-1/records", ({ request }) => {
+      seen = new URL(request.url).search;
+      return HttpResponse.json({ total: 0, staleCount: 0, records: [] });
+    }),
+  );
+  await makeClient().listHarvestSourceRecords("s-1", { limit: 200, offset: 100 });
+  expect(seen).toBe("?limit=200&offset=100");
+});
+
 test("cancelPipelineRun posts to the run's cancel route", async () => {
   server.use(
     http.post("https://core.test/v1/pipelines/p-5/runs/run-1/cancel", () =>
@@ -3664,7 +3692,7 @@ test("exportDataSource posts the aggregate body and extracts the filename for a 
   };
   const { blob, filename } = await makeClient("tok").exportDataSource(source, "csv");
   expect(filename).toBe("parcs-20260807-120000.csv");
-  expect(await blob.text()).toBe("region,count\nNord,3\n");
+  expect(await blob?.text()).toBe("region,count\nNord,3\n");
   expect(posted).toEqual({ groupBy: "region", agg: "count" });
 });
 

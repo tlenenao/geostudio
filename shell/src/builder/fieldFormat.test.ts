@@ -102,3 +102,8 @@ afterEach(() => {
     process.env.TZ = originalTz;
   }
 });
+
+test("REV-285 g : datetime affiché en Europe/Paris quel que soit le fuseau de la machine", () => {
+  expect(formatFieldValue("2026-07-01T23:30:00Z", "datetime")).toBe("02/07/2026 01:30:00");
+  expect(formatFieldValue("2026-07-01T23:30:00Z", "date")).toBe("02/07/2026");
+});

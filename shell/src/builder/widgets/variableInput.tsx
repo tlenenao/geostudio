@@ -77,9 +77,8 @@ export function registerVariableInputWidget(): void {
       return (
         <div className="flex flex-col gap-2 text-sm">
           <label className="flex flex-col gap-1">
-            {t("widgetVariableInput.variableConfig")}
+            {t("widgetVariableInput.variableAria")}
             <select
-              aria-label={t("widgetVariableInput.variableAria")}
               className="h-9 rounded-md border border-rule px-2"
               value={variableId}
               onChange={(e) => onChange({ variableId: e.target.value, label })}
@@ -95,9 +94,8 @@ export function registerVariableInputWidget(): void {
             </select>
           </label>
           <label className="flex flex-col gap-1">
-            {t("widgetVariableInput.labelConfig")}
+            {t("widgetVariableInput.labelAria")}
             <input
-              aria-label={t("widgetVariableInput.labelAria")}
               className="h-9 rounded-md border border-rule px-2"
               value={label}
               onChange={(e) => onChange({ variableId, label: e.target.value })}

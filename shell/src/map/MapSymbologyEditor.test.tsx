@@ -3,6 +3,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 import { MapSymbologyEditor } from "./MapSymbologyEditor";
+import { expectAriaWired } from "../test/expectAriaWired";
 import { t } from "../i18n";
 
 test("no color field selected: shows the field picker only", () => {
@@ -1167,4 +1168,13 @@ test("changer le champ du contour invalide le domaine et computedAt figés", () 
       }),
     }),
   );
+});
+
+test("« Ajouter des icônes » est câblé au bloc qu'il révèle (aria-controls)", async () => {
+  render(<MapSymbologyEditor {...baseProps} value={undefined} onChange={vi.fn()} />);
+  const trigger = screen.getByRole("button", { name: "Ajouter des icônes" });
+  const panelId = trigger.getAttribute("aria-controls")!;
+  expectAriaWired(trigger, panelId, false);
+  await userEvent.click(trigger);
+  expect(document.getElementById(panelId)).toContainElement(screen.getByLabelText("Champ icône"));
 });

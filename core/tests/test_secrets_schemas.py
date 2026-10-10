@@ -220,3 +220,21 @@ def test_secret_create_accepts_smtp_without_tls_on_localhost(host):
 def test_stored_smtp_payload_without_tls_still_decodes():
     # Compat : un secret déjà chiffré avec useTls=false doit rester lisible.
     assert SECRET_PAYLOAD_ADAPTER.validate_python(_SMTP).useTls is False
+
+
+def test_databricks_dsn_round_trips_and_requires_http_path():
+    dsn = "databricks://token:dapi123@adb-1.azuredatabricks.net?http_path=/sql/1.0/warehouses/abc&catalog=main&schema=default"
+    body = SecretCreate.model_validate(
+        {"name": "dbx", "payload": {"kind": "databricks_dsn", "dsn": dsn}}
+    )
+    assert body.payload.dsn == dsn
+    with pytest.raises(ValueError, match="http_path"):
+        SecretCreate.model_validate(
+            {
+                "name": "dbx",
+                "payload": {
+                    "kind": "databricks_dsn",
+                    "dsn": "databricks://token:t@adb-1.azuredatabricks.net?catalog=main",
+                },
+            }
+        )

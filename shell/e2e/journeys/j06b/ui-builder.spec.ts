@@ -1,4 +1,3 @@
-import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { apiFor } from "./seeds";
 import { stamp } from "../_fixtures/env";
@@ -16,7 +15,7 @@ import {
 const tag = stamp("j06b");
 
 test.describe("j06b builder de pipeline (UI réelle)", () => {
-  test("palette 57 op + recherche, construction glisser-déposer, connexion, annuler/rétablir, zone, enregistrement persistant", async ({
+  test("palette 58 op + recherche, construction glisser-déposer, connexion, annuler/rétablir, zone, enregistrement persistant", async ({
     page,
   }) => {
     const seed = await getPlainSeed();
@@ -28,16 +27,16 @@ test.describe("j06b builder de pipeline (UI réelle)", () => {
     await dialog.getByRole("button", { name: "Créer" }).click();
     await expect(page).toHaveURL(/\/pipelines\/new$/);
 
-    // Palette : 57 opérations (sections permanentes), la recherche filtre.
+    // Palette : 58 opérations (sections permanentes), la recherche filtre.
     const items = page.locator(".cursor-grab");
     await expect(items.first()).toBeVisible();
-    expect(await items.count()).toBe(57);
+    expect(await items.count()).toBe(58);
     const search = page.getByRole("searchbox", { name: "Rechercher une opération" });
     await search.fill("buffer");
     await expect(items).toHaveCount(1);
     await search.fill("zzzz-rien");
     await search.fill("");
-    await expect(items).toHaveCount(57);
+    await expect(items).toHaveCount(58);
 
     const canvas = page.locator(".react-flow__pane");
     const palette = (op: string) => page.locator(".cursor-grab", { hasText: op }).last();
@@ -64,7 +63,10 @@ test.describe("j06b builder de pipeline (UI réelle)", () => {
     await nodes.nth(0).click();
     await page.getByLabel("collectionId").selectOption(seed.collection);
     await nodes.nth(1).click();
-    await page.getByLabel("format").selectOption("csv");
+    await page
+      .locator("label", { hasText: /^format/ })
+      .locator("select")
+      .selectOption("csv");
     await page.getByLabel("key").fill(`j06b/${tag}-ui.csv`);
 
     await page.getByRole("button", { name: "Ajouter une zone" }).click();
@@ -111,7 +113,7 @@ test.describe("j06b builder de pipeline (UI réelle)", () => {
 
   // Findings j06b-001 (run depuis l'UI), j06b-014 (recherche sans résultat), j06b-015 (format),
   // j06b-016 (commande webhook affichée) : assertions souples, un seul parcours.
-  bug("j06b-001 / j06b-014 / j06b-015 / j06b-016 : finitions du builder", async ({ page }) => {
+  test("j06b-001 / j06b-014 / j06b-015 / j06b-016 : finitions du builder", async ({ page }) => {
     ensureExportsBucket();
     const seed = await getPlainSeed();
     const creator = await apiFor("creator");
@@ -126,8 +128,8 @@ test.describe("j06b builder de pipeline (UI réelle)", () => {
     await expect.soft(page.getByText(/aucun(e)? (résultat|opération)/i)).toBeVisible();
     await page.getByRole("searchbox", { name: "Rechercher une opération" }).fill("");
 
-    // j06b-015 : un writer.export fraîchement déposé affiche « geojson » dans le select « format »
-    // alors que la valeur n'est pas posée (« format est requis. » s'affiche sous le select).
+    // j06b-015 : un writer.export fraîchement déposé n'affiche plus « geojson » alors que rien n'est
+    // posé : le select montre l'option vide « — » et « format est requis. » reste signalé.
     const search = page.getByRole("searchbox", { name: "Rechercher une opération" });
     await search.fill("writer.export");
     await page
@@ -136,8 +138,10 @@ test.describe("j06b builder de pipeline (UI réelle)", () => {
       .dragTo(page.locator(".react-flow__pane"), { targetPosition: { x: 0, y: 250 } });
     await search.fill("");
     await page.locator(".react-flow__node").last().click();
-    await expect(page.getByLabel("format")).toBeVisible();
-    await expect.soft(page.getByText("format est requis.")).toHaveCount(0);
+    const formatSelect = page.locator("label", { hasText: /^format/ }).locator("select");
+    await expect(formatSelect).toBeVisible();
+    await expect.soft(formatSelect).toHaveValue("");
+    await expect.soft(page.getByText("format est requis.")).toHaveCount(1);
 
     // j06b-016 : la commande d'appel webhook affichée est copiable (URL réelle, avec /v1).
     await page.getByRole("button", { name: "Générer un jeton" }).click();
@@ -147,6 +151,6 @@ test.describe("j06b builder de pipeline (UI réelle)", () => {
 
     // j06b-001 : « Exécuter » mène à un statut terminal (le run est créé mais jamais déféré).
     await page.getByRole("button", { name: "Exécuter" }).click();
-    await expect(page.getByText("Terminé")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("status", { name: /Terminé/ })).toBeVisible({ timeout: 20_000 });
   });
 });

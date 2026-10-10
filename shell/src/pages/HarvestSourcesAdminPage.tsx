@@ -20,19 +20,39 @@ import { EditHarvestSourcePanel } from "../shell/EditHarvestSourcePanel";
 import { SettingsNav } from "../shell/chrome/SettingsNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { plural, t } from "../i18n";
+import { formatDateTime } from "../lib/format";
 import { LoadingState } from "../ui/kit/LoadingState";
 import { Banner } from "../ui/kit/Banner";
 import { PageTitle } from "../ui/kit/PageTitle";
 
+const RECORDS_PAGE_SIZE = 100;
+// Plafond du cœur (_MAX_LIMIT dans core/app/harvest/routes.py) : au-delà, `limit` est
+// tronqué côté serveur et « Charger plus » resterait sans effet.
+const RECORDS_MAX_LIMIT = 1000;
+
 function HarvestRecordsPanel({ source }: { source: HarvestSource }) {
-  const query = useHarvestSourceRecords(source.id);
+  const [limit, setLimit] = useState(RECORDS_PAGE_SIZE);
+  const query = useHarvestSourceRecords(source.id, { limit });
   return (
     <section aria-label={t("harvest.recordsHeading", { url: source.url })}>
       <h2 className="mb-2 text-sm font-medium text-ink">
         {t("harvest.recordsHeading", { url: source.url })}
       </h2>
       {query.isLoading && <LoadingState />}
-      {query.isError && <Banner variant="danger">{t("harvest.recordsLoadError")}</Banner>}
+      {query.isError && (
+        <>
+          <Banner variant="danger">{t("harvest.recordsLoadError")}</Banner>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-2"
+            onClick={() => void query.refetch()}
+          >
+            {t("common.retry")}
+          </Button>
+        </>
+      )}
       {query.data && query.data.records.length === 0 && (
         <p className="text-sm text-ink-2">{t("harvest.recordsEmpty")}</p>
       )}
@@ -52,6 +72,29 @@ function HarvestRecordsPanel({ source }: { source: HarvestSource }) {
           ))}
         </ul>
       )}
+      {query.data && query.data.records.length < query.data.total && (
+        <p className="mt-2 text-xs text-ink-2">
+          {t("harvest.recordsShown", {
+            count: query.data.records.length,
+            total: query.data.total,
+          })}
+        </p>
+      )}
+      {query.data &&
+        query.data.records.length >= limit &&
+        query.data.records.length < query.data.total &&
+        limit < RECORDS_MAX_LIMIT && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-2"
+            disabled={query.isFetching}
+            onClick={() => setLimit((l) => Math.min(l + RECORDS_PAGE_SIZE, RECORDS_MAX_LIMIT))}
+          >
+            {query.isFetching ? t("common.loading") : t("harvest.loadMore")}
+          </Button>
+        )}
     </section>
   );
 }
@@ -224,9 +267,7 @@ export function HarvestSourcesAdminPage() {
                       key: "lastRunAt",
                       label: t("harvest.columnLastRun"),
                       render: (source: HarvestSource) =>
-                        source.lastRunAt
-                          ? new Date(source.lastRunAt).toLocaleString("fr-FR")
-                          : t("harvest.neverRun"),
+                        source.lastRunAt ? formatDateTime(source.lastRunAt) : t("harvest.neverRun"),
                     },
                     {
                       key: "recordCount",

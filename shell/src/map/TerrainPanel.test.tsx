@@ -86,7 +86,7 @@ function renderControlled(
 test("renders unchecked and hides fields when value is null", () => {
   renderPanel(null, vi.fn());
   expect(screen.getByLabelText("Activer le terrain 3D")).not.toBeChecked();
-  expect(screen.queryByLabelText("URL de tuiles terrain")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText(/URL de tuiles terrain/)).not.toBeInTheDocument();
 });
 
 test("checking the box emits a default terrain config", async () => {
@@ -104,7 +104,7 @@ test("shows URL and exaggeration fields when a terrain config is provided", () =
   };
   renderPanel(value, vi.fn());
   expect(screen.getByLabelText("Activer le terrain 3D")).toBeChecked();
-  expect(screen.getByLabelText("URL de tuiles terrain")).toHaveValue(
+  expect(screen.getByLabelText(/URL de tuiles terrain/)).toHaveValue(
     "https://example.test/dem/{z}/{x}/{y}.png",
   );
   expect(screen.getByLabelText("Exagération du relief")).toHaveValue(2);
@@ -116,7 +116,7 @@ test("editing the URL field patches tilesUrl and preserves other fields", async 
   const onChange = vi.fn();
   const value: MapTerrainConfig = { tilesUrl: "", encoding: "terrarium", exaggeration: 1 };
   renderPanel(value, onChange);
-  await userEvent.type(screen.getByLabelText("URL de tuiles terrain"), "u");
+  await userEvent.type(screen.getByLabelText(/URL de tuiles terrain/), "u");
   expect(onChange).toHaveBeenCalledWith({ tilesUrl: "u", encoding: "terrarium", exaggeration: 1 });
 });
 

@@ -413,6 +413,20 @@ function renderPanelWithAuthToken(current: MapLayer[], onChange: (l: MapLayer[])
   );
 }
 
+test("affiche le badge d'agrégation quand la tuile répond X-Tile-Aggregated", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValue(
+        new Response(new Uint8Array(), { status: 200, headers: { "X-Tile-Aggregated": "true" } }),
+      ),
+  );
+  renderPanelWithAuthToken([vectorLayer], vi.fn());
+  expect(await screen.findByText(t("layersPanel.aggregatedBadge"))).toBeInTheDocument();
+  expect(screen.queryByText(t("layersPanel.truncatedBadge"))).not.toBeInTheDocument();
+});
+
 test("affiche un badge de troncature quand la tuile racine répond X-Tile-Truncated", async () => {
   vi.stubGlobal(
     "fetch",

@@ -165,10 +165,10 @@ test("PropsPanel edits the data source, category and value fields for a bar char
   await userEvent.selectOptions(screen.getByLabelText("Source de données"), "ds1");
   expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ dataSourceId: "ds1" }));
 
-  await userEvent.type(screen.getByLabelText("Champ catégorie"), "r");
+  await userEvent.type(screen.getByLabelText(/Champ catégorie/), "r");
   expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ categoryField: "r" }));
 
-  await userEvent.type(screen.getByLabelText("Champ valeur"), "v");
+  await userEvent.type(screen.getByLabelText(/Champ valeur/), "v");
   expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ valueField: "v" }));
 });
 
@@ -579,7 +579,7 @@ test("PropsPanel shows source/target encodings for sankey, hides categoryField/v
   );
   expect(screen.getByLabelText("Champ source")).toBeInTheDocument();
   expect(screen.getByLabelText("Champ cible")).toBeInTheDocument();
-  expect(screen.queryByLabelText("Champ catégorie")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText(/Champ catégorie/)).not.toBeInTheDocument();
   await userEvent.type(screen.getByLabelText("Champ source"), "o");
   expect(onChange).toHaveBeenLastCalledWith(
     expect.objectContaining({ encodings: { source: "o" } }),

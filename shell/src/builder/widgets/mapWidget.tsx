@@ -112,10 +112,9 @@ export function registerMapWidget(): void {
               qu'en France métropolitaine. */}
           <div className="flex gap-2">
             <label className="flex flex-col gap-1 text-xs">
-              {t("widgetMap.defaultCenterLngLabel")}
+              {t("widgetMap.defaultCenterLngAria")}
               <input
                 type="number"
-                aria-label={t("widgetMap.defaultCenterLngAria")}
                 className="h-9 rounded-md border border-rule px-2 text-sm"
                 value={Number(center?.[0] ?? 2.4)}
                 onChange={(e) =>
@@ -127,10 +126,9 @@ export function registerMapWidget(): void {
               />
             </label>
             <label className="flex flex-col gap-1 text-xs">
-              {t("widgetMap.defaultCenterLatLabel")}
+              {t("widgetMap.defaultCenterLatAria")}
               <input
                 type="number"
-                aria-label={t("widgetMap.defaultCenterLatAria")}
                 className="h-9 rounded-md border border-rule px-2 text-sm"
                 value={Number(center?.[1] ?? 46.6)}
                 onChange={(e) =>
@@ -142,10 +140,9 @@ export function registerMapWidget(): void {
               />
             </label>
             <label className="flex flex-col gap-1 text-xs">
-              {t("widgetMap.defaultZoomLabel")}
+              {t("widgetMap.defaultZoomAria")}
               <input
                 type="number"
-                aria-label={t("widgetMap.defaultZoomAria")}
                 className="h-9 rounded-md border border-rule px-2 text-sm"
                 value={Number(props.zoom ?? 5)}
                 onChange={(e) => onChange({ ...props, zoom: Number(e.target.value) })}

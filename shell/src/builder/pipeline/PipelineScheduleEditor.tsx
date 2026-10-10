@@ -3,6 +3,7 @@ import { useEffect, useId, useState } from "react";
 import { usePipelineNextRun } from "../../api/hooks";
 import type { PipelineRefreshPolicy } from "../../api/types";
 import { t } from "../../i18n";
+import { formatDateTime } from "../../lib/format";
 
 export type ScheduleForm =
   | { mode: "interval"; minutes: string }
@@ -113,7 +114,6 @@ export function PipelineScheduleEditor({
       <label className="flex items-center gap-2 text-xs font-medium text-ink-2">
         <input
           type="checkbox"
-          aria-label={t("pipelineSchedule.autoSchedulingAria")}
           className="h-6 w-6"
           checked={enabled}
           onChange={(e) => setEnabled(e.target.checked)}
@@ -124,10 +124,9 @@ export function PipelineScheduleEditor({
       {enabled && (
         <div className="flex flex-col gap-2 text-xs">
           <label className="flex flex-col gap-1">
-            {t("pipelineSchedule.modeLabel")}
+            {t("pipelineSchedule.modeAria")}
             <select
-              aria-label={t("pipelineSchedule.modeAria")}
-              className="h-8 rounded border border-control bg-surface px-2 text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={form.mode}
               onChange={(e) => {
                 const mode = e.target.value as ScheduleForm["mode"];
@@ -148,7 +147,7 @@ export function PipelineScheduleEditor({
           {enabled && nextRunQuery.data && (
             <p className="text-xs text-ink-2">
               {t("pipelineSchedule.nextRun", {
-                when: new Date(nextRunQuery.data.nextRun).toLocaleString("fr-FR"),
+                when: formatDateTime(nextRunQuery.data.nextRun),
               })}
             </p>
           )}
@@ -156,10 +155,9 @@ export function PipelineScheduleEditor({
             <label className="flex flex-col gap-1">
               {t("pipelineSchedule.intervalLabel")}
               <input
-                aria-label={t("pipelineSchedule.intervalAria")}
                 type="number"
                 min={1}
-                className="h-8 rounded border border-control bg-surface px-2 text-ink"
+                className="h-9 rounded border border-control bg-surface px-2 text-ink"
                 value={form.minutes}
                 onChange={(e) => handleSetForm({ mode: "interval", minutes: e.target.value })}
                 disabled={readOnly}
@@ -170,9 +168,8 @@ export function PipelineScheduleEditor({
             <label className="flex flex-col gap-1">
               {t("pipelineSchedule.executionTimeLabel")}
               <input
-                aria-label={t("pipelineSchedule.executionTimeAria")}
                 type="time"
-                className="h-8 rounded border border-control bg-surface px-2 text-ink"
+                className="h-9 rounded border border-control bg-surface px-2 text-ink"
                 value={form.time}
                 onChange={(e) => handleSetForm({ mode: "daily", time: e.target.value })}
                 disabled={readOnly}
@@ -182,10 +179,9 @@ export function PipelineScheduleEditor({
           {form.mode === "weekly" && (
             <>
               <label className="flex flex-col gap-1">
-                {t("pipelineSchedule.dayLabel")}
+                {t("pipelineSchedule.dayAria")}
                 <select
-                  aria-label={t("pipelineSchedule.dayAria")}
-                  className="h-8 rounded border border-control bg-surface px-2 text-ink"
+                  className="h-9 rounded border border-control bg-surface px-2 text-ink"
                   value={form.day}
                   onChange={(e) =>
                     handleSetForm({ mode: "weekly", day: e.target.value, time: form.time })
@@ -202,9 +198,8 @@ export function PipelineScheduleEditor({
               <label className="flex flex-col gap-1">
                 {t("pipelineSchedule.executionTimeLabel")}
                 <input
-                  aria-label={t("pipelineSchedule.executionTimeAria")}
                   type="time"
-                  className="h-8 rounded border border-control bg-surface px-2 text-ink"
+                  className="h-9 rounded border border-control bg-surface px-2 text-ink"
                   value={form.time}
                   onChange={(e) =>
                     handleSetForm({ mode: "weekly", day: form.day, time: e.target.value })
@@ -215,23 +210,24 @@ export function PipelineScheduleEditor({
             </>
           )}
           {form.mode === "advanced" && (
-            <label className="flex flex-col gap-1">
-              {t("pipelineSchedule.cronExpressionLabel")}
-              <input
-                aria-label={t("pipelineSchedule.cronExpressionAria")}
-                aria-invalid={!ADVANCED_CRON_RE.test(form.raw)}
-                aria-describedby={!ADVANCED_CRON_RE.test(form.raw) ? `${cronErrorId}` : undefined}
-                className="h-8 rounded border border-control bg-surface px-2 font-mono text-ink"
-                value={form.raw}
-                onChange={(e) => handleSetForm({ mode: "advanced", raw: e.target.value })}
-                disabled={readOnly}
-              />
+            <div className="flex flex-col gap-1">
+              <label className="flex flex-col gap-1">
+                {t("pipelineSchedule.cronExpressionLabel")}
+                <input
+                  aria-invalid={!ADVANCED_CRON_RE.test(form.raw)}
+                  aria-describedby={!ADVANCED_CRON_RE.test(form.raw) ? `${cronErrorId}` : undefined}
+                  className="h-9 rounded border border-control bg-surface px-2 font-mono text-ink"
+                  value={form.raw}
+                  onChange={(e) => handleSetForm({ mode: "advanced", raw: e.target.value })}
+                  disabled={readOnly}
+                />
+              </label>
               {!ADVANCED_CRON_RE.test(form.raw) && (
                 <p id={cronErrorId} role="alert" className="text-danger">
                   {t("pipelineSchedule.invalidCronFormat")}
                 </p>
               )}
-            </label>
+            </div>
           )}
         </div>
       )}

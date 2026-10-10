@@ -33,11 +33,12 @@ async function tile(id: string): Promise<Response> {
 }
 
 test.describe("j09 tuiles tronquées", () => {
-  test("au-delà de 5000 entités la tuile est marquée tronquée", async () => {
+  test("au-delà de 5000 entités la tuile est signalée (agrégée à bas zoom, sinon tronquée)", async () => {
     const id = await collectionWith(5001, "aud-j09-mvt-5001");
     const r = await tile(id);
     expect(r.status).toBe(200);
-    expect(r.headers.get("x-tile-truncated")).toBe("true");
+    // REV-283a : à bas zoom une tuile dense est agrégée (X-Tile-Aggregated) au lieu d'être tronquée.
+    expect(r.headers.get("x-tile-aggregated") ?? r.headers.get("x-tile-truncated")).toBe("true");
   });
 
   // Bug confirmé : voir docs/revue/audit-2026-09-29/j09/findings.jsonl

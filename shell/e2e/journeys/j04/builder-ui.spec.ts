@@ -48,7 +48,7 @@ test.describe("j04 App Builder — édition", () => {
     await openBuilder(page, id);
     await expect(page.getByRole("button", { name: "Annuler", exact: true })).toBeDisabled();
     await widgetBtn(page).first().click();
-    await page.getByRole("button", { name: /^Supprimer widget-/ }).click();
+    await page.getByRole("button", { name: /^Supprimer Texte/ }).click();
     await expect(widgetBtn(page)).toHaveCount(0);
     await page.getByRole("button", { name: "Annuler", exact: true }).click();
     await expect(widgetBtn(page)).toHaveCount(1);
@@ -69,14 +69,14 @@ test.describe("j04 App Builder — édition", () => {
       }),
     );
     await openBuilder(page, id);
-    await page.getByRole("button", { name: "Sélectionner widget-b" }).click();
+    await page.getByRole("button", { name: "Sélectionner Bouton" }).click();
     await page
       .locator("body")
       .click({ position: { x: 5, y: 5 } })
       .catch(() => {});
-    await page.getByRole("button", { name: "Sélectionner widget-b" }).click();
+    await page.getByRole("button", { name: "Sélectionner Bouton" }).click();
     await page.keyboard.press("Delete");
-    await expect(page.getByRole("button", { name: "Sélectionner widget-b" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Sélectionner Bouton" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /^Retirer l'action/ })).toHaveCount(0);
   });
 
@@ -91,7 +91,7 @@ test.describe("j04 App Builder — édition", () => {
       .first()
       .click();
     await expect(
-      page.getByRole("dialog", { name: /Modifications non enregistrées/ }),
+      page.getByRole("alertdialog", { name: /Modifications non enregistrées/ }),
     ).toBeVisible();
     await page
       .getByRole("button", { name: /Annuler/ })
@@ -114,9 +114,9 @@ test.describe("j04 App Builder — édition", () => {
       .first()
       .click();
     await page.waitForTimeout(800);
-    await expect(page.getByRole("dialog", { name: /Modifications non enregistrées/ })).toHaveCount(
-      0,
-    );
+    await expect(
+      page.getByRole("alertdialog", { name: /Modifications non enregistrées/ }),
+    ).toHaveCount(0);
     await expect(page).not.toHaveURL(/\/edit/);
   });
 

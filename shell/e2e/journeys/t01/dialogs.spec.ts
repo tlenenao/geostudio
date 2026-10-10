@@ -58,7 +58,7 @@ test.describe("dialogues, menus et popovers (creator)", () => {
 
   test("t01-009 : le menu « Actions » d'une carte expose menu/aria-expanded", async () => {
     // Finding t01-009 : ItemActions = <div> de <button> sans role=menu ni aria-haspopup/expanded.
-    const trigger = s.page.getByRole("button", { name: "Actions" }).first();
+    const trigger = s.page.locator('button[aria-label^="Actions de"]').first();
     await trigger.click();
     const attrs = await trigger.evaluate((e) => ({
       popup: e.getAttribute("aria-haspopup"),
@@ -71,41 +71,44 @@ test.describe("dialogues, menus et popovers (creator)", () => {
 
   test("t01-010 : Échap ferme le menu « Actions » d'une carte", async () => {
     // Finding t01-010 : aucun gestionnaire clavier ; le menu reste ouvert après Échap.
-    await s.page.getByRole("button", { name: "Actions" }).first().click();
-    await expect(s.page.getByRole("button", { name: "Supprimer" }).first()).toBeVisible();
+    await s.page.keyboard.press("Escape"); // le test précédent laisse son menu ouvert
+    await s.page.locator('button[aria-label^="Actions de"]').first().click();
+    await expect(s.page.getByRole("menuitem", { name: "Supprimer" }).first()).toBeVisible();
     await s.page.keyboard.press("Escape");
-    await expect(s.page.getByRole("button", { name: "Supprimer" })).toHaveCount(0);
+    await expect(s.page.getByRole("menuitem", { name: "Supprimer" })).toHaveCount(0);
   });
 
   test("confirmation de suppression : focus initial sur Annuler, focus piégé", async () => {
-    await s.page.getByRole("button", { name: "Actions" }).first().click();
-    await s.page.getByRole("button", { name: "Supprimer" }).first().click();
-    await expect(s.page.getByRole("dialog")).toBeVisible();
+    await s.page.locator('button[aria-label^="Actions de"]').first().click();
+    await s.page.getByRole("menuitem", { name: "Supprimer" }).first().click();
+    await expect(s.page.getByRole("alertdialog")).toBeVisible();
     await expect(s.page.getByRole("button", { name: "Annuler" })).toBeFocused();
     for (let i = 0; i < 4; i++) {
       await s.page.keyboard.press("Tab");
-      expect(await s.page.evaluate(() => !!document.activeElement?.closest("[role=dialog]"))).toBe(
-        true,
-      );
+      expect(
+        await s.page.evaluate(
+          () => !!document.activeElement?.closest("[role=dialog], [role=alertdialog]"),
+        ),
+      ).toBe(true);
     }
     await s.page.getByRole("button", { name: "Annuler" }).click();
-    await expect(s.page.getByRole("dialog")).toBeHidden();
+    await expect(s.page.getByRole("alertdialog")).toBeHidden();
   });
 
   test("t01-011 : annuler une confirmation de suppression rend le focus", async () => {
     // Finding t01-011 : après Échap, document.activeElement === body (menu démonté).
-    await s.page.getByRole("button", { name: "Actions" }).first().click();
-    await s.page.getByRole("button", { name: "Supprimer" }).first().click();
-    await expect(s.page.getByRole("dialog")).toBeVisible();
+    await s.page.locator('button[aria-label^="Actions de"]').first().click();
+    await s.page.getByRole("menuitem", { name: "Supprimer" }).first().click();
+    await expect(s.page.getByRole("alertdialog")).toBeVisible();
     await s.page.keyboard.press("Escape");
-    await expect(s.page.getByRole("dialog")).toBeHidden();
+    await expect(s.page.getByRole("alertdialog")).toBeHidden();
     expect(await focusDesc(s.page)).not.toBe("body");
   });
 
   test("t01-012 : la confirmation destructive est un alertdialog décrit", async () => {
     // Finding t01-012 : role=dialog sans aria-describedby pour « Cette action est irréversible ».
-    await s.page.getByRole("button", { name: "Actions" }).first().click();
-    await s.page.getByRole("button", { name: "Supprimer" }).first().click();
+    await s.page.locator('button[aria-label^="Actions de"]').first().click();
+    await s.page.getByRole("menuitem", { name: "Supprimer" }).first().click();
     const d = s.page.locator("[role=alertdialog], [role=dialog]").first();
     await expect(d).toBeVisible();
     expect(await d.getAttribute("role")).toBe("alertdialog");
@@ -114,20 +117,24 @@ test.describe("dialogues, menus et popovers (creator)", () => {
 
   test("éditeur d'app : Entrée sur « Sélectionner widget » sélectionne et expose ses commandes", async () => {
     await go(s.page, `/apps/${seed.appId}/edit`, 3000);
-    const sel = s.page.getByRole("button", { name: "Sélectionner widget-txt" });
+    const sel = s.page.getByRole("button", { name: "Sélectionner Section riche" });
     await sel.focus();
     await s.page.keyboard.press("Enter");
-    await expect(s.page.getByRole("button", { name: "Supprimer widget-txt" })).toBeVisible();
+    await expect(s.page.getByRole("button", { name: "Supprimer Section riche" })).toBeVisible();
   });
 
   test("t01-014 : Retour arrière dans une liste déroulante ne supprime pas le widget", async () => {
     await go(s.page, `/apps/${seed.appId}/edit`, 3000);
-    await s.page.getByRole("button", { name: "Sélectionner widget-txt" }).click();
-    const before = await s.page.getByRole("button", { name: /Sélectionner widget-/ }).count();
+    await s.page.getByRole("button", { name: "Sélectionner Section riche" }).click();
+    const before = await s.page
+      .getByRole("button", { name: /^Sélectionner (Table|Section riche)/ })
+      .count();
     await s.page.locator("select").first().focus();
     await s.page.keyboard.press("Backspace");
     await s.page.waitForTimeout(400);
-    expect(await s.page.getByRole("button", { name: /Sélectionner widget-/ }).count()).toBe(before);
+    expect(
+      await s.page.getByRole("button", { name: /^Sélectionner (Table|Section riche)/ }).count(),
+    ).toBe(before);
   });
 });
 

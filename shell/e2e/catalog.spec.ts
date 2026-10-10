@@ -20,7 +20,7 @@ test("create an App → lands on the builder", async ({ page }) => {
   await mockCore(page);
   await page.goto("/");
   await page.getByRole("button", { name: "Nouveau" }).click();
-  await page.getByLabel("Titre").fill("Créée");
+  await page.getByLabel("Titre", { exact: true }).fill("Créée");
   await page.getByRole("button", { name: "Créer" }).click();
   // App creation now navigates directly to the app builder route.
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);

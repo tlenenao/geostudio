@@ -41,6 +41,7 @@ export function CollectionsAdminPage() {
   const [editing, setEditing] = useState<CollectionAdmin | null>(null);
   const [sharing, setSharing] = useState<CollectionAdmin | null>(null);
   const [deleting, setDeleting] = useState<CollectionAdmin | null>(null);
+  const registerPanel = usePanelTrigger(registering);
   const editPanel = usePanelTrigger(editing !== null);
   const sharingPanel = usePanelTrigger(sharing !== null);
   const [sortKey, setSortKey] = useState<string | undefined>(undefined);
@@ -118,6 +119,7 @@ export function CollectionsAdminPage() {
                 {!readOnly && (
                   <Button
                     size="sm"
+                    {...registerPanel.triggerProps}
                     onClick={() => {
                       // Exclusivité mutuelle avec editing/sharing (décision 5,
                       // plan SP-30j) : plus de barrière modale pour l'empêcher.
@@ -303,7 +305,12 @@ export function CollectionsAdminPage() {
           label: t("collectionsAdmin.detail"),
           content: (
             <div className="flex flex-col gap-3 p-3">
-              {registering && <RegisterCollectionPanel onClose={() => setRegistering(false)} />}
+              {registering && (
+                // id seul : RegisterCollectionPanel rend sa propre région nommée (cf. editPanel).
+                <div id={registerPanel.panelId}>
+                  <RegisterCollectionPanel onClose={() => setRegistering(false)} />
+                </div>
+              )}
               {editing && (
                 // id seul (pas role="region" du hook) : EditCollectionPanel
                 // rend déjà un <section aria-label=…>, donc une région

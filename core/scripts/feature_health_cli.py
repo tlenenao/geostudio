@@ -4,13 +4,21 @@
     PYTHONPATH=. uv run python scripts/feature_health_cli.py --repo .. --check
     PYTHONPATH=. uv run python scripts/feature_health_cli.py --repo .. --write
     PYTHONPATH=. uv run python scripts/feature_health_cli.py --repo .. --check-fresh
+    PYTHONPATH=. uv run python scripts/feature_health_cli.py --repo .. --check-snapshot
 
 `--check` n'écrit rien : il calcule et applique les planchers de
 `feature_health_thresholds.json` — un par priorité gardée (`haute`,
 `moyenne`, cette dernière avec sa liste d'exceptions nommées) plus celui de
 la santé médiane. `--write` regénère
 `docs/revue/bilan-fonctionnalites.{html,md}` et ajoute un instantané à
-`docs/revue/historique-sante.jsonl`. `--check-fresh` (REV-181) est un
+`docs/revue/historique-sante.jsonl`. `--check-snapshot` (REV-288 b) applique les MÊMES planchers
+au dernier instantané committé de `historique-sante.jsonl` (écrit par
+`--write`, à régénérer à la clôture d'un SP) : aucun artefact de couverture
+local requis, donc reproductible dans n'importe quel checkout. Une
+fonctionnalité inventoriée sans santé dans l'instantané (journal absent, vide ou
+périmé) fait ÉCHOUER la garde, avec la liste : cohérence inventaire<->journal. La
+fraîcheur du journal par rapport au code reste, elle, non bloquante.
+`--check-fresh` (REV-181) est un
 troisième mode, DIFFÉRENT de `--check` : il ne dit rien sur les planchers,
 il vérifie que les deux rendus committés ont bien été régénérés après le
 dernier changement de code/inventaire — en recalculant les deux rendus en
@@ -71,6 +79,16 @@ def compute(repo: pathlib.Path):
             }
         )
     return rows, thresholds
+
+
+def _rows_from_snapshot(repo: pathlib.Path):
+    """Feature + santé du dernier instantané committé, sans calcul ni couverture."""
+    snapshot = history.last_snapshot(repo / JOURNAL)
+    rows = [
+        {"feature": f, "sante": snapshot.get(f.identifier)}
+        for f in load_inventory(repo / INVENTORY)
+    ]
+    return rows, scoring.load_thresholds(repo / THRESHOLDS)
 
 
 def _check(rows, thresholds) -> int:
@@ -169,8 +187,19 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--write", action="store_true")
     parser.add_argument("--check-fresh", action="store_true", dest="check_fresh")
+    parser.add_argument("--check-snapshot", action="store_true", dest="check_snapshot")
     arguments = parser.parse_args(argv)
     repo = arguments.repo.resolve()
+    if arguments.check_snapshot:
+        rows, thresholds = _rows_from_snapshot(repo)
+        missing = [r["feature"].identifier for r in rows if r["sante"] is None]
+        for identifier in missing:
+            print(
+                f"ÉCHEC : {identifier} inventoriée sans santé dans le dernier instantané "
+                "(régénérer avec --write)",
+                file=sys.stderr,
+            )
+        return max(_check(rows, thresholds), 1 if missing else 0)
     rows, thresholds = compute(repo)
     if arguments.check_fresh:
         # Mode indépendant de --check/--write (jamais combiné en pratique,

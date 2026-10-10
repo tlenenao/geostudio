@@ -202,3 +202,20 @@ def test_rollback_is_rejected_if_it_would_now_violate_a_narrowed_scope(client):
     # convertit l'HTTPException levée par le validateur).
     rollback = client.post(f"/v1/configs/{created['id']}/rollback", json={"version": 1})
     assert rollback.status_code == 422
+
+
+def test_put_config_rejects_unknown_widget_type(client):
+    ok = {"kind": "app", "layout": {"type": "grid", "items": []}}
+    created = client.post("/v1/configs", json={"title": "App", "config": ok})
+    assert created.status_code in (200, 201), created.text
+    bad = {
+        "kind": "app",
+        "layout": {
+            "type": "grid",
+            "items": [{"widget": "hologram", "x": 0, "y": 0, "w": 2, "h": 2}],
+        },
+    }
+    r = client.put(f"/v1/configs/by-item/{created.json()['itemId']}", json=bad)
+    assert r.status_code == 422
+    assert r.headers["content-type"].startswith("application/problem+json")
+    assert "hologram" in r.json()["detail"]

@@ -123,3 +123,36 @@ def test_rollback_to_a_still_valid_version_succeeds_and_bumps_version(client):
 
     fetched = client.get(f"/v1/configs/{created['id']}")
     assert fetched.json()["version"] == 3
+
+
+def test_rollback_to_a_version_with_unknown_widget_is_rejected(client):
+    from app.configs import repository as configs_repo
+    from app.configs.schemas import BuilderConfig
+
+    def app_cfg(widget: str) -> BuilderConfig:
+        return BuilderConfig.model_validate(
+            {
+                "kind": "app",
+                "layout": {
+                    "type": "grid",
+                    "items": [{"widget": widget, "x": 0, "y": 0, "w": 2, "h": 2}],
+                },
+            }
+        )
+
+    created = client.post(
+        "/v1/configs",
+        json={"title": "App", "config": {"kind": "app", "layout": {"type": "grid", "items": []}}},
+    ).json()
+    # Révision v2 "historique" : widget inconnu, écrite sans passer par la route.
+    with client.session_factory() as s:
+        configs_repo.update_config(
+            s, created["id"], app_cfg("hologram"), tenant_id=client.tenant.id
+        )
+        configs_repo.update_config(s, created["id"], app_cfg("map"), tenant_id=client.tenant.id)
+        s.commit()
+
+    rollback = client.post(f"/v1/configs/{created['id']}/rollback", json={"version": 2})
+    assert rollback.status_code == 422
+    assert "hologram" in rollback.json()["detail"]
+    assert client.get(f"/v1/configs/{created['id']}").json()["version"] == 3

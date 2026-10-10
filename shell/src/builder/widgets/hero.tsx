@@ -53,7 +53,6 @@ export function registerHeroWidget(): void {
           <label className={labelCls}>
             {t("widgetHero.titleBanner")}
             <input
-              aria-label={t("widgetHero.titleBanner")}
               className={inputCls}
               value={String(props.title ?? "")}
               onChange={(e) => set({ title: e.target.value })}
@@ -62,7 +61,6 @@ export function registerHeroWidget(): void {
           <label className={labelCls}>
             {t("widgetHero.subtitleConfig")}
             <input
-              aria-label={t("widgetHero.subtitleConfig")}
               className={inputCls}
               value={String(props.subtitle ?? "")}
               onChange={(e) => set({ subtitle: e.target.value })}
@@ -71,7 +69,6 @@ export function registerHeroWidget(): void {
           <label className={labelCls}>
             {t("widgetHero.bgImageLabel")}
             <input
-              aria-label={t("widgetHero.bgImageLabel")}
               className={inputCls}
               value={String(props.backgroundImageUrl ?? "")}
               onChange={(e) => set({ backgroundImageUrl: e.target.value })}
@@ -80,7 +77,6 @@ export function registerHeroWidget(): void {
           <label className={labelCls}>
             {t("widgetHero.ctaLabelText")}
             <input
-              aria-label={t("widgetHero.ctaLabelText")}
               className={inputCls}
               value={String(props.ctaLabel ?? "")}
               onChange={(e) => set({ ctaLabel: e.target.value })}
@@ -89,7 +85,6 @@ export function registerHeroWidget(): void {
           <label className={labelCls}>
             {t("widgetHero.ctaHrefText")}
             <input
-              aria-label={t("widgetHero.ctaHrefText")}
               className={inputCls}
               value={String(props.ctaHref ?? "")}
               onChange={(e) => set({ ctaHref: e.target.value })}
@@ -98,7 +93,6 @@ export function registerHeroWidget(): void {
           <label className={labelCls}>
             {t("widgetHero.alignConfig")}
             <select
-              aria-label={t("widgetHero.alignConfig")}
               className={inputCls}
               value={String(props.align ?? "left")}
               onChange={(e) => set({ align: e.target.value })}

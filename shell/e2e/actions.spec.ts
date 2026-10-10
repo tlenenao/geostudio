@@ -7,7 +7,7 @@ test("Filtre widget filters a bound List through the action bus", async ({ page 
 
   await page.getByRole("button", { name: "Nouveau" }).click();
   await page.getByRole("dialog", { name: "Nouvel élément" }).getByLabel("Type").selectOption("app");
-  await page.getByLabel("Titre").fill("App actions");
+  await page.getByLabel("Titre", { exact: true }).fill("App actions");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 
@@ -39,7 +39,7 @@ test("Filtre widget filters a bound List through the action bus", async ({ page 
   await expect(page.getByText("Bois Test")).toBeVisible();
 
   // Typing the filter narrows the list to the matching record
-  await page.getByLabel("Valeur du filtre").fill("Parc du Test");
+  await page.getByLabel("Filtrer", { exact: true }).fill("Parc du Test");
   await expect(page.getByText("Bois Test")).toBeHidden();
   await expect(page.getByText("Parc du Test")).toBeVisible();
 });

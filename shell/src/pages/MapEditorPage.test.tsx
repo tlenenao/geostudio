@@ -129,6 +129,63 @@ function renderEditor(client: Partial<ItemClient>, initialEntries: string[] = ["
   );
 }
 
+test("REV-207 : l'onglet actif (mode étroit) est lu depuis ?tab= et réécrit dans l'URL", async () => {
+  stubMatchMedia(true);
+  renderEditor(
+    {
+      getMapConfig: vi.fn().mockResolvedValue(config),
+      listLayerSources: vi.fn().mockResolvedValue([]),
+    },
+    ["/maps/77?tab=layers"],
+  );
+  const layersTab = await screen.findByRole("tab", { name: "Couches" });
+  expect(layersTab).toHaveAttribute("aria-selected", "true");
+  await userEvent.click(screen.getByRole("tab", { name: "Carte" }));
+  expect(screen.getByRole("tab", { name: "Carte" })).toHaveAttribute("aria-selected", "true");
+});
+
+test("REV-207 : une valeur ?tab= inconnue retombe sur l'onglet Carte, un seul onglet sélectionné", async () => {
+  stubMatchMedia(true);
+  renderEditor(
+    {
+      getMapConfig: vi.fn().mockResolvedValue(config),
+      listLayerSources: vi.fn().mockResolvedValue([]),
+    },
+    ["/maps/77?tab=n-importe-quoi"],
+  );
+  await screen.findByRole("tab", { name: "Carte" });
+  const selected = screen
+    .getAllByRole("tab")
+    .filter((t) => t.getAttribute("aria-selected") === "true");
+  expect(selected.map((t) => t.textContent)).toEqual(["Carte"]);
+});
+
+test("REV-207 + REV-286 : en mode medium, ?tab=settings ouvre le volet latéral sur Réglages, ?tab invalide sur Couches", async () => {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn((q: string) => ({
+      matches: q === "(max-width: 899px)",
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })),
+  );
+  const client = {
+    getMapConfig: vi.fn().mockResolvedValue(config),
+    listLayerSources: vi.fn().mockResolvedValue([]),
+  };
+  const first = renderEditor(client, ["/maps/77?tab=settings"]);
+  expect(await screen.findByRole("tab", { name: "Inspecter" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  first.unmount();
+  renderEditor(client, ["/maps/77?tab=n-importe-quoi"]);
+  expect(await screen.findByRole("tab", { name: "Couches" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+});
+
 // Harnais dédié aux tests de garde de navigation (Tâche 27) : le lien "Retour
 // au catalogue" fait normalement partie du chrome (AppLayout/TopBar), hors
 // périmètre de ce fichier qui monte `MapEditorPage` isolément — un lien
@@ -231,11 +288,11 @@ test("edits terrain and camera, then saves both", async () => {
 
   await userEvent.click(screen.getByLabelText("Activer le terrain 3D"));
   await userEvent.type(
-    screen.getByLabelText("URL de tuiles terrain"),
+    screen.getByLabelText(/URL de tuiles terrain/),
     "https://example.test/dem/{{z}/{{x}/{{y}.png",
   );
-  fireEvent.change(screen.getByLabelText("Inclinaison de la caméra"), { target: { value: "40" } });
-  fireEvent.change(screen.getByLabelText("Orientation de la caméra"), { target: { value: "200" } });
+  fireEvent.change(screen.getByLabelText(/Inclinaison/), { target: { value: "40" } });
+  fireEvent.change(screen.getByLabelText(/Orientation \(bearing\)/), { target: { value: "200" } });
 
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   await waitFor(() => expect(saveMapConfig).toHaveBeenCalled());

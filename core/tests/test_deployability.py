@@ -2273,3 +2273,14 @@ def test_worker_gets_the_same_quota_env_as_core():
     ):
         for name in ("core", "worker"):
             assert var in (svc[name].get("environment") or {}), f"{var} absent de `{name}`"
+
+
+def test_core_trusted_proxies_is_wired_documented_and_not_a_wildcard():
+    """REV-299a (piège n°2) : la variable est dans l'environment: du service
+    core, documentée dans .env.example, et sa valeur résolue n'est jamais
+    « * » (X-Forwarded-For forgeable)."""
+    raw = services(BASE)["core"]["environment"]["CORE_TRUSTED_PROXIES"]
+    value = _resolve_effective_value(str(raw), "CORE_TRUSTED_PROXIES")
+    assert value and value != "*"
+    assert "10.0.0.0/8" in value
+    assert "CORE_TRUSTED_PROXIES" in documented_env_vars()

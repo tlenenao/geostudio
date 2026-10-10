@@ -46,7 +46,8 @@ def purge_tenant_task(*, purge_id: str, tenant_id: str, requested_by_user_id: st
 @app.task(queue="etl", queueing_lock="sweep_orphan_job_objects_task")
 def sweep_orphan_job_objects_task(timestamp: int) -> None:
     """Supprime les fichiers de résultat d'export/appexport dont le job a
-    disparu (suppression d'item en CASCADE). Quotidien, plafonné par passe.
+    disparu (suppression d'item en CASCADE) et les objets des buckets
+    uploads/attachments sans ligne vivante (REV-268). Quotidien, plafonné par passe.
     Pas de garde de flag : un bucket absent (capacité éteinte) est ignoré."""
     if not os.environ.get("S3_ENDPOINT_URL"):
         return

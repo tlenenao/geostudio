@@ -4,6 +4,8 @@ import reactHooks from "eslint-plugin-react-hooks";
 import jsxA11y from "eslint-plugin-jsx-a11y";
 import eslintConfigPrettier from "eslint-config-prettier";
 import globals from "globals";
+import panelTriggerAria from "./eslint-rules/panel-trigger-aria.mjs";
+import labelNoAriaLabel from "./eslint-rules/label-no-aria-label.mjs";
 
 // NOTE (SP-22 Task 3, continuation — Option A, décision Tanguy 2026-08-20) :
 // le brief d'origine prescrivait `...tseslint.configs.recommendedTypeChecked`,
@@ -140,7 +142,7 @@ export default tseslint.config(
       // comme des `<label>` orphelins alors qu'ils ne le sont pas.
       "jsx-a11y/label-has-associated-control": [
         "error",
-        { controlComponents: ["Input", "Select"] },
+        { assert: "either", controlComponents: ["Input", "Select"] },
       ],
     },
   },
@@ -159,6 +161,23 @@ export default tseslint.config(
     // la compilation) : carve-out documenté plutôt que remédiation.
     files: ["**/*.test.{ts,tsx}"],
     rules: { "@typescript-eslint/no-explicit-any": "off" },
+  },
+  {
+    // Règles locales (shell/eslint-rules/*.mjs), testées par RuleTester.
+    files: ["src/**/*.tsx"],
+    ignores: ["**/*.test.tsx"],
+    plugins: {
+      geostudio: {
+        rules: {
+          "panel-trigger-aria": panelTriggerAria,
+          "label-no-aria-label": labelNoAriaLabel,
+        },
+      },
+    },
+    rules: {
+      "geostudio/panel-trigger-aria": "error",
+      "geostudio/label-no-aria-label": "error",
+    },
   },
   eslintConfigPrettier,
 );

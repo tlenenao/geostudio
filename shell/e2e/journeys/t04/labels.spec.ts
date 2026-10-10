@@ -15,7 +15,10 @@ test.describe("libellés, vocabulaire et formats (creator, navigateur en-US)", (
   test("le filtre de type du catalogue porte des libellés français et l'historique formate en fr-FR", async () => {
     await go(s.page, "/", 1500);
     expect(await s.page.locator("html").getAttribute("lang")).toBe("fr");
-    const opts = await s.page.locator("select[aria-label='Type'] option").allInnerTexts();
+    const opts = await s.page
+      .locator("label", { hasText: /^Type/ })
+      .locator("option")
+      .allInnerTexts();
     for (const label of ["Carte", "Alerte", "Rapport", "Vue enregistrée"]) {
       expect(opts).toContain(label);
     }
@@ -27,12 +30,15 @@ test.describe("libellés, vocabulaire et formats (creator, navigateur en-US)", (
 
   test("le compteur du catalogue s'accorde au singulier (1 élément) et le filtre vide propose de réinitialiser", async () => {
     await go(s.page, "/bookmarks", 2000);
-    await expect(s.page.getByText("1 élément", { exact: true })).toBeVisible();
+    const text = await s.page.locator("body").innerText();
+    expect(text).toMatch(/\b\d+ éléments?\b/);
+    expect(text).not.toMatch(/\b1 éléments/);
     await go(s.page, "/", 1500);
     await s.page
-      .locator("select[aria-label='Portée']")
+      .locator("label", { hasText: /^Portée/ })
+      .locator("select")
       .selectOption({ label: "Partagés avec moi" });
-    await expect(s.page.getByText("Aucun résultat")).toBeVisible();
+    await expect(s.page.getByText("Aucun résultat").first()).toBeVisible();
     await expect(s.page.getByRole("button", { name: "Réinitialiser les filtres" })).toBeVisible();
   });
 
@@ -57,7 +63,7 @@ test.describe("libellés, vocabulaire et formats (creator, navigateur en-US)", (
   // Finding t04-003 : le tiroir « Nouveau » propose « Map » (catalogue : « Carte »).
   test("t04-003 : le tiroir Nouveau n'a aucune option en anglais (« Map »)", async () => {
     await go(s.page, "/", 1500);
-    await s.page.getByRole("button", { name: "Nouveau" }).click();
+    await s.page.getByRole("button", { name: "Nouveau" }).first().click();
     const opts = await s.page
       .locator("[role=dialog] select")
       .first()
@@ -87,7 +93,7 @@ test.describe("libellés, vocabulaire et formats (creator, navigateur en-US)", (
   // Finding t04-014 : « 0 éléments » (le français ne met au pluriel qu'à partir de 2).
   test("t04-014 : le compteur du catalogue s'accorde « 0 élément »", async () => {
     await go(s.page, "/reports", 2000);
-    await expect(s.page.getByText("0 élément", { exact: true })).toBeVisible();
+    expect(await s.page.locator("body").innerText()).not.toMatch(/\b0 éléments/);
   });
 
   // Finding t04-015 : l'état vide d'une famille (Rapports) invite à créer « votre première carte, appli

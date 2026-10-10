@@ -195,7 +195,9 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
             if job is None:
                 logger.error("export job %s introuvable (tenant %s)", job_id, tenant_id)
                 return
-            export_repo.mark_running(session, job_id=job_id)
+            if not export_repo.mark_running(session, job_id=job_id):
+                logger.warning("export job %s non prenable (déjà pris ou terminé)", job_id)
+                return
             item_id, user_id, export_format = job.item_id, job.user_id, job.format
             page_id, ctx = job.page_id, job.ctx
 

@@ -5,16 +5,17 @@ import { validateExpression } from "../builder/expr";
 import { formatCelError } from "../builder/celError";
 import { closingBrace } from "./popupTemplate";
 import { Button } from "../ui/kit/Button";
+import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { labelCls, inputCls } from "./formFieldStyles";
 import { t } from "../i18n";
 
 // Contrôle répété une fois par champ disponible dans une liste dense
-// (`PopupEditor` ci-dessous) : reste en h-8 par exception, même hauteur que
-// les contrôles denses équivalents de QueryFilterBuilder.tsx/
-// CrossFilterLinkEditor.tsx (convention de hauteur tranchée le 2026-09-01,
-// CLAUDE.md) — seule cette hauteur est partagée, pas leur recette complète
-// (ces deux fichiers portent aussi `bg-surface text-ink`, absents ici).
-const denseInputCls = "h-8 rounded-md border border-rule px-2 text-sm";
+// (`PopupEditor` ci-dessous) : h-9, la hauteur par défaut des contrôles
+// (convention du 2026-09-01, CLAUDE.md), identique aux contrôles denses de
+// QueryFilterBuilder.tsx/CrossFilterLinkEditor.tsx — seule la hauteur est
+// partagée, pas leur recette complète (ces deux fichiers portent aussi
+// `bg-surface text-ink`, absents ici).
+const denseInputCls = "h-9 rounded-md border border-rule px-2 text-sm";
 
 // Vérifie les placeholders d'un gabarit sans le rendre. Réutilise le scanner
 // de popupTemplate.ts (closingBrace), conscient des littéraux de chaîne CEL —
@@ -50,8 +51,10 @@ export function PopupEditor({
   onChange: (next: PopupConfig | undefined) => void;
 }) {
   const [advanced, setAdvanced] = useState(Boolean(value?.template));
+  const advancedPanel = usePanelTrigger(advanced);
   const [draftField, setDraftField] = useState("");
   const listId = useId();
+  const hintId = useId();
   const selected = value?.fields;
   const error = value?.template ? templateError(value.template) : null;
 
@@ -75,7 +78,6 @@ export function PopupEditor({
       <label className="flex items-center gap-2">
         <input
           type="checkbox"
-          aria-label={t("popupEditor.showAttributesLabel")}
           checked={value !== undefined}
           onChange={(e) => onChange(e.target.checked ? {} : undefined)}
         />
@@ -91,7 +93,6 @@ export function PopupEditor({
                 enregistrements) et quand il est renseigné (éditeur de
                 cartes, où le schéma de la collection est chargé). */}
             <input
-              aria-label={t("popupEditor.titleFieldLabel")}
               list={`${listId}-titre`}
               className={inputCls}
               value={value.titleField ?? ""}
@@ -179,7 +180,6 @@ export function PopupEditor({
         <label className={labelCls}>
           {t("popupEditor.attachmentsLabel")}
           <select
-            aria-label={t("popupEditor.attachmentsLabel")}
             className={inputCls}
             value={value.attachmentField ?? ""}
             onChange={(e) => onChange({ ...value, attachmentField: e.target.value || undefined })}
@@ -197,22 +197,29 @@ export function PopupEditor({
         <button
           type="button"
           className="self-start text-xs text-accent underline"
+          {...advancedPanel.triggerProps}
           onClick={() => setAdvanced((a) => !a)}
         >
           {advanced ? t("popupEditor.fieldsListButton") : t("popupEditor.advancedButton")}
         </button>
       )}
       {value !== undefined && advanced && (
-        <label className={labelCls}>
-          {t("popupEditor.templateLabel")}
-          <textarea
-            aria-label={t("popupEditor.templateLabel")}
-            className="min-h-24 rounded-md border border-rule p-2 font-mono text-xs"
-            value={value.template ?? ""}
-            onChange={(e) => onChange({ ...value, template: e.target.value })}
-          />
-          <span className="text-xs text-ink-3">{t("popupEditor.exprHint")}</span>
-        </label>
+        <div {...advancedPanel.panelProps}>
+          <div className={labelCls}>
+            <label className="flex flex-col gap-1">
+              {t("popupEditor.templateLabel")}
+              <textarea
+                className="min-h-24 rounded-md border border-rule p-2 font-mono text-xs"
+                value={value.template ?? ""}
+                aria-describedby={hintId}
+                onChange={(e) => onChange({ ...value, template: e.target.value })}
+              />
+            </label>
+            <span id={hintId} className="text-xs text-ink-3">
+              {t("popupEditor.exprHint")}
+            </span>
+          </div>
+        </div>
       )}
       {error && (
         <p role="alert" className="whitespace-pre-line text-xs text-danger">

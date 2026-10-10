@@ -13,6 +13,7 @@ def _fake_duckdb_factory():
 
 def _client(monkeypatch):
     monkeypatch.setenv("CORE_AUTH_MODE", "mock")
+    monkeypatch.setenv("CORE_TRUSTED_PROXIES", "*")
     app = create_app()
     # /analytics/sql exécute réellement son endpoint pour les requêtes sous
     # le budget (seule la 11e est court-circuitée par le middleware) — sans
@@ -232,6 +233,7 @@ def test_share_link_key_ignores_token_and_authorization():
 
 def test_share_link_budget_is_per_ip_and_not_bypassed_by_varying_tokens(monkeypatch):
     monkeypatch.setenv("CORE_AUTH_MODE", "mock")
+    monkeypatch.setenv("CORE_TRUSTED_PROXIES", "*")
     client = TestClient(create_app(), raise_server_exceptions=False)
     headers = {"X-Forwarded-For": "9.9.9.9"}
     # Jetons invalides tous différents (401 attendu, jamais 429, sur les 60 premiers).
@@ -249,3 +251,29 @@ def test_route_group_covers_geocode_with_its_own_budget():
 
     assert route_group("/v1/geocode", "GET", _EXPORT_PATH_RE) == "geocode"
     assert _BUDGETS["geocode"] == 60
+
+
+def test_forwarded_for_is_honoured_from_a_trusted_proxy(monkeypatch):
+    monkeypatch.setenv("CORE_AUTH_MODE", "mock")
+    monkeypatch.delenv("CORE_TRUSTED_PROXIES", raising=False)
+    # 10.1.2.3 : dans 10.0.0.0/8 (défaut), donc proxy de confiance.
+    client = TestClient(create_app(), client=("10.1.2.3", 50000), raise_server_exceptions=False)
+    for i in range(60):
+        client.get(f"/v1/share-links/bad-{i}", headers={"X-Forwarded-For": "9.9.9.9"})
+    assert (
+        client.get("/v1/share-links/bad-x", headers={"X-Forwarded-For": "9.9.9.9"}).status_code
+        == 429
+    )
+    other = client.get("/v1/share-links/bad-y", headers={"X-Forwarded-For": "8.8.8.8"})
+    assert other.status_code != 429  # IP client distincte → budget frais
+
+
+def test_forwarded_for_is_ignored_from_an_untrusted_peer(monkeypatch):
+    monkeypatch.setenv("CORE_AUTH_MODE", "mock")
+    monkeypatch.delenv("CORE_TRUSTED_PROXIES", raising=False)
+    # Pair public : l'en-tête forgé ne doit PAS renouveler le budget.
+    client = TestClient(create_app(), client=("93.184.216.34", 5), raise_server_exceptions=False)
+    for i in range(60):
+        client.get(f"/v1/share-links/bad-{i}", headers={"X-Forwarded-For": f"7.7.7.{i}"})
+    forged = client.get("/v1/share-links/bad-z", headers={"X-Forwarded-For": "6.6.6.6"})
+    assert forged.status_code == 429

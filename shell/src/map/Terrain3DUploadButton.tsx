@@ -141,7 +141,6 @@ export function Terrain3DUploadButton({
             <label className="flex flex-col gap-1 text-sm text-ink">
               {t("terrain3dUpload.fileLabel")}
               <input
-                aria-label={t("terrain3dUpload.fileLabel")}
                 type="file"
                 accept=".tif,.tiff"
                 onChange={(e) => setFile(e.target.files?.[0] ?? null)}
@@ -149,11 +148,7 @@ export function Terrain3DUploadButton({
             </label>
             <label className="flex flex-col gap-1 text-sm text-ink">
               {t("terrain3dUpload.titleLabel")}
-              <Input
-                aria-label={t("terrain3dUpload.titleLabel")}
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-              />
+              <Input value={title} onChange={(e) => setTitle(e.target.value)} />
             </label>
             {phase === "uploading" && (
               <p className="text-sm text-ink-2">{t("terrain3dUpload.uploadingStatus")}</p>

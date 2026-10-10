@@ -89,7 +89,7 @@ test.describe("structure des pages (creator)", () => {
   test("t01-019 : le nombre de résultats / l'état vide du catalogue est annoncé", async () => {
     // Finding t01-019 : aucune région aria-live/role=status ; « Aucun élément… » muet.
     await go(s.page, "/", 2000);
-    await s.page.getByRole("textbox", { name: "Rechercher" }).fill("zzzzzz-introuvable");
+    await s.page.getByRole("textbox", { name: "Rechercher" }).fill("zqxjkwzqxjkwzqxjkw");
     await expect(s.page.getByText("Aucun élément ne correspond")).toBeVisible();
     const live = await s.page
       .locator("[aria-live]:not([aria-live=off]), [role=status], [role=alert]")
@@ -101,6 +101,9 @@ test.describe("structure des pages (creator)", () => {
   test("t01-016 : le filtre spatial du catalogue a une alternative clavier", async () => {
     // Finding t01-016 : le rectangle ne se dessine qu'à la souris (mousedown/mouseup).
     await go(s.page, "/", 2000);
+    // La carte (et ses champs d'emprise en degrés) n'est montée qu'à la demande.
+    await s.page.getByRole("button", { name: "Afficher la carte" }).click();
+    await expect(s.page.getByLabel(/Ouest/)).toBeVisible(); // chargement paresseux de la carte
     const alt = await s.page
       .getByLabel(/emprise|ouest|nord|bbox|coordonn/i)
       .filter({ has: s.page.locator("input") })
@@ -114,6 +117,9 @@ test.describe("structure des pages (creator)", () => {
   test("t01-020 : la carte du filtre spatial porte un libellé français", async () => {
     // Finding t01-020 : MapLibre pose aria-label="Map" sur son canevas/région.
     await go(s.page, "/", 2000);
+    const show = s.page.getByRole("button", { name: "Afficher la carte" });
+    if (await show.count()) await show.click();
+    await s.page.waitForTimeout(1500);
     const english = await s.page.locator('[aria-label="Map"]').count();
     expect(english).toBe(0);
   });

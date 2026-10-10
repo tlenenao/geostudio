@@ -347,6 +347,7 @@ export const MapView = forwardRef<
         id: HIGHLIGHT_ID,
         type: "line",
         source: HIGHLIGHT_ID,
+        // gs-raw-color-ok: surbrillance de sélection sur fond de carte arbitraire
         paint: { "line-color": "#ef4444", "line-width": 3 },
       });
       const iconImageIds = applyLayers(

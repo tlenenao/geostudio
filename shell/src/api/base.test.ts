@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createBase, requestBlob } from "./base";
 import { CoreUnreachableError } from "./CoreUnreachableError";
 import { ApiError } from "./ApiError";
@@ -118,6 +118,135 @@ describe("requestBlob — ApiError RFC 7807 (SP-B5)", () => {
       title: "Payload Too Large",
       detail: "too many entities",
     });
+  });
+});
+
+describe("requestBlob — export asynchrone 202 (REV-283e)", () => {
+  // Chunk lazy préchargé : l'import dynamique ne doit pas courir sous fake timers.
+  beforeAll(() => import("./exportJob"));
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+
+  it("sonde le statut puis renvoie resultUrl sans la télécharger par fetch", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(json({ jobId: "j1" }, 202))
+      .mockResolvedValueOnce(json({ status: "running" }))
+      .mockResolvedValueOnce(
+        json({ status: "done", resultUrl: "https://s3.test/f", filename: "v.geojson" }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const p = requestBlob(
+      "http://core.test/v1",
+      () => "tok",
+      "GET",
+      "/collections/c1/export/items?format=geojson",
+    );
+    await vi.advanceTimersByTimeAsync(5000);
+    const out = await p;
+    expect(out.filename).toBe("v.geojson");
+    expect(out).toEqual({ url: "https://s3.test/f", filename: "v.geojson" });
+    expect(fetchMock.mock.calls[1][0]).toBe("http://core.test/v1/collections/c1/export/jobs/j1");
+    expect(fetchMock).toHaveBeenCalledTimes(3); // jamais de fetch sur l'URL S3
+  });
+
+  it("rejette avec le message d'un job failed", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(json({ jobId: "j1" }, 202))
+        .mockResolvedValueOnce(json({ status: "failed", error: "too many" })),
+    );
+    await expect(
+      requestBlob("http://core.test", () => "t", "GET", "/collections/c1/export/items"),
+    ).rejects.toThrow("Échec de l'export de données (statut : Échoué). too many");
+  });
+
+  it("relit le jeton à chaque tour de sondage", async () => {
+    vi.useFakeTimers();
+    let tok = "t1";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(json({ jobId: "j1" }, 202))
+      .mockResolvedValueOnce(json({ status: "running" }))
+      .mockResolvedValueOnce(json({ status: "done", resultUrl: "https://s3.test/f" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const p = requestBlob("http://core.test", () => tok, "GET", "/collections/c1/export/items");
+    await vi.advanceTimersByTimeAsync(0);
+    tok = "t2";
+    await vi.advanceTimersByTimeAsync(5000);
+    await p;
+    expect(fetchMock.mock.calls[1][1].headers.Authorization).toBe("Bearer t1");
+    expect(fetchMock.mock.calls[2][1].headers.Authorization).toBe("Bearer t2");
+  });
+
+  it("renouvelle le jeton sur un 401 pendant le sondage", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(json({ jobId: "j1" }, 202))
+      .mockResolvedValueOnce(new Response("", { status: 401 }))
+      .mockResolvedValueOnce(json({ status: "done", resultUrl: "https://s3.test/f" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const renew = vi.fn().mockResolvedValue("fresh");
+    await requestBlob(
+      "http://core.test",
+      () => "old",
+      "GET",
+      "/collections/c1/export/items",
+      undefined,
+      undefined,
+      renew,
+    );
+    expect(fetchMock.mock.calls[2][1].headers.Authorization).toBe("Bearer fresh");
+  });
+
+  it("s'arrête quand le signal est abandonné (sleep interrompu)", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(json({ jobId: "j1" }, 202))
+      .mockImplementation(async () => json({ status: "running" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const ac = new AbortController();
+    const p = requestBlob(
+      "http://core.test",
+      () => "t",
+      "GET",
+      "/collections/c1/export/items",
+      undefined,
+      undefined,
+      undefined,
+      ac.signal,
+    );
+    const assertion = expect(p).rejects.toMatchObject({ name: "AbortError" });
+    await vi.advanceTimersByTimeAsync(100);
+    const calls = fetchMock.mock.calls.length;
+    ac.abort();
+    await assertion;
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(fetchMock.mock.calls.length).toBe(calls);
+  });
+
+  it("abandonne après 15 min", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(json({ jobId: "j1" }, 202))
+        .mockImplementation(async () => json({ status: "running" })),
+    );
+    const p = requestBlob("http://core.test", () => "t", "GET", "/collections/c1/export/items");
+    const assertion = expect(p).rejects.toThrow("toujours en cours");
+    await vi.advanceTimersByTimeAsync(16 * 60_000);
+    await assertion;
   });
 });
 

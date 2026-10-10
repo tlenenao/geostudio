@@ -21,6 +21,9 @@ class ConfigRead(BaseModel):
     itemId: str | None
     version: int
     config: BuilderConfig
+    # REV-278/305 : problèmes qu'une écriture refuserait (règle durcie depuis) ;
+    # la lecture reste possible. Rempli par les routes/outils de lecture.
+    warnings: list[str] = []
 
 
 class RevisionInfo(BaseModel):

@@ -56,7 +56,6 @@ export function rowsOf(collectionId: string, cols: string, order: string): strin
 }
 
 import type { Page } from "@playwright/test";
-import { spaGo } from "../j04/helpers";
 
 export interface WizardSpec {
   title: string;
@@ -70,7 +69,10 @@ export interface WizardSpec {
 }
 
 export async function fillWizard(page: Page, w: WizardSpec): Promise<void> {
-  await spaGo(page, "/datasets/visual-query/new", 2500);
+  // Après un « Créer » réussi l'app navigue vers la fiche du dataset : un pushState+popstate (spaGo) n'est
+  // pas pris en compte par le routeur de données, on recharge donc vraiment la route de l'assistant.
+  await page.goto("/datasets/visual-query/new");
+  await page.waitForTimeout(2500);
   await page.getByLabel("Titre", { exact: true }).fill(w.title);
   await page.getByLabel("Collection de base").selectOption(w.base);
   let n = 0;

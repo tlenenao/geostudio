@@ -1,0 +1,48 @@
+# 0012 — Positionnement des connecteurs : entrepôts/SQL/objet d'abord, le reste à la demande
+
+Statut: acceptée
+Source : question produit Q2 (répondue le 2026-09-15 : produit horizontal,
+parité de couverture de connecteurs comme différenciateur face à FME) et
+`REV-123` (`docs/revue/2026-09-04-backlog.md`, GAP-29, écart de largeur face
+aux 450+ connecteurs FME).
+
+## Contexte
+
+FME couvre plus de 450 formats et connecteurs ; GeoNode 5 propose un import
+multi-formats unifié. GeoStudio avait un jeu restreint de formats à l'origine, puis a ajouté des
+formats d'import (SP-56, GAP-29) et des lecteurs de pipeline (REST, PostgreSQL,
+Snowflake, BigQuery, SQL Server, Oracle, stockage objet, Databricks). L'écart de
+largeur restera réel : viser l'exhaustivité est inatteignable et n'est pas
+l'objectif. Le « Partiel » de `REV-123` est une question de positionnement, pas
+un défaut qu'un lot de code ferme.
+
+## Décision
+
+On ne vise pas la couverture exhaustive des connecteurs. On livre en priorité
+les familles à plus forte valeur pour un produit horizontal — entrepôts de
+données, bases SQL, stockage objet — chacune par le patron `OperationContract`
+(registre unique `OPERATIONS` : schéma de paramètres, secret typé du coffre,
+garde d'egress SSRF, plafonds de lignes et délais, dialecte SQLAlchemy résolu
+par entry point quand il existe). Tout autre connecteur est traité à la demande
+(besoin concret d'un utilisateur), jamais par anticipation. Le suivi chiffré de
+l'écart reste la matrice `docs/revue/matrice-couverture-fme.{jsonl,md}`.
+
+## Conséquences
+
+- Un nouveau connecteur SQL est un clone du chemin existant (op + secret
+  `*_dsn` + dépendance Apache/BSD/MIT) ; toute dépendance copyleft ou toute
+  licence non vérifiée exige une note dans `docs/ops/redistribution-images.md`
+  et la vérification arm64 avant fusion.
+- Un connecteur non vérifiable sans compte/cluster réel (Databricks, Redshift,
+  Snowflake) est livré avec la mention explicite « non vérifié sur instance
+  réelle » et un test manuel skippé par défaut (`snowflake`/`databricks_manual`/
+  `redshift_manual`), jamais câblé en CI.
+- Databricks : les gros résultats sont récupérés par le connecteur via des URL
+  pré-signées du stockage cloud (CloudFetch), hors de la garde d'egress SSRF ;
+  ses retries internes peuvent dépasser le « délai borné » (le timeout est par
+  appel, pas global).
+- Redshift n'a pas d'op dédiée : il passe par `reader.connector.postgres`, avec
+  un traitement spécifique du délai d'attente (REV-110).
+- `REV-123` est close par cette décision (clôture des 38 REV, 2026-10-07) : la
+  parité de connecteurs est un objectif continu suivi par la matrice FME, pas un
+  défaut fermable ; l'écart de largeur reste réel (GAP-29 reste « Partiel »).

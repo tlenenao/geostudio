@@ -143,7 +143,6 @@ export function registerChartWidget(): void {
           <label className={labelCls}>
             {t("widgetChart.chartType")}
             <select
-              aria-label={t("widgetChart.chartType")}
               className={inputCls}
               value={chartType}
               onChange={(e) => set({ chartType: e.target.value })}
@@ -160,7 +159,6 @@ export function registerChartWidget(): void {
               <label className={labelCls}>
                 {t("widgetChart.categoryFieldLabel")}
                 <input
-                  aria-label={t("widgetChart.categoryField")}
                   className={inputCls}
                   value={String(props.categoryField ?? "")}
                   onChange={(e) => set({ categoryField: e.target.value })}
@@ -169,7 +167,6 @@ export function registerChartWidget(): void {
               <label className={labelCls}>
                 {t("widgetChart.valueFieldLabel")}
                 <input
-                  aria-label={t("widgetChart.valueField")}
                   className={inputCls}
                   value={String(props.valueField ?? "")}
                   onChange={(e) => set({ valueField: e.target.value })}
@@ -182,7 +179,6 @@ export function registerChartWidget(): void {
               <label className={labelCls}>
                 {t("widgetChart.sourceField")}
                 <input
-                  aria-label={t("widgetChart.sourceField")}
                   className={inputCls}
                   value={String(encodings.source ?? "")}
                   onChange={(e) => setEncodings({ source: e.target.value })}
@@ -191,7 +187,6 @@ export function registerChartWidget(): void {
               <label className={labelCls}>
                 {t("widgetChart.targetField")}
                 <input
-                  aria-label={t("widgetChart.targetField")}
                   className={inputCls}
                   value={String(encodings.target ?? "")}
                   onChange={(e) => setEncodings({ target: e.target.value })}
@@ -238,7 +233,6 @@ export function registerChartWidget(): void {
               <label className="flex items-center gap-2">
                 <input
                   type="checkbox"
-                  aria-label={t("widgetChart.compareToggle")}
                   checked={Boolean(props.compareEnabled)}
                   onChange={(e) => set({ compareEnabled: e.target.checked })}
                 />
@@ -247,7 +241,6 @@ export function registerChartWidget(): void {
               <label className={labelCls}>
                 {t("widgetChart.referencePeriodLabel")}
                 <select
-                  aria-label={t("widgetChart.referencePeriodLabel")}
                   className={inputCls}
                   value={String(props.comparePeriod ?? "previous")}
                   onChange={(e) => set({ comparePeriod: e.target.value })}
@@ -261,7 +254,6 @@ export function registerChartWidget(): void {
           <label className={labelCls}>
             {t("widgetChart.xAxisType")}
             <select
-              aria-label={t("widgetChart.xAxisType")}
               className={inputCls}
               value={String(props.xAxisType ?? "category")}
               onChange={(e) => set({ xAxisType: e.target.value })}
@@ -276,7 +268,6 @@ export function registerChartWidget(): void {
           <label className={labelCls}>
             {t("widgetChart.yAxisType")}
             <select
-              aria-label={t("widgetChart.yAxisType")}
               className={inputCls}
               value={String(props.yAxisType ?? "value")}
               onChange={(e) => set({ yAxisType: e.target.value })}
@@ -291,16 +282,14 @@ export function registerChartWidget(): void {
           <label className={labelCls}>
             {t("widgetChart.yAxisUnitLabel")}
             <input
-              aria-label={t("widgetChart.yAxisUnitLabel")}
               className={inputCls}
               value={String(props.yAxisUnit ?? "")}
               onChange={(e) => set({ yAxisUnit: e.target.value })}
             />
           </label>
           <label className={labelCls}>
-            {t("widgetChart.title")}
+            {t("widgetChart.titleAria")}
             <input
-              aria-label={t("widgetChart.titleAria")}
               className={inputCls}
               value={String(props.title ?? "")}
               onChange={(e) => set({ title: e.target.value })}
@@ -309,7 +298,6 @@ export function registerChartWidget(): void {
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
-              aria-label={t("widgetChart.stackToggle")}
               checked={Boolean(props.stack)}
               onChange={(e) => set({ stack: e.target.checked })}
             />
@@ -318,7 +306,6 @@ export function registerChartWidget(): void {
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
-              aria-label={t("widgetChart.legendToggle")}
               checked={props.legend !== false}
               onChange={(e) => set({ legend: e.target.checked })}
             />
@@ -327,7 +314,6 @@ export function registerChartWidget(): void {
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
-              aria-label={t("widgetChart.zoomToggle")}
               checked={Boolean(props.zoom)}
               onChange={(e) => set({ zoom: e.target.checked })}
             />
@@ -336,7 +322,6 @@ export function registerChartWidget(): void {
           <label className={labelCls}>
             {t("widgetChart.advancedOption")}
             <textarea
-              aria-label={t("widgetChart.advancedOption")}
               className="rounded-md border border-rule p-2 font-mono text-xs"
               rows={4}
               placeholder='{"color":["#f00"]}' /* gs-raw-color-ok: exemple JSON dans un placeholder */

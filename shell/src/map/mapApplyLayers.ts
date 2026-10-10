@@ -13,6 +13,8 @@ import {
   paintFor,
   effectivePaint,
   addTypedLayer,
+  addAggregateLayer,
+  notAggregated,
   addOutlineLayer,
   addIconLayer,
   addLabelLayer,
@@ -96,7 +98,7 @@ export function applyLayers(
               type: sub.type,
               source: layer.id,
               sourceLayer: layer.sourceLayer,
-              filter: ["match", ["geometry-type"], [...sub.geometries], true, false],
+              filter: notAggregated(["match", ["geometry-type"], [...sub.geometries], true, false]),
               paint: paintFor(result.paint, sub.paintPrefix),
             });
             layerIds.push(id);
@@ -105,7 +107,13 @@ export function applyLayers(
                 parentId: id,
                 source: layer.id,
                 sourceLayer: layer.sourceLayer,
-                filter: ["match", ["geometry-type"], [...sub.geometries], true, false],
+                filter: notAggregated([
+                  "match",
+                  ["geometry-type"],
+                  [...sub.geometries],
+                  true,
+                  false,
+                ]),
                 layout: result.iconLayout,
               });
               decorativeIds.push(`${id}__icon`);
@@ -115,7 +123,13 @@ export function applyLayers(
                 parentId: id,
                 source: layer.id,
                 sourceLayer: layer.sourceLayer,
-                filter: ["match", ["geometry-type"], [...sub.geometries], true, false],
+                filter: notAggregated([
+                  "match",
+                  ["geometry-type"],
+                  [...sub.geometries],
+                  true,
+                  false,
+                ]),
                 paint: result.outlinePaint,
               });
               decorativeIds.push(`${id}__outline`);
@@ -129,6 +143,7 @@ export function applyLayers(
             type: layerTypeFor(layer.geometryKind),
             source: layer.id,
             sourceLayer: layer.sourceLayer,
+            filter: notAggregated(),
             paint: result.paint,
           });
           layerIds.push(layer.id);
@@ -137,6 +152,7 @@ export function applyLayers(
               parentId: layer.id,
               source: layer.id,
               sourceLayer: layer.sourceLayer,
+              filter: notAggregated(),
               layout: result.iconLayout,
             });
             decorativeIds.push(`${layer.id}__icon`);
@@ -146,11 +162,15 @@ export function applyLayers(
               parentId: layer.id,
               source: layer.id,
               sourceLayer: layer.sourceLayer,
+              filter: notAggregated(),
               paint: result.outlinePaint,
             });
             decorativeIds.push(`${layer.id}__outline`);
           }
         }
+        // REV-283a : cellules posées par le cœur sous le zoom seuil.
+        addAggregateLayer(map, layer.id, layer.sourceLayer, themeColors?.primary);
+        decorativeIds.push(`${layer.id}__agg`);
         for (const id of layerIds) {
           const handler = makeFeatureClickHandler(
             layer.pkColumn,

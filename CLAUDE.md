@@ -192,7 +192,7 @@ cd ../shell
 npm run lint && npm run format:check
 node scripts/check-coverage.mjs coverage/coverage-summary.json \
   .coverage-threshold                    # seuil = shell/.coverage-threshold ; nettoyer dist/ + dist-export/ avant
-uvx pre-commit run --all-files           # 7 hooks (commitlint ne sort qu'au commit)
+uvx pre-commit run --all-files           # 8 hooks (commitlint ne sort qu'au commit)
 
 # régénérer la spec OpenAPI + les types TS — À FAIRE dès qu'une route ou un
 # modèle change (classe d'oubli n°1 du dépôt). La commande nue échoue en
@@ -213,6 +213,10 @@ cd core && PYTHONPATH=. uv run python scripts/feature_health_cli.py --repo .. --
 # committés n'est plus bloquante (plus de commit bot ni de diff sur la PR) :
 # le job CI publie le bilan frais en artefact `bilan-fonctionnalites` et
 # avertit si le snapshot committé est périmé — le régénérer à la clôture d'un SP.
+# --check-snapshot applique les mêmes planchers au dernier instantané committé
+# (historique-sante.jsonl), sans artefact de couverture local ; il échoue aussi
+# si une fonctionnalité inventoriée n'a pas de santé dans le journal.
+# Rejeu sur stack réelle : scripts/replay/run.sh (runbook docs/runbooks/2026-10-04-*).
 
 # garde-fou de taille CLAUDE.md (§ Livré) — câblé en pre-commit et en CI
 python3 scripts/check_claude_md_size.py CLAUDE.md .claude-md-size-threshold
@@ -652,20 +656,25 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
 - **Audit pré-release P22/P23/P26/P30/P32/P35/P36 (clôture : plan P01–P36 intégralement exécuté)** — erreurs RFC 7807 et bannière de connectivité à sondage sur tout appel cœur (règle ESLint `fetch`) ; outils MCP hors boucle d'événements + audit `mcp.tool_call`/`copilot.turn` + écritures du copilote confirmées par clic ; quotas items/collections/stockage au point unique de création ; carte via `ItemClient`, fuite luma.gl corrigée, `MapView` découpé ; canevas de pipeline au clavier ; catalogue public `/public`, sitemap/og ; CLAUDE.md réaligné. Revue finale : 5 Important corrigés. Reste : `REV-287` à `REV-293` (journeys non rejoués sur stack OIDC réelle, `REV-266`).
 - **Backlog plan A (L0 clôtures, L2 sécurité/intégrité, L3 pipelines)** — ferme REV-111/116/185/186/188/195/196/197/198/199/239/290 (`admin.collections.manage` en lecture, `bucketUrl` du secret blob, `authFetch` borné au cœur, `groupBy` + entrées dégénérées des transformers géométriques) ; partiels REV-271 (`If-Match` sur 4 éditeurs + MCP), REV-273 (épinglage DNS de l'egress, plafonds blob, SMTP TLS), REV-272/275 ; REV-269 inchangée ; reliquats `REV-294` à `REV-300`.
 - **Backlog plan B (L4 reliquats backend, L5 shell UX/copilote/features)** — ferme REV-104/184/251/254/265/287/289/293 ; partiels REV-102/183 (géocodage BAN `GET /v1/geocode`, NL→CEL `generate_cel_expression` pour `visibleWhen`, animation temporelle `timePlayer`) et REV-274/276 à 286/288 (lettres restantes L1/L6) ; reliquats `REV-301` à `REV-307`.
+- **Clôture des 38 REV partiellement fermées (lots A–E + rejeu sur stack réelle)** — spec `2026-10-04-cloture-backlog-38-rev-design.md` : 24 REV passées `fermé` (sécurité/intégrité A, données/lac/export/connecteurs B, shell UX/a11y C, rejeu D), 14 restent partiellement fermées (REV-164, 281 d, 284 d, 286 c externes ou non rejouées ; `bug()` persistants REV-308 à REV-321 pour le reste), 4 ADR (0012 connecteurs, 0013 `script-src` des extensions déclarées, 0014 cosign/digests — cible non implémentée, 0015 tombstone RGPD conditionnel DPO), catalogue de pipelines 58 op exposées / 60 brutes, migrations 0048-0049, rapport `docs/revue/2026-10-04-rapport-rejeu-stack-reelle.md` (`scripts/replay/run.sh`). Détail, défauts trouvés et items « pour Tanguy » dans l'archive.
 
 ### Conventions tranchées (2026-09-01)
 
 - **Hauteur des contrôles de formulaire** : `h-9` par défaut (aligné
   `Button size="default"`, `ui/kit/Input`/`Select`) ; `h-8` réservé aux
-  contextes explicitement denses. Contrôles natifs encore en `h-8` ad hoc
-  non corrigés rétroactivement — à migrer à l'occasion.
+  contextes explicitement denses, **gardé par `shell/src/test/hGuard.test.ts`**
+  (liste blanche : `Button` `sm`, `Avatar`, `ui/button` legacy, `indicator.tsx`) —
+  tout nouveau `h-8` hors liste fait échouer vitest (REV-285 b).
 - **`<button>` natif vs `Button` du kit** : `Button` pour toute action
   autonome (variant selon son rôle) ; `<button>` natif réservé à un lien
   inline dans une phrase, ou une action répétée par ligne dans une liste
   dense.
 - **`aria-expanded`/`aria-controls`** : obligatoire sur tout déclencheur de
-  panneau en ligne — jamais posé rétroactivement, reste ouvert (backlog
-  `REV-088`).
+  panneau en ligne — **outillé par la règle ESLint locale
+  `geostudio/panel-trigger-aria`** (`shell/eslint-rules/`, REV-059/088 fermés) ;
+  la règle jumelle `geostudio/label-no-aria-label` interdit l'`aria-label`
+  doublon d'un contrôle dans un `<label>`. `check-aria-panel-coverage.mjs` et
+  `lint:aria-panel` n'existent plus.
 
 La dette de tokens `LayersPanel`/`MapSymbologyEditor` et voisins évoquée par
 cette décision a été fermée par SP-34 (cf. `### Livré` ci-dessus).
@@ -688,21 +697,23 @@ recoller le détail que le backlog porte déjà :
   copilote.
 - `REV-097` clos par **SP-47** : `automation.secrets.manage` garde
   `/secrets`, domaine `app/usage/` créé.
-- `aria-expanded`/`aria-controls` câblé par SP-43 (`REV-088` largement
-  fermé, pas de lint automatique).
+- `aria-expanded`/`aria-controls` : règle ESLint `geostudio/panel-trigger-aria`
+  (clôture des 38 REV, `REV-059`/`088` fermés) ; limites de la règle (faux
+  négatifs `onClick={ref}`, composants du kit) dans `REV-323`.
 - Restauration de sauvegarde : succès partiel, reconnexion OIDC jamais
-  vérifiée (`REV-164`, détail dans la section suivante).
+  vérifiée (`REV-164`) ; `scripts/replay/restore-oidc.sh` existe mais exige
+  `down -v` (non exécuté pendant la clôture des 38 REV).
 - 4 index fonctionnels pgvector/trgm restent filtrés nommément par le
   comparateur modèle/Alembic (décision actée, `REV-175` clos).
-- GAP-72 partiellement fermé par **SP-48** : CSP `enforce` par défaut en
-  prod (`report-only` en dev, rollback via `CORE_CSP_MODE`) sur
-  img-src/connect-src ; `script-src` pour les widgets d'extension tiers
-  reste une question produit ouverte (spec SP-48 §4) — à trancher avant
-  tout câblage. Vérification Traefik bout-en-bout toujours à faire sur un
-  vrai déploiement (limitation SP-55).
+- GAP-72 fermé : **SP-48** (CSP `enforce` par défaut en prod, `report-only`
+  en dev, rollback via `CORE_CSP_MODE`) + ADR 0013 : `script-src` = `'self'`
+  + origines des extensions **activées** de la table `extensions` (CSP
+  globale, union de tous les tenants — limite assumée). Vérification Traefik
+  bout-en-bout toujours à faire sur un vrai déploiement (limitation SP-55).
 - GAP-57/59/60/62 clos par **SP-50** (fédération : pagination, plafond de
   taille d'egress, dégradation gracieuse sur collection cassée).
-  Pagination shell et `GET /dcat/datasets/{id}` restent hors périmètre.
+  Pagination shell close ensuite par `REV-151` ; `GET /dcat/datasets/{id}`
+  reste hors périmètre.
 - i18n (SP-29a) + a11y (SP-57a) outillés : `npm run lint` bloque le
   français en dur, `a11y-audit.spec.ts` audite ~17 pages
   (`REV-176`/`177`/`178`).

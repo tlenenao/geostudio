@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
-import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { apiFor, type Api } from "./seeds";
 import { stamp, CORE_URL } from "../_fixtures/env";
@@ -142,18 +141,18 @@ test.describe("j06b aperçu, historique des runs, catalogue", () => {
   });
 
   // Finding j06b-009 : le catalogue n'exige aucune authentification (route sans get_current_user).
-  bug("j06b-009 : GET /pipelines/ops exige une session", async () => {
+  test("j06b-009 : GET /pipelines/ops exige une session", async () => {
     const r = await fetch(`${CORE_URL}/v1/pipelines/ops`);
     expect(r.status).toBe(401);
   });
 
-  test("catalogue (57 op), enregistrement et next-run : op inconnue, params invalides, cron invalide refusés", async () => {
-    // Catalogue : 57 op, schéma de params pour chacune, reader.file/writer.file absents (flag éteint).
+  test("catalogue (58 op), enregistrement et next-run : op inconnue, params invalides, cron invalide refusés", async () => {
+    // Catalogue : 58 op, schéma de params pour chacune, reader.file/writer.file absents (flag éteint).
 
     const cat = await creator.get("/v1/pipelines/ops");
     expect(cat.status).toBe(200);
     const ops = Object.keys(cat.body);
-    expect(ops).toHaveLength(57);
+    expect(ops).toHaveLength(58);
     for (const [op, c] of Object.entries<any>(cat.body)) {
       expect(c.kind, op).toMatch(/^(reader|transform|writer)$/);
       expect(c.paramsSchema, op).toBeTruthy();

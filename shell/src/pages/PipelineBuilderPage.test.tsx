@@ -949,7 +949,11 @@ test("persisted mode: masque la progression N/M nœuds quand le brouillon a des 
   // devient vrai.
   await userEvent.click(screen.getByRole("button", { name: "reader.collection" }));
   await waitFor(() => expect(screen.getAllByText("reader.collection").length).toBeGreaterThan(1));
-  await waitFor(() => expect(screen.getByText("En cours")).toBeInTheDocument());
+  await waitFor(() =>
+    expect(screen.getByRole("status", { name: /État de l.exécution/ })).toHaveTextContent(
+      "En cours",
+    ),
+  );
   expect(screen.queryByText(/\/ \d+ nœuds/)).not.toBeInTheDocument();
 });
 
@@ -991,7 +995,11 @@ test("persisted mode: affiche la progression N/M nœuds quand le brouillon n'a p
     ]),
   });
   await waitFor(() => expect(screen.getByText("Villes")).toBeInTheDocument());
-  await waitFor(() => expect(screen.getByText("En cours")).toBeInTheDocument());
+  await waitFor(() =>
+    expect(screen.getByRole("status", { name: /État de l.exécution/ })).toHaveTextContent(
+      "En cours",
+    ),
+  );
   expect(screen.getByText("1 / 2 nœuds")).toBeInTheDocument();
 });
 

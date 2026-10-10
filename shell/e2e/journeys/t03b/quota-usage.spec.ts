@@ -1,6 +1,5 @@
 import { execFileSync } from "node:child_process";
 import { test, expect } from "@playwright/test";
-import { bug } from "../_fixtures/verify";
 import { timed } from "./helpers";
 
 // Octets réellement présents dans les buckets S3 (comptés dans le conteneur cœur).
@@ -37,16 +36,13 @@ test.describe("t03b quotas et usage (CORE_QUOTAS_ENABLED=true)", () => {
     expect(r.ms).toBeLessThan(1500);
   });
 
-  bug(
-    "t03b-006 : storageBytes de /admin/usage inclut les sorties de pipeline (bucket exports) et le lakehouse",
-    async () => {
-      // Constat : après ~97 Mo écrits par writer.export et ~35 Mo de GeoParquet CDC, storageBytes ne
-      // compte que les 4 buckets préfixés par tenant + les ExportJob/AppExportJob.
-      const real = bucketBytes("S3_EXPORTS_BUCKET") + bucketBytes("S3_CDC_BUCKET");
-      const r = await timed("admin", "/v1/admin/usage");
-      const used = JSON.parse(r.text()).storageBytes as number;
-      console.log("T03B usageSousCompte", used, "octets comptés pour", real, "octets réels");
-      expect(used).toBeGreaterThanOrEqual(real * 0.5);
-    },
-  );
+  test("t03b-006 : storageBytes de /admin/usage inclut les sorties de pipeline (bucket exports) et le lakehouse", async () => {
+    // Constat : après ~97 Mo écrits par writer.export et ~35 Mo de GeoParquet CDC, storageBytes ne
+    // compte que les 4 buckets préfixés par tenant + les ExportJob/AppExportJob.
+    const real = bucketBytes("S3_EXPORTS_BUCKET") + bucketBytes("S3_CDC_BUCKET");
+    const r = await timed("admin", "/v1/admin/usage");
+    const used = JSON.parse(r.text()).storageBytes as number;
+    console.log("T03B usageSousCompte", used, "octets comptés pour", real, "octets réels");
+    expect(used).toBeGreaterThanOrEqual(real * 0.5);
+  });
 });

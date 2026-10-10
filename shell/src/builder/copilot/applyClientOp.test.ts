@@ -32,6 +32,16 @@ describe("applyClientOp", () => {
     expect(config.layout.items[0].props).toEqual({ text: "Nouveau texte", dataSourceId: "" });
   });
 
+  it("addWidget stocke un ordinal croissant par type (REV-285 h)", () => {
+    const once = applyClientOp(
+      { op: "addWidget", args: { type: "text" } },
+      emptyConfig(),
+      "page-1",
+    );
+    const twice = applyClientOp({ op: "addWidget", args: { type: "text" } }, once, "page-1");
+    expect(twice.layout.items.map((i) => i.ordinal)).toEqual([1, 2]);
+  });
+
   it("addWidget with an unknown type is a no-op", () => {
     const config = applyClientOp(
       { op: "addWidget", args: { type: "not-a-real-widget" } },

@@ -13,6 +13,7 @@ import type { ReactElement } from "react";
 import type { WidgetContext } from "../registry";
 import type { DataSourceState, ItemClient, DataSource } from "../../api/types";
 import { ExplorerProvider } from "../ExplorerContext";
+import { enableMockAuth } from "../../auth/useAuth";
 import { expectTokenizedClasses } from "../../ui/kit/testUtils";
 
 beforeEach(() => {
@@ -521,4 +522,47 @@ test("table shows an explorer menu when bound to a dataset and interactions are 
     </ExplorerProvider>,
   );
   expect(await screen.findByLabelText("Explorer")).toBeInTheDocument();
+});
+
+test("table PropsPanel offers the CEL generator on a calculated column (REV-183)", async () => {
+  enableMockAuth();
+  const copilotTurn = vi.fn().mockResolvedValue({
+    reply: "",
+    clientOps: [{ op: "applyCelDraft", args: { expression: "record.pop * 2" } }],
+  });
+  const Table = getWidget("table")!;
+  const onChange = vi.fn();
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <ItemClientProvider client={{ copilotTurn } as unknown as ItemClient}>
+        <Table.PropsPanel
+          props={{ columns: ["pop", { label: "Double", expr: "" }] }}
+          onChange={onChange}
+          dataSources={[]}
+          generateItemId="9"
+        />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  await userEvent.click(await screen.findByText("Générer"));
+  await userEvent.type(screen.getByLabelText("Décrire l'expression"), "double de pop");
+  await userEvent.click(screen.getByRole("button", { name: "Proposer" }));
+  await screen.findByText("record.pop * 2");
+  expect(copilotTurn.mock.calls[0][1].surface).toBe("computed_column");
+  expect(copilotTurn.mock.calls[0][1].currentConfig.availableFields).toContain("record.pop");
+  expect(onChange).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("button", { name: "Appliquer" }));
+  expect(onChange.mock.calls.at(-1)![0].columns[1].expr).toBe("record.pop * 2");
+});
+
+test("table PropsPanel has no generator without generateItemId", () => {
+  const Table = getWidget("table")!;
+  renderWithItemClient(
+    <Table.PropsPanel
+      props={{ columns: [{ label: "x", expr: "" }] }}
+      onChange={vi.fn()}
+      dataSources={[]}
+    />,
+  );
+  expect(screen.queryByText("Générer")).toBeNull();
 });

@@ -52,25 +52,15 @@ export function EditHarvestSourcePanel({
       <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
         <label className="flex flex-col gap-1 text-sm text-ink">
           {t("harvest.columnUrl")}
-          <Input
-            aria-label={t("harvest.columnUrl")}
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-          />
+          <Input value={url} onChange={(e) => setUrl(e.target.value)} />
         </label>
         <label className="flex items-center gap-2 text-sm text-ink">
-          <input
-            type="checkbox"
-            aria-label={t("harvest.activeLabel")}
-            checked={enabled}
-            onChange={(e) => setEnabled(e.target.checked)}
-          />
+          <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
           {t("harvest.activeLabel")}
         </label>
         <label className="flex flex-col gap-1 text-sm text-ink">
           {t("harvest.intervalLabel")}
           <Input
-            aria-label={t("harvest.intervalLabel")}
             type="number"
             min={1}
             value={intervalMinutes}

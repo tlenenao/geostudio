@@ -87,7 +87,6 @@ export function FieldClassificationPicker({
       <label className={labelCls}>
         {labels.field}
         <input
-          aria-label={labels.field}
           list={`${listId}-fields`}
           className={inputCls}
           value={value?.field ?? ""}
@@ -101,7 +100,6 @@ export function FieldClassificationPicker({
       <label className={labelCls}>
         {labels.palette}
         <select
-          aria-label={labels.palette}
           className={inputCls}
           value={value?.palette ?? "categorical-a"}
           onChange={(e) => onChange({ palette: e.target.value as PaletteId })}
@@ -121,7 +119,6 @@ export function FieldClassificationPicker({
           <label className={labelCls}>
             {labels.mode}
             <select
-              aria-label={labels.mode}
               className={inputCls}
               // Repli sur "categorical" : `mode` est obligatoire dans
               // `ClassifiedColorEncoding`, mais un document écrit à la main
@@ -154,7 +151,6 @@ export function FieldClassificationPicker({
               <label className={labelCls}>
                 {labels.method}
                 <select
-                  aria-label={labels.method}
                   className={inputCls}
                   value={value.classification?.method ?? "continuous"}
                   onChange={(e) => {
@@ -184,7 +180,6 @@ export function FieldClassificationPicker({
                 <label className={labelCls}>
                   {labels.classes}
                   <input
-                    aria-label={labels.classes}
                     type="number"
                     min={2}
                     max={9}

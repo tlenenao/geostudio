@@ -9,7 +9,7 @@ test("statistics source with a split field feeds a multi-series Chart in the run
 
   await page.getByRole("button", { name: "Nouveau" }).click();
   await page.getByRole("dialog", { name: "Nouvel élément" }).getByLabel("Type").selectOption("app");
-  await page.getByLabel("Titre").fill("App graphiques");
+  await page.getByLabel("Titre", { exact: true }).fill("App graphiques");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 

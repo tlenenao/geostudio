@@ -9,46 +9,30 @@ créateurs), PUT /configs/{id}, PUT /configs/by-item/{id} et save_app_config
 (MCP). Pas par /rollback : une révision ancienne peut légitimement violer une
 règle ajoutée depuis."""
 
-import re
 from datetime import date
 from urllib.parse import urlparse
 
+import celpy
+from celpy.celparser import CELParseError
 from fastapi import HTTPException
 
 from app.configs.schemas import BuilderConfig, LayoutItem, MapConfig
 
-_PAIRS = {")": "(", "]": "[", "}": "{"}
-_TRAILING_OP = re.compile(r"[-+*/%&|<>=!.,?:^]\s*$")
+_CEL_ENV = celpy.Environment()
 
 
 def _cel_syntax_error(expr: str) -> str | None:
-    """Contrôle syntaxique minimal d'une expression CEL (parenthèses/guillemets
-    équilibrés, pas d'opérateur pendant). ponytail: pas de parseur CEL côté
-    cœur (cel-js vit dans le shell) ; ajouter cel-python si on veut mieux."""
+    """Contrôle syntaxique d'une expression CEL par le parseur cel-python
+    (REV-278b ; remplace le contrôle de parenthèses). Syntaxe seulement : les
+    identifiants inconnus et les erreurs de type restent détectés à
+    l'évaluation par le shell (cel-js), qui est le moteur d'exécution."""
     if not expr.strip():
         return "empty expression"
-    stack: list[str] = []
-    quote: str | None = None
-    i = 0
-    while i < len(expr):
-        c = expr[i]
-        if quote:
-            if c == "\\":
-                i += 1
-            elif c == quote:
-                quote = None
-        elif c in "\"'":
-            quote = c
-        elif c in "([{":
-            stack.append(c)
-        elif c in _PAIRS:
-            if not stack or stack.pop() != _PAIRS[c]:
-                return "unbalanced brackets"
-        i += 1
-    if quote or stack:
-        return "unbalanced quotes or brackets"
-    if _TRAILING_OP.search(expr):
-        return "expression ends with an operator"
+    try:
+        _CEL_ENV.compile(expr)
+    except CELParseError as exc:
+        where = f" at column {exc.column}" if exc.column else ""
+        return f"invalid CEL{where}"
     return None
 
 
@@ -141,19 +125,24 @@ def _item_errors(item: LayoutItem, seen: set[str]) -> list[str]:
     return errs
 
 
-def _widget_ids(node: object) -> set[str]:
-    """Ids de tous les widgets d'un arbre de layout, imbriqués compris
-    (props.items d'une modale/d'un tiroir) — REV-278c."""
-    ids: set[str] = set()
+def widget_nodes(node: object) -> list[dict]:
+    """Tous les nœuds widget (dict portant `widget: str`, `id` optionnel) d'un
+    arbre de layout, imbriqués compris (props.items d'une modale/d'un
+    tiroir) — REV-278a/c."""
+    nodes: list[dict] = []
     if isinstance(node, dict):
-        if isinstance(node.get("widget"), str) and isinstance(node.get("id"), str):
-            ids.add(node["id"])
+        if isinstance(node.get("widget"), str):
+            nodes.append(node)
         for value in node.values():
-            ids |= _widget_ids(value)
+            nodes += widget_nodes(value)
     elif isinstance(node, list):
         for value in node:
-            ids |= _widget_ids(value)
-    return ids
+            nodes += widget_nodes(value)
+    return nodes
+
+
+def _widget_ids(node: object) -> set[str]:
+    return {n["id"] for n in widget_nodes(node) if isinstance(n.get("id"), str)}
 
 
 def _layout_errors(config: BuilderConfig) -> list[str]:
@@ -178,9 +167,14 @@ def _layout_errors(config: BuilderConfig) -> list[str]:
     return errs
 
 
-def validate_document(config: BuilderConfig) -> None:
+def document_warnings(config: BuilderConfig) -> list[str]:
     errs = _layout_errors(config)
     if config.map is not None:
         errs += _map_errors(config.map)
+    return errs
+
+
+def validate_document(config: BuilderConfig) -> None:
+    errs = document_warnings(config)
     if errs:
         raise HTTPException(status_code=422, detail="; ".join(errs))

@@ -57,6 +57,22 @@ describe("AppExportPanel", () => {
     expect(client.createAppExport).toHaveBeenCalledWith("item1", "static");
   });
 
+  it("returns focus to the trigger once a mode is chosen (t01b-013)", async () => {
+    const client = makeClient({
+      createAppExport: vi.fn().mockResolvedValue({ jobId: "job1" }),
+      getAppExportJob: vi.fn().mockResolvedValue({ id: "job1", status: "running", error: null }),
+    });
+    render(
+      <ItemClientProvider client={client}>
+        <AppExportPanel itemId="item1" config={config()} />
+      </ItemClientProvider>,
+    );
+    const trigger = screen.getByRole("button", { name: /exporter/i });
+    await userEvent.click(trigger);
+    await userEvent.click(screen.getByRole("button", { name: /statique/i }));
+    expect(trigger).toHaveFocus();
+  });
+
   it("shows the warning of a job done with truncation", async () => {
     const client = makeClient({
       createAppExport: vi.fn().mockResolvedValue({ jobId: "job1" }),
@@ -306,5 +322,29 @@ describe("AppExportPanel : accessibilité (P33.23, P33.24)", () => {
     expect(trigger).toHaveAttribute("aria-expanded", "false");
     await act(async () => finish({ jobId: "j" }));
     await waitFor(() => expect(trigger).toHaveAttribute("aria-disabled", "false"));
+  });
+
+  it("REV-216 : annonce l'état du job (En cours puis Échoué) avec le vocabulaire partagé", async () => {
+    const client = makeClient({
+      createAppExport: vi.fn().mockResolvedValue({ jobId: "j" }),
+      getAppExportJob: vi
+        .fn()
+        .mockResolvedValueOnce({ id: "j", status: "running", resultUrl: null })
+        .mockResolvedValue({ id: "j", status: "error", resultUrl: null }),
+    });
+    render(
+      <ItemClientProvider client={client}>
+        <AppExportPanel itemId="item1" config={config()} />
+      </ItemClientProvider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /exporter/i }));
+    await userEvent.click(screen.getByRole("button", { name: /statique/i }));
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent("État de l'export : En cours"),
+    );
+    await waitFor(
+      () => expect(screen.getByRole("status")).toHaveTextContent("État de l'export : Échoué"),
+      { timeout: 5000 },
+    );
   });
 });

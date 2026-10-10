@@ -54,3 +54,7 @@ plus.
 | [0009](0009-tenant-id-audit-log-partout.md) | `tenant_id`+`audit_log` sur toute table dès la première migration | acceptée | CLAUDE.md « Décisions figées » |
 | [0010](0010-client-ts-genere-openapi.md) | Client TS généré depuis l'OpenAPI du cœur | acceptée | A11 |
 | [0011](0011-sortie-geonode-superset-redis.md) | Sortie de GeoNode/Superset/Redis, jalon M1 | acceptée | CLAUDE.md « Décisions figées » |
+| [0012](0012-positionnement-connecteurs.md) | Positionnement des connecteurs : entrepôts/SQL/objet d'abord, le reste à la demande | acceptée | Q2 (2026-09-15), REV-123 |
+| [0013](0013-script-src-extensions-origines-declarees.md) | `script-src` : origines des extensions déclarées (table `extensions`) | acceptée | Spec clôture 38 REV, arbitrage 166 ; REV-166 |
+| [0014](0014-supply-chain-cosign-digests.md) | Chaîne d'approvisionnement : cosign keyless, SBOM, digests (cible, non implémentée) | acceptée | Spec clôture 38 REV, arbitrage 281 b ; REV-281 |
+| [0015](0015-tombstone-rgpd-statu-quo.md) | Tombstone RGPD : statu quo (conditionnel DPO) | acceptée (conditionnelle) | Spec clôture 38 REV, arbitrage 272 a ; REV-272 |

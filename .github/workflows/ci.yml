@@ -22,6 +22,10 @@ jobs:
       DATABASE_URL: postgresql+psycopg://gis:gis@localhost:5432/gis
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/docker-mirror
+        with:
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Build postgis+pgvector image
         run: docker build -t geostudio-postgis-ci:latest ../deploy/postgis
       - name: Start Postgres
@@ -40,7 +44,7 @@ jobs:
 
   core:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     defaults:
       run:
         working-directory: core
@@ -51,6 +55,10 @@ jobs:
       CORE_REQUIRE_DB: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/docker-mirror
+        with:
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Build postgis+pgvector image
         run: docker build -t geostudio-postgis-ci:latest ../deploy/postgis
       - name: Start Postgres
@@ -122,6 +130,10 @@ jobs:
       CORE_SECRETS_MASTER_KEY: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/docker-mirror
+        with:
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Build postgis+pgvector image
         run: docker build -t geostudio-postgis-ci:latest ../deploy/postgis
       - name: Start Postgres
@@ -187,7 +199,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
       - run: uv sync
-      - run: uv run pip-audit --strict
+      # PYSEC-2026-4114 (oauthlib, timing PKCE) : ne touche que la grant
+      # serveur `AuthorizationCode`, jamais utilisée ici (oauthlib n'entre que
+      # comme client via databricks-sql-connector, qui épingle <4). À retirer
+      # dès que databricks-sql-connector accepte oauthlib>=4.
+      - run: uv run pip-audit --strict --ignore-vuln PYSEC-2026-4114
 
   api-types-drift:
     runs-on: ubuntu-latest
@@ -243,6 +259,10 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/docker-mirror
+        with:
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Build postgis+pgvector image
         run: docker build -t geostudio-postgis-ci:latest deploy/postgis
       - name: Bring up postgis, keycloak, core, shell (real OIDC)
@@ -294,6 +314,10 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/docker-mirror
+        with:
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Écrit le .env de la stack de fumée
         run: |
           cat > .env <<EOF
@@ -359,6 +383,12 @@ jobs:
       - run: uv run pytest tests/test_feature_health_coverage.py -q
         working-directory: core
       - run: uv run python scripts/feature_health_cli.py --repo .. --check
+        working-directory: core
+        env:
+          PYTHONPATH: .
+      # REV-288 b : mêmes planchers lus du snapshot committé (reproductible
+      # hors CI, sans coverage.xml local).
+      - run: uv run python scripts/feature_health_cli.py --repo .. --check-snapshot
         working-directory: core
         env:
           PYTHONPATH: .

@@ -111,7 +111,7 @@ test("au quota de collections, POST /collections/empty répond 409", async () =>
 });
 
 // Finding j08b-001 : POST /collections (enregistrement d'une table existante) ne vérifie pas le quota.
-bug("j08b-001 : enregistrer une table existante respecte le quota de collections", async () => {
+test("j08b-001 : enregistrer une table existante respecte le quota de collections", async () => {
   const t = `audj08b_reg_${Date.now().toString(36)}`;
   psql(`CREATE TABLE public.${t} (id serial primary key, geom geometry(Point,4326))`);
   const r = await admin.send("POST", "/v1/collections", { tableName: t, title: `${tag}-reg` });
@@ -119,7 +119,7 @@ bug("j08b-001 : enregistrer une table existante respecte le quota de collections
 });
 
 // Finding j08b-003 : l'objet déjà téléversé est compté deux fois (dans l'usage ET dans additional_bytes).
-bug("j08b-003 : un fichier de 3 Ko tient dans 5 Ko de marge de stockage", async () => {
+test("j08b-003 : un fichier de 3 Ko tient dans 5 Ko de marge de stockage", async () => {
   const pre = (await admin.get("/v1/admin/usage")).body.storageBytes;
   const fileSize = Buffer.byteLength(csvOfSize(3000));
   // Marge réelle suffisante : pre + fileSize <= limite tant que pre <= base + 5000 - fileSize.
@@ -136,7 +136,7 @@ bug("j08b-003 : un fichier de 3 Ko tient dans 5 Ko de marge de stockage", async 
   expect(r.status).not.toBe(409);
 });
 
-test("storage : un import plus gros que la limite est refusé en 409 avant création du job", async () => {
+test("storage : un import plus gros que la limite est refusé en 413 avant création du job", async () => {
   const key = putObject("S3_UPLOADS_BUCKET", "overflow.csv", 8000);
   keys.push(key);
   const r = await creator.send("POST", "/v1/uploads", {
@@ -146,11 +146,8 @@ test("storage : un import plus gros que la limite est refusé en 409 avant créa
     latField: "lat",
     lonField: "lon",
   });
-  expect(r.status).toBe(409);
+  expect(r.status).toBe(413); // P26.09 : 413 pour le stockage, 409 pour un comptage
   expect(r.body.detail).toMatch(/quota de stockage du tenant dépassé/);
-  // Finding j08b-002 (vérifié ci-dessous) : l'objet refusé reste dans le bucket.
-  const after = (await admin.get("/v1/admin/usage")).body.storageBytes;
-  expect(after).toBeGreaterThanOrEqual(base.storage + 8000);
 });
 
 // Finding j08b-002 : un import refusé par le quota laisse son objet compté dans l'usage.
@@ -167,8 +164,9 @@ bug(
       latField: "lat",
       lonField: "lon",
     });
-    expect(r.status).toBe(409);
+    expect(r.status).toBe(413);
     const after = (await admin.get("/v1/admin/usage")).body.storageBytes;
-    expect(after).toBe(before);
+    // l'objet refusé n'est plus compté (≤ : le nettoyage asynchrone d'un import précédent peut aussi retirer des octets)
+    expect(after).toBeLessThanOrEqual(before);
   },
 );

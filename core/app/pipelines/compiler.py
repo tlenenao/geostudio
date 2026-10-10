@@ -54,10 +54,7 @@ from app.pipelines.ops.schemas import (
     TransformTranslateGeometryParams,
     TransformValidateAttributesParams,
 )
-
-
-def _qi(name: str) -> str:
-    return '"' + name.replace('"', '""') + '"'
+from app.sql_ident import quote_ident_duckdb as _qi
 
 
 def topological_order(nodes: list[PipelineNode], edges: list[PipelineEdge]) -> list[PipelineNode]:

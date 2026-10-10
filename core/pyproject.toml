@@ -90,7 +90,7 @@ dependencies = [
                        # License-Expression PyPI réelle (pas supposée) :
                        # "UPL-1.0 OR Apache-2.0" (double licence, vérifiée
                        # via importlib.metadata) — Apache-2.0 retenue.
-    "s3fs>=2024.10,<2026",  # Task 15 (Vague 2 §6.1) : reader.connector.blob (S3) —
+    "s3fs>=2024.10,<2027",  # Task 15 (Vague 2 §6.1) : reader.connector.blob (S3) —
                        # implémentation fsspec pour S3/compatible-S3 consommée
                        # par la source `filesystem` de dlt (dlt.sources.filesystem,
                        # déjà présente dans le paquet `dlt` de base, aucun extra
@@ -102,13 +102,13 @@ dependencies = [
                        # empiriquement) — ce module ne construit jamais lui-même
                        # de dict de kwargs s3fs. BSD-3-Clause, vérifiée sur PyPI
                        # (classifiers réels).
-    "adlfs>=2024.7,<2026",  # Task 15 : reader.connector.blob (Azure Blob) —
+    "adlfs>=2024.7,<2027",  # Task 15 : reader.connector.blob (Azure Blob) —
                        # implémentation fsspec pour Azure Blob Storage ;
                        # `AzureCredentialsWithoutDefaults.to_adlfs_credentials()`
                        # produit les kwargs adlfs réels (`account_name`/
                        # `account_key`, vérifié empiriquement). BSD-3-Clause,
                        # vérifiée sur PyPI (classifiers réels).
-    "gcsfs>=2024.10,<2026",  # Task 15 : reader.connector.blob (GCS) —
+    "gcsfs>=2024.10,<2027",  # Task 15 : reader.connector.blob (GCS) —
                        # implémentation fsspec pour Google Cloud Storage ;
                        # `GcpServiceAccountCredentials.to_gcs_credentials()`
                        # produit les kwargs gcsfs réels (`project`/`token`,
@@ -171,6 +171,14 @@ dependencies = [
     "opentelemetry-instrumentation-sqlalchemy>=0.48b0",
     "opentelemetry-instrumentation-httpx>=0.48b0",
     "opentelemetry-instrumentation-botocore>=0.48b0",
+    "cel-python>=0.5,<0.6",  # REV-278b : parseur CEL (syntaxe seulement) pour la validation
+                      # à l'écriture des expressions ; Apache-2.0, tire lark (MIT) et google-re2 (BSD-3).
+    "databricks-sqlalchemy>=2,<3",  # REV-110 : reader.connector.databricks — dialecte
+                      # SQLAlchemy "databricks://" (entry point, aucun import
+                      # explicite). Apache-2.0 (METADATA vérifié) ; tire
+                      # databricks-sql-connector (Apache-2.0), thrift (Apache-2.0),
+                      # lz4 (BSD, wheel aarch64 présente), pybreaker (BSD) et épingle
+                      # oauthlib<4 (3.3.1, BSD-3).
 ]
 
 [dependency-groups]
@@ -221,6 +229,8 @@ filterwarnings = [
 ]
 markers = [
     "postgis: nécessite un PostGIS réel (CORE_TEST_DATABASE_URL) ; skippé sinon",
+    "databricks_manual: nécessite un entrepôt Databricks réel (CORE_TEST_DATABRICKS_DSN) ; skippé sinon — manuel uniquement, jamais câblé en CI (REV-110)",
+    "redshift_manual: nécessite un cluster Redshift réel (CORE_TEST_REDSHIFT_DSN) ; skippé sinon — manuel uniquement, jamais câblé en CI (REV-110)",
     "snowflake: nécessite un compte Snowflake réel (CORE_TEST_SNOWFLAKE_DSN) ; skippé sinon — JAMAIS câblé en CI (service cloud propriétaire, pas de sidecar auto-hébergeable équivalent) ; manuel uniquement",
     "playwright: nécessite le binaire Chromium (playwright install --with-deps chromium) ; skippé sinon",
     "docker: nécessite un démon Docker réel (build local de l'image, jamais un pull) ; skippé sinon",
@@ -335,6 +345,10 @@ layers = [
     "app.alerts",
     "app.export",
     "app.appexport",
+    # app.dataexport (REV-283e) : export asynchrone de collection ; comme app.export, il
+    # relit features et téléverse en S3. La route de features le démarre par injection
+    # (get_export_job_starter, câblé dans main.py) : aucune arête vers le haut.
+    "app.dataexport",
     "app.tileset3d",
     "app.terrain3d",
     "app.mapicons",
@@ -485,4 +499,5 @@ ignore_imports = [
     "app.db -> app.roles.models",
     "app.db -> app.attachments.models",
     "app.db -> app.compliance.models",
+    "app.db -> app.dataexport.models",
 ]

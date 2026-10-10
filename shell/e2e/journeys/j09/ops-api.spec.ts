@@ -1,14 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
 import { test, expect } from "@playwright/test";
-import { CORE_URL } from "../_fixtures/env";
-import {
-  alertConfig,
-  apiFor,
-  deferEvaluation,
-  getAlertSeed,
-  waitEvaluation,
-  type Api,
-} from "./helpers";
+import { CORE_URL, instanceFlag } from "../_fixtures/env";
+import { alertConfig, apiFor, getAlertSeed, waitEvaluation, type Api } from "./helpers";
 
 // Journal des tâches (/usage), état d'instance, passerelle /admin-tools et rapports planifiés.
 test.setTimeout(150_000);
@@ -44,7 +37,6 @@ test.describe("j09 journal des tâches (/usage)", () => {
     await s.creator.send("POST", `/v1/alerts/${id}/evaluate`);
     const list = await s.creator.get(`/v1/alerts/${id}/evaluations`);
     const evalId = list.body[0].id as string;
-    deferEvaluation(evalId);
     await waitEvaluation(s.creator, id, evalId);
     const mine = await s.creator.get("/v1/usage/tasks?pageSize=200");
     const rows = mine.body.tasks.filter((t: any) => t.objectId === id);
@@ -54,6 +46,10 @@ test.describe("j09 journal des tâches (/usage)", () => {
 
 test.describe("j09 instance et passerelle /admin-tools", () => {
   test("passerelle éteinte : lancement, session et verify sont introuvables, même pour l'administrateur", async () => {
+    test.skip(
+      await instanceFlag("adminToolsEnabled"),
+      "stack avec CORE_ADMIN_TOOLS_ENABLED=true : parcours « passerelle éteinte » sans objet",
+    );
     for (const tool of ["martin", "titiler", "grafana"]) {
       expect((await admin.send("POST", `/v1/admin-tools/launch/${tool}`)).status).toBe(404);
       const session = await fetch(`${CORE_URL}/v1/admin-tools/session/${tool}?_at=x`, {
@@ -68,6 +64,10 @@ test.describe("j09 instance et passerelle /admin-tools", () => {
 
 test.describe("j09 rapports planifiés", () => {
   test("la création d'un rapport est refusée en 403 quand l'export est désactivé", async () => {
+    test.skip(
+      await instanceFlag("exportEnabled"),
+      "stack avec CORE_EXPORT_ENABLED=true : parcours « export éteint » sans objet",
+    );
     const app = await creator.send("POST", "/v1/configs", {
       title: "j09-app",
       config: {

@@ -4,10 +4,10 @@
 // Garde-fou anti-régression (SP-B12d, clôture du lot de tokenisation
 // SP-34/lots 1-6) : signale une classe Tailwind de couleur LITTÉRALE
 // (ex. `bg-red-600`, `text-white`) hors `ui/kit/` (design system, seul
-// endroit qui a le droit de définir les tokens `--gs-*`) et `map/`
-// (symbologie choisie par l'utilisateur final, pas l'ambiance studio).
-// Même patron architectural que check-i18n-coverage.mjs /
-// check-aria-panel-coverage.mjs (SP-57a/SP-43) : parcourt le code
+// endroit qui a le droit de définir les tokens `--gs-*`). `map/` est scanné
+// (REV-285 d) : ses défauts de symbologie portent un pragma motivé.
+// Même patron architectural que check-i18n-coverage.mjs
+// (SP-57a) : parcourt le code
 // source, calcule une mesure, échoue si elle régresse — câblé dans
 // `npm run lint`.
 //
@@ -19,7 +19,7 @@
 // silencieusement en CI. `fast-glob` n'est PAS une dépendance de ce
 // dépôt (vérifié dans package.json avant d'écrire ce script) : ajouter
 // une dépendance neuve pour un script utilitaire n'est pas justifié
-// quand le patron `walk()` déjà utilisé par check-aria-panel-coverage.mjs
+// quand le patron `walk()` déjà utilisé par les autres scripts de scripts/
 // fait le travail sans dépendance et sans contrainte de version Node.
 //
 // Allowlist — un pragma EN LIGNE, pas un allowlist par fichier (un
@@ -56,18 +56,16 @@ const REGION_END_RE = /\/\/\s*gs-raw-color-ok-end\b/;
 
 /**
  * `true` si `relPath` (relatif à `src/`, séparateurs normalisés en `/`)
- * est `ui/kit` ou `map`, ou un de leurs sous-dossiers.
+ * est `ui/kit` ou un de ses sous-dossiers.
  */
-function isExcludedDir(relPath) {
+export function isExcludedDir(relPath) {
   const norm = relPath.replaceAll("\\", "/");
-  return (
-    norm === "ui/kit" || norm.startsWith("ui/kit/") || norm === "map" || norm.startsWith("map/")
-  );
+  return norm === "ui/kit" || norm.startsWith("ui/kit/");
 }
 
 /**
  * Parcours récursif de `dir` (sans dépendance de glob), retourne la
- * liste des fichiers .ts/.tsx non-test (hors .d.ts), en sautant `ui/kit/` et `map/`.
+ * liste des fichiers .ts/.tsx non-test (hors .d.ts), en sautant `ui/kit/`.
  */
 function walk(dir, root, out = []) {
   for (const entry of readdirSync(dir)) {
@@ -138,7 +136,7 @@ export function main() {
 
   if (offenders.length > 0) {
     console.error(
-      "Couleurs Tailwind brutes détectées hors ui/kit/ et map/ (.ts/.tsx), sans pragma gs-raw-color-ok :",
+      "Couleurs Tailwind brutes détectées hors ui/kit/ (.ts/.tsx), sans pragma gs-raw-color-ok :",
     );
     offenders.forEach((o) => console.error(`  ${o}`));
     console.error(
@@ -149,7 +147,7 @@ export function main() {
     process.exit(1);
   }
   console.log(
-    `OK : aucune couleur Tailwind brute hors ui/kit/, map/, tests et pragma gs-raw-color-ok (${files.length} fichier(s) scanné(s)).`,
+    `OK : aucune couleur Tailwind brute hors ui/kit/, tests et pragma gs-raw-color-ok (${files.length} fichier(s) scanné(s)).`,
   );
 }
 

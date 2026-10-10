@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
-import { bug } from "../_fixtures/verify";
 import { expect, test } from "@playwright/test";
 import { aggregate, apiFor, sql, type Api } from "./helpers";
 import { getSeed, type Seed } from "./seed";
@@ -144,7 +143,7 @@ test.describe("j05 SQL Lab — API", () => {
   });
 
   // Finding j05-001 : le GeoParquet nomme la colonne « geometry », la table PostGIS « geom ».
-  bug("j05-001 : SQL Lab lit une collection à géométrie importée", async () => {
+  test("j05-001 : SQL Lab lit une collection à géométrie importée", async () => {
     const r = await sql(analyst, `select count(*) from ${seed.eventsCollection}`);
     expect(r.status).toBe(200);
     expect(r.body.rows[0][0]).toBe(60);
@@ -157,7 +156,7 @@ test.describe("j05 SQL Lab — API", () => {
   });
 
   // Finding j05-012 : les colonnes date/timestamptz sont exposées en VARCHAR par le lac.
-  bug("j05-012 : une colonne timestamptz reste un TIMESTAMP dans SQL Lab", async () => {
+  test("j05-012 : une colonne timestamptz reste un TIMESTAMP dans SQL Lab", async () => {
     const r = await sql(analyst, `select typeof(d) from ${seed.ventes} limit 1`);
     expect(r.body.rows[0][0]).toMatch(/TIMESTAMP/);
   });

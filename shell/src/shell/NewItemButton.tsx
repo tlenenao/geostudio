@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   useCreateItem,
@@ -23,6 +23,8 @@ import { apiErrorMessage } from "../api/apiErrorMessage";
 type Kind = "app" | "dashboard" | "map" | "site" | "dataset" | "pipeline" | "visual-query";
 
 export function NewItemButton() {
+  const arcgisHintId = useId();
+  const slugErrorId = useId();
   const [open, setOpen] = useState(false);
   const drawerPanel = usePanelTrigger(open);
   const [kind, setKind] = useState<Kind>("app");
@@ -227,7 +229,6 @@ export function NewItemButton() {
           <label className="flex flex-col gap-1 text-sm text-ink">
             {t("catalog.typeLabel")}
             <select
-              aria-label={t("catalog.typeLabel")}
               className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
               value={kind}
               onChange={(e) => {
@@ -252,7 +253,6 @@ export function NewItemButton() {
             <label className="flex flex-col gap-1 text-sm text-ink">
               {t("newItem.templateLabel")}
               <select
-                aria-label={t("newItem.templateLabel")}
                 className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                 value={templateId}
                 onChange={(e) => setTemplateId(e.target.value)}
@@ -270,7 +270,6 @@ export function NewItemButton() {
             <label className="flex flex-col gap-1 text-sm text-ink">
               {t("newItem.datasetSourceTypeLabel")}
               <select
-                aria-label={t("newItem.datasetSourceTypeLabel")}
                 className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                 value={datasetSource}
                 onChange={(e) => setDatasetSource(e.target.value as "collection" | "arcgis")}
@@ -284,7 +283,6 @@ export function NewItemButton() {
             <label className="flex flex-col gap-1 text-sm text-ink">
               {t("newItem.collectionSourceLabel")}
               <select
-                aria-label={t("newItem.collectionSourceLabel")}
                 className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                 value={collectionId}
                 onChange={(e) => setCollectionId(e.target.value)}
@@ -299,49 +297,53 @@ export function NewItemButton() {
             </label>
           )}
           {kind === "dataset" && datasetSource === "arcgis" && (
-            <label className="flex flex-col gap-1 text-sm text-ink">
-              {t("newItem.arcgisLayerLabel")}
-              <select
-                aria-label={t("newItem.arcgisLayerLabel")}
-                className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
-                value={arcgisItemId}
-                onChange={(e) => setArcgisItemId(e.target.value)}
-              >
-                <option value="">{t("visualQuery.chooseOption")}</option>
-                {(featureLayersQuery.data ?? []).map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.title}
-                  </option>
-                ))}
-              </select>
+            <div className="flex flex-col gap-1 text-sm text-ink">
+              <label className="flex flex-col gap-1">
+                {t("newItem.arcgisLayerLabel")}
+                <select
+                  aria-describedby={arcgisHintId}
+                  className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
+                  value={arcgisItemId}
+                  onChange={(e) => setArcgisItemId(e.target.value)}
+                >
+                  <option value="">{t("visualQuery.chooseOption")}</option>
+                  {(featureLayersQuery.data ?? []).map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
               {featureLayersQuery.data?.length === 0 && (
-                <span className="text-xs text-ink-2">{t("newItem.noHarvestedLayers")}</span>
+                <span id={arcgisHintId} className="text-xs text-ink-2">
+                  {t("newItem.noHarvestedLayers")}
+                </span>
               )}
-            </label>
+            </div>
           )}
           <label className="flex flex-col gap-1 text-sm text-ink">
             {t("visualQuery.titleLabel")}
-            <Input
-              aria-label={t("visualQuery.titleLabel")}
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-            />
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} />
           </label>
           {kind === "site" && (
-            <label className="flex flex-col gap-1 text-sm text-ink">
-              {t("newItem.slugLabel")}
-              <Input
-                aria-label={t("newItem.slugLabel")}
-                value={slug}
-                onChange={(e) => {
-                  setSlug(e.target.value);
-                  setSlugTouched(true);
-                }}
-              />
+            <div className="flex flex-col gap-1 text-sm text-ink">
+              <label className="flex flex-col gap-1">
+                {t("newItem.slugLabel")}
+                <Input
+                  aria-describedby={slugErrorId}
+                  value={slug}
+                  onChange={(e) => {
+                    setSlug(e.target.value);
+                    setSlugTouched(true);
+                  }}
+                />
+              </label>
               {slug && !isValidSlug(slug) && (
-                <span className="text-xs text-danger">{t("newItem.invalidSlugMessage")}</span>
+                <span id={slugErrorId} className="text-xs text-danger">
+                  {t("newItem.invalidSlugMessage")}
+                </span>
               )}
-            </label>
+            </div>
           )}
           {(create.isError || createMap.isError || createDataset.isError) &&
             (() => {

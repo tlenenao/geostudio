@@ -60,7 +60,6 @@ export function registerTimePlayerWidget(): void {
             {t(f.label)}
             <input
               type="date"
-              aria-label={t(f.label)}
               className="h-9 rounded-md border border-rule px-2"
               value={String(props[f.key] ?? "")}
               onChange={(e) => onChange({ ...props, [f.key]: e.target.value || undefined })}
@@ -72,7 +71,6 @@ export function registerTimePlayerWidget(): void {
             {t(f.label)}
             <input
               type="number"
-              aria-label={t(f.label)}
               min={f.min}
               max={f.max}
               step={1}

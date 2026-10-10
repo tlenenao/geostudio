@@ -28,9 +28,8 @@ export function registerModalWidget(): void {
       return (
         <div className="flex flex-col gap-2 text-sm">
           <label className="flex flex-col gap-1">
-            {t("widgetModal.titleConfig")}
+            {t("widgetModal.titleAria")}
             <input
-              aria-label={t("widgetModal.titleAria")}
               className={inputCls}
               value={title}
               onChange={(e) => onChange({ title: e.target.value, items, wide })}
@@ -39,7 +38,6 @@ export function registerModalWidget(): void {
           <label className="flex items-center gap-2 text-xs">
             <input
               type="checkbox"
-              aria-label={t("widgetModal.wideToggle")}
               checked={Boolean(wide)}
               onChange={(e) => onChange({ title, items, wide: e.target.checked })}
             />

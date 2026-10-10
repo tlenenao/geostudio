@@ -958,3 +958,34 @@ def test_cel_generation_is_allowlisted_but_not_a_write_tool():
 
     assert "generate_cel_expression" in ALLOWED_MCP_TOOL_NAMES
     assert "generate_cel_expression" not in COPILOT_WRITE_TOOL_NAMES
+
+
+@pytest.mark.parametrize(
+    "surface,context",
+    [
+        ("computed_column", "computedColumn"),
+        ("action_condition", "actionCondition"),
+        ("binding", "binding"),
+    ],
+)
+def test_cel_surfaces_point_to_cel_generation_with_context(client, monkeypatch, surface, context):
+    captured = {}
+
+    class _CapturingProvider:
+        async def chat(self, messages, tools):
+            captured["system"] = messages[0]["content"]
+            return LLMTurn(text="ok")
+
+    monkeypatch.setattr("app.copilot.routes.get_llm_provider", lambda: _CapturingProvider())
+    body = {
+        "itemId": "1",
+        "message": "x",
+        "history": [],
+        "mcpToken": "anything",
+        "currentConfig": {"availableFields": []},
+        "clientTools": [],
+        "surface": surface,
+    }
+    assert client.post("/v1/copilot/turn", json=body).status_code == 200
+    assert f'context="{context}"' in captured["system"]
+    assert client.post("/v1/copilot/turn", json={**body, "surface": "nope"}).status_code == 422

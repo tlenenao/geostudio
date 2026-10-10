@@ -1,5 +1,6 @@
 import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
+import { etlEnabled } from "../_fixtures/env";
 import { openAs, spaGoto } from "./helpers";
 
 // Expérience utilisateur quand la capacité ETL est coupée (etlEnabled=false, stack d'audit).
@@ -7,6 +8,12 @@ import { openAs, spaGoto } from "./helpers";
 // destination après la reconnexion OIDC (défaut j02-004).
 
 test.describe("j06 ETL désactivé — shell (créateur)", () => {
+  test.beforeAll(async () => {
+    test.skip(
+      await etlEnabled(),
+      "stack avec CORE_ETL_ENABLED=true : parcours « ETL éteint » sans objet",
+    );
+  });
   test.beforeEach(async ({ page }) => {
     await openAs(page, "creator");
   });
@@ -47,7 +54,7 @@ test.describe("j06 ETL désactivé — shell (créateur)", () => {
   test("requête visuelle : formulaire affiché mais « Créer » reste désactivé", async ({ page }) => {
     await spaGoto(page, "/datasets/visual-query/new");
     await expect(page.getByRole("heading", { name: "Nouvelle requête visuelle" })).toBeVisible();
-    await page.getByLabel("Titre").fill("aud-j06 requête");
+    await page.getByLabel("Titre", { exact: true }).fill("aud-j06 requête");
     await expect(page.getByRole("button", { name: "Créer" })).toBeDisabled();
     await expect(page.getByText("Fonction indisponible sur cette instance")).toBeVisible();
   });

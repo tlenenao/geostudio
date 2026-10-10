@@ -2,6 +2,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { loginOidc, SHELL_URL } from "../_fixtures/env";
 import { installVitals, netLog, readVitals } from "../t03/helpers";
+import { psql } from "../j02/helpers";
 import {
   apiFor,
   token,
@@ -145,6 +146,8 @@ test.describe("t03b bundle et écrans pipeline / admin (navigation SPA, cache ch
     page,
   }) => {
     const s = await getBigSeed(10_000);
+    // le seed INSERT ... generate_series contourne l'ingestion : feature_count reste à 0, donc rien à signaler
+    psql(`UPDATE collections SET feature_count = 10000 WHERE id='${s.collectionId}'`);
     await loginOidc(page, "creator");
     await page.waitForTimeout(1500);
     await softNav(page, `/public/datasets/${s.collectionId}`);
@@ -152,6 +155,8 @@ test.describe("t03b bundle et écrans pipeline / admin (navigation SPA, cache ch
       .getByRole("link", { name: /geojson/i })
       .first()
       .waitFor({ state: "visible", timeout: 20_000 });
-    await expect(page.getByText(/1000 premières entités sur 10000/)).toBeVisible();
+    await expect(
+      page.getByText(/1[\s\u202f\u00a0]?000 premières entités sur 10[\s\u202f\u00a0]?000/),
+    ).toBeVisible();
   });
 });

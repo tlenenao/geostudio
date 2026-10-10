@@ -67,8 +67,8 @@ test("add a 3D tileset + terrain, set the camera, save, and reload — everythin
   await page.getByLabel("URL de tuiles terrain").fill("https://example.test/dem/{z}/{x}/{y}.png");
 
   // Set the camera.
-  await page.getByLabel("Inclinaison de la caméra").fill("45");
-  await page.getByLabel("Orientation de la caméra").fill("90");
+  await page.getByLabel(/Inclinaison/).fill("45");
+  await page.getByLabel(/Orientation \(bearing\)/).fill("90");
 
   await page.getByRole("button", { name: "Enregistrer" }).click();
   await expect(page.getByText(/échec de l'enregistrement/i)).toHaveCount(0);
@@ -80,6 +80,17 @@ test("add a 3D tileset + terrain, set the camera, save, and reload — everythin
   await expect(page.getByLabel("URL de tuiles terrain")).toHaveValue(
     "https://example.test/dem/{z}/{x}/{y}.png",
   );
-  await expect(page.getByLabel("Inclinaison de la caméra")).toHaveValue("45");
-  await expect(page.getByLabel("Orientation de la caméra")).toHaveValue("90");
+  await expect(page.getByLabel(/Inclinaison/)).toHaveValue("45");
+  await expect(page.getByLabel(/Orientation \(bearing\)/)).toHaveValue("90");
+});
+
+test("REV-207 : l'onglet actif de l'éditeur de carte survit à un rechargement (390 px)", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockCore(page);
+  await page.goto("/maps/map-1?tab=layers");
+  await expect(page.getByRole("tab", { name: "Couches", selected: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("tab", { name: "Couches", selected: true })).toBeVisible();
 });

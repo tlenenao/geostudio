@@ -57,6 +57,7 @@ def freeze_config(
                     bbox=None,
                     geom_intersects=None,
                     filters=None,
+                    count_mode="none",
                 )
                 records.extend(page.features)
                 if len(page.features) < page_size:

@@ -7,6 +7,7 @@ import tempfile
 import pytest
 
 from scripts.feature_health.debt import (
+    BACKLOG_DOC,
     GAPS_DOC,
     DebtItem,
     collect_debt_facts,
@@ -38,10 +39,21 @@ def _feature(**overrides) -> Feature:
 
 
 def test_open_gaps_excludes_closed_ones():
-    identifiers = {item.identifier for item in open_gaps(REPO)}
-    assert "GAP-08" in identifiers  # « Géocodage BAN non traité »
-    assert "GAP-05" not in identifiers  # fermé par SP-55
-    assert "GAP-44" not in identifiers  # fermé par SP-53
+    """Synthétique : le document réel évolue à chaque clôture de SP, un test
+    ancré sur un identifiant réel casse à chaque fois (CI rouge 2026-10-07)."""
+    with tempfile.TemporaryDirectory() as raw_repo:
+        repo = pathlib.Path(raw_repo)
+        doc = repo / GAPS_DOC
+        doc.parent.mkdir(parents=True, exist_ok=True)
+        doc.write_text(
+            "### ✅ Fermé (1)\n\n| GAP-05 | fermé |\n\n"
+            "### 🟡 Partiel (1)\n\n| GAP-29 | partiel |\n\n"
+            "### 🔴 Ouvert / non implémenté (1)\n\n| GAP-03 | ouvert |\n\n"
+            "## Suite\n",
+            encoding="utf-8",
+        )
+        identifiers = {item.identifier for item in open_gaps(repo)}
+    assert identifiers == {"GAP-29", "GAP-03"}
 
 
 def test_open_gaps_expands_a_range_row():
@@ -85,35 +97,32 @@ def test_open_gaps_ignores_prose_mentions_outside_the_status_table():
     assert identifiers.isdisjoint({"GAP-03", "GAP-39", "GAP-46", "GAP-47", "GAP-67"})
 
 
+def _backlog_repo(raw_repo: str) -> pathlib.Path:
+    repo = pathlib.Path(raw_repo)
+    doc = repo / BACKLOG_DOC
+    doc.parent.mkdir(parents=True, exist_ok=True)
+    doc.write_text(
+        "### REV-001 — minor — coût 1\n\n- **État :** **fermé par SP-43**\n"
+        "- **Preuve :** `core/app/closed.py:1`\n\n"
+        "### REV-002 — minor — coût 1\n\n- **État :** partiellement fermé\n"
+        "- **Preuve :** `core/app/mcp/tools.py:10`\n",
+        encoding="utf-8",
+    )
+    return repo
+
+
 def test_open_revs_reads_the_etat_line():
-    """REV-001 (jadis l'exemple ouvert de ce test) est **fermé par SP-43**
-    depuis (`- **État :** **fermé par SP-43** — …`) — vérifié dans
-    `docs/revue/2026-09-04-backlog.md`, confirmé aussi par le sommaire
-    `### 🔴 Ouvert (28)` du même document, qui ne le liste plus. REV-003
-    (jadis le témoin « important » de ce test — iframe Keycloak
-    `forceIframeAuth`) est à son tour **fermé** depuis le 2026-09-06
-    (commit `6101e9eb`, vérification bout-en-bout réelle) : plus aucune
-    entrée `important` ne reste ouverte dans ce document au 2026-09-12
-    (revérifié champ État par champ, pas par confiance dans le sommaire).
-    REV-008 (`READ_ONLY_TOOLS` sans test runtime pour `create_pipeline`)
-    reste réellement `- **État :** partiellement fermé` — pris comme
-    témoin à sa place."""
-    items = {item.identifier: item for item in open_revs(REPO)}
-    assert "REV-001" not in items
-    assert "REV-008" in items
-    assert items["REV-008"].severity == "minor"
-    assert "REV-165" not in items or items["REV-165"].severity in {
-        "critical",
-        "important",
-        "minor",
-        "observation",
-        "inconnu",
-    }
+    """Synthétique (cf. `test_open_gaps_excludes_closed_ones`)."""
+    with tempfile.TemporaryDirectory() as raw_repo:
+        items = {item.identifier: item for item in open_revs(_backlog_repo(raw_repo))}
+    assert set(items) == {"REV-002"}
+    assert items["REV-002"].severity == "minor"
 
 
 def test_open_revs_carries_the_proof_paths():
-    items = {item.identifier: item for item in open_revs(REPO)}
-    assert "core/app/mcp/tools.py" in items["REV-008"].paths
+    with tempfile.TemporaryDirectory() as raw_repo:
+        items = {item.identifier: item for item in open_revs(_backlog_repo(raw_repo))}
+    assert items["REV-002"].paths == ("core/app/mcp/tools.py",)
 
 
 def test_open_revs_includes_rev_164_despite_alternate_etat_bold_wrapping():
@@ -121,7 +130,16 @@ def test_open_revs_includes_rev_164_despite_alternate_etat_bold_wrapping():
     le `**` en fin d'état, pas juste après les deux-points comme la forme
     habituelle `- **État :** …` — REV-164 doit rester comptée comme ouverte
     (son propre corps dit « Reste ouvert » sur le volet OIDC)."""
-    identifiers = {item.identifier for item in open_revs(REPO)}
+    with tempfile.TemporaryDirectory() as raw_repo:
+        repo = pathlib.Path(raw_repo)
+        doc = repo / BACKLOG_DOC
+        doc.parent.mkdir(parents=True, exist_ok=True)
+        doc.write_text(
+            "### REV-164 — minor — coût 1\n\n"
+            "- **État : partiellement fermé par SP-59** (2026-09-06) — reste OIDC\n",
+            encoding="utf-8",
+        )
+        identifiers = {item.identifier for item in open_revs(repo)}
     assert "REV-164" in identifiers
 
 

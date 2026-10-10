@@ -1556,6 +1556,42 @@ def test_blob_deadline(conn, tmp_path, monkeypatch):
         _run_capped(conn, tmp_path, {"a.csv": 2})
 
 
+def test_materialize_blob_connector_refuses_recursive_glob(
+    monkeypatch, conn, session, tenant, user
+):
+    _blob_s3_secret(session, tenant, user, bucketUrl="s3://bucket/prefix/")
+    captured: dict = {}
+    _patch_blob_internals(monkeypatch, captured)
+    params = ReaderConnectorBlobParams(
+        secretName="s3-scoped", path="s3://bucket/prefix/**/*.csv", format="csv"
+    )
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="joker récursif"):
+        connector_runtime.materialize_blob_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
+            node_id="bg",
+            params=params,
+            view_name="node_bg",
+        )
+    assert "bucket_url" not in captured
+
+
+def test_blob_gzip_decompressed_bytes_are_capped(conn, tmp_path, monkeypatch):
+    import gzip
+
+    from dlt.sources.filesystem import filesystem
+
+    # ~400 Ko décompressés pour ~1 Ko compressé : la taille annoncée passe sous
+    # le plafond, les octets décompressés non.
+    (tmp_path / "a.csv.gz").write_bytes(gzip.compress(b"x\n" + b"0\n" * 200_000))
+    monkeypatch.setenv("CORE_PIPELINES_BLOB_MAX_BYTES", "50000")
+    files = filesystem(bucket_url=str(tmp_path), file_glob="*.csv.gz")
+    resource = connector_runtime._blob_resource(files, connector_runtime.read_csv())
+    resource.apply_hints(table_name="records", write_disposition="replace")
+    with pytest.raises(Exception, match="octets décompressés"):
+        connector_runtime._run_dlt_and_attach(conn, resource, node_id="gz", view_name="node_gz")
+
+
 def test_blob_under_caps_loads_all_rows(conn, tmp_path):
     _run_capped(conn, tmp_path, {"a.csv": 4, "b.csv": 3})
     assert conn.execute("SELECT count(*) FROM node_cap").fetchone()[0] == 7
@@ -1681,3 +1717,204 @@ def test_stream_sql_passes_hostaddr_pin_to_the_driver(monkeypatch):
         list(connector_runtime._stream_sql("postgresql://u:p@db.example.com/d", "SELECT 1"))
     assert seen["connect_args"]["hostaddr"] == "93.184.216.34"
     assert "connect_timeout" in seen["connect_args"]  # les délais P16.03 sont conservés
+
+
+def test_stream_sql_connects_to_the_pinned_ip_for_mssql(monkeypatch):
+    monkeypatch.setattr(connector_runtime, "assert_dsn_egress_allowed", lambda dsn: None)
+    monkeypatch.setattr(
+        connector_runtime,
+        "pin_dsn_host",
+        lambda dsn: dsn.replace("db.example.com", "93.184.216.34"),
+    )
+    seen: dict = {}
+
+    class _Engine:
+        def connect(self):
+            raise RuntimeError("stop")  # on ne vérifie que le DSN
+
+        def dispose(self):
+            pass
+
+    def fake_create_engine(dsn, **kw):
+        seen["dsn"] = dsn
+        return _Engine()
+
+    monkeypatch.setattr(connector_runtime.sa, "create_engine", fake_create_engine)
+    with pytest.raises(RuntimeError, match="stop"):
+        list(connector_runtime._stream_sql("mssql+pymssql://u:p@db.example.com/app", "select 1"))
+    assert "93.184.216.34" in seen["dsn"] and "db.example.com" not in seen["dsn"]
+
+
+def test_capped_reader_close_closes_the_underlying_open_file():
+    import io
+
+    class _OF:  # imite fsspec.OpenFile : flux né à l'entrée, fermé via l'OpenFile
+        def __init__(self):
+            self.closed = False
+            self.fh = io.BytesIO(b"x")
+
+        def __enter__(self):
+            return self.fh
+
+        def close(self):
+            self.closed = True
+
+    of = _OF()
+    reader = connector_runtime._CappedReader(of, {"raw_bytes": 0}, 10)
+    with reader:
+        pass
+    assert of.closed
+
+
+def test_blob_gzip_jsonl_still_loads_rows_through_the_buffered_cap(conn, tmp_path):
+    import gzip
+    import json
+
+    from dlt.sources.filesystem import filesystem
+
+    raw = b"".join(json.dumps({"a": i}).encode() + b"\n" for i in range(5))
+    (tmp_path / "a.jsonl.gz").write_bytes(gzip.compress(raw))
+    files = filesystem(bucket_url=str(tmp_path), file_glob="*.jsonl.gz")
+    resource = connector_runtime._blob_resource(files, connector_runtime.read_jsonl())
+    resource.apply_hints(table_name="records", write_disposition="replace")
+    connector_runtime._run_dlt_and_attach(conn, resource, node_id="gz2", view_name="node_gz2")
+    assert conn.execute("SELECT count(*) FROM node_gz2").fetchone()[0] == 5
+
+
+# --- REV-110 : Databricks ---------------------------------------------------
+
+from app.pipelines.ops.schemas import ReaderConnectorDatabricksParams  # noqa: E402
+
+_DBX_DSN = "databricks://token:dapi1@adb-1.azuredatabricks.net?http_path=/sql/1.0/warehouses/a"
+
+
+def test_materialize_databricks_connector_rejects_non_select(conn, session, tenant):
+    params = ReaderConnectorDatabricksParams(secretName="x", query="DELETE FROM t")
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="query rejected"):
+        connector_runtime.materialize_databricks_connector(
+            conn,
+            secret_resolver=None,
+            node_id="dbx1",
+            params=params,
+            view_name="node_dbx1",
+        )
+
+
+def test_materialize_databricks_connector_wrong_secret_kind_raises(conn, session, tenant, user):
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="bearer-dbx",
+        kind="bearer_token",
+        payload={"kind": "bearer_token", "token": "tok"},
+    )
+    params = ReaderConnectorDatabricksParams(secretName="bearer-dbx", query="SELECT 1")
+    with pytest.raises(
+        connector_runtime.ConnectorRuntimeError, match="not usable by reader.connector.databricks"
+    ):
+        connector_runtime.materialize_databricks_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
+            node_id="dbx2",
+            params=params,
+            view_name="node_dbx2",
+        )
+
+
+def test_databricks_dialect_resolves_lazily_and_stream_applies_guard_and_timeout(monkeypatch):
+    # Le dialecte se résout par entry point, sans réseau avant .connect().
+    import sqlalchemy as sa
+
+    engine = sa.create_engine(_DBX_DSN)
+    assert engine.dialect.name == "databricks"
+    engine.dispose()
+    seen: dict = {"guarded": []}
+
+    def fake_create_engine(dsn, connect_args=None, **kw):
+        seen["connect_args"] = connect_args
+        raise RuntimeError("stop")
+
+    monkeypatch.setattr(connector_runtime.sa, "create_engine", fake_create_engine)
+    monkeypatch.setattr(
+        connector_runtime, "assert_dsn_egress_allowed", lambda d: seen["guarded"].append(d)
+    )
+    with pytest.raises(RuntimeError, match="stop"):
+        list(connector_runtime._stream_sql(_DBX_DSN, "SELECT 1"))
+    assert seen["guarded"] == [_DBX_DSN]  # hôte du workspace : garde d'egress appliquée
+    assert "_socket_timeout" in seen["connect_args"]
+
+
+# --- REV-110 : Redshift (délai d'attente) -----------------------------------
+
+_RS = "postgresql://u:p@c1.abc.eu-west-1.redshift.amazonaws.com:5439/dev"
+
+
+def test_timeout_args_drop_options_for_redshift_host_only():
+    pg = connector_runtime._timeout_connect_args("postgresql", "db.example.com")
+    assert "options" in pg  # PostgreSQL ordinaire : inchangé
+    for host in (
+        "c1.abc.eu-west-1.redshift.amazonaws.com",
+        "wg.123.eu-west-1.redshift-serverless.amazonaws.com",
+        "c1.abc.cn-north-1.redshift.amazonaws.com.cn",
+        "C1.ABC.EU-WEST-1.REDSHIFT.AMAZONAWS.COM",
+        "c1.abc.eu-west-1.redshift.amazonaws.com.",  # FQDN à point final
+    ):
+        rs = connector_runtime._timeout_connect_args("postgresql", host)
+        assert "options" not in rs and "connect_timeout" in rs
+
+
+def test_stream_sql_sets_statement_timeout_by_listener_on_redshift(monkeypatch):
+    seen: dict = {}
+
+    def fake_create_engine(dsn, connect_args=None, **kw):
+        seen["connect_args"] = connect_args
+        return "engine"
+
+    def fake_listen(engine, event, fn):
+        seen["listener"] = (event, fn)
+        raise RuntimeError("stop")
+
+    monkeypatch.setattr(connector_runtime.sa, "create_engine", fake_create_engine)
+    monkeypatch.setattr(connector_runtime.sa.event, "listen", fake_listen)
+    monkeypatch.setattr(connector_runtime, "assert_dsn_egress_allowed", lambda dsn: None)
+    monkeypatch.setattr(connector_runtime, "dsn_pin_connect_args", lambda dsn: {})
+    monkeypatch.setenv("CORE_PIPELINES_QUERY_TIMEOUT_S", "7")
+    with pytest.raises(RuntimeError, match="stop"):
+        list(connector_runtime._stream_sql(_RS, "SELECT 1"))
+    assert "options" not in seen["connect_args"]
+    event, fn = seen["listener"]
+    assert event == "connect"
+    executed: list[str] = []
+
+    class Cur:
+        def execute(self, sql):
+            executed.append(sql)
+
+        def close(self):
+            pass
+
+    class Dbapi:
+        def cursor(self):
+            return Cur()
+
+    fn(Dbapi(), None)
+    assert executed == ["SET statement_timeout TO 7000"]
+
+
+@pytest.mark.redshift_manual
+def test_redshift_real_cluster_round_trip():
+    # Manuel uniquement (aucun émulateur Redshift) : CORE_TEST_REDSHIFT_DSN.
+    dsn = os.environ.get("CORE_TEST_REDSHIFT_DSN")
+    if not dsn:
+        pytest.skip("CORE_TEST_REDSHIFT_DSN non défini — test Redshift manuel (REV-110)")
+    assert list(connector_runtime._stream_sql(dsn, "SELECT 1 AS x")) == [{"x": 1}]
+
+
+@pytest.mark.databricks_manual
+def test_databricks_real_warehouse_round_trip():
+    # Manuel uniquement (aucun émulateur Databricks) : CORE_TEST_DATABRICKS_DSN.
+    dsn = os.environ.get("CORE_TEST_DATABRICKS_DSN")
+    if not dsn:
+        pytest.skip("CORE_TEST_DATABRICKS_DSN non défini — test Databricks manuel (REV-110)")
+    assert list(connector_runtime._stream_sql(dsn, "SELECT 1 AS x")) == [{"x": 1}]

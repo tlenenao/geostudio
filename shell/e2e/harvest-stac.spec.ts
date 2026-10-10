@@ -130,3 +130,52 @@ test("un admin déclare une source STAC, la moissonne, et un re-moissonnage ne d
   // catalogue à une seule carte.
   await expect(page.getByText("Bâtiments (STAC distant)")).toHaveCount(1);
 });
+
+test("« Charger plus » étend la liste des enregistrements d'une source (REV-151)", async ({
+  page,
+}) => {
+  await mockCore(page);
+  await mockMe(page, ADMIN_ME);
+  await page.route("https://core.test/v1/harvest/sources", async (route) => {
+    await route.fulfill({
+      json: {
+        sources: [
+          {
+            id: "src-1",
+            type: "stac",
+            url: "https://stac.example.com/collections",
+            mode: "reference",
+            enabled: true,
+            intervalMinutes: null,
+            lastRunAt: null,
+            lastStatus: "ok",
+            lastError: null,
+            recordCount: 150,
+            staleCount: 0,
+          },
+        ],
+      },
+    });
+  });
+  await page.route("https://core.test/v1/harvest/sources/src-1/records*", async (route) => {
+    const limit = Number(new URL(route.request().url()).searchParams.get("limit"));
+    const records = Array.from({ length: Math.min(limit, 150) }, (_, i) => ({
+      id: `r${i}`,
+      externalId: `ext-${i}`,
+      itemId: null,
+      collectionId: null,
+      state: "ok",
+      harvestedAt: null,
+      externalUrl: null,
+    }));
+    await route.fulfill({ json: { total: 150, staleCount: 0, records } });
+  });
+
+  await page.goto("/admin/harvest");
+  await page.getByRole("button", { name: "Voir les enregistrements" }).click();
+  await expect(page.getByText("ext-99", { exact: true })).toBeVisible();
+  await expect(page.getByText("ext-149", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Charger plus" }).click();
+  await expect(page.getByText("ext-149", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Charger plus" })).toHaveCount(0);
+});

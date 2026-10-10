@@ -553,3 +553,20 @@ test("REV-265 : SQL restauré avant la liste des collections → schéma chargé
   releaseCollections();
   await waitFor(() => expect(fetchedSchemaIds.has("parcs")).toBe(true));
 });
+
+test("REV-216 : une entrée d'historique en erreur annonce « Statut : Échoué »", async () => {
+  localStorage.setItem(
+    "geostudio.sqlLab.history.anonymous",
+    JSON.stringify([
+      {
+        id: "h1",
+        sql: "select 2",
+        executedAt: "2026-09-26T00:00:00Z",
+        status: "error",
+        rowCount: 0,
+      },
+    ]),
+  );
+  render(<Harness />);
+  expect(await screen.findByText("Statut : Échoué")).toBeInTheDocument();
+});

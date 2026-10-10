@@ -67,7 +67,6 @@ export function CollectionSharePanel({
           <label className="flex items-center gap-2 text-sm text-ink">
             <input
               type="checkbox"
-              aria-label={t("collectionsAdmin.columnPublic")}
               checked={isPublic}
               onChange={(e) => setIsPublic(e.target.checked)}
             />
@@ -78,6 +77,7 @@ export function CollectionSharePanel({
             {groupsQuery.data.map((g) => (
               <div key={g.id} className="flex items-center justify-between gap-2 text-sm text-ink">
                 <label className="flex items-center gap-2">
+                  {/* eslint-disable-next-line geostudio/label-no-aria-label -- le nom accessible contient le texte visible et ajoute le contexte dynamique (champ/ligne) */}
                   <input
                     type="checkbox"
                     aria-label={t("sharePanel.groupAria", { group: g.title })}
@@ -93,7 +93,7 @@ export function CollectionSharePanel({
                 </label>
                 <select
                   aria-label={t("sharePanel.roleAria", { group: g.title })}
-                  className="h-8 rounded-md border border-control bg-surface px-2 text-sm text-ink"
+                  className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink"
                   disabled={!roles[g.id]}
                   value={roles[g.id] ?? "viewer"}
                   onChange={(e) => setRoles((r) => ({ ...r, [g.id]: e.target.value as ShareRole }))}

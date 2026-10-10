@@ -105,7 +105,7 @@ test.describe("t01b tileset 3D (tileset3d allumé)", () => {
       mimeType: "application/zip",
       buffer: Buffer.from("PK\u0005\u0006" + "\u0000".repeat(18)),
     });
-    await page.getByLabel("Titre").fill("t01b-tileset");
+    await page.getByLabel("Titre", { exact: true }).fill("t01b-tileset");
     await page.getByRole("button", { name: /^Envoyer$|^Importer$|^Créer$/ }).click();
   }
 

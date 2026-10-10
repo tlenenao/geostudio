@@ -57,7 +57,9 @@ export async function openRuntime(page: Page, path: string, persona: PersonaName
 }
 
 export const widgetBtn = (page: Page) =>
-  page.getByRole("button", { name: /^Sélectionner widget-/ });
+  page.getByRole("button", {
+    name: /^Sélectionner (Texte|Table|Bouton|Filtre|Formulaire|Carte|Section riche)/,
+  });
 
 import { test as baseTest } from "@playwright/test";
 // Tests qui révèlent un bug : `test.fixme` par défaut ; J04_VERIFY=1 les exécute pour rejouer la preuve.

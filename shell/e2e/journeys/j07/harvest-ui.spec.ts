@@ -73,12 +73,12 @@ test.describe("j07 moissonnage — écran d'administration", () => {
     await createSource(admin, { type: "stac", url });
     await openHarvest(page);
     await row(page, url).getByRole("button", { name: "Supprimer" }).click();
-    const dialog = page.getByRole("dialog");
+    const dialog = page.getByRole("alertdialog");
     await expect(dialog).toContainText(url);
     await dialog.getByRole("button", { name: "Annuler" }).click();
     await expect(row(page, url)).toBeVisible();
     await row(page, url).getByRole("button", { name: "Supprimer" }).click();
-    await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Supprimer" }).click();
     await expect(row(page, url)).toHaveCount(0);
   });
 

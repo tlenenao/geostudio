@@ -20,7 +20,7 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 
 // `timeoutMs` : surcharge ponctuelle pour les appels réputés longs côté
 // cœur (ex. copilotTurn, domains/apps.ts) — tous les autres gardent 15s.
-async function fetchWithTimeout(
+export async function fetchWithTimeout(
   input: string,
   init: RequestInit = {},
   timeoutMs = DEFAULT_TIMEOUT_MS,
@@ -54,7 +54,7 @@ function toCoreHref(coreUrl: string, url: string): string | null {
 // en DOMException AbortError HORS du try/catch de fetchWithTimeout. On le
 // convertit en CoreUnreachableError (sinon ConnectivityBanner ne réagit pas) ;
 // toute autre erreur (JSON invalide…) est relancée telle quelle.
-async function readBody<T>(read: () => Promise<T>): Promise<T> {
+export async function readBody<T>(read: () => Promise<T>): Promise<T> {
   try {
     return await read();
   } catch (err) {
@@ -280,6 +280,12 @@ export const GEOMETRY_KINDS: Record<string, "point" | "line" | "polygon"> = {
   MultiPolygon: "polygon",
 };
 
+// Fichier à enregistrer : Blob (réponse synchrone) ou URL présignée (export
+// asynchrone, téléchargé par navigation — cf. saveExportedFile).
+export type ExportedFile =
+  | { blob: Blob; filename: string; url?: undefined }
+  | { url: string; filename: string; blob?: undefined };
+
 export async function requestBlob(
   coreUrl: string,
   getToken: () => string | undefined,
@@ -288,24 +294,46 @@ export async function requestBlob(
   body?: unknown,
   getShareLinkToken?: () => string | undefined,
   renewToken?: () => Promise<string | undefined>,
-): Promise<{ blob: Blob; filename: string }> {
+  signal?: AbortSignal,
+): Promise<ExportedFile> {
   const token = getToken();
   const shareToken = getShareLinkToken?.();
-  const send = (tok: string | undefined) => {
+  const send = (tok: string | undefined, m = method, p = path, b = body) => {
     const headers: Record<string, string> = {};
     if (tok) headers.Authorization = `Bearer ${tok}`;
     else if (shareToken) headers["X-Share-Link-Token"] = shareToken;
-    if (body !== undefined) headers["Content-Type"] = "application/json";
-    return fetchWithTimeout(`${coreUrl}${path}`, {
-      method,
+    if (b !== undefined) headers["Content-Type"] = "application/json";
+    return fetchWithTimeout(`${coreUrl}${p}`, {
+      method: m,
       headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: b !== undefined ? JSON.stringify(b) : undefined,
     });
   };
   let res = await send(token);
+  let activeToken = token;
   if (res.status === 401 && token && renewToken) {
     const fresh = await renewToken();
-    if (fresh) res = await send(fresh);
+    if (fresh) {
+      activeToken = fresh;
+      res = await send(fresh);
+    }
+  }
+  if (res.status === 202) {
+    // Le sondage dure jusqu'à 15 min : jeton relu à chaque tour, renouvelé sur 401.
+    const poll = async (p: string) => {
+      let r = await send(getToken() ?? activeToken, "GET", p);
+      if (r.status === 401 && renewToken) {
+        const fresh = await renewToken();
+        if (fresh) {
+          activeToken = fresh;
+          r = await send(fresh, "GET", p);
+        }
+      }
+      return r;
+    };
+    // Chunk lazy : le sondage n'alourdit pas la charge initiale.
+    const { pollExportJob } = await import("./exportJob");
+    return pollExportJob(res, path, poll, signal);
   }
   if (!res.ok) throw await parseErrorResponse(res);
   const disposition = res.headers.get("Content-Disposition") ?? "";

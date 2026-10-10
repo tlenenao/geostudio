@@ -27,7 +27,7 @@ while [ $# -gt 0 ]; do case "$1" in
 esac; done
 
 PARALLEL="j01 j02 j03 j04 j05 j05b j06 j06b j07 j10 j10b j12 t01 t01b t04"
-SERIAL="j08 j08b j09 j09b j11 j13 t02 t03 t03b"
+SERIAL="j08 j08b j09 j09b j09c j11 j13 t02 t03 t03b"
 OUT=".audit-results/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$OUT"; OUT="$(cd "$OUT" && pwd)"
 

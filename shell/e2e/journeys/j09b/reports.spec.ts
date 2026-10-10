@@ -65,7 +65,7 @@ test.beforeAll(async () => {
   startHarness();
   const s = await getAlertSeed();
   tag = s.tag;
-  creator = s.creator;
+  creator = await apiFor("creator"); // jeton frais : le seed attend le CDC, l ancien peut avoir expiré
   reader = await apiFor("reader");
   admin = await apiFor("admin");
   creatorId = (await creator.get("/v1/me")).body.id;
@@ -87,15 +87,13 @@ test.beforeAll(async () => {
   });
   bookmarkId = bm.body.itemId;
   smtpName = `${tag}-rep-smtp`;
-  const sm = await admin.send("POST", "/v1/secrets", {
+  // Coffre à propriétaire (P16.08) : le secret doit appartenir au propriétaire du rapport (le Créateur).
+  const sm = await creator.send("POST", "/v1/secrets", {
     name: smtpName,
     payload: {
       kind: "smtp",
       host: RECV,
-      // Règle 3c9f5f0d : useTls=false refusé hors localhost. On cible donc le port STARTTLS (2526) ;
-      // MAIS le certificat du récepteur (recv.py) est auto-signé, non vérifiable par le cœur
-      // (add915de) : la livraison échouera tant que recv.py n'a pas un cert signé par une CA de confiance.
-      // À corriger côté récepteur, jamais en affaiblissant le cœur.
+      // Port STARTTLS : certificat de recv.py approuvé par le harnais (cf. trustReceiverCert).
       port: 2526,
       username: "alerts",
       password: "s3cret-pw",
@@ -210,7 +208,7 @@ test.describe("balayage réel du worker", () => {
   let repA: string;
   let repB: string;
 
-  test("le balayage */5 du worker prend en compte les rapports planifiés : un run est écrit pour chacun, échec audité et notifié", async () => {
+  test("le balayage */5 du worker prend en compte les rapports planifiés : un run est écrit pour le rapport dû et notifié", async () => {
     repA = await mkReport(`${tag}-rep-A`, {
       refreshPolicy: { enabled: true, cron: "*/5 * * * *" },
       channels: [{ kind: "webhook", url: `${HOOK}/hook` }],
@@ -218,22 +216,30 @@ test.describe("balayage réel du worker", () => {
     repB = await mkReport(`${tag}-rep-B`, {
       refreshPolicy: { enabled: true, cron: "0 3 1 1 *" },
     });
-    for (const id of [repA, repB]) {
-      await expect
-        .poll(() => Number(q(`SELECT count(*) FROM report_runs WHERE report_item_id='${id}'`)), {
-          timeout: 420_000,
-          intervals: [10_000],
-        })
-        .toBeGreaterThanOrEqual(1);
-    }
-    const runs = await creator.get(`/v1/reports/${repA}/runs`);
-    expect(runs.body).toHaveLength(1);
-    expect(runs.body[0].notifiedAt).toBeTruthy();
+    // repB (cron annuel) n'est plus dû au premier balayage (j09b-013 corrigé) : seul repA court.
+    await expect
+      .poll(() => Number(q(`SELECT count(*) FROM report_runs WHERE report_item_id='${repA}'`)), {
+        timeout: 420_000,
+        intervals: [10_000],
+      })
+      .toBeGreaterThanOrEqual(1);
+    // Le worker dispose maintenant de CORE_EXPORT_ENABLED (j09b-001) : chaque run porte une tâche d'export
+    // et finit notifié ; seul le résultat du rendu (réussite/échec) dépend de l'export-worker.
+    await expect
+      .poll(
+        () =>
+          Number(
+            q(
+              `SELECT count(*) FROM report_runs WHERE report_item_id='${repA}' AND notified_at IS NOT NULL`,
+            ),
+          ),
+        { timeout: 420_000, intervals: [10_000] },
+      )
+      .toBeGreaterThanOrEqual(1);
+    creator = await apiFor("creator"); // le jeton du setup a expiré pendant l'attente
     const notifs = await creator.get("/v1/notifications?page=1&pageSize=100");
     expect(
-      (notifs.body.notifications as any[]).some(
-        (n) => n.itemId === repA && n.kind === "report" && n.status === "failure",
-      ),
+      (notifs.body.notifications as any[]).some((n) => n.itemId === repA && n.kind === "report"),
     ).toBe(true);
   });
 
@@ -251,12 +257,9 @@ test.describe("balayage réel du worker", () => {
 
   // Finding j09b-013 : comme pour les pipelines (j06b-013), un rapport sans run antérieur est
   // dû au premier balayage quel que soit son cron (« 0 3 1 1 * » = 1er janvier, 3 h).
-  bug(
-    "j09b-013 : un rapport au cron « 0 3 1 1 * » n'est pas déclenché au premier balayage",
-    async () => {
-      expect(Number(q(`SELECT count(*) FROM report_runs WHERE report_item_id='${repB}'`))).toBe(0);
-    },
-  );
+  test("j09b-013 : un rapport au cron « 0 3 1 1 * » n'est pas déclenché au premier balayage", async () => {
+    expect(Number(q(`SELECT count(*) FROM report_runs WHERE report_item_id='${repB}'`))).toBe(0);
+  });
 });
 
 test("chaîne complète hors balayage du worker (déclenchement exécuté avec l'env du cœur) : run + export_jobs + tâche de rendu, puis notification du résultat réel", async () => {
@@ -265,6 +268,8 @@ test("chaîne complète hors balayage du worker (déclenchement exécuté avec l
     refreshPolicy: { enabled: true, cron: "*/5 * * * *" },
     channels: [{ kind: "webhook", url: `${HOOK}/hook` }],
   });
+  // la cadence se mesure depuis la création (j09b-013) : antidater pour que le rapport soit dû
+  q(`UPDATE items SET created_at = now() - interval '1 hour' WHERE id='${repD}'`);
   execFileSync("docker", ["exec", "-i", RECV, "python", "-"], {
     encoding: "utf8",
     input: [

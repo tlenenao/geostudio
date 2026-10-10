@@ -30,9 +30,12 @@ import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { useIsExportRender } from "../shell/useIsExportRender";
 import { markExportReady } from "../shell/exportReady";
 import { useDirtyGuard } from "../lib/useDirtyGuard";
+import { useUrlSyncedState } from "../lib/useUrlSyncedState";
 import { t } from "../i18n";
 import { LoadingState } from "../ui/kit/LoadingState";
 import { QueryErrorState } from "../ui/kit/QueryErrorState";
+
+const MAP_TABS = ["layers", "map", "settings"];
 
 export function MapEditorPage({ pk }: { pk: string }) {
   const client = useItemClient();
@@ -63,6 +66,10 @@ export function MapEditorPage({ pk }: { pk: string }) {
   // sale immédiatement après l'avoir marqué propre si on passait par
   // `updateDraft` ici.
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  // REV-207 : onglet actif du triptyque restauré depuis l'URL. Valeur inconnue
+  // → onglet « map » par défaut.
+  const [tabParam, setTabParam] = useUrlSyncedState<string>("tab", null);
+  const activeTab = tabParam !== null && MAP_TABS.includes(tabParam) ? tabParam : "map";
   const updateDraft: typeof setDraft = (next) => {
     setHasUnsavedChanges(true);
     setDraft(next);
@@ -215,7 +222,8 @@ export function MapEditorPage({ pk }: { pk: string }) {
     <div className="-m-6 flex flex-1 flex-col overflow-hidden">
       <h1 className="sr-only">{t("docTitle.map")}</h1>
       <TriptychLayout
-        defaultTabId="map"
+        activeTabId={activeTab}
+        onActiveTabChange={setTabParam}
         browse={{
           id: "layers",
           label: t("mapEditor.layersLabel"),

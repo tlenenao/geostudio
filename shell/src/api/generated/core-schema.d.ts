@@ -228,6 +228,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/collections/{collection_id}/export/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Collection Export Job */
+        get: operations["get_collection_export_job_v1_collections__collection_id__export_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/collections/{collection_id}/items": {
         parameters: {
             query?: never;
@@ -1916,6 +1933,8 @@ export interface components {
             asOf?: string | null;
             /** Categorykey */
             categoryKey: string | string[];
+            /** Lagbytes */
+            lagBytes?: number | null;
             /**
              * Pending
              * @default false
@@ -2273,6 +2292,19 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /** CollectionExportJobStatus */
+        CollectionExportJobStatus: {
+            /** Error */
+            error?: string | null;
+            /** Filename */
+            filename?: string | null;
+            /** Id */
+            id: string;
+            /** Resulturl */
+            resultUrl?: string | null;
+            /** Status */
+            status: string;
+        };
         /** CollectionPatch */
         CollectionPatch: {
             /** Attachmentfields */
@@ -2319,6 +2351,11 @@ export interface components {
             kind: string;
             /** Version */
             version: number;
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: string[];
         };
         /** ConnectorSecretOut */
         ConnectorSecretOut: {
@@ -2367,6 +2404,27 @@ export interface components {
             service: string;
             /** Type */
             type: string;
+        };
+        /**
+         * DatabricksDsnPayload
+         * @description DSN SQLAlchemy vers un entrepôt Databricks SQL (REV-110), forme
+         *     `databricks://token:<jeton>@<hôte>?http_path=<chemin>&catalog=..&schema=..`
+         *     — vérifiée contre `databricks/sqlalchemy/base.py::create_connect_args`
+         *     (databricks-sqlalchemy 2.0.10 installé : hôte = `server_hostname`, mot de
+         *     passe = jeton d'accès, `http_path` lu dans la requête). `http_path` est
+         *     obligatoire (le pilote échouerait sinon à la connexion) : refusé ici. L'hôte
+         *     est un vrai nom DNS : garde d'egress SSRF appliquée comme pour Postgres.
+         *     Comme les autres DSN, `query` n'est validée SELECT-only qu'avec le dialecte
+         *     DuckDB (heuristique, cf. ReaderConnectorDatabricksParams).
+         */
+        DatabricksDsnPayload: {
+            /** Dsn */
+            dsn: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "databricks_dsn";
         };
         /** DatasetColumnMeta */
         DatasetColumnMeta: {
@@ -2879,6 +2937,8 @@ export interface components {
                     [key: string]: unknown;
                 };
             } | null;
+            /** Ordinal */
+            ordinal?: number | null;
             /** Props */
             props?: {
                 [key: string]: unknown;
@@ -3586,12 +3646,12 @@ export interface components {
             /** Name */
             name: string;
             /** Payload */
-            payload: components["schemas"]["ApiKeyPayload"] | components["schemas"]["BearerTokenPayload"] | components["schemas"]["BasicAuthPayload"] | components["schemas"]["OAuth2ClientCredentialsPayload"] | components["schemas"]["PostgresDsnPayload"] | components["schemas"]["SmtpCredentialsPayload"] | components["schemas"]["SnowflakeDsnPayload"] | components["schemas"]["BigQueryDsnPayload"] | components["schemas"]["MssqlDsnPayload"] | components["schemas"]["OracleDsnPayload"] | components["schemas"]["S3CredentialsPayload"] | components["schemas"]["AzureBlobCredentialsPayload"] | components["schemas"]["GcsCredentialsPayload"];
+            payload: components["schemas"]["ApiKeyPayload"] | components["schemas"]["BearerTokenPayload"] | components["schemas"]["BasicAuthPayload"] | components["schemas"]["OAuth2ClientCredentialsPayload"] | components["schemas"]["PostgresDsnPayload"] | components["schemas"]["SmtpCredentialsPayload"] | components["schemas"]["SnowflakeDsnPayload"] | components["schemas"]["BigQueryDsnPayload"] | components["schemas"]["MssqlDsnPayload"] | components["schemas"]["OracleDsnPayload"] | components["schemas"]["DatabricksDsnPayload"] | components["schemas"]["S3CredentialsPayload"] | components["schemas"]["AzureBlobCredentialsPayload"] | components["schemas"]["GcsCredentialsPayload"];
         };
         /** SecretUpdate */
         SecretUpdate: {
             /** Payload */
-            payload: components["schemas"]["ApiKeyPayload"] | components["schemas"]["BearerTokenPayload"] | components["schemas"]["BasicAuthPayload"] | components["schemas"]["OAuth2ClientCredentialsPayload"] | components["schemas"]["PostgresDsnPayload"] | components["schemas"]["SmtpCredentialsPayload"] | components["schemas"]["SnowflakeDsnPayload"] | components["schemas"]["BigQueryDsnPayload"] | components["schemas"]["MssqlDsnPayload"] | components["schemas"]["OracleDsnPayload"] | components["schemas"]["S3CredentialsPayload"] | components["schemas"]["AzureBlobCredentialsPayload"] | components["schemas"]["GcsCredentialsPayload"];
+            payload: components["schemas"]["ApiKeyPayload"] | components["schemas"]["BearerTokenPayload"] | components["schemas"]["BasicAuthPayload"] | components["schemas"]["OAuth2ClientCredentialsPayload"] | components["schemas"]["PostgresDsnPayload"] | components["schemas"]["SmtpCredentialsPayload"] | components["schemas"]["SnowflakeDsnPayload"] | components["schemas"]["BigQueryDsnPayload"] | components["schemas"]["MssqlDsnPayload"] | components["schemas"]["OracleDsnPayload"] | components["schemas"]["DatabricksDsnPayload"] | components["schemas"]["S3CredentialsPayload"] | components["schemas"]["AzureBlobCredentialsPayload"] | components["schemas"]["GcsCredentialsPayload"];
         };
         /** ShareLinkCreated */
         ShareLinkCreated: {
@@ -4342,6 +4402,47 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
+            /** @description Export asynchrone : {jobId}, suivre via export/jobs/{jobId} */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_collection_export_job_v1_collections__collection_id__export_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                collection_id: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionExportJobStatus"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -4358,6 +4459,7 @@ export interface operations {
             query?: {
                 limit?: number;
                 offset?: number;
+                cursor?: string | null;
                 bbox?: string | null;
                 geom_intersects?: string | null;
             };

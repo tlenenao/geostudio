@@ -28,18 +28,16 @@ export function registerDrawerWidget(): void {
       return (
         <div className="flex flex-col gap-2 text-sm">
           <label className="flex flex-col gap-1">
-            {t("widgetDrawer.titleConfig")}
+            {t("widgetDrawer.titleAria")}
             <input
-              aria-label={t("widgetDrawer.titleAria")}
               className={inputCls}
               value={title}
               onChange={(e) => onChange({ title: e.target.value, items, side })}
             />
           </label>
           <label className="flex flex-col gap-1">
-            {t("widgetDrawer.sideConfig")}
+            {t("widgetDrawer.sideAria")}
             <select
-              aria-label={t("widgetDrawer.sideAria")}
               className={inputCls}
               value={side}
               onChange={(e) => onChange({ title, items, side: e.target.value as "left" | "right" })}

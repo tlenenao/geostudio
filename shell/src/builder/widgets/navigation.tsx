@@ -19,9 +19,8 @@ export function registerNavigationWidget(): void {
     PropsPanel: ({ props, onChange }) => (
       <div className="flex flex-col gap-2 text-sm">
         <label className="flex flex-col gap-1">
-          {t("widgetNavigation.orientationText")}
+          {t("widgetNavigation.orientationLabel")}
           <select
-            aria-label={t("widgetNavigation.orientationLabel")}
             className="h-9 rounded-md border border-rule px-2"
             value={String(props.direction ?? "horizontal")}
             onChange={(e) => onChange({ ...props, direction: e.target.value })}

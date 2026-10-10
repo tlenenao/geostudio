@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **39 new pipeline operations**; the exposed catalogue is now 57 operations
-  (59 in the raw registry, which also holds `reader.file` and `writer.file`,
+- **40 new pipeline operations**; the exposed catalogue is now 58 operations
+  (60 in the raw registry, which also holds `reader.file` and `writer.file`,
   hidden unless `CORE_PIPELINE_FILE_IO_ENABLED=true`), all executed in DuckDB
   or in-process with Shapely (BSD-3-Clause):
   - 15 geometry/coordinate/SRID transformers: `swapCoordinates`,
@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `mergeChildren`, `mapSchema`;
   - 4 readers: `reader.connector.bigquery`, `reader.connector.mssql`,
     `reader.connector.oracle`, `reader.connector.blob`;
+  - `reader.connector.databricks` (Databricks SQL warehouse, secret
+    `databricks_dsn`, `databricks-sqlalchemy` Apache-2.0; REV-110) ;
   - 9 replacements for the removed QGIS engine (see *Removed* below):
     `centroid`, `convexHull`, `simplify`, `boundingGeometry`, `snapToLayer`,
     `resolveOverlaps`, `triangulate`, `densify`, `minimumBoundingCircle`.
@@ -57,7 +59,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and answer 304. Instance status: `CORE_STALLED_JOB_MINUTES` (default 60) and
   a distinct "not configured" CDC state. Backup: `BACKUP_ALERT_WEBHOOK_URL`
   (webhook when a backup day is abandoned).
+- Migration `0049` (index `group_members(user_id)`, `CREATE INDEX CONCURRENTLY
+  IF NOT EXISTS`, reversible): a sequential scan found by the real-stack replay.
+  Migration `0048` creates `collection_export_jobs`; the worker command must
+  listen on the `dataexport` queue (`-q ...,harvest,dataexport`, already in the
+  bundled compose files).
+- `scripts/replay/run.sh`: orchestrator replaying the user journeys, the OIDC
+  suites, the index-plan and memory probes and the restore-with-OIDC
+  reconnection on a real stack (runbook
+  `docs/runbooks/2026-10-04-rejeu-stack-reelle.md`, report
+  `docs/revue/2026-10-04-rapport-rejeu-stack-reelle.md`).
 - `actionlint` pre-commit hook (workflows fixed accordingly).
+- **Dense vector tiles aggregated at low zoom** (REV-283a): at zoom <=
+  `CORE_TILE_AGG_MAX_ZOOM` (default 7, `0` disables, invalid value falls back to
+  7 with a warning), a tile with more than 5000 features is served as grid cells
+  carrying `point_count` (cell centre, `X-Tile-Aggregated: true`). A bounded
+  probe decides first, so a dense tile is read once. The aggregation reads every
+  row of the tile envelope: it has its own 3 s statement timeout and answers
+  `503` + `Retry-After` when exceeded.
+- **Keyset pagination on `GET /collections/{id}/items`** (REV-279a): `cursor`
+  query parameter (opaque, in the `next` link; an invalid one answers 400
+  `invalid_cursor`); the total is capped, `numberMatched` is omitted and
+  `numberMatchedLowerBound: true` is set when it was not counted exactly.
+  Offset pagination is still accepted. The data export no longer runs a
+  `count(*)` per page.
+- **Lake snapshot** (REV-280a): hourly current-state GeoParquet snapshot of the
+  CDC lake read by aggregates, DuckDB materialisation and the SQL sandbox
+  (`CORE_LAKE_SNAPSHOT_ENABLED`, default `false`; `CORE_LAKE_SNAPSHOT_MIN_DELTA_FILES`
+  default 20; `CORE_LAKE_SNAPSHOT_KEEP` default 2; worker only). Tombstones are
+  kept; an unreadable snapshot falls back to the raw partitions.
+- **Monthly CDC compaction sweep** (REV-280e): `CORE_CDC_COMPACTION_MONTHLY`
+  (default `false`, worker) compacts every partition, not only the recent days.
+  It never deletes data.
+- **`lagBytes` on `POST /collections/{id}/aggregate`** (REV-280f): replication
+  lag of the CDC slot in bytes, an instance-wide figure. It is only returned to
+  authenticated callers holding `settings.instance.manage`; anonymous and
+  share-link callers never see it (`null`).
+- **Asynchronous collection export** (REV-283e): migration `0048` creates
+  `collection_export_jobs`. New variable `CORE_EXPORT_RUNNING_TIMEOUT_MINUTES`
+  (default 60, worker): an export left `running` longer is marked failed.
+  Finished exports are purged by the hygiene sweep. Details in *Changed* below.
+- **Second geocoding provider and MCP tool** (REV-102): `CORE_GEOCODING_PROVIDER`
+  (`ban` default, or `nominatim`), MCP tool `geocode` (same bounds and guards as
+  the REST route) and an `addressSearch` widget in the app builder. The
+  static and standalone app exports refuse that widget (no core geocoding there).
+- **CEL generator extended** (REV-183): the "Generate" assistant now also
+  covers table calculated columns and action conditions (`record.*` root
+  allowed for a condition); raw CEL strings and bare roots are validated.
+- **ADR 0012, connector positioning** (REV-123): documents the choice of
+  Databricks/Redshift support, the manual Databricks test and the CloudFetch
+  limits.
+
+- `reader.connector.postgres` against Amazon Redshift (REV-110): when the DSN
+  host matches `*.redshift.amazonaws.com`, `*.redshift-serverless.amazonaws.com`
+  (or the `.cn` variant), the PostgreSQL startup option `-c statement_timeout`
+  (assumed rejected by Redshift) is no longer sent; the timeout is applied with
+  `SET statement_timeout TO <ms>` on connect instead. **Not verified against a
+  real Redshift cluster** (none available): covered by unit tests only; run
+  `pytest -m redshift_manual` with `CORE_TEST_REDSHIFT_DSN` set to check it by hand.
+  Custom aliases/CNAMEs of a cluster are not detected (only the AWS host suffix is).
 
 ### Removed
 
@@ -110,6 +170,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`CORE_EXPORT_ITEMS_MAX` no longer caps `GET /collections/{id}/export/items`**
+  (REV-283e): above `CORE_EXPORT_SYNC_MAX` (default 100000, exact total) the
+  route answers `202 {jobId}` and a worker produces the file (queue
+  `dataexport`, presigned link valid 24 h, status at
+  `GET /collections/{id}/export/jobs/{jobId}`); `CORE_EXPORT_JOB_MAX` (default
+  200000, lowered from 500000 after a real 500k-entity run peaked at 73% of the
+  worker memory limit, REV-324) caps that job (413 beyond).
+  `CORE_EXPORT_ITEMS_MAX` is still read by the ArcGIS FS harvest connector.
 - **`geostudio-minio`'s image source changed from a pulled third-party image
   to a from-source AGPL rebuild**: `quay.io/minio/minio` and `minio/minio`
   (Docker Hub) are both locked out of anonymous pull on every tag (401/pull
@@ -213,14 +281,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wiring, `Message` targets) are now refused with a 422; the shell purges
   orphan references on save. Existing inconsistent apps written through the
   API/MCP will be refused until repaired.
-- Shell initial-bundle threshold raised to 733 KB.
+- **Writes of an app config with a widget of unknown type are refused with a
+  422** (native types are listed in `core/app/configs/builtin_widget_types.json`,
+  checked against the shell registry by a parity test; an enabled extension of
+  the tenant is accepted). Existing apps keep loading (the read answers 200 with
+  `warnings`) but cannot be saved again until the unknown widget is removed or
+  its extension registered. CEL expressions of a config are now parsed by a real
+  parser (`cel-python`, syntax only): an invalid expression is refused on write.
+- **Optimistic concurrency**: the visual-query wizard and the alert editor send
+  `If-Match` and show the 412 conflict message.
+- **Job state guards**: `mark_running` is conditional on import, data export,
+  app export and harvest jobs, and a stale harvest source is resumed by
+  compare-and-swap; a redelivered finished job has no effect. The orphan-object
+  sweep now also covers the `uploads` and `attachments` buckets and refuses to
+  delete in bulk when the reference list is empty or out of sync. JSON Lines
+  upload inspection reads a bounded range instead of the whole object.
+- **Shell**: two-pane triptych between 640 and 899 px; map editor tab in the URL
+  (`?tab=`); form error summary with focus on the first invalid field; shared
+  job-status vocabulary on export, pipeline canvas and SQL Lab; "Load more" on
+  harvest records (capped at the core maximum, 1000); dates displayed in
+  Europe/Paris; widgets carry a stored `ordinal` (additive, no migration) so
+  accessible names such as "Table 2" stay stable; text controls default to
+  `h-9` (guard test `hGuard.test.ts`). Dev tooling: ESLint rules
+  `geostudio/panel-trigger-aria` and `geostudio/label-no-aria-label` replace
+  `check-aria-panel-coverage.mjs`/`lint:aria-panel`, and
+  `check-raw-colors.mjs` scans `map/`.
+- `feature_health_cli.py --check-snapshot` applies the health floors to the
+  committed snapshot (no local coverage artefact needed).
+
+- Shell initial-bundle threshold raised to 735 KB (address search, export job polling).
 
 ### Security
 
 - Egress (pipelines, alerts, harvest, search, copilot, Postgres DSN, S3
   endpoint): connections are pinned to the IP address validated by the SSRF
-  guard (no DNS rebinding between check and connect). MSSQL/Oracle DSNs are
-  not pinned yet.
+  guard (no DNS rebinding between check and connect). MSSQL and Oracle DSNs
+  are pinned too, and `host`/`hostaddr`/proxy options in a DSN query string are
+  refused; an Oracle `tcps` DSN is not pinned (the certificate DN is verified
+  instead). The `fec0::/10` site-local range is refused by the six egress
+  guards.
 - The shell's `authFetch` only sends the token to the core's origin and throws
   on any other URL; a relative `VITE_CORE_URL` (`/api`) is resolved against the
   page origin.
@@ -228,6 +327,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `share-link` group, 60/min).
 - Deleting a referenced secret answers 409 listing only the objects the
   caller can read.
+
+- `X-Forwarded-For` is only honoured from trusted proxies
+  (`CORE_TRUSTED_PROXIES`, default loopback + RFC 1918 ranges, i.e. the Docker
+  network of Traefik; set explicitly if the core is reachable by other means:
+  rate-limit keys are the client IP). IPv6 ULA (`fc00::/7`) is not in the
+  default.
+- `script-src` allows the origin of each **enabled** extension of the
+  `extensions` table (a disabled one no longer widens it); ADR 0013.
+- Blob connector: the recursive glob `**` is refused and decompressed gzip bytes
+  are capped.
 
 - `admin.collections.manage` now opens read access to a collection's items,
   aggregates, exports, tiles and attachments (REV-185); re-applying the DDL no

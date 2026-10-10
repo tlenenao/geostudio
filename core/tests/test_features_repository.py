@@ -9,7 +9,9 @@ from app.collections.extent import table_extent
 from app.collections.introspection_pg import introspect_table
 from app.features.repository import (
     FilterError,
+    decode_cursor,
     delete_feature,
+    encode_cursor,
     get_feature,
     insert_feature,
     replace_feature,
@@ -423,3 +425,117 @@ def test_impossible_day_bound_is_a_filter_error_not_a_db_error(
     with pg_session_factory() as session, rls_scope(session, "default"):
         with pytest.raises(FilterError):
             select_features(session, info, limit=10, offset=0, filters={"at__lte": "2026-13-45"})
+
+
+def test_keyset_pages_cover_all_rows_without_overlap(info, pg_session_factory):
+    seen: list = []
+    cursor = None
+    with pg_session_factory() as s, rls_scope(s, "default"):
+        while True:
+            page = select_features(s, info, limit=1, offset=0, after=cursor, count_mode="capped")
+            seen += [f["id"] for f in page.features]
+            cursor = page.next_cursor
+            if cursor is None:
+                break
+    assert len(seen) == len(set(seen)) and len(seen) >= 2
+
+
+def test_cursor_roundtrip_and_invalid():
+    assert decode_cursor(encode_cursor(42)) == 42
+    with pytest.raises(ValueError):
+        decode_cursor("pas-un-curseur")
+
+
+def test_cursor_with_offset_rejected(info, pg_session_factory):
+    with pg_session_factory() as s, rls_scope(s, "default"):
+        with pytest.raises(ValueError):
+            select_features(s, info, limit=1, offset=1, after=encode_cursor(1))
+
+
+def test_capped_count_reports_lower_bound(info, pg_session_factory, monkeypatch):
+    import app.features.repository as repo
+
+    monkeypatch.setattr(repo, "EXACT_COUNT_CAP", 1)
+    with pg_session_factory() as s, rls_scope(s, "default"):
+        page = repo.select_features(s, info, limit=1, offset=0, count_mode="capped")
+    assert page.number_matched == 1 and page.number_matched_lower_bound is True
+
+
+def test_encode_cursor_supports_uuid_decimal_date_pks():
+    import uuid
+    from decimal import Decimal
+
+    u = uuid.uuid4()
+    assert decode_cursor(encode_cursor(u)) == str(u)
+    assert decode_cursor(encode_cursor(Decimal("1.5"))) == "1.5"
+    assert decode_cursor(encode_cursor(date(2026, 1, 2))) == "2026-01-02"
+
+
+@pytest.fixture()
+def info_uuid(pg_engine, pg_session_factory):
+    with pg_engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS t_feat_uuid"))
+        conn.execute(
+            text(
+                "CREATE TABLE t_feat_uuid (id uuid PRIMARY KEY, titre text NOT NULL, "
+                "tenant_id text NOT NULL DEFAULT 'default')"
+            )
+        )
+        conn.execute(text("ALTER TABLE t_feat_uuid ENABLE ROW LEVEL SECURITY"))
+        conn.execute(
+            text(
+                "CREATE POLICY tenant_isolation ON t_feat_uuid "
+                "USING (tenant_id = current_setting('app.tenant_id'))"
+            )
+        )
+        conn.execute(text("GRANT SELECT ON t_feat_uuid TO gis_rls"))
+        conn.execute(
+            text(
+                "INSERT INTO t_feat_uuid (id, titre) VALUES "
+                "('00000000-0000-0000-0000-000000000001', 'x'), "
+                "('00000000-0000-0000-0000-000000000002', 'x'), "
+                "('00000000-0000-0000-0000-000000000003', 'y')"
+            )
+        )
+    with pg_session_factory() as session:
+        yield introspect_table(session, "t_feat_uuid")
+    with pg_engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS t_feat_uuid"))
+
+
+def test_keyset_on_uuid_pk_with_filter(info_uuid, pg_session_factory):
+    seen: list = []
+    cursor = None
+    with pg_session_factory() as s, rls_scope(s, "default"):
+        while True:
+            page = select_features(
+                s, info_uuid, limit=1, offset=0, after=cursor, filters={"titre": "x"}
+            )
+            seen += [str(f["id"]) for f in page.features]
+            cursor = page.next_cursor
+            if cursor is None:
+                break
+    assert seen == [
+        "00000000-0000-0000-0000-000000000001",
+        "00000000-0000-0000-0000-000000000002",
+    ]
+
+
+def test_cursor_invalid_for_pk_type_is_cursor_error_and_session_stays_usable(
+    info, info_uuid, pg_session_factory
+):
+    from app.features.repository import CursorError
+
+    with pg_session_factory() as s, rls_scope(s, "default"):
+        with pytest.raises(CursorError):
+            select_features(s, info_uuid, limit=1, offset=0, after=encode_cursor("pas-un-uuid"))
+        with pytest.raises(CursorError):
+            select_features(s, info, limit=1, offset=0, after=encode_cursor("abc"))
+        # transaction/RLS toujours sains
+        assert select_features(s, info, limit=1, offset=0).number_returned == 1
+
+
+def test_count_mode_none_skips_the_count(info, pg_session_factory):
+    with pg_session_factory() as s, rls_scope(s, "default"):
+        page = select_features(s, info, limit=1, offset=0, count_mode="none")
+    assert page.next_cursor is not None and page.number_matched is None

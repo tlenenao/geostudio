@@ -5,8 +5,12 @@ import {
   useAlertRulesForDataset,
   useCreateAlertRule,
   useEvaluateAlertRule,
+  useSaveAlertRule,
 } from "../api/hooks";
-import type { AlertChannel, AlertRuleSummary } from "../api/types";
+import { useItemClient } from "../api/ItemClientProvider";
+import { isConflictError } from "../api/ApiError";
+import { SaveConflictNotice } from "./SaveConflictNotice";
+import type { AlertChannel, AlertRulePayload, AlertRuleSummary } from "../api/types";
 import { apiErrorMessage } from "../api/apiErrorMessage";
 import { t, type MessageKey } from "../i18n";
 import { PipelineScheduleEditor } from "./pipeline/PipelineScheduleEditor";
@@ -15,6 +19,7 @@ import type { PipelineRefreshPolicy } from "../api/types";
 import { Button } from "../ui/kit/Button";
 import { ANALYTICS_AGGREGATES, aggregateNeedsP, DEFAULT_PERCENTILE } from "./aggregates";
 import { PercentileInput } from "./PercentileInput";
+import { formatDateTime } from "../lib/format";
 
 // GET /alerts/{id}/evaluations pagine déjà côté cœur (limit/offset, SP-50)
 // mais cette ligne tronquait silencieusement l'historique à la limite par
@@ -23,7 +28,13 @@ import { PercentileInput } from "./PercentileInput";
 // d'offset).
 const EVALUATIONS_PAGE_SIZE = 100;
 
-function AlertRuleRow({ rule }: { rule: AlertRuleSummary }) {
+function AlertRuleRow({
+  rule,
+  onEdit,
+}: {
+  rule: AlertRuleSummary;
+  onEdit: (rule: AlertRuleSummary) => void;
+}) {
   const [limit, setLimit] = useState(EVALUATIONS_PAGE_SIZE);
   const evaluationsQuery = useAlertEvaluations(rule.itemId, { limit });
   const evaluateNow = useEvaluateAlertRule();
@@ -41,6 +52,9 @@ function AlertRuleRow({ rule }: { rule: AlertRuleSummary }) {
                 )
               : "—"}
           </span>
+          <Button type="button" variant="outline" size="sm" onClick={() => onEdit(rule)}>
+            {t("alertRule.editButton")}
+          </Button>
           <Button
             type="button"
             variant="outline"
@@ -55,7 +69,7 @@ function AlertRuleRow({ rule }: { rule: AlertRuleSummary }) {
       {latest && (
         <p className="text-ink-2">
           {latest.value !== null && `${t("alertRule.value", { value: latest.value })} · `}
-          {new Date(latest.createdAt).toLocaleString()}
+          {formatDateTime(latest.createdAt)}
         </p>
       )}
       {latest?.error && (
@@ -111,31 +125,92 @@ export function AlertRuleEditor({
   const [refreshPolicy, setRefreshPolicy] = useState<PipelineRefreshPolicy | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
 
+  const client = useItemClient();
+  const saveRule = useSaveAlertRule();
+  // REV-271 : règle en cours de modification (payload complet relu, version lue).
+  const [editing, setEditing] = useState<{ itemId: string; payload: AlertRulePayload } | null>(
+    null,
+  );
+  const [conflict, setConflict] = useState(false);
+
+  function resetForm() {
+    setName("");
+    setExpr("");
+    setChannel({ kind: "webhook", url: "" });
+    setAgg("count");
+    setField("");
+    setP(DEFAULT_PERCENTILE);
+    setRefreshPolicy(null);
+    setEditing(null);
+    setConflict(false);
+  }
+
+  async function loadForEdit(itemId: string, title: string) {
+    setCreateError(null);
+    try {
+      const payload = await client.getAlertRuleConfig(itemId);
+      setName(title);
+      setExpr(payload.condition.expr);
+      setChannel(payload.channels[0] ?? { kind: "webhook", url: "" });
+      setAgg(String(payload.query.agg ?? "count"));
+      setField(typeof payload.query.field === "string" ? payload.query.field : "");
+      setP(typeof payload.query.p === "number" ? payload.query.p : DEFAULT_PERCENTILE);
+      setRefreshPolicy(payload.refreshPolicy);
+      setEditing({ itemId, payload });
+      setConflict(false);
+    } catch {
+      setCreateError(t("alertRule.loadError"));
+    }
+  }
+
+  function buildQuery(): Record<string, unknown> {
+    const query: Record<string, unknown> = { agg };
+    if (agg !== "count" && field) query.field = field;
+    if (aggregateNeedsP(agg)) query.p = p;
+    return query;
+  }
+
+  async function handleUpdate() {
+    if (editing === null) return;
+    setCreateError(null);
+    try {
+      await saveRule.mutateAsync({
+        itemId: editing.itemId,
+        datasetItemId,
+        payload: {
+          ...editing.payload, // conserve messageTemplate, canaux au-delà du premier, baseVersion
+          query: buildQuery(),
+          condition: { expr },
+          refreshPolicy: refreshPolicy ?? editing.payload.refreshPolicy,
+          channels: [channel, ...editing.payload.channels.slice(1)],
+        },
+      });
+      resetForm();
+    } catch (e) {
+      if (isConflictError(e)) {
+        setConflict(true);
+        return;
+      }
+      setCreateError(t("alertRule.saveError"));
+    }
+  }
+
   async function handleCreate() {
     setCreateError(null);
     try {
-      const query: Record<string, unknown> = { agg };
-      if (agg !== "count" && field) query.field = field;
-      if (aggregateNeedsP(agg)) query.p = p;
       await createRule.mutateAsync({
         title: name,
         owner,
         alert: {
           datasetItemId,
-          query,
+          query: buildQuery(),
           condition: { expr },
           refreshPolicy: refreshPolicy ?? { enabled: true, cron: "*/15 * * * *" },
           channels: [channel],
           messageTemplate: "Alert {ruleName}: value={value} ({state})",
         },
       });
-      setName("");
-      setExpr("");
-      setChannel({ kind: "webhook", url: "" });
-      setAgg("count");
-      setField("");
-      setP(DEFAULT_PERCENTILE);
-      setRefreshPolicy(null);
+      resetForm();
     } catch {
       setCreateError(t("alertRule.createError"));
     }
@@ -150,22 +225,25 @@ export function AlertRuleEditor({
         </p>
       )}
       {(rulesQuery.data ?? []).map((rule) => (
-        <AlertRuleRow key={rule.itemId} rule={rule} />
+        <AlertRuleRow
+          key={rule.itemId}
+          rule={rule}
+          onEdit={(r) => void loadForEdit(r.itemId, r.title)}
+        />
       ))}
       <div className="flex flex-col gap-2 border-t border-rule pt-2 text-xs">
         <label className="flex flex-col gap-1">
           {t("alertRule.nameLabel")}
           <input
-            aria-label={t("alertRule.nameLabel")}
             className="h-9 rounded border border-control bg-surface px-2 text-ink"
             value={name}
+            disabled={editing !== null}
             onChange={(e) => setName(e.target.value)}
           />
         </label>
         <label className="flex flex-col gap-1">
           {t("alertRule.conditionLabel")}
           <input
-            aria-label={t("alertRule.conditionLabel")}
             className="h-9 rounded border border-control bg-surface px-2 font-mono text-ink"
             placeholder="value > 100"
             value={expr}
@@ -175,7 +253,6 @@ export function AlertRuleEditor({
         <label className="flex flex-col gap-1">
           {t("alertRule.channelLabel")}
           <select
-            aria-label={t("alertRule.channelLabel")}
             className="h-9 rounded border border-control bg-surface px-2 text-ink"
             value={channel.kind}
             onChange={(e) =>
@@ -195,7 +272,6 @@ export function AlertRuleEditor({
             <label className="flex flex-col gap-1">
               {t("alertRule.webhookUrlLabel")}
               <input
-                aria-label={t("alertRule.webhookUrlLabel")}
                 className="h-9 rounded border border-control bg-surface px-2 text-ink"
                 value={channel.url}
                 onChange={(e) => setChannel({ ...channel, url: e.target.value })}
@@ -218,7 +294,6 @@ export function AlertRuleEditor({
             <label className="flex flex-col gap-1">
               {t("alertRule.recipientLabel")}
               <input
-                aria-label={t("alertRule.recipientLabel")}
                 className="h-9 rounded border border-control bg-surface px-2 text-ink"
                 value={channel.to}
                 onChange={(e) =>
@@ -241,7 +316,6 @@ export function AlertRuleEditor({
         <label className="flex flex-col gap-1">
           {t("alertRule.aggregateLabel")}
           <select
-            aria-label={t("alertRule.aggregateLabel")}
             className="h-9 rounded border border-control bg-surface px-2 text-ink"
             value={agg}
             onChange={(e) => setAgg(e.target.value)}
@@ -257,7 +331,6 @@ export function AlertRuleEditor({
           <label className="flex flex-col gap-1">
             {t("alertRule.fieldLabel")}
             <input
-              aria-label={t("alertRule.fieldLabel")}
               className="h-9 rounded border border-control bg-surface px-2 text-ink"
               value={field}
               onChange={(e) => setField(e.target.value)}
@@ -273,16 +346,26 @@ export function AlertRuleEditor({
           />
         )}
         <PipelineScheduleEditor value={refreshPolicy} onChange={setRefreshPolicy} />
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="self-start"
-          onClick={() => void handleCreate()}
-          disabled={createRule.isPending}
-        >
-          {t("alertRule.createButton")}
-        </Button>
+        {conflict && (
+          <SaveConflictNotice onReload={() => editing && void loadForEdit(editing.itemId, name)} />
+        )}
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="self-start"
+            onClick={() => void (editing ? handleUpdate() : handleCreate())}
+            disabled={createRule.isPending || saveRule.isPending}
+          >
+            {editing ? t("alertRule.updateButton") : t("alertRule.createButton")}
+          </Button>
+          {editing && (
+            <Button type="button" variant="outline" size="sm" onClick={resetForm}>
+              {t("alertRule.cancelEditButton")}
+            </Button>
+          )}
+        </div>
         {createError && (
           <p role="alert" className="text-danger">
             {createError}

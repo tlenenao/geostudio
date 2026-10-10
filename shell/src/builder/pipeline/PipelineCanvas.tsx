@@ -32,12 +32,15 @@ import type {
 import { genEdgeId, hasIncomingEdge, topologicalOrder, wouldCreateCycle } from "./graphOps";
 import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
 import { plural, t } from "../../i18n";
+import { jobStatusLabel } from "../../lib/jobStatusLabel";
 
 // SP-B12c : pas de token catégoriel à 3 valeurs dans tokens.css — ok/warn/
 // accent réutilisés ici pour leur distinction visuelle (vert/ambre/teal),
 // pas pour leur sens sémantique de statut.
+// `!` : React Flow pose `.react-flow__node.selectable:focus-visible { outline: none }` (plus
+// spécifique, chargé après) — sans lui l'anneau n'apparaît jamais (t01b-002, vu au rejeu réel).
 const FOCUS_RING =
-  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
+  "focus-visible:outline-2! focus-visible:outline-offset-2! focus-visible:outline-accent!";
 
 const KIND_COLOR: Record<PipelineNode["kind"], string> = {
   reader: "border-ok bg-ok-soft",
@@ -497,6 +500,18 @@ function PipelineCanvasInner({
 
   return (
     <div className="h-full" role="presentation" onKeyDown={onCanvasKeyDown}>
+      {/* Région live permanente : une région insérée avec son contenu n'est pas annoncée de façon fiable. */}
+      <p
+        role="status"
+        aria-label={
+          runStatus
+            ? t("pipelineCanvas.runStatusAria", { status: jobStatusLabel(runStatus) })
+            : undefined
+        }
+        className="sr-only"
+      >
+        {runStatus ? jobStatusLabel(runStatus) : ""}
+      </p>
       <ReactFlow
         nodes={[
           ...nodes.map((n) =>

@@ -80,8 +80,11 @@ test.describe("j04 sources de données et widgets de données au runtime", () =>
       }),
     );
     await openBuilder(page, id);
-    await page.getByRole("button", { name: "Sélectionner widget-tbl" }).click();
-    await page.getByRole("button", { name: `Retirer ${s.colId}` }).click();
+    await page.getByRole("button", { name: "Sélectionner Table" }).click();
+    await page
+      .locator('button[aria-label^="Retirer"]:not([disabled]):not([aria-label^="Retirer la page"])')
+      .first()
+      .click();
     await page.waitForTimeout(800);
     // Attendu : la propriété du widget est remise à « Aucune » ou un avertissement apparaît.
     const hasWarning = (await page.getByRole("alert").count()) > 0;
@@ -106,7 +109,7 @@ test.describe("j04 sources de données et widgets de données au runtime", () =>
     );
     await openRuntime(page, `/apps/${id}`);
     await expect(page.getByText("Beta")).toBeVisible();
-    await page.getByLabel("Valeur du filtre").fill("Alpha");
+    await page.getByLabel("Filtrer", { exact: true }).fill("Alpha");
     await page.waitForTimeout(2000);
     await expect(page.getByText("Beta")).toHaveCount(0);
     await expect(page.getByText("Alpha")).toBeVisible();
@@ -126,7 +129,7 @@ test.describe("j04 sources de données et widgets de données au runtime", () =>
       }),
     );
     await openRuntime(page, `/apps/${id}`);
-    await page.getByLabel("Valeur du filtre").fill("ZZZ-inexistant");
+    await page.getByLabel("Filtrer", { exact: true }).fill("ZZZ-inexistant");
     await page.waitForTimeout(2000);
     await expect(page.getByText(/Aucune donnée|Aucun/i).first()).toBeVisible();
   });

@@ -76,6 +76,7 @@ app = procrastinate.App(
         "app.alerts.jobs",
         "app.export.jobs",
         "app.appexport.jobs",
+        "app.dataexport.jobs",
         "app.reports.jobs",
         "app.tileset3d.jobs",
         "app.terrain3d.jobs",

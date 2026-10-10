@@ -22,7 +22,6 @@ export function registerRichSectionWidget(): void {
         <label className="flex flex-col gap-1">
           {t("widgetRichSection.markdownConfig")}
           <textarea
-            aria-label={t("widgetRichSection.markdownConfig")}
             className="rounded-md border border-rule p-2 font-mono text-xs"
             rows={8}
             value={String(props.markdown ?? "")}

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { useNarrowViewport } from "./useNarrowViewport";
+import { useViewportMode } from "./useNarrowViewport";
 
 export type TriptychTab = { id: string; label: string; content: ReactNode };
 
@@ -9,27 +9,79 @@ export function TriptychLayout({
   work,
   inspect,
   defaultTabId,
+  activeTabId,
+  onActiveTabChange,
 }: {
   browse: TriptychTab;
   work: TriptychTab;
   inspect: TriptychTab;
   defaultTabId?: string;
+  /** Mode contrôlé facultatif (REV-207) : l'appelant porte l'onglet actif (ex. dans l'URL). */
+  activeTabId?: string;
+  onActiveTabChange?: (id: string) => void;
 }) {
-  const narrow = useNarrowViewport();
+  const mode = useViewportMode();
   const tabs = [browse, work, inspect];
-  const [activeId, setActiveId] = useState(defaultTabId ?? work.id);
+  const [innerId, setInnerId] = useState(defaultTabId ?? work.id);
+  const activeId = activeTabId ?? innerId;
+  const setActiveId = (id: string) => {
+    setInnerId(id);
+    onActiveTabChange?.(id);
+  };
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
-  if (!narrow) {
+  if (mode === "wide") {
     return (
       // grid-rows-[minmax(0,1fr)] (P31.03) : sans piste bornée, la ligne
       // implicite (auto) grandit avec la colonne la plus haute et les
       // `overflow-y-auto` des colonnes ne défilent jamais — la page entière
-      // dépasse alors la fenêtre.
-      <div className="grid flex-1 grid-cols-[minmax(220px,280px)_minmax(360px,1fr)_minmax(260px,320px)] grid-rows-[minmax(0,1fr)] overflow-hidden">
+      // dépasse alors la fenêtre. `relative` : un `.sr-only` (absolute) garde sa position
+      // statique sous le contenu long et, sans bloc positionné, échappe au clip (j12-003).
+      <div className="relative grid flex-1 grid-cols-[minmax(220px,280px)_minmax(360px,1fr)_minmax(260px,320px)] grid-rows-[minmax(0,1fr)] overflow-hidden">
         <div className="overflow-y-auto border-r border-rule">{browse.content}</div>
         <div className="overflow-hidden">{work.content}</div>
         <div className="overflow-y-auto border-l border-rule">{inspect.content}</div>
+      </div>
+    );
+  }
+
+  if (mode === "medium") {
+    // REV-286(a) : 2 volets. Le volet latéral alterne browse/inspect (onglets WAI-ARIA).
+    const side = [browse, inspect];
+    const sideActive = side.find((s) => s.id === activeId) ?? browse;
+    return (
+      <div className="relative grid flex-1 grid-cols-[minmax(360px,1fr)_minmax(240px,300px)] grid-rows-[minmax(0,1fr)] overflow-hidden">
+        <div className="overflow-hidden">{work.content}</div>
+        <div className="flex min-h-0 flex-col overflow-hidden border-l border-rule">
+          <div role="tablist" className="flex border-b border-rule">
+            {side.map((s, index) => (
+              <button
+                key={s.id}
+                ref={(el) => {
+                  tabRefs.current[index] = el;
+                }}
+                role="tab"
+                id={`triptych-tab-${s.id}`}
+                aria-controls="triptych-side-panel"
+                aria-selected={s.id === sideActive.id}
+                tabIndex={s.id === sideActive.id ? 0 : -1}
+                onKeyDown={(e) => onTabKeyDown(e, index, side)}
+                className="min-h-6 flex-1 px-3 py-2 text-sm pointer-coarse:min-h-11 text-ink-2 aria-selected:border-b-2 aria-selected:border-accent aria-selected:font-semibold aria-selected:text-ink"
+                onClick={() => setActiveId(s.id)}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+          <div
+            role="tabpanel"
+            id="triptych-side-panel"
+            aria-labelledby={`triptych-tab-${sideActive.id}`}
+            className="flex-1 overflow-y-auto"
+          >
+            {sideActive.content}
+          </div>
+        </div>
       </div>
     );
   }
@@ -38,13 +90,13 @@ export function TriptychLayout({
 
   // Patron WAI-ARIA tablist (P31.10) : flèches/Home/End déplacent la sélection
   // ET le focus ; tabindex itinérant (un seul onglet dans l'ordre de tabulation).
-  function onTabKeyDown(e: KeyboardEvent, index: number) {
-    const last = tabs.length - 1;
+  function onTabKeyDown(e: KeyboardEvent, index: number, list: TriptychTab[] = tabs) {
+    const last = list.length - 1;
     const next =
       e.key === "ArrowRight"
-        ? (index + 1) % tabs.length
+        ? (index + 1) % list.length
         : e.key === "ArrowLeft"
-          ? (index + last) % tabs.length
+          ? (index + last) % list.length
           : e.key === "Home"
             ? 0
             : e.key === "End"
@@ -52,7 +104,7 @@ export function TriptychLayout({
               : -1;
     if (next < 0) return;
     e.preventDefault();
-    setActiveId(tabs[next].id);
+    setActiveId(list[next].id);
     tabRefs.current[next]?.focus();
   }
   return (
@@ -102,7 +154,7 @@ export function TriptychLayout({
         role="tabpanel"
         id="triptych-panel"
         aria-labelledby={`triptych-tab-${active.id}`}
-        className="grid flex-1 grid-rows-[minmax(0,1fr)] overflow-y-auto"
+        className="relative grid flex-1 grid-rows-[minmax(0,1fr)] overflow-y-auto"
       >
         {active.content}
       </div>

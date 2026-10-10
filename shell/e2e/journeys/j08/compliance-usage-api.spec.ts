@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
-import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { stamp } from "../_fixtures/env";
 import { putUpload } from "../j03/api";
@@ -62,10 +61,13 @@ test.describe("j08 conformité — anonymisation", () => {
     ).toBe(403);
     const role = await admin.send("POST", "/v1/roles", {
       name: `${tag}-compliance`,
-      privileges: ["compliance.manage"],
+      privileges: ["admin.users.manage"],
     });
     const u = await makeUser(`${tag}-purger`);
     await admin.send("PATCH", `/v1/users/${u.id}`, { roleId: role.body.id });
+    // Plafond P12 : compliance.manage ne s'accorde pas par l'API (l'Administrateur ne le détient pas),
+    // ni l'affectation d'un rôle qui le contient : on élargit le rôle en base après l'affectation.
+    psql(`UPDATE roles SET privileges='["compliance.manage"]' WHERE id='${role.body.id}'`);
     // Slug erroné → 400 ; autre tenant → 403 ; aucun de ces appels ne défère de job.
     const wrong = await u.api.send("POST", "/v1/compliance/tenants/default/purge", {
       confirmSlug: "pas-le-bon",
@@ -85,27 +87,24 @@ test.describe("j08 conformité — anonymisation", () => {
   });
 
   // Finding j08-001 : l'anonymisation est annulée par la reconnexion Keycloak.
-  bug(
-    "j08-001 : après anonymisation, une reconnexion ne recrée pas un compte nominatif",
-    async () => {
-      const u = await makeUser(`${tag}-relogin`);
-      expect((await admin.send("POST", `/v1/compliance/users/${u.id}/erase`)).status).toBe(204);
-      const again = await u.api.get("/v1/me");
-      expect(again.status).toBeGreaterThanOrEqual(400);
-      const n = psql(
-        `SELECT count(*) FROM users WHERE username='${u.username}' AND erased_at IS NULL`,
-      );
-      expect(Number(n.trim())).toBe(0);
-    },
-  );
+  test("j08-001 : après anonymisation, une reconnexion ne recrée pas un compte nominatif", async () => {
+    const u = await makeUser(`${tag}-relogin`);
+    expect((await admin.send("POST", `/v1/compliance/users/${u.id}/erase`)).status).toBe(204);
+    const again = await u.api.get("/v1/me");
+    expect(again.status).toBeGreaterThanOrEqual(400);
+    const n = psql(
+      `SELECT count(*) FROM users WHERE username='${u.username}' AND erased_at IS NULL`,
+    );
+    expect(Number(n.trim())).toBe(0);
+  });
 
   // Finding j08-013 : un compte anonymisé reste dans la liste, sans indicateur.
-  bug("j08-013 : la liste des utilisateurs distingue les comptes anonymisés", async () => {
+  test("j08-013 : la liste des utilisateurs distingue les comptes anonymisés", async () => {
     const u = await makeUser(`${tag}-flag`);
     await admin.send("POST", `/v1/compliance/users/${u.id}/erase`);
     const listed = await admin.get(`/v1/users?q=efface-${u.id.slice(0, 8)}`);
     expect(listed.body.users).toHaveLength(1);
-    expect(listed.body.users[0].erased).toBe(true);
+    expect(listed.body.users[0].erasedAt).toBeTruthy();
   });
 });
 
@@ -160,19 +159,22 @@ test.describe("j08 usage (/tasks) — API", () => {
 test.describe("j08 quotas de stockage — API", () => {
   test("GET /admin/usage : comptages, stockage S3 mesuré, limites nulles quand non configurées", async () => {
     const before = (await admin.get("/v1/admin/usage")).body;
-    expect(before).toMatchObject({ maxItems: null, maxCollections: null, maxStorageBytes: null });
+    // Seule la limite de stockage n'est pas configurée sur la stack d'audit (items/collections le sont).
+    expect(before).toMatchObject({ maxStorageBytes: null });
     putUpload(`${tag}-usage.bin`, Buffer.alloc(8192, 1));
     const after = (await admin.get("/v1/admin/usage")).body;
     expect(after.storageBytes - before.storageBytes).toBe(8192);
-    const users = await admin.get("/v1/users?pageSize=1");
-    expect(after.userCount).toBe(users.body.total);
+    const active = Number(
+      psql(`SELECT count(*) FROM users WHERE username NOT LIKE 'utilisateur-efface-%'`).trim(),
+    );
+    expect(after.userCount).toBe(active);
   });
 
-  test("les comptes anonymisés restent comptés dans userCount", async () => {
+  test("les comptes anonymisés ne sont plus comptés dans userCount (P12.07)", async () => {
     const before = (await admin.get("/v1/admin/usage")).body.userCount;
     const u = await makeUser(`${tag}-count`);
     expect((await admin.get("/v1/admin/usage")).body.userCount).toBe(before + 1);
     await admin.send("POST", `/v1/compliance/users/${u.id}/erase`);
-    expect((await admin.get("/v1/admin/usage")).body.userCount).toBe(before + 1);
+    expect((await admin.get("/v1/admin/usage")).body.userCount).toBe(before);
   });
 });

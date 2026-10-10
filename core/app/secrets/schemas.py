@@ -8,6 +8,8 @@ from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field, TypeAdapter, field_validator, model_validator
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
 
 NonEmptyStr = Annotated[str, Field(min_length=1)]
 
@@ -211,6 +213,34 @@ class OracleDsnPayload(BaseModel):
     dsn: NonEmptyStr
 
 
+class DatabricksDsnPayload(BaseModel):
+    """DSN SQLAlchemy vers un entrepôt Databricks SQL (REV-110), forme
+    `databricks://token:<jeton>@<hôte>?http_path=<chemin>&catalog=..&schema=..`
+    — vérifiée contre `databricks/sqlalchemy/base.py::create_connect_args`
+    (databricks-sqlalchemy 2.0.10 installé : hôte = `server_hostname`, mot de
+    passe = jeton d'accès, `http_path` lu dans la requête). `http_path` est
+    obligatoire (le pilote échouerait sinon à la connexion) : refusé ici. L'hôte
+    est un vrai nom DNS : garde d'egress SSRF appliquée comme pour Postgres.
+    Comme les autres DSN, `query` n'est validée SELECT-only qu'avec le dialecte
+    DuckDB (heuristique, cf. ReaderConnectorDatabricksParams)."""
+
+    kind: Literal["databricks_dsn"] = "databricks_dsn"
+    dsn: NonEmptyStr
+
+    @field_validator("dsn")
+    @classmethod
+    def _require_http_path(cls, v: str) -> str:
+        try:
+            url = make_url(v)
+        except ArgumentError as exc:
+            raise ValueError(f"DSN Databricks invalide : {exc}") from exc
+        if not url.get_backend_name() == "databricks" or not url.host:
+            raise ValueError("DSN Databricks : schéma `databricks://` et hôte requis")
+        if not url.query.get("http_path"):
+            raise ValueError("DSN Databricks : le paramètre `http_path` est requis")
+        return v
+
+
 _BLOB_KIND_SCHEME = {
     "s3_credentials": "s3",
     "azure_blob_credentials": "az",
@@ -334,6 +364,7 @@ SecretPayload = Annotated[
     | BigQueryDsnPayload
     | MssqlDsnPayload
     | OracleDsnPayload
+    | DatabricksDsnPayload
     | S3CredentialsPayload
     | AzureBlobCredentialsPayload
     | GcsCredentialsPayload,
@@ -351,6 +382,7 @@ SECRET_PAYLOAD_ADAPTER: TypeAdapter[
     | BigQueryDsnPayload
     | MssqlDsnPayload
     | OracleDsnPayload
+    | DatabricksDsnPayload
     | S3CredentialsPayload
     | AzureBlobCredentialsPayload
     | GcsCredentialsPayload

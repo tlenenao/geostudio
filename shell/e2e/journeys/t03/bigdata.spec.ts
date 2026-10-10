@@ -49,7 +49,10 @@ test.describe("t03 API sur 50 000 et 500 000 entités", () => {
     console.log("T03 items500k", r.status, r.ms, "ms", r.bytes, "B");
     expect(r.status).toBe(200);
     expect(r.ms).toBeLessThan(500);
-    expect(JSON.parse(r.text()).numberMatched).toBe(500_000);
+    // total plafonné à EXACT_COUNT_CAP (100 000) et signalé borne basse (REV-283b)
+    const body = JSON.parse(r.text());
+    expect(body.numberMatched).toBe(100_000);
+    expect(body.numberMatchedLowerBound).toBe(true);
   });
 
   test("GET /items : offset profond (490 000) sur 500k en moins de 1 s", async () => {
@@ -85,19 +88,21 @@ test.describe("t03 API sur 50 000 et 500 000 entités", () => {
     expect(rows.reduce((a, x) => a + x.value, 0)).toBe(500_000);
   });
 
-  test("tuiles : z0/z5/z8 de 500k sous 300 ms et signalées tronquées, z12 complète", async () => {
+  test("tuiles : z0/z5 de 500k agrégées (REV-283a), z8 tronquée sous 300 ms, z12 complète", async () => {
     const base = `/v1/collections/${s500.collectionId}/tiles`;
-    for (const [z, x, y, trunc] of [
-      [0, 0, 0, true],
-      [5, 16, 11, true],
-      [8, 127, 89, true],
-      [12, 2040, 1430, false],
+    // CORE_TILE_AGG_MAX_ZOOM = 7 : agrégation jusqu'à z7, lecture brute plafonnée au-delà.
+    for (const [z, x, y, mode, budget] of [
+      [0, 0, 0, "aggregated", 2000],
+      [5, 16, 11, "aggregated", 2000],
+      [8, 127, 89, "truncated", 300],
+      [12, 2040, 1430, "complete", 300],
     ] as const) {
       const r = await timed("creator", `${base}/${z}/${x}/${y}.mvt`);
-      console.log("T03 tile", z, r.ms, "ms", r.bytes, "B", r.headers.get("x-tile-truncated"));
+      console.log("T03 tile", z, r.ms, "ms", r.bytes, "B", mode);
       expect(r.status).toBe(200);
-      expect(r.ms).toBeLessThan(300);
-      expect(r.headers.get("x-tile-truncated") === "true").toBe(trunc);
+      expect(r.ms).toBeLessThan(budget);
+      expect(r.headers.get("x-tile-aggregated") === "true").toBe(mode === "aggregated");
+      expect(r.headers.get("x-tile-truncated") === "true").toBe(mode === "truncated");
     }
   });
 
@@ -224,13 +229,14 @@ test.describe("t03 carte et tableau sur gros volumes (navigateur)", () => {
     await stubBasemap(page);
     await loginOidc(page, "creator");
     await spaGo(page, `/maps/${pk}`, 4000);
-    await expect(page.getByText("Tuile tronquée").first()).toBeVisible();
+    // à z0 les tuiles denses sont agrégées (REV-283a) : le badge est « Tuiles agrégées »
+    await expect(page.getByText(/Tuiles agrégées/).first()).toBeVisible();
     await page.evaluate(
       (find) => (eval(find) as any).jumpTo({ center: [2.35, 48.85], zoom: 12 }),
       FIND_MAP,
     );
     await page.waitForTimeout(4000);
-    await expect(page.getByText("Tuile tronquée")).toHaveCount(0);
+    await expect(page.getByText(/Tuiles? (agrégées|tronquée)/)).toHaveCount(0);
   });
 
   test("tableau 50k : une page de 25 lignes s'affiche, DOM borné", async ({ page }, testInfo) => {
@@ -256,7 +262,8 @@ test.describe("t03 carte et tableau sur gros volumes (navigateur)", () => {
         .first()
         .textContent()) ?? "";
     const pages = Number(/\/ (\d+)/.exec(pager)?.[1] ?? "0");
-    const mentionsLimit = (await page.getByText(/limit|tronqu|premiers|sur 500/i).count()) > 0;
+    const mentionsLimit =
+      (await page.getByText(/limit|tronqu|premiers|sur 500|Lignes affichées/i).count()) > 0;
     expect(pages * 25 >= 500_000 || mentionsLimit).toBe(true);
   });
 });

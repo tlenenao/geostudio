@@ -9,7 +9,7 @@ test("a Filtre wired to a variable updates a Texte widget reading it, in the run
 
   await page.getByRole("button", { name: "Nouveau" }).click();
   await page.getByRole("dialog", { name: "Nouvel élément" }).getByLabel("Type").selectOption("app");
-  await page.getByLabel("Titre").fill("App variables");
+  await page.getByLabel("Titre", { exact: true }).fill("App variables");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 
@@ -34,7 +34,7 @@ test("a Filtre wired to a variable updates a Texte widget reading it, in the run
 
   // Runtime: typing into the Filtre updates the Texte widget's {{var:message}} binding.
   await page.goto("/apps/9");
-  await page.getByLabel("Valeur du filtre").fill("bonjour");
+  await page.getByLabel("Filtrer", { exact: true }).fill("bonjour");
   await expect(page.getByText("Valeur : bonjour")).toBeVisible();
 });
 
@@ -44,7 +44,7 @@ test("removing a wired variable removes the dangling ActionsPanel wiring", async
 
   await page.getByRole("button", { name: "Nouveau" }).click();
   await page.getByRole("dialog", { name: "Nouvel élément" }).getByLabel("Type").selectOption("app");
-  await page.getByLabel("Titre").fill("App variables suppression");
+  await page.getByLabel("Titre", { exact: true }).fill("App variables suppression");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 

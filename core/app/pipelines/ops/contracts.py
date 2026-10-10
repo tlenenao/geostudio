@@ -31,6 +31,7 @@ from app.pipelines.ops.schemas import (
     ReaderCollectionParams,
     ReaderConnectorBigQueryParams,
     ReaderConnectorBlobParams,
+    ReaderConnectorDatabricksParams,
     ReaderConnectorMssqlParams,
     ReaderConnectorOracleParams,
     ReaderConnectorPostgresParams,
@@ -307,6 +308,11 @@ OPERATIONS: dict[str, OperationContract] = {
         op="reader.connector.oracle",
         kind="reader",
         params_schema=ReaderConnectorOracleParams,
+    ),
+    "reader.connector.databricks": OperationContract(
+        op="reader.connector.databricks",
+        kind="reader",
+        params_schema=ReaderConnectorDatabricksParams,
     ),
     "reader.connector.blob": OperationContract(
         op="reader.connector.blob",

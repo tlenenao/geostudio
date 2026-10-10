@@ -67,6 +67,7 @@ def _fetch_rows(session, *, tenant_id: str, info, max_records: int) -> list[Chan
                 bbox=None,
                 geom_intersects=None,
                 filters=None,
+                count_mode="none",
             )
             for feature in page.features:
                 geometry = feature["geometry"]

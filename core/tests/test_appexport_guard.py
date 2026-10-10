@@ -325,7 +325,10 @@ def test_allowlist_matches_shell_builtin_widget_registry():
             continue
         registered |= set(re.findall(r'registerWidget\(\{\s*type:\s*"([^"]+)"', f.read_text()))
     assert registered, "aucun widget lu — chemin du registre shell périmé"
-    assert registered == _SUPPORTED_WIDGET_TYPES
+    # REV-102 : addressSearch appelle GET /v1/geocode du cœur, absent d'un export
+    # statique/autoporté — exclusion volontaire de l'allowlist.
+    assert "addressSearch" in registered and "addressSearch" not in _SUPPORTED_WIDGET_TYPES
+    assert registered - {"addressSearch"} == _SUPPORTED_WIDGET_TYPES
 
 
 def _nested_config(widget: str, props: dict) -> BuilderConfig:
@@ -362,3 +365,25 @@ def test_third_party_widget_nested_in_container_is_blocked():
                 )
                 assert result.allowed is False, (widget, mode)
                 assert any("acme-gauge" in r for r in result.reasons)
+
+
+def test_address_search_widget_is_refused_in_static_and_standalone():
+    """REV-102 : addressSearch appelle GET /v1/geocode (authentifie) - pas bundlable hors ligne."""
+    Session = _session()
+    for mode in ("static", "standalone"):
+        with Session() as s:
+            config = _app_config(data_sources=[], widget_types=("addressSearch",))
+            result = check_export_guard(s, tenant_id="t1", config=config, mode=mode)
+        assert result.allowed is False
+        assert any("addressSearch" in r for r in result.reasons)
+
+
+def test_address_search_is_blocked_in_connected_mode():
+    # GET /v1/geocode exige un utilisateur authentifié : un export connecté
+    # anonyme obtiendrait 401 (REV-102).
+    Session = _session()
+    with Session() as s:
+        config = _app_config(data_sources=[], widget_types=("text", "addressSearch"))
+        result = check_export_guard(s, tenant_id="t1", config=config, mode="connected")
+    assert result.allowed is False
+    assert any("addressSearch" in r for r in result.reasons)

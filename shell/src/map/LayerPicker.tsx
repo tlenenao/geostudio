@@ -130,7 +130,7 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
         role="searchbox"
         aria-label={t("layerPicker.searchAria")}
         placeholder={t("layerPicker.searchPlaceholder")}
-        className="h-8 rounded-md border border-control bg-surface px-2 text-sm text-ink"
+        className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink"
         value={q}
         onChange={(e) => setQ(e.target.value)}
       />
@@ -183,7 +183,7 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
             aria-label={t("layerPicker.tileset3dTitleAria")}
             type="text"
             placeholder={t("layerPicker.titlePlaceholder")}
-            className="h-8 rounded-md border border-control bg-surface px-2 text-sm text-ink"
+            className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink"
             value={tiles3dTitle}
             onChange={(e) => setTiles3dTitle(e.target.value)}
           />
@@ -191,7 +191,7 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
             aria-label={t("layerPicker.tileset3dUrlAria")}
             type="text"
             placeholder={t("layerPicker.tileset3dUrlPlaceholder")}
-            className="h-8 rounded-md border border-control bg-surface px-2 text-sm text-ink"
+            className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink"
             value={tiles3dUrl}
             onChange={(e) => setTiles3dUrl(e.target.value)}
           />
@@ -213,13 +213,13 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
             aria-label={t("layerPicker.deckTitleAria")}
             type="text"
             placeholder={t("layerPicker.titlePlaceholder")}
-            className="h-8 rounded-md border border-control bg-surface px-2 text-sm text-ink"
+            className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink"
             value={deckTitle}
             onChange={(e) => setDeckTitle(e.target.value)}
           />
           <select
             aria-label={t("layerPicker.deckTypeAria")}
-            className="h-8 rounded-md border border-control bg-surface px-2 text-sm text-ink"
+            className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink"
             value={deckType}
             onChange={(e) => setDeckType(e.target.value as "heatmap" | "hexbin" | "column")}
           >
@@ -231,7 +231,7 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
             aria-label={t("layerPicker.deckUrlAria")}
             type="text"
             placeholder={t("layerPicker.geojsonUrlPlaceholder")}
-            className="h-8 rounded-md border border-control bg-surface px-2 text-sm text-ink"
+            className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink"
             value={deckUrl}
             onChange={(e) => setDeckUrl(e.target.value)}
           />
@@ -253,7 +253,7 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
             aria-label={t("layerPicker.featureTitleAria")}
             type="text"
             placeholder={t("layerPicker.titlePlaceholder")}
-            className="h-8 rounded-md border border-control bg-surface px-2 text-sm text-ink"
+            className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink"
             value={featureTitle}
             onChange={(e) => setFeatureTitle(e.target.value)}
           />
@@ -261,7 +261,7 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
             aria-label={t("layerPicker.featureUrlAria")}
             type="text"
             placeholder={t("layerPicker.geojsonUrlPlaceholder")}
-            className="h-8 rounded-md border border-control bg-surface px-2 text-sm text-ink"
+            className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink"
             value={featureUrl}
             onChange={(e) => setFeatureUrl(e.target.value)}
           />

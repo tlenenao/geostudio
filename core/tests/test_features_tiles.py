@@ -206,6 +206,7 @@ class _RecordingSession:
 
 
 def _recording_client(monkeypatch):
+    monkeypatch.setenv("CORE_TILE_AGG_MAX_ZOOM", "0")  # ni sonde ni agrégation par défaut
     from contextlib import contextmanager
     from types import SimpleNamespace
 
@@ -257,3 +258,78 @@ def test_the_tile_query_binds_the_feature_cap(monkeypatch):
     tile_sql, tile_params = session.calls[1]
     assert "LIMIT :max_features" in tile_sql
     assert tile_params["max_features"] == MAX_TILE_FEATURES
+
+
+def test_agg_cell_size_halves_per_zoom():
+    from app.features.tiles import agg_cell_size
+
+    assert agg_cell_size(3) == pytest.approx(agg_cell_size(2) / 2)
+
+
+def test_agg_sql_groups_on_snapped_grid():
+    from app.features.tiles import build_agg_mvt_sql
+
+    sql = build_agg_mvt_sql(lambda n: f'"{n}"', _info())
+    assert "floor(" in sql and "point_count" in sql and "GROUP BY" in sql
+    assert "titre" not in sql
+
+
+def test_tile_agg_zoom_default_and_disabled(monkeypatch):
+    from app.features.tiles import tile_agg_max_zoom
+
+    monkeypatch.delenv("CORE_TILE_AGG_MAX_ZOOM", raising=False)
+    assert tile_agg_max_zoom() == 7
+    monkeypatch.setenv("CORE_TILE_AGG_MAX_ZOOM", "0")
+    assert tile_agg_max_zoom() == 0
+
+
+@pytest.mark.parametrize("raw", ["abc", "", "-3", "7.5"])
+def test_tile_agg_zoom_invalid_falls_back_to_7_with_a_warning(monkeypatch, caplog, raw):
+    from app.features.tiles import tile_agg_max_zoom
+
+    monkeypatch.setenv("CORE_TILE_AGG_MAX_ZOOM", raw)
+    with caplog.at_level("WARNING"):
+        assert tile_agg_max_zoom() == 7
+    assert "CORE_TILE_AGG_MAX_ZOOM" in caplog.text
+
+
+def _dense_recording(monkeypatch, *, fail_agg=False):
+    from types import SimpleNamespace
+
+    client, session = _recording_client(monkeypatch)
+    monkeypatch.setenv("CORE_TILE_AGG_MAX_ZOOM", "7")
+
+    def execute(statement, params=None):
+        sql = str(statement)
+        session.calls.append((sql, params))
+        if "LIMIT :max_features + 1) s" in sql:
+            return SimpleNamespace(scalar=lambda: MAX_TILE_FEATURES + 1)
+        if fail_agg and "point_count" in sql:
+            from sqlalchemy.exc import OperationalError
+
+            raise OperationalError(sql, {}, SimpleNamespace(sqlstate="57014"))
+        return SimpleNamespace(first=lambda: (b"\x1a\x02", 0))
+
+    session.execute = execute
+    return client, session
+
+
+def test_dense_tile_runs_the_aggregation_only_with_its_own_shorter_timeout(monkeypatch):
+    from app.features.tiles import TILE_AGG_STATEMENT_TIMEOUT_MS
+
+    client, session = _dense_recording(monkeypatch)
+    r = client.get("/v1/collections/demo_incidents/tiles/0/0/0.mvt")
+    assert r.status_code == 200 and r.headers["X-Tile-Aggregated"] == "true"
+    sqls = [c[0] for c in session.calls]
+    # sonde bornée, puis agrégation : la lecture brute (5001 lignes + propriétés) n'a pas lieu
+    assert not any("ST_AsMVTGeom(ST_Transform" in q and "point_count" not in q for q in sqls)
+    assert TILE_AGG_STATEMENT_TIMEOUT_MS < TILE_STATEMENT_TIMEOUT_MS
+    timeouts = [c[1]["ms"] for c in session.calls if "set_config('statement_timeout'" in c[0]]
+    assert timeouts == [str(TILE_STATEMENT_TIMEOUT_MS), str(TILE_AGG_STATEMENT_TIMEOUT_MS)]
+
+
+def test_aggregation_timeout_is_a_503(monkeypatch):
+    client, _ = _dense_recording(monkeypatch, fail_agg=True)
+    r = client.get("/v1/collections/demo_incidents/tiles/0/0/0.mvt")
+    assert r.status_code == 503
+    assert "Retry-After" in r.headers
