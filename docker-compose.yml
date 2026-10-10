@@ -312,6 +312,7 @@ services:
       CORE_GEOCODING_PROVIDER: ${CORE_GEOCODING_PROVIDER:-ban}
       CORE_GEOCODING_URL: ${CORE_GEOCODING_URL:-https://data.geopf.fr/geocodage/search}
       CORE_GEOCODING_EGRESS_ALLOWLIST: ${CORE_GEOCODING_EGRESS_ALLOWLIST:-data.geopf.fr}
+      CORE_GEOCODING_USER_AGENT: ${CORE_GEOCODING_USER_AGENT:-}
       # Allowlists des trois gardes d'egress SSRF (pipelines/harvest/alerts,
       # chacune dupliquée délibérément — cf. leurs docstrings respectives).
       # Trouvées non câblées à AUCUN service par l'élargissement de la règle
