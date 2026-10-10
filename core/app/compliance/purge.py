@@ -49,7 +49,7 @@ from app.pipelines.models import PipelineRun
 from app.reports.models import ReportRun
 from app.roles.models import Role
 from app.secrets.models import ConnectorSecret
-from app.sharing.models import CollectionShare, Group, GroupMember, ItemShare
+from app.sharing.models import CollectionGeoLimit, CollectionShare, Group, GroupMember, ItemShare
 from app.tenants.models import Tenant
 from app.terrain3d.models import Terrain3DJob
 from app.terrain3d.routes import get_terrain3d_bucket
@@ -217,6 +217,7 @@ def purge_tenant(
     counts["extensions"] = _delete_all(session, Extension, tenant_id)
     counts["group_members"] = _delete_all(session, GroupMember, tenant_id)
     counts["item_shares"] = _delete_all(session, ItemShare, tenant_id)
+    counts["collection_geo_limits"] = _delete_all(session, CollectionGeoLimit, tenant_id)
     counts["collection_shares"] = _delete_all(session, CollectionShare, tenant_id)
     counts["attachments"] = _delete_all(session, Attachment, tenant_id)
     counts["groups"] = _delete_all(session, Group, tenant_id)

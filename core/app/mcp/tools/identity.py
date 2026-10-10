@@ -20,6 +20,12 @@ from app.items.schemas import ItemPage, ItemRead
 from app.roles.guards import has_privilege
 from app.roles.privileges import Privilege
 from app.sharing.authorization import ItemAccessFacts, can
+from app.sharing.geo_limits import (
+    GeoLimitRefused,
+    GeoLimits,
+    refuse_if_geo_limited,
+    resolve_geo_limits,
+)
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.models import User
 from app.users.repository import get_or_create_user
@@ -136,3 +142,16 @@ def visible_table_info(session, user: User, col, info):
     if has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value):
         return info
     return hide_sensitive_columns(info, col.sensitive_fields)
+
+
+def user_geo_limits(session, user: User) -> GeoLimits:
+    """Limites géographiques (GAP-27) de l'appelant MCP — mêmes que la route REST."""
+    return resolve_geo_limits(session, tenant_id=user.tenant_id, user_id=user.id)
+
+
+def refuse_geo_limited(session, user: User, table_name: str, *, path: str) -> None:
+    """Chemin de lecture MCP qui ne sait pas appliquer une limite : refus (403)."""
+    try:
+        refuse_if_geo_limited(user_geo_limits(session, user), table_name, path=path)
+    except GeoLimitRefused as exc:
+        raise McpToolError(403, exc.detail) from exc

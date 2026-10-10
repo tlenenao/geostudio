@@ -29,6 +29,7 @@ from app.harvest.egress import EgressBlockedError
 from app.items import repository as items_repo
 from app.mcp.tools.identity import (
     McpToolError,
+    refuse_geo_limited,
     require_access,
     require_collection_read,
     resolve_actor,
@@ -104,6 +105,7 @@ def register(server: FastMCP, session_factory) -> None:
                 col = require_collection_read(
                     session, user=user, collection_id=payload.collectionId
                 )
+                refuse_geo_limited(session, user, col.table_name, path="aggregates")
                 try:
                     info = introspect_table(session, col.table_name)
                 except TableNotFound as exc:

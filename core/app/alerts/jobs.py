@@ -39,6 +39,7 @@ from app.jobs.common import session_factory as _session_factory
 from app.roles.guards import has_privilege
 from app.roles.privileges import Privilege
 from app.sharing.authorization import can
+from app.sharing.geo_limits import resolve_geo_limits
 from app.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -172,6 +173,10 @@ def _measure_value(session, *, user: User, payload: AlertRulePayload) -> float:
     )
     if col is None:
         raise AlertEvaluationError(f"collection '{collection_id}' not found")
+    # GAP-27 : l'agrégat DuckDB lit le lac, hors RLS — refus (fail-closed) si le
+    # propriétaire de la règle est limité géographiquement sur cette collection.
+    if col.table_name in resolve_geo_limits(session, tenant_id=user.tenant_id, user_id=user.id):
+        raise AlertEvaluationError("collection soumise à une limite géographique : alerte refusée")
     table_info = introspect_table(session, col.table_name)
 
     # GAP-22 (Finding I1, revue finale de branche) : ce 4e site réel

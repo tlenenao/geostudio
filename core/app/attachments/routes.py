@@ -33,11 +33,13 @@ from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user, get_current_user_optional
 from app.collections.repository import get_access_facts
 from app.collections.routes import get_collection_for_read, get_readable_collection
+from app.configs.geo_limits_dep import get_request_geo_limits
 from app.configs.guest_access import GuestActor, get_share_link_actor
 from app.db import get_session
 from app.ingestion.storage import ensure_uploads_bucket, generate_presigned_put_url
 from app.quotas.service import enforce_storage_quota
 from app.sharing.authorization import can
+from app.sharing.geo_limits import refuse_if_geo_limited
 from app.users.models import User
 
 router = APIRouter()
@@ -175,10 +177,12 @@ def presign_attachment(
     fid: str,
     body: AttachmentPresignRequest,
     user: User = Depends(get_current_user),
+    geo_limits=Depends(get_request_geo_limits),
     session: Session = Depends(get_session, scope="function"),
     s3=Depends(get_s3_client),
 ) -> AttachmentPresignResponse:
     col = _get_writable_collection(session, user, collection_id)
+    refuse_if_geo_limited(geo_limits, col.table_name, path="attachments")
     _require_declared_field(col, body.fieldKey)
     _reject_dangerous_extension(body.filename)
     _reject_invalid_content_type(body.contentType)
@@ -200,10 +204,12 @@ def confirm_attachment(
     fid: str,
     body: AttachmentConfirmRequest,
     user: User = Depends(get_current_user),
+    geo_limits=Depends(get_request_geo_limits),
     session: Session = Depends(get_session, scope="function"),
     s3=Depends(get_s3_client),
 ) -> AttachmentRead:
     col = _get_writable_collection(session, user, collection_id)
+    refuse_if_geo_limited(geo_limits, col.table_name, path="attachments")
     _require_declared_field(col, body.fieldKey)
     _reject_dangerous_extension(body.filename)
     _reject_invalid_content_type(body.contentType)
@@ -278,9 +284,11 @@ def list_attachments_route(
     fieldKey: str | None = None,
     user: User | None = Depends(get_current_user_optional),
     guest: GuestActor | None = Depends(get_share_link_actor),
+    geo_limits=Depends(get_request_geo_limits),
     session: Session = Depends(get_session, scope="function"),
 ):
     col = get_collection_for_read(session, user, collection_id, guest=guest)
+    refuse_if_geo_limited(geo_limits, col.table_name, path="attachments")
     rows = attachments_repo.list_attachments(
         session, tenant_id=col.tenant_id, collection_id=collection_id, fid=fid, field_key=fieldKey
     )
@@ -294,10 +302,12 @@ def read_attachment_file(
     attachment_id: str,
     user: User | None = Depends(get_current_user_optional),
     guest: GuestActor | None = Depends(get_share_link_actor),
+    geo_limits=Depends(get_request_geo_limits),
     session: Session = Depends(get_session, scope="function"),
     s3=Depends(get_s3_client),
 ) -> Response:
     col = get_collection_for_read(session, user, collection_id, guest=guest)
+    refuse_if_geo_limited(geo_limits, col.table_name, path="attachments")
     attachment = attachments_repo.get_attachment(
         session,
         tenant_id=col.tenant_id,
@@ -334,10 +344,12 @@ def delete_attachment_route(
     fid: str,
     attachment_id: str,
     user: User = Depends(get_current_user),
+    geo_limits=Depends(get_request_geo_limits),
     session: Session = Depends(get_session, scope="function"),
     s3=Depends(get_s3_client),
 ) -> None:
     col = _get_writable_collection(session, user, collection_id)
+    refuse_if_geo_limited(geo_limits, col.table_name, path="attachments")
     ok = attachments_repo.delete_attachment(
         session,
         s3,

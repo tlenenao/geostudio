@@ -34,6 +34,7 @@ from app.auth.dependency import (
 )
 from app.catalog import routes as catalog_routes
 from app.collections import dataset_validation as collections_dataset_validation  # noqa: F401
+from app.collections import geo_limits_routes as collections_geo_limits_routes
 from app.collections import routes as collections_routes
 from app.collections.introspection import TableNotFound, UnsupportedTable
 from app.compliance import routes as compliance_routes
@@ -393,6 +394,7 @@ def create_app() -> FastAPI:
     v1_router.include_router(public_routes.router)
     v1_router.include_router(schemas_router)
     v1_router.include_router(collections_routes.router)
+    v1_router.include_router(collections_geo_limits_routes.router)
     v1_router.include_router(catalog_routes.router)
     v1_router.include_router(features_routes.router)
     v1_router.include_router(dataexport_routes.router)

@@ -121,7 +121,9 @@ def get_features_repo():  # overridé en test SQLite
 
 
 @contextmanager
-def null_rls_scope(session, tenant_id, *, masked: bool = False):  # pour SQLite (pas de rôles/GUC)
+def null_rls_scope(
+    session, tenant_id, *, masked: bool = False, geo_limits=None
+):  # pour SQLite (pas de rôles/GUC)
     yield
 
 

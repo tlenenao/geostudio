@@ -134,6 +134,15 @@ def refuse_if_geo_limited(
         raise GeoLimitRefused(path)
 
 
+def refuse_if_collection_has_limits(
+    session: Session, *, tenant_id: str, collection_id: str, path: str
+) -> None:
+    """Export distribué hors du cœur, sans identité de lecteur : aucune limite ne
+    peut s'y appliquer — toute collection portant au moins une entrée est refusée."""
+    if list_limits(session, tenant_id=tenant_id, collection_id=collection_id):
+        raise GeoLimitRefused(path)
+
+
 # --- CRUD (routes d'administration) -----------------------------------------
 
 
