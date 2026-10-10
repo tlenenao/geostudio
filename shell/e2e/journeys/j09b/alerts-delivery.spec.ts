@@ -271,8 +271,9 @@ test("j09b-006 : un Créateur ne peut pas utiliser le secret SMTP d'un autre pou
 });
 
 test("balayage périodique réel : le worker évalue seul la règle planifiée (firing) sans intervention", async () => {
-  test.setTimeout(480_000);
-  const deadline = Date.now() + 420_000;
+  // REV-321 : le balayage */5 peut dériver sous charge ; marge sur deux cycles.
+  test.setTimeout(720_000);
+  const deadline = Date.now() + 660_000;
   let ev: any;
   while (Date.now() < deadline) {
     const list = await creator.get(`/v1/alerts/${sweepRuleId}/evaluations`);

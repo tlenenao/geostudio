@@ -226,7 +226,12 @@ export type InstanceStatus = {
 
 // t02-013 : `GET /health` (non authentifié) expose la file de jobs ; un worker
 // arrêté se lit à `oldestTodoAgeSeconds` qui grandit.
-export type JobsBacklog = { todo: number; oldestTodoAgeSeconds: number | null };
+export type JobsBacklog = {
+  todo: number;
+  oldestTodoAgeSeconds: number | null;
+  // REV-317 : ventilation par file (cœur récent) ; absente sur un cœur ancien.
+  queues?: Record<string, { todo: number; oldestTodoAgeSeconds: number | null }>;
+};
 
 export type AdminToolName = "martin" | "titiler" | "grafana";
 

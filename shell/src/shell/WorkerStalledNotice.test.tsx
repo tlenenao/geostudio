@@ -29,3 +29,25 @@ test("inactif : aucune sonde", () => {
   const probe = renderWith({ todo: 2, oldestTodoAgeSeconds: 300 }, false);
   expect(probe).not.toHaveBeenCalled();
 });
+
+test("REV-317 : une seule file bloquée suffit, les files saines ne comptent pas", async () => {
+  renderWith({
+    todo: 2,
+    oldestTodoAgeSeconds: 600,
+    queues: {
+      etl: { todo: 1, oldestTodoAgeSeconds: 600 },
+      default: { todo: 1, oldestTodoAgeSeconds: 3 },
+    },
+  });
+  expect(await screen.findByRole("status")).toBeInTheDocument();
+});
+
+test("REV-317 : file entre 60 et 120 s avec ventilation = pas d'alerte", async () => {
+  const probe = renderWith({
+    todo: 1,
+    oldestTodoAgeSeconds: 90,
+    queues: { default: { todo: 1, oldestTodoAgeSeconds: 90 } },
+  });
+  await waitFor(() => expect(probe).toHaveBeenCalled());
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+});
