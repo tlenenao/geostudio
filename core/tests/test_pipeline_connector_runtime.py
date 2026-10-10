@@ -130,7 +130,11 @@ def test_materialize_rest_connector_injects_bearer_token(conn, session, tenant, 
         user,
         name="my-bearer",
         kind="bearer_token",
-        payload={"kind": "bearer_token", "token": "s3cr3t-tok"},
+        payload={
+            "kind": "bearer_token",
+            "token": "s3cr3t-tok",
+            "baseUrl": httpserver.url_for("/"),
+        },
     )
     httpserver.expect_request(
         "/items",
@@ -160,7 +164,13 @@ def test_materialize_rest_connector_injects_api_key_query_param(
         user,
         name="my-key",
         kind="api_key",
-        payload={"kind": "api_key", "location": "query", "key": "token", "value": "abc123"},
+        payload={
+            "kind": "api_key",
+            "location": "query",
+            "key": "token",
+            "value": "abc123",
+            "baseUrl": httpserver.url_for("/"),
+        },
     )
     httpserver.expect_request("/items", query_string="token=abc123").respond_with_json(
         [{"id": 1, "name": "a"}]
@@ -187,7 +197,12 @@ def test_materialize_rest_connector_injects_basic_auth(conn, session, tenant, us
         user,
         name="my-basic",
         kind="basic_auth",
-        payload={"kind": "basic_auth", "username": "u", "password": "p"},
+        payload={
+            "kind": "basic_auth",
+            "username": "u",
+            "password": "p",
+            "baseUrl": httpserver.url_for("/"),
+        },
     )
     httpserver.expect_request("/items").respond_with_json([{"id": 1, "name": "a"}])
     params = ReaderConnectorRestParams(
@@ -204,6 +219,63 @@ def test_materialize_rest_connector_injects_basic_auth(conn, session, tenant, us
     )
     request = httpserver.log[0][0]
     assert request.headers["Authorization"].startswith("Basic ")
+
+
+def _rest_secret(session, tenant, user, **extra):
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="scoped",
+        kind="bearer_token",
+        payload={"kind": "bearer_token", "token": "tok", **extra},
+    )
+
+
+def _run_rest(conn, session, tenant, user, **params):
+    connector_runtime.materialize_rest_connector(
+        conn,
+        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
+        node_id="rs",
+        params=ReaderConnectorRestParams(secretName="scoped", **params),
+        view_name="node_rs",
+    )
+
+
+@pytest.mark.parametrize(
+    ("base", "path"),
+    [
+        ("http://evil.example/", "items"),  # hôte différent
+        ("http://localhost.evil.example/", "items"),  # préfixe d'hôte
+        ("http://localhost:1/api-evil/", "items"),  # frontière de segment
+        ("http://localhost:1/api/", "http://evil.example/x"),  # URL absolue dans path
+        ("http://localhost:1/api/", "//evil.example/x"),
+        ("http://localhost:1/api/", "../other"),
+    ],
+)
+def test_rest_secret_refuses_url_outside_secret_scope(
+    conn, session, tenant, user, httpserver, base, path
+):
+    """REV-294 : un secret REST est lié à son `baseUrl` ; l'URL effective du nœud
+    doit rester dessous, sinon le secret partirait vers un hôte de l'auteur."""
+    _rest_secret(session, tenant, user, baseUrl="http://localhost:1/api")
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="outside the base URL scope"):
+        _run_rest(conn, session, tenant, user, baseUrl=base, path=path)
+    assert httpserver.log == []
+
+
+def test_rest_secret_without_base_url_fails_clearly(conn, session, tenant, user, httpserver):
+    _rest_secret(session, tenant, user)
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="no 'baseUrl'"):
+        _run_rest(conn, session, tenant, user, baseUrl=httpserver.url_for("/"), path="items")
+    assert httpserver.log == []
+
+
+def test_rest_secret_accepts_sub_path_of_scope(conn, session, tenant, user, httpserver):
+    httpserver.expect_request("/api/v1/items").respond_with_json([{"id": 1}])
+    _rest_secret(session, tenant, user, baseUrl=httpserver.url_for("/api"))
+    _run_rest(conn, session, tenant, user, baseUrl=httpserver.url_for("/api/v1/"), path="items")
+    assert conn.execute("SELECT id FROM node_rs").fetchall() == [(1,)]
 
 
 def test_materialize_rest_connector_paginates_page_number(conn, session, tenant, httpserver):
@@ -297,6 +369,7 @@ def test_materialize_rest_connector_oauth2_token_exchange_goes_through_ssrf_guar
             "tokenUrl": "http://127.0.0.1:1/oauth/token",
             "clientId": "cid",
             "clientSecret": "csecret",
+            "baseUrl": httpserver.url_for("/"),
         },
     )
     httpserver.expect_request("/items").respond_with_json([{"id": 1, "name": "a"}])
@@ -853,7 +926,10 @@ def test_postgres_secret_resolver_get_returns_payload(session, tenant, user):
         user,
         name="my-bearer",
         kind="bearer_token",
-        payload={"kind": "bearer_token", "token": "s3cr3t-tok"},
+        payload={
+            "kind": "bearer_token",
+            "token": "s3cr3t-tok",
+        },
     )
     resolver = connector_runtime.PostgresSecretResolver(session, tenant.id, user)
     payload = resolver.get("my-bearer")
@@ -882,7 +958,10 @@ def test_postgres_secret_resolver_get_does_not_mask_backend_failure_as_not_found
         user,
         name="my-bearer",
         kind="bearer_token",
-        payload={"kind": "bearer_token", "token": "s3cr3t-tok"},
+        payload={
+            "kind": "bearer_token",
+            "token": "s3cr3t-tok",
+        },
     )
     monkeypatch.delenv("CORE_SECRETS_MASTER_KEY", raising=False)
     resolver = connector_runtime.PostgresSecretResolver(session, tenant.id, user)

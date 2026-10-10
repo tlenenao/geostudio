@@ -420,6 +420,17 @@
       "ApiKeyPayload": {
         "description": "`location=\"query\"` couvre les jetons en param\u00e8tre d'URL (ex.\n`?token=...` d'un ArcGIS Feature Service, cl\u00e9 GeoServer sur un WFS) ;\n`location=\"header\"` couvre le cas g\u00e9n\u00e9rique (`X-API-Key`, etc.).",
         "properties": {
+          "baseUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseurl"
+          },
           "key": {
             "minLength": 1,
             "title": "Key",
@@ -649,6 +660,17 @@
       "BasicAuthPayload": {
         "description": "Couvre aussi un WFS/WMS/WMTS/CSW gat\u00e9 par HTTP Basic Auth, et le flux\nArcGIS Enterprise `generateToken` si un connecteur choisit de faire\nl'\u00e9change de jeton lui-m\u00eame \u2014 le coffre ne porte que le mat\u00e9riel brut.",
         "properties": {
+          "baseUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseurl"
+          },
           "kind": {
             "const": "basic_auth",
             "default": "basic_auth",
@@ -675,6 +697,17 @@
       },
       "BearerTokenPayload": {
         "properties": {
+          "baseUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseurl"
+          },
           "kind": {
             "const": "bearer_token",
             "default": "bearer_token",
@@ -3923,6 +3956,17 @@
       "OAuth2ClientCredentialsPayload": {
         "description": "Flux OAuth2 client-credentials \u2014 couvre notamment l'\u00ab app login \u00bb\nArcGIS Online et toute API tierce gat\u00e9e par ce flux standard. Le coffre\nstocke les identifiants client, jamais le jeton d'acc\u00e8s obtenu.",
         "properties": {
+          "baseUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseurl"
+          },
           "clientId": {
             "minLength": 1,
             "title": "Clientid",
