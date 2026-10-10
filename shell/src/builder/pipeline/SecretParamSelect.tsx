@@ -10,6 +10,7 @@ import { ApiError } from "../../api/ApiError";
 import type { SecretPayload, SecretSummary } from "../../api/types";
 import { t } from "../../i18n";
 import { Button } from "../../ui/kit/Button";
+import { Field } from "../../ui/kit/Field";
 import { ConfirmDialog } from "../../ui/kit/ConfirmDialog";
 import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
 import "../../i18n/domains/automation";
@@ -197,7 +198,8 @@ function SecretCreateForm({
 }) {
   const [name, setName] = useState(editing?.name ?? "");
   const bucketHelpId = useId();
-  const baseUrlHelpId = useId();
+  const baseUrlId = useId();
+  const [baseUrlError, setBaseUrlError] = useState<string | null>(null);
   const tlsHelpId = useId();
   const [kind, setKind] = useState<SecretPayload["kind"]>(kindFilter ?? ALL_KINDS[0]);
   const [fields, setFields] = useState<Record<string, string>>({});
@@ -288,6 +290,12 @@ function SecretCreateForm({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    // REV-294 : un secret REST sans baseUrl échouerait à l'exécution du pipeline.
+    if (isRestKind && !baseUrl()) {
+      setBaseUrlError(t("secretParamSelect.baseUrlRequired"));
+      return;
+    }
+    setBaseUrlError(null);
     let payload: SecretPayload | null;
     try {
       payload = buildPayload();
@@ -546,21 +554,20 @@ function SecretCreateForm({
         </div>
       )}
       {isRestKind && (
-        <div className="flex flex-col gap-1 text-xs">
-          <label className="flex flex-col gap-1">
-            {t("secretParamSelect.baseUrlLabel")}
-            <input
-              placeholder={t("secretParamSelect.baseUrlPlaceholder")}
-              aria-describedby={baseUrlHelpId}
-              className="h-9 rounded border border-control bg-surface px-2 text-ink"
-              value={field("baseUrl")}
-              onChange={(e) => setFieldValue("baseUrl", e.target.value)}
-            />
-          </label>
-          <span id={baseUrlHelpId} className="text-ink-2">
-            {t("secretParamSelect.baseUrlHelp")}
-          </span>
-        </div>
+        <Field
+          label={t("secretParamSelect.baseUrlLabel")}
+          htmlFor={baseUrlId}
+          error={baseUrlError ?? undefined}
+          hint={t("secretParamSelect.baseUrlHelp")}
+        >
+          <input
+            id={baseUrlId}
+            placeholder={t("secretParamSelect.baseUrlPlaceholder")}
+            className="h-9 rounded border border-control bg-surface px-2 text-ink"
+            value={field("baseUrl")}
+            onChange={(e) => setFieldValue("baseUrl", e.target.value)}
+          />
+        </Field>
       )}
       {kind === "smtp" && (
         <>
