@@ -798,6 +798,9 @@ export interface ItemClient {
   // {id,name,kind,createdAt,updatedAt}, jamais le SecretPayload lui-même.
   listSecrets(): Promise<SecretSummary[]>;
   createSecret(input: { name: string; payload: SecretPayload }): Promise<SecretSummary>;
+  // PUT /secrets/{id} : remplace la valeur en place (nom et kind inchangés) ; le
+  // payload entier est renvoyé, le cœur ne relit jamais l'ancien.
+  updateSecret(id: string, payload: SecretPayload): Promise<SecretSummary>;
   deleteSecret(id: string): Promise<void>;
 }
 

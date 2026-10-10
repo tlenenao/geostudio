@@ -1538,6 +1538,11 @@ export const fr = {
   "secretParamSelect.serviceAccountInfoInvalid": "JSON invalide.",
   "secretParamSelect.cancelButton": "Annuler",
   "secretParamSelect.createButton": "Créer",
+  "secretParamSelect.saveButton": "Enregistrer",
+  "secretParamSelect.editButton": "Modifier {name}",
+  "secretParamSelect.updateFailed": "Échec de la modification du secret.",
+  "secretParamSelect.editHint":
+    "La valeur d'un secret n'est jamais relue : ressaisissez-la en entier pour la remplacer.",
   "secretParamSelect.deleteButton": "Supprimer {name}",
   "secretParamSelect.deleteConfirmTitle": "Supprimer ce secret ?",
   "secretParamSelect.deleteConfirmMessage":

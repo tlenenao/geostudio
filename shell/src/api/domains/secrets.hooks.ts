@@ -17,6 +17,16 @@ export function useCreateSecret() {
   });
 }
 
+export function useUpdateSecret() {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { id: string; payload: SecretPayload }) =>
+      client.updateSecret(input.id, input.payload),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["secrets"] }),
+  });
+}
+
 export function useDeleteSecret() {
   const client = useItemClientInternal();
   const queryClient = useQueryClient();
