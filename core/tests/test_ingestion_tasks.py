@@ -339,3 +339,42 @@ def test_redelivery_on_a_done_job_executes_nothing(env, monkeypatch):
     assert touched == []
     with Session() as s:
         assert ingestion_repo.get_job(s, tenant_id=tenant.id, job_id=job_id).status == "done"
+
+
+def test_cancel_requested_during_download_stops_before_the_import(env, monkeypatch):
+    """D6 : l'annulation demandée pendant le téléchargement évite l'import (aucune
+    collection créée), le job finit `cancelled`, la source est supprimée, aucune
+    notification d'échec."""
+    app, Session, tenant, user = env
+    touched, deleted = [], []
+
+    class _S3(_FakeS3Client):
+        def get_object(self, Bucket, Key):  # noqa: N803
+            with Session() as s:  # le demandeur annule pendant le téléchargement
+                ingestion_repo.request_cancel(s, job_id=job_id)
+                s.commit()
+            return super().get_object(Bucket, Key)
+
+        def delete_object(self, Bucket, Key):  # noqa: N803
+            deleted.append(Key)
+
+    monkeypatch.setattr(
+        ingestion_tasks,
+        "_make_s3_client_from_env",
+        lambda: _S3({"k-c": b'{"type":"FeatureCollection","features":[]}'}),
+    )
+    monkeypatch.setattr(ingestion_tasks, "run_import", lambda *a, **k: touched.append("import"))
+    with Session() as s:
+        job = ingestion_repo.create_job(
+            s, tenant_id=tenant.id, created_by=user.id, source_key="k-c", filename="x.geojson",
+            collection_title="T", lat_field=None, lon_field=None,
+        )  # fmt: skip
+        s.commit()
+        job_id = job.id
+
+    ingestion_tasks.run_ingestion_task(job_id=job_id, tenant_id=tenant.id)
+
+    assert touched == [] and deleted == ["k-c"]
+    with Session() as s:
+        assert ingestion_repo.get_job(s, tenant_id=tenant.id, job_id=job_id).status == "cancelled"
+        assert s.scalars(select(Notification)).all() == []
