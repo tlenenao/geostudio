@@ -276,8 +276,10 @@ test("balayage périodique réel : le worker évalue seul la règle planifiée (
   const deadline = Date.now() + 660_000;
   let ev: any;
   while (Date.now() < deadline) {
-    const list = await creator.get(`/v1/alerts/${sweepRuleId}/evaluations`);
-    ev = (list.body as any[]).find((x) => x.state !== "pending");
+    // Le jeton Keycloak (5 min) expire pendant l'attente de deux cycles de balayage : on le renouvelle.
+    const fresh = await apiFor("creator");
+    const list = await fresh.get(`/v1/alerts/${sweepRuleId}/evaluations`);
+    ev = Array.isArray(list.body) ? list.body.find((x: any) => x.state !== "pending") : undefined;
     if (ev) break;
     await new Promise((r) => setTimeout(r, 10_000));
   }
