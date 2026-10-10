@@ -105,6 +105,7 @@ describe("StaticItemClient", () => {
     "listConfigRevisions",
     "rollbackConfig",
     "sampleCollectionField",
+    "getJobsBacklog", // sonde optionnelle : null hors cœur (REV-317)
   ]);
 
   it("every other ItemClient method rejects with the same explicit unsupported error", async () => {
