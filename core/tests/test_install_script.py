@@ -513,3 +513,22 @@ def test_install_never_passes_the_keycloak_admin_password_as_an_argument(
     assert result.returncode == 0, result.stderr
     assert "config credentials" in log
     assert "kcpw-marker-123" not in log
+
+
+def test_install_sets_the_public_s3_host_and_endpoint_url(install_workdir, fake_bin_path):
+    """REV-315 : sans hôte S3 public, les liens présignés pointent sur minio:9000."""
+    result, _ = _run_install(
+        install_workdir,
+        fake_bin_path,
+        extra_env={"GEOSTUDIO_S3_PUBLIC_HOST": "s3.geostudio-test.example"},
+    )
+    assert result.returncode == 0, result.stderr
+    env_lines = (install_workdir / ".env").read_text().splitlines()
+    assert "S3_PUBLIC_HOST=s3.geostudio-test.example" in env_lines
+    assert "S3_PUBLIC_ENDPOINT_URL=https://s3.geostudio-test.example" in env_lines
+
+
+def test_install_warns_when_no_public_s3_host_is_configured(install_workdir, fake_bin_path):
+    result, _ = _run_install(install_workdir, fake_bin_path)
+    assert result.returncode == 0, result.stderr
+    assert "S3_PUBLIC_ENDPOINT_URL non défini" in result.stderr

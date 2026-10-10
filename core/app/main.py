@@ -128,7 +128,7 @@ _APPEXPORT_CORS_RULES: tuple[tuple[re.Pattern[str], str], ...] = (
 
 def trusted_proxy_hosts() -> str:
     return os.environ.get(
-        "CORE_TRUSTED_PROXIES", "127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+        "CORE_TRUSTED_PROXIES", "127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7"
     )
 
 

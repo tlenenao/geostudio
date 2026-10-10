@@ -99,6 +99,14 @@ def test_sweep_redefers_stale_pending_and_fails_stuck_running(env, monkeypatch):
     dx_jobs.sweep_collection_exports_task(0)
     assert calls == [{"job_id": stale, "tenant_id": ids[0]}]
     assert _job(factory, ids, stuck).status == "failed"
+    # REV-323 B : l'abandon est notifié au demandeur
+    from sqlalchemy import select
+
+    from app.notifications.models import Notification
+
+    with factory() as s:
+        notif = s.scalars(select(Notification)).one()
+    assert notif.status == "failure" and "timed out" in (notif.error_message or "")
     assert _job(factory, ids, ok).status == "running"
     assert _job(factory, ids, recent).status == "pending"
 

@@ -65,10 +65,19 @@ def _property_columns(info: TableInfo) -> list[ColumnInfo]:
     ]
 
 
+def _int8(raw: str) -> int:
+    """REV-323 B : un entier hors int8 comparé à une colonne entière renvoyait
+    0 ligne en silence (psycopg le lie en numeric) ; ValueError -> erreur claire."""
+    n = int(raw)
+    if not -(2**63) <= n < 2**63:
+        raise ValueError(raw)
+    return n
+
+
 def _coerce(col: ColumnInfo, raw: str):
     try:
         if col.type == "integer":
-            return int(raw)
+            return _int8(raw)
         if col.type == "number":
             return float(raw)
         if col.type == "boolean":
@@ -187,6 +196,7 @@ def select_features(
     filters=None,
     after: str | None = None,
     count_mode: Literal["exact", "capped", "none"] = "exact",
+    count_cap: int | None = None,
 ) -> FeaturePage:
     if after is not None and offset > 0:
         raise CursorError("after and offset are mutually exclusive")
@@ -227,12 +237,13 @@ def select_features(
     elif count_mode == "none":
         matched = None  # l'appelant (export) ne consomme pas le total
     elif count_mode == "capped":
+        count_cap = EXACT_COUNT_CAP if count_cap is None else count_cap
         n = session.execute(
             text(f"SELECT count(*) FROM (SELECT 1 FROM public.{t}{where} LIMIT :__cap) q"),
             {**params, "__cap": EXACT_COUNT_CAP + 1},
         ).scalar()
-        lower_bound = n > EXACT_COUNT_CAP
-        matched = EXACT_COUNT_CAP if lower_bound else n
+        lower_bound = n > count_cap
+        matched = count_cap if lower_bound else n
     else:
         matched = session.execute(text(f"SELECT count(*) FROM public.{t}{where}"), params).scalar()
     return FeaturePage(
@@ -248,7 +259,7 @@ def _coerce_fid(info: TableInfo, fid: str):
     pk = next((c for c in info.columns if c.name == info.pk_column), None)
     if pk is not None and pk.type == "integer":
         try:
-            return int(fid)
+            return _int8(fid)
         except ValueError:
             return None
     return fid

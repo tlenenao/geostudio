@@ -1888,6 +1888,34 @@ def test_blob_gzip_jsonl_still_loads_rows_through_the_buffered_cap(conn, tmp_pat
     assert conn.execute("SELECT count(*) FROM node_gz2").fetchone()[0] == 5
 
 
+def test_blob_gzip_parquet_is_readable_through_a_seekable_spool(conn, tmp_path):
+    """REV-323 A : parquet exige un flux seekable ; le .gz décompressé est
+    spoolé (toujours plafonné par _CappedReader)."""
+    import gzip
+    import io as _io
+
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    from dlt.sources.filesystem import filesystem
+
+    buf = _io.BytesIO()
+    pq.write_table(pa.table({"a": list(range(5))}), buf)
+    (tmp_path / "a.parquet.gz").write_bytes(gzip.compress(buf.getvalue()))
+    files = filesystem(bucket_url=str(tmp_path), file_glob="*.parquet.gz")
+    resource = connector_runtime._blob_resource(
+        files, connector_runtime.read_parquet(), seekable=True
+    )
+    resource.apply_hints(table_name="records", write_disposition="replace")
+    connector_runtime._run_dlt_and_attach(conn, resource, node_id="gz3", view_name="node_gz3")
+    assert conn.execute("SELECT count(*) FROM node_gz3").fetchone()[0] == 5
+
+
+def test_blob_format_parquet_requests_a_seekable_stream():
+    import inspect
+
+    assert "seekable=" in inspect.getsource(connector_runtime.materialize_blob_connector)
+
+
 # --- REV-110 : Databricks ---------------------------------------------------
 
 from app.pipelines.ops.schemas import ReaderConnectorDatabricksParams  # noqa: E402

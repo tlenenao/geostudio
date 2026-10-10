@@ -6610,6 +6610,65 @@
         "summary": "Get Collection Export Job"
       }
     },
+    "/v1/collections/{collection_id}/export/jobs/{job_id}/cancel": {
+      "post": {
+        "description": "D6 : annule un export asynchrone en attente ou en cours. M\u00eame autorisation\nque la lecture du statut (demandeur, ou `tasks.view_all` sous r\u00e9serve du\nmasquage) ; idempotent ; 409 si d\u00e9j\u00e0 termin\u00e9.",
+        "operationId": "cancel_collection_export_job_v1_collections__collection_id__export_jobs__job_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionExportJobStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Collection Export Job"
+      }
+    },
     "/v1/collections/{collection_id}/items": {
       "get": {
         "operationId": "list_features_v1_collections__collection_id__items_get",
@@ -12818,6 +12877,56 @@
           }
         },
         "summary": "Get Upload Job"
+      }
+    },
+    "/v1/uploads/{job_id}/cancel": {
+      "post": {
+        "description": "D6 : annule un import. `pending` -> `cancelled` (source supprim\u00e9e) ; `running`\n-> `cancel_requested` (le worker s'arr\u00eate avant l'import, sinon l'import\ns'ach\u00e8ve). M\u00eame autorisation que la lecture ; idempotent ; 409 si termin\u00e9.",
+        "operationId": "cancel_upload_job_v1_uploads__job_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionJobStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Upload Job"
       }
     },
     "/v1/usage/summary": {

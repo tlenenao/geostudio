@@ -23,7 +23,11 @@ from app.configs import repository as configs_repo
 from app.configs.schemas import AlertChannelEmail, AlertChannelWebhook
 from app.db import request_scoped_session
 from app.export import repository as export_repo
-from app.export.jobs import render_export_task, s3_client_from_env
+from app.export.jobs import (
+    reclaim_and_notify_stuck_exports,
+    render_export_task,
+    s3_client_from_env,
+)
 from app.ingestion.storage import generate_presigned_get_url
 from app.items import repository as items_repo
 from app.items.models import Item
@@ -291,8 +295,7 @@ def _trigger_due_reports(session_factory) -> None:
                     error=f"erreur interne : {exc}",
                     session_factory=session_factory,
                 )
-        export_repo.reclaim_stuck_jobs(session)
-        session.commit()
+        reclaim_and_notify_stuck_exports(session, session_factory)
 
 
 # 7 jours. TTL volontairement plus long que le défaut d'1 h de

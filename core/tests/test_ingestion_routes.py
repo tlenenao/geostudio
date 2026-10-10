@@ -731,3 +731,78 @@ def test_get_upload_job_reports_the_created_item_resource_type(env):
     body = client.get(f"/v1/uploads/{job_id}").json()
     assert body["itemId"] == item.id
     assert body["itemResourceType"] == "dataset"
+
+
+def _new_job(env):
+    _client, session_factory, tenant, user = env[:4]
+    with session_factory() as s:
+        job = ingestion_repo.create_job(
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            source_key=f"{tenant.id}/k.csv",
+            filename="t.csv",
+            collection_title="T",
+            lat_field=None,
+            lon_field=None,
+        )
+        s.commit()
+        return job.id
+
+
+def test_cancel_pending_upload_job_is_cancelled_audited_and_idempotent(env):
+    """D6 : un import en attente passe `cancelled` ; le worker ne le prendra plus."""
+    from sqlalchemy import select
+
+    from app.audit.models import AuditLog
+
+    client, session_factory = env[:2]
+    job_id = _new_job(env)
+    r = client.post(f"/v1/uploads/{job_id}/cancel")
+    assert r.status_code == 200 and r.json()["status"] == "cancelled"
+    assert client.post(f"/v1/uploads/{job_id}/cancel").json()["status"] == "cancelled"
+    with session_factory() as s:
+        assert ingestion_repo.mark_running(s, job_id=job_id) is False
+        audits = s.scalars(
+            select(AuditLog).where(
+                AuditLog.action == "ingestion.cancel", AuditLog.object_id == job_id
+            )
+        ).all()
+        assert len(audits) == 1
+
+
+def test_cancel_running_upload_job_requests_cancellation(env):
+    client, session_factory, *_ = env
+    job_id = _new_job(env)
+    with session_factory() as s:
+        ingestion_repo.mark_running(s, job_id=job_id)
+        s.commit()
+    r = client.post(f"/v1/uploads/{job_id}/cancel")
+    assert r.status_code == 200 and r.json()["status"] == "cancel_requested"
+    with session_factory() as s:
+        assert ingestion_repo.is_cancel_requested(s, job_id=job_id) is True
+
+
+def test_cancel_finished_upload_job_is_409_unknown_404_and_foreign_user_404(env):
+    client, session_factory, tenant, _alice, *_ = env
+    job_id = _new_job(env)
+    with session_factory() as s:
+        ingestion_repo.mark_done(s, job_id=job_id, collection_id="c", item_id=None)
+        s.commit()
+    assert client.post(f"/v1/uploads/{job_id}/cancel").status_code == 409
+    assert client.post("/v1/uploads/nope/cancel").status_code == 404
+    with session_factory() as s:  # job d'un autre utilisateur du même tenant, sans data.manage
+        bob = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="b", username="bob", email=None,
+            first_name="", last_name="",
+        )  # fmt: skip
+        other = ingestion_repo.create_job(
+            s, tenant_id=tenant.id, created_by=bob.id, source_key="k", filename="t.csv",
+            collection_title="T", lat_field=None, lon_field=None,
+        )  # fmt: skip
+        s.commit()
+        other_id = other.id
+    # alice (créatrice par défaut du premier compte) n'a pas forcément data.manage : le
+    # contrat est celui de GET /uploads/{id} — créateur ou data.manage, sinon 404.
+    r = client.get(f"/v1/uploads/{other_id}")
+    assert client.post(f"/v1/uploads/{other_id}/cancel").status_code == r.status_code

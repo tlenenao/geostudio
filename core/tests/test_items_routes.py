@@ -108,6 +108,14 @@ def test_list_items_negative_page_size_is_rejected(client):
     assert response.status_code == 422
 
 
+def test_list_items_page_size_is_capped_for_rest_and_mcp_alike(client):
+    """REV-323 B : plafond au point unique `list_items` (REST + MCP), 200 =
+    plus grand pageSize réellement demandé par le shell."""
+    _seed_item(client, title="One")
+    body = client.get("/v1/items?pageSize=100000").json()
+    assert body["pageSize"] == items_repo.MAX_PAGE_SIZE == 200
+
+
 def test_list_items_sort_title_asc(client):
     _seed_item(client, title="Zorro")
     _seed_item(client, title="Alpha")

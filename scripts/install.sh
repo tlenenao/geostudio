@@ -258,6 +258,27 @@ prompt_etl_engine() {
 
 prompt_etl_engine
 
+configure_s3_public_host() {
+  # REV-315 : en production MinIO n'a aucun port hôte ; exports asynchrones,
+  # app-exports et tilesets sont servis par liens présignés, qui exigent un
+  # hostname S3 dédié routé par Traefik (S3_PUBLIC_HOST) et signé dans
+  # S3_PUBLIC_ENDPOINT_URL (https://<hôte>). Non interactif : GEOSTUDIO_S3_PUBLIC_HOST
+  # (Ansible : geostudio_s3_public_host). Absent/vide = inchangé (un .env déjà
+  # réglé est conservé), avec un rappel de ce que cela désactive en pratique.
+  local s3_host="${GEOSTUDIO_S3_PUBLIC_HOST:-}"
+  if [ -n "$s3_host" ]; then
+    set_env_var S3_PUBLIC_HOST "$s3_host"
+    set_env_var S3_PUBLIC_ENDPOINT_URL "https://${s3_host}"
+    echo "✓ Hôte S3 public : ${s3_host} (à faire pointer par DNS vers Traefik)"
+  elif ! grep -q '^S3_PUBLIC_ENDPOINT_URL=.' .env || grep -Eq '^S3_PUBLIC_ENDPOINT_URL=https?://(localhost|127\.0\.0\.1)' .env; then
+    # .env.example fournit http://localhost:9000 (défaut de dev, REV-315) : inutilisable en production.
+    echo "⚠ S3_PUBLIC_ENDPOINT_URL non défini pour la production : les exports asynchrones et téléchargements présignés" >&2
+    echo "  pointeront sur localhost ou minio:9000 (injoignable). Définissez GEOSTUDIO_S3_PUBLIC_HOST (cf. .env.example)." >&2
+  fi
+}
+
+configure_s3_public_host
+
 prompt_public_host() {
   echo ""
   if [ -n "${GEOSTUDIO_PUBLIC_HOST+x}" ]; then

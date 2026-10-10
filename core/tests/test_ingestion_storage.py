@@ -122,6 +122,21 @@ def test_download_object_head_reads_only_the_head_and_cuts_on_a_line_boundary():
     assert out == b'{"a": 1}\n' * 2  # 18 octets : 3e ligne tronquée, retirée
 
 
+def test_download_object_head_first_line_longer_than_the_head_is_still_read():
+    """REV-323 A : une 1re ligne > head_bytes ne doit pas renvoyer un JSON tronqué."""
+    line = b'{"a": "' + b"x" * 40 + b'"}\n'
+    s3 = _RangeS3(line + b'{"b": 2}\n')
+    out = download_object_head(s3, bucket="b", key="k", head_bytes=10)
+    assert out.startswith(line) and out.endswith(b"\n")
+    assert s3.ranges[0] == "bytes=0-9"
+
+
+def test_download_object_head_single_giant_line_is_refused_beyond_the_extended_cap():
+    s3 = _RangeS3(b"x" * 1000)
+    with pytest.raises(ObjectTooLarge):
+        download_object_head(s3, bucket="b", key="k", head_bytes=10, max_first_line_factor=2)
+
+
 def test_download_object_head_returns_everything_when_the_object_is_small():
     s3 = _RangeS3(b'{"a": 1}\n{"b": 2}\n')
     out = download_object_head(s3, bucket="b", key="k", head_bytes=1024)
