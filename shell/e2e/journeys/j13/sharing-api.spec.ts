@@ -162,7 +162,7 @@ test.describe("j13 rôle de partage viewer / editor", () => {
     });
     expect(renamed.status).toBe(200);
     expect(await anon(`/v1/public/configs/by-item/${it.pk}`)).toBe(200);
-    // Il peut aussi rendre l'item visible de tout le tenant.
+    // REV-270/P14.12 : « editor » modifie mais ne gère pas le partage.
     expect(
       (
         await reader.send("PUT", `/v1/items/${it.pk}/sharing`, {
@@ -170,11 +170,10 @@ test.describe("j13 rôle de partage viewer / editor", () => {
           groups: [{ groupId: g, role: "editor" }],
         })
       ).status,
-    ).toBe(204);
+    ).toBe(403);
   });
 
-  test("un éditeur par groupe peut accorder « editor » à un autre groupe (rôle = co-propriétaire)", async () => {
-    // Constat (j13-012) : pas de rôle intermédiaire « modifier sans re-partager ».
+  test("seul un gestionnaire par groupe change le partage ; un éditeur modifie sans re-partager (REV-270/P14.12)", async () => {
     const it = await mkItem(creator, `${TAG}-coowner`);
     const g = await mkGroup(creator, `${TAG}-gco`, [analystId]);
     const other = await mkGroup(creator, `${TAG}-gco2`);
@@ -182,6 +181,13 @@ test.describe("j13 rôle de partage viewer / editor", () => {
     expect(
       await share(analyst, it.pk, [
         { groupId: g, role: "editor" },
+        { groupId: other, role: "editor" },
+      ]),
+    ).toBe(403);
+    expect(await share(creator, it.pk, [{ groupId: g, role: "manager" }])).toBe(204);
+    expect(
+      await share(analyst, it.pk, [
+        { groupId: g, role: "manager" },
         { groupId: other, role: "editor" },
       ]),
     ).toBe(204);

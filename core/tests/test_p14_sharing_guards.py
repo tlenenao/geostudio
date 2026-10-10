@@ -40,6 +40,19 @@ def _user(s, tenant_id, sub, role=None, **kw):
     return u
 
 
+def _no_privilege_user(env):
+    from app.roles.repository import create_role
+
+    with env["Session"]() as s:
+        t = get_or_create_default_tenant(s)
+        u = _user(s, t.id, "nobody", None)
+        u.role_id = create_role(s, tenant_id=t.id, name="Aucun", privileges=[]).id
+        s.commit()
+        s.refresh(u)
+        s.expunge(u)
+        return u
+
+
 @pytest.fixture()
 def env():
     engine = make_engine("sqlite+pysqlite:///:memory:")
@@ -95,7 +108,7 @@ def _group(client, *members) -> str:
     return gid
 
 
-def _share(client, item_id, gid, role="editor"):
+def _share(client, item_id, gid, role="manager"):
     body = {"public": False, "groups": [{"groupId": gid, "role": role}]}
     assert client.put(f"/v1/items/{item_id}/sharing", json=body).status_code == 204
 
@@ -169,6 +182,32 @@ def test_revoke_refuses_a_link_of_another_item(env):
     assert c.delete(f"/v1/items/{a}/share-links/{link_b}").status_code == 404
     _anon(app)
     assert c.get(f"/v1/share-links/{token_b}").status_code == 200  # toujours actif
+
+
+# --- REV-270 / P14.12 : « peut modifier » (editor) ≠ « peut gérer le partage » (manager) ---
+
+
+def test_editor_modifies_but_cannot_manage_sharing_manager_can(env):
+    app, c = env["app"], env["client"]
+    _as(app, env["owner"])
+    item = _app_item(c)
+    gid = _group(c, env["other"])
+    _share(c, item, gid, "editor")
+
+    _as(app, env["other"])
+    perms = c.get(f"/v1/items/{item}").json()["permissions"]
+    assert perms == {"read": True, "write": True, "delete": True, "share": False}
+    assert c.get(f"/v1/items/{item}/sharing").status_code == 403
+    r = c.put(f"/v1/items/{item}/sharing", json={"public": True, "groups": []})
+    assert r.status_code == 403
+    assert c.post(f"/v1/items/{item}/share-links", json={"ttlDays": 1}).status_code == 403
+
+    _as(app, env["owner"])
+    _share(c, item, gid, "manager")
+    _as(app, env["other"])
+    assert c.get(f"/v1/items/{item}").json()["permissions"]["share"] is True
+    assert c.get(f"/v1/items/{item}/sharing").status_code == 200
+    assert c.post(f"/v1/items/{item}/share-links", json={"ttlDays": 1}).status_code == 201
 
 
 # --- P14.13 (c01-005) : le lien meurt avec les droits de son créateur ---
@@ -250,7 +289,9 @@ def test_directory_search_is_for_catalog_managers_and_exposes_no_role(env):
     assert r.json() == [{"id": env["other"].id, "username": "other", "email": "other@x.test"}]
     assert c.get("/v1/users/directory", params={"q": "%%"}).json() == []  # littéral
     assert c.get("/v1/users/directory", params={"q": "o"}).status_code == 422
-    _as(app, env["reader"])
+    # Un rôle sur mesure sans aucun privilège (le Lecteur porte analytics.view
+    # depuis REV-270/P12.10, donc peut partager ses bookmarks) reste refusé.
+    _as(app, _no_privilege_user(env))
     assert c.get("/v1/users/directory", params={"q": "oth"}).status_code == 403
 
 
@@ -267,7 +308,10 @@ def test_analyst_who_can_share_a_bookmark_can_list_groups_and_search_directory(e
     _as(app, analyst)
     assert c.get("/v1/groups").status_code == 200
     assert c.get("/v1/users/directory", params={"q": "oth"}).status_code == 200
+    # Le Lecteur (analytics.view, REV-270/P12.10) partage ses bookmarks : OK.
     _as(app, env["reader"])
+    assert c.get("/v1/groups").status_code == 200
+    _as(app, _no_privilege_user(env))
     assert c.get("/v1/groups").status_code == 403
 
 

@@ -36,6 +36,8 @@ ROLE_SETS = [
     frozenset({"viewer"}),
     frozenset({"editor"}),
     frozenset({"viewer", "editor"}),
+    frozenset({"manager"}),
+    frozenset({"viewer", "manager"}),
 ]
 
 
@@ -126,12 +128,22 @@ def test_decide_viewer_reads_editor_writes():
     )
     assert decide(action="read", roles=frozenset({"viewer"}), **base) is True
     assert decide(action="write", roles=frozenset({"viewer"}), **base) is False
-    for action in ("write", "delete", "share"):
+    for action in ("write", "delete"):
         assert decide(action=action, roles=frozenset({"editor"}), **base) is True
+    # REV-270/P14.12 : l'éditeur modifie mais ne gère PAS le partage.
+    assert decide(action="share", roles=frozenset({"editor"}), **base) is False
+
+
+def test_decide_manager_reads_writes_and_shares():
+    base = dict(
+        kind="item", is_owner=False, is_public=False, is_published=False, actor_is_admin=False
+    )
+    for action in ("read", "write", "delete", "share"):
+        assert decide(action=action, roles=frozenset({"manager"}), **base) is True
 
 
 def test_parity_with_can_over_every_situation(session):
-    """Le produit cartésien complet : 4 actions × 4 jeux de rôles × propriétaire
+    """Le produit cartésien complet : 4 actions × 6 jeux de rôles × propriétaire
     ou non × public × publié × admin ou non. `can()` et `decide()` doivent
     toujours conclure pareil."""
     tenant = get_or_create_default_tenant(session)
@@ -154,7 +166,7 @@ def test_parity_with_can_over_every_situation(session):
         last_name="",
     )
     groups = {}
-    for role in ("viewer", "editor"):
+    for role in ("viewer", "editor", "manager"):
         group = Group(id=f"g-{role}", tenant_id=tenant.id, name=role, created_by=owner.id)
         session.add(group)
         session.flush()
@@ -250,7 +262,7 @@ def test_parity_with_items_permissions_by_id_over_every_situation(session):
         last_name="",
     )
     groups = {}
-    for role in ("viewer", "editor"):
+    for role in ("viewer", "editor", "manager"):
         group = Group(id=f"gi-{role}", tenant_id=tenant.id, name=role, created_by=owner.id)
         session.add(group)
         session.flush()
@@ -337,7 +349,7 @@ def test_parity_with_collection_permissions_by_id_over_every_situation(session):
         last_name="",
     )
     groups = {}
-    for role in ("viewer", "editor"):
+    for role in ("viewer", "editor", "manager"):
         group = Group(id=f"gc-{role}", tenant_id=tenant.id, name=role, created_by=owner.id)
         session.add(group)
         session.flush()

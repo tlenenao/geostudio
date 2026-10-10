@@ -394,7 +394,7 @@ def test_write_requires_editable_even_for_the_owner(session, tenant, owner):
     assert result[col.id].write is False
 
 
-def test_editor_role_grants_write_and_share_not_delete(session, tenant, owner, other):
+def test_editor_role_grants_write_not_share_nor_delete(session, tenant, owner, other):
     col = _register(session, tenant, owner)
     group = Group(id=uuid.uuid4().hex, tenant_id=tenant.id, name="g", created_by=owner.id)
     session.add(group)
@@ -412,7 +412,8 @@ def test_editor_role_grants_write_and_share_not_delete(session, tenant, owner, o
         can_manage_collections=False,
         collections=[col],
     )
-    assert result[col.id] == CollectionPermissions(read=True, write=True, delete=False, share=True)
+    # REV-270/P14.12 : « editor » modifie mais ne gère pas le partage.
+    assert result[col.id] == CollectionPermissions(read=True, write=True, delete=False, share=False)
 
 
 def test_anonymous_gets_read_only_on_a_public_collection(session, tenant, owner):

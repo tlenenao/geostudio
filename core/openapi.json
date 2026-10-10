@@ -2375,7 +2375,8 @@
           "role": {
             "enum": [
               "viewer",
-              "editor"
+              "editor",
+              "manager"
             ],
             "title": "Role",
             "type": "string"

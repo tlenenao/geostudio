@@ -2702,7 +2702,7 @@ export interface components {
              * Role
              * @enum {string}
              */
-            role: "viewer" | "editor";
+            role: "viewer" | "editor" | "manager";
         };
         /** HTTPValidationError */
         HTTPValidationError: {

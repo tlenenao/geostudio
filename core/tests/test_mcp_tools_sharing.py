@@ -394,7 +394,7 @@ def test_create_group_via_mcp_refuses_a_reader_with_no_privilege(app_client):
 
     with app_client.session_factory() as session:
         roles = ensure_built_in_roles(session, tenant_id=app_client.tenant.id)
-        assert roles["reader"].privileges == []
+        assert roles["reader"].privileges == ["analytics.view"]
         set_user_role(
             session,
             tenant_id=app_client.tenant.id,

@@ -763,6 +763,7 @@ export const fr = {
   "sharePanel.roleAria": "Rôle {group}",
   "sharePanel.roleViewer": "Lecteur",
   "sharePanel.roleEditor": "Éditeur",
+  "sharePanel.roleManager": "Gestionnaire (modifie et gère le partage)",
   "sharePanel.loadError": "Erreur de chargement.",
   "sharePanel.shareFailed": "Échec du partage.",
 
@@ -857,6 +858,8 @@ export const fr = {
   "editCollection.attachmentsTab": "Pièces jointes",
   "editCollection.sensitiveFieldsTab": "Champs sensibles",
   "editCollection.sensitiveFieldsTitle": "Champs sensibles",
+  "editCollection.sensitiveFieldsHint":
+    "Ces champs sont masqués pour toute personne sans le privilège « Voir les champs sensibles » (data.view_sensitive). Il n'existe aucune exception pour le propriétaire ou l'éditeur de la collection : sans ce privilège, vous ne les lisez pas non plus.",
   "editCollection.noLicenseOption": "Aucune licence déclarée",
   "editCollection.noFrequencyOption": "Non renseignée",
   "editCollection.licenseLabel": "Licence",

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -34,8 +34,12 @@ class GroupMember(Base):
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
 
 
+_ROLE_CHECK = "role IN ('viewer', 'editor', 'manager')"
+
+
 class ItemShare(Base):
     __tablename__ = "item_shares"
+    __table_args__ = (CheckConstraint(_ROLE_CHECK, name="ck_item_shares_role"),)
 
     item_id: Mapped[str] = mapped_column(
         ForeignKey("items.id", ondelete="CASCADE"), primary_key=True
@@ -44,7 +48,7 @@ class ItemShare(Base):
         ForeignKey("groups.id", ondelete="CASCADE"), primary_key=True
     )
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
-    role: Mapped[str] = mapped_column(String, nullable=False)  # "viewer" | "editor"
+    role: Mapped[str] = mapped_column(String, nullable=False)  # "viewer" | "editor" | "manager"
 
 
 class ShareLink(Base):
@@ -66,6 +70,7 @@ class ShareLink(Base):
 
 class CollectionShare(Base):
     __tablename__ = "collection_shares"
+    __table_args__ = (CheckConstraint(_ROLE_CHECK, name="ck_collection_shares_role"),)
 
     collection_id: Mapped[str] = mapped_column(
         ForeignKey("collections.id", ondelete="CASCADE"), primary_key=True
@@ -74,4 +79,4 @@ class CollectionShare(Base):
         ForeignKey("groups.id", ondelete="CASCADE"), primary_key=True
     )
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
-    role: Mapped[str] = mapped_column(String, nullable=False)  # "viewer" | "editor"
+    role: Mapped[str] = mapped_column(String, nullable=False)  # "viewer" | "editor" | "manager"

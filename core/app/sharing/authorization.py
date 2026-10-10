@@ -86,9 +86,15 @@ def decide(
     if action == "read":
         if is_public or is_published:
             return True
-        return bool(roles & {"viewer", "editor"})
-    if action in ("write", "delete", "share"):
-        return "editor" in roles
+        return bool(roles & {"viewer", "editor", "manager"})
+    # REV-270/P14.12 : « peut modifier » ≠ « peut gérer le partage ». Le rôle
+    # de partage « manager » (gestionnaire) englobe editor ; seul lui change
+    # le partage (REST, MCP, liens de partage et ItemRead.permissions.share
+    # passent tous par cette ligne).
+    if action in ("write", "delete"):
+        return bool(roles & {"editor", "manager"})
+    if action == "share":
+        return "manager" in roles
     return False
 
 

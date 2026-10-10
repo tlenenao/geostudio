@@ -117,7 +117,9 @@ def test_admin_gets_nothing_extra_on_items(env):
         ("viewer", "write", False),
         ("editor", "read", True),
         ("editor", "write", True),
-        ("editor", "share", True),
+        ("editor", "share", False),
+        ("manager", "write", True),
+        ("manager", "share", True),
     ],
 )
 def test_collection_group_roles(env, role, action, expected):

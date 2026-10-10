@@ -112,7 +112,7 @@ def _demote_alice_to_reader(env) -> None:
     client, Session, tenant, alice, *_ = env
     with Session() as s:
         roles = ensure_built_in_roles(s, tenant_id=tenant.id)
-        assert roles["reader"].privileges == []
+        assert roles["reader"].privileges == ["analytics.view"]
         reader_role_id = roles["reader"].id
         set_user_role(
             s,
