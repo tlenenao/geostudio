@@ -184,3 +184,37 @@ def test_table_without_geometry_gets_no_policy(pg_engine, pg_session_factory):
     finally:
         with pg_engine.begin() as conn:
             conn.execute(text("DROP TABLE IF EXISTS gl_flat"))
+
+
+def test_concurrent_policy_install_does_not_race_on_the_shared_function(
+    pg_engine, pg_session_factory
+):
+    """Deux créations de collection simultanées : CREATE OR REPLACE FUNCTION app_geo_limit
+    s'exécutait sans verrou (UniqueViolation pg_proc / « tuple concurrently updated », 500)."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from app.collections.ddl import ensure_geo_limit_policy
+
+    names = [f"gl_race_{i}" for i in range(8)]
+    with pg_engine.begin() as conn:
+        for n in names:
+            conn.execute(text(f"DROP TABLE IF EXISTS {n}"))
+            conn.execute(
+                text(f"CREATE TABLE {n} (id serial PRIMARY KEY, geom geometry(Point, 4326))")
+            )
+
+    def install(n: str) -> bool:
+        ok = True
+        for _ in range(15):
+            with pg_session_factory() as s:
+                ok &= ensure_geo_limit_policy(s, n)
+                s.commit()
+        return ok
+
+    try:
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            assert all(ex.map(install, names))
+    finally:
+        with pg_engine.begin() as conn:
+            for n in names:
+                conn.execute(text(f"DROP TABLE IF EXISTS {n}"))

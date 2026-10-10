@@ -145,6 +145,9 @@ def ensure_geo_limit_policy(session: Session, table_name: str) -> bool:
     row = _geometry_column(session, table_name)
     if row is None:
         return False
+    # CREATE OR REPLACE FUNCTION concurrent sur la même signature : UniqueViolation sur
+    # pg_proc / « tuple concurrently updated » (500 à deux créations simultanées).
+    session.execute(text("SELECT pg_advisory_xact_lock(hashtext('app_geo_limit_fn'))"))
     session.execute(text(_GEO_LIMIT_FUNCTION_SQL))
     t = _qi(session, table_name)
     g = _qi(session, row[0])
