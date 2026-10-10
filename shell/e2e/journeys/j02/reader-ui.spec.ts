@@ -7,7 +7,18 @@ test.setTimeout(90_000);
 
 async function asReader(page: Page) {
   await loginOidc(page, "reader");
-  await page.waitForTimeout(1000);
+  // REV-321 : signal observable (le catalogue est monté) plutôt qu'un délai fixe.
+  await expect(page.getByRole("textbox", { name: "Rechercher" }).first()).toBeVisible();
+}
+
+// Attend la réponse de `GET /v1/items` correspondant au prédicat (recherche ou
+// portée appliquée) : la liste affichée est alors celle de la requête, pas
+// celle d'avant, quelle que soit la charge machine (REV-321).
+function itemsResponse(page: Page, match: (params: URLSearchParams) => boolean) {
+  return page.waitForResponse((r) => {
+    const url = new URL(r.url());
+    return url.pathname.endsWith("/items") && r.ok() && match(url.searchParams);
+  });
 }
 
 // Bouton « Ouvrir » de la carte dont le titre est exactement `title` (la
@@ -21,8 +32,9 @@ async function openCard(page: Page, title: string) {
 }
 
 async function searchCatalog(page: Page, text: string) {
+  const done = itemsResponse(page, (p) => p.get("q") === text);
   await page.getByRole("textbox", { name: "Rechercher" }).first().fill(text);
-  await page.waitForTimeout(1500);
+  await done;
 }
 
 test.describe("j02 lecteur — catalogue, fiches, éditeurs", () => {
@@ -52,8 +64,9 @@ test.describe("j02 lecteur — catalogue, fiches, éditeurs", () => {
     page,
   }) => {
     await asReader(page);
+    const done = itemsResponse(page, (p) => p.get("scope") === "mine");
     await page.getByLabel("Portée").selectOption("mine");
-    await page.waitForTimeout(1500);
+    await done;
     await expect(page.getByRole("button", { name: "Ouvrir" })).toHaveCount(0);
     await expect(page.getByText(/Aucun (résultat|élément)/).first()).toBeVisible();
   });

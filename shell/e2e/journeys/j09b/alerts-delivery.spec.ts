@@ -283,6 +283,8 @@ test("balayage périodique réel : le worker évalue seul la règle planifiée (
   expect(ev?.state).toBe("firing");
   // aucune évaluation manuelle n'a été demandée pour cette règle : seul le balayage */5 a pu la créer
   expect(alertConfig(datasetId).alert.refreshPolicy.enabled).toBe(false);
-  const a = notifyAudit(sweepRuleId);
-  expect(a).toHaveLength(1);
+  // REV-321 : l'audit `alert.notify` est écrit APRÈS le passage de l'évaluation
+  // à `firing` (livraison puis audit) — attendre le signal, ne pas le lire une
+  // seule fois (course perdue sous charge, 2 workers).
+  await expect.poll(() => notifyAudit(sweepRuleId).length, { timeout: 60_000 }).toBe(1);
 });
