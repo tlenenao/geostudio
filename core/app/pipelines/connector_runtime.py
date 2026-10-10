@@ -202,7 +202,7 @@ class _CappedReader(io.RawIOBase):
             super().close()
 
 
-def _blob_resource(files, reader):
+def _blob_resource(files, reader, *, seekable: bool = False):
     """REV-273b : plafonds fichiers/octets/lignes + échéance globale sur la
     chaîne filesystem → reader. dlt applique `add_map` élément par élément (y
     compris sur les pages) ; compteurs frais à chaque appel.
@@ -233,9 +233,18 @@ def _blob_resource(files, reader):
             real_open = item.open
 
             def capped_open(*args, **kwargs):
-                return io.BufferedReader(
+                stream = io.BufferedReader(
                     _CappedReader(real_open(*args, **kwargs), state, max_bytes)
                 )
+                if not seekable:
+                    return stream
+                # REV-323 A : parquet exige un flux seekable (un gzip ne l'est
+                # pas) ; on spoole le décompressé, déjà plafonné par _CappedReader.
+                spool = tempfile.SpooledTemporaryFile(max_size=64 * 1024 * 1024)  # noqa: SIM115
+                with stream:
+                    shutil.copyfileobj(stream, spool)
+                spool.seek(0)
+                return spool
 
             item.open = capped_open
         return item
@@ -869,7 +878,9 @@ def materialize_blob_connector(
         file_glob=file_glob,
         **_blob_fs_kwargs(payload),
     )
-    resource = _blob_resource(files, _BLOB_READERS[params.format]())
+    resource = _blob_resource(
+        files, _BLOB_READERS[params.format](), seekable=params.format == "parquet"
+    )
     resource.apply_hints(table_name="records", write_disposition="replace")
 
     # M12 (REV-199) : un `file_glob` littéral (sans joker) vise UN fichier — 0 ligne chargée
