@@ -24,6 +24,9 @@ import "../i18n/domains/map";
 // gs-raw-color-ok: contour par défaut de symbologie utilisateur (valeur de donnée, pas un style)
 const DEFAULT_STROKE_COLOR = "#000000";
 
+// gs-raw-color-ok: contour par défaut de symbologie utilisateur (valeur de donnée, pas de thème)
+const DEFAULT_STROKE_COLOR = "#000000";
+
 // Éditeur partagé par les DEUX surfaces (éditeur de cartes et PropsPanel du
 // widget carte) — même précédent que PopupEditor.tsx (SP-24). Les deux
 // hôtes ne diffèrent que par comment `runStatistics`/`sampleField`
