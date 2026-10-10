@@ -30,6 +30,59 @@ def create_run(session: Session, *, tenant_id: str, pipeline_item_id: str) -> Pi
     return run
 
 
+class PipelineRunActive(Exception):
+    """Un run non périmé (queued/running/cancel_requested) existe déjà (REV-310)."""
+
+
+_ACTIVE_STATUSES = ("queued", "pending", "running", "cancel_requested")
+
+
+def _run_anchor():
+    """Horloge de péremption d'un run : `started_at` une fois démarré, sinon
+    `created_at` (même règle que reclaim_stuck_runs)."""
+    return func.coalesce(
+        case(
+            (PipelineRun.status.in_(("running", "cancel_requested")), PipelineRun.started_at),
+            else_=PipelineRun.created_at,
+        ),
+        PipelineRun.created_at,
+    )
+
+
+def create_run_unless_active(
+    session: Session,
+    *,
+    tenant_id: str,
+    pipeline_item_id: str,
+    stale_minutes: int = _RUNNING_RECLAIM_MINUTES,
+) -> PipelineRun:
+    """REV-310 : crée un run SAUF si un run actif non périmé existe (lève
+    PipelineRunActive). Point unique REST / MCP / webhook / cron. Atomique :
+    sous Postgres, un verrou advisory de transaction par pipeline sérialise
+    « vérifier puis insérer » jusqu'au commit de l'appelant (un SELECT puis
+    INSERT nu laisserait passer deux requêtes simultanées). Un run périmé
+    (plus vieux que le seuil de reprise) est ignoré, comme reclaim_stuck_runs.
+    # ponytail: SQLite (tests) sans verrou — mono-connexion, pas de concurrence réelle."""
+    if session.get_bind().dialect.name == "postgresql":
+        session.execute(
+            select(func.pg_advisory_xact_lock(func.hashtextextended(pipeline_item_id, 0)))
+        )
+    threshold = _now() - timedelta(minutes=stale_minutes)
+    active = session.execute(
+        select(PipelineRun.id)
+        .where(
+            PipelineRun.tenant_id == tenant_id,
+            PipelineRun.pipeline_item_id == pipeline_item_id,
+            PipelineRun.status.in_(_ACTIVE_STATUSES),
+            _run_anchor() >= threshold,
+        )
+        .limit(1)
+    ).first()
+    if active is not None:
+        raise PipelineRunActive(pipeline_item_id)
+    return create_run(session, tenant_id=tenant_id, pipeline_item_id=pipeline_item_id)
+
+
 def get_run(session: Session, *, tenant_id: str, run_id: str) -> PipelineRun | None:
     return session.execute(
         select(PipelineRun).where(PipelineRun.id == run_id, PipelineRun.tenant_id == tenant_id)

@@ -306,3 +306,41 @@ def test_sweep_writes_pipeline_run_audit_with_schedule_actor(monkeypatch):
         row = s.execute(select(AuditLog).where(AuditLog.action == "pipeline.run")).scalar_one()
         assert (row.tenant_id, row.actor_id, row.actor_kind) == (tenant.id, user.id, "schedule")
         assert row.payload == {"pipelineItemId": item_id}
+
+
+def test_sweep_does_not_create_a_run_when_one_became_active_after_the_due_check(monkeypatch):
+    """REV-310 (jumelle cron) : le balayage passe par la même création atomique
+    que POST /run — un run actif apparu entre le calcul « dû » et l'insertion
+    (déclenchement manuel concurrent) est respecté, pas doublé."""
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        item_id = _seed_due_pipeline(s, tenant_id=tenant.id, owner_id=user.id)
+        pipelines_repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_id)  # actif
+        s.commit()
+
+    deferred = []
+    monkeypatch.setattr(pipeline_jobs.run_pipeline_task, "defer", lambda **kw: deferred.append(kw))
+    monkeypatch.setattr(pipeline_jobs, "_session_factory", lambda: Session)
+    monkeypatch.setattr(pipeline_jobs, "is_read_only_mode", lambda: False)
+    monkeypatch.setattr(pipeline_jobs, "is_etl_enabled", lambda: True)
+    # Le calcul « dû » (instantané périmé) désigne quand même le pipeline.
+    monkeypatch.setattr(
+        pipelines_repo, "list_due_pipelines", lambda session: [(item_id, tenant.id)]
+    )
+
+    pipeline_jobs.run_pipeline_sweep_task(timestamp=0)
+
+    assert deferred == []
+    with Session() as s:
+        runs = pipelines_repo.list_runs(s, tenant_id=tenant.id, pipeline_item_id=item_id)
+        assert len(runs) == 1
