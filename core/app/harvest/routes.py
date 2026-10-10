@@ -24,6 +24,7 @@ from app.configs import repository as configs_repo
 from app.db import get_session
 from app.errors import ValidationHTTPException
 from app.features.routes import EXPORT_ITEMS_CAP as _EXPORT_ITEMS_CAP
+from app.filter_values import fold_query_filters
 from app.harvest import live_query
 from app.harvest import repository as repo
 from app.harvest.connectors import get_connector
@@ -409,7 +410,7 @@ def get_dataset_arcgis_items(
     limit = min(limit, _MAX_LIMIT)
     parsed_bbox = _parse_bbox(bbox)
     reserved = {"limit", "offset", "bbox"}
-    filters = {k: v for k, v in request.query_params.items() if k not in reserved}
+    filters = fold_query_filters(request.query_params.multi_items(), reserved)
     external_url = _resolve_arcgis_dataset(session, item_id=item_id, user=user)
     try:
         params = live_query.translate_features_query(
@@ -582,7 +583,7 @@ def export_dataset_arcgis_items(
         )
     parsed_bbox = _parse_bbox(bbox)
     reserved = {"limit", "offset", "bbox", "format"}
-    filters = {k: v for k, v in request.query_params.items() if k not in reserved}
+    filters = fold_query_filters(request.query_params.multi_items(), reserved)
     external_url = _resolve_arcgis_dataset(session, item_id=item_id, user=user)
 
     features: list[dict] = []
