@@ -64,6 +64,7 @@ def make_fake_items_repo():
         filters=None,
         after=None,
         count_mode="exact",
+        count_cap=None,
     ):
         items = sorted(state["rows"].items())
         page_items = items[offset : offset + limit]

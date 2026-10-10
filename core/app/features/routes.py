@@ -472,15 +472,17 @@ def export_collection_items(
                     geom_intersects=parsed_geom_intersects,
                     filters=filters or None,
                     after=cursor,
-                    # Total exact sur la 1re page : il tranche sync / asynchrone.
-                    count_mode="exact" if cursor is None else "none",
+                    # Total sur la 1re page : il tranche sync / asynchrone / 413. Borné à
+                    # job_max (REV-323 B : count(*) exact non borné sur une grosse table).
+                    count_mode="capped" if cursor is None else "none",
+                    count_cap=job_max,
                 )
         except FilterError as exc:
             raise _validation_error(
                 [{"field": exc.field, "code": "unknown_filter", "message": exc.message}]
             ) from exc
         if cursor is None and page.number_matched is not None:
-            if page.number_matched > job_max:
+            if page.number_matched_lower_bound or page.number_matched > job_max:
                 raise HTTPException(
                     status_code=413, detail="too many entities matched, refine your filters"
                 )

@@ -195,6 +195,7 @@ def select_features(
     filters=None,
     after: str | None = None,
     count_mode: Literal["exact", "capped", "none"] = "exact",
+    count_cap: int | None = None,
 ) -> FeaturePage:
     if after is not None and offset > 0:
         raise CursorError("after and offset are mutually exclusive")
@@ -235,12 +236,13 @@ def select_features(
     elif count_mode == "none":
         matched = None  # l'appelant (export) ne consomme pas le total
     elif count_mode == "capped":
+        count_cap = EXACT_COUNT_CAP if count_cap is None else count_cap
         n = session.execute(
             text(f"SELECT count(*) FROM (SELECT 1 FROM public.{t}{where} LIMIT :__cap) q"),
             {**params, "__cap": EXACT_COUNT_CAP + 1},
         ).scalar()
-        lower_bound = n > EXACT_COUNT_CAP
-        matched = EXACT_COUNT_CAP if lower_bound else n
+        lower_bound = n > count_cap
+        matched = count_cap if lower_bound else n
     else:
         matched = session.execute(text(f"SELECT count(*) FROM public.{t}{where}"), params).scalar()
     return FeaturePage(

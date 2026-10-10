@@ -461,6 +461,15 @@ def test_capped_count_reports_lower_bound(info, pg_session_factory, monkeypatch)
     assert page.number_matched == 1 and page.number_matched_lower_bound is True
 
 
+def test_explicit_count_cap_bounds_the_count(info, pg_session_factory):
+    """REV-323 B : l'export borne son compte à job_max au lieu d'un count(*) exact."""
+    import app.features.repository as repo
+
+    with pg_session_factory() as s, rls_scope(s, "default"):
+        page = repo.select_features(s, info, limit=1, offset=0, count_mode="capped", count_cap=1)
+    assert page.number_matched == 1 and page.number_matched_lower_bound is True
+
+
 def test_encode_cursor_supports_uuid_decimal_date_pks():
     import uuid
     from decimal import Decimal
