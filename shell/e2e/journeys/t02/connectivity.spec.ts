@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 import { CORE_URL } from "../_fixtures/env";
-import { bug, CORE_READS, getA11ySeed, go, newSession, type Session } from "./helpers";
+import { CORE_READS, getA11ySeed, go, newSession, type Session } from "./helpers";
 
 const BANNER = /Connexion au serveur perdue/;
 const LIST_ERROR = /Erreur de chargement/;
@@ -108,7 +108,7 @@ test.describe("t02 UI : le cœur devient injoignable puis revient", () => {
   });
 
   // Finding t02-008 : aucun traitement du 401 (jeton expiré/révoqué) : erreur générique, pas d'invite de reconnexion.
-  bug("t02-008 : un 401 en cours de session invite à se reconnecter", async () => {
+  test("t02-008 : un 401 en cours de session invite à se reconnecter", async () => {
     await s.page.route(`${CORE_URL}/v1/**`, (r) => {
       const req = r.request();
       if (CORE_READS(req.url(), req.method()) && /\/v1\/items(\?|$)/.test(req.url())) {

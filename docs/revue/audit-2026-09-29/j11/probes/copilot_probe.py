@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from app.auth.dependency import get_current_user
 from app.copilot import routes as R
 from app.copilot.llm_provider import LLMTurn, ToolCall
+from app.db import get_session
 
 warnings.filterwarnings("ignore")
 
@@ -50,6 +51,9 @@ R.McpLoopbackSession = FakeSess
 app = FastAPI()
 app.include_router(R.router)
 app.dependency_overrides[get_current_user] = lambda: U()
+# Depuis P22 le tour écrit un audit `copilot.turn` : la sonde n'a pas de base, on le neutralise.
+app.dependency_overrides[get_session] = lambda: None
+R._write_turn_audit = lambda *a, **k: None
 client = TestClient(app, raise_server_exceptions=False)
 
 

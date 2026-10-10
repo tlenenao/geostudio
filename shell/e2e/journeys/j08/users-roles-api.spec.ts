@@ -140,7 +140,7 @@ test.describe("j08 rôles — API", () => {
     await assign(u, role.id);
     const blocked = await admin.send("DELETE", `/v1/roles/${role.id}`);
     expect(blocked.status).toBe(409);
-    expect(String(blocked.body.detail)).toContain("1 user");
+    expect(String(blocked.body.detail)).toContain("1 utilisateur");
     await assign(u, await roleIdBySlug(admin, "reader"));
     expect((await admin.send("DELETE", `/v1/roles/${role.id}`)).status).toBe(204);
   });
