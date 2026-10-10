@@ -30,9 +30,23 @@ test("t02-008 : un 401 invite à se reconnecter, un succès ultérieur lève l'i
   await userEvent.click(screen.getByRole("button", { name: "Se reconnecter" }));
   expect(signIn).toHaveBeenCalledTimes(1);
   await act(async () => {
-    await qc.fetchQuery({ queryKey: ["b"], queryFn: () => Promise.resolve(1) });
+    await qc.fetchQuery({ queryKey: ["a"], queryFn: () => Promise.resolve(1) });
   });
   await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+});
+
+test("le succès d'une autre requête (route publique) ne lève pas la bannière", async () => {
+  const qc = setup();
+  await act(async () => {
+    await qc
+      .fetchQuery({ queryKey: ["a"], queryFn: () => Promise.reject(new ApiError(401)) })
+      .catch(() => {});
+  });
+  expect(await screen.findByRole("alert")).toBeInTheDocument();
+  await act(async () => {
+    await qc.fetchQuery({ queryKey: ["public"], queryFn: () => Promise.resolve(1) });
+  });
+  expect(screen.getByRole("alert")).toBeInTheDocument();
 });
 
 test("une erreur non 401 n'affiche rien", async () => {

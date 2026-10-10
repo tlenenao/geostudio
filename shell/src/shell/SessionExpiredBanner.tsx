@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "../api/ApiError";
 import { useAuth } from "../auth/useAuth";
@@ -16,17 +16,26 @@ export function SessionExpiredBanner() {
   const queryClient = useQueryClient();
   const { signIn } = useAuth();
   const [expired, setExpired] = useState(false);
+  const failed401 = useRef(new Set<string>());
 
   useEffect(() => {
     const unsubQ = queryClient.getQueryCache().subscribe((event) => {
       if (event.type !== "updated") return;
-      if (event.query.state.status === "error" && is401(event.query.state.error)) setExpired(true);
-      else if (event.action.type === "success" && !event.action.manual) setExpired(false);
+      const hash = event.query.queryHash;
+      if (event.query.state.status === "error" && is401(event.query.state.error)) {
+        failed401.current.add(hash);
+        setExpired(true);
+      } else if (event.action.type === "success" && !event.action.manual) {
+        // Seul le succès d'une requête déjà tombée en 401 (donc authentifiée) lève
+        // la bannière : une route publique qui réussit ne prouve rien sur la session.
+        if (failed401.current.delete(hash)) setExpired(false);
+      }
     });
     const unsubM = queryClient.getMutationCache().subscribe((event) => {
       if (event.type !== "updated") return;
       if (event.mutation.state.status === "error" && is401(event.mutation.state.error))
         setExpired(true);
+      else if (event.mutation.state.status === "success") setExpired(false); // mutation = authentifiée
     });
     return () => {
       unsubQ();
