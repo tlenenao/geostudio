@@ -170,7 +170,7 @@ test.describe("j10 sites : édition côté auteur", () => {
   }) => {
     await openAs(page, "creator");
     await page.getByRole("button", { name: "Nouveau" }).first().click();
-    await page.locator("select").first().selectOption("site");
+    await page.getByRole("dialog").getByLabel("Type").selectOption("site");
     await page.getByLabel("Modèle").selectOption({ label: "Portail de données" });
     await page.getByLabel("Titre", { exact: true }).fill(`${tag} Portail UI`);
     await expect(page.getByLabel("Slug")).toHaveValue(new RegExp(`^${tag}-portail-ui$`));

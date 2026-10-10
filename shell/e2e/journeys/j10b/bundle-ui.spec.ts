@@ -1,4 +1,3 @@
-import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import type { Server } from "node:http";
@@ -220,17 +219,14 @@ test.describe("j10b CORS étroit du mode Connecté", () => {
 
 test.describe("j10b téléchargement et builder", () => {
   // FINDING j10b-008 : resultUrl est présigné sur l'hôte interne du stockage.
-  bug(
-    "j10b-008 : l'URL de téléchargement du bundle est joignable depuis un navigateur",
-    async () => {
-      const id = await createApp(creator, `${tag}-dl`, appConfig());
-      const run = await runExport(creator, id, "static");
-      const job = await creator.get(`/v1/app-exports/jobs/${run.jobId}`);
-      expect(job.body.status).toBe("done");
-      const r = await fetch(job.body.resultUrl);
-      expect(r.status).toBe(200);
-    },
-  );
+  test("j10b-008 : l'URL de téléchargement du bundle est joignable depuis un navigateur", async () => {
+    const id = await createApp(creator, `${tag}-dl`, appConfig());
+    const run = await runExport(creator, id, "static");
+    const job = await creator.get(`/v1/app-exports/jobs/${run.jobId}`);
+    expect(job.body.status).toBe("done");
+    const r = await fetch(job.body.resultUrl);
+    expect(r.status).toBe(200);
+  });
 
   test("builder : un widget formulaire déclenche l'avertissement d'écriture avant l'export", async ({
     page,
