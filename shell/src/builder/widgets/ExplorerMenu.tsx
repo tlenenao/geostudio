@@ -55,6 +55,9 @@ export function ExplorerMenu({
   const [menuOpen, setMenuOpen] = useState(false);
   const menu = usePanelTrigger(menuOpen);
   const [exportError, setExportError] = useState<string | null>(null);
+  // D6 : export asynchrone accepté par le cœur (annulable) et retour de l'annulation.
+  const [exportJob, setExportJob] = useState<{ collectionId: string; jobId: string } | null>(null);
+  const [exportNotice, setExportNotice] = useState<string | null>(null);
   // SP-60 : le sondage d'un export asynchrone s'arrête au démontage.
   const exportAbort = useRef<AbortController | null>(null);
   useEffect(() => () => exportAbort.current?.abort(), []);
@@ -69,6 +72,24 @@ export function ExplorerMenu({
   function closeMenu() {
     setMenuOpen(false);
     setExportError(null);
+    setExportNotice(null);
+  }
+
+  async function cancelExport() {
+    if (!exportJob || !client) return;
+    try {
+      await client.cancelExportJob(exportJob.collectionId, exportJob.jobId);
+      exportAbort.current?.abort();
+      setExportJob(null);
+      setExportNotice(t("explorerMenu.exportCancelled"));
+    } catch (err) {
+      // 409 : terminé entre-temps — le sondage en cours récupère le résultat.
+      if (err instanceof ApiError && err.status === 409) {
+        setExportNotice(t("explorerMenu.cancelTooLate"));
+      } else {
+        setExportError(t("explorerMenu.cancelFailed"));
+      }
+    }
   }
 
   async function handleExport(format: string) {
@@ -81,11 +102,13 @@ export function ExplorerMenu({
     const ac = new AbortController();
     exportAbort.current = ac;
     try {
-      const file = await client.exportDataSource(resolvedSource, format, ac.signal);
+      const file = await client.exportDataSource(resolvedSource, format, ac.signal, setExportJob);
       saveExportedFile(file);
     } catch (err) {
       if (ac.signal.aborted) return;
       setExportError(exportErrorMessage(err));
+    } finally {
+      if (exportAbort.current === ac) setExportJob(null);
     }
   }
 
@@ -128,6 +151,23 @@ export function ExplorerMenu({
             </button>
           ))}
         </div>
+      )}
+      {exportJob && (
+        <button
+          type="button"
+          className="mt-1 block whitespace-nowrap rounded border border-[var(--gs-color-border)] bg-[var(--gs-color-background)] px-2 py-1 text-xs text-[var(--gs-color-text)] shadow-sm"
+          onClick={() => void cancelExport()}
+        >
+          {t("explorerMenu.cancelExport")}
+        </button>
+      )}
+      {exportNotice && (
+        <p
+          role="status"
+          className="mt-1 whitespace-normal rounded border border-[var(--gs-color-border)] bg-[var(--gs-color-background)] px-2 py-1 text-xs shadow-sm"
+        >
+          {exportNotice}
+        </p>
       )}
       {exportError && (
         <p
