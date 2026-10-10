@@ -310,6 +310,9 @@ export function EditCollectionPanel({
                   <p className="text-sm font-medium text-ink">
                     {t("editCollection.sensitiveFieldsTitle")}
                   </p>
+                  <p className="text-sm text-ink-muted">
+                    {t("editCollection.sensitiveFieldsHint")}
+                  </p>
                   {schemaQuery.isLoading && <LoadingState />}
                   <ul className="flex flex-col gap-1">
                     {sensitiveFieldCandidates.map((f) => (

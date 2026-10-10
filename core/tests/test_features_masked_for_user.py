@@ -69,3 +69,42 @@ def test_get_masked_for_user_reflects_privilege():
             "salary",
         ]
         assert [c.name for c in visible_table_info(s, regular, col, info).columns] == ["nom"]
+
+
+def test_owner_of_a_collection_is_masked_without_view_sensitive_rev270_p15_05():
+    """Décision produit REV-270/P15.05 (Tanguy, 2026-10-10) : PAS d'exception
+    propriétaire — le propriétaire (et l'éditeur) d'une collection ne lit pas
+    ses champs sensibles sans data.view_sensitive. Le verdict de masquage ne
+    dépend que du privilège de l'utilisateur, jamais de la collection ; ce test
+    échoue si une exception propriétaire est un jour introduite."""
+    from app.collections import repository as collections_repo
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    Session = make_session_factory(engine)
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        owner = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="o",
+            username="owner",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        collections_repo.create_collection(
+            s,
+            tenant_id=tenant.id,
+            owner_id=owner.id,
+            table_name="rh",
+            title="RH",
+            description="",
+            is_public=False,
+            pk_column="id",
+            geometry_column=None,
+            geometry_type=None,
+            srid=None,
+        )
+        s.flush()
+        assert get_masked_for_user(user=owner, session=s) is True
