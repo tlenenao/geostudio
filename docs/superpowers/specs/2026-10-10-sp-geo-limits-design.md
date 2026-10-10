@@ -113,12 +113,12 @@ suivi des appelants réels (pas du vocabulaire).
 | 5 | STAC `/stac/collections/{id}/items`, `/items/{id}`, `/search` (GET/POST) | `rls(...)` | **COUVERT** |
 | 6 | Emprises STAC/DCAT (`rls_scoped_bbox_4326`) et `GET /collections/{id}` (`extent`) | `rls(...)` / fournisseur inline | **COUVERT** (l'emprise est celle du visible) |
 | 7 | MCP `query_features` | `rls_scope` | **COUVERT** |
-| 8 | `featureCount` (liste + fiche de collection), STAC | colonne `collections.feature_count` | **MASQUÉ** (`null`) pour l'utilisateur limité |
+| 8 | `featureCount` (liste + fiche de collection ; STAC n'en expose pas) | colonne `collections.feature_count` | **MASQUÉ** (`null`) pour l'utilisateur limité |
 | 9 | Agrégats `POST /collections/{id}/aggregate`, `/export` (lac GeoParquet/DuckDB) | DuckDB, hors Postgres | **REFUSÉ** 403 `geo_limit_unsupported` |
 | 10 | MCP `aggregate_dataset` (`mcp/tools/analytics.py`), évaluation d'alerte (`alerts/jobs.py`) | `run_collection_aggregate` | **REFUSÉ** |
 | 11 | SQL Lab `POST /analytics/sql` | vues DuckDB sur le lac | collections limitées **exclues** des tables autorisées (inconnue pour l'utilisateur) |
 | 12 | Pipelines : `reader.collection`, jointure `withCollectionId` (lac) | DuckDB | **REFUSÉ** (`PipelineRuntimeError`) |
-| 13 | Pipelines : `writer.collection` | `rls_scope` | **COUVERT** (limites du propriétaire du pipeline ; échec explicite si hors limite) |
+| 13 | Pipelines : `writer.collection` | `rls_scope` | **COUVERT** (limites du propriétaire du pipeline ; échec explicite si hors limite ; mode `replace` REFUSÉ sur collection limitée, il ne supprimerait que le visible) |
 | 14 | Export d'app statique/connecté/autoporté (`appexport.freeze`/`snapshot`) | `rls_scope(masked=True)` + lac | **REFUSÉ** si la collection porte une entrée (un export fige des données pour des tiers anonymes) |
 | 15 | Pièces jointes (5 routes REST + MCP `list_attachments`) | table `attachments` par `(collection, fid)`, hors RLS | **REFUSÉ** pour l'utilisateur limité (non vérifiable sans `app.features`, couche supérieure) |
 | 16 | Rapports/exports PDF-PNG (worker Playwright) | jeton d'export lié à l'utilisateur → REST | **COUVERT par construction** (mêmes routes REST) |
@@ -137,14 +137,14 @@ La policy porte `WITH CHECK` : un `INSERT`/`UPDATE` dont la géométrie résulta
 n'est pas contenue dans la limite lève SQLSTATE 42501, converti en
 `403 outside_geo_limit` par les routes d'écriture. Un `UPDATE`/`DELETE` d'une
 entité déjà hors limite ne la voit pas (RLS `USING`) : 404, comme une entité
-inexistante. `DELETE` en masse (`writer.collection` mode replace) ne supprime
-que le visible.
+inexistante. `DELETE` en masse (`writer.collection` mode replace) est refusé
+sur une collection limitée.
 
 ## 7. UI minimale
 
-Dans l'écran de partage de collection (`CollectionSharingPanel`), section
+Dans l'écran de partage de collection (`CollectionSharePanel`), section
 « Limites géographiques » (visible avec `admin.collections.manage`) : liste des
-limites, formulaire cible (rôle/groupe) + GeoJSON collé, suppression. Accès
+limites, formulaire cible (groupe seulement en UI ; les cibles rôle sont API-only) + GeoJSON collé, suppression. Accès
 exclusivement via `ItemClient` (`listGeoLimits`/`putGeoLimit`/`deleteGeoLimit`).
 Pas d'éditeur cartographique de polygone (non fait).
 

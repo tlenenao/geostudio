@@ -78,6 +78,18 @@ APP_DIR = Path(__file__).resolve().parent.parent / "app"
 _ALLOWED_WITHOUT_KEYWORD = {"features/rls.py", "appexport/freeze.py", "appexport/snapshot.py"}
 
 
+def test_only_known_modules_switch_to_the_rls_role():
+    """Un `SET LOCAL ROLE gis_rls` hors rls_scope ne poserait pas app.geo_limits
+    (= non limité). Seuls rls.py et le fournisseur d'emprise (qui la pose à la main)."""
+    allowed = {"features/rls.py", "collections/routes.py"}
+    found = {
+        p.relative_to(APP_DIR).as_posix()
+        for p in APP_DIR.rglob("*.py")
+        if "SET LOCAL ROLE" in p.read_text() and p.name != "ddl.py"
+    }
+    assert found <= allowed, found - allowed
+
+
 def test_every_rls_scope_call_carries_geo_limits():
     offenders = []
     for path in APP_DIR.rglob("*.py"):
