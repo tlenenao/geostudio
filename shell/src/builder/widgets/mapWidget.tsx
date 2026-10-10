@@ -4,7 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { registerWidget } from "../registry";
 import { DataSourceSelect } from "../DataSourceSelect";
 import { useBusAction } from "../ActionBusContext";
-import { useSetCrossFilter, useSetExtent } from "../AnalyticsContext";
+import { useAnalyticsContext, useSetCrossFilter, useSetExtent } from "../AnalyticsContext";
+import { withTimeRange } from "../../lib/analyticsPatch";
 import { useItemClient } from "../../api/ItemClientProvider";
 import {
   buildLegend,
@@ -244,6 +245,7 @@ export function registerMapWidget(): void {
       // est non-null, y compris pendant que le chunk lazy de MapView charge.
       const [mapReady, setMapReady] = useState(false);
       const setExtent = useSetExtent();
+      const analyticsCtx = useAnalyticsContext();
       const setCrossFilter = useSetCrossFilter();
       useBusAction(ctx.bus, ctx.widgetId, "flyTo", (payload) => {
         const center = centerFromPayload(payload);
@@ -331,7 +333,11 @@ export function registerMapWidget(): void {
                 },
               ]
             : []),
-          ...((props.layers as MapLayer[] | undefined) ?? []),
+          ...((props.layers as MapLayer[] | undefined) ?? []).map((l) =>
+            l.kind === "feature" && l.timeField
+              ? { ...l, url: withTimeRange(l.url, l.timeField, analyticsCtx.timeRange) }
+              : l,
+          ),
         ],
       };
       return (

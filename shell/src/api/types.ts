@@ -346,6 +346,8 @@ export type MapLayer =
       symbology?: import("../builder/widgets/mapSymbology").LayerSymbology;
       collectionId?: string;
       pkColumn?: string;
+      // REV-304 : champ temporel filtré par le contexte temps global (widget carte).
+      timeField?: string;
     }
   | {
       id: string;
