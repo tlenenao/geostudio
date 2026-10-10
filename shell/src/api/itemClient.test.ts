@@ -4688,3 +4688,26 @@ test("REV-271 : getAlertRuleConfig expose la version, saveAlertRuleConfig l'envo
   expect(ifMatch).toBe('"5"');
   expect(body).toEqual({ version: 1, kind: "alert", alert });
 });
+
+test("REV-317 : updateItem envoie baseUpdatedAt en If-Match (hors corps) ; sans lui, aucun en-tête ; 412 -> ApiError", async () => {
+  let ifMatch: string | null = "unset";
+  let body: any;
+  server.use(
+    http.patch("https://core.test/v1/items/i-1", async ({ request }) => {
+      ifMatch = request.headers.get("If-Match");
+      body = await request.json();
+      if (ifMatch === '"old"')
+        return HttpResponse.json({ detail: "stale version" }, { status: 412 });
+      return HttpResponse.json({ pk: "i-1", title: "T" });
+    }),
+  );
+  const client = makeClient();
+  await client.updateItem("i-1", { title: "T", baseUpdatedAt: "2026-01-01T00:00:00" });
+  expect(ifMatch).toBe('"2026-01-01T00:00:00"');
+  expect(body).toEqual({ title: "T" });
+  await client.updateItem("i-1", { title: "T" });
+  expect(ifMatch).toBeNull();
+  await expect(client.updateItem("i-1", { baseUpdatedAt: "old" })).rejects.toMatchObject({
+    status: 412,
+  });
+});
