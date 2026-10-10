@@ -7,6 +7,7 @@ test_features_tiles_postgis.py."""
 import pytest
 
 from app.collections.introspection import ColumnInfo, TableInfo
+from app.configs.geo_limits_dep import get_request_geo_limits
 from app.features.tiles import (
     MAX_TILE_FEATURES,
     TILE_STATEMENT_TIMEOUT_MS,
@@ -157,6 +158,7 @@ def _client(monkeypatch, info: TableInfo | None = None, collection=None):
     )
     monkeypatch.setattr(tiles_module, "get_collection_for_read", lambda s, u, c, *, guest=None: col)
     app.dependency_overrides[db.get_session] = lambda: None
+    app.dependency_overrides[get_request_geo_limits] = lambda: {}
     app.dependency_overrides[get_current_user_optional] = lambda: None
     app.dependency_overrides[get_introspector] = lambda: (
         lambda s, t: info if info is not None else (_ for _ in ()).throw(TableNotFound(t))

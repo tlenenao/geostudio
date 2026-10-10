@@ -3,6 +3,7 @@
 Le repository et le scope RLS sont injectables : les tests SQLite substituent
 un fake et un scope nul ; le vrai chemin est PostGIS-only."""
 
+import functools
 import json
 import os
 from contextlib import contextmanager
@@ -13,7 +14,7 @@ from fastapi.responses import JSONResponse
 from opentelemetry import metrics
 from pydantic import BaseModel
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import Session
 
 from app.analytics.aggregate import (
@@ -46,6 +47,7 @@ from app.collections.routes import (
     get_introspector,
     get_readable_collection,
 )
+from app.configs.geo_limits_dep import get_request_geo_limits
 from app.configs.guest_access import GuestActor, get_share_link_actor
 from app.db import get_session
 from app.errors import ValidationHTTPException
@@ -55,6 +57,7 @@ from app.filter_values import fold_query_filters
 from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
 from app.sharing.authorization import can
+from app.sharing.geo_limits import refuse_if_geo_limited
 
 router = APIRouter()
 
@@ -122,10 +125,13 @@ def null_rls_scope(session, tenant_id, *, masked: bool = False):  # pour SQLite 
     yield
 
 
-def get_rls_scope():  # overridé en test SQLite
+def get_rls_scope(geo_limits=Depends(get_request_geo_limits)):  # overridé en test SQLite
+    """Scope RLS lié aux limites géographiques de la requête (GAP-27) : chaque
+    `rls(session, tenant, ...)` des routes (features, tuiles, STAC, DCAT) est
+    donc limité sans que le site d'appel ait à y penser (fail-closed)."""
     from app.features.rls import rls_scope
 
-    return rls_scope
+    return functools.partial(rls_scope, geo_limits=geo_limits)
 
 
 def get_masked_for_user(
@@ -298,8 +304,11 @@ def aggregate_features(
     introspect=Depends(get_introspector),
     conn_factory=Depends(get_duckdb_connection_factory),
     base_uri: str = Depends(get_analytics_base_uri),
+    geo_limits=Depends(get_request_geo_limits),
 ):
     col = get_collection_for_read(session, user, collection_id, guest=guest)
+    # GAP-27 : le lac DuckDB n'est pas soumis à la RLS — refus fail-closed.
+    refuse_if_geo_limited(geo_limits, col.table_name, path="aggregates")
     info = introspect(session, col.table_name)
     masked_fields = (
         frozenset()
@@ -356,6 +365,7 @@ def export_collection_aggregate(
     introspect=Depends(get_introspector),
     conn_factory=Depends(get_duckdb_connection_factory),
     base_uri: str = Depends(get_analytics_base_uri),
+    geo_limits=Depends(get_request_geo_limits),
 ):
     if format not in EXPORT_FORMATS_AGGREGATE:
         raise _validation_error(
@@ -368,6 +378,7 @@ def export_collection_aggregate(
             ]
         )
     col = get_collection_for_read(session, user, collection_id)
+    refuse_if_geo_limited(geo_limits, col.table_name, path="aggregate export")
     info = introspect(session, col.table_name)
     masked_fields = (
         frozenset()
@@ -549,6 +560,7 @@ def analytics_sql(
     introspect=Depends(get_introspector),
     conn_factory=Depends(get_duckdb_connection_factory),
     base_uri: str = Depends(get_analytics_base_uri),
+    geo_limits=Depends(get_request_geo_limits),
 ):
     require_privilege(session, user, Privilege.ANALYTICS_SQL_LAB_ACCESS.value)
     sensitive_ok = has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)
@@ -561,6 +573,10 @@ def analytics_sql(
     allowed: dict = {}
     masked_fields_by_collection: dict[str, frozenset[str]] = {}
     for col in cols:
+        # GAP-27 : le lac DuckDB n'applique pas les limites géographiques — une
+        # collection limitée pour l'appelant n'est simplement pas interrogeable.
+        if col.table_name in geo_limits:
+            continue
         try:
             allowed[col.id] = introspect(session, col.table_name)
         except TableNotFound:
@@ -637,6 +653,15 @@ def get_single_feature(
     return feature
 
 
+def _raise_if_outside_geo_limit(exc: DBAPIError) -> None:
+    """WITH CHECK de la policy `geo_limit` (GAP-27) : SQLSTATE 42501 sur une
+    écriture dont la géométrie sort de la limite de l'appelant → 403 explicite."""
+    if getattr(exc.orig, "sqlstate", None) == "42501":
+        raise HTTPException(
+            status_code=403, detail="outside_geo_limit: geometry is outside your geographic limit"
+        ) from exc
+
+
 def _get_writable(session, user, collection_id):
     col = get_readable_collection(session, user, collection_id)
     if not can(
@@ -687,6 +712,9 @@ def create_feature(
         raise HTTPException(
             status_code=409, detail="feature conflicts with an existing row"
         ) from exc
+    except DBAPIError as exc:
+        _raise_if_outside_geo_limit(exc)
+        raise
     session.execute(
         text("UPDATE collections SET feature_count = feature_count + 1 WHERE id = :id"),
         {"id": col.id},
@@ -731,14 +759,18 @@ def put_feature(
         info = hide_sensitive_columns(info, col.sensitive_fields)
     if errors := validate_feature(info, payload):
         raise _validation_error(errors)
-    with rls(session, col.tenant_id):
-        ok = repo.replace_feature(
-            session,
-            info,
-            fid=fid,
-            properties=payload.get("properties") or {},
-            geometry=payload.get("geometry"),
-        )
+    try:
+        with rls(session, col.tenant_id):
+            ok = repo.replace_feature(
+                session,
+                info,
+                fid=fid,
+                properties=payload.get("properties") or {},
+                geometry=payload.get("geometry"),
+            )
+    except DBAPIError as exc:
+        _raise_if_outside_geo_limit(exc)
+        raise
     if not ok:
         raise HTTPException(status_code=404, detail="feature not found")
     write_audit(

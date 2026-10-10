@@ -21,6 +21,7 @@ __all__ = [
     "spatial_index_name",
     "apply_collection_ddl",
     "sync_masked_role_grants",
+    "ensure_geo_limit_policy",
 ]
 
 
@@ -86,6 +87,58 @@ def sync_masked_role_grants(session: Session, table_name: str, sensitive_fields:
     if sensitive:
         cols_sql = ", ".join(_qi(session, c) for c in sorted(sensitive))
         session.execute(text(f"REVOKE SELECT ({cols_sql}) ON public.{t} FROM gis_rls_masked"))
+
+
+_GEO_LIMIT_FUNCTION_SQL = """
+CREATE OR REPLACE FUNCTION public.app_geo_limit(tbl text) RETURNS geometry
+LANGUAGE sql STABLE AS $fn$
+SELECT CASE
+  WHEN m.v IS NULL THEN NULL::geometry
+  WHEN jsonb_array_length(m.v) = 0 THEN ST_GeomFromText('GEOMETRYCOLLECTION EMPTY', 4326)
+  ELSE (SELECT ST_Union(ST_SetSRID(ST_GeomFromGeoJSON(e::text), 4326))
+        FROM jsonb_array_elements(m.v) e)
+END
+FROM (SELECT (NULLIF(current_setting('app.geo_limits', true), '')::jsonb -> tbl) AS v) m
+$fn$
+"""
+
+
+def ensure_geo_limit_policy(session: Session, table_name: str) -> bool:
+    """Pose (idempotent) la policy RLS RESTRICTIVE `geo_limit` d'une collection
+    à colonne géométrique (GAP-27, REV-121) : visible/écrivable seulement si la
+    géométrie est contenue (ST_CoveredBy) dans la limite portée par le GUC
+    `app.geo_limits` (cf. app.sharing.geo_limits), ou si aucune limite ne
+    s'applique. Renvoie False (rien posé) hors Postgres ou sans géométrie.
+    RESTRICTIVE = ET logique avec tenant_isolation ; elle vaut pour gis_rls ET
+    gis_rls_masked (policies sans `TO`). Le SRID de la colonne est figé ici."""
+    if session.get_bind().dialect.name != "postgresql":
+        return False
+    row = session.execute(
+        text(
+            "SELECT f_geometry_column, srid FROM geometry_columns "
+            "WHERE f_table_schema = 'public' AND f_table_name = :t"
+        ),
+        {"t": table_name},
+    ).first()
+    if row is None:
+        return False
+    session.execute(text(_GEO_LIMIT_FUNCTION_SQL))
+    t = _qi(session, table_name)
+    g = _qi(session, row[0])
+    lit = _quote_literal(table_name)
+    srid = int(row[1] or 4326)
+    cond = (
+        f"((SELECT app_geo_limit({lit})) IS NULL OR "
+        f"ST_CoveredBy({g}, (SELECT ST_Transform(app_geo_limit({lit}), {srid}))))"
+    )
+    session.execute(text(f"DROP POLICY IF EXISTS geo_limit ON public.{t}"))
+    session.execute(
+        text(
+            f"CREATE POLICY geo_limit ON public.{t} AS RESTRICTIVE FOR ALL "
+            f"USING ({cond}) WITH CHECK ({cond})"
+        )
+    )
+    return True
 
 
 def _reject_preexisting_mismatched_tenant_column(
@@ -182,4 +235,6 @@ def apply_collection_ddl(
     ).scalar()
     if seq:
         session.execute(text(f"GRANT USAGE, SELECT ON SEQUENCE {seq} TO gis_rls"))
+    # GAP-27 : policy de limite géographique sur toute collection géométrique.
+    ensure_geo_limit_policy(session, table_name)
     add_table_to_publication(session, table_name)
