@@ -61,7 +61,7 @@ test.describe("j08 utilisateurs — API", () => {
     await assign(u, readerRole);
     const after = await u.api.get("/v1/me");
     expect(after.body.role.slug).toBe("reader");
-    expect(after.body.privileges).toEqual([]);
+    expect(after.body.privileges).toEqual(["analytics.view"]); // REV-270/P12.10
     const listed = await admin.get(`/v1/users?q=${u.username}`);
     expect(listed.body.users[0].roleSlug).toBe("reader");
     const { psql } = await import("./helpers");

@@ -234,12 +234,8 @@ def test_privilege_ceiling_on_role_creation_edit_and_assignment_c01_002(env):
         client.post("/v1/roles", json={"name": "Big", "privileges": ["data.manage"]}).status_code
         == 403
     )
-    assert (
-        client.post(
-            "/v1/roles", json={"name": "Small", "privileges": ["admin.users.manage"]}
-        ).status_code
-        == 201
-    )
+    small = client.post("/v1/roles", json={"name": "Small", "privileges": ["admin.users.manage"]})
+    assert small.status_code == 201
     # auto-élévation en éditant son propre rôle
     r = client.patch(
         f"/v1/roles/{um_role_id}",
@@ -249,8 +245,9 @@ def test_privilege_ceiling_on_role_creation_edit_and_assignment_c01_002(env):
     # attribution du rôle Administrateur à un tiers
     r = client.patch(f"/v1/users/{regular.id}", json={"roleId": role_ids["admin"]})
     assert r.status_code == 403
-    # attribution d'un rôle dans le plafond
-    r = client.patch(f"/v1/users/{regular.id}", json={"roleId": role_ids["reader"]})
+    # attribution d'un rôle dans le plafond (le Lecteur porte analytics.view
+    # depuis REV-270/P12.10, hors du plafond de ce gestionnaire : rôle sur mesure)
+    r = client.patch(f"/v1/users/{regular.id}", json={"roleId": small.json()["id"]})
     assert r.status_code == 200
 
 

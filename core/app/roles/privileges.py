@@ -102,10 +102,13 @@ BUILT_IN_ROLE_PRIVILEGES: dict[str, list[str]] = {
         Privilege.ANALYTICS_SQL_LAB_ACCESS.value,
         Privilege.TASKS_VIEW.value,
     ],
-    # j02-015, décision produit : le Lecteur est strictement en lecture seule —
-    # il ne crée pas de bookmark (kind "bookmark" = analytics.view,
-    # roles/kind_registry.py) ; il ouvre et retrouve les vues qu'on lui partage.
-    # Lui donner analytics.view ouvrirait aussi le domaine Analytique : un
-    # privilège dédié (bookmarks.create) reste à créer si le besoin se confirme.
-    "reader": [],
+    # REV-270 / P12.10, décision produit (Tanguy, 2026-10-10) : le Lecteur PEUT
+    # créer des bookmarks (kind "bookmark" = analytics.view,
+    # roles/kind_registry.py) — inverse la décision j02-015. analytics.view n'ouvre
+    # pour lui que le domaine Analytique du shell, qui pointe vers le catalogue
+    # filtré sur les bookmarks (SQL Lab exige analytics.sql_lab.access, qu'il n'a
+    # pas). Le reste du Lecteur reste en lecture seule. ensure_built_in_roles
+    # resynchronise les rôles prédéfinis des tenants existants à chaque requête
+    # authentifiée : aucune migration de données nécessaire.
+    "reader": [Privilege.ANALYTICS_VIEW.value],
 }

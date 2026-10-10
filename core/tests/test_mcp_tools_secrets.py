@@ -19,7 +19,7 @@ def _demote_to_reader(app_client):  # noqa: F811
     idiome que test_mcp_configs_privilege_guard.py::_demote_to_reader."""
     with app_client.session_factory() as session:
         roles = ensure_built_in_roles(session, tenant_id=app_client.tenant.id)
-        assert roles["reader"].privileges == []
+        assert roles["reader"].privileges == ["analytics.view"]
         set_user_role(
             session,
             tenant_id=app_client.tenant.id,
