@@ -153,6 +153,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+    restart: unless-stopped  # REV-320 : Martin tombait sans reprise (prod le portait déjà)
     labels:
       - traefik.enable=true
       - traefik.http.routers.martin.rule=Host(`${DOMAIN}`) && PathPrefix(`/admin/martin`)
@@ -426,7 +427,10 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 90s
+      # REV-320 : 90 s observé sur base vide ; une base non vide (migrations de
+      # données, backfills) dépasse — 180 s évite un `unhealthy` en cascade
+      # (shell/traefik dépendent de la santé du cœur).
+      start_period: 180s
     labels:
       - traefik.enable=true
       - traefik.http.routers.core.rule=Host(`${DOMAIN}`) && PathPrefix(`/api`)

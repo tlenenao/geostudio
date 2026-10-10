@@ -2284,3 +2284,22 @@ def test_core_trusted_proxies_is_wired_documented_and_not_a_wildcard():
     assert value and value != "*"
     assert "10.0.0.0/8" in value
     assert "CORE_TRUSTED_PROXIES" in documented_env_vars()
+
+
+def test_s3_public_endpoint_has_a_dev_default_and_a_startup_guard():
+    """REV-315 : `.env.example` fournit une URL publique utilisable en dev, et le
+    cœur refuse de démarrer sans elle hors CORE_ENV=development ; chaque service
+    qui signe des liens (core, worker, export-worker) la reçoit."""
+    env = (REPO / ".env.example").read_text()
+    assert re.search(r"^S3_PUBLIC_ENDPOINT_URL=https?://\S+", env, re.M)
+    assert "require_public_s3_endpoint()" in (REPO / "core/app/main.py").read_text()
+    for name in ("core", "worker", "export-worker"):
+        assert "S3_PUBLIC_ENDPOINT_URL" in services(BASE)[name]["environment"], name
+
+
+def test_core_start_period_covers_migrations_and_martin_restarts():
+    """REV-320 : le cœur applique Alembic avant de servir (90 s observé sur base
+    vide) ; Martin, dans le fichier de base seul, doit aussi redémarrer."""
+    start = services(BASE)["core"]["healthcheck"]["start_period"]
+    assert int(str(start).rstrip("s")) >= 180, start
+    assert services(BASE)["martin"].get("restart") == "unless-stopped"
