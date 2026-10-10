@@ -2,7 +2,17 @@
 import os
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Header,
+    HTTPException,
+    Query,
+    Response,
+    UploadFile,
+    status,
+)
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -134,12 +144,20 @@ def get_item(
     return get_item_service(session, item_id=item_id, user=user)
 
 
+def _parse_if_match(value: str | None) -> str | None:
+    """`If-Match: "<updatedAt>"` (ou `W/"…"`) ; absent ou `*` = pas de garde."""
+    if value is None or value.strip() == "*":
+        return None
+    return value.strip().removeprefix("W/").strip('"')
+
+
 @router.patch("/items/{item_id}", response_model=ItemRead)
 def update_item(
     item_id: str,
     patch: ItemUpdatePatch,
     session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
+    if_match: str | None = Header(default=None),
 ) -> ItemRead:
     facts = repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
     if facts is None or not can(session, user_id=user.id, action="read", item=facts):
@@ -161,7 +179,13 @@ def update_item(
             license=patch.license,
             language=patch.language,
             current_user_id=user.id,
+            expected_updated_at=_parse_if_match(if_match),
         )
+    except repo.StaleItemVersion as err:
+        raise HTTPException(
+            status_code=412,
+            detail=f"stale version: the item is now at {err.current}",
+        ) from None
     except SlugCollisionError as err:
         raise HTTPException(status_code=409, detail=str(err)) from err
     except InvalidSlugError as err:
