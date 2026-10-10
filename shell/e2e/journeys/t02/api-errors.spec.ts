@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import { CORE_URL, stamp } from "../_fixtures/env";
 import { apiFor, token } from "../j03/api";
 import { psql } from "../j02/helpers";
-import { bug, docker } from "./helpers";
+import { docker } from "./helpers";
 
 const APP_CFG = {
   version: 1,
@@ -227,8 +227,8 @@ test.describe("t02 API : écritures concurrentes", () => {
     expect(dupes, `versions: ${versions.join(",")} (200: ${okCount})`).toBe(0);
   });
 
-  // Finding t02-003 : PUT ne porte aucune version de base ; la dernière écriture écrase silencieusement.
-  bug("t02-003 : une écriture fondée sur une version périmée est refusée (409/412)", async () => {
+  // Contrat REV-271 : sans If-Match la dernière écriture gagne (opt-in) ; avec If-Match périmé, 412.
+  test("t02-003 : une écriture fondée sur une version périmée (If-Match) est refusée (412)", async () => {
     const creator = await apiFor("creator");
     const { itemId } = await newApp(creator, "lost");
     const base = await creator.get(`/v1/configs/by-item/${itemId}`);
@@ -239,12 +239,17 @@ test.describe("t02 API : écritures concurrentes", () => {
     });
     expect(a.status).toBe(200);
     // Le second client a chargé la version `baseVersion` : son écriture est périmée.
-    const b = await creator.send("PUT", `/v1/configs/by-item/${itemId}`, {
-      ...APP_CFG,
-      theme: { primary: "#bbbbbb" },
+    const b = await fetch(`${CORE_URL}/v1/configs/by-item/${itemId}`, {
+      method: "PUT",
+      headers: {
+        authorization: `Bearer ${await token("creator")}`,
+        "content-type": "application/json",
+        "if-match": `"${baseVersion}"`,
+      },
+      body: JSON.stringify({ ...APP_CFG, theme: { primary: "#bbbbbb" } }),
     });
     expect(baseVersion).toBeLessThan(a.body.version);
-    expect([409, 412, 428]).toContain(b.status);
+    expect(b.status).toBe(412);
   });
 
   // Finding t02-004 : l'écriture d'un item/collection défère un calcul d'embedding dont l'échec est avalé.
