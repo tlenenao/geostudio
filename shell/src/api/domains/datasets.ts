@@ -10,7 +10,7 @@ import type {
   ItemClient,
 } from "../types";
 import type { ItemClientBase } from "../base";
-import { requestBlob, type ExportedFile } from "../base";
+import { requestBlob, type ExportedFile, type ExportJobHandler } from "../base";
 import { OWNER_PERMISSIONS } from "../../auth/permissions";
 
 // Statistics config keys carried in DataSource.query; excluded from the fetch
@@ -314,6 +314,7 @@ export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
       source: DataSource,
       format: string,
       signal?: AbortSignal,
+      onJob?: ExportJobHandler,
     ): Promise<ExportedFile> {
       const cachedDataset = source.datasetId ? await resolveDataset(source.datasetId) : null;
       const isArcgis = cachedDataset?.source === "arcgis" && Boolean(source.datasetId);
@@ -322,7 +323,17 @@ export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
         const path = isArcgis
           ? `/datasets/${source.datasetId}/arcgis/export?format=${format}`
           : `/collections/${cachedDataset?.collectionId ?? source.layer}/export?format=${format}`;
-        return requestBlob(coreUrl, getToken, "POST", path, body, undefined, renewToken, signal);
+        return requestBlob(
+          coreUrl,
+          getToken,
+          "POST",
+          path,
+          body,
+          undefined,
+          renewToken,
+          signal,
+          onJob,
+        );
       }
       const resolved = source.datasetId
         ? { ...source, layer: cachedDataset?.collectionId ?? source.layer }
@@ -332,7 +343,17 @@ export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
       const path = isArcgis
         ? `/datasets/${source.datasetId}/arcgis/export/items?format=${format}${suffix}`
         : `/collections/${resolved.layer}/export/items?format=${format}${suffix}`;
-      return requestBlob(coreUrl, getToken, "GET", path, undefined, undefined, renewToken, signal);
+      return requestBlob(
+        coreUrl,
+        getToken,
+        "GET",
+        path,
+        undefined,
+        undefined,
+        renewToken,
+        signal,
+        onJob,
+      );
     },
 
     async getCollectionSchema(collectionId: string): Promise<CollectionSchema> {

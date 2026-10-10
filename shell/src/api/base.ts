@@ -286,6 +286,9 @@ export type ExportedFile =
   | { blob: Blob; filename: string; url?: undefined }
   | { url: string; filename: string; blob?: undefined };
 
+/** D6 : un export asynchrone accepté (202) — permet à l'UI de l'annuler. */
+export type ExportJobHandler = (job: { collectionId: string; jobId: string }) => void;
+
 export async function requestBlob(
   coreUrl: string,
   getToken: () => string | undefined,
@@ -295,6 +298,7 @@ export async function requestBlob(
   getShareLinkToken?: () => string | undefined,
   renewToken?: () => Promise<string | undefined>,
   signal?: AbortSignal,
+  onJob?: ExportJobHandler,
 ): Promise<ExportedFile> {
   const token = getToken();
   const shareToken = getShareLinkToken?.();
@@ -333,7 +337,7 @@ export async function requestBlob(
     };
     // Chunk lazy : le sondage n'alourdit pas la charge initiale.
     const { pollExportJob } = await import("./exportJob");
-    return pollExportJob(res, path, poll, signal);
+    return pollExportJob(res, path, poll, signal, onJob);
   }
   if (!res.ok) throw await parseErrorResponse(res);
   const disposition = res.headers.get("Content-Disposition") ?? "";

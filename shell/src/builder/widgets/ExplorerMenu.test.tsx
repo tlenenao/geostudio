@@ -169,7 +169,12 @@ test("clicking an export format calls exportDataSource and triggers a download",
   );
   await userEvent.click(screen.getByLabelText("Explorer"));
   await userEvent.click(screen.getByLabelText("Exporter en CSV"));
-  expect(exportDataSource).toHaveBeenCalledWith(source, "csv", expect.any(AbortSignal));
+  expect(exportDataSource).toHaveBeenCalledWith(
+    source,
+    "csv",
+    expect.any(AbortSignal),
+    expect.any(Function),
+  );
   expect(createObjectURL).toHaveBeenCalledWith(blob);
 });
 
@@ -348,4 +353,52 @@ test("un export asynchrone en échec affiche le message du job", async () => {
   await userEvent.click(screen.getByLabelText("Explorer"));
   await userEvent.click(screen.getByLabelText("Exporter en CSV"));
   expect(await screen.findByText("Échec : disque plein")).toBeTruthy();
+});
+
+function cancellableSetup(cancelExportJob: ReturnType<typeof vi.fn>) {
+  // Export asynchrone qui ne se termine que si on l'abandonne (signal).
+  const exportDataSource = vi.fn(
+    (_s: DataSource, _f: string, signal: AbortSignal, onJob: (j: unknown) => void) =>
+      new Promise((_resolve, reject) => {
+        onJob({ collectionId: "parcs", jobId: "j1" });
+        signal.addEventListener("abort", () => reject(new DOMException("a", "AbortError")));
+      }),
+  );
+  const client = { exportDataSource, cancelExportJob } as unknown as ItemClient;
+  const source: DataSource = {
+    id: "s1",
+    type: "features",
+    service: "core",
+    layer: "parcs",
+    query: {},
+  };
+  render(
+    <ItemClientProvider client={client}>
+      <ExplorerProvider enabled>
+        <ExplorerMenu datasetId="ds1" dataSourceId="s1" resolvedSource={source} hasGeometry />
+      </ExplorerProvider>
+    </ItemClientProvider>,
+  );
+}
+
+test("D6 : annuler un export asynchrone appelle le cœur et confirme", async () => {
+  const cancelExportJob = vi.fn().mockResolvedValue({ status: "cancelled" });
+  cancellableSetup(cancelExportJob);
+  await userEvent.click(screen.getByLabelText("Explorer"));
+  await userEvent.click(screen.getByLabelText("Exporter en CSV"));
+  await userEvent.click(await screen.findByRole("button", { name: "Annuler l'export" }));
+  expect(cancelExportJob).toHaveBeenCalledWith("parcs", "j1");
+  expect(await screen.findByText("Export annulé.")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Annuler l'export" })).not.toBeInTheDocument();
+});
+
+test("D6 : un 409 à l'annulation (export déjà terminé) affiche un message clair", async () => {
+  const cancelExportJob = vi
+    .fn()
+    .mockRejectedValue(new ApiError(409, { detail: "export job already finished" }));
+  cancellableSetup(cancelExportJob);
+  await userEvent.click(screen.getByLabelText("Explorer"));
+  await userEvent.click(screen.getByLabelText("Exporter en CSV"));
+  await userEvent.click(await screen.findByRole("button", { name: "Annuler l'export" }));
+  expect(await screen.findByText(/déjà terminé/)).toBeInTheDocument();
 });

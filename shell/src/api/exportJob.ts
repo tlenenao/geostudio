@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { t } from "../i18n";
 import { jobStatusLabel } from "../lib/jobStatusLabel";
-import { parseErrorResponse, type ExportedFile } from "./base";
+import { parseErrorResponse, type ExportedFile, type ExportJobHandler } from "./base";
 import "../i18n/domains/widgets";
 
 // REV-283e : `export/items` répond 202 `{jobId}` au-delà du seuil synchrone ;
@@ -21,8 +21,11 @@ export async function pollExportJob(
   path: string,
   get: (path: string) => Promise<Response>,
   signal?: AbortSignal,
+  onJob?: ExportJobHandler,
 ): Promise<ExportedFile> {
   const { jobId } = (await accepted.json()) as { jobId: string };
+  const collectionId = /^\/collections\/([^/]+)/.exec(path)?.[1];
+  if (collectionId) onJob?.({ collectionId, jobId });
   const statusPath = `${path.split("/export")[0]}/export/jobs/${jobId}`;
   const deadline = Date.now() + EXPORT_POLL_DEADLINE_MS;
   const aborted = () => new DOMException("export aborted", "AbortError");
@@ -37,6 +40,7 @@ export async function pollExportJob(
       filename?: string | null;
       error?: string | null;
     };
+    if (job.status === "cancelled") throw new ExportJobError(t("exportJob.cancelled"));
     if (job.status === "failed")
       throw new ExportJobError(
         `${t("exportJob.failed", { status: jobStatusLabel(job.status) })}${job.error ? ` ${job.error}` : ""}`,

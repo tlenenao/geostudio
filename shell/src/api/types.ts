@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { ExportedFile } from "./base";
+import type { ExportedFile, ExportJobHandler } from "./base";
 import type { ItemPermissions } from "../auth/permissions";
 
 export type ResourceType =
@@ -690,7 +690,14 @@ export interface ItemClient {
   // un appelant qui saurait qu'un dataset a changé ailleurs.
   invalidateDatasetCache(pk?: string): void;
   featuresUrl(source: DataSource): string;
-  exportDataSource(source: DataSource, format: string, signal?: AbortSignal): Promise<ExportedFile>;
+  exportDataSource(
+    source: DataSource,
+    format: string,
+    signal?: AbortSignal,
+    onJob?: ExportJobHandler,
+  ): Promise<ExportedFile>;
+  // D6 : annule un export asynchrone de données (409 si déjà terminé).
+  cancelExportJob(collectionId: string, jobId: string): Promise<{ status: string }>;
   getCollectionSchema(collectionId: string): Promise<CollectionSchema>;
   presignAttachmentUpload(
     collectionId: string,
@@ -739,12 +746,14 @@ export interface ItemClient {
     geometryMode?: "latlon" | "wkt" | "none";
   }): Promise<{ jobId: string }>;
   getIngestionJob(jobId: string): Promise<{
-    status: "pending" | "running" | "done" | "error";
+    status: "pending" | "running" | "done" | "error" | "cancelled" | "cancel_requested";
     errorMessage: string | null;
     collectionId: string | null;
     itemId: string | null;
     itemResourceType?: string | null;
   }>;
+  // D6 : pending -> cancelled ; running -> cancel_requested ; 409 si terminé.
+  cancelIngestionJob(jobId: string): Promise<{ status: string }>;
   runAnalyticsSql(
     sql: string,
   ): Promise<{ columns: string[]; rows: unknown[][]; truncated: boolean }>;

@@ -169,6 +169,31 @@ describe("requestBlob — export asynchrone 202 (REV-283e)", () => {
     ).rejects.toThrow("Échec de l'export de données (statut : Échoué). too many");
   });
 
+  it("D6 : signale le job accepté (annulable) et rejette un job annulé", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(json({ jobId: "j1" }, 202))
+        .mockResolvedValueOnce(json({ status: "cancelled" })),
+    );
+    const onJob = vi.fn();
+    await expect(
+      requestBlob(
+        "http://core.test",
+        () => "t",
+        "GET",
+        "/collections/c1/export/items",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        onJob,
+      ),
+    ).rejects.toThrow("L'export a été annulé.");
+    expect(onJob).toHaveBeenCalledWith({ collectionId: "c1", jobId: "j1" });
+  });
+
   it("relit le jeton à chaque tour de sondage", async () => {
     vi.useFakeTimers();
     let tok = "t1";
