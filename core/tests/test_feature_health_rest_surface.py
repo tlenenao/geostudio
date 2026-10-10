@@ -148,7 +148,7 @@ def test_surface_id_is_method_space_path():
 def test_rest_surface_ids_feeds_the_reachability_facts():
     ids = rest_surface_ids(index_rest_routes(REPO))
     assert "GET /v1/items" in ids
-    assert len(ids) == 167
+    assert len(ids) == 169  # +2 : routes d'annulation D6
 
 
 def _fact(function, guards, auth):

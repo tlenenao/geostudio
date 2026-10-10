@@ -2422,7 +2422,13 @@ def test_run_pipeline_reader_connector_rest_never_leaks_secret_value(
             first_name="",
             last_name="",
         )
-        ciphertext, nonce = encrypt({"kind": "bearer_token", "token": "s3cr3t-leak-check"})
+        ciphertext, nonce = encrypt(
+            {
+                "kind": "bearer_token",
+                "token": "s3cr3t-leak-check",
+                "baseUrl": httpserver.url_for("/"),
+            }
+        )
         secrets_repo.create_secret(
             session,
             tenant_id=tenant.id,
