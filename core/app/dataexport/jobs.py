@@ -20,6 +20,7 @@ from app.collections.introspection import hide_sensitive_columns
 from app.collections.introspection_pg import introspect_table
 from app.collections.routes import get_collection_for_read
 from app.dataexport import repository as repo
+from app.dataexport.models import CollectionExportJob
 from app.db import request_scoped_session
 from app.features import repository as features_repo
 from app.features.rls import rls_scope
@@ -165,9 +166,17 @@ def sweep_collection_exports_task(timestamp: int) -> None:
         return
     factory = session_factory()
     with request_scoped_session(factory) as session:
-        repo.reclaim_stuck_running(session)
+        reclaimed = [
+            job
+            for job_id in repo.reclaim_stuck_running(session)
+            if (job := session.get(CollectionExportJob, job_id)) is not None
+        ]
         pending = repo.stale_pending_ids(session)
         session.commit()
+        for job in reclaimed:
+            session.expunge(job)
+    for job in reclaimed:  # REV-323 B : l'abandon d'un export est notifié
+        _notify(factory, job, title=job.collection_id, status="failure", error=job.error)
     for job_id, tenant_id in pending:
         try:
             run_collection_export.defer(job_id=job_id, tenant_id=tenant_id)

@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: Apache-2.0
-import os
 import uuid
 from datetime import timedelta
 
@@ -7,6 +6,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from app.dataexport.models import CollectionExportJob, _now
+from app.job_timeouts import running_reclaim_minutes
 
 _TERMINAL = ("done", "failed")
 
@@ -79,12 +79,6 @@ def mark_failed(session: Session, job_id: str, error: str) -> None:
 
 BATCH = 100
 PENDING_RETRY_MINUTES = 5
-RUNNING_RECLAIM_MINUTES = 60  # defaut ; CORE_EXPORT_RUNNING_TIMEOUT_MINUTES le surcharge
-
-
-def running_reclaim_minutes() -> int:
-    """Duree max d'un export `running` avant reprise en `failed` (worker tue)."""
-    return int(os.environ.get("CORE_EXPORT_RUNNING_TIMEOUT_MINUTES") or RUNNING_RECLAIM_MINUTES)
 
 
 def stale_pending_ids(session: Session, *, older_than_minutes: int = PENDING_RETRY_MINUTES):
