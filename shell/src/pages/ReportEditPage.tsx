@@ -27,6 +27,9 @@ import { t } from "../i18n";
 import { LoadingState } from "../ui/kit/LoadingState";
 import { QueryErrorState } from "../ui/kit/QueryErrorState";
 import { PageTitle } from "../ui/kit/PageTitle";
+import "../i18n/domains/admin";
+import "../i18n/domains/automation";
+import "../i18n/domains/misc";
 
 function defaultPayload(bookmarkItemId: string): ReportSchedulePayload {
   return {

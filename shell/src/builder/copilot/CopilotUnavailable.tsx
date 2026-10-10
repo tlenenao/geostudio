@@ -2,6 +2,7 @@
 // j11-006 : le copilote existe mais n'est pas configuré — le dire plutôt
 // que de laisser la fonction invisible.
 import { t } from "../../i18n";
+import "../../i18n/domains/automation";
 
 export function CopilotUnavailable() {
   return (

@@ -7,6 +7,7 @@ import { jobStatusLabel } from "../../lib/jobStatusLabel";
 import { Button } from "../../ui/kit/Button";
 import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
 import { formatDateTime } from "../../lib/format";
+import "../../i18n/domains/automation";
 
 // GET /pipelines/{id}/runs pagine déjà côté cœur (limit/offset, SP-50) mais ce
 // panneau tronquait silencieusement l'historique à la limite par défaut du

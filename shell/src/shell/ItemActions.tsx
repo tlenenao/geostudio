@@ -9,6 +9,7 @@ import { Menu } from "../ui/kit/Menu";
 import { PublishDialog } from "./PublishDialog";
 import { hasPermission } from "../auth/permissions";
 import { t } from "../i18n";
+import "../i18n/domains/misc";
 
 type MenuState = "closed" | "delete" | "publish";
 

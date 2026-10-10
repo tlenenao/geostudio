@@ -8,6 +8,7 @@ import { formatCelError } from "./celError";
 import { IconButton } from "../ui/kit/IconButton";
 import { Popover } from "../ui/kit/Popover";
 import { t } from "../i18n";
+import "../i18n/domains/widgets";
 
 // REV-183 : lazy — n'alourdit pas la charge initiale (marge de bundle).
 const VisibleWhenGenerator = lazy(() =>

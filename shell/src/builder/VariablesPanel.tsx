@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type { Variable, VariableType } from "../api/types";
 import { t } from "../i18n";
 import { Button } from "../ui/kit/Button";
+import "../i18n/domains/widgets";
 
 const TYPE_LABELS: Record<VariableType, string> = {
   string: t("variablesPanel.typeString"),

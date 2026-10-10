@@ -50,6 +50,9 @@ import { t } from "../i18n";
 import { LoadingState } from "../ui/kit/LoadingState";
 import { QueryErrorState } from "../ui/kit/QueryErrorState";
 import { PageTitle } from "../ui/kit/PageTitle";
+import "../i18n/domains/automation";
+import "../i18n/domains/misc";
+import "../i18n/domains/widgets";
 
 const EMPTY_PAYLOAD: PipelinePayload = { nodes: [], edges: [] };
 

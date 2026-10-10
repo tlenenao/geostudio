@@ -20,6 +20,7 @@ import {
   addLabelLayer,
   makeFeatureClickHandler,
 } from "./mapLayerBuild";
+import "../i18n/domains/map";
 
 export function applyLayers(
   map: maplibregl.Map,

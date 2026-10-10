@@ -5,6 +5,8 @@ import { Button } from "./Button";
 import { Input } from "./Input";
 import { Select } from "./Select";
 import { isValidSlug } from "../../lib/slug";
+import "../../i18n/domains/admin";
+import "../../i18n/domains/misc";
 
 const UNSET = "unset";
 

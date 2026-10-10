@@ -2,6 +2,7 @@
 import { t } from "../i18n";
 import { jobStatusLabel } from "../lib/jobStatusLabel";
 import { parseErrorResponse, type ExportedFile } from "./base";
+import "../i18n/domains/widgets";
 
 // REV-283e : `export/items` répond 202 `{jobId}` au-delà du seuil synchrone ;
 // on sonde `.../export/jobs/{id}` jusqu'à `done`, puis on renvoie `resultUrl`

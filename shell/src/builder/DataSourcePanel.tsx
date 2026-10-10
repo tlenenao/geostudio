@@ -6,6 +6,7 @@ import { t } from "../i18n";
 import { ANALYTICS_AGGREGATES, aggregateNeedsP, DEFAULT_PERCENTILE } from "./aggregates";
 import { PercentileInput } from "./PercentileInput";
 import { Button } from "../ui/kit/Button";
+import "../i18n/domains/widgets";
 
 type Measure = { field?: string; agg: string; label?: string; p?: number };
 

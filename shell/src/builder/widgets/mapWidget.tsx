@@ -27,6 +27,7 @@ import { bboxFromFeatureCollection } from "../../lib/geometryBbox";
 import { t } from "../../i18n";
 import { LayersPanel } from "../../map/LayersPanel";
 import type { MapLayer } from "../../api/types";
+import "../../i18n/domains/widgets";
 
 const MapView = lazy(() => import("../../map/MapView").then((m) => ({ default: m.MapView })));
 const DEFAULT_STYLE = "https://demotiles.maplibre.org/style.json";

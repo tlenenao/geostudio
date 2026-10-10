@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from "vitest";
-import { fr } from "./catalog.fr";
+import { allMessages as fr } from "./domains/all";
 import { CORE_PRIVILEGE_LABEL_KEYS } from "./corePrivilegeLabelKeys";
 
 // Garde-fou de dérive cœur/shell (REV-064) : une labelKey renvoyée par

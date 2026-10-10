@@ -22,6 +22,8 @@ import { markExportReady } from "../shell/exportReady";
 import { ExportPanel } from "../builder/print/ExportPanel";
 import { t } from "../i18n";
 import { LoadingState } from "../ui/kit/LoadingState";
+import "../i18n/domains/misc";
+import "../i18n/domains/widgets";
 
 registerBuiltinWidgets();
 registerExampleWidgets();

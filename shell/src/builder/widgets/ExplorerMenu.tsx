@@ -8,6 +8,7 @@ import { saveExportedFile } from "../../api/saveExportedFile";
 import { ApiError } from "../../api/ApiError";
 import { ExportJobError } from "../../api/exportJob";
 import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
+import "../../i18n/domains/widgets";
 
 const AGGREGATE_FORMATS = ["csv", "xlsx"];
 const ITEMS_FORMATS_WITH_GEOMETRY = ["csv", "xlsx", "geojson", "gpkg"];

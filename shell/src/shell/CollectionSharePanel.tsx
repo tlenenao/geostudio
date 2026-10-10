@@ -10,6 +10,8 @@ import type { ShareRole } from "../api/types";
 import { Button } from "../ui/kit/Button";
 import { t } from "../i18n";
 import { LoadingState } from "../ui/kit/LoadingState";
+import "../i18n/domains/admin";
+import "../i18n/domains/misc";
 
 export function CollectionSharePanel({
   collectionId,

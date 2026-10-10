@@ -32,6 +32,9 @@ import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
 import { jobStatusLabel } from "../lib/jobStatusLabel";
 import { PageTitle } from "../ui/kit/PageTitle";
+import "../i18n/domains/automation";
+import "../i18n/domains/misc";
+import "../i18n/domains/widgets";
 
 // P25.14 : toutes les collections interrogeables sont proposées à la saisie
 // (titre en détail), colonnes ajoutées dès que leur schéma est connu.

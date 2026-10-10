@@ -19,6 +19,7 @@ import { SourceMissing } from "./SourceMissing";
 import { t } from "../../i18n";
 import { formatNumber } from "../../lib/format";
 import { LoadingState } from "../../ui/kit/LoadingState";
+import "../../i18n/domains/widgets";
 
 const EChart = lazy(() => import("../EChart").then((m) => ({ default: m.EChart })));
 

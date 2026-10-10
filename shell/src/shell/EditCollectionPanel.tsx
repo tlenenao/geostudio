@@ -14,6 +14,8 @@ import { Tabs } from "../ui/kit/Tabs";
 import { Textarea } from "../ui/kit/Textarea";
 import { t } from "../i18n";
 import { LoadingState } from "../ui/kit/LoadingState";
+import "../i18n/domains/admin";
+import "../i18n/domains/misc";
 
 const UNSET = "unset";
 

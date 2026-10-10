@@ -2583,22 +2583,26 @@ test("a click on a styled map feature still cross-filters a sibling table by pk 
   if (!box) throw new Error("map canvas has no bounding box");
 
   // La géométrie de la couche (GeoJSON fetché puis peint par MapLibre) arrive
-  // après le premier paint du canvas WebGL, sur un délai variable selon la
-  // charge machine. MapLibre ne déclenche le callback "click" que si une
-  // feature est effectivement peinte sous le curseur : un clic "manqué" ne
-  // produit donc aucun effet (pas de cross-filter, pas de toggle) — retenter
-  // le même clic jusqu'à observer la requête filtrée est donc sûr (idempotent
-  // tant qu'aucun clic n'a touché la feature) et n'a pas besoin d'un délai
-  // fixe fragile.
+  // après le premier paint du canvas WebGL. MapLibre ne déclenche "click" que
+  // si une feature est effectivement peinte sous le curseur : un clic "manqué"
+  // ne produit aucun effet, donc retenter le même clic est idempotent.
+  // REV-291 a : le signal observable est l'effet du clic (requête filtrée),
+  // attendu jusqu'à une ÉCHÉANCE en temps (et non 10 tentatives de 1 s, qui
+  // s'épuisaient sous charge machine) ; deux frames avant chaque tentative
+  // laissent finir le paint en cours.
+  const deadline = Date.now() + 30_000;
   let filtered = false;
-  for (let attempt = 0; attempt < 10 && !filtered; attempt++) {
+  while (!filtered && Date.now() < deadline) {
     const attemptReq = page
       .waitForRequest(
         (r) => r.url().includes("/collections/zones/items") && r.url().includes("id=1"),
-        { timeout: 1000 },
+        { timeout: 1500 },
       )
       .then(() => true)
       .catch(() => false);
+    await page.evaluate(
+      () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
+    );
     await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
     filtered = await attemptReq;
   }

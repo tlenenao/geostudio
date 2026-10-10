@@ -4,6 +4,7 @@ import { Minus, Plus } from "lucide-react";
 import { t } from "../../i18n";
 import { IconButton } from "./IconButton";
 import { Input } from "./Input";
+import "../../i18n/domains/widgets";
 
 export function NumberField({
   value,

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { registerWidget } from "../registry";
 import { t } from "../../i18n";
+import "../../i18n/domains/widgets";
 
 const labelCls = "flex flex-col gap-1";
 const inputCls = "h-9 rounded-md border border-rule px-2";

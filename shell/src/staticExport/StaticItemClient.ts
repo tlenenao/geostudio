@@ -18,6 +18,7 @@ import type {
   GeoJSONFeatureInput,
   ItemClient,
 } from "../api/types";
+import "../i18n/domains/widgets";
 
 function unsupported<T = never>(): Promise<T> {
   return Promise.reject(new Error(t("staticExport.unsupported")));

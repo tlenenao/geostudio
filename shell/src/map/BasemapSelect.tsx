@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { BASEMAPS } from "./basemaps";
 import { t } from "../i18n";
+import "../i18n/domains/map";
 
 export function BasemapSelect({
   value,

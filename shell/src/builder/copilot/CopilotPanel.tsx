@@ -22,6 +22,7 @@ import { applyClientOp, type RawClientOp } from "./applyClientOp";
 import { buildClientToolSchemas } from "./clientTools";
 import { CopilotChat } from "./CopilotChat";
 import { t } from "../../i18n";
+import "../../i18n/domains/automation";
 
 const OP_LABELS: Record<string, string> = {
   addWidget: t("copilot.opWidgetAdded"),

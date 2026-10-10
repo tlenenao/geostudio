@@ -52,6 +52,8 @@ import { isConflictError } from "../api/ApiError";
 import { SaveConflictNotice } from "../builder/SaveConflictNotice";
 import { LoadingState } from "../ui/kit/LoadingState";
 import { QueryErrorState } from "../ui/kit/QueryErrorState";
+import "../i18n/domains/misc";
+import "../i18n/domains/widgets";
 
 registerBuiltinWidgets();
 registerExampleWidgets();

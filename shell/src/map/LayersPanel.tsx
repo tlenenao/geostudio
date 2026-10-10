@@ -16,6 +16,7 @@ import { PopupEditor } from "./PopupEditor";
 import { tileKeys, useViewport } from "./viewportTiles";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { t } from "../i18n";
+import "../i18n/domains/map";
 
 // Une couche "feature" n'a pas de collection interrogeable : son schéma vient
 // du GeoJSON qu'elle pointe elle-même. Une seule requête partagée par les

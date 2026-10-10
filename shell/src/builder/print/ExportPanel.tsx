@@ -7,6 +7,7 @@ import { jobStatusLabel } from "../../lib/jobStatusLabel";
 import { Button } from "../../ui/kit/Button";
 import { Panel } from "../../ui/kit/Panel";
 import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
+import "../../i18n/domains/widgets";
 
 const POLL_INTERVAL_MS = 1500;
 // Fix round (finding I7) : ni PipelineRunPanel ni ImportFileButton (les deux

@@ -30,7 +30,8 @@ test.beforeAll(async () => {
 
 async function asCreator(page: Page) {
   await loginOidc(page, "creator");
-  await page.waitForTimeout(1000);
+  // REV-321 : signal observable (le catalogue est monté) plutôt qu'un délai fixe.
+  await expect(page.getByRole("textbox", { name: "Rechercher" }).first()).toBeVisible();
 }
 
 async function openMap(page: Page, pk: string) {
@@ -234,11 +235,24 @@ test.describe("j03 sauvegarde, historique, publication", () => {
     page,
   }) => {
     await asCreator(page);
+    // REV-321 : on attend la réponse de la recherche (la carte ciblée est alors
+    // la première de la liste), pas un délai fixe.
+    const searched = page.waitForResponse((r) => {
+      const url = new URL(r.url());
+      return (
+        url.pathname.endsWith("/items") &&
+        r.ok() &&
+        url.searchParams.get("q") === `${seed.tag}-points-publics`
+      );
+    });
     await page
       .getByRole("textbox", { name: "Rechercher" })
       .first()
       .fill(`${seed.tag}-points-publics`);
-    await page.waitForTimeout(1500);
+    await searched;
+    await expect(
+      page.getByRole("heading", { name: `${seed.tag}-points-publics`, exact: true }),
+    ).toBeVisible();
     await page.getByRole("button", { name: "Actions" }).first().click();
     await page.getByRole("menuitem", { name: "Publier", exact: true }).click();
     // j03-012 : publier une carte passe par un dialogue (signale les collections privées lues).

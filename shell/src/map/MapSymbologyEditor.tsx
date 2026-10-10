@@ -19,6 +19,7 @@ import { labelCls, inputCls } from "./formFieldStyles";
 import type { ThemeColors } from "../api/types";
 import { t } from "../i18n";
 import { formatDateTime } from "../lib/format";
+import "../i18n/domains/map";
 
 // Éditeur partagé par les DEUX surfaces (éditeur de cartes et PropsPanel du
 // widget carte) — même précédent que PopupEditor.tsx (SP-24). Les deux

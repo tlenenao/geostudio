@@ -1,7 +1,29 @@
 // SPDX-License-Identifier: Apache-2.0
 import { fr } from "./catalog.fr";
+// Imports de TYPES uniquement (effacés au build) : `MessageKey` couvre le noyau
+// et tous les domaines sans que leur contenu entre dans le chemin de démarrage.
+import type { admin } from "./domains/admin";
+import type { automation } from "./domains/automation";
+import type { map } from "./domains/map";
+import type { misc } from "./domains/misc";
+import type { widgets } from "./domains/widgets";
 
-export type MessageKey = keyof typeof fr;
+export type MessageKey =
+  | keyof typeof fr
+  | keyof typeof admin
+  | keyof typeof automation
+  | keyof typeof map
+  | keyof typeof misc
+  | keyof typeof widgets;
+
+// Noyau (chemin de démarrage) + domaines enregistrés par leurs consommateurs
+// (REV-307 b : le catalogue n'est plus tout entier dans le chunk d'entrée).
+const messages: Record<string, string> = { ...fr };
+
+/** Appelé par chaque fichier `domains/*.ts` à son évaluation. */
+export function registerMessages(domain: Record<string, string>): void {
+  Object.assign(messages, domain);
+}
 
 /**
  * Rend un message du catalogue, en interpolant les `{paramètres}` nommés.
@@ -9,10 +31,11 @@ export type MessageKey = keyof typeof fr;
  * Une clé inconnue est une erreur de compilation, pas une erreur d'exécution :
  * `MessageKey` est dérivée du catalogue lui-même. Un paramètre manquant laisse
  * son gabarit visible — un « {title} » à l'écran se remarque, une chaîne vide
- * non.
+ * non. Un domaine non enregistré (consommateur sans l'import de son domaine,
+ * interdit par `domains.test.ts`) se comporte comme une clé inconnue.
  */
 export function t(key: MessageKey, params?: Record<string, string | number>): string {
-  const template: string = fr[key];
+  const template: string = messages[key];
   if (params === undefined) return template;
   return template.replace(/\{(\w+)\}/g, (match, name: string) => {
     const value = params[name];
@@ -36,5 +59,5 @@ export function plural(n: number, one: MessageKey, many: MessageKey): MessageKey
  * silencieusement une case à cocher sans libellé ni aria-label (REV-064).
  */
 export function resolveMessageKey(key: string, fallback: MessageKey): MessageKey {
-  return Object.hasOwn(fr, key) ? (key as MessageKey) : fallback;
+  return Object.hasOwn(messages, key) ? (key as MessageKey) : fallback;
 }

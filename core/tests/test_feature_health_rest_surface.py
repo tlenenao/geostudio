@@ -9,7 +9,7 @@ dérivé de l'AST plutôt que du framework lui-même."""
 import json
 import pathlib
 
-from scripts.feature_health.model import Feature
+from scripts.feature_health.model import Feature, load_inventory
 from scripts.feature_health.rest_surface import (
     RouteFact,
     index_rest_routes,
@@ -51,9 +51,10 @@ def _feature(**overrides) -> Feature:
 
 
 def test_index_finds_every_declared_route():
-    assert (
-        len(index_rest_routes(REPO)) == 167
-    )  # +3 plan B: geocode, sitemap-{n} GET+HEAD ; +1 lot B: export/jobs/{job_id}
+    # REV-291 b : décompte dérivé de l'inventaire, plus épinglé à la main.
+    inventory = REPO / "docs/revue/inventaire-fonctionnalites.jsonl"
+    declared = {s for f in load_inventory(inventory) for s in f.rest}
+    assert {surface_id(f) for f in index_rest_routes(REPO)} == declared
 
 
 def test_every_openapi_operation_is_resolved_by_the_index():
@@ -73,9 +74,15 @@ def test_flagged_routes_are_indexed_although_absent_from_openapi():
     routeurs conditionnels de `main.py` ne figurent pas dans `openapi.json`.
     Un inventaire qui n'aurait dérivé ses surfaces que d'`openapi.json`
     ignorerait 26 routes réelles — dont tout le domaine Automatisation."""
-    indexed = {(fact.method, fact.path) for fact in index_rest_routes(REPO)}
+    facts = index_rest_routes(REPO)
+    indexed = {(fact.method, fact.path) for fact in facts}
     flagged = sorted(indexed - _openapi_operations())
-    assert len(flagged) == 30
+    # REV-291 b : plus de décompte épinglé — toute route que l'index rattache
+    # à un drapeau de capacité est absente d'openapi.json (les HEAD s'y
+    # ajoutent : OpenAPI ne les publie pas).
+    behind_flag = {(f.method, f.path) for f in facts if f.flag}
+    assert behind_flag
+    assert behind_flag <= set(flagged)
     assert ("GET", "/v1/pipelines/{item_id}/runs") in flagged
 
 
