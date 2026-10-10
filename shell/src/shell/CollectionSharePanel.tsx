@@ -100,6 +100,7 @@ export function CollectionSharePanel({
                 >
                   <option value="viewer">{t("sharePanel.roleViewer")}</option>
                   <option value="editor">{t("sharePanel.roleEditor")}</option>
+                  <option value="manager">{t("sharePanel.roleManager")}</option>
                 </select>
               </div>
             ))}

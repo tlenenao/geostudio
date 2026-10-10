@@ -288,7 +288,7 @@ export type ShareLinkInfo = {
   createdAt?: string;
   createdBy?: string;
 };
-export type ShareRole = "viewer" | "editor";
+export type ShareRole = "viewer" | "editor" | "manager";
 export type Sharing = {
   public: boolean;
   groups: { groupId: string; role: ShareRole }[];
