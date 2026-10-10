@@ -2290,3 +2290,16 @@ def test_core_trusted_proxies_is_wired_documented_and_not_a_wildcard(monkeypatch
     monkeypatch.delenv("CORE_TRUSTED_PROXIES", raising=False)
     assert value == trusted_proxy_hosts()
     assert "CORE_TRUSTED_PROXIES" in documented_env_vars()
+
+
+def test_playbook_forwards_the_public_s3_host_to_the_installer():
+    """REV-315 : le playbook partagé Proxmox/OCI transmet l'hôte S3 public à
+    install.sh, qui l'écrit dans .env (S3_PUBLIC_HOST + S3_PUBLIC_ENDPOINT_URL)."""
+    playbook = (REPO / "deploy/ansible/playbook.yml").read_text()
+    assert "GEOSTUDIO_S3_PUBLIC_HOST:" in playbook
+    install = INSTALL_SH.read_text()
+    assert "set_env_var S3_PUBLIC_HOST" in install
+    assert "set_env_var S3_PUBLIC_ENDPOINT_URL" in install
+    for target in ("proxmox", "oci"):
+        vars_ = (REPO / f"deploy/{target}/ansible/group_vars/all.yml").read_text()
+        assert "geostudio_s3_public_host:" in vars_, target

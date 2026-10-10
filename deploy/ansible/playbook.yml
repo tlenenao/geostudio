@@ -38,6 +38,7 @@
       environment: &geostudio_install_env
         INSTALL_YES: "1"
         GEOSTUDIO_PUBLIC_HOST: "{{ geostudio_public_host }}"
+        GEOSTUDIO_S3_PUBLIC_HOST: "{{ geostudio_s3_public_host | default('') }}"
         GEOSTUDIO_VERSION: "{{ geostudio_version }}"
         TS_AUTHKEY: "{{ vault_ts_authkey }}"
         INSTALL_PROFILES: "{{ geostudio_profiles }}"

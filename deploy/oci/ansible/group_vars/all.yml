@@ -1,6 +1,9 @@
 geostudio_repo_url: "https://github.com/tlenenao/geostudio.git"
 geostudio_repo_dest: "/home/ubuntu/geostudio"
 geostudio_public_host: ""
+# Hôte S3 public (liens présignés exports/app-exports, REV-315) : à faire pointer
+# vers Traefik par DNS. Vide = non réglé (l'installeur avertit).
+geostudio_s3_public_host: ""
 # Profils compose optionnels à activer (export, appexport, observability) ; vide =
 # pile par défaut. Le profil "etl" a disparu avec le sidecar qgis-worker (retiré).
 geostudio_profiles: ""
