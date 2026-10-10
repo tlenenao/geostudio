@@ -157,6 +157,11 @@ def _is_stale_running(source: HarvestSource, now: datetime) -> bool:
     return updated is not None and (now - updated) >= timedelta(minutes=_RUNNING_RECLAIM_MINUTES)
 
 
+def is_run_active(source: HarvestSource) -> bool:
+    """Source « running » et non périmée : un nouveau run serait un no-op."""
+    return source.last_status == "running" and not _is_stale_running(source, _now())
+
+
 def _refresh(session: Session, source_id: str) -> None:
     # l'UPDATE en masse ne rafraîchit pas l'objet déjà chargé dans la session
     loaded = session.get(HarvestSource, source_id)

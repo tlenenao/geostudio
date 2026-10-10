@@ -116,11 +116,11 @@ test("un admin gère le cycle de vie complet d'une collection depuis le shell", 
 
   await page.getByRole("button", { name: "Partager" }).click();
   await page.getByLabel("Groupe Équipe terrain").click();
-  await page.getByLabel("Rôle Équipe terrain").selectOption("editor");
+  await page.getByLabel("Rôle Équipe terrain").selectOption("manager");
   await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
   await expect
     .poll(() => sharedBody)
-    .toEqual({ public: false, groups: [{ groupId: "g1", role: "editor" }] });
+    .toEqual({ public: false, groups: [{ groupId: "g1", role: "manager" }] });
 
   await page.getByRole("button", { name: "Supprimer" }).click();
   // The row-action button and the ConfirmDialog's confirm button share the

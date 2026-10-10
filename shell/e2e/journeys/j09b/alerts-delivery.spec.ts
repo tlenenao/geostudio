@@ -271,18 +271,23 @@ test("j09b-006 : un Créateur ne peut pas utiliser le secret SMTP d'un autre pou
 });
 
 test("balayage périodique réel : le worker évalue seul la règle planifiée (firing) sans intervention", async () => {
-  test.setTimeout(480_000);
-  const deadline = Date.now() + 420_000;
+  // REV-321 : le balayage */5 peut dériver sous charge ; marge sur deux cycles.
+  test.setTimeout(720_000);
+  const deadline = Date.now() + 660_000;
   let ev: any;
   while (Date.now() < deadline) {
-    const list = await creator.get(`/v1/alerts/${sweepRuleId}/evaluations`);
-    ev = (list.body as any[]).find((x) => x.state !== "pending");
+    // Le jeton Keycloak (5 min) expire pendant l'attente de deux cycles de balayage : on le renouvelle.
+    const fresh = await apiFor("creator");
+    const list = await fresh.get(`/v1/alerts/${sweepRuleId}/evaluations`);
+    ev = Array.isArray(list.body) ? list.body.find((x: any) => x.state !== "pending") : undefined;
     if (ev) break;
     await new Promise((r) => setTimeout(r, 10_000));
   }
   expect(ev?.state).toBe("firing");
   // aucune évaluation manuelle n'a été demandée pour cette règle : seul le balayage */5 a pu la créer
   expect(alertConfig(datasetId).alert.refreshPolicy.enabled).toBe(false);
-  const a = notifyAudit(sweepRuleId);
-  expect(a).toHaveLength(1);
+  // REV-321 : l'audit `alert.notify` est écrit APRÈS le passage de l'évaluation
+  // à `firing` (livraison puis audit) — attendre le signal, ne pas le lire une
+  // seule fois (course perdue sous charge, 2 workers).
+  await expect.poll(() => notifyAudit(sweepRuleId).length, { timeout: 60_000 }).toBe(1);
 });

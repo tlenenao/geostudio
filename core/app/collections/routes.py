@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
+from app.analytics import lake_purge
 from app.attachments import repository as attachments_repo
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user, get_current_user_optional
@@ -29,11 +30,13 @@ from app.collections.schemas import (
     EmptyCollectionCreate,
 )
 from app.configs import repository as configs_repo
+from app.configs.geo_limits_dep import get_request_geo_limits
 from app.configs.guest_access import GuestActor, get_share_link_actor
 from app.db import core_table_names, get_session
 from app.roles.guards import has_privilege, privilege_required_error, require_privilege
 from app.roles.privileges import Privilege
 from app.sharing.authorization import can
+from app.sharing.geo_limits import resolve_geo_limits, set_geo_limits_guc
 from app.sharing.schemas import Sharing
 
 logger = logging.getLogger(__name__)
@@ -209,7 +212,7 @@ def get_attachments_bucket() -> str:
     return os.environ.get("S3_ATTACHMENTS_BUCKET", "geostudio-attachments")
 
 
-def get_extent_provider():
+def get_extent_provider(geo_limits=Depends(get_request_geo_limits)):
     """Défaut : emprise réelle sous rls_scope. app.collections ne peut pas
     importer app.features (couche supérieure) — le scope RLS vit donc en
     double minimal ici : les deux SET sont inline (3 lignes), pas d'import."""
@@ -221,10 +224,12 @@ def get_extent_provider():
         if session.get_bind().dialect.name != "postgresql":
             return None
         session.execute(_text("SELECT set_config('app.tenant_id', :tid, true)"), {"tid": tenant_id})
+        set_geo_limits_guc(session, geo_limits)  # GAP-27 : l'emprise est celle du visible
         session.execute(_text("SET LOCAL ROLE gis_rls"))
         try:
             return table_extent(session, info)
         finally:
+            session.info.pop("geo_limits", None)  # cf. app.features.rls.rls_scope
             try:
                 session.execute(_text("RESET ROLE"))
             except DBAPIError as exc:
@@ -269,7 +274,12 @@ def _may_see_sensitive(session, user) -> bool:
 
 
 def _collection_json(
-    col, permissions, owner: str | None = None, *, reveal_sensitive: bool = False
+    col,
+    permissions,
+    owner: str | None = None,
+    *,
+    reveal_sensitive: bool = False,
+    geo_limited: bool = False,
 ) -> dict:
     return {
         "id": col.id,
@@ -282,7 +292,8 @@ def _collection_json(
         "srid": col.srid,
         "pkColumn": col.pk_column,
         "permissions": permissions.model_dump(),
-        "featureCount": col.feature_count,
+        # GAP-27 : le total physique fuiterait la taille de ce qui est hors limite.
+        "featureCount": None if geo_limited else col.feature_count,
         "owner": owner,
         "attachmentFields": col.attachment_fields,
         "sensitiveFields": col.sensitive_fields if reveal_sensitive else [],
@@ -518,6 +529,7 @@ def list_collections(
     offset: int = Query(0, ge=0),
     user=Depends(get_current_user_optional),
     session: Session = Depends(get_session, scope="function"),
+    geo_limits=Depends(get_request_geo_limits),
 ):
     from app.tenants.repository import get_or_create_default_tenant
     from app.users.models import User
@@ -558,6 +570,7 @@ def list_collections(
                 permissions_by_id[c.id],
                 owner=owners.get(c.owner_id),
                 reveal_sensitive=reveal_sensitive,
+                geo_limited=c.table_name in geo_limits,
             )
             for c in cols_page
         ],
@@ -614,6 +627,7 @@ def get_collection(
     session: Session = Depends(get_session, scope="function"),
     introspect: Introspector = Depends(get_introspector),
     extent_provider=Depends(get_extent_provider),
+    geo_limits=Depends(get_request_geo_limits),
 ):
     can_manage_collections = bool(
         user and has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
@@ -629,7 +643,12 @@ def get_collection(
         can_manage_collections=can_manage_collections,
         collections=[col],
     )[col.id]
-    body = _collection_json(col, permissions, reveal_sensitive=_may_see_sensitive(session, user))
+    body = _collection_json(
+        col,
+        permissions,
+        reveal_sensitive=_may_see_sensitive(session, user),
+        geo_limited=col.table_name in geo_limits,
+    )
     body["itemType"] = "feature"
     # request.base_url ne porte jamais /v1 (juste scheme://host/) — ce
     # routeur est nesté sous /v1 (SP-57b), l'ajouter explicitement ici.
@@ -762,6 +781,8 @@ def patch_collection(
         actor_is_admin=user.is_admin,
     ):
         raise HTTPException(status_code=403, detail="write access required")
+    if body.isPublic is not None and body.isPublic != col.is_public:
+        _require_share(session, user, col)  # même garde que PUT /sharing
     if body.attachmentFields is not None:
         _reject_attachment_field_collisions(session, col, body.attachmentFields, introspect)
     if (
@@ -837,7 +858,13 @@ def patch_collection(
         can_manage_collections=can_manage_collections,
         collections=[col],
     )[col.id]
-    return _collection_json(col, permissions, reveal_sensitive=_may_see_sensitive(session, user))
+    return _collection_json(
+        col,
+        permissions,
+        reveal_sensitive=_may_see_sensitive(session, user),
+        geo_limited=col.table_name
+        in resolve_geo_limits(session, tenant_id=user.tenant_id, user_id=user.id),
+    )
 
 
 @router.delete("/collections/{collection_id}", status_code=204)
@@ -881,6 +908,15 @@ def unregister_collection(
         get_attachments_bucket(),
         tenant_id=col.tenant_id,
         collection_id=col.id,
+    )
+    # REV-322 : le lac (partitions + snapshots) de la collection est purgé, sinon
+    # une collection ré-enregistrée sous le même id (id = table_name) hériterait
+    # d'anciennes partitions. Après la suppression des pièces jointes, avant la
+    # ligne catalogue : un échec S3 annule la requête sans rien avoir supprimé.
+    lake_purge.purge_prefix(
+        s3,
+        bucket=os.environ.get("S3_CDC_BUCKET", "geostudio-cdc"),
+        prefix=lake_purge.lake_prefix(col.tenant_id, col.id),
     )
     repo.delete_collection(session, col)
     write_audit(

@@ -18,6 +18,7 @@ import { EmptyState } from "../ui/kit/EmptyState";
 import { Input } from "../ui/kit/Input";
 import { LoadingState } from "../ui/kit/LoadingState";
 import { PageTitle } from "../ui/kit/PageTitle";
+import "../i18n/domains/admin";
 
 function RegisterForm({ disabled }: { disabled: boolean }) {
   const create = useCreateExtension();

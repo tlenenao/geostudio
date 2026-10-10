@@ -2,9 +2,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useItemClient } from "../api/hooks";
 import { Button } from "../ui/kit/Button";
+import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { Input } from "../ui/kit/Input";
 import { Panel } from "../ui/kit/Panel";
 import { t } from "../i18n";
+import "../i18n/domains/map";
 
 const DEFAULT_POLL_INTERVAL_MS = 1500;
 // Un job de conversion qui n'atteint jamais un état terminal ne doit pas
@@ -25,6 +27,7 @@ export function Terrain3DUploadButton({
   pollIntervalMs?: number;
 }) {
   const [open, setOpen] = useState(false);
+  const panel = usePanelTrigger(open);
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [phase, setPhase] = useState<Phase>("form");
@@ -131,11 +134,18 @@ export function Terrain3DUploadButton({
   // poll() tourner en arrière-plan sans rien pour le refléter.
   return (
     <div className="flex flex-col gap-2">
-      <Button size="sm" variant="outline" className="w-fit" onClick={toggle} disabled={busy}>
+      <Button
+        size="sm"
+        variant="outline"
+        className="w-fit"
+        onClick={toggle}
+        disabled={busy}
+        {...panel.triggerProps}
+      >
         {t("terrain3dUpload.newButton")}
       </Button>
       {open && (
-        <Panel className="flex flex-col gap-3">
+        <Panel className="flex flex-col gap-3" {...panel.panelProps}>
           <h4 className="text-sm font-semibold text-ink">{t("terrain3dUpload.newButton")}</h4>
           <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
             <label className="flex flex-col gap-1 text-sm text-ink">

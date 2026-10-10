@@ -4,6 +4,7 @@ import { usePipelineNextRun } from "../../api/hooks";
 import type { PipelineRefreshPolicy } from "../../api/types";
 import { t } from "../../i18n";
 import { formatDateTime } from "../../lib/format";
+import "../../i18n/domains/automation";
 
 export type ScheduleForm =
   | { mode: "interval"; minutes: string }

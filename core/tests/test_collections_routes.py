@@ -39,11 +39,20 @@ class _FakeS3Client:
     test de ce fichier qui appelle DELETE /collections/{id} a besoin de cet
     override — sinon RuntimeError("S3 client dependency not configured")."""
 
-    def __init__(self):
+    def __init__(self, lake: dict[str, bytes] | None = None):
         self.deleted: list[str] = []
+        self.lake = lake if lake is not None else {}  # bucket CDC (REV-322)
 
     def delete_object(self, *, Bucket, Key):
         self.deleted.append(Key)
+
+    def list_objects_v2(self, *, Bucket, Prefix="", ContinuationToken=None):
+        keys = sorted(k for k in self.lake if k.startswith(Prefix))
+        return {"Contents": [{"Key": k} for k in keys], "IsTruncated": False}
+
+    def delete_objects(self, *, Bucket, Delete):
+        for o in Delete["Objects"]:
+            self.lake.pop(o["Key"], None)
 
 
 @pytest.fixture()
@@ -1100,3 +1109,44 @@ def test_get_collection_for_read_lifts_visibility_only_with_the_privilege():
         s.commit()
         other = s.get(User, other_id)
         assert get_collection_for_read(s, other, col_id).id == col_id
+
+
+def test_delete_collection_purges_its_lake_but_not_a_neighbour(env):
+    # REV-322 : partitions + snapshots de la collection supprimée disparaissent
+    # (sinon une collection ré-enregistrée sous le même id hériterait de
+    # l'ancien lac) ; le voisin (autre collection, autre tenant) est intact.
+    app, client, Session, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/v1/collections", json={"tableName": "incidents"})
+    t = admin.tenant_id
+    mine = [
+        f"cdc/tenant_id={t}/collection_id=incidents/dt=2026-01-01/part-a.parquet",
+        f"cdc/tenant_id={t}/collection_id=incidents/snapshot/snap-1-2.parquet",
+    ]
+    others = [
+        f"cdc/tenant_id={t}/collection_id=incidents2/dt=2026-01-01/part-b.parquet",
+        "cdc/tenant_id=autre/collection_id=incidents/dt=2026-01-01/part-c.parquet",
+    ]
+    s3 = _FakeS3Client({k: b"x" for k in mine + others})
+    app.dependency_overrides[collections_routes.get_s3_client] = lambda: s3
+    assert client.delete("/v1/collections/incidents").status_code == 204
+    assert sorted(s3.lake) == sorted(others)
+
+
+def test_patch_is_public_requires_share_right_not_just_write(env):
+    # Un editor (write) ne peut pas ouvrir la collection au tenant : isPublic
+    # exige la même garde que PUT /sharing (manager).
+    app, client, _, admin, regular, _ddl = env
+    _as(app, admin)
+    client.post("/v1/collections", json={"tableName": "incidents", "isPublic": False})
+    gid = client.post("/v1/groups", json={"name": "equipe"}).json()["id"]
+    client.post(f"/v1/groups/{gid}/members", json={"userId": regular.id})
+    url = "/v1/collections/incidents"
+    for role, expected in (("editor", 403), ("manager", 200)):
+        _as(app, admin)
+        share = {"public": False, "groups": [{"groupId": gid, "role": role}]}
+        assert client.put(f"{url}/sharing", json=share).status_code == 200
+        _as(app, regular)
+        assert client.patch(url, json={"title": "ok"}).status_code == 200
+        assert client.patch(url, json={"isPublic": True}).status_code == expected
+        assert client.patch(url, json={"isPublic": False}).status_code == 200

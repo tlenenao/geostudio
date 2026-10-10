@@ -4,6 +4,7 @@ import { useEffect, useId, useMemo, useState } from "react";
 import { cn } from "../../lib/utils";
 import { t } from "../../i18n";
 import { Input } from "./Input";
+import "../../i18n/domains/misc";
 
 export function Combobox({
   value,

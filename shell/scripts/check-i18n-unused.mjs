@@ -17,6 +17,7 @@ import { join, extname } from "node:path";
 
 const ROOT = "src";
 const CATALOG = "src/i18n/catalog.fr.ts";
+const DOMAINS_DIR = "src/i18n/domains";
 const ALLOWLIST = "scripts/i18n-unused-allowlist.json";
 
 export function catalogKeys(src) {
@@ -47,7 +48,8 @@ function walk(dir, out = []) {
       [".ts", ".tsx"].includes(extname(full)) &&
       !/\.test\.tsx?$/.test(entry) &&
       !entry.endsWith(".d.ts") &&
-      full.replaceAll("\\", "/") !== CATALOG
+      full.replaceAll("\\", "/") !== CATALOG &&
+      !full.replaceAll("\\", "/").startsWith(DOMAINS_DIR + "/")
     )
       out.push(full);
   }
@@ -55,7 +57,12 @@ function walk(dir, out = []) {
 }
 
 export function main() {
-  const keys = catalogKeys(readFileSync(CATALOG, "utf8"));
+  const keys = [
+    CATALOG,
+    ...readdirSync(DOMAINS_DIR)
+      .filter((f) => f !== "all.ts")
+      .map((f) => `${DOMAINS_DIR}/${f}`),
+  ].flatMap((f) => catalogKeys(readFileSync(f, "utf8")));
   const source = walk(ROOT)
     .map((f) => readFileSync(f, "utf8"))
     .join("\n");

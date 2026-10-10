@@ -24,6 +24,9 @@ import { formatDateTime } from "../lib/format";
 import { LoadingState } from "../ui/kit/LoadingState";
 import { Banner } from "../ui/kit/Banner";
 import { PageTitle } from "../ui/kit/PageTitle";
+import "../i18n/domains/admin";
+import "../i18n/domains/automation";
+import "../i18n/domains/misc";
 
 const RECORDS_PAGE_SIZE = 100;
 // Plafond du cœur (_MAX_LIMIT dans core/app/harvest/routes.py) : au-delà, `limit` est

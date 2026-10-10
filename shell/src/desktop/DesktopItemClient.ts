@@ -358,6 +358,9 @@ export function createDesktopItemClient(connection: {
     async getInstanceStatus(..._args: unknown[]) {
       return unsupported();
     },
+    async getJobsBacklog() {
+      return null;
+    },
     async launchAdminTool(..._args: unknown[]) {
       return unsupported();
     },
@@ -365,6 +368,15 @@ export function createDesktopItemClient(connection: {
       return unsupported();
     },
     async setCollectionSharing(..._args: unknown[]) {
+      return unsupported();
+    },
+    async listGeoLimits(..._args: unknown[]) {
+      return unsupported();
+    },
+    async putGeoLimit(..._args: unknown[]) {
+      return unsupported();
+    },
+    async deleteGeoLimit(..._args: unknown[]) {
       return unsupported();
     },
     async createMapItem(..._args: unknown[]) {
@@ -430,6 +442,9 @@ export function createDesktopItemClient(connection: {
     async getCollectionSchema(..._args: unknown[]) {
       return unsupported();
     },
+    async getCollectionProfile(..._args: unknown[]) {
+      return unsupported();
+    },
     async presignAttachmentUpload(..._args: unknown[]) {
       return unsupported();
     },
@@ -472,6 +487,12 @@ export function createDesktopItemClient(connection: {
       return unsupported();
     },
     async getIngestionJob(..._args: unknown[]) {
+      return unsupported();
+    },
+    async cancelIngestionJob(..._args: unknown[]) {
+      return unsupported();
+    },
+    async cancelExportJob(..._args: unknown[]) {
       return unsupported();
     },
     async createExport(..._args: unknown[]) {
@@ -574,6 +595,9 @@ export function createDesktopItemClient(connection: {
       return unsupported();
     },
     async createSecret(..._args: unknown[]) {
+      return unsupported();
+    },
+    async updateSecret(..._args: unknown[]) {
       return unsupported();
     },
     async deleteSecret(..._args: unknown[]) {

@@ -245,6 +245,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/collections/{collection_id}/export/jobs/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Collection Export Job
+         * @description D6 : annule un export asynchrone en attente ou en cours. Même autorisation
+         *     que la lecture du statut, mais l'annulation reste réservée au demandeur ou à
+         *     `data.manage` (pas `tasks.view_all`) ; idempotent ; 409 si déjà terminé.
+         */
+        post: operations["cancel_collection_export_job_v1_collections__collection_id__export_jobs__job_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/geo-limits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Geo Limits */
+        get: operations["list_geo_limits_v1_collections__collection_id__geo_limits_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/geo-limits/{target_type}/{target_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put Geo Limit */
+        put: operations["put_geo_limit_v1_collections__collection_id__geo_limits__target_type___target_id__put"];
+        post?: never;
+        /** Delete Geo Limit */
+        delete: operations["delete_geo_limit_v1_collections__collection_id__geo_limits__target_type___target_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/collections/{collection_id}/items": {
         parameters: {
             query?: never;
@@ -343,6 +400,27 @@ export interface paths {
         };
         /** Read Attachment File */
         get: operations["read_attachment_file_v1_collections__collection_id__items__fid__attachments__attachment_id__file_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Profile Collection
+         * @description Résumé exploratoire (REV-117) : mêmes droits, même masquage de colonnes
+         *     sensibles et mêmes bornes DuckDB que POST /aggregate.
+         */
+        get: operations["profile_collection_v1_collections__collection_id__profile_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1768,6 +1846,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/uploads/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Upload Job
+         * @description D6 : annule un import. `pending` -> `cancelled` (source supprimée) ; `running`
+         *     -> `cancel_requested` (le worker s'arrête avant l'import, sinon l'import
+         *     s'achève). Même autorisation que la lecture ; idempotent ; 409 si terminé.
+         */
+        post: operations["cancel_upload_job_v1_uploads__job_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/usage/summary": {
         parameters: {
             query?: never;
@@ -2003,6 +2103,8 @@ export interface components {
          *     `location="header"` couvre le cas générique (`X-API-Key`, etc.).
          */
         ApiKeyPayload: {
+            /** Baseurl */
+            baseUrl?: string | null;
             /** Key */
             key: string;
             /**
@@ -2118,6 +2220,8 @@ export interface components {
          *     l'échange de jeton lui-même — le coffre ne porte que le matériel brut.
          */
         BasicAuthPayload: {
+            /** Baseurl */
+            baseUrl?: string | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -2130,6 +2234,8 @@ export interface components {
         };
         /** BearerTokenPayload */
         BearerTokenPayload: {
+            /** Baseurl */
+            baseUrl?: string | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -2339,6 +2445,64 @@ export interface components {
             updateFrequency?: string | null;
             /** Version */
             version?: string | null;
+        };
+        /**
+         * CollectionProfileResponse
+         * @description Contrat de GET /collections/{id}/profile. `asOf`/`pending` : mêmes
+         *     sémantiques que POST /aggregate (P25.10/11).
+         */
+        CollectionProfileResponse: {
+            /** Asof */
+            asOf?: string | null;
+            /** Columns */
+            columns: components["schemas"]["ColumnProfile"][];
+            geometry?: components["schemas"]["GeometryProfile"] | null;
+            /**
+             * Pending
+             * @default false
+             */
+            pending: boolean;
+            /** Rowcount */
+            rowCount: number;
+            /**
+             * Sampled
+             * @default false
+             */
+            sampled: boolean;
+            /**
+             * Truncatedcolumns
+             * @default false
+             */
+            truncatedColumns: boolean;
+        };
+        /** ColumnProfile */
+        ColumnProfile: {
+            /** Distinct */
+            distinct?: number | null;
+            /** Histogram */
+            histogram?: components["schemas"]["HistogramBin"][] | null;
+            /** Max */
+            max?: number | string | null;
+            /** Mean */
+            mean?: number | null;
+            /** Median */
+            median?: number | null;
+            /** Min */
+            min?: number | string | null;
+            /** Name */
+            name: string;
+            /** Nonnull */
+            nonNull: number;
+            /** Nulls */
+            nulls: number;
+            /** P25 */
+            p25?: number | null;
+            /** P75 */
+            p75?: number | null;
+            /** Topvalues */
+            topValues?: components["schemas"]["TopValue"][] | null;
+            /** Type */
+            type: string;
         };
         /** ConfigRead */
         ConfigRead: {
@@ -2654,6 +2818,34 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** GeoLimitList */
+        GeoLimitList: {
+            /** Limits */
+            limits: components["schemas"]["GeoLimitRead"][];
+        };
+        /** GeoLimitPut */
+        GeoLimitPut: {
+            /** Geometry */
+            geometry: {
+                [key: string]: unknown;
+            };
+        };
+        /** GeoLimitRead */
+        GeoLimitRead: {
+            /** Geometry */
+            geometry: {
+                [key: string]: unknown;
+            };
+            /** Targetid */
+            targetId: string;
+            /**
+             * Targettype
+             * @enum {string}
+             */
+            targetType: "role" | "group";
+            /** Updatedat */
+            updatedAt: string;
+        };
         /** GeocodeResponse */
         GeocodeResponse: {
             /** Results */
@@ -2667,6 +2859,22 @@ export interface components {
             lat: number;
             /** Lon */
             lon: number;
+        };
+        /** GeometryProfile */
+        GeometryProfile: {
+            /** Bbox */
+            bbox?: number[] | null;
+            /** Column */
+            column: string;
+            /** Types */
+            types: components["schemas"]["GeometryTypeCount"][];
+        };
+        /** GeometryTypeCount */
+        GeometryTypeCount: {
+            /** Count */
+            count: number;
+            /** Type */
+            type: string;
         };
         /** GroupMemberRead */
         GroupMemberRead: {
@@ -2696,7 +2904,7 @@ export interface components {
              * Role
              * @enum {string}
              */
-            role: "viewer" | "editor";
+            role: "viewer" | "editor" | "manager";
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -2736,6 +2944,17 @@ export interface components {
             mode?: ("reference" | "copy") | null;
             /** Url */
             url?: string | null;
+        };
+        /** HistogramBin */
+        HistogramBin: {
+            /** Bucketend */
+            bucketEnd: number;
+            /** Bucketindex */
+            bucketIndex: number;
+            /** Bucketstart */
+            bucketStart: number;
+            /** Count */
+            count: number;
         };
         /** IngestionJobCreate */
         IngestionJobCreate: {
@@ -3237,6 +3456,8 @@ export interface components {
          *     stocke les identifiants client, jamais le jeton d'accès obtenu.
          */
         OAuth2ClientCredentialsPayload: {
+            /** Baseurl */
+            baseUrl?: string | null;
             /** Clientid */
             clientId: string;
             /** Clientsecret */
@@ -3752,6 +3973,13 @@ export interface components {
             /** Totalbytes */
             totalBytes: number;
         };
+        /** TopValue */
+        TopValue: {
+            /** Count */
+            count: number;
+            /** Value */
+            value: string;
+        };
         /** UnreadCount */
         UnreadCount: {
             /** Count */
@@ -4031,6 +4259,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -4070,6 +4299,7 @@ export interface operations {
             };
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -4344,6 +4574,7 @@ export interface operations {
             };
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -4385,6 +4616,7 @@ export interface operations {
             };
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -4454,6 +4686,145 @@ export interface operations {
             };
         };
     };
+    cancel_collection_export_job_v1_collections__collection_id__export_jobs__job_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                collection_id: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionExportJobStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_geo_limits_v1_collections__collection_id__geo_limits_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeoLimitList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_geo_limit_v1_collections__collection_id__geo_limits__target_type___target_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                collection_id: string;
+                target_type: "role" | "group";
+                target_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GeoLimitPut"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeoLimitRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_geo_limit_v1_collections__collection_id__geo_limits__target_type___target_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                collection_id: string;
+                target_type: "role" | "group";
+                target_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_features_v1_collections__collection_id__items_get: {
         parameters: {
             query?: {
@@ -4499,6 +4870,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -4573,6 +4945,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -4611,6 +4984,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -4680,6 +5054,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -4718,6 +5093,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -4756,6 +5132,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -4807,6 +5184,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    profile_collection_v1_collections__collection_id__profile_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+                "X-Share-Link-Token"?: string | null;
+            };
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionProfileResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5584,6 +5995,7 @@ export interface operations {
             };
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -5615,6 +6027,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -6549,6 +6962,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "if-match"?: string | null;
                 authorization?: string;
             };
             path: {
@@ -7942,6 +8356,7 @@ export interface operations {
             };
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -7973,6 +8388,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -8010,6 +8426,7 @@ export interface operations {
             };
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -8043,6 +8460,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -8104,6 +8522,7 @@ export interface operations {
             };
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -8135,6 +8554,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -8271,6 +8691,39 @@ export interface operations {
         };
     };
     get_upload_job_v1_uploads__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestionJobStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_upload_job_v1_uploads__job_id__cancel_post: {
         parameters: {
             query?: never;
             header?: {

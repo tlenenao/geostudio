@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useRef, useState } from "react";
 import { useItemClient } from "../../api/hooks";
+import { ApiError } from "../../api/ApiError";
 import type { PipelineRun } from "../../api/types";
 import { t } from "../../i18n";
 import { jobStatusLabel } from "../../lib/jobStatusLabel";
 import { Button } from "../../ui/kit/Button";
 import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
 import { formatDateTime } from "../../lib/format";
+import "../../i18n/domains/automation";
 
 // GET /pipelines/{id}/runs pagine déjà côté cœur (limit/offset, SP-50) mais ce
 // panneau tronquait silencieusement l'historique à la limite par défaut du
@@ -192,6 +194,12 @@ export function PipelineRunPanel({
       await poll();
     } catch (e) {
       if (!mountedRef.current) return;
+      if (e instanceof ApiError && e.status === 409) {
+        // REV-310 : un run est déjà actif — on le suit au lieu de laisser l'écran figé.
+        setRunError(t("pipelineRun.alreadyRunning"));
+        await poll();
+        return;
+      }
       setRunError(e instanceof Error ? e.message : t("pipelineRun.runFailed"));
     } finally {
       if (mountedRef.current) setRunning(false);

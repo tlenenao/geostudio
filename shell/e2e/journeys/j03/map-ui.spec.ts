@@ -30,7 +30,8 @@ test.beforeAll(async () => {
 
 async function asCreator(page: Page) {
   await loginOidc(page, "creator");
-  await page.waitForTimeout(1000);
+  // REV-321 : signal observable (le catalogue est monté) plutôt qu'un délai fixe.
+  await expect(page.getByRole("textbox", { name: "Rechercher" }).first()).toBeVisible();
 }
 
 async function openMap(page: Page, pk: string) {
@@ -52,6 +53,9 @@ test.describe("j03 import par le tiroir « Importer un fichier »", () => {
     page,
   }) => {
     await asCreator(page);
+    // Le présigné fonctionne désormais (S3_PUBLIC_ENDPOINT_URL posé, j03-002 corrigé) : on provoque
+    // l'échec de l'envoi en coupant le PUT vers MinIO.
+    await page.route(/:9000\//, (route) => route.abort());
     await page.getByRole("button", { name: "Importer un fichier" }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
@@ -61,7 +65,7 @@ test.describe("j03 import par le tiroir « Importer un fichier »", () => {
     await expect(dialog.getByRole("alert")).toHaveCount(0);
     await dialog.getByLabel("Titre de la collection").fill("aud-j03 import ui");
     await dialog.getByRole("button", { name: "Importer", exact: true }).click();
-    // Chemin actuel : le présigné répond 500 (j03-002) → message générique, pas de boucle infinie.
+    // Envoi coupé → message générique, pas de boucle infinie.
     await expect(dialog.getByRole("alert")).toContainText("Échec de l'envoi du fichier.", {
       timeout: 20_000,
     });
@@ -234,11 +238,24 @@ test.describe("j03 sauvegarde, historique, publication", () => {
     page,
   }) => {
     await asCreator(page);
+    // REV-321 : on attend la réponse de la recherche (la carte ciblée est alors
+    // la première de la liste), pas un délai fixe.
+    const searched = page.waitForResponse((r) => {
+      const url = new URL(r.url());
+      return (
+        url.pathname.endsWith("/items") &&
+        r.ok() &&
+        url.searchParams.get("q") === `${seed.tag}-points-publics`
+      );
+    });
     await page
       .getByRole("textbox", { name: "Rechercher" })
       .first()
       .fill(`${seed.tag}-points-publics`);
-    await page.waitForTimeout(1500);
+    await searched;
+    await expect(
+      page.getByRole("heading", { name: `${seed.tag}-points-publics`, exact: true }),
+    ).toBeVisible();
     await page.getByRole("button", { name: "Actions" }).first().click();
     await page.getByRole("menuitem", { name: "Publier", exact: true }).click();
     // j03-012 : publier une carte passe par un dialogue (signale les collections privées lues).

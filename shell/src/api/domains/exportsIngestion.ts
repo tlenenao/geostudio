@@ -44,6 +44,8 @@ type ExportsIngestionMethods = Pick<
   | "inspectUpload"
   | "createIngestionJob"
   | "getIngestionJob"
+  | "cancelIngestionJob"
+  | "cancelExportJob"
   | "runAnalyticsSql"
 >;
 
@@ -92,12 +94,23 @@ export function createExportsIngestionMethods(base: ItemClientBase): ExportsInge
 
     async getIngestionJob(jobId: string) {
       return request<{
-        status: "pending" | "running" | "done" | "error";
+        status: "pending" | "running" | "done" | "error" | "cancelled" | "cancel_requested";
         errorMessage: string | null;
         collectionId: string | null;
         itemId: string | null;
         itemResourceType?: string | null;
       }>("GET", `/uploads/${jobId}`);
+    },
+
+    async cancelIngestionJob(jobId: string) {
+      return request<{ status: string }>("POST", `/uploads/${jobId}/cancel`);
+    },
+
+    async cancelExportJob(collectionId: string, jobId: string) {
+      return request<{ status: string }>(
+        "POST",
+        `/collections/${collectionId}/export/jobs/${jobId}/cancel`,
+      );
     },
 
     async runAnalyticsSql(sql: string) {

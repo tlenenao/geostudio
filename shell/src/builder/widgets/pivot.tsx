@@ -7,6 +7,7 @@ import { ExplorerMenu } from "./ExplorerMenu";
 import { SourceMissing } from "./SourceMissing";
 import { t } from "../../i18n";
 import { LoadingState } from "../../ui/kit/LoadingState";
+import "../../i18n/domains/widgets";
 
 const labelCls = "flex flex-col gap-1";
 const inputCls = "h-9 rounded-md border border-rule px-2";

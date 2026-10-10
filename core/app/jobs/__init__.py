@@ -56,6 +56,19 @@ def _conninfo() -> str:
 # app/db.py (connect_args["prepare_threshold"] = None).
 CONNECTION_KWARGS: dict[str, object] = {"prepare_threshold": None}
 
+
+async def _utc_async(conn) -> None:
+    # REV-301 : même garantie que app/db.py (REV-280g) pour les connexions du
+    # pool procrastinate. SET (pas `options`, refusé par PgBouncer).
+    await conn.execute("SET TIME ZONE 'UTC'")
+    await conn.commit()
+
+
+def _utc_sync(conn) -> None:
+    conn.execute("SET TIME ZONE 'UTC'")
+    conn.commit()
+
+
 app = procrastinate.App(
     # PsycopgConnector (async), pas SyncPsycopgConnector : le CLI procrastinate
     # refuse tout connecteur qui n'est pas une sous-classe de BaseAsyncConnector
@@ -65,7 +78,9 @@ app = procrastinate.App(
     # utilisable en synchrone par `.defer(...)` dans les routes FastAPI (non
     # async) : tant qu'il n'est pas ouvert explicitement en async, il crée un
     # SyncPsycopgConnector interne à la demande (get_sync_connector()).
-    connector=procrastinate.PsycopgConnector(conninfo=_conninfo(), kwargs=dict(CONNECTION_KWARGS)),
+    connector=procrastinate.PsycopgConnector(
+        conninfo=_conninfo(), kwargs=dict(CONNECTION_KWARGS), configure=_utc_async
+    ),
     import_paths=[
         "app.ingestion.tasks",
         "app.items.jobs",
@@ -105,7 +120,7 @@ def open_sync_defer() -> Iterator[None]:
         return
     connector = app.connector.get_sync_connector()
     pool = psycopg_pool.ConnectionPool(
-        **connector._pool_args,  # type: ignore[attr-defined]
+        **{**connector._pool_args, "configure": _utc_sync},  # type: ignore[attr-defined]
         open=False,
         check=psycopg_pool.ConnectionPool.check_connection,
     )

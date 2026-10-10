@@ -8,6 +8,7 @@ import {
 } from "./AnalyticsContext";
 import { useDatasets } from "./DataContext";
 import { t } from "../i18n";
+import "../i18n/domains/widgets";
 
 const chipCls =
   "flex items-center gap-1 rounded-full border border-[var(--gs-color-border)] px-2 py-1";

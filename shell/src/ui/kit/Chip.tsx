@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { X } from "lucide-react";
 import { t } from "../../i18n";
+import "../../i18n/domains/misc";
 
 export function Chip({
   children,

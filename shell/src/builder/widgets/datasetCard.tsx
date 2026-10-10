@@ -6,6 +6,7 @@ import { DatasetDownloadButtons } from "../DatasetDownloadButtons";
 import { useItemClient } from "../../api/ItemClientProvider";
 import { plural, t } from "../../i18n";
 import { LoadingState } from "../../ui/kit/LoadingState";
+import "../../i18n/domains/widgets";
 
 export function registerDatasetCardWidget(): void {
   registerWidget({

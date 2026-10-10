@@ -6,6 +6,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.appexport.models import AppExportJob
+from app.job_timeouts import running_reclaim_minutes
 
 
 def _now() -> datetime:
@@ -15,7 +16,6 @@ def _now() -> datetime:
 # Même discipline de reclaim-par-âge que app.export.repository (anchored on
 # started_at, jamais created_at — un job resté "pending" en file avant de
 # démarrer ne doit pas être réclamé dès qu'il passe "running").
-_RUNNING_RECLAIM_MINUTES = 60
 _TERMINAL = ("done", "error")
 
 
@@ -67,13 +67,13 @@ def mark_done(
     result_key: str,
     byte_size: int | None = None,
     warning: str | None = None,
-) -> None:
+) -> bool:
     # `warning` (ex. troncature, j10b-005) est stocké dans `error` : un job
     # « done » avec `error` renseigné = terminé avec avertissement (aucune
     # migration ; le shell l'affiche à côté du lien de téléchargement).
     # c02-006 : UPDATE conditionnel — un job déjà clos (réclamé en erreur par le
     # balayage) ne repasse jamais « done ».
-    session.execute(
+    result = session.execute(
         update(AppExportJob)
         .where(AppExportJob.id == job_id, AppExportJob.status.notin_(_TERMINAL))
         .values(
@@ -85,6 +85,7 @@ def mark_done(
         )
     )
     session.flush()
+    return bool(result.rowcount)  # type: ignore[attr-defined]
 
 
 def mark_error(session: Session, *, job_id: str, error: str) -> None:
@@ -96,10 +97,8 @@ def mark_error(session: Session, *, job_id: str, error: str) -> None:
     session.flush()
 
 
-def reclaim_stuck_jobs(
-    session: Session, *, older_than_minutes: int = _RUNNING_RECLAIM_MINUTES
-) -> list[str]:
-    threshold = _now() - timedelta(minutes=older_than_minutes)
+def reclaim_stuck_jobs(session: Session, *, older_than_minutes: int | None = None) -> list[str]:
+    threshold = _now() - timedelta(minutes=older_than_minutes or running_reclaim_minutes())
     rows = (
         session.execute(select(AppExportJob).where(AppExportJob.status.in_(("pending", "running"))))
         .scalars()

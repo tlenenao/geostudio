@@ -29,6 +29,13 @@ RESTORE_DIR="${RESTORE_DIR:-/backup/restore}"
 echo "[restore] ${TS} — début"
 
 # --- Postgres (restaure aussi Keycloak, même base `gis`) ---
+# Les rôles gis_rls/gis_rls_masked sont globaux au cluster : absents du dump
+# (migrations 0008/0042) et du volume neuf d'un sinistre, ils font échouer
+# tous les GRANT du dump (REV-164). Recréés ici, comme le font les migrations.
+for role in gis_rls gis_rls_masked; do
+  PGPASSWORD="$PG_PASSWORD" psql -h postgis -U gis -d gis -v ON_ERROR_STOP=1 -q -c \
+    "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${role}') THEN CREATE ROLE ${role} NOLOGIN; END IF; END \$\$; GRANT ${role} TO current_user"
+done
 PGPASSWORD="$PG_PASSWORD" pg_restore -h postgis -U gis -d gis \
   --clean --if-exists --no-owner "${RESTORE_DIR}/postgres.dump"
 echo "[restore] postgres.dump restauré."

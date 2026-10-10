@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useItemClient as useItemClientInternal } from "../ItemClientProvider";
-import type { CollectionCreateInput, CollectionPatchInput, Sharing } from "../types";
+import type {
+  CollectionCreateInput,
+  CollectionPatchInput,
+  GeoLimitTarget,
+  Sharing,
+} from "../types";
 
 export function useCollectionsAdmin(options?: {
   q?: string;
@@ -86,6 +91,42 @@ export function useSetCollectionSharing(id: string) {
     mutationFn: (sharing: Sharing) => client.setCollectionSharing(id, sharing),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["collection-sharing", id] });
+    },
+  });
+}
+
+export function useGeoLimits(collectionId: string) {
+  const client = useItemClientInternal();
+  return useQuery({
+    queryKey: ["geo-limits", collectionId],
+    queryFn: () => client.listGeoLimits(collectionId),
+    retry: false, // 403 = pas administrateur de collections : section masquée
+  });
+}
+
+export function usePutGeoLimit(collectionId: string) {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (v: {
+      targetType: GeoLimitTarget;
+      targetId: string;
+      geometry: Record<string, unknown>;
+    }) => client.putGeoLimit(collectionId, v.targetType, v.targetId, v.geometry),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["geo-limits", collectionId] });
+    },
+  });
+}
+
+export function useDeleteGeoLimit(collectionId: string) {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { targetType: GeoLimitTarget; targetId: string }) =>
+      client.deleteGeoLimit(collectionId, v.targetType, v.targetId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["geo-limits", collectionId] });
     },
   });
 }

@@ -38,7 +38,7 @@ export async function mkGroup(api: Api, name: string, members: string[] = []): P
 export async function share(
   api: Api,
   pk: string,
-  groups: { groupId: string; role: "viewer" | "editor" }[],
+  groups: { groupId: string; role: "viewer" | "editor" | "manager" }[],
   isPublic = false,
 ): Promise<number> {
   return (await api.send("PUT", `/v1/items/${pk}/sharing`, { public: isPublic, groups })).status;

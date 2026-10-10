@@ -2,6 +2,7 @@
 import type { PipelineEdge, PipelineNode, PipelineOpsCatalog } from "../../api/types";
 import { t } from "../../i18n";
 import { hasCycle } from "./graphOps";
+import "../../i18n/domains/automation";
 
 export type PipelineValidationResult = {
   graphErrors: string[];

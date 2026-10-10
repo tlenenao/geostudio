@@ -4,6 +4,7 @@ import { RESOURCE_TYPE_LABELS } from "../../api/resourceTypes";
 import { Button } from "./Button";
 import { Panel } from "./Panel";
 import { t } from "../../i18n";
+import "../../i18n/domains/misc";
 
 export function ItemCard({
   item,

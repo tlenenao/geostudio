@@ -4,6 +4,7 @@ import { t } from "../../i18n";
 import { NativeSelect } from "../../ui/kit/NativeSelect";
 import { Input } from "../../ui/kit/Input";
 import { Textarea } from "../../ui/kit/Textarea";
+import "../../i18n/domains/widgets";
 
 const DEFAULTS: Required<Pick<PrintLayoutConfig, "pageSize" | "orientation" | "showLegend">> = {
   pageSize: "a4",

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from "vitest";
 import { plural, resolveMessageKey, t } from "./index";
-import { fr } from "./catalog.fr";
+import { allMessages as fr } from "./domains/all";
 
 describe("t", () => {
   it("rend le message du catalogue", () => {
@@ -36,6 +36,13 @@ describe("t", () => {
     // exception, `undefined` renvoyé) plutôt que de ne rien exercer.
     // @ts-expect-error clé absente du catalogue
     expect(t("cle.inexistante")).toBeUndefined();
+  });
+});
+
+describe("t sur clé d'un domaine non enregistré", () => {
+  it("avec params, renvoie la clé brute au lieu de lever une TypeError", () => {
+    // @ts-expect-error clé absente du catalogue
+    expect(t("cle.inexistante", { n: 1 })).toBe("cle.inexistante");
   });
 });
 

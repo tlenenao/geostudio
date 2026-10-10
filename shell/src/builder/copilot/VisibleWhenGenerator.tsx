@@ -12,6 +12,8 @@ import { formatCelError } from "../celError";
 import { validateExpression } from "../expr";
 import { CEL_DRAFT_TOOL } from "./celClientTools";
 import { useMcpToken } from "./useMcpToken";
+import "../../i18n/domains/automation";
+import "../../i18n/domains/widgets";
 
 export type CelGeneratorContext = "visibleWhen" | "computedColumn" | "actionCondition";
 

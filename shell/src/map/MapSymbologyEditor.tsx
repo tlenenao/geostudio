@@ -19,6 +19,10 @@ import { labelCls, inputCls } from "./formFieldStyles";
 import type { ThemeColors } from "../api/types";
 import { t } from "../i18n";
 import { formatDateTime } from "../lib/format";
+import "../i18n/domains/map";
+
+// gs-raw-color-ok: contour par défaut de symbologie utilisateur (valeur de donnée, pas un style)
+const DEFAULT_STROKE_COLOR = "#000000";
 
 // Éditeur partagé par les DEUX surfaces (éditeur de cartes et PropsPanel du
 // widget carte) — même précédent que PopupEditor.tsx (SP-24). Les deux
@@ -118,8 +122,7 @@ export function MapSymbologyEditor({
     onChange({
       ...value,
       stroke: {
-        // gs-raw-color-ok: contour par défaut de symbologie utilisateur
-        color: stroke?.color ?? { fixed: "#000000" },
+        color: stroke?.color ?? { fixed: DEFAULT_STROKE_COLOR },
         width: stroke?.width ?? { fixed: 1 },
         style: stroke?.style ?? "solid",
         ...patch,
@@ -456,8 +459,7 @@ export function MapSymbologyEditor({
                 // contour survivait au passage en mode fixe et réapparaissait
                 // telle quelle au retour en mode « par attribut ».
                 setStrokeError(null);
-                // gs-raw-color-ok: contour par défaut de symbologie utilisateur
-                setStroke({ color: { fixed: "#000000" } });
+                setStroke({ color: { fixed: DEFAULT_STROKE_COLOR } });
               }}
             >
               {t("mapSymbology.strokeFixedButton")}
@@ -498,8 +500,7 @@ export function MapSymbologyEditor({
               {t("mapSymbology.strokeColorLabel")}
               <input
                 type="color"
-                // gs-raw-color-ok: contour par défaut de symbologie utilisateur
-                value={"fixed" in stroke.color ? stroke.color.fixed : "#000000"}
+                value={"fixed" in stroke.color ? stroke.color.fixed : DEFAULT_STROKE_COLOR}
                 onChange={(e) => setStroke({ color: { fixed: e.target.value } })}
               />
             </label>

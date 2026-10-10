@@ -64,7 +64,8 @@ const analyst: Profile = {
   privileges: new Set(["data.view", "analytics.view", "analytics.sql_lab.access", "tasks.view"]),
   capabilities: ALL_ON,
 };
-const reader: Profile = { privileges: new Set(), capabilities: ALL_ON };
+// REV-270/P12.10 : le Lecteur porte analytics.view (cf. BUILT_IN_ROLE_PRIVILEGES).
+const reader: Profile = { privileges: new Set(["analytics.view"]), capabilities: ALL_ON };
 
 function stateOf(id: string, profile: Profile) {
   const domain = DOMAINS.find((d) => d.id === id);
@@ -121,7 +122,7 @@ describe("domainState", () => {
     // Analytique à un Créateur qui ne pouvait rien y faire) sans la
     // refermer par une nouvelle décision produit ; celle-ci change la
     // destination plutôt que le gate.
-    expect(stateOf("analytics", reader)).toBe("hidden");
+    expect(stateOf("analytics", reader)).toBe("visible");
     expect(stateOf("analytics", creator)).toBe("visible");
     expect(stateOf("analytics", analyst)).toBe("visible");
   });

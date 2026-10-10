@@ -130,7 +130,7 @@ export async function makeCollection(
   title: string,
   opts: { pub?: boolean; sensitive?: boolean; rows?: number } = {},
 ): Promise<ColSeed> {
-  const c = await api.send("POST", "/v1/collections/empty", {
+  const body = {
     title,
     columns: [
       { name: "nom", sqlType: "text" },
@@ -138,7 +138,13 @@ export async function makeCollection(
     ],
     geometryType: "Point",
     srid: 4326,
-  });
+  };
+  // Budget `collections_empty` = 5 par minute et par jeton (garde SP-45) : on attend la fenêtre.
+  let c = await api.send("POST", "/v1/collections/empty", body);
+  for (let i = 0; i < 6 && c.status === 429; i++) {
+    await new Promise((r) => setTimeout(r, 12_000));
+    c = await api.send("POST", "/v1/collections/empty", body);
+  }
   if (c.status !== 201) throw new Error(`col ${c.status} ${JSON.stringify(c.body)}`);
   const rows = opts.rows ?? 1;
   psql(

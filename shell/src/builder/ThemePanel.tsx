@@ -9,6 +9,7 @@ import {
 } from "./theme";
 import { t } from "../i18n";
 import { formatNumber } from "../lib/format";
+import "../i18n/domains/widgets";
 
 const FONTS: [string, string][] = [
   [DEFAULT_FONT, t("themePanel.fontSystem")],

@@ -278,6 +278,6 @@ def test_export_items_walks_several_keyset_pages_without_count(pg_app, monkeypat
     assert r.status_code == 200
     assert len(r.json()["features"]) == 3
     assert len(calls) == 3  # une page par ligne : la boucle tourne vraiment
-    # 1re page : total exact (seuil sync/asynchrone, REV-283e) ; ensuite sans count.
-    assert [c["count_mode"] for c in calls] == ["exact", "none", "none"]
+    # 1re page : total borné à job_max (REV-283e, REV-323 B) ; ensuite sans count.
+    assert [c["count_mode"] for c in calls] == ["capped", "none", "none"]
     assert [c["after"] is None for c in calls] == [True, False, False]

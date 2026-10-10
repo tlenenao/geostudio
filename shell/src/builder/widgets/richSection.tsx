@@ -2,6 +2,7 @@
 import { registerWidget } from "../registry";
 import { sanitizeMarkdown } from "./sanitizeMarkdown";
 import { t } from "../../i18n";
+import "../../i18n/domains/widgets";
 
 export function registerRichSectionWidget(): void {
   registerWidget({

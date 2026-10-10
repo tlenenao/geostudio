@@ -38,23 +38,33 @@ def session_factory() -> sessionmaker[Session]:
 
 def jobs_backlog() -> dict | None:
     """Santé de la file procrastinate (t02-013/j09-014) : nombre de jobs `todo` et
-    âge du plus ancien. Un worker arrêté se voit à un âge qui grandit. None si la
-    table est absente ou la base injoignable (la route reste disponible)."""
+    âge du plus ancien, au total et PAR FILE (`queues`) : un worker arrêté se voit à
+    un âge qui grandit sur SA file, même si les workers des autres files tournent.
+    None si la table est absente ou la base injoignable (la route reste disponible)."""
     try:
         with session_factory()() as session:
-            n, oldest = session.execute(
+            rows = session.execute(
                 text(
                     # scheduled_at est NULL pour un defer() immédiat : l'âge se lit alors
                     # sur l'événement « deferred » (un seul par job).
-                    "SELECT COUNT(*), "
+                    "SELECT j.queue_name, COUNT(*), "
                     "EXTRACT(EPOCH FROM now() - MIN(COALESCE(j.scheduled_at, e.at))) "
                     "FROM procrastinate_jobs j LEFT JOIN procrastinate_events e "
                     "ON e.job_id = j.id AND e.type = 'deferred' "
                     "WHERE j.status = 'todo' "
-                    "AND (j.scheduled_at IS NULL OR j.scheduled_at <= now())"
+                    "AND (j.scheduled_at IS NULL OR j.scheduled_at <= now()) "
+                    "GROUP BY j.queue_name"
                 )
-            ).one()
+            ).all()
     except Exception:
         logger.debug("file de jobs illisible pour /health", exc_info=True)
         return None
-    return {"todo": int(n), "oldestTodoAgeSeconds": None if oldest is None else int(oldest)}
+    ages = [int(oldest) for _, _, oldest in rows if oldest is not None]
+    return {
+        "todo": sum(int(n) for _, n, _ in rows),
+        "oldestTodoAgeSeconds": max(ages) if ages else None,
+        "queues": {
+            q: {"todo": int(n), "oldestTodoAgeSeconds": None if o is None else int(o)}
+            for q, n, o in rows
+        },
+    }

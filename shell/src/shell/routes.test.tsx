@@ -9,6 +9,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../test/msw/server";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
+import { ToastProvider } from "../ui/kit/ToastProvider";
 import { AppRoutes } from "./routes";
 import type { AuthState } from "../auth/useAuth";
 
@@ -94,7 +95,9 @@ function wrap(children: ReactNode, initial = "/") {
   return render(
     <QueryClientProvider client={queryClient}>
       <ItemClientProvider client={client}>
-        <MemoryRouter initialEntries={[initial]}>{children}</MemoryRouter>
+        <ToastProvider>
+          <MemoryRouter initialEntries={[initial]}>{children}</MemoryRouter>
+        </ToastProvider>
       </ItemClientProvider>
     </QueryClientProvider>,
   );

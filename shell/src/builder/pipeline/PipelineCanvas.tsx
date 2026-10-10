@@ -33,6 +33,7 @@ import { genEdgeId, hasIncomingEdge, topologicalOrder, wouldCreateCycle } from "
 import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
 import { plural, t } from "../../i18n";
 import { jobStatusLabel } from "../../lib/jobStatusLabel";
+import "../../i18n/domains/automation";
 
 // SP-B12c : pas de token catégoriel à 3 valeurs dans tokens.css — ok/warn/
 // accent réutilisés ici pour leur distinction visuelle (vert/ambre/teal),
@@ -501,16 +502,9 @@ function PipelineCanvasInner({
   return (
     <div className="h-full" role="presentation" onKeyDown={onCanvasKeyDown}>
       {/* Région live permanente : une région insérée avec son contenu n'est pas annoncée de façon fiable. */}
-      <p
-        role="status"
-        aria-label={
-          runStatus
-            ? t("pipelineCanvas.runStatusAria", { status: jobStatusLabel(runStatus) })
-            : undefined
-        }
-        className="sr-only"
-      >
-        {runStatus ? jobStatusLabel(runStatus) : ""}
+      {/* REV-323 : le contenu porte la phrase complète (pas d'aria-label qui doublerait le texte annoncé). */}
+      <p role="status" className="sr-only">
+        {runStatus ? t("pipelineCanvas.runStatusAria", { status: jobStatusLabel(runStatus) }) : ""}
       </p>
       <ReactFlow
         nodes={[

@@ -978,4 +978,22 @@ describe("VisualQueryWizardPage — SP-42 F-shell-pages-05", () => {
     expect(alert).toHaveTextContent("introuvable");
     expect(screen.queryByLabelText("Collection de base")).not.toBeInTheDocument();
   });
+
+  // REV-309 : GET /collections plafonne à 100 ; au-delà, la base se cherche via ?q=.
+  test("une collection au-delà des 100 premières se trouve par la recherche (?q=)", async () => {
+    const lointaine: CollectionAdmin = { ...COLLECTIONS[0], id: "zz-150", title: "Zone 150" };
+    const listCollections = vi.fn((params?: { q?: string }) =>
+      Promise.resolve(params?.q === "150" ? [lointaine] : COLLECTIONS),
+    );
+    renderWizard({ listCollections });
+    await screen.findByRole("option", { name: "Incidents" });
+    expect(screen.queryByRole("option", { name: "Zone 150" })).not.toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText("Rechercher parmi les collections"), "150");
+    await screen.findByRole("option", { name: "Zone 150" });
+    expect(listCollections).toHaveBeenCalledWith(expect.objectContaining({ q: "150" }));
+
+    await userEvent.selectOptions(screen.getByLabelText("Collection de base"), "zz-150");
+    expect(screen.getByLabelText("Collection de base")).toHaveValue("zz-150");
+  });
 });

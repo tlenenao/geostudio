@@ -34,13 +34,20 @@ test.describe("garde-fous de tokens et d'i18n (sources)", () => {
     const skip = /console\.|throw new Error|^\s*(\/\/|\*|\/\*)|localStorage|description:/;
     const offenders: string[] = [];
     for (const f of sourceFiles([".ts", ".tsx"])) {
+      // src/i18n/ : le catalogue lui-même (découpé en domaines/*.ts, qui ne portent plus de marqueur).
       // TriptychLayout (prose de commentaire JSX) et SqlLabPage (console.warn multiligne) : faux positifs.
-      if (/src\/(builder\/copilot|test)\/|TriptychLayout|SqlLabPage/.test(f)) continue;
+      if (/src\/(builder\/copilot|test|i18n)\/|TriptychLayout|SqlLabPage/.test(f)) continue;
       const lines = readLines(f);
       // Exemptions justifiées du détecteur (`i18n-ok-file` / `i18n-ok`), comme check-i18n-coverage.mjs.
       if (lines.some((x) => x.includes("i18n-ok-file"))) continue;
       lines.forEach((l, i) => {
-        if (skip.test(l) || /i18n-ok/.test(l) || /i18n-ok/.test(lines[i - 1] ?? "")) return;
+        if (
+          skip.test(l) ||
+          /throw new Error/.test(lines[i - 1] ?? "") ||
+          /i18n-ok/.test(l) ||
+          /i18n-ok/.test(lines[i - 1] ?? "")
+        )
+          return;
         const literals = [...l.matchAll(/`([^`]*)`|"([^"\\]*)"/g)].map((m) => m[1] ?? m[2] ?? "");
         if (literals.some((v) => accent.test(v))) offenders.push(`${rel(f)}:${i + 1}`);
       });

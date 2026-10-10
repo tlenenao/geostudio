@@ -10,6 +10,9 @@ import type { ShareRole } from "../api/types";
 import { Button } from "../ui/kit/Button";
 import { t } from "../i18n";
 import { LoadingState } from "../ui/kit/LoadingState";
+import { GeoLimitsSection } from "./GeoLimitsSection";
+import "../i18n/domains/admin";
+import "../i18n/domains/misc";
 
 export function CollectionSharePanel({
   collectionId,
@@ -100,10 +103,13 @@ export function CollectionSharePanel({
                 >
                   <option value="viewer">{t("sharePanel.roleViewer")}</option>
                   <option value="editor">{t("sharePanel.roleEditor")}</option>
+                  <option value="manager">{t("sharePanel.roleManager")}</option>
                 </select>
               </div>
             ))}
           </div>
+
+          <GeoLimitsSection collectionId={collectionId} />
 
           {setSharing.isError && (
             <p role="alert" className="text-sm text-danger">

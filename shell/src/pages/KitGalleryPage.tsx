@@ -47,6 +47,8 @@ import {
 import { t } from "../i18n";
 import { LoadingState } from "../ui/kit/LoadingState";
 import { PageTitle } from "../ui/kit/PageTitle";
+import "../i18n/domains/admin";
+import "../i18n/domains/misc";
 
 const WIDTHS = [390, 768, 1280];
 
@@ -214,7 +216,6 @@ function GalleryContent() {
       <Tooltip content={t("kitGallery.tooltipContent")}>
         <IconButton icon={<span>?</span>} aria-label={t("kitGallery.helpAria")} size="sm" />
       </Tooltip>
-      {/* eslint-disable-next-line geostudio/panel-trigger-aria -- ConfirmDialog modal */}
       <Button onClick={() => setConfirmOpen(true)}>{t("kitGallery.openConfirmDialog")}</Button>
       <ConfirmDialog
         open={confirmOpen}
@@ -224,12 +225,10 @@ function GalleryContent() {
         onConfirm={() => setConfirmOpen(false)}
         onCancel={() => setConfirmOpen(false)}
       />
-      {/* eslint-disable-next-line geostudio/panel-trigger-aria -- Drawer modal */}
       <Button onClick={() => setDrawerOpen(true)}>{t("kitGallery.openDrawer")}</Button>
       <Drawer open={drawerOpen} onOpenChange={setDrawerOpen} title={t("kitGallery.explorerTitle")}>
         <p className="text-sm text-ink">{t("kitGallery.panelContent")}</p>
       </Drawer>
-      {/* eslint-disable-next-line geostudio/panel-trigger-aria -- Toast, pas un panneau en ligne */}
       <Button onClick={() => setToastOpen(true)}>{t("kitGallery.triggerToast")}</Button>
       <Toast
         open={toastOpen}

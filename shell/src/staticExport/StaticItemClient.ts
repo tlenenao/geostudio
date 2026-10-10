@@ -18,6 +18,7 @@ import type {
   GeoJSONFeatureInput,
   ItemClient,
 } from "../api/types";
+import "../i18n/domains/widgets";
 
 function unsupported<T = never>(): Promise<T> {
   return Promise.reject(new Error(t("staticExport.unsupported")));
@@ -224,6 +225,9 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async getInstanceStatus(..._args: unknown[]) {
       return unsupported();
     },
+    async getJobsBacklog() {
+      return null;
+    },
     async launchAdminTool(..._args: unknown[]) {
       return unsupported();
     },
@@ -231,6 +235,15 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
       return unsupported();
     },
     async setCollectionSharing(..._args: unknown[]) {
+      return unsupported();
+    },
+    async listGeoLimits(..._args: unknown[]) {
+      return unsupported();
+    },
+    async putGeoLimit(..._args: unknown[]) {
+      return unsupported();
+    },
+    async deleteGeoLimit(..._args: unknown[]) {
       return unsupported();
     },
     async createMapItem(..._args: unknown[]) {
@@ -326,6 +339,9 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async getCollectionSchema(..._args: unknown[]) {
       return unsupported();
     },
+    async getCollectionProfile(..._args: unknown[]) {
+      return unsupported();
+    },
     async presignAttachmentUpload(..._args: unknown[]) {
       return unsupported();
     },
@@ -368,6 +384,12 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
       return unsupported();
     },
     async getIngestionJob(..._args: unknown[]) {
+      return unsupported();
+    },
+    async cancelIngestionJob(..._args: unknown[]) {
+      return unsupported();
+    },
+    async cancelExportJob(..._args: unknown[]) {
       return unsupported();
     },
     async createExport(..._args: unknown[]) {
@@ -470,6 +492,9 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
       return unsupported();
     },
     async createSecret(..._args: unknown[]) {
+      return unsupported();
+    },
+    async updateSecret(..._args: unknown[]) {
       return unsupported();
     },
     async deleteSecret(..._args: unknown[]) {

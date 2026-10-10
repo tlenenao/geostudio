@@ -3,6 +3,7 @@ import { registerWidget } from "../registry";
 import { useVariableDefs, useVariables, useSetVariable } from "../VariablesContext";
 import type { Variable } from "../../api/types";
 import { t } from "../../i18n";
+import "../../i18n/domains/widgets";
 
 type Props = { variableId: string; label: string };
 

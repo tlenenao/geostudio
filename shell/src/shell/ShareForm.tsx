@@ -26,6 +26,8 @@ import { plural, t } from "../i18n";
 import { useReferencedCollectionIds } from "./referencedCollections";
 import { LoadingState } from "../ui/kit/LoadingState";
 import { formatDateTime } from "../lib/format";
+import "../i18n/domains/admin";
+import "../i18n/domains/misc";
 
 const MAX_SHARE_LINK_TTL_DAYS = 30;
 
@@ -532,6 +534,7 @@ export function ShareForm({ item, onDone }: { item: Item; onDone: () => void }) 
                   >
                     <option value="viewer">{t("sharePanel.roleViewer")}</option>
                     <option value="editor">{t("sharePanel.roleEditor")}</option>
+                    <option value="manager">{t("sharePanel.roleManager")}</option>
                   </select>
                 </div>
                 {g.canManage && (

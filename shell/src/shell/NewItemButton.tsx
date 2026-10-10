@@ -19,6 +19,9 @@ import { TEMPLATES } from "../builder/templates";
 import { isValidSlug, slugify } from "../lib/slug";
 import { t } from "../i18n";
 import { apiErrorMessage } from "../api/apiErrorMessage";
+import "../i18n/domains/admin";
+import "../i18n/domains/automation";
+import "../i18n/domains/misc";
 
 type Kind = "app" | "dashboard" | "map" | "site" | "dataset" | "pipeline" | "visual-query";
 

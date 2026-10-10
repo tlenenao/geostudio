@@ -18,6 +18,8 @@ import { t } from "../i18n";
 import { LoadingState } from "../ui/kit/LoadingState";
 import { Banner } from "../ui/kit/Banner";
 import { PageTitle } from "../ui/kit/PageTitle";
+import "../i18n/domains/admin";
+import "../i18n/domains/misc";
 
 // GET /collections pagine déjà côté cœur (limit/offset, SP-50) mais tronquait
 // silencieusement au-delà de sa limite par défaut (100) sans exposer de

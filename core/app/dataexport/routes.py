@@ -93,6 +93,50 @@ def get_exports_bucket() -> str:  # surchargeable, comme export/routes.py
     return exports_bucket()
 
 
+@router.post(
+    "/collections/{collection_id}/export/jobs/{job_id}/cancel",
+    response_model=CollectionExportJobStatus,
+)
+def cancel_collection_export_job(
+    collection_id: str,
+    job_id: str,
+    session: Session = Depends(get_session, scope="function"),
+    user: User = Depends(get_current_user),
+) -> CollectionExportJobStatus:
+    """D6 : annule un export asynchrone en attente ou en cours. Même autorisation
+    que la lecture du statut, mais l'annulation reste réservée au demandeur ou à
+    `data.manage` (pas `tasks.view_all`) ; idempotent ; 409 si déjà terminé."""
+    job = repo.get_job(session, job_id, user.tenant_id)
+    if job is None or job.collection_id != collection_id or not _may_see(session, user, job):
+        raise HTTPException(status_code=404, detail="export job not found")
+    # Annuler n'est pas lire : demandeur ou data.manage (comme l'annulation d'import),
+    # jamais un simple tasks.view_all.
+    if job.requested_by != user.id and not has_privilege(
+        session, user, Privilege.DATA_MANAGE.value
+    ):
+        raise HTTPException(status_code=404, detail="export job not found")
+    get_collection_for_read(session, user, collection_id)
+    if job.status != "cancelled":
+        if job.status in ("done", "failed") or not repo.request_cancel(session, job_id):
+            session.rollback()  # terminé entre-temps : rien annulé, pas d'audit
+            raise HTTPException(status_code=409, detail="export job already finished")
+        write_audit(
+            session,
+            tenant_id=user.tenant_id,
+            actor_id=user.id,
+            actor_kind="user",
+            action="export.cancel",
+            object_type="collection",
+            object_id=collection_id,
+            payload={"jobId": job_id},
+        )
+        session.commit()
+        session.refresh(job)
+    return CollectionExportJobStatus(
+        id=job.id, status=job.status, error=job.error, filename=job.filename
+    )
+
+
 @router.get(
     "/collections/{collection_id}/export/jobs/{job_id}", response_model=CollectionExportJobStatus
 )

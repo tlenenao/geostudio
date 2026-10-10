@@ -3,6 +3,7 @@ import { useState } from "react";
 import { registerWidget } from "../registry";
 import { useSetTimeRange } from "../AnalyticsContext";
 import { t } from "../../i18n";
+import "../../i18n/domains/widgets";
 
 export function registerDateRangeFilterWidget(): void {
   registerWidget({

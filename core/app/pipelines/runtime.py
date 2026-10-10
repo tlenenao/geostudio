@@ -86,6 +86,7 @@ from app.pipelines.ops.schemas import (
 from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
 from app.sharing.authorization import can
+from app.sharing.geo_limits import resolve_geo_limits
 from app.sql_ident import quote_ident_duckdb as _qi
 from app.users.models import User
 
@@ -125,6 +126,17 @@ def _require_readable_collection_id(
     user: User,
     collection_id: str,
 ) -> str:
+    """Résout la table d'un `reader.collection` (nom de table) ou lève.
+
+    DÉCISION D3 (REV-296, 2026-10-10) : un pipeline suit le PARTAGE EXPLICITE
+    seulement (`can(read)` sur la collection : propriétaire, public, partage,
+    rôle admin historique `is_admin`). Il n'honore volontairement PAS le
+    privilège `admin.collections.manage` que les lectures REST/MCP/tuiles
+    acceptent (REV-185, `get_collection_for_read`) : un pipeline s'exécute aussi
+    par le cron/webhook, sans utilisateur présent, et ce privilège d'administration
+    ne doit pas élargir silencieusement ce qu'un pipeline planifié peut lire.
+    Figé par `tests/test_pipeline_reader_collection_scope.py` ; changer cette
+    règle = mettre à jour la décision D3 du plan de clôture des 40 REV."""
     collection = collections_repo.get_collection(
         session,
         tenant_id=tenant_id,
@@ -141,6 +153,12 @@ def _require_readable_collection_id(
         actor_is_admin=user.is_admin,
     ):
         raise PipelineRuntimeError(f"collection '{collection_id}' not found")
+    # GAP-27 : le lac/DuckDB n'a pas de RLS — un lecteur ou une jointure sur une
+    # collection limitée géographiquement pour `user` est refusé (fail-closed).
+    if collection.table_name in resolve_geo_limits(session, tenant_id=tenant_id, user_id=user.id):
+        raise PipelineRuntimeError(
+            f"collection '{collection_id}' is geo-limited: not readable by a pipeline"
+        )
     return collection.table_name
 
 
@@ -962,7 +980,13 @@ def _write_collection(
 
     count = 0
     deleted: int | None = None
-    with rls_scope(session, tenant_id):
+    geo_limits = resolve_geo_limits(session, tenant_id=tenant_id, user_id=user.id)
+    if p.mode == "replace" and collection.table_name in geo_limits:
+        # GAP-27 : un remplacement ne verrait (et ne supprimerait) que le périmètre limité.
+        raise PipelineRuntimeError(
+            "writer.collection: mode replace refused on a geo-limited collection"
+        )
+    with rls_scope(session, tenant_id, geo_limits=geo_limits):
         if p.mode == "replace":
             deleted = delete_all_features(session, info)
         # t03b-001/008 : lecture par lots (mémoire bornée) puis insertion groupée,

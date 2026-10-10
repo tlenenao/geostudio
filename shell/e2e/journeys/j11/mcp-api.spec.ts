@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON-RPC/REST du cœur, forme libre */
-import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { CORE_URL } from "../_fixtures/env";
 import { apiFor, getSeed, jwtClaims, McpClient, mcpToken, psql } from "./mcp";
@@ -49,7 +48,7 @@ test.describe("j11 MCP : authentification et découverte OAuth", () => {
     }
   });
 
-  test("inventaire des outils : les outils de la liste blanche du copilote existent, ETL éteint masque les outils pipeline", async () => {
+  test("inventaire des outils : les outils de la liste blanche du copilote existent, les outils pipeline suivent etlEnabled", async () => {
     const mcp = await McpClient.as("creator");
     const names = (await mcp.tools()).map((t) => t.name);
     for (const n of [
@@ -64,8 +63,11 @@ test.describe("j11 MCP : authentification et découverte OAuth", () => {
     ]) {
       expect(names).toContain(n);
     }
-    // Capacité ETL éteinte : aucun outil de pipeline exposé.
-    expect(names.filter((n) => /pipeline/.test(n))).toEqual([]);
+    // Les outils de pipeline suivent la capacité ETL de l'instance (allumée par enable-flags.sh).
+    const inst = await (await apiFor("creator")).get("/v1/instance");
+    const pipelineTools = names.filter((n) => /pipeline/.test(n));
+    if (inst.body.etlEnabled) expect(pipelineTools).toContain("create_pipeline");
+    else expect(pipelineTools).toEqual([]);
     // Les outils d'écriture destructifs ne sont pas exposés.
     expect(names).not.toContain("delete_item");
   });
@@ -223,40 +225,37 @@ test.describe("j11 MCP : défauts constatés", () => {
   // FINDING j11-003 : run_alert_rule commite une évaluation « pending » puis échoue au
   // defer (AppNotOpen, cf. j09-001) ; l'évaluation orpheline masque ensuite tout nouveau
   // déclenchement (202 created:false, aucun job déféré) pendant la fenêtre de reprise.
-  bug(
-    "j11-003 : après un échec de defer, un nouveau déclenchement ne réutilise pas une évaluation orpheline",
-    async () => {
-      const seed = await getSeed();
-      const mcp = await McpClient.as("creator");
-      const made = await mcp.call("create_alert_rule", {
-        title: `${seed.tag}-alert`,
-        datasetItemId: seed.datasetPk,
-        query: { agg: "count" },
-        condition: { expr: "value > 2" },
-        refreshPolicy: { enabled: false, cron: "*/5 * * * *" },
-        channels: [{ kind: "webhook", url: "http://127.0.0.1:9/hook" }],
-      });
-      expect(made.isError).toBe(false);
-      const pk = made.json.pk as string;
-      const first = await mcp.call("run_alert_rule", { alertRuleId: pk });
-      const jobsBefore = Number(
-        psql(
-          `SELECT count(*) FROM procrastinate_jobs WHERE task_name LIKE '%evaluate_alert%' AND args->>'tenant_id'='default'`,
-        ).trim(),
-      );
-      const second = await (await apiFor("creator")).send("POST", `/v1/alerts/${pk}/evaluate`);
-      const jobsAfter = Number(
-        psql(
-          `SELECT count(*) FROM procrastinate_jobs WHERE task_name LIKE '%evaluate_alert%' AND args->>'tenant_id'='default'`,
-        ).trim(),
-      );
-      // Soit le premier appel a réussi, soit le second doit réessayer réellement.
-      if (first.isError) {
-        expect(second.body.created).toBe(true);
-        expect(jobsAfter).toBeGreaterThan(jobsBefore);
-      }
-    },
-  );
+  test("j11-003 : après un échec de defer, un nouveau déclenchement ne réutilise pas une évaluation orpheline", async () => {
+    const seed = await getSeed();
+    const mcp = await McpClient.as("creator");
+    const made = await mcp.call("create_alert_rule", {
+      title: `${seed.tag}-alert`,
+      datasetItemId: seed.datasetPk,
+      query: { agg: "count" },
+      condition: { expr: "value > 2" },
+      refreshPolicy: { enabled: false, cron: "*/5 * * * *" },
+      channels: [{ kind: "webhook", url: "http://127.0.0.1:9/hook" }],
+    });
+    expect(made.isError).toBe(false);
+    const pk = made.json.pk as string;
+    const first = await mcp.call("run_alert_rule", { alertRuleId: pk });
+    const jobsBefore = Number(
+      psql(
+        `SELECT count(*) FROM procrastinate_jobs WHERE task_name LIKE '%evaluate_alert%' AND args->>'tenant_id'='default'`,
+      ).trim(),
+    );
+    const second = await (await apiFor("creator")).send("POST", `/v1/alerts/${pk}/evaluate`);
+    const jobsAfter = Number(
+      psql(
+        `SELECT count(*) FROM procrastinate_jobs WHERE task_name LIKE '%evaluate_alert%' AND args->>'tenant_id'='default'`,
+      ).trim(),
+    );
+    // Soit le premier appel a réussi, soit le second doit réessayer réellement.
+    if (first.isError) {
+      expect(second.body.created).toBe(true);
+      expect(jobsAfter).toBeGreaterThan(jobsBefore);
+    }
+  });
 
   // FINDING j11-004 : POST /mcp partage le budget « llm » (20 requêtes/60 s/jeton) ; une
   // poignée de main (initialize + initialized + tools/list) en coûte 3, un tour de copilote

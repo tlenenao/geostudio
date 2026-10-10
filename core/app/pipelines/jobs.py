@@ -308,9 +308,18 @@ def run_pipeline_sweep_task(timestamp: int) -> None:
     factory = _session_factory()
     with request_scoped_session(factory) as session:
         pipelines_repo.reclaim_stuck_runs(session)
+        session.commit()  # sinon le rollback d'un PipelineRunActive annule la reprise
         due = pipelines_repo.list_due_pipelines(session)
         for item_id, tenant_id in due:
-            run = pipelines_repo.create_run(session, tenant_id=tenant_id, pipeline_item_id=item_id)
+            try:
+                run = pipelines_repo.create_run_unless_active(
+                    session, tenant_id=tenant_id, pipeline_item_id=item_id
+                )
+            except pipelines_repo.PipelineRunActive:
+                # REV-310 : un run (ex. déclenchement manuel) est apparu depuis le
+                # calcul « dû » ; le prochain balayage re-décidera.
+                session.rollback()
+                continue
             # c03-003 : même trace que run_pipeline_service ; acteur = propriétaire
             # (identité sous laquelle le run s'exécutera), actor_kind="schedule".
             owner = session.get(Item, item_id)

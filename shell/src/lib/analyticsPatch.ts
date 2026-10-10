@@ -61,17 +61,40 @@ export function derivePatch(
   return patch;
 }
 
+/** Jumelle de `escape_in_value` (core/app/filter_values.py) : `\\` puis `\,`. */
+export function escapeInValue(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/,/g, "\\,");
+}
+
 function applyCrossFilterValue(
   patch: Record<string, unknown>,
   field: string,
   value: CrossFilterValue,
 ): void {
   if (Array.isArray(value)) {
-    patch[`${field}__in`] = value.join(",");
+    patch[`${field}__in`] = value.map((v) => escapeInValue(String(v))).join(",");
   } else if (typeof value === "object") {
     patch[`${field}__gte`] = value.from;
     patch[`${field}__lte`] = value.to;
   } else {
     patch[field] = value;
   }
+}
+
+// REV-304 : applique la plage du contexte temps global à une couche `feature`
+// de `props.layers` qui déclare son `timeField` (mêmes suffixes __gte/__lte que
+// derivePatch). Neutre sans plage ni champ.
+// ponytail: URL traitée en chaîne (relative possible) ; couches vector/raster
+// non filtrées (pas de query côté tuiles).
+export function withTimeRange(
+  url: string,
+  timeField: string | undefined,
+  range: { from: string; to: string } | null,
+): string {
+  if (!timeField || !range) return url;
+  const q = new URLSearchParams({
+    [`${timeField}__gte`]: range.from,
+    [`${timeField}__lte`]: range.to,
+  });
+  return `${url}${url.includes("?") ? "&" : "?"}${q}`;
 }

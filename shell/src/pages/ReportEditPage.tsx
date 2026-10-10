@@ -10,6 +10,7 @@ import {
   useSaveReportSchedule,
 } from "../api/hooks";
 import { isConflictError } from "../api/ApiError";
+import { useUrlTab } from "../lib/useUrlTab";
 import { SaveConflictNotice } from "../builder/SaveConflictNotice";
 import { useAuth } from "../auth/useAuth";
 import { useItemClient } from "../api/ItemClientProvider";
@@ -27,6 +28,9 @@ import { t } from "../i18n";
 import { LoadingState } from "../ui/kit/LoadingState";
 import { QueryErrorState } from "../ui/kit/QueryErrorState";
 import { PageTitle } from "../ui/kit/PageTitle";
+import "../i18n/domains/admin";
+import "../i18n/domains/automation";
+import "../i18n/domains/misc";
 
 function defaultPayload(bookmarkItemId: string): ReportSchedulePayload {
   return {
@@ -50,6 +54,7 @@ export function ReportEditPage({
   const navigate = useNavigate();
   const { username } = useAuth();
   const client = useItemClient();
+  const tabProps = useUrlTab("report");
   const itemQuery = useItem(pk ?? "", { enabled: pk !== null });
   const configQuery = useReportScheduleConfig(pk ?? "", { enabled: pk !== null });
   const createReport = useCreateReportSchedule();
@@ -161,7 +166,7 @@ export function ReportEditPage({
   return (
     <div className="-m-6 flex flex-1 flex-col overflow-hidden">
       <TriptychLayout
-        defaultTabId="report"
+        {...tabProps}
         browse={{
           id: "back",
           label: t("domain.catalog"),

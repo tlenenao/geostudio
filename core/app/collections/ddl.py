@@ -21,6 +21,8 @@ __all__ = [
     "spatial_index_name",
     "apply_collection_ddl",
     "sync_masked_role_grants",
+    "ensure_geo_limit_policy",
+    "alter_geometry_column",
 ]
 
 
@@ -86,6 +88,121 @@ def sync_masked_role_grants(session: Session, table_name: str, sensitive_fields:
     if sensitive:
         cols_sql = ", ".join(_qi(session, c) for c in sorted(sensitive))
         session.execute(text(f"REVOKE SELECT ({cols_sql}) ON public.{t} FROM gis_rls_masked"))
+
+
+_GEO_LIMIT_FUNCTION_SQL = """
+CREATE OR REPLACE FUNCTION public.app_geo_limit(tbl text) RETURNS geometry
+LANGUAGE sql STABLE AS $fn$
+SELECT CASE
+  WHEN m.v IS NULL THEN NULL::geometry
+  WHEN jsonb_array_length(m.v) = 0 THEN ST_GeomFromText('GEOMETRYCOLLECTION EMPTY', 4326)
+  ELSE (SELECT ST_Union(ST_SetSRID(ST_GeomFromGeoJSON(e::text), 4326))
+        FROM jsonb_array_elements(m.v) e)
+END
+FROM (SELECT (NULLIF(current_setting('app.geo_limits', true), '')::jsonb -> tbl) AS v) m
+$fn$
+"""
+
+
+_GEO_POLICIES = ("geo_limit_select", "geo_limit_insert", "geo_limit_update", "geo_limit_delete")
+
+
+def _geometry_column(session: Session, table_name: str):
+    return session.execute(
+        text(
+            "SELECT f_geometry_column, srid FROM geometry_columns "
+            "WHERE f_table_schema = 'public' AND f_table_name = :t"
+        ),
+        {"t": table_name},
+    ).first()
+
+
+def _drop_geo_limit_policies(session: Session, table_name: str) -> None:
+    t = _qi(session, table_name)
+    for name in ("geo_limit", *_GEO_POLICIES):  # `geo_limit` : policy unique de la v1
+        session.execute(text(f"DROP POLICY IF EXISTS {name} ON public.{t}"))
+
+
+def ensure_geo_limit_policy(session: Session, table_name: str) -> bool:
+    """Pose (idempotent) les policies RLS RESTRICTIVES `geo_limit_*` d'une collection
+    à colonne géométrique (GAP-27, REV-121, v2 découpage). Limite portée par le GUC
+    `app.geo_limits` (cf. app.sharing.geo_limits) ; sans limite, rien n'est restreint.
+
+    - lecture (SELECT) et UPDATE (USING + WITH CHECK) : géométrie ENTIÈREMENT contenue
+      (ST_CoveredBy), ou — seulement quand `app.geo_partial` est levé par
+      `geo_source`/la mise à jour d'attributs — intersectant la limite (entité à
+      cheval : visible, mais la lecture passe par la géométrie découpée) ;
+    - INSERT : WITH CHECK entièrement contenue ; DELETE : entièrement contenue (une
+      entité à cheval ne se supprime pas : sa partie cachée serait détruite) ;
+    - un lecteur qui ignore `geo_source` ne voit donc que des entités entièrement
+      contenues : jamais de géométrie complète au-delà de la limite.
+
+    Renvoie False (rien posé) hors Postgres ou sans géométrie. RESTRICTIVE = ET avec
+    tenant_isolation ; vaut pour gis_rls ET gis_rls_masked. Le SRID est figé ici :
+    tout changement de type/SRID de la colonne passe par `alter_geometry_column`."""
+    if session.get_bind().dialect.name != "postgresql":
+        return False
+    row = _geometry_column(session, table_name)
+    if row is None:
+        return False
+    # CREATE OR REPLACE FUNCTION concurrent sur la même signature : UniqueViolation sur
+    # pg_proc / « tuple concurrently updated » (500 à deux créations simultanées).
+    session.execute(text("SELECT pg_advisory_xact_lock(hashtext('app_geo_limit_fn'))"))
+    session.execute(text(_GEO_LIMIT_FUNCTION_SQL))
+    t = _qi(session, table_name)
+    g = _qi(session, row[0])
+    lit = _quote_literal(table_name)
+    srid = int(row[1] or 4326)
+    lim = f"(SELECT app_geo_limit({lit}))"
+    lim_t = f"(SELECT ST_Transform(app_geo_limit({lit}), {srid}))"
+    strict = f"({lim} IS NULL OR ST_CoveredBy({g}, {lim_t}))"
+    partial = (
+        f"({lim} IS NULL OR ST_CoveredBy({g}, {lim_t}) OR "
+        f"(coalesce(current_setting('app.geo_partial', true), '') = '1' "
+        f"AND ST_Intersects({g}, {lim_t})))"
+    )
+    _drop_geo_limit_policies(session, table_name)
+    for name, command, using, check in (
+        ("geo_limit_select", "SELECT", partial, None),
+        ("geo_limit_insert", "INSERT", None, strict),
+        ("geo_limit_update", "UPDATE", partial, partial),
+        ("geo_limit_delete", "DELETE", strict, None),
+    ):
+        clause = (f" USING ({using})" if using else "") + (
+            f" WITH CHECK ({check})" if check else ""
+        )
+        session.execute(
+            text(f"CREATE POLICY {name} ON public.{t} AS RESTRICTIVE FOR {command}{clause}")
+        )
+    return True
+
+
+def alter_geometry_column(
+    session: Session, table_name: str, *, geometry_type: str, srid: int, using: str | None = None
+) -> None:
+    """SEUL chemin de changement de type/SRID de la colonne géométrie d'une collection
+    (test AST `test_geo_limits_coverage`). Postgres refuse d'altérer le type d'une
+    colonne citée par une policy : on retire les policies `geo_limit_*`, on altère, puis
+    `ensure_geo_limit_policy` les recrée (SRID et colonne relus). Sans cela la policy
+    resterait absente (donc la limite ne s'appliquerait plus) ou figée sur l'ancien SRID.
+    `using` : expression de conversion (défaut ST_Transform vers le nouveau SRID)."""
+    row = _geometry_column(session, table_name)
+    if row is None:
+        raise ValueError(f"{table_name!r} has no geometry column")
+    t = _qi(session, table_name)
+    g = _qi(session, row[0])
+    gtype = geometry_type.strip()
+    if not gtype.replace("_", "").isalnum():
+        raise ValueError(f"invalid geometry type {geometry_type!r}")
+    conv = using or f"ST_Transform({g}, {int(srid)})"
+    _drop_geo_limit_policies(session, table_name)
+    session.execute(
+        text(
+            f"ALTER TABLE public.{t} ALTER COLUMN {g} "
+            f"TYPE geometry({gtype}, {int(srid)}) USING {conv}"
+        )
+    )
+    ensure_geo_limit_policy(session, table_name)
 
 
 def _reject_preexisting_mismatched_tenant_column(
@@ -182,4 +299,6 @@ def apply_collection_ddl(
     ).scalar()
     if seq:
         session.execute(text(f"GRANT USAGE, SELECT ON SEQUENCE {seq} TO gis_rls"))
+    # GAP-27 : policy de limite géographique sur toute collection géométrique.
+    ensure_geo_limit_policy(session, table_name)
     add_table_to_publication(session, table_name)

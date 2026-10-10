@@ -67,7 +67,7 @@ def test_create_group_refuses_a_reader_with_no_privilege(client):
 
     with client.session_factory() as session:
         roles = ensure_built_in_roles(session, tenant_id=client.tenant.id)
-        assert roles["reader"].privileges == []
+        assert roles["reader"].privileges == ["analytics.view"]
         set_user_role(
             session,
             tenant_id=client.tenant.id,

@@ -44,7 +44,7 @@ def _require_free_name(
     wanted = name.casefold()
     for r in list_roles(session, tenant_id=tenant_id):
         if r.id != except_role_id and r.name.casefold() == wanted:
-            raise HTTPException(status_code=409, detail="a role with this name already exists")
+            raise HTTPException(status_code=409, detail="Un rôle porte déjà ce nom.")
 
 
 @router.get("/roles/catalog", response_model=list[PrivilegeCatalogEntry])
@@ -128,8 +128,8 @@ def patch_role(
                 raise HTTPException(
                     status_code=409,
                     detail=(
-                        "this change would leave the tenant without anyone able to manage "
-                        "users/roles"
+                        "Modification impossible : plus personne ne pourrait gérer "
+                        "les utilisateurs et les rôles."
                     ),
                 )
     updated = update_role(
@@ -168,7 +168,13 @@ def delete_role_route(
         raise HTTPException(status_code=400, detail="a built-in role cannot be deleted")
     holders = count_role_holders(session, tenant_id=user.tenant_id, role_id=role_id)
     if holders > 0:
-        raise HTTPException(status_code=409, detail=f"{holders} user(s) still have this role")
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{holders} utilisateur(s) ont encore ce rôle. "
+                "Réaffectez-les avant de le supprimer."
+            ),
+        )
     delete_role(session, tenant_id=user.tenant_id, role_id=role_id)
     write_audit(
         session,

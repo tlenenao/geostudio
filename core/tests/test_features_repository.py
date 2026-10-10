@@ -271,6 +271,19 @@ def test_in_filter_matches_any_listed_value(info, pg_session_factory):
         assert [f["id"] for f in page.features] == [1]
 
 
+def test_in_filter_value_containing_a_comma_is_literal_when_escaped(
+    info, pg_engine, pg_session_factory
+):
+    """REV-313 : `\\,` = virgule littérale (un paramètre répété est replié ainsi)."""
+    with pg_engine.begin() as conn:
+        conn.execute(
+            text("INSERT INTO t_feat (titre, nb, tenant_id) VALUES ('x, y', 9, 'default')")
+        )
+    with pg_session_factory() as session, rls_scope(session, "default"):
+        page = select_features(session, info, limit=10, offset=0, filters={"titre__in": "x\\, y,a"})
+        assert sorted(f["properties"]["titre"] for f in page.features) == ["a", "x, y"]
+
+
 def test_suffixed_filter_on_unknown_column_still_raises_filter_error(info, pg_session_factory):
     with pg_session_factory() as session, rls_scope(session, "default"):
         with pytest.raises(FilterError):
@@ -461,6 +474,25 @@ def test_capped_count_reports_lower_bound(info, pg_session_factory, monkeypatch)
     assert page.number_matched == 1 and page.number_matched_lower_bound is True
 
 
+def test_explicit_count_cap_bounds_the_count(info, pg_session_factory):
+    """REV-323 B : l'export borne son compte à job_max au lieu d'un count(*) exact."""
+    import app.features.repository as repo
+
+    with pg_session_factory() as s, rls_scope(s, "default"):
+        page = repo.select_features(s, info, limit=1, offset=0, count_mode="capped", count_cap=1)
+    assert page.number_matched == 1 and page.number_matched_lower_bound is True
+
+
+def test_count_cap_above_default_cap_still_detects_overflow(info, pg_session_factory, monkeypatch):
+    """Le LIMIT du compte suit count_cap, pas EXACT_COUNT_CAP (sinon jamais de 413 au-delà)."""
+    import app.features.repository as repo
+
+    monkeypatch.setattr(repo, "EXACT_COUNT_CAP", 0)
+    with pg_session_factory() as s, rls_scope(s, "default"):
+        page = repo.select_features(s, info, limit=1, offset=0, count_mode="capped", count_cap=1)
+    assert page.number_matched == 1 and page.number_matched_lower_bound is True
+
+
 def test_encode_cursor_supports_uuid_decimal_date_pks():
     import uuid
     from decimal import Decimal
@@ -539,3 +571,12 @@ def test_count_mode_none_skips_the_count(info, pg_session_factory):
     with pg_session_factory() as s, rls_scope(s, "default"):
         page = select_features(s, info, limit=1, offset=0, count_mode="none")
     assert page.next_cursor is not None and page.number_matched is None
+
+
+def test_integer_filter_beyond_int8_is_a_filter_error_not_an_empty_page(info, pg_session_factory):
+    """REV-323 B : 9999999999999999999 > int8 ne doit pas renvoyer 0 ligne en silence."""
+    big = "9999999999999999999"
+    with pg_session_factory() as s, rls_scope(s, "default"):
+        for filters in ({"nb": big}, {"nb__gte": big}, {"nb__in": f"1,{big}"}):
+            with pytest.raises(FilterError):
+                select_features(s, info, limit=5, offset=0, filters=filters)

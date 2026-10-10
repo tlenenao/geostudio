@@ -14,10 +14,19 @@ from datetime import date
 from typing import Any, Literal
 
 from sqlalchemy import text
-from sqlalchemy.exc import DataError
+from sqlalchemy.exc import DataError, DBAPIError
 from sqlalchemy.orm import Session
 
 from app.collections.introspection import ColumnInfo, TableInfo
+from app.filter_values import split_in_values
+from app.sharing.geo_limits import (
+    GeoLimitStraddling,
+    clip_sql,
+    geo_partial,
+    geo_source,
+    is_geo_limited,
+    limit_sql,
+)
 from app.sql_ident import quote_ident
 
 
@@ -64,10 +73,19 @@ def _property_columns(info: TableInfo) -> list[ColumnInfo]:
     ]
 
 
+def _int8(raw: str) -> int:
+    """REV-323 B : un entier hors int8 comparé à une colonne entière renvoyait
+    0 ligne en silence (psycopg le lie en numeric) ; ValueError -> erreur claire."""
+    n = int(raw)
+    if not -(2**63) <= n < 2**63:
+        raise ValueError(raw)
+    return n
+
+
 def _coerce(col: ColumnInfo, raw: str):
     try:
         if col.type == "integer":
-            return int(raw)
+            return _int8(raw)
         if col.type == "number":
             return float(raw)
         if col.type == "boolean":
@@ -107,7 +125,7 @@ def _where(session: Session, info: TableInfo, bbox, geom_intersects, filters):
                 raise FilterError(name, "property not filterable")
             ident = quote_ident(session, name)
             if suffix == "__in":
-                values = raw.split(",")
+                values = split_in_values(raw)
                 placeholders = []
                 for j, value in enumerate(values):
                     key = f"f{i}_{j}"
@@ -175,7 +193,15 @@ def _row_to_feature(info: TableInfo, row) -> dict:
     return {"type": "Feature", "id": m[info.pk_column], "geometry": geometry, "properties": props}
 
 
-def select_features(
+def select_features(session: Session, info: TableInfo, **kwargs) -> FeaturePage:
+    """Lecture paginée. Sous une limite géographique (v2), la source est la géométrie
+    DÉCOUPÉE (`geo_source`) : filtres bbox/geom_intersects, comptes et sortie portent
+    tous sur ce que l'appelant a le droit de voir."""
+    with geo_source(session, info) as src:
+        return _select_features(session, info, src=src, **kwargs)
+
+
+def _select_features(
     session: Session,
     info: TableInfo,
     *,
@@ -186,10 +212,11 @@ def select_features(
     filters=None,
     after: str | None = None,
     count_mode: Literal["exact", "capped", "none"] = "exact",
+    count_cap: int | None = None,
+    src: str,
 ) -> FeaturePage:
     if after is not None and offset > 0:
         raise CursorError("after and offset are mutually exclusive")
-    t = quote_ident(session, info.table_name)
     pk = quote_ident(session, info.pk_column)
     where, params = _where(session, info, bbox, geom_intersects, filters)
     page_where, page_params = where, dict(params)
@@ -200,7 +227,7 @@ def select_features(
         page_where += (" AND " if where else " WHERE ") + f"{pk} > :__after"
         page_params["__after"] = value
     page_sql = text(
-        f"SELECT {_select_list(session, info)} FROM public.{t}{page_where} "
+        f"SELECT {_select_list(session, info)} FROM {src}{page_where} "
         f"ORDER BY {pk} LIMIT :__l OFFSET :__o"
     )
     page_args = {**page_params, "__l": limit + 1, "__o": offset}
@@ -226,14 +253,15 @@ def select_features(
     elif count_mode == "none":
         matched = None  # l'appelant (export) ne consomme pas le total
     elif count_mode == "capped":
+        count_cap = EXACT_COUNT_CAP if count_cap is None else count_cap
         n = session.execute(
-            text(f"SELECT count(*) FROM (SELECT 1 FROM public.{t}{where} LIMIT :__cap) q"),
-            {**params, "__cap": EXACT_COUNT_CAP + 1},
+            text(f"SELECT count(*) FROM (SELECT 1 FROM {src}{where} LIMIT :__cap) q"),
+            {**params, "__cap": count_cap + 1},
         ).scalar()
-        lower_bound = n > EXACT_COUNT_CAP
-        matched = EXACT_COUNT_CAP if lower_bound else n
+        lower_bound = n > count_cap
+        matched = count_cap if lower_bound else n
     else:
-        matched = session.execute(text(f"SELECT count(*) FROM public.{t}{where}"), params).scalar()
+        matched = session.execute(text(f"SELECT count(*) FROM {src}{where}"), params).scalar()
     return FeaturePage(
         features=features,
         number_matched=matched,
@@ -247,7 +275,7 @@ def _coerce_fid(info: TableInfo, fid: str):
     pk = next((c for c in info.columns if c.name == info.pk_column), None)
     if pk is not None and pk.type == "integer":
         try:
-            return int(fid)
+            return _int8(fid)
         except ValueError:
             return None
     return fid
@@ -257,14 +285,14 @@ def get_feature(session: Session, info: TableInfo, *, fid: str) -> dict | None:
     value = _coerce_fid(info, fid)
     if value is None:
         return None
-    t = quote_ident(session, info.table_name)
-    row = session.execute(
-        text(
-            f"SELECT {_select_list(session, info)} FROM public.{t} "
-            f"WHERE {quote_ident(session, info.pk_column)} = :fid"
-        ),
-        {"fid": value},
-    ).one_or_none()
+    with geo_source(session, info) as src:
+        row = session.execute(
+            text(
+                f"SELECT {_select_list(session, info)} FROM {src} "
+                f"WHERE {quote_ident(session, info.pk_column)} = :fid"
+            ),
+            {"fid": value},
+        ).one_or_none()
     return _row_to_feature(info, row) if row else None
 
 
@@ -333,6 +361,49 @@ def insert_features(
     )
 
 
+def _straddle_gate(session: Session, info: TableInfo, value, geometry: dict | None) -> str | None:
+    """Mise à jour sous limite géographique : classe l'entité visible. None = invisible
+    (404) ; "inside" = entièrement contenue (mise à jour normale, la policy contrôle la
+    nouvelle géométrie) ; "straddle" = à cheval. Pour une entité à cheval, une géométrie
+    de corps différente de la version DÉCOUPÉE visible lève GeoLimitStraddling : écrire
+    la version découpée écraserait la partie cachée (fail-closed)."""
+    g = quote_ident(session, info.geometry_column)
+    lim = limit_sql(session, info.table_name, info.srid or 4326)
+    # ponytail: tolérance 1e-6 (aller-retour GeoJSON) ; faux refus possible, jamais d'écrasement
+    body = "ST_SnapToGrid(ST_SetSRID(ST_GeomFromGeoJSON(:__geom), :__srid), 1e-6)"
+    same = (
+        "true"
+        if geometry is None
+        else f"ST_Equals(ST_SnapToGrid({clip_sql(g, lim)}, 1e-6), {body})"
+    )
+    table = quote_ident(session, info.table_name)
+    pk = quote_ident(session, info.pk_column)
+    params: dict[str, Any] = {"__fid": value}
+    if geometry is not None:
+        params.update(__geom=json.dumps(geometry), __srid=info.srid or 4326)
+
+    def run(same_expr: str):
+        sql = text(
+            f"SELECT ST_CoveredBy({g}, {lim}) AS inside, {same_expr} AS same "
+            f"FROM public.{table} WHERE {pk} = :__fid"
+        )
+        return session.execute(sql, params).one_or_none()
+
+    with geo_partial(session):
+        try:
+            with session.begin_nested():
+                row = run(same)
+        except DBAPIError:  # géométrie de corps refusée par GEOS : traitée comme différente
+            row = run("false")
+    if row is None:
+        return None
+    if row.inside:
+        return "inside"
+    if not row.same:
+        raise GeoLimitStraddling()
+    return "straddle"
+
+
 def replace_feature(
     session: Session, info: TableInfo, *, fid: str, properties: dict, geometry: dict | None
 ) -> bool:
@@ -340,25 +411,35 @@ def replace_feature(
     if value is None:
         return False
     t = quote_ident(session, info.table_name)
+    # v2 : entité à cheval sur la limite = attributs seulement (la géométrie n'est ni
+    # écrite ni remise à NULL) ; mise à jour exécutée sous `geo_partial`.
+    straddle = False
+    if info.geometry_column and is_geo_limited(session, info.table_name):
+        state = _straddle_gate(session, info, value, geometry)
+        if state is None:
+            return False
+        straddle = state == "straddle"
     sets, params = [], {"__fid": value}
     for i, col in enumerate(_property_columns(info)):
         if col.type == "unsupported":  # read-only (contrat de validation.py) : intouchée
             continue
         sets.append(f"{quote_ident(session, col.name)} = :p{i}")
         params[f"p{i}"] = properties.get(col.name)  # absent → NULL (remplacement complet)
-    if info.geometry_column:
+    if info.geometry_column and not straddle:
         if geometry is not None:
             sets.append(f"{quote_ident(session, info.geometry_column)} = {_geometry_sql(info)}")
             params.update(__geom=json.dumps(geometry), __srid=info.srid or 4326)
         else:
             sets.append(f"{quote_ident(session, info.geometry_column)} = NULL")
-    r = session.execute(
-        text(
-            f"UPDATE public.{t} SET {', '.join(sets)} "
-            f"WHERE {quote_ident(session, info.pk_column)} = :__fid"
-        ),
-        params,
+    stmt = text(
+        f"UPDATE public.{t} SET {', '.join(sets)} "
+        f"WHERE {quote_ident(session, info.pk_column)} = :__fid"
     )
+    if straddle:
+        with geo_partial(session):
+            r = session.execute(stmt, params)
+    else:
+        r = session.execute(stmt, params)
     return r.rowcount == 1
 
 

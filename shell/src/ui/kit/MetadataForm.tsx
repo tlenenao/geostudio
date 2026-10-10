@@ -2,9 +2,12 @@
 import { useId, useState } from "react";
 import { t } from "../../i18n";
 import { Button } from "./Button";
+import { Field } from "./Field";
 import { Input } from "./Input";
 import { Select } from "./Select";
 import { isValidSlug } from "../../lib/slug";
+import "../../i18n/domains/admin";
+import "../../i18n/domains/misc";
 
 const UNSET = "unset";
 
@@ -38,7 +41,7 @@ export function MetadataForm({
   onCancel: () => void;
   pending?: boolean;
 }) {
-  const slugErrorId = useId();
+  const slugId = useId();
   const [title, setTitle] = useState(initial.title);
   const [abstract, setAbstract] = useState(initial.abstract);
   const [keywords, setKeywords] = useState(initial.keywords.join(", "));
@@ -107,21 +110,13 @@ export function MetadataForm({
         />
       </label>
       {initial.slug !== undefined && (
-        <div className="flex flex-col gap-1 text-sm text-ink">
-          <label className="flex flex-col gap-1">
-            {t("newItem.slugLabel")}
-            <Input
-              aria-describedby={slugErrorId}
-              value={slug}
-              onChange={(e) => setSlug(e.target.value)}
-            />
-          </label>
-          {slugInvalid && (
-            <span id={slugErrorId} className="text-xs text-danger">
-              {t("itemDetail.slugInvalid")}
-            </span>
-          )}
-        </div>
+        <Field
+          label={t("newItem.slugLabel")}
+          htmlFor={slugId}
+          error={slugInvalid ? t("itemDetail.slugInvalid") : undefined}
+        >
+          <Input id={slugId} value={slug} onChange={(e) => setSlug(e.target.value)} />
+        </Field>
       )}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" size="sm" onClick={onCancel}>

@@ -188,6 +188,7 @@ def test_list_attachments_resolves_tenant_from_the_collection_not_the_actor(
 
     class _FakeCollection:
         tenant_id = "other-tenant-id"
+        table_name = "t"
 
     def _fake_require_collection_read(session, *, user, collection_id):
         return _FakeCollection()

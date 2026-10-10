@@ -4,11 +4,15 @@ import { useNavigate } from "react-router-dom";
 import { useItemClient, useMe } from "../api/hooks";
 import { apiErrorMessage } from "../api/apiErrorMessage";
 import { ApiError } from "../api/ApiError";
+import { WorkerStalledNotice } from "./WorkerStalledNotice";
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { Drawer } from "../ui/kit/Drawer";
+import { useToast } from "../ui/kit/ToastProvider";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { plural, t } from "../i18n";
+import "../i18n/domains/admin";
+import "../i18n/domains/misc";
 
 type Phase = "form" | "uploading" | "selecting-layer" | "selecting-geometry" | "polling" | "error";
 type LayerInfo = { name: string; featureCount: number; geometryType: string };
@@ -43,7 +47,8 @@ type Stage =
   | "importFile.uploadError"
   | "importFile.inspectError"
   | "importFile.jobError"
-  | "importFile.pollError";
+  | "importFile.pollError"
+  | "importFile.cancelFailed";
 
 // P28.08 : l'étape en échec + le detail RFC 7807 du cœur quand il existe.
 function stageMessage(stage: Stage, err: unknown): string {
@@ -140,6 +145,10 @@ export function ImportFileButton() {
   const [phase, setPhase] = useState<Phase>("form");
   const [error, setError] = useState("");
   const [slow, setSlow] = useState(false);
+  // D6 : job en cours de sondage (annulable) et annulation demandée (job déjà commencé).
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [cancelRequested, setCancelRequested] = useState(false);
+  const { showToast } = useToast();
   // génération du sondage : close()/nouveau job l'incrémentent, un ancien sondage s'arrête
   const pollGenRef = useRef(0);
   const client = useItemClient();
@@ -190,7 +199,33 @@ export function ImportFileButton() {
     setPhase("form");
     setError("");
     setSlow(false);
+    setJobId(null);
+    setCancelRequested(false);
     pollGenRef.current++;
+  }
+
+  // D6 : pending -> cancelled (on ferme) ; running -> cancel_requested (l'import
+  // déjà commencé s'achève, le sondage continue) ; 409 -> déjà terminé, le
+  // sondage en cours récupère l'état final.
+  async function cancelJob() {
+    if (!jobId) return;
+    try {
+      const { status } = await client.cancelIngestionJob(jobId);
+      if (!mountedRef.current) return;
+      if (status === "cancel_requested") {
+        setCancelRequested(true);
+        showToast(t("importFile.cancelRequested"));
+      } else {
+        close();
+        showToast(t("importFile.cancelled"));
+      }
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        showToast(t("importFile.cancelTooLate"), { variant: "error" });
+      } else {
+        showToast(stageMessage("importFile.cancelFailed", err), { variant: "error" });
+      }
+    }
   }
 
   async function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -256,6 +291,11 @@ export function ImportFileButton() {
         );
         return;
       }
+      if (job?.status === "cancelled") {
+        close();
+        showToast(t("importFile.cancelled"));
+        return;
+      }
       if (job?.status === "error") {
         setPhase("error");
         setError(job.errorMessage ?? t("importFile.genericError"));
@@ -287,6 +327,7 @@ export function ImportFileButton() {
     );
     pollGenRef.current++;
     setSlow(false);
+    setJobId(jobId);
     setPhase("polling");
     await poll(jobId);
   }
@@ -638,6 +679,7 @@ export function ImportFileButton() {
                 </label>
               </>
             )}
+            <WorkerStalledNotice active={phase === "polling"} />
             {phase === "polling" && slow && (
               <p role="status" className="text-sm text-ink-muted">
                 {t("importFile.slow")}
@@ -649,6 +691,17 @@ export function ImportFileButton() {
               </p>
             )}
             <div className="flex justify-end gap-2">
+              {phase === "polling" && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void cancelJob()}
+                  disabled={cancelRequested}
+                >
+                  {t("importFile.cancel")}
+                </Button>
+              )}
               <Button type="button" variant="outline" size="sm" onClick={close} disabled={busy}>
                 {t("confirmDialog.cancel")}
               </Button>

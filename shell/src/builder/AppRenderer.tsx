@@ -27,6 +27,7 @@ import { ExplorerProvider } from "./ExplorerContext";
 import { ExplorerDrawer } from "./ExplorerDrawer";
 import { useAuth } from "../auth/useAuth";
 import { themeToCssVars, themeToShellTokens } from "./theme";
+import "../i18n/domains/widgets";
 
 // A message's payload is whatever shape its emitter chose (Button emits
 // {widgetId}, Filtre emits {[field]: value}, …). For string/number/bool/date

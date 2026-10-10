@@ -26,6 +26,7 @@ from typing import Protocol
 from urllib.parse import urlsplit
 
 import dlt
+import duckdb
 import sqlalchemy as sa
 from dlt.common.configuration.specs import (
     AwsCredentials,
@@ -202,7 +203,7 @@ class _CappedReader(io.RawIOBase):
             super().close()
 
 
-def _blob_resource(files, reader):
+def _blob_resource(files, reader, *, seekable: bool = False):
     """REV-273b : plafonds fichiers/octets/lignes + échéance globale sur la
     chaîne filesystem → reader. dlt applique `add_map` élément par élément (y
     compris sur les pages) ; compteurs frais à chaque appel.
@@ -233,9 +234,18 @@ def _blob_resource(files, reader):
             real_open = item.open
 
             def capped_open(*args, **kwargs):
-                return io.BufferedReader(
+                stream = io.BufferedReader(
                     _CappedReader(real_open(*args, **kwargs), state, max_bytes)
                 )
+                if not seekable:
+                    return stream
+                # REV-323 A : parquet exige un flux seekable (un gzip ne l'est
+                # pas) ; on spoole le décompressé, déjà plafonné par _CappedReader.
+                spool = tempfile.SpooledTemporaryFile(max_size=64 * 1024 * 1024)  # noqa: SIM115
+                with stream:
+                    shutil.copyfileobj(stream, spool)
+                spool.seek(0)
+                return spool
 
             item.open = capped_open
         return item
@@ -355,6 +365,45 @@ def _resolve_secret(
         return resolver.get(secret_name)
     except KeyError:
         raise ConnectorRuntimeError(f"secret '{secret_name}' not found") from None
+
+
+def _assert_url_within_secret_scope(payload: SecretPayload | None, params) -> None:
+    """REV-294 : le secret REST est LIÉ à `payload.baseUrl` (modèle `bucketUrl`,
+    REV-197). `params.baseUrl` doit en être un préfixe (frontière de segment :
+    `https://a.example/api` ne couvre pas `https://a.example/api-evil`), et
+    `params.path` ne doit pas être une URL absolue (dlt l'utiliserait à la place
+    de `baseUrl`) ni contenir `..`."""
+    if payload is None or payload.kind not in _REST_SECRET_KINDS:
+        return
+    scope = payload.baseUrl
+    if not scope:
+        raise ConnectorRuntimeError(
+            "reader.connector.rest: this secret has no 'baseUrl' (required since REV-294) — "
+            "edit the secret to set the base URL it is scoped to "
+            "(e.g. 'https://api.example.com/v1')"
+        )
+    s, t = urlsplit(scope), urlsplit(params.baseUrl)
+    s_path = s.path.rstrip("/") + "/"
+    t_path = t.path.rstrip("/") + "/"
+    within = (
+        (s.scheme, (s.hostname or "").lower(), s.port)
+        == (t.scheme, (t.hostname or "").lower(), t.port)
+        and t.username is None
+        and t_path.startswith(s_path)
+        and ".." not in t.path.split("/")
+    )
+    p = urlsplit(params.path)
+    if (
+        not within
+        or p.scheme
+        or p.netloc
+        or params.path.startswith("//")
+        or ".." in p.path.split("/")
+    ):
+        raise ConnectorRuntimeError(
+            f"reader.connector.rest: URL '{params.baseUrl}{params.path}' is outside the "
+            f"base URL scope of the secret ('{scope}')"
+        )
 
 
 def _build_auth(payload: SecretPayload | None):
@@ -510,6 +559,7 @@ def materialize_rest_connector(
 ) -> None:
     payload = _resolve_secret(secret_resolver, params.secretName)
     auth = _build_auth(payload)
+    _assert_url_within_secret_scope(payload, params)
     client = RESTClient(
         base_url=params.baseUrl,
         headers=params.headers or None,
@@ -869,7 +919,9 @@ def materialize_blob_connector(
         file_glob=file_glob,
         **_blob_fs_kwargs(payload),
     )
-    resource = _blob_resource(files, _BLOB_READERS[params.format]())
+    resource = _blob_resource(
+        files, _BLOB_READERS[params.format](), seekable=params.format == "parquet"
+    )
     resource.apply_hints(table_name="records", write_disposition="replace")
 
     # M12 (REV-199) : un `file_glob` littéral (sans joker) vise UN fichier — 0 ligne chargée
@@ -885,7 +937,10 @@ def materialize_blob_connector(
     except ConnectorRuntimeError as exc:
         # dlt ne crée pas la table `records` quand rien n'est extrait : sans ce rattrapage,
         # l'utilisateur lirait « Catalog Error: Table with name records does not exist ».
-        if literal_glob and "does not exist" in str(exc):
+        # REV-300 M2 : discriminé sur le TYPE de la cause (_run_dlt_and_attach chaîne l'exception
+        # DuckDB d'origine), plus sur le texte — une erreur de bucket qui contient « does not
+        # exist » n'est plus masquée.
+        if literal_glob and isinstance(exc.__cause__, duckdb.CatalogException):
             raise no_row_error from exc
         raise
     if literal_glob and conn.execute(f"SELECT count(*) FROM {_qi(view_name)}").fetchone()[0] == 0:
