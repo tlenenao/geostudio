@@ -391,7 +391,11 @@ test("un champ valide n'a pas aria-invalid (SP-B8)", () => {
 test("form blocks submit and surfaces one error per invalid required field", async () => {
   renderForm();
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
-  expect(screen.getAllByRole("alert")).toHaveLength(3); // 1 résumé (REV-223) + 2 alertes par champ (titre, gravité requis et vides) : double annonce assumée
+  // REV-323 : une seule annonce (le résumé, REV-223) ; les messages par champ restent
+  // rendus et reliés (aria-describedby) mais sans role=alert.
+  expect(screen.getAllByRole("alert")).toHaveLength(1);
+  expect(screen.getAllByText("Champ requis")).toHaveLength(2);
+  expect(document.getElementById("field-titre-error")).not.toHaveAttribute("role");
   // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
   // --gs-* à la place. Le conteneur entier n'est pas testable via
   // expectTokenizedClasses ici : le bouton "Enregistrer" voisin porte
@@ -552,6 +556,8 @@ test("a 400 response maps field errors onto the matching inputs", async () => {
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   expect(await screen.findByText("un incident « Fuite d'eau » existe déjà")).toBeInTheDocument();
   expect(failed).toHaveBeenCalled();
+  // REV-323 : le focus suit l'erreur serveur sur le champ concerné.
+  expect(screen.getByLabelText("Titre")).toHaveFocus();
 });
 
 test("a 400 on a field absent from the form shows the generic alert (P10.02)", async () => {
