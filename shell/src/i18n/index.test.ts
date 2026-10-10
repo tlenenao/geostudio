@@ -39,6 +39,13 @@ describe("t", () => {
   });
 });
 
+describe("t sur clé d'un domaine non enregistré", () => {
+  it("avec params, renvoie la clé brute au lieu de lever une TypeError", () => {
+    // @ts-expect-error clé absente du catalogue
+    expect(t("cle.inexistante", { n: 1 })).toBe("cle.inexistante");
+  });
+});
+
 describe("resolveMessageKey", () => {
   it("garde une clé qui existe réellement dans le catalogue", () => {
     expect(resolveMessageKey("actions.edit", "roles.privilege.unknown")).toBe("actions.edit");

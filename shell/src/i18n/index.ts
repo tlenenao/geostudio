@@ -37,6 +37,9 @@ export function registerMessages(domain: Record<string, string>): void {
 export function t(key: MessageKey, params?: Record<string, string | number>): string {
   const template: string = messages[key];
   if (params === undefined) return template;
+  // Clé inconnue (domaine non enregistré) : clé brute plutôt qu'une TypeError.
+  // Sans params, `undefined` est conservé (cf. index.test.ts).
+  if (template === undefined) return key;
   return template.replace(/\{(\w+)\}/g, (match, name: string) => {
     const value = params[name];
     return value === undefined ? match : String(value);
