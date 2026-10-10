@@ -31,7 +31,14 @@ function mergeRuntimeEnv(
 // aval (`new URL(coreUrl)` dans client/hostedCoreUrl/tuiles) exige une URL
 // absolue : on la résout ici, une seule fois, contre l'origine de la page.
 export function resolveCoreUrl(value: string): string {
-  if (!value.startsWith("/")) return value;
+  if (/^https?:\/\//i.test(value)) return value;
+  // REV-300 M5 : `api` (sans « / » initial) n'est ni absolue ni un chemin de la
+  // racine — refusée au démarrage plutôt qu'un `new URL` cassé loin en aval.
+  if (!value.startsWith("/")) {
+    throw new Error(
+      `VITE_CORE_URL invalide ("${value}") : attendu une URL absolue (https://hôte/api) ou un chemin commençant par « / » (/api).`,
+    );
+  }
   return new URL(value, window.location.origin).href.replace(/\/+$/, "");
 }
 
