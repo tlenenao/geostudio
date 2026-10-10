@@ -2275,7 +2275,7 @@ def test_worker_gets_the_same_quota_env_as_core():
             assert var in (svc[name].get("environment") or {}), f"{var} absent de `{name}`"
 
 
-def test_core_trusted_proxies_is_wired_documented_and_not_a_wildcard():
+def test_core_trusted_proxies_is_wired_documented_and_not_a_wildcard(monkeypatch):
     """REV-299a (piège n°2) : la variable est dans l'environment: du service
     core, documentée dans .env.example, et sa valeur résolue n'est jamais
     « * » (X-Forwarded-For forgeable)."""
@@ -2283,4 +2283,10 @@ def test_core_trusted_proxies_is_wired_documented_and_not_a_wildcard():
     value = _resolve_effective_value(str(raw), "CORE_TRUSTED_PROXIES")
     assert value and value != "*"
     assert "10.0.0.0/8" in value
+    # REV-323 A : réseau Docker en IPv6 (ULA fc00::/7) ; défaut du code identique.
+    assert "fc00::/7" in value
+    from app.main import trusted_proxy_hosts
+
+    monkeypatch.delenv("CORE_TRUSTED_PROXIES", raising=False)
+    assert value == trusted_proxy_hosts()
     assert "CORE_TRUSTED_PROXIES" in documented_env_vars()
