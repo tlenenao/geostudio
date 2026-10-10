@@ -31,6 +31,7 @@ from app.mcp.tools.identity import (
     http_exception_to_value_error,
     require_collection_read,
     resolve_actor,
+    user_geo_limits,
     without_thumbnail_url,
     without_thumbnail_urls,
 )
@@ -206,7 +207,12 @@ def register(server: FastMCP, session_factory) -> None:
             if masked:
                 info = hide_sensitive_columns(info, col.sensitive_fields)
             try:
-                with rls_scope(session, col.tenant_id, masked=masked):
+                with rls_scope(
+                    session,
+                    col.tenant_id,
+                    masked=masked,
+                    geo_limits=user_geo_limits(session, user),
+                ):
                     page = select_features(
                         session,
                         info,

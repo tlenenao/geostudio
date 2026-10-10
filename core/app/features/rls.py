@@ -27,11 +27,25 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
+from app.sharing.geo_limits import GeoLimits, set_geo_limits_guc
+
 
 @contextmanager
-def rls_scope(session: Session, tenant_id: str, *, masked: bool = False):
+def rls_scope(
+    session: Session,
+    tenant_id: str,
+    *,
+    masked: bool = False,
+    geo_limits: GeoLimits | None = None,
+):
+    """`geo_limits` (GAP-27, REV-121) : limites géographiques de l'appelant par
+    table (app.sharing.geo_limits.resolve_geo_limits), consommées par la policy
+    RESTRICTIVE `geo_limit`. None/{} = aucune limite. Les routes ne l'écrivent
+    jamais : `get_rls_scope` (app.features.routes) le lie à la requête ; un test
+    AST (test_geo_limits_coverage.py) interdit tout autre appel de app/ sans lui."""
     role = "gis_rls_masked" if masked else "gis_rls"
     session.execute(text("SELECT set_config('app.tenant_id', :tid, true)"), {"tid": tenant_id})
+    set_geo_limits_guc(session, geo_limits)
     session.execute(text(f"SET LOCAL ROLE {role}"))
     try:
         yield

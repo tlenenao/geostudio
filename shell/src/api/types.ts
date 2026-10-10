@@ -296,6 +296,13 @@ export type ShareLinkInfo = {
   createdBy?: string;
 };
 export type ShareRole = "viewer" | "editor" | "manager";
+export type GeoLimitTarget = "role" | "group";
+export type GeoLimit = {
+  targetType: GeoLimitTarget;
+  targetId: string;
+  geometry: Record<string, unknown>;
+  updatedAt: string;
+};
 export type Sharing = {
   public: boolean;
   groups: { groupId: string; role: ShareRole }[];
@@ -642,6 +649,14 @@ export interface ItemClient {
   getJobsBacklog(): Promise<JobsBacklog | null>;
   getCollectionSharing(id: string): Promise<Sharing>;
   setCollectionSharing(id: string, sharing: Sharing): Promise<void>;
+  listGeoLimits(collectionId: string): Promise<GeoLimit[]>;
+  putGeoLimit(
+    collectionId: string,
+    targetType: GeoLimitTarget,
+    targetId: string,
+    geometry: Record<string, unknown>,
+  ): Promise<GeoLimit>;
+  deleteGeoLimit(collectionId: string, targetType: GeoLimitTarget, targetId: string): Promise<void>;
   createMapItem(input: { title: string; owner: string }): Promise<Item>;
   getMapConfig(pk: string): Promise<MapConfig>;
   saveMapConfig(pk: string, config: MapConfig): Promise<number | undefined>;

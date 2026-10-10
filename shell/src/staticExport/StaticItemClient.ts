@@ -237,6 +237,15 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async setCollectionSharing(..._args: unknown[]) {
       return unsupported();
     },
+    async listGeoLimits(..._args: unknown[]) {
+      return unsupported();
+    },
+    async putGeoLimit(..._args: unknown[]) {
+      return unsupported();
+    },
+    async deleteGeoLimit(..._args: unknown[]) {
+      return unsupported();
+    },
     async createMapItem(..._args: unknown[]) {
       return unsupported();
     },

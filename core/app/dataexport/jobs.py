@@ -29,6 +29,7 @@ from app.jobs import app
 from app.jobs.common import notify_best_effort, session_factory
 from app.roles.guards import has_privilege
 from app.roles.privileges import Privilege
+from app.sharing.geo_limits import resolve_geo_limits
 from app.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -67,13 +68,15 @@ def _build_file(factory, job) -> tuple[bytes, str, str]:
         masked = job.masked or not has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)
         if masked:
             info = hide_sensitive_columns(info, col.sensitive_fields)
+        # GAP-27 : limites recalculées à l'exécution, comme le verdict de masquage.
+        geo_limits = resolve_geo_limits(session, tenant_id=user.tenant_id, user_id=user.id)
         q = job.query or {}
         bbox = tuple(q["bbox"]) if q.get("bbox") else None
         job_max = export_job_max()
         features: list[dict] = []
         cursor = None
         while True:
-            with rls_scope(session, job.tenant_id, masked=masked):
+            with rls_scope(session, job.tenant_id, masked=masked, geo_limits=geo_limits):
                 page = features_repo.select_features(
                     session,
                     info,

@@ -10,7 +10,7 @@ from mcp.server.fastmcp import Context, FastMCP
 
 from app.attachments import repository as attachments_repo
 from app.db import request_scoped_session
-from app.mcp.tools.identity import require_collection_read, resolve_actor
+from app.mcp.tools.identity import refuse_geo_limited, require_collection_read, resolve_actor
 
 
 def register(server: FastMCP, session_factory) -> None:
@@ -43,6 +43,7 @@ def register(server: FastMCP, session_factory) -> None:
             # user.tenant_id là où la jumelle REST (list_attachments_route)
             # utilise délibérément col.tenant_id.
             col = require_collection_read(session, user=user, collection_id=collectionId)
+            refuse_geo_limited(session, user, col.table_name, path="attachments")
             rows = attachments_repo.list_attachments(
                 session,
                 tenant_id=col.tenant_id,

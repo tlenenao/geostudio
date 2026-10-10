@@ -580,6 +580,8 @@ def test_aggregation_counts_neither_other_tenant_rows(pg_app, monkeypatch):
 def test_aggregation_of_a_polygon_collection(pg_app, pg_engine, monkeypatch):
     client, _, _ = pg_app
     with pg_engine.begin() as conn:
+        # la policy geo_limit référence la colonne : Postgres refuse d'en changer le type
+        conn.execute(text("DROP POLICY geo_limit ON demo_incidents"))
         conn.execute(
             text("ALTER TABLE demo_incidents ALTER COLUMN geom TYPE geometry(Polygon, 4326)")
         )

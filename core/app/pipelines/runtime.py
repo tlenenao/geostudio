@@ -86,6 +86,7 @@ from app.pipelines.ops.schemas import (
 from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
 from app.sharing.authorization import can
+from app.sharing.geo_limits import resolve_geo_limits
 from app.sql_ident import quote_ident_duckdb as _qi
 from app.users.models import User
 
@@ -152,6 +153,12 @@ def _require_readable_collection_id(
         actor_is_admin=user.is_admin,
     ):
         raise PipelineRuntimeError(f"collection '{collection_id}' not found")
+    # GAP-27 : le lac/DuckDB n'a pas de RLS — un lecteur ou une jointure sur une
+    # collection limitée géographiquement pour `user` est refusé (fail-closed).
+    if collection.table_name in resolve_geo_limits(session, tenant_id=tenant_id, user_id=user.id):
+        raise PipelineRuntimeError(
+            f"collection '{collection_id}' is geo-limited: not readable by a pipeline"
+        )
     return collection.table_name
 
 
@@ -973,7 +980,13 @@ def _write_collection(
 
     count = 0
     deleted: int | None = None
-    with rls_scope(session, tenant_id):
+    geo_limits = resolve_geo_limits(session, tenant_id=tenant_id, user_id=user.id)
+    if p.mode == "replace" and collection.table_name in geo_limits:
+        # GAP-27 : un remplacement ne verrait (et ne supprimerait) que le périmètre limité.
+        raise PipelineRuntimeError(
+            "writer.collection: mode replace refused on a geo-limited collection"
+        )
+    with rls_scope(session, tenant_id, geo_limits=geo_limits):
         if p.mode == "replace":
             deleted = delete_all_features(session, info)
         # t03b-001/008 : lecture par lots (mémoire bornée) puis insertion groupée,
