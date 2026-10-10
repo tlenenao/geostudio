@@ -430,6 +430,9 @@ export function createDesktopItemClient(connection: {
     async getCollectionSchema(..._args: unknown[]) {
       return unsupported();
     },
+    async getCollectionProfile(..._args: unknown[]) {
+      return unsupported();
+    },
     async presignAttachmentUpload(..._args: unknown[]) {
       return unsupported();
     },

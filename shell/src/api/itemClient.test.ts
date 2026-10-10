@@ -2584,6 +2584,24 @@ test("getCollectionSchema returns the introspected fields", async () => {
   });
 });
 
+test("getCollectionProfile appelle GET /collections/{id}/profile (REV-117)", async () => {
+  server.use(
+    http.get("https://core.test/v1/collections/parcs/profile", () =>
+      HttpResponse.json({
+        rowCount: 2,
+        sampled: false,
+        truncatedColumns: false,
+        pending: false,
+        columns: [{ name: "nom", type: "string", nonNull: 2, nulls: 0 }],
+        geometry: null,
+      }),
+    ),
+  );
+  const profile = await makeClient().getCollectionProfile("parcs");
+  expect(profile.rowCount).toBe(2);
+  expect(profile.columns[0].name).toBe("nom");
+});
+
 test("createFeature sends a GeoJSON Feature with the bearer token and returns the new id", async () => {
   let auth: string | null = null;
   let body: unknown;

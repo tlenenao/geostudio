@@ -421,6 +421,38 @@ export type CollectionSchema = {
   fields: CollectionSchemaField[];
 };
 
+// REV-117 : profil exploratoire d'une collection (GET /collections/{id}/profile).
+export type CollectionColumnProfile = {
+  name: string;
+  type: string;
+  nonNull: number;
+  nulls: number;
+  distinct?: number | null;
+  min?: number | string | null;
+  max?: number | string | null;
+  mean?: number | null;
+  p25?: number | null;
+  median?: number | null;
+  p75?: number | null;
+  topValues?: { value: string; count: number }[] | null;
+  histogram?:
+    { bucketIndex: number; bucketStart: number; bucketEnd: number; count: number }[] | null;
+};
+
+export type CollectionProfile = {
+  rowCount: number;
+  sampled: boolean;
+  truncatedColumns: boolean;
+  columns: CollectionColumnProfile[];
+  geometry: {
+    column: string;
+    bbox: number[] | null;
+    types: { type: string; count: number }[];
+  } | null;
+  asOf?: string | null;
+  pending: boolean;
+};
+
 export type AttachmentSummary = {
   id: string;
   fieldKey: string;
@@ -685,6 +717,7 @@ export interface ItemClient {
   featuresUrl(source: DataSource): string;
   exportDataSource(source: DataSource, format: string, signal?: AbortSignal): Promise<ExportedFile>;
   getCollectionSchema(collectionId: string): Promise<CollectionSchema>;
+  getCollectionProfile(collectionId: string): Promise<CollectionProfile>;
   presignAttachmentUpload(
     collectionId: string,
     fid: string,
