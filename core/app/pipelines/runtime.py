@@ -125,6 +125,17 @@ def _require_readable_collection_id(
     user: User,
     collection_id: str,
 ) -> str:
+    """Résout la table d'un `reader.collection` (nom de table) ou lève.
+
+    DÉCISION D3 (REV-296, 2026-10-10) : un pipeline suit le PARTAGE EXPLICITE
+    seulement (`can(read)` sur la collection : propriétaire, public, partage,
+    rôle admin historique `is_admin`). Il n'honore volontairement PAS le
+    privilège `admin.collections.manage` que les lectures REST/MCP/tuiles
+    acceptent (REV-185, `get_collection_for_read`) : un pipeline s'exécute aussi
+    par le cron/webhook, sans utilisateur présent, et ce privilège d'administration
+    ne doit pas élargir silencieusement ce qu'un pipeline planifié peut lire.
+    Figé par `tests/test_pipeline_reader_collection_scope.py` ; changer cette
+    règle = mettre à jour la décision D3 du plan de clôture des 40 REV."""
     collection = collections_repo.get_collection(
         session,
         tenant_id=tenant_id,
