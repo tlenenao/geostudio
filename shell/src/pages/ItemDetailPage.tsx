@@ -292,7 +292,6 @@ function ItemFacts({
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span className="text-ink-2">{t("itemDetail.publicUrlLabel")}</span>
           <code className="rounded bg-sunken px-1.5 py-0.5 text-ink">{publicUrl}</code>
-          {/* eslint-disable-next-line geostudio/panel-trigger-aria -- bouton « Copier » : etat transitoire, pas un panneau */}
           <Button
             size="sm"
             variant="outline"

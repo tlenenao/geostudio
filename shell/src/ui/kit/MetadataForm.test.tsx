@@ -126,6 +126,10 @@ test("slug : champ présent seulement pour un site, validé et soumis (P35.11)",
   await userEvent.type(slug, "Pas Valide");
   await userEvent.click(screen.getByRole("button", { name: /enregistrer/i }));
   expect(onSubmit).not.toHaveBeenCalled();
+  // REV-323 : champ posé via `Field` — invalide, décrit par son erreur annoncée.
+  expect(slug).toHaveAttribute("aria-invalid", "true");
+  expect(screen.getByRole("alert")).toHaveTextContent(/slug/i);
+  expect(slug).toHaveAccessibleDescription(/slug/i);
   await userEvent.clear(slug);
   await userEvent.type(slug, "nouveau-slug");
   await userEvent.click(screen.getByRole("button", { name: /enregistrer/i }));

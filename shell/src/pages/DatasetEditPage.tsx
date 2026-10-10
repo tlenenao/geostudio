@@ -30,9 +30,11 @@ import { t } from "../i18n";
 import { saveExportedFile } from "../api/saveExportedFile";
 import { PageTitle } from "../ui/kit/PageTitle";
 import "../i18n/domains/admin";
+import { useUrlTab } from "../lib/useUrlTab";
 import "../i18n/domains/misc";
 
 export function DatasetEditPage({ pk }: { pk: string }) {
+  const tabProps = useUrlTab("dataset");
   const itemQuery = useItem(pk);
   const configQuery = useDatasetConfig(pk);
   const save = useSaveDataset(pk);
@@ -180,7 +182,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
   return (
     <div className="-m-6 flex flex-1 flex-col overflow-hidden">
       <TriptychLayout
-        defaultTabId="dataset"
+        {...tabProps}
         browse={{
           id: "back",
           label: t("domain.catalog"),

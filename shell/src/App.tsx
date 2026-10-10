@@ -17,6 +17,7 @@ import { AppErrorBoundary } from "./AppErrorBoundary";
 // kit dans le chunk initial (revue finale Vague B, REV-253).
 import { ToastProvider } from "./ui/kit/ToastProvider";
 import { ConnectivityBanner } from "./shell/ConnectivityBanner";
+import { SessionExpiredBanner } from "./shell/SessionExpiredBanner";
 
 const config = loadRuntimeConfig();
 // SP-B7 (étape 6) : borne le retry par défaut de React Query à 1 (2 appels
@@ -73,6 +74,7 @@ export default function App() {
               <QueryClientProvider client={queryClient}>
                 <ConfigProvider config={config}>
                   <ConnectivityBanner />
+                  <SessionExpiredBanner />
                   <AppShell />
                 </ConfigProvider>
               </QueryClientProvider>

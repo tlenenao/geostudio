@@ -225,6 +225,9 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async getInstanceStatus(..._args: unknown[]) {
       return unsupported();
     },
+    async getJobsBacklog() {
+      return null;
+    },
     async launchAdminTool(..._args: unknown[]) {
       return unsupported();
     },

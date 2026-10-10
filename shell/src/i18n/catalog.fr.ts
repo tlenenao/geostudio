@@ -237,6 +237,11 @@ export const fr = {
 
   // ConnectivityBanner (SP-B7) — bannière globale sur injoignabilité du cœur
   "connectivity.unreachable": "Connexion au serveur perdue — nouvelle tentative en cours…",
+  "common.workerStalled":
+    "Le traitement en arrière-plan semble indisponible : votre tâche reste en attente et reprendra dès son retour.",
+  "session.expired":
+    "Votre session a expiré ou n'est plus valide. Reconnectez-vous pour continuer.",
+  "session.signIn": "Se reconnecter",
   "connectivity.offline": "Vous êtes hors ligne — les données ne sont pas rechargées.",
 
   // jobStatusLabel (SP-B10a) — vocabulaire d'état de job partagé entre

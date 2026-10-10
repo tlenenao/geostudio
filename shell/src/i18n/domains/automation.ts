@@ -204,6 +204,8 @@ export const automation = {
   // clés jobStatus.* plus bas dans ce fichier.
   "pipelineRun.loadRunsFailed": "Impossible de charger l'historique des exécutions.",
   "pipelineRun.runFailed": "Échec du lancement du pipeline.",
+  "pipelineRun.alreadyRunning":
+    "Une exécution de ce pipeline est déjà en cours ou en file d'attente : son avancement est suivi ci-dessous.",
   "pipelineRun.running": "Exécution…",
   "pipelineRun.runButton": "Exécuter",
   "pipelineRun.cancelButton": "Annuler le run",
@@ -281,6 +283,13 @@ export const automation = {
   "secretParamSelect.keyPlaceholder": "X-Api-Key",
   "secretParamSelect.valueLabel": "Valeur",
   "secretParamSelect.valuePlaceholder": "sk_live_…",
+  "secretParamSelect.baseUrlLabel": "URL de base de l'API",
+  "secretParamSelect.baseUrlPlaceholder": "https://api.example.com/v1",
+  "secretParamSelect.baseUrlHelp":
+    "Le secret n'est envoyé qu'à cette URL (et ses sous-chemins) : l'URL d'un lecteur REST doit en faire partie.",
+  "secretParamSelect.useTlsLabel": "Chiffrer la connexion (TLS)",
+  "secretParamSelect.useTlsHelp":
+    "Décocher n'est accepté par le cœur que pour un serveur local (localhost).",
   "secretParamSelect.tokenLabel": "Jeton",
   "secretParamSelect.tokenPlaceholder": "eyJhbGciOi…",
   "secretParamSelect.usernameLabel": "Nom d'utilisateur",

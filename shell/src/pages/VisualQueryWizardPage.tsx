@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { isConflictError } from "../api/ApiError";
+import { useUrlTab } from "../lib/useUrlTab";
 import { SaveConflictNotice } from "../builder/SaveConflictNotice";
 import { useAuth } from "../auth/useAuth";
 import { useItemClient } from "../api/ItemClientProvider";
@@ -59,6 +60,7 @@ export function VisualQueryWizardPage({
   const navigate = useNavigate();
   const { username } = useAuth();
   const client = useItemClient();
+  const tabProps = useUrlTab("query");
   // REV-309 : GET /collections plafonne à 100 résultats ; la recherche ?q= côté
   // cœur (debouncée) atteint les suivantes. Liste fusionnée = défaut + résultats.
   const [baseSearch, setBaseSearch] = useState("");
@@ -437,7 +439,7 @@ export function VisualQueryWizardPage({
   return (
     <div className="-m-6 flex flex-1 flex-col overflow-hidden">
       <TriptychLayout
-        defaultTabId="query"
+        {...tabProps}
         browse={{
           id: "back",
           label: t("domain.catalog"),

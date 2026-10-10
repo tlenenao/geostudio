@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { HelpCircle } from "lucide-react";
 import { useUndoableDraft } from "../builder/useUndoableDraft";
 import { useUrlSyncedState } from "../lib/useUrlSyncedState";
+import { useUrlTab } from "../lib/useUrlTab";
 import { toBlob } from "html-to-image";
 import {
   useAppConfig,
@@ -66,6 +67,7 @@ const BREAKPOINT_KEY = {
 
 export function AppBuilderPage({ pk }: { pk: string }) {
   const client = useItemClient();
+  const tabProps = useUrlTab("canvas");
   const query = useAppConfig(pk);
   const save = useSaveApp(pk);
   const itemQuery = useItem(pk);
@@ -417,7 +419,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
       <div className="-m-6 flex flex-1 flex-col overflow-hidden">
         <h1 className="sr-only">{t("docTitle.appEdit")}</h1>
         <TriptychLayout
-          defaultTabId="canvas"
+          {...tabProps}
           browse={{
             id: "structure",
             label: t("appBuilder.structureLabel"),

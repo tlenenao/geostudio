@@ -773,7 +773,9 @@ test("REV-216 : l'état de l'exécution est annoncé avec le vocabulaire partag�
       onNotesChange={vi.fn()}
     />,
   );
-  expect(screen.getByRole("status", { name: /État de l'exécution/ })).toHaveTextContent("En cours");
+  const live = screen.getByText("État de l'exécution : En cours");
+  expect(live).toHaveAttribute("role", "status");
+  expect(live).not.toHaveAttribute("aria-label");
 });
 
 test("la région d'état d'exécution est permanente : vide sans runStatus, renseignée ensuite", () => {

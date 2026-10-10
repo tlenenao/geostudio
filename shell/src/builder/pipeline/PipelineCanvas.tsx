@@ -502,16 +502,9 @@ function PipelineCanvasInner({
   return (
     <div className="h-full" role="presentation" onKeyDown={onCanvasKeyDown}>
       {/* Région live permanente : une région insérée avec son contenu n'est pas annoncée de façon fiable. */}
-      <p
-        role="status"
-        aria-label={
-          runStatus
-            ? t("pipelineCanvas.runStatusAria", { status: jobStatusLabel(runStatus) })
-            : undefined
-        }
-        className="sr-only"
-      >
-        {runStatus ? jobStatusLabel(runStatus) : ""}
+      {/* REV-323 : le contenu porte la phrase complète (pas d'aria-label qui doublerait le texte annoncé). */}
+      <p role="status" className="sr-only">
+        {runStatus ? t("pipelineCanvas.runStatusAria", { status: jobStatusLabel(runStatus) }) : ""}
       </p>
       <ReactFlow
         nodes={[

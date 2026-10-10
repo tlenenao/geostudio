@@ -19,6 +19,7 @@ import {
   type SqlHistoryEntry,
 } from "../lib/sqlLabHistory";
 import { useUrlSyncedState } from "../lib/useUrlSyncedState";
+import { useUrlTab } from "../lib/useUrlTab";
 import { SqlLabCopilotPanel } from "../builder/copilot/SqlLabCopilotPanel";
 import { CopilotUnavailable } from "../builder/copilot/CopilotUnavailable";
 import { parseDuckDbError } from "../lib/parseDuckDbError";
@@ -79,6 +80,7 @@ type SqlResult = { columns: string[]; rows: unknown[][]; truncated: boolean };
 
 export function SqlLabPage() {
   const client = useItemClient();
+  const tabProps = useUrlTab("query");
   const [sql, setSql] = useState("");
   const [result, setResult] = useState<SqlResult | null>(null);
   // D54b (Vague C, Tâche 26) : autocomplétion de colonnes lazy — dès qu'un
@@ -200,7 +202,7 @@ export function SqlLabPage() {
   return (
     <div className="-m-6 flex flex-1 flex-col overflow-hidden">
       <TriptychLayout
-        defaultTabId="query"
+        {...tabProps}
         browse={{
           id: "back",
           label: t("domain.catalog"),

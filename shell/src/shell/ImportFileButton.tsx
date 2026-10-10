@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { useItemClient, useMe } from "../api/hooks";
 import { apiErrorMessage } from "../api/apiErrorMessage";
 import { ApiError } from "../api/ApiError";
+import { WorkerStalledNotice } from "./WorkerStalledNotice";
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { Drawer } from "../ui/kit/Drawer";
@@ -640,6 +641,7 @@ export function ImportFileButton() {
                 </label>
               </>
             )}
+            <WorkerStalledNotice active={phase === "polling"} />
             {phase === "polling" && slow && (
               <p role="status" className="text-sm text-ink-muted">
                 {t("importFile.slow")}

@@ -542,8 +542,8 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   // Résumé d'erreurs figé à la soumission (REV-223) : ne se recalcule pas à chaque frappe,
   // sinon le role=alert serait réannoncé en continu. null = aucune soumission en cours.
-  // Les alertes par champ restent : double annonce assumée (résumé = vue d'ensemble + liens,
-  // champ = message local relu au focus via aria-describedby).
+  // Les messages par champ restent rendus mais sans role=alert tant que le résumé est affiché
+  // (REV-323 : plus de double annonce) ; relus au focus via aria-describedby.
   const [summaryNames, setSummaryNames] = useState<string[] | null>(null);
 
   const collectionId = ctx.data?.layer ?? "";
@@ -684,7 +684,10 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
           byField[fe.field] = fe.message;
         });
         setServerErrors(byField);
-        setSummaryNames(fields.filter((f) => f.name in byField).map((f) => f.name));
+        const serverInvalid = fields.filter((f) => f.name in byField);
+        setSummaryNames(serverInvalid.map((f) => f.name));
+        // REV-323 : le focus suit aussi l'erreur serveur (comme l'erreur client plus haut).
+        if (serverInvalid[0]) document.getElementById(`field-${serverInvalid[0].name}`)?.focus();
         // P10.02 : une erreur sur un champ absent du formulaire (tenant_id,
         // champ masqué, géométrie…) n'a aucun emplacement visible : message générique.
         const shown = new Set(fields.map((f) => f.name));
@@ -765,7 +768,13 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
               error={errorFor(f)}
             />
             {errorFor(f) && (
-              <span id={`field-${f.name}-error`} role="alert" className="text-xs text-danger">
+              // REV-323 : pas de double annonce — quand le résumé (role=alert) est affiché, le
+              // message du champ n'est plus qu'un `aria-describedby` relu au focus.
+              <span
+                id={`field-${f.name}-error`}
+                role={summaryNames?.length ? undefined : "alert"}
+                className="text-xs text-danger"
+              >
                 {errorFor(f)}
               </span>
             )}
@@ -803,7 +812,6 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
             {t("widgetForm.cancel")}
           </button>
           {canWrite && (
-            // eslint-disable-next-line geostudio/panel-trigger-aria -- ConfirmDialog modal, pas un panneau en ligne
             <button
               type="button"
               className="ml-2 text-xs text-danger underline"
