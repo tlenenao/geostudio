@@ -763,6 +763,8 @@ def patch_collection(
         actor_is_admin=user.is_admin,
     ):
         raise HTTPException(status_code=403, detail="write access required")
+    if body.isPublic is not None and body.isPublic != col.is_public:
+        _require_share(session, user, col)  # même garde que PUT /sharing
     if body.attachmentFields is not None:
         _reject_attachment_field_collisions(session, col, body.attachmentFields, introspect)
     if (

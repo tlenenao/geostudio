@@ -1131,3 +1131,22 @@ def test_delete_collection_purges_its_lake_but_not_a_neighbour(env):
     app.dependency_overrides[collections_routes.get_s3_client] = lambda: s3
     assert client.delete("/v1/collections/incidents").status_code == 204
     assert sorted(s3.lake) == sorted(others)
+
+
+def test_patch_is_public_requires_share_right_not_just_write(env):
+    # Un editor (write) ne peut pas ouvrir la collection au tenant : isPublic
+    # exige la même garde que PUT /sharing (manager).
+    app, client, _, admin, regular, _ddl = env
+    _as(app, admin)
+    client.post("/v1/collections", json={"tableName": "incidents", "isPublic": False})
+    gid = client.post("/v1/groups", json={"name": "equipe"}).json()["id"]
+    client.post(f"/v1/groups/{gid}/members", json={"userId": regular.id})
+    url = "/v1/collections/incidents"
+    for role, expected in (("editor", 403), ("manager", 200)):
+        _as(app, admin)
+        share = {"public": False, "groups": [{"groupId": gid, "role": role}]}
+        assert client.put(f"{url}/sharing", json=share).status_code == 200
+        _as(app, regular)
+        assert client.patch(url, json={"title": "ok"}).status_code == 200
+        assert client.patch(url, json={"isPublic": True}).status_code == expected
+        assert client.patch(url, json={"isPublic": False}).status_code == 200
