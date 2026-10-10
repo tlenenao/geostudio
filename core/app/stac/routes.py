@@ -261,7 +261,7 @@ def list_items(
                 "href": str(request.url.include_query_params(limit=limit, offset=offset + limit)),
             }
         )
-    return serializers.item_collection(items=items, links=links)
+    return serializers.item_collection(items=items, links=links, number_matched=page.number_matched)
 
 
 @router.get("/collections/{collection_id}/items/{feature_id}", response_class=GeoJSONResponse)
