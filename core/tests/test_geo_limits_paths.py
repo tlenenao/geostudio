@@ -4,6 +4,7 @@ spec §3) + garde AST : aucun `rls_scope(` de app/ sans `geo_limits=` (pièges
 n°11/14 — un nouveau chemin de lecture ne peut pas oublier la limite)."""
 
 import ast
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -101,3 +102,45 @@ def test_every_rls_scope_call_carries_geo_limits():
                 if not any(k.arg == "geo_limits" for k in node.keywords):
                     offenders.append(f"{rel}:{node.lineno}")
     assert offenders == [], f"rls_scope() sans geo_limits= : {offenders}"
+
+
+def test_geometry_column_alter_has_a_single_entry_point():
+    """Règle (3) : tout changement de type/SRID de la colonne géométrie passe par
+    `alter_geometry_column` (qui retire/recrée les policies)."""
+    pattern = re.compile(
+        r"ALTER\s+COLUMN|UpdateGeometrySRID|ALTER\s+TABLE[^\"']*\bTYPE\b", re.IGNORECASE
+    )
+    offenders = []
+    for path in APP_DIR.rglob("*.py"):
+        rel = path.relative_to(APP_DIR).as_posix()
+        if rel == "analytics/export.py":  # DuckDB (ALTER TABLE t DROP COLUMN), pas Postgres
+            continue
+        for n, line in enumerate(path.read_text().splitlines(), 1):
+            if pattern.search(line) and not (
+                rel == "collections/ddl.py" and "ALTER COLUMN {g}" in line
+            ):
+                offenders.append(f"{rel}:{n}")
+    assert offenders == [], f"ALTER de colonne hors alter_geometry_column : {offenders}"
+
+
+# Lectures SQL brutes d'une table de collection : seules les listées existent, chacune
+# justifiée. Toute autre lecture doit passer par `geo_source` (géométrie découpée).
+_RAW_TABLE_READS = {
+    "sharing/geo_limits.py": 1,  # geo_source lui-même
+    "features/repository.py": 3,  # _straddle_gate (classe, ne renvoie aucune géométrie) + 2 DELETE
+    "collections/routes.py": 1,  # compteur physique à l'enregistrement, hors scope utilisateur
+    "collections/ddl.py": 1,  # contrôle de tenant à l'enregistrement (DDL, hors scope utilisateur)
+    "cdc/backfill.py": 1,  # lac CDC, système
+}
+
+
+def test_collection_tables_are_only_read_through_geo_source():
+    found = {}
+    for path in APP_DIR.rglob("*.py"):
+        n = len(re.findall(r"FROM\s+public\.", path.read_text()))
+        if n:
+            found[path.relative_to(APP_DIR).as_posix()] = n
+    assert found == _RAW_TABLE_READS, (
+        "lecture brute de table de collection hors geo_source (fuite de géométrie complète) : "
+        f"{found}"
+    )

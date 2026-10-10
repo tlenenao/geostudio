@@ -133,6 +133,30 @@ def test_refuse_if_geo_limited():
     assert "geo_limit_unsupported" in exc.value.detail
 
 
+def test_administrator_is_never_geo_limited(env):
+    """v2 : porter admin.collections.manage exempte de toute limite (groupe ET rôle) ;
+    un utilisateur sans ce privilège, dans le même groupe, reste limité."""
+    s, tenant, admin, alice, bob, group = env
+    root = get_or_create_user(
+        s,
+        tenant_id=tenant.id,
+        oidc_sub="root",
+        username="root",
+        email=None,
+        first_name="",
+        last_name="",
+        bootstrap_admin=True,
+    )
+    s.add(GroupMember(group_id=group.id, user_id=root.id, tenant_id=tenant.id))
+    _put(s, tenant, admin, "parcelles", "group", group.id, SQUARE)
+    _put(s, tenant, admin, "parcelles", "role", root.role_id, SQUARE)  # entrée héritée de la v1
+    s.commit()
+    assert gl.resolve_geo_limits(s, tenant_id=tenant.id, user_id=root.id) == {}
+    assert gl.resolve_geo_limits(s, tenant_id=tenant.id, user_id=alice.id) == {
+        "parcelles": [SQUARE]
+    }
+
+
 def test_upsert_replaces_and_delete(env):
     s, tenant, admin, alice, bob, group = env
     _put(s, tenant, admin, "parcelles", "group", group.id, SQUARE)

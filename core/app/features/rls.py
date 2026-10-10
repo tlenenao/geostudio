@@ -50,6 +50,9 @@ def rls_scope(
     try:
         yield
     finally:
+        # Hors scope : le code système lit la table en entier (rôle propriétaire) ; le
+        # miroir Python ne doit pas survivre au scope (cf. set_geo_limits_guc).
+        session.info.pop("geo_limits", None)
         try:
             session.execute(text("RESET ROLE"))
         except DBAPIError as exc:

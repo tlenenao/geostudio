@@ -14,15 +14,20 @@ peuvent pas appliquer la policy : ils appellent `refuse_if_geo_limited`
 
 import json
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from datetime import UTC, datetime
 
 from fastapi import HTTPException
 from shapely.geometry import shape
 from sqlalchemy import delete, select, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
+from app.roles.privileges import Privilege
+from app.roles.repository import get_role
 from app.sharing.models import CollectionGeoLimit, GroupMember
+from app.sql_ident import quote_ident
 from app.users.models import User
 
 TARGET_TYPES = ("role", "group")
@@ -43,6 +48,18 @@ class GeoLimitRefused(HTTPException):
         super().__init__(
             status_code=403,
             detail=f"geo_limit_unsupported: {path} is not available on a geo-limited collection",
+        )
+
+
+class GeoLimitStraddling(HTTPException):
+    """Modification de la géométrie d'une entité à cheval sur la limite : refusée
+    (la version découpée écraserait la partie cachée)."""
+
+    def __init__(self):
+        super().__init__(
+            status_code=403,
+            detail="geo_limit_straddling: the geometry of an entity crossing your "
+            "geographic limit cannot be modified (attributes only)",
         )
 
 
@@ -99,6 +116,11 @@ def resolve_geo_limits(
             select(GroupMember.group_id).where(GroupMember.user_id == user_id)
         ).scalars()
     )
+    # Exemption administrateur (v2) : porter admin.collections.manage = jamais limité.
+    # Le propriétaire de la collection, lui, reste limité.
+    role = get_role(session, tenant_id=tenant_id, role_id=role_id) if role_id else None
+    if role is not None and Privilege.ADMIN_COLLECTIONS_MANAGE.value in role.privileges:
+        return {}
     principals = [("group", gid) for gid in group_ids]
     if role_id:
         principals.append(("role", role_id))
@@ -125,6 +147,94 @@ def set_geo_limits_guc(session: Session, limits: GeoLimits | None) -> None:
     Toujours posée, y compris `{}` : jamais de valeur périmée d'un scope voisin."""
     payload = json.dumps(dict(limits or {}), separators=(",", ":"))
     session.execute(text("SELECT set_config('app.geo_limits', :v, true)"), {"v": payload})
+    # Miroir côté Python (quelles tables lire via `geo_source`) ; le GUC reste la
+    # vérité de la policy. Absent/périmé = lecture de la table de base, que la
+    # policy restreint alors aux entités entièrement contenues (jamais de fuite).
+    session.info["geo_limits"] = dict(limits or {})
+
+
+def is_geo_limited(session: Session, table_name: str) -> bool:
+    return table_name in getattr(session, "info", {}).get("geo_limits", {})
+
+
+def _set_partial(session: Session, on: bool) -> None:
+    session.execute(
+        text("SELECT set_config('app.geo_partial', :v, true)"), {"v": "1" if on else ""}
+    )
+
+
+@contextmanager
+def geo_partial(session: Session) -> Iterator[None]:
+    """Lève, le temps du bloc, la restriction « entièrement contenue » de la policy
+    de lecture/mise à jour (`app.geo_partial`) : les entités à cheval deviennent
+    visibles/modifiables. Réservé à `geo_source` (lectures découpées) et à la mise à
+    jour d'attributs seulement ; jamais autour d'une requête qui renvoie ou écrit la
+    géométrie complète."""
+    _set_partial(session, True)
+    try:
+        yield
+    finally:
+        try:
+            _set_partial(session, False)
+        except DBAPIError as exc:  # transaction avortée (25P02) : le GUC est local, rollback
+            if getattr(exc.orig, "sqlstate", None) != "25P02":
+                raise
+
+
+def limit_sql(session: Session, table_name: str, srid: int) -> str:
+    """Limite de l'appelant pour `table_name`, reprojetée dans le SRID de la colonne
+    (NULL = non limité). Expression sans corrélation : évaluée une fois par requête."""
+    lit = "'" + table_name.replace("'", "''") + "'"
+    return f"(SELECT ST_Transform(app_geo_limit({lit}), {int(srid)}))"
+
+
+def clip_sql(geom: str, lim: str) -> str:
+    """Découpage de `geom` à la limite. MakeValid : une géométrie source invalide
+    ferait lever GEOS. CollectionExtract à la dimension d'origine : pas de
+    GEOMETRYCOLLECTION (illisible en MVT), les contacts de bord (dimension
+    inférieure) disparaissent."""
+    return (
+        f"ST_CollectionExtract(ST_Intersection(ST_MakeValid({geom}), {lim}), "
+        f"ST_Dimension({geom}) + 1)"
+    )
+
+
+@contextmanager
+def geo_source(
+    session: Session,
+    info,
+    *,
+    columns: Sequence[str] | None = None,
+    quote: Callable[[str], str] | None = None,
+) -> Iterator[str]:
+    """POINT UNIQUE de lecture des entités d'une collection (v2 : découpage). Renvoie
+    l'élément FROM (alias `t`) à utiliser à la place de `public.<table> t` :
+
+    - non limité : la table elle-même ;
+    - limité : sous-requête dont la colonne de géométrie est `ST_Intersection(géom,
+      limite)` — les entités qui intersectent la limite y sont visibles, jamais leur
+      géométrie complète ; tout prédicat (bbox, geom_intersects, extent, MVT, comptes)
+      porte donc sur la géométrie DÉCOUPÉE. Le bloc lève `app.geo_partial`.
+
+    `columns` : colonnes lues (défaut : toutes celles de `info`, déjà privées des champs
+    masqués) — l'emprise n'en lit aucune. Un lecteur qui oublie ce point lit la table de
+    base et la policy ne lui montre que les entités entièrement contenues."""
+    q = quote or (lambda n: quote_ident(session, n))
+    t = q(info.table_name)
+    if info.geometry_column is None or not is_geo_limited(session, info.table_name):
+        yield f"public.{t} t"
+        return
+    g = q(info.geometry_column)
+    names = [c.name for c in info.columns] if columns is None else list(columns)
+    cols = "".join(f"t.{q(n)}, " for n in names)
+    src = (
+        f"(SELECT {cols}c.g AS {g} FROM public.{t} t "
+        f"CROSS JOIN (SELECT {limit_sql(session, info.table_name, info.srid or 4326)} AS lim) l "
+        f"CROSS JOIN LATERAL (SELECT {clip_sql(f't.{g}', 'l.lim')} AS g) c "
+        f"WHERE NOT ST_IsEmpty(c.g)) t"
+    )
+    with geo_partial(session):
+        yield src
 
 
 def refuse_if_geo_limited(
