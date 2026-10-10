@@ -72,3 +72,23 @@ test("onThemeChange : notifie quand data-theme change, puis plus après désabon
     delete document.documentElement.dataset.theme;
   }
 });
+
+test("onThemeChange : suit prefers-color-scheme en « auto » et se désabonne (REV-323)", () => {
+  const listeners = new Set<() => void>();
+  const add = vi.fn((_: string, l: () => void) => listeners.add(l));
+  const remove = vi.fn((_: string, l: () => void) => listeners.delete(l));
+  const mm = vi.fn().mockReturnValue({ addEventListener: add, removeEventListener: remove });
+  vi.stubGlobal("matchMedia", mm);
+  try {
+    const cb = vi.fn();
+    const off = onThemeChange(cb);
+    expect(mm).toHaveBeenCalledWith("(prefers-color-scheme: dark)");
+    listeners.forEach((l) => l()); // l'OS bascule clair/sombre
+    expect(cb).toHaveBeenCalledTimes(1);
+    off();
+    expect(remove).toHaveBeenCalledWith("change", expect.any(Function));
+    expect(listeners.size).toBe(0);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
