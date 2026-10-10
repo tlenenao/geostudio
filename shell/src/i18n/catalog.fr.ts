@@ -740,6 +740,8 @@ export const fr = {
   "visualQuery.titleLabel": "Titre",
   "visualQuery.baseCollectionLabel": "Collection de base",
   "visualQuery.chooseOption": "Choisir…",
+  "visualQuery.baseCollectionSearchAria": "Rechercher parmi les collections",
+  "visualQuery.baseCollectionSearchPlaceholder": "Rechercher une collection…",
   "visualQuery.filterLabel": "Filtrer",
   "visualQuery.joinLabel": "Joindre",
   "visualQuery.removeJoin": "Supprimer la jointure",
