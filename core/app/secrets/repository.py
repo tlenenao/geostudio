@@ -13,7 +13,8 @@ from app.roles.privileges import Privilege
 from app.secrets.crypto import decrypt
 from app.secrets.models import ConnectorSecret
 from app.secrets.schemas import SECRET_PAYLOAD_ADAPTER, SecretPayload
-from app.sharing.authorization import can
+from app.sharing.authorization import decide
+from app.sharing.repository import roles_for_items
 from app.users.models import User
 
 
@@ -121,7 +122,7 @@ class SecretInUseError(Exception):
 def delete_secret_unless_used(session: Session, secret: ConnectorSecret, *, user: User) -> None:
     """Refuse (SecretInUseError) si une config cite encore le secret (P16.05).
     REV-273c : le message ne liste que les objets que `user` peut lire
-    (`can(read)`) ; les autres sont comptés, jamais nommés."""
+    (règle `can(read)`) ; les autres sont comptés, jamais nommés."""
     usages = find_usages(session, tenant_id=secret.tenant_id, name=secret.name)
     if not usages:
         delete_secret(session, secret)
@@ -129,11 +130,27 @@ def delete_secret_unless_used(session: Session, secret: ConnectorSecret, *, user
     facts = get_access_facts_by_ids(
         session, tenant_id=secret.tenant_id, item_ids=[u["itemId"] for u in usages]
     )
+    # REV-300 M6 : une requête de rôles pour tous les objets (patron groupé
+    # d'app.usage.service.readable_item_titles), pas un `can()` par objet.
+    needs_roles = [
+        i for i, f in facts.items() if not (f.owner_id == user.id or f.is_public or f.is_published)
+    ]
+    roles = roles_for_items(
+        session, tenant_id=secret.tenant_id, user_id=user.id, item_ids=needs_roles
+    )
     visible = [
         u["title"]
         for u in usages
         if (f := facts.get(u["itemId"])) is not None
-        and can(session, user_id=user.id, action="read", item=f)
+        and decide(
+            action="read",
+            kind="item",
+            is_owner=f.owner_id == user.id,
+            is_public=f.is_public,
+            is_published=f.is_published,
+            roles=roles.get(f.id, frozenset()),
+            actor_is_admin=False,
+        )
     ]
     hidden = len(usages) - len(visible)
     parts: list[str] = []
