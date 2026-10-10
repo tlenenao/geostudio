@@ -209,14 +209,15 @@ test.describe("j02 lecteur — liens directs, runtime, bookmarks", () => {
     await expect(page.getByText("Alpha")).toHaveCount(0);
   });
 
-  // j02-011 : le bouton « Enregistrer la vue » est proposé au lecteur alors que le cœur refuse (analytics.view).
-  test("j02-011 : un lecteur ne se voit pas proposer « Enregistrer la vue » qui échouera", async ({
+  // j02-011 : décision produit inversée (343f956a, REV-270) : le Lecteur porte analytics.view et peut
+  // créer des bookmarks ; le bouton « Enregistrer la vue » est donc proposé ET le cœur l'accepte.
+  test("j02-011 : un lecteur (analytics.view) se voit proposer « Enregistrer la vue », que le cœur accepte", async ({
     page,
   }) => {
     const s = await getSeed();
     await asReader(page);
     await spaGo(page, `/apps/${s.autoApp}/p1`, 3000);
     await expect(page.getByText("Bonjour lecteur")).toBeVisible();
-    await expect(page.getByRole("button", { name: /Enregistrer la vue/ })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Enregistrer la vue/ })).toHaveCount(1);
   });
 });
