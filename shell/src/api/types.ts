@@ -818,10 +818,17 @@ export type SecretSummary = {
 };
 
 export type SecretPayload =
-  | { kind: "api_key"; location: "header" | "query"; key: string; value: string }
-  | { kind: "bearer_token"; token: string }
-  | { kind: "basic_auth"; username: string; password: string }
-  | { kind: "oauth2_client_credentials"; tokenUrl: string; clientId: string; clientSecret: string }
+  // REV-294 : les 4 kinds REST portent `baseUrl` (le secret n'est envoyé qu'à cette URL).
+  | { kind: "api_key"; location: "header" | "query"; key: string; value: string; baseUrl?: string }
+  | { kind: "bearer_token"; token: string; baseUrl?: string }
+  | { kind: "basic_auth"; username: string; password: string; baseUrl?: string }
+  | {
+      kind: "oauth2_client_credentials";
+      tokenUrl: string;
+      clientId: string;
+      clientSecret: string;
+      baseUrl?: string;
+    }
   | { kind: "postgres_dsn"; dsn: string }
   | {
       kind: "smtp";

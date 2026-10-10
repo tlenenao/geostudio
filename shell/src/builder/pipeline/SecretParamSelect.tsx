@@ -197,6 +197,8 @@ function SecretCreateForm({
 }) {
   const [name, setName] = useState(editing?.name ?? "");
   const bucketHelpId = useId();
+  const baseUrlHelpId = useId();
+  const tlsHelpId = useId();
   const [kind, setKind] = useState<SecretPayload["kind"]>(kindFilter ?? ALL_KINDS[0]);
   const [fields, setFields] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -208,6 +210,13 @@ function SecretCreateForm({
     setFields((prev) => ({ ...prev, [key]: value }));
   }
 
+  const baseUrl = () => field("baseUrl").trim() || undefined;
+  const isRestKind =
+    kind === "api_key" ||
+    kind === "bearer_token" ||
+    kind === "basic_auth" ||
+    kind === "oauth2_client_credentials";
+
   function buildPayload(): SecretPayload | null {
     switch (kind) {
       case "api_key":
@@ -216,17 +225,24 @@ function SecretCreateForm({
           location: field("location") === "query" ? "query" : "header",
           key: field("key"),
           value: field("value"),
+          baseUrl: baseUrl(),
         };
       case "bearer_token":
-        return { kind, token: field("token") };
+        return { kind, token: field("token"), baseUrl: baseUrl() };
       case "basic_auth":
-        return { kind, username: field("username"), password: field("password") };
+        return {
+          kind,
+          username: field("username"),
+          password: field("password"),
+          baseUrl: baseUrl(),
+        };
       case "oauth2_client_credentials":
         return {
           kind,
           tokenUrl: field("tokenUrl"),
           clientId: field("clientId"),
           clientSecret: field("clientSecret"),
+          baseUrl: baseUrl(),
         };
       case "postgres_dsn":
       case "snowflake_dsn":
@@ -261,7 +277,7 @@ function SecretCreateForm({
           port: Number(field("port") || "0"),
           username: field("username"),
           password: field("password"),
-          useTls: field("useTls") !== "false",
+          useTls: field("useTls") !== "false", // coché par défaut (« false » seulement si décoché)
           fromAddress: field("fromAddress"),
         };
       default:
@@ -529,6 +545,23 @@ function SecretCreateForm({
           </span>
         </div>
       )}
+      {isRestKind && (
+        <div className="flex flex-col gap-1 text-xs">
+          <label className="flex flex-col gap-1">
+            {t("secretParamSelect.baseUrlLabel")}
+            <input
+              placeholder={t("secretParamSelect.baseUrlPlaceholder")}
+              aria-describedby={baseUrlHelpId}
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
+              value={field("baseUrl")}
+              onChange={(e) => setFieldValue("baseUrl", e.target.value)}
+            />
+          </label>
+          <span id={baseUrlHelpId} className="text-ink-2">
+            {t("secretParamSelect.baseUrlHelp")}
+          </span>
+        </div>
+      )}
       {kind === "smtp" && (
         <>
           <label className="flex flex-col gap-1 text-xs">
@@ -569,6 +602,18 @@ function SecretCreateForm({
               onChange={(e) => setFieldValue("password", e.target.value)}
             />
           </label>
+          <label className="flex items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={field("useTls") !== "false"}
+              aria-describedby={tlsHelpId}
+              onChange={(e) => setFieldValue("useTls", e.target.checked ? "true" : "false")}
+            />
+            {t("secretParamSelect.useTlsLabel")}
+          </label>
+          <span id={tlsHelpId} className="text-xs text-ink-2">
+            {t("secretParamSelect.useTlsHelp")}
+          </span>
           <label className="flex flex-col gap-1 text-xs">
             {t("secretParamSelect.fromAddressLabel")}
             <input
