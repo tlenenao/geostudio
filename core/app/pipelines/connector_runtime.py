@@ -26,6 +26,7 @@ from typing import Protocol
 from urllib.parse import urlsplit
 
 import dlt
+import duckdb
 import sqlalchemy as sa
 from dlt.common.configuration.specs import (
     AwsCredentials,
@@ -925,7 +926,10 @@ def materialize_blob_connector(
     except ConnectorRuntimeError as exc:
         # dlt ne crée pas la table `records` quand rien n'est extrait : sans ce rattrapage,
         # l'utilisateur lirait « Catalog Error: Table with name records does not exist ».
-        if literal_glob and "does not exist" in str(exc):
+        # REV-300 M2 : discriminé sur le TYPE de la cause (_run_dlt_and_attach chaîne l'exception
+        # DuckDB d'origine), plus sur le texte — une erreur de bucket qui contient « does not
+        # exist » n'est plus masquée.
+        if literal_glob and isinstance(exc.__cause__, duckdb.CatalogException):
             raise no_row_error from exc
         raise
     if literal_glob and conn.execute(f"SELECT count(*) FROM {_qi(view_name)}").fetchone()[0] == 0:

@@ -1553,10 +1553,11 @@ def test_materialize_blob_connector_literal_glob_missing_table_gets_a_clear_mess
     _patch_blob_internals(monkeypatch, {})
 
     def _dlt_without_table(c, resource, *, node_id, view_name):
+        # Même chaînage que _run_dlt_and_attach : la cause DuckDB est typée.
         raise connector_runtime.ConnectorRuntimeError(
             "reader.connector extraction failed: Catalog Error: Table with name records "
             "does not exist!"
-        )
+        ) from duckdb.CatalogException("Table with name records does not exist!")
 
     monkeypatch.setattr(connector_runtime, "_run_dlt_and_attach", _dlt_without_table)
     with pytest.raises(connector_runtime.ConnectorRuntimeError, match="no row loaded"):
@@ -1568,6 +1569,33 @@ def test_materialize_blob_connector_literal_glob_missing_table_gets_a_clear_mess
                 secretName="s3-secret", path="s3://bucket/data.csv", format="csv"
             ),
             view_name="node_b11",
+        )
+
+
+def test_materialize_blob_connector_bucket_error_containing_does_not_exist_is_not_masked(
+    monkeypatch, conn, session, tenant, user
+):
+    """REV-300 M2 : la reconnaissance de « table records absente » repose sur le TYPE de la
+    cause (duckdb.CatalogException), pas sur la sous-chaîne « does not exist » — une erreur
+    de bucket qui la contient doit ressortir telle quelle."""
+    resolver = _blob_secret_and_resolver(session, tenant, user)
+    _patch_blob_internals(monkeypatch, {})
+
+    def _bucket_missing(c, resource, *, node_id, view_name):
+        raise connector_runtime.ConnectorRuntimeError(
+            "reader.connector extraction failed: The specified bucket does not exist"
+        ) from FileNotFoundError("The specified bucket does not exist")
+
+    monkeypatch.setattr(connector_runtime, "_run_dlt_and_attach", _bucket_missing)
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="bucket does not exist"):
+        connector_runtime.materialize_blob_connector(
+            conn,
+            secret_resolver=resolver,
+            node_id="b12",
+            params=ReaderConnectorBlobParams(
+                secretName="s3-secret", path="s3://bucket/data.csv", format="csv"
+            ),
+            view_name="node_b12",
         )
 
 
