@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { ifMatchHeader } from "../ifMatch";
 import type {
+  CollectionProfile,
   CollectionSchema,
   CreateDatasetInput,
   DataRecord,
@@ -126,6 +127,7 @@ type DatasetsMethods = Pick<
   | "featuresUrl"
   | "exportDataSource"
   | "getCollectionSchema"
+  | "getCollectionProfile"
 >;
 
 export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
@@ -358,6 +360,10 @@ export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
 
     async getCollectionSchema(collectionId: string): Promise<CollectionSchema> {
       return request<CollectionSchema>("GET", `/collections/${collectionId}/schema`);
+    },
+
+    async getCollectionProfile(collectionId: string): Promise<CollectionProfile> {
+      return request<CollectionProfile>("GET", `/collections/${collectionId}/profile`);
     },
   };
 }

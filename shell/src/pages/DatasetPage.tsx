@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Button } from "../ui/kit/Button";
+import { CollectionProfilePanel } from "./CollectionProfilePanel";
 import { useItemClient } from "../api/ItemClientProvider";
 import { AppRenderer } from "../builder/AppRenderer";
 import { registerBuiltinWidgets } from "../builder/widgets";
@@ -11,6 +14,7 @@ import { useDocumentMeta } from "../shell/useDocumentMeta";
 import { LoadingState } from "../ui/kit/LoadingState";
 import { PageTitle } from "../ui/kit/PageTitle";
 import "../i18n/domains/admin";
+import "../i18n/domains/misc";
 
 registerBuiltinWidgets();
 
@@ -60,6 +64,7 @@ function previewConfig(collectionId: string, attachmentField: string | undefined
 
 export function DatasetPage({ collectionId }: { collectionId: string }) {
   const client = useItemClient();
+  const [exploring, setExploring] = useState(false);
   const query = useQuery({
     queryKey: ["public-dataset", collectionId],
     queryFn: () => client.getCollection(collectionId),
@@ -106,7 +111,22 @@ export function DatasetPage({ collectionId }: { collectionId: string }) {
           })()}
         </p>
       </header>
-      <DatasetDownloadButtons collectionId={collectionId} featureCount={col.featureCount} />
+      <div className="flex flex-wrap items-center gap-2">
+        <DatasetDownloadButtons collectionId={collectionId} featureCount={col.featureCount} />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          aria-expanded={exploring}
+          aria-controls="dataset-profile-panel"
+          onClick={() => setExploring((v) => !v)}
+        >
+          {t("datasetProfile.toggle")}
+        </Button>
+      </div>
+      {exploring ? (
+        <CollectionProfilePanel collectionId={collectionId} id="dataset-profile-panel" />
+      ) : null}
       <div className="h-[480px] w-full">
         <AppRenderer config={previewConfig(collectionId, attachmentField)} mode="runtime" />
       </div>

@@ -176,6 +176,25 @@ export const misc = {
   "itemDetail.copyUrl": "Copier l'URL",
   "itemDetail.urlCopied": "URL copiée.",
   "itemDetail.slugInvalid": "Slug invalide : minuscules, chiffres et tirets uniquement.",
+  // Exploration automatique d'un jeu de données (REV-117)
+  "datasetProfile.toggle": "Explorer",
+  "datasetProfile.title": "Profil des données",
+  "datasetProfile.pending": "Les données ne sont pas encore disponibles pour l'exploration.",
+  "datasetProfile.empty": "Aucune donnée à explorer.",
+  "datasetProfile.rows": "{n} lignes",
+  "datasetProfile.sampled": "Statistiques calculées sur un échantillon.",
+  "datasetProfile.truncatedColumns": "Seules les premières colonnes sont profilées.",
+  "datasetProfile.asOf": "À jour au {date}",
+  "datasetProfile.colName": "Colonne",
+  "datasetProfile.colType": "Type",
+  "datasetProfile.colFill": "Renseigné",
+  "datasetProfile.colDistinct": "Valeurs distinctes",
+  "datasetProfile.colSummary": "Résumé",
+  "datasetProfile.range": "{min} à {max}",
+  "datasetProfile.median": "médiane {n}",
+  "datasetProfile.histogram": "Répartition de {name}",
+  "datasetProfile.geometry": "Géométrie ({column})",
+  "datasetProfile.extent": "Emprise : {bbox}",
 } as const;
 
 registerMessages(misc);

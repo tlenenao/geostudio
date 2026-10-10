@@ -34,6 +34,7 @@ from app.analytics.export import (
     rows_to_format,
 )
 from app.analytics.lake_lag import lake_lag_bytes
+from app.analytics.profile import CollectionProfileResponse, run_collection_profile
 from app.analytics.sql_sandbox import SqlSandboxError, run_analyst_sql
 from app.attachments import repository as attachments_repo
 from app.attachments.routes import get_attachments_bucket, get_s3_client
@@ -341,6 +342,46 @@ def aggregate_features(
         pending=as_of is None,
         lagBytes=lag_bytes,
     )
+
+
+@router.get("/collections/{collection_id}/profile", response_model=CollectionProfileResponse)
+def profile_collection(
+    collection_id: str,
+    user=Depends(get_current_user_optional),
+    guest: GuestActor | None = Depends(get_share_link_actor),
+    session: Session = Depends(get_session, scope="function"),
+    introspect=Depends(get_introspector),
+    conn_factory=Depends(get_duckdb_connection_factory),
+    base_uri: str = Depends(get_analytics_base_uri),
+):
+    """Résumé exploratoire (REV-117) : mêmes droits, même masquage de colonnes
+    sensibles et mêmes bornes DuckDB que POST /aggregate."""
+    col = get_collection_for_read(session, user, collection_id, guest=guest)
+    info = introspect(session, col.table_name)
+    masked_fields = (
+        frozenset()
+        if user is not None and has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)
+        else frozenset(col.sensitive_fields)
+    )
+    conn = conn_factory()
+    try:
+        try:
+            result = run_collection_profile(
+                conn,
+                base_uri=base_uri,
+                tenant_id=col.tenant_id,
+                collection_id=col.id,
+                table_info=info,
+                masked_fields=masked_fields,
+            )
+        except UnknownAggregateField as exc:
+            raise _validation_error(
+                [{"field": exc.field, "code": "unknown_field", "message": exc.message}]
+            ) from exc
+        as_of = lake_as_of(conn, base_uri, col.tenant_id, col.id)
+    finally:
+        conn.close()
+    return CollectionProfileResponse(**result, asOf=as_of, pending=as_of is None)
 
 
 EXPORT_FORMATS_AGGREGATE = {"csv", "xlsx"}

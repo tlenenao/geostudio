@@ -156,7 +156,10 @@ PARITY: dict[str, tuple[str, object]] = {
     "items": (MCP, ["list_items", "search_catalog", "get_item", "get_sharing", "set_sharing"]),
     "configs": (MCP, ["get_app_config", "save_app_config", "create_item"]),
     "collections": (MCP, ["search_collections", "query_features"]),
-    "datasets": (MCP, ["explain_dataset", "run_analytics_query", "create_dataset"]),
+    "datasets": (
+        MCP,
+        ["explain_dataset", "run_analytics_query", "profile_dataset", "create_dataset"],
+    ),
     "analytics": (MCP, ["run_analytics_query"]),
     "groups": (MCP, ["list_groups", "create_group", "add_group_member"]),
     "alerts": (MCP, ["create_alert_rule", "explain_alert_rule", "run_alert_rule"]),

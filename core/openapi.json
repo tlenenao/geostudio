@@ -1377,6 +1377,203 @@
         "title": "CollectionPatch",
         "type": "object"
       },
+      "CollectionProfileResponse": {
+        "description": "Contrat de GET /collections/{id}/profile. `asOf`/`pending` : m\u00eames\ns\u00e9mantiques que POST /aggregate (P25.10/11).",
+        "properties": {
+          "asOf": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asof"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnProfile"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "geometry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GeometryProfile"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pending": {
+            "default": false,
+            "title": "Pending",
+            "type": "boolean"
+          },
+          "rowCount": {
+            "title": "Rowcount",
+            "type": "integer"
+          },
+          "sampled": {
+            "default": false,
+            "title": "Sampled",
+            "type": "boolean"
+          },
+          "truncatedColumns": {
+            "default": false,
+            "title": "Truncatedcolumns",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "rowCount",
+          "columns"
+        ],
+        "title": "CollectionProfileResponse",
+        "type": "object"
+      },
+      "ColumnProfile": {
+        "properties": {
+          "distinct": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distinct"
+          },
+          "histogram": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/HistogramBin"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Histogram"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          },
+          "mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean"
+          },
+          "median": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median"
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "nonNull": {
+            "title": "Nonnull",
+            "type": "integer"
+          },
+          "nulls": {
+            "title": "Nulls",
+            "type": "integer"
+          },
+          "p25": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P25"
+          },
+          "p75": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P75"
+          },
+          "topValues": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/TopValue"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topvalues"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "nonNull",
+          "nulls"
+        ],
+        "title": "ColumnProfile",
+        "type": "object"
+      },
       "ConfigRead": {
         "properties": {
           "config": {
@@ -2308,6 +2505,59 @@
         "title": "GeocodeResult",
         "type": "object"
       },
+      "GeometryProfile": {
+        "properties": {
+          "bbox": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bbox"
+          },
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "types": {
+            "items": {
+              "$ref": "#/components/schemas/GeometryTypeCount"
+            },
+            "title": "Types",
+            "type": "array"
+          }
+        },
+        "required": [
+          "column",
+          "types"
+        ],
+        "title": "GeometryProfile",
+        "type": "object"
+      },
+      "GeometryTypeCount": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "count"
+        ],
+        "title": "GeometryTypeCount",
+        "type": "object"
+      },
       "GroupMemberRead": {
         "properties": {
           "email": {
@@ -2513,6 +2763,34 @@
           }
         },
         "title": "HarvestSourcePatch",
+        "type": "object"
+      },
+      "HistogramBin": {
+        "properties": {
+          "bucketEnd": {
+            "title": "Bucketend",
+            "type": "number"
+          },
+          "bucketIndex": {
+            "title": "Bucketindex",
+            "type": "integer"
+          },
+          "bucketStart": {
+            "title": "Bucketstart",
+            "type": "number"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bucketIndex",
+          "bucketStart",
+          "bucketEnd",
+          "count"
+        ],
+        "title": "HistogramBin",
         "type": "object"
       },
       "IngestionJobCreate": {
@@ -5303,6 +5581,24 @@
         "title": "Tileset3DPayload",
         "type": "object"
       },
+      "TopValue": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "count"
+        ],
+        "title": "TopValue",
+        "type": "object"
+      },
       "UnreadCount": {
         "properties": {
           "count": {
@@ -6612,7 +6908,7 @@
     },
     "/v1/collections/{collection_id}/export/jobs/{job_id}/cancel": {
       "post": {
-        "description": "D6 : annule un export asynchrone en attente ou en cours. M\u00eame autorisation\nque la lecture du statut (demandeur, ou `tasks.view_all` sous r\u00e9serve du\nmasquage) ; idempotent ; 409 si d\u00e9j\u00e0 termin\u00e9.",
+        "description": "D6 : annule un export asynchrone en attente ou en cours. M\u00eame autorisation\nque la lecture du statut, mais l'annulation reste r\u00e9serv\u00e9e au demandeur ou \u00e0\n`data.manage` (pas `tasks.view_all`) ; idempotent ; 409 si d\u00e9j\u00e0 termin\u00e9.",
         "operationId": "cancel_collection_export_job_v1_collections__collection_id__export_jobs__job_id__cancel_post",
         "parameters": [
           {
@@ -7404,6 +7700,72 @@
           }
         },
         "summary": "Read Attachment File"
+      }
+    },
+    "/v1/collections/{collection_id}/profile": {
+      "get": {
+        "description": "R\u00e9sum\u00e9 exploratoire (REV-117) : m\u00eames droits, m\u00eame masquage de colonnes\nsensibles et m\u00eames bornes DuckDB que POST /aggregate.",
+        "operationId": "profile_collection_v1_collections__collection_id__profile_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionProfileResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Profile Collection"
       }
     },
     "/v1/collections/{collection_id}/schema": {

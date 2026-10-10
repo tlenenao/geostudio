@@ -257,8 +257,8 @@ export interface paths {
         /**
          * Cancel Collection Export Job
          * @description D6 : annule un export asynchrone en attente ou en cours. Même autorisation
-         *     que la lecture du statut (demandeur, ou `tasks.view_all` sous réserve du
-         *     masquage) ; idempotent ; 409 si déjà terminé.
+         *     que la lecture du statut, mais l'annulation reste réservée au demandeur ou à
+         *     `data.manage` (pas `tasks.view_all`) ; idempotent ; 409 si déjà terminé.
          */
         post: operations["cancel_collection_export_job_v1_collections__collection_id__export_jobs__job_id__cancel_post"];
         delete?: never;
@@ -365,6 +365,27 @@ export interface paths {
         };
         /** Read Attachment File */
         get: operations["read_attachment_file_v1_collections__collection_id__items__fid__attachments__attachment_id__file_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Profile Collection
+         * @description Résumé exploratoire (REV-117) : mêmes droits, même masquage de colonnes
+         *     sensibles et mêmes bornes DuckDB que POST /aggregate.
+         */
+        get: operations["profile_collection_v1_collections__collection_id__profile_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2390,6 +2411,64 @@ export interface components {
             /** Version */
             version?: string | null;
         };
+        /**
+         * CollectionProfileResponse
+         * @description Contrat de GET /collections/{id}/profile. `asOf`/`pending` : mêmes
+         *     sémantiques que POST /aggregate (P25.10/11).
+         */
+        CollectionProfileResponse: {
+            /** Asof */
+            asOf?: string | null;
+            /** Columns */
+            columns: components["schemas"]["ColumnProfile"][];
+            geometry?: components["schemas"]["GeometryProfile"] | null;
+            /**
+             * Pending
+             * @default false
+             */
+            pending: boolean;
+            /** Rowcount */
+            rowCount: number;
+            /**
+             * Sampled
+             * @default false
+             */
+            sampled: boolean;
+            /**
+             * Truncatedcolumns
+             * @default false
+             */
+            truncatedColumns: boolean;
+        };
+        /** ColumnProfile */
+        ColumnProfile: {
+            /** Distinct */
+            distinct?: number | null;
+            /** Histogram */
+            histogram?: components["schemas"]["HistogramBin"][] | null;
+            /** Max */
+            max?: number | string | null;
+            /** Mean */
+            mean?: number | null;
+            /** Median */
+            median?: number | null;
+            /** Min */
+            min?: number | string | null;
+            /** Name */
+            name: string;
+            /** Nonnull */
+            nonNull: number;
+            /** Nulls */
+            nulls: number;
+            /** P25 */
+            p25?: number | null;
+            /** P75 */
+            p75?: number | null;
+            /** Topvalues */
+            topValues?: components["schemas"]["TopValue"][] | null;
+            /** Type */
+            type: string;
+        };
         /** ConfigRead */
         ConfigRead: {
             config: components["schemas"]["BuilderConfig"];
@@ -2718,6 +2797,22 @@ export interface components {
             /** Lon */
             lon: number;
         };
+        /** GeometryProfile */
+        GeometryProfile: {
+            /** Bbox */
+            bbox?: number[] | null;
+            /** Column */
+            column: string;
+            /** Types */
+            types: components["schemas"]["GeometryTypeCount"][];
+        };
+        /** GeometryTypeCount */
+        GeometryTypeCount: {
+            /** Count */
+            count: number;
+            /** Type */
+            type: string;
+        };
         /** GroupMemberRead */
         GroupMemberRead: {
             /** Email */
@@ -2786,6 +2881,17 @@ export interface components {
             mode?: ("reference" | "copy") | null;
             /** Url */
             url?: string | null;
+        };
+        /** HistogramBin */
+        HistogramBin: {
+            /** Bucketend */
+            bucketEnd: number;
+            /** Bucketindex */
+            bucketIndex: number;
+            /** Bucketstart */
+            bucketStart: number;
+            /** Count */
+            count: number;
         };
         /** IngestionJobCreate */
         IngestionJobCreate: {
@@ -3803,6 +3909,13 @@ export interface components {
             tilesetJsonPath: string;
             /** Totalbytes */
             totalBytes: number;
+        };
+        /** TopValue */
+        TopValue: {
+            /** Count */
+            count: number;
+            /** Value */
+            value: string;
         };
         /** UnreadCount */
         UnreadCount: {
@@ -4893,6 +5006,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    profile_collection_v1_collections__collection_id__profile_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+                "X-Share-Link-Token"?: string | null;
+            };
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionProfileResponse"];
                 };
             };
             /** @description Validation Error */

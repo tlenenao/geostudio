@@ -21,6 +21,18 @@ export function useCollectionSchema(collectionId: string, options?: { enabled?: 
   });
 }
 
+// REV-117 : profil exploratoire, déclenché à la demande (`enabled`) — le calcul
+// DuckDB est borné mais jamais gratuit, on ne le lance pas au montage de la page.
+export function useCollectionProfile(collectionId: string, options?: { enabled?: boolean }) {
+  const client = useItemClientInternal();
+  return useQuery({
+    queryKey: ["collection-profile", collectionId],
+    queryFn: () => client.getCollectionProfile(collectionId),
+    enabled: options?.enabled ?? true,
+    retry: false,
+  });
+}
+
 export function useCreateDataset() {
   const client = useItemClientInternal();
   const queryClient = useQueryClient();
