@@ -9,7 +9,10 @@ export const WORKER_STALLED_AFTER_S = 60;
 
 // t02-013 : état « traitement indisponible » d'un job en attente. S'appuie sur
 // `GET /health` (jobsBacklog) via ItemClient ; n'interroge le cœur que tant que
-// `active` (un job est réellement en attente). Un échec de sonde ne dit rien.
+// `active` (un job est réellement en attente). LIMITE : le backlog de `/health` est
+// global à toutes les files (aucune ventilation par file) ; un job `todo` d'une
+// autre file peut donc déclencher ce message à tort — d'où un libellé volontairement
+// hésitant (« peut-être »). À préciser si `/health` expose un jour le backlog par file. Un échec de sonde ne dit rien.
 export function WorkerStalledNotice({ active }: { active: boolean }) {
   const client = useItemClient();
   const [stalled, setStalled] = useState(false);

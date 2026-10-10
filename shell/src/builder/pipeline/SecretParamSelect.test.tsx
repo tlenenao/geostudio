@@ -366,3 +366,20 @@ test("le champ « bucket et préfixe » est relié à son aide par aria-describe
   const helpId = input.getAttribute("aria-describedby")!;
   expect(document.getElementById(helpId)).toHaveTextContent(t("secretParamSelect.bucketUrlHelp"));
 });
+
+test("un secret REST sans baseUrl est refusé avec une erreur de champ accessible (REV-294)", async () => {
+  const createSecret = vi.fn().mockResolvedValue({ id: "s9", name: "api", kind: "bearer_token" });
+  const { onChange } = renderSelect({ kindFilter: "bearer_token" }, { createSecret });
+  await userEvent.click(screen.getByText("Créer un secret"));
+  await userEvent.type(screen.getByLabelText("Nom"), "api");
+  await userEvent.type(screen.getByLabelText("Jeton"), "tok");
+  await userEvent.click(screen.getByText("Créer"));
+  const base = screen.getByLabelText("URL de base de l'API");
+  expect(base).toHaveAttribute("aria-invalid", "true");
+  expect(screen.getByRole("alert")).toHaveTextContent("L'URL de base est obligatoire");
+  expect(createSecret).not.toHaveBeenCalled();
+  await userEvent.type(base, "https://api.example.test/v1");
+  await userEvent.click(screen.getByText("Créer"));
+  await waitFor(() => expect(onChange).toHaveBeenCalledWith("api"));
+  expect(createSecret.mock.calls[0][0].payload.baseUrl).toBe("https://api.example.test/v1");
+});

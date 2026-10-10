@@ -287,6 +287,7 @@ export const automation = {
   "secretParamSelect.baseUrlPlaceholder": "https://api.example.com/v1",
   "secretParamSelect.baseUrlHelp":
     "Le secret n'est envoyé qu'à cette URL (et ses sous-chemins) : l'URL d'un lecteur REST doit en faire partie.",
+  "secretParamSelect.baseUrlRequired": "L'URL de base est obligatoire pour un secret d'API REST.",
   "secretParamSelect.useTlsLabel": "Chiffrer la connexion (TLS)",
   "secretParamSelect.useTlsHelp":
     "Décocher n'est accepté par le cœur que pour un serveur local (localhost).",

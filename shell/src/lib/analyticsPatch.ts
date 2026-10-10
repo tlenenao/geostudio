@@ -61,13 +61,18 @@ export function derivePatch(
   return patch;
 }
 
+/** Jumelle de `escape_in_value` (core/app/filter_values.py) : `\\` puis `\,`. */
+export function escapeInValue(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/,/g, "\\,");
+}
+
 function applyCrossFilterValue(
   patch: Record<string, unknown>,
   field: string,
   value: CrossFilterValue,
 ): void {
   if (Array.isArray(value)) {
-    patch[`${field}__in`] = value.join(",");
+    patch[`${field}__in`] = value.map((v) => escapeInValue(String(v))).join(",");
   } else if (typeof value === "object") {
     patch[`${field}__gte`] = value.from;
     patch[`${field}__lte`] = value.to;

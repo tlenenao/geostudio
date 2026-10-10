@@ -2,7 +2,7 @@
 import { expect, test } from "vitest";
 import type { AnalyticsContextState } from "../builder/AnalyticsContext";
 import type { DataSource, DatasetConfig } from "../api/types";
-import { derivePatch, withTimeRange } from "./analyticsPatch";
+import { derivePatch, escapeInValue, withTimeRange } from "./analyticsPatch";
 
 test("withTimeRange ajoute les bornes __gte/__lte au champ temporel (URL avec ou sans query)", () => {
   const range = { from: "2026-01-01", to: "2026-01-31" };
@@ -285,4 +285,40 @@ test("does not resolve a link declared on the same dataset as the target source 
   // dataset "ds-1" has no crossFilterLinks of its own here — this just proves the
   // direct same-dataset path (already tested above) and the link path don't double-fire.
   expect(derivePatch(source, ctx, { "ds-1": dataset })).toEqual({});
+});
+
+// Découpe équivalente à split_in_values du cœur (core/app/filter_values.py).
+function splitInValues(raw: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (ch === "\\") cur += raw[++i] ?? "\\";
+    else if (ch === ",") {
+      out.push(cur);
+      cur = "";
+    } else cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
+test("escapeInValue round-trips commas and backslashes with the core rule", () => {
+  expect(escapeInValue("Paris, France")).toBe("Paris\\, France");
+  expect(escapeInValue("a\\b")).toBe("a\\\\b");
+  const values = ["Paris, France", "a\\b", "x\\,y", "Nord"];
+  const joined = values.map(escapeInValue).join(",");
+  expect(splitInValues(joined)).toEqual(values);
+});
+
+test("cross-filter __in escapes values containing a comma", () => {
+  const ctx: AnalyticsContextState = {
+    ...EMPTY,
+    crossFilter: {
+      "ds-1": { field: "city", value: ["Paris, France", "Lyon"], originSourceId: "x" },
+    },
+  };
+  expect(derivePatch(source, ctx, { "ds-1": dataset })).toEqual({
+    city__in: "Paris\\, France,Lyon",
+  });
 });
