@@ -4,6 +4,7 @@ import { useItemClient } from "../../api/hooks";
 import type { ExportFormat, ExportJob } from "../../api/types";
 import { t } from "../../i18n";
 import { jobStatusLabel } from "../../lib/jobStatusLabel";
+import { WorkerStalledNotice } from "../../shell/WorkerStalledNotice";
 import { Button } from "../../ui/kit/Button";
 import { Panel } from "../../ui/kit/Panel";
 import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
@@ -134,6 +135,7 @@ export function ExportPanel({ itemId }: { itemId: string }) {
       <p role="status" className={job ? "text-sm text-ink-2" : "sr-only"}>
         {job ? t("exportPanel.statusLine", { status: jobStatusLabel(job.status) }) : ""}
       </p>
+      <WorkerStalledNotice active={job?.status === "pending"} />
       {job?.status === "done" && job.resultUrl && (
         <a href={job.resultUrl} download className="text-sm text-accent underline">
           {t("exportPanel.downloadExport")}

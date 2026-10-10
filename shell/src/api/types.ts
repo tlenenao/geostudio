@@ -224,6 +224,10 @@ export type InstanceStatus = {
   };
 };
 
+// t02-013 : `GET /health` (non authentifié) expose la file de jobs ; un worker
+// arrêté se lit à `oldestTodoAgeSeconds` qui grandit.
+export type JobsBacklog = { todo: number; oldestTodoAgeSeconds: number | null };
+
 export type AdminToolName = "martin" | "titiler" | "grafana";
 
 export type CopilotMessage = { role: "user" | "assistant"; content: string };
@@ -600,6 +604,7 @@ export interface ItemClient {
   ): Promise<HarvestSourceRecordsPage>;
   launchAdminTool(tool: AdminToolName): Promise<{ url: string }>;
   getInstanceStatus(): Promise<InstanceStatus>;
+  getJobsBacklog(): Promise<JobsBacklog | null>;
   getCollectionSharing(id: string): Promise<Sharing>;
   setCollectionSharing(id: string, sharing: Sharing): Promise<void>;
   createMapItem(input: { title: string; owner: string }): Promise<Item>;
