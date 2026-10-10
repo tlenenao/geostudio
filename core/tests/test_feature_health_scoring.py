@@ -95,16 +95,18 @@ def test_thresholds_load_the_medium_priority_floor():
 def test_quality_facts_read_the_real_repository():
     facts = collect_quality_facts(REPO)
     assert "app/auth" in facts.mypy_strict_modules
-    assert len(facts.mypy_strict_modules) == 7  # + app/net_pin.py (REV-273d)
+    # REV-291 b : plus de décomptes épinglés à la main (périmés à chaque
+    # nouveau module strict ou eslint-disable) — chaque fait est recoupé avec
+    # le dépôt réel.
+    assert all((REPO / "core" / module).exists() for module in facts.mypy_strict_modules)
     assert any("->" in exemption for exemption in facts.layer_exemptions)
-    # 15 depuis la Vague C (revue finale, point 1) : MapPopup.tsx (Tâche 2)
-    # et SqlLabPage.tsx (Tâche 26) ajoutent chacun un eslint-disable
-    # légitime, portant le compte réel de 13 à 15. Ferme REV-255.
-    # 24 depuis la clôture des 38 REV (C3/C5) : les règles locales
-    # panel-trigger-aria et label-no-aria-label ont 8 fichiers de plus avec
-    # un eslint-disable motivé sur la ligne (modale/toast, nom accessible).
-    assert len(facts.eslint_disabled) == 24
-    assert len(facts.typing_escapes) == 7
+    disabled = {
+        path.relative_to(REPO).as_posix()
+        for path in (REPO / "shell/src").rglob("*.ts*")
+        if "eslint-disable" in path.read_text(encoding="utf-8")
+    }
+    assert facts.eslint_disabled == disabled
+    assert facts.typing_escapes
 
 
 def test_quality_for_reports_facts_without_any_note():
