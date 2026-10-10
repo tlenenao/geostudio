@@ -125,13 +125,13 @@ test.describe("j10b bundles exportés ouverts dans un navigateur", () => {
       expect(conn.coreUrl).toBe(base);
       const cfg = await (await fetch(`${base}/geostudio-app-config.json`)).json();
       expect(cfg.dataSources[0].layer).toBe(col.id);
-      const agg = await fetch(`${base}/collections/${col.id}/aggregate`, {
+      const agg = await fetch(`${base}/v1/collections/${col.id}/aggregate`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ aggregates: [{ fn: "count", as: "n" }] }),
       });
       expect((await agg.json()).rows[0].value).toBe(2);
-      const w = await fetch(`${base}/collections/${col.id}/items`, {
+      const w = await fetch(`${base}/v1/collections/${col.id}/items`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: "{}",
@@ -140,10 +140,10 @@ test.describe("j10b bundles exportés ouverts dans un navigateur", () => {
     });
   });
 
-  // FINDINGS j10b-010 (routes sans /v1 : le client du shell appelle /v1/...) et
+  // Anciens FINDINGS, corrigés (d2669e87, b5e9bddf) : j10b-010 (routes sans /v1 : le client du shell appelle /v1/...) et
   // j10b-011 (le mini-serveur interroge la colonne « geom », le parquet écrit
   // « geometry » : GET .../items = 500). Runtime courant = volume appexport-runtime.
-  bug("j10b-010 : l'app autoportée affiche ses données dans le navigateur", async ({ page }) => {
+  test("j10b-010 : l'app autoportée affiche ses données dans le navigateur", async ({ page }) => {
     const col = await makeCollection(creator, `${tag}-ui6`, { pub: true, rows: 2 });
     const id = await createApp(creator, `${tag}-ui-sa2`, tableApp(col.id, ["nom"]));
     const run = await runExport(creator, id, "standalone");
@@ -153,12 +153,12 @@ test.describe("j10b bundles exportés ouverts dans un navigateur", () => {
     });
   });
 
-  bug("j10b-011 : GET /collections/{id}/items du mini-serveur répond 200", async () => {
+  test("j10b-011 : GET /v1/collections/{id}/items du mini-serveur répond 200", async () => {
     const col = await makeCollection(creator, `${tag}-ui7`, { pub: true, rows: 2 });
     const id = await createApp(creator, `${tag}-ui-sa3`, tableApp(col.id, ["nom"]));
     const run = await runExport(creator, id, "standalone");
     await withStandalone(run.dir!, 8394, async (base) => {
-      expect((await fetch(`${base}/collections/${col.id}/items`)).status).toBe(200);
+      expect((await fetch(`${base}/v1/collections/${col.id}/items`)).status).toBe(200);
     });
   });
 });

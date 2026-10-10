@@ -53,6 +53,9 @@ test.describe("j03 import par le tiroir « Importer un fichier »", () => {
     page,
   }) => {
     await asCreator(page);
+    // Le présigné fonctionne désormais (S3_PUBLIC_ENDPOINT_URL posé, j03-002 corrigé) : on provoque
+    // l'échec de l'envoi en coupant le PUT vers MinIO.
+    await page.route(/:9000\//, (route) => route.abort());
     await page.getByRole("button", { name: "Importer un fichier" }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
@@ -62,7 +65,7 @@ test.describe("j03 import par le tiroir « Importer un fichier »", () => {
     await expect(dialog.getByRole("alert")).toHaveCount(0);
     await dialog.getByLabel("Titre de la collection").fill("aud-j03 import ui");
     await dialog.getByRole("button", { name: "Importer", exact: true }).click();
-    // Chemin actuel : le présigné répond 500 (j03-002) → message générique, pas de boucle infinie.
+    // Envoi coupé → message générique, pas de boucle infinie.
     await expect(dialog.getByRole("alert")).toContainText("Échec de l'envoi du fichier.", {
       timeout: 20_000,
     });
