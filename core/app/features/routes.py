@@ -811,6 +811,12 @@ def put_feature(
                 properties=payload.get("properties") or {},
                 geometry=payload.get("geometry"),
             )
+    except IntegrityError as exc:
+        # Même réponse qu'à la création : une collision avec une ligne cachée par une
+        # limite géographique est indiscernable d'une collision avec une ligne visible.
+        raise HTTPException(
+            status_code=409, detail="feature conflicts with an existing row"
+        ) from exc
     except DBAPIError as exc:
         _raise_if_outside_geo_limit(exc)
         raise

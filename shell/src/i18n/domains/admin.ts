@@ -297,7 +297,9 @@ export const admin = {
   // GeoLimitsSection (limite géographique de lecture par groupe)
   "geoLimits.title": "Limite géographique de lecture",
   "geoLimits.help":
-    "Un groupe limité ne voit et n'écrit que les entités contenues dans le polygone (GeoJSON, WGS84). Les agrégats, pièces jointes et exports sont refusés pour lui sur cette collection.",
+    "Un groupe limité voit les entités qui touchent le polygone (GeoJSON, WGS84), mais leur géométrie est découpée : seule la partie située dans le polygone lui est transmise. Il n'écrit que des entités entièrement contenues dans le polygone ; une entité à cheval sur la limite n'est modifiable qu'en attributs (sa géométrie est conservée) et ne peut pas être supprimée par lui. Les agrégats, pièces jointes et exports sont refusés pour lui sur cette collection.",
+  "geoLimits.adminExempt":
+    "Les administrateurs (privilège de gestion des collections) ne sont jamais limités : un rôle portant ce privilège ne peut pas recevoir de limite.",
   "geoLimits.none": "Aucune limite définie.",
   "geoLimits.groupLabel": "Groupe",
   "geoLimits.geometryLabel": "Polygone GeoJSON (Polygon ou MultiPolygon)",

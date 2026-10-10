@@ -106,6 +106,9 @@ test("rejects an invalid JSON polygon client-side", async () => {
     </Harness>,
   );
   await screen.findByText("Aucune limite définie.");
+  // découpage et exemption administrateur annoncés
+  expect(screen.getByText(/leur géométrie est découpée/)).toBeInTheDocument();
+  expect(screen.getByText(/ne sont jamais limités/)).toBeInTheDocument();
   await user.selectOptions(screen.getByLabelText("Groupe"), "g1");
   await user.click(screen.getByLabelText(/Polygone GeoJSON/));
   await user.paste("{pas du json");

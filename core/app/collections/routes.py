@@ -229,6 +229,7 @@ def get_extent_provider(geo_limits=Depends(get_request_geo_limits)):
         try:
             return table_extent(session, info)
         finally:
+            session.info.pop("geo_limits", None)  # cf. app.features.rls.rls_scope
             try:
                 session.execute(_text("RESET ROLE"))
             except DBAPIError as exc:

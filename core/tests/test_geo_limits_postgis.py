@@ -165,10 +165,10 @@ def test_policy_is_idempotent_and_installed_by_apply_ddl(pts, pg_session_factory
         n = s.execute(
             text(
                 "SELECT count(*) FROM pg_policies "
-                "WHERE tablename='gl_pts' AND policyname='geo_limit'"
+                "WHERE tablename='gl_pts' AND policyname LIKE 'geo_limit_%'"
             )
         ).scalar()
-        assert n == 1
+        assert n == 4  # select/insert/update/delete ; la policy unique de la v1 a disparu
         assert _names(s, geo_limits={"gl_pts": [SQUARE]}) == ["edge", "in"]
 
 

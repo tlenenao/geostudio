@@ -96,6 +96,14 @@ def put_geo_limit(
 ):
     col = _admin_collection(session, user, collection_id)
     _require_target(session, user.tenant_id, target_type, target_id)
+    if target_type == "role":
+        role = session.get(Role, target_id)
+        if role is not None and Privilege.ADMIN_COLLECTIONS_MANAGE.value in role.privileges:
+            raise HTTPException(
+                status_code=422,
+                detail="a role holding admin.collections.manage is never geo-limited "
+                "(administrator exemption)",
+            )
     try:
         geometry = geo.validate_limit_geometry(body.geometry)
     except geo.InvalidGeoLimit as exc:

@@ -41,6 +41,7 @@ export function GeoLimitsSection({ collectionId }: { collectionId: string }) {
     <section aria-label={t("geoLimits.title")} className="flex flex-col gap-2">
       <h3 className="text-sm font-semibold text-ink">{t("geoLimits.title")}</h3>
       <p className="text-xs text-ink-muted">{t("geoLimits.help")}</p>
+      <p className="text-xs text-ink-muted">{t("geoLimits.adminExempt")}</p>
       {limitsQuery.data.length === 0 ? (
         <p className="text-sm text-ink-muted">{t("geoLimits.none")}</p>
       ) : (
