@@ -278,6 +278,9 @@ export type UpdatePatch = {
   slug?: string;
   license?: string;
   language?: string;
+  // REV-317 : `updatedAt` lu par l'éditeur ; envoyé en `If-Match` (jamais dans
+  // le corps) -> 412 si l'item a changé depuis.
+  baseUpdatedAt?: string;
 };
 
 // canManage : l'appelant est créateur du groupe ou administrateur des

@@ -6635,6 +6635,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "if-match"?: string | null;
                 authorization?: string;
             };
             path: {

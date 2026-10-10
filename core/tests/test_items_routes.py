@@ -308,6 +308,29 @@ def test_updated_at_changes_after_edit_but_date_stays_the_creation_date(client):
     assert after["updatedAt"] != before["updatedAt"]
 
 
+def test_patch_item_if_match_stale_returns_412_fresh_passes(client):
+    # REV-317 : `updatedAt` sert d'ETag ; version périmée -> 412, courante -> 200.
+    import time
+
+    item_id = _seed_item(client)
+    first = client.get(f"/v1/items/{item_id}").json()["updatedAt"]
+    time.sleep(1.1)
+    ok = client.patch(
+        f"/v1/items/{item_id}", json={"title": "A"}, headers={"If-Match": f'"{first}"'}
+    )
+    assert ok.status_code == 200
+    stale = client.patch(
+        f"/v1/items/{item_id}", json={"title": "B"}, headers={"If-Match": f'"{first}"'}
+    )
+    assert stale.status_code == 412
+    assert client.get(f"/v1/items/{item_id}").json()["title"] == "A"
+    fresh = ok.json()["updatedAt"]
+    resp = client.patch(
+        f"/v1/items/{item_id}", json={"title": "C"}, headers={"If-Match": f'"{fresh}"'}
+    )
+    assert resp.status_code == 200
+
+
 def test_get_item_defaults_license_and_language(client):
     item_id = _seed_item(client)
     body = client.get(f"/v1/items/{item_id}").json()

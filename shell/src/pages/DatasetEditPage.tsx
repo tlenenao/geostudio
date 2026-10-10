@@ -207,6 +207,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
               <PageTitle>{t("datasetEdit.heading", { title: item.title })}</PageTitle>
               <MetadataForm
+                key={item.updatedAt}
                 initial={{
                   title: item.title,
                   abstract: item.abstract,
@@ -216,10 +217,18 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                 }}
                 licenses={catalogQuery.data?.licenses ?? []}
                 languages={catalogQuery.data?.languages ?? []}
-                onSubmit={(v) => updateItem.mutate(v)}
+                onSubmit={(v) => updateItem.mutate({ ...v, baseUpdatedAt: item.updatedAt })}
                 onCancel={() => {}}
                 pending={updateItem.isPending}
               />
+              {isConflictError(updateItem.error) && (
+                <SaveConflictNotice
+                  onReload={() => {
+                    updateItem.reset();
+                    void itemQuery.refetch();
+                  }}
+                />
+              )}
               <div>
                 <p className="mb-1 text-xs font-medium text-ink-2">
                   {t("datasetEdit.columnsLabel")}

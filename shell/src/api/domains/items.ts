@@ -168,7 +168,14 @@ export function createItemsMethods(base: ItemClientBase): ItemsMethods {
     },
 
     async updateItem(pk: string, patch: UpdatePatch): Promise<Item> {
-      return request<Item>("PATCH", `/items/${pk}`, patch);
+      const { baseUpdatedAt, ...body } = patch;
+      return request<Item>(
+        "PATCH",
+        `/items/${pk}`,
+        body,
+        undefined,
+        baseUpdatedAt ? { "If-Match": `"${baseUpdatedAt}"` } : undefined,
+      );
     },
 
     async uploadThumbnail(pk: string, file: File): Promise<void> {
