@@ -7,6 +7,7 @@ from sqlalchemy import case, func, select, update
 from sqlalchemy.orm import Session, aliased
 
 from app.configs import repository as configs_repo
+from app.configs.models import Config, ConfigRevision
 from app.pipelines.models import PipelineRun, PipelineWebhookToken
 
 
@@ -277,14 +278,30 @@ def append_node_stat(
     session.flush()
 
 
-def list_due_pipelines(session: Session) -> list[tuple[str, str]]:
+def _config_anchor_by_item(session: Session, item_ids: list[str]) -> dict[str, datetime]:
+    """Date d'écriture de la révision courante de la config de chaque pipeline."""
+    if not item_ids:
+        return {}
+    rows = session.execute(
+        select(Config.item_id, ConfigRevision.created_at)
+        .join(
+            ConfigRevision,
+            (ConfigRevision.config_id == Config.id)
+            & (ConfigRevision.version == Config.current_version),
+        )
+        .where(Config.item_id.in_(item_ids))
+    ).all()
+    return {item_id: created_at for item_id, created_at in rows}
+
+
+def list_due_pipelines(session: Session, *, now: datetime | None = None) -> list[tuple[str, str]]:
     """Balayage cross-tenant des pipelines planifiés dus, consommé par
     run_pipeline_sweep_task (app.pipelines.jobs, SP-15h). "Dernier run"
     dérivé de pipeline_runs (jamais une colonne dupliquée) ; garde de
     concurrence par âge identique à app.harvest.repository.list_due_sources
     (_RUNNING_RECLAIM_MINUTES) — un run resté "running"/"queued" plus vieux
     que ce délai est présumé planté et redevient éligible."""
-    now = datetime.now(UTC)
+    now = now or datetime.now(UTC)
     due: list[tuple[str, str]] = []
     candidates = [
         (item_id, tenant_id, config)
@@ -296,11 +313,20 @@ def list_due_pipelines(session: Session) -> list[tuple[str, str]]:
         and config.pipeline.refreshPolicy.enabled
     ]
     latest_by_item = get_latest_runs_for_items(session, item_ids=[c[0] for c in candidates])
+    # REV-312 : sans run antérieur, le curseur est la création/activation de la
+    # config (révision courante) — un cron annuel n'est pas dû au 1er balayage.
+    config_anchor = _config_anchor_by_item(session, [c[0] for c in candidates])
     for item_id, tenant_id, config in candidates:
         payload = config.pipeline
         policy = payload.refreshPolicy
         latest = latest_by_item.get(item_id)
         if latest is None:
+            anchor = config_anchor.get(item_id)
+            if anchor is not None:
+                if anchor.tzinfo is None:
+                    anchor = anchor.replace(tzinfo=UTC)
+                if croniter.croniter(policy.cron, anchor).get_next(datetime) > now:
+                    continue
             due.append((item_id, tenant_id))
             continue
         created_at = latest.created_at
