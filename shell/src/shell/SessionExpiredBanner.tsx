@@ -14,7 +14,11 @@ const is401 = (e: unknown) => e instanceof ApiError && e.status === 401;
 // pas de boucle si le 401 persiste après reconnexion. Levée au premier succès.
 export function SessionExpiredBanner() {
   const queryClient = useQueryClient();
-  const { signIn } = useAuth();
+  const { signIn, isAuthenticated } = useAuth();
+  // Un visiteur anonyme d'une route publique n'a pas de session à « expirer » : le 401 d'un
+  // appel réservé aux connectés (cloche, /me) ne doit pas afficher la bannière.
+  const wasAuthenticated = useRef(false);
+  if (isAuthenticated) wasAuthenticated.current = true;
   const [expired, setExpired] = useState(false);
   const failed401 = useRef(new Set<string>());
 
@@ -43,7 +47,7 @@ export function SessionExpiredBanner() {
     };
   }, [queryClient]);
 
-  if (!expired) return null;
+  if (!expired || !wasAuthenticated.current) return null;
   return (
     <div
       role="alert"

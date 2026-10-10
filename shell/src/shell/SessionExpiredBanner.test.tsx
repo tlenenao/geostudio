@@ -6,7 +6,8 @@ import { ApiError } from "../api/ApiError";
 import { SessionExpiredBanner } from "./SessionExpiredBanner";
 
 const signIn = vi.fn();
-vi.mock("../auth/useAuth", () => ({ useAuth: () => ({ signIn }) }));
+let isAuthenticated = true;
+vi.mock("../auth/useAuth", () => ({ useAuth: () => ({ signIn, isAuthenticated }) }));
 
 function setup() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -57,4 +58,16 @@ test("une erreur non 401 n'affiche rien", async () => {
       .catch(() => {});
   });
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
+test("un visiteur anonyme (jamais connecté) ne voit pas la bannière sur un 401", async () => {
+  isAuthenticated = false;
+  const qc = setup();
+  await act(async () => {
+    await qc
+      .fetchQuery({ queryKey: ["a"], queryFn: () => Promise.reject(new ApiError(401)) })
+      .catch(() => {});
+  });
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  isAuthenticated = true;
 });
