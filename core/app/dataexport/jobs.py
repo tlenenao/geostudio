@@ -150,8 +150,9 @@ def run_collection_export(job_id: str, tenant_id: str) -> None:
     except Exception as exc:
         logger.exception("collection export job %s : échec", job_id)
         with request_scoped_session(factory) as session:
-            repo.mark_failed(session, job_id, str(exc))
-        _notify(factory, job, title=title, status="failure", error=str(exc))
+            failed = repo.mark_failed(session, job_id, str(exc))
+        if failed:  # sinon annulé par le demandeur : pas de notification d'échec
+            _notify(factory, job, title=title, status="failure", error=str(exc))
         return
     _notify(factory, job, title=title, status="success")
 
