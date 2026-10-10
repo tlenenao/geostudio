@@ -78,6 +78,17 @@ def ensure_uploads_bucket(client, bucket: str, *, expire_days: int | None = None
             logger.warning("cycle de vie non posé sur %s", bucket, exc_info=True)
 
 
+def require_public_s3_endpoint() -> None:
+    """REV-315 : hors CORE_ENV=development, S3_PUBLIC_ENDPOINT_URL vide signerait
+    des liens vers http://minio:9000, injoignable du navigateur — échec au démarrage."""
+    if os.environ.get("CORE_ENV") != "development" and not os.environ.get("S3_PUBLIC_ENDPOINT_URL"):
+        raise RuntimeError(
+            "S3_PUBLIC_ENDPOINT_URL est vide : les liens présignés pointeraient sur l'hôte "
+            "interne (minio:9000). Renseignez l'URL publique du stockage (cf. .env.example) "
+            "ou CORE_ENV=development."
+        )
+
+
 def _signing_client(client):
     """Client dont l'hôte est celui que voit le destinataire du lien.
 

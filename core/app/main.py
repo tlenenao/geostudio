@@ -51,6 +51,7 @@ from app.geocoding import routes as geocoding_routes
 from app.harvest import dataset_validation as harvest_dataset_validation  # noqa: F401
 from app.harvest import routes as harvest_routes
 from app.ingestion import routes as ingestion_routes
+from app.ingestion.storage import require_public_s3_endpoint
 from app.instance import routes as instance_routes
 from app.items import routes as items_routes
 from app.jobs import open_sync_defer
@@ -135,6 +136,7 @@ def create_app() -> FastAPI:
     observability.setup()
     secrets_crypto.load_master_key()  # échec rapide si absente/mal formée (design SP-15e §4/§8)
     reject_mock_outside_development()  # échec rapide si mock hors dev (design SP-26 §3.1)
+    require_public_s3_endpoint()  # REV-315 : liens présignés injoignables sinon
     reject_admin_tools_without_secret()  # échec rapide si gate admin sans secret
     database_url = os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:")
     engine = make_engine(database_url)
