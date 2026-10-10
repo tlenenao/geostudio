@@ -399,6 +399,12 @@ export const admin = {
     "L'import est toujours en cours après 10 minutes ; il continue en arrière-plan, la cloche vous notifiera.",
   "importFile.slow":
     "L'import prend plus de temps que prévu ; il continue en arrière-plan, vous pouvez fermer ce tiroir (la cloche vous notifiera).",
+  "importFile.cancel": "Annuler l'import",
+  "importFile.cancelled": "Import annulé.",
+  "importFile.cancelRequested":
+    "Annulation demandée : un import déjà commencé va s'achever avant de s'arrêter.",
+  "importFile.cancelTooLate": "L'import est déjà terminé : il ne peut plus être annulé.",
+  "importFile.cancelFailed": "Impossible d'annuler l'import.",
   "importFile.latColumn": "Colonne latitude",
   "importFile.lonColumn": "Colonne longitude",
   "importFile.continueButton": "Continuer",

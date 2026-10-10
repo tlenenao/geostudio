@@ -477,6 +477,12 @@ export function createDesktopItemClient(connection: {
     async getIngestionJob(..._args: unknown[]) {
       return unsupported();
     },
+    async cancelIngestionJob(..._args: unknown[]) {
+      return unsupported();
+    },
+    async cancelExportJob(..._args: unknown[]) {
+      return unsupported();
+    },
     async createExport(..._args: unknown[]) {
       return unsupported();
     },
