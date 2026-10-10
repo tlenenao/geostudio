@@ -23,6 +23,7 @@ import { labelCls, inputCls } from "./formFieldStyles";
 import { Button } from "../ui/kit/Button";
 import { t } from "../i18n";
 import { formatDateTime, formatNumber } from "../lib/format";
+import "../i18n/domains/map";
 
 const PALETTE_OPTIONS: { id: Exclude<PaletteId, "theme-primary">; label: string }[] = [
   { id: "categorical-a", label: t("fieldClassification.categoricalAOption") },

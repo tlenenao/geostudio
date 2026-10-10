@@ -4,6 +4,7 @@ import type { DataSource } from "../api/types";
 import { t } from "../i18n";
 import { useAddDataSource } from "./DataSourcesEditContext";
 import { useSourceLabel } from "./useSourceLabel";
+import "../i18n/domains/widgets";
 
 export function DataSourceSelect({
   value,

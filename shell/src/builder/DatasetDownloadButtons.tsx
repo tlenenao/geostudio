@@ -10,6 +10,7 @@ import {
   geojsonTruncated,
 } from "../lib/datasetDownload";
 import { t } from "../i18n";
+import "../i18n/domains/admin";
 
 // Tokens sémantiques --gs-* globaux (tokens.css, importé sans condition
 // par index.css) — pas les variables --gs-color-* propres au Theme d'une

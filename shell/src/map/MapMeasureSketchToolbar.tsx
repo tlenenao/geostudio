@@ -11,6 +11,7 @@ import {
   type SketchShape,
 } from "./measureSketch";
 import { t } from "../i18n";
+import "../i18n/domains/map";
 
 export type ToolbarMode = "idle" | "measure-distance" | "measure-area" | "sketch";
 

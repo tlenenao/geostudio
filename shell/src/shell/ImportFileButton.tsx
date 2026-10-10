@@ -9,6 +9,8 @@ import { Input } from "../ui/kit/Input";
 import { Drawer } from "../ui/kit/Drawer";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { plural, t } from "../i18n";
+import "../i18n/domains/admin";
+import "../i18n/domains/misc";
 
 type Phase = "form" | "uploading" | "selecting-layer" | "selecting-geometry" | "polling" | "error";
 type LayerInfo = { name: string; featureCount: number; geometryType: string };

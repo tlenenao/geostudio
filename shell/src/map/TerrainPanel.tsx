@@ -4,6 +4,7 @@ import type { MapTerrainConfig } from "../api/types";
 import { useInstanceInfo, useItemClient } from "../api/hooks";
 import { Terrain3DUploadButton } from "./Terrain3DUploadButton";
 import { t } from "../i18n";
+import "../i18n/domains/map";
 
 export function TerrainPanel({
   value,

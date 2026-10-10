@@ -47,6 +47,8 @@ import {
 import { t } from "../i18n";
 import { LoadingState } from "../ui/kit/LoadingState";
 import { PageTitle } from "../ui/kit/PageTitle";
+import "../i18n/domains/admin";
+import "../i18n/domains/misc";
 
 const WIDTHS = [390, 768, 1280];
 

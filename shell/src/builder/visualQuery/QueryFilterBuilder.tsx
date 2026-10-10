@@ -3,6 +3,7 @@ import type { CollectionSchema } from "../../api/types";
 import { FilterOperator, FilterRow } from "./compileFilter";
 import { t } from "../../i18n";
 import { Button } from "../../ui/kit/Button";
+import "../../i18n/domains/automation";
 
 const OPERATOR_LABELS: Record<FilterOperator, string> = {
   eq: t("queryFilterBuilder.operatorEq"),

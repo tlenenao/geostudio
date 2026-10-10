@@ -3,6 +3,7 @@ import type { DataSource } from "../../api/types";
 import { DataSourceSelect } from "../DataSourceSelect";
 import type { WcWidgetManifest } from "./manifest";
 import { t } from "../../i18n";
+import "../../i18n/domains/widgets";
 
 // Filtre d'autorat, pas une frontière de sécurité : n'affecte que les sources
 // proposées dans ce panneau. Le module WC arbitraire chargé par l'extension

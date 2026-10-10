@@ -12,6 +12,7 @@ import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { plural, t } from "../i18n";
 import { formatBytes } from "../lib/format";
 import { PageTitle } from "../ui/kit/PageTitle";
+import "../i18n/domains/admin";
 
 const PROTECTED_TOOLS: { tool: AdminToolName; label: string }[] = [
   { tool: "martin", label: "Martin" },

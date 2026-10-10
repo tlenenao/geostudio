@@ -11,6 +11,7 @@ import {
   type MapPaintResult,
 } from "../builder/widgets/mapSymbology";
 import { t } from "../i18n";
+import "../i18n/domains/map";
 
 export const HIGHLIGHT_ID = "__highlight__";
 

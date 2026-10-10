@@ -15,6 +15,7 @@ import { Button } from "../../ui/kit/Button";
 import { Panel } from "../../ui/kit/Panel";
 import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
 import { collectWidgetTypes, WRITE_CAPABLE_WIDGET_TYPES } from "./collectWidgetTypes";
+import "../../i18n/domains/widgets";
 
 const POLL_INTERVAL_MS = 1500;
 const MAX_POLL_ATTEMPTS = 200;

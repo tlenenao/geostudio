@@ -8,6 +8,7 @@ import { Dialog } from "../ui/kit/Dialog";
 import { t } from "../i18n";
 import { useReferencedCollectionIds } from "./referencedCollections";
 import { LoadingState } from "../ui/kit/LoadingState";
+import "../i18n/domains/misc";
 
 // j03-012 : publier une carte/app ne publie pas les collections qu'elle lit —
 // un anonyme verrait la config mais des données vides. Le dialogue liste les

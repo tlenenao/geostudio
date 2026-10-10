@@ -33,6 +33,7 @@ import { genEdgeId, hasIncomingEdge, topologicalOrder, wouldCreateCycle } from "
 import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
 import { plural, t } from "../../i18n";
 import { jobStatusLabel } from "../../lib/jobStatusLabel";
+import "../../i18n/domains/automation";
 
 // SP-B12c : pas de token catégoriel à 3 valeurs dans tokens.css — ok/warn/
 // accent réutilisés ici pour leur distinction visuelle (vert/ambre/teal),

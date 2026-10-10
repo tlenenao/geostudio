@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from "vitest";
-import { fr } from "./catalog.fr";
+import { allMessages as fr } from "./domains/all";
 
 // Miroir de PRIVILEGE_METADATA (core/app/roles/privileges.py) — même patron
 // de duplication assumée que BUILT_IN_ROLE_PRIVILEGES/CREATOR_ME (cf. SP-47

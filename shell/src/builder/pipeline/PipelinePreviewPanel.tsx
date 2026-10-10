@@ -9,6 +9,7 @@ import { DataTable } from "../../ui/kit/DataTable";
 import { LoadingState } from "../../ui/kit/LoadingState";
 import { PipelinePreviewMap } from "./PipelinePreviewMap";
 import { formatDateTime } from "../../lib/format";
+import "../../i18n/domains/automation";
 
 const PAGE_SIZE = 20;
 

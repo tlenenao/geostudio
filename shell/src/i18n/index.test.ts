@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from "vitest";
 import { plural, resolveMessageKey, t } from "./index";
-import { fr } from "./catalog.fr";
+import { allMessages as fr } from "./domains/all";
 
 describe("t", () => {
   it("rend le message du catalogue", () => {

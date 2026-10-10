@@ -12,6 +12,7 @@ import { createDesktopItemClient } from "./DesktopItemClient";
 import { DesktopApp } from "./DesktopApp";
 import "../index.css";
 import { t } from "../i18n";
+import "../i18n/domains/misc";
 
 enableMockAuth();
 const queryClient = new QueryClient();

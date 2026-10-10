@@ -7,6 +7,7 @@ import { useCallback, useEffect } from "react";
 import { useBlocker, type BlockerFunction } from "react-router-dom";
 import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
 import { t } from "../i18n";
+import "../i18n/domains/widgets";
 
 export function useDirtyGuard(isDirty: boolean) {
   // P09.06 : fermeture d'onglet / rechargement / navigation hors SPA — useBlocker

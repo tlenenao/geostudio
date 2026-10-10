@@ -29,6 +29,8 @@ import { useDirtyGuard } from "../lib/useDirtyGuard";
 import { t } from "../i18n";
 import { saveExportedFile } from "../api/saveExportedFile";
 import { PageTitle } from "../ui/kit/PageTitle";
+import "../i18n/domains/admin";
+import "../i18n/domains/misc";
 
 export function DatasetEditPage({ pk }: { pk: string }) {
   const itemQuery = useItem(pk);

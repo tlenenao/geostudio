@@ -5,6 +5,7 @@ import type { SecretPayload } from "../../api/types";
 import { t } from "../../i18n";
 import { ConfirmDialog } from "../../ui/kit/ConfirmDialog";
 import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
+import "../../i18n/domains/automation";
 
 // Filtre d'affichage : ne montre jamais le payload déchiffré (le cœur ne le
 // retourne de toute façon jamais, ConnectorSecretOut = {id,name,kind,

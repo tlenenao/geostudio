@@ -7,6 +7,8 @@ import { Input } from "../ui/kit/Input";
 import { Checkbox } from "../ui/kit/Checkbox";
 import { resolveMessageKey, t } from "../i18n";
 import type { MessageKey } from "../i18n";
+import "../i18n/domains/admin";
+import "../i18n/domains/misc";
 
 export function EditRolePanel({ role, onClose }: { role: Role; onClose: () => void }) {
   const updateRole = useUpdateRole(role.id);

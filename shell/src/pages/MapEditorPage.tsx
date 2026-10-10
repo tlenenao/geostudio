@@ -34,6 +34,8 @@ import { useUrlSyncedState } from "../lib/useUrlSyncedState";
 import { t } from "../i18n";
 import { LoadingState } from "../ui/kit/LoadingState";
 import { QueryErrorState } from "../ui/kit/QueryErrorState";
+import "../i18n/domains/map";
+import "../i18n/domains/misc";
 
 const MAP_TABS = ["layers", "map", "settings"];
 

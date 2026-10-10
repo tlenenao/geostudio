@@ -10,6 +10,7 @@ import { PublicNotFound } from "./PublicNotFound";
 import { useDocumentMeta } from "../shell/useDocumentMeta";
 import { LoadingState } from "../ui/kit/LoadingState";
 import { PageTitle } from "../ui/kit/PageTitle";
+import "../i18n/domains/admin";
 
 registerBuiltinWidgets();
 

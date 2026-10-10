@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
 import { t } from "../../i18n";
+import "../../i18n/domains/map";
 
 export const MAX_THUMBNAIL_BYTES = 2 * 1024 * 1024;
 

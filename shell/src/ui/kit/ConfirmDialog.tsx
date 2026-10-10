@@ -2,6 +2,7 @@
 import { Button } from "./Button";
 import { Dialog } from "./Dialog";
 import { t } from "../../i18n";
+import "../../i18n/domains/misc";
 
 export function ConfirmDialog({
   open,

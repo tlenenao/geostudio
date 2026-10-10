@@ -20,6 +20,7 @@ import { Button } from "../ui/kit/Button";
 import { ANALYTICS_AGGREGATES, aggregateNeedsP, DEFAULT_PERCENTILE } from "./aggregates";
 import { PercentileInput } from "./PercentileInput";
 import { formatDateTime } from "../lib/format";
+import "../i18n/domains/automation";
 
 // GET /alerts/{id}/evaluations pagine déjà côté cœur (limit/offset, SP-50)
 // mais cette ligne tronquait silencieusement l'historique à la limite par

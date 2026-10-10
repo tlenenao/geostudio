@@ -12,6 +12,7 @@ import type { WidgetContext } from "../registry";
 import { plural, t } from "../../i18n";
 import { ConfirmDialog } from "../../ui/kit/ConfirmDialog";
 import { LoadingState } from "../../ui/kit/LoadingState";
+import "../../i18n/domains/widgets";
 
 export type FormField = {
   name: string;

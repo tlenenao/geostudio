@@ -5,6 +5,7 @@ import { PercentileInput } from "../PercentileInput";
 import { MetricConfig, MetricFunction, SummaryConfig } from "./inferSchema";
 import { t } from "../../i18n";
 import { Button } from "../../ui/kit/Button";
+import "../../i18n/domains/automation";
 
 const FUNCTION_LABELS: Record<MetricFunction, string> = {
   count: t("querySummaryBuilder.functionCount"),

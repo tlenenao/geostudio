@@ -6,6 +6,7 @@ import type { PipelineNodeKind } from "../../api/types";
 import { Input } from "../../ui/kit/Input";
 import { t } from "../../i18n";
 import { useRecentPipelineOps } from "./useRecentPipelineOps";
+import "../../i18n/domains/automation";
 
 export const PIPELINE_OP_DND_TYPE = "application/x-geostudio-pipeline-op";
 export const PIPELINE_PALETTE_SEARCH_ID = "pipeline-palette-search";

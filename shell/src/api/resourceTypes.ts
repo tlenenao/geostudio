@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { t } from "../i18n";
 import type { ResourceType } from "./types";
+import "../i18n/domains/misc";
 
 // Source unique des libellés de type de ressource, lue par le filtre du
 // catalogue (CatalogPage) ET par la pastille des cartes d'item (ItemCard).

@@ -5,6 +5,7 @@ import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { Panel } from "../ui/kit/Panel";
 import { t } from "../i18n";
+import "../i18n/domains/map";
 
 const DEFAULT_POLL_INTERVAL_MS = 1500;
 // Un job de conversion qui n'atteint jamais un état terminal ne doit pas

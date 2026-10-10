@@ -34,6 +34,7 @@ import {
   releaseLumaCanvasObserver,
   applyTerrain,
 } from "./mapDeckTerrain";
+import "../i18n/domains/map";
 
 export type MapViewHandle = {
   // `instant` : saut sans animation (saisie numérique de la caméra — un vol
