@@ -308,6 +308,7 @@ def run_pipeline_sweep_task(timestamp: int) -> None:
     factory = _session_factory()
     with request_scoped_session(factory) as session:
         pipelines_repo.reclaim_stuck_runs(session)
+        session.commit()  # sinon le rollback d'un PipelineRunActive annule la reprise
         due = pipelines_repo.list_due_pipelines(session)
         for item_id, tenant_id in due:
             try:

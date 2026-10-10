@@ -391,3 +391,41 @@ def test_never_run_yearly_cron_waits_for_its_first_occurrence_not_the_first_swee
         assert due(s, now=created + timedelta(minutes=5)) == []  # 1er balayage : pas dû
         assert due(s, now=datetime(2027, 1, 1, 2, 59, tzinfo=UTC)) == []
         assert due(s, now=datetime(2027, 1, 1, 3, 0, 1, tzinfo=UTC)) == [(item.id, tenant.id)]
+
+
+def test_sweep_keeps_stale_reclaim_when_first_due_pipeline_conflicts(monkeypatch):
+    """Le rollback sur PipelineRunActive n'annule pas la clôture des runs périmés."""
+    from app.pipelines.models import PipelineRun
+
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        due_id = _seed_due_pipeline(s, tenant_id=tenant.id, owner_id=user.id)
+        pipelines_repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=due_id)  # actif
+        other = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=user.id, resource_type="pipeline", title="O"
+        )
+        stale = pipelines_repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=other.id)
+        stale.created_at = datetime.now(UTC) - timedelta(hours=3)
+        stale_id = stale.id
+        s.commit()
+
+    monkeypatch.setattr(pipeline_jobs.run_pipeline_task, "defer", lambda **kw: None)
+    monkeypatch.setattr(pipeline_jobs, "_session_factory", lambda: Session)
+    monkeypatch.setattr(pipeline_jobs, "is_read_only_mode", lambda: False)
+    monkeypatch.setattr(pipeline_jobs, "is_etl_enabled", lambda: True)
+    monkeypatch.setattr(pipelines_repo, "list_due_pipelines", lambda session: [(due_id, tenant.id)])
+
+    pipeline_jobs.run_pipeline_sweep_task(timestamp=0)
+
+    with Session() as s:
+        assert s.get(PipelineRun, stale_id).status == "failed"
