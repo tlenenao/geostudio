@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useRef, useState } from "react";
 import { useItemClient } from "../../api/hooks";
+import { ApiError } from "../../api/ApiError";
 import type { PipelineRun } from "../../api/types";
 import { t } from "../../i18n";
 import { jobStatusLabel } from "../../lib/jobStatusLabel";
@@ -193,6 +194,12 @@ export function PipelineRunPanel({
       await poll();
     } catch (e) {
       if (!mountedRef.current) return;
+      if (e instanceof ApiError && e.status === 409) {
+        // REV-310 : un run est déjà actif — on le suit au lieu de laisser l'écran figé.
+        setRunError(t("pipelineRun.alreadyRunning"));
+        await poll();
+        return;
+      }
       setRunError(e instanceof Error ? e.message : t("pipelineRun.runFailed"));
     } finally {
       if (mountedRef.current) setRunning(false);

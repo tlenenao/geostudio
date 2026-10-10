@@ -204,6 +204,8 @@ export const automation = {
   // clés jobStatus.* plus bas dans ce fichier.
   "pipelineRun.loadRunsFailed": "Impossible de charger l'historique des exécutions.",
   "pipelineRun.runFailed": "Échec du lancement du pipeline.",
+  "pipelineRun.alreadyRunning":
+    "Une exécution de ce pipeline est déjà en cours ou en file d'attente : son avancement est suivi ci-dessous.",
   "pipelineRun.running": "Exécution…",
   "pipelineRun.runButton": "Exécuter",
   "pipelineRun.cancelButton": "Annuler le run",
