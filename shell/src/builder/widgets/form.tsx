@@ -803,7 +803,6 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
             {t("widgetForm.cancel")}
           </button>
           {canWrite && (
-            // eslint-disable-next-line geostudio/panel-trigger-aria -- ConfirmDialog modal, pas un panneau en ligne
             <button
               type="button"
               className="ml-2 text-xs text-danger underline"

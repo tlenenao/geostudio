@@ -210,7 +210,6 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
         <div className="flex justify-end gap-2 border-b border-rule p-2">
           {exportEnabled && <ExportPanel itemId={pk} />}
           {query.data.interactions === "auto" && canSaveView && (
-            // eslint-disable-next-line geostudio/panel-trigger-aria -- Dialog modal, pas un panneau en ligne
             <Button size="sm" variant="outline" onClick={() => setSaveDialogOpen(true)}>
               {t("appRuntime.saveView")}
             </Button>
