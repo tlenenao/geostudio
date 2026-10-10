@@ -271,6 +271,19 @@ def test_in_filter_matches_any_listed_value(info, pg_session_factory):
         assert [f["id"] for f in page.features] == [1]
 
 
+def test_in_filter_value_containing_a_comma_is_literal_when_escaped(
+    info, pg_engine, pg_session_factory
+):
+    """REV-313 : `\\,` = virgule littérale (un paramètre répété est replié ainsi)."""
+    with pg_engine.begin() as conn:
+        conn.execute(
+            text("INSERT INTO t_feat (titre, nb, tenant_id) VALUES ('x, y', 9, 'default')")
+        )
+    with pg_session_factory() as session, rls_scope(session, "default"):
+        page = select_features(session, info, limit=10, offset=0, filters={"titre__in": "x\\, y,a"})
+        assert sorted(f["properties"]["titre"] for f in page.features) == ["a", "x, y"]
+
+
 def test_suffixed_filter_on_unknown_column_still_raises_filter_error(info, pg_session_factory):
     with pg_session_factory() as session, rls_scope(session, "default"):
         with pytest.raises(FilterError):

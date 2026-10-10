@@ -83,6 +83,8 @@ def _execute_triangulate(conn, *, input_view: str, view_name: str, params: dict)
             raise PipelineRuntimeError(
                 f"transform.triangulate expects Point geometries, got {', '.join(bad)}"
             )
+        if any(g.is_empty for g in points):  # REV-300 M3 : `POINT EMPTY` n'a pas de coordonnée
+            raise PipelineRuntimeError("transform.triangulate: empty Point geometry in input")
         triangles = shapely.ops.triangulate(MultiPoint([g.coords[0] for g in points]))
         return pd.DataFrame(
             {

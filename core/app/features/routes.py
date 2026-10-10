@@ -51,6 +51,7 @@ from app.db import get_session
 from app.errors import ValidationHTTPException
 from app.features.repository import CursorError, FilterError
 from app.features.validation import validate_feature
+from app.filter_values import fold_query_filters
 from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
 from app.sharing.authorization import can
@@ -191,7 +192,7 @@ def _parse_geom_intersects(raw: str | None):
 
 
 def _collect_filters(request: Request) -> dict[str, str]:
-    return {k: v for k, v in request.query_params.items() if k not in RESERVED_QUERY_PARAMS}
+    return fold_query_filters(request.query_params.multi_items(), RESERVED_QUERY_PARAMS)
 
 
 def _page_links(request: Request, *, limit: int, offset: int, page, cursor=None) -> list[dict]:

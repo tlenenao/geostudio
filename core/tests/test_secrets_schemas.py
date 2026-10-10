@@ -238,3 +238,36 @@ def test_databricks_dsn_round_trips_and_requires_http_path():
                 },
             }
         )
+
+
+@pytest.mark.parametrize(
+    "kind_payload",
+    [
+        {"kind": "bearer_token", "token": "t"},
+        {"kind": "api_key", "location": "header", "key": "k", "value": "v"},
+        {"kind": "basic_auth", "username": "u", "password": "p"},
+        {
+            "kind": "oauth2_client_credentials",
+            "tokenUrl": "https://a/t",
+            "clientId": "c",
+            "clientSecret": "s",
+        },
+    ],
+)
+def test_rest_secret_base_url_is_validated_but_optional(kind_payload):
+    """REV-294 : `baseUrl` borne un secret REST ; optionnel (bearer_token sert
+    aussi de clé HMAC de webhook d'alerte, sans notion d'URL)."""
+    assert SECRET_PAYLOAD_ADAPTER.validate_python(kind_payload).baseUrl is None
+    ok = SECRET_PAYLOAD_ADAPTER.validate_python(
+        {**kind_payload, "baseUrl": "https://api.example.com/v1"}
+    )
+    assert ok.baseUrl == "https://api.example.com/v1"
+    for bad in [
+        "ftp://x/",
+        "https://u:p@x/",
+        "https://x/a?q=1",
+        "https://x/../a",
+        "api.example.com",
+    ]:
+        with pytest.raises(ValueError):
+            SECRET_PAYLOAD_ADAPTER.validate_python({**kind_payload, "baseUrl": bad})

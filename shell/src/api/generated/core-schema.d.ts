@@ -2003,6 +2003,8 @@ export interface components {
          *     `location="header"` couvre le cas générique (`X-API-Key`, etc.).
          */
         ApiKeyPayload: {
+            /** Baseurl */
+            baseUrl?: string | null;
             /** Key */
             key: string;
             /**
@@ -2118,6 +2120,8 @@ export interface components {
          *     l'échange de jeton lui-même — le coffre ne porte que le matériel brut.
          */
         BasicAuthPayload: {
+            /** Baseurl */
+            baseUrl?: string | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -2130,6 +2134,8 @@ export interface components {
         };
         /** BearerTokenPayload */
         BearerTokenPayload: {
+            /** Baseurl */
+            baseUrl?: string | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -3237,6 +3243,8 @@ export interface components {
          *     stocke les identifiants client, jamais le jeton d'accès obtenu.
          */
         OAuth2ClientCredentialsPayload: {
+            /** Baseurl */
+            baseUrl?: string | null;
             /** Clientid */
             clientId: string;
             /** Clientsecret */

@@ -18,6 +18,7 @@ from sqlalchemy.exc import DataError
 from sqlalchemy.orm import Session
 
 from app.collections.introspection import ColumnInfo, TableInfo
+from app.filter_values import split_in_values
 from app.sql_ident import quote_ident
 
 
@@ -107,7 +108,7 @@ def _where(session: Session, info: TableInfo, bbox, geom_intersects, filters):
                 raise FilterError(name, "property not filterable")
             ident = quote_ident(session, name)
             if suffix == "__in":
-                values = raw.split(",")
+                values = split_in_values(raw)
                 placeholders = []
                 for j, value in enumerate(values):
                     key = f"f{i}_{j}"

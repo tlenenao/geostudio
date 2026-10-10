@@ -25,6 +25,7 @@ from pydantic import BaseModel
 from app.analytics.duckdb_conn import StatementTimeout, statement_timeout
 from app.analytics.snapshot import cut_seconds, latest_snapshot
 from app.collections.introspection import TableInfo
+from app.filter_values import split_in_values
 from app.sql_ident import quote_ident_duckdb as _qi
 
 
@@ -257,7 +258,7 @@ def _build_where(request: AggregateRequestBody, table_info: TableInfo) -> tuple[
     for raw_name, value in request.filters.items():
         name, suffix = _split_filter_key(raw_name)
         if suffix == "__in":
-            values = value.split(",")
+            values = split_in_values(value)
             clauses.append(f"{_qi(name)} IN ({', '.join('?' for _ in values)})")
             params.extend(values)
         elif suffix in _RANGE_OPS and col_types.get(name) in ("date", "datetime"):

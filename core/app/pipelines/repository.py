@@ -7,6 +7,7 @@ from sqlalchemy import case, func, select, update
 from sqlalchemy.orm import Session, aliased
 
 from app.configs import repository as configs_repo
+from app.configs.models import Config, ConfigRevision
 from app.pipelines.models import PipelineRun, PipelineWebhookToken
 
 
@@ -28,6 +29,59 @@ def create_run(session: Session, *, tenant_id: str, pipeline_item_id: str) -> Pi
     session.flush()
     session.refresh(run)
     return run
+
+
+class PipelineRunActive(Exception):
+    """Un run non périmé (queued/running/cancel_requested) existe déjà (REV-310)."""
+
+
+_ACTIVE_STATUSES = ("queued", "pending", "running", "cancel_requested")
+
+
+def _run_anchor():
+    """Horloge de péremption d'un run : `started_at` une fois démarré, sinon
+    `created_at` (même règle que reclaim_stuck_runs)."""
+    return func.coalesce(
+        case(
+            (PipelineRun.status.in_(("running", "cancel_requested")), PipelineRun.started_at),
+            else_=PipelineRun.created_at,
+        ),
+        PipelineRun.created_at,
+    )
+
+
+def create_run_unless_active(
+    session: Session,
+    *,
+    tenant_id: str,
+    pipeline_item_id: str,
+    stale_minutes: int = _RUNNING_RECLAIM_MINUTES,
+) -> PipelineRun:
+    """REV-310 : crée un run SAUF si un run actif non périmé existe (lève
+    PipelineRunActive). Point unique REST / MCP / webhook / cron. Atomique :
+    sous Postgres, un verrou advisory de transaction par pipeline sérialise
+    « vérifier puis insérer » jusqu'au commit de l'appelant (un SELECT puis
+    INSERT nu laisserait passer deux requêtes simultanées). Un run périmé
+    (plus vieux que le seuil de reprise) est ignoré, comme reclaim_stuck_runs.
+    # ponytail: SQLite (tests) sans verrou — mono-connexion, pas de concurrence réelle."""
+    if session.get_bind().dialect.name == "postgresql":
+        session.execute(
+            select(func.pg_advisory_xact_lock(func.hashtextextended(pipeline_item_id, 0)))
+        )
+    threshold = _now() - timedelta(minutes=stale_minutes)
+    active = session.execute(
+        select(PipelineRun.id)
+        .where(
+            PipelineRun.tenant_id == tenant_id,
+            PipelineRun.pipeline_item_id == pipeline_item_id,
+            PipelineRun.status.in_(_ACTIVE_STATUSES),
+            _run_anchor() >= threshold,
+        )
+        .limit(1)
+    ).first()
+    if active is not None:
+        raise PipelineRunActive(pipeline_item_id)
+    return create_run(session, tenant_id=tenant_id, pipeline_item_id=pipeline_item_id)
 
 
 def get_run(session: Session, *, tenant_id: str, run_id: str) -> PipelineRun | None:
@@ -224,14 +278,30 @@ def append_node_stat(
     session.flush()
 
 
-def list_due_pipelines(session: Session) -> list[tuple[str, str]]:
+def _config_anchor_by_item(session: Session, item_ids: list[str]) -> dict[str, datetime]:
+    """Date d'écriture de la révision courante de la config de chaque pipeline."""
+    if not item_ids:
+        return {}
+    rows = session.execute(
+        select(Config.item_id, ConfigRevision.created_at)
+        .join(
+            ConfigRevision,
+            (ConfigRevision.config_id == Config.id)
+            & (ConfigRevision.version == Config.current_version),
+        )
+        .where(Config.item_id.in_(item_ids))
+    ).all()
+    return {item_id: created_at for item_id, created_at in rows}
+
+
+def list_due_pipelines(session: Session, *, now: datetime | None = None) -> list[tuple[str, str]]:
     """Balayage cross-tenant des pipelines planifiés dus, consommé par
     run_pipeline_sweep_task (app.pipelines.jobs, SP-15h). "Dernier run"
     dérivé de pipeline_runs (jamais une colonne dupliquée) ; garde de
     concurrence par âge identique à app.harvest.repository.list_due_sources
     (_RUNNING_RECLAIM_MINUTES) — un run resté "running"/"queued" plus vieux
     que ce délai est présumé planté et redevient éligible."""
-    now = datetime.now(UTC)
+    now = now or datetime.now(UTC)
     due: list[tuple[str, str]] = []
     candidates = [
         (item_id, tenant_id, config)
@@ -243,11 +313,20 @@ def list_due_pipelines(session: Session) -> list[tuple[str, str]]:
         and config.pipeline.refreshPolicy.enabled
     ]
     latest_by_item = get_latest_runs_for_items(session, item_ids=[c[0] for c in candidates])
+    # REV-312 : sans run antérieur, le curseur est la création/activation de la
+    # config (révision courante) — un cron annuel n'est pas dû au 1er balayage.
+    config_anchor = _config_anchor_by_item(session, [c[0] for c in candidates])
     for item_id, tenant_id, config in candidates:
         payload = config.pipeline
         policy = payload.refreshPolicy
         latest = latest_by_item.get(item_id)
         if latest is None:
+            anchor = config_anchor.get(item_id)
+            if anchor is not None:
+                if anchor.tzinfo is None:
+                    anchor = anchor.replace(tzinfo=UTC)
+                if croniter.croniter(policy.cron, anchor).get_next(datetime) > now:
+                    continue
             due.append((item_id, tenant_id))
             continue
         created_at = latest.created_at

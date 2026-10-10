@@ -249,7 +249,7 @@ def test_create_concurrent_duplicate_race_returns_409(env, monkeypatch):
 
     second = client.post("/v1/secrets", json=BEARER_BODY)
     assert second.status_code == 409
-    assert second.json()["detail"] == "secret name already exists"
+    assert second.json()["detail"] == "Un secret porte déjà ce nom."
 
 
 def _creator_with_secrets(env):
@@ -318,6 +318,10 @@ def test_p16_05_update_in_place_and_delete_refused_while_referenced(env):
         item_id = item.id
     r = client.delete(f"/v1/secrets/{sid}")
     assert r.status_code == 409 and "Pipe X" in r.json()["detail"]
+    assert r.json()["detail"] == (
+        "Suppression impossible : encore utilisé par Pipe X. "
+        "Retirez d'abord ce secret de ces éléments."
+    )
     with Session() as s:
         s.query(ConfigRevision).filter_by(config_id="c1").delete()
         s.query(Config).filter_by(id="c1").delete()
@@ -399,6 +403,69 @@ def test_rev273c_409_lists_only_items_the_caller_can_read(env):
     assert "Mine" in detail
     assert "Theirs" not in detail
     assert "1 autre objet non visible" in detail
+    assert detail.startswith("Suppression impossible : encore utilisé par Mine et 1 autre")
+
+
+def test_rev300_m6_409_visibility_check_is_not_n_plus_1(env):
+    """REV-300 M6 : le nombre de requêtes du DELETE 409 ne croît pas avec le
+    nombre d'objets citant le secret (plus de `can()` par objet)."""
+    from sqlalchemy import event
+
+    from app.configs.models import Config, ConfigRevision
+    from app.items.repository import create_item
+
+    app, client, Session, admin, _regular = env
+    with Session() as s:
+        bob = get_or_create_user(
+            s,
+            tenant_id=admin.tenant_id,
+            oidc_sub="b",
+            username="bob",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        s.commit()
+        s.refresh(bob)
+    _as(app, bob)
+
+    def statements_for_delete(secret_name: str, n_usages: int) -> int:
+        body = {"name": secret_name, "payload": BEARER_BODY["payload"]}
+        sid = client.post("/v1/secrets", json=body).json()["id"]
+        with Session() as s:
+            for n in range(n_usages):
+                item = create_item(
+                    s,
+                    tenant_id=admin.tenant_id,
+                    owner_id=admin.id,
+                    resource_type="pipeline",
+                    title=f"{secret_name}-{n}",
+                )
+                cid = f"{secret_name}-c{n}"
+                s.add(Config(id=cid, tenant_id=admin.tenant_id, kind="pipeline", item_id=item.id))
+                s.add(
+                    ConfigRevision(
+                        tenant_id=admin.tenant_id,
+                        config_id=cid,
+                        version=1,
+                        data={"nodes": [{"params": {"secretName": secret_name}}]},
+                    )
+                )
+            s.commit()
+        seen: list[str] = []
+        engine = Session.kw["bind"]
+
+        def count(conn, cursor, statement, *a):
+            seen.append(statement)
+
+        event.listen(engine, "before_cursor_execute", count)
+        try:
+            assert client.delete(f"/v1/secrets/{sid}").status_code == 409
+        finally:
+            event.remove(engine, "before_cursor_execute", count)
+        return len(seen)
+
+    assert statements_for_delete("few", 2) == statements_for_delete("many", 8)
 
 
 def test_rev273e_post_smtp_without_tls_remote_is_422_and_does_not_echo_password(env):

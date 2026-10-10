@@ -33,6 +33,13 @@ def test_translate_features_query_builds_where_from_filters():
     assert "geometry" not in params
 
 
+def test_translate_features_query_in_escaped_comma_is_one_value():
+    params = live_query.translate_features_query(
+        filters={"type__in": "a\\, b,c"}, bbox=None, limit=10, offset=0
+    )
+    assert "type IN ('a, b', 'c')" in params["where"]
+
+
 def test_translate_features_query_no_filters_is_1_equals_1():
     params = live_query.translate_features_query(filters={}, bbox=None, limit=100, offset=0)
     assert params["where"] == "1=1"

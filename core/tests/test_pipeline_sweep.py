@@ -7,7 +7,12 @@ run_pipeline_task.defer est monkeypatché : le sweep n'a besoin de PROUVER
 que run_pipeline_task a été sollicité avec les bons arguments, jamais de le
 laisser tourner pour de vrai ici."""
 
+from datetime import UTC, datetime, timedelta
+
+from sqlalchemy import select, update
+
 from app.configs import repository as configs_repo
+from app.configs.models import Config, ConfigRevision
 from app.configs.schemas import BuilderConfig
 from app.db import init_db, make_engine, make_session_factory
 from app.items import repository as items_repo
@@ -59,7 +64,17 @@ def _seed_due_pipeline(session, *, tenant_id, owner_id, item_id="pipe-1"):
     )
     config = BuilderConfig.model_validate(_pipeline_body({"enabled": True, "cron": "*/5 * * * *"}))
     configs_repo.create_config(session, config, item_id=item.id, tenant_id=tenant_id)
+    # REV-312 : sans run antérieur la cadence part de la création/activation de la
+    # config ; on l'antidate pour que le cron `*/5` soit échu (« dû »).
+    _backdate_config(session, item.id, datetime.now(UTC) - timedelta(hours=1))
     return item.id
+
+
+def _backdate_config(session, item_id, when):
+    config_id = session.execute(select(Config.id).where(Config.item_id == item_id)).scalar_one()
+    session.execute(
+        update(ConfigRevision).where(ConfigRevision.config_id == config_id).values(created_at=when)
+    )
 
 
 def test_sweep_defers_run_pipeline_task_for_a_due_pipeline(monkeypatch):
@@ -306,3 +321,73 @@ def test_sweep_writes_pipeline_run_audit_with_schedule_actor(monkeypatch):
         row = s.execute(select(AuditLog).where(AuditLog.action == "pipeline.run")).scalar_one()
         assert (row.tenant_id, row.actor_id, row.actor_kind) == (tenant.id, user.id, "schedule")
         assert row.payload == {"pipelineItemId": item_id}
+
+
+def test_sweep_does_not_create_a_run_when_one_became_active_after_the_due_check(monkeypatch):
+    """REV-310 (jumelle cron) : le balayage passe par la même création atomique
+    que POST /run — un run actif apparu entre le calcul « dû » et l'insertion
+    (déclenchement manuel concurrent) est respecté, pas doublé."""
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        item_id = _seed_due_pipeline(s, tenant_id=tenant.id, owner_id=user.id)
+        pipelines_repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_id)  # actif
+        s.commit()
+
+    deferred = []
+    monkeypatch.setattr(pipeline_jobs.run_pipeline_task, "defer", lambda **kw: deferred.append(kw))
+    monkeypatch.setattr(pipeline_jobs, "_session_factory", lambda: Session)
+    monkeypatch.setattr(pipeline_jobs, "is_read_only_mode", lambda: False)
+    monkeypatch.setattr(pipeline_jobs, "is_etl_enabled", lambda: True)
+    # Le calcul « dû » (instantané périmé) désigne quand même le pipeline.
+    monkeypatch.setattr(
+        pipelines_repo, "list_due_pipelines", lambda session: [(item_id, tenant.id)]
+    )
+
+    pipeline_jobs.run_pipeline_sweep_task(timestamp=0)
+
+    assert deferred == []
+    with Session() as s:
+        runs = pipelines_repo.list_runs(s, tenant_id=tenant.id, pipeline_item_id=item_id)
+        assert len(runs) == 1
+
+
+def test_never_run_yearly_cron_waits_for_its_first_occurrence_not_the_first_sweep():
+    """REV-312 (j06b-013) : « 1er janvier 3h », horloge figée — un pipeline sans run
+    antérieur n'est pas exécuté au premier balayage mais à son échéance, comptée
+    depuis la création/activation de la config."""
+    Session = _make_session()
+    created = datetime(2026, 10, 10, 12, 0, tzinfo=UTC)
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        item = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=user.id, resource_type="pipeline", title="Annuel"
+        )
+        body = _pipeline_body({"enabled": True, "cron": "0 3 1 1 *"})
+        configs_repo.create_config(
+            s, BuilderConfig.model_validate(body), item_id=item.id, tenant_id=tenant.id
+        )
+        _backdate_config(s, item.id, created)
+        s.commit()
+        due = pipelines_repo.list_due_pipelines
+        assert due(s, now=created + timedelta(minutes=5)) == []  # 1er balayage : pas dû
+        assert due(s, now=datetime(2027, 1, 1, 2, 59, tzinfo=UTC)) == []
+        assert due(s, now=datetime(2027, 1, 1, 3, 0, 1, tzinfo=UTC)) == [(item.id, tenant.id)]
