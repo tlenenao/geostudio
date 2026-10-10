@@ -124,7 +124,11 @@ def test_deleting_a_role_still_in_use_is_blocked(env):
     assert (
         client.patch(f"/v1/users/{regular.id}", json={"roleId": created["id"]}).status_code == 200
     )
-    assert client.delete(f"/v1/roles/{created['id']}").status_code == 409
+    resp = client.delete(f"/v1/roles/{created['id']}")
+    assert resp.status_code == 409
+    # REV-302 : message français ; le shell lit le compte en tête (parseInt, RolesAdminPage).
+    assert resp.json()["detail"].startswith("1 utilisateur")
+    assert "Réaffectez" in resp.json()["detail"]
 
 
 def test_removing_admin_roles_manage_from_the_only_holder_is_blocked(env):

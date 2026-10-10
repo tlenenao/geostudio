@@ -142,7 +142,11 @@ def delete_secret_unless_used(session: Session, secret: ConnectorSecret, *, user
     if hidden:
         s = "s" if hidden > 1 else ""
         parts.append(f"{hidden} autre{s} objet{s} non visible{s}")
-    raise SecretInUseError("secret encore utilisé par : " + " et ".join(parts))
+    raise SecretInUseError(
+        "Suppression impossible : encore utilisé par "
+        + " et ".join(parts)
+        + ". Retirez d'abord ce secret de ces éléments."
+    )
 
 
 def delete_secret(session: Session, secret: ConnectorSecret) -> None:
