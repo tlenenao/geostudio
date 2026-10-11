@@ -504,10 +504,13 @@ services:
     # sys.path — seule l'invocation via `-m` (comme `-c`) le fait. Sans ça,
     # le chargement de `app.jobs.app` échoue ("Could not load app from
     # app.jobs.app") avant même d'atteindre le connecteur.
+    # `-q` DOIT rester sur la même ligne que `worker` : une ligne plus indentée
+    # garde son saut de ligne dans le scalaire plié, le shell coupe alors la
+    # commande et le worker écoute TOUTES les files — `export` comprise, volée à
+    # export-worker (j05b-006, test_sh_c_commands_have_no_orphan_option_line).
     command: >
       sh -c "python -m scripts.ensure_procrastinate_schema &&
-             python -m procrastinate --app app.jobs.app worker -c ${CORE_WORKER_CONCURRENCY:-4}
-             -q ingestion,search,cdc,etl,tileset3d,terrain3d,appexport,harvest,dataexport"
+             python -m procrastinate --app app.jobs.app worker -c ${CORE_WORKER_CONCURRENCY:-4} -q ingestion,search,cdc,etl,tileset3d,terrain3d,appexport,harvest,dataexport"
     environment:
       DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
       S3_ENDPOINT_URL: http://minio:9000

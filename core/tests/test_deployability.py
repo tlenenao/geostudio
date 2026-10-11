@@ -56,6 +56,7 @@ import base64
 import json
 import pathlib
 import re
+import shlex
 import shutil
 import subprocess
 
@@ -727,6 +728,39 @@ def test_worker_has_a_resolved_memory_limit():
     assert raw is not None, "service `worker` sans mem_limit"
     assert _resolve_effective_value(str(raw), "WORKER_MEM_LIMIT") == "2g"
     assert "WORKER_MEM_LIMIT" in documented_env_vars(include_commented=False)
+
+
+def test_sh_c_commands_have_no_orphan_option_line():
+    """j05b-006 : `command: >` + `sh -c "… worker -c 4\\n -q file1,file2"` — la
+    ligne plus indentée garde son saut de ligne (scalaire plié YAML) : le shell
+    termine alors la commande avant `-q`, qui ne s'exécute jamais (« -q: not
+    found », masqué car le worker bloque). Le worker écoutait TOUTES les files,
+    `export` comprise, et volait les jobs de rendu sans CORE_EXPORT_TOKEN_SECRET
+    (KeyError opaque). Un script `sh -c` ne doit jamais avoir de ligne qui
+    commence par une option."""
+    offenders = []
+    for name, svc in services(BASE).items():
+        cmd = svc.get("command")
+        if not isinstance(cmd, str):
+            continue
+        argv = shlex.split(cmd)
+        if argv[:2] != ["sh", "-c"] or len(argv) < 3:
+            continue
+        for line in argv[2].splitlines()[1:]:
+            if line.strip().startswith("-"):
+                offenders.append(f"{name}: {line.strip()!r}")
+    assert not offenders, offenders
+
+
+def test_worker_listens_on_explicit_queues_without_export():
+    """La file `export` appartient à `export-worker` (Playwright, jeton d'export) :
+    le worker générique doit lister ses files avec `-q` sur la MÊME ligne shell."""
+    argv = shlex.split(services(BASE)["worker"]["command"])
+    script = argv[2]
+    line = next(ln for ln in script.splitlines() if "procrastinate" in ln and " worker" in ln)
+    assert re.search(r"\s-q\s+\S+", line), line
+    queues = re.search(r"\s-q\s+(\S+)", line).group(1).split(",")  # type: ignore[union-attr]
+    assert "export" not in queues
 
 
 CI = REPO / ".github/workflows/ci.yml"
