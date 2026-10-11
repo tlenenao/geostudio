@@ -127,9 +127,38 @@ def _as_obj(raw, what: str) -> dict:
     return raw
 
 
+def _as_bytes(v) -> bytes:
+    return bytes(v) if isinstance(v, (bytes, bytearray, memoryview)) else str(v).encode()
+
+
 def _build_request_parts(p, body_raw, mp_vals) -> tuple[dict, dict]:
-    """(en-têtes additionnels, kwargs `requests` du corps). Complété à la Task 4."""
-    return {}, {}
+    """(en-têtes additionnels, kwargs `requests` du corps). Lève `_RowError` si la valeur de
+    la ligne ne convient pas au `bodyType`."""
+    if p.bodyType == "none":
+        return {}, {}
+    if p.bodyType == "json":
+        if body_raw is None:
+            return {}, {}
+        text = body_raw if isinstance(body_raw, str) else json.dumps(body_raw)
+        return {"Content-Type": "application/json"}, {"data": text.encode()}
+    if p.bodyType == "form":
+        return {}, {"data": {k: str(v) for k, v in _as_obj(body_raw, "bodyExpr").items()}}
+    if p.bodyType == "raw":
+        return {}, {"data": b"" if body_raw is None else _as_bytes(body_raw)}
+    data: dict[str, str] = {}
+    files: dict[str, tuple] = {}
+    for field, val in zip(p.multipartFields, mp_vals, strict=True):
+        if val is None:
+            continue
+        if field.isFile:
+            files[field.name] = (
+                field.filename or field.name,
+                _as_bytes(val),
+                field.contentType or "application/octet-stream",
+            )
+        else:
+            data[field.name] = str(val)
+    return {}, {"data": data, "files": files}
 
 
 def _max_response_bytes() -> int:

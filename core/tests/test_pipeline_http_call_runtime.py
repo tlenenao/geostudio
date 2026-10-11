@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+import json as _json
 import threading
 import time
 
@@ -248,3 +249,102 @@ def test_4xx_is_not_retried(conn, httpserver):
     httpserver.expect_request("/n").respond_with_handler(_recording_handler([404], stamps))
     run(conn, {"urlExpr": f"'{httpserver.url_for('/n')}'"}, ids=(1,))
     assert len(stamps) == 1
+
+
+def _capture(httpserver, path="/c"):
+    seen = {}
+
+    def handler(request):
+        seen["method"] = request.method
+        seen["ctype"] = request.headers.get("Content-Type", "")
+        seen["auth"] = request.headers.get("X-Test")
+        seen["data"] = request.get_data()
+        return Response("ok")
+
+    httpserver.expect_request(path).respond_with_handler(handler)
+    return seen
+
+
+def test_json_body_and_headers(conn, httpserver):
+    seen = _capture(httpserver)
+    run(
+        conn,
+        {
+            "urlExpr": f"'{httpserver.url_for('/c')}'",
+            "method": "POST",
+            "bodyType": "json",
+            "bodyExpr": "json_object('id', id)",
+            "headersExpr": "json_object('X-Test', 'v')",
+        },
+        ids=(7,),
+    )
+    assert seen["method"] == "POST"
+    assert seen["ctype"].startswith("application/json")
+    assert seen["auth"] == "v"
+    assert _json.loads(seen["data"]) == {"id": 7}
+
+
+def test_form_body(conn, httpserver):
+    seen = _capture(httpserver)
+    run(
+        conn,
+        {
+            "urlExpr": f"'{httpserver.url_for('/c')}'",
+            "method": "POST",
+            "bodyType": "form",
+            "bodyExpr": "json_object('a', 'x y', 'n', id)",
+        },
+        ids=(3,),
+    )
+    assert seen["ctype"].startswith("application/x-www-form-urlencoded")
+    assert seen["data"] in (b"a=x+y&n=3", b"n=3&a=x+y")
+
+
+def test_raw_body(conn, httpserver):
+    seen = _capture(httpserver)
+    run(
+        conn,
+        {
+            "urlExpr": f"'{httpserver.url_for('/c')}'",
+            "method": "PUT",
+            "bodyType": "raw",
+            "bodyExpr": "'hello ' || id",
+        },
+        ids=(1,),
+    )
+    assert seen["data"] == b"hello 1"
+
+
+def test_multipart_with_file_from_blob_column(conn, httpserver):
+    seen = _capture(httpserver)
+    run(
+        conn,
+        {
+            "urlExpr": f"'{httpserver.url_for('/c')}'",
+            "method": "POST",
+            "bodyType": "multipart",
+            "multipartFields": [
+                {"name": "title", "valueExpr": "'doc-' || id"},
+                {
+                    "name": "file",
+                    "valueExpr": "CAST('PAYLOAD' AS BLOB)",
+                    "isFile": True,
+                    "filename": "a.bin",
+                    "contentType": "application/octet-stream",
+                },
+            ],
+        },
+        ids=(1,),
+    )
+    assert seen["ctype"].startswith("multipart/form-data")
+    assert b'name="title"' in seen["data"] and b"doc-1" in seen["data"]
+    assert b'filename="a.bin"' in seen["data"] and b"PAYLOAD" in seen["data"]
+
+
+def test_invalid_headers_json_is_a_row_error(conn, httpserver):
+    rows = run(
+        conn,
+        {"urlExpr": f"'{httpserver.url_for('/c')}'", "headersExpr": "'not json'"},
+        ids=(1,),
+    )
+    assert rows[0][3:] == ("error", "headersExpr n'est pas du JSON valide")
