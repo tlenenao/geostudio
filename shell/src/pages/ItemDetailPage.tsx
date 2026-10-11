@@ -4,6 +4,8 @@ import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useItemClient } from "../api/ItemClientProvider";
 import { apiErrorMessage } from "../api/apiErrorMessage";
+import { isConflictError } from "../api/ApiError";
+import { SaveConflictNotice } from "../builder/SaveConflictNotice";
 import { useItem, useMetadataCatalog, useUpdateItem, useUploadThumbnail } from "../api/hooks";
 import type { Item } from "../api/types";
 import { RESOURCE_TYPE_LABELS } from "../api/resourceTypes";
@@ -71,7 +73,7 @@ export function ItemDetailPage({
     slug?: string;
   }) {
     try {
-      await update.mutateAsync(v);
+      await update.mutateAsync({ ...v, baseUpdatedAt: item.updatedAt });
       closePanel();
     } catch {
       /* surfaced via update.isError */
@@ -172,10 +174,19 @@ export function ItemDetailPage({
                         onCancel={closePanel}
                         pending={update.isPending}
                       />
-                      {update.isError && (
-                        <p role="alert" className="text-sm text-danger">
-                          {apiErrorMessage(update.error, t("actions.saveFailed"))}
-                        </p>
+                      {isConflictError(update.error) ? (
+                        <SaveConflictNotice
+                          onReload={() => {
+                            update.reset();
+                            void query.refetch();
+                          }}
+                        />
+                      ) : (
+                        update.isError && (
+                          <p role="alert" className="text-sm text-danger">
+                            {apiErrorMessage(update.error, t("actions.saveFailed"))}
+                          </p>
+                        )
                       )}
                     </>
                   ) : (
