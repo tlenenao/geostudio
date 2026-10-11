@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.auth.dependency import get_current_user
-from app.geocoding.batch import MAX_BATCH, BatchRow, geocode_batch
+from app.geocoding.batch import MAX_BATCH, BatchBusy, BatchRow, geocode_batch
 from app.geocoding.egress import EgressBlockedError
 from app.geocoding.provider import Geocoder, GeocodeResult, get_geocoder
 from app.users.models import User
@@ -65,7 +65,12 @@ def geocode_many(
     # (migration non autorisée sur cette voie) ; job + reprise = vague 1.
     if any(not 3 <= len(a) <= 200 for a in body.addresses):
         raise HTTPException(status_code=422, detail="Chaque adresse doit faire 3 à 200 caractères.")
-    rows = geocode_batch(geocoder, body.addresses)
+    try:
+        rows = geocode_batch(geocoder, body.addresses)
+    except BatchBusy:
+        raise HTTPException(
+            status_code=429, detail="Un lot de géocodage est déjà en cours, réessayez."
+        ) from None
     errors = sum(r.status == "erreur" for r in rows)
     if errors == len(rows):  # amont injoignable/bloqué : même 502 que GET /geocode
         raise HTTPException(status_code=502, detail="Le service de géocodage est indisponible.")
