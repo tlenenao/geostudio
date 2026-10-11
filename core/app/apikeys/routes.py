@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, Header, HTTPException, Response
 from sqlalchemy.orm import Session
 
@@ -23,15 +25,20 @@ def get_interactive_user(
     return user
 
 
+def _iso(value: datetime | None) -> str | None:
+    # Base : UTC naïf ; "Z" explicite pour que le navigateur ne le lise pas en local.
+    return value.isoformat() + "Z" if value else None
+
+
 def _read(key: ApiKey) -> ApiKeyRead:
     return ApiKeyRead(
         id=key.id,
         name=key.name,
         prefix=key.key_prefix,
-        createdAt=key.created_at.isoformat(),
-        expiresAt=key.expires_at.isoformat(),
-        revokedAt=key.revoked_at.isoformat() if key.revoked_at else None,
-        lastUsedAt=key.last_used_at.isoformat() if key.last_used_at else None,
+        createdAt=_iso(key.created_at) or "",
+        expiresAt=_iso(key.expires_at) or "",
+        revokedAt=_iso(key.revoked_at),
+        lastUsedAt=_iso(key.last_used_at),
     )
 
 
