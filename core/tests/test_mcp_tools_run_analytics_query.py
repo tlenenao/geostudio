@@ -172,8 +172,18 @@ def test_run_analytics_query_rejects_sensitive_field_for_user_without_privilege(
         with app_client.session_factory() as session:
             from app.collections.models import Collection
 
+            # REV-276 : le propriétaire lit en clair — mock_user ne doit pas l'être.
+            other = get_or_create_user(
+                session,
+                tenant_id=app_client.tenant.id,
+                oidc_sub="other-owner-sensitive-sub",
+                username="otherowner-sensitive",
+                email=None,
+                first_name="Other",
+                last_name="Owner",
+            )
             session.query(Collection).filter(Collection.id == collection_id).update(
-                {"sensitive_fields": ["titre"]}
+                {"sensitive_fields": ["titre"], "owner_id": other.id, "is_public": True}
             )
             session.commit()
         dataset_item_id = _create_collection_dataset(app_client, collection_id)

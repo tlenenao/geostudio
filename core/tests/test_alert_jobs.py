@@ -667,6 +667,18 @@ def _setup_sensitive_alert(
             last_name="",
             bootstrap_admin=owner_bootstrap_admin,
         )
+        # REV-276 : le propriétaire de la COLLECTION lit en clair ; le masquage
+        # visé ici est celui du propriétaire de l'alerte, étranger à la collection.
+        col_owner = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="col-owner",
+            username="col-owner",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        s.flush()
         s.execute(
             text(
                 "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
@@ -675,7 +687,7 @@ def _setup_sensitive_alert(
                 "VALUES ('salaries', :t, :o, 'salaries', 'Salaries', '', 'id', "
                 "'geometry', false, true, '[\"salary\"]', now(), now())"
             ),
-            {"t": tenant.id, "o": owner.id},
+            {"t": tenant.id, "o": col_owner.id},
         )
         s.execute(
             text(

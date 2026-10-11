@@ -75,11 +75,16 @@ def test_call_is_audited(app_client, monkeypatch):
     assert [r.object_id for r in rows] == ["geocode"]
 
 
-def test_rate_limited_after_budget(app_client, monkeypatch):
+@pytest.fixture()
+def small_geocode_budget(monkeypatch):
+    # Doit précéder `app_client` : RateLimiter copie _BUDGETS à sa construction (REV-299 b).
+    monkeypatch.setitem(_BUDGETS, "geocode", 3)  # le middleware /mcp plafonne avant 60
+
+
+def test_rate_limited_after_budget(small_geocode_budget, app_client, monkeypatch):
     """REV-102 : budget propre a l'outil, comme le groupe REST geocode."""
     stub = _Stub()
     _use(monkeypatch, stub)
-    monkeypatch.setitem(_BUDGETS, "geocode", 3)  # le middleware /mcp plafonne avant 60
     with app_client:
         for _ in range(3):
             call_tool(app_client, "geocode", {"query": "tulle"})
