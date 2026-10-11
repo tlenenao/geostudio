@@ -91,3 +91,25 @@ def test_put_map_with_timefield_cluster_and_attachmentfield_is_200_and_reads_bac
     assert got[0]["timeField"] == "d"
     assert got[0]["popup"]["attachmentField"] == "photos"
     assert got[1]["cluster"] == {"radius": 70, "maxZoom": 11, "label": False}
+
+
+def test_mapconfig_timeplayer_round_trips_and_is_bounded():
+    """ARC-09b : l'état du lecteur temps de l'éditeur de carte est persisté."""
+    import pytest
+    from pydantic import ValidationError
+
+    player = {
+        "start": "2026-01-01",
+        "end": "2026-03-01",
+        "stepDays": 7,
+        "windowDays": 14,
+        "intervalMs": 1000,
+        "windowIndex": 2,
+    }
+    cfg = _config({"id": "l", "title": "t", "kind": "vector", "timeField": "d"})
+    cfg["map"]["timePlayer"] = player
+    dumped = BuilderConfig.model_validate(cfg).model_dump(mode="json")
+    assert dumped["map"]["timePlayer"] == player
+    cfg["map"]["timePlayer"] = {**player, "stepDays": 0}
+    with pytest.raises(ValidationError):
+        BuilderConfig.model_validate(cfg)
