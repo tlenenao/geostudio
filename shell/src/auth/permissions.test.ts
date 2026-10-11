@@ -25,12 +25,19 @@ describe("hasPermission", () => {
   });
 
   it("expose deux jeux constants, propriétaire et lecture seule", () => {
-    expect(OWNER_PERMISSIONS).toEqual({ read: true, write: true, delete: true, share: true });
+    expect(OWNER_PERMISSIONS).toEqual({
+      read: true,
+      write: true,
+      delete: true,
+      share: true,
+      publish: true,
+    });
     expect(READ_ONLY_PERMISSIONS).toEqual({
       read: true,
       write: false,
       delete: false,
       share: false,
+      publish: false,
     });
   });
 });

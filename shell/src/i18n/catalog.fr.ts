@@ -11,6 +11,7 @@
 export const fr = {
   // Traitement « verrouillé et expliqué » — la raison ET le recours
   "locked.needWrite": "Modification réservée aux éditeurs de cet élément.",
+  "locked.needPublish": "Publication réservée aux porteurs du droit de publier.",
   "locked.needShare": "Partage réservé au propriétaire et aux éditeurs.",
   "locked.capabilityOff": "Désactivé sur cette instance — voir un administrateur.",
 

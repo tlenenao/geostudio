@@ -10,9 +10,13 @@
 // Ce n'est PAS une frontière de sécurité : le cœur refuse de toute façon. C'est
 // la garantie qu'on n'affiche plus une commande qui produira un 403.
 
-export type PermissionAction = "read" | "write" | "delete" | "share";
+export type PermissionAction = "read" | "write" | "delete" | "share" | "publish";
 
-export type ItemPermissions = Record<PermissionAction, boolean>;
+// `publish` (partage + privilège `items.publish`, calculé par le cœur) est
+// optionnel : un hôte plus ancien ne le sert pas, et son absence vaut refus.
+export type ItemPermissions = Record<Exclude<PermissionAction, "publish">, boolean> & {
+  publish?: boolean;
+};
 
 export type HasPermissions = { permissions: ItemPermissions };
 
@@ -22,6 +26,7 @@ export const OWNER_PERMISSIONS: ItemPermissions = {
   write: true,
   delete: true,
   share: true,
+  publish: true,
 };
 
 /** Droits servis par les chemins anonymes et par l'export statique. */
@@ -30,6 +35,7 @@ export const READ_ONLY_PERMISSIONS: ItemPermissions = {
   write: false,
   delete: false,
   share: false,
+  publish: false,
 };
 
 export function hasPermission(

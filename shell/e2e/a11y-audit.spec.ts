@@ -312,7 +312,7 @@ test.describe("audit d'accessibilité (axe-core)", () => {
           configId: "cfg-dataset-a11y",
           isPublished: false,
           keywords: [],
-          permissions: { read: true, write: true, delete: true, share: true },
+          permissions: { read: true, write: true, delete: true, share: true, publish: true },
         },
       });
     });
@@ -808,7 +808,7 @@ test.describe("audit d'accessibilité (axe-core)", () => {
           configId: null,
           isPublished: false,
           keywords: [],
-          permissions: { read: true, write: true, delete: true, share: true },
+          permissions: { read: true, write: true, delete: true, share: true, publish: true },
           updatedAt: "2026-01-02T00:00:00Z",
         },
       });
