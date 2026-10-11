@@ -1,24 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
-import { AuthProvider as OidcProvider, useAuth as useOidcAuth } from "react-oidc-context";
-import { WebStorageStateStore } from "oidc-client-ts";
-import { createContext, useRef } from "react";
+import { createContext, lazy, Suspense, useState } from "react";
 import type { AppConfig } from "../config";
-import { setStorageUser } from "../lib/userStorage";
-import { safeReturnTo } from "./returnTo";
-import { enableMockAuth } from "./useAuth";
+import { AuthContext, enableMockAuth, type AuthState } from "./useAuth";
 
-type ReturnState = { returnTo?: unknown } | undefined;
-
-// P07.07/08 : publie l'id du compte AVANT le rendu des enfants (un
-// useEffect arriverait après les initialiseurs d'état qui lisent
-// localStorage). Écriture idempotente d'un module-level, sans effet visible.
-function StorageUserSync({ children }: { children: React.ReactNode }) {
-  setStorageUser(useOidcAuth().user?.profile.sub);
-  return <>{children}</>;
-}
+// REV-267 : oidc-client-ts + react-oidc-context (~20 Ko gzip) ne sont chargés
+// qu'à la demande — jamais pour un visiteur anonyme de /public.
+const OidcAuthProvider = lazy(() => import("./OidcAuthProvider"));
 
 // Mock context value mirrors the react-oidc-context User minimally; only used in tests/E2E.
 export const MockAuthContext = createContext(true);
+
+// Le magasin utilisateur OIDC est en mémoire : un chargement frais est
+// toujours anonyme. /public sans retour de callback (code/state) n'a donc
+// aucune session à restaurer.
+export function isAnonymousLanding(loc: Pick<Location, "pathname" | "search">): boolean {
+  const q = new URLSearchParams(loc.search);
+  return (
+    (loc.pathname === "/public" || loc.pathname.startsWith("/public/")) &&
+    !q.has("code") &&
+    !q.has("state") &&
+    !q.has("error")
+  );
+}
 
 export function AuthProvider({
   config,
@@ -27,87 +30,35 @@ export function AuthProvider({
   config: AppConfig;
   children: React.ReactNode;
 }) {
-  // Stabilize the in-memory stores so they are created exactly once per
-  // AuthProvider instance. Constructing them inline in the render body would
-  // recreate them on every render, causing react-oidc-context to reinitialize
-  // its UserManager with a fresh (empty) store and lose in-flight tokens.
-  const storesRef = useRef<{
-    userStore: WebStorageStateStore;
-    stateStore: WebStorageStateStore;
-  } | null>(null);
-  if (!storesRef.current) {
-    const store = new InMemoryStore();
-    storesRef.current = {
-      userStore: new WebStorageStateStore({ store }),
-      stateStore: new WebStorageStateStore({ store: window.sessionStorage }),
-    };
-  }
+  const [needOidc, setNeedOidc] = useState(
+    () => config.authMode !== "mock" && !isAnonymousLanding(window.location),
+  );
+  const [signInOnMount, setSignInOnMount] = useState(false);
 
   if (config.authMode === "mock") {
     enableMockAuth();
     return <MockAuthContext.Provider value={true}>{children}</MockAuthContext.Provider>;
   }
+  if (!needOidc) {
+    const anonymous: AuthState = {
+      isLoading: false,
+      isAuthenticated: false,
+      username: null,
+      error: null,
+      getAccessToken: () => undefined,
+      signIn: () => {
+        setSignInOnMount(true);
+        setNeedOidc(true);
+      },
+      signOut: () => {},
+    };
+    return <AuthContext.Provider value={anonymous}>{children}</AuthContext.Provider>;
+  }
   return (
-    <OidcProvider
-      authority={config.oidcAuthority}
-      client_id={config.oidcClientId}
-      redirect_uri={config.oidcRedirectUri}
-      // Sans cette prop, oidc-client-ts n'envoie aucun
-      // post_logout_redirect_uri à l'endpoint de déconnexion de Keycloak :
-      // l'utilisateur reste bloqué sur la page "You are logged out" nue de
-      // Keycloak au lieu de revenir sur le shell (trouvé par la suite E2E
-      // OIDC réelle, SP-26/3.8 — le mode mock ne pouvait pas le révéler).
-      // Réutilise la même URI déjà whitelistée côté Keycloak
-      // (redirect_uri), enregistrée aussi comme post-logout redirect URI
-      // valide sur le client geostudio-shell (deploy/keycloak/
-      // geostudio-realm.json).
-      post_logout_redirect_uri={config.oidcRedirectUri}
-      response_type="code"
-      scope="openid profile email"
-      // In-memory store: nothing persisted to localStorage.
-      userStore={storesRef.current.userStore}
-      stateStore={storesRef.current.stateStore}
-      // P07.02 : nettoie code/state de l'URL et restaure la route demandée.
-      // Le popstate resynchronise le data router (module-level) sur la
-      // nouvelle URL.
-      onSigninCallback={(user) => {
-        window.history.replaceState({}, "", safeReturnTo((user?.state as ReturnState)?.returnTo));
-        window.dispatchEvent(new PopStateEvent("popstate"));
-      }}
-    >
-      <StorageUserSync>{children}</StorageUserSync>
-    </OidcProvider>
+    <Suspense fallback={null}>
+      <OidcAuthProvider config={config} signInOnMount={signInOnMount}>
+        {children}
+      </OidcAuthProvider>
+    </Suspense>
   );
-}
-
-// In-memory implementation of oidc-client-ts AsyncStorage interface.
-// Adapted from brief: added length, clear(), and key(index) to satisfy the interface.
-// Uses a Map so no data ever touches localStorage/sessionStorage.
-class InMemoryStore {
-  private data = new Map<string, string>();
-
-  get length(): Promise<number> {
-    return Promise.resolve(this.data.size);
-  }
-
-  async clear(): Promise<void> {
-    this.data.clear();
-  }
-
-  async getItem(key: string): Promise<string | null> {
-    return this.data.get(key) ?? null;
-  }
-
-  async key(index: number): Promise<string | null> {
-    const keys = [...this.data.keys()];
-    return keys[index] ?? null;
-  }
-
-  async removeItem(key: string): Promise<void> {
-    this.data.delete(key);
-  }
-
-  async setItem(key: string, value: string): Promise<void> {
-    this.data.set(key, value);
-  }
 }
