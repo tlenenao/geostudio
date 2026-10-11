@@ -237,6 +237,10 @@ def test_never_exposes_a_sensitive_field(client):
         # jamais soumise par le client — même statut public que date/
         # updatedAt, pas une donnée sensible propre à /items.
         "bbox",
+        # contentStatus/categories (ARC-05) : gouvernance de catalogue publique
+        # par conception (badge « Référence »), pas de donnée sensible.
+        "contentStatus",
+        "categories",
     }
 
 

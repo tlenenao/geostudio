@@ -26,7 +26,7 @@ from app.features.repository import FilterError, select_features
 from app.features.rls import rls_scope
 from app.filter_values import normalize_filters
 from app.items import repository as items_repo
-from app.items.schemas import ItemPage, ItemRead
+from app.items.schemas import ContentStatus, ItemPage, ItemRead
 from app.items.service import get_item_service
 from app.mcp.tools.identity import (
     http_exception_to_value_error,
@@ -75,6 +75,7 @@ def register(server: FastMCP, session_factory) -> None:
         owner: str | None = None,
         keyword: list[str] | None = None,
         bbox: str | None = None,
+        status: ContentStatus | None = None,
     ) -> ItemPage:
         """List catalog items — mirrors GET /items. scope: all|mine|shared|public."""
         access_token = get_access_token()
@@ -94,6 +95,7 @@ def register(server: FastMCP, session_factory) -> None:
                     owner=owner,
                     keywords=keyword,
                     bbox=_parse_bbox_tuple(bbox) if bbox else None,
+                    status=status,
                 )
             )
 
@@ -109,6 +111,7 @@ def register(server: FastMCP, session_factory) -> None:
         owner: str | None = None,
         keyword: list[str] | None = None,
         bbox: str | None = None,
+        status: ContentStatus | None = None,
     ) -> ItemPage:
         """Search the catalog (hybrid trigram + vector ranking on q) — items
         only, not collections. Same permissions/parameters as list_items;
@@ -131,6 +134,7 @@ def register(server: FastMCP, session_factory) -> None:
                     owner=owner,
                     keywords=keyword,
                     bbox=_parse_bbox_tuple(bbox) if bbox else None,
+                    status=status,
                 )
             )
 
