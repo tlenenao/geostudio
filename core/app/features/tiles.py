@@ -167,6 +167,16 @@ def build_probe_sql(quote: Callable[[str], str], info: TableInfo, src: str | Non
     )
 
 
+_MERC_R = 6378137.0
+_MERC_PER_DEG = 20037508.342789244 / 180
+_PI4 = 0.7853981633974483
+_AGG_CELLS_TO_MVT = (
+    "SELECT point_count, ST_AsMVTGeom("
+    "ST_SetSRID(ST_MakePoint((cx + 0.5) * :cell, (cy + 0.5) * :cell), 3857), "
+    "ST_TileEnvelope(:z, :x, :y), :extent, :buffer, true) AS geom FROM cells"
+)
+
+
 def build_agg_mvt_sql(quote: Callable[[str], str], info: TableInfo, src: str | None = None) -> str:
     """Cellules `count(*)` d'une tuile dense. Ne projette AUCUNE colonne de
     données (ni valeur masquée GAP-22) : seulement la géométrie et un compte,
@@ -179,6 +189,21 @@ def build_agg_mvt_sql(quote: Callable[[str], str], info: TableInfo, src: str | N
     assert info.geometry_column is not None, "build_agg_mvt_sql exige une géométrie"
     table = src or f"public.{quote(info.table_name)} t"
     geom = f"t.{quote(info.geometry_column)}"
+    if info.srid == 4326 and info.geometry_type == "Point":
+        # REV-283 (E-bis-3) : points WGS84 — la cellule se calcule en Mercator par
+        # formule (x linéaire en lon, y = R·ln tan(π/4+φ/2)), sans ST_Transform ni
+        # ST_PointOnSurface par ligne ; les centres de cellule sont déjà en 3857.
+        return (
+            "WITH cells AS ("
+            f"SELECT floor(ST_X({geom}) * {_MERC_PER_DEG} / :cell) AS cx, "
+            f"floor({_MERC_R} * ln(tan({_PI4} + radians(ST_Y({geom})) / 2)) / :cell) AS cy, "
+            "count(*) AS point_count "
+            f"FROM {table} "
+            f"WHERE {geom} && ST_Transform(ST_TileEnvelope(:z, :x, :y), :srid) "
+            "GROUP BY 1, 2"
+            f"), q AS ({_AGG_CELLS_TO_MVT})"
+            " SELECT ST_AsMVT(q, :layer, :extent, 'geom') FROM q WHERE q.geom IS NOT NULL"
+        )
     return (
         "WITH pts AS ("
         f"SELECT ST_PointOnSurface(ST_Transform({geom}, 3857)) AS p "
@@ -187,11 +212,8 @@ def build_agg_mvt_sql(quote: Callable[[str], str], info: TableInfo, src: str | N
         "), cells AS ("
         "SELECT floor(ST_X(p) / :cell) AS cx, floor(ST_Y(p) / :cell) AS cy, "
         "count(*) AS point_count FROM pts GROUP BY 1, 2"
-        "), q AS ("
-        "SELECT point_count, ST_AsMVTGeom("
-        "ST_SetSRID(ST_MakePoint((cx + 0.5) * :cell, (cy + 0.5) * :cell), 3857), "
-        "ST_TileEnvelope(:z, :x, :y), :extent, :buffer, true) AS geom FROM cells"
-        ") SELECT ST_AsMVT(q, :layer, :extent, 'geom') FROM q WHERE q.geom IS NOT NULL"
+        f"), q AS ({_AGG_CELLS_TO_MVT})"
+        " SELECT ST_AsMVT(q, :layer, :extent, 'geom') FROM q WHERE q.geom IS NOT NULL"
     )
 
 
