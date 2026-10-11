@@ -59,7 +59,7 @@ function AppShell() {
   );
   return (
     <ItemClientProvider client={client}>
-      <RouterProvider router={router} />
+      <RouterProvider router={router} useTransitions={false} />
     </ItemClientProvider>
   );
 }
