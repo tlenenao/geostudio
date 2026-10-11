@@ -44,6 +44,12 @@ class Item(Base):
     thumbnail_key: Mapped[str | None] = mapped_column(String, nullable=True)
     is_published: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa.false())
     is_public: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa.false())
+    # ARC-05 : statut de contenu (none|authoritative|deprecated), écrit sous
+    # catalog.manage ; catégories libres (distinctes des mots-clés).
+    content_status: Mapped[str] = mapped_column(
+        String, default="none", server_default="none", nullable=False
+    )
+    categories: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
     # Métadonnées ouvertes (chantier 4.9, sous-ensemble réduit à license+
     # language — cf. spec §1.2). Même convention str/default="" que
     # Collection.

@@ -74,6 +74,7 @@ export const admin = {
   "roles.privilege.settingsInstanceManage": "Gérer les paramètres d'instance et de tenant",
   "roles.privilege.complianceManage": "Purger toutes les données d'un tenant (RGPD, irréversible)",
   "roles.privilege.dataViewSensitive": "Voir les champs sensibles",
+  "roles.privilege.itemsPublish": "Publier un item (public ou catalogue)",
   // Repli défensif quand /roles/catalog renvoie une labelKey absente de ce
   // catalogue (dérive cœur/shell) — jamais une case à cocher sans libellé
   // ni aria-label (REV-064).

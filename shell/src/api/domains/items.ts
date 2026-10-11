@@ -78,17 +78,19 @@ export function createItemsMethods(base: ItemClientBase): ItemsMethods {
       if (params.owner) q.set("owner", params.owner);
       for (const keyword of params.keywords ?? []) q.append("keyword", keyword);
       if (params.bbox) q.set("bbox", params.bbox);
+      if (params.status) q.set("status", params.status);
       return request<ItemPage>("GET", `/items?${q.toString()}`);
     },
 
     async getItemFacets(
-      params: Pick<ListItemsParams, "q" | "type" | "scope" | "owner"> = {},
+      params: Pick<ListItemsParams, "q" | "type" | "scope" | "owner" | "status"> = {},
     ): Promise<ItemFacets> {
       const q = new URLSearchParams();
       if (params.q) q.set("q", params.q);
       if (params.type) q.set("type", params.type);
       if (params.scope) q.set("scope", params.scope);
       if (params.owner) q.set("owner", params.owner);
+      if (params.status) q.set("status", params.status);
       return request<ItemFacets>("GET", `/items/facets?${q.toString()}`);
     },
 

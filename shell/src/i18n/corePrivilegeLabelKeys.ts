@@ -25,4 +25,5 @@ export const CORE_PRIVILEGE_LABEL_KEYS = [
   "roles.privilege.settingsInstanceManage",
   "roles.privilege.complianceManage",
   "roles.privilege.dataViewSensitive",
+  "roles.privilege.itemsPublish",
 ] as const;
