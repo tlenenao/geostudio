@@ -806,6 +806,21 @@ def test_list_items_hybrid_search_respects_explicit_sort(
     )
     assert [i.title for i in page.items] == ["A incidents", "Z incidents"]
 
+    # `sort="relevance"` (le catalogue l'envoie quand `q` est posé) = pas de tri
+    # explicite : l'ordre RRF est conservé (le shell envoyait « date_desc » en dur).
+    page = repo.list_items(
+        pg_session,
+        tenant_id=tenant.id,
+        current_user_id=user.id,
+        q="incidents",
+        resource_type=None,
+        scope="all",
+        page=1,
+        page_size=12,
+        sort="relevance",
+    )
+    assert [i.title for i in page.items] == ["Z incidents", "A incidents"]
+
 
 @pytest.mark.postgis
 def test_list_items_hybrid_search_never_leaks_an_invisible_item(

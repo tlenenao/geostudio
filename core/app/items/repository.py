@@ -459,7 +459,8 @@ def list_items(
         ordered_rows = [by_id[i] for i in candidate_ids if i in by_id]
         if keywords:
             ordered_rows = [r for r in ordered_rows if _keyword_match(r[0], keywords)]
-        if sort:
+        if sort and sort != "relevance":
+            # "relevance" = pas de tri explicite : l'ordre RRF est conservé.
             # Un tri explicite (date/titre) avec q posé écrase l'ordre RRF
             # (spec §1.1) : le chemin hybride trie les lignes récupérées au
             # lieu de suivre l'ordre de candidate_ids (pertinence).
