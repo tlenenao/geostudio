@@ -9,6 +9,7 @@ jamais la connexion DuckDB ; les résultats sont rejoints sur `__rn`, donc les c
 dans les fonctions : `contracts.py` importe ce module au chargement."""
 
 import json
+import os
 import threading
 import time
 from collections.abc import Callable
@@ -50,6 +51,35 @@ def _max_rows() -> int:
     from app.pipelines import connector_runtime as cr
 
     return cr._env_int("CORE_PIPELINES_HTTP_CALL_MAX_ROWS", 10_000)
+
+
+def _max_total_bytes() -> int:
+    from app.pipelines import connector_runtime as cr
+
+    return cr._env_int("CORE_PIPELINES_HTTP_CALL_MAX_TOTAL_BYTES", 256 * 1024 * 1024)
+
+
+def _preview_timeout_s() -> float:
+    # Dupliqué de runtime._preview_timeout_s : runtime importe contracts, qui importe ce module
+    # (cycle d'import).
+    return float(os.environ.get("CORE_PIPELINES_PREVIEW_TIMEOUT_S") or 30)
+
+
+class _Budget:
+    """Octets de réponse cumulés d'un nœud (threads du pool) ; au-delà, les corps ne sont plus
+    conservés (erreur de ligne, pas d'échec du nœud)."""
+
+    def __init__(self, cap: int) -> None:
+        self._cap = cap
+        self._used = 0
+        self._lock = threading.Lock()
+
+    def take(self, n: int) -> bool:
+        with self._lock:
+            if self._used + n > self._cap:
+                return False
+            self._used += n
+            return True
 
 
 def _parse_retry_after(raw: str | None) -> float | None:
@@ -142,7 +172,13 @@ def _build_request_parts(p, body_raw, mp_vals) -> tuple[dict, dict]:
         text = body_raw if isinstance(body_raw, str) else json.dumps(body_raw)
         return {"Content-Type": "application/json"}, {"data": text.encode()}
     if p.bodyType == "form":
-        return {}, {"data": {k: str(v) for k, v in _as_obj(body_raw, "bodyExpr").items()}}
+        return {}, {
+            "data": {
+                k: (str(v).lower() if isinstance(v, bool) else str(v))
+                for k, v in _as_obj(body_raw, "bodyExpr").items()
+                if v is not None
+            }
+        }
     if p.bodyType == "raw":
         return {}, {"data": b"" if body_raw is None else _as_bytes(body_raw)}
     data: dict[str, str] = {}
@@ -167,7 +203,7 @@ def _max_response_bytes() -> int:
     return cr._env_int("CORE_PIPELINES_HTTP_CALL_MAX_RESPONSE_BYTES", 5 * 1024 * 1024)
 
 
-def _send_direct(p, url, headers, kwargs, auth, *, follows_redirects: bool) -> _Outcome:
+def _send_direct(p, url, headers, kwargs, auth, budget, *, follows_redirects: bool) -> _Outcome:
     from app.pipelines.egress import build_guarded_session
 
     cap = _max_response_bytes()
@@ -188,11 +224,13 @@ def _send_direct(p, url, headers, kwargs, auth, *, follows_redirects: bool) -> _
             resp.close()
     if len(raw) > cap:
         return _Outcome(resp.status_code, None, error="réponse trop volumineuse")
+    if not budget.take(len(raw)):
+        return _Outcome(resp.status_code, None, error="budget de réponse dépassé")
     text = raw.decode(resp.encoding or "utf-8", errors="replace")
     return _classify(resp.status_code, text, resp.headers, follows_redirects=follows_redirects)
 
 
-def _send_paginated(p, url, headers, kwargs, auth, *, follows_redirects: bool) -> _Outcome:
+def _send_paginated(p, url, headers, kwargs, auth, budget, *, follows_redirects: bool) -> _Outcome:
     """Pages agrégées en une liste JSON. `RESTClient(base_url="")` accepte une URL absolue en
     `path` (dlt `join_url`). Une erreur HTTP lève `requests.HTTPError` (traité par
     `_run_with_retry`, qui rejoue toute la pagination — ponytail : reprise depuis la page 1)."""
@@ -245,8 +283,11 @@ def _send_paginated(p, url, headers, kwargs, auth, *, follows_redirects: bool) -
     if 300 <= code < 400 and not follows_redirects:
         return _Outcome(code, None, error="redirection non suivie")
     body = json.dumps(records, default=str)
-    if len(body.encode()) > _max_response_bytes():
+    size = len(body.encode())
+    if size > _max_response_bytes():
         return _Outcome(error="réponse trop volumineuse")
+    if not budget.take(size):
+        return _Outcome(code, None, error="budget de réponse dépassé")
     return _Outcome(code, body)
 
 
@@ -267,7 +308,9 @@ class _RateLimiter:
             time.sleep(slot - now)
 
 
-def _make_row_caller(p, secret_resolver, preview: bool) -> Callable[[tuple], _Outcome]:
+def _make_row_caller(
+    p, secret_resolver, preview: bool, limiter, budget, deadline: float
+) -> Callable[[tuple], _Outcome]:
     from app.pipelines import connector_runtime as cr
 
     if p.secretName is not None and secret_resolver is None:
@@ -289,6 +332,8 @@ def _make_row_caller(p, secret_resolver, preview: bool) -> Callable[[tuple], _Ou
         rn, url, headers_raw, body_raw, *mp_vals = row
         if preview and (p.method != "GET" or rn >= _PREVIEW_MAX_CALLS):
             return _Outcome(error="non exécuté en aperçu", skipped=True)
+        if preview and time.monotonic() >= deadline:
+            return _Outcome(error="délai d'aperçu dépassé", skipped=True)
         if not url:
             return _Outcome(error="URL vide")
         if scope is not None:
@@ -300,6 +345,9 @@ def _make_row_caller(p, secret_resolver, preview: bool) -> Callable[[tuple], _Ou
                 return _Outcome(error="URL hors de la portée du secret")
 
         def attempt() -> _Outcome:
+            # Une attente par tentative réseau (retries compris) ; jamais pour une ligne ignorée.
+            # Chemin paginé : une attente par tentative de ligne, pas par page.
+            limiter.wait()
             headers = {str(k): str(v) for k, v in _as_obj(headers_raw, "headersExpr").items()}
             extra_headers, kwargs = _build_request_parts(p, body_raw, mp_vals)
             send = _send_direct if p.paginator == "none" else _send_paginated
@@ -309,6 +357,7 @@ def _make_row_caller(p, secret_resolver, preview: bool) -> Callable[[tuple], _Ou
                 {**extra_headers, **headers},
                 kwargs,
                 auth,
+                budget,
                 follows_redirects=follows_redirects,
             )
 
@@ -377,18 +426,23 @@ def _run_staged(conn, p, stage: str, view_name: str, secret_resolver, preview: b
             f"transform.httpCall : {len(rows)} lignes, plafond de {_max_rows()} dépassé"
         )
 
+    if preview:  # aperçu : pas de retry, échéance globale
+        p = p.model_copy(update={"maxRetries": 0})
+    deadline = time.monotonic() + _preview_timeout_s()
     try:
-        call = _make_row_caller(p, secret_resolver, preview)
+        call = _make_row_caller(
+            p,
+            secret_resolver,
+            preview,
+            _RateLimiter(p.requestsPerSecond),
+            _Budget(_max_total_bytes()),
+            deadline,
+        )
     except cr.ConnectorRuntimeError as exc:
         raise PipelineRuntimeError(str(exc)) from exc
-    limiter = _RateLimiter(p.requestsPerSecond)
-
-    def one(row: tuple) -> _Outcome:
-        limiter.wait()
-        return call(row)
 
     with ThreadPoolExecutor(max_workers=p.maxConcurrency) as pool:
-        outcomes = list(pool.map(one, rows))
+        outcomes = list(pool.map(call, rows))
 
     df = pd.DataFrame(
         {

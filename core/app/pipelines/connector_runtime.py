@@ -404,7 +404,7 @@ def _assert_url_within_secret_scope(payload: SecretPayload | None, params) -> No
         or p.scheme
         or p.netloc
         or params.path.startswith("//")
-        or ".." in p.path.split("/")
+        or ".." in unquote(p.path).split("/")
     ):
         raise ConnectorRuntimeError(
             f"reader.connector.rest: URL '{params.baseUrl}{params.path}' is outside the "

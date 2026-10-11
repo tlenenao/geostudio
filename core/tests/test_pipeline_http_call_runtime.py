@@ -693,3 +693,90 @@ def test_percent_encoded_dotdot_is_out_of_scope():
     assert not _url_within_scope(
         "https://api.allowed.example/v1", "https://api.allowed.example/v1/%2e%2e/admin"
     )
+
+
+def test_preview_skipped_rows_do_not_wait_on_the_rate_limiter(conn, httpserver):
+    hits = []
+    httpserver.expect_request("/pv").respond_with_handler(
+        lambda r: (hits.append(1), Response("x"))[1]
+    )
+    t0 = time.monotonic()
+    run(
+        conn,
+        {
+            "urlExpr": f"'{httpserver.url_for('/pv')}'",
+            "method": "POST",
+            "requestsPerSecond": 0.2,
+        },
+        ids=(1, 2, 3, 4, 5),
+        preview=True,
+    )
+    assert time.monotonic() - t0 < 2
+    assert hits == []
+
+
+def test_preview_deadline_skips_remaining_rows(conn, monkeypatch, httpserver):
+    monkeypatch.setenv("CORE_PIPELINES_PREVIEW_TIMEOUT_S", "0")
+    hits = []
+    httpserver.expect_request("/pv").respond_with_handler(
+        lambda r: (hits.append(1), Response("x"))[1]
+    )
+    rows = run(conn, {"urlExpr": f"'{httpserver.url_for('/pv')}'"}, ids=(1, 2), preview=True)
+    assert all(r[3:] == ("skipped", "délai d'aperçu dépassé") for r in rows)
+    assert hits == []
+
+
+def test_preview_does_not_retry(conn, httpserver):
+    hits = []
+    httpserver.expect_request("/pv").respond_with_handler(
+        lambda r: (hits.append(1), Response("x", status=503))[1]
+    )
+    run(
+        conn, {"urlExpr": f"'{httpserver.url_for('/pv')}'", "maxRetries": 3}, ids=(1,), preview=True
+    )
+    assert len(hits) == 1
+
+
+def test_retries_also_wait_on_the_rate_limiter(conn, httpserver):
+    stamps: list[float] = []
+    httpserver.expect_request("/q").respond_with_handler(_recording_handler([503, 200], stamps))
+    run(
+        conn,
+        {
+            "urlExpr": f"'{httpserver.url_for('/q')}'",
+            "requestsPerSecond": 5,
+            "maxRetries": 1,
+            "initialBackoffSeconds": 0,
+        },
+        ids=(1,),
+    )
+    stamps.sort()
+    assert stamps[1] - stamps[0] >= 0.15
+
+
+def test_cumulative_response_budget_turns_later_rows_into_errors(conn, monkeypatch, httpserver):
+    monkeypatch.setenv("CORE_PIPELINES_HTTP_CALL_MAX_TOTAL_BYTES", "50")
+    httpserver.expect_request("/b").respond_with_data("x" * 40)
+    rows = run(
+        conn,
+        {"urlExpr": f"'{httpserver.url_for('/b')}'", "maxConcurrency": 1},
+        ids=(1, 2, 3),
+    )
+    assert rows[0][3] == "success"
+    errs = [r for r in rows if r[-1] == "budget de réponse dépassé"]
+    assert len(errs) == 2 and all(r[1] is None for r in errs)
+
+
+def test_form_body_skips_null_values_and_lowercases_bools(conn, httpserver):
+    seen = _capture(httpserver)
+    run(
+        conn,
+        {
+            "urlExpr": f"'{httpserver.url_for('/c')}'",
+            "method": "POST",
+            "bodyType": "form",
+            "bodyExpr": "json_object('a', NULL, 'b', true)",
+        },
+        ids=(3,),
+    )
+    assert seen["data"] == b"b=true"
