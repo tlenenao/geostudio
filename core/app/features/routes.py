@@ -58,7 +58,7 @@ from app.configs.geo_limits_dep import get_request_geo_limits
 from app.configs.guest_access import GuestActor, get_share_link_actor
 from app.db import get_session
 from app.errors import ValidationHTTPException
-from app.features.repository import CursorError, FilterError
+from app.features.repository import SUPPORTED_EPSG, CursorError, FilterError
 from app.features.validation import validate_feature
 from app.filter_values import fold_query_filters
 from app.roles.guards import has_privilege, require_privilege
@@ -80,13 +80,27 @@ class SqlQueryBody(BaseModel):
     sql: str
 
 
-RESERVED_QUERY_PARAMS = {"limit", "offset", "cursor", "bbox", "geom_intersects", "f", "format"}
+RESERVED_QUERY_PARAMS = {
+    "limit",
+    "offset",
+    "cursor",
+    "bbox",
+    "geom_intersects",
+    "f",
+    "format",
+    "sortby",
+    "datetime",
+    "datetime_field",
+    "crs",
+    "bbox-crs",
+}
 MAX_LIMIT = 1000
 
 CONFORMANCE_CLASSES = [
     "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/core",
     "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/oas30",
     "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/geojson",
+    "http://www.opengis.net/spec/ogcapi-features-2/1.0/conf/crs",
     "http://www.opengis.net/spec/ogcapi-features-4/1.0/conf/create-replace-delete",
 ]
 
@@ -189,6 +203,43 @@ def parse_bbox(raw: str | None, *, check_bounds: bool = True):
         ) from None
 
 
+def parse_crs(raw: str | None, field: str) -> int | None:
+    """`EPSG:2154`, `epsg:2154` ou URI `.../def/crs/EPSG/0/2154` (+ CRS84 = 4326) -> code
+    EPSG parmi SUPPORTED_EPSG, sinon 400 `invalid_crs`."""
+    if raw is None:
+        return None
+    tail = raw.strip().rstrip("/").rsplit("/", 1)[-1].rsplit(":", 1)[-1]
+    code = 4326 if tail.upper() == "CRS84" else int(tail) if tail.isdigit() else None
+    if code not in SUPPORTED_EPSG:
+        raise _validation_error(
+            [
+                {
+                    "field": field,
+                    "code": "invalid_crs",
+                    "message": f"unsupported crs, expected one of EPSG {list(SUPPORTED_EPSG)}",
+                }
+            ]
+        )
+    return code
+
+
+def parse_sortby(raw: str | None) -> list[tuple[str, bool]] | None:
+    """`sortby=-nom,+id` -> [("nom", True), ("id", False)] ; `+` (espace après décodage) ok."""
+    if raw is None:
+        return None
+    out = []
+    for part in raw.split(","):
+        name = part.strip().removeprefix("+")
+        desc = name.startswith("-")
+        name = name.removeprefix("-").strip()
+        if not name:
+            raise _validation_error(
+                [{"field": "sortby", "code": "invalid_sortby", "message": "empty sortby term"}]
+            )
+        out.append((name, desc))
+    return out
+
+
 def _parse_geom_intersects(raw: str | None):
     if raw is None:
         return None
@@ -229,6 +280,9 @@ def _page_links(request: Request, *, limit: int, offset: int, page, cursor=None)
             limit=limit, cursor=page.next_cursor
         )
         links.append({"rel": "next", "type": "application/geo+json", "href": str(url)})
+    if page.next_offset is not None:  # tri personnalisé : pas de curseur keyset
+        url = request.url.include_query_params(limit=limit, offset=page.next_offset)
+        links.append({"rel": "next", "type": "application/geo+json", "href": str(url)})
     if offset > 0 and cursor is None:
         href = str(request.url.include_query_params(limit=limit, offset=max(0, offset - limit)))
         links.append({"rel": "prev", "type": "application/geo+json", "href": href})
@@ -244,6 +298,12 @@ def list_features(
     cursor: str | None = None,
     bbox: str | None = None,
     geom_intersects: str | None = None,
+    sortby: str | None = None,
+    datetime_q: str | None = Query(None, alias="datetime"),
+    datetime_field: str | None = None,
+    crs: str | None = None,
+    bbox_crs: str | None = Query(None, alias="bbox-crs"),
+    response: Response = None,  # type: ignore[assignment]
     user=Depends(get_current_user_optional),
     guest: GuestActor | None = Depends(get_share_link_actor),
     session: Session = Depends(get_session, scope="function"),
@@ -258,13 +318,27 @@ def list_features(
     if masked:
         info = hide_sensitive_columns(info, col.sensitive_fields)
     limit = min(limit, MAX_LIMIT)
-    parsed_bbox = parse_bbox(bbox)
+    out_srid = parse_crs(crs, "crs")
+    bbox_srid = parse_crs(bbox_crs, "bbox-crs") or 4326
+    parsed_bbox = parse_bbox(bbox, check_bounds=bbox_srid == 4326)
     parsed_geom_intersects = _parse_geom_intersects(geom_intersects)
     filters = _collect_filters(request)
     if cursor is not None and offset > 0:
         raise _validation_error(
             [{"field": "cursor", "code": "invalid_cursor", "message": "cursor excludes offset"}]
         )
+    # ARC-02 : paramètres transmis seulement s'ils sont posés (contrat inchangé sinon)
+    extra: dict = {
+        k: v
+        for k, v in {
+            "sortby": parse_sortby(sortby),
+            "datetime_": datetime_q,
+            "datetime_field": datetime_field,
+            "out_srid": out_srid,
+            "bbox_srid": bbox_srid if bbox_srid != 4326 else None,
+        }.items()
+        if v is not None
+    }
     try:
         with rls(session, col.tenant_id, masked=masked):
             page = repo.select_features(
@@ -277,6 +351,7 @@ def list_features(
                 filters=filters or None,
                 after=cursor,
                 count_mode="capped",
+                **extra,
             )
     except CursorError as exc:
         raise _validation_error(
@@ -284,8 +359,10 @@ def list_features(
         ) from exc
     except FilterError as exc:
         raise _validation_error(
-            [{"field": exc.field, "code": "unknown_filter", "message": exc.message}]
+            [{"field": exc.field, "code": exc.code, "message": exc.message}]
         ) from exc
+    if out_srid is not None:
+        response.headers["Content-Crs"] = f"<http://www.opengis.net/def/crs/EPSG/0/{out_srid}>"
     body: dict = {"type": "FeatureCollection", "features": page.features}
     if page.number_matched is not None:
         body["numberMatched"] = page.number_matched

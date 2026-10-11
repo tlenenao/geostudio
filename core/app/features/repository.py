@@ -10,7 +10,7 @@ import base64
 import json
 import re
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Any, Literal
 
 from sqlalchemy import text
@@ -37,6 +37,8 @@ class FeaturePage:
     number_returned: int
     next_cursor: str | None = None
     number_matched_lower_bound: bool = False
+    # ARC-02 : sous tri personnalisé il n'y a pas de curseur keyset (offset forcé).
+    next_offset: int | None = None
 
 
 # REV-279a : au-delà, number_matched est une borne basse (count(*) borné).
@@ -61,9 +63,10 @@ def decode_cursor(value: str) -> Any:
 
 
 class FilterError(Exception):
-    def __init__(self, field: str, message: str):
+    def __init__(self, field: str, message: str, code: str = "unknown_filter"):
         self.field = field
         self.message = message
+        self.code = code
         super().__init__(message)
 
 
@@ -112,8 +115,69 @@ def _split_filter_key(raw_name: str) -> tuple[str, str | None]:
     return raw_name, None
 
 
-def _where(session: Session, info: TableInfo, bbox, geom_intersects, filters):
+# ARC-02 : CRS de sortie / de bbox acceptés (EPSG). 4326 = lon/lat (CRS84) comme GeoJSON.
+SUPPORTED_EPSG = (4326, 3857, 2154)
+
+
+def _temporal_clause(
+    session: Session, info: TableInfo, raw: str, field: str | None, params: dict
+) -> str:
+    """`datetime=` OGC : instant, `a/b`, `a/..`, `../b`. Colonne = `field` ou l'unique
+    colonne date/datetime du schéma (sinon 400)."""
+    cols = [c for c in _property_columns(info) if c.type in ("date", "datetime")]
+    if field is not None:
+        col = next((c for c in cols if c.name == field), None)
+        if col is None:
+            raise FilterError(field, "not a temporal column", "invalid_datetime_field")
+    elif len(cols) == 1:
+        col = cols[0]
+    else:
+        raise FilterError(
+            "datetime",
+            "collection has no single temporal column, pass datetime_field",
+            "invalid_datetime",
+        )
+    parts = raw.split("/")
+    if len(parts) == 1:
+        parts = [raw, raw]
+    if len(parts) != 2 or all(p in ("", "..") for p in parts):
+        raise FilterError("datetime", "expected instant or interval", "invalid_datetime")
+    ident = quote_ident(session, col.name)
+    cast = "date" if col.type == "date" else "timestamptz"
+    clauses = []
+    for i, (v, op) in enumerate(zip(parts, (">=", "<="), strict=True)):
+        if v in ("", ".."):
+            continue
+        try:
+            if _DATE_ONLY.match(v):
+                date.fromisoformat(v)
+            else:
+                datetime.fromisoformat(v.replace("Z", "+00:00"))
+        except ValueError:
+            raise FilterError("datetime", f"cannot parse '{v}'", "invalid_datetime") from None
+        params[f"__dt{i}"] = v
+        if op == "<=" and cast == "timestamptz" and _DATE_ONLY.match(v):
+            # borne haute « YYYY-MM-DD » = tout ce jour (comme P25.12)
+            clauses.append(f"{ident} < CAST(:__dt{i} AS timestamptz) + INTERVAL '1 day'")
+        else:
+            clauses.append(f"{ident} {op} CAST(:__dt{i} AS {cast})")
+    return " AND ".join(clauses)
+
+
+def _where(
+    session: Session,
+    info: TableInfo,
+    bbox,
+    geom_intersects,
+    filters,
+    *,
+    bbox_srid: int = 4326,
+    datetime_: str | None = None,
+    datetime_field: str | None = None,
+):
     clauses, params = [], {}
+    if datetime_ is not None:
+        clauses.append(_temporal_clause(session, info, datetime_, datetime_field, params))
     if filters:
         by_name = {c.name: c for c in _property_columns(info)}
         for i, (raw_name, raw) in enumerate(sorted(filters.items())):
@@ -152,7 +216,7 @@ def _where(session: Session, info: TableInfo, bbox, geom_intersects, filters):
             raise FilterError("bbox", "collection has no geometry")
         g = quote_ident(session, info.geometry_column)
         clauses.append(
-            f"{g} && ST_Transform(ST_MakeEnvelope(:bx0, :by0, :bx1, :by1, 4326), :bsrid)"
+            f"{g} && ST_Transform(ST_MakeEnvelope(:bx0, :by0, :bx1, :by1, :bcrs), :bsrid)"
         )
         params.update(
             {
@@ -161,6 +225,7 @@ def _where(session: Session, info: TableInfo, bbox, geom_intersects, filters):
                 "bx1": bbox[2],
                 "by1": bbox[3],
                 "bsrid": info.srid or 4326,
+                "bcrs": bbox_srid,
             }
         )
     if geom_intersects is not None:
@@ -176,12 +241,33 @@ def _where(session: Session, info: TableInfo, bbox, geom_intersects, filters):
     return (" WHERE " + " AND ".join(clauses)) if clauses else "", params
 
 
-def _select_list(session: Session, info: TableInfo) -> str:
+def _select_list(session: Session, info: TableInfo, out_srid: int | None = None) -> str:
     cols = [quote_ident(session, info.pk_column)]
     cols += [quote_ident(session, c.name) for c in _property_columns(info)]
     if info.geometry_column:
-        cols.append(f"ST_AsGeoJSON({quote_ident(session, info.geometry_column)}) AS __geo")
+        g = quote_ident(session, info.geometry_column)
+        if out_srid is None:
+            cols.append(f"ST_AsGeoJSON({g}) AS __geo")
+        else:  # options=0 : pas de membre `crs` (annoncé par l'en-tête Content-Crs)
+            cols.append(f"ST_AsGeoJSON(ST_Transform({g}, {int(out_srid)}), 9, 0) AS __geo")
     return ", ".join(cols)
+
+
+def _order_by(session: Session, info: TableInfo, sortby) -> tuple[str, bool]:
+    """(clause ORDER BY, tri personnalisé ?). `sortby` = [(colonne, desc)]. Le tri sur la
+    seule PK croissante reste le tri keyset par défaut ; sinon la PK départage (stable)."""
+    pk = quote_ident(session, info.pk_column)
+    if not sortby or sortby == [(info.pk_column, False)]:
+        return pk, False
+    by_name = {c.name: c for c in _property_columns(info) if c.type not in ("unsupported", "list")}
+    items = []
+    for name, desc in sortby:
+        if name != info.pk_column and name not in by_name:
+            raise FilterError(name, f"unknown sortby property '{name}'", "invalid_sortby")
+        items.append(f"{quote_ident(session, name)} {'DESC' if desc else 'ASC'}")
+    if info.pk_column not in (n for n, _ in sortby):
+        items.append(pk)
+    return ", ".join(items), True
 
 
 def _row_to_feature(info: TableInfo, row) -> dict:
@@ -213,12 +299,29 @@ def _select_features(
     after: str | None = None,
     count_mode: Literal["exact", "capped", "none"] = "exact",
     count_cap: int | None = None,
+    sortby: list[tuple[str, bool]] | None = None,
+    datetime_: str | None = None,
+    datetime_field: str | None = None,
+    out_srid: int | None = None,
+    bbox_srid: int = 4326,
     src: str,
 ) -> FeaturePage:
     if after is not None and offset > 0:
         raise CursorError("after and offset are mutually exclusive")
     pk = quote_ident(session, info.pk_column)
-    where, params = _where(session, info, bbox, geom_intersects, filters)
+    order, custom_sort = _order_by(session, info, sortby)
+    if custom_sort and after is not None:
+        raise CursorError("cursor is not available with a custom sortby")
+    where, params = _where(
+        session,
+        info,
+        bbox,
+        geom_intersects,
+        filters,
+        bbox_srid=bbox_srid,
+        datetime_=datetime_,
+        datetime_field=datetime_field,
+    )
     page_where, page_params = where, dict(params)
     if after is not None:
         value = _coerce_fid(info, str(decode_cursor(after)))
@@ -227,8 +330,8 @@ def _select_features(
         page_where += (" AND " if where else " WHERE ") + f"{pk} > :__after"
         page_params["__after"] = value
     page_sql = text(
-        f"SELECT {_select_list(session, info)} FROM {src}{page_where} "
-        f"ORDER BY {pk} LIMIT :__l OFFSET :__o"
+        f"SELECT {_select_list(session, info, out_srid)} FROM {src}{page_where} "
+        f"ORDER BY {order} LIMIT :__l OFFSET :__o"
     )
     page_args = {**page_params, "__l": limit + 1, "__o": offset}
     if after is None:
@@ -243,7 +346,8 @@ def _select_features(
             raise CursorError("invalid cursor") from exc
     has_more = len(rows) > limit
     features = [_row_to_feature(info, r) for r in rows[:limit]]
-    next_cursor = encode_cursor(features[-1]["id"]) if has_more else None
+    next_cursor = encode_cursor(features[-1]["id"]) if has_more and not custom_sort else None
+    next_offset = offset + limit if has_more and custom_sort else None
     lower_bound = False
     if after is not None:
         matched = None  # le total d'une page keyset n'est pas calculé
@@ -268,6 +372,7 @@ def _select_features(
         number_returned=len(features),
         next_cursor=next_cursor,
         number_matched_lower_bound=lower_bound,
+        next_offset=next_offset,
     )
 
 
