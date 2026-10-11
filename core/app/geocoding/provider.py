@@ -42,6 +42,13 @@ class GeocodeResult(BaseModel):
 class Geocoder(Protocol):
     def search(self, q: str, limit: int) -> list[GeocodeResult]: ...
 
+    def reverse(self, lon: float, lat: float) -> GeocodeResult | None: ...
+
+
+def _reverse_url(search_url: str) -> str:
+    # Même hôte que /search : la garde d'egress (allowlist) s'applique telle quelle.
+    return search_url.rsplit("/", 1)[0] + "/reverse"
+
 
 class BanGeocoder:
     def __init__(
@@ -61,6 +68,21 @@ class BanGeocoder:
             )
             for f in _checked_json(response)["features"]
         ]
+
+    def reverse(self, lon: float, lat: float) -> GeocodeResult | None:
+        with self._client_factory() as client:
+            response = client.get(
+                _reverse_url(self._url), params={"lon": lon, "lat": lat, "limit": 1}
+            )
+        features = _checked_json(response)["features"]
+        if not features:
+            return None
+        f = features[0]
+        return GeocodeResult(
+            label=f["properties"]["label"],
+            lon=f["geometry"]["coordinates"][0],
+            lat=f["geometry"]["coordinates"][1],
+        )
 
 
 # Cache global (processus) des réponses Nominatim : la politique d'usage OSM
@@ -103,6 +125,20 @@ class NominatimGeocoder:
             _nominatim_cache.pop(next(iter(_nominatim_cache)))
         _nominatim_cache[key] = (time.monotonic(), results)
         return results
+
+    def reverse(self, lon: float, lat: float) -> GeocodeResult | None:
+        with self._client_factory() as client:
+            response = client.get(
+                _reverse_url(self._url),
+                params={"format": "jsonv2", "lon": lon, "lat": lat},
+                headers={"User-Agent": nominatim_user_agent()},
+            )
+        body = _checked_json(response)
+        if "error" in body:
+            return None
+        return GeocodeResult(
+            label=body["display_name"], lon=float(body["lon"]), lat=float(body["lat"])
+        )
 
 
 def get_geocoder() -> Geocoder:
