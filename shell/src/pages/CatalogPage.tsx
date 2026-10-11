@@ -34,13 +34,21 @@ const SCOPE_LABELS: Record<ItemScope, string> = {
   public: t("catalog.scopePublic"),
 };
 const SORT_LABELS: Record<ItemSort, string> = {
+  relevance: t("catalog.sortRelevance"),
   date_desc: t("catalog.sortDateDesc"),
   date_asc: t("catalog.sortDateAsc"),
   updated_desc: t("catalog.sortUpdatedDesc"),
   title_asc: t("catalog.sortTitleAsc"),
   title_desc: t("catalog.sortTitleDesc"),
 };
-const SORT_ORDER: ItemSort[] = ["date_desc", "date_asc", "updated_desc", "title_asc", "title_desc"];
+const SORT_ORDER: ItemSort[] = [
+  "relevance",
+  "date_desc",
+  "date_asc",
+  "updated_desc",
+  "title_asc",
+  "title_desc",
+];
 
 export function CatalogPage({
   onOpenItem,
@@ -74,7 +82,9 @@ export function CatalogPage({
     setSearchParams(params, { replace: true });
   };
   const [scope, setScope] = useState<ItemScope>("all");
-  const [sort, setSort] = useState<ItemSort>("date_desc");
+  // null = choix automatique : « Pertinence » tant qu'une recherche est posée (sinon
+  // le tri par date écrase l'ordre de la recherche hybride), « Date » sinon.
+  const [sortChoice, setSortChoice] = useState<ItemSort | null>(null);
   const [ownerFilter, setOwnerFilter] = useState("");
   const [selectedKeywords, setSelectedKeywords] = useState<string[]>([]);
   const [spatialBbox, setSpatialBbox] = useState<Bbox | null>(null);
@@ -90,6 +100,10 @@ export function CatalogPage({
 
   // "mine"/"shared" need the current username; gate the query until it's known
   // so the grid never briefly shows unfiltered results under those scopes.
+  const sort: ItemSort =
+    sortChoice === "relevance" && !q
+      ? "date_desc"
+      : (sortChoice ?? (q ? "relevance" : "date_desc"));
   const requiresMe = scope === "mine" || scope === "shared";
   const query = useItems(
     {
@@ -212,11 +226,11 @@ export function CatalogPage({
                   className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                   value={sort}
                   onChange={(e) => {
-                    setSort(e.target.value as ItemSort);
+                    setSortChoice(e.target.value as ItemSort);
                     setPage(1);
                   }}
                 >
-                  {SORT_ORDER.map((s) => (
+                  {SORT_ORDER.filter((s) => s !== "relevance" || q).map((s) => (
                     <option key={s} value={s}>
                       {SORT_LABELS[s]}
                     </option>

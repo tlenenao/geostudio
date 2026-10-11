@@ -93,17 +93,21 @@ test.describe("j02 lecteur — API : visibilité et droits", () => {
     }
   });
 
-  // j02-001 : un `scope` inconnu supprime tout le filtre de visibilité.
-  bug("j02-001 : un scope inconnu ne doit pas exposer les items privés d'autrui", async () => {
+  // j02-001 : un `scope` inconnu est refusé (422, Literal côté cœur — P13.01) au lieu de lever le
+  // filtre de visibilité ; ni les items ni les facettes ne répondent.
+  test("j02-001 : un scope inconnu est refusé en 422 et n'expose pas les items privés d'autrui", async () => {
     const s = await getSeed();
     for (const scope of ["bogus", "", "owned"]) {
-      const page = await s.reader.get(`/v1/items?scope=${scope}&pageSize=200`);
-      const titles: string[] = page.body.items.map((i: { title: string }) => i.title);
-      expect(titles, `scope=${scope}`).not.toContain(`${s.tag}-carte-privee`);
+      const page = await s.reader.get(`/v1/items?scope=${scope}&pageSize=100`);
+      expect(page.status, `scope=${scope}`).toBe(422);
+      expect(JSON.stringify(page.body), `scope=${scope}`).not.toContain(`${s.tag}-carte-privee`);
     }
-    const facets = await s.reader.get("/v1/items/facets?scope=bogus");
-    const all = await s.reader.get("/v1/items/facets");
-    expect(facets.body).toEqual(all.body);
+    expect((await s.reader.get("/v1/items/facets?scope=bogus")).status).toBe(422);
+    const all = await s.reader.get("/v1/items?pageSize=100");
+    expect(all.status).toBe(200);
+    expect(all.body.items.map((i: { title: string }) => i.title)).not.toContain(
+      `${s.tag}-carte-privee`,
+    );
   });
 
   // j02-005 : GET /groups liste tout le tenant et GET /items/{id}/sharing n'exige que `read`.

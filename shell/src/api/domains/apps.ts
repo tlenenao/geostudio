@@ -52,7 +52,11 @@ export function createAppsMethods(base: ItemClientBase): AppsMethods {
         dataSources: c.dataSources ?? [],
         // Configs enregistrées avant P10.01 : le cœur renvoie id null/absent.
         messages: (c.messages ?? []).map((m, i) => (m.id ? m : { ...m, id: `msg-${i}` })),
-        pages: c.pages,
+        // Idem pour les actions d'entrée de chapitre (j10-006) : sans id, retirer l'une les retire toutes.
+        pages: c.pages?.map((p) => ({
+          ...p,
+          onEnter: p.onEnter?.map((m, i) => (m.id ? m : { ...m, id: `${p.id}-enter-${i}` })),
+        })),
         variables: c.variables,
         layout: c.layout,
         navigationMode: c.navigationMode,

@@ -1,4 +1,3 @@
-import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { stamp } from "../_fixtures/env";
 import { corePython } from "../j06/helpers";
@@ -7,9 +6,11 @@ import { apiFor, psql, type Api } from "./seed";
 test.setTimeout(90_000);
 const tag = stamp("j10");
 let creator: Api;
+let admin: Api;
 
 test.beforeAll(async () => {
   creator = await apiFor("creator");
+  admin = await apiFor("admin");
 });
 
 test.describe("j10 export d'apps : capacité éteinte", () => {
@@ -59,7 +60,7 @@ test.describe("j10 export d'apps : capacité éteinte", () => {
   // table avec rls_scope() non masqué : une collection publique dont des champs
   // sont sensibles les embarque en clair dans le bundle. Exécuté ici en
   // appelant directement freeze_config dans le conteneur cœur (la route est éteinte).
-  bug("j10-007 : le gel d'export statique n'embarque pas les champs sensibles", async () => {
+  test("j10-007 : le gel d'export statique n'embarque pas les champs sensibles", async () => {
     const c = await creator.send("POST", "/v1/collections/empty", {
       title: `${tag}-sens`,
       columns: [
@@ -74,7 +75,7 @@ test.describe("j10 export d'apps : capacité éteinte", () => {
       `INSERT INTO public.${c.body.tableName} (tenant_id, nom, secret, geom) VALUES ('default','pub','TOPSECRET-42',ST_SetSRID(ST_MakePoint(1,45),4326))`,
     );
     expect(
-      (await creator.send("PATCH", `/v1/collections/${c.body.id}`, { sensitiveFields: ["secret"] }))
+      (await admin.send("PATCH", `/v1/collections/${c.body.id}`, { sensitiveFields: ["secret"] }))
         .status,
     ).toBe(200);
     expect(

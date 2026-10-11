@@ -163,6 +163,23 @@ test("trie le catalogue (sélecteur Trier par)", async () => {
   await waitFor(() => expect(new URL(lastUrl).searchParams.get("sort")).toBe("title_asc"));
 });
 
+test("recherche : le tri passe à « Pertinence » (sort=relevance) tant que q est posé, sauf choix explicite", async () => {
+  let lastUrl = "";
+  mockFacets();
+  server.use(
+    http.get("https://core.test/v1/items", ({ request }) => {
+      lastUrl = request.url;
+      return HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 });
+    }),
+  );
+  render(<CatalogPage onOpenItem={() => {}} />, { wrapper });
+  await waitFor(() => expect(new URL(lastUrl).searchParams.get("sort")).toBe("date_desc"));
+  await userEvent.type(screen.getByLabelText("Rechercher"), "voirie");
+  await waitFor(() => expect(new URL(lastUrl).searchParams.get("sort")).toBe("relevance"));
+  await userEvent.selectOptions(screen.getByLabelText("Trier par"), "title_asc");
+  await waitFor(() => expect(new URL(lastUrl).searchParams.get("sort")).toBe("title_asc"));
+});
+
 test("filtre par propriétaire (facette peuplée par useItemFacets)", async () => {
   let lastUrl = "";
   mockFacets();

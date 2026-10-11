@@ -32,6 +32,7 @@ export const misc = {
   "catalog.scopeMine": "Mes éléments",
   "catalog.scopeShared": "Partagés avec moi",
   "catalog.scopePublic": "Publics",
+  "catalog.sortRelevance": "Pertinence",
   "catalog.sortDateDesc": "Date de création (récent d'abord)",
   "catalog.sortDateAsc": "Date de création (ancien d'abord)",
   "catalog.sortUpdatedDesc": "Date de modification (récent d'abord)",
