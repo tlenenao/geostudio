@@ -16,11 +16,13 @@ n'applique pas les contraintes FK par défaut, ce qui masquerait exactement
 la classe de défaut que ce test doit détecter."""
 
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import func, select, text
 
 from app.alerts.models import AlertEvaluation
+from app.apikeys.models import ApiKey
 from app.appexport.models import AppExportJob
 from app.attachments.models import Attachment
 from app.audit.models import AuditLog
@@ -273,6 +275,18 @@ def _create_tenant_with_one_row_in_every_model(session) -> str:
         item_title="Import terminé",
     )
     session.add(notification)
+
+    session.add(
+        ApiKey(
+            id=f"{tenant_id}-apikey",
+            tenant_id=tenant_id,
+            created_by=user.id,
+            name="k",
+            key_prefix=f"gsk_{uuid.uuid4().hex[:12]}",
+            key_hash="h",
+            expires_at=datetime.now(UTC),
+        )
+    )
 
     notif_pref = NotificationPreference(user_id=user.id, tenant_id=tenant_id)
     session.add(notif_pref)

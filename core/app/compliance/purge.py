@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 
 from app.alerts.models import AlertEvaluation
 from app.analytics import lake_purge
+from app.apikeys.models import ApiKey
 from app.appexport.models import AppExportJob
 from app.attachments import repository as attachments_repo
 from app.attachments.models import Attachment
@@ -209,6 +210,7 @@ def purge_tenant(
     counts["tileset3d_jobs"] = _delete_all(session, Tileset3DJob, tenant_id)
     counts["terrain3d_jobs"] = _delete_all(session, Terrain3DJob, tenant_id)
     counts["ingestion_jobs"] = _delete_all(session, IngestionJob, tenant_id)
+    counts["api_keys"] = _delete_all(session, ApiKey, tenant_id)
     counts["notifications"] = _delete_all(session, Notification, tenant_id)
     counts["notification_preferences"] = _delete_all(session, NotificationPreference, tenant_id)
     counts["connector_secrets"] = _delete_all(session, ConnectorSecret, tenant_id)
