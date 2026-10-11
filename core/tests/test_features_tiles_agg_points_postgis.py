@@ -45,7 +45,7 @@ def conn(pg_engine):
         c.execute(text("DROP TABLE IF EXISTS agg_pts"))
 
 
-def _cells(conn, info):
+def _cells(conn, info, z=Z, x=X, y=Y):
     """(count, x, y en coordonnées de tuile) de chaque cellule, avant encodage MVT."""
     sql = build_agg_mvt_sql(_q, info)
     assert MVT_TAIL in sql
@@ -54,8 +54,8 @@ def _cells(conn, info):
         "SELECT point_count, ST_X(geom), ST_Y(geom) FROM q WHERE geom IS NOT NULL ORDER BY 2, 3, 1",
     )
     params = {
-        "z": Z, "x": X, "y": Y, "layer": "l", "extent": MVT_EXTENT,
-        "buffer": MVT_BUFFER, "srid": 4326, "cell": agg_cell_size(Z),
+        "z": z, "x": x, "y": y, "layer": "l", "extent": MVT_EXTENT,
+        "buffer": MVT_BUFFER, "srid": 4326, "cell": agg_cell_size(z),
     }  # fmt: skip
     return conn.execute(text(sql), params).all()
 
@@ -68,6 +68,24 @@ def test_points_4326_path_matches_generic_path(conn):
     for (cn, xn, yn), (co, xo, yo) in zip(new, old, strict=True):
         assert cn == co
         assert abs(xn - xo) <= 1 and abs(yn - yo) <= 1
+
+
+def test_points_4326_path_matches_generic_path_at_high_latitude(conn):
+    """M5 : |lat| jusqu'aux pôles (ln(0) hors Mercator) — pas d'erreur, mêmes cellules."""
+    rnd = random.Random(85)
+    pts = [{"x": rnd.uniform(-45, 45), "y": rnd.uniform(66, 85)} for _ in range(300)]
+    pts += [{"x": 10, "y": 85.2}, {"x": 10, "y": 90}, {"x": 10, "y": -90}, {"x": 10, "y": -89.9}]
+    conn.execute(
+        text("INSERT INTO agg_pts (geom) VALUES (ST_SetSRID(ST_MakePoint(:x, :y), 4326))"), pts
+    )
+    for z, x, y in ((3, 4, 0), (3, 4, 7)):
+        new, old = _cells(conn, INFO, z, x, y), _cells(conn, GENERIC, z, x, y)
+        assert len(new) == len(old)
+        assert sum(r[0] for r in new) == sum(r[0] for r in old)
+        for (cn, xn, yn), (co, xo, yo) in zip(new, old, strict=True):
+            assert cn == co
+            assert abs(xn - xo) <= 1 and abs(yn - yo) <= 1
+    assert sum(r[0] for r in _cells(conn, INFO, 3, 4, 0)) > 20
 
 
 def test_points_4326_path_has_no_per_row_transform():
