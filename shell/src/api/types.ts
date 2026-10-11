@@ -249,7 +249,8 @@ export type CopilotSurface =
   | "visual_query"
   | "visible_when"
   | "computed_column"
-  | "action_condition";
+  | "action_condition"
+  | "binding";
 
 // REV-102 : un résultat de GET /v1/geocode.
 export type GeocodeResult = { label: string; lon: number; lat: number };
