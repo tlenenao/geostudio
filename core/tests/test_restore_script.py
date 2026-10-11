@@ -25,11 +25,13 @@ exit 0
 
 _FAKE_PSQL = """#!/bin/sh
 echo "psql $*" >> "$FAKE_BIN_LOG"
+case "$*" in *-At*) printf '%s' "${FAKE_REFS:-}" ;; esac
 exit 0
 """
 
 _FAKE_MC = """#!/bin/sh
 echo "mc $*" >> "$FAKE_BIN_LOG"
+[ "$1" = find ] && printf '%s' "${FAKE_FOUND:-}"
 exit 0
 """
 
@@ -161,3 +163,48 @@ def test_restore_sh_creates_rls_roles_before_pg_restore(tmp_path, fake_bin_path)
     assert "CREATE ROLE gis_rls NOLOGIN" in log
     assert "CREATE ROLE gis_rls_masked NOLOGIN" in log
     assert log.index("CREATE ROLE gis_rls_masked") < log.index("pg_restore")
+
+
+def test_restore_sh_fails_when_a_referenced_object_is_missing_from_its_bucket(
+    tmp_path, fake_bin_path
+):
+    """REV-268 : base restaurée qui référence des objets absents du bucket."""
+    restore_dir = tmp_path / "archive"
+    restore_dir.mkdir()
+    (restore_dir / "postgres.dump").write_bytes(b"fake-dump")
+
+    result, _log = _run_restore(
+        tmp_path,
+        fake_bin_path,
+        restore_dir,
+        extra_env={
+            "FAKE_REFS": "t/present.svg\nt/ghost.svg\n",
+            "FAKE_FOUND": "".join(
+                f"local/geostudio-{b}/t/present.svg\n"
+                for b in ("uploads", "attachments", "mapicons", "tileset3d", "terrain3d")
+            ),
+        },
+    )
+
+    assert result.returncode != 0
+    assert "t/ghost.svg" in result.stderr
+    assert "t/present.svg" not in result.stderr
+
+
+def test_restore_sh_passes_when_every_referenced_object_is_present(tmp_path, fake_bin_path):
+    restore_dir = tmp_path / "archive"
+    restore_dir.mkdir()
+    (restore_dir / "postgres.dump").write_bytes(b"fake-dump")
+    buckets = (
+        "uploads attachments mapicons tileset3d terrain3d".split()
+    )  # chaque bucket est interrogé avec la même liste factice
+    found = "".join(f"local/geostudio-{b}/t/a.bin\n" for b in buckets)
+
+    result, _log = _run_restore(
+        tmp_path,
+        fake_bin_path,
+        restore_dir,
+        extra_env={"FAKE_REFS": "t/a.bin\n", "FAKE_FOUND": found},
+    )
+
+    assert result.returncode == 0, result.stderr

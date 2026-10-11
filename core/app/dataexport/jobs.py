@@ -6,10 +6,13 @@ commit de statut — SP-39). Toute erreur finit `failed`, jamais zombie."""
 
 import logging
 import os
+import tempfile
+from pathlib import Path
 
 from app.analytics.duckdb_conn import open_spatial_connection
 from app.analytics.export import (
     EXPORT_MEDIA_TYPES,
+    StreamingFeatureWriter,
     export_filename,
     export_job_max,
     features_to_format,
@@ -49,8 +52,13 @@ def s3_client_from_env():
     )
 
 
-def _build_file(factory, job) -> tuple[bytes, str, str]:
-    """(contenu, nom de fichier, titre de collection). Lève sur toute anomalie."""
+def _build_file(factory, job, scratch: Path) -> tuple[Path | bytes, str, str]:
+    """(fichier ou contenu, nom de fichier, titre de collection). Lève sur toute anomalie.
+
+    REV-324 : CSV et GeoJSON sont écrits page par page dans `scratch` (mémoire
+    O(page), téléversement multipart disque→S3). GPKG et XLSX restent en mémoire
+    (non streamables sans bibliothèque supplémentaire) : leur plafond
+    `CORE_EXPORT_JOB_MAX` est le garde-fou."""
     with request_scoped_session(factory) as session:
         user = session.get(User, job.requested_by)
         if user is None:
@@ -72,9 +80,14 @@ def _build_file(factory, job) -> tuple[bytes, str, str]:
         geo_limits = resolve_geo_limits(session, tenant_id=user.tenant_id, user_id=user.id)
         q = job.query or {}
         bbox = tuple(q["bbox"]) if q.get("bbox") else None
-        job_max = export_job_max()
+        job_max = export_job_max(job.format)
         features: list[dict] = []
+        total = 0
         cursor = None
+        sink = writer = None
+        if job.format in ("csv", "geojson"):
+            sink = scratch.open("w", encoding="utf-8", newline="")
+            writer = StreamingFeatureWriter(sink, format=job.format)
         while True:
             with rls_scope(session, job.tenant_id, masked=masked, geo_limits=geo_limits):
                 page = features_repo.select_features(
@@ -88,14 +101,22 @@ def _build_file(factory, job) -> tuple[bytes, str, str]:
                     after=cursor,
                     count_mode="none",
                 )
-            features.extend(page.features)
-            if len(features) > job_max:
+            if writer is not None:
+                writer.write(page.features)
+            else:
+                features.extend(page.features)
+            total += len(page.features)
+            if total > job_max:
                 raise ValueError(f"too many entities matched (max {job_max}), refine your filters")
             cursor = page.next_cursor
             if cursor is None:
                 break
         title = col.title
-    # ponytail: tout en mémoire, plafonné par CORE_EXPORT_JOB_MAX ; passer en flux
+    if writer is not None:
+        writer.close()
+        sink.close()
+        return scratch, export_filename(title, format=job.format), title
+    # ponytail: gpkg/xlsx en mémoire, plafonnés par CORE_EXPORT_JOB_MAX ; passer en flux
     # si gpkg/xlsx dépassent la RAM du worker.
     if job.format == "gpkg":
         conn = open_spatial_connection()
@@ -136,20 +157,31 @@ def run_collection_export(job_id: str, tenant_id: str) -> None:
         session.expunge(job)
     title = job.collection_id
     try:
-        content, filename, title = _build_file(factory, job)
-        key = f"{tenant_id}/data-exports/{job_id}.{job.format}"
-        bucket = exports_bucket()
-        s3 = s3_client_from_env()
-        ensure_uploads_bucket(s3, bucket)
-        s3.put_object(
-            Bucket=bucket, Key=key, Body=content, ContentType=EXPORT_MEDIA_TYPES[job.format]
-        )
-        with request_scoped_session(factory) as session:
-            done = repo.mark_done(session, job_id, result_key=key, filename=filename)
-        if not done:  # repris en `failed` pendant l'envoi : l'objet serait orphelin
-            logger.warning("collection export job %s terminé tardivement, objet supprimé", job_id)
-            s3.delete_object(Bucket=bucket, Key=key)
-            return
+        with tempfile.TemporaryDirectory(prefix="dataexport-") as tmp:
+            content, filename, title = _build_file(factory, job, Path(tmp) / "out")
+            key = f"{tenant_id}/data-exports/{job_id}.{job.format}"
+            bucket = exports_bucket()
+            s3 = s3_client_from_env()
+            ensure_uploads_bucket(s3, bucket)
+            if isinstance(content, Path):  # boto3 upload_file : multipart disque -> S3
+                s3.upload_file(
+                    Filename=str(content),
+                    Bucket=bucket,
+                    Key=key,
+                    ExtraArgs={"ContentType": EXPORT_MEDIA_TYPES[job.format]},
+                )
+            else:
+                s3.put_object(
+                    Bucket=bucket, Key=key, Body=content, ContentType=EXPORT_MEDIA_TYPES[job.format]
+                )
+            with request_scoped_session(factory) as session:
+                done = repo.mark_done(session, job_id, result_key=key, filename=filename)
+            if not done:  # repris en `failed` pendant l'envoi : l'objet serait orphelin
+                logger.warning(
+                    "collection export job %s terminé tardivement, objet supprimé", job_id
+                )
+                s3.delete_object(Bucket=bucket, Key=key)
+                return
     except Exception as exc:
         logger.exception("collection export job %s : échec", job_id)
         with request_scoped_session(factory) as session:

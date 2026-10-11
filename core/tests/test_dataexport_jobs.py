@@ -39,6 +39,11 @@ class _FakeS3:
     def put_object(self, *, Bucket, Key, Body, ContentType):
         self.objects[(Bucket, Key)] = (Body, ContentType)
 
+    def upload_file(self, *, Filename, Bucket, Key, ExtraArgs):
+        with open(Filename, "rb") as fh:
+            body = fh.read()
+        self.put_object(Bucket=Bucket, Key=Key, Body=body, ContentType=ExtraArgs["ContentType"])
+
     def delete_object(self, *, Bucket, Key):
         self.objects.pop((Bucket, Key), None)
 

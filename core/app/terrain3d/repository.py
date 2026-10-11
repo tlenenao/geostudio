@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.terrain3d.models import Terrain3DJob
@@ -41,12 +41,16 @@ def get_job(session: Session, *, tenant_id: str, job_id: str) -> Terrain3DJob | 
 # tenant-scopée (get_job en amont) ou depuis le worker (qui a déjà validé le
 # job via get_job(tenant_id=...) en tout début de tâche) — pas de
 # re-filtrage par tenant ici, même discipline qu'app.tileset3d.repository.
-def mark_converting(session: Session, *, job_id: str) -> None:
-    job = session.get(Terrain3DJob, job_id)
-    if job is None:
-        return
-    job.status = "converting"
+def mark_converting(session: Session, *, job_id: str) -> bool:
+    """REV-295 : transition conditionnelle `uploaded -> converting` ; False si le
+    job n'est plus prenable (déjà pris, terminé, inconnu)."""
+    result = session.execute(
+        update(Terrain3DJob)
+        .where(Terrain3DJob.id == job_id, Terrain3DJob.status == "uploaded")
+        .values(status="converting")
+    )
     session.flush()
+    return bool(result.rowcount)  # type: ignore[attr-defined]
 
 
 def mark_done(session: Session, *, job_id: str, item_id: str, converted_key: str) -> None:
