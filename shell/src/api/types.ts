@@ -1237,6 +1237,9 @@ export type AppConfig = {
   // l'enregistrement pour que le cœur refuse (412) une écriture périmée.
   // Jamais persistée dans le corps de la config.
   baseVersion?: number;
+  // Avertissements du cœur sur une config relue devenue invalide (REV-305).
+  // Jamais renvoyés à l'enregistrement.
+  warnings?: string[];
 };
 
 export type PipelineNodeKind = "reader" | "transform" | "writer";

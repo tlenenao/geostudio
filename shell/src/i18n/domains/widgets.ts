@@ -40,6 +40,8 @@ export const widgets = {
   "appBuilder.exportStandaloneLabel": "Export standalone",
   "appBuilder.copilotLabel": "Copilote",
   "appBuilder.save": "Enregistrer",
+  "configWarnings.title":
+    "Cette configuration contient des références devenues invalides ; corrigez-les avant d'enregistrer :",
   "appBuilder.conflict":
     "Cette application a été modifiée ailleurs depuis votre ouverture : votre enregistrement a été refusé pour ne pas écraser ces changements.",
   "appBuilder.conflictReload": "Recharger la dernière version",

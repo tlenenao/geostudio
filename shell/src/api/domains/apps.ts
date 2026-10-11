@@ -30,6 +30,7 @@ export function createAppsMethods(base: ItemClientBase): AppsMethods {
       const qs = mode ? `?mode=${mode}` : "";
       const data = await request<{
         version?: number;
+        warnings?: string[];
         config?: {
           kind?: "app" | "dashboard";
           theme?: Theme;
@@ -58,6 +59,7 @@ export function createAppsMethods(base: ItemClientBase): AppsMethods {
         interactions: c.interactions,
         printLayout: c.printLayout ?? null,
         baseVersion: data.version,
+        ...(data.warnings?.length ? { warnings: data.warnings } : {}),
       };
     },
 

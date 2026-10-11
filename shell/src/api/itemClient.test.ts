@@ -1816,6 +1816,23 @@ test("getAppConfig donne un id distinct aux messages hérités sans id (P10.01)"
   expect(cfg.messages.map((x) => x.id)).toEqual(["msg-0", "msg-1", "kept"]);
 });
 
+test("getAppConfig conserve les avertissements du cœur (REV-305), absents sinon", async () => {
+  const body = (warnings?: string[]) => ({
+    ...(warnings ? { warnings } : {}),
+    config: { kind: "app", layout: { type: "grid", breakpoints: {}, items: [] } },
+  });
+  server.use(
+    http.get("https://core.test/v1/configs/by-item/5", () =>
+      HttpResponse.json(body(["message 'm' to: unknown target 'w9'"])),
+    ),
+    http.get("https://core.test/v1/configs/by-item/6", () => HttpResponse.json(body([]))),
+  );
+  expect((await makeClient().getAppConfig("5")).warnings).toEqual([
+    "message 'm' to: unknown target 'w9'",
+  ]);
+  expect((await makeClient().getAppConfig("6")).warnings).toBeUndefined();
+});
+
 test("getAppConfig throws when the config has no layout", async () => {
   server.use(
     http.get("https://core.test/v1/configs/by-item/5", () =>
