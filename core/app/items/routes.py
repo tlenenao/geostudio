@@ -25,6 +25,7 @@ from app.items.service import (
     get_sharing_service,
     link_creator_can_still_share,
     require_kind_privilege,
+    require_publish_rights,
     set_sharing_service,
 )
 from app.items.slug import InvalidSlugError, SlugCollisionError
@@ -165,6 +166,8 @@ def update_item(
     if not can(session, user_id=user.id, action="write", item=facts):
         raise HTTPException(status_code=403, detail="not allowed to modify this item")
     require_kind_privilege(session, user, facts)
+    if patch.isPublished is not None and patch.isPublished != facts.is_published:
+        require_publish_rights(session, user, facts)
 
     try:
         result = repo.update_item(

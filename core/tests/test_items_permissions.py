@@ -107,6 +107,7 @@ def env():
 
     yield {
         "as_user": as_user,
+        "session_factory": Session,
         "owner": owner,
         "viewer": viewer,
         "editor": editor,
