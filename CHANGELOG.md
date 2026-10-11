@@ -30,6 +30,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`transform.httpCall` pipeline operation** (FME HTTPCaller): one HTTP call per row
+  (GET/POST/…, json/form/raw/multipart bodies, aggregated pagination, exponential
+  retry honouring `Retry-After`, bounded concurrency and rate), per-row errors
+  (`httpStatus` success/error/skipped), bound-secret authentication restricted to the
+  secret's `baseUrl` (REV-294, redirects not followed), GET-only 20-row preview.
+  The exposed catalogue is now 59 operations (61 in the raw registry). New env vars
+  `CORE_PIPELINES_HTTP_CALL_MAX_ROWS` and `CORE_PIPELINES_HTTP_CALL_MAX_RESPONSE_BYTES`.
 - **40 new pipeline operations**; the exposed catalogue is now 58 operations
   (60 in the raw registry, which also holds `reader.file` and `writer.file`,
   hidden unless `CORE_PIPELINE_FILE_IO_ENABLED=true`), all executed in DuckDB

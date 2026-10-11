@@ -21,10 +21,18 @@ sont corrigées en conséquence, ce bloc en liste les raisons.
    `OperationContract.execute` (signature `(conn, *, input_view, view_name, params)`, dispatch générique
    `elif contract.execute is not None` dans `runtime.py::_execute_transform_chain`, exemples dans
    `ops/execute.py`) : `compile=None` + `execute=`, **aucune** branche spéciale `node.op == …`. Nouveau champ
-   `needs_secrets: bool = False` sur `OperationContract` : quand il est vrai, `runtime.py` passe
-   `secret_resolver=` à `execute`. `_execute_transform_chain` reçoit pour cela un kwarg `secret_resolver`,
-   construit par `preview_pipeline`/`run_pipeline` (`PostgresSecretResolver(session, tenant_id, user)`, `None`
-   si `session is None`).
+   `needs_runtime_context: bool = False` sur `OperationContract` : quand il est vrai, `runtime.py` passe
+   `secret_resolver=` **et** `preview=` à `execute`. `_execute_transform_chain` reçoit pour cela les kwargs
+   `secret_resolver` et `preview`, construits par `preview_pipeline`/`run_pipeline`
+   (`PostgresSecretResolver(session, tenant_id, user)`, `None` si `session is None`).
+   **Mode aperçu** : seules les lignes GET des 20 premières (`rn < 20`) sont appelées ; les autres ont
+   `httpStatus="skipped"` et `httpError="non exécuté en aperçu"`. `httpStatus` ∈ {`success`, `error`, `skipped`}.
+   **Avec un secret lié** : les redirections ne sont PAS suivies (3xx = `error`, « redirection non suivie ») et
+   l'URL de chaque ligne doit être dans le `baseUrl` du secret (REV-294, message fixe « URL hors de la portée du
+   secret »). Un refus d'egress affiche la chaîne fixe « egress refusé » (jamais l'URL). Une pagination réussie
+   rapporte le statut HTTP réel de la dernière page. Le plafond de taille de réponse s'applique aux octets
+   décodés. Variables d'env : `CORE_PIPELINES_HTTP_CALL_MAX_ROWS` (10000) et
+   `CORE_PIPELINES_HTTP_CALL_MAX_RESPONSE_BYTES` (5242880).
 2. **Comptes.** Catalogue exposé 58 → 59 op, registre brut `OPERATIONS` 60 → 61 (test
    `test_operations_registry_has_60_entries` → 61 ; le compte exposé est à vérifier par comptage, pas supposé).
 3. **Retry.** Abandon de l'extension `urllib3.Retry` de `egress.py` : le backoff d'urllib3 2.x ne dort pas
