@@ -162,11 +162,24 @@ class MapTerrain(BaseModel):
     exaggeration: float | None = None
 
 
+class MapTimePlayer(BaseModel):
+    """ARC-09b : lecteur temps de l'éditeur de carte (pilote le filtre `datetime`
+    des couches ayant `timeField`). Mêmes bornes que le widget `timePlayer`."""
+
+    start: str  # AAAA-MM-JJ
+    end: str
+    stepDays: int = Field(1, ge=1, le=3660)
+    windowDays: int = Field(7, ge=1, le=3660)
+    intervalMs: int = Field(1000, ge=500, le=10000)
+    windowIndex: int = Field(0, ge=0)
+
+
 class MapConfig(BaseModel):
     basemap: BaseMap
     view: MapView
     layers: list[MapLayer] = Field(default_factory=list)
     terrain: MapTerrain | None = None
+    timePlayer: MapTimePlayer | None = None
 
 
 class DatasetColumnMeta(BaseModel):
