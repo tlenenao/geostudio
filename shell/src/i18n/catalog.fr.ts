@@ -151,6 +151,27 @@ export const fr = {
   "settings.appearanceAuto": "Automatique (suit le système)",
   "settings.appearanceLight": "Clair",
   "settings.appearanceDark": "Sombre",
+  "settings.apiKeysTitle": "Clés d'API",
+  "settings.apiKeysHelp":
+    "Une clé d'API permet à un script ou à une intégration d'agir avec vos droits, ni plus ni moins. Elle expire au plus tard dans un an et se révoque à tout moment.",
+  "settings.apiKeyName": "Nom de la clé",
+  "settings.apiKeyExpiry": "Durée de validité (jours, 365 max)",
+  "settings.apiKeyCreate": "Créer la clé",
+  "settings.apiKeyCreateError": "Échec de la création de la clé.",
+  "settings.apiKeyRevokeError": "Échec de la révocation de la clé.",
+  "settings.apiKeyCreatedNotice":
+    "Copiez cette clé maintenant : elle ne sera plus jamais affichée.",
+  "settings.apiKeyCopy": "Copier",
+  "settings.apiKeyDismiss": "J'ai copié la clé",
+  "settings.apiKeyEmpty": "Aucune clé d'API.",
+  "settings.apiKeyExpires": "Expire le {date}",
+  "settings.apiKeyLastUsed": "Dernier usage : {date}",
+  "settings.apiKeyNeverUsed": "Jamais utilisée",
+  "settings.apiKeyRevoked": "Révoquée",
+  "settings.apiKeyRevoke": "Révoquer",
+  "settings.apiKeyRevokeTitle": "Révoquer la clé ?",
+  "settings.apiKeyRevokeMessage":
+    "La clé {prefix} cessera immédiatement de fonctionner. Cette action est irréversible.",
   "settings.accountTitle": "Compte",
   "settings.accountKeycloakLink":
     "Gérer mon compte (mot de passe, authentification à deux facteurs) →",

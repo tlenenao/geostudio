@@ -4,6 +4,7 @@ import { useMe, useNotificationPreference, useUpdateNotificationPreference } fro
 import type { NotificationPreferenceValue } from "../api/types";
 import { roleLabel } from "../auth/roleLabel";
 import { useConfig } from "../ConfigContext";
+import { ApiKeysSection } from "./ApiKeysSection";
 import { Badge } from "../ui/kit/Badge";
 import { Banner } from "../ui/kit/Banner";
 import { Radio } from "../ui/kit/Radio";
@@ -150,6 +151,7 @@ export function SettingsPage() {
               <ProfileSection />
               <NotificationsSection />
               <AppearanceSection />
+              <ApiKeysSection />
               <AccountSection />
             </div>
           ),

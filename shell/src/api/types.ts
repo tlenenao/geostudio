@@ -141,6 +141,18 @@ export type NotificationSummary = {
 
 export type NotificationPreferenceValue = "all" | "failuresOnly" | "none";
 
+export type ApiKeySummary = {
+  id: string;
+  name: string;
+  prefix: string;
+  createdAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  lastUsedAt: string | null;
+};
+/** Seule réponse qui porte le secret (`token`), affiché une seule fois. */
+export type ApiKeyCreated = ApiKeySummary & { token: string };
+
 export type UsageTask = {
   id: number;
   actorId: string | null;
@@ -559,6 +571,9 @@ export interface ItemClient {
   updateNotificationPreference(
     value: NotificationPreferenceValue,
   ): Promise<NotificationPreferenceValue>;
+  listApiKeys(): Promise<ApiKeySummary[]>;
+  createApiKey(params: { name: string; expiresInDays: number }): Promise<ApiKeyCreated>;
+  revokeApiKey(id: string): Promise<ApiKeySummary>;
   listUsageTasks(params: {
     page: number;
     pageSize: number;
