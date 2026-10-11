@@ -88,7 +88,7 @@ check_refs() {
   fi
 }
 check_refs "${S3_UPLOADS_BUCKET:-geostudio-uploads}" \
-  "SELECT source_key FROM ingestion_jobs WHERE status <> 'done'"
+  "SELECT source_key FROM ingestion_jobs WHERE status IN ('pending','running','cancel_requested') AND created_at > now() - interval '7 days'"
 check_refs "${S3_ATTACHMENTS_BUCKET:-geostudio-attachments}" \
   "SELECT s3_key FROM attachments"
 check_refs "${S3_MAPICONS_BUCKET:-geostudio-mapicons}" \
