@@ -33,7 +33,7 @@ export function useOpenItem() {
           crossFilter: bookmark.crossFilter,
         });
         setOpenError(false);
-        navigate(
+        void navigate(
           `/apps/${encodeURIComponent(bookmark.appId)}/${encodeURIComponent(bookmark.pageId)}?ctx=${ctx}`,
         );
       } catch {
@@ -43,18 +43,18 @@ export function useOpenItem() {
     }
     if (type === "pipeline") {
       const path = await resolvePipelineEditorPath(client, pk);
-      navigate(path);
+      void navigate(path);
       return;
     }
     if (type === "report") {
-      navigate(`/reports/${pk}/edit`);
+      void navigate(`/reports/${pk}/edit`);
       return;
     }
     if (type === "tileset3d" || type === "terrain3d") {
       // Un item de contenu hébergé (tileset 3D, DEM) n'a pas de layout :
       // le fallback générique `/apps/{pk}/edit` ouvrirait le builder d'app
       // sur une config vide. Sa fiche d'item est la bonne destination.
-      navigate(`/items/${pk}`);
+      void navigate(`/items/${pk}`);
       return;
     }
     if (type === "alert") {
@@ -66,7 +66,7 @@ export function useOpenItem() {
       try {
         const rule = await client.getAlertRuleConfig(pk);
         setOpenError(false);
-        navigate(`/datasets/${encodeURIComponent(rule.datasetItemId)}/edit`);
+        void navigate(`/datasets/${encodeURIComponent(rule.datasetItemId)}/edit`);
       } catch {
         setOpenError(true);
       }
@@ -76,10 +76,10 @@ export function useOpenItem() {
       // Item moissonné : aucune config éditable, le repli générique
       // /apps/{pk}/edit ouvrirait le builder sur une config vide. Même
       // raison que tileset3d/terrain3d ci-dessus.
-      navigate(`/items/${pk}`);
+      void navigate(`/items/${pk}`);
       return;
     }
-    navigate(editorPath(pk, type, item));
+    void navigate(editorPath(pk, type, item));
   };
   // Adaptateur synchrone : CatalogPage attend `(pk, type) => void`, pas une
   // Promise (les 3 call sites la passent directement comme handler).

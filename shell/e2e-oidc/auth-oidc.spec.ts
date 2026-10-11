@@ -12,7 +12,9 @@ test.describe("authentification OIDC réelle (Keycloak)", () => {
     await page.click('input[type="submit"], button[type="submit"]');
     // Retour sur le shell, authentifié.
     await page.waitForURL("http://localhost:8300/**");
-    await expect(page.getByText(/catalogue|catalog/i)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("link", { name: /catalogue|catalog/i })).toBeVisible({
+      timeout: 15_000,
+    });
   });
 
   test("déconnexion efface la session", async ({ page }) => {

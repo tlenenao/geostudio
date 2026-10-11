@@ -380,7 +380,9 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                   size="sm"
                   variant="outline"
                   className="w-fit"
-                  onClick={() => navigate(`/datasets/visual-query/${draft.sourcePipelineId}/edit`)}
+                  onClick={() =>
+                    void navigate(`/datasets/visual-query/${draft.sourcePipelineId}/edit`)
+                  }
                 >
                   {t("datasetEdit.editQuery")}
                 </Button>

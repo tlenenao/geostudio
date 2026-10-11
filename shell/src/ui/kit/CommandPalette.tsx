@@ -60,7 +60,7 @@ export function CommandPalette({
       out.push({
         id: `domain:${domain.id}`,
         label: t(domain.labelKey),
-        run: () => navigate(DOMAIN_PATHS[domain.id]),
+        run: () => void navigate(DOMAIN_PATHS[domain.id]),
       });
     }
     const privileges = meQuery.data?.privileges ?? [];
@@ -76,7 +76,7 @@ export function CommandPalette({
       out.push({
         id: `settings:${link.to}`,
         label: t(link.labelKey),
-        run: () => navigate(link.to),
+        run: () => void navigate(link.to),
       });
     }
     return out;

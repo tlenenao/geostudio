@@ -62,7 +62,7 @@ export function DesktopApp({
       <ToastProvider>
         <QueryClientProvider client={queryClient}>
           <ItemClientProvider client={client}>
-            <RouterProvider router={router} />
+            <RouterProvider router={router} useTransitions={false} />
           </ItemClientProvider>
         </QueryClientProvider>
       </ToastProvider>

@@ -135,7 +135,7 @@ export function ReportEditPage({
         // `flushSync` force le rendu ET les effets en attente avant l'appel
         // à `navigate()`.
         flushSync(() => setHasUnsavedChanges(false));
-        navigate(`/reports/${item.pk}/edit`, { replace: true });
+        void navigate(`/reports/${item.pk}/edit`, { replace: true });
         return;
       }
       const version = await saveReport.mutateAsync({

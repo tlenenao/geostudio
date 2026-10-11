@@ -58,7 +58,7 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
 
   function goToPanel(panel: "edit" | "thumbnail" | "share") {
     setMenu("closed");
-    navigate(`/items/${item.pk}?panel=${panel}`);
+    void navigate(`/items/${item.pk}?panel=${panel}`);
   }
 
   const canWrite = hasPermission(item, "write");

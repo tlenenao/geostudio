@@ -34,6 +34,28 @@ const OPS_CATALOG = {
   },
 };
 
+// Sélectionne un nœud puis sa collection. Rejoué en bloc : sous charge le clic
+// peut atterrir sur un autre nœud ou le panneau se remonter (select détaché) ;
+// le libellé exact évite de matcher aussi « withCollectionId » (join).
+async function pickCollection(page: Page, node: Locator, value: string) {
+  await expect(async () => {
+    await node.click();
+    const select = page.getByLabel("collectionId", { exact: true });
+    await select.selectOption(value, { timeout: 2000 });
+    await expect(select).toHaveValue(value, { timeout: 1000 });
+  }).toPass({ timeout: 15_000 });
+}
+
+// Le geste de glisser entre poignées React Flow est non déterministe (mousemove
+// synthétiques parfois perdus) : on le rejoue tant que l'arête attendue manque.
+async function connectEdge(page: Page, from: Locator, to: Locator, expected: number) {
+  const edges = page.locator(".react-flow__edge");
+  await expect(async () => {
+    if ((await edges.count()) < expected) await from.dragTo(to);
+    await expect(edges).toHaveCount(expected, { timeout: 1500 });
+  }).toPass({ timeout: 15_000 });
+}
+
 async function mockPipelineFlow(page: Page) {
   await page.route("https://core.test/v1/instance", async (route) => {
     await route.fulfill({ json: { readOnly: false, etlEnabled: true } });
@@ -146,10 +168,12 @@ test("un utilisateur non-technicien construit, enregistre puis exécute un pipel
   const reader = page.getByText("reader.collection");
   const canvas = page.locator(".react-flow__pane");
   await reader.dragTo(canvas, { targetPosition: { x: 100, y: 100 } });
+  await expect(page.locator(".react-flow__node")).toHaveCount(1);
 
   // Glisser un writer sur le canvas.
   const writer = page.getByText("writer.collection");
   await writer.dragTo(canvas, { targetPosition: { x: 400, y: 100 } });
+  await expect(page.locator(".react-flow__node")).toHaveCount(2);
 
   // Relier reader -> writer (poignée droite du premier nœud vers la poignée
   // gauche du second — sélecteurs React Flow standard).
@@ -158,13 +182,11 @@ test("un utilisateur non-technicien construit, enregistre puis exécute un pipel
     .first()
     .locator(".react-flow__handle-right");
   const targetHandle = page.locator(".react-flow__node").last().locator(".react-flow__handle-left");
-  await sourceHandle.dragTo(targetHandle);
+  await connectEdge(page, sourceHandle, targetHandle, 1);
 
   // Renseigner les paramètres des deux nœuds.
-  await page.locator(".react-flow__node").first().click();
-  await page.getByLabel("collectionId").selectOption("villes");
-  await page.locator(".react-flow__node").last().click();
-  await page.getByLabel("collectionId").selectOption("villes_propres");
+  await pickCollection(page, page.locator(".react-flow__node").first(), "villes");
+  await pickCollection(page, page.locator(".react-flow__node").last(), "villes_propres");
 
   await expect(page.getByRole("button", { name: "Enregistrer" })).toBeEnabled();
   await page.getByRole("button", { name: "Enregistrer" }).click();
@@ -262,18 +284,15 @@ test("un utilisateur relie une seconde source sur la poignée secondaire d'un tr
     3,
   );
 
-  await primaryReader.click();
-  await page.getByLabel("collectionId").selectOption("villes");
-  await secondaryReader.click();
-  await page.getByLabel("collectionId").selectOption("villes_propres");
+  await pickCollection(page, primaryReader, "villes");
+  await pickCollection(page, secondaryReader, "villes_propres");
   await joinNode.click();
   // Match exact : `getByLabel("on")` en sous-chaîne matcherait aussi
   // "withCollectionId" (contient "on") ainsi que les contrôles React Flow
   // ("Control Panel", "React Flow attribution", qui contiennent tous deux
   // "on" comme sous-chaîne) — mode strict Playwright sinon violé.
   await page.getByLabel("on", { exact: true }).fill("id");
-  await writerNode.click();
-  await page.getByLabel("collectionId").selectOption("villes_propres");
+  await pickCollection(page, writerNode, "villes_propres");
 
   await expect(page.getByRole("button", { name: "Enregistrer" })).toBeEnabled();
 });
