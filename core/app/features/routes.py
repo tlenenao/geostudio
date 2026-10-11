@@ -10,7 +10,7 @@ import os
 from contextlib import contextmanager
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 from opentelemetry import metrics
 from pydantic import BaseModel
@@ -58,6 +58,7 @@ from app.configs.geo_limits_dep import get_request_geo_limits
 from app.configs.guest_access import GuestActor, get_share_link_actor
 from app.db import get_session
 from app.errors import ValidationHTTPException
+from app.features.etag import feature_etag, if_match_satisfied
 from app.features.repository import SUPPORTED_EPSG, CursorError, FilterError
 from app.features.validation import validate_feature
 from app.filter_values import fold_query_filters
@@ -763,6 +764,7 @@ def analytics_sql(
 def get_single_feature(
     collection_id: str,
     fid: str,
+    response: Response,
     user=Depends(get_current_user_optional),
     guest: GuestActor | None = Depends(get_share_link_actor),
     session: Session = Depends(get_session, scope="function"),
@@ -780,7 +782,30 @@ def get_single_feature(
         feature = repo.get_feature(session, info, fid=fid)
     if feature is None:
         raise HTTPException(status_code=404, detail="feature not found")
+    response.headers["ETag"] = feature_etag(feature)
     return feature
+
+
+def _enforce_if_match(session, repo, view_info, fid, if_match):
+    """ARC-04 : `If-Match` optionnel. Verrouille la ligne puis compare l'ETag recalculé
+    (même vue que GET) : 404 si absente, 412 si périmé. À appeler dans le scope RLS, avant
+    l'écriture ; sans en-tête : aucun effet (rétro-compatible)."""
+    if if_match is None:
+        return
+    repo.lock_feature(session, view_info, fid=fid)
+    current = repo.get_feature(session, view_info, fid=fid)
+    if current is None:
+        raise HTTPException(status_code=404, detail="feature not found")
+    if not if_match_satisfied(if_match, feature_etag(current)):
+        raise HTTPException(
+            status_code=412, detail="precondition failed: the feature changed since it was read"
+        )
+
+
+def _set_etag(response, session, repo, view_info, fid):
+    feature = repo.get_feature(session, view_info, fid=str(fid))
+    if feature is not None:
+        response.headers["ETag"] = feature_etag(feature)
 
 
 def _raise_if_outside_geo_limit(exc: DBAPIError) -> None:
@@ -838,6 +863,7 @@ def create_feature(
                 properties=payload.get("properties") or {},
                 geometry=payload.get("geometry"),
             )
+            _set_etag(response, session, repo, info, fid)
     except IntegrityError as exc:
         raise HTTPException(
             status_code=409, detail="feature conflicts with an existing row"
@@ -873,6 +899,8 @@ def put_feature(
     collection_id: str,
     fid: str,
     payload: dict,
+    response: Response,
+    if_match: str | None = Header(default=None),
     user=Depends(get_current_user),
     session: Session = Depends(get_session, scope="function"),
     introspect=Depends(get_introspector),
@@ -886,6 +914,8 @@ def put_feature(
     # NULL les colonnes sensibles qu'il n'a jamais vues. Retirées de `info`,
     # elles ne sont ni validées ni écrites (donc conservées en base).
     info = introspect(session, col.table_name)
+    # Vue de l'ETag = celle de GET /items/{fid} (masquage inclus).
+    view_info = hide_sensitive_columns(info, col.sensitive_fields) if masked else info
     # Même chose pour un lecteur autorisé (propriétaire, REV-276) : une colonne
     # sensible absente du corps est conservée, pas remise à NULL.
     sent = payload.get("properties") or {}
@@ -896,6 +926,7 @@ def put_feature(
         raise _validation_error(errors)
     try:
         with rls(session, col.tenant_id):
+            _enforce_if_match(session, repo, view_info, fid, if_match)
             ok = repo.replace_feature(
                 session,
                 info,
@@ -903,6 +934,8 @@ def put_feature(
                 properties=payload.get("properties") or {},
                 geometry=payload.get("geometry"),
             )
+            if ok:
+                _set_etag(response, session, repo, view_info, fid)
     except IntegrityError as exc:
         # Même réponse qu'à la création : une collision avec une ligne cachée par une
         # limite géographique est indiscernable d'une collision avec une ligne visible.
@@ -930,16 +963,21 @@ def put_feature(
 def remove_feature(
     collection_id: str,
     fid: str,
+    if_match: str | None = Header(default=None),
     user=Depends(get_current_user),
     session: Session = Depends(get_session, scope="function"),
     introspect=Depends(get_introspector),
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
     s3=Depends(get_s3_client),
+    masked: bool = Depends(get_masked_for_user),
 ):
     col = _get_writable(session, user, collection_id)
+    masked = unmask_for_owner(masked, user, col)
     info = introspect(session, col.table_name)
+    view_info = hide_sensitive_columns(info, col.sensitive_fields) if masked else info
     with rls(session, col.tenant_id):
+        _enforce_if_match(session, repo, view_info, fid, if_match)
         ok = repo.delete_feature(session, info, fid=fid)
     if not ok:
         raise HTTPException(status_code=404, detail="feature not found")

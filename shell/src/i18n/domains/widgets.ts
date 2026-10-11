@@ -251,6 +251,8 @@ export const widgets = {
   "widgetForm.longitude": "Longitude",
   "widgetForm.latitude": "Latitude",
   "widgetForm.editingRecord": "Modification de l'enregistrement #{id}",
+  "widgetForm.conflict":
+    "Cet enregistrement a été modifié par quelqu'un d'autre. Les valeurs à jour ont été rechargées : vérifiez-les puis enregistrez de nouveau.",
   "widgetForm.cancel": "Annuler",
   "widgetForm.reset": "Réinitialiser",
   "widgetForm.saveFailed": "Échec de l'enregistrement.",

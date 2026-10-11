@@ -787,8 +787,24 @@ export interface ItemClient {
     collectionId: string,
     feature: GeoJSONFeatureInput,
   ): Promise<{ id: string | number }>;
-  updateFeature(collectionId: string, fid: string, feature: GeoJSONFeatureInput): Promise<void>;
-  deleteFeature(collectionId: string, fid: string): Promise<void>;
+  /** `opts.ifMatch` (ARC-04) : ETag lu via `getFeature` ; périmé = ApiError 412. */
+  updateFeature(
+    collectionId: string,
+    fid: string,
+    feature: GeoJSONFeatureInput,
+    opts?: { ifMatch?: string },
+  ): Promise<void>;
+  deleteFeature(collectionId: string, fid: string, opts?: { ifMatch?: string }): Promise<void>;
+  /** Entité + ETag courant (ARC-04). Optionnel : absent d'un client sans écriture. */
+  getFeature?(
+    collectionId: string,
+    fid: string,
+  ): Promise<{
+    id: string | number;
+    properties: Record<string, unknown>;
+    geometry: unknown;
+    etag: string | null;
+  }>;
   presignUpload(filename: string, contentType: string): Promise<{ uploadUrl: string; key: string }>;
   uploadToPresignedUrl(url: string, file: File): Promise<void>;
   inspectUpload(input: { key: string; filename: string; layerName?: string }): Promise<{

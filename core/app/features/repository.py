@@ -556,6 +556,22 @@ def replace_feature(
     return r.rowcount == 1
 
 
+def lock_feature(session: Session, info: TableInfo, *, fid: str) -> None:
+    """Verrou de ligne jusqu'à la fin de la transaction (ARC-04) : le contrôle `If-Match`
+    et l'écriture qui suit ne peuvent pas s'entrecroiser avec un autre écrivain."""
+    value = _coerce_fid(info, fid)
+    if value is None:
+        return
+    t = quote_ident(session, info.table_name)
+    session.execute(
+        text(
+            f"SELECT 1 FROM public.{t} WHERE {quote_ident(session, info.pk_column)} = :__fid "
+            "FOR UPDATE"
+        ),
+        {"__fid": value},
+    )
+
+
 def delete_feature(session: Session, info: TableInfo, *, fid: str) -> bool:
     value = _coerce_fid(info, fid)
     if value is None:
