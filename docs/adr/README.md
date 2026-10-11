@@ -58,3 +58,4 @@ plus.
 | [0013](0013-script-src-extensions-origines-declarees.md) | `script-src` : origines des extensions déclarées (table `extensions`) | acceptée | Spec clôture 38 REV, arbitrage 166 ; REV-166 |
 | [0014](0014-supply-chain-cosign-digests.md) | Chaîne d'approvisionnement : cosign keyless, SBOM, digests (cible, non implémentée) | acceptée | Spec clôture 38 REV, arbitrage 281 b ; REV-281 |
 | [0015](0015-tombstone-rgpd-statu-quo.md) | Tombstone RGPD : statu quo (conditionnel DPO) | acceptée (conditionnelle) | Spec clôture 38 REV, arbitrage 272 a ; REV-272 |
+| [0016](0016-cles-api-service.md) | Clés d'API de service : secret machine, identité du créateur, porte `can()` unique | acceptée | ARC-06 |
