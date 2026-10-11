@@ -41,6 +41,7 @@ from app.analytics.aggregate import _dedup_cte, _has_any_file
 from app.analytics.duckdb_conn import open_connection
 from app.audit.writer import write_audit
 from app.auth.dependency import is_pipeline_file_io_enabled
+from app.cell_safety import sanitize_cell
 from app.collections import repository as collections_repo
 from app.collections.introspection import (
     TableInfo,
@@ -1204,12 +1205,12 @@ def _write_export(
             # La colonne "geometry" contient désormais une chaîne GeoJSON : une
             # valeur de cellule CSV utile, pas de traitement supplémentaire requis.
             writer = csv.writer(out)
-            writer.writerow(columns)
+            writer.writerow([sanitize_cell(c) for c in columns])
         else:
             out.write('{"type": "FeatureCollection", "features": [')
         while batch := cursor.fetchmany(_WRITE_BATCH_SIZE):
             if p.format == "csv":
-                writer.writerows(batch)
+                writer.writerows([sanitize_cell(v) for v in r] for r in batch)
             else:
                 chunks = []
                 for row in batch:
