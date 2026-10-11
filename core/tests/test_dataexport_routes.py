@@ -309,6 +309,7 @@ def test_cancel_finished_export_is_409_and_foreign_job_404(env, starter, monkeyp
 
 def test_tasks_view_all_can_read_but_not_cancel_a_foreign_export(env, starter, monkeypatch):
     import app.dataexport.routes as dx_routes
+    from app.collections import sensitive
     from app.roles.privileges import Privilege
 
     app, client, admin, regular, _p, tenant_id, Session = env
@@ -316,6 +317,8 @@ def test_tasks_view_all_can_read_but_not_cancel_a_foreign_export(env, starter, m
     url = f"/v1/collections/{col_id}/export/jobs/{job_id}"
     granted = {Privilege.TASKS_VIEW_ALL.value, Privilege.DATA_VIEW_SENSITIVE.value}
     monkeypatch.setattr(dx_routes, "has_privilege", lambda _s, _u, priv: priv in granted)
+    # le verdict « sensible » vit désormais dans app.collections.sensitive (REV-276)
+    monkeypatch.setattr(sensitive, "has_privilege", lambda _s, _u, priv: priv in granted)
     _as(app, regular)
     assert client.get(url).status_code == 200  # lecture : oui
     assert client.post(f"{url}/cancel").status_code == 404  # annulation : non

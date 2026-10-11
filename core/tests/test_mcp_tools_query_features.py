@@ -237,10 +237,23 @@ def _register_incidents_collection_with_sensitive_salary(app_client):
         )
         session.commit()
         apply_collection_ddl(session, "incidents")
+        # REV-276 : le propriétaire lit ses champs sensibles — la collection
+        # appartient donc à un tiers pour que mock_user soit masqué.
+        from app.users.repository import get_or_create_user
+
+        other = get_or_create_user(
+            session,
+            tenant_id=app_client.tenant.id,
+            oidc_sub="other-owner",
+            username="other-owner",
+            email=None,
+            first_name="",
+            last_name="",
+        )
         col = collections_repo.create_collection(
             session,
             tenant_id=app_client.tenant.id,
-            owner_id=app_client.mock_user.id,
+            owner_id=other.id,
             table_name="incidents",
             title="Incidents",
             description="",

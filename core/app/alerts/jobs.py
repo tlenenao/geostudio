@@ -27,6 +27,7 @@ from app.audit.writer import write_audit
 from app.auth.dependency import is_read_only_mode
 from app.collections import repository as collections_repo
 from app.collections.introspection_pg import introspect_table
+from app.collections.sensitive import masked_fields_for
 from app.configs import repository as configs_repo
 from app.configs.alert_condition import evaluate_condition
 from app.configs.schemas import AlertChannelEmail, AlertChannelWebhook, AlertRulePayload
@@ -36,8 +37,6 @@ from app.items.models import Item
 from app.jobs import app
 from app.jobs.common import notify_best_effort, resolve_owner_user
 from app.jobs.common import session_factory as _session_factory
-from app.roles.guards import has_privilege
-from app.roles.privileges import Privilege
 from app.sharing.authorization import can
 from app.sharing.geo_limits import resolve_geo_limits
 from app.users.models import User
@@ -187,11 +186,7 @@ def _measure_value(session, *, user: User, payload: AlertRulePayload) -> float:
     # data.view_sensitive — pouvait lire la valeur réelle d'un agrégat sur
     # une colonne sensible via le résultat évalué de l'alerte (envoyé à un
     # webhook/e-mail). Même idiome que features/routes.py::aggregate_features.
-    masked_fields = (
-        frozenset()
-        if has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)
-        else frozenset(col.sensitive_fields)
-    )
+    masked_fields = masked_fields_for(session, user, col)
 
     conn = open_connection(
         endpoint_url=os.environ["S3_ENDPOINT_URL"],

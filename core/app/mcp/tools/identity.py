@@ -14,6 +14,7 @@ from mcp.server.fastmcp import Context, FastMCP
 from app.auth.dependency import admin_subs, analyst_subs
 from app.collections import repository as collections_repo
 from app.collections.introspection import hide_sensitive_columns
+from app.collections.sensitive import may_read_sensitive
 from app.db import request_scoped_session
 from app.items import repository as items_repo
 from app.items.schemas import ItemPage, ItemRead
@@ -139,7 +140,7 @@ def register(server: FastMCP, session_factory) -> None:
 def visible_table_info(session, user: User, col, info):
     """GAP-22 : retire de `info` les colonnes sensibles que `user` ne peut pas
     lire (schéma servi au LLM, à un formulaire généré...)."""
-    if has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value):
+    if may_read_sensitive(session, user, col):
         return info
     return hide_sensitive_columns(info, col.sensitive_fields)
 
