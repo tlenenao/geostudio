@@ -289,12 +289,23 @@ test.describe("j08 tâches et extensions — UI", () => {
   bug(
     "j08-009 : l'administration des extensions permet d'en enregistrer et d'en retirer",
     async ({ page }) => {
+      // Écran réel (refonte UI) : bouton « Enregistrer » du formulaire « Enregistrer une extension »,
+      // et « Supprimer : <libellé> » par ligne — il faut donc une extension à retirer.
+      const made = await admin.send("POST", "/v1/extensions", {
+        id: `${tag}-ext-del`,
+        tag: `${tag}-widget-del`,
+        label: `Ext del ${tag}`,
+        moduleUrl: "https://example.org/never-loaded.js",
+        defaultSize: { w: 4, h: 3 },
+      });
+      expect(made.status).toBe(201);
       await openAs(page, "admin");
       await go(page, "/admin/extensions");
+      await expect(page.getByRole("heading", { name: "Enregistrer une extension" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Enregistrer", exact: true })).toBeVisible();
       await expect(
-        page.getByRole("button", { name: /Ajouter|Enregistrer une extension/ }),
+        page.getByRole("button", { name: `Supprimer : Ext del ${tag}`, exact: true }),
       ).toBeVisible();
-      await expect(page.getByRole("button", { name: /Supprimer|Retirer/ }).first()).toBeVisible();
     },
   );
 });
