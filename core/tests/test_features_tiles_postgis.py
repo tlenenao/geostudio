@@ -247,6 +247,32 @@ def test_a_tile_request_sets_a_transaction_local_statement_timeout(pg_app):
         assert s.execute(sa_text("SHOW statement_timeout")).scalar() != "10s"
 
 
+def test_a_tile_request_disables_jit_transaction_locally(pg_app):
+    """REV-283 : le JIT (compilation ~700 ms sur une agrégation z5 de 237k points)
+    coûtait 4x l'exécution ; la tuile le coupe, sans fuite hors transaction."""
+    from sqlalchemy import text as sa_text
+
+    from app.features import tiles as tiles_module
+
+    client, _, Session = pg_app
+    _insert(client, "Jit")
+    seen: list[str] = []
+    original = tiles_module.apply_tile_statement_timeout
+
+    def spy(session, *a):
+        original(session, *a)
+        seen.append(session.execute(sa_text("SHOW jit")).scalar())
+
+    tiles_module.apply_tile_statement_timeout = spy
+    try:
+        assert client.get(TILE_PATH).status_code == 200
+    finally:
+        tiles_module.apply_tile_statement_timeout = original
+    assert seen == ["off"]
+    with Session() as s:
+        assert s.execute(sa_text("SHOW jit")).scalar() != "off"
+
+
 def test_tile_omits_sensitive_property_without_privilege(pg_engine):
     """GAP-22 Task 7 : la propriété marquée sensible ne doit jamais fuiter
     dans le contenu MVT décodé (ici : jamais apparaître comme clé de

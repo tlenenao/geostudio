@@ -202,9 +202,11 @@ def apply_tile_statement_timeout(session: Session, ms: int = TILE_STATEMENT_TIME
     même patron que `rls_scope` (app/features/rls.py). Transaction-local :
     rien ne fuit sur la connexion suivante à travers PgBouncer."""
     session.execute(
-        text("SELECT set_config('statement_timeout', :ms, true)"),
+        text("SELECT set_config('statement_timeout', :ms, true), set_config('jit', 'off', true)"),
         {"ms": str(ms)},
     )
+    # REV-283 : le JIT compile ~700 ms une agrégation dont l'exécution tient en
+    # ~250 ms (coût planifié gonflé par ST_Transform) ; une tuile n'en profite jamais.
 
 
 def _etag_matches(if_none_match: str | None, etag: str) -> bool:
