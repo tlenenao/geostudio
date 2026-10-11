@@ -167,7 +167,7 @@ def count_users_with_privileges(
     rows = session.execute(
         select(User.id, Role.privileges)
         .join(Role, Role.id == User.role_id)
-        .where(User.tenant_id == tenant_id)
+        .where(User.tenant_id == tenant_id, User.erased_at.is_(None))
     ).all()
     return sum(1 for _, role_privileges in rows if needed.issubset(set(role_privileges)))
 
@@ -187,7 +187,7 @@ def would_orphan_privilege_holders(
     rows = session.execute(
         select(User.id, User.role_id, Role.privileges)
         .join(Role, Role.id == User.role_id)
-        .where(User.tenant_id == tenant_id)
+        .where(User.tenant_id == tenant_id, User.erased_at.is_(None))
     ).all()
     for _, holder_role_id, role_privileges in rows:
         effective = set(new_privileges) if holder_role_id == role_id else set(role_privileges)
