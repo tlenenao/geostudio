@@ -20,6 +20,8 @@ from uuid import UUID
 import duckdb
 from openpyxl import Workbook
 
+from app.cell_safety import sanitize_cell
+
 
 def export_sync_max() -> int:
     """Au-delà (total exact), `export/items` répond 202 au lieu d'un fichier."""
@@ -58,14 +60,6 @@ def _json_default(value: object) -> str | None:
     raise TypeError(f"unserializable value of type {type(value).__name__}")
 
 
-def _neutralize(value: object) -> object:
-    """Injection de formule (CSV/XLSX) : une chaîne commençant par = + - @ ou
-    tab/CR est préfixée d'une apostrophe pour être lue comme du texte."""
-    if isinstance(value, str) and value.startswith(("=", "+", "-", "@", "\t", "\r")):
-        return "'" + value
-    return value
-
-
 def _xlsx_cell_value(value: object) -> object:
     """Coercition avant écriture d'une cellule (rows_to_xlsx) : openpyxl gère
     nativement str/int/float/bool/None/date/Decimal/datetime naïf, mais
@@ -80,7 +74,7 @@ def _xlsx_cell_value(value: object) -> object:
         return str(value)
     if isinstance(value, (bytes, memoryview)):
         return None
-    return _neutralize(value)
+    return sanitize_cell(value)
 
 
 def export_filename(title: str, *, format: str) -> str:
@@ -97,8 +91,8 @@ def rows_to_csv(rows: list[dict[str, Any]], columns: list[str] | None = None) ->
         return b""
     buf = StringIO()
     writer = DictWriter(buf, fieldnames=fields)
-    writer.writerow({f: _neutralize(f) for f in fields})
-    writer.writerows({k: _neutralize(v) for k, v in row.items()} for row in rows)
+    writer.writerow({f: sanitize_cell(f) for f in fields})
+    writer.writerows({k: sanitize_cell(v) for k, v in row.items()} for row in rows)
     return buf.getvalue().encode("utf-8")
 
 
@@ -108,7 +102,7 @@ def rows_to_xlsx(rows: list[dict[str, Any]], columns: list[str] | None = None) -
     ws = wb.create_sheet()
     headers = list(rows[0].keys()) if rows else list(columns or [])
     if headers:
-        ws.append([_neutralize(h) for h in headers])
+        ws.append([sanitize_cell(h) for h in headers])
         for row in rows:
             ws.append([_xlsx_cell_value(row.get(h)) for h in headers])
     buf = BytesIO()
@@ -173,8 +167,8 @@ class StreamingFeatureWriter:
         if self._csv is None:
             fields = list(rows[0].keys())
             self._csv = DictWriter(self._fh, fieldnames=fields, extrasaction="ignore")
-            self._csv.writerow({f: _neutralize(f) for f in fields})
-        self._csv.writerows({k: _neutralize(v) for k, v in row.items()} for row in rows)
+            self._csv.writerow({f: sanitize_cell(f) for f in fields})
+        self._csv.writerows({k: sanitize_cell(v) for k, v in row.items()} for row in rows)
         self._n += len(rows)
 
     def close(self) -> None:
