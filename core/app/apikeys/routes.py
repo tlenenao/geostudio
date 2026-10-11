@@ -14,15 +14,11 @@ from app.users.models import User
 router = APIRouter()
 
 
-def get_interactive_user(
-    authorization: str = Header(default=""),
-    user: User = Depends(get_current_user),
-) -> User:
+def forbid_api_key(authorization: str = Header(default="")) -> None:
     """Gestion des clés réservée à une session interactive : une clé ne crée
     ni ne révoque de clés (sinon elle survivrait à sa propre révocation)."""
     if service.is_api_key(authorization.removeprefix("Bearer ")):
         raise HTTPException(status_code=403, detail="api keys cannot manage api keys")
-    return user
 
 
 def _iso(value: datetime | None) -> str | None:
@@ -42,19 +38,24 @@ def _read(key: ApiKey) -> ApiKeyRead:
     )
 
 
-@router.get("/api-keys", response_model=list[ApiKeyRead])
+@router.get("/api-keys", response_model=list[ApiKeyRead], dependencies=[Depends(forbid_api_key)])
 def list_keys(
-    user: User = Depends(get_interactive_user),
+    user: User = Depends(get_current_user),
     session: Session = Depends(get_session, scope="function"),
 ) -> list[ApiKeyRead]:
     return [_read(k) for k in service.list_api_keys(session, user=user)]
 
 
-@router.post("/api-keys", response_model=ApiKeyCreated, status_code=201)
+@router.post(
+    "/api-keys",
+    response_model=ApiKeyCreated,
+    status_code=201,
+    dependencies=[Depends(forbid_api_key)],
+)
 def create_key(
     body: ApiKeyCreate,
     response: Response,
-    user: User = Depends(get_interactive_user),
+    user: User = Depends(get_current_user),
     session: Session = Depends(get_session, scope="function"),
 ) -> ApiKeyCreated:
     key, token = service.create_api_key(
@@ -64,10 +65,12 @@ def create_key(
     return ApiKeyCreated(**_read(key).model_dump(), token=token)
 
 
-@router.delete("/api-keys/{key_id}", response_model=ApiKeyRead)
+@router.delete(
+    "/api-keys/{key_id}", response_model=ApiKeyRead, dependencies=[Depends(forbid_api_key)]
+)
 def revoke_key(
     key_id: str,
-    user: User = Depends(get_interactive_user),
+    user: User = Depends(get_current_user),
     session: Session = Depends(get_session, scope="function"),
 ) -> ApiKeyRead:
     key = service.revoke_api_key(session, user=user, key_id=key_id)
