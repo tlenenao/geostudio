@@ -107,7 +107,7 @@ it.fails("REV-audit: revoke link affiche une erreur sur échec 500", async () =>
       () => new HttpResponse(null, { status: 500 }),
     ),
   );
-  wrap(<ShareForm item={item} onClose={() => {}} />);
+  wrap(<ShareForm item={item} onDone={() => {}} />);
   const btns = await screen.findAllByRole("button", { name: /révoquer/i });
   await userEvent.click(btns[0]);
   // Une confirmation éventuelle est acceptée, puis on attend un message d'erreur.

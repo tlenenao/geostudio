@@ -3442,6 +3442,11 @@
             "title": "Delete",
             "type": "boolean"
           },
+          "publish": {
+            "default": false,
+            "title": "Publish",
+            "type": "boolean"
+          },
           "read": {
             "title": "Read",
             "type": "boolean"
@@ -3945,6 +3950,16 @@
               }
             ]
           },
+          "timePlayer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MapTimePlayer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "view": {
             "$ref": "#/components/schemas/MapView"
           }
@@ -4239,6 +4254,52 @@
           "tilesUrl"
         ],
         "title": "MapTerrain",
+        "type": "object"
+      },
+      "MapTimePlayer": {
+        "description": "ARC-09b : lecteur temps de l'\u00e9diteur de carte (pilote le filtre `datetime`\ndes couches ayant `timeField`). M\u00eames bornes que le widget `timePlayer`.",
+        "properties": {
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "intervalMs": {
+            "default": 1000,
+            "maximum": 10000.0,
+            "minimum": 500.0,
+            "title": "Intervalms",
+            "type": "integer"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          },
+          "stepDays": {
+            "default": 1,
+            "maximum": 3660.0,
+            "minimum": 1.0,
+            "title": "Stepdays",
+            "type": "integer"
+          },
+          "windowDays": {
+            "default": 7,
+            "maximum": 3660.0,
+            "minimum": 1.0,
+            "title": "Windowdays",
+            "type": "integer"
+          },
+          "windowIndex": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Windowindex",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "MapTimePlayer",
         "type": "object"
       },
       "MapView": {

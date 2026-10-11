@@ -3206,6 +3206,11 @@ export interface components {
         ItemPermissions: {
             /** Delete */
             delete: boolean;
+            /**
+             * Publish
+             * @default false
+             */
+            publish: boolean;
             /** Read */
             read: boolean;
             /** Share */
@@ -3371,6 +3376,7 @@ export interface components {
             /** Layers */
             layers?: components["schemas"]["MapLayer"][];
             terrain?: components["schemas"]["MapTerrain"] | null;
+            timePlayer?: components["schemas"]["MapTimePlayer"] | null;
             view: components["schemas"]["MapView"];
         };
         /** MapIconOut */
@@ -3451,6 +3457,37 @@ export interface components {
             exaggeration?: number | null;
             /** Tilesurl */
             tilesUrl: string;
+        };
+        /**
+         * MapTimePlayer
+         * @description ARC-09b : lecteur temps de l'éditeur de carte (pilote le filtre `datetime`
+         *     des couches ayant `timeField`). Mêmes bornes que le widget `timePlayer`.
+         */
+        MapTimePlayer: {
+            /** End */
+            end: string;
+            /**
+             * Intervalms
+             * @default 1000
+             */
+            intervalMs: number;
+            /** Start */
+            start: string;
+            /**
+             * Stepdays
+             * @default 1
+             */
+            stepDays: number;
+            /**
+             * Windowdays
+             * @default 7
+             */
+            windowDays: number;
+            /**
+             * Windowindex
+             * @default 0
+             */
+            windowIndex: number;
         };
         /** MapView */
         MapView: {
