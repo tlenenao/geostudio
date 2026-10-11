@@ -250,18 +250,44 @@ class _RateLimiter:
 
 
 def _make_row_caller(p, secret_resolver, preview: bool) -> Callable[[tuple], _Outcome]:
+    from app.pipelines import connector_runtime as cr
+
+    if p.secretName is not None and secret_resolver is None:
+        raise cr.ConnectorRuntimeError(
+            f"transform.httpCall : secret '{p.secretName}' indisponible "
+            "(aucun résolveur de secrets)"
+        )
+    payload = cr._resolve_secret(secret_resolver, p.secretName)
+    auth = cr._build_auth(payload)
+    scope = payload.baseUrl if payload is not None else None
+    if payload is not None and not scope:
+        raise cr.ConnectorRuntimeError(
+            "transform.httpCall : ce secret n'a pas de 'baseUrl' (exigé depuis REV-294) — "
+            "éditez le secret pour y poser l'URL de base à laquelle il est lié"
+        )
+    follows_redirects = payload is None  # jamais de jeton/clé suivi vers une autre URL
+
     def call(row: tuple) -> _Outcome:
         rn, url, headers_raw, body_raw, *mp_vals = row
         if preview and (p.method != "GET" or rn >= _PREVIEW_MAX_CALLS):
             return _Outcome(error="non exécuté en aperçu", skipped=True)
         if not url:
             return _Outcome(error="URL vide")
+        if scope is not None and not cr._url_within_scope(scope, url):
+            return _Outcome(error="URL hors de la portée du secret")
 
         def attempt() -> _Outcome:
             headers = {str(k): str(v) for k, v in _as_obj(headers_raw, "headersExpr").items()}
             extra_headers, kwargs = _build_request_parts(p, body_raw, mp_vals)
             send = _send_direct if p.paginator == "none" else _send_paginated
-            return send(p, url, {**extra_headers, **headers}, kwargs, None, follows_redirects=True)
+            return send(
+                p,
+                url,
+                {**extra_headers, **headers},
+                kwargs,
+                auth,
+                follows_redirects=follows_redirects,
+            )
 
         return _run_with_retry(p, attempt)
 

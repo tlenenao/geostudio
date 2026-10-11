@@ -7,10 +7,17 @@ import duckdb
 import pytest
 from werkzeug.wrappers import Response
 
+from app.db import init_db, make_engine, make_session_factory
+from app.pipelines import connector_runtime
 from app.pipelines import egress as pipelines_egress
 from app.pipelines.http_call_runtime import execute_http_call
+from app.secrets import repository as secrets_repo
+from app.secrets.crypto import encrypt
+from app.tenants.repository import get_or_create_default_tenant
+from app.users.repository import get_or_create_user
 
 _REAL_ASSERT_EGRESS_ALLOWED = pipelines_egress.assert_egress_allowed
+TEST_MASTER_KEY = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
 
 
 @pytest.fixture(autouse=True)
@@ -398,3 +405,113 @@ def test_paginated_5xx_retries_whole_pagination(conn, httpserver):
     )
     assert rows[0][2:5] == (503, "error", "HTTP 503")
     assert len(stamps) == 2
+
+
+@pytest.fixture()
+def resolver_factory(monkeypatch):
+    monkeypatch.setenv("CORE_SECRETS_MASTER_KEY", TEST_MASTER_KEY)
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    session = make_session_factory(engine)()
+    tenant = get_or_create_default_tenant(session)
+    user = get_or_create_user(
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="u1",
+        username="u1",
+        email=None,
+        first_name="",
+        last_name="",
+    )
+
+    def make(name, kind, payload):
+        ct, nonce = encrypt(payload)
+        secrets_repo.create_secret(
+            session,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            name=name,
+            kind=kind,
+            ciphertext=ct,
+            nonce=nonce,
+        )
+        return connector_runtime.PostgresSecretResolver(session, tenant.id, user)
+
+    yield make
+    session.close()
+    engine.dispose()
+
+
+def test_bearer_secret_is_sent_and_never_leaks_into_the_error_column(
+    conn, httpserver, resolver_factory
+):
+    seen = {}
+
+    def handler(request):
+        seen["auth"] = request.headers.get("Authorization")
+        return Response("denied", status=403)
+
+    httpserver.expect_request("/s").respond_with_handler(handler)
+    base = httpserver.url_for("/")
+    resolver = resolver_factory(
+        "tok", "bearer_token", {"kind": "bearer_token", "token": "SECRET-TOKEN", "baseUrl": base}
+    )
+    rows = run(
+        conn,
+        {"urlExpr": f"'{base}s'", "secretName": "tok", "maxRetries": 0},
+        ids=(1,),
+        resolver=resolver,
+    )
+    assert seen["auth"] == "Bearer SECRET-TOKEN"
+    assert rows[0][2:] == (403, "error", "HTTP 403")
+    assert "SECRET-TOKEN" not in repr(
+        rows[0][3:]
+    )  # colonnes d'erreur ; le corps est celui du serveur
+
+
+def test_url_outside_secret_scope_makes_no_request(conn, httpserver, resolver_factory):
+    hits = []
+    httpserver.expect_request("/o").respond_with_handler(
+        lambda r: (hits.append(1), Response("x"))[1]
+    )
+    resolver = resolver_factory(
+        "tok",
+        "bearer_token",
+        {"kind": "bearer_token", "token": "T", "baseUrl": "https://api.allowed.example/v1"},
+    )
+    rows = run(
+        conn,
+        {"urlExpr": f"'{httpserver.url_for('/o')}'", "secretName": "tok"},
+        ids=(1,),
+        resolver=resolver,
+    )
+    assert hits == []
+    assert rows[0][3:] == ("error", "URL hors de la portée du secret")
+
+
+def test_secret_without_base_url_fails_the_node(conn, resolver_factory):
+    from app.pipelines.errors import PipelineRuntimeError
+
+    resolver = resolver_factory("tok", "bearer_token", {"kind": "bearer_token", "token": "T"})
+    with pytest.raises(PipelineRuntimeError, match="baseUrl"):
+        run(conn, {"urlExpr": "'http://x/'", "secretName": "tok"}, ids=(1,), resolver=resolver)
+
+
+def test_secret_name_without_resolver_fails_cleanly(conn):
+    from app.pipelines.errors import PipelineRuntimeError
+
+    with pytest.raises(PipelineRuntimeError, match="secret 'tok'"):
+        run(conn, {"urlExpr": "'http://x/'", "secretName": "tok"}, ids=(1,), resolver=None)
+
+
+def test_redirects_are_not_followed_when_a_secret_is_bound(conn, httpserver, resolver_factory):
+    base = httpserver.url_for("/")
+    httpserver.expect_request("/r").respond_with_data(
+        "", status=302, headers={"Location": base + "t"}
+    )
+    httpserver.expect_request("/t").respond_with_data("target")
+    resolver = resolver_factory(
+        "tok", "bearer_token", {"kind": "bearer_token", "token": "T", "baseUrl": base}
+    )
+    rows = run(conn, {"urlExpr": f"'{base}r'", "secretName": "tok"}, ids=(1,), resolver=resolver)
+    assert rows[0][2:] == (302, "error", "redirection non suivie")
