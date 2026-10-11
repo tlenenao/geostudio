@@ -35,6 +35,19 @@ def _stream(path, fmt, total):
         w.close()
 
 
+def test_csv_keeps_geometry_column_when_first_page_has_none(tmp_path):
+    """M2 : 1re page sans géométrie, suivantes avec — la colonne n'est pas perdue."""
+    out = tmp_path / "o.csv"
+    no_geom = [{"type": "Feature", "properties": {"name": "p", "v": 0}, "geometry": None}]
+    with out.open("w", encoding="utf-8", newline="") as fh:
+        w = StreamingFeatureWriter(fh, format="csv", with_geometry=True)
+        w.write(no_geom)
+        w.write(_page(1, 1))
+        w.close()
+    lines = out.read_text().splitlines()
+    assert lines[0] == "name,v,geometry" and "POINT" in lines[2]
+
+
 @pytest.mark.parametrize("fmt", ["csv", "geojson"])
 def test_streamed_bytes_equal_in_memory(tmp_path, fmt):
     out = tmp_path / "o"

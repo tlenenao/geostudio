@@ -142,14 +142,14 @@ def features_to_gpkg(features: list[dict[str, Any]], conn: duckdb.DuckDBPyConnec
 
 class StreamingFeatureWriter:
     """REV-324 : écrit CSV / GeoJSON page par page dans un fichier ouvert en texte
-    (mémoire O(page)). Octet-à-octet équivalent à `features_to_format`.
-    ponytail: l'en-tête CSV est fixé par la 1re page non vide ; une colonne
-    `geometry` n'apparaissant qu'ensuite serait ignorée (collection homogène)."""
+    (mémoire O(page)). Équivalent à `features_to_format` ; `with_geometry` (la
+    collection a une colonne géométrie) fixe la colonne WKT dès l'en-tête, même si la
+    1re page n'a aucune géométrie. Le nom (`geometry`/`geometry_wkt`) est décidé sur la 1re page."""
 
-    def __init__(self, fh: TextIO, *, format: str) -> None:
+    def __init__(self, fh: TextIO, *, format: str, with_geometry: bool = False) -> None:
         if format not in ("csv", "geojson"):
             raise ValueError(f"unsupported streaming format '{format}'")
-        self._fh, self._format = fh, format
+        self._fh, self._format, self._with_geometry = fh, format, with_geometry
         self._n = 0
         self._csv: Any = None
         if format == "geojson":
@@ -163,7 +163,7 @@ class StreamingFeatureWriter:
                 self._fh.write((", " if self._n else "") + json.dumps(f, default=_json_default))
                 self._n += 1
             return
-        rows = _rows_with_wkt(features)
+        rows = _rows_with_wkt(features, force=self._with_geometry)
         if self._csv is None:
             fields = list(rows[0].keys())
             self._csv = DictWriter(self._fh, fieldnames=fields, extrasaction="ignore")
@@ -176,12 +176,12 @@ class StreamingFeatureWriter:
             self._fh.write("]}")
 
 
-def _rows_with_wkt(features: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _rows_with_wkt(features: list[dict[str, Any]], force: bool = False) -> list[dict[str, Any]]:
     """P29.07 : CSV/XLSX portent la géométrie en WKT (colonne `geometry`, ou
     `geometry_wkt` si une propriété porte déjà ce nom) au lieu de la perdre."""
     from shapely.geometry import shape
 
-    if not any(f.get("geometry") for f in features):
+    if not force and not any(f.get("geometry") for f in features):
         return [f.get("properties") or {} for f in features]
     taken = any("geometry" in (f.get("properties") or {}) for f in features)
     key = "geometry_wkt" if taken else "geometry"
