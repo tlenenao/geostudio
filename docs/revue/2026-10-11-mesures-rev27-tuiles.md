@@ -43,3 +43,22 @@ configuration, pas une durée (piège n°7). Base dédiée `rev27_ebis`.
 ## Rejeu t03
 
 Stack levée mais l'image `core` tourne l'ancien code : t03 à rejouer en Z après reconstruction, seuil de 2 s inchangé.
+
+## E-bis-3 — chemin « points WGS84 » sans ST_Transform par ligne (2026-10-11)
+
+`build_agg_mvt_sql` : si `info.srid == 4326` ET `info.geometry_type == "Point"`, la cellule de grille se calcule
+directement en Mercator par formule (`x = lon·20037508.34/180`, `y = R·ln tan(π/4+φ/2)`) ; plus de `ST_Transform` ni
+`ST_PointOnSurface` par ligne (les centres de cellule sont déjà en 3857, aucune transformation à faire). Le filtre
+d'enveloppe (`&&` indexable, transformé une seule fois) est inchangé. Polygones, lignes, multipoints et autres SRID
+gardent l'ancien chemin.
+
+Mesure : 500 000 points aléatoires 4326 (France), index GiST, tuile z5/16/11, `EXPLAIN (ANALYZE)` alternés ancien/nouveau,
+5 passes, jit off, machine très chargée (load ~19) : valeurs absolues gonflées.
+
+| chemin | exécutions (ms) | médiane |
+|---|---|---|
+| ancien (ST_Transform par ligne) | 1357, 1229, 1260, 2664, 1733 | 1357 |
+| nouveau (formule Mercator) | 537, 438, 831, 578, 692 | 578 |
+
+Rapport ~2,3x (-57 %). Équivalence : `test_features_tiles_agg_points_postgis.py` compare les cellules (comptes
+identiques, centres à <= 1 px de tuile) entre les deux chemins sur 3000 points fixes ; falsifié (facteur lon/170 : rouge).
