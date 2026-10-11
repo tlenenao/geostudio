@@ -20,6 +20,7 @@ from app.auth.dependency import get_current_user_optional
 from app.collections.introspection import TableNotFound, UnsupportedTable, hide_sensitive_columns
 from app.collections.repository import list_visible_collections
 from app.collections.routes import get_introspector, get_readable_collection
+from app.collections.sensitive import unmask_for_owner
 from app.db import get_session
 from app.features.routes import get_features_repo, get_masked_for_user, get_rls_scope
 from app.roles.guards import has_privilege
@@ -232,6 +233,7 @@ def list_items(
             user and has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
         ),
     )
+    masked = unmask_for_owner(masked, user, col)
     info = introspect(session, col.table_name)
     if masked:
         info = hide_sensitive_columns(info, col.sensitive_fields)
@@ -284,6 +286,7 @@ def get_item(
             user and has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
         ),
     )
+    masked = unmask_for_owner(masked, user, col)
     info = introspect(session, col.table_name)
     if masked:
         info = hide_sensitive_columns(info, col.sensitive_fields)
@@ -410,10 +413,11 @@ def _run_search(
             # j07-008 : une collection cassée ne fait pas échouer toute la recherche.
             logger.warning("stac search: collection %s ignorée: %s", col.id, exc)
             continue
-        if masked:
+        col_masked = unmask_for_owner(masked, user, col)
+        if col_masked:
             info = hide_sensitive_columns(info, col.sensitive_fields)
         remaining = limit - len(results)
-        with rls(session, col.tenant_id, masked=masked):
+        with rls(session, col.tenant_id, masked=col_masked):
             page = repo.select_features(
                 session, info, limit=remaining, offset=offset, bbox=bbox, filters=None
             )

@@ -49,6 +49,7 @@ from app.collections.introspection import (
     hide_sensitive_columns,
 )
 from app.collections.introspection_pg import introspect_table
+from app.collections.sensitive import masked_fields_for
 from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig, DatasetPayload, PipelineNode, PipelinePayload
 from app.features.repository import delete_all_features, insert_features
@@ -83,7 +84,7 @@ from app.pipelines.ops.schemas import (
     WriterExportParams,
     WriterFileParams,
 )
-from app.roles.guards import has_privilege, require_privilege
+from app.roles.guards import require_privilege
 from app.roles.privileges import Privilege
 from app.sharing.authorization import can
 from app.sharing.geo_limits import resolve_geo_limits
@@ -171,9 +172,9 @@ def _masked_fields(
     collection = collections_repo.get_collection(
         session, tenant_id=tenant_id, collection_id=collection_id
     )
-    if collection is None or has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value):
+    if collection is None:
         return frozenset()
-    return frozenset(collection.sensitive_fields)
+    return masked_fields_for(session, user, collection)
 
 
 def _readable_table_info(

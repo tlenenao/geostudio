@@ -22,6 +22,7 @@ from app.collections import repository as collections_repo
 from app.collections.introspection import hide_sensitive_columns
 from app.collections.introspection_pg import introspect_table
 from app.collections.routes import get_collection_for_read
+from app.collections.sensitive import may_read_sensitive
 from app.dataexport import repository as repo
 from app.dataexport.models import CollectionExportJob
 from app.db import request_scoped_session
@@ -30,8 +31,6 @@ from app.features.rls import rls_scope
 from app.ingestion.storage import ensure_uploads_bucket, make_s3_client
 from app.jobs import app
 from app.jobs.common import notify_best_effort, session_factory
-from app.roles.guards import has_privilege
-from app.roles.privileges import Privilege
 from app.sharing.geo_limits import resolve_geo_limits
 from app.users.models import User
 
@@ -73,7 +72,7 @@ def _build_file(factory, job, scratch: Path) -> tuple[Path | bytes, str, str]:
         info = introspect_table(session, col.table_name)
         # GAP-22 : verdict recalculé à l'exécution (comme alerts/pipelines) — le
         # privilège a pu être retiré depuis la création ; jamais moins strict.
-        masked = job.masked or not has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)
+        masked = job.masked or not may_read_sensitive(session, user, col)
         if masked:
             info = hide_sensitive_columns(info, col.sensitive_fields)
         # GAP-27 : limites recalculées à l'exécution, comme le verdict de masquage.

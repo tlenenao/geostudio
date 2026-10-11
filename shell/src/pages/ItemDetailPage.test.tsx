@@ -10,6 +10,8 @@ import { server } from "../test/msw/server";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { ItemDetailPage } from "./ItemDetailPage";
+import { t } from "../i18n";
+import "../i18n/domains/misc";
 
 vi.mock("../shell/ItemActions", () => ({ ItemActions: () => <span>actions</span> }));
 
@@ -308,4 +310,39 @@ test("un site publié affiche son URL publique copiable (P35.11)", async () => {
   render(<ItemDetailPage pk="7" />, { wrapper });
   expect(await screen.findByText(`${window.location.origin}/sites/portail`)).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Copier l'URL" })).toBeInTheDocument();
+});
+
+test("REV-317 : l'édition des métadonnées envoie updatedAt en If-Match ; un 412 affiche le conflit", async () => {
+  let ifMatch: string | null = null;
+  server.use(
+    http.get("https://core.test/v1/items/1", () =>
+      HttpResponse.json({
+        pk: "1",
+        resourceType: "app",
+        title: "Item 1",
+        abstract: "A",
+        owner: "alice",
+        thumbnailUrl: null,
+        date: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T10:00:00",
+        configId: null,
+        isPublished: false,
+        keywords: [],
+        license: "",
+        language: "fr",
+        permissions: { read: true, write: true, delete: true, share: true },
+      }),
+    ),
+    http.patch("https://core.test/v1/items/1", ({ request }) => {
+      ifMatch = request.headers.get("If-Match");
+      return HttpResponse.json({ detail: "stale version" }, { status: 412 });
+    }),
+  );
+  render(<ItemDetailPage pk="1" />, {
+    wrapper: ({ children }) => wrapperWithInitialSearch("/items/1?panel=edit", children),
+  });
+  await screen.findByLabelText("Titre");
+  await userEvent.click(screen.getByRole("button", { name: t("common.save") }));
+  await screen.findByText(t("common.saveConflict"));
+  expect(ifMatch).toBe('"2026-01-01T10:00:00"');
 });

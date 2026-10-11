@@ -29,6 +29,7 @@ from app.collections.schemas import (
     CollectionPatch,
     EmptyCollectionCreate,
 )
+from app.collections.sensitive import has_sensitive_privilege, is_owner, may_read_sensitive
 from app.configs import repository as configs_repo
 from app.configs.geo_limits_dep import get_request_geo_limits
 from app.configs.guest_access import GuestActor, get_share_link_actor
@@ -264,12 +265,14 @@ def get_feature_counter():
     return counter
 
 
-def _may_see_sensitive(session, user) -> bool:
+def _may_see_sensitive(session, user, col=None) -> bool:
     """GAP-22 : qui voit la liste des champs sensibles (fiche, schéma) et peut
-    la modifier — data.view_sensitive ou admin.collections.manage."""
-    return user is not None and (
-        has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)
-        or has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+    la modifier — data.view_sensitive, admin.collections.manage ou (avec `col`)
+    le propriétaire de la collection (REV-276)."""
+    return (
+        may_read_sensitive(session, user, col)
+        if col is not None
+        else has_sensitive_privilege(session, user)
     )
 
 
@@ -569,7 +572,7 @@ def list_collections(
                 c,
                 permissions_by_id[c.id],
                 owner=owners.get(c.owner_id),
-                reveal_sensitive=reveal_sensitive,
+                reveal_sensitive=reveal_sensitive or is_owner(user, c),
                 geo_limited=c.table_name in geo_limits,
             )
             for c in cols_page
@@ -646,7 +649,7 @@ def get_collection(
     body = _collection_json(
         col,
         permissions,
-        reveal_sensitive=_may_see_sensitive(session, user),
+        reveal_sensitive=_may_see_sensitive(session, user, col),
         geo_limited=col.table_name in geo_limits,
     )
     body["itemType"] = "feature"
@@ -693,7 +696,7 @@ def get_collection_schema(
         raise HTTPException(status_code=404, detail="backing table not found") from exc
     except UnsupportedTable as exc:
         raise HTTPException(status_code=409, detail=exc.reason) from exc
-    if not _may_see_sensitive(session, user):
+    if not _may_see_sensitive(session, user, col):
         info = hide_sensitive_columns(info, col.sensitive_fields)
     return table_info_to_schema(info, attachment_fields=col.attachment_fields)
 
@@ -788,7 +791,7 @@ def patch_collection(
     if (
         body.sensitiveFields is not None
         and body.sensitiveFields != col.sensitive_fields
-        and not _may_see_sensitive(session, user)
+        and not _may_see_sensitive(session, user, col)
     ):
         raise HTTPException(
             status_code=403,
@@ -861,7 +864,7 @@ def patch_collection(
     return _collection_json(
         col,
         permissions,
-        reveal_sensitive=_may_see_sensitive(session, user),
+        reveal_sensitive=_may_see_sensitive(session, user, col),
         geo_limited=col.table_name
         in resolve_geo_limits(session, tenant_id=user.tenant_id, user_id=user.id),
     )

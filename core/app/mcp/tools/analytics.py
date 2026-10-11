@@ -20,6 +20,7 @@ from app.analytics.profile import CollectionProfileResponse, run_collection_prof
 from app.collections.introspection import TableNotFound, UnsupportedTable
 from app.collections.introspection_pg import introspect_table
 from app.collections.schema_json import table_info_to_schema
+from app.collections.sensitive import masked_fields_for
 from app.configs import repository as configs_repo
 from app.configs.schemas import DatasetPayload
 from app.db import request_scoped_session
@@ -37,8 +38,6 @@ from app.mcp.tools.identity import (
     resolve_actor,
     visible_table_info,
 )
-from app.roles.guards import has_privilege
-from app.roles.privileges import Privilege
 from app.sharing.authorization import can
 from app.users.models import User
 
@@ -117,11 +116,7 @@ def register(server: FastMCP, session_factory) -> None:
                 conn = features_routes.get_duckdb_connection_factory()()
                 try:
                     try:
-                        masked_fields = (
-                            frozenset()
-                            if has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)
-                            else frozenset(col.sensitive_fields)
-                        )
+                        masked_fields = masked_fields_for(session, user, col)
                         category_key, rows = run_collection_aggregate(
                             conn,
                             base_uri=features_routes.get_analytics_base_uri(),
@@ -204,11 +199,7 @@ def register(server: FastMCP, session_factory) -> None:
                 raise ValueError("collection backing table not found") from exc
             except UnsupportedTable as exc:
                 raise ValueError(exc.reason) from exc
-            masked_fields = (
-                frozenset()
-                if has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)
-                else frozenset(col.sensitive_fields)
-            )
+            masked_fields = masked_fields_for(session, user, col)
             base_uri = features_routes.get_analytics_base_uri()
             conn = features_routes.get_duckdb_connection_factory()()
             try:
