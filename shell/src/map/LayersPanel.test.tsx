@@ -561,3 +561,60 @@ test("sans timeFilterable, aucun éditeur de champ temporel", async () => {
   await screen.findByText("V");
   expect(screen.queryByLabelText("Champ temporel")).not.toBeInTheDocument();
 });
+
+// ARC-01 : regroupement de points d'une couche GeoJSON.
+const pointLayer: MapLayer = {
+  id: "p",
+  title: "Pts",
+  visible: true,
+  kind: "feature",
+  url: "https://fs/pts",
+  renderAs: "circle",
+};
+
+test("cluster: la case « Regrouper les points » pose puis retire l'option", async () => {
+  const onChange = vi.fn();
+  const { unmount } = renderPanel([pointLayer], onChange);
+  await userEvent.click(screen.getByRole("checkbox", { name: "Regrouper les points" }));
+  expect(onChange).toHaveBeenLastCalledWith([{ ...pointLayer, cluster: {} }]);
+  unmount();
+  renderPanel([{ ...pointLayer, cluster: { radius: 40 } } as MapLayer], onChange);
+  await userEvent.click(screen.getByRole("checkbox", { name: "Regrouper les points" }));
+  expect(onChange).toHaveBeenLastCalledWith([pointLayer]);
+});
+
+test("cluster: rayon, zoom max et compte s'éditent quand l'option est active", () => {
+  const onChange = vi.fn();
+  renderPanel([{ ...pointLayer, cluster: {} } as MapLayer], onChange);
+  fireEvent.change(screen.getByLabelText("Rayon de regroupement (pixels)"), {
+    target: { value: "80" },
+  });
+  expect(onChange).toHaveBeenLastCalledWith([{ ...pointLayer, cluster: { radius: 80 } }]);
+  fireEvent.change(screen.getByLabelText("Zoom max du regroupement"), { target: { value: "10" } });
+  expect(onChange).toHaveBeenLastCalledWith([{ ...pointLayer, cluster: { maxZoom: 10 } }]);
+  fireEvent.click(screen.getByRole("checkbox", { name: "Afficher le nombre de points" }));
+  expect(onChange).toHaveBeenLastCalledWith([{ ...pointLayer, cluster: { label: false } }]);
+});
+
+test("cluster: absent d'une couche qui n'est pas rendue en cercles", () => {
+  renderPanel([{ ...pointLayer, renderAs: "fill" } as MapLayer], vi.fn());
+  expect(screen.queryByRole("checkbox", { name: "Regrouper les points" })).toBeNull();
+});
+
+test("cluster: signale l'incompatibilité avec une couche heatmap sur les mêmes données", () => {
+  const heat: MapLayer = {
+    id: "h",
+    title: "Chaleur",
+    visible: true,
+    kind: "deck",
+    deckType: "heatmap",
+    dataUrl: "https://fs/pts",
+  };
+  renderPanel([{ ...pointLayer, cluster: {} } as MapLayer, heat], vi.fn());
+  expect(screen.getByText(/incompatible avec une carte de chaleur/i)).toBeInTheDocument();
+});
+
+test("cluster: pas d'avertissement sans heatmap sur les mêmes données", () => {
+  renderPanel([{ ...pointLayer, cluster: {} } as MapLayer], vi.fn());
+  expect(screen.queryByText(/incompatible avec une carte de chaleur/i)).toBeNull();
+});

@@ -119,6 +119,14 @@ class PopupConfig(BaseModel):
     template: str | None = None
 
 
+class ClusterConfig(BaseModel):
+    """ARC-01 : regroupement de points (MapLibre `cluster: true`) d'une couche `feature`."""
+
+    radius: float | None = None
+    maxZoom: float | None = None
+    label: bool | None = None
+
+
 class MapLayer(BaseModel):
     id: str
     title: str
@@ -141,6 +149,7 @@ class MapLayer(BaseModel):
     geometryKind: Literal["point", "line", "polygon"] | None = None
     pkColumn: str | None = None
     renderAs: Literal["fill", "circle", "line"] | None = None
+    cluster: ClusterConfig | None = None
 
 
 class MapTerrain(BaseModel):

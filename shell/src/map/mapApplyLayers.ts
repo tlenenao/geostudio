@@ -19,6 +19,9 @@ import {
   addIconLayer,
   addLabelLayer,
   makeFeatureClickHandler,
+  addClusterLayers,
+  clusterSourceOptions,
+  makeClusterClickHandler,
 } from "./mapLayerBuild";
 import "../i18n/domains/map";
 
@@ -200,9 +203,16 @@ export function applyLayers(
           paint: { "raster-opacity": layer.opacity ?? 1 },
         });
       } else if (layer.kind === "feature") {
-        map.addSource(layer.id, { type: "geojson", data: layer.url });
+        // ARC-01 : le regroupement ne vaut que pour des points (renderAs circle).
+        const cluster = layer.renderAs === "circle" ? layer.cluster : undefined;
+        map.addSource(layer.id, {
+          type: "geojson",
+          data: layer.url,
+          ...(cluster ? clusterSourceOptions(cluster) : {}),
+        });
         const featureGeometryKind: GeometryKind =
           layer.renderAs === "circle" ? "point" : layer.renderAs === "line" ? "line" : "polygon";
+        const unclustered = cluster ? { filter: notAggregated() } : {};
         const featureResult = effectivePaint(layer, featureGeometryKind, themeColors);
         for (const imageId of featureResult.iconImages) iconImages.add(imageId);
         switch (layer.renderAs ?? "fill") {
@@ -211,6 +221,7 @@ export function applyLayers(
               id: layer.id,
               type: "circle",
               source: layer.id,
+              ...unclustered,
               paint: featureResult.paint,
             });
             break;
@@ -243,9 +254,18 @@ export function applyLayers(
           addIconLayer(map, {
             parentId: layer.id,
             source: layer.id,
+            ...unclustered,
             layout: featureResult.iconLayout,
           });
           applied.add(`${layer.id}__icon`);
+        }
+        if (cluster) {
+          addClusterLayers(map, layer.id, cluster, themeColors?.primary);
+          const clusterHandler = makeClusterClickHandler(map, layer.id);
+          map.on("click", `${layer.id}__cluster`, clusterHandler);
+          clickHandlers.set(`${layer.id}__cluster`, clusterHandler);
+          applied.add(`${layer.id}__cluster`);
+          applied.add(`${layer.id}__cluster_count`);
         }
         const featureLabel = layer.symbology?.label;
         if (

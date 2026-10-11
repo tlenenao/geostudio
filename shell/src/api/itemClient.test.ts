@@ -941,6 +941,7 @@ describe("toFrontLayer characteristic test — no optional field is ever dropped
       pkColumn: "fid",
       popup: { titleField: "nom", fields: [] },
       renderAs: "circle",
+      cluster: { radius: 60, maxZoom: 12, label: false },
       symbology: { kind: "categorical", field: "type", categories: [] } as never,
     };
     const out = toFrontLayer(raw) as Record<string, unknown>;
@@ -949,6 +950,7 @@ describe("toFrontLayer characteristic test — no optional field is ever dropped
     expect(out.pkColumn).toBe(raw.pkColumn);
     expect(out.popup).toEqual(raw.popup);
     expect(out.renderAs).toBe(raw.renderAs);
+    expect(out.cluster).toEqual(raw.cluster);
     expect(out.symbology).toEqual(raw.symbology);
   });
 

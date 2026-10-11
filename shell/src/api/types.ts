@@ -332,6 +332,9 @@ export type PopupConfig = {
   template?: string;
   attachmentField?: string;
 };
+// ARC-01 : regroupement de points d'une couche `feature` (MapLibre `cluster: true`).
+// Défauts côté rendu : radius 50, maxZoom 14, label vrai.
+export type ClusterConfig = { radius?: number; maxZoom?: number; label?: boolean };
 export type MapLayer =
   | {
       id: string;
@@ -365,6 +368,7 @@ export type MapLayer =
       url: string;
       paint?: Record<string, unknown>;
       renderAs?: "fill" | "circle" | "line";
+      cluster?: ClusterConfig;
       popup?: PopupConfig;
       symbology?: import("../builder/widgets/mapSymbology").LayerSymbology;
       collectionId?: string;
