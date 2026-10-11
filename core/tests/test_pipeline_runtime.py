@@ -3024,7 +3024,22 @@ def test_reader_collection_drops_sensitive_columns_without_privilege(tmp_path, m
         )
         col.sensitive_fields = ["pop"]
         s.flush()
-        masked = runtime._masked_fields(s, tenant_id=tenant.id, user=owner, collection_id="villes")
+        # REV-276 : le propriétaire lit ses champs sensibles en clair ; un tiers sans
+        # privilège est masqué.
+        assert (
+            runtime._masked_fields(s, tenant_id=tenant.id, user=owner, collection_id="villes")
+            == frozenset()
+        )
+        other = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="t",
+            username="tiers",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        masked = runtime._masked_fields(s, tenant_id=tenant.id, user=other, collection_id="villes")
         assert masked == frozenset({"pop"})
 
         _write_partition(tmp_path, tenant_id=tenant.id, rows=[_row(1, "Nord", 10)])
@@ -3041,7 +3056,7 @@ def test_reader_collection_drops_sensitive_columns_without_privilege(tmp_path, m
             node_id="r1",
             params={"collectionId": "villes"},
             view_name="r1",
-            user=owner,
+            user=other,
             base_uri=str(tmp_path),
         )
         cols = [r[0] for r in conn.execute("DESCRIBE r1").fetchall()]
