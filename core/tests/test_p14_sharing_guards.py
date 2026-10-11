@@ -268,7 +268,7 @@ def test_group_management_is_for_creator_or_user_admin_only(env):
     _as(app, env["owner"])
     gid = _group(c, env["reader"])
     _as(app, env["other"])  # Créateur d'un autre groupe : pas celui-ci
-    assert c.get("/v1/groups").json()[0]["canManage"] is False
+    assert c.get("/v1/groups", params={"q": "equipe"}).json()[0]["canManage"] is False
     assert c.get(f"/v1/groups/{gid}/members").status_code == 404
     assert c.patch(f"/v1/groups/{gid}", json={"name": "x"}).status_code == 404
     assert c.delete(f"/v1/groups/{gid}").status_code == 404
