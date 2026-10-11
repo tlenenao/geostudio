@@ -127,7 +127,7 @@ def test_geometry_column_alter_has_a_single_entry_point():
 # justifiée. Toute autre lecture doit passer par `geo_source` (géométrie découpée).
 _RAW_TABLE_READS = {
     "sharing/geo_limits.py": 1,  # geo_source lui-même
-    "features/repository.py": 3,  # _straddle_gate (classe, ne renvoie aucune géométrie) + 2 DELETE
+    "features/repository.py": 4,  # _straddle_gate + 2 DELETE + lock_feature (aucune géométrie lue)
     "collections/routes.py": 1,  # compteur physique à l'enregistrement, hors scope utilisateur
     "collections/ddl.py": 1,  # contrôle de tenant à l'enregistrement (DDL, hors scope utilisateur)
     "cdc/backfill.py": 1,  # lac CDC, système
