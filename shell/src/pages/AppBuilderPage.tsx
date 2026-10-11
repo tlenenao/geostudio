@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { ConfigWarningsBanner } from "../builder/ConfigWarningsBanner";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { HelpCircle } from "lucide-react";
 import { useUndoableDraft } from "../builder/useUndoableDraft";
@@ -418,6 +419,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
     <DataSourcesEditProvider onAdd={(source) => setSources([...draft.dataSources, source])}>
       <div className="-m-6 flex flex-1 flex-col overflow-hidden">
         <h1 className="sr-only">{t("docTitle.appEdit")}</h1>
+        <ConfigWarningsBanner warnings={query.data?.warnings ?? []} />
         <TriptychLayout
           {...tabProps}
           browse={{

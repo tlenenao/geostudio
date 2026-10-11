@@ -249,7 +249,8 @@ export type CopilotSurface =
   | "visual_query"
   | "visible_when"
   | "computed_column"
-  | "action_condition";
+  | "action_condition"
+  | "binding";
 
 // REV-102 : un résultat de GET /v1/geocode.
 export type GeocodeResult = { label: string; lon: number; lat: number };
@@ -338,6 +339,8 @@ export type MapLayer =
       kind: "vector";
       tilesUrl: string;
       sourceLayer: string;
+      // REV-304 : champ temporel filtré par le contexte temps global (widget carte).
+      timeField?: string;
       paint?: Record<string, unknown>;
       collectionId?: string;
       geometryKind?: "point" | "line" | "polygon";
@@ -1236,6 +1239,9 @@ export type AppConfig = {
   // l'enregistrement pour que le cœur refuse (412) une écriture périmée.
   // Jamais persistée dans le corps de la config.
   baseVersion?: number;
+  // Avertissements du cœur sur une config relue devenue invalide (REV-305).
+  // Jamais renvoyés à l'enregistrement.
+  warnings?: string[];
 };
 
 export type PipelineNodeKind = "reader" | "transform" | "writer";

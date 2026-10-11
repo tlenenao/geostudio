@@ -40,6 +40,8 @@ export const widgets = {
   "appBuilder.exportStandaloneLabel": "Export standalone",
   "appBuilder.copilotLabel": "Copilote",
   "appBuilder.save": "Enregistrer",
+  "configWarnings.title":
+    "Cette configuration contient des références devenues invalides ; corrigez-les avant d'enregistrer :",
   "appBuilder.conflict":
     "Cette application a été modifiée ailleurs depuis votre ouverture : votre enregistrement a été refusé pour ne pas écraser ces changements.",
   "appBuilder.conflictReload": "Recharger la dernière version",
@@ -593,6 +595,11 @@ export const widgets = {
   "propsPanel.unknownWidget": "Widget inconnu : {widget}",
   "propsPanel.visibleWhenAria": "Condition d'affichage (visibleWhen)",
   "propsPanel.visibleWhenLabel": "Condition d'affichage",
+  "bindingEditor.summary": "Liaisons dynamiques",
+  "bindingEditor.propAria": "Propriété à lier",
+  "bindingEditor.exprAria": "Expression de la liaison (CEL)",
+  "bindingEditor.bind": "Lier la propriété",
+  "bindingEditor.unbind": "Retirer la liaison",
   "celGen.summary": "Générer",
   "celGen.questionAria": "Décrire la condition",
   "celGen.questionAriaExpr": "Décrire l'expression",

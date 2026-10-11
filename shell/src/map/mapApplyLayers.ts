@@ -412,3 +412,41 @@ export function mapRelevantLayer(layer: MapConfig["layers"][number]) {
   }
   return layer;
 }
+
+// REV-304 : fenêtre temporelle sur les couches `vector` déclarant un
+// `timeField`, par setFilter sur les sous-couches déjà posées — jamais en
+// recréant sources et couches (une tuile rechargée à chaque pas du lecteur).
+// `bases` mémorise le filtre d'origine de chaque sous-couche (celui posé par
+// applyLayers) pour ne jamais empiler les clauses temporelles ; MapView le
+// vide chaque fois que applyLayers recrée les couches. Les valeurs MVT d'une
+// date sont des chaînes ISO : la comparaison lexicographique est exacte, et
+// la borne haute couvre toute la journée `to`. Limite : les étiquettes
+// (querySourceFeatures) ne suivent pas ce filtre.
+export function applyTimeFilters(
+  map: maplibregl.Map,
+  layers: MapConfig["layers"],
+  range: { from: string; to: string } | null | undefined,
+  bases: Map<string, maplibregl.FilterSpecification | undefined>,
+): void {
+  for (const layer of layers) {
+    if (layer.kind !== "vector" || !layer.timeField || !layer.visible) continue;
+    const roots =
+      layer.geometryKind === undefined
+        ? MIXED_GEOMETRY_SUBLAYERS.map((s) => `${layer.id}__${s.suffix}`)
+        : [layer.id];
+    for (const id of roots.flatMap((r) => [r, `${r}__icon`, `${r}__outline`])) {
+      if (!map.getLayer(id)) continue;
+      if (!bases.has(id)) bases.set(id, map.getFilter(id) ?? undefined);
+      const base = bases.get(id);
+      const time = range
+        ? [
+            "all",
+            [">=", ["get", layer.timeField], range.from],
+            ["<=", ["get", layer.timeField], `${range.to}T23:59:59.999999`],
+          ]
+        : undefined;
+      const next = time ? (base ? ["all", base, time] : time) : base;
+      map.setFilter(id, (next ?? null) as maplibregl.FilterSpecification | null);
+    }
+  }
+}
