@@ -13,7 +13,13 @@ candidates :
 - bucket uploads : `{tenant}/{uuid}-{fichier}` ↔ `IngestionJob.source_key`
   d'un job NON terminé avec succès (un job `pending`/`running`/`error` garde
   sa source ; `done` signifie que la suppression de la source a échoué) ;
-- bucket attachments : `{tenant}/{collection}/{fid}/…` ↔ `Attachment.s3_key`.
+- bucket attachments : `{tenant}/{collection}/{fid}/…` ↔ `Attachment.s3_key` ;
+- bucket mapicons : `{tenant}/{uuid}-{fichier}` ↔ `MapIcon.s3_key` ;
+- bucket tileset3d : `{tenant}/{uuid}/{fichier}` ↔ `Tileset3DJob.source_key` d'un job
+  non terminé, ou terminé dont l'item existe encore (zip = contenu de l'item) ;
+- bucket terrain3d : `{tenant}/{uuid}/{fichier}` brut ↔ `Terrain3DJob.source_key` d'un
+  job non terminé ; `{tenant}/{job}/dem-cog.tif` ↔ `converted_key` d'un job dont
+  l'item existe encore (REV-268 : suppression d'item = COG/zip orphelin).
 
 Jamais `{tenant}/pipelines/...` (écrit par writer.export, sans ligne de job)
 ni aucune autre clé. Un objet n'est supprimé que s'il n'a plus de ligne
@@ -34,6 +40,10 @@ from app.attachments.models import Attachment
 from app.dataexport.models import CollectionExportJob
 from app.export.models import ExportJob
 from app.ingestion.models import IngestionJob
+from app.items.models import Item
+from app.mapicons.models import MapIcon
+from app.terrain3d.models import Terrain3DJob
+from app.tileset3d.models import Tileset3DJob
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +92,31 @@ def _alive_ingestion_sources(session: Session, keys: set[str]) -> set[str]:
 
 def _alive_attachment_keys(session: Session, keys: set[str]) -> set[str]:
     return set(session.scalars(select(Attachment.s3_key).where(Attachment.s3_key.in_(keys))))
+
+
+def _alive_mapicon_keys(session: Session, keys: set[str]) -> set[str]:
+    return set(session.scalars(select(MapIcon.s3_key).where(MapIcon.s3_key.in_(keys))))
+
+
+def _alive_tileset3d_keys(session: Session, keys: set[str]) -> set[str]:
+    return set(
+        session.scalars(
+            select(Tileset3DJob.source_key).where(
+                Tileset3DJob.source_key.in_(keys),
+                (Tileset3DJob.status != "done") | Tileset3DJob.item_id.in_(select(Item.id)),
+            )
+        )
+    )
+
+
+def _alive_terrain3d_keys(session: Session, keys: set[str]) -> set[str]:
+    raw = select(Terrain3DJob.source_key).where(
+        Terrain3DJob.source_key.in_(keys), Terrain3DJob.status != "done"
+    )  # le brut est purgé à la fin du job : seul un job en cours le retient
+    cog = select(Terrain3DJob.converted_key).where(
+        Terrain3DJob.converted_key.in_(keys), Terrain3DJob.item_id.in_(select(Item.id))
+    )
+    return set(session.scalars(raw)) | set(session.scalars(cog))
 
 
 def _sweep_bucket(
@@ -145,6 +180,9 @@ def sweep_orphan_job_objects(
     appexports = os.environ.get("S3_APPEXPORTS_BUCKET", "geostudio-appexports")
     uploads = os.environ.get("S3_UPLOADS_BUCKET", "geostudio-uploads")
     attachments = os.environ.get("S3_ATTACHMENTS_BUCKET", "geostudio-attachments")
+    mapicons = os.environ.get("S3_MAPICONS_BUCKET", "geostudio-mapicons")
+    tileset3d = os.environ.get("S3_TILESET3D_BUCKET", "geostudio-tileset3d")
+    terrain3d = os.environ.get("S3_TERRAIN3D_BUCKET", "geostudio-terrain3d")
     n = 0
     for bucket, prefix, ident, alive, ref_model in (
         (exports, "renders/", lambda k: _job_id(k, "renders/"), _alive_by_id(ExportJob), None),
@@ -164,6 +202,9 @@ def sweep_orphan_job_objects(
         ),
         (uploads, "", _whole_key, _alive_ingestion_sources, IngestionJob),
         (attachments, "", _whole_key, _alive_attachment_keys, Attachment),
+        (mapicons, "", _whole_key, _alive_mapicon_keys, MapIcon),
+        (tileset3d, "", _whole_key, _alive_tileset3d_keys, Tileset3DJob),
+        (terrain3d, "", _whole_key, _alive_terrain3d_keys, Terrain3DJob),
     ):
         n += _sweep_bucket(
             session, s3, bucket, prefix, ident, alive, ref_model, cutoff=cutoff, limit=limit - n
