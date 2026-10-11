@@ -36,6 +36,7 @@ from app.configs.guest_access import GuestActor, get_share_link_actor
 from app.db import core_table_names, get_session
 from app.roles.guards import has_privilege, privilege_required_error, require_privilege
 from app.roles.privileges import Privilege
+from app.sharing import repository as sharing_repo
 from app.sharing.authorization import can
 from app.sharing.geo_limits import resolve_geo_limits, set_geo_limits_guc
 from app.sharing.schemas import Sharing
@@ -958,9 +959,14 @@ def get_sharing(
     )
     _require_share(session, user, col)
     shares = repo.get_collection_sharing(session, tenant_id=user.tenant_id, collection_id=col.id)
+    names = sharing_repo.group_names(
+        session, tenant_id=user.tenant_id, group_ids=[s.group_id for s in shares]
+    )
     return {
         "public": col.is_public,
-        "groups": [{"groupId": s.group_id, "role": s.role} for s in shares],
+        "groups": [
+            {"groupId": s.group_id, "role": s.role, "name": names.get(s.group_id)} for s in shares
+        ],
     }
 
 
@@ -996,7 +1002,10 @@ def put_sharing(
         action="collection.share",
         object_type="collection",
         object_id=col.id,
-        payload={"public": body.public, "groups": [g.model_dump() for g in body.groups]},
+        payload={
+            "public": body.public,
+            "groups": [g.model_dump(exclude={"name"}) for g in body.groups],
+        },
     )
     return {
         "public": col.is_public,

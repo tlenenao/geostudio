@@ -17,9 +17,9 @@ export function CollectionSharePanel({
   collectionId: string;
   onClose: () => void;
 }) {
-  const gs = useGroupSearch();
-  const groupsQuery = gs.defaults;
   const sharingQuery = useCollectionSharing(collectionId);
+  const gs = useGroupSearch(sharingQuery.data?.groups);
+  const groupsQuery = gs.defaults;
   const setSharing = useSetCollectionSharing(collectionId);
   const instanceQuery = useInstanceInfo();
   const readOnly = instanceQuery.data?.readOnly === true;

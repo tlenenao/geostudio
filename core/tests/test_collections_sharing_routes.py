@@ -165,7 +165,10 @@ def test_put_sharing_unknown_group_is_404_and_keeps_existing(env):
     assert r.status_code == 404
     # Rien n'a été modifié : le partage existant survit, public reste False.
     body = client.get("/v1/collections/incidents/sharing").json()
-    assert body == {"public": False, "groups": [{"groupId": group_id, "role": "viewer"}]}
+    assert body == {
+        "public": False,
+        "groups": [{"groupId": group_id, "role": "viewer", "name": "equipe"}],
+    }
 
 
 def test_put_sharing_cross_tenant_group_is_404(env):
@@ -226,3 +229,16 @@ def test_put_sharing_duplicate_group_is_422(env):
         },
     )
     assert r.status_code == 422
+
+
+def test_get_sharing_returns_group_names_for_existing_shares(env):
+    """I3 : le nom des groupes déjà partagés est lisible sans passer par l'annuaire."""
+    app, client, _, admin, _regular, group_id = env
+    _as(app, admin)
+    client.post("/v1/collections", json={"tableName": "incidents"})
+    client.put(
+        "/v1/collections/incidents/sharing",
+        json={"public": False, "groups": [{"groupId": group_id, "role": "viewer"}]},
+    )
+    body = client.get("/v1/collections/incidents/sharing").json()
+    assert body["groups"] == [{"groupId": group_id, "role": "viewer", "name": "equipe"}]

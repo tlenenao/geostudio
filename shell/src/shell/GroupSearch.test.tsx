@@ -84,3 +84,17 @@ test.each(cases)(
     expect(seen).toContain("lo");
   },
 );
+
+test.each(cases)(
+  "%s : un groupe déjà partagé hors annuaire reste listé par son nom (I3)",
+  async (_n, ui, role) => {
+    mockServer();
+    const sharing = { public: false, groups: [{ groupId: "gx", role: "viewer", name: "Ancien" }] };
+    server.use(
+      http.get("https://core.test/v1/collections/c1/sharing", () => HttpResponse.json(sharing)),
+      http.get("https://core.test/v1/items/7/sharing", () => HttpResponse.json(sharing)),
+    );
+    render(<Harness>{ui()}</Harness>);
+    expect(await screen.findByRole(role, { name: /Ancien/ })).toBeInTheDocument();
+  },
+);

@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 import { GroupSearchField, useGroupSearch } from "./GroupSearch";
 import { useState } from "react";
-import { useDeleteGeoLimit, useGeoLimits, usePutGeoLimit } from "../api/hooks";
+import {
+  useCollectionSharing,
+  useDeleteGeoLimit,
+  useGeoLimits,
+  usePutGeoLimit,
+} from "../api/hooks";
 import { t } from "../i18n";
 import { Button } from "../ui/kit/Button";
 import "../i18n/domains/admin";
@@ -10,7 +15,8 @@ import "../i18n/domains/admin";
  *  admin.collections.manage : la route répond 403, la requête échoue, rien n'est rendu. */
 export function GeoLimitsSection({ collectionId }: { collectionId: string }) {
   const limitsQuery = useGeoLimits(collectionId);
-  const gs = useGroupSearch();
+  const sharing = useCollectionSharing(collectionId);
+  const gs = useGroupSearch(sharing.data?.groups);
   const put = usePutGeoLimit(collectionId);
   const del = useDeleteGeoLimit(collectionId);
   const [groupId, setGroupId] = useState("");

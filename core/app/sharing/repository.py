@@ -109,6 +109,16 @@ def list_groups(
 GROUP_SEARCH_LIMIT = 20
 
 
+def group_names(session: Session, *, tenant_id: str, group_ids: Sequence[str]) -> dict[str, str]:
+    """Noms des groupes déjà ciblés par un partage (lecture seule : n'élargit pas l'annuaire)."""
+    if not group_ids:
+        return {}
+    rows = session.execute(
+        select(Group.id, Group.name).where(Group.tenant_id == tenant_id, Group.id.in_(group_ids))
+    )
+    return {gid: name for gid, name in rows}
+
+
 def directory_groups(
     session: Session, *, tenant_id: str, user_id: str, as_admin: bool, q: str | None
 ) -> list[Group]:

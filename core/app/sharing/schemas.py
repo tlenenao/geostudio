@@ -43,6 +43,8 @@ class ResolvedShareLink(BaseModel):
 class GroupShare(BaseModel):
     groupId: str
     role: Literal["viewer", "editor", "manager"]
+    # Lecture seule (REV-277) : nom d'un groupe déjà partagé, ignoré à l'écriture.
+    name: str | None = None
 
 
 class Sharing(BaseModel):

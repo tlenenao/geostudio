@@ -61,9 +61,14 @@ def get_sharing_service(session: Session, *, item_id: str, user: User) -> Sharin
         raise HTTPException(status_code=403, detail="not allowed to share this item")
     require_kind_privilege(session, user, facts)
     shares = sharing_repo.list_shares(session, item_id=item_id)
+    names = sharing_repo.group_names(
+        session, tenant_id=user.tenant_id, group_ids=[s.group_id for s in shares]
+    )
     return Sharing(
         public=facts.is_public,
-        groups=[GroupShare(groupId=s.group_id, role=s.role) for s in shares],
+        groups=[
+            GroupShare(groupId=s.group_id, role=s.role, name=names.get(s.group_id)) for s in shares
+        ],
     )
 
 
@@ -104,5 +109,8 @@ def set_sharing_service(
         action="item.share",
         object_type="item",
         object_id=item_id,
-        payload={"public": sharing.public, "groups": [g.model_dump() for g in sharing.groups]},
+        payload={
+            "public": sharing.public,
+            "groups": [g.model_dump(exclude={"name"}) for g in sharing.groups],
+        },
     )

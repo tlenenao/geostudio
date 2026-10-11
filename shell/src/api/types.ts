@@ -312,7 +312,7 @@ export type GeoLimit = {
 };
 export type Sharing = {
   public: boolean;
-  groups: { groupId: string; role: ShareRole }[];
+  groups: { groupId: string; role: ShareRole; name?: string | null }[];
 };
 
 export type MapViewport = {
