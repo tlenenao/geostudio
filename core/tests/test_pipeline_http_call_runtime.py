@@ -9,6 +9,8 @@ from werkzeug.wrappers import Response
 from app.pipelines import egress as pipelines_egress
 from app.pipelines.http_call_runtime import execute_http_call
 
+_REAL_ASSERT_EGRESS_ALLOWED = pipelines_egress.assert_egress_allowed
+
 
 @pytest.fixture(autouse=True)
 def _no_ssrf_guard(monkeypatch):
@@ -84,6 +86,58 @@ def test_geometry_column_survives(conn, httpserver):
         params={"urlExpr": f"'{httpserver.url_for('/g')}'"},
     )
     assert conn.execute("SELECT ST_AsText(geometry) FROM out").fetchone()[0] == "POINT (1 2)"
+
+
+def test_output_collision_drops_the_stage_table(conn):
+    from app.pipelines.errors import PipelineRuntimeError
+
+    with pytest.raises(PipelineRuntimeError):
+        run(conn, {"urlExpr": "'http://x/'"}, extra_cols="'a' AS responseBody")
+    tables = conn.execute(
+        "SELECT table_name FROM information_schema.tables WHERE table_name = 'out__stage'"
+    ).fetchall()
+    assert tables == []
+
+
+def test_egress_refusal_message_is_fixed_and_leaks_no_url(conn, monkeypatch):
+    monkeypatch.setattr(pipelines_egress, "assert_egress_allowed", _REAL_ASSERT_EGRESS_ALLOWED)
+    rows = run(
+        conn,
+        {
+            "urlExpr": (
+                "CASE WHEN id = 1 THEN 'https:///x?token=SECRET' ELSE 'http://127.0.0.1:9/' END"
+            )
+        },
+    )
+    # `requests` rejette l'URL sans hôte (InvalidURL) avant la garde : seule exigence, pas de fuite.
+    assert rows[1][-1] == "egress refusé"
+    assert "SECRET" not in repr(rows)
+
+
+def test_runtime_does_not_pass_context_to_ops_that_do_not_ask(monkeypatch, conn):
+    from app.configs.schemas import PipelineEdge, PipelineNode
+    from app.pipelines import runtime
+    from app.pipelines.ops import contracts
+
+    def fake_execute(c, *, input_view, view_name, params):  # TypeError si kwargs de contexte
+        c.execute(f'CREATE TEMP TABLE "{view_name}" AS SELECT * FROM "{input_view}"')
+
+    fake = contracts.OperationContract(
+        op="transform.fake-plain",
+        kind="transform",
+        params_schema=contracts.TransformFilterParams,
+        execute=fake_execute,
+    )
+    monkeypatch.setitem(contracts.OPERATIONS, "transform.fake-plain", fake)
+    conn.execute("CREATE TEMP TABLE node_r AS SELECT 1 AS id")
+    nodes = [
+        PipelineNode(id="r", kind="reader", op="reader.collection", params={}),
+        PipelineNode(id="t", kind="transform", op="transform.fake-plain", params={}),
+    ]
+    edges = [PipelineEdge(id="e", **{"from": "r"}, to="t")]
+    runtime._execute_transform_chain(
+        conn, nodes, edges, {"r": "node_r"}, {"r": 4326}, {}, secret_resolver=object(), preview=True
+    )
 
 
 def test_runtime_passes_context_only_to_ops_that_ask(monkeypatch, conn):

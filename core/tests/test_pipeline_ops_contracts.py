@@ -224,6 +224,12 @@ def test_python_executed_ops_declare_the_shapely_engine():
         assert contract.is_copyleft is False, op
 
 
+def test_http_call_declares_the_python_engine():
+    from app.pipelines.ops.contracts import OPERATIONS
+
+    assert OPERATIONS["transform.httpCall"].engine == "python"
+
+
 def test_needs_runtime_context_requires_execute():
     with pytest.raises(ValueError, match="needs_runtime_context"):
         OperationContract(

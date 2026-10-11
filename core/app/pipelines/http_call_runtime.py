@@ -103,7 +103,7 @@ def _run_with_retry(p, attempt: Callable[[], _Outcome]) -> _Outcome:
         except Exception as exc:  # noqa: BLE001 — toute erreur réseau devient une erreur de ligne
             blocked = cr._find_egress_blocked_cause(exc)
             if blocked is not None:
-                return _Outcome(error=f"egress refusé : {blocked}")
+                return _Outcome(error="egress refusé")
             if isinstance(exc, (requests.ConnectionError, requests.Timeout)):
                 out = _Outcome(error=type(exc).__name__, retryable=True)
             else:
@@ -228,12 +228,19 @@ def execute_http_call(
     secret_resolver=None,
     preview: bool = False,
 ) -> None:
-    from app.pipelines import connector_runtime as cr
     from app.pipelines.ops.schemas import TransformHttpCallParams
 
     p = TransformHttpCallParams.model_validate(params)
     stage = f"{view_name}__stage"
     _stage(conn, p, input_view, stage)
+    try:
+        _run_staged(conn, p, stage, view_name, secret_resolver, preview)
+    finally:
+        conn.execute(f"DROP TABLE IF EXISTS {_qi(stage)}")
+
+
+def _run_staged(conn, p, stage: str, view_name: str, secret_resolver, preview: bool) -> None:
+    from app.pipelines import connector_runtime as cr
 
     out_cols = [p.responseColumn, p.statusCodeColumn, p.statusColumn, p.errorColumn]
     existing = {d[0] for d in conn.execute(f"DESCRIBE {_qi(stage)}").fetchall()}
@@ -289,4 +296,3 @@ def execute_http_call(
         )
     finally:
         conn.unregister("_http_call_results")
-        conn.execute(f"DROP TABLE {_qi(stage)}")
