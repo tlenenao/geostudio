@@ -596,7 +596,7 @@ export interface ItemClient {
   updateItem(pk: string, patch: UpdatePatch): Promise<Item>;
   uploadThumbnail(pk: string, file: File): Promise<void>;
   deleteItem(pk: string): Promise<void>;
-  listGroups(): Promise<Group[]>;
+  listGroups(q?: string): Promise<Group[]>;
   // GAP-42/65 : POST /groups + POST /groups/{id}/members existaient et
   // étaient testés côté cœur, mais aucune UI/MCP ne les exposait —
   // ShareForm.tsx ne pouvait qu'afficher des groupes déjà créés hors

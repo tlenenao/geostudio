@@ -799,8 +799,12 @@ def put_feature(
     # NULL les colonnes sensibles qu'il n'a jamais vues. Retirées de `info`,
     # elles ne sont ni validées ni écrites (donc conservées en base).
     info = introspect(session, col.table_name)
-    if masked:
-        info = hide_sensitive_columns(info, col.sensitive_fields)
+    # Même chose pour un lecteur autorisé (propriétaire, REV-276) : une colonne
+    # sensible absente du corps est conservée, pas remise à NULL.
+    sent = payload.get("properties") or {}
+    info = hide_sensitive_columns(
+        info, [f for f in col.sensitive_fields if masked or f not in sent]
+    )
     if errors := validate_feature(info, payload):
         raise _validation_error(errors)
     try:

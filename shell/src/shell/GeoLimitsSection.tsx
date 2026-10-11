@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
+import { GroupSearchField, useGroupSearch } from "./GroupSearch";
 import { useState } from "react";
-import { useDeleteGeoLimit, useGeoLimits, useGroups, usePutGeoLimit } from "../api/hooks";
+import { useDeleteGeoLimit, useGeoLimits, usePutGeoLimit } from "../api/hooks";
 import { t } from "../i18n";
 import { Button } from "../ui/kit/Button";
 import "../i18n/domains/admin";
@@ -9,7 +10,7 @@ import "../i18n/domains/admin";
  *  admin.collections.manage : la route répond 403, la requête échoue, rien n'est rendu. */
 export function GeoLimitsSection({ collectionId }: { collectionId: string }) {
   const limitsQuery = useGeoLimits(collectionId);
-  const groupsQuery = useGroups();
+  const gs = useGroupSearch();
   const put = usePutGeoLimit(collectionId);
   const del = useDeleteGeoLimit(collectionId);
   const [groupId, setGroupId] = useState("");
@@ -17,8 +18,9 @@ export function GeoLimitsSection({ collectionId }: { collectionId: string }) {
   const [parseError, setParseError] = useState(false);
 
   if (!limitsQuery.isSuccess) return null;
-  const groups = groupsQuery.data ?? [];
-  const titleOf = (id: string) => groups.find((g) => g.id === id)?.title ?? id;
+  const groups = gs.groups;
+  const known = [...(gs.defaults.data ?? []), ...groups];
+  const titleOf = (id: string) => known.find((g) => g.id === id)?.title ?? id;
 
   async function submit() {
     let geometry: Record<string, unknown>;
@@ -65,6 +67,7 @@ export function GeoLimitsSection({ collectionId }: { collectionId: string }) {
           ))}
         </ul>
       )}
+      <GroupSearchField state={gs} />
       <label className="flex flex-col gap-1 text-sm text-ink">
         {t("geoLimits.groupLabel")}
         <select

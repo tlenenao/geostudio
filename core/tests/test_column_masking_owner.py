@@ -131,3 +131,17 @@ def test_owner_and_collection_manager_read_sensitive_in_clear(pg_app, who):
     listed, single, csv = _reads(client, fid)
     assert listed["salary"] == 45000 and single["salary"] == 45000
     assert "salary" in csv.lower() and "45000" in csv
+
+
+def test_put_without_sensitive_column_keeps_it(pg_app):
+    """Un PUT dont le corps omet la colonne sensible ne la met pas à NULL."""
+    client, as_, fid = pg_app
+    as_("owner")
+    body = {
+        "type": "Feature",
+        "properties": {"nom": "Durand"},
+        "geometry": {"type": "Point", "coordinates": [1.85, 45.27]},
+    }
+    assert client.put(f"/v1/collections/demo_employees/items/{fid}", json=body).status_code == 204
+    single = client.get(f"/v1/collections/demo_employees/items/{fid}").json()
+    assert single["properties"]["salary"] == 45000

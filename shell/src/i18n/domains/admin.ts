@@ -282,6 +282,11 @@ export const admin = {
   "usersAdmin.empty": "Aucun utilisateur ne correspond à cette recherche",
 
   // Partage — motif partagé entre CollectionSharePanel et ShareForm (item)
+  "groupSearch.aria": "Rechercher un groupe",
+  "groupSearch.placeholder": "Rechercher un groupe (2 caractères min.)",
+  "groupSearch.loading": "Recherche en cours…",
+  "groupSearch.error": "La recherche de groupes a échoué.",
+  "groupSearch.empty": "Aucun groupe ne correspond.",
   "sharePanel.publicLabel": "Visible par tous les membres de l'organisation",
   "sharePanel.groupAria": "Groupe {group}",
   "sharePanel.roleAria": "Rôle {group}",
