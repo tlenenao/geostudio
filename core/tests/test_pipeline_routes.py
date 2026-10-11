@@ -79,7 +79,7 @@ def test_get_pipelines_ops_returns_all_exposed_ops(monkeypatch):
     # outputGeometry="intersection" ; transform.aggregate + ST_Union_Agg), sans op
     # dédiée — décision tranchée en Task 27 (cf. CHANGELOG.md, section Removed).
     # (reader.file/writer.file restent hors catalogue tant que
-    # CORE_PIPELINE_FILE_IO_ENABLED est éteint : registre brut à 60, route à 58).
+    # CORE_PIPELINE_FILE_IO_ENABLED est éteint : registre brut à 61, route à 59).
     assert set(body) == {
         "reader.collection",
         "transform.filter",
@@ -127,6 +127,7 @@ def test_get_pipelines_ops_returns_all_exposed_ops(monkeypatch):
         "transform.exposeAttributes",
         "transform.validateAttributes",
         "transform.sort",
+        "transform.httpCall",
         "transform.detectChanges",
         "transform.mergeChildren",
         "transform.mapSchema",

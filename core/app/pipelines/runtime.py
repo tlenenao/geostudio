@@ -740,6 +740,14 @@ def _prepare(
     return ordered, view_by_node, srid_by_node, join_srid_by_node
 
 
+def _chain_resolver(session, tenant_id: str, user):
+    """Résolveur de secrets pour les op `execute` à contexte (transform.httpCall) ; None sans
+    session (tests, contextes sans base) — l'op échoue alors proprement si elle exige un secret."""
+    if session is None:
+        return None
+    return connector_runtime.PostgresSecretResolver(session, tenant_id, user)
+
+
 def _execute_transform_chain(
     conn,
     ordered: list[PipelineNode],
@@ -750,6 +758,8 @@ def _execute_transform_chain(
     *,
     stop_at: str | None = None,
     on_node_complete: Callable[["NodeStat"], None] | None = None,
+    secret_resolver=None,
+    preview: bool = False,
 ) -> list["NodeStat"]:
     stats: list[NodeStat] = []
     for node in ordered:
@@ -800,8 +810,17 @@ def _execute_transform_chain(
             )
         try:
             if contract.execute is not None:
+                extra = (
+                    {"secret_resolver": secret_resolver, "preview": preview}
+                    if contract.needs_runtime_context
+                    else {}
+                )
                 contract.execute(
-                    conn, input_view=input_view, view_name=view_name, params=node.params
+                    conn,
+                    input_view=input_view,
+                    view_name=view_name,
+                    params=node.params,
+                    **extra,
                 )
             else:
                 input_columns = None
@@ -902,6 +921,8 @@ def preview_pipeline(
             srid_by_node,
             join_srid_by_node,
             stop_at=up_to,
+            secret_resolver=_chain_resolver(session, tenant_id, user),
+            preview=True,
         )
         view_name = view_by_node[up_to]
         # Même conversion que _write_collection : DuckDB renvoie "geometry" en
@@ -1315,6 +1336,7 @@ def run_pipeline(
             srid_by_node,
             join_srid_by_node,
             on_node_complete=on_node_complete,
+            secret_resolver=_chain_resolver(session, tenant_id, user),
         )
         for node in ordered:
             if node.kind != "writer":

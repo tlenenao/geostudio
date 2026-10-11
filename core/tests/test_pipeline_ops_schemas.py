@@ -164,6 +164,7 @@ def test_all_known_ops_are_registered():
         "transform.exposeAttributes",
         "transform.validateAttributes",
         "transform.sort",
+        "transform.httpCall",
         "transform.detectChanges",
         "transform.mergeChildren",
         "transform.mapSchema",

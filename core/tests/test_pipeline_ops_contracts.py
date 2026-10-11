@@ -99,6 +99,7 @@ def test_operations_registry_has_exactly_the_known_ops():
         "transform.exposeAttributes",
         "transform.validateAttributes",
         "transform.sort",
+        "transform.httpCall",
         "transform.detectChanges",
         "transform.mergeChildren",
         "transform.mapSchema",
@@ -162,10 +163,10 @@ def test_ops_catalog_never_exposes_the_exchange_field():
         assert set(entry) == {"kind", "paramsSchema", "acceptsSecondaryInput"}, op
 
 
-def test_operations_registry_has_60_entries():
+def test_operations_registry_has_61_entries():
     from app.pipelines.ops.contracts import OPERATIONS
 
-    assert len(OPERATIONS) == 60
+    assert len(OPERATIONS) == 61
 
 
 def test_binary_ops_are_covered_by_the_parallel_tables():
@@ -207,7 +208,11 @@ def test_every_registered_transform_has_exactly_one_of_compile_or_execute():
 def test_python_executed_ops_declare_the_shapely_engine():
     from app.pipelines.ops.contracts import OPERATIONS
 
-    executed = {op: c for op, c in OPERATIONS.items() if c.execute is not None}
+    executed = {
+        op: c
+        for op, c in OPERATIONS.items()
+        if c.execute is not None and op != "transform.httpCall"  # engine python, pas shapely
+    }
     assert set(executed) == {
         "transform.triangulate",
         "transform.densify",
@@ -217,3 +222,14 @@ def test_python_executed_ops_declare_the_shapely_engine():
         assert contract.engine == "shapely", op
         assert contract.engine_license == "BSD-3-Clause (Shapely)", op
         assert contract.is_copyleft is False, op
+
+
+def test_needs_runtime_context_requires_execute():
+    with pytest.raises(ValueError, match="needs_runtime_context"):
+        OperationContract(
+            op="transform.fake-ctx",
+            kind="transform",
+            params_schema=TransformFilterParams,
+            compile=lambda params, **kw: "SELECT 1",
+            needs_runtime_context=True,
+        )

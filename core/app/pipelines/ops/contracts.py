@@ -26,6 +26,7 @@ from pydantic import BaseModel
 
 from app.auth.dependency import is_pipeline_file_io_enabled
 from app.pipelines import compiler as _compiler
+from app.pipelines import http_call_runtime as _http_call
 from app.pipelines.ops import execute as _execute
 from app.pipelines.ops.schemas import (
     ReaderCollectionParams,
@@ -62,6 +63,7 @@ from app.pipelines.ops.schemas import (
     TransformFilterParams,
     TransformFormatCoordinatesParams,
     TransformH3AggregateParams,
+    TransformHttpCallParams,
     TransformIntersectionParams,
     TransformJoinParams,
     TransformMapSchemaParams,
@@ -112,6 +114,10 @@ class OperationContract:
     # matérialise `view_name` lui-même (contrairement à `compile`, qui retourne une simple
     # chaîne SQL exécutée par l'appelant).
     execute: Callable[..., None] | None = None
+    # transform.httpCall : quand True (et seulement avec `execute`), runtime.py passe en plus
+    # `secret_resolver=` et `preview=` à `execute`. Les autres op `execute` gardent leur
+    # signature (conn, *, input_view, view_name, params).
+    needs_runtime_context: bool = False
     # Piège Python latent : un `def` nu donné ici en défaut (au lieu de `None`)
     # deviendrait un attribut de classe et serait lié comme méthode (self/le
     # contrat injecté en premier argument), pas un simple callable — inoffensif
@@ -145,6 +151,8 @@ class OperationContract:
             )
         if self.compile is not None and self.execute is not None:
             raise ValueError(f"'{self.op}': compile et execute sont mutuellement exclusifs")
+        if self.needs_runtime_context and self.execute is None:
+            raise ValueError(f"'{self.op}': needs_runtime_context exige execute")
 
 
 OPERATIONS: dict[str, OperationContract] = {
@@ -612,6 +620,15 @@ OPERATIONS: dict[str, OperationContract] = {
         kind="writer",
         params_schema=WriterFileParams,
         enabled_when=is_pipeline_file_io_enabled,
+    ),
+    "transform.httpCall": OperationContract(
+        op="transform.httpCall",
+        kind="transform",
+        params_schema=TransformHttpCallParams,
+        engine="python",
+        engine_license="Apache-2.0 (requests) + Apache-2.0 (dlt, pagination)",
+        execute=_http_call.execute_http_call,
+        needs_runtime_context=True,
     ),
 }
 
