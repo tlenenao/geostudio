@@ -407,7 +407,8 @@ def test_write_export_csv_geometry_as_geojson_string(tmp_path, monkeypatch):
     # Régression finding 2 (revue finale SP-15a), branche csv : la colonne
     # geometry contenait le repr Python des bytes WKB (b'\x01...'), inutile
     # en cellule CSV — doit désormais contenir une chaîne GeoJSON exploitable.
-    _write_partition(tmp_path, rows=[_row(1, "Nord", 10, x=1.5, y=45.5)])
+    # REV-280 b / j05-009 : région « =1+1 » (texte) + pop -5 (numérique) — injection de formule.
+    _write_partition(tmp_path, rows=[_row(1, "=1+1", -5, x=1.5, y=45.5)])
     monkeypatch.setattr(
         runtime,
         "_table_info_for_collection",
@@ -459,6 +460,8 @@ def test_write_export_csv_geometry_as_geojson_string(tmp_path, monkeypatch):
     reader = csv.reader(io.StringIO(body))
     header = next(reader)
     data_row = next(reader)
+    assert data_row[header.index("region")] == "'=1+1"
+    assert data_row[header.index("pop")] == "-5"
     geometry_cell = data_row[header.index("geometry")]
     parsed_geometry = json.loads(geometry_cell)  # doit être une chaîne GeoJSON valide
     assert parsed_geometry == {"type": "Point", "coordinates": [1.5, 45.5]}
@@ -3021,7 +3024,22 @@ def test_reader_collection_drops_sensitive_columns_without_privilege(tmp_path, m
         )
         col.sensitive_fields = ["pop"]
         s.flush()
-        masked = runtime._masked_fields(s, tenant_id=tenant.id, user=owner, collection_id="villes")
+        # REV-276 : le propriétaire lit ses champs sensibles en clair ; un tiers sans
+        # privilège est masqué.
+        assert (
+            runtime._masked_fields(s, tenant_id=tenant.id, user=owner, collection_id="villes")
+            == frozenset()
+        )
+        other = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="t",
+            username="tiers",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        masked = runtime._masked_fields(s, tenant_id=tenant.id, user=other, collection_id="villes")
         assert masked == frozenset({"pop"})
 
         _write_partition(tmp_path, tenant_id=tenant.id, rows=[_row(1, "Nord", 10)])
@@ -3038,7 +3056,7 @@ def test_reader_collection_drops_sensitive_columns_without_privilege(tmp_path, m
             node_id="r1",
             params={"collectionId": "villes"},
             view_name="r1",
-            user=owner,
+            user=other,
             base_uri=str(tmp_path),
         )
         cols = [r[0] for r in conn.execute("DESCRIBE r1").fetchall()]

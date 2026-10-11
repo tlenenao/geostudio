@@ -3,7 +3,7 @@ import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.sharing.models import CollectionShare, Group, GroupMember, ItemShare, ShareLink
@@ -83,12 +83,51 @@ def create_group(session: Session, *, tenant_id: str, name: str, created_by: str
     return group
 
 
-def list_groups(session: Session, *, tenant_id: str) -> list[Group]:
-    return list(
-        session.scalars(
-            select(Group).where(Group.tenant_id == tenant_id).order_by(Group.created_at)
-        ).all()
+def list_groups(
+    session: Session,
+    *,
+    tenant_id: str,
+    visible_to: str | None = None,
+    q: str | None = None,
+    limit: int | None = None,
+) -> list[Group]:
+    """`visible_to` (id utilisateur) borne aux groupes dont il est membre ou
+    créateur ; `q` filtre sur le nom (littéralement) ; `limit` plafonne."""
+    stmt = select(Group).where(Group.tenant_id == tenant_id)
+    if visible_to is not None:
+        member_of = select(GroupMember.group_id).where(GroupMember.user_id == visible_to)
+        stmt = stmt.where(or_(Group.created_by == visible_to, Group.id.in_(member_of)))
+    if q is not None:
+        like = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        stmt = stmt.where(Group.name.ilike(like, escape="\\"))
+    stmt = stmt.order_by(Group.created_at)
+    if limit is not None:
+        stmt = stmt.limit(limit)
+    return list(session.scalars(stmt).all())
+
+
+GROUP_SEARCH_LIMIT = 20
+
+
+def group_names(session: Session, *, tenant_id: str, group_ids: Sequence[str]) -> dict[str, str]:
+    """Noms des groupes déjà ciblés par un partage (lecture seule : n'élargit pas l'annuaire)."""
+    if not group_ids:
+        return {}
+    rows = session.execute(
+        select(Group.id, Group.name).where(Group.tenant_id == tenant_id, Group.id.in_(group_ids))
     )
+    return {gid: name for gid, name in rows}
+
+
+def directory_groups(
+    session: Session, *, tenant_id: str, user_id: str, as_admin: bool, q: str | None
+) -> list[Group]:
+    """Annuaire de groupes borné (REV-277) — partagé par GET /groups et l'outil
+    MCP `list_groups`. Sans `q` : groupes de l'appelant (tout le tenant pour un
+    administrateur d'utilisateurs) ; avec `q` : recherche plafonnée sur le tenant."""
+    if q is not None:
+        return list_groups(session, tenant_id=tenant_id, q=q, limit=GROUP_SEARCH_LIMIT)
+    return list_groups(session, tenant_id=tenant_id, visible_to=None if as_admin else user_id)
 
 
 def get_managed_group(

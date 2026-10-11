@@ -86,6 +86,8 @@ second volet n'est pas fermable par du code et reste ouvert tel quel.
 
 **70 fermés, 2 partiels, 11 ouverts** (total 83 — 79 gaps de la revue initiale + GAP-80/81/82/83 trouvés depuis). Chaque ligne a été vérifiée dans le code, pas recopiée d'un récit (piège n°12) ; voir encadré « correction post-passe » ci-dessus pour l'historique de cette vérification.
 
+**Mise à jour du 2026-10-11** : la clôture REV-27 (`docs/superpowers/plans/2026-10-11-cloture-27-rev.md`) ne change aucun décompte de gaps (70 fermés, 2 partiels, 11 ouverts) : GAP-25 reste ouvert, constat documenté (REV-119, Cas 2). Gaps touchés sans changement d'état : GAP-22 (REV-276, décision C2 : le propriétaire lit ses champs sensibles, un tiers reste masqué), GAP-19 (REV-299 : budget share-link, les lectures de tuiles/items d'un embed en sont exclues), GAP-70 (REV-268 : garde base↔bucket de `restore.sh` ; rejeu OIDC de restauration toujours non exécuté).
+
 **Mise à jour du 2026-10-07** : la clôture des 38 REV (spec `2026-10-04-cloture-backlog-38-rev-design`, lots A–E, rejeu sur stack réelle : `docs/revue/2026-10-04-rapport-rejeu-stack-reelle.md`) ferme GAP-08 (REV-102), GAP-15 (REV-109), GAP-57 (REV-151) et GAP-72 (REV-166, ADR 0013) ; GAP-29 reste partiel (REV-123 close par l'ADR 0012, positionnement) et GAP-70 aussi (REV-164 (b), rejeu OIDC de restauration non exécuté). Décompte recompté sur les lignes de table : 70 fermés, 2 partiels, 11 ouverts.
 
 **Mise à jour du 2026-10-04** : le plan B
@@ -206,7 +208,7 @@ gap22-securite-colonne-design.md`) — voir l'entrée `GAP-22` de la table
 | GAP-20 | Référentiel 2 (benchmark), aucune décision produit prise |
 | GAP-21 | Référentiel 2 (benchmark), aucune décision produit prise |
 | GAP-23 | **Fermé** (2026-10-10, SP exploration automatique, REV-117) |
-| GAP-25 | Référentiel 2 (benchmark), aucune décision produit prise |
+| GAP-25 | Constat 2026-10-11 (REV-119, `docs/revue/2026-10-11-rev119-constat.md`, `29fba624`) : non couvert — aucun champ `metrics` sur `DatasetPayload`, `NamedMetric` jamais implémenté ; deux options v1 soumises à Tanguy, aucun code sans arbitrage |
 | GAP-26 | Référentiel 2 (benchmark), aucune décision produit prise |
 | GAP-27 | **Fermé** (2026-10-10, SP limites géographiques, REV-121) |
 | GAP-34 | Décision produit non tranchée (implémenter le rendu ou retirer du schéma) |

@@ -7,6 +7,7 @@ import { validateExpression } from "./expr";
 import { formatCelError } from "./celError";
 import { IconButton } from "../ui/kit/IconButton";
 import { Popover } from "../ui/kit/Popover";
+import { BindingEditor } from "./BindingEditor";
 import { t } from "../i18n";
 import "../i18n/domains/widgets";
 
@@ -87,6 +88,12 @@ export function PropsPanel({
           />
         </Suspense>
       )}
+      <BindingEditor
+        props={item.props}
+        variables={variables ?? []}
+        generateItemId={generateItemId}
+        onChange={onChange}
+      />
       <Panel
         props={item.props}
         dataSources={dataSources}

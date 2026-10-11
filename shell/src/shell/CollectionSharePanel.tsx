@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
+import { GroupSearchField, useGroupSearch } from "./GroupSearch";
 import { useEffect, useState } from "react";
-import {
-  useCollectionSharing,
-  useGroups,
-  useInstanceInfo,
-  useSetCollectionSharing,
-} from "../api/hooks";
+import { useCollectionSharing, useInstanceInfo, useSetCollectionSharing } from "../api/hooks";
 import type { ShareRole } from "../api/types";
 import { Button } from "../ui/kit/Button";
 import { t } from "../i18n";
@@ -21,8 +17,9 @@ export function CollectionSharePanel({
   collectionId: string;
   onClose: () => void;
 }) {
-  const groupsQuery = useGroups();
   const sharingQuery = useCollectionSharing(collectionId);
+  const gs = useGroupSearch(sharingQuery.data?.groups);
+  const groupsQuery = gs.defaults;
   const setSharing = useSetCollectionSharing(collectionId);
   const instanceQuery = useInstanceInfo();
   const readOnly = instanceQuery.data?.readOnly === true;
@@ -76,8 +73,9 @@ export function CollectionSharePanel({
             {t("sharePanel.publicLabel")}
           </label>
 
+          <GroupSearchField state={gs} />
           <div className="flex flex-col gap-2">
-            {groupsQuery.data.map((g) => (
+            {gs.groups.map((g) => (
               <div key={g.id} className="flex items-center justify-between gap-2 text-sm text-ink">
                 <label className="flex items-center gap-2">
                   {/* eslint-disable-next-line geostudio/label-no-aria-label -- le nom accessible contient le texte visible et ajoute le contexte dynamique (champ/ligne) */}

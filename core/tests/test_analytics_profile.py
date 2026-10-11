@@ -127,7 +127,7 @@ def test_profile_caps_columns_and_samples(tmp_path, conn, monkeypatch):
     assert result["columns"][0]["nonNull"] == 2  # statistiques sur l'échantillon
 
 
-def test_profile_ignores_column_missing_from_lake(tmp_path, conn):
+def test_profile_reports_declared_column_missing_from_lake_as_null(tmp_path, conn):
     _write(tmp_path, [_row(1, "Nord", 10)])
     info = TableInfo(
         **{
@@ -135,4 +135,7 @@ def test_profile_ignores_column_missing_from_lake(tmp_path, conn):
             "columns": [*INFO.columns, ColumnInfo(name="absente", type="string", required=False)],
         }
     )
-    assert "absente" not in _cols(_run(conn, tmp_path, info=info))
+    # REV-311 : `_dedup_cte` lit en NULL une colonne déclarée mais absente des
+    # partitions ; le profil la rapporte donc 100 % vide plutôt que de l'omettre.
+    col = _cols(_run(conn, tmp_path, info=info))["absente"]
+    assert col["nonNull"] == 0 and col["nulls"] == 1

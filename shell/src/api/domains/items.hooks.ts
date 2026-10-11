@@ -151,11 +151,11 @@ export function useUploadThumbnail(pk: string) {
   });
 }
 
-export function useGroups(options?: { enabled?: boolean }) {
+export function useGroups(options?: { enabled?: boolean; q?: string }) {
   const client = useItemClientInternal();
   return useQuery({
-    queryKey: ["groups"],
-    queryFn: () => client.listGroups(),
+    queryKey: ["groups", options?.q ?? ""],
+    queryFn: () => client.listGroups(options?.q),
     enabled: options?.enabled ?? true,
   });
 }

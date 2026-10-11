@@ -74,8 +74,12 @@ test("un admin gère le cycle de vie complet d'une collection depuis le shell", 
     await route.fallback();
   });
 
-  await page.route("https://core.test/v1/groups", async (route) => {
-    await route.fulfill({ json: [{ id: "g1", name: "Équipe terrain" }] });
+  // REV-277 : sans `q`, seuls les groupes de l'appelant ; avec `q`, la recherche.
+  await page.route("https://core.test/v1/groups*", async (route) => {
+    const q = new URL(route.request().url()).searchParams.get("q");
+    await route.fulfill({
+      json: q ? [{ id: "g2", name: "Équipe externe" }] : [{ id: "g1", name: "Équipe terrain" }],
+    });
   });
 
   await page.goto("/admin/collections");
@@ -117,10 +121,18 @@ test("un admin gère le cycle de vie complet d'une collection depuis le shell", 
   await page.getByRole("button", { name: "Partager" }).click();
   await page.getByLabel("Groupe Équipe terrain").click();
   await page.getByLabel("Rôle Équipe terrain").selectOption("manager");
+  await page.getByRole("searchbox", { name: "Rechercher un groupe" }).fill("ext");
+  await page.getByLabel("Groupe Équipe externe").click();
   await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
   await expect
     .poll(() => sharedBody)
-    .toEqual({ public: false, groups: [{ groupId: "g1", role: "manager" }] });
+    .toEqual({
+      public: false,
+      groups: [
+        { groupId: "g1", role: "manager" },
+        { groupId: "g2", role: "viewer" },
+      ],
+    });
 
   await page.getByRole("button", { name: "Supprimer" }).click();
   // The row-action button and the ConfirmDialog's confirm button share the

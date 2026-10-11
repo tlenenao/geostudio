@@ -14,11 +14,13 @@ from datetime import UTC, date, datetime, time
 from decimal import Decimal
 from io import BytesIO, StringIO
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 from uuid import UUID
 
 import duckdb
 from openpyxl import Workbook
+
+from app.cell_safety import sanitize_cell
 
 
 def export_sync_max() -> int:
@@ -26,9 +28,13 @@ def export_sync_max() -> int:
     return int(os.environ.get("CORE_EXPORT_SYNC_MAX") or "100000")
 
 
-def export_job_max() -> int:
-    """Plafond d'entités d'un export asynchrone (413 / job `failed` au-delà)."""
-    return int(os.environ.get("CORE_EXPORT_JOB_MAX") or "200000")
+def export_job_max(format: str | None = None) -> int:
+    """Plafond d'entités d'un export asynchrone (413 / job `failed` au-delà).
+    REV-324 : CSV/GeoJSON sont écrits en flux (125 Mo de pic à 500 000 entités,
+    mesuré) → défaut relevé à 1 000 000 ; gpkg/xlsx restent en mémoire (200 000).
+    `CORE_EXPORT_JOB_MAX`, s'il est posé, prime pour tous les formats."""
+    default = "1000000" if format in ("csv", "geojson") else "200000"
+    return int(os.environ.get("CORE_EXPORT_JOB_MAX") or default)
 
 
 EXPORT_MEDIA_TYPES = {
@@ -54,14 +60,6 @@ def _json_default(value: object) -> str | None:
     raise TypeError(f"unserializable value of type {type(value).__name__}")
 
 
-def _neutralize(value: object) -> object:
-    """Injection de formule (CSV/XLSX) : une chaîne commençant par = + - @ ou
-    tab/CR est préfixée d'une apostrophe pour être lue comme du texte."""
-    if isinstance(value, str) and value.startswith(("=", "+", "-", "@", "\t", "\r")):
-        return "'" + value
-    return value
-
-
 def _xlsx_cell_value(value: object) -> object:
     """Coercition avant écriture d'une cellule (rows_to_xlsx) : openpyxl gère
     nativement str/int/float/bool/None/date/Decimal/datetime naïf, mais
@@ -76,7 +74,7 @@ def _xlsx_cell_value(value: object) -> object:
         return str(value)
     if isinstance(value, (bytes, memoryview)):
         return None
-    return _neutralize(value)
+    return sanitize_cell(value)
 
 
 def export_filename(title: str, *, format: str) -> str:
@@ -93,8 +91,8 @@ def rows_to_csv(rows: list[dict[str, Any]], columns: list[str] | None = None) ->
         return b""
     buf = StringIO()
     writer = DictWriter(buf, fieldnames=fields)
-    writer.writerow({f: _neutralize(f) for f in fields})
-    writer.writerows({k: _neutralize(v) for k, v in row.items()} for row in rows)
+    writer.writerow({f: sanitize_cell(f) for f in fields})
+    writer.writerows({k: sanitize_cell(v) for k, v in row.items()} for row in rows)
     return buf.getvalue().encode("utf-8")
 
 
@@ -104,7 +102,7 @@ def rows_to_xlsx(rows: list[dict[str, Any]], columns: list[str] | None = None) -
     ws = wb.create_sheet()
     headers = list(rows[0].keys()) if rows else list(columns or [])
     if headers:
-        ws.append([_neutralize(h) for h in headers])
+        ws.append([sanitize_cell(h) for h in headers])
         for row in rows:
             ws.append([_xlsx_cell_value(row.get(h)) for h in headers])
     buf = BytesIO()
@@ -142,12 +140,48 @@ def features_to_gpkg(features: list[dict[str, Any]], conn: duckdb.DuckDBPyConnec
         return out_path.read_bytes()
 
 
-def _rows_with_wkt(features: list[dict[str, Any]]) -> list[dict[str, Any]]:
+class StreamingFeatureWriter:
+    """REV-324 : écrit CSV / GeoJSON page par page dans un fichier ouvert en texte
+    (mémoire O(page)). Équivalent à `features_to_format` ; `with_geometry` (la
+    collection a une colonne géométrie) fixe la colonne WKT dès l'en-tête, même si la
+    1re page n'a aucune géométrie. Le nom (`geometry`/`geometry_wkt`) est décidé sur la 1re page."""
+
+    def __init__(self, fh: TextIO, *, format: str, with_geometry: bool = False) -> None:
+        if format not in ("csv", "geojson"):
+            raise ValueError(f"unsupported streaming format '{format}'")
+        self._fh, self._format, self._with_geometry = fh, format, with_geometry
+        self._n = 0
+        self._csv: Any = None
+        if format == "geojson":
+            fh.write('{"type": "FeatureCollection", "features": [')
+
+    def write(self, features: list[dict[str, Any]]) -> None:
+        if not features:
+            return
+        if self._format == "geojson":
+            for f in features:
+                self._fh.write((", " if self._n else "") + json.dumps(f, default=_json_default))
+                self._n += 1
+            return
+        rows = _rows_with_wkt(features, force=self._with_geometry)
+        if self._csv is None:
+            fields = list(rows[0].keys())
+            self._csv = DictWriter(self._fh, fieldnames=fields, extrasaction="ignore")
+            self._csv.writerow({f: sanitize_cell(f) for f in fields})
+        self._csv.writerows({k: sanitize_cell(v) for k, v in row.items()} for row in rows)
+        self._n += len(rows)
+
+    def close(self) -> None:
+        if self._format == "geojson":
+            self._fh.write("]}")
+
+
+def _rows_with_wkt(features: list[dict[str, Any]], force: bool = False) -> list[dict[str, Any]]:
     """P29.07 : CSV/XLSX portent la géométrie en WKT (colonne `geometry`, ou
     `geometry_wkt` si une propriété porte déjà ce nom) au lieu de la perdre."""
     from shapely.geometry import shape
 
-    if not any(f.get("geometry") for f in features):
+    if not force and not any(f.get("geometry") for f in features):
         return [f.get("properties") or {} for f in features]
     taken = any("geometry" in (f.get("properties") or {}) for f in features)
     key = "geometry_wkt" if taken else "geometry"

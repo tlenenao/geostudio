@@ -347,7 +347,7 @@ services:
       CORE_EXPORT_TOKEN_SECRET: ${CORE_EXPORT_TOKEN_SECRET:-}
       CORE_EXPORT_ITEMS_MAX: ${CORE_EXPORT_ITEMS_MAX:-100000}
       CORE_EXPORT_SYNC_MAX: ${CORE_EXPORT_SYNC_MAX:-100000}
-      CORE_EXPORT_JOB_MAX: ${CORE_EXPORT_JOB_MAX:-200000}
+      CORE_EXPORT_JOB_MAX: ${CORE_EXPORT_JOB_MAX:-}
       # REV-283a : zoom max d'agrégation des tuiles denses (0 = désactivé).
       CORE_TILE_AGG_MAX_ZOOM: ${CORE_TILE_AGG_MAX_ZOOM:-7}
       CORE_STALLED_JOB_MINUTES: ${CORE_STALLED_JOB_MINUTES:-60}
@@ -394,6 +394,8 @@ services:
       S3_PUBLIC_ENDPOINT_URL: ${S3_PUBLIC_ENDPOINT_URL:-}
       # Pairs dont X-Forwarded-For est honoré (réseau Traefik) ; jamais `*` en production.
       CORE_TRUSTED_PROXIES: ${CORE_TRUSTED_PROXIES:-127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7}
+      # Budget /min (par IP) des liens de partage : route publique + en-tête X-Share-Link-Token (REV-299).
+      CORE_RATELIMIT_SHARE_LINK_PER_MIN: ${CORE_RATELIMIT_SHARE_LINK_PER_MIN:-60}
       # Plafond de lecture d'un fichier importé (octets) ; vide = 512 Mio (P03.05).
       CORE_UPLOAD_MAX_BYTES: ${CORE_UPLOAD_MAX_BYTES:-}
       S3_ACCESS_KEY: ${MINIO_USER}
@@ -504,10 +506,13 @@ services:
     # sys.path — seule l'invocation via `-m` (comme `-c`) le fait. Sans ça,
     # le chargement de `app.jobs.app` échoue ("Could not load app from
     # app.jobs.app") avant même d'atteindre le connecteur.
+    # `-q` DOIT rester sur la même ligne que `worker` : une ligne plus indentée
+    # garde son saut de ligne dans le scalaire plié, le shell coupe alors la
+    # commande et le worker écoute TOUTES les files — `export` comprise, volée à
+    # export-worker (j05b-006, test_sh_c_commands_have_no_orphan_option_line).
     command: >
       sh -c "python -m scripts.ensure_procrastinate_schema &&
-             python -m procrastinate --app app.jobs.app worker -c ${CORE_WORKER_CONCURRENCY:-4}
-             -q ingestion,search,cdc,etl,tileset3d,terrain3d,appexport,harvest,dataexport"
+             python -m procrastinate --app app.jobs.app worker -c ${CORE_WORKER_CONCURRENCY:-4} -q ingestion,search,cdc,etl,tileset3d,terrain3d,appexport,harvest,dataexport"
     environment:
       DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
       S3_ENDPOINT_URL: http://minio:9000
@@ -591,7 +596,7 @@ services:
       CORE_HARVEST_MAX_RESPONSE_BYTES: ${CORE_HARVEST_MAX_RESPONSE_BYTES:-}
       CORE_ALERTS_EGRESS_ALLOWLIST: ${CORE_ALERTS_EGRESS_ALLOWLIST:-}
       # Plafond d'un export asynchrone de collection (REV-283e, app/dataexport/jobs.py).
-      CORE_EXPORT_JOB_MAX: ${CORE_EXPORT_JOB_MAX:-200000}
+      CORE_EXPORT_JOB_MAX: ${CORE_EXPORT_JOB_MAX:-}
       CORE_EXPORT_RUNNING_TIMEOUT_MINUTES: ${CORE_EXPORT_RUNNING_TIMEOUT_MINUTES:-60}
       CORE_TILESET3D_MAX_ENTRY_BYTES: ${CORE_TILESET3D_MAX_ENTRY_BYTES:-2147483648}
       S3_TERRAIN3D_BUCKET: geostudio-terrain3d

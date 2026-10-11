@@ -36,6 +36,8 @@ from shapely.geometry import Point, shape
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import transform as shapely_transform
 
+from app.cell_safety import unsanitize_cell
+
 
 class IngestionParseError(Exception):
     """Message affiché tel quel comme ingestion_jobs.error_message."""
@@ -195,7 +197,8 @@ def parse_csv_latlon(
         raise IngestionParseError("encodage invalide, attendu UTF-8") from exc
     reader = csv.DictReader(io.StringIO(text), delimiter=sniff_delimiter(text))
     try:
-        fieldnames = reader.fieldnames or []
+        fieldnames = [unsanitize_cell(f) for f in reader.fieldnames or []]
+        reader.fieldnames = fieldnames
     except csv.Error as exc:
         raise IngestionParseError("en-tête CSV invalide ou mal formé") from exc
     effective_mode = _resolve_latlon_mode_from_fields(mode, fieldnames)
@@ -218,7 +221,7 @@ def parse_csv_latlon(
             ) from exc
         i += 1
         try:
-            yield extract_geometry(row, effective_mode)
+            yield extract_geometry({k: unsanitize_cell(v) for k, v in row.items()}, effective_mode)
         except IngestionParseError as exc:
             raise IngestionParseError(f"ligne {i} : {exc}") from exc
 
@@ -226,7 +229,11 @@ def parse_csv_latlon(
 def _xlsx_cell_value(value):
     if isinstance(value, (datetime.datetime, datetime.date)):
         return value.isoformat()
-    return value
+    return unsanitize_cell(value)
+
+
+def _xlsx_header(name: object) -> str:
+    return str(unsanitize_cell(name)) if name is not None else ""
 
 
 def parse_xlsx_sheet(
@@ -250,7 +257,7 @@ def parse_xlsx_sheet(
         header_row = next(rows_iter)
     except StopIteration:
         raise IngestionParseError("classeur XLSX vide") from None
-    fieldnames = [str(name) if name is not None else "" for name in header_row]
+    fieldnames = [_xlsx_header(name) for name in header_row]
     effective_mode = _resolve_latlon_mode_from_fields(mode, fieldnames)
     if effective_mode.kind == "latlon" and (
         effective_mode.lat_field not in fieldnames or effective_mode.lon_field not in fieldnames
@@ -290,7 +297,7 @@ def read_xlsx_header_fields(content: bytes, sheet_name: str | None = None) -> li
         header_row = next(ws.iter_rows(max_row=1, values_only=True))
     except StopIteration:
         raise IngestionParseError("classeur XLSX vide") from None
-    return [str(name) if name is not None else "" for name in header_row]
+    return [_xlsx_header(name) for name in header_row]
 
 
 @dataclass

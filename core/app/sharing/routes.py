@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -56,16 +56,20 @@ class AddMemberRequest(BaseModel):
 
 @router.get("/groups", response_model=list[GroupRead])
 def list_groups(
+    q: str | None = Query(default=None, min_length=2, max_length=100),
     session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> list[GroupRead]:
-    # j02-005 : liste de tout le tenant, réservée à qui peut partager un kind
-    # (consommateur : ShareForm) — un Lecteur n'y accède plus.
+    # j02-005 / REV-277 : réservée à qui peut partager un kind (ShareForm) ;
+    # annuaire borné — mes groupes, ou `?q=` (>= 2 car., plafonné) pour cibler
+    # un partage. Tout le tenant seulement pour `admin.users.manage`.
     require_sharing_privilege(session, user)
     as_admin = _is_group_admin(session, user)
     return [
         _group_read(g, user=user, as_admin=as_admin)
-        for g in repo.list_groups(session, tenant_id=user.tenant_id)
+        for g in repo.directory_groups(
+            session, tenant_id=user.tenant_id, user_id=user.id, as_admin=as_admin, q=q
+        )
     ]
 
 

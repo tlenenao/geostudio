@@ -64,7 +64,9 @@ test.describe("j04 formulaire, carte, story", () => {
     await expect(page.getByText(/obligatoire|requis/i).first()).toBeVisible();
   });
 
-  // finding j04-010 (cause amont : j02-003, le cœur refuse l'écriture avec « tenant_id is required »)
+  // À basculer en test() après rejeu sous --verify.
+  // j04-010 : le refus serveur est simulé (sa cause réelle, j02-003, est corrigée) pour prouver
+  // le retour utilisateur ; le formulaire affiche l'alerte générique (P10.02).
   fixme(
     "j04-010 : un refus serveur portant sur un champ absent du formulaire est signalé à l'utilisateur",
     async ({ page }) => {
@@ -91,12 +93,23 @@ test.describe("j04 formulaire, carte, story", () => {
           ]),
         }),
       );
+      await page.route("**/collections/*/items", (route) =>
+        route.request().method() === "POST"
+          ? route.fulfill({
+              status: 400,
+              contentType: "application/json",
+              body: JSON.stringify({
+                errors: [{ field: "champ_cache", code: "missing_required", message: "requis" }],
+              }),
+            })
+          : route.fallback(),
+      );
       await openRuntime(page, `/apps/${id}`);
       await page.getByLabel("Nom").fill("Delta");
       await page.getByRole("button", { name: "Envoyer" }).click();
-      await page.waitForTimeout(2500);
-      // Observé : POST -> 400 (erreur sur tenant_id), aucun message, la saisie « Delta » reste sans retour.
-      await expect(page.getByRole("alert")).toBeVisible();
+      await expect(
+        page.getByRole("alert").filter({ hasText: "Échec de l'enregistrement." }),
+      ).toBeVisible();
     },
   );
 

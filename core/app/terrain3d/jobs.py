@@ -71,7 +71,9 @@ def convert_terrain3d_task(job_id: str, tenant_id: str) -> None:
             job.title,
             job.created_by,
         )
-        terrain3d_repo.mark_converting(session, job_id=job_id)
+        if not terrain3d_repo.mark_converting(session, job_id=job_id):
+            logger.info("terrain3d job %s non démarré : plus en file (REV-295)", job_id)
+            return
         session.commit()
 
     # Tout ce qui peut lever doit être dans le try : le job est déjà marqué

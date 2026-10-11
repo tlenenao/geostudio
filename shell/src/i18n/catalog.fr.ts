@@ -136,6 +136,7 @@ export const fr = {
   "settings.helpText":
     "Ces réglages sont personnels : ils ne sont visibles que par vous, pas partagés avec les autres utilisateurs.",
   "settings.profileTitle": "Profil",
+  "settings.profileId": "Identifiant",
   "settings.profileUsername": "Nom d'utilisateur",
   "settings.profileEmail": "Email",
   "settings.profileName": "Nom complet",

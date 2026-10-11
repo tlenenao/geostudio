@@ -532,3 +532,23 @@ def test_install_warns_when_no_public_s3_host_is_configured(install_workdir, fak
     result, _ = _run_install(install_workdir, fake_bin_path)
     assert result.returncode == 0, result.stderr
     assert "S3_PUBLIC_ENDPOINT_URL non défini" in result.stderr
+
+
+def test_install_sets_core_env_production_for_a_public_host(install_workdir, fake_bin_path):
+    """REV-315 : `.env.example` copie CORE_ENV=development, ce qui neutralise la garde
+    S3 ; un hôte public non local doit produire un `.env` de production."""
+    assert "CORE_ENV=development" in (install_workdir / ".env").read_text().splitlines()
+    result, _ = _run_install(install_workdir, fake_bin_path)
+    assert result.returncode == 0, result.stderr
+    env_lines = (install_workdir / ".env").read_text().splitlines()
+    assert "CORE_ENV=production" in env_lines
+    assert "CORE_ENV=development" not in env_lines
+
+
+def test_install_keeps_development_and_warns_on_a_local_host(install_workdir, fake_bin_path):
+    result, _ = _run_install(
+        install_workdir, fake_bin_path, extra_env={"GEOSTUDIO_PUBLIC_HOST": "localhost"}
+    )
+    assert result.returncode == 0, result.stderr
+    assert "CORE_ENV=development" in (install_workdir / ".env").read_text().splitlines()
+    assert "CORE_ENV=development conservé" in result.stderr

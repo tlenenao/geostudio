@@ -15,14 +15,20 @@ import { useMcpToken } from "./useMcpToken";
 import "../../i18n/domains/automation";
 import "../../i18n/domains/widgets";
 
-export type CelGeneratorContext = "visibleWhen" | "computedColumn" | "actionCondition";
+export type CelGeneratorContext = "visibleWhen" | "computedColumn" | "actionCondition" | "binding";
 
 const SURFACE = {
   visibleWhen: "visible_when",
   computedColumn: "computed_column",
   actionCondition: "action_condition",
+  binding: "binding",
 } as const;
-const CURRENT_KEY = { visibleWhen: "visibleWhen", computedColumn: "expr", actionCondition: "when" };
+const CURRENT_KEY = {
+  visibleWhen: "visibleWhen",
+  computedColumn: "expr",
+  actionCondition: "when",
+  binding: "expr",
+};
 
 export function CelGenerator({
   itemId,
@@ -75,7 +81,9 @@ export function CelGenerator({
       <div className="mt-2 flex flex-col gap-2">
         <textarea
           aria-label={t(
-            context === "computedColumn" ? "celGen.questionAriaExpr" : "celGen.questionAria",
+            context === "computedColumn" || context === "binding"
+              ? "celGen.questionAriaExpr"
+              : "celGen.questionAria",
           )}
           className="rounded-md border border-rule p-2 text-xs"
           value={question}

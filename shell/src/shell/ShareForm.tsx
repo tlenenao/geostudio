@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { GroupSearchField, useGroupSearch } from "./GroupSearch";
 import { useEffect, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import {
@@ -8,7 +9,6 @@ import {
   useCreateShareLink,
   useDeleteGroup,
   useGroupMembers,
-  useGroups,
   useRemoveGroupMember,
   useRenameGroup,
   useRevokeShareLink,
@@ -432,8 +432,9 @@ function UnsharedSource({
 }
 
 export function ShareForm({ item, onDone }: { item: Item; onDone: () => void }) {
-  const groupsQuery = useGroups();
   const sharingQuery = useSharing(item.pk);
+  const gs = useGroupSearch(sharingQuery.data?.groups);
+  const groupsQuery = gs.defaults;
   const setSharing = useSetSharing(item.pk);
   const createGroup = useCreateGroup();
 
@@ -504,8 +505,9 @@ export function ShareForm({ item, onDone }: { item: Item; onDone: () => void }) 
             {item.isPublished ? t("shareForm.publishedYes") : t("shareForm.publishedNo")}
           </p>
 
+          <GroupSearchField state={gs} />
           <div className="flex flex-col gap-3">
-            {groupsQuery.data.map((g) => (
+            {gs.groups.map((g) => (
               <div key={g.id} className="flex flex-col gap-1 border-b border-rule pb-2 text-sm">
                 <div className="flex items-center justify-between gap-2">
                   <label className="flex items-center gap-2 text-ink">

@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
-import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { CORE_URL, stamp } from "../_fixtures/env";
 import { apiFor, createSite, getDatasetSeed, richItem, siteConfig, type Api } from "./seed";
@@ -144,27 +143,26 @@ test.describe("j10 sites : API", () => {
 
   // FINDING j10-004 : la liste publique et le widget galerie exposent tous les
   // types d'items publiés, y compris alertes et jeux de données techniques.
-  bug(
-    "j10-004 : /public/items?type= filtre, mais sans filtre les alertes publiées sont listées",
-    async () => {
-      const ds = await getDatasetSeed();
-      const a = await creator.send("POST", "/v1/configs", {
-        title: `${tag}-alert-liste`,
-        config: {
-          version: 1,
-          kind: "alert",
-          alert: {
-            datasetItemId: ds.datasetItemId,
-            query: { agg: "count" },
-            condition: { expr: "value > 2" },
-            refreshPolicy: { enabled: false, cron: "*/5 * * * *" },
-            channels: [{ kind: "webhook", url: "https://hooks.example.com/x" }],
-          },
+  test("j10-004 : /public/items sans filtre ne liste jamais les alertes publiées (kinds publics seulement)", async () => {
+    const ds = await getDatasetSeed();
+    const a = await creator.send("POST", "/v1/configs", {
+      title: `${tag}-alert-liste`,
+      config: {
+        version: 1,
+        kind: "alert",
+        alert: {
+          datasetItemId: ds.datasetItemId,
+          query: { agg: "count" },
+          condition: { expr: "value > 2" },
+          refreshPolicy: { enabled: false, cron: "*/5 * * * *" },
+          channels: [{ kind: "webhook", url: "https://hooks.example.com/x" }],
         },
-      });
-      await creator.send("PATCH", `/v1/items/${a.body.itemId}`, { isPublished: true });
-      const list = await anon("/v1/public/items?pageSize=200");
-      expect(list.body.items.map((i: any) => i.resourceType)).not.toContain("alert");
-    },
-  );
+      },
+    });
+    await creator.send("PATCH", `/v1/items/${a.body.itemId}`, { isPublished: true });
+    const list = await anon("/v1/public/items?pageSize=100");
+    expect(list.status).toBe(200);
+    expect(list.body.items.map((i: any) => i.resourceType)).not.toContain("alert");
+    expect(list.body.items.map((i: any) => i.pk)).not.toContain(a.body.itemId);
+  });
 });

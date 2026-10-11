@@ -64,7 +64,7 @@ def pg_app(pg_engine):
             s,
             tenant_id=tenant.id,
             name="limited",
-            privileges=[Privilege.DATA_VIEW.value, Privilege.ADMIN_COLLECTIONS_MANAGE.value],
+            privileges=[Privilege.DATA_VIEW.value],  # REV-276 : manage lève le masquage
         )
         limited = get_or_create_user(
             s,

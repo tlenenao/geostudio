@@ -20,6 +20,7 @@ from app.collections.introspection import (
     hide_sensitive_columns,
 )
 from app.collections.introspection_pg import introspect_table
+from app.collections.sensitive import may_read_sensitive
 from app.db import request_scoped_session
 from app.features.repository import FilterError, select_features
 from app.features.rls import rls_scope
@@ -189,9 +190,7 @@ def register(server: FastMCP, session_factory) -> None:
             except UnsupportedTable as exc:
                 raise ValueError(exc.reason) from exc
             parsed_bbox = _parse_bbox_tuple(bbox) if bbox else None
-            masked = user is None or not has_privilege(
-                session, user, Privilege.DATA_VIEW_SENSITIVE.value
-            )
+            masked = not may_read_sensitive(session, user, col)
             # GAP-22 : sync_masked_role_grants (Task 3) only REVOKEs column-level
             # SELECT for gis_rls_masked — it never grants table-level SELECT
             # (§1.2/§3.3 of the design doc: a table-level GRANT would make any

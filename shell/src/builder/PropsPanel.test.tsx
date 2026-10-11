@@ -165,5 +165,6 @@ test("REV-183 : bouton Générer (chargé à la demande) avec generateItemId", a
     />,
     { wrapper },
   );
-  expect(await screen.findByText("Générer")).toBeInTheDocument();
+  // visibleWhen + liaisons dynamiques (REV-183)
+  expect(await screen.findAllByText("Générer")).toHaveLength(2);
 });

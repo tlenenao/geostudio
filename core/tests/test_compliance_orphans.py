@@ -255,3 +255,90 @@ def test_sweep_deletes_orphan_collection_export_files(session):
     )
     assert sweep_orphan_job_objects(session, s3, now=NOW) == 1
     assert s3.deleted == [("geostudio-exports", "t/data-exports/gone.csv")]
+
+
+# --- REV-268 : buckets tileset3d / terrain3d / mapicons ---
+from app.items.models import Item  # noqa: E402
+from app.mapicons.models import MapIcon  # noqa: E402
+from app.terrain3d.models import Terrain3DJob  # noqa: E402
+from app.tileset3d.models import Tileset3DJob  # noqa: E402
+
+
+def _item(iid):
+    return Item(id=iid, tenant_id="t", owner_id="u", resource_type="tileset3d", title="x")
+
+
+def _mapicon(iid, key):
+    return MapIcon(
+        id=iid, tenant_id="t", title="i", category="c", s3_key=key,
+        content_type="image/svg+xml", created_by="u",
+    )  # fmt: skip
+
+
+def _tileset(jid, key, status, item_id=None):
+    return Tileset3DJob(
+        id=jid, tenant_id="t", created_by="u", status=status, source_key=key,
+        upload_id="up", filename="f.zip", title="T", item_id=item_id,
+    )  # fmt: skip
+
+
+def _terrain(jid, key, status, item_id=None, converted=None):
+    return Terrain3DJob(
+        id=jid, tenant_id="t", created_by="u", status=status, source_key=key,
+        filename="f.tif", title="T", item_id=item_id, converted_key=converted,
+    )  # fmt: skip
+
+
+def test_sweep_3d_and_mapicon_buckets(session, monkeypatch):
+    for v in ("S3_MAPICONS_BUCKET", "S3_TILESET3D_BUCKET", "S3_TERRAIN3D_BUCKET"):
+        monkeypatch.delenv(v, raising=False)
+    session.add_all(
+        [
+            _item("i1"),
+            _mapicon("m1", "t/alive.svg"),
+            _tileset("ts1", "t/a/alive.zip", "done", "i1"),  # item vivant : gardé
+            _tileset("ts2", "t/b/deleted-item.zip", "done", "gone"),  # item supprimé : orphelin
+            _tileset("ts3", "t/c/running.zip", "finalizing"),  # job en cours : gardé
+            _terrain("tr1", "t/d/raw.tif", "uploaded"),  # brut d'un job en cours : gardé
+            _terrain("tr2", "t/e/raw.tif", "done", "i1", "t/tr2/dem-cog.tif"),  # brut non purgé
+            _terrain("tr3", "t/f/raw.tif", "done", "gone", "t/tr3/dem-cog.tif"),  # item supprimé
+        ]
+    )
+    session.commit()
+    s3 = FakeS3(
+        {
+            "geostudio-mapicons": {"t/alive.svg": OLD, "t/orphan.svg": OLD, "t/new.svg": FRESH},
+            "geostudio-tileset3d": {
+                "t/a/alive.zip": OLD,
+                "t/b/deleted-item.zip": OLD,
+                "t/c/running.zip": OLD,
+                "t/x/never-confirmed.zip": OLD,
+            },
+            "geostudio-terrain3d": {
+                "t/d/raw.tif": OLD,
+                "t/e/raw.tif": OLD,
+                "t/tr2/dem-cog.tif": OLD,
+                "t/tr3/dem-cog.tif": OLD,
+            },
+        }
+    )
+    sweep_orphan_job_objects(session, s3, now=NOW)
+    assert sorted(s3.deleted) == [
+        ("geostudio-mapicons", "t/orphan.svg"),
+        ("geostudio-terrain3d", "t/e/raw.tif"),
+        ("geostudio-terrain3d", "t/tr3/dem-cog.tif"),
+        ("geostudio-tileset3d", "t/b/deleted-item.zip"),
+        ("geostudio-tileset3d", "t/x/never-confirmed.zip"),
+    ]
+
+
+def test_sweep_3d_and_mapicon_buckets_skip_on_empty_reference_table(session):
+    s3 = FakeS3(
+        {
+            "geostudio-mapicons": {"t/a.svg": OLD},
+            "geostudio-tileset3d": {"t/a/b.zip": OLD},
+            "geostudio-terrain3d": {"t/a/b.tif": OLD},
+        }
+    )
+    assert sweep_orphan_job_objects(session, s3, now=NOW) == 0
+    assert s3.deleted == []

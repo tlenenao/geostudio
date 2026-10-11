@@ -32,7 +32,7 @@ test("REV-183 : générer une condition d'affichage, l'appliquer seulement sur c
   const condition = page.getByLabel("Condition d'affichage (visibleWhen)");
   await expect(condition).toHaveValue("");
 
-  await page.getByText("Générer", { exact: true }).click();
+  await page.getByText("Générer", { exact: true }).first().click();
   await page.getByLabel("Décrire la condition").fill("visible pour alice");
   await page.getByRole("button", { name: "Proposer" }).click();
   await expect(page.getByText('user.name == "alice"')).toBeVisible();
@@ -47,4 +47,40 @@ test("REV-183 : générer une condition d'affichage, l'appliquer seulement sur c
   expect((turnBody.currentConfig as { availableFields: string[] }).availableFields).toContain(
     "user.name",
   );
+});
+
+test("REV-183 : générer une liaison dynamique, liée seulement sur clic", async ({ page }) => {
+  await mockCore(page);
+  await page.route("https://core.test/v1/instance", async (route) => {
+    await route.fulfill({ json: { readOnly: false, copilotEnabled: true } });
+  });
+  let surface = "";
+  await page.route("https://core.test/v1/copilot/turn", async (route) => {
+    surface = (route.request().postDataJSON() as { surface: string }).surface;
+    await route.fulfill({
+      json: {
+        reply: "",
+        clientOps: [{ op: "applyCelDraft", args: { expression: "user.name" } }],
+      },
+    });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Nouveau" }).click();
+  const dialog = page.getByRole("dialog", { name: "Nouvel élément" });
+  await dialog.getByLabel("Type").selectOption("app");
+  await page.getByLabel("Titre", { exact: true }).fill("Mon app");
+  await page.getByRole("button", { name: "Créer" }).click();
+  await page.getByRole("button", { name: "Texte", exact: true }).click();
+
+  await page.getByText("Liaisons dynamiques", { exact: true }).click();
+  await page.getByText("Générer", { exact: true }).last().click();
+  await page.getByLabel("Décrire l'expression").fill("le nom de l'utilisateur");
+  await page.getByRole("button", { name: "Proposer" }).click();
+  await page.getByRole("button", { name: "Appliquer" }).click();
+  await expect(page.getByLabel("Expression de la liaison (CEL)")).toHaveValue("user.name");
+  await expect(page.getByRole("button", { name: "Retirer la liaison" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Lier la propriété" }).click();
+  await expect(page.getByRole("button", { name: "Retirer la liaison" })).toBeVisible();
+  expect(surface).toBe("binding");
 });

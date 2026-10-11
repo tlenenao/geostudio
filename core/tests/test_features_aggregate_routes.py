@@ -316,3 +316,20 @@ def test_aggregate_invalid_filter_value_is_400_and_empty_export_has_header(env):
         json={"groupBy": "region", "agg": "count", "filters": {"region": "zz"}},
     )
     assert export.status_code == 200 and export.text.strip() == "region,value"
+
+
+def test_aggregate_sensitive_field_is_readable_by_the_collection_owner_rev276(env):
+    """Décision 2026-10-11 (REV-276/j07-016) : le propriétaire de la collection
+    lit ses propres champs sensibles ; un tiers sans privilège reste masqué."""
+    from app.collections.models import Collection
+
+    app, client, admin, regular, _tmp_path, _tenant_id = env
+    col = _register(app, client, admin, public=True)
+    client.patch(f"/v1/collections/{col['id']}", json={"sensitiveFields": ["pop"]})
+    with next(app.dependency_overrides[db.get_session]()) as s:
+        s.get(Collection, col["id"]).owner_id = regular.id
+        s.commit()
+
+    _as(app, regular)
+    response = client.post(f"/v1/collections/{col['id']}/aggregate", json={"groupBy": "pop"})
+    assert response.status_code == 200

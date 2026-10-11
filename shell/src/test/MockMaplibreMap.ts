@@ -137,6 +137,9 @@ export class MockMap {
     const layer = this.layers.find((l) => l.id === id);
     if (layer) layer.filter = filter;
   }
+  getFilter(id: string) {
+    return (this.layers.find((l) => l.id === id) as { filter?: unknown } | undefined)?.filter;
+  }
   setPaintProperty(id: string, prop: string, value: unknown) {
     const layer = this.layers.find((l) => l.id === id) as { paint?: Record<string, unknown> };
     if (layer) layer.paint = { ...layer.paint, [prop]: value };

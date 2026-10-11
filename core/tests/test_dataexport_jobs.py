@@ -39,6 +39,11 @@ class _FakeS3:
     def put_object(self, *, Bucket, Key, Body, ContentType):
         self.objects[(Bucket, Key)] = (Body, ContentType)
 
+    def upload_file(self, *, Filename, Bucket, Key, ExtraArgs):
+        with open(Filename, "rb") as fh:
+            body = fh.read()
+        self.put_object(Bucket=Bucket, Key=Key, Body=body, ContentType=ExtraArgs["ContentType"])
+
     def delete_object(self, *, Bucket, Key):
         self.objects.pop((Bucket, Key), None)
 
@@ -178,6 +183,26 @@ def test_over_job_max_fails(env, monkeypatch):
     job = _job(factory, ids, job_id)
     assert job.status == "failed" and "too many entities" in job.error and job.finished_at
     assert not s3.objects
+
+
+def test_sink_is_closed_when_the_page_loop_raises(env, monkeypatch):
+    """M7 : l'exception en cours de boucle ne laisse pas le fichier de flux ouvert."""
+    import pathlib
+
+    factory, ids, _s3, _repo = env
+    monkeypatch.setenv("CORE_EXPORT_JOB_MAX", "3")
+    opened = []
+    real_open = pathlib.Path.open
+
+    def recording_open(self, *a, **k):
+        fh = real_open(self, *a, **k)
+        opened.append(fh)
+        return fh
+
+    monkeypatch.setattr(pathlib.Path, "open", recording_open)
+    job_id = _new_job(factory, ids)
+    dx_jobs.run_collection_export(job_id, ids[0])
+    assert opened and all(fh.closed for fh in opened)
 
 
 def test_collection_deleted_meanwhile_fails(env, monkeypatch):

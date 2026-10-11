@@ -249,14 +249,16 @@ export type CopilotSurface =
   | "visual_query"
   | "visible_when"
   | "computed_column"
-  | "action_condition";
+  | "action_condition"
+  | "binding";
 
 // REV-102 : un résultat de GET /v1/geocode.
 export type GeocodeResult = { label: string; lon: number; lat: number };
 
 export type ItemScope = "all" | "mine" | "shared" | "public";
 
-export type ItemSort = "date_desc" | "date_asc" | "updated_desc" | "title_asc" | "title_desc";
+export type ItemSort =
+  "relevance" | "date_desc" | "date_asc" | "updated_desc" | "title_asc" | "title_desc";
 
 export type ListItemsParams = {
   q?: string;
@@ -310,7 +312,7 @@ export type GeoLimit = {
 };
 export type Sharing = {
   public: boolean;
-  groups: { groupId: string; role: ShareRole }[];
+  groups: { groupId: string; role: ShareRole; name?: string | null }[];
 };
 
 export type MapViewport = {
@@ -338,6 +340,8 @@ export type MapLayer =
       kind: "vector";
       tilesUrl: string;
       sourceLayer: string;
+      // REV-304 : champ temporel filtré par le contexte temps global (widget carte).
+      timeField?: string;
       paint?: Record<string, unknown>;
       collectionId?: string;
       geometryKind?: "point" | "line" | "polygon";
@@ -592,7 +596,7 @@ export interface ItemClient {
   updateItem(pk: string, patch: UpdatePatch): Promise<Item>;
   uploadThumbnail(pk: string, file: File): Promise<void>;
   deleteItem(pk: string): Promise<void>;
-  listGroups(): Promise<Group[]>;
+  listGroups(q?: string): Promise<Group[]>;
   // GAP-42/65 : POST /groups + POST /groups/{id}/members existaient et
   // étaient testés côté cœur, mais aucune UI/MCP ne les exposait —
   // ShareForm.tsx ne pouvait qu'afficher des groupes déjà créés hors
@@ -1236,6 +1240,9 @@ export type AppConfig = {
   // l'enregistrement pour que le cœur refuse (412) une écriture périmée.
   // Jamais persistée dans le corps de la config.
   baseVersion?: number;
+  // Avertissements du cœur sur une config relue devenue invalide (REV-305).
+  // Jamais renvoyés à l'enregistrement.
+  warnings?: string[];
 };
 
 export type PipelineNodeKind = "reader" | "transform" | "writer";

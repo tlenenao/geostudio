@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from app.auth.dependency import get_current_user_optional
 from app.collections.introspection import TableInfo, TableNotFound, hide_sensitive_columns
 from app.collections.routes import get_collection_for_read, get_introspector
+from app.collections.sensitive import unmask_for_owner
 from app.configs.guest_access import GuestActor, get_share_link_actor
 from app.db import get_session
 from app.features.routes import get_masked_for_user, get_rls_scope
@@ -166,6 +167,16 @@ def build_probe_sql(quote: Callable[[str], str], info: TableInfo, src: str | Non
     )
 
 
+_MERC_R = 6378137.0
+_MERC_PER_DEG = 20037508.342789244 / 180
+_PI4 = 0.7853981633974483
+_AGG_CELLS_TO_MVT = (
+    "SELECT point_count, ST_AsMVTGeom("
+    "ST_SetSRID(ST_MakePoint((cx + 0.5) * :cell, (cy + 0.5) * :cell), 3857), "
+    "ST_TileEnvelope(:z, :x, :y), :extent, :buffer, true) AS geom FROM cells"
+)
+
+
 def build_agg_mvt_sql(quote: Callable[[str], str], info: TableInfo, src: str | None = None) -> str:
     """Cellules `count(*)` d'une tuile dense. Ne projette AUCUNE colonne de
     données (ni valeur masquée GAP-22) : seulement la géométrie et un compte,
@@ -178,6 +189,21 @@ def build_agg_mvt_sql(quote: Callable[[str], str], info: TableInfo, src: str | N
     assert info.geometry_column is not None, "build_agg_mvt_sql exige une géométrie"
     table = src or f"public.{quote(info.table_name)} t"
     geom = f"t.{quote(info.geometry_column)}"
+    if info.srid == 4326 and info.geometry_type == "Point":
+        # REV-283 (E-bis-3) : points WGS84 — la cellule se calcule en Mercator par
+        # formule (x linéaire en lon, y = R·ln tan(π/4+φ/2)), sans ST_Transform ni
+        # ST_PointOnSurface par ligne ; les centres de cellule sont déjà en 3857.
+        return (
+            "WITH cells AS ("
+            f"SELECT floor(ST_X({geom}) * {_MERC_PER_DEG} / :cell) AS cx, "
+            f"floor({_MERC_R} * ln(tan({_PI4} + radians(ST_Y({geom})) / 2)) / :cell) AS cy, "
+            "count(*) AS point_count "
+            f"FROM {table} "
+            f"WHERE {geom} && ST_Transform(ST_TileEnvelope(:z, :x, :y), :srid) "
+            "GROUP BY 1, 2"
+            f"), q AS ({_AGG_CELLS_TO_MVT})"
+            " SELECT ST_AsMVT(q, :layer, :extent, 'geom') FROM q WHERE q.geom IS NOT NULL"
+        )
     return (
         "WITH pts AS ("
         f"SELECT ST_PointOnSurface(ST_Transform({geom}, 3857)) AS p "
@@ -186,11 +212,8 @@ def build_agg_mvt_sql(quote: Callable[[str], str], info: TableInfo, src: str | N
         "), cells AS ("
         "SELECT floor(ST_X(p) / :cell) AS cx, floor(ST_Y(p) / :cell) AS cy, "
         "count(*) AS point_count FROM pts GROUP BY 1, 2"
-        "), q AS ("
-        "SELECT point_count, ST_AsMVTGeom("
-        "ST_SetSRID(ST_MakePoint((cx + 0.5) * :cell, (cy + 0.5) * :cell), 3857), "
-        "ST_TileEnvelope(:z, :x, :y), :extent, :buffer, true) AS geom FROM cells"
-        ") SELECT ST_AsMVT(q, :layer, :extent, 'geom') FROM q WHERE q.geom IS NOT NULL"
+        f"), q AS ({_AGG_CELLS_TO_MVT})"
+        " SELECT ST_AsMVT(q, :layer, :extent, 'geom') FROM q WHERE q.geom IS NOT NULL"
     )
 
 
@@ -201,9 +224,11 @@ def apply_tile_statement_timeout(session: Session, ms: int = TILE_STATEMENT_TIME
     même patron que `rls_scope` (app/features/rls.py). Transaction-local :
     rien ne fuit sur la connexion suivante à travers PgBouncer."""
     session.execute(
-        text("SELECT set_config('statement_timeout', :ms, true)"),
+        text("SELECT set_config('statement_timeout', :ms, true), set_config('jit', 'off', true)"),
         {"ms": str(ms)},
     )
+    # REV-283 : le JIT compile ~700 ms une agrégation dont l'exécution tient en
+    # ~250 ms (coût planifié gonflé par ST_Transform) ; une tuile n'en profite jamais.
 
 
 def _etag_matches(if_none_match: str | None, etag: str) -> bool:
@@ -230,6 +255,7 @@ def get_collection_tile(
     # Même porte que GET /items : 404 avant 403, anonyme accepté sur une
     # collection publique — plus désormais un jeton invité scopé (GAP-19).
     col = get_collection_for_read(session, user, collection_id, guest=guest)
+    masked = unmask_for_owner(masked, user, col)
     try:
         validate_tile_coords(z, x, y)
     except InvalidTileCoords as exc:

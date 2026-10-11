@@ -1012,25 +1012,35 @@ def _owned_by_regular_with_sensitive(env):
     return app, client, admin, regular
 
 
-def test_owner_without_privilege_cannot_change_sensitive_fields(env):
-    # c01-001 (P15.01) : seul `write` ne suffit pas à lever le masquage GAP-22.
+def test_owner_without_privilege_may_change_sensitive_fields(env):
+    # Décision 2026-10-11 (REV-276) : le propriétaire lit et gère ses champs sensibles.
     app, client, admin, regular = _owned_by_regular_with_sensitive(env)
     _as(app, regular)
     r = client.patch("/v1/collections/incidents", json={"sensitiveFields": []})
-    assert r.status_code == 403
-    # une valeur inchangée (formulaire de métadonnées complet) reste acceptée
-    r = client.patch("/v1/collections/incidents", json={"title": "T", "sensitiveFields": ["titre"]})
     assert r.status_code == 200
     _as(app, admin)
-    assert client.get("/v1/collections/incidents").json()["sensitiveFields"] == ["titre"]
+    assert client.get("/v1/collections/incidents").json()["sensitiveFields"] == []
 
 
 def test_sensitive_fields_hidden_from_fiche_and_schema_without_privilege(env):
-    # j07-015 (P15.04)
+    # j07-015 (P15.04) : un lecteur non propriétaire et sans privilège est masqué,
+    # le propriétaire (REV-276) lit en clair.
     app, client, admin, regular = _owned_by_regular_with_sensitive(env)
     _as(app, admin)
     assert client.get("/v1/collections/incidents").json()["sensitiveFields"] == ["titre"]
     assert "titre" in client.get("/v1/collections/incidents/schema").text
+    _as(app, regular)  # propriétaire
+    assert client.get("/v1/collections/incidents").json()["sensitiveFields"] == ["titre"]
+    assert "titre" in client.get("/v1/collections/incidents/schema").text
+    # non propriétaire : on rend la collection publique puis on la lit sans privilège
+    _as(app, admin)
+    client.patch("/v1/collections/incidents", json={"isPublic": True})
+    from app.collections.models import Collection
+
+    Session = env[2]
+    with Session() as s:
+        s.get(Collection, "incidents").owner_id = admin.id
+        s.commit()
     _as(app, regular)
     assert client.get("/v1/collections/incidents").json()["sensitiveFields"] == []
     assert "titre" not in client.get("/v1/collections/incidents/schema").text

@@ -48,6 +48,11 @@ from app.collections.routes import (
     get_introspector,
     get_readable_collection,
 )
+from app.collections.sensitive import (
+    has_sensitive_privilege,
+    masked_fields_for,
+    unmask_for_owner,
+)
 from app.configs.geo_limits_dep import get_request_geo_limits
 from app.configs.guest_access import GuestActor, get_share_link_actor
 from app.db import get_session
@@ -145,7 +150,9 @@ def get_masked_for_user(
     faire confiance à un lecteur anonyme pour du sensible."""
     if user is None:
         return True
-    return not has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)
+    # Volet privilège seul ; l'exception propriétaire se règle par collection
+    # (`unmask_for_owner`, appelée là où `col` est résolue).
+    return not has_sensitive_privilege(session, user)
 
 
 def _validation_error(errors: list[dict], status: int = 400):
@@ -236,6 +243,7 @@ def list_features(
     masked=Depends(get_masked_for_user),
 ):
     col = get_collection_for_read(session, user, collection_id, guest=guest)
+    masked = unmask_for_owner(masked, user, col)
     info = introspect(session, col.table_name)
     if masked:
         info = hide_sensitive_columns(info, col.sensitive_fields)
@@ -313,11 +321,7 @@ def aggregate_features(
     # GAP-27 : le lac DuckDB n'est pas soumis à la RLS — refus fail-closed.
     refuse_if_geo_limited(geo_limits, col.table_name, path="aggregates")
     info = introspect(session, col.table_name)
-    masked_fields = (
-        frozenset()
-        if user is not None and has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)
-        else frozenset(col.sensitive_fields)
-    )
+    masked_fields = masked_fields_for(session, user, col)
     conn = conn_factory()
     try:
         try:
@@ -369,11 +373,7 @@ def profile_collection(
     sensibles et mêmes bornes DuckDB que POST /aggregate."""
     col = get_collection_for_read(session, user, collection_id, guest=guest)
     info = introspect(session, col.table_name)
-    masked_fields = (
-        frozenset()
-        if user is not None and has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)
-        else frozenset(col.sensitive_fields)
-    )
+    masked_fields = masked_fields_for(session, user, col)
     conn = conn_factory()
     try:
         try:
@@ -423,11 +423,7 @@ def export_collection_aggregate(
     col = get_collection_for_read(session, user, collection_id)
     refuse_if_geo_limited(geo_limits, col.table_name, path="aggregate export")
     info = introspect(session, col.table_name)
-    masked_fields = (
-        frozenset()
-        if user is not None and has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)
-        else frozenset(col.sensitive_fields)
-    )
+    masked_fields = masked_fields_for(session, user, col)
     conn = conn_factory()
     try:
         try:
@@ -504,6 +500,7 @@ def export_collection_items(
             ]
         )
     col = get_collection_for_read(session, user, collection_id)
+    masked = unmask_for_owner(masked, user, col)
     info = introspect(session, col.table_name)
     if masked:
         info = hide_sensitive_columns(info, col.sensitive_fields)
@@ -511,7 +508,7 @@ def export_collection_items(
     parsed_geom_intersects = _parse_geom_intersects(geom_intersects)
     filters = _collect_filters(request)
     sync_max = export_sync_max()
-    job_max = export_job_max()
+    job_max = export_job_max(format)
 
     features: list[dict] = []
     cursor = None
@@ -606,7 +603,7 @@ def analytics_sql(
     geo_limits=Depends(get_request_geo_limits),
 ):
     require_privilege(session, user, Privilege.ANALYTICS_SQL_LAB_ACCESS.value)
-    sensitive_ok = has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)
+    sensitive_ok = has_sensitive_privilege(session, user)
     cols = list_visible_collections(
         session,
         tenant_id=user.tenant_id,
@@ -625,7 +622,9 @@ def analytics_sql(
         except TableNotFound:
             continue
         masked_fields_by_collection[col.id] = (
-            frozenset() if sensitive_ok else frozenset(col.sensitive_fields)
+            frozenset()
+            if sensitive_ok or col.owner_id == user.id
+            else frozenset(col.sensitive_fields)
         )
     conn = conn_factory()
     try:
@@ -686,6 +685,7 @@ def get_single_feature(
     masked=Depends(get_masked_for_user),
 ):
     col = get_collection_for_read(session, user, collection_id, guest=guest)
+    masked = unmask_for_owner(masked, user, col)
     info = introspect(session, col.table_name)
     if masked:
         info = hide_sensitive_columns(info, col.sensitive_fields)
@@ -794,12 +794,17 @@ def put_feature(
     masked: bool = Depends(get_masked_for_user),
 ):
     col = _get_writable(session, user, collection_id)
+    masked = unmask_for_owner(masked, user, col)
     # GAP-22 : le PUT remplace tout — sans ça, un utilisateur masqué mettrait à
     # NULL les colonnes sensibles qu'il n'a jamais vues. Retirées de `info`,
     # elles ne sont ni validées ni écrites (donc conservées en base).
     info = introspect(session, col.table_name)
-    if masked:
-        info = hide_sensitive_columns(info, col.sensitive_fields)
+    # Même chose pour un lecteur autorisé (propriétaire, REV-276) : une colonne
+    # sensible absente du corps est conservée, pas remise à NULL.
+    sent = payload.get("properties") or {}
+    info = hide_sensitive_columns(
+        info, [f for f in col.sensitive_fields if masked or f not in sent]
+    )
     if errors := validate_feature(info, payload):
         raise _validation_error(errors)
     try:

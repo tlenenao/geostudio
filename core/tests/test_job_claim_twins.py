@@ -76,3 +76,47 @@ def test_non_pending_job_is_never_rearmed(session, repo, model, make, status):
 @pytest.mark.parametrize("repo,model,make", CASES)
 def test_unknown_job_returns_false(session, repo, model, make):
     assert repo.mark_running(session, job_id="ghost") is False
+
+
+# --- terrain3d / tileset3d (REV-295, jumelles restantes) ---
+from app.terrain3d import repository as terrain_repo  # noqa: E402
+from app.terrain3d.models import Terrain3DJob  # noqa: E402
+from app.tileset3d import repository as tileset_repo  # noqa: E402
+from app.tileset3d.models import Tileset3DJob  # noqa: E402
+
+_CLAIM = [
+    (terrain_repo.mark_converting, Terrain3DJob, "converting"),
+    (tileset_repo.mark_finalizing, Tileset3DJob, "finalizing"),
+]
+
+
+_START = {Terrain3DJob: "uploaded", Tileset3DJob: "pending"}
+
+
+def _job3d(model, status):
+    extra = {"upload_id": "u"} if model is Tileset3DJob else {}
+    return model(
+        id="j", tenant_id="t", created_by="u", status=status,
+        source_key="k", filename="f", title="T", **extra,
+    )  # fmt: skip
+
+
+@pytest.mark.parametrize("mark,model,running", _CLAIM)
+def test_3d_pending_claimed_once(session, mark, model, running):
+    session.add(_job3d(model, _START[model]))
+    session.commit()
+    assert mark(session, job_id="j") is True
+    session.commit()
+    assert session.scalar(select(model.status)) == running
+    assert mark(session, job_id="j") is False
+
+
+@pytest.mark.parametrize("mark,model,running", _CLAIM)
+@pytest.mark.parametrize("status", ["done", "error"])
+def test_3d_terminal_never_rearmed(session, mark, model, running, status):
+    session.add(_job3d(model, status))
+    session.commit()
+    assert mark(session, job_id="j") is False
+    session.commit()
+    assert session.scalar(select(model.status)) == status
+    assert mark(session, job_id="ghost") is False

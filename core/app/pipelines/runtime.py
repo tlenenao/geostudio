@@ -41,6 +41,7 @@ from app.analytics.aggregate import _dedup_cte, _has_any_file
 from app.analytics.duckdb_conn import open_connection
 from app.audit.writer import write_audit
 from app.auth.dependency import is_pipeline_file_io_enabled
+from app.cell_safety import sanitize_cell
 from app.collections import repository as collections_repo
 from app.collections.introspection import (
     TableInfo,
@@ -49,6 +50,7 @@ from app.collections.introspection import (
     hide_sensitive_columns,
 )
 from app.collections.introspection_pg import introspect_table
+from app.collections.sensitive import masked_fields_for
 from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig, DatasetPayload, PipelineNode, PipelinePayload
 from app.features.repository import delete_all_features, insert_features
@@ -83,7 +85,7 @@ from app.pipelines.ops.schemas import (
     WriterExportParams,
     WriterFileParams,
 )
-from app.roles.guards import has_privilege, require_privilege
+from app.roles.guards import require_privilege
 from app.roles.privileges import Privilege
 from app.sharing.authorization import can
 from app.sharing.geo_limits import resolve_geo_limits
@@ -171,9 +173,9 @@ def _masked_fields(
     collection = collections_repo.get_collection(
         session, tenant_id=tenant_id, collection_id=collection_id
     )
-    if collection is None or has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value):
+    if collection is None:
         return frozenset()
-    return frozenset(collection.sensitive_fields)
+    return masked_fields_for(session, user, collection)
 
 
 def _readable_table_info(
@@ -1203,12 +1205,12 @@ def _write_export(
             # La colonne "geometry" contient désormais une chaîne GeoJSON : une
             # valeur de cellule CSV utile, pas de traitement supplémentaire requis.
             writer = csv.writer(out)
-            writer.writerow(columns)
+            writer.writerow([sanitize_cell(c) for c in columns])
         else:
             out.write('{"type": "FeatureCollection", "features": [')
         while batch := cursor.fetchmany(_WRITE_BATCH_SIZE):
             if p.format == "csv":
-                writer.writerows(batch)
+                writer.writerows([sanitize_cell(v) for v in r] for r in batch)
             else:
                 chunks = []
                 for row in batch:

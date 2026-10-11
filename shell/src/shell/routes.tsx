@@ -23,6 +23,8 @@ import { useItemClient } from "../api/ItemClientProvider";
 import { AppErrorFallback } from "../AppErrorBoundary";
 import { RouteTitle } from "./RouteTitle";
 import { LoadingState } from "../ui/kit/LoadingState";
+// Statique (REV-267) : /public est la page d'atterrissage non authentifiée ; un chunk lazy y ajoute un aller-retour réseau avant le premier contenu.
+import { PublicCatalogPage } from "../pages/PublicCatalogPage";
 
 // Découpage par route (Task 8, SP-60/GAP-68) : chaque page lourde part dans
 // son propre chunk, chargé seulement quand sa route est visitée — le chunk
@@ -50,9 +52,6 @@ const AppRuntimePage = lazy(() =>
 );
 const SitePublicPage = lazy(() =>
   import("../pages/SitePublicPage").then((m) => ({ default: m.SitePublicPage })),
-);
-const PublicCatalogPage = lazy(() =>
-  import("../pages/PublicCatalogPage").then((m) => ({ default: m.PublicCatalogPage })),
 );
 const PublicItemPage = lazy(() =>
   import("../pages/PublicItemPage").then((m) => ({ default: m.PublicItemPage })),

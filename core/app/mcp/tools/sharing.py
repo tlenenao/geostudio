@@ -28,19 +28,28 @@ class GroupRead(BaseModel):
 
 def register(server: FastMCP, session_factory) -> None:
     @server.tool()
-    async def list_groups(ctx: Context) -> list[GroupRead]:
-        """List sharing groups for the caller's tenant — mirrors GET /groups."""
+    async def list_groups(ctx: Context, q: str | None = None) -> list[GroupRead]:
+        """List the caller's sharing groups, or search the tenant's groups by
+        name with `q` (>= 2 characters, capped) — mirrors GET /groups."""
+        if q is not None and not 2 <= len(q) <= 100:
+            raise ValueError("q must be 2 to 100 characters")
         access_token = get_access_token()
         with request_scoped_session(session_factory) as session:
             user = resolve_actor(session, access_token)
-            # Jumelle de GET /groups (j02-005/P13).
+            # Jumelle de GET /groups (j02-005/P13, REV-277).
             try:
                 require_sharing_privilege(session, user)
             except HTTPException as exc:
                 raise http_exception_to_value_error(exc) from exc
             return [
                 GroupRead(id=g.id, name=g.name)
-                for g in sharing_repo.list_groups(session, tenant_id=user.tenant_id)
+                for g in sharing_repo.directory_groups(
+                    session,
+                    tenant_id=user.tenant_id,
+                    user_id=user.id,
+                    as_admin=has_privilege(session, user, Privilege.ADMIN_USERS_MANAGE.value),
+                    q=q,
+                )
             ]
 
     @server.tool()

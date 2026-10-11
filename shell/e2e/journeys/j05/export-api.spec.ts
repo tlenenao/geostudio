@@ -76,6 +76,14 @@ test.describe("j05 exports — API", () => {
   bug(
     "j05-009 : un texte commençant par « = » ou « @ » n'est jamais exporté comme formule",
     async () => {
+      // REV-280 : `unzip` (lecture du XLSX) absent de l'hôte de rejeu — saut explicite, pas un échec.
+      let hasUnzip = true;
+      try {
+        execFileSync("unzip", ["-v"], { stdio: "ignore" });
+      } catch {
+        hasUnzip = false;
+      }
+      test.skip(!hasUnzip, "unzip absent de l'hôte : le XLSX ne peut pas être inspecté");
       const path = `/v1/collections/${seed.eventsCollection}/export/items`;
       const csv = await download("analyst", "GET", `${path}?format=csv`);
       expect(csv.buf.toString()).not.toMatch(/(^|,)"?=1\+1/m);

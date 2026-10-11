@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
-import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { apiFor, ingest, type Api } from "./api";
 import { getSeed, mapConfig, type Seed } from "./seed";
@@ -148,19 +147,27 @@ test.describe("j03 carte — publication et droits", () => {
     await creator.send("PATCH", `/v1/items/${pk}`, { isPublished: false });
   });
 
-  bug(
-    "j03-012 : une carte publiée dont la collection reste privée est signalée ou publie ses données",
-    async () => {
-      // Défaut j03-012 : après « Publier », lecteur et anonyme reçoivent 404 sur /collections/{id}/items :
-      // la carte publique est vide, sans aucun avertissement à la publication.
-      const pk = big.itemId;
-      await creator.send("PATCH", `/v1/items/${pk}`, { isPublished: true });
-      try {
-        const r = await reader.get(`/v1/collections/${big.collectionId}/items?limit=1`);
-        expect(r.status).toBe(200);
-      } finally {
-        await creator.send("PATCH", `/v1/items/${pk}`, { isPublished: false });
-      }
-    },
-  );
+  test("j03-012 : publier une carte ne publie pas sa collection (l'anonyme ne lit rien) ; le dialogue de publication du shell propose de la publier avec", async () => {
+    // Contrat : le cœur ne publie jamais une collection de façon implicite (fuite de données sinon) ; le
+    // signalement est porté par `PublishDialog` (shell, seul point d'entrée de publication, cf. map-ui
+    // « le menu ⋯ du catalogue publie la carte »), qui bascule la collection en public avec l'item.
+    const pk = big.itemId;
+    const url = `http://localhost:8200/v1/collections/${big.collectionId}/items?limit=1`;
+    await creator.send("PATCH", `/v1/items/${pk}`, { isPublished: true });
+    try {
+      expect((await fetch(url)).status).toBe(404);
+      const sh = await creator.send("PUT", `/v1/collections/${big.collectionId}/sharing`, {
+        public: true,
+        groups: [],
+      });
+      expect(sh.status).toBe(200);
+      expect((await fetch(url)).status).toBe(200);
+    } finally {
+      await creator.send("PUT", `/v1/collections/${big.collectionId}/sharing`, {
+        public: false,
+        groups: [],
+      });
+      await creator.send("PATCH", `/v1/items/${pk}`, { isPublished: false });
+    }
+  });
 });

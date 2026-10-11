@@ -2900,6 +2900,8 @@ export interface components {
         GroupShare: {
             /** Groupid */
             groupId: string;
+            /** Name */
+            name?: string | null;
             /**
              * Role
              * @enum {string}
@@ -6228,7 +6230,9 @@ export interface operations {
     };
     list_groups_v1_groups_get: {
         parameters: {
-            query?: never;
+            query?: {
+                q?: string | null;
+            };
             header?: {
                 authorization?: string;
             };

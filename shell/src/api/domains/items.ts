@@ -193,8 +193,11 @@ export function createItemsMethods(base: ItemClientBase): ItemsMethods {
       if (!res.ok && res.status !== 404) throw await parseErrorResponse(res);
     },
 
-    async listGroups(): Promise<Group[]> {
-      const data = await request<GroupWire[]>("GET", `/groups`);
+    async listGroups(q?: string): Promise<Group[]> {
+      const data = await request<GroupWire[]>(
+        "GET",
+        q ? `/groups?q=${encodeURIComponent(q)}` : `/groups`,
+      );
       return data.map(toGroup);
     },
 

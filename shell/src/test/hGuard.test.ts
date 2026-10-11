@@ -11,6 +11,7 @@ const DENSE_ALLOWED: Record<string, string> = {
   "src/ui/kit/Avatar.tsx": "h-8 w-8", // pastille, pas un contrôle de formulaire
   "src/ui/button.tsx": 'sm: "h-8 px-3"', // primitive legacy
   "src/builder/widgets/indicator.tsx": 'className="h-8 w-full"', // conteneur de sparkline
+  "src/pages/CollectionProfilePanel.tsx": "mt-1 flex h-8 items-end", // barres d'histogramme, pas un contrôle
 };
 
 function walk(dir: string, out: string[] = []): string[] {

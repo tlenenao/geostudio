@@ -63,7 +63,7 @@ def test_get_masked_for_user_reflects_privilege():
             srid=None,
             columns=[ColumnInfo("nom", "string", True), ColumnInfo("salary", "integer", False)],
         )
-        col = SimpleNamespace(sensitive_fields=["salary"])
+        col = SimpleNamespace(sensitive_fields=["salary"], owner_id="someone-else")
         assert [c.name for c in visible_table_info(s, admin, col, info).columns] == [
             "nom",
             "salary",
@@ -71,12 +71,13 @@ def test_get_masked_for_user_reflects_privilege():
         assert [c.name for c in visible_table_info(s, regular, col, info).columns] == ["nom"]
 
 
-def test_owner_of_a_collection_is_masked_without_view_sensitive_rev270_p15_05():
-    """Décision produit REV-270/P15.05 (Tanguy, 2026-10-10) : PAS d'exception
-    propriétaire — le propriétaire (et l'éditeur) d'une collection ne lit pas
-    ses champs sensibles sans data.view_sensitive. Le verdict de masquage ne
-    dépend que du privilège de l'utilisateur, jamais de la collection ; ce test
-    échoue si une exception propriétaire est un jour introduite."""
+def test_masked_verdict_dependency_is_privilege_only_owner_exception_is_per_collection():
+    """Décision produit REV-270/P15.05 (2026-10-10), AMENDÉE par REV-276
+    (Tanguy, 2026-10-11) : le propriétaire d'une collection lit ses champs
+    sensibles. La dépendance `get_masked_for_user` reste un verdict
+    utilisateur (privilège seul, sans collection) ; l'exception propriétaire
+    s'applique par collection (`app.collections.sensitive.unmask_for_owner`,
+    cf. test_column_masking_owner.py)."""
     from app.collections import repository as collections_repo
 
     engine = make_engine("sqlite+pysqlite:///:memory:")

@@ -2445,3 +2445,87 @@ test("les couches produites par MapView valident contre le vrai style-spec MapLi
   // ici, alors que Style.addLayer les avalerait en faisant `return`.
   expect(validateStyleMin(style as never)).toEqual([]);
 });
+
+// REV-304 : la fenêtre temporelle filtre les couches `vector` déclarant un
+// `timeField` par setFilter (jamais en recréant sources et couches).
+test("timeRange filters a vector layer with timeField through setFilter, without rebuilding", () => {
+  const cfg = tiled({ geometryKind: "polygon", timeField: "date" });
+  const { rerender } = render(
+    <MapView config={cfg} timeRange={{ from: "2024-01-01", to: "2024-01-07" }} />,
+  );
+  const map = mapInstances[0];
+  const filterOf = () => (map.getLayer("communes") as { filter?: unknown[] }).filter;
+  expect(filterOf()).toEqual([
+    "all",
+    expect.anything(),
+    [
+      "all",
+      [">=", ["get", "date"], "2024-01-01"],
+      ["<=", ["get", "date"], "2024-01-07T23:59:59.999999"],
+    ],
+  ]);
+  const source = map.getSource("communes");
+
+  rerender(<MapView config={cfg} timeRange={{ from: "2024-01-08", to: "2024-01-14" }} />);
+  expect(JSON.stringify(filterOf())).toContain("2024-01-14");
+  expect(JSON.stringify(filterOf())).not.toContain("2024-01-07");
+  // Pas de reconstruction : même source, pas de second filtre empilé.
+  expect(map.getSource("communes")).toBe(source);
+  expect(filterOf()).toHaveLength(3);
+
+  rerender(<MapView config={cfg} timeRange={null} />);
+  expect(JSON.stringify(filterOf())).not.toContain("date");
+});
+
+// REV-285 (e) : surbrillance et cellules agrégées suivent la bascule
+// clair/sombre par setPaintProperty, sans recréer carte, sources ni couches.
+test("theme switch repaints the highlight and aggregate layers in place", async () => {
+  const { unmount } = render(<MapView config={tiled({ geometryKind: "point" })} />);
+  const map = mapInstances[0];
+  const paintOf = (id: string) =>
+    (map.getLayer(id) as unknown as { paint: Record<string, unknown> }).paint;
+  const source = map.getSource("communes");
+  document.documentElement.style.setProperty("--gs-danger", "#010203");
+  document.documentElement.style.setProperty("--gs-accent", "#040506");
+  document.documentElement.dataset.theme = "dark";
+  await new Promise((r) => setTimeout(r, 0));
+  try {
+    expect(paintOf("__highlight__")["line-color"]).toBe("#010203");
+    expect(paintOf("communes__agg")["circle-color"]).toBe("#040506");
+    expect(mapInstances).toHaveLength(1);
+    expect(map.getSource("communes")).toBe(source);
+    unmount();
+    document.documentElement.style.setProperty("--gs-danger", "#070809");
+    document.documentElement.dataset.theme = "light";
+    await new Promise((r) => setTimeout(r, 0));
+    expect(paintOf("__highlight__")["line-color"]).toBe("#010203"); // désabonné
+  } finally {
+    document.documentElement.style.removeProperty("--gs-danger");
+    document.documentElement.style.removeProperty("--gs-accent");
+    delete document.documentElement.dataset.theme;
+  }
+});
+
+test("theme switch keeps an aggregate color fixed by the app theme primary", async () => {
+  render(
+    <MapView config={tiled({ geometryKind: "point" })} themeColors={{ primary: "#aa0000" }} />,
+  );
+  const map = mapInstances[0];
+  document.documentElement.style.setProperty("--gs-accent", "#040506");
+  document.documentElement.dataset.theme = "dark";
+  await new Promise((r) => setTimeout(r, 0));
+  try {
+    const agg = map.getLayer("communes__agg") as unknown as { paint: Record<string, unknown> };
+    expect(agg.paint["circle-color"]).toBe("#aa0000");
+  } finally {
+    document.documentElement.style.removeProperty("--gs-accent");
+    delete document.documentElement.dataset.theme;
+  }
+});
+
+test("a vector layer without timeField is left alone by timeRange", () => {
+  const cfg = tiled({ geometryKind: "polygon" });
+  render(<MapView config={cfg} timeRange={{ from: "2024-01-01", to: "2024-01-07" }} />);
+  const layer = mapInstances[0].getLayer("communes") as { filter?: unknown };
+  expect(JSON.stringify(layer.filter)).not.toContain("2024-01-01");
+});

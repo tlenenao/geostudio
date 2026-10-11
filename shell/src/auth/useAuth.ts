@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useAuth as useOidcAuth } from "react-oidc-context";
-import { currentReturnTo } from "./returnTo";
-import { purgeLocalHistories } from "../lib/userStorage";
+import { createContext, useContext } from "react";
 
 export type AuthState = {
   isLoading: boolean;
@@ -15,6 +13,9 @@ export type AuthState = {
   // jeton, ou undefined si la session ne peut plus être renouvelée.
   renewToken?: () => Promise<string | undefined>;
 };
+
+// Fourni par AuthProvider (état anonyme) ou OidcAuthProvider (chargé à la demande).
+export const AuthContext = createContext<AuthState | null>(null);
 
 let mockMode = false;
 export function enableMockAuth() {
@@ -35,29 +36,8 @@ const MOCK_STATE: AuthState = {
 };
 
 export function useAuth(): AuthState {
+  const ctx = useContext(AuthContext);
   if (mockMode) return MOCK_STATE;
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const oidc = useOidcAuth();
-  return {
-    isLoading: oidc.isLoading,
-    isAuthenticated: oidc.isAuthenticated,
-    username: (oidc.user?.profile.preferred_username as string) ?? null,
-    error: oidc.error ? oidc.error.message : null,
-    getAccessToken: () => oidc.user?.access_token,
-    // returnTo (P07.02) : la destination demandée survit à l'aller-retour
-    // Keycloak (état OIDC conservé en sessionStorage, cf. AuthProvider).
-    signIn: () =>
-      void oidc.signinRedirect({ state: { returnTo: currentReturnTo(window.location) } }),
-    signOut: () => {
-      purgeLocalHistories();
-      void oidc.signoutRedirect();
-    },
-    renewToken: async () => {
-      try {
-        return (await oidc.signinSilent())?.access_token ?? undefined;
-      } catch {
-        return undefined;
-      }
-    },
-  };
+  if (!ctx) throw new Error("useAuth must be called under <AuthProvider>");
+  return ctx;
 }

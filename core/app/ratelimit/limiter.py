@@ -8,6 +8,7 @@ logique de app.auth.dependency pour un usage qui n'a besoin que d'une clé
 stable, pas d'une identité vérifiée. Limite assumée : ne tient pas
 multi-process (pas de --workers aujourd'hui côté uvicorn, cf. C2/vague 0)."""
 
+import os
 import re
 import time
 from collections import defaultdict, deque
@@ -95,7 +96,12 @@ def caller_key(
     return f"anon:{client_host or 'unknown'}"
 
 
-def route_group(path: str, method: str, export_path_re: re.Pattern[str]) -> str | None:
+def route_group(
+    path: str,
+    method: str,
+    export_path_re: re.Pattern[str],
+    has_share_token: bool = False,
+) -> str | None:
     if _SQL_RE.match(path):
         return "sql"
     if _LLM_RE.match(path):
@@ -114,6 +120,12 @@ def route_group(path: str, method: str, export_path_re: re.Pattern[str]) -> str 
         return "share-link"
     if _GEOCODE_RE.match(path):
         return "geocode"
+    # REV-299 (c) : le jeton invité X-Share-Link-Token est aussi présenté en
+    # en-tête sur les routes d'items/configs — même budget par IP que la route publique.
+    # Les GET (tuiles MVT, items, configs, GeoJSON d'un embed) en sont exclus : une
+    # carte en charge en émet des dizaines par vue et un 429 trouerait l'embed.
+    if has_share_token and method != "GET":
+        return "share-link"
     return None
 
 
@@ -143,6 +155,11 @@ class RateLimiter:
 
     def __init__(self) -> None:
         self._hits: dict[tuple[str, str], deque[float]] = defaultdict(deque)
+        # REV-299 (b) : seuil share-link réglable (défaut 60/min).
+        self._budgets = {
+            **_BUDGETS,
+            "share-link": int(os.environ.get("CORE_RATELIMIT_SHARE_LINK_PER_MIN") or 60),
+        }
         self._calls_since_sweep = 0
 
     def _purge(self, bucket: deque[float], now: float) -> None:
@@ -159,7 +176,7 @@ class RateLimiter:
             del self._hits[bucket_key]
 
     def allow(self, key: str, group: str) -> bool:
-        budget = _BUDGETS[group]
+        budget = self._budgets[group]
         now = time.monotonic()
         bucket_key = (key, group)
         bucket = self._hits[bucket_key]

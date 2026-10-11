@@ -10,7 +10,9 @@ from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
+from app.collections import repository as collections_repo
 from app.collections.routes import get_collection_for_read
+from app.collections.sensitive import may_read_sensitive
 from app.dataexport import repository as repo
 from app.dataexport.jobs import exports_bucket, run_collection_export
 from app.db import get_session
@@ -74,8 +76,12 @@ def default_starter(session: Session, **kwargs) -> str:
 def _may_see(session: Session, user: User, job) -> bool:
     # GAP-22 : le fichier d'un job non masqué contient les colonnes sensibles ;
     # le demandeur lui-même doit encore y avoir droit (rôle rétrogradé depuis).
-    if not (job.masked or has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)):
-        return False
+    if not job.masked:
+        col = collections_repo.get_collection(
+            session, tenant_id=job.tenant_id, collection_id=job.collection_id
+        )
+        if col is None or not may_read_sensitive(session, user, col):
+            return False
     return job.requested_by == user.id or has_privilege(
         session, user, Privilege.TASKS_VIEW_ALL.value
     )

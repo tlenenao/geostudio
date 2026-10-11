@@ -11,9 +11,18 @@ import {
   type MapPaintResult,
 } from "../builder/widgets/mapSymbology";
 import { t } from "../i18n";
+import { readToken } from "../lib/theme";
 import "../i18n/domains/map";
 
 export const HIGHLIGHT_ID = "__highlight__";
+
+// REV-285 (e) : couleurs par défaut des couches posées par MapView lui-même
+// (surbrillance de sélection, cellules agrégées), lues dans les jetons du
+// thème actif — MapView les relit à chaque bascule clair/sombre.
+// gs-raw-color-ok-begin: replis hors navigateur réel (jsdom ne résout pas les jetons)
+export const highlightColor = () => readToken("--gs-danger", "#ef4444");
+export const aggregateDefaultColor = () => readToken("--gs-accent", "#3b6fb6");
+// gs-raw-color-ok-end
 
 // Une couche tuilée était jusqu'ici ajoutée en "fill" quel que soit son
 // contenu : une collection de points ne s'affichait donc pas du tout. Le type
@@ -330,8 +339,7 @@ export function addAggregateLayer(
   map: maplibregl.Map,
   parentId: string,
   sourceLayer: string,
-  // gs-raw-color-ok: couleur de couche par défaut, valeur de symbologie utilisateur
-  color = "#3b6fb6",
+  color = aggregateDefaultColor(),
 ) {
   map.addLayer({
     id: `${parentId}__agg`,

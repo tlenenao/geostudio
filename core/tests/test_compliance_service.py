@@ -313,3 +313,38 @@ def test_erased_account_is_not_recreated_on_next_login_j08_001(env):
             )
         assert exc.value.status_code == 403
         assert s.query(User).filter(User.username == "target").count() == 0
+
+
+def test_erased_admin_does_not_count_as_holder_j08b_004(env):
+    """Deux admins : le premier est anonymisé, le second (seul actif) ne doit
+    plus l'être — un compte effacé garde son rôle mais n'est pas un titulaire."""
+    from app.roles.repository import count_users_with_privileges, would_orphan_privilege_holders
+
+    Session, tenant_id, _target_id, admin_id, roles = env
+    with Session() as s:
+        second = get_or_create_user(
+            s,
+            tenant_id=tenant_id,
+            oidc_sub="second-admin-sub",
+            username="second-admin",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        set_user_role(
+            s, tenant_id=tenant_id, user_id=second.id, role_id=roles["admin"], role_slug="admin"
+        )
+        second_id = second.id
+        s.commit()
+    with Session() as s:
+        anonymize_user(s, tenant_id=tenant_id, user_id=admin_id)
+        s.commit()
+    with Session() as s, pytest.raises(AnonymizationLockoutError):
+        anonymize_user(s, tenant_id=tenant_id, user_id=second_id)
+    with Session() as s:
+        privs = ["admin.users.manage"]
+        assert count_users_with_privileges(s, tenant_id=tenant_id, privileges=privs) == 1
+        # rétrogradation du rôle admin : le seul titulaire actif serait orphelin
+        assert would_orphan_privilege_holders(
+            s, tenant_id=tenant_id, privileges=privs, role_id=roles["admin"], new_privileges=[]
+        )

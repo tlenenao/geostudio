@@ -1816,6 +1816,51 @@ test("getAppConfig donne un id distinct aux messages hérités sans id (P10.01)"
   expect(cfg.messages.map((x) => x.id)).toEqual(["msg-0", "msg-1", "kept"]);
 });
 
+test("getAppConfig conserve les avertissements du cœur (REV-305), absents sinon", async () => {
+  const body = (warnings?: string[]) => ({
+    ...(warnings ? { warnings } : {}),
+    config: { kind: "app", layout: { type: "grid", breakpoints: {}, items: [] } },
+  });
+  server.use(
+    http.get("https://core.test/v1/configs/by-item/5", () =>
+      HttpResponse.json(body(["message 'm' to: unknown target 'w9'"])),
+    ),
+    http.get("https://core.test/v1/configs/by-item/6", () => HttpResponse.json(body([]))),
+  );
+  expect((await makeClient().getAppConfig("5")).warnings).toEqual([
+    "message 'm' to: unknown target 'w9'",
+  ]);
+  expect((await makeClient().getAppConfig("6")).warnings).toBeUndefined();
+});
+
+test("getAppConfig donne un id distinct aux actions d'entrée de chapitre héritées sans id (j10-006)", async () => {
+  const m = { from: "ch1", event: "enter", action: "set" };
+  server.use(
+    http.get("https://core.test/v1/configs/by-item/5", () =>
+      HttpResponse.json({
+        config: {
+          kind: "app",
+          pages: [
+            {
+              id: "ch1",
+              name: "Chapitre 1",
+              layout: { type: "grid", breakpoints: {}, items: [] },
+              onEnter: [
+                { ...m, to: "var:a" },
+                { ...m, id: "kept", to: "var:b" },
+                { ...m, to: "var:c" },
+              ],
+            },
+          ],
+          layout: { type: "grid", breakpoints: {}, items: [] },
+        },
+      }),
+    ),
+  );
+  const cfg = await makeClient().getAppConfig("5");
+  expect(cfg.pages?.[0].onEnter?.map((x) => x.id)).toEqual(["ch1-enter-0", "kept", "ch1-enter-2"]);
+});
+
 test("getAppConfig throws when the config has no layout", async () => {
   server.use(
     http.get("https://core.test/v1/configs/by-item/5", () =>

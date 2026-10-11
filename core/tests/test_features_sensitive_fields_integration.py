@@ -49,13 +49,13 @@ def pg_app(pg_engine):
             last_name="",
             bootstrap_admin=True,
         )
-        # rôle sur mesure SANS data.view_sensitive, avec de quoi lire/gérer
-        # des collections (sinon 403 avant même le masquage à tester)
+        # rôle sur mesure SANS data.view_sensitive ni admin.collections.manage
+        # (REV-276 : ce dernier lit désormais en clair, comme le propriétaire)
         limited_role = create_role(
             s,
             tenant_id=tenant.id,
             name="limited",
-            privileges=[Privilege.DATA_VIEW.value, Privilege.ADMIN_COLLECTIONS_MANAGE.value],
+            privileges=[Privilege.DATA_VIEW.value],
         )
         limited = get_or_create_user(
             s,
@@ -146,8 +146,6 @@ def test_sensitive_field_absent_from_list_and_export_without_privilege(pg_app):
 def test_put_without_privilege_keeps_sensitive_columns(pg_app):
     # c01-004 : un PUT d'utilisateur masqué ne doit jamais mettre à NULL une
     # colonne sensible qu'il n'a ni vue ni envoyée.
-    from app.collections.models import Collection
-
     client, app, admin, limited = pg_app
     _as(app, admin)
     client.post("/v1/collections", json={"tableName": "demo_employees"})
@@ -159,10 +157,26 @@ def test_put_without_privilege_keeps_sensitive_columns(pg_app):
         json={"type": "Feature", "properties": {"nom": "Dupont", "salary": 45000}},
     )
     fid = r.json()["id"]
-    # limited n'a l'écriture que s'il est propriétaire
+    # limited écrit en tant qu'éditeur d'un groupe (le propriétaire, lui, lit
+    # le sensible en clair — REV-276 — donc n'est plus le cas masqué)
+    import uuid
+
+    from app.sharing.models import Group, GroupMember
+
     with next(app.dependency_overrides[db.get_session]()) as s:
-        s.get(Collection, "demo_employees").owner_id = limited.id
+        g = Group(id=uuid.uuid4().hex, tenant_id=limited.tenant_id, name="eq", created_by=admin.id)
+        s.add(g)
+        s.flush()
+        s.add(GroupMember(group_id=g.id, user_id=limited.id, tenant_id=limited.tenant_id))
         s.commit()
+        group_id = g.id
+    assert (
+        client.put(
+            "/v1/collections/demo_employees/sharing",
+            json={"public": True, "groups": [{"groupId": group_id, "role": "editor"}]},
+        ).status_code
+        == 200
+    )
     _as(app, limited)
     r = client.put(
         f"/v1/collections/demo_employees/items/{fid}",

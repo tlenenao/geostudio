@@ -65,6 +65,44 @@ for bucket in "${S3_THUMBNAILS_BUCKET:-geostudio-thumbnails}" \
 done
 echo "[restore] buckets MinIO recréés et repeuplés."
 
+# --- Garde base <-> bucket (REV-268) : toute clé que la base restaurée
+# référence doit exister dans son bucket. Une base et des buckets issus de
+# sauvegardes de dates différentes donnent des pièces jointes/tuiles/icônes
+# fantômes que rien ne signalerait. On liste tout puis on sort non nul. ---
+CHECK_TMP="$(mktemp -d)"
+trap 'rm -rf "$CHECK_TMP"' EXIT
+MISSING_TOTAL=0
+check_refs() {
+  bucket="$1"
+  sql="$2"
+  PGPASSWORD="$PG_PASSWORD" psql -h postgis -U gis -d gis -v ON_ERROR_STOP=1 -At -c "$sql" \
+    | sort -u > "${CHECK_TMP}/refs"
+  [ -s "${CHECK_TMP}/refs" ] || return 0
+  mc find "local/${bucket}" | sed "s#^local/${bucket}/##" | sort -u > "${CHECK_TMP}/have"
+  comm -23 "${CHECK_TMP}/refs" "${CHECK_TMP}/have" > "${CHECK_TMP}/missing"
+  if [ -s "${CHECK_TMP}/missing" ]; then
+    n="$(wc -l < "${CHECK_TMP}/missing" | tr -d ' ')"
+    echo "[restore] ERREUR : ${n} objet(s) référencé(s) en base absent(s) de ${bucket} :" >&2
+    sed 's/^/[restore]   /' "${CHECK_TMP}/missing" >&2
+    MISSING_TOTAL=$((MISSING_TOTAL + n))
+  fi
+}
+check_refs "${S3_UPLOADS_BUCKET:-geostudio-uploads}" \
+  "SELECT source_key FROM ingestion_jobs WHERE status IN ('pending','running','cancel_requested') AND created_at > now() - interval '7 days'"
+check_refs "${S3_ATTACHMENTS_BUCKET:-geostudio-attachments}" \
+  "SELECT s3_key FROM attachments"
+check_refs "${S3_MAPICONS_BUCKET:-geostudio-mapicons}" \
+  "SELECT s3_key FROM map_icons"
+check_refs "${S3_TILESET3D_BUCKET:-geostudio-tileset3d}" \
+  "SELECT source_key FROM tileset3d_jobs WHERE status = 'done' AND item_id IN (SELECT id FROM items)"
+check_refs "${S3_TERRAIN3D_BUCKET:-geostudio-terrain3d}" \
+  "SELECT converted_key FROM terrain3d_jobs WHERE status = 'done' AND converted_key IS NOT NULL AND item_id IN (SELECT id FROM items)"
+if [ "$MISSING_TOTAL" -gt 0 ]; then
+  echo "[restore] ${TS} — ÉCHEC : ${MISSING_TOTAL} objet(s) référencé(s) manquant(s) (base et buckets incohérents)." >&2
+  exit 1
+fi
+echo "[restore] cohérence base <-> buckets vérifiée."
+
 echo "[restore] ${TS} — restauration Postgres + MinIO terminée."
 echo "[restore] Étapes restantes (manuelles, hors périmètre de ce script) :"
 echo "[restore]   1. docker compose ... up -d   (démarrer le reste de la stack)."
