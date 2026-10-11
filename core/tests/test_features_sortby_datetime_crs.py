@@ -145,6 +145,13 @@ def test_datetime_open_interval_and_instant(client):
     ]
 
 
+@pytest.mark.parametrize("odd", ["2024-W01-1", "2024-01-01T10", "20250615", "2025-06-15T08"])
+def test_datetime_iso_forms_postgres_cannot_cast_do_not_500(client, odd):
+    # fromisoformat les accepte mais Postgres rejette la chaîne brute : on lie
+    # l'objet parsé, pas la chaîne.
+    assert client.get(URL, params={"datetime": odd}).status_code == 200
+
+
 @pytest.mark.parametrize("bad", ["pas-une-date", "../..", "a/b/c", "2025-13-45/.."])
 def test_datetime_invalid_is_400(client, bad):
     r = client.get(URL, params={"datetime": bad})
