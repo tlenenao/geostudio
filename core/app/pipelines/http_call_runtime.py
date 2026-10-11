@@ -210,26 +210,44 @@ def _send_paginated(p, url, headers, kwargs, auth, *, follows_redirects: bool) -
             session=session,
         )
         records: list = []
-        for page_no, page in enumerate(
-            client.paginate(
-                url,
-                method=p.method,
-                headers=headers or None,
-                timeout=p.timeoutSeconds,
-                allow_redirects=follows_redirects,
-                **kwargs,
-            ),
-            1,
-        ):
-            if page_no > cr._max_pages():
-                return _Outcome(error=f"plafond de {cr._max_pages()} pages dépassé")
-            records.extend(page)
-            if len(records) > cr._max_rows():
-                return _Outcome(error=f"plafond de {cr._max_rows()} enregistrements dépassé")
+        seen: list[
+            int
+        ] = []  # statut de chaque réponse (dlt décode le JSON avant de rendre la main)
+        _send = session.send
+
+        def _recording_send(req, **kw):
+            resp = _send(req, **kw)
+            seen.append(resp.status_code)
+            return resp
+
+        session.send = _recording_send  # dlt écrase les hooks de session : on enveloppe send()
+        try:
+            for page_no, page in enumerate(
+                client.paginate(
+                    url,
+                    method=p.method,
+                    headers=headers or None,
+                    timeout=p.timeoutSeconds,
+                    allow_redirects=follows_redirects,
+                    **kwargs,
+                ),
+                1,
+            ):
+                if page_no > cr._max_pages():
+                    return _Outcome(error=f"plafond de {cr._max_pages()} pages dépassé")
+                records.extend(page)
+                if len(records) > cr._max_rows():
+                    return _Outcome(error=f"plafond de {cr._max_rows()} enregistrements dépassé")
+        except ValueError:  # corps non JSON : une redirection non suivie en est la cause usuelle
+            if not (seen and 300 <= seen[-1] < 400 and not follows_redirects):
+                raise
+        code = seen[-1] if seen else 200
+    if 300 <= code < 400 and not follows_redirects:
+        return _Outcome(code, None, error="redirection non suivie")
     body = json.dumps(records, default=str)
     if len(body.encode()) > _max_response_bytes():
         return _Outcome(error="réponse trop volumineuse")
-    return _Outcome(200, body)
+    return _Outcome(code, body)
 
 
 class _RateLimiter:
@@ -273,8 +291,13 @@ def _make_row_caller(p, secret_resolver, preview: bool) -> Callable[[tuple], _Ou
             return _Outcome(error="non exécuté en aperçu", skipped=True)
         if not url:
             return _Outcome(error="URL vide")
-        if scope is not None and not cr._url_within_scope(scope, url):
-            return _Outcome(error="URL hors de la portée du secret")
+        if scope is not None:
+            try:
+                in_scope = cr._url_within_scope(scope, url)
+            except (ValueError, AttributeError, TypeError):  # URL mal formée = hors portée
+                in_scope = False
+            if not in_scope:
+                return _Outcome(error="URL hors de la portée du secret")
 
         def attempt() -> _Outcome:
             headers = {str(k): str(v) for k, v in _as_obj(headers_raw, "headersExpr").items()}
@@ -298,7 +321,7 @@ def _stage(conn, p, input_view: str, stage: str) -> None:
     from app.pipelines.expr_validation import validate_bounded_expr
 
     exprs = {
-        "__http_url": p.urlExpr,
+        "__http_url": f"CAST(({p.urlExpr}) AS VARCHAR)",
         "__http_headers": p.headersExpr or "NULL",
         "__http_body": p.bodyExpr or "NULL",
     }

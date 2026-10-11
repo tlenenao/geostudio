@@ -631,3 +631,65 @@ def test_preview_limits_get_calls(conn, httpserver):
     )
     assert len(hits) == 20
     assert [r[3] for r in rows].count("skipped") == 5
+
+
+def test_malformed_urls_with_secret_are_row_errors_without_request(
+    conn, httpserver, resolver_factory
+):
+    hits = []
+    httpserver.expect_request("/ok").respond_with_handler(
+        lambda r: (hits.append(1), Response("fine"))[1]
+    )
+    base = httpserver.url_for("/")
+    host = base.split("//")[1].split("/")[0].split(":")[0]
+    resolver = resolver_factory(
+        "tok", "bearer_token", {"kind": "bearer_token", "token": "T", "baseUrl": base}
+    )
+    urlexpr = (
+        f"CASE id WHEN 1 THEN 'http://{host}:abc/v1' WHEN 2 THEN 'https://[::1/v1' "
+        f"ELSE '{base}ok' END"
+    )
+    rows = run(conn, {"urlExpr": urlexpr, "secretName": "tok"}, ids=(1, 2, 3), resolver=resolver)
+    assert [r[3:] for r in rows[:2]] == [("error", "URL hors de la portée du secret")] * 2
+    assert rows[2][3:] == ("success", None)
+    assert hits == [1]
+
+
+def test_non_string_url_with_secret_is_out_of_scope(conn, resolver_factory):
+    resolver = resolver_factory(
+        "tok",
+        "bearer_token",
+        {"kind": "bearer_token", "token": "T", "baseUrl": "https://a.example/"},
+    )
+    rows = run(conn, {"urlExpr": "5", "secretName": "tok"}, ids=(1,), resolver=resolver)
+    assert rows[0][3:] == ("error", "URL hors de la portée du secret")
+
+
+def test_paginated_redirect_is_not_followed_with_secret(conn, httpserver, resolver_factory):
+    hits = []
+    base = httpserver.url_for("/")
+    httpserver.expect_request("/pr").respond_with_data(
+        "", status=302, headers={"Location": base + "t"}
+    )
+    httpserver.expect_request("/t").respond_with_handler(
+        lambda r: (hits.append(1), Response("[]", content_type="application/json"))[1]
+    )
+    resolver = resolver_factory(
+        "tok", "bearer_token", {"kind": "bearer_token", "token": "T", "baseUrl": base}
+    )
+    rows = run(
+        conn,
+        {"urlExpr": f"'{base}pr'", "secretName": "tok", "paginator": "page_number"},
+        ids=(1,),
+        resolver=resolver,
+    )
+    assert hits == []
+    assert rows[0][2:] == (302, "error", "redirection non suivie")
+
+
+def test_percent_encoded_dotdot_is_out_of_scope():
+    from app.pipelines.connector_runtime import _url_within_scope
+
+    assert not _url_within_scope(
+        "https://api.allowed.example/v1", "https://api.allowed.example/v1/%2e%2e/admin"
+    )

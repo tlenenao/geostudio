@@ -23,7 +23,7 @@ import tempfile
 import time
 import uuid
 from typing import Protocol
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 import dlt
 import duckdb
@@ -378,7 +378,7 @@ def _url_within_scope(scope: str, url: str) -> bool:
         == (t.scheme, (t.hostname or "").lower(), t.port)
         and t.username is None
         and t_path.startswith(s_path)
-        and ".." not in t.path.split("/")
+        and ".." not in unquote(t.path).split("/")
     )
 
 
