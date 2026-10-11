@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
-import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { apiFor, type Api, getGeoSeed } from "./seeds";
 import { stamp } from "../_fixtures/env";
@@ -58,7 +57,7 @@ test.describe("j06b exécution de pipelines", () => {
   });
 
   // Finding j06b-002 (miroir pipeline de j05-001) : reader.collection lit `geom`, le GeoParquet porte `geometry`.
-  bug("j06b-002 : reader.collection lit une collection à géométrie importée", async () => {
+  test("j06b-002 : reader.collection lit une collection à géométrie importée", async () => {
     const geo = await getGeoSeed();
     const p = await createPipeline(
       creator,
@@ -151,21 +150,18 @@ test.describe("j06b exécution de pipelines", () => {
   });
 
   // Finding j06b-008 : une colonne ajoutée à la table (DBA) n'existe pas dans le GeoParquet → reader en échec.
-  bug(
-    "j06b-008 : colonne ajoutée après l'écriture du GeoParquet → le run ne casse pas",
-    async () => {
-      const col = await createPlainCollection(creator, `${tag}-add`, [["a", 1]]);
-      psql(`ALTER TABLE "${col}" ADD COLUMN extra text`);
-      const p = await createPipeline(
-        creator,
-        `${tag}-add`,
-        [reader(col), exportWriter(`j06b/${tag}-add.csv`)],
-        [edge("r", "w")],
-      );
-      const fin = await runAndWait(p.itemId!);
-      expect(fin.status, fin.error).toBe("succeeded");
-    },
-  );
+  test("j06b-008 : colonne ajoutée après l'écriture du GeoParquet → le run ne casse pas", async () => {
+    const col = await createPlainCollection(creator, `${tag}-add`, [["a", 1]]);
+    psql(`ALTER TABLE "${col}" ADD COLUMN extra text`);
+    const p = await createPipeline(
+      creator,
+      `${tag}-add`,
+      [reader(col), exportWriter(`j06b/${tag}-add.csv`)],
+      [edge("r", "w")],
+    );
+    const fin = await runAndWait(p.itemId!);
+    expect(fin.status, fin.error).toBe("succeeded");
+  });
 
   test("échecs de run lisibles : secret absent, SSRF 169.254.169.254, reader.file (flag éteint)", async () => {
     const W = exportWriter(`j06b/${tag}-fail.csv`);
@@ -236,7 +232,7 @@ test.describe("j06b exécution de pipelines", () => {
   });
 
   // Confirme j06-015 : deux /run successifs créent deux runs simultanés du même pipeline.
-  bug("j06b-006 : un second /run pendant qu'un run est en cours est refusé (409)", async () => {
+  test("j06b-006 : un second /run pendant qu'un run est en cours est refusé (409)", async () => {
     const p = await createPipeline(
       creator,
       `${tag}-double`,

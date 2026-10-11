@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
-import { bug } from "../_fixtures/verify";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -146,40 +145,41 @@ print(json.dumps(out))
     expect(job.body.status).not.toBe("pending");
   });
 
-  // Finding j05b-006 : le job déféré à la main s'exécute mais échoue après 30 s avec une trace
+  // Finding j05b-006 : le job échouait après 30 s avec une trace
   // Playwright brute (le shell embarque VITE_CORE_URL=http://localhost:8200, injoignable depuis
   // export-worker, contrainte documentée dans .env.example mais sans détection ni message).
-  bug(
-    "j05b-006 : un export qui ne peut pas joindre le cœur échoue vite avec un message exploitable",
-    async () => {
-      test.setTimeout(150_000);
-      const creator = await apiFor("creator");
-      const before = new Set(psql("SELECT id FROM export_jobs").split("\n"));
-      await creator.send("POST", "/v1/export", { itemId: seed.eventsItem, format: "png" });
-      const id = psql("SELECT id FROM export_jobs ORDER BY created_at DESC LIMIT 1").trim();
-      expect(before.has(id)).toBe(false);
-      execFileSync(
-        "docker",
-        [
-          "exec",
-          "geostudio-export-worker-1",
-          "python",
-          "-c",
-          "import sys\nfrom app.jobs import app\nfrom app.export.jobs import render_export_task\nwith app.open():\n render_export_task.defer(job_id=sys.argv[1],tenant_id='default')",
-          id,
-        ],
-        { stdio: ["ignore", "ignore", "pipe"] },
-      );
-      let job: any;
-      for (let k = 0; k < 40; k++) {
-        await new Promise((res) => setTimeout(res, 3000));
-        job = (await creator.get(`/v1/export/jobs/${id}`)).body;
-        if (job.status === "done" || job.status === "error") break;
-      }
-      expect(job.status).toBe("done");
-      expect(job.error ?? "").not.toMatch(/wait_for_selector|Call log/);
-    },
-  );
+  test("j05b-006 : un export qui ne peut pas joindre le cœur échoue vite avec un message exploitable", async () => {
+    test.setTimeout(150_000);
+    const creator = await apiFor("creator");
+    const before = new Set(psql("SELECT id FROM export_jobs").split("\n"));
+    await creator.send("POST", "/v1/export", { itemId: seed.eventsItem, format: "png" });
+    const id = psql("SELECT id FROM export_jobs ORDER BY created_at DESC LIMIT 1").trim();
+    expect(before.has(id)).toBe(false);
+    execFileSync(
+      "docker",
+      [
+        "exec",
+        "geostudio-export-worker-1",
+        "python",
+        "-c",
+        "import sys\nfrom app.jobs import app\nfrom app.export.jobs import render_export_task\nwith app.open():\n render_export_task.defer(job_id=sys.argv[1],tenant_id='default')",
+        id,
+      ],
+      { stdio: ["ignore", "ignore", "pipe"] },
+    );
+    let job: any;
+    for (let k = 0; k < 40; k++) {
+      await new Promise((res) => setTimeout(res, 3000));
+      job = (await creator.get(`/v1/export/jobs/${id}`)).body;
+      if (job.status === "done" || job.status === "error") break;
+    }
+    // Stack dont VITE_CORE_URL est joignable depuis export-worker : rien à vérifier ici.
+    test.skip(job.status === "done", "cœur joignable depuis export-worker (stack configurée)");
+    // Sonde de joignabilité (export/jobs.py) : échec franc, message qui nomme la variable.
+    expect(job.status).toBe("error");
+    expect(job.error ?? "").toContain("VITE_CORE_URL");
+    expect(job.error ?? "").not.toMatch(/wait_for_selector|Call log/);
+  });
 
   test("GET /v1/export/jobs/{id} : invisible pour un lecteur sans accès à l'item, 404 sur id inconnu", async () => {
     const creator = await apiFor("creator");
