@@ -21,15 +21,30 @@ def _get(client, path, xff, **extra):
 
 
 def test_route_group_share_token_header_joins_share_link_group():
-    assert route_group("/v1/items", "GET", _EXPORT_PATH_RE, has_share_token=True) == "share-link"
+    assert route_group("/v1/items", "POST", _EXPORT_PATH_RE, has_share_token=True) == "share-link"
+    assert route_group("/v1/items", "GET", _EXPORT_PATH_RE, has_share_token=True) is None
+    assert (
+        route_group(
+            "/v1/collections/c/tiles/1/2/3.pbf", "GET", _EXPORT_PATH_RE, has_share_token=True
+        )
+        is None
+    )
     assert route_group("/v1/items", "GET", _EXPORT_PATH_RE) is None
 
 
 def test_share_token_header_is_rate_limited_per_ip(monkeypatch):
     client = TestClient(_app(monkeypatch), client=("10.1.2.3", 5), raise_server_exceptions=False)
-    for i in range(60):
+    # les GET de lecture (tuiles, items...) ne consomment jamais ce budget (I1)
+    for i in range(120):
         assert _get(client, "/v1/items", "9.9.9.9", **{"X-Share-Link-Token": f"t{i}"}) != 429
-    assert _get(client, "/v1/items", "9.9.9.9", **{"X-Share-Link-Token": "t"}) == 429
+
+    def post(i):
+        headers = {"X-Forwarded-For": "9.9.9.9", "X-Share-Link-Token": f"t{i}"}
+        return client.post("/v1/items", json={}, headers=headers).status_code
+
+    for i in range(60):
+        assert post(i) != 429
+    assert post(99) == 429
     # même groupe que la route publique : le budget est partagé
     assert _get(client, "/v1/share-links/zz", "9.9.9.9") == 429
 
