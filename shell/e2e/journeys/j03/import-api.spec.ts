@@ -1,7 +1,7 @@
-import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { apiFor, fixture, ingest, type Api } from "./api";
 import { psql } from "../j02/helpers";
+import { corePython } from "../j06/helpers";
 
 // Import de fichiers → collection → carte, au niveau API/worker (personas OIDC réelles).
 // Les tests d'import passent par `ingest()` qui rattrape j03-001 (POST /uploads → 500
@@ -41,25 +41,32 @@ test.describe("j03 import — défauts bloquants du chemin nominal", () => {
     expect(r.body.uploadUrl).toMatch(/^http/);
   });
 
-  bug(
-    "j03-003 : un job dont la mise en file a échoué n'est pas laissé « pending » indéfiniment",
-    async () => {
-      // Défaut j03-003 : POST /uploads commite le job puis échoue (j03-001) ; reclaim_stuck_jobs ne
-      // balaie que « running », le job reste « pending » et le shell le sonde sans fin.
-      const key = `default/zombie-${Date.now()}-a.geojson`;
-      await creator.send("POST", "/v1/uploads", {
-        key,
-        filename: "a.geojson",
-        collectionTitle: "aud-j03 zombie",
-      });
-      const job = psql(`SELECT id FROM ingestion_jobs WHERE source_key='${key}'`).trim();
-      // Simule le passage du balayage périodique (ancienneté > seuil) : le job doit alors être en erreur.
-      psql(`UPDATE ingestion_jobs SET updated_at = now() - interval '2 hours' WHERE id='${job}'`);
-      await new Promise((r) => setTimeout(r, 1000));
-      const st = await creator.get(`/v1/uploads/${job}`);
-      expect(st.body.status).not.toBe("pending");
-    },
-  );
+  test("j03-003 : un job resté « pending » au-delà du seuil est clos en erreur par le balayage périodique", async () => {
+    // Compromis assumé (SP-49, P01.04) : pas de reprise immédiate — le balayage `sweep_ingestion_jobs_task`
+    // (cron */15) clôt en « error » tout job pending/running plus vieux que 60 min. On vieillit le job puis
+    // on invoque la même fonction que le balayage, au lieu d'attendre le cron.
+    const key = `default/zombie-${Date.now()}-a.geojson`;
+    await creator.send("POST", "/v1/uploads", {
+      key,
+      filename: "a.geojson",
+      collectionTitle: "aud-j03 zombie",
+    });
+    const job = psql(`SELECT id FROM ingestion_jobs WHERE source_key='${key}'`).trim();
+    psql(
+      `UPDATE ingestion_jobs SET status='pending', updated_at = now() - interval '2 hours' WHERE id='${job}'`,
+    );
+    corePython(
+      [
+        "from app.db import request_scoped_session",
+        "from app.ingestion import repository as r",
+        "from app.jobs.common import session_factory",
+        "with request_scoped_session(session_factory()) as s:",
+        "    r.reclaim_stuck_jobs(s)",
+      ].join("\n"),
+    );
+    const st = await creator.get(`/v1/uploads/${job}`);
+    expect(st.body.status).toBe("error");
+  });
 });
 
 test.describe("j03 import — formats nominaux", () => {
