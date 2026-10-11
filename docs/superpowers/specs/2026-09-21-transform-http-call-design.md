@@ -32,7 +32,7 @@ sont corrigées en conséquence, ce bloc en liste les raisons.
    secret »). Un refus d'egress affiche la chaîne fixe « egress refusé » (jamais l'URL). Une pagination réussie
    rapporte le statut HTTP réel de la dernière page. Le plafond de taille de réponse s'applique aux octets
    décodés. Variables d'env : `CORE_PIPELINES_HTTP_CALL_MAX_ROWS` (10000) et
-   `CORE_PIPELINES_HTTP_CALL_MAX_RESPONSE_BYTES` (5242880).
+   `CORE_PIPELINES_HTTP_CALL_MAX_RESPONSE_BYTES` (5242880) et `CORE_PIPELINES_HTTP_CALL_MAX_TOTAL_BYTES` (268435456).
 2. **Comptes.** Catalogue exposé 58 → 59 op, registre brut `OPERATIONS` 60 → 61 (test
    `test_operations_registry_has_60_entries` → 61 ; le compte exposé est à vérifier par comptage, pas supposé).
 3. **Retry.** Abandon de l'extension `urllib3.Retry` de `egress.py` : le backoff d'urllib3 2.x ne dort pas
@@ -198,8 +198,11 @@ secret_resolver=…)`) — aucune branche `node.op == …`. Les expressions sont
 2. Compter les lignes d'entrée : au-delà de `CORE_PIPELINES_HTTP_CALL_MAX_ROWS` (défaut 10000) → échec du
    nœud (`PipelineRuntimeError`), avant toute requête. Vérifier l'absence de collision entre les 4 noms de
    colonnes de sortie et les colonnes d'entrée (`DESCRIBE`). Créer la table `__stage` (§3) et en lire
-   `__rn` + `__http_*`/`__mp_*` en mémoire Python — **limite assumée** : pas de streaming/batching, borné par le
-   plafond de lignes ci-dessus (un appel réseau par ligne est de toute façon l'axe dominant de lenteur).
+   `__rn` + `__http_*`/`__mp_*` en mémoire Python — **limite assumée** : pas de streaming/batching. Les
+   entrées sont bornées par le plafond de lignes ; les réponses (jusqu'à `MAX_RESPONSE_BYTES` chacune) le sont
+   par un budget cumulé par nœud `CORE_PIPELINES_HTTP_CALL_MAX_TOTAL_BYTES` (défaut 256 Mio) : au-delà, la
+   ligne devient une erreur « budget de réponse dépassé » (corps non conservé, le nœud n'échoue pas). En aperçu :
+   pas de retry et échéance globale `CORE_PIPELINES_PREVIEW_TIMEOUT_S` (lignes restantes ignorées).
 3. Résoudre l'auth une fois (`_resolve_secret` + `_build_auth` de `connector_runtime.py`, réutilisés) — jamais
    par ligne, un seul secret par nœud. Si le secret n'a pas de `baseUrl` → `ConnectorRuntimeError` (échec du
    nœud, REV-294). Par ligne, l'URL doit satisfaire `_url_within_scope(payload.baseUrl, url)` (helper partagé
