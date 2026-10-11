@@ -23,7 +23,7 @@ import tempfile
 import time
 import uuid
 from typing import Protocol
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 import dlt
 import duckdb
@@ -367,6 +367,21 @@ def _resolve_secret(
         raise ConnectorRuntimeError(f"secret '{secret_name}' not found") from None
 
 
+def _url_within_scope(scope: str, url: str) -> bool:
+    """Frontière de segment : même schéma/hôte/port, `url` sous le préfixe de chemin de
+    `scope`, sans identifiants ni `..` (REV-294)."""
+    s, t = urlsplit(scope), urlsplit(url)
+    s_path = s.path.rstrip("/") + "/"
+    t_path = t.path.rstrip("/") + "/"
+    return (
+        (s.scheme, (s.hostname or "").lower(), s.port)
+        == (t.scheme, (t.hostname or "").lower(), t.port)
+        and t.username is None
+        and t_path.startswith(s_path)
+        and ".." not in unquote(t.path).split("/")
+    )
+
+
 def _assert_url_within_secret_scope(payload: SecretPayload | None, params) -> None:
     """REV-294 : le secret REST est LIÉ à `payload.baseUrl` (modèle `bucketUrl`,
     REV-197). `params.baseUrl` doit en être un préfixe (frontière de segment :
@@ -382,23 +397,14 @@ def _assert_url_within_secret_scope(payload: SecretPayload | None, params) -> No
             "edit the secret to set the base URL it is scoped to "
             "(e.g. 'https://api.example.com/v1')"
         )
-    s, t = urlsplit(scope), urlsplit(params.baseUrl)
-    s_path = s.path.rstrip("/") + "/"
-    t_path = t.path.rstrip("/") + "/"
-    within = (
-        (s.scheme, (s.hostname or "").lower(), s.port)
-        == (t.scheme, (t.hostname or "").lower(), t.port)
-        and t.username is None
-        and t_path.startswith(s_path)
-        and ".." not in t.path.split("/")
-    )
+    within = _url_within_scope(scope, params.baseUrl)
     p = urlsplit(params.path)
     if (
         not within
         or p.scheme
         or p.netloc
         or params.path.startswith("//")
-        or ".." in p.path.split("/")
+        or ".." in unquote(p.path).split("/")
     ):
         raise ConnectorRuntimeError(
             f"reader.connector.rest: URL '{params.baseUrl}{params.path}' is outside the "

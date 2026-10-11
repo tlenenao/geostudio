@@ -3,7 +3,12 @@ import pytest
 from pydantic import ValidationError
 
 from app.pipelines.ops.contracts import OP_KINDS, OP_PARAMS, ops_catalog, parse_op_params
-from app.pipelines.ops.schemas import WriterCollectionParams, WriterDatasetParams
+from app.pipelines.ops.schemas import (
+    MultipartField,
+    TransformHttpCallParams,
+    WriterCollectionParams,
+    WriterDatasetParams,
+)
 
 
 def test_all_eight_phase1_ops_are_registered():
@@ -159,6 +164,7 @@ def test_all_known_ops_are_registered():
         "transform.exposeAttributes",
         "transform.validateAttributes",
         "transform.sort",
+        "transform.httpCall",
         "transform.detectChanges",
         "transform.mergeChildren",
         "transform.mapSchema",
@@ -612,3 +618,64 @@ def test_op_tooltip_descriptions_hide_developer_jargon(op):
     assert any(marker in model.__doc__ for marker in _DEV_JARGON_MARKERS), (
         f"{op}: expected the full class docstring to retain developer detail"
     )
+
+
+def _http(**over):
+    return TransformHttpCallParams(urlExpr="'https://x.example/'", **over)
+
+
+def test_http_call_defaults():
+    p = _http()
+    assert (p.method, p.bodyType, p.paginator) == ("GET", "none", "none")
+    assert (p.maxConcurrency, p.maxRetries, p.timeoutSeconds) == (1, 3, 30.0)
+    assert (p.responseColumn, p.statusCodeColumn, p.statusColumn, p.errorColumn) == (
+        "responseBody",
+        "httpStatusCode",
+        "httpStatus",
+        "httpError",
+    )
+
+
+@pytest.mark.parametrize("body_type", ["json", "form", "raw"])
+def test_http_call_body_expr_required_for_body_types(body_type):
+    with pytest.raises(ValidationError, match="bodyExpr"):
+        _http(bodyType=body_type)
+
+
+def test_http_call_multipart_requires_fields():
+    with pytest.raises(ValidationError, match="multipartFields"):
+        _http(bodyType="multipart")
+    _http(bodyType="multipart", multipartFields=[MultipartField(name="f", valueExpr="1")])
+
+
+def test_http_call_output_columns_must_be_distinct():
+    with pytest.raises(ValidationError, match="distinct"):
+        _http(responseColumn="x", errorColumn="x")
+
+
+def test_http_call_paginator_restrictions():
+    with pytest.raises(ValidationError, match="GET ou POST"):
+        _http(paginator="offset", method="PUT", paginatorConfig={"limit": 10})
+    with pytest.raises(ValidationError, match="multipart"):
+        _http(
+            paginator="page_number",
+            bodyType="multipart",
+            multipartFields=[MultipartField(name="f", valueExpr="1")],
+        )
+
+
+@pytest.mark.parametrize(
+    "over",
+    [
+        {"maxRetries": 11},
+        {"maxConcurrency": 0},
+        {"maxConcurrency": 17},
+        {"timeoutSeconds": 0},
+        {"timeoutSeconds": 121},
+        {"requestsPerSecond": 0},
+        {"initialBackoffSeconds": 61},
+    ],
+)
+def test_http_call_numeric_bounds(over):
+    with pytest.raises(ValidationError):
+        _http(**over)

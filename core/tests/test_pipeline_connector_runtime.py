@@ -251,6 +251,7 @@ def _run_rest(conn, session, tenant, user, **params):
         ("http://localhost:1/api/", "http://evil.example/x"),  # URL absolue dans path
         ("http://localhost:1/api/", "//evil.example/x"),
         ("http://localhost:1/api/", "../other"),
+        ("http://localhost:1/api/", "%2e%2e/admin"),
     ],
 )
 def test_rest_secret_refuses_url_outside_secret_scope(

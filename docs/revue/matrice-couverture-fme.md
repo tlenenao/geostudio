@@ -7,10 +7,10 @@
 | Statut | Nombre |
 |---|---|
 | `capability_removed` | 7 |
-| `implemented` | 109 |
+| `implemented` | 110 |
 | `license_blocked` | 10 |
 | `out_of_scope` | 25 |
-| `planned_duckdb` | 51 |
+| `planned_duckdb` | 50 |
 | `planned_gdal` | 55 |
 | `planned_otb` | 3 |
 | `planned_pdal` | 16 |
@@ -21,11 +21,12 @@
 
 | Moteur | Nombre |
 |---|---|
-| `duckdb` | 160 |
+| `duckdb` | 159 |
 | `gdal` | 59 |
 | `n/a` | 49 |
 | `otb` | 3 |
 | `pdal` | 17 |
+| `python` | 1 |
 | `rust:encoding_rs` | 2 |
 
 ## Détail par catégorie
@@ -367,7 +368,7 @@ Sommaire : [Attribute](#attribute) · [Coordinate System](#coordinate-system) ·
 |---|---|---|---|---|---|---|
 | EnvironmentVariableFetcher |  | n/a |  | `out_of_scope` | niche | Exposer les variables d'environnement du conteneur/hôte à un pipeline no-code auteuré par un tenant serait une violation de cloisonnement multi-tenant — même posture produit que le coffre de secrets AES-GCM dédié (SP-15e) qui évite précisément d'exposer des valeurs serveur brutes à l'utilisateur final. |
 | FeatureHolder |  | n/a |  | `out_of_scope` | niche | Sans objet dans le modèle d'exécution de GeoStudio : chaque nœud transform est compilé en une TEMP VIEW SQL exécutée sur un résultat déjà entièrement matérialisé par le nœud précédent (core/app/pipelines/compiler.py) — contrairement au moteur de streaming feature-par-feature de FME, il n'existe ici aucune notion d'arrivée partielle contre laquelle se prémunir. Rien à combler. |
-| HTTPCaller |  | duckdb |  | `planned_duckdb` | courant | reader.connector.rest (dlt) ne lit qu'une fois en tête de pipeline via une garde d'egress SSRF vérifiée au démarrage — un appel HTTP par ligne au milieu du pipeline (comme HTTPCaller) poserait une garde d'egress structurellement différente (un budget/débit par ligne plutôt qu'un contrôle unique sur l'URL de lecture), pas seulement une nouvelle capacité de connecteur. Techniquement rattachable au patron connector_runtime.py existant (dlt/Python au-dessus du DAG DuckDB), engine=duckdb par cohérence avec les autres readers/writers connecteurs de ce dépôt. |
+| HTTPCaller | transform.httpCall | python | Apache-2.0 (requests) + Apache-2.0 (dlt) | `implemented` | courant | Op transform.httpCall (execute à contexte runtime : secrets + aperçu) : un appel HTTP par ligne, retry maison exponentiel/Retry-After (pas urllib3.Retry), pagination agrégée en une ligne (dlt), corps none/json/form/raw/multipart, concurrence et débit bornés, erreurs par ligne (httpStatus success/error/skipped). Secret REST lié à baseUrl : l'URL de chaque ligne doit être dans sa portée (REV-294), redirections non suivies. Aperçu limité aux GET sur les 20 premières lignes. |
 | Inspector |  | n/a |  | `out_of_scope` | courant | Outil de débogage propre au bureau FME Workbench en mode interactif — GeoStudio a son propre équivalent d'auteurage (canvas DAG + panneau d'exécution du builder de pipeline, SP-15), pas un op du pipeline lui-même. |
 | Junction | transform.merge | duckdb |  | `implemented` | courant | Pour 2 entrées (cas dominant), transform.merge (UNION ALL BY NAME, core/app/pipelines/ops/schemas.py::TransformMergeParams) reproduit exactement la sémantique de pur pass-through/fusion de Junction. Pour N>2 entrées, s'obtient en chaînant N-1 nœuds transform.merge successifs — une simple composition linéaire, aucune limite de topologie (chaque merge garde un seul prédécesseur primaire + un secondaire). |
 | Logger |  | n/a |  | `out_of_scope` | niche | Outil d'aide au débogage pendant l'auteurage interactif dans FME Workbench — un pipeline GeoStudio est un DAG déclaratif exécuté de façon headless (file procrastinate), sans notion de journal de traduction utilisateur par nœud à ce niveau. Observabilité déjà couverte par ailleurs (OTel, SP-10). |
