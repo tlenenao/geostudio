@@ -657,3 +657,45 @@ test("suit ?type= quand il change après une navigation (DomainBar) sans remonte
 
   await waitFor(() => expect(screen.getByLabelText("Type")).toHaveValue("dataset"));
 });
+
+test("filtre par statut de contenu (status=) et badge Référence/Déprécié sur la carte (ARC-05)", async () => {
+  let lastUrl = "";
+  server.use(
+    http.get("https://core.test/v1/items/facets", () =>
+      HttpResponse.json({
+        owners: [],
+        keywords: [],
+        statuses: [
+          { status: "none", count: 4 },
+          { status: "authoritative", count: 2 },
+        ],
+      }),
+    ),
+    http.get("https://core.test/v1/items", ({ request }) => {
+      lastUrl = request.url;
+      const base = { resourceType: "map", abstract: "", owner: "a", thumbnailUrl: null };
+      return HttpResponse.json({
+        items: [
+          { ...base, pk: "r", title: "Réf", contentStatus: "authoritative" },
+          { ...base, pk: "d", title: "Vieux", contentStatus: "deprecated" },
+          { ...base, pk: "n", title: "Normal", contentStatus: "none" },
+        ],
+        total: 3,
+        page: 1,
+        pageSize: 12,
+      });
+    }),
+  );
+  render(<CatalogPage onOpenItem={() => {}} />, { wrapper });
+  expect(await screen.findByText("Référence", { selector: "span" })).toBeTruthy();
+  expect(screen.getByText("Déprécié", { selector: "span" })).toBeTruthy();
+  expect(screen.getAllByText("Référence", { selector: "span" })).toHaveLength(1);
+  const select = screen.getByLabelText("Statut") as HTMLSelectElement;
+  await waitFor(() =>
+    expect(Array.from(select.querySelectorAll("option")).map((o) => o.textContent)).toContain(
+      "Référence (2)",
+    ),
+  );
+  await userEvent.selectOptions(select, "authoritative");
+  await waitFor(() => expect(new URL(lastUrl).searchParams.get("status")).toBe("authoritative"));
+});

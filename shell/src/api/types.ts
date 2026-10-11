@@ -36,11 +36,17 @@ export type Item = {
   keywords?: string[];
   license: string;
   language: string;
+  // ARC-05 : statut de contenu et catégories (optionnels : absents des items
+  // construits localement, "none"/[] côté cœur).
+  contentStatus?: ContentStatus;
+  categories?: string[];
   // D18 : emprise spatiale de l'item (SP-55), consommée par l'auto-cadrage
   // de l'éditeur de carte autonome (MapEditorPage) — cf. `fitBounds`.
   bbox?: [number, number, number, number] | null;
   permissions: ItemPermissions;
 };
+
+export type ContentStatus = "none" | "authoritative" | "deprecated";
 
 export type ItemPage = {
   items: Item[];
@@ -271,11 +277,17 @@ export type ListItemsParams = {
   owner?: string;
   keywords?: string[];
   bbox?: string; // "minLon,minLat,maxLon,maxLat"
+  status?: ContentStatus;
 };
 
 export type OwnerFacet = { username: string; count: number };
 export type KeywordFacet = { keyword: string; count: number };
-export type ItemFacets = { owners: OwnerFacet[]; keywords: KeywordFacet[] };
+export type StatusFacet = { status: ContentStatus; count: number };
+export type ItemFacets = {
+  owners: OwnerFacet[];
+  keywords: KeywordFacet[];
+  statuses?: StatusFacet[];
+};
 
 export type UpdatePatch = {
   title?: string;
@@ -285,6 +297,8 @@ export type UpdatePatch = {
   slug?: string;
   license?: string;
   language?: string;
+  contentStatus?: ContentStatus;
+  categories?: string[];
   // REV-317 : `updatedAt` lu par l'éditeur ; envoyé en `If-Match` (jamais dans
   // le corps) -> 412 si l'item a changé depuis.
   baseUpdatedAt?: string;
@@ -523,7 +537,7 @@ export type PageParams = { limit?: number; offset?: number };
 export interface ItemClient {
   listItems(params?: ListItemsParams): Promise<ItemPage>;
   getItemFacets(
-    params?: Pick<ListItemsParams, "q" | "type" | "scope" | "owner">,
+    params?: Pick<ListItemsParams, "q" | "type" | "scope" | "owner" | "status">,
   ): Promise<ItemFacets>;
   getItem(pk: string): Promise<Item>;
   getItemBySlug(slug: string): Promise<Item>;
