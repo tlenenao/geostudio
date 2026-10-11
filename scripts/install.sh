@@ -342,6 +342,23 @@ prompt_public_host
 export GEOSTUDIO_PUBLIC_HOST="$PUBLIC_HOST"
 set_env_var GEOSTUDIO_PUBLIC_HOST "$PUBLIC_HOST"
 
+configure_core_env() {
+  # REV-315 : .env.example copie CORE_ENV=development (dev local), ce qui
+  # neutralise la garde S3 du cœur (require_public_s3_endpoint) ; un hôte
+  # public non local doit donc produire un .env de production.
+  case "$PUBLIC_HOST" in
+    localhost|127.*|::1|*.localhost)
+      echo "⚠ Hôte local (${PUBLIC_HOST}) : CORE_ENV=development conservé — ne pas exposer cette instance." >&2
+      ;;
+    *)
+      set_env_var CORE_ENV production
+      echo "✓ CORE_ENV=production"
+      ;;
+  esac
+}
+
+configure_core_env
+
 activate_funnel() {
   echo "Activation de Tailscale Funnel (accès public sans port ouvert)..."
   $COMPOSE exec -T tunnel tailscale funnel --bg 80
