@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { configure, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
@@ -12,6 +12,9 @@ import { ItemClientProvider } from "../api/ItemClientProvider";
 import { ToastProvider } from "../ui/kit/ToastProvider";
 import { AppRoutes } from "./routes";
 import type { AuthState } from "../auth/useAuth";
+
+// Routes en lazy() : le premier rendu charge tout l'arbre, > 1 s sous couverture/charge.
+configure({ asyncUtilTimeout: 5000 });
 
 const authState: AuthState = {
   isLoading: false,

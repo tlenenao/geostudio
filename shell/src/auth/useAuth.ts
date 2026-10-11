@@ -38,6 +38,6 @@ const MOCK_STATE: AuthState = {
 export function useAuth(): AuthState {
   const ctx = useContext(AuthContext);
   if (mockMode) return MOCK_STATE;
-  if (!ctx) throw new Error("useAuth doit être appelé sous <AuthProvider>");
+  if (!ctx) throw new Error("useAuth must be called under <AuthProvider>");
   return ctx;
 }
