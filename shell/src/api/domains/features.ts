@@ -8,8 +8,10 @@ async function requestFeatureWrite<T>(
   url: string,
   method: string,
   body?: GeoJSONFeatureInput,
+  ifMatch?: string,
 ): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (ifMatch) headers["If-Match"] = ifMatch;
   const res = await authFetch(url, {
     method,
     headers,
@@ -30,7 +32,12 @@ async function requestFeatureWrite<T>(
 
 type FeaturesMethods = Pick<
   ItemClient,
-  "getCollection" | "getCollectionPermission" | "createFeature" | "updateFeature" | "deleteFeature"
+  | "getCollection"
+  | "getCollectionPermission"
+  | "createFeature"
+  | "updateFeature"
+  | "deleteFeature"
+  | "getFeature"
 >;
 
 export function createFeaturesMethods(base: ItemClientBase): FeaturesMethods {
@@ -64,21 +71,40 @@ export function createFeaturesMethods(base: ItemClientBase): FeaturesMethods {
       collectionId: string,
       fid: string,
       feature: GeoJSONFeatureInput,
+      opts?: { ifMatch?: string },
     ): Promise<void> {
       await requestFeatureWrite<void>(
         authFetch,
         `${coreUrl}/collections/${collectionId}/items/${fid}`,
         "PUT",
         feature,
+        opts?.ifMatch,
       );
     },
 
-    async deleteFeature(collectionId: string, fid: string): Promise<void> {
+    async deleteFeature(
+      collectionId: string,
+      fid: string,
+      opts?: { ifMatch?: string },
+    ): Promise<void> {
       await requestFeatureWrite<void>(
         authFetch,
         `${coreUrl}/collections/${collectionId}/items/${fid}`,
         "DELETE",
+        undefined,
+        opts?.ifMatch,
       );
+    },
+
+    async getFeature(collectionId: string, fid: string) {
+      const res = await authFetch(`${coreUrl}/collections/${collectionId}/items/${fid}`);
+      if (!res.ok) throw await parseErrorResponse(res);
+      const f = (await res.json()) as {
+        id: string | number;
+        properties: Record<string, unknown>;
+        geometry: unknown;
+      };
+      return { ...f, etag: res.headers.get("ETag") };
     },
   };
 }

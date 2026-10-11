@@ -9,7 +9,7 @@ from botocore.exceptions import ClientError
 from fastapi.testclient import TestClient
 
 from app import db
-from app.auth.dependency import get_current_user
+from app.auth.dependency import get_current_user, get_current_user_optional
 from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig, Tileset3DPayload
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
@@ -94,6 +94,7 @@ def env(monkeypatch):
     fake_s3 = _FakeS3Client()
     app.dependency_overrides[db.get_session] = override_session
     app.dependency_overrides[get_current_user] = lambda: alice
+    app.dependency_overrides[get_current_user_optional] = lambda: alice
     app.dependency_overrides[ingestion_routes.get_s3_client] = lambda: fake_s3
     deferred: list[tuple[str, str]] = []
     app.dependency_overrides[tileset3d_routes.get_task_deferrer] = lambda: (
@@ -224,6 +225,7 @@ def test_presign_part_404_for_a_job_owned_by_another_user(env):
     ).json()["jobId"]
     app = client.app
     app.dependency_overrides[get_current_user] = lambda: bob
+    app.dependency_overrides[get_current_user_optional] = lambda: bob
     r = client.post(f"/v1/tileset3d/uploads/{job_id}/parts/1/presign")
     assert r.status_code == 404, r.text
 
@@ -245,6 +247,7 @@ def test_complete_upload_404_for_a_job_owned_by_another_user(env):
         "/v1/tileset3d/uploads", json={"filename": "city.zip", "title": "Ville"}
     ).json()["jobId"]
     client.app.dependency_overrides[get_current_user] = lambda: bob
+    client.app.dependency_overrides[get_current_user_optional] = lambda: bob
     r = client.post(
         f"/v1/tileset3d/uploads/{job_id}/complete",
         json={"parts": [{"partNumber": 1, "etag": '"abc"'}]},
@@ -341,6 +344,7 @@ def test_get_upload_job_404_for_a_job_owned_by_another_user(env):
     ).json()["jobId"]
     assert client.get(f"/v1/tileset3d/uploads/{job_id}").status_code == 200
     client.app.dependency_overrides[get_current_user] = lambda: bob
+    client.app.dependency_overrides[get_current_user_optional] = lambda: bob
     assert client.get(f"/v1/tileset3d/uploads/{job_id}").status_code == 404
 
 

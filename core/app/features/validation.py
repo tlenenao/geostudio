@@ -39,6 +39,17 @@ def _type_ok(col: ColumnInfo, value) -> bool:
     return False  # enum géré à part ; unsupported refusé à part
 
 
+def geometry_type_accepted(layer_type: str | None, geometry: dict) -> bool:
+    """REV-352 : couche mixte (GEOMETRY) = tout type ; X <-> MultiX accepté (promotion
+    à l'écriture par `_geometry_sql` ; MultiX sur couche X : une seule partie)."""
+    gtype = geometry.get("type")
+    if layer_type in (None, "GEOMETRY") or gtype == layer_type:
+        return True
+    if gtype == f"Multi{layer_type}":
+        return len(geometry.get("coordinates") or []) == 1
+    return layer_type == f"Multi{gtype}"
+
+
 def validate_feature(info: TableInfo, feature: dict) -> list[dict]:
     if not isinstance(feature, dict) or feature.get("type") != "Feature":
         return [_err("", "invalid_feature", "payload must be a GeoJSON Feature")]
@@ -82,6 +93,6 @@ def validate_feature(info: TableInfo, feature: dict) -> list[dict]:
             errors.append(
                 _err("geometry", "unexpected_geometry", "collection has no geometry column")
             )
-        elif geometry.get("type") != info.geometry_type:
+        elif not geometry_type_accepted(info.geometry_type, geometry):
             errors.append(_err("geometry", "geometry_mismatch", f"expected {info.geometry_type}"))
     return errors

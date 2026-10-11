@@ -7,6 +7,7 @@ import { useItemClient } from "../../api/ItemClientProvider";
 import { useInstanceInfo } from "../../api/hooks";
 import { useBusAction } from "../ActionBusContext";
 import { FeatureValidationError } from "../../api/itemClient";
+import { ApiError } from "../../api/ApiError";
 import type { CollectionSchema, DataRecord, DataSource } from "../../api/types";
 import type { WidgetContext } from "../registry";
 import { plural, t } from "../../i18n";
@@ -538,6 +539,9 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
   const [genericError, setGenericError] = useState(false);
+  // ARC-04 : ETag de l'enregistrement en cours d'édition (If-Match) ; conflit = 412.
+  const [etag, setEtag] = useState<string | null>(null);
+  const [conflict, setConflict] = useState(false);
   const [editingId, setEditingId] = useState<string | number | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   // Résumé d'erreurs figé à la soumission (REV-223) : ne se recalcule pas à chaque frappe,
@@ -574,7 +578,9 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
         geometry: input.geometry,
       };
       if (editingId !== null) {
-        await client.updateFeature(collectionId, String(editingId), feature);
+        const args = [collectionId, String(editingId), feature] as const;
+        if (etag) await client.updateFeature(...args, { ifMatch: etag });
+        else await client.updateFeature(...args);
       } else {
         await client.createFeature(collectionId, feature);
       }
@@ -582,7 +588,10 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
   });
 
   const remove = useMutation({
-    mutationFn: () => client.deleteFeature(collectionId, String(editingId)),
+    mutationFn: () =>
+      etag
+        ? client.deleteFeature(collectionId, String(editingId), { ifMatch: etag })
+        : client.deleteFeature(collectionId, String(editingId)),
   });
 
   async function handleDelete() {
@@ -600,7 +609,30 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     }
   }
 
+  // Lit l'état serveur de l'enregistrement : ETag + valeurs à jour (client sans
+  // `getFeature` ou lecture en échec : on garde ce qui est affiché, sans If-Match).
+  async function syncFromServer(fid: string | number, applyValues: boolean) {
+    if (!client.getFeature) return;
+    try {
+      const f = await client.getFeature(collectionId, String(fid));
+      setEtag(f.etag);
+      if (applyValues) {
+        setValues({ ...f.properties });
+        setLoadedGeometry(f.geometry ?? null);
+        const g = f.geometry as { type?: string; coordinates?: number[] } | null;
+        if (geometryType === "Point" && g?.type === "Point" && Array.isArray(g.coordinates)) {
+          setLon(String(g.coordinates[0]));
+          setLat(String(g.coordinates[1]));
+        }
+      }
+    } catch {
+      setEtag(null);
+    }
+  }
+
   function resetTo() {
+    setEtag(null);
+    setConflict(false);
     setValues({});
     setTouched({});
     setServerErrors({});
@@ -618,6 +650,9 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     const record = payload as DataRecord | undefined;
     if (!record) return;
     setEditingId(record.id);
+    setConflict(false);
+    setEtag(null);
+    void syncFromServer(record.id, true);
     setValues({ ...record.properties });
     setTouched({});
     setServerErrors({});
@@ -676,9 +711,16 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
       ctx.bus?.emit(ctx.widgetId ?? "", "submitted", { properties });
       if (editingId === null) {
         resetTo();
+      } else {
+        void syncFromServer(editingId, false);
       }
     } catch (err) {
-      if (err instanceof FeatureValidationError) {
+      if (err instanceof ApiError && err.status === 412 && editingId !== null) {
+        // ARC-04 : modifié ailleurs depuis la lecture — message + rechargement des valeurs.
+        setConflict(true);
+        void syncFromServer(editingId, true);
+        void queryClient.invalidateQueries({ queryKey: ["datasource"] });
+      } else if (err instanceof FeatureValidationError) {
         const byField: Record<string, string> = {};
         err.errors.forEach((fe) => {
           byField[fe.field] = fe.message;
@@ -855,6 +897,11 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
           {t("widgetForm.reset")}
         </button>
       </div>
+      {conflict && (
+        <p role="alert" className="text-xs text-danger">
+          {t("widgetForm.conflict")}
+        </p>
+      )}
       {genericError && (
         <p role="alert" className="text-xs text-danger">
           {t("widgetForm.saveFailed")}

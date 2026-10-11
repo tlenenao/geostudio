@@ -11,6 +11,7 @@ import type { CollectionSchema, DataSource, ItemClient } from "../../api/types";
 import type { WidgetContext } from "../registry";
 import { ActionBus } from "../ActionBus";
 import { FeatureValidationError } from "../../api/itemClient";
+import { ApiError } from "../../api/ApiError";
 import { t } from "../../i18n";
 import type { FormField } from "./form";
 import { expectTokenizedClasses } from "../../ui/kit/testUtils";
@@ -1351,4 +1352,58 @@ test("REV-223 : le résumé est figé à la soumission (pas recalculé à chaque
   expect(within(after).getAllByRole("link")).toHaveLength(2);
   await userEvent.click(screen.getByRole("button", { name: "Réinitialiser" }));
   expect(screen.queryByRole("alert", { name: /champs à corriger/i })).not.toBeInTheDocument();
+});
+
+// ARC-04 : If-Match + conflit 412
+const editBus = () => {
+  const bus = new ActionBus();
+  bus.configure([
+    { id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" },
+  ]);
+  return bus;
+};
+
+test("editing sends If-Match with the ETag read at load time", async () => {
+  const bus = editBus();
+  const updateFeature = vi.fn().mockResolvedValue(undefined);
+  const getFeature = vi.fn().mockResolvedValue({
+    id: 7,
+    properties: { titre: "Fuite existante", gravite: "moyenne" },
+    geometry: null,
+    etag: '"v1"',
+  });
+  renderConnectedForm({ client: { updateFeature, getFeature }, bus });
+  bus.emit("table1", "itemSelected", { id: 7, properties: { titre: "Fuite existante" } });
+  await waitFor(() => expect(getFeature).toHaveBeenCalledWith("incidents", "7"));
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() =>
+    expect(updateFeature).toHaveBeenCalledWith("incidents", "7", expect.anything(), {
+      ifMatch: '"v1"',
+    }),
+  );
+});
+
+test("a 412 shows the conflict message and reloads the up-to-date values", async () => {
+  const bus = editBus();
+  const updateFeature = vi.fn().mockRejectedValue(new ApiError(412));
+  const getFeature = vi
+    .fn()
+    .mockResolvedValueOnce({
+      id: 7,
+      properties: { titre: "Version 1", gravite: "moyenne" },
+      geometry: null,
+      etag: '"v1"',
+    })
+    .mockResolvedValue({
+      id: 7,
+      properties: { titre: "Version d'un collègue", gravite: "moyenne" },
+      geometry: null,
+      etag: '"v2"',
+    });
+  renderConnectedForm({ client: { updateFeature, getFeature }, bus });
+  bus.emit("table1", "itemSelected", { id: 7, properties: { titre: "Version 1" } });
+  await screen.findByDisplayValue("Version 1");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  expect(await screen.findByText(t("widgetForm.conflict"))).toBeInTheDocument();
+  expect(await screen.findByDisplayValue("Version d'un collègue")).toBeInTheDocument();
 });

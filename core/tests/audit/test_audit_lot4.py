@@ -9,7 +9,7 @@ import yaml
 
 from app.collections.introspection import ColumnInfo, TableInfo
 from app.configs.schemas import MapLayer, PopupConfig
-from app.features.routes import _parse_bbox
+from app.features.routes import parse_bbox
 from app.features.validation import validate_feature
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
@@ -30,32 +30,24 @@ def _feat(geom):
     return {"type": "Feature", "properties": {}, "geometry": geom}
 
 
-@pytest.mark.xfail(
-    strict=True, reason="REV-audit: collection GEOMETRY mixte refuse tout type (validation.py:85)"
-)
 def test_mixed_geometry_collection_accepts_point():
     errs = validate_feature(_info("GEOMETRY"), _feat({"type": "Point", "coordinates": [0, 0]}))
     assert errs == []
 
 
-@pytest.mark.xfail(
-    strict=True, reason="REV-audit: Polygon vs MultiPolygon sans promotion (validation.py:85)"
-)
 def test_polygon_collection_accepts_multipolygon():
     geom = {"type": "MultiPolygon", "coordinates": [[[[0, 0], [1, 0], [1, 1], [0, 0]]]]}
     assert validate_feature(_info("Polygon"), _feat(geom)) == []
 
 
-@pytest.mark.xfail(strict=True, reason="REV-audit: bbox lat>90 non rejeté (routes.py:169)")
 def test_bbox_out_of_range_rejected():
     with pytest.raises(Exception):  # noqa: B017
-        _parse_bbox("0,0,1,95")
+        parse_bbox("0,0,1,95")
 
 
-@pytest.mark.xfail(strict=True, reason="REV-audit: bbox NaN non rejeté (routes.py:169)")
 def test_bbox_nan_rejected():
     with pytest.raises(Exception):  # noqa: B017
-        _parse_bbox("nan,0,1,1")
+        parse_bbox("nan,0,1,1")
 
 
 @pytest.mark.xfail(
@@ -78,13 +70,9 @@ def test_install_sets_capability_flag(flag):
     assert re.search(rf"set_env_var\s+{flag}\b", src)
 
 
-@pytest.mark.xfail(strict=True, reason="REV-audit: MapLayer.timeField rejeté 422 (schemas.py:122)")
 def test_maplayer_accepts_timefield():
     MapLayer.model_validate({"id": "l", "title": "t", "kind": "vector", "timeField": "d"})
 
 
-@pytest.mark.xfail(
-    strict=True, reason="REV-audit: PopupConfig.attachmentField rejeté 422 (schemas.py:113)"
-)
 def test_popupconfig_accepts_attachmentfield():
     PopupConfig.model_validate({"attachmentField": "f"})
