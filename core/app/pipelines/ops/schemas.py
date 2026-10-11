@@ -665,3 +665,60 @@ class TransformMinimumBoundingCircleParams(BaseModel):
     conservées ; vide = un seul cercle global."""
 
     groupBy: list[str] = Field(default_factory=list)
+
+
+class MultipartField(BaseModel):
+    """Champ d'un corps `multipart/form-data`. `valueExpr` est une expression SQL DuckDB bornée ;
+    avec `isFile=True`, sa valeur (BLOB ou texte) est envoyée comme fichier."""
+
+    name: str
+    valueExpr: str
+    isFile: bool = False
+    filename: str | None = None
+    contentType: str | None = None
+
+
+class TransformHttpCallParams(BaseModel):
+    """Appelle un service HTTP une fois par ligne d'entrée et ajoute la réponse en colonnes
+    (corps, code HTTP, statut, erreur). L'URL, les en-têtes et le corps sont des expressions SQL
+    évaluées sur chaque ligne ; l'authentification vient d'un secret (clé API, jeton, identifiants,
+    OAuth2) dont l'URL de base doit couvrir chaque URL appelée. Réessaie sur délai dépassé/5xx/429
+    (en respectant `Retry-After`), borne la concurrence et le débit ; un échec est consigné sur sa
+    ligne sans interrompre l'exécution. Avec une pagination, toutes les pages sont agrégées en un
+    tableau JSON dans la colonne de réponse. En aperçu, seuls des GET sont exécutés."""
+
+    urlExpr: str
+    method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"] = "GET"
+    headersExpr: str | None = None
+    bodyType: Literal["none", "json", "form", "raw", "multipart"] = "none"
+    bodyExpr: str | None = None
+    multipartFields: list[MultipartField] = Field(default_factory=list)
+    secretName: str | None = Field(default=None, json_schema_extra={"format": "secret-name"})
+    paginator: Literal["none", "page_number", "offset", "cursor"] = "none"
+    paginatorConfig: dict[str, Any] = Field(default_factory=dict)
+    recordsPath: str | None = None
+    maxConcurrency: int = Field(default=1, ge=1, le=16)
+    requestsPerSecond: float | None = Field(default=None, gt=0)
+    maxRetries: int = Field(default=3, ge=0, le=10)
+    initialBackoffSeconds: float = Field(default=1.0, ge=0, le=60)
+    timeoutSeconds: float = Field(default=30.0, gt=0, le=120)
+    responseColumn: str = "responseBody"
+    statusCodeColumn: str = "httpStatusCode"
+    statusColumn: str = "httpStatus"
+    errorColumn: str = "httpError"
+
+    @model_validator(mode="after")
+    def _check(self) -> "TransformHttpCallParams":
+        if self.bodyType in {"json", "form", "raw"} and not self.bodyExpr:
+            raise ValueError(f"bodyExpr est requis pour bodyType={self.bodyType!r}")
+        if self.bodyType == "multipart" and not self.multipartFields:
+            raise ValueError("multipartFields est requis pour bodyType='multipart'")
+        outs = [self.responseColumn, self.statusCodeColumn, self.statusColumn, self.errorColumn]
+        if len(set(outs)) != 4:
+            raise ValueError("les 4 colonnes de sortie doivent être distinctes")
+        if self.paginator != "none":
+            if self.method not in {"GET", "POST"}:
+                raise ValueError("une pagination exige la méthode GET ou POST")
+            if self.bodyType == "multipart":
+                raise ValueError("une pagination est incompatible avec bodyType='multipart'")
+        return self
