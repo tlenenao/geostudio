@@ -3160,3 +3160,76 @@ def test_failing_node_gives_business_message_without_duckdb_internals(tmp_path, 
     assert "'f'" in msg and "colonne_inconnue" in msg
     for internal in ("LINE 1", "node_f", "Binder Error", "erreur interne"):
         assert internal not in msg
+
+
+def test_run_pipeline_transform_http_call_end_to_end(tmp_path, monkeypatch, httpserver):
+    # reader.collection -> transform.httpCall -> writer.export (csv), session=None : prouve que le
+    # dispatch `needs_runtime_context` est atteint de bout en bout sans session SQL.
+    from app.pipelines import egress as pipelines_egress
+
+    monkeypatch.setattr(pipelines_egress, "assert_egress_allowed", lambda url: None)
+    _write_partition(tmp_path, rows=[_row(1, "Nord", 10), _row(2, "Sud", 5)])
+    monkeypatch.setattr(
+        runtime,
+        "_table_info_for_collection",
+        lambda session, collection_id: _table_info_for(collection_id),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: collection_id,
+    )
+    httpserver.expect_request("/items/1").respond_with_data("un")
+    httpserver.expect_request("/items/2").respond_with_data("deux")
+    from app.configs.schemas import PipelinePayload
+
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "villes"},
+                },
+                {
+                    "id": "h1",
+                    "kind": "transform",
+                    "op": "transform.httpCall",
+                    "params": {"urlExpr": f"'{httpserver.url_for('/items/')}' || id"},
+                },
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.export",
+                    "params": {"format": "csv", "key": "out.csv"},
+                },
+            ],
+            "edges": [
+                {"id": "e1", "from": "r1", "to": "h1"},
+                {"id": "e2", "from": "h1", "to": "w1"},
+            ],
+        }
+    )
+    fake_s3 = _FakeS3()
+
+    stats = runtime.run_pipeline(
+        None,
+        payload=payload,
+        tenant_id="t1",
+        user=None,
+        endpoint_url="http://localhost:9000",
+        access_key="x",
+        secret_key="y",
+        base_uri=str(tmp_path),
+        s3_client=fake_s3,
+        exports_bucket="exports",
+    )
+
+    assert any(stat.op == "transform.httpCall" and stat.rowCount == 2 for stat in stats)
+    reader = csv.reader(io.StringIO(fake_s3.calls[0]["Body"].decode("utf-8")))
+    header = next(reader)
+    rows = {r[header.index("id")]: r for r in reader}
+    assert {"responseBody", "httpStatus"} <= set(header)
+    assert rows["1"][header.index("responseBody")] == "un"
+    assert rows["2"][header.index("httpStatus")] == "success"

@@ -515,3 +515,119 @@ def test_redirects_are_not_followed_when_a_secret_is_bound(conn, httpserver, res
     )
     rows = run(conn, {"urlExpr": f"'{base}r'", "secretName": "tok"}, ids=(1,), resolver=resolver)
     assert rows[0][2:] == (302, "error", "redirection non suivie")
+
+
+def test_row_cap_fails_the_node_before_any_call(conn, monkeypatch, httpserver):
+    from app.pipelines.errors import PipelineRuntimeError
+
+    monkeypatch.setenv("CORE_PIPELINES_HTTP_CALL_MAX_ROWS", "2")
+    hits = []
+    httpserver.expect_request("/x").respond_with_handler(
+        lambda r: (hits.append(1), Response("x"))[1]
+    )
+    with pytest.raises(PipelineRuntimeError, match="plafond"):
+        run(conn, {"urlExpr": f"'{httpserver.url_for('/x')}'"}, ids=(1, 2, 3))
+    assert hits == []
+
+
+def test_response_size_cap_is_a_row_error(conn, monkeypatch, httpserver):
+    monkeypatch.setenv("CORE_PIPELINES_HTTP_CALL_MAX_RESPONSE_BYTES", "10")
+    httpserver.expect_request("/big").respond_with_data("x" * 100)
+    rows = run(conn, {"urlExpr": f"'{httpserver.url_for('/big')}'"}, ids=(1,))
+    assert rows[0][3:] == ("error", "réponse trop volumineuse")
+
+
+def test_response_size_cap_applies_to_decompressed_gzip_bytes(conn, monkeypatch, httpserver):
+    import gzip
+
+    monkeypatch.setenv("CORE_PIPELINES_HTTP_CALL_MAX_RESPONSE_BYTES", "1000")
+    payload = gzip.compress(b"x" * 100_000)  # ~100 octets compressés, 100 ko décompressés
+    assert len(payload) < 1000
+    httpserver.expect_request("/gz").respond_with_handler(
+        lambda r: Response(payload, headers={"Content-Encoding": "gzip"})
+    )
+    rows = run(conn, {"urlExpr": f"'{httpserver.url_for('/gz')}'"}, ids=(1,))
+    assert rows[0][3:] == ("error", "réponse trop volumineuse")
+
+
+def test_paginated_request_honours_the_page_cap(conn, monkeypatch, httpserver):
+    monkeypatch.setenv("CORE_PIPELINES_CONNECTOR_MAX_PAGES", "2")
+    httpserver.expect_request("/p").respond_with_handler(
+        lambda r: Response(_json.dumps([{"v": 1}]), content_type="application/json")
+    )
+    rows = run(
+        conn,
+        {"urlExpr": f"'{httpserver.url_for('/p')}'", "paginator": "page_number"},
+        ids=(1,),
+    )
+    assert rows[0][3:] == ("error", "plafond de 2 pages dépassé")
+
+
+def test_max_concurrency_is_respected_by_measuring_overlap(conn):
+    from pytest_httpserver import HTTPServer
+
+    # Serveur threadé : le fixture `httpserver` sérialise les requêtes (recouvrement masqué).
+    httpserver = HTTPServer(threaded=True)
+    httpserver.start()
+    state = {"now": 0, "max": 0}
+    lock = threading.Lock()
+
+    def handler(request):
+        with lock:
+            state["now"] += 1
+            state["max"] = max(state["max"], state["now"])
+        time.sleep(0.2)
+        with lock:
+            state["now"] -= 1
+        return Response("ok")
+
+    httpserver.expect_request("/slow").respond_with_handler(handler)
+    run(
+        conn,
+        {"urlExpr": f"'{httpserver.url_for('/slow')}'", "maxConcurrency": 2},
+        ids=tuple(range(6)),
+    )
+    httpserver.stop()
+    assert state["max"] == 2  # plafond atteint ET jamais dépassé
+
+
+def test_requests_per_second_spaces_calls(conn, httpserver):
+    stamps: list[float] = []
+    httpserver.expect_request("/q").respond_with_handler(_recording_handler([200], stamps))
+    run(
+        conn,
+        {"urlExpr": f"'{httpserver.url_for('/q')}'", "requestsPerSecond": 5, "maxConcurrency": 4},
+        ids=(1, 2, 3),
+    )
+    stamps.sort()
+    assert stamps[1] - stamps[0] >= 0.15 and stamps[2] - stamps[1] >= 0.15  # 1/5 s = 0.2
+
+
+def test_preview_only_runs_get_and_skips_the_rest(conn, httpserver):
+    hits = []
+    httpserver.expect_request("/pv").respond_with_handler(
+        lambda r: (hits.append(1), Response("x"))[1]
+    )
+    rows = run(
+        conn,
+        {"urlExpr": f"'{httpserver.url_for('/pv')}'", "method": "POST"},
+        ids=(1, 2),
+        preview=True,
+    )
+    assert hits == []
+    assert rows[0][3:] == ("skipped", "non exécuté en aperçu")
+
+
+def test_preview_limits_get_calls(conn, httpserver):
+    hits = []
+    httpserver.expect_request("/pv").respond_with_handler(
+        lambda r: (hits.append(1), Response("x"))[1]
+    )
+    rows = run(
+        conn,
+        {"urlExpr": f"'{httpserver.url_for('/pv')}'"},
+        ids=tuple(range(25)),
+        preview=True,
+    )
+    assert len(hits) == 20
+    assert [r[3] for r in rows].count("skipped") == 5
