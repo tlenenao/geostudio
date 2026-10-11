@@ -23,6 +23,7 @@ from app.items.schemas import (
 from app.items.slug import InvalidSlugError, SlugCollisionError, is_valid_slug, slugify
 from app.quotas.service import check_quota_or_raise
 from app.roles.kind_registry import privilege_for_kind
+from app.roles.privileges import Privilege
 from app.roles.repository import get_role
 from app.search.providers import get_embedding_provider
 from app.search.ranking import hybrid_search_ids
@@ -104,11 +105,14 @@ def _permissions(
             actor_is_admin=False,
         )
 
+    can_share = kind_ok and verdict("share")
     return ItemPermissions(
         read=verdict("read"),
         write=kind_ok and verdict("write"),
         delete=kind_ok and verdict("delete"),
-        share=kind_ok and verdict("share"),
+        share=can_share,
+        # require_publish_rights : share + items.publish (PATCH exige aussi write).
+        publish=can_share and verdict("write") and Privilege.ITEMS_PUBLISH.value in held,
     )
 
 

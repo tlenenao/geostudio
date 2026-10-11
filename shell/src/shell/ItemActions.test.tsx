@@ -236,6 +236,19 @@ const editorItem: Item = {
 };
 
 describe("ItemActions et les droits", () => {
+  it("publish: true active Publier pour un éditeur", async () => {
+    const publisher: Item = {
+      ...editorItem,
+      permissions: { ...editorItem.permissions, publish: true },
+    };
+    render(<ItemActions item={publisher} />, { wrapper });
+    await userEvent.click(screen.getByRole("button", { name: /^actions/i }));
+    expect(screen.getByRole("menuitem", { name: "Publier" })).not.toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  });
+
   it("un lecteur ne voit ni Partager ni Supprimer", async () => {
     render(<ItemActions item={viewerItem} />, { wrapper });
     await userEvent.click(screen.getByRole("button", { name: /^actions/i }));
@@ -265,17 +278,20 @@ describe("ItemActions et les droits", () => {
     );
   });
 
-  it("un éditeur peut modifier et publier, mais pas supprimer ni partager", async () => {
+  it("un éditeur peut modifier mais pas publier (items.publish), ni supprimer ni partager", async () => {
     render(<ItemActions item={editorItem} />, { wrapper });
     await userEvent.click(screen.getByRole("button", { name: /^actions/i }));
     expect(screen.getByRole("menuitem", { name: "Modifier" })).not.toHaveAttribute(
       "aria-disabled",
       "true",
     );
-    expect(screen.getByRole("menuitem", { name: "Publier" })).not.toHaveAttribute(
+    expect(screen.getByRole("menuitem", { name: "Publier" })).toHaveAttribute(
       "aria-disabled",
       "true",
     );
+    expect(
+      screen.getByText("Publication réservée aux porteurs du droit de publier."),
+    ).toBeVisible();
     expect(screen.queryByRole("menuitem", { name: "Supprimer" })).not.toBeInTheDocument();
   });
 
@@ -283,7 +299,7 @@ describe("ItemActions et les droits", () => {
     const owned: Item = {
       ...viewerItem,
       pk: "44",
-      permissions: { read: true, write: true, delete: true, share: true },
+      permissions: { read: true, write: true, delete: true, share: true, publish: true },
     };
     render(<ItemActions item={owned} />, { wrapper });
     await userEvent.click(screen.getByRole("button", { name: /^actions/i }));

@@ -46,14 +46,33 @@ class _Pacer:
             self._sleep(slot - now)
 
 
+# Cadence amont partagée par REST et MCP (BAN : 50 req/s/IP, donc par process),
+# et un seul lot à la fois par process.
+# ponytail: par process — plusieurs workers uvicorn multiplient le plafond ;
+# pacer/verrou partagés (Redis/PG) si on scale horizontalement.
+_PACER = _Pacer(MAX_PER_SECOND)
+_BATCH_LOCK = threading.Lock()
+
+
+class BatchBusy(Exception):
+    """Un autre lot de géocodage tourne déjà dans ce process."""
+
+
 def geocode_batch(
     geocoder: Geocoder,
     addresses: list[str],
     *,
-    per_second: float = MAX_PER_SECOND,
-    sleep: Callable[[float], None] = time.sleep,
+    per_second: float | None = None,
 ) -> list[BatchRow]:
-    pacer = _Pacer(per_second, sleep=sleep)
+    if not _BATCH_LOCK.acquire(blocking=False):
+        raise BatchBusy
+    try:
+        return _run(geocoder, addresses, _PACER if per_second is None else _Pacer(per_second))
+    finally:
+        _BATCH_LOCK.release()
+
+
+def _run(geocoder: Geocoder, addresses: list[str], pacer: _Pacer) -> list[BatchRow]:
 
     def one(address: str) -> BatchRow:
         pacer.wait()

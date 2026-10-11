@@ -1160,3 +1160,38 @@ def test_patch_is_public_requires_share_right_not_just_write(env):
         assert client.patch(url, json={"title": "ok"}).status_code == 200
         assert client.patch(url, json={"isPublic": True}).status_code == expected
         assert client.patch(url, json={"isPublic": False}).status_code == 200
+
+
+def test_going_public_requires_items_publish_on_collections(env):
+    # ARC-07 : jumelles collections de `items.publish` (POST/PATCH/PUT sharing).
+    from app.roles.privileges import Privilege
+    from app.roles.repository import create_role
+    from app.users.models import User
+    from app.users.repository import set_user_role
+
+    app, client, Session, _admin, regular, _ddl = env
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        role = create_role(
+            s,
+            tenant_id=tenant.id,
+            name="Sans publication",
+            privileges=[Privilege.ADMIN_COLLECTIONS_MANAGE.value],
+        )
+        set_user_role(
+            s, tenant_id=tenant.id, user_id=regular.id, role_id=role.id, role_slug=role.slug
+        )
+        s.commit()
+        uid = regular.id
+    with Session() as s:
+        _as(app, s.get(User, uid))
+        r = client.post("/v1/collections", json={"tableName": "incidents", "isPublic": True})
+        assert r.status_code == 403 and "items.publish" in r.text
+        assert client.post("/v1/collections", json={"tableName": "incidents"}).status_code == 201
+        r = client.patch("/v1/collections/incidents", json={"isPublic": True})
+        assert r.status_code == 403 and "items.publish" in r.text
+        r = client.put("/v1/collections/incidents/sharing", json={"public": True, "groups": []})
+        assert r.status_code == 403 and "items.publish" in r.text
+        # Ne pas changer la publication reste permis.
+        r = client.put("/v1/collections/incidents/sharing", json={"public": False, "groups": []})
+        assert r.status_code == 200, r.text

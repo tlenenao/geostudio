@@ -149,13 +149,14 @@ def _temporal_clause(
         if v in ("", ".."):
             continue
         try:
-            if _DATE_ONLY.match(v):
+            parsed = (
                 date.fromisoformat(v)
-            else:
-                datetime.fromisoformat(v.replace("Z", "+00:00"))
+                if _DATE_ONLY.match(v)
+                else datetime.fromisoformat(v.replace("Z", "+00:00"))
+            )
         except ValueError:
             raise FilterError("datetime", f"cannot parse '{v}'", "invalid_datetime") from None
-        params[f"__dt{i}"] = v
+        params[f"__dt{i}"] = parsed  # objet parsé, pas la chaîne (cast PG != fromisoformat)
         if op == "<=" and cast == "timestamptz" and _DATE_ONLY.match(v):
             # borne haute « YYYY-MM-DD » = tout ce jour (comme P25.12)
             clauses.append(f"{ident} < CAST(:__dt{i} AS timestamptz) + INTERVAL '1 day'")

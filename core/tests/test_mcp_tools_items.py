@@ -173,6 +173,7 @@ def test_get_item_reports_true_permissions_for_the_owner(app_client):
         "write": True,
         "delete": True,
         "share": True,
+        "publish": True,
     }
 
 

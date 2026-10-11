@@ -11,7 +11,7 @@ const ALL = [
     date: "2026-01-01",
     configId: null,
     isPublished: false,
-    permissions: { read: true, write: true, delete: true, share: true },
+    permissions: { read: true, write: true, delete: true, share: true, publish: true },
   },
   {
     pk: "2",
@@ -23,7 +23,7 @@ const ALL = [
     date: "2026-01-01",
     configId: null,
     isPublished: false,
-    permissions: { read: true, write: true, delete: true, share: true },
+    permissions: { read: true, write: true, delete: true, share: true, publish: true },
   },
   {
     pk: "3",
@@ -35,7 +35,7 @@ const ALL = [
     date: "2026-01-01",
     configId: null,
     isPublished: false,
-    permissions: { read: true, write: true, delete: true, share: true },
+    permissions: { read: true, write: true, delete: true, share: true, publish: true },
   },
 ];
 
@@ -163,7 +163,13 @@ export function mockMe(page: Page, overrides: Partial<typeof DEFAULT_ME> = {}) {
 // que DatasetEditPage a gagné un tel garde. Défaut "propriétaire" (les
 // quatre permissions à true) : les specs qui veulent un rôle restreint
 // passent `overrides.permissions`.
-const DEFAULT_ITEM_PERMISSIONS = { read: true, write: true, delete: true, share: true };
+const DEFAULT_ITEM_PERMISSIONS = {
+  read: true,
+  write: true,
+  delete: true,
+  share: true,
+  publish: true,
+};
 
 export function mockItemDetail(page: Page, pk: string, overrides: Record<string, unknown> = {}) {
   return page.route(`https://core.test/v1/items/${pk}`, async (route) => {
@@ -203,7 +209,7 @@ const DEFAULT_COLLECTION = {
   geometryType: "Point",
   srid: 4326,
   pkColumn: "id",
-  permissions: { read: true, write: true, delete: false, share: true },
+  permissions: { read: true, write: true, delete: false, share: true, publish: true },
   featureCount: 0,
   owner: "mockuser",
   attachmentFields: [] as { key: string; label: string }[],
@@ -368,7 +374,7 @@ export async function mockCore(page: Page) {
     date: "2026-01-01",
     configId: null,
     isPublished: true,
-    permissions: { read: true, write: true, delete: true, share: true },
+    permissions: { read: true, write: true, delete: true, share: true, publish: true },
     keywords: ["risques"],
   } as const;
   const GALLERY_ITEM_CONFIG = {
@@ -479,7 +485,7 @@ export async function mockCore(page: Page) {
         configId: `cfg-${pk}`,
         isPublished: false,
         keywords: [],
-        permissions: { read: true, write: true, delete: true, share: true },
+        permissions: { read: true, write: true, delete: true, share: true, publish: true },
         license: "",
         language: "fr",
       },
@@ -562,7 +568,7 @@ export async function mockCore(page: Page) {
         date: "2026-01-01",
         configId: null,
         isPublished: published,
-        permissions: { read: true, write: true, delete: true, share: true },
+        permissions: { read: true, write: true, delete: true, share: true, publish: true },
       },
     });
   });
@@ -922,7 +928,7 @@ export async function mockCore(page: Page) {
         date: "2026-01-01",
         configId: null,
         isPublished: sitePublished,
-        permissions: { read: true, write: true, delete: true, share: true },
+        permissions: { read: true, write: true, delete: true, share: true, publish: true },
       },
     });
   });

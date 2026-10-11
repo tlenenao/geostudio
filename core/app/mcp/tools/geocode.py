@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.fastmcp import Context, FastMCP
 
-from app.geocoding.batch import MAX_BATCH
+from app.geocoding.batch import MAX_BATCH, BatchBusy
 from app.geocoding.batch import geocode_batch as run_batch
 from app.geocoding.egress import EgressBlockedError
 from app.geocoding.provider import get_geocoder
@@ -60,7 +60,10 @@ def register(server: FastMCP, session_factory) -> None:
             geocoder = get_geocoder()
         except HTTPException as exc:
             raise http_exception_to_value_error(exc) from exc
-        rows = run_batch(geocoder, addresses)
+        try:
+            rows = run_batch(geocoder, addresses)
+        except BatchBusy:
+            raise McpToolError(429, "Un lot de géocodage est déjà en cours, réessayez.") from None
         if all(r.status == "erreur" for r in rows):
             raise McpToolError(502, "Le service de géocodage est indisponible.")
         return {

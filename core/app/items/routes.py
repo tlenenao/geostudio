@@ -316,6 +316,7 @@ def create_share_link_route(
     user: User = Depends(get_current_user),
 ) -> ShareLinkCreated:
     _require_share_access(session, item_id=item_id, user=user)
+    require_privilege(session, user, Privilege.ITEMS_PUBLISH.value)  # lien anonyme = publication
     if not share_link_secret_configured():
         raise HTTPException(
             status_code=503,

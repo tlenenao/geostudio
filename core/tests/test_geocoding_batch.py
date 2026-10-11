@@ -174,3 +174,67 @@ def test_mcp_geocode_batch_bounds(app_client, monkeypatch, addresses):
     monkeypatch.setattr("app.mcp.tools.geocode.get_geocoder", lambda: _Stub({}))
     with app_client:
         call_tool_expecting_error(app_client, "geocode_batch", {"addresses": addresses})
+
+
+def test_pacer_is_global_across_batches(monkeypatch):
+    # La cadence BAN (≤ 50 req/s/IP) vaut pour le process, pas pour chaque lot.
+    from app.geocoding import batch
+
+    now = [0.0]
+
+    def sleep(d):
+        now[0] += d
+
+    monkeypatch.setattr(batch, "_PACER", _Pacer(50, clock=lambda: now[0], sleep=sleep))
+    for _ in range(2):  # deux lots successifs, même pacer
+        geocode_batch(_ban(_handler), ["1 rue de pontoise"] * 51)
+    assert now[0] >= 101 / 50 - 1e-9  # 102 appels >= ~2 s, pas 1 s
+
+
+def _blocking_geocoder():
+    import threading
+
+    started, release = threading.Event(), threading.Event()
+
+    class Slow:
+        def search(self, q, limit):
+            started.set()
+            release.wait(5)
+            return []
+
+    return Slow(), started, release
+
+
+def test_second_concurrent_batch_is_refused():
+    import threading
+
+    from app.geocoding.batch import BatchBusy
+
+    slow, started, release = _blocking_geocoder()
+    t = threading.Thread(target=lambda: geocode_batch(slow, ["1 rue x"], per_second=1e6))
+    t.start()
+    try:
+        assert started.wait(5)
+        with pytest.raises(BatchBusy):
+            geocode_batch(_ban(_handler), ["1 rue x"], per_second=1e6)
+    finally:
+        release.set()
+        t.join()
+    geocode_batch(_ban(_handler), ["1 rue x"], per_second=1e6)  # verrou relâché
+
+
+def test_batch_route_busy_is_429(app_and_client):
+    import threading
+
+    app, client = app_and_client
+    slow, started, release = _blocking_geocoder()
+    t = threading.Thread(target=lambda: geocode_batch(slow, ["1 rue x"], per_second=1e6))
+    t.start()
+    try:
+        assert started.wait(5)
+        app.dependency_overrides[get_geocoder] = lambda: _ban(_handler)
+        r = client.post("/v1/geocode/batch", json={"addresses": ["1 rue x"]})
+        assert r.status_code == 429
+    finally:
+        release.set()
+        t.join()

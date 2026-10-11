@@ -428,6 +428,8 @@ def register_collection(
     count_features=Depends(get_feature_counter),
 ):
     require_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+    if body.isPublic:
+        require_privilege(session, user, Privilege.ITEMS_PUBLISH.value)  # ARC-07
     if body.tableName in _core_tables() or _is_system_table(body.tableName):
         raise HTTPException(status_code=400, detail="core table cannot be registered")
     if repo.get_collection(session, tenant_id=user.tenant_id, collection_id=body.tableName):
@@ -787,6 +789,7 @@ def patch_collection(
         raise HTTPException(status_code=403, detail="write access required")
     if body.isPublic is not None and body.isPublic != col.is_public:
         _require_share(session, user, col)  # même garde que PUT /sharing
+        require_privilege(session, user, Privilege.ITEMS_PUBLISH.value)  # ARC-07
     if body.attachmentFields is not None:
         _reject_attachment_field_collisions(session, col, body.attachmentFields, introspect)
     if (
@@ -982,6 +985,8 @@ def put_sharing(
         session, user, collection_id, can_manage_collections=can_manage_collections
     )
     _require_share(session, user, col)
+    if body.public != col.is_public:
+        require_privilege(session, user, Privilege.ITEMS_PUBLISH.value)  # ARC-07
     ok = repo.set_collection_sharing(
         session,
         tenant_id=user.tenant_id,

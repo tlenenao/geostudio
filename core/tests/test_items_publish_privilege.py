@@ -62,3 +62,16 @@ def test_owner_with_items_publish_can_publish_and_go_public(env):  # noqa: F811
     assert client.patch("/v1/items/shared", json={"isPublished": True}).status_code == 200
     r = client.put("/v1/items/shared/sharing", json={"public": True, "groups": []})
     assert r.status_code == 204, r.text
+
+
+def test_share_link_creation_requires_items_publish(env):  # noqa: F811
+    # Un lien anonyme vaut publication.
+    owner = _give_custom_role(env, env["owner"], [Privilege.MAPS_MANAGE.value])
+    r = env["as_user"](owner).post("/v1/items/shared/share-links", json={"ttlDays": 7})
+    assert r.status_code == 403 and "items.publish" in r.text
+
+
+def test_permissions_publish_flag_follows_the_privilege(env):  # noqa: F811
+    owner = _give_custom_role(env, env["owner"], [Privilege.MAPS_MANAGE.value])
+    perms = env["as_user"](owner).get("/v1/items/shared").json()["permissions"]
+    assert perms["share"] is True and perms["publish"] is False
