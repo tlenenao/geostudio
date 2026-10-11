@@ -175,7 +175,10 @@ def test_set_sharing_then_get_sharing_round_trips(app_client):
         )
         result = call_tool(app_client, "get_sharing", {"itemId": item_id})
 
-    assert result == {"public": True, "groups": [{"groupId": "g1", "role": "viewer"}]}
+    assert result == {
+        "public": True,
+        "groups": [{"groupId": "g1", "role": "viewer", "name": "G"}],
+    }
 
 
 def test_get_sharing_invisible_to_a_stranger_errors(app_client):

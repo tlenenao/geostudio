@@ -279,6 +279,7 @@ jobs:
           VITE_OIDC_REDIRECT_URI=http://localhost:8300/
           VITE_AUTH_MODE=oidc
           CORE_LLM_PROVIDER=fake
+          S3_PUBLIC_ENDPOINT_URL=http://localhost:9000
           EOF
           docker compose build core shell
           docker compose up -d postgis keycloak core shell
