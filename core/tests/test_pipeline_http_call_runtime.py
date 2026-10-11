@@ -1,6 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
+import threading
+import time
+
 import duckdb
 import pytest
+from werkzeug.wrappers import Response
 
 from app.pipelines import egress as pipelines_egress
 from app.pipelines.http_call_runtime import execute_http_call
@@ -112,3 +116,81 @@ def test_runtime_passes_context_only_to_ops_that_ask(monkeypatch, conn):
         conn, nodes, edges, {"r": "node_r"}, {"r": 4326}, {}, secret_resolver=marker, preview=True
     )
     assert seen == {"resolver": marker, "preview": True}
+
+
+def _recording_handler(statuses, stamps, headers=None):
+    it = iter(statuses)
+    lock = threading.Lock()
+
+    def handler(request):
+        with lock:
+            stamps.append(time.monotonic())
+            code = next(it, statuses[-1])
+        return Response("body", status=code, headers=headers or {})
+
+    return handler
+
+
+def test_retry_503_then_200_waits_for_exponential_backoff(conn, httpserver):
+    stamps: list[float] = []
+    httpserver.expect_request("/r").respond_with_handler(
+        _recording_handler([503, 503, 200], stamps)
+    )
+    rows = run(
+        conn,
+        {"urlExpr": f"'{httpserver.url_for('/r')}'", "initialBackoffSeconds": 0.2, "maxRetries": 3},
+        ids=(1,),
+    )
+    assert rows[0][2:] == (200, "success", None)
+    assert len(stamps) == 3
+    # attente 0.2 puis 0.4 s : on mesure les intervalles réels, pas la durée totale
+    assert stamps[1] - stamps[0] >= 0.2
+    assert stamps[2] - stamps[1] >= 0.4
+
+
+def test_retry_after_header_overrides_backoff(conn, httpserver):
+    stamps: list[float] = []
+    httpserver.expect_request("/r").respond_with_handler(
+        _recording_handler([429, 200], stamps, headers={"Retry-After": "1"})
+    )
+    rows = run(
+        conn,
+        {"urlExpr": f"'{httpserver.url_for('/r')}'", "initialBackoffSeconds": 0.0},
+        ids=(1,),
+    )
+    assert rows[0][3:] == ("success", None)
+    assert stamps[1] - stamps[0] >= 1.0
+
+
+def test_retries_exhausted_keeps_last_status_and_only_that_row_fails(conn, httpserver):
+    stamps: list[float] = []
+    httpserver.expect_request("/bad").respond_with_handler(_recording_handler([500], stamps))
+    httpserver.expect_request("/good").respond_with_data("ok")
+    base = httpserver.url_for("/")
+    rows = run(
+        conn,
+        {
+            "urlExpr": f"'{base}' || CASE WHEN id = 1 THEN 'bad' ELSE 'good' END",
+            "maxRetries": 2,
+            "initialBackoffSeconds": 0.0,
+        },
+    )
+    assert rows[0][2:] == (500, "error", "HTTP 500")
+    assert rows[1][3] == "success"
+    assert len(stamps) == 3  # 1 + 2 retries
+
+
+def test_connection_error_is_retried_then_reported(conn):
+    rows = run(
+        conn,
+        {"urlExpr": "'http://127.0.0.1:1/'", "maxRetries": 1, "initialBackoffSeconds": 0.0},
+        ids=(1,),
+    )
+    assert rows[0][3:] == ("error", "ConnectionError")
+
+
+def test_4xx_is_not_retried(conn, httpserver):
+    stamps: list[float] = []
+    httpserver.expect_request("/n").respond_with_handler(_recording_handler([404], stamps))
+    run(conn, {"urlExpr": f"'{httpserver.url_for('/n')}'"}, ids=(1,))
+    assert len(stamps) == 1

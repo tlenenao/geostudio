@@ -16,6 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 import pandas as pd
+import requests
 
 from app.pipelines.errors import PipelineRuntimeError
 from app.sql_ident import quote_ident_duckdb as _qi
@@ -82,18 +83,35 @@ def _delay(p, attempt: int, retry_after: float | None) -> float:
 
 
 def _run_with_retry(p, attempt: Callable[[], _Outcome]) -> _Outcome:
-    """Une seule tentative pour l'instant (le retry arrive à la Task 3)."""
+    """Retry maison (pas urllib3.Retry : backoff urllib3 2.x sans délai avant le 1er retry) ;
+    la garde d'egress s'applique ainsi à chaque tentative. Retry sur délai/connexion et sur
+    429/5xx ; délai = `Retry-After` (plafonné) sinon `initialBackoffSeconds * 2**n`."""
     from app.pipelines import connector_runtime as cr
 
-    try:
-        return attempt()
-    except _RowError as exc:
-        return _Outcome(error=str(exc))
-    except Exception as exc:  # noqa: BLE001 — toute erreur réseau devient une erreur de ligne
-        blocked = cr._find_egress_blocked_cause(exc)
-        if blocked is not None:
-            return _Outcome(error=f"egress refusé : {blocked}")
-        return _Outcome(error=type(exc).__name__)
+    for n in range(p.maxRetries + 1):
+        try:
+            out = attempt()
+        except _RowError as exc:
+            return _Outcome(error=str(exc))
+        except requests.HTTPError as exc:  # chemin paginé : dlt lève sur >= 400 (Task 5)
+            resp = exc.response
+            if resp is None:
+                return _Outcome(error="HTTPError")
+            out = _classify(
+                resp.status_code, resp.text[:_ERR_BODY_CHARS], resp.headers, follows_redirects=True
+            )
+        except Exception as exc:  # noqa: BLE001 — toute erreur réseau devient une erreur de ligne
+            blocked = cr._find_egress_blocked_cause(exc)
+            if blocked is not None:
+                return _Outcome(error=f"egress refusé : {blocked}")
+            if isinstance(exc, (requests.ConnectionError, requests.Timeout)):
+                out = _Outcome(error=type(exc).__name__, retryable=True)
+            else:
+                return _Outcome(error=type(exc).__name__)
+        if not out.retryable or n == p.maxRetries:
+            return out
+        time.sleep(_delay(p, n, out.retry_after))
+    raise AssertionError("unreachable")  # pragma: no cover
 
 
 def _as_obj(raw, what: str) -> dict:
