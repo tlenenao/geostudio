@@ -294,6 +294,11 @@ export function applyLayers(
       for (const suffix of SUBLAYER_SUFFIXES) {
         const id = `${layer.id}${suffix}`;
         if (map.getLayer(id)) map.removeLayer(id);
+        const staleHandler = clickHandlers.get(id);
+        if (staleHandler) {
+          map.off("click", id, staleHandler);
+          clickHandlers.delete(id);
+        }
         applied.delete(id);
         // Le contour d'une sous-couche de géométrie mixte porte un double
         // suffixe (ex. "communes__polygon__outline").
