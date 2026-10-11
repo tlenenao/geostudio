@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useItemClient } from "../api/ItemClientProvider";
-import type { MapLayer } from "../api/types";
+import type { ClusterConfig, MapLayer } from "../api/types";
 import {
   fetchFeatureCollection,
   listFields,
@@ -195,6 +195,84 @@ function LayerTimeFieldEditor({
         </option>
       ))}
     </select>
+  );
+}
+
+// ARC-01 : regroupement de points (MapLibre cluster) d'une couche `feature`
+// rendue en cercles. Décocher retire la clé `cluster` (jamais `cluster: null`,
+// rejeté par le schéma cœur). Une heatmap deck sur les mêmes données est
+// signalée : elle ignore le regroupement et double l'affichage.
+function LayerClusterEditor({
+  layer,
+  layers,
+  onChangeLayer,
+}: {
+  layer: Extract<MapLayer, { kind: "feature" }>;
+  layers: MapLayer[];
+  onChangeLayer: (next: MapLayer) => void;
+}) {
+  const cluster = layer.cluster;
+  const set = (patch: Partial<ClusterConfig>) =>
+    onChangeLayer({ ...layer, cluster: { ...cluster, ...patch } });
+  const num = (v: string, key: "radius" | "maxZoom") => {
+    const { [key]: _drop, ...rest } = cluster ?? {};
+    onChangeLayer({ ...layer, cluster: v === "" ? rest : { ...rest, [key]: Number(v) } });
+  };
+  const heatmapConflict = layers.some(
+    (l) => l.kind === "deck" && l.deckType === "heatmap" && l.dataUrl === layer.url,
+  );
+  return (
+    <div className="flex flex-col gap-1 text-sm">
+      <label className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={cluster !== undefined}
+          onChange={(e) => {
+            const { cluster: _drop, ...rest } = layer;
+            onChangeLayer(e.target.checked ? { ...rest, cluster: {} } : rest);
+          }}
+        />
+        {t("layersPanel.clusterEnable")}
+      </label>
+      {cluster !== undefined && (
+        <>
+          <label className="flex flex-col gap-1">
+            {t("layersPanel.clusterRadius")}
+            <input
+              type="number"
+              min={1}
+              placeholder="50"
+              value={cluster.radius ?? ""}
+              onChange={(e) => num(e.target.value, "radius")}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            {t("layersPanel.clusterMaxZoom")}
+            <input
+              type="number"
+              min={0}
+              max={22}
+              placeholder="14"
+              value={cluster.maxZoom ?? ""}
+              onChange={(e) => num(e.target.value, "maxZoom")}
+            />
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={cluster.label !== false}
+              onChange={(e) => set({ label: e.target.checked })}
+            />
+            {t("layersPanel.clusterLabel")}
+          </label>
+          {heatmapConflict && (
+            <p role="alert" className="text-xs text-warn">
+              {t("layersPanel.clusterHeatmapWarning")}
+            </p>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
@@ -536,6 +614,15 @@ export function LayersPanel({
                 {timeFilterable && (
                   <LayerTimeFieldEditor
                     layer={layer}
+                    onChangeLayer={(next) =>
+                      onChange(layers.map((l) => (l.id === layer.id ? next : l)))
+                    }
+                  />
+                )}
+                {layer.kind === "feature" && layer.renderAs === "circle" && (
+                  <LayerClusterEditor
+                    layer={layer}
+                    layers={layers}
                     onChangeLayer={(next) =>
                       onChange(layers.map((l) => (l.id === layer.id ? next : l)))
                     }

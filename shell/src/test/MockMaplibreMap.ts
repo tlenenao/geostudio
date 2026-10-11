@@ -90,10 +90,16 @@ export class MockMap {
     // sur CETTE source — c'est ce que le test du garde d'idempotence de
     // `refreshLabelSources` (constat N3) observe pour prouver qu'un `idle`
     // sans changement d'entités ne repose pas la source.
-    const rec: Recorded & { setData?: (d: unknown) => void; setDataCalls: number } = {
+    const rec: Recorded & {
+      setData?: (d: unknown) => void;
+      setDataCalls: number;
+      getClusterExpansionZoom: (clusterId: number) => Promise<number>;
+    } = {
       id,
       spec,
       setDataCalls: 0,
+      // ARC-01 : zoom d'éclatement fixe, suffisant pour prouver le câblage du clic.
+      getClusterExpansionZoom: async () => 7,
     };
     rec.setData = (d: unknown) => {
       rec.spec = { ...(rec.spec as object), data: d };
@@ -110,6 +116,10 @@ export class MockMap {
   }
   listImages() {
     return [...this.images.keys()];
+  }
+  easeToArgs: unknown[] = [];
+  easeTo(opts: unknown) {
+    this.easeToArgs.push(opts);
   }
   flyTo(opts: unknown) {
     this.flyToArgs.push(opts);
