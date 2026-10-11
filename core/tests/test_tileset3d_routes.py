@@ -268,7 +268,7 @@ def test_presign_part_rejects_part_number_below_one(env):
     assert r.status_code == 422
 
 
-def test_complete_upload_marks_finalizing_and_defers_task(env):
+def test_complete_upload_leaves_pending_and_defers_task(env):
     client, Session, tenant, alice, deferred, _fake_s3 = env
     job_id = client.post(
         "/v1/tileset3d/uploads", json={"filename": "city.zip", "title": "Ville"}
@@ -279,8 +279,29 @@ def test_complete_upload_marks_finalizing_and_defers_task(env):
     )
     assert r.status_code == 204, r.text
     assert deferred == [(job_id, tenant.id)]
+    # REV-295 : la route ne fait PAS la transition, c'est le worker qui réclame
+    # le job (`pending -> finalizing`) ; sinon la tâche ne le prend jamais.
     status = client.get(f"/v1/tileset3d/uploads/{job_id}").json()
-    assert status["status"] == "finalizing"
+    assert status["status"] == "pending"
+
+
+def test_complete_route_then_task_does_not_leave_job_stuck(env, monkeypatch):
+    """C1 : enchaîne la route PUIS la tâche (le zip factice est invalide -> error,
+    mais jamais un job bloqué en `finalizing`)."""
+    from app.tileset3d import jobs as tileset3d_jobs
+
+    client, Session, tenant, alice, deferred, fake_s3 = env
+    job_id = client.post(
+        "/v1/tileset3d/uploads", json={"filename": "city.zip", "title": "Ville"}
+    ).json()["jobId"]
+    client.post(
+        f"/v1/tileset3d/uploads/{job_id}/complete",
+        json={"parts": [{"partNumber": 1, "etag": '"abc"'}]},
+    )
+    monkeypatch.setattr(tileset3d_jobs, "_session_factory", lambda: Session)
+    monkeypatch.setattr(tileset3d_jobs, "s3_client_from_env", lambda: fake_s3)
+    tileset3d_jobs.finalize_tileset3d_task(*deferred[0])
+    assert client.get(f"/v1/tileset3d/uploads/{job_id}").json()["status"] == "error"
 
 
 def test_complete_upload_rejects_empty_parts_list(env):
