@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Share-link rate limit** (REV-299): the `X-Share-Link-Token` header now
   counts against the same per-IP `share-link` budget as `GET /v1/share-links/*`;
   the budget is configurable via `CORE_RATELIMIT_SHARE_LINK_PER_MIN` (default 60).
+- **Release images are signed (cosign keyless, by digest) and ship an SBOM
+  attestation** (REV-281 b, ADR 0014): each release also publishes a generated
+  `docker-compose.digests.yml` artifact pinning every GeoStudio image by
+  `@sha256:` digest; `check_published_images.py --verify-signatures` verifies
+  them. Not yet exercised on a real GitHub run.
 - Core healthcheck `start_period` raised to 180 s (migrations on a non-empty
   database) and `restart: unless-stopped` on Martin (REV-320).
 
