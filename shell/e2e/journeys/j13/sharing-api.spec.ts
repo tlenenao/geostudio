@@ -220,20 +220,10 @@ test.describe("j13 « public » vs « publié »", () => {
 });
 
 test.describe("j13 partage d'une carte et de ses données", () => {
-  // Finding j13-008 : partager une carte à un groupe ne donne pas accès à sa collection.
-  bug(
-    "j13-008 : un membre du groupe à qui l'on partage une carte lit aussi les entités de sa couche",
-    async () => {
-      const col = await mkCollection(creator, `${TAG}-mapcol`);
-      const m = await mkItem(creator, `${TAG}-sharedmap`, mapConfigOn(col));
-      const g = await mkGroup(creator, `${TAG}-gmap`, [readerId]);
-      expect(await share(creator, m.pk, [{ groupId: g, role: "viewer" }])).toBe(204);
-      expect((await reader.get(`/v1/configs/by-item/${m.pk}`)).status).toBe(200);
-      expect((await reader.get(`/v1/collections/${col}/items`)).status).toBe(200);
-    },
-  );
-
-  test("constat j13-008 : config lisible, collection 404 tant que le propriétaire ne la partage pas à part (API seule)", async () => {
+  // j13-008 : décision de modèle — partager une carte ne partage JAMAIS implicitement ses données
+  // (sinon un éditeur de carte s'octroierait la lecture de toute collection qu'il référence). Le
+  // signalement est porté par `UnsharedSource` (ShareForm) ; ce test fige le contrat côté cœur.
+  test("j13-008 : carte partagée = config lisible, collection 404 tant que le propriétaire ne la partage pas à part", async () => {
     const col = await mkCollection(creator, `${TAG}-mapcol2`);
     const m = await mkItem(creator, `${TAG}-sharedmap2`, mapConfigOn(col));
     const g = await mkGroup(creator, `${TAG}-gmap2`, [readerId]);
