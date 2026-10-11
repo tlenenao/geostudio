@@ -511,7 +511,7 @@ def export_collection_items(
     parsed_geom_intersects = _parse_geom_intersects(geom_intersects)
     filters = _collect_filters(request)
     sync_max = export_sync_max()
-    job_max = export_job_max()
+    job_max = export_job_max(format)
 
     features: list[dict] = []
     cursor = None

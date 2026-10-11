@@ -40,6 +40,14 @@ class _FakeS3:
     def put_object(self, *, Bucket, Key, Body, ContentType):
         self.objects[Key] = Body
 
+    def upload_file(self, *, Filename, Bucket, Key, ExtraArgs):
+        self.put_object(
+            Bucket=Bucket,
+            Key=Key,
+            Body=open(Filename, "rb").read(),
+            ContentType=ExtraArgs["ContentType"],
+        )
+
 
 @pytest.fixture()
 def pg(pg_engine, monkeypatch):

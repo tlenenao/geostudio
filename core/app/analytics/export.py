@@ -14,7 +14,7 @@ from datetime import UTC, date, datetime, time
 from decimal import Decimal
 from io import BytesIO, StringIO
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 from uuid import UUID
 
 import duckdb
@@ -26,9 +26,13 @@ def export_sync_max() -> int:
     return int(os.environ.get("CORE_EXPORT_SYNC_MAX") or "100000")
 
 
-def export_job_max() -> int:
-    """Plafond d'entités d'un export asynchrone (413 / job `failed` au-delà)."""
-    return int(os.environ.get("CORE_EXPORT_JOB_MAX") or "200000")
+def export_job_max(format: str | None = None) -> int:
+    """Plafond d'entités d'un export asynchrone (413 / job `failed` au-delà).
+    REV-324 : CSV/GeoJSON sont écrits en flux (125 Mo de pic à 500 000 entités,
+    mesuré) → défaut relevé à 1 000 000 ; gpkg/xlsx restent en mémoire (200 000).
+    `CORE_EXPORT_JOB_MAX`, s'il est posé, prime pour tous les formats."""
+    default = "1000000" if format in ("csv", "geojson") else "200000"
+    return int(os.environ.get("CORE_EXPORT_JOB_MAX") or default)
 
 
 EXPORT_MEDIA_TYPES = {
@@ -140,6 +144,42 @@ def features_to_gpkg(features: list[dict[str, Any]], conn: duckdb.DuckDBPyConnec
         conn.execute("ALTER TABLE t DROP COLUMN OGC_FID")
         conn.execute(f"COPY t TO '{out_path}' WITH (FORMAT GDAL, DRIVER 'GPKG', SRS 'EPSG:4326')")
         return out_path.read_bytes()
+
+
+class StreamingFeatureWriter:
+    """REV-324 : écrit CSV / GeoJSON page par page dans un fichier ouvert en texte
+    (mémoire O(page)). Octet-à-octet équivalent à `features_to_format`.
+    ponytail: l'en-tête CSV est fixé par la 1re page non vide ; une colonne
+    `geometry` n'apparaissant qu'ensuite serait ignorée (collection homogène)."""
+
+    def __init__(self, fh: TextIO, *, format: str) -> None:
+        if format not in ("csv", "geojson"):
+            raise ValueError(f"unsupported streaming format '{format}'")
+        self._fh, self._format = fh, format
+        self._n = 0
+        self._csv: Any = None
+        if format == "geojson":
+            fh.write('{"type": "FeatureCollection", "features": [')
+
+    def write(self, features: list[dict[str, Any]]) -> None:
+        if not features:
+            return
+        if self._format == "geojson":
+            for f in features:
+                self._fh.write((", " if self._n else "") + json.dumps(f, default=_json_default))
+                self._n += 1
+            return
+        rows = _rows_with_wkt(features)
+        if self._csv is None:
+            fields = list(rows[0].keys())
+            self._csv = DictWriter(self._fh, fieldnames=fields, extrasaction="ignore")
+            self._csv.writerow({f: _neutralize(f) for f in fields})
+        self._csv.writerows({k: _neutralize(v) for k, v in row.items()} for row in rows)
+        self._n += len(rows)
+
+    def close(self) -> None:
+        if self._format == "geojson":
+            self._fh.write("]}")
 
 
 def _rows_with_wkt(features: list[dict[str, Any]]) -> list[dict[str, Any]]:
