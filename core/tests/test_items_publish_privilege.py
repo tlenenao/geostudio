@@ -69,3 +69,9 @@ def test_share_link_creation_requires_items_publish(env):  # noqa: F811
     owner = _give_custom_role(env, env["owner"], [Privilege.MAPS_MANAGE.value])
     r = env["as_user"](owner).post("/v1/items/shared/share-links", json={"ttlDays": 7})
     assert r.status_code == 403 and "items.publish" in r.text
+
+
+def test_permissions_publish_flag_follows_the_privilege(env):  # noqa: F811
+    owner = _give_custom_role(env, env["owner"], [Privilege.MAPS_MANAGE.value])
+    perms = env["as_user"](owner).get("/v1/items/shared").json()["permissions"]
+    assert perms["share"] is True and perms["publish"] is False

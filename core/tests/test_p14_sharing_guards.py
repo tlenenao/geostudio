@@ -196,7 +196,13 @@ def test_editor_modifies_but_cannot_manage_sharing_manager_can(env):
 
     _as(app, env["other"])
     perms = c.get(f"/v1/items/{item}").json()["permissions"]
-    assert perms == {"read": True, "write": True, "delete": True, "share": False}
+    assert perms == {
+        "read": True,
+        "write": True,
+        "delete": True,
+        "share": False,
+        "publish": False,
+    }
     assert c.get(f"/v1/items/{item}/sharing").status_code == 403
     r = c.put(f"/v1/items/{item}/sharing", json={"public": True, "groups": []})
     assert r.status_code == 403
@@ -337,7 +343,7 @@ def test_item_permissions_combine_share_role_and_kind_privilege(env):
     _as(app, env["owner"])
     item = _app_item(c)
     _share(c, item, _group(c, env["reader"], env["other"]))
-    all_true = {"read": True, "write": True, "delete": True, "share": True}
+    all_true = {"read": True, "write": True, "delete": True, "share": True, "publish": True}
     assert c.get(f"/v1/items/{item}").json()["permissions"] == all_true
     _as(app, env["other"])  # Créateur : privilège de kind + rôle editor
     assert c.get(f"/v1/items/{item}").json()["permissions"] == all_true
@@ -347,4 +353,5 @@ def test_item_permissions_combine_share_role_and_kind_privilege(env):
         "write": False,
         "delete": False,
         "share": False,
+        "publish": False,
     }

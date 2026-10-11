@@ -124,7 +124,13 @@ def _perms(client, item_id: str) -> dict:
 
 def test_owner_gets_every_permission(env):
     client = env["as_user"](env["owner"])
-    assert _perms(client, "shared") == {"read": True, "write": True, "delete": True, "share": True}
+    assert _perms(client, "shared") == {
+        "read": True,
+        "write": True,
+        "delete": True,
+        "share": True,
+        "publish": True,
+    }
 
 
 def test_viewer_reads_only(env):
@@ -134,18 +140,31 @@ def test_viewer_reads_only(env):
         "write": False,
         "delete": False,
         "share": False,
+        "publish": False,
     }
 
 
 def test_editor_writes_deletes_but_does_not_manage_sharing(env):
     # REV-270/P14.12 : share exige le rôle de partage "manager".
     client = env["as_user"](env["editor"])
-    assert _perms(client, "shared") == {"read": True, "write": True, "delete": True, "share": False}
+    assert _perms(client, "shared") == {
+        "read": True,
+        "write": True,
+        "delete": True,
+        "share": False,
+        "publish": False,
+    }
 
 
 def test_published_item_is_readable_by_a_stranger_but_not_writable(env):
     client = env["as_user"](env["stranger"])
-    assert _perms(client, "pub") == {"read": True, "write": False, "delete": False, "share": False}
+    assert _perms(client, "pub") == {
+        "read": True,
+        "write": False,
+        "delete": False,
+        "share": False,
+        "publish": False,
+    }
 
 
 def test_listing_carries_the_same_permissions_as_the_detail(env):
@@ -171,6 +190,7 @@ def test_patch_response_reflects_the_write_that_just_succeeded(env):
         "write": True,
         "delete": True,
         "share": True,
+        "publish": True,
     }
 
 
@@ -189,4 +209,5 @@ def test_public_route_serves_the_conservative_default(env):
             "write": False,
             "delete": False,
             "share": False,
+            "publish": False,
         }

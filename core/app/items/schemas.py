@@ -22,6 +22,7 @@ class ItemPermissions(BaseModel):
     write: bool
     delete: bool
     share: bool
+    publish: bool = False  # share + privilège `items.publish` (ARC-07)
 
 
 class ItemRead(BaseModel):
