@@ -297,7 +297,15 @@ def get_feature(session: Session, info: TableInfo, *, fid: str) -> dict | None:
 
 
 def _geometry_sql(info: TableInfo) -> str:
-    return "ST_SetSRID(ST_GeomFromGeoJSON(:__geom), :__srid)"
+    base = "ST_SetSRID(ST_GeomFromGeoJSON(:__geom), :__srid)"
+    gt = info.geometry_type or ""
+    if gt.startswith("Multi"):  # REV-352 : promotion X -> MultiX (idempotent sur Multi)
+        return f"ST_Multi({base})"
+    if gt in ("Point", "LineString", "Polygon"):  # MultiX à une partie -> X
+        return (
+            f"(CASE WHEN ST_NumGeometries({base}) = 1 THEN ST_GeometryN({base}, 1) ELSE {base} END)"
+        )
+    return base
 
 
 def insert_feature(session: Session, info: TableInfo, *, properties: dict, geometry: dict | None):

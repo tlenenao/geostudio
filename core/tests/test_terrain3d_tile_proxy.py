@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from pytest_httpserver import HTTPServer
 
 from app import db
-from app.auth.dependency import get_current_user
+from app.auth.dependency import get_current_user, get_current_user_optional
 from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig, Terrain3DPayload
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
@@ -56,6 +56,7 @@ def env(monkeypatch, httpserver: HTTPServer):
 
     app.dependency_overrides[db.get_session] = override_session
     app.dependency_overrides[get_current_user] = lambda: alice
+    app.dependency_overrides[get_current_user_optional] = lambda: alice
     app.dependency_overrides[terrain3d_routes.get_titiler_url] = lambda: httpserver.url_for("")
     client = TestClient(app)
     return client, item_id, tenant, httpserver

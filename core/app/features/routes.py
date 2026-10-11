@@ -5,6 +5,7 @@ un fake et un scope nul ; le vrai chemin est PostGIS-only."""
 
 import functools
 import json
+import math
 import os
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -159,14 +160,23 @@ def _validation_error(errors: list[dict], status: int = 400):
     return ValidationHTTPException(errors=errors, status_code=status)
 
 
-def _parse_bbox(raw: str | None):
+def parse_bbox(raw: str | None, *, check_bounds: bool = True):
+    """`minx,miny,maxx,maxy` ; fini ; bornes EPSG:4326 sauf `check_bounds=False`
+    (bbox-crs projeté). REV-353 : sinon l'erreur SQL de ST_MakeEnvelope = 500."""
     if raw is None:
         return None
     parts = raw.split(",")
     try:
         if len(parts) != 4:
             raise ValueError(raw)
-        return tuple(float(p) for p in parts)
+        vals = tuple(float(p) for p in parts)
+        if not all(math.isfinite(v) for v in vals):
+            raise ValueError(raw)
+        if check_bounds and (
+            max(abs(vals[0]), abs(vals[2])) > 180 or max(abs(vals[1]), abs(vals[3])) > 90
+        ):
+            raise ValueError(raw)
+        return vals
     except ValueError:
         raise _validation_error(
             [
@@ -248,7 +258,7 @@ def list_features(
     if masked:
         info = hide_sensitive_columns(info, col.sensitive_fields)
     limit = min(limit, MAX_LIMIT)
-    parsed_bbox = _parse_bbox(bbox)
+    parsed_bbox = parse_bbox(bbox)
     parsed_geom_intersects = _parse_geom_intersects(geom_intersects)
     filters = _collect_filters(request)
     if cursor is not None and offset > 0:
@@ -504,7 +514,7 @@ def export_collection_items(
     info = introspect(session, col.table_name)
     if masked:
         info = hide_sensitive_columns(info, col.sensitive_fields)
-    parsed_bbox = _parse_bbox(bbox)
+    parsed_bbox = parse_bbox(bbox)
     parsed_geom_intersects = _parse_geom_intersects(geom_intersects)
     filters = _collect_filters(request)
     sync_max = export_sync_max()
