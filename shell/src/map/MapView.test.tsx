@@ -2445,3 +2445,41 @@ test("les couches produites par MapView valident contre le vrai style-spec MapLi
   // ici, alors que Style.addLayer les avalerait en faisant `return`.
   expect(validateStyleMin(style as never)).toEqual([]);
 });
+
+// REV-304 : la fenêtre temporelle filtre les couches `vector` déclarant un
+// `timeField` par setFilter (jamais en recréant sources et couches).
+test("timeRange filters a vector layer with timeField through setFilter, without rebuilding", () => {
+  const cfg = tiled({ geometryKind: "polygon", timeField: "date" });
+  const { rerender } = render(
+    <MapView config={cfg} timeRange={{ from: "2024-01-01", to: "2024-01-07" }} />,
+  );
+  const map = mapInstances[0];
+  const filterOf = () => (map.getLayer("communes") as { filter?: unknown[] }).filter;
+  expect(filterOf()).toEqual([
+    "all",
+    expect.anything(),
+    [
+      "all",
+      [">=", ["get", "date"], "2024-01-01"],
+      ["<=", ["get", "date"], "2024-01-07T23:59:59.999999"],
+    ],
+  ]);
+  const source = map.getSource("communes");
+
+  rerender(<MapView config={cfg} timeRange={{ from: "2024-01-08", to: "2024-01-14" }} />);
+  expect(JSON.stringify(filterOf())).toContain("2024-01-14");
+  expect(JSON.stringify(filterOf())).not.toContain("2024-01-07");
+  // Pas de reconstruction : même source, pas de second filtre empilé.
+  expect(map.getSource("communes")).toBe(source);
+  expect(filterOf()).toHaveLength(3);
+
+  rerender(<MapView config={cfg} timeRange={null} />);
+  expect(JSON.stringify(filterOf())).not.toContain("date");
+});
+
+test("a vector layer without timeField is left alone by timeRange", () => {
+  const cfg = tiled({ geometryKind: "polygon" });
+  render(<MapView config={cfg} timeRange={{ from: "2024-01-01", to: "2024-01-07" }} />);
+  const layer = mapInstances[0].getLayer("communes") as { filter?: unknown };
+  expect(JSON.stringify(layer.filter)).not.toContain("2024-01-01");
+});

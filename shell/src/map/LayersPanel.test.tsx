@@ -509,3 +509,55 @@ test("sonde les tuiles visibles et le badge disparaît quand elles sont complèt
   expect(urls.some((u) => /\/12\/\d+\/\d+\.mvt$/.test(u))).toBe(true);
   unmount();
 });
+
+// REV-304 : champ temporel d'une couche du widget carte (timeFilterable).
+function renderTimePanel(onChange: (l: MapLayer[]) => void, timeFilterable: boolean) {
+  const client = {
+    fetchUrl,
+    listLayerSources: vi.fn().mockResolvedValue([]),
+    getCollectionSchema: vi.fn().mockResolvedValue({
+      fields: [
+        { name: "nom", type: "string" },
+        { name: "date_obs", type: "datetime" },
+      ],
+    }),
+  } as unknown as ItemClient;
+  const current: MapLayer[] = [
+    {
+      id: "v",
+      title: "V",
+      visible: true,
+      kind: "vector",
+      tilesUrl: "t/{z}/{x}/{y}",
+      sourceLayer: "s",
+      collectionId: "c1",
+    },
+    { id: "r", title: "R", visible: true, kind: "raster", tilesUrl: "r/{z}/{x}/{y}" },
+  ];
+  return render(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <ItemClientProvider client={client}>
+        <LayersPanel layers={current} onChange={onChange} timeFilterable={timeFilterable} />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+}
+
+test("timeFilterable : select des champs date et message pour une couche raster", async () => {
+  const onChange = vi.fn();
+  renderTimePanel(onChange, true);
+  const select = await screen.findByLabelText("Champ temporel");
+  await waitFor(() => expect(screen.getByRole("option", { name: "date_obs" })).toBeInTheDocument());
+  expect(screen.queryByRole("option", { name: "nom" })).not.toBeInTheDocument();
+  await userEvent.selectOptions(select, "date_obs");
+  expect(onChange.mock.calls.at(-1)![0][0]).toMatchObject({ id: "v", timeField: "date_obs" });
+  expect(screen.getByText("Cette couche ne peut pas être filtrée dans le temps.")).toBeVisible();
+});
+
+test("sans timeFilterable, aucun éditeur de champ temporel", async () => {
+  renderTimePanel(vi.fn(), false);
+  await screen.findByText("V");
+  expect(screen.queryByLabelText("Champ temporel")).not.toBeInTheDocument();
+});

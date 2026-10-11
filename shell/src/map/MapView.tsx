@@ -11,6 +11,7 @@ import {
   useState,
 } from "react";
 import * as maplibregl from "maplibre-gl";
+import type { FilterSpecification } from "maplibre-gl";
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import type { DataRecord, MapConfig, ThemeColors } from "../api/types";
 import { MapLegend } from "./MapLegend";
@@ -24,6 +25,7 @@ import { isHostedCollectionUrl, isHostedTerrainUrl } from "./hostedCoreUrl";
 import { HIGHLIGHT_ID } from "./mapLayerBuild";
 import {
   applyLayers,
+  applyTimeFilters,
   loadIconImages,
   refreshLabelSources,
   mapRelevantLayer,
@@ -111,6 +113,9 @@ export const MapView = forwardRef<
     // défaut : un MapView sans icône personnalisée n'a besoin d'aucun
     // câblage (Task 12 le fournit depuis les deux hôtes).
     loadCustomIcon?: (iconId: string) => Promise<Blob>;
+    // REV-304 : fenêtre du contexte temps global, appliquée par setFilter aux
+    // couches `vector` qui déclarent un `timeField` (sans les reconstruire).
+    timeRange?: { from: string; to: string } | null;
   }
   // Il n'y a délibérément pas de prop `exprContext` : le gabarit de popup
   // n'a qu'un seul vocabulaire, `record.*` (cf. popupContent.ts). La prop
@@ -132,6 +137,7 @@ export const MapView = forwardRef<
     getCoreUrl,
     getShareLinkToken,
     loadCustomIcon,
+    timeRange,
   },
   ref,
 ) {
@@ -238,6 +244,11 @@ export const MapView = forwardRef<
   }, [themeColors]);
   useEffect(() => {
     layersRef.current = config.layers;
+  });
+  const timeRangeRef = useRef(timeRange);
+  const timeBaseFiltersRef = useRef<Map<string, FilterSpecification | undefined>>(new Map());
+  useEffect(() => {
+    timeRangeRef.current = timeRange;
   });
   useEffect(() => {
     terrainRef.current = config.terrain;
@@ -362,6 +373,7 @@ export const MapView = forwardRef<
         themeColorsRef.current,
       );
       void loadIconImages(map, iconImageIds, loadCustomIconRef.current);
+      applyTimeFilters(map, layersRef.current, timeRangeRef.current, timeBaseFiltersRef.current);
       // Un changement de config ne doit pas attendre le prochain `idle` pour
       // repeupler les étiquettes d'une couche dont les tuiles sont déjà là.
       refreshLabelSources(map, layersRef.current, lastLabelPayloadsRef.current);
@@ -491,6 +503,9 @@ export const MapView = forwardRef<
       themeColorsRef.current,
     );
     void loadIconImages(map, iconImageIds, loadCustomIconRef.current);
+    // applyLayers vient de recréer les couches : filtres d'origine à relire.
+    timeBaseFiltersRef.current.clear();
+    applyTimeFilters(map, layers, timeRangeRef.current, timeBaseFiltersRef.current);
     // Un changement de config ne doit pas attendre le prochain `idle` pour
     // repeupler les étiquettes d'une couche dont les tuiles sont déjà là.
     refreshLabelSources(map, layers, lastLabelPayloadsRef.current);
@@ -502,6 +517,15 @@ export const MapView = forwardRef<
       getCoreUrlRef.current,
     );
   }, [layersKey, handleTilesetLoad, handlePopup]);
+
+  // REV-304 : un pas du lecteur temporel ne fait que re-filtrer (setFilter).
+  const timeFrom = timeRange?.from;
+  const timeTo = timeRange?.to;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !styleLoadedRef.current) return;
+    applyTimeFilters(map, layersRef.current, timeRangeRef.current, timeBaseFiltersRef.current);
+  }, [timeFrom, timeTo]);
 
   useEffect(() => {
     const map = mapRef.current;

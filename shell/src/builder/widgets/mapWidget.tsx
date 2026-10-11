@@ -225,6 +225,7 @@ export function registerMapWidget(): void {
             <LayersPanel
               layers={(props.layers as MapLayer[] | undefined) ?? []}
               onChange={(layers) => onChange({ ...props, layers })}
+              timeFilterable
             />
           </div>
         </div>
@@ -355,6 +356,7 @@ export function registerMapWidget(): void {
             <MapView
               ref={handle}
               config={config}
+              timeRange={analyticsCtx.timeRange}
               themeColors={ctx.theme?.colors}
               interactiveTools={ctx.mode !== "edit"}
               getAuthToken={client.getAuthToken}

@@ -339,6 +339,8 @@ export type MapLayer =
       kind: "vector";
       tilesUrl: string;
       sourceLayer: string;
+      // REV-304 : champ temporel filtré par le contexte temps global (widget carte).
+      timeField?: string;
       paint?: Record<string, unknown>;
       collectionId?: string;
       geometryKind?: "point" | "line" | "polygon";

@@ -153,6 +153,51 @@ function LayerSymbologyEditor({
   );
 }
 
+// REV-304 : champ date/datetime d'une couche, filtré par le lecteur temporel.
+// Sans collectionId (couche "feature" URL GeoJSON) le type des champs est
+// inconnu : on propose tous les champs introspectés.
+function LayerTimeFieldEditor({
+  layer,
+  onChangeLayer,
+}: {
+  layer: Extract<MapLayer, { kind: "vector" | "feature" }>;
+  onChangeLayer: (next: MapLayer) => void;
+}) {
+  const client = useItemClient();
+  const collectionId = layer.collectionId;
+  const schema = useQuery({
+    queryKey: ["collection-schema", collectionId],
+    queryFn: () => client.getCollectionSchema(collectionId!),
+    enabled: Boolean(collectionId),
+  });
+  const featureGeojson = useFeatureLayerGeoJson(layer);
+  const fields = collectionId
+    ? (schema.data?.fields
+        .filter((f) => f.type === "date" || f.type === "datetime")
+        .map((f) => f.name) ?? [])
+    : featureGeojson.data
+      ? listFields(featureGeojson.data)
+      : [];
+  return (
+    <select
+      aria-label={t("layersPanel.timeFieldAria")}
+      className="h-9 rounded border border-rule bg-surface text-xs"
+      value={layer.timeField ?? ""}
+      onChange={(e) => {
+        const { timeField: _drop, ...rest } = layer;
+        onChangeLayer(e.target.value ? { ...rest, timeField: e.target.value } : rest);
+      }}
+    >
+      <option value="">{t("layersPanel.timeFieldNone")}</option>
+      {fields.map((f) => (
+        <option key={f} value={f}>
+          {f}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 // GAP-45 : layer.paint fait un round-trip API complet (toFrontLayer()) et
 // sert de repli au rendu quand symbology est absent, mais aucune UI ne
 // l'écrivait jamais avant ce panneau — seul un document édité hors produit
@@ -221,9 +266,13 @@ const ICON_BTN =
 export function LayersPanel({
   layers,
   onChange,
+  timeFilterable = false,
 }: {
   layers: MapLayer[];
   onChange: (layers: MapLayer[]) => void;
+  // REV-304 : seul le widget carte a un contexte temps global ; l'éditeur de
+  // carte autonome n'expose pas de champ temporel.
+  timeFilterable?: boolean;
 }) {
   const client = useItemClient();
   const [tileState, setTileState] = useState<Map<string, "aggregated" | "truncated">>(new Map());
@@ -477,8 +526,21 @@ export function LayersPanel({
                 </label>
               </div>
             )}
+            {timeFilterable && layer.kind !== "vector" && layer.kind !== "feature" && (
+              <p className="basis-full pl-2 text-xs text-ink-2">
+                {t("layersPanel.timeNotFilterable")}
+              </p>
+            )}
             {(layer.kind === "vector" || layer.kind === "feature") && (
               <div className="basis-full pl-2">
+                {timeFilterable && (
+                  <LayerTimeFieldEditor
+                    layer={layer}
+                    onChangeLayer={(next) =>
+                      onChange(layers.map((l) => (l.id === layer.id ? next : l)))
+                    }
+                  />
+                )}
                 <LayerPopupEditor
                   layer={layer}
                   onChangeLayer={(next) =>

@@ -115,6 +115,9 @@ export const map = {
   "layerPicker.addFeatureButton": "Ajouter la couche",
 
   // LayersPanel (map)
+  "layersPanel.timeFieldAria": "Champ temporel",
+  "layersPanel.timeFieldNone": "Aucun (pas de filtre temporel)",
+  "layersPanel.timeNotFilterable": "Cette couche ne peut pas être filtrée dans le temps.",
   "layersPanel.geojsonNotLoadedError": "La couche GeoJSON n'est pas encore chargée",
   "layersPanel.paintAdvancedButton": "Avancé : peinture MapLibre",
   "layersPanel.paintAria": "Peinture MapLibre (JSON)",
