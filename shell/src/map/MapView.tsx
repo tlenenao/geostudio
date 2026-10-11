@@ -22,7 +22,8 @@ import { resolvePopupContent } from "./popupContent";
 import { clearViewport, publishViewport } from "./viewportTiles";
 import { t } from "../i18n";
 import { isHostedCollectionUrl, isHostedTerrainUrl } from "./hostedCoreUrl";
-import { HIGHLIGHT_ID } from "./mapLayerBuild";
+import { aggregateDefaultColor, HIGHLIGHT_ID, highlightColor } from "./mapLayerBuild";
+import { onThemeChange } from "../lib/theme";
 import {
   applyLayers,
   applyTimeFilters,
@@ -359,8 +360,7 @@ export const MapView = forwardRef<
         id: HIGHLIGHT_ID,
         type: "line",
         source: HIGHLIGHT_ID,
-        // gs-raw-color-ok: surbrillance de sélection sur fond de carte arbitraire
-        paint: { "line-color": "#ef4444", "line-width": 3 },
+        paint: { "line-color": highlightColor(), "line-width": 3 },
       });
       const iconImageIds = applyLayers(
         map,
@@ -517,6 +517,27 @@ export const MapView = forwardRef<
       getCoreUrlRef.current,
     );
   }, [layersKey, handleTilesetLoad, handlePopup]);
+
+  // REV-285 (e) : bascule clair/sombre -> setPaintProperty en place (ni carte,
+  // ni sources, ni couches recréées). Une couleur fixée par la symbologie ou
+  // par themeColors.primary n'est pas dérivée du thème : on n'y touche pas.
+  useEffect(
+    () =>
+      onThemeChange(() => {
+        const map = mapRef.current;
+        if (!map || !styleLoadedRef.current) return;
+        if (map.getLayer(HIGHLIGHT_ID)) {
+          map.setPaintProperty(HIGHLIGHT_ID, "line-color", highlightColor());
+        }
+        if (themeColorsRef.current?.primary) return;
+        for (const l of layersRef.current) {
+          if (l.kind === "vector" && map.getLayer(`${l.id}__agg`)) {
+            map.setPaintProperty(`${l.id}__agg`, "circle-color", aggregateDefaultColor());
+          }
+        }
+      }),
+    [],
+  );
 
   // REV-304 : un pas du lecteur temporel ne fait que re-filtrer (setFilter).
   const timeFrom = timeRange?.from;

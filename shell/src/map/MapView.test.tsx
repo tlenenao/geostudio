@@ -2477,6 +2477,52 @@ test("timeRange filters a vector layer with timeField through setFilter, without
   expect(JSON.stringify(filterOf())).not.toContain("date");
 });
 
+// REV-285 (e) : surbrillance et cellules agrégées suivent la bascule
+// clair/sombre par setPaintProperty, sans recréer carte, sources ni couches.
+test("theme switch repaints the highlight and aggregate layers in place", async () => {
+  const { unmount } = render(<MapView config={tiled({ geometryKind: "point" })} />);
+  const map = mapInstances[0];
+  const paintOf = (id: string) =>
+    (map.getLayer(id) as unknown as { paint: Record<string, unknown> }).paint;
+  const source = map.getSource("communes");
+  document.documentElement.style.setProperty("--gs-danger", "#010203");
+  document.documentElement.style.setProperty("--gs-accent", "#040506");
+  document.documentElement.dataset.theme = "dark";
+  await new Promise((r) => setTimeout(r, 0));
+  try {
+    expect(paintOf("__highlight__")["line-color"]).toBe("#010203");
+    expect(paintOf("communes__agg")["circle-color"]).toBe("#040506");
+    expect(mapInstances).toHaveLength(1);
+    expect(map.getSource("communes")).toBe(source);
+    unmount();
+    document.documentElement.style.setProperty("--gs-danger", "#070809");
+    document.documentElement.dataset.theme = "light";
+    await new Promise((r) => setTimeout(r, 0));
+    expect(paintOf("__highlight__")["line-color"]).toBe("#010203"); // désabonné
+  } finally {
+    document.documentElement.style.removeProperty("--gs-danger");
+    document.documentElement.style.removeProperty("--gs-accent");
+    delete document.documentElement.dataset.theme;
+  }
+});
+
+test("theme switch keeps an aggregate color fixed by the app theme primary", async () => {
+  render(
+    <MapView config={tiled({ geometryKind: "point" })} themeColors={{ primary: "#aa0000" }} />,
+  );
+  const map = mapInstances[0];
+  document.documentElement.style.setProperty("--gs-accent", "#040506");
+  document.documentElement.dataset.theme = "dark";
+  await new Promise((r) => setTimeout(r, 0));
+  try {
+    const agg = map.getLayer("communes__agg") as unknown as { paint: Record<string, unknown> };
+    expect(agg.paint["circle-color"]).toBe("#aa0000");
+  } finally {
+    document.documentElement.style.removeProperty("--gs-accent");
+    delete document.documentElement.dataset.theme;
+  }
+});
+
 test("a vector layer without timeField is left alone by timeRange", () => {
   const cfg = tiled({ geometryKind: "polygon" });
   render(<MapView config={cfg} timeRange={{ from: "2024-01-01", to: "2024-01-07" }} />);
