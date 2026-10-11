@@ -66,6 +66,10 @@ def finalize_tileset3d_task(job_id: str, tenant_id: str) -> None:
             job.title,
             job.created_by,
         )
+        if not tileset3d_repo.mark_finalizing(session, job_id=job_id):
+            logger.info("tileset3d job %s non démarré : plus en file (REV-295)", job_id)
+            return
+        session.commit()
 
     def _notify_outcome(status: str, item_id: str | None, error: str | None = None) -> None:
         # P20.12 : fin de job notifiée in-app au créateur (best-effort).
