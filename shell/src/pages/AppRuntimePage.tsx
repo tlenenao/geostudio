@@ -222,7 +222,7 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
           mode="runtime"
           pageId={pageId}
           onNavigate={(nextPageId) =>
-            navigate(`/apps/${encodeURIComponent(pk)}/${encodeURIComponent(nextPageId)}`)
+            void navigate(`/apps/${encodeURIComponent(pk)}/${encodeURIComponent(nextPageId)}`)
           }
           initialAnalyticsContext={initialAnalyticsContext}
           onAnalyticsContextChange={handleAnalyticsContextChangeAndTrack}

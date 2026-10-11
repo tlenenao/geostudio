@@ -282,7 +282,7 @@ export function ImportFileButton() {
         // /admin/collections n'est atteignable qu'avec
         // admin.collections.manage, les autres retombent sur le catalogue.
         const fallback = canManageCollections ? "/admin/collections" : "/";
-        navigate(
+        void navigate(
           !job.itemId
             ? fallback
             : job.itemResourceType === "dataset"

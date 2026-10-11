@@ -401,7 +401,7 @@ export function PipelineBuilderPage({
         // blocker réellement enregistré côté routeur reflète déjà
         // `hasUnsavedChanges === false`.
         flushSync(() => setHasUnsavedChanges(false));
-        navigate(`/pipelines/${item.pk}/edit`, { replace: true });
+        void navigate(`/pipelines/${item.pk}/edit`, { replace: true });
         return;
       }
       const version = await savePipeline.mutateAsync({

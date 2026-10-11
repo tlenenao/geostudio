@@ -160,12 +160,12 @@ export function NewItemButton() {
     if (kind === "dataset" && datasetSource === "arcgis" && !arcgisItemId) return;
     if (kind === "pipeline") {
       close();
-      navigate("/pipelines/new", { state: { title: clean } });
+      void navigate("/pipelines/new", { state: { title: clean } });
       return;
     }
     if (kind === "visual-query") {
       close();
-      navigate("/datasets/visual-query/new", { state: { title: clean } });
+      void navigate("/datasets/visual-query/new", { state: { title: clean } });
       return;
     }
     try {
@@ -186,7 +186,7 @@ export function NewItemButton() {
                 slug: kind === "site" ? slug : undefined,
               });
       close();
-      navigate(
+      void navigate(
         kind === "map"
           ? `/maps/${item.pk}`
           : kind === "dataset"

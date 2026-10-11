@@ -132,13 +132,13 @@ function ItemDetailRoute() {
   return (
     <ItemDetailPage
       pk={pk!}
-      onDeleted={() => navigate("/")}
+      onDeleted={() => void navigate("/")}
       onOpenEditor={(type, item) => {
         if (type === "pipeline") {
           void resolvePipelineEditorPath(client, pk!).then((path) => navigate(path));
           return;
         }
-        navigate(editorPath(pk!, type, item));
+        void navigate(editorPath(pk!, type, item));
       }}
     />
   );

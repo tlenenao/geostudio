@@ -206,7 +206,7 @@ export function VisualQueryWizardPage({
           const latest = runs[0];
           if (latest && latest.status !== "queued" && latest.status !== "running") {
             if (latest.status === "succeeded") {
-              navigate(`/datasets/${createdDatasetPk}/edit`);
+              void navigate(`/datasets/${createdDatasetPk}/edit`);
               return;
             }
             // Run terminé en échec (ou tout autre statut terminal non

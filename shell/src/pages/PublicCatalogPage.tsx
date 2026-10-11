@@ -54,7 +54,7 @@ export function PublicCatalogPage() {
 
   function open(pk: string, resourceType: ResourceType) {
     const item = query.data?.items.find((i) => i.pk === pk);
-    navigate(
+    void navigate(
       resourceType === "site" && item?.slug
         ? `/sites/${encodeURIComponent(item.slug)}`
         : `/public/items/${encodeURIComponent(pk)}`,

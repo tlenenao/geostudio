@@ -26,7 +26,7 @@ export function BottomNav({ profile }: { profile: Profile }) {
           <button
             key={domain.id}
             type="button"
-            onClick={() => navigate(path)}
+            onClick={() => void navigate(path)}
             aria-current={isActive ? "page" : undefined}
             className={
               isActive
