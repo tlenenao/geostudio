@@ -256,7 +256,8 @@ export type GeocodeResult = { label: string; lon: number; lat: number };
 
 export type ItemScope = "all" | "mine" | "shared" | "public";
 
-export type ItemSort = "date_desc" | "date_asc" | "updated_desc" | "title_asc" | "title_desc";
+export type ItemSort =
+  "relevance" | "date_desc" | "date_asc" | "updated_desc" | "title_asc" | "title_desc";
 
 export type ListItemsParams = {
   q?: string;
