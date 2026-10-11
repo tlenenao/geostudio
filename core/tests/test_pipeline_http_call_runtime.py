@@ -348,3 +348,53 @@ def test_invalid_headers_json_is_a_row_error(conn, httpserver):
         ids=(1,),
     )
     assert rows[0][3:] == ("error", "headersExpr n'est pas du JSON valide")
+
+
+def test_page_number_pagination_is_aggregated_into_one_cell(conn, httpserver):
+    pages = {"1": [{"v": 1}, {"v": 2}], "2": [{"v": 3}], "3": []}
+
+    def handler(request):
+        return Response(
+            _json.dumps(pages[request.args.get("page", "1")]), content_type="application/json"
+        )
+
+    httpserver.expect_request("/p").respond_with_handler(handler)
+    rows = run(
+        conn,
+        {"urlExpr": f"'{httpserver.url_for('/p')}'", "paginator": "page_number"},
+        ids=(1,),
+    )
+    assert _json.loads(rows[0][1]) == [{"v": 1}, {"v": 2}, {"v": 3}]
+    assert rows[0][3] == "success"
+
+
+def test_pagination_records_path(conn, httpserver):
+    httpserver.expect_request("/p").respond_with_json({"data": {"items": [{"v": 1}]}})
+    rows = run(
+        conn,
+        {
+            "urlExpr": f"'{httpserver.url_for('/p')}'",
+            "paginator": "page_number",
+            "paginatorConfig": {"maximumPage": 1},
+            "recordsPath": "data.items",
+        },
+        ids=(1,),
+    )
+    assert _json.loads(rows[0][1]) == [{"v": 1}]
+
+
+def test_paginated_5xx_retries_whole_pagination(conn, httpserver):
+    stamps: list[float] = []
+    httpserver.expect_request("/p").respond_with_handler(_recording_handler([503], stamps))
+    rows = run(
+        conn,
+        {
+            "urlExpr": f"'{httpserver.url_for('/p')}'",
+            "paginator": "page_number",
+            "maxRetries": 1,
+            "initialBackoffSeconds": 0.0,
+        },
+        ids=(1,),
+    )
+    assert rows[0][2:5] == (503, "error", "HTTP 503")
+    assert len(stamps) == 2

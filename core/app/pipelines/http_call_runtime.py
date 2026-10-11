@@ -192,6 +192,46 @@ def _send_direct(p, url, headers, kwargs, auth, *, follows_redirects: bool) -> _
     return _classify(resp.status_code, text, resp.headers, follows_redirects=follows_redirects)
 
 
+def _send_paginated(p, url, headers, kwargs, auth, *, follows_redirects: bool) -> _Outcome:
+    """Pages agrégées en une liste JSON. `RESTClient(base_url="")` accepte une URL absolue en
+    `path` (dlt `join_url`). Une erreur HTTP lève `requests.HTTPError` (traité par
+    `_run_with_retry`, qui rejoue toute la pagination — ponytail : reprise depuis la page 1)."""
+    from dlt.sources.helpers.rest_client import RESTClient
+
+    from app.pipelines import connector_runtime as cr
+    from app.pipelines.egress import build_guarded_session
+
+    with build_guarded_session() as session:
+        client = RESTClient(
+            base_url="",
+            auth=auth,
+            paginator=cr._build_paginator(p.paginator, p.paginatorConfig),
+            data_selector=p.recordsPath,
+            session=session,
+        )
+        records: list = []
+        for page_no, page in enumerate(
+            client.paginate(
+                url,
+                method=p.method,
+                headers=headers or None,
+                timeout=p.timeoutSeconds,
+                allow_redirects=follows_redirects,
+                **kwargs,
+            ),
+            1,
+        ):
+            if page_no > cr._max_pages():
+                return _Outcome(error=f"plafond de {cr._max_pages()} pages dépassé")
+            records.extend(page)
+            if len(records) > cr._max_rows():
+                return _Outcome(error=f"plafond de {cr._max_rows()} enregistrements dépassé")
+    body = json.dumps(records, default=str)
+    if len(body.encode()) > _max_response_bytes():
+        return _Outcome(error="réponse trop volumineuse")
+    return _Outcome(200, body)
+
+
 class _RateLimiter:
     def __init__(self, rps: float | None) -> None:
         self._interval = 1.0 / rps if rps else 0.0
@@ -220,9 +260,8 @@ def _make_row_caller(p, secret_resolver, preview: bool) -> Callable[[tuple], _Ou
         def attempt() -> _Outcome:
             headers = {str(k): str(v) for k, v in _as_obj(headers_raw, "headersExpr").items()}
             extra_headers, kwargs = _build_request_parts(p, body_raw, mp_vals)
-            return _send_direct(
-                p, url, {**extra_headers, **headers}, kwargs, None, follows_redirects=True
-            )
+            send = _send_direct if p.paginator == "none" else _send_paginated
+            return send(p, url, {**extra_headers, **headers}, kwargs, None, follows_redirects=True)
 
         return _run_with_retry(p, attempt)
 
