@@ -36,6 +36,8 @@ from shapely.geometry import Point, shape
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import transform as shapely_transform
 
+from app.cell_safety import unsanitize_cell
+
 
 class IngestionParseError(Exception):
     """Message affiché tel quel comme ingestion_jobs.error_message."""
@@ -218,7 +220,7 @@ def parse_csv_latlon(
             ) from exc
         i += 1
         try:
-            yield extract_geometry(row, effective_mode)
+            yield extract_geometry({k: unsanitize_cell(v) for k, v in row.items()}, effective_mode)
         except IngestionParseError as exc:
             raise IngestionParseError(f"ligne {i} : {exc}") from exc
 
@@ -226,7 +228,7 @@ def parse_csv_latlon(
 def _xlsx_cell_value(value):
     if isinstance(value, (datetime.datetime, datetime.date)):
         return value.isoformat()
-    return value
+    return unsanitize_cell(value)
 
 
 def parse_xlsx_sheet(
