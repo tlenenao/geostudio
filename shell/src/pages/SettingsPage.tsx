@@ -27,6 +27,8 @@ function ProfileSection() {
       )}
       {meQuery.data && (
         <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-sm text-ink-2">
+          <dt>{t("settings.profileId")}</dt>
+          <dd className="font-mono text-xs">{meQuery.data.id}</dd>
           <dt>{t("settings.profileUsername")}</dt>
           <dd>{meQuery.data.username}</dd>
           <dt>{t("settings.profileEmail")}</dt>

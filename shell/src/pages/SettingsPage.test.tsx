@@ -81,6 +81,8 @@ test("affiche le profil et la préférence de notifications courante", async () 
   renderPage();
   expect(await screen.findByText("alice")).toBeInTheDocument();
   expect(screen.getByText("alice@example.com")).toBeInTheDocument();
+  // j13-005 : l'identifiant est exigé par « Ajouter un membre » à un groupe.
+  expect(screen.getByText("u1")).toBeInTheDocument();
   expect(screen.getByText("Alice Martin")).toBeInTheDocument();
   expect(screen.getByText("Créateur")).toBeInTheDocument();
   expect(screen.getByText("acme")).toBeInTheDocument();
