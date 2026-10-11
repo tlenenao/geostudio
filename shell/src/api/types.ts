@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { ExportedFile } from "./base";
+import type { ExportedFile, ExportJobHandler } from "./base";
 import type { ItemPermissions } from "../auth/permissions";
 
 export type ResourceType =
@@ -224,6 +224,15 @@ export type InstanceStatus = {
   };
 };
 
+// t02-013 : `GET /health` (non authentifié) expose la file de jobs ; un worker
+// arrêté se lit à `oldestTodoAgeSeconds` qui grandit.
+export type JobsBacklog = {
+  todo: number;
+  oldestTodoAgeSeconds: number | null;
+  // REV-317 : ventilation par file (cœur récent) ; absente sur un cœur ancien.
+  queues?: Record<string, { todo: number; oldestTodoAgeSeconds: number | null }>;
+};
+
 export type AdminToolName = "martin" | "titiler" | "grafana";
 
 export type CopilotMessage = { role: "user" | "assistant"; content: string };
@@ -274,6 +283,9 @@ export type UpdatePatch = {
   slug?: string;
   license?: string;
   language?: string;
+  // REV-317 : `updatedAt` lu par l'éditeur ; envoyé en `If-Match` (jamais dans
+  // le corps) -> 412 si l'item a changé depuis.
+  baseUpdatedAt?: string;
 };
 
 // canManage : l'appelant est créateur du groupe ou administrateur des
@@ -288,7 +300,14 @@ export type ShareLinkInfo = {
   createdAt?: string;
   createdBy?: string;
 };
-export type ShareRole = "viewer" | "editor";
+export type ShareRole = "viewer" | "editor" | "manager";
+export type GeoLimitTarget = "role" | "group";
+export type GeoLimit = {
+  targetType: GeoLimitTarget;
+  targetId: string;
+  geometry: Record<string, unknown>;
+  updatedAt: string;
+};
 export type Sharing = {
   public: boolean;
   groups: { groupId: string; role: ShareRole }[];
@@ -346,6 +365,8 @@ export type MapLayer =
       symbology?: import("../builder/widgets/mapSymbology").LayerSymbology;
       collectionId?: string;
       pkColumn?: string;
+      // REV-304 : champ temporel filtré par le contexte temps global (widget carte).
+      timeField?: string;
     }
   | {
       id: string;
@@ -419,6 +440,38 @@ export type CollectionSchema = {
   pk: string;
   geometry: { column: string; type: string | null; srid: number } | null;
   fields: CollectionSchemaField[];
+};
+
+// REV-117 : profil exploratoire d'une collection (GET /collections/{id}/profile).
+export type CollectionColumnProfile = {
+  name: string;
+  type: string;
+  nonNull: number;
+  nulls: number;
+  distinct?: number | null;
+  min?: number | string | null;
+  max?: number | string | null;
+  mean?: number | null;
+  p25?: number | null;
+  median?: number | null;
+  p75?: number | null;
+  topValues?: { value: string; count: number }[] | null;
+  histogram?:
+    { bucketIndex: number; bucketStart: number; bucketEnd: number; count: number }[] | null;
+};
+
+export type CollectionProfile = {
+  rowCount: number;
+  sampled: boolean;
+  truncatedColumns: boolean;
+  columns: CollectionColumnProfile[];
+  geometry: {
+    column: string;
+    bbox: number[] | null;
+    types: { type: string; count: number }[];
+  } | null;
+  asOf?: string | null;
+  pending: boolean;
 };
 
 export type AttachmentSummary = {
@@ -598,8 +651,17 @@ export interface ItemClient {
   ): Promise<HarvestSourceRecordsPage>;
   launchAdminTool(tool: AdminToolName): Promise<{ url: string }>;
   getInstanceStatus(): Promise<InstanceStatus>;
+  getJobsBacklog(): Promise<JobsBacklog | null>;
   getCollectionSharing(id: string): Promise<Sharing>;
   setCollectionSharing(id: string, sharing: Sharing): Promise<void>;
+  listGeoLimits(collectionId: string): Promise<GeoLimit[]>;
+  putGeoLimit(
+    collectionId: string,
+    targetType: GeoLimitTarget,
+    targetId: string,
+    geometry: Record<string, unknown>,
+  ): Promise<GeoLimit>;
+  deleteGeoLimit(collectionId: string, targetType: GeoLimitTarget, targetId: string): Promise<void>;
   createMapItem(input: { title: string; owner: string }): Promise<Item>;
   getMapConfig(pk: string): Promise<MapConfig>;
   saveMapConfig(pk: string, config: MapConfig): Promise<number | undefined>;
@@ -683,8 +745,16 @@ export interface ItemClient {
   // un appelant qui saurait qu'un dataset a changé ailleurs.
   invalidateDatasetCache(pk?: string): void;
   featuresUrl(source: DataSource): string;
-  exportDataSource(source: DataSource, format: string, signal?: AbortSignal): Promise<ExportedFile>;
+  exportDataSource(
+    source: DataSource,
+    format: string,
+    signal?: AbortSignal,
+    onJob?: ExportJobHandler,
+  ): Promise<ExportedFile>;
+  // D6 : annule un export asynchrone de données (409 si déjà terminé).
+  cancelExportJob(collectionId: string, jobId: string): Promise<{ status: string }>;
   getCollectionSchema(collectionId: string): Promise<CollectionSchema>;
+  getCollectionProfile(collectionId: string): Promise<CollectionProfile>;
   presignAttachmentUpload(
     collectionId: string,
     fid: string,
@@ -732,12 +802,14 @@ export interface ItemClient {
     geometryMode?: "latlon" | "wkt" | "none";
   }): Promise<{ jobId: string }>;
   getIngestionJob(jobId: string): Promise<{
-    status: "pending" | "running" | "done" | "error";
+    status: "pending" | "running" | "done" | "error" | "cancelled" | "cancel_requested";
     errorMessage: string | null;
     collectionId: string | null;
     itemId: string | null;
     itemResourceType?: string | null;
   }>;
+  // D6 : pending -> cancelled ; running -> cancel_requested ; 409 si terminé.
+  cancelIngestionJob(jobId: string): Promise<{ status: string }>;
   runAnalyticsSql(
     sql: string,
   ): Promise<{ columns: string[]; rows: unknown[][]; truncated: boolean }>;
@@ -796,6 +868,9 @@ export interface ItemClient {
   // {id,name,kind,createdAt,updatedAt}, jamais le SecretPayload lui-même.
   listSecrets(): Promise<SecretSummary[]>;
   createSecret(input: { name: string; payload: SecretPayload }): Promise<SecretSummary>;
+  // PUT /secrets/{id} : remplace la valeur en place (nom et kind inchangés) ; le
+  // payload entier est renvoyé, le cœur ne relit jamais l'ancien.
+  updateSecret(id: string, payload: SecretPayload): Promise<SecretSummary>;
   deleteSecret(id: string): Promise<void>;
 }
 
@@ -808,10 +883,17 @@ export type SecretSummary = {
 };
 
 export type SecretPayload =
-  | { kind: "api_key"; location: "header" | "query"; key: string; value: string }
-  | { kind: "bearer_token"; token: string }
-  | { kind: "basic_auth"; username: string; password: string }
-  | { kind: "oauth2_client_credentials"; tokenUrl: string; clientId: string; clientSecret: string }
+  // REV-294 : les 4 kinds REST portent `baseUrl` (le secret n'est envoyé qu'à cette URL).
+  | { kind: "api_key"; location: "header" | "query"; key: string; value: string; baseUrl?: string }
+  | { kind: "bearer_token"; token: string; baseUrl?: string }
+  | { kind: "basic_auth"; username: string; password: string; baseUrl?: string }
+  | {
+      kind: "oauth2_client_credentials";
+      tokenUrl: string;
+      clientId: string;
+      clientSecret: string;
+      baseUrl?: string;
+    }
   | { kind: "postgres_dsn"; dsn: string }
   | {
       kind: "smtp";

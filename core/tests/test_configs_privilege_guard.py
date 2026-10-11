@@ -63,7 +63,7 @@ def env():
             role_id=roles["reader"].id,
             role_slug="reader",
         )
-        assert roles["reader"].privileges == []
+        assert roles["reader"].privileges == ["analytics.view"]
         collection = Collection(
             id="parcs",
             tenant_id=tenant.id,
@@ -204,7 +204,6 @@ def _body(kind: str) -> dict:
         "map",
         "dataset",
         "pipeline",
-        "bookmark",
         "site",
         "dashboard",
         "alert",
@@ -268,19 +267,19 @@ def test_demoted_owner_can_no_longer_update_their_own_app_config(env):
     assert resp_by_item.status_code == 403, resp_by_item.text
 
 
-def test_analyst_can_create_and_reader_still_cannot_create_a_bookmark(env):
+def test_analyst_and_reader_can_create_a_bookmark(env):
     # Revue du lot de correctifs 1 (Important), décision Tanguy : un
     # bookmark est une « vue analytique enregistrée » (spec SP-14m), portée
     # par analytics.view — pas catalog.manage (l'ancien mapping bloquait à
     # tort l'Analyste, seul rôle prédéfini dont le domaine est justement
-    # l'Analytique). Preuve des deux côtés dans le même test : l'Analyste
-    # obtient de nouveau 201, le Lecteur reste à 403.
+    # l'Analytique). REV-270/P12.10 (décision Tanguy, 2026-10-10) : le Lecteur
+    # porte désormais analytics.view et obtient lui aussi 201.
     app, client, _creator, reader = env
     Session = client.session_factory  # type: ignore[attr-defined]
     with Session() as s:
         roles = ensure_built_in_roles(s, tenant_id=reader.tenant_id)
         assert Privilege.ANALYTICS_VIEW.value in roles["analyst"].privileges
-        assert Privilege.ANALYTICS_VIEW.value not in roles["reader"].privileges
+        assert Privilege.ANALYTICS_VIEW.value in roles["reader"].privileges
         analyst = get_or_create_user(
             s,
             tenant_id=reader.tenant_id,
@@ -321,9 +320,25 @@ def test_analyst_can_create_and_reader_still_cannot_create_a_bookmark(env):
     resp = client.post("/v1/configs", json={"title": "vue analyste", "config": bookmark_body})
     assert resp.status_code == 201, resp.text
 
+    with Session() as s:
+        reader_app = items_repo.create_item(
+            s,
+            tenant_id=reader.tenant_id,
+            owner_id=reader.id,
+            resource_type="app",
+            title="Cible lecteur",
+        )
+        s.commit()
+        reader_app_id = reader_app.id
     _as(app, reader)
-    resp = client.post("/v1/configs", json={"title": "vue reader", "config": bookmark_body})
-    assert resp.status_code == 403, resp.text
+    resp = client.post(
+        "/v1/configs",
+        json={
+            "title": "vue reader",
+            "config": {"kind": "bookmark", "bookmark": {"appId": reader_app_id, "pageId": "p1"}},
+        },
+    )
+    assert resp.status_code == 201, resp.text
 
 
 def test_demoted_owner_can_no_longer_rollback_their_own_app_config(env):

@@ -8,18 +8,20 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.collections.introspection import TableInfo
+from app.sharing.geo_limits import geo_source
 from app.sql_ident import quote_ident
 
 
 def table_extent(session: Session, info: TableInfo) -> list[float] | None:
     if info.geometry_column is None:
         return None
-    t = quote_ident(session, info.table_name)
     g = quote_ident(session, info.geometry_column)
-    box = session.execute(
-        text(
-            f"SELECT ST_XMin(e), ST_YMin(e), ST_XMax(e), ST_YMax(e) "
-            f"FROM (SELECT ST_Extent({g}) AS e FROM public.{t}) s WHERE e IS NOT NULL"
-        )
-    ).one_or_none()
+    # Sous limite géographique : emprise de la géométrie DÉCOUPÉE (aucune autre colonne lue).
+    with geo_source(session, info, columns=()) as src:
+        box = session.execute(
+            text(
+                f"SELECT ST_XMin(e), ST_YMin(e), ST_XMax(e), ST_YMax(e) "
+                f"FROM (SELECT ST_Extent({g}) AS e FROM {src}) s WHERE e IS NOT NULL"
+            )
+        ).one_or_none()
     return [box[0], box[1], box[2], box[3]] if box else None

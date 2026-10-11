@@ -22,6 +22,8 @@ import { formatDateTime } from "../lib/format";
 import { LoadingState } from "../ui/kit/LoadingState";
 import { QueryErrorState } from "../ui/kit/QueryErrorState";
 import { PageTitle } from "../ui/kit/PageTitle";
+import "../i18n/domains/admin";
+import "../i18n/domains/misc";
 
 type PanelKind = "edit" | "thumbnail" | "share" | null;
 
@@ -290,7 +292,6 @@ function ItemFacts({
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span className="text-ink-2">{t("itemDetail.publicUrlLabel")}</span>
           <code className="rounded bg-sunken px-1.5 py-0.5 text-ink">{publicUrl}</code>
-          {/* eslint-disable-next-line geostudio/panel-trigger-aria -- bouton « Copier » : etat transitoire, pas un panneau */}
           <Button
             size="sm"
             variant="outline"

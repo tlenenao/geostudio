@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { isConflictError } from "../api/ApiError";
+import { useUrlTab } from "../lib/useUrlTab";
 import { SaveConflictNotice } from "../builder/SaveConflictNotice";
 import { useAuth } from "../auth/useAuth";
 import { useItemClient } from "../api/ItemClientProvider";
@@ -32,6 +33,10 @@ import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
 import { LoadingState } from "../ui/kit/LoadingState";
 import { PageTitle } from "../ui/kit/PageTitle";
+import "../i18n/domains/admin";
+import "../i18n/domains/automation";
+import "../i18n/domains/misc";
+import "../i18n/domains/widgets";
 
 // Compare le schéma de sortie recompilé (déduit de l'état courant du
 // formulaire) au schéma réel de la collection de sortie déjà provisionnée,
@@ -55,7 +60,31 @@ export function VisualQueryWizardPage({
   const navigate = useNavigate();
   const { username } = useAuth();
   const client = useItemClient();
-  const collectionsQuery = useCollectionsAdmin({ enabled: true });
+  const tabProps = useUrlTab("query");
+  // REV-309 : GET /collections plafonne à 100 résultats ; la recherche ?q= côté
+  // cœur (debouncée) atteint les suivantes. Liste fusionnée = défaut + résultats.
+  const [baseSearch, setBaseSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(baseSearch.trim()), 250);
+    return () => clearTimeout(timer);
+  }, [baseSearch]);
+  const defaultCollectionsQuery = useCollectionsAdmin({ enabled: true });
+  const searchedCollectionsQuery = useCollectionsAdmin({
+    q: debouncedSearch,
+    enabled: debouncedSearch !== "",
+  });
+  const baseOptions =
+    debouncedSearch !== ""
+      ? (searchedCollectionsQuery.data ?? [])
+      : (defaultCollectionsQuery.data ?? []);
+  const collections = [
+    ...new Map(
+      [...(defaultCollectionsQuery.data ?? []), ...(searchedCollectionsQuery.data ?? [])].map(
+        (c) => [c.id, c],
+      ),
+    ).values(),
+  ];
   const existingPipelineQuery = usePipelineConfig(pipelinePk ?? "", {
     enabled: pipelinePk !== null,
   });
@@ -410,7 +439,7 @@ export function VisualQueryWizardPage({
   return (
     <div className="-m-6 flex flex-1 flex-col overflow-hidden">
       <TriptychLayout
-        defaultTabId="query"
+        {...tabProps}
         browse={{
           id: "back",
           label: t("domain.catalog"),
@@ -448,6 +477,12 @@ export function VisualQueryWizardPage({
                   }}
                 />
               </label>
+              <Input
+                aria-label={t("visualQuery.baseCollectionSearchAria")}
+                placeholder={t("visualQuery.baseCollectionSearchPlaceholder")}
+                value={baseSearch}
+                onChange={(e) => setBaseSearch(e.target.value)}
+              />
               <label className="flex flex-col gap-1 text-sm">
                 {t("visualQuery.baseCollectionLabel")}
                 <select
@@ -468,7 +503,13 @@ export function VisualQueryWizardPage({
                   }}
                 >
                   <option value="">{t("visualQuery.chooseOption")}</option>
-                  {(collectionsQuery.data ?? []).map((c) => (
+                  {baseCollectionId && !baseOptions.some((c) => c.id === baseCollectionId) && (
+                    <option value={baseCollectionId}>
+                      {collections.find((c) => c.id === baseCollectionId)?.title ??
+                        baseCollectionId}
+                    </option>
+                  )}
+                  {baseOptions.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.title}
                     </option>
@@ -492,7 +533,7 @@ export function VisualQueryWizardPage({
                         <QueryJoinPicker
                           baseSchema={baseSchema}
                           joinedSchema={joinedSchema}
-                          collections={collectionsQuery.data ?? []}
+                          collections={collections}
                           value={join}
                           onChange={setJoin}
                         />
@@ -576,7 +617,7 @@ export function VisualQueryWizardPage({
                       baseCollectionId={baseCollectionId}
                       baseSchema={baseSchema}
                       joinedSchema={joinedSchema}
-                      collectionIds={(collectionsQuery.data ?? []).map((c) => c.id)}
+                      collectionIds={collections.map((c) => c.id)}
                       filters={filters}
                       join={join}
                       summary={summary}

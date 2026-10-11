@@ -9,6 +9,7 @@ import type {
   HarvestSourcePatchInput,
   HarvestSourceRecordsPage,
   InstanceStatus,
+  JobsBacklog,
   ItemClient,
 } from "../types";
 import type { ItemClientBase } from "../base";
@@ -23,6 +24,7 @@ type ExtensionsAdminToolsMethods = Pick<
   | "deleteExtension"
   | "launchAdminTool"
   | "getInstanceStatus"
+  | "getJobsBacklog"
   | "listHarvestSources"
   | "createHarvestSource"
   | "updateHarvestSource"
@@ -110,6 +112,14 @@ export function createExtensionsAdminToolsMethods(
 
     async launchAdminTool(tool: AdminToolName): Promise<{ url: string }> {
       return request<{ url: string }>("POST", `/admin-tools/launch/${tool}`);
+    },
+
+    async getJobsBacklog(): Promise<JobsBacklog | null> {
+      // /health n'est pas versionné (cf. base.ts) : on retire le suffixe /v1.
+      const res = await base.fetchUrl(`${coreUrl.replace(/\/v1$/, "")}/health`);
+      if (!res.ok) return null;
+      const data = (await res.json()) as { jobsBacklog?: JobsBacklog | null };
+      return data.jobsBacklog ?? null;
     },
 
     async getInstanceStatus(): Promise<InstanceStatus> {

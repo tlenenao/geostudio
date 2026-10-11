@@ -6,6 +6,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.export.models import ExportJob
+from app.job_timeouts import running_reclaim_minutes
 
 
 def _now() -> datetime:
@@ -22,7 +23,6 @@ def _now() -> datetime:
 # started_at (posé par mark_running), jamais created_at : un job resté
 # longtemps "pending" en file avant de démarrer ne doit pas être réclamé dès
 # qu'il passe "running".
-_RUNNING_RECLAIM_MINUTES = 60
 _TERMINAL = ("done", "error")
 
 
@@ -73,15 +73,16 @@ def mark_running(session: Session, *, job_id: str) -> bool:
 
 def mark_done(
     session: Session, *, job_id: str, result_key: str, byte_size: int | None = None
-) -> None:
+) -> bool:
     # c02-006 : UPDATE conditionnel — un job déjà clos (réclamé en erreur par le
     # balayage) ne repasse jamais « done ».
-    session.execute(
+    result = session.execute(
         update(ExportJob)
         .where(ExportJob.id == job_id, ExportJob.status.notin_(_TERMINAL))
         .values(status="done", result_key=result_key, byte_size=byte_size, finished_at=_now())
     )
     session.flush()
+    return bool(result.rowcount)  # type: ignore[attr-defined]
 
 
 def mark_error(session: Session, *, job_id: str, error: str) -> None:
@@ -93,9 +94,7 @@ def mark_error(session: Session, *, job_id: str, error: str) -> None:
     session.flush()
 
 
-def reclaim_stuck_jobs(
-    session: Session, *, older_than_minutes: int = _RUNNING_RECLAIM_MINUTES
-) -> list[str]:
+def reclaim_stuck_jobs(session: Session, *, older_than_minutes: int | None = None) -> list[str]:
     """Marque "error" tout export_jobs resté "running" plus vieux que
     older_than_minutes (ancré sur started_at) — cf. la note de module sur
     _RUNNING_RECLAIM_MINUTES. Retourne les ids réclamés. Cross-tenant par
@@ -106,7 +105,7 @@ def reclaim_stuck_jobs(
     SP-49, elle affirmait encore à tort qu'aucun appelant périodique
     n'existait (stale depuis le câblage, cf. aussi le docstring périmé
     équivalent dans tests/test_export_repository.py)."""
-    threshold = _now() - timedelta(minutes=older_than_minutes)
+    threshold = _now() - timedelta(minutes=older_than_minutes or running_reclaim_minutes())
     rows = (
         session.execute(select(ExportJob).where(ExportJob.status.in_(("pending", "running"))))
         .scalars()

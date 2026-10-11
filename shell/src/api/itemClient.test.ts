@@ -2584,6 +2584,24 @@ test("getCollectionSchema returns the introspected fields", async () => {
   });
 });
 
+test("getCollectionProfile appelle GET /collections/{id}/profile (REV-117)", async () => {
+  server.use(
+    http.get("https://core.test/v1/collections/parcs/profile", () =>
+      HttpResponse.json({
+        rowCount: 2,
+        sampled: false,
+        truncatedColumns: false,
+        pending: false,
+        columns: [{ name: "nom", type: "string", nonNull: 2, nulls: 0 }],
+        geometry: null,
+      }),
+    ),
+  );
+  const profile = await makeClient().getCollectionProfile("parcs");
+  expect(profile.rowCount).toBe(2);
+  expect(profile.columns[0].name).toBe("nom");
+});
+
 test("createFeature sends a GeoJSON Feature with the bearer token and returns the new id", async () => {
   let auth: string | null = null;
   let body: unknown;
@@ -4422,6 +4440,28 @@ test("createSecret posts the payload and returns the summary (no ciphertext echo
   });
 });
 
+test("updateSecret envoie PUT /secrets/{id} avec le payload entier (REV-297)", async () => {
+  let body: any;
+  let method = "";
+  server.use(
+    http.put("https://core.test/v1/secrets/s1", async ({ request }) => {
+      method = request.method;
+      body = await request.json();
+      return HttpResponse.json({
+        id: "s1",
+        name: "n",
+        kind: "bearer_token",
+        createdAt: "t",
+        updatedAt: "t2",
+      });
+    }),
+  );
+  const result = await makeClient().updateSecret("s1", { kind: "bearer_token", token: "y" });
+  expect(method).toBe("PUT");
+  expect(body).toEqual({ payload: { kind: "bearer_token", token: "y" } });
+  expect(result.updatedAt).toBe("t2");
+});
+
 test("deleteSecret calls DELETE /secrets/{id}", async () => {
   let method = "";
   server.use(
@@ -4687,4 +4727,27 @@ test("REV-271 : getAlertRuleConfig expose la version, saveAlertRuleConfig l'envo
   expect(await client.saveAlertRuleConfig("a-71", loaded)).toBe(6);
   expect(ifMatch).toBe('"5"');
   expect(body).toEqual({ version: 1, kind: "alert", alert });
+});
+
+test("REV-317 : updateItem envoie baseUpdatedAt en If-Match (hors corps) ; sans lui, aucun en-tête ; 412 -> ApiError", async () => {
+  let ifMatch: string | null = "unset";
+  let body: any;
+  server.use(
+    http.patch("https://core.test/v1/items/i-1", async ({ request }) => {
+      ifMatch = request.headers.get("If-Match");
+      body = await request.json();
+      if (ifMatch === '"old"')
+        return HttpResponse.json({ detail: "stale version" }, { status: 412 });
+      return HttpResponse.json({ pk: "i-1", title: "T" });
+    }),
+  );
+  const client = makeClient();
+  await client.updateItem("i-1", { title: "T", baseUpdatedAt: "2026-01-01T00:00:00" });
+  expect(ifMatch).toBe('"2026-01-01T00:00:00"');
+  expect(body).toEqual({ title: "T" });
+  await client.updateItem("i-1", { title: "T" });
+  expect(ifMatch).toBeNull();
+  await expect(client.updateItem("i-1", { baseUpdatedAt: "old" })).rejects.toMatchObject({
+    status: 412,
+  });
 });

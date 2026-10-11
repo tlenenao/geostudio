@@ -17,6 +17,7 @@ from app.auth.export_tokens import mint_export_token
 from app.configs import repository as configs_repo
 from app.db import request_scoped_session
 from app.export import repository as export_repo
+from app.export.models import ExportJob
 from app.export.rendering import RenderPage, render_export
 from app.ingestion.storage import ensure_uploads_bucket, make_s3_client
 from app.items import repository as items_repo
@@ -85,6 +86,29 @@ def _notify(
         item_title=title,
         error=error,
     )
+
+
+def reclaim_and_notify_stuck_exports(session, factory) -> None:
+    """Reprend les exports `running` trop vieux (worker tué) et notifie leur
+    demandeur (REV-323 B : l'abandon était silencieux). Commit le statut AVANT
+    de notifier — la notification reste best-effort (SP-39)."""
+    reclaimed = [
+        (job.tenant_id, job.item_id, job.user_id, job.page_id, job.error)
+        for job_id in export_repo.reclaim_stuck_jobs(session)
+        if (job := session.get(ExportJob, job_id)) is not None
+    ]
+    session.commit()
+    for tenant_id, item_id, user_id, page_id, error in reclaimed:
+        _notify(
+            factory,
+            tenant_id=tenant_id,
+            item_id=item_id,
+            user_id=user_id,
+            page_id=page_id,
+            resource_type=None,
+            status="failure",
+            error=error,
+        )
 
 
 def s3_client_from_env():
@@ -259,9 +283,13 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
             # rendu vient d'être produit ci-dessus) — len() suffit, pas
             # besoin d'un head_object après upload (bucket non
             # tenant-préfixé, cf. spec §1.4/§3.1).
-            export_repo.mark_done(
+            done = export_repo.mark_done(
                 session, job_id=job_id, result_key=result_key, byte_size=len(content)
             )
+        if not done:  # REV-323 B : repris en erreur pendant l'envoi — objet orphelin
+            logger.warning("export job %s terminé tardivement, objet supprimé", job_id)
+            s3_client.delete_object(Bucket=bucket, Key=result_key)
+            return
         _notify(
             factory,
             tenant_id=tenant_id,

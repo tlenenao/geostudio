@@ -13,8 +13,10 @@ from app.analytics.aggregate import (
     AggregateRequestBody,
     UnknownAggregateField,
     _measure_label,
+    lake_as_of,
     run_collection_aggregate,
 )
+from app.analytics.profile import CollectionProfileResponse, run_collection_profile
 from app.collections.introspection import TableNotFound, UnsupportedTable
 from app.collections.introspection_pg import introspect_table
 from app.collections.schema_json import table_info_to_schema
@@ -29,6 +31,7 @@ from app.harvest.egress import EgressBlockedError
 from app.items import repository as items_repo
 from app.mcp.tools.identity import (
     McpToolError,
+    refuse_geo_limited,
     require_access,
     require_collection_read,
     resolve_actor,
@@ -104,6 +107,7 @@ def register(server: FastMCP, session_factory) -> None:
                 col = require_collection_read(
                     session, user=user, collection_id=payload.collectionId
                 )
+                refuse_geo_limited(session, user, col.table_name, path="aggregates")
                 try:
                     info = introspect_table(session, col.table_name)
                 except TableNotFound as exc:
@@ -178,6 +182,57 @@ def register(server: FastMCP, session_factory) -> None:
                 raw, group_by=group_by, measures=measures
             )
             return {"categoryKey": category_key, "rows": rows}
+
+    @server.tool()
+    async def profile_dataset(ctx: Context, datasetId: str) -> dict:
+        """Exploratory profile of a collection-sourced dataset (REV-117,
+        X-rays): per-column null/distinct counts, min/max/quantiles/histogram,
+        top values, geometry extent and types. Mirrors GET
+        /collections/{id}/profile — same permissions, same sensitive-field
+        masking, same DuckDB bounds. Not available for arcgis datasets."""
+        access_token = get_access_token()
+        with request_scoped_session(session_factory) as session:
+            user = resolve_actor(session, access_token)
+            payload = _resolve_dataset_payload(session, user=user, dataset_item_id=datasetId)
+            if payload.source != "collection":
+                raise ValueError("profile is only available for collection-sourced datasets")
+            assert payload.collectionId is not None
+            col = require_collection_read(session, user=user, collection_id=payload.collectionId)
+            try:
+                info = introspect_table(session, col.table_name)
+            except TableNotFound as exc:
+                raise ValueError("collection backing table not found") from exc
+            except UnsupportedTable as exc:
+                raise ValueError(exc.reason) from exc
+            masked_fields = (
+                frozenset()
+                if has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)
+                else frozenset(col.sensitive_fields)
+            )
+            base_uri = features_routes.get_analytics_base_uri()
+            conn = features_routes.get_duckdb_connection_factory()()
+            try:
+                try:
+                    result = run_collection_profile(
+                        conn,
+                        base_uri=base_uri,
+                        tenant_id=col.tenant_id,
+                        collection_id=col.id,
+                        table_info=info,
+                        masked_fields=masked_fields,
+                    )
+                except UnknownAggregateField as exc:
+                    raise McpToolError(
+                        422,
+                        f"{exc.field}: {exc.message}",
+                        [{"field": exc.field, "code": "unknown_field", "message": exc.message}],
+                    ) from exc
+                as_of = lake_as_of(conn, base_uri, col.tenant_id, col.id)
+            finally:
+                conn.close()
+            return CollectionProfileResponse(
+                **result, asOf=as_of, pending=as_of is None
+            ).model_dump()
 
     @server.tool()
     async def explain_dataset(ctx: Context, datasetId: str) -> dict:

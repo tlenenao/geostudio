@@ -130,7 +130,11 @@ def test_materialize_rest_connector_injects_bearer_token(conn, session, tenant, 
         user,
         name="my-bearer",
         kind="bearer_token",
-        payload={"kind": "bearer_token", "token": "s3cr3t-tok"},
+        payload={
+            "kind": "bearer_token",
+            "token": "s3cr3t-tok",
+            "baseUrl": httpserver.url_for("/"),
+        },
     )
     httpserver.expect_request(
         "/items",
@@ -160,7 +164,13 @@ def test_materialize_rest_connector_injects_api_key_query_param(
         user,
         name="my-key",
         kind="api_key",
-        payload={"kind": "api_key", "location": "query", "key": "token", "value": "abc123"},
+        payload={
+            "kind": "api_key",
+            "location": "query",
+            "key": "token",
+            "value": "abc123",
+            "baseUrl": httpserver.url_for("/"),
+        },
     )
     httpserver.expect_request("/items", query_string="token=abc123").respond_with_json(
         [{"id": 1, "name": "a"}]
@@ -187,7 +197,12 @@ def test_materialize_rest_connector_injects_basic_auth(conn, session, tenant, us
         user,
         name="my-basic",
         kind="basic_auth",
-        payload={"kind": "basic_auth", "username": "u", "password": "p"},
+        payload={
+            "kind": "basic_auth",
+            "username": "u",
+            "password": "p",
+            "baseUrl": httpserver.url_for("/"),
+        },
     )
     httpserver.expect_request("/items").respond_with_json([{"id": 1, "name": "a"}])
     params = ReaderConnectorRestParams(
@@ -204,6 +219,63 @@ def test_materialize_rest_connector_injects_basic_auth(conn, session, tenant, us
     )
     request = httpserver.log[0][0]
     assert request.headers["Authorization"].startswith("Basic ")
+
+
+def _rest_secret(session, tenant, user, **extra):
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="scoped",
+        kind="bearer_token",
+        payload={"kind": "bearer_token", "token": "tok", **extra},
+    )
+
+
+def _run_rest(conn, session, tenant, user, **params):
+    connector_runtime.materialize_rest_connector(
+        conn,
+        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
+        node_id="rs",
+        params=ReaderConnectorRestParams(secretName="scoped", **params),
+        view_name="node_rs",
+    )
+
+
+@pytest.mark.parametrize(
+    ("base", "path"),
+    [
+        ("http://evil.example/", "items"),  # hôte différent
+        ("http://localhost.evil.example/", "items"),  # préfixe d'hôte
+        ("http://localhost:1/api-evil/", "items"),  # frontière de segment
+        ("http://localhost:1/api/", "http://evil.example/x"),  # URL absolue dans path
+        ("http://localhost:1/api/", "//evil.example/x"),
+        ("http://localhost:1/api/", "../other"),
+    ],
+)
+def test_rest_secret_refuses_url_outside_secret_scope(
+    conn, session, tenant, user, httpserver, base, path
+):
+    """REV-294 : un secret REST est lié à son `baseUrl` ; l'URL effective du nœud
+    doit rester dessous, sinon le secret partirait vers un hôte de l'auteur."""
+    _rest_secret(session, tenant, user, baseUrl="http://localhost:1/api")
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="outside the base URL scope"):
+        _run_rest(conn, session, tenant, user, baseUrl=base, path=path)
+    assert httpserver.log == []
+
+
+def test_rest_secret_without_base_url_fails_clearly(conn, session, tenant, user, httpserver):
+    _rest_secret(session, tenant, user)
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="no 'baseUrl'"):
+        _run_rest(conn, session, tenant, user, baseUrl=httpserver.url_for("/"), path="items")
+    assert httpserver.log == []
+
+
+def test_rest_secret_accepts_sub_path_of_scope(conn, session, tenant, user, httpserver):
+    httpserver.expect_request("/api/v1/items").respond_with_json([{"id": 1}])
+    _rest_secret(session, tenant, user, baseUrl=httpserver.url_for("/api"))
+    _run_rest(conn, session, tenant, user, baseUrl=httpserver.url_for("/api/v1/"), path="items")
+    assert conn.execute("SELECT id FROM node_rs").fetchall() == [(1,)]
 
 
 def test_materialize_rest_connector_paginates_page_number(conn, session, tenant, httpserver):
@@ -297,6 +369,7 @@ def test_materialize_rest_connector_oauth2_token_exchange_goes_through_ssrf_guar
             "tokenUrl": "http://127.0.0.1:1/oauth/token",
             "clientId": "cid",
             "clientSecret": "csecret",
+            "baseUrl": httpserver.url_for("/"),
         },
     )
     httpserver.expect_request("/items").respond_with_json([{"id": 1, "name": "a"}])
@@ -853,7 +926,10 @@ def test_postgres_secret_resolver_get_returns_payload(session, tenant, user):
         user,
         name="my-bearer",
         kind="bearer_token",
-        payload={"kind": "bearer_token", "token": "s3cr3t-tok"},
+        payload={
+            "kind": "bearer_token",
+            "token": "s3cr3t-tok",
+        },
     )
     resolver = connector_runtime.PostgresSecretResolver(session, tenant.id, user)
     payload = resolver.get("my-bearer")
@@ -882,7 +958,10 @@ def test_postgres_secret_resolver_get_does_not_mask_backend_failure_as_not_found
         user,
         name="my-bearer",
         kind="bearer_token",
-        payload={"kind": "bearer_token", "token": "s3cr3t-tok"},
+        payload={
+            "kind": "bearer_token",
+            "token": "s3cr3t-tok",
+        },
     )
     monkeypatch.delenv("CORE_SECRETS_MASTER_KEY", raising=False)
     resolver = connector_runtime.PostgresSecretResolver(session, tenant.id, user)
@@ -1474,10 +1553,11 @@ def test_materialize_blob_connector_literal_glob_missing_table_gets_a_clear_mess
     _patch_blob_internals(monkeypatch, {})
 
     def _dlt_without_table(c, resource, *, node_id, view_name):
+        # Même chaînage que _run_dlt_and_attach : la cause DuckDB est typée.
         raise connector_runtime.ConnectorRuntimeError(
             "reader.connector extraction failed: Catalog Error: Table with name records "
             "does not exist!"
-        )
+        ) from duckdb.CatalogException("Table with name records does not exist!")
 
     monkeypatch.setattr(connector_runtime, "_run_dlt_and_attach", _dlt_without_table)
     with pytest.raises(connector_runtime.ConnectorRuntimeError, match="no row loaded"):
@@ -1489,6 +1569,33 @@ def test_materialize_blob_connector_literal_glob_missing_table_gets_a_clear_mess
                 secretName="s3-secret", path="s3://bucket/data.csv", format="csv"
             ),
             view_name="node_b11",
+        )
+
+
+def test_materialize_blob_connector_bucket_error_containing_does_not_exist_is_not_masked(
+    monkeypatch, conn, session, tenant, user
+):
+    """REV-300 M2 : la reconnaissance de « table records absente » repose sur le TYPE de la
+    cause (duckdb.CatalogException), pas sur la sous-chaîne « does not exist » — une erreur
+    de bucket qui la contient doit ressortir telle quelle."""
+    resolver = _blob_secret_and_resolver(session, tenant, user)
+    _patch_blob_internals(monkeypatch, {})
+
+    def _bucket_missing(c, resource, *, node_id, view_name):
+        raise connector_runtime.ConnectorRuntimeError(
+            "reader.connector extraction failed: The specified bucket does not exist"
+        ) from FileNotFoundError("The specified bucket does not exist")
+
+    monkeypatch.setattr(connector_runtime, "_run_dlt_and_attach", _bucket_missing)
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="bucket does not exist"):
+        connector_runtime.materialize_blob_connector(
+            conn,
+            secret_resolver=resolver,
+            node_id="b12",
+            params=ReaderConnectorBlobParams(
+                secretName="s3-secret", path="s3://bucket/data.csv", format="csv"
+            ),
+            view_name="node_b12",
         )
 
 
@@ -1779,6 +1886,34 @@ def test_blob_gzip_jsonl_still_loads_rows_through_the_buffered_cap(conn, tmp_pat
     resource.apply_hints(table_name="records", write_disposition="replace")
     connector_runtime._run_dlt_and_attach(conn, resource, node_id="gz2", view_name="node_gz2")
     assert conn.execute("SELECT count(*) FROM node_gz2").fetchone()[0] == 5
+
+
+def test_blob_gzip_parquet_is_readable_through_a_seekable_spool(conn, tmp_path):
+    """REV-323 A : parquet exige un flux seekable ; le .gz décompressé est
+    spoolé (toujours plafonné par _CappedReader)."""
+    import gzip
+    import io as _io
+
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    from dlt.sources.filesystem import filesystem
+
+    buf = _io.BytesIO()
+    pq.write_table(pa.table({"a": list(range(5))}), buf)
+    (tmp_path / "a.parquet.gz").write_bytes(gzip.compress(buf.getvalue()))
+    files = filesystem(bucket_url=str(tmp_path), file_glob="*.parquet.gz")
+    resource = connector_runtime._blob_resource(
+        files, connector_runtime.read_parquet(), seekable=True
+    )
+    resource.apply_hints(table_name="records", write_disposition="replace")
+    connector_runtime._run_dlt_and_attach(conn, resource, node_id="gz3", view_name="node_gz3")
+    assert conn.execute("SELECT count(*) FROM node_gz3").fetchone()[0] == 5
+
+
+def test_blob_format_parquet_requests_a_seekable_stream():
+    import inspect
+
+    assert "seekable=" in inspect.getsource(connector_runtime.materialize_blob_connector)
 
 
 # --- REV-110 : Databricks ---------------------------------------------------

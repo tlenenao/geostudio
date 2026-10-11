@@ -439,6 +439,26 @@ def test_gte_lte_filters_narrow_rows(tmp_path, conn):
     assert rows == [{"region": "Nord", "value": 20}]
 
 
+def test_in_filter_escaped_comma_is_a_literal_value(tmp_path, conn):
+    """REV-313."""
+    _write_partition(
+        tmp_path,
+        rows=[_row(1, "Nord, Pas", "2025", 10, lsn=1), _row(2, "Sud", "2025", 5, lsn=1)],
+    )
+    request = AggregateRequestBody(
+        groupBy="region", agg="sum", field="pop", filters={"region__in": "Nord\\, Pas"}
+    )
+    _k, rows = run_collection_aggregate(
+        conn,
+        base_uri=str(tmp_path),
+        tenant_id="t1",
+        collection_id="villes",
+        table_info=TABLE_INFO,
+        request=request,
+    )
+    assert rows == [{"region": "Nord, Pas", "value": 10}]
+
+
 def test_in_filter_matches_any_listed_value(tmp_path, conn):
     _write_partition(
         tmp_path,

@@ -8,6 +8,7 @@ import { Button } from "../ui/kit/Button";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { labelCls, inputCls } from "./formFieldStyles";
 import { t } from "../i18n";
+import "../i18n/domains/map";
 
 // Contrôle répété une fois par champ disponible dans une liste dense
 // (`PopupEditor` ci-dessous) : h-9, la hauteur par défaut des contrôles

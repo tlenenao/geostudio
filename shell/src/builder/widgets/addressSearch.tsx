@@ -7,6 +7,7 @@
 import { lazy, Suspense } from "react";
 import { registerWidget } from "../registry";
 import { t } from "../../i18n";
+import "../../i18n/domains/widgets";
 
 // Chargé à la demande : reste hors du chunk initial (seuil de bundle).
 const AddressSearch = lazy(() =>

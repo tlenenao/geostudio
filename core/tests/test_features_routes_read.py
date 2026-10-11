@@ -166,6 +166,18 @@ def test_filters_forwarded_and_unknown_is_400(env):
     assert r.json()["errors"][0]["code"] == "unknown_filter"
 
 
+def test_repeated_in_param_is_folded_with_literal_commas_and_legacy_kept(env):
+    """REV-313 : `?t__in=a, b&t__in=c` = 2 valeurs littérales ; `?t__in=a,b` = ancien format."""
+    from app.filter_values import split_in_values
+
+    app, client, admin, _r, repo = env
+    _register(app, client, admin)
+    client.get("/v1/collections/incidents/items?titre__in=Paris, France&titre__in=Lyon")
+    assert split_in_values(repo.calls["filters"]["titre__in"]) == ["Paris, France", "Lyon"]
+    client.get("/v1/collections/incidents/items?titre__in=a,b")
+    assert split_in_values(repo.calls["filters"]["titre__in"]) == ["a", "b"]
+
+
 def test_bbox_parsing(env):
     app, client, admin, _r, repo = env
     _register(app, client, admin)

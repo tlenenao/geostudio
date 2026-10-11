@@ -14,7 +14,43 @@ from sqlalchemy.exc import ArgumentError
 NonEmptyStr = Annotated[str, Field(min_length=1)]
 
 
-class ApiKeyPayload(BaseModel):
+def _check_base_url(value: str | None) -> str | None:
+    """REV-294 : `baseUrl` = URL de base (origine + préfixe de chemin) à laquelle
+    un secret REST est lié. `None` toléré pour décoder un secret antérieur ;
+    l'exécution de `reader.connector.rest` l'exige (même modèle que `bucketUrl`)."""
+    if value is None:
+        return value
+    parts = urlsplit(value)
+    if (
+        parts.scheme not in ("http", "https")
+        or not parts.hostname
+        or parts.username is not None
+        or parts.password is not None
+        or parts.query
+        or parts.fragment
+        or ".." in parts.path.split("/")
+    ):
+        raise ValueError(
+            "baseUrl must look like 'https://<host>[/<prefix>]' "
+            "(no credentials, query, fragment or '..' segment)"
+        )
+    return value
+
+
+class _RestScopedPayload(BaseModel):
+    """Base des 4 kinds utilisables par `reader.connector.rest` : le secret est
+    LIÉ à `baseUrl` ; `params.baseUrl` du nœud doit en porter le préfixe, sinon
+    un auteur de pipeline pourrait envoyer le secret à un hôte qu'il contrôle."""
+
+    baseUrl: str | None = None
+
+    @field_validator("baseUrl")
+    @classmethod
+    def _base_url(cls, v: str | None) -> str | None:
+        return _check_base_url(v)
+
+
+class ApiKeyPayload(_RestScopedPayload):
     """`location="query"` couvre les jetons en paramètre d'URL (ex.
     `?token=...` d'un ArcGIS Feature Service, clé GeoServer sur un WFS) ;
     `location="header"` couvre le cas générique (`X-API-Key`, etc.)."""
@@ -25,12 +61,12 @@ class ApiKeyPayload(BaseModel):
     value: NonEmptyStr
 
 
-class BearerTokenPayload(BaseModel):
+class BearerTokenPayload(_RestScopedPayload):
     kind: Literal["bearer_token"] = "bearer_token"
     token: NonEmptyStr
 
 
-class BasicAuthPayload(BaseModel):
+class BasicAuthPayload(_RestScopedPayload):
     """Couvre aussi un WFS/WMS/WMTS/CSW gaté par HTTP Basic Auth, et le flux
     ArcGIS Enterprise `generateToken` si un connecteur choisit de faire
     l'échange de jeton lui-même — le coffre ne porte que le matériel brut."""
@@ -40,7 +76,7 @@ class BasicAuthPayload(BaseModel):
     password: NonEmptyStr
 
 
-class OAuth2ClientCredentialsPayload(BaseModel):
+class OAuth2ClientCredentialsPayload(_RestScopedPayload):
     """Flux OAuth2 client-credentials — couvre notamment l'« app login »
     ArcGIS Online et toute API tierce gatée par ce flux standard. Le coffre
     stocke les identifiants client, jamais le jeton d'accès obtenu."""

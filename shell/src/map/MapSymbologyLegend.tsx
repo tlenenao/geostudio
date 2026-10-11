@@ -5,6 +5,7 @@
 import type { LegendSpec } from "../builder/widgets/mapSymbology";
 import { t } from "../i18n";
 import { formatNumber } from "../lib/format";
+import "../i18n/domains/widgets";
 
 // Correctif revue Tâche 35 : `mapWidget.tsx` monte toujours une seule
 // instance directement dans son propre conteneur `relative`, donc l'ancrage

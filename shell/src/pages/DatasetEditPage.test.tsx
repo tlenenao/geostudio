@@ -510,3 +510,24 @@ test("REV-271 : un 412 affiche le conflit ; « Recharger » invalide le cache da
   await waitFor(() => expect(saveDatasetConfig).toHaveBeenCalledTimes(2));
   expect(saveDatasetConfig.mock.calls[1][1].baseVersion).toBe(7);
 });
+
+test("REV-317 : les métadonnées envoient updatedAt en baseUpdatedAt ; un 412 affiche le conflit et « Recharger » relit l'item", async () => {
+  const updateItem = vi.fn().mockRejectedValueOnce(new ApiError(412, { detail: "stale" }));
+  const getItem = vi
+    .fn()
+    .mockResolvedValueOnce({ ...item, updatedAt: "2026-01-01T00:00:00" })
+    .mockResolvedValue({ ...item, updatedAt: "2026-01-02T00:00:00" });
+  renderPage({
+    getItem,
+    getDatasetConfig: vi.fn().mockResolvedValue(datasetConfig),
+    getCollectionSchema: vi.fn().mockResolvedValue(schema),
+    updateItem,
+  });
+  await screen.findByLabelText("Libellé de nom");
+  await userEvent.click(screen.getByRole("button", { name: t("common.save") }));
+  await screen.findByText(t("common.saveConflict"));
+  expect(updateItem.mock.calls[0][1].baseUpdatedAt).toBe("2026-01-01T00:00:00");
+  await userEvent.click(screen.getByRole("button", { name: t("common.saveConflictReload") }));
+  await waitFor(() => expect(screen.queryByText(t("common.saveConflict"))).toBeNull());
+  expect(getItem.mock.calls.length).toBeGreaterThan(1);
+});

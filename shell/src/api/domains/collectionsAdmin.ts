@@ -5,6 +5,8 @@ import type {
   CollectionCreateInput,
   CollectionPatchInput,
   CreateEmptyCollectionInput,
+  GeoLimit,
+  GeoLimitTarget,
   ItemClient,
   PageParams,
   Sharing,
@@ -21,6 +23,9 @@ type CollectionsAdminMethods = Pick<
   | "deleteCollection"
   | "getCollectionSharing"
   | "setCollectionSharing"
+  | "listGeoLimits"
+  | "putGeoLimit"
+  | "deleteGeoLimit"
 >;
 
 export function createCollectionsAdminMethods(base: ItemClientBase): CollectionsAdminMethods {
@@ -75,6 +80,39 @@ export function createCollectionsAdminMethods(base: ItemClientBase): Collections
 
     async setCollectionSharing(id: string, sharing: Sharing): Promise<void> {
       await request<void>("PUT", `/collections/${id}/sharing`, sharing);
+    },
+
+    // GAP-27 : limites géographiques de lecture (admin.collections.manage).
+    async listGeoLimits(collectionId: string): Promise<GeoLimit[]> {
+      const data = await request<{ limits: GeoLimit[] }>(
+        "GET",
+        `/collections/${collectionId}/geo-limits`,
+      );
+      return data.limits ?? [];
+    },
+
+    async putGeoLimit(
+      collectionId: string,
+      targetType: GeoLimitTarget,
+      targetId: string,
+      geometry: Record<string, unknown>,
+    ): Promise<GeoLimit> {
+      return request<GeoLimit>(
+        "PUT",
+        `/collections/${collectionId}/geo-limits/${targetType}/${encodeURIComponent(targetId)}`,
+        { geometry },
+      );
+    },
+
+    async deleteGeoLimit(
+      collectionId: string,
+      targetType: GeoLimitTarget,
+      targetId: string,
+    ): Promise<void> {
+      await request<void>(
+        "DELETE",
+        `/collections/${collectionId}/geo-limits/${targetType}/${encodeURIComponent(targetId)}`,
+      );
     },
   };
 }

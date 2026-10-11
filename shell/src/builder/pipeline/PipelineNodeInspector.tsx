@@ -5,6 +5,7 @@ import { t } from "../../i18n";
 import { fieldErrorsFor } from "./validation";
 import { CollectionParamSelect } from "./CollectionParamSelect";
 import { SecretParamSelect } from "./SecretParamSelect";
+import "../../i18n/domains/automation";
 
 // Édite un dict[str, str] (transform.aggregate.metrics) ou dict[str, str|null]
 // (transform.select.columns) sous forme de lignes clé/valeur. Convention

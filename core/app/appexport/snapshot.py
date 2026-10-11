@@ -33,6 +33,7 @@ from app.collections.schema_json import table_info_to_schema
 from app.configs.schemas import BuilderConfig
 from app.features.repository import select_features
 from app.features.rls import rls_scope
+from app.sharing.geo_limits import refuse_if_collection_has_limits
 
 _PAGE_SIZE = 1000
 
@@ -113,6 +114,10 @@ def write_snapshot(
 
         col = collections_repo.get_collection(
             session, tenant_id=tenant_id, collection_id=collection_id
+        )
+        # GAP-27 : export distribué sans identité de lecteur — refus si limité.
+        refuse_if_collection_has_limits(
+            session, tenant_id=tenant_id, collection_id=collection_id, path="app export"
         )
         # GAP-22 : un export est distribué hors du cœur, sans identité de lecteur —
         # toujours masqué, comme un lecteur sans data.view_sensitive.

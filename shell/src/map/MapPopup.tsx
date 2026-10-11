@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { AttachmentSummary } from "../api/types";
 import type { PopupContent } from "./popupContent";
 import { t } from "../i18n";
+import "../i18n/domains/map";
 
 // Composant purement présentationnel : il ne connaît ni MapLibre ni la
 // configuration, seulement un contenu déjà résolu et une position déjà

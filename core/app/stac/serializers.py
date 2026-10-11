@@ -171,5 +171,18 @@ def item(
     }
 
 
-def item_collection(*, items: list[dict], links: list[dict]) -> dict:
-    return {"type": "FeatureCollection", "features": items, "links": links}
+def item_collection(
+    *, items: list[dict], links: list[dict], number_matched: int | None = None
+) -> dict:
+    """STAC API ItemCollection : `numberReturned` toujours, `numberMatched` quand le
+    total est connu (REV-323 B : il n'était jamais exposé, un client ne pouvait
+    pas paginer avec un total)."""
+    body = {
+        "type": "FeatureCollection",
+        "features": items,
+        "numberReturned": len(items),
+        "links": links,
+    }
+    if number_matched is not None:
+        body["numberMatched"] = number_matched
+    return body

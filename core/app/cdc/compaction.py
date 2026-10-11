@@ -86,6 +86,16 @@ def list_recent_partition_objects(client, *, bucket: str, recent_days: int) -> l
 def merge_geoparquet(byte_blobs: list[bytes]) -> bytes:
     frames = [gpd.read_parquet(BytesIO(b)) for b in byte_blobs]
     merged = gpd.GeoDataFrame(pd.concat(frames, ignore_index=True), crs=frames[0].crs)
+    # REV-308 : un fragment tout-NULL (float64/NaN) mêlé à un fragment entier
+    # ferait redevenir la colonne double ; elle reste Int64 si un fragment
+    # l'était et que les valeurs présentes sont entières.
+    for col in merged.columns:
+        if merged[col].dtype in ("float64", "object") and any(
+            pd.api.types.is_integer_dtype(f[col].dtype) for f in frames if col in f
+        ):
+            vals = merged[col].dropna()
+            if vals.map(lambda v: float(v).is_integer()).all():
+                merged[col] = merged[col].astype("Int64")
     buf = BytesIO()
     merged.to_parquet(buf)
     return buf.getvalue()

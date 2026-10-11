@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { registerWidget } from "../registry";
 import { useSetTimeRange } from "../AnalyticsContext";
 import { t } from "../../i18n";
+import "../../i18n/domains/widgets";
 
 const DAY_MS = 86_400_000;
 const SPEEDS = [0.5, 1, 2];

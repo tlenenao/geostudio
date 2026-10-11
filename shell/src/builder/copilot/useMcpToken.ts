@@ -44,6 +44,7 @@ import { useCallback, useRef } from "react";
 import { useAuth as useOidcAuth } from "react-oidc-context";
 import { isMockMode } from "../../auth/useAuth";
 import { t } from "../../i18n";
+import "../../i18n/domains/automation";
 
 const MCP_SCOPE = "openid profile email geostudio-mcp-audience";
 const EXPIRY_BUFFER_MS = 30_000;

@@ -1,4 +1,3 @@
-import { bug } from "../_fixtures/verify";
 import { test, expect, type Page } from "@playwright/test";
 import { SHELL_URL } from "../_fixtures/env";
 import { evalMap, getMapSeed, go, openAs, stubBasemap, touchGesture, VIEWPORTS } from "./helpers";
@@ -28,30 +27,28 @@ async function screenOf(page: Page, lng: number, lat: number): Promise<{ x: numb
 
 test.describe("j12 carte : rendu et worker", () => {
   // Finding j12-001 : nginx sert le worker MapLibre en application/octet-stream.
-  bug(
-    "j12-001 : le worker MapLibre est servi avec un type MIME JavaScript",
-    async ({ request }) => {
-      const r = await request.get(`${SHELL_URL}/assets/maplibre-gl-worker.mjs`);
-      expect(r.status()).toBe(200);
-      expect(r.headers()["content-type"]).toMatch(/javascript/);
-    },
-  );
+  test("j12-001 : le worker MapLibre est servi avec un type MIME JavaScript", async ({
+    request,
+  }) => {
+    const r = await request.get(`${SHELL_URL}/assets/maplibre-gl-worker.mjs`);
+    expect(r.status()).toBe(200);
+    expect(r.headers()["content-type"]).toMatch(/javascript/);
+  });
 
   // Finding j12-001 (même cause : le worker ne démarre pas, les tuiles restent « loading »).
-  bug(
-    "j12-001 : sans contournement, la couche vectorielle de la carte est rendue",
-    async ({ page }) => {
-      const m = await getMapSeed();
-      await stubBasemap(page);
-      await openAs(page, "creator");
-      await go(page, `/maps/${m.pk}`, 8000);
-      const n = await evalMap<number>(
-        page,
-        "return m.queryRenderedFeatures({layers:['j12-pts']}).length;",
-      );
-      expect(n).toBeGreaterThan(0);
-    },
-  );
+  test("j12-001 : sans contournement, la couche vectorielle de la carte est rendue", async ({
+    page,
+  }) => {
+    const m = await getMapSeed();
+    await stubBasemap(page);
+    await openAs(page, "creator");
+    await go(page, `/maps/${m.pk}`, 8000);
+    const n = await evalMap<number>(
+      page,
+      "return m.queryRenderedFeatures({layers:['j12-pts']}).length;",
+    );
+    expect(n).toBeGreaterThan(0);
+  });
 
   test("avec le type MIME rétabli, la carte charge ses tuiles et affiche les 12 points", async ({
     page,

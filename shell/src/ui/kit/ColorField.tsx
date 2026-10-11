@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { Input } from "./Input";
 import { t } from "../../i18n";
+import "../../i18n/domains/widgets";
 
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 

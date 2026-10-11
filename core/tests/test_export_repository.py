@@ -316,3 +316,57 @@ def test_reclaim_stuck_jobs_respects_custom_threshold():
     # threshold, but IS stuck under a tighter 5min threshold.
     assert export_repo.reclaim_stuck_jobs(session, older_than_minutes=60) == []
     assert export_repo.reclaim_stuck_jobs(session, older_than_minutes=5) == [job.id]
+
+
+def _running_job(session, *, minutes_ago):
+    tenant = get_or_create_default_tenant(session)
+    user = get_or_create_user(
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="user-1",
+        username="user1",
+        email="user1@test.com",
+        first_name="User",
+        last_name="One",
+    )
+    item = items_repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Test App"
+    )
+    session.commit()
+    job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png"
+    )
+    session.commit()
+    export_repo.mark_running(session, job_id=job.id)
+    job.started_at = datetime.now(UTC) - timedelta(minutes=minutes_ago)
+    session.commit()
+    return job
+
+
+def test_reclaim_threshold_is_configurable_by_env(monkeypatch):
+    """REV-323 B : plus de 60 min en dur."""
+    session = _session()
+    job = _running_job(session, minutes_ago=30)
+    assert export_repo.reclaim_stuck_jobs(session) == []
+    monkeypatch.setenv("CORE_EXPORT_RUNNING_TIMEOUT_MINUTES", "10")
+    assert export_repo.reclaim_stuck_jobs(session) == [job.id]
+
+
+def test_mark_done_reports_whether_it_applied():
+    session = _session()
+    job = _running_job(session, minutes_ago=1)
+    export_repo.mark_error(session, job_id=job.id, error="boom")
+    assert export_repo.mark_done(session, job_id=job.id, result_key="k") is False
+
+
+def test_reclaim_and_notify_stuck_exports_notifies_the_requester(monkeypatch):
+    """REV-323 B : un export abandonné n'est plus silencieux."""
+    from app.export import jobs as export_jobs
+
+    session = _session()
+    job = _running_job(session, minutes_ago=120)
+    sent = []
+    monkeypatch.setattr(export_jobs, "_notify", lambda factory, **kw: sent.append(kw))
+    export_jobs.reclaim_and_notify_stuck_exports(session, factory=None)
+    assert [(k["user_id"], k["status"]) for k in sent] == [(job.user_id, "failure")]
+    assert "timed out" in sent[0]["error"]

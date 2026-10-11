@@ -196,6 +196,19 @@ def test_triangulate_group_with_fewer_than_three_points_yields_no_row(conn):
     assert conn.execute("SELECT count(*) FROM out").fetchone() == (0,)
 
 
+def test_triangulate_point_empty_raises_pipeline_runtime_error_not_index_error(conn):
+    """REV-300 M3 : `POINT EMPTY` n'a pas de coordonnée -> erreur métier, pas IndexError (500)."""
+    conn.execute("CREATE TABLE emp (id INTEGER, geometry GEOMETRY)")
+    conn.execute(
+        "INSERT INTO emp VALUES (1, ST_Point(0, 0)), (1, ST_Point(1, 0)), "
+        "(1, ST_GeomFromText('POINT EMPTY'))"
+    )
+    from app.pipelines.ops.execute import _execute_triangulate
+
+    with pytest.raises(PipelineRuntimeError, match="empty"):
+        _execute_triangulate(conn, input_view="emp", view_name="out", params={"groupBy": ["id"]})
+
+
 def test_minimum_bounding_circle_group_by_gives_one_circle_per_group(conn):
     conn.execute("CREATE TABLE pts_grouped (id INTEGER, geometry GEOMETRY)")
     conn.execute(

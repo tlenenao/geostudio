@@ -10,6 +10,8 @@ import { server } from "../test/msw/server";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { ImportFileButton } from "./ImportFileButton";
+import * as ToastPrimitive from "@radix-ui/react-toast";
+import { ToastProvider } from "../ui/kit/ToastProvider";
 import { expectAriaWired } from "../test/expectAriaWired";
 
 function MapProbe() {
@@ -29,7 +31,10 @@ function Harness({ children }: { children: ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <ItemClientProvider client={client}>
         <MemoryRouter initialEntries={["/"]}>
-          {children}
+          <ToastPrimitive.Provider>
+            <ToastProvider>{children}</ToastProvider>
+            <ToastPrimitive.Viewport />
+          </ToastPrimitive.Provider>
           <Routes>
             <Route path="/maps/:pk" element={<MapProbe />} />
             <Route path="/datasets/:pk/edit" element={<DatasetProbe />} />
@@ -666,7 +671,9 @@ test("SP-42/F-shell-pages-01 (fusion F-shell-pages-02) : masque le bouton pour u
     <QueryClientProvider client={queryClient}>
       <ItemClientProvider client={client}>
         <MemoryRouter initialEntries={["/"]}>
-          <ImportFileButton />
+          <ToastProvider>
+            <ImportFileButton />
+          </ToastProvider>
         </MemoryRouter>
       </ItemClientProvider>
     </QueryClientProvider>,
@@ -1026,4 +1033,70 @@ test("REV-282b : un import qui crée un dataset ouvre son éditeur, pas /maps", 
 
   await waitFor(() => expect(screen.getByText("dataset-ds-7")).toBeInTheDocument());
   expect(screen.queryByText("map-ds-7")).not.toBeInTheDocument();
+});
+
+async function startPollingImport(jobStatus: string, cancel: () => Response) {
+  server.use(
+    http.post("https://core.test/v1/uploads/presign", () =>
+      HttpResponse.json({ uploadUrl: "https://minio.test/up-c", key: "t/c-villes.geojson" }),
+    ),
+    http.put("https://minio.test/up-c", () => new HttpResponse(null, { status: 200 })),
+    http.post("https://core.test/v1/uploads", () => HttpResponse.json({ jobId: "job-c" })),
+    http.get("https://core.test/v1/uploads/job-c", () =>
+      HttpResponse.json({
+        status: jobStatus,
+        errorMessage: null,
+        collectionId: null,
+        itemId: null,
+      }),
+    ),
+    http.post("https://core.test/v1/uploads/job-c/cancel", () => cancel()),
+  );
+  render(
+    <Harness>
+      <ImportFileButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Importer un fichier" }));
+  await userEvent.upload(screen.getByLabelText("Fichier à importer"), geojsonFile());
+  await userEvent.type(screen.getByLabelText("Titre de la collection"), "Villes");
+  await userEvent.click(screen.getByRole("button", { name: "Importer" }));
+  return screen.findByRole("button", { name: "Annuler l'import" });
+}
+
+test("D6 : annuler un import en attente ferme le tiroir et confirme par un toast", async () => {
+  const cancel = await startPollingImport("pending", () =>
+    HttpResponse.json({
+      status: "cancelled",
+      errorMessage: null,
+      collectionId: null,
+      itemId: null,
+    }),
+  );
+  await userEvent.click(cancel);
+  expect(await screen.findByText("Import annulé.")).toBeInTheDocument();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+test("D6 : annuler un import déjà commencé annonce l'annulation demandée et garde le suivi", async () => {
+  const cancel = await startPollingImport("running", () =>
+    HttpResponse.json({
+      status: "cancel_requested",
+      errorMessage: null,
+      collectionId: null,
+      itemId: null,
+    }),
+  );
+  await userEvent.click(cancel);
+  expect(await screen.findByText(/Annulation demandée/)).toBeInTheDocument();
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  expect(cancel).toBeDisabled();
+});
+
+test("D6 : un 409 (import déjà terminé) affiche un message clair", async () => {
+  const cancel = await startPollingImport("running", () =>
+    HttpResponse.json({ title: "Conflit", detail: "upload job already finished" }, { status: 409 }),
+  );
+  await userEvent.click(cancel);
+  expect(await screen.findByText(/déjà terminé/)).toBeInTheDocument();
 });

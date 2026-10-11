@@ -85,6 +85,11 @@ test.describe("j10 builder : mode story et pages", () => {
   test("l'export d'app n'est pas proposé dans le builder quand la capacité est éteinte", async ({
     page,
   }) => {
+    const inst = await creator.get("/v1/instance");
+    test.skip(
+      inst.body.appExportEnabled === true,
+      "capacité allumée sur cette stack (enable-flags.sh)",
+    );
     const pk = await twoActionStory(`${tag}-b5`);
     await openAs(page, "creator");
     await spaGoto(page, `/apps/${pk}/edit`);

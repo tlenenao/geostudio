@@ -3,6 +3,7 @@ import type { DataRecord, ItemClient } from "../api/types";
 import { isHostedCollectionUrl } from "./hostedCoreUrl";
 import type { SampleFieldFn, StatQueryFn } from "../builder/widgets/mapSymbology";
 import { t } from "../i18n";
+import "../i18n/domains/map";
 
 // Passe par `client.fetchUrl` (délai, jeton de session ou de partage) ; jeton
 // uniquement si l'URL est servie par le cœur — une collection privée (cas par

@@ -8,6 +8,7 @@ import {
 import { useItemClient } from "../../api/hooks";
 import { t } from "../../i18n";
 import { Button } from "../../ui/kit/Button";
+import "../../i18n/domains/automation";
 
 // GAP-24, SP-53 : génération/liste/révocation des jetons de déclenchement.
 // Le jeton en clair n'existe qu'une fois, dans la réponse de création — ni

@@ -157,7 +157,7 @@ def test_extension_schema_validation():
 
 
 # P13.09 / P13.10
-def test_reader_cannot_read_acl_nor_group_list(client):
+def test_reader_cannot_read_acl_but_lists_groups_since_rev270(client):
     item_id = _seed(client, "app", public=True)
     # le propriétaire garde l'accès
     assert client.get(f"/v1/items/{item_id}/sharing").status_code == 200
@@ -178,7 +178,9 @@ def test_reader_cannot_read_acl_nor_group_list(client):
     client.app_.dependency_overrides[get_current_user] = lambda: bob
     assert client.get(f"/v1/items/{item_id}").status_code == 200
     assert client.get(f"/v1/items/{item_id}/sharing").status_code == 403
-    assert client.get("/v1/groups").status_code == 403
+    # REV-270 (a) : le Lecteur détient analytics.view (bookmarks), privilège de
+    # partage : la liste des groupes lui est ouverte, pas l'ACL d'un item.
+    assert client.get("/v1/groups").status_code == 200
 
 
 # P13.11

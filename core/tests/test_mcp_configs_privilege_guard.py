@@ -39,7 +39,7 @@ def _demote_to_reader(app_client):  # noqa: F811
     test_configs_privilege_guard.py::env."""
     with app_client.session_factory() as session:
         roles = ensure_built_in_roles(session, tenant_id=app_client.tenant.id)
-        assert roles["reader"].privileges == []
+        assert roles["reader"].privileges == ["analytics.view"]
         set_user_role(
             session,
             tenant_id=app_client.tenant.id,
@@ -137,20 +137,18 @@ def test_reader_without_any_privilege_is_denied_on_create_dataset(app_client):  
     assert "data.manage" in error_text
 
 
-def test_reader_without_any_privilege_is_denied_on_create_bookmark(app_client):  # noqa: F811
-    # Assertion volontairement générique sur "required" plutôt que sur un
-    # nom de privilège précis : le mapping bookmark->privilège est corrigé
-    # séparément par le point 2 de cette revue (catalog.manage ->
-    # analytics.view) — ce test ne doit pas coupler les deux commits.
+def test_reader_can_create_bookmark(app_client):  # noqa: F811
+    # REV-270/P12.10 (décision Tanguy) : le Lecteur porte analytics.view et
+    # crée des bookmarks, y compris par MCP.
     app_item_id = _seed_app_config(app_client)
     _demote_to_reader(app_client)
     with app_client:
-        error_text = call_tool_expecting_error(
+        out = call_tool(
             app_client,
             "create_bookmark",
             {"title": "Ma vue", "appId": app_item_id, "pageId": "p1"},
         )
-    assert "required" in error_text
+    assert out
 
 
 def test_reader_without_any_privilege_is_denied_on_save_app_config(app_client):  # noqa: F811

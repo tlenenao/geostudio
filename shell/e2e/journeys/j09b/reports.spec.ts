@@ -247,13 +247,10 @@ test.describe("balayage réel du worker", () => {
   // le passe qu'à core et export-worker) : is_export_enabled() y est faux, donc CHAQUE rapport
   // planifié échoue au déclenchement avec « export capability disabled on this instance » alors
   // que l'export est allumé sur l'instance. Aucun rapport planifié ne s'exécute jamais.
-  bug(
-    "j09b-001 : un rapport planifié est déclenché par le worker (un rendu est mis en file)",
-    async () => {
-      const r = q(`SELECT count(export_job_id) FROM report_runs WHERE report_item_id='${repA}'`);
-      expect(Number(r)).toBeGreaterThanOrEqual(1);
-    },
-  );
+  test("j09b-001 : un rapport planifié est déclenché par le worker (un rendu est mis en file)", async () => {
+    const r = q(`SELECT count(export_job_id) FROM report_runs WHERE report_item_id='${repA}'`);
+    expect(Number(r)).toBeGreaterThanOrEqual(1);
+  });
 
   // Finding j09b-013 : comme pour les pipelines (j06b-013), un rapport sans run antérieur est
   // dû au premier balayage quel que soit son cron (« 0 3 1 1 * » = 1er janvier, 3 h).

@@ -17,6 +17,7 @@ import { t } from "../i18n";
 import { formatDateTime } from "../lib/format";
 import { Button } from "../ui/kit/Button";
 import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
+import "../i18n/domains/misc";
 
 const formatDate = formatDateTime;
 

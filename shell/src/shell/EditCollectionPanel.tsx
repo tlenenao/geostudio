@@ -14,6 +14,8 @@ import { Tabs } from "../ui/kit/Tabs";
 import { Textarea } from "../ui/kit/Textarea";
 import { t } from "../i18n";
 import { LoadingState } from "../ui/kit/LoadingState";
+import "../i18n/domains/admin";
+import "../i18n/domains/misc";
 
 const UNSET = "unset";
 
@@ -309,6 +311,9 @@ export function EditCollectionPanel({
                 <div className="flex flex-col gap-1 pt-3">
                   <p className="text-sm font-medium text-ink">
                     {t("editCollection.sensitiveFieldsTitle")}
+                  </p>
+                  <p className="text-sm text-ink-muted">
+                    {t("editCollection.sensitiveFieldsHint")}
                   </p>
                   {schemaQuery.isLoading && <LoadingState />}
                   <ul className="flex flex-col gap-1">

@@ -23,6 +23,11 @@ echo "pg_restore $*" >> "$FAKE_BIN_LOG"
 exit 0
 """
 
+_FAKE_PSQL = """#!/bin/sh
+echo "psql $*" >> "$FAKE_BIN_LOG"
+exit 0
+"""
+
 _FAKE_MC = """#!/bin/sh
 echo "mc $*" >> "$FAKE_BIN_LOG"
 exit 0
@@ -39,6 +44,10 @@ def fake_bin_path(tmp_path):
     pg_restore = bin_dir / "pg_restore"
     pg_restore.write_text(_FAKE_PG_RESTORE)
     pg_restore.chmod(pg_restore.stat().st_mode | stat.S_IEXEC)
+
+    psql = bin_dir / "psql"
+    psql.write_text(_FAKE_PSQL)
+    psql.chmod(psql.stat().st_mode | stat.S_IEXEC)
 
     mc = bin_dir / "mc"
     mc.write_text(_FAKE_MC)
@@ -138,3 +147,17 @@ def test_restore_sh_mirrors_only_buckets_present_in_archive(tmp_path, fake_bin_p
     # Les autres buckets ont eu leur `mb` mais pas de `mirror`.
     mirror_lines = [line for line in log.splitlines() if line.startswith("mc mirror")]
     assert len(mirror_lines) == 1
+
+
+def test_restore_sh_creates_rls_roles_before_pg_restore(tmp_path, fake_bin_path):
+    """REV-164 : sur un volume neuf, les GRANT du dump échouent sans ces rôles."""
+    restore_dir = tmp_path / "archive"
+    restore_dir.mkdir()
+    (restore_dir / "postgres.dump").write_bytes(b"fake-dump")
+
+    result, log = _run_restore(tmp_path, fake_bin_path, restore_dir)
+
+    assert result.returncode == 0, result.stderr
+    assert "CREATE ROLE gis_rls NOLOGIN" in log
+    assert "CREATE ROLE gis_rls_masked NOLOGIN" in log
+    assert log.index("CREATE ROLE gis_rls_masked") < log.index("pg_restore")

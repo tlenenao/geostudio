@@ -23,6 +23,7 @@ from app.collections.introspection_pg import introspect_table
 from app.db import request_scoped_session
 from app.features.repository import FilterError, select_features
 from app.features.rls import rls_scope
+from app.filter_values import normalize_filters
 from app.items import repository as items_repo
 from app.items.schemas import ItemPage, ItemRead
 from app.items.service import get_item_service
@@ -30,6 +31,7 @@ from app.mcp.tools.identity import (
     http_exception_to_value_error,
     require_collection_read,
     resolve_actor,
+    user_geo_limits,
     without_thumbnail_url,
     without_thumbnail_urls,
 )
@@ -149,6 +151,7 @@ def register(server: FastMCP, session_factory) -> None:
                 can_see_all=can_see_all,
                 q=q,
             )
+            pageSize = min(pageSize, items_repo.MAX_PAGE_SIZE)
             start = (page - 1) * pageSize
             page_cols = cols[start : start + pageSize]
             return [
@@ -162,14 +165,16 @@ def register(server: FastMCP, session_factory) -> None:
         collectionId: str,
         bbox: str | None = None,
         geomIntersects: dict | None = None,
-        filters: dict[str, str] | None = None,
+        filters: dict[str, str | list[str]] | None = None,
         limit: Limit = 100,
         offset: Offset = 0,
     ) -> dict:
         """Read features from a collection — mirrors GET
         /collections/{id}/items (bbox, attribute filters, pagination), same
         permissions/RLS. No natural-language-to-filter translation: filters
-        are structured field=value pairs, like any OGC client (SP-7 MCP v1).
+        are structured field=value pairs, like any OGC client (SP-7 MCP v1). A `<field>__in`
+        filter takes a list of literal values (commas allowed) or, legacy, a
+        comma-separated string (`\\,` = literal comma) — REV-313.
         geomIntersects: a GeoJSON geometry object (already parsed, unlike the
         REST route's query-string form) — relayed to select_features exactly
         like bbox/filters (GAP-47)."""
@@ -202,7 +207,12 @@ def register(server: FastMCP, session_factory) -> None:
             if masked:
                 info = hide_sensitive_columns(info, col.sensitive_fields)
             try:
-                with rls_scope(session, col.tenant_id, masked=masked):
+                with rls_scope(
+                    session,
+                    col.tenant_id,
+                    masked=masked,
+                    geo_limits=user_geo_limits(session, user),
+                ):
                     page = select_features(
                         session,
                         info,
@@ -210,7 +220,7 @@ def register(server: FastMCP, session_factory) -> None:
                         offset=offset,
                         bbox=parsed_bbox,
                         geom_intersects=geomIntersects,
-                        filters=filters or None,
+                        filters=normalize_filters(filters),
                         count_mode="capped",
                     )
             except FilterError as exc:

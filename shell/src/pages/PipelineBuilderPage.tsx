@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { useUrlSyncedState } from "../lib/useUrlSyncedState";
+import { useUrlTab } from "../lib/useUrlTab";
 import {
   useCreatePipeline,
   useInstanceInfo,
@@ -50,6 +51,9 @@ import { t } from "../i18n";
 import { LoadingState } from "../ui/kit/LoadingState";
 import { QueryErrorState } from "../ui/kit/QueryErrorState";
 import { PageTitle } from "../ui/kit/PageTitle";
+import "../i18n/domains/automation";
+import "../i18n/domains/misc";
+import "../i18n/domains/widgets";
 
 const EMPTY_PAYLOAD: PipelinePayload = { nodes: [], edges: [] };
 
@@ -86,6 +90,7 @@ export function PipelineBuilderPage({
   const navigate = useNavigate();
   const { username } = useAuth();
   const client = useItemClient();
+  const tabProps = useUrlTab("canvas");
   const opsQuery = usePipelineOps();
   const instanceQuery = useInstanceInfo();
   const etlEnabled = instanceQuery.data?.etlEnabled === true;
@@ -436,7 +441,7 @@ export function PipelineBuilderPage({
       }}
     >
       <TriptychLayout
-        defaultTabId="canvas"
+        {...tabProps}
         browse={{
           id: "steps",
           label: t("pipelineBuilder.stepsLabel"),

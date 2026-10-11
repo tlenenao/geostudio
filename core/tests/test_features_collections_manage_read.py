@@ -85,3 +85,22 @@ def test_privilege_does_not_open_writes(env):  # noqa: F811
     app, client, regular, Session, col_id = _seeded_private_collection(env)
     _as(app, _manager(Session, regular))
     assert client.post(f"/v1/collections/{col_id}/items", json=FEATURE).status_code == 404
+
+
+def test_privilege_opens_the_attachment_file_route_gate(env):  # noqa: F811
+    """REV-300 M1 : la route de lecture du FICHIER d'une pièce jointe passe la porte
+    `get_collection_for_read` — avec le privilège, le 404 vient de la pièce absente
+    (« attachment not found »), pas du voile de la collection ; sans, voile."""
+    app, client, regular, Session, col_id = _seeded_private_collection(env)
+    from app.attachments.routes import get_s3_client
+
+    app.dependency_overrides[get_s3_client] = lambda: object()  # jamais atteint : pièce absente
+    url = f"/v1/collections/{col_id}/items/1/attachments/nope/file"
+    _as(app, regular)
+    veiled = client.get(url)
+    assert veiled.status_code == 404
+    assert veiled.json()["detail"] != "attachment not found"
+    _as(app, _manager(Session, regular))
+    opened = client.get(url)
+    assert opened.status_code == 404
+    assert opened.json()["detail"] == "attachment not found"

@@ -6,6 +6,7 @@ import { getWidget } from "./registry";
 import { validateExpression } from "./expr";
 import { formatCelError } from "./celError";
 import { Button } from "../ui/kit/Button";
+import "../i18n/domains/widgets";
 
 // REV-183 : lazy — n'alourdit pas la charge initiale (marge de bundle).
 const CelGenerator = lazy(() =>

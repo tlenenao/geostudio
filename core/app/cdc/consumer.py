@@ -114,15 +114,24 @@ _RECONNECT_BACKOFF_S = 0.3
 _SETTLE_S = 0.1
 
 
+def _connect(raw_dsn: str):
+    """Connexion de réplication logique forcée en UTC (REV-301) : PGTZ/rôle ne
+    doivent pas décaler les horodatages que wal2json formate côté walsender.
+    `options=-c timezone=UTC` est inopérant (PGTZ prime) : SET explicite."""
+    conn = psycopg2.connect(
+        raw_dsn, connection_factory=psycopg2.extras.LogicalReplicationConnection
+    )
+    cur = conn.cursor()
+    cur.execute("SET TIME ZONE 'UTC'")
+    return conn, cur
+
+
 def ensure_replication_slot(raw_dsn: str) -> None:
     """Idempotent. Retry avec backoff sur ObjectInUse (cf. docstring module,
     déviation 2) : peut se produire si un process précédent vient de libérer
     ce même slot (redémarrage rapproché du worker)."""
     for attempt in range(_RECONNECT_ATTEMPTS):
-        conn = psycopg2.connect(
-            raw_dsn, connection_factory=psycopg2.extras.LogicalReplicationConnection
-        )
-        cur = conn.cursor()
+        conn, cur = _connect(raw_dsn)
         try:
             cur.create_replication_slot(SLOT_NAME, output_plugin=OUTPUT_PLUGIN)
             return
@@ -205,10 +214,7 @@ def _start_replication_with_retry(raw_dsn: str):
     conn = None
     cur = None
     for attempt in range(_RECONNECT_ATTEMPTS):
-        conn = psycopg2.connect(
-            raw_dsn, connection_factory=psycopg2.extras.LogicalReplicationConnection
-        )
-        cur = conn.cursor()
+        conn, cur = _connect(raw_dsn)
         try:
             cur.start_replication(
                 slot_name=SLOT_NAME,

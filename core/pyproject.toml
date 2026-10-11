@@ -412,6 +412,7 @@ ignore_imports = [
     # échouer le contrat.
     "app.analytics.aggregate -> app.collections.introspection",
     "app.analytics.sql_sandbox -> app.collections.introspection",
+    "app.analytics.profile -> app.collections.introspection",
     # Même classe de cycle que ci-dessus, pour `app.configs.bbox` (SP-55
     # §2.3, GAP-06) : `app.collections.dataset_validation`/`routes`
     # importent déjà `app.configs` (validation de payload dataset), donc

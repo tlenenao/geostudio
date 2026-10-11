@@ -56,6 +56,33 @@ def test_health_reports_backlog_age_of_a_job_deferred_without_schedule(
     assert 590 <= backlog["oldestTodoAgeSeconds"] <= 700
 
 
+def test_health_reports_backlog_per_queue(monkeypatch, pg_engine_with_procrastinate_schema):
+    # REV-317 : un worker arrêté sur UNE file (ex. etl) reste visible quand les
+    # workers des autres files tournent — l'âge est ventilé par file.
+    engine = pg_engine_with_procrastinate_schema
+    monkeypatch.setenv("DATABASE_URL", os.environ["CORE_TEST_DATABASE_URL"])
+    with engine.begin() as conn:
+        conn.execute(text("DELETE FROM procrastinate_jobs"))
+        for queue, age in (("etl", "10 minutes"), ("default", "5 seconds")):
+            conn.execute(
+                text(
+                    "INSERT INTO procrastinate_jobs (queue_name, task_name, lock, args, status, "
+                    f"scheduled_at) VALUES ('{queue}', 't', NULL, '{{}}', 'todo', "
+                    f"now() - interval '{age}')"
+                )
+            )
+    try:
+        backlog = TestClient(create_app()).get("/health").json()["jobsBacklog"]
+    finally:
+        with engine.begin() as conn:
+            conn.execute(text("DELETE FROM procrastinate_jobs"))
+    assert backlog["todo"] == 2
+    assert 590 <= backlog["oldestTodoAgeSeconds"] <= 700
+    assert backlog["queues"]["etl"]["todo"] == 1
+    assert 590 <= backlog["queues"]["etl"]["oldestTodoAgeSeconds"] <= 700
+    assert backlog["queues"]["default"]["oldestTodoAgeSeconds"] < 60
+
+
 def test_health_caches_the_backlog_query(monkeypatch):
     # /health est anonyme : le COUNT SQL ne doit pas partir à chaque appel.
     calls = []

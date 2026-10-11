@@ -12,7 +12,7 @@ from app.ingestion.models import IngestionJob
 # (_RUNNING_RECLAIM_MINUTES/_PENDING_RECLAIM_MINUTES) — cohérence transverse
 # déjà établie dans ce dépôt pour cette notion de « probablement planté ».
 _RUNNING_RECLAIM_MINUTES = 60
-_TERMINAL = ("done", "error")
+_TERMINAL = ("done", "error", "cancelled")
 
 
 def create_job(
@@ -73,6 +73,37 @@ def mark_running(session: Session, *, job_id: str) -> bool:
     return bool(result.rowcount)  # type: ignore[attr-defined]
 
 
+def request_cancel(session: Session, *, job_id: str) -> str | None:
+    """D6 : `pending -> cancelled` (le worker ne le prendra plus) ou
+    `running -> cancel_requested` (testé par le worker avant l'import, seul pas
+    non interruptible). UPDATE conditionnels ; renvoie le nouveau statut, None si
+    le job n'est plus annulable (terminé entre-temps, inconnu)."""
+    for src, dst in (("pending", "cancelled"), ("running", "cancel_requested")):
+        result = session.execute(
+            update(IngestionJob)
+            .where(IngestionJob.id == job_id, IngestionJob.status == src)
+            .values(status=dst)
+        )
+        session.flush()
+        if result.rowcount:  # type: ignore[attr-defined]
+            return dst
+    return None
+
+
+def is_cancel_requested(session: Session, *, job_id: str) -> bool:
+    job = session.get(IngestionJob, job_id)
+    return job is not None and job.status == "cancel_requested"
+
+
+def mark_cancelled(session: Session, *, job_id: str) -> None:
+    session.execute(
+        update(IngestionJob)
+        .where(IngestionJob.id == job_id, IngestionJob.status == "cancel_requested")
+        .values(status="cancelled")
+    )
+    session.flush()
+
+
 def mark_done(session: Session, *, job_id: str, collection_id: str, item_id: str | None) -> None:
     # c02-006 : UPDATE conditionnel — un job déjà clos (réclamé en erreur par le
     # balayage) ne repasse jamais « done ».
@@ -111,7 +142,11 @@ def reclaim_stuck_jobs(
     tenants, pas par tenant."""
     threshold = datetime.now(UTC) - timedelta(minutes=older_than_minutes)
     rows = (
-        session.execute(select(IngestionJob).where(IngestionJob.status.in_(("pending", "running"))))
+        session.execute(
+            select(IngestionJob).where(
+                IngestionJob.status.in_(("pending", "running", "cancel_requested"))
+            )
+        )
         .scalars()
         .all()
     )

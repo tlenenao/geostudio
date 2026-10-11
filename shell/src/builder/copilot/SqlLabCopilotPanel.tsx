@@ -8,6 +8,7 @@ import { applySqlLabClientOp } from "./applySqlLabClientOp";
 import type { RawClientOp } from "./applyClientOp";
 import { CopilotChat } from "./CopilotChat";
 import { buildSqlLabClientToolSchemas } from "./sqlLabClientTools";
+import "../../i18n/domains/automation";
 
 export function SqlLabCopilotPanel({
   sql,

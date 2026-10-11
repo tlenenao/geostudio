@@ -813,6 +813,52 @@ def test_notify_skips_runs_whose_export_job_is_still_pending():
         assert fetched.notified_at is None
 
 
+def test_sweep_reclaims_a_stale_pending_render_then_notifies_the_failure(monkeypatch):
+    """REV-314 : un rendu jamais pris en charge (defer perdu) ne laisse pas le
+    run « pending » à jamais — le balayage clôt le job en erreur (reclaim) puis
+    notifie l'échec au tick suivant. Qualifié : défaut déjà corrigé par P01.04,
+    ce test fige le parcours de bout en bout (jusque-là seuls les morceaux l'étaient)."""
+    from datetime import UTC, datetime, timedelta
+
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        owner = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        app_item = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="app", title="D"
+        )
+        report_id = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="report", title="R"
+        ).id
+        job = export_repo.create_job(
+            s, tenant_id=tenant.id, item_id=app_item.id, user_id=owner.id, format="pdf"
+        )
+        job.created_at = datetime.now(UTC) - timedelta(hours=3)
+        run = reports_repo.create_run(
+            s, tenant_id=tenant.id, report_item_id=report_id, export_job_id=job.id
+        )
+        s.commit()
+
+    monkeypatch.setattr(report_jobs, "_session_factory", lambda: Session)
+    monkeypatch.setattr(report_jobs, "is_read_only_mode", lambda: False)
+    monkeypatch.setattr(report_jobs, "send_webhook", lambda *a, **k: None)
+
+    report_jobs.sweep_report_schedules_task(timestamp=0)  # reclaim en fin de _trigger
+    report_jobs.sweep_report_schedules_task(timestamp=0)  # notification de l'échec
+
+    with Session() as s:
+        assert export_repo.get_job(s, tenant_id=tenant.id, job_id=job.id).status == "error"
+        assert reports_repo.get_run(s, tenant_id=tenant.id, run_id=run.id).notified_at is not None
+
+
 def test_trigger_fails_report_without_deferring_when_export_capability_is_disabled(monkeypatch):
     # Revue finale SP-17b (I3) : un rapport créé pendant que la capacité
     # export était active reste en base si l'admin la coupe ensuite. Sans

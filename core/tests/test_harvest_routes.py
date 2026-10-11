@@ -305,6 +305,25 @@ def test_run_defers_a_task_and_is_audited(env):
     assert "harvest_source.run" in actions
 
 
+def test_run_on_already_running_source_is_409_and_defers_nothing(env):
+    """REV-323 A : 202 sans effet (le worker sort sur mark_running) est trompeur."""
+    app, client, Session, admin, _regular = env
+    _as(app, admin)
+    created = client.post("/v1/harvest/sources", json=SOURCE_BODY).json()
+    from app.harvest import routes as harvest_routes
+    from app.harvest.models import HarvestSource
+
+    with Session() as s:
+        s.get(HarvestSource, created["id"]).last_status = "running"
+        s.commit()
+    deferred = []
+    app.dependency_overrides[harvest_routes.get_task_deferrer] = lambda: (
+        lambda sid, tid: deferred.append(sid)
+    )
+    assert client.post(f"/v1/harvest/sources/{created['id']}/run").status_code == 409
+    assert deferred == []
+
+
 def test_run_missing_source_is_404(env):
     app, client, _, admin, _regular = env
     _as(app, admin)

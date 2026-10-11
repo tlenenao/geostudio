@@ -4,6 +4,8 @@ import { useMe } from "../../api/hooks";
 import { holdsAnyPrivilege } from "../../auth/holdsAnyPrivilege";
 import { Panel } from "../../ui/kit/Panel";
 import { t, type MessageKey } from "../../i18n";
+import "../../i18n/domains/admin";
+import "../../i18n/domains/misc";
 
 // Liens partagés par la page Paramètres et les sept pages d'administration :
 // fusion des anciens domaines "admin" et "settings" (capabilities.ts) en un

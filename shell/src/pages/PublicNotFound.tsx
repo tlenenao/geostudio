@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { t } from "../i18n";
+import "../i18n/domains/misc";
 
 /** Page introuvable des surfaces publiques : `<main>` + `<h1>` (repère de
  * navigation pour les lecteurs d'écran, REV-284) autour de l'alerte. */

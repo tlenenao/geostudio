@@ -6,6 +6,9 @@ import { Input } from "../ui/kit/Input";
 import { Drawer } from "../ui/kit/Drawer";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { t } from "../i18n";
+import "../i18n/domains/automation";
+import "../i18n/domains/map";
+import "../i18n/domains/misc";
 
 // S3 multipart accepts a single part of any size — the same chunking code
 // path serves a tiny test fixture and a multi-GB tileset (design §4,

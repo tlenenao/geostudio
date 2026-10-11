@@ -153,6 +153,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+    restart: unless-stopped  # REV-320 : Martin tombait sans reprise (prod le portait déjà)
     labels:
       - traefik.enable=true
       - traefik.http.routers.martin.rule=Host(`${DOMAIN}`) && PathPrefix(`/admin/martin`)
@@ -312,6 +313,7 @@ services:
       CORE_GEOCODING_PROVIDER: ${CORE_GEOCODING_PROVIDER:-ban}
       CORE_GEOCODING_URL: ${CORE_GEOCODING_URL:-https://data.geopf.fr/geocodage/search}
       CORE_GEOCODING_EGRESS_ALLOWLIST: ${CORE_GEOCODING_EGRESS_ALLOWLIST:-data.geopf.fr}
+      CORE_GEOCODING_USER_AGENT: ${CORE_GEOCODING_USER_AGENT:-}
       # Allowlists des trois gardes d'egress SSRF (pipelines/harvest/alerts,
       # chacune dupliquée délibérément — cf. leurs docstrings respectives).
       # Trouvées non câblées à AUCUN service par l'élargissement de la règle
@@ -391,7 +393,7 @@ services:
       # destinataire externe (RC-13) ; vide = hôte interne (liens injoignables hors Docker).
       S3_PUBLIC_ENDPOINT_URL: ${S3_PUBLIC_ENDPOINT_URL:-}
       # Pairs dont X-Forwarded-For est honoré (réseau Traefik) ; jamais `*` en production.
-      CORE_TRUSTED_PROXIES: ${CORE_TRUSTED_PROXIES:-127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
+      CORE_TRUSTED_PROXIES: ${CORE_TRUSTED_PROXIES:-127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7}
       # Plafond de lecture d'un fichier importé (octets) ; vide = 512 Mio (P03.05).
       CORE_UPLOAD_MAX_BYTES: ${CORE_UPLOAD_MAX_BYTES:-}
       S3_ACCESS_KEY: ${MINIO_USER}
@@ -426,7 +428,10 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 90s
+      # REV-320 : 90 s observé sur base vide ; une base non vide (migrations de
+      # données, backfills) dépasse — 180 s évite un `unhealthy` en cascade
+      # (shell/traefik dépendent de la santé du cœur).
+      start_period: 180s
     labels:
       - traefik.enable=true
       - traefik.http.routers.core.rule=Host(`${DOMAIN}`) && PathPrefix(`/api`)
@@ -521,6 +526,8 @@ services:
       # Snapshot horaire d'état courant du lac (REV-280a), éteint par défaut.
       CORE_LAKE_SNAPSHOT_ENABLED: ${CORE_LAKE_SNAPSHOT_ENABLED:-false}
       CORE_LAKE_SNAPSHOT_MIN_DELTA_FILES: ${CORE_LAKE_SNAPSHOT_MIN_DELTA_FILES:-20}
+      CORE_LAKE_SNAPSHOT_GRACE_S: ${CORE_LAKE_SNAPSHOT_GRACE_S:-300}
+      CORE_LAKE_SNAPSHOT_MAX_AGE_HOURS: ${CORE_LAKE_SNAPSHOT_MAX_AGE_HOURS:-24}
       CORE_LAKE_SNAPSHOT_KEEP: ${CORE_LAKE_SNAPSHOT_KEEP:-2}
       S3_TILESET3D_BUCKET: geostudio-tileset3d
       # Plafonds de validation tileset3d (finalize_tileset3d_task,

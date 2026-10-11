@@ -2,6 +2,7 @@
 import { t } from "../i18n";
 import { formatBytes } from "../lib/format";
 import { ApiError } from "./ApiError";
+import "../i18n/domains/misc";
 
 // Message affichable d'une erreur de mutation : le `detail` RFC 7807 du cœur, avec
 // « Réessayez dans N s » sur un 429, les `errors[]` par champ quand présents

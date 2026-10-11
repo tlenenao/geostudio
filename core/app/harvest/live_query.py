@@ -12,6 +12,8 @@ from urllib.parse import urlencode
 
 import httpx
 
+from app.filter_values import split_in_values
+
 _CACHE_TTL_SECONDS = 20.0
 _RANGE_OPS = {"__gte": ">=", "__lte": "<="}
 # "stddev" est un statisticType natif du Feature Service ArcGIS. Les autres
@@ -59,7 +61,7 @@ def _build_where(filters: dict[str, str]) -> str:
         if not _FIELD_NAME_RE.match(name):
             raise ArcgisQueryError(raw_name, f"invalid filter field name '{name}'")
         if suffix == "__in":
-            values = value.split(",")
+            values = split_in_values(value)
             clauses.append(f"{name} IN ({', '.join(_sql_lit(v) for v in values)})")
         elif suffix in _RANGE_OPS:
             clauses.append(f"{name} {_RANGE_OPS[suffix]} {_sql_lit(value)}")

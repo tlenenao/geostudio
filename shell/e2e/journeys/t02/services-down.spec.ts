@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { CORE_URL, stamp } from "../_fixtures/env";
 import { apiFor } from "../j03/api";
 import { psql } from "../j02/helpers";
-import { bug, docker, go, newSession, serviceHealth, withServiceStopped } from "./helpers";
+import { docker, go, newSession, serviceHealth, withServiceStopped } from "./helpers";
 
 // Exception à la règle 6 (prompt t02) : docker stop/start des SEULS services `worker` et `martin`,
 // avec confirmation `healthy` avant de rendre la main (cf. withServiceStopped).
@@ -88,26 +88,17 @@ test.describe("t02 : worker arrêté", () => {
     await s.ctx.close();
   });
 
-  // Finding t02-013 : rien n'expose l'arrêt du worker (health statique, /instance muet, aucune bannière).
-  bug(
-    "t02-013 : l'arrêt du worker est observable par un exploitant (health ou instance)",
-    async () => {
-      const admin = await apiFor("admin");
-      const before = await (await fetch(`${CORE_URL}/health`)).json();
-      const res = await withServiceStopped("worker", async () => {
-        await new Promise((r) => setTimeout(r, 5000));
-        const health = await (await fetch(`${CORE_URL}/health`)).json();
-        const inst = await admin.get("/v1/instance");
-        return { health, inst: inst.body };
-      });
-      const mentionsWorker = JSON.stringify([res.health, res.inst]).match(
-        /worker|queue|file|jobs/i,
-      );
-      expect(before).toEqual({ status: "ok" });
-      expect(res.health).not.toEqual({ status: "ok" }); // ou exposer l'état de la file
-      expect(mentionsWorker).not.toBeNull();
-    },
-  );
+  // t02-013 : /health expose l'état de la file (jobsBacklog) ; la croissance de l'âge n'est pas rejouée ici.
+  test("t02-013 : l'arrêt du worker est observable par un exploitant (health ou instance)", async () => {
+    const before = await (await fetch(`${CORE_URL}/health`)).json();
+    const res = await withServiceStopped("worker", async () => {
+      await new Promise((r) => setTimeout(r, 5000));
+      return { health: await (await fetch(`${CORE_URL}/health`)).json() };
+    });
+    expect(before.status).toBe("ok");
+    expect(res.health.status).toBe("ok"); // liveness inchangée
+    expect(res.health.jobsBacklog).toHaveProperty("todo"); // la file est observable (âge par file)
+  });
 });
 
 test.describe("t02 : martin arrêté", () => {

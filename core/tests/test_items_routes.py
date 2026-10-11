@@ -108,6 +108,14 @@ def test_list_items_negative_page_size_is_rejected(client):
     assert response.status_code == 422
 
 
+def test_list_items_page_size_is_capped_for_rest_and_mcp_alike(client):
+    """REV-323 B : plafond au point unique `list_items` (REST + MCP), 200 =
+    plus grand pageSize réellement demandé par le shell."""
+    _seed_item(client, title="One")
+    body = client.get("/v1/items?pageSize=100000").json()
+    assert body["pageSize"] == items_repo.MAX_PAGE_SIZE == 200
+
+
 def test_list_items_sort_title_asc(client):
     _seed_item(client, title="Zorro")
     _seed_item(client, title="Alpha")
@@ -298,6 +306,29 @@ def test_updated_at_changes_after_edit_but_date_stays_the_creation_date(client):
     after = client.get(f"/v1/items/{item_id}").json()
     assert after["date"] == before["date"]
     assert after["updatedAt"] != before["updatedAt"]
+
+
+def test_patch_item_if_match_stale_returns_412_fresh_passes(client):
+    # REV-317 : `updatedAt` sert d'ETag ; version périmée -> 412, courante -> 200.
+    import time
+
+    item_id = _seed_item(client)
+    first = client.get(f"/v1/items/{item_id}").json()["updatedAt"]
+    time.sleep(1.1)
+    ok = client.patch(
+        f"/v1/items/{item_id}", json={"title": "A"}, headers={"If-Match": f'"{first}"'}
+    )
+    assert ok.status_code == 200
+    stale = client.patch(
+        f"/v1/items/{item_id}", json={"title": "B"}, headers={"If-Match": f'"{first}"'}
+    )
+    assert stale.status_code == 412
+    assert client.get(f"/v1/items/{item_id}").json()["title"] == "A"
+    fresh = ok.json()["updatedAt"]
+    resp = client.patch(
+        f"/v1/items/{item_id}", json={"title": "C"}, headers={"If-Match": f'"{fresh}"'}
+    )
+    assert resp.status_code == 200
 
 
 def test_get_item_defaults_license_and_language(client):

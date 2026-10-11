@@ -16,6 +16,7 @@ import type {
 import { t } from "../../i18n";
 import { Button } from "../../ui/kit/Button";
 import { useMcpToken } from "./useMcpToken";
+import "../../i18n/domains/automation";
 
 // Bornes du cœur (core/app/copilot/routes.py : MAX_MESSAGE_CHARS,
 // MAX_HISTORY_MESSAGES, MAX_HISTORY_MESSAGE_CHARS) — au-delà, 422 (P07.04).

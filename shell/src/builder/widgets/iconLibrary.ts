@@ -6,6 +6,7 @@
 // lucide-static est une devDependency, rien n'est téléchargé au runtime.
 import { LUCIDE_ICON_SVGS } from "./lucideIconSvgs.generated";
 import { t } from "../../i18n";
+import "../../i18n/domains/misc";
 
 export type IconCategory =
   "generic" | "buildings" | "nature" | "transport" | "services" | "safety-health" | "leisure";

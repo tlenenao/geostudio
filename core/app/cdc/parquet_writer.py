@@ -56,6 +56,22 @@ def _decode_geometry(wkb_hex: str | None) -> BaseGeometry | None:
     return shapely.wkb.loads(bytes.fromhex(wkb_hex))
 
 
+def _gdf(records: list[dict], geometries: list, srid: int) -> gpd.GeoDataFrame:
+    """REV-308 : pandas rend un entier nullable en float64 (NaN) ; le lac
+    écrirait alors `10.0` et writer.collection le refuserait. Les colonnes
+    dont toutes les valeurs présentes sont des int et dont au moins une ligne
+    est NULL/absente passent en Int64 (nullable)."""
+    crs = f"EPSG:{srid}" if srid else None
+    gdf = gpd.GeoDataFrame(records, geometry=geometries, crs=crs)
+    for col in gdf.columns:
+        if col == gdf.geometry.name:
+            continue
+        vals = [r[col] for r in records if r.get(col) is not None]
+        if vals and len(vals) < len(records) and all(type(v) is int for v in vals):
+            gdf[col] = gdf[col].astype("Int64")
+    return gdf
+
+
 def build_geodataframe(rows: list[ChangeRow], *, srid: int) -> gpd.GeoDataFrame:
     records = []
     geometries = []
@@ -68,8 +84,7 @@ def build_geodataframe(rows: list[ChangeRow], *, srid: int) -> gpd.GeoDataFrame:
         record["_ts"] = row.ts
         records.append(record)
         geometries.append(_decode_geometry(row.geometry_wkb_hex))
-    crs = f"EPSG:{srid}" if srid else None
-    return gpd.GeoDataFrame(records, geometry=geometries, crs=crs)
+    return _gdf(records, geometries, srid)
 
 
 def _write_gdf(gdf: gpd.GeoDataFrame, path: str) -> None:
@@ -107,8 +122,7 @@ def build_geodataframe_from_relation(
         wkb = row[-1]
         records.append(values)
         geometries.append(shapely.wkb.loads(bytes(wkb)) if wkb is not None else None)
-    crs = f"EPSG:{srid}" if srid else None
-    return gpd.GeoDataFrame(records, geometry=geometries, crs=crs)
+    return _gdf(records, geometries, srid)
 
 
 def write_geoparquet_from_relation(

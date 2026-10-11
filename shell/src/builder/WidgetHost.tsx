@@ -11,6 +11,7 @@ import { useAuth } from "../auth/useAuth";
 import { evaluateExpression } from "./expr";
 import { resolveExprBindings } from "./exprBindings";
 import { t } from "../i18n";
+import "../i18n/domains/widgets";
 
 class WidgetErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };

@@ -20,6 +20,7 @@ import { ItemClientProvider } from "../api/ItemClientProvider";
 // dans le chunk d'entrée (revue finale Vague B, I3).
 import { ToastProvider } from "../ui/kit/ToastProvider";
 import { PipelineBuilderPage } from "../pages/PipelineBuilderPage";
+import "../i18n/domains/automation";
 
 function NewPipelineRoute() {
   // Pas de initialTitle : PipelineBuilderPage retombe déjà sur

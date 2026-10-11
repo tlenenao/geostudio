@@ -9,6 +9,7 @@ mkdir -p .replay-results
 export RESTORE_ID_FILE="$PWD/.replay-results/restore-item-id"
 grep -q '^CORE_AUTH_MODE=oidc' .env || { echo "CORE_AUTH_MODE doit être oidc dans .env" >&2; exit 1; }
 grep -q '^DOMAIN=localhost$' .env || { echo "refus : DOMAIN != localhost (stack de rejeu uniquement)" >&2; exit 1; }
+export VITE_AUTH_MODE=oidc   # le shell ne lit pas CORE_AUTH_MODE : sans cela le « up -d » final le remonte en mock
 
 BASE=(docker compose)                                   # stack de rejeu (down -v / up)
 PROD=(docker compose -f docker-compose.yml -f docker-compose.prod.yml)  # service `backup` (overlay prod seul)

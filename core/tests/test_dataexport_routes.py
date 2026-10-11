@@ -247,3 +247,77 @@ def test_requester_demoted_without_view_sensitive_cannot_get_unmasked_result(
     _with_privileges(Session, regular, tenant_id, ["data.read"])
     _as(app, regular)
     assert client.get(url).status_code == 404
+
+
+def _pending_job(env, monkeypatch):
+    app, client, admin, regular, _p, tenant_id, Session = env
+    monkeypatch.setenv("CORE_EXPORT_SYNC_MAX", "1")
+    col = _register(app, client, admin, public=True)
+    _add_items(client, col["id"], 2)
+    job_id = client.get(f"/v1/collections/{col['id']}/export/items?format=csv").json()["jobId"]
+    return col["id"], job_id
+
+
+def test_cancel_pending_export_marks_cancelled_audits_and_is_idempotent(env, starter, monkeypatch):
+    """D6 : le demandeur annule son export ; le worker ne le prendra plus."""
+    from sqlalchemy import select
+
+    from app.audit.models import AuditLog
+
+    app, client, admin, _r, _p, _t, Session = env
+    col_id, job_id = _pending_job(env, monkeypatch)
+    url = f"/v1/collections/{col_id}/export/jobs/{job_id}/cancel"
+    r = client.post(url)
+    assert r.status_code == 200 and r.json()["status"] == "cancelled"
+    assert client.post(url).json()["status"] == "cancelled"  # idempotent
+    with Session() as s:
+        assert dx_repo.mark_running(s, job_id) is False  # le worker ne le prend plus
+        audits = s.scalars(
+            select(AuditLog).where(AuditLog.action == "export.cancel", AuditLog.object_id == col_id)
+        ).all()
+        assert len(audits) == 1 and audits[0].payload["jobId"] == job_id
+
+
+def test_cancel_running_export_discards_its_late_result(env, starter, monkeypatch):
+    app, client, admin, _r, _p, tenant_id, Session = env
+    col_id, job_id = _pending_job(env, monkeypatch)
+    with Session() as s:
+        dx_repo.mark_running(s, job_id)
+        s.commit()
+    r = client.post(f"/v1/collections/{col_id}/export/jobs/{job_id}/cancel")
+    assert r.json()["status"] == "cancelled"
+    with Session() as s:  # le worker finit après l'annulation : résultat refusé
+        assert dx_repo.mark_done(s, job_id, result_key="k", filename="v.csv") is False
+        assert dx_repo.mark_failed(s, job_id, "boom") is False
+        s.commit()
+        assert s.get(CollectionExportJob, job_id).status == "cancelled"
+
+
+def test_cancel_finished_export_is_409_and_foreign_job_404(env, starter, monkeypatch):
+    app, client, admin, regular, _p, tenant_id, Session = env
+    col_id, job_id = _pending_job(env, monkeypatch)
+    url = f"/v1/collections/{col_id}/export/jobs/{job_id}/cancel"
+    _as(app, regular)  # lecteur, pas demandeur
+    assert client.post(url).status_code == 404
+    _as(app, admin)
+    with Session() as s:
+        dx_repo.mark_running(s, job_id)
+        dx_repo.mark_done(s, job_id, result_key="k", filename="v.csv")
+        s.commit()
+    assert client.post(url).status_code == 409
+
+
+def test_tasks_view_all_can_read_but_not_cancel_a_foreign_export(env, starter, monkeypatch):
+    import app.dataexport.routes as dx_routes
+    from app.roles.privileges import Privilege
+
+    app, client, admin, regular, _p, tenant_id, Session = env
+    col_id, job_id = _pending_job(env, monkeypatch)
+    url = f"/v1/collections/{col_id}/export/jobs/{job_id}"
+    granted = {Privilege.TASKS_VIEW_ALL.value, Privilege.DATA_VIEW_SENSITIVE.value}
+    monkeypatch.setattr(dx_routes, "has_privilege", lambda _s, _u, priv: priv in granted)
+    _as(app, regular)
+    assert client.get(url).status_code == 200  # lecture : oui
+    assert client.post(f"{url}/cancel").status_code == 404  # annulation : non
+    with Session() as s:
+        assert s.get(CollectionExportJob, job_id).status == "pending"

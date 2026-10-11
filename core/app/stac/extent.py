@@ -24,6 +24,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.collections.introspection import TableInfo
+from app.sharing.geo_limits import geo_source
 from app.sql_ident import quote_ident
 
 
@@ -43,6 +44,7 @@ def rls_scoped_bbox_4326(session: Session, info: TableInfo) -> list[float] | Non
     if info.geometry_column is None:
         return None
     srid = info.srid or 4326
-    t = quote_ident(session, info.table_name)
     g = quote_ident(session, info.geometry_column)
-    return _box_4326(session, f"SELECT ST_Extent({g}) FROM public.{t}", {"srid": srid})
+    # Sous limite géographique : emprise de la géométrie DÉCOUPÉE (aucune autre colonne lue).
+    with geo_source(session, info, columns=()) as src:
+        return _box_4326(session, f"SELECT ST_Extent({g}) FROM {src}", {"srid": srid})

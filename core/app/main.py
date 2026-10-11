@@ -34,6 +34,7 @@ from app.auth.dependency import (
 )
 from app.catalog import routes as catalog_routes
 from app.collections import dataset_validation as collections_dataset_validation  # noqa: F401
+from app.collections import geo_limits_routes as collections_geo_limits_routes
 from app.collections import routes as collections_routes
 from app.collections.introspection import TableNotFound, UnsupportedTable
 from app.compliance import routes as compliance_routes
@@ -51,6 +52,7 @@ from app.geocoding import routes as geocoding_routes
 from app.harvest import dataset_validation as harvest_dataset_validation  # noqa: F401
 from app.harvest import routes as harvest_routes
 from app.ingestion import routes as ingestion_routes
+from app.ingestion.storage import require_public_s3_endpoint
 from app.instance import routes as instance_routes
 from app.items import routes as items_routes
 from app.jobs import open_sync_defer
@@ -127,7 +129,7 @@ _APPEXPORT_CORS_RULES: tuple[tuple[re.Pattern[str], str], ...] = (
 
 def trusted_proxy_hosts() -> str:
     return os.environ.get(
-        "CORE_TRUSTED_PROXIES", "127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+        "CORE_TRUSTED_PROXIES", "127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7"
     )
 
 
@@ -135,6 +137,7 @@ def create_app() -> FastAPI:
     observability.setup()
     secrets_crypto.load_master_key()  # échec rapide si absente/mal formée (design SP-15e §4/§8)
     reject_mock_outside_development()  # échec rapide si mock hors dev (design SP-26 §3.1)
+    require_public_s3_endpoint()  # REV-315 : liens présignés injoignables sinon
     reject_admin_tools_without_secret()  # échec rapide si gate admin sans secret
     database_url = os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:")
     engine = make_engine(database_url)
@@ -391,6 +394,7 @@ def create_app() -> FastAPI:
     v1_router.include_router(public_routes.router)
     v1_router.include_router(schemas_router)
     v1_router.include_router(collections_routes.router)
+    v1_router.include_router(collections_geo_limits_routes.router)
     v1_router.include_router(catalog_routes.router)
     v1_router.include_router(features_routes.router)
     v1_router.include_router(dataexport_routes.router)

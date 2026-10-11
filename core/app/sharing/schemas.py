@@ -42,7 +42,7 @@ class ResolvedShareLink(BaseModel):
 
 class GroupShare(BaseModel):
     groupId: str
-    role: Literal["viewer", "editor"]
+    role: Literal["viewer", "editor", "manager"]
 
 
 class Sharing(BaseModel):

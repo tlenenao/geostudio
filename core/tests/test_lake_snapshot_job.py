@@ -69,6 +69,34 @@ def test_snapshot_written_then_old_ones_purged_beyond_keep(tmp_path, conn, monke
     assert len(deleted) == 1 and "snap-700000-" in deleted[0]  # le plus ancien, au-delà de keep=2
 
 
+def test_age_backstop_snapshots_a_stale_collection_below_threshold(tmp_path, conn, monkeypatch):
+    _files(tmp_path, 3)
+    assert _run(conn, tmp_path, monkeypatch)[0] == 1  # snapshot initial, coupure 700000
+    _files(tmp_path, 1, start=10, ts=800.0)  # delta (même partition : 4 fichiers) < seuil 10
+    assert _run(conn, tmp_path, monkeypatch, now_ms=1_500_000, min_delta_files=10)[0] == 0
+    # même delta, mais le snapshot a plus de 24 h : le filet d'âge le rafraîchit
+    late = 700_000 + 25 * 3_600_000
+    assert _run(conn, tmp_path, monkeypatch, now_ms=late, min_delta_files=10)[0] == 1
+
+
+def test_grace_s_is_forwarded_to_write_snapshot(monkeypatch):
+    from unittest.mock import MagicMock
+
+    seen = {}
+    monkeypatch.setattr(jobs, "_delta_file_count", lambda *a: 99)
+    monkeypatch.setattr(jobs, "list_snapshots", lambda *a: [])
+
+    def fake_write(conn, base, t, c, pk, *, now_ms, cleanup, grace_s):
+        seen["grace_s"] = grace_s
+
+    monkeypatch.setattr(jobs, "write_snapshot", fake_write)
+    jobs.run_snapshot_cycle(
+        MagicMock(), None, bucket="b", collections=[("t", "c", "id")],
+        now_ms=1, min_delta_files=1, keep=2, grace_s=900,
+    )  # fmt: skip
+    assert seen["grace_s"] == 900
+
+
 def test_failure_on_one_collection_does_not_stop_the_next(tmp_path, conn, monkeypatch):
     _files(tmp_path, 3, c="ok")
     calls = []
@@ -132,7 +160,7 @@ def test_purge_passes_exact_s3_keys_and_cleanup_deletes_final_key(monkeypatch):
     monkeypatch.setattr(jobs, "list_snapshots", lambda *a: snaps)
     seen = {}
 
-    def fake_write(conn, base, t, c, pk, *, now_ms, cleanup):
+    def fake_write(conn, base, t, c, pk, *, now_ms, cleanup, grace_s):
         seen["cleanup"] = cleanup
         return snaps[0][0]
 

@@ -4,6 +4,7 @@ import { useDatasetConfig } from "../api/hooks";
 import { useItemClient } from "../api/ItemClientProvider";
 import type { CrossFilterLink } from "../api/types";
 import { t } from "../i18n";
+import "../i18n/domains/widgets";
 
 export function CrossFilterLinkEditor({
   link,

@@ -7,6 +7,7 @@ import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { t } from "../i18n";
 import { onThemeChange, readToken } from "../lib/theme";
+import "../i18n/domains/misc";
 
 export type Bbox = [number, number, number, number]; // [minLon, minLat, maxLon, maxLat]
 

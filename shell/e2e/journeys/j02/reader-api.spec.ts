@@ -70,14 +70,7 @@ test.describe("j02 lecteur — API : visibilité et droits", () => {
       ["PUT", `/v1/configs/by-item/${s.sharedMap}`, mapCfg],
       ["DELETE", `/v1/configs/by-item/${s.sharedMap}`],
       ["POST", "/v1/configs", { title: "aud-j02-reader-map", config: mapCfg }],
-      [
-        "POST",
-        "/v1/configs",
-        {
-          title: "aud-j02-reader-bm",
-          config: { kind: "bookmark", bookmark: { appId: s.sharedApp, pageId: "p1" } },
-        },
-      ],
+      // bookmark : autorisé au Lecteur depuis 343f956a (analytics.view), couvert par j13.
       ["POST", "/v1/groups", { name: "aud-j02-reader-group" }],
       ["POST", "/v1/collections/empty", { title: "aud-j02-reader-col", columns: [] }],
       ["PATCH", `/v1/collections/${s.sharedCol}`, { title: "hack" }],

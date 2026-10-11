@@ -6,6 +6,7 @@ import { expect, test, vi } from "vitest";
 import type { ItemClient, SecretSummary } from "../../api/types";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
 import { t } from "../../i18n";
+import { ApiError } from "../../api/ApiError";
 import { SecretParamSelect } from "./SecretParamSelect";
 import { expectAriaWired } from "../../test/expectAriaWired";
 
@@ -301,4 +302,84 @@ test("« Créer un secret » est câblé au formulaire qu'il révèle (aria-expa
   expectAriaWired(trigger, panelId, false);
   await userEvent.click(trigger);
   expectAriaWired(trigger, panelId, true);
+});
+
+// REV-297 : le cœur n'expose que PUT /secrets/{id} (valeur remplacée en entier).
+test("« Modifier » remplace un secret en place : nom et type figés, payload renvoyé en entier", async () => {
+  const updateSecret = vi.fn().mockResolvedValue({ ...SECRETS[1], updatedAt: "t2" });
+  renderSelect({}, { updateSecret });
+  await screen.findByRole("option", { name: "pg" });
+  await userEvent.click(screen.getByRole("button", { name: "Modifier pg" }));
+  expect(screen.getByLabelText("Nom")).toBeDisabled();
+  expect(screen.queryByLabelText("Type de secret")).not.toBeInTheDocument();
+  await userEvent.type(screen.getByLabelText("DSN"), "postgresql://u:p@h/db");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(updateSecret).toHaveBeenCalled());
+  expect(updateSecret).toHaveBeenCalledWith("s2", {
+    kind: "postgres_dsn",
+    dsn: "postgresql://u:p@h/db",
+  });
+  await waitFor(() => expect(screen.queryByLabelText("DSN")).not.toBeInTheDocument());
+});
+
+test("réparation d'un secret blob sans bucketUrl : Modifier exige le bucket et préfixe (REV-197)", async () => {
+  const updateSecret = vi.fn().mockResolvedValue({});
+  renderSelect(
+    {},
+    {
+      listSecrets: () =>
+        Promise.resolve([
+          { id: "s3", name: "ancien-blob", kind: "s3_credentials", createdAt: "", updatedAt: "" },
+        ]),
+      updateSecret,
+    },
+  );
+  await screen.findByRole("option", { name: "ancien-blob" });
+  await userEvent.click(screen.getByRole("button", { name: "Modifier ancien-blob" }));
+  await userEvent.type(screen.getByLabelText("Access key ID"), "AKIA");
+  await userEvent.type(screen.getByLabelText("Secret access key"), "sec");
+  await userEvent.type(screen.getByLabelText("Bucket et préfixe"), "s3://bucket/pref");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(updateSecret).toHaveBeenCalled());
+  expect(updateSecret.mock.calls[0][1]).toMatchObject({
+    kind: "s3_credentials",
+    bucketUrl: "s3://bucket/pref",
+  });
+});
+
+test("le 422 du cœur (SMTP useTls=false vers un hôte distant) s'affiche tel quel (REV-297)", async () => {
+  const detail = "useTls=false n'est accepté que pour localhost";
+  const createSecret = vi.fn().mockRejectedValue(new ApiError(422, { detail }));
+  renderSelect({ kindFilter: "smtp" }, { createSecret });
+  await userEvent.click(screen.getByText("Créer un secret"));
+  await userEvent.type(screen.getByLabelText("Nom"), "smtp-distant");
+  await userEvent.click(screen.getByRole("button", { name: "Créer" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(detail);
+});
+
+test("le champ « bucket et préfixe » est relié à son aide par aria-describedby (REV-300 M4)", async () => {
+  renderSelect({ kindFilter: "s3_credentials" });
+  await userEvent.click(screen.getByText("Créer un secret"));
+  const input = screen.getByLabelText("Bucket et préfixe");
+  expect(input).toHaveClass("h-9");
+  expect(input).not.toHaveAttribute("aria-label");
+  const helpId = input.getAttribute("aria-describedby")!;
+  expect(document.getElementById(helpId)).toHaveTextContent(t("secretParamSelect.bucketUrlHelp"));
+});
+
+test("un secret REST sans baseUrl est refusé avec une erreur de champ accessible (REV-294)", async () => {
+  const createSecret = vi.fn().mockResolvedValue({ id: "s9", name: "api", kind: "bearer_token" });
+  const { onChange } = renderSelect({ kindFilter: "bearer_token" }, { createSecret });
+  await userEvent.click(screen.getByText("Créer un secret"));
+  await userEvent.type(screen.getByLabelText("Nom"), "api");
+  await userEvent.type(screen.getByLabelText("Jeton"), "tok");
+  await userEvent.click(screen.getByText("Créer"));
+  const base = screen.getByLabelText("URL de base de l'API");
+  expect(base).toHaveAttribute("aria-invalid", "true");
+  expect(screen.getByRole("alert")).toHaveTextContent("L'URL de base est obligatoire");
+  expect(createSecret).not.toHaveBeenCalled();
+  await userEvent.type(base, "https://api.example.test/v1");
+  await userEvent.click(screen.getByText("Créer"));
+  await waitFor(() => expect(onChange).toHaveBeenCalledWith("api"));
+  expect(createSecret.mock.calls[0][0].payload.baseUrl).toBe("https://api.example.test/v1");
 });

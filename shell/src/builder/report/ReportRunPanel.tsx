@@ -7,6 +7,7 @@ import { t } from "../../i18n";
 import { formatDateTime } from "../../lib/format";
 import { jobStatusLabel } from "../../lib/jobStatusLabel";
 import { Button } from "../../ui/kit/Button";
+import "../../i18n/domains/automation";
 
 // Rythmes de sondage. PipelineRunPanel s'arrête net dès que le run quitte
 // queued/running ; ici un run peut apparaître à tout moment (le cron de

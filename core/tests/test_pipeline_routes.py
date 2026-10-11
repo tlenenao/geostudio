@@ -830,3 +830,74 @@ def test_preview_route_maps_degenerate_op_input_to_400(monkeypatch):
     response = client.post(f"/v1/pipelines/{item_id}/preview?upTo=r1")
     assert response.status_code == 400
     assert "Point" in response.text
+
+
+def _defer_collector(client):
+    deferred: list[str] = []
+    from app.pipelines import routes as pipelines_routes
+
+    client.app.dependency_overrides[pipelines_routes.get_task_deferrer] = lambda: (
+        lambda run_id, tid: deferred.append(run_id)
+    )
+    return deferred
+
+
+def test_second_run_while_one_is_active_is_409_then_allowed_once_terminal(monkeypatch):
+    """REV-310 : pas de second run tant qu'un run queued/running existe."""
+    from app.pipelines import repository as pipelines_repo
+
+    client = _make_app(monkeypatch, etl_enabled=True)
+    item_id = _seed_webhook_pipeline(client)
+    deferred = _defer_collector(client)
+
+    first = client.post(f"/v1/pipelines/{item_id}/run")
+    assert first.status_code == 202, first.text
+    second = client.post(f"/v1/pipelines/{item_id}/run")
+    assert second.status_code == 409
+    assert "déjà en cours" in second.json()["detail"]
+    assert deferred == [first.json()["runId"]]  # le 409 ne défère rien
+
+    Session = client.session_factory  # type: ignore[attr-defined]
+    with Session() as s:
+        pipelines_repo.mark_running(s, run_id=first.json()["runId"])
+        s.commit()
+    assert client.post(f"/v1/pipelines/{item_id}/run").status_code == 409  # running aussi
+
+    with Session() as s:
+        pipelines_repo.mark_succeeded(s, run_id=first.json()["runId"], node_stats={})
+        s.commit()
+    assert client.post(f"/v1/pipelines/{item_id}/run").status_code == 202
+
+
+def test_stale_active_run_does_not_block_a_new_run(monkeypatch):
+    """REV-310 : un run périmé (planté, plus vieux que le seuil de reprise) est ignoré."""
+    from datetime import UTC, datetime, timedelta
+
+    from app.pipelines import repository as pipelines_repo
+
+    client = _make_app(monkeypatch, etl_enabled=True)
+    item_id = _seed_webhook_pipeline(client)
+    _defer_collector(client)
+    Session = client.session_factory  # type: ignore[attr-defined]
+    with Session() as s:
+        stale = pipelines_repo.create_run(
+            s,
+            tenant_id=client.tenant.id,  # type: ignore[attr-defined]
+            pipeline_item_id=item_id,
+        )
+        stale.created_at = datetime.now(UTC) - timedelta(hours=3)
+        s.commit()
+    assert client.post(f"/v1/pipelines/{item_id}/run").status_code == 202
+
+
+def test_webhook_trigger_is_409_while_a_run_is_active(monkeypatch):
+    """REV-310 (jumelle) : /trigger passe par le même service que /run."""
+    client = _make_app(monkeypatch, etl_enabled=True)
+    item_id = _seed_webhook_pipeline(client)
+    _promote_owner_to_admin(client)
+    raw_token = client.post(f"/v1/pipelines/{item_id}/webhook-tokens").json()["token"]
+    _defer_collector(client)
+    headers = {"Authorization": f"Bearer {raw_token}"}
+    assert client.post(f"/v1/pipelines/{item_id}/trigger", headers=headers).status_code == 202
+    assert client.post(f"/v1/pipelines/{item_id}/trigger", headers=headers).status_code == 409
+    assert client.post(f"/v1/pipelines/{item_id}/run").status_code == 409

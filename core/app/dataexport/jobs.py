@@ -20,6 +20,7 @@ from app.collections.introspection import hide_sensitive_columns
 from app.collections.introspection_pg import introspect_table
 from app.collections.routes import get_collection_for_read
 from app.dataexport import repository as repo
+from app.dataexport.models import CollectionExportJob
 from app.db import request_scoped_session
 from app.features import repository as features_repo
 from app.features.rls import rls_scope
@@ -28,6 +29,7 @@ from app.jobs import app
 from app.jobs.common import notify_best_effort, session_factory
 from app.roles.guards import has_privilege
 from app.roles.privileges import Privilege
+from app.sharing.geo_limits import resolve_geo_limits
 from app.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -66,13 +68,15 @@ def _build_file(factory, job) -> tuple[bytes, str, str]:
         masked = job.masked or not has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)
         if masked:
             info = hide_sensitive_columns(info, col.sensitive_fields)
+        # GAP-27 : limites recalculées à l'exécution, comme le verdict de masquage.
+        geo_limits = resolve_geo_limits(session, tenant_id=user.tenant_id, user_id=user.id)
         q = job.query or {}
         bbox = tuple(q["bbox"]) if q.get("bbox") else None
         job_max = export_job_max()
         features: list[dict] = []
         cursor = None
         while True:
-            with rls_scope(session, job.tenant_id, masked=masked):
+            with rls_scope(session, job.tenant_id, masked=masked, geo_limits=geo_limits):
                 page = features_repo.select_features(
                     session,
                     info,
@@ -149,8 +153,9 @@ def run_collection_export(job_id: str, tenant_id: str) -> None:
     except Exception as exc:
         logger.exception("collection export job %s : échec", job_id)
         with request_scoped_session(factory) as session:
-            repo.mark_failed(session, job_id, str(exc))
-        _notify(factory, job, title=title, status="failure", error=str(exc))
+            failed = repo.mark_failed(session, job_id, str(exc))
+        if failed:  # sinon annulé par le demandeur : pas de notification d'échec
+            _notify(factory, job, title=title, status="failure", error=str(exc))
         return
     _notify(factory, job, title=title, status="success")
 
@@ -165,9 +170,17 @@ def sweep_collection_exports_task(timestamp: int) -> None:
         return
     factory = session_factory()
     with request_scoped_session(factory) as session:
-        repo.reclaim_stuck_running(session)
+        reclaimed = [
+            job
+            for job_id in repo.reclaim_stuck_running(session)
+            if (job := session.get(CollectionExportJob, job_id)) is not None
+        ]
         pending = repo.stale_pending_ids(session)
         session.commit()
+        for job in reclaimed:
+            session.expunge(job)
+    for job in reclaimed:  # REV-323 B : l'abandon d'un export est notifié
+        _notify(factory, job, title=job.collection_id, status="failure", error=job.error)
     for job_id, tenant_id in pending:
         try:
             run_collection_export.defer(job_id=job_id, tenant_id=tenant_id)

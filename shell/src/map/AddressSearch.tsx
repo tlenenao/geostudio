@@ -8,6 +8,7 @@ import type { GeocodeResult } from "../api/types";
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { t } from "../i18n";
+import "../i18n/domains/widgets";
 
 export function AddressSearch({ onSelect }: { onSelect: (center: [number, number]) => void }) {
   const client = useItemClient();

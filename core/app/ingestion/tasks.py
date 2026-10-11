@@ -124,6 +124,18 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
             s3, bucket=_uploads_bucket(), key=source_key, max_bytes=max_upload_bytes()
         )
         with request_scoped_session(factory) as session:
+            # D6 : annulation demandée pendant le téléchargement — dernier point
+            # d'arrêt avant l'import (transaction non interruptible, collection créée).
+            if ingestion_repo.is_cancel_requested(session, job_id=job_id):
+                ingestion_repo.mark_cancelled(session, job_id=job_id)
+                cancelled = True
+            else:
+                cancelled = False
+        if cancelled:
+            logger.info("ingestion job %s annulé avant l'import", job_id)
+            _delete_source(s3, source_key)
+            return
+        with request_scoped_session(factory) as session:
             result = run_import(
                 session,
                 tenant_id=tenant_id,

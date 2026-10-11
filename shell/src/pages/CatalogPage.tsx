@@ -17,6 +17,8 @@ import { plural, t } from "../i18n";
 import { formatNumber } from "../lib/format";
 import { LoadingState } from "../ui/kit/LoadingState";
 import type { Bbox } from "./CatalogSpatialFilter";
+import "../i18n/domains/admin";
+import "../i18n/domains/misc";
 
 // La carte du filtre spatial embarque maplibre-gl (vendor-map, ~284 Ko gzip) :
 // chargée seulement à l'ouverture du panneau, pas au premier rendu (t03-005, LCP).

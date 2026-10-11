@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { t } from "../../i18n";
+import "../../i18n/domains/misc";
 
 export function Breadcrumb({ items }: { items: { label: string; href?: string }[] }) {
   return (

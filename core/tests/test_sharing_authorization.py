@@ -147,7 +147,7 @@ def test_group_viewer(session, actors, action, expected):
 
 
 @pytest.mark.parametrize(
-    "action,expected", [("read", True), ("write", True), ("delete", True), ("share", True)]
+    "action,expected", [("read", True), ("write", True), ("delete", True), ("share", False)]
 )
 def test_group_editor(session, actors, action, expected):
     item = actors["make_item"]("item-editor")
@@ -185,7 +185,8 @@ def test_user_with_multiple_group_roles_uses_highest_permission(session, actors)
     assert can(session, user_id=dual_user.id, action="read", item=item) is True
     assert can(session, user_id=dual_user.id, action="write", item=item) is True
     assert can(session, user_id=dual_user.id, action="delete", item=item) is True
-    assert can(session, user_id=dual_user.id, action="share", item=item) is True
+    # REV-270/P14.12 : viewer+editor ne donne pas le partage (rôle manager requis).
+    assert can(session, user_id=dual_user.id, action="share", item=item) is False
 
 
 def test_viewer_only_cannot_write_even_if_editor_share_exists(session, actors):

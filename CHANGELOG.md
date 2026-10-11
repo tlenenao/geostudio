@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`S3_PUBLIC_ENDPOINT_URL` is now required outside `CORE_ENV=development`**
+  (REV-315): the core refuses to start with it empty, since presigned links
+  would point to the unreachable `minio:9000`. `.env.example` defaults it to
+  `http://localhost:9000`; set your public storage URL in production.
+- Core healthcheck `start_period` raised to 180 s (migrations on a non-empty
+  database) and `restart: unless-stopped` on Martin (REV-320).
+
 ### Added
 
 - **40 new pipeline operations**; the exposed catalogue is now 58 operations
@@ -211,8 +220,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     empty secret must generate it.
   - Production Traefik reaches Docker through `docker-socket-proxy` (read-only,
     containers/events only) instead of mounting `docker.sock`. Keycloak dynamic
-    client registration is limited by Trusted Hosts: `install.sh` resyncs the
-    policy; **existing instances must add it by hand**.
+    client registration is limited by Trusted Hosts (realm import only runs on
+    a fresh install; `install.sh` does not resync the policy): **existing
+    instances must add it by hand** — see
+    `docs/runbooks/2026-10-10-release-v0.1.1-et-protection-main.md` §c.
   - Releases: the `v*` tag must equal `GEOSTUDIO_VERSION` of `.env.example`,
     point to a commit on `main` with a green `ci.yml` (`verify-tag`). The
     published `v0.1.0` has no `minio`/`titiler` image: cut a new release.

@@ -14,6 +14,8 @@ import { t } from "../i18n";
 import { LoadingState } from "../ui/kit/LoadingState";
 import { Banner } from "../ui/kit/Banner";
 import { PageTitle } from "../ui/kit/PageTitle";
+import "../i18n/domains/admin";
+import "../i18n/domains/misc";
 
 const PAGE_SIZE = 50;
 

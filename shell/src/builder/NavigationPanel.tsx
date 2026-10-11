@@ -5,6 +5,7 @@ import { getWidget } from "./registry";
 import { validateExpression } from "./expr";
 import { formatCelError } from "./celError";
 import { t } from "../i18n";
+import "../i18n/domains/widgets";
 
 const selectCls = "h-9 rounded border border-rule bg-surface text-xs";
 

@@ -9,6 +9,7 @@ import type { DataRecord, DataSource, MapConfig } from "../api/types";
 import type { MapViewHandle } from "../map/MapView";
 import { t } from "../i18n";
 import { LoadingState } from "../ui/kit/LoadingState";
+import "../i18n/domains/widgets";
 
 const MapView = lazy(() => import("../map/MapView").then((m) => ({ default: m.MapView })));
 const DEFAULT_STYLE = "https://demotiles.maplibre.org/style.json";

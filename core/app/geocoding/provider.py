@@ -6,6 +6,7 @@ Nominatim (CORE_GEOCODING_PROVIDER=nominatim). L'opérateur règle ensemble
 fournisseur, CORE_GEOCODING_URL et CORE_GEOCODING_EGRESS_ALLOWLIST."""
 
 import os
+import time
 from collections.abc import Callable
 from typing import Protocol
 
@@ -62,6 +63,18 @@ class BanGeocoder:
         ]
 
 
+# Cache global (processus) des réponses Nominatim : la politique d'usage OSM
+# impose <= 1 req/s, une même adresse n'a pas à retourner à l'amont.
+# ponytail: par processus, FIFO borné ; cache partagé si plusieurs réplicas pèsent.
+_NOMINATIM_CACHE_TTL_S = 3600
+_NOMINATIM_CACHE_MAX = 512
+_nominatim_cache: dict[tuple[str, str, int], tuple[float, list[GeocodeResult]]] = {}
+
+
+def nominatim_user_agent() -> str:
+    return os.environ.get("CORE_GEOCODING_USER_AGENT") or "GeoStudio/1 (geocoding)"
+
+
 class NominatimGeocoder:
     def __init__(
         self, base_url: str, client_factory: Callable[[], httpx.Client] = build_guarded_client
@@ -70,20 +83,26 @@ class NominatimGeocoder:
         self._client_factory = client_factory
 
     def search(self, q: str, limit: int) -> list[GeocodeResult]:
+        key = (self._url, q.strip().lower(), limit)
+        hit = _nominatim_cache.get(key)
+        if hit and time.monotonic() - hit[0] < _NOMINATIM_CACHE_TTL_S:
+            return hit[1]
         with self._client_factory() as client:
             response = client.get(
                 self._url,
                 params={"q": q, "format": "jsonv2", "limit": limit},
-                # Nominatim (politique d'usage OSM) exige un User-Agent identifiant
-                # (fixe, non configurable) ; pas de cache serveur : l'instance
-                # publique impose <= 1 req/s, a l'operateur de pointer sa propre
-                # instance via CORE_GEOCODING_URL si le trafic le justifie.
-                headers={"User-Agent": "GeoStudio/1 (geocoding)"},
+                # Nominatim (politique d'usage OSM) exige un User-Agent identifiant :
+                # CORE_GEOCODING_USER_AGENT (contact de l'opérateur), sinon un défaut.
+                headers={"User-Agent": nominatim_user_agent()},
             )
-        return [
+        results = [
             GeocodeResult(label=i["display_name"], lon=float(i["lon"]), lat=float(i["lat"]))
             for i in _checked_json(response)
         ]
+        if len(_nominatim_cache) >= _NOMINATIM_CACHE_MAX:
+            _nominatim_cache.pop(next(iter(_nominatim_cache)))
+        _nominatim_cache[key] = (time.monotonic(), results)
+        return results
 
 
 def get_geocoder() -> Geocoder:
@@ -93,8 +112,14 @@ def get_geocoder() -> Geocoder:
             status_code=503,
             detail=f"Fournisseur de géocodage inconnu : {provider!r} (attendu : ban ou nominatim).",
         )
-    default = DEFAULT_NOMINATIM_URL if provider == "nominatim" else DEFAULT_GEOCODING_URL
-    url = os.environ.get("CORE_GEOCODING_URL", default)
+    if provider == "nominatim" and not os.environ.get("CORE_GEOCODING_URL"):
+        # Pas de repli silencieux sur l'instance publique OSM (REV-323 B) :
+        # l'opérateur choisit son instance (la publique = DEFAULT_NOMINATIM_URL).
+        raise HTTPException(
+            status_code=503,
+            detail="CORE_GEOCODING_URL est requis avec le fournisseur nominatim.",
+        )
+    url = os.environ.get("CORE_GEOCODING_URL", DEFAULT_GEOCODING_URL)
     if not url:
         raise HTTPException(status_code=503, detail="Géocodage désactivé sur cette instance.")
     return NominatimGeocoder(url) if provider == "nominatim" else BanGeocoder(url)

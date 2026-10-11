@@ -5,6 +5,8 @@ import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
 import { t } from "../i18n";
 import { Input } from "../ui/kit/Input";
 import { Button } from "../ui/kit/Button";
+import "../i18n/domains/misc";
+import "../i18n/domains/widgets";
 
 export function PageManager({
   pages,

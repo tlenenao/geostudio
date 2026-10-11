@@ -84,6 +84,18 @@ def _delta_file_count(conn, base_uri: str, tenant_id: str, collection_id: str) -
     return sum(1 for (f,) in files if (m := _DT_RE.search(f)) and m.group(1) >= since)
 
 
+def _stale_with_delta(
+    conn, base_uri: str, tenant_id: str, collection_id: str, n: int, now_ms: int, max_age_hours: int
+) -> bool:
+    """Filet d'âge : la compaction fusionne les fichiers et peut garder le delta
+    sous `min_delta_files` à jamais — un snapshot plus vieux que `max_age_hours`
+    est rafraîchi dès qu'il y a au moins un fichier de delta (0 = filet éteint)."""
+    if n < 1 or max_age_hours <= 0:
+        return False
+    snap = latest_snapshot(conn, base_uri, tenant_id, collection_id)
+    return snap is not None and now_ms - snap[1] > max_age_hours * 3_600_000
+
+
 def run_snapshot_cycle(
     conn,
     client,
@@ -93,6 +105,8 @@ def run_snapshot_cycle(
     now_ms: int,
     min_delta_files: int,
     keep: int,
+    grace_s: int = 300,
+    max_age_hours: int = 24,
 ) -> int:
     """Snapshot de chaque collection (tenant_id, id, pk_column) dont le delta
     atteint `min_delta_files`, puis purge au-delà des `keep` plus récents.
@@ -107,11 +121,21 @@ def run_snapshot_cycle(
     written = 0
     for tenant_id, collection_id, pk_column in collections:
         try:
-            if _delta_file_count(conn, base_uri, tenant_id, collection_id) < min_delta_files:
+            n = _delta_file_count(conn, base_uri, tenant_id, collection_id)
+            if n < min_delta_files and not _stale_with_delta(
+                conn, base_uri, tenant_id, collection_id, n, now_ms, max_age_hours
+            ):
                 continue
             with statement_timeout(conn, _SNAPSHOT_TIMEOUT_S):
                 uri = write_snapshot(
-                    conn, base_uri, tenant_id, collection_id, pk_column, now_ms=now_ms, cleanup=drop
+                    conn,
+                    base_uri,
+                    tenant_id,
+                    collection_id,
+                    pk_column,
+                    now_ms=now_ms,
+                    cleanup=drop,
+                    grace_s=grace_s,
                 )
             if uri is None:
                 continue
@@ -156,6 +180,8 @@ def run_snapshot_cycle_task(timestamp: int) -> None:
             now_ms=int(time.time() * 1000),
             min_delta_files=int(os.environ.get("CORE_LAKE_SNAPSHOT_MIN_DELTA_FILES") or 20),
             keep=max(2, int(os.environ.get("CORE_LAKE_SNAPSHOT_KEEP") or 2)),
+            grace_s=int(os.environ.get("CORE_LAKE_SNAPSHOT_GRACE_S") or 300),
+            max_age_hours=int(os.environ.get("CORE_LAKE_SNAPSHOT_MAX_AGE_HOURS") or 24),
         )
     finally:
         conn.close()

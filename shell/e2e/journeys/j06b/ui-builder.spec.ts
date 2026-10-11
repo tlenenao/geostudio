@@ -151,6 +151,8 @@ test.describe("j06b builder de pipeline (UI réelle)", () => {
 
     // j06b-001 : « Exécuter » mène à un statut terminal (le run est créé mais jamais déféré).
     await page.getByRole("button", { name: "Exécuter" }).click();
-    await expect(page.getByRole("status", { name: /Terminé/ })).toBeVisible({ timeout: 20_000 });
+    await expect(
+      page.getByRole("status").filter({ hasText: /État de l.exécution : Terminé/ }),
+    ).toBeVisible({ timeout: 20_000 });
   });
 });

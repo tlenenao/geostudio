@@ -208,6 +208,12 @@ describe("EditCollectionPanel — champs sensibles (GAP-22)", () => {
     expect(screen.getByLabelText("gravite")).toBeInTheDocument();
   });
 
+  it("documente l'absence d'exception propriétaire (REV-270/P15.05)", async () => {
+    render(<EditCollectionPanel collection={baseCollection} onClose={vi.fn()} />);
+    await userEvent.click(screen.getByRole("tab", { name: "Champs sensibles" }));
+    expect(screen.getByText(/aucune exception pour le propriétaire/)).toBeInTheDocument();
+  });
+
   it("précoche les champs déjà déclarés sensibles", async () => {
     render(
       <EditCollectionPanel

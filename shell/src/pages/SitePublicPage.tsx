@@ -7,6 +7,7 @@ import { useDocumentMeta } from "../shell/useDocumentMeta";
 import { t } from "../i18n";
 import { PublicNotFound } from "./PublicNotFound";
 import { LoadingState } from "../ui/kit/LoadingState";
+import "../i18n/domains/misc";
 
 registerBuiltinWidgets();
 

@@ -385,6 +385,11 @@ def _visible_items_base_query(
     return query
 
 
+# REV-323 B : plafond au point unique (REST /items + outils MCP list_items/
+# search_catalog) ; 200 = plus grand pageSize demandé par le shell.
+MAX_PAGE_SIZE = 200
+
+
 def list_items(
     session: Session,
     *,
@@ -400,6 +405,7 @@ def list_items(
     keywords: list[str] | None = None,
     bbox: tuple[float, float, float, float] | None = None,
 ) -> ItemPage:
+    page_size = min(page_size, MAX_PAGE_SIZE)
     query = _visible_items_base_query(
         tenant_id=tenant_id,
         current_user_id=current_user_id,
@@ -670,6 +676,14 @@ def get_thumbnail_key(session: Session, *, tenant_id: str, item_id: str) -> str 
     )
 
 
+class StaleItemVersion(Exception):
+    """L'écrivain a lu un `updatedAt` qui n'est plus le courant (REV-317)."""
+
+    def __init__(self, current: str) -> None:
+        super().__init__(f"stale version: current is {current}")
+        self.current = current
+
+
 def update_item(
     session: Session,
     *,
@@ -683,12 +697,16 @@ def update_item(
     license: str | None = None,
     language: str | None = None,
     current_user_id: str | None = None,
+    expected_updated_at: str | None = None,
 ) -> ItemRead | None:
     item = session.execute(
         select(Item).where(Item.id == item_id, Item.tenant_id == tenant_id)
     ).scalar_one_or_none()
     if item is None:
         return None
+    # Pas de colonne `version` sur items : `updatedAt` (déjà exposé) sert d'ETag.
+    if expected_updated_at is not None and expected_updated_at != item.updated_at.isoformat():
+        raise StaleItemVersion(item.updated_at.isoformat())
     if title is not None:
         item.title = title
     if abstract is not None:

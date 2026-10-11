@@ -4,6 +4,7 @@ import type { WidgetItem } from "../api/types";
 import { t } from "../i18n";
 import { getWidget } from "./registry";
 import { GRID_COLS, positionsFor, styleForPos, type Breakpoint } from "./grid";
+import "../i18n/domains/widgets";
 
 // Commandes d'un widget sélectionné : 24 px minimum (WCAG 2.5.8), 44 px sur
 // pointeur grossier (P31.07).

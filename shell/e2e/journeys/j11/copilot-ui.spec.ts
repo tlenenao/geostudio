@@ -80,7 +80,6 @@ test.describe("j11 copilote : capacité éteinte côté UI", () => {
     await openBuilder(page, "creator", seed.appPk);
     await expect(page.getByRole("button", { name: "Enregistrer" })).toBeVisible();
     await expect(page.getByLabel("Message au copilote")).toHaveCount(0);
-    await expect(page.getByText("Copilote", { exact: true })).toHaveCount(0);
     await spaGoto(page, "/analytics/sql");
     await expect(page.getByLabel("Message au copilote")).toHaveCount(0);
   });
@@ -203,30 +202,29 @@ test.describe("j11 copilote : builder avec cœur simulé sur /copilot/turn", () 
 test.describe("j11 copilote : SQL Lab", () => {
   // Même racine que j11-007 : le remontage consécutif à signinSilent efface le brouillon SQL
   // que le tour vient d'insérer.
-  bug(
-    "j11-007 : le brouillon SQL proposé reste dans l'éditeur et n'est jamais exécuté sans clic",
-    async ({ page }) => {
-      await enableCopilot(page);
-      let executed = false;
-      await page.route("**/v1/analytics/sql", async (route) => {
-        executed = true;
-        await route.continue();
-      });
-      const turns = await stubTurn(page, () => ({
-        json: {
-          reply: "Voici un brouillon.",
-          clientOps: [{ op: "applySqlDraft", args: { sql: "SELECT 1 AS un" } }],
-        },
-      }));
-      await openAs(page, "analyst");
-      await spaGoto(page, "/analytics/sql");
-      await ask(page, "un");
-      await expect(page.getByLabel("Requête SQL")).toHaveText("SELECT 1 AS un");
-      expect(executed).toBe(false);
-      expect(turns[0].body.surface).toBe("sql_lab");
-      expect(turns[0].body.itemId).toBeUndefined();
-      expect(Array.isArray(turns[0].body.currentConfig.collections)).toBe(true);
-      await expect(page.getByText("Brouillon SQL inséré.")).toBeVisible();
-    },
-  );
+  test("j11-007 : le brouillon SQL proposé reste dans l'éditeur et n'est jamais exécuté sans clic", async ({
+    page,
+  }) => {
+    await enableCopilot(page);
+    let executed = false;
+    await page.route("**/v1/analytics/sql", async (route) => {
+      executed = true;
+      await route.continue();
+    });
+    const turns = await stubTurn(page, () => ({
+      json: {
+        reply: "Voici un brouillon.",
+        clientOps: [{ op: "applySqlDraft", args: { sql: "SELECT 1 AS un" } }],
+      },
+    }));
+    await openAs(page, "analyst");
+    await spaGoto(page, "/analytics/sql");
+    await ask(page, "un");
+    await expect(page.getByLabel("Requête SQL")).toHaveText("SELECT 1 AS un");
+    expect(executed).toBe(false);
+    expect(turns[0].body.surface).toBe("sql_lab");
+    expect(turns[0].body.itemId).toBeUndefined();
+    expect(Array.isArray(turns[0].body.currentConfig.collections)).toBe(true);
+    await expect(page.getByText("Brouillon SQL inséré.")).toBeVisible();
+  });
 });

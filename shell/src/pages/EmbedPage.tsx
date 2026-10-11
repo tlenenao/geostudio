@@ -11,6 +11,7 @@ import { registerExampleWidgets } from "../builder/examples";
 import { resolveShareLink } from "./embed/resolveShareLink";
 import { t } from "../i18n";
 import { LoadingState } from "../ui/kit/LoadingState";
+import "../i18n/domains/widgets";
 
 registerBuiltinWidgets();
 registerExampleWidgets();

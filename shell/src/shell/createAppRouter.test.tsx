@@ -16,6 +16,7 @@ import { RouterProvider } from "react-router-dom";
 import { beforeEach, expect, test, vi } from "vitest";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
+import { ToastProvider } from "../ui/kit/ToastProvider";
 import { createAppRouter } from "./routes";
 import type { AuthState } from "../auth/useAuth";
 
@@ -63,7 +64,9 @@ function renderRouter(router: ReturnType<typeof createAppRouter>) {
   return render(
     <QueryClientProvider client={queryClient}>
       <ItemClientProvider client={client}>
-        <RouterProvider router={router} />
+        <ToastProvider>
+          <RouterProvider router={router} />
+        </ToastProvider>
       </ItemClientProvider>
     </QueryClientProvider>,
   );

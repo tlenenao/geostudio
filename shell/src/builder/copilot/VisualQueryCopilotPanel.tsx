@@ -11,6 +11,7 @@ import { applyVisualQueryClientOp, type VisualQueryLeg } from "./applyVisualQuer
 import type { RawClientOp } from "./applyClientOp";
 import { CopilotChat } from "./CopilotChat";
 import { buildVisualQueryClientToolSchemas } from "./visualQueryClientTools";
+import "../../i18n/domains/automation";
 
 const LEG_LABELS: Record<VisualQueryLeg, MessageKey> = {
   filters: "copilot.legFilters",

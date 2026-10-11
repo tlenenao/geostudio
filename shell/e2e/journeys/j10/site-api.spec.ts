@@ -120,7 +120,7 @@ test.describe("j10 sites : API", () => {
 
   // FINDING j10-001 : GET /public/configs/by-item/{id} sert la config de N'IMPORTE
   // QUEL item publié (alerte, pipeline…), donc l'URL de webhook d'une alerte publiée.
-  bug("j10-001 : la config publique d'une alerte publiée ne divulgue pas ses canaux", async () => {
+  test("j10-001 : la config publique d'une alerte publiée ne divulgue pas ses canaux", async () => {
     const ds = await getDatasetSeed();
     const a = await creator.send("POST", "/v1/configs", {
       title: `${tag}-alert`,

@@ -24,6 +24,7 @@ import type { DataRecord, DataSource, DatasetConfig } from "../../api/types";
 import { SourceMissing } from "./SourceMissing";
 import { t } from "../../i18n";
 import { LoadingState } from "../../ui/kit/LoadingState";
+import "../../i18n/domains/widgets";
 
 const EChart = lazy(() => import("../EChart").then((m) => ({ default: m.EChart })));
 

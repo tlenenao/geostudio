@@ -44,11 +44,11 @@ function renderBar() {
   );
 }
 
-test("affiche la marque, Nouveau, Importer, et le compte", () => {
+test("affiche la marque, Nouveau, Importer, et le compte", async () => {
   renderBar();
   expect(screen.getByText("GeoStudio")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Nouveau" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Importer un fichier" })).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "Nouveau" })).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "Importer un fichier" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Notifications" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Compte" })).toBeInTheDocument();
 });

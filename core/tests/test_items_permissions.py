@@ -136,9 +136,10 @@ def test_viewer_reads_only(env):
     }
 
 
-def test_editor_writes_deletes_shares_but_is_not_owner(env):
+def test_editor_writes_deletes_but_does_not_manage_sharing(env):
+    # REV-270/P14.12 : share exige le rôle de partage "manager".
     client = env["as_user"](env["editor"])
-    assert _perms(client, "shared") == {"read": True, "write": True, "delete": True, "share": True}
+    assert _perms(client, "shared") == {"read": True, "write": True, "delete": True, "share": False}
 
 
 def test_published_item_is_readable_by_a_stranger_but_not_writable(env):

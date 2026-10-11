@@ -4,6 +4,7 @@ import type { DataRecord } from "../../api/types";
 import { t } from "../../i18n";
 import type { BucketGranularity } from "../../lib/comparisonWindow";
 import { formatNumber } from "../../lib/format";
+import "../../i18n/domains/widgets";
 
 export type ChartProps = {
   dataSourceId?: string;

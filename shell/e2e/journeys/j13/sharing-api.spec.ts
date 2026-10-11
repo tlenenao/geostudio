@@ -18,7 +18,7 @@ import {
 // Partage d'items, groupes, publication et liens à échéance vus depuis l'API
 // du cœur, jetons Keycloak réels des 4 personas.
 let creator: Api, analyst: Api, reader: Api, admin: Api;
-let readerId: string, analystId: string;
+let readerId: string, analystId: string, adminId: string;
 
 test.beforeAll(async () => {
   [creator, analyst, reader, admin] = await Promise.all([
@@ -29,10 +29,11 @@ test.beforeAll(async () => {
   ]);
   readerId = await meId(reader);
   analystId = await meId(analyst);
+  adminId = await meId(admin);
 });
 
 test.describe("j13 matrice rôle × kind (création de config)", () => {
-  test("création par kind : Lecteur 403 partout, Analyste seulement bookmark, Créateur app/map/dataset/site/dashboard/bookmark", async () => {
+  test("création par kind : Lecteur et Analyste seulement bookmark, Créateur app/map/dataset/site/dashboard/bookmark", async () => {
     const col = await mkCollection(creator, `${TAG}-mx-col`);
     const target = await mkItem(creator, `${TAG}-mx-app`);
     const configs: Record<string, any> = {
@@ -52,7 +53,7 @@ test.describe("j13 matrice rôle × kind (création de config)", () => {
     const expected: Record<string, Record<string, number>> = {
       creator: { app: 201, dashboard: 201, site: 201, map: 201, dataset: 201, bookmark: 201 },
       analyst: { app: 403, dashboard: 403, site: 403, map: 403, dataset: 403, bookmark: 201 },
-      reader: { app: 403, dashboard: 403, site: 403, map: 403, dataset: 403, bookmark: 403 },
+      reader: { app: 403, dashboard: 403, site: 403, map: 403, dataset: 403, bookmark: 201 },
     };
     const got: Record<string, Record<string, number>> = {};
     for (const [who, api] of [
@@ -128,60 +129,38 @@ test.describe("j13 rôle de partage viewer / editor", () => {
 
   // Finding j13-002 : la garde de privilège ne couvre que l'écriture de config ;
   // un Lecteur (0 privilège) éditeur par groupe publie, rend public et re-partage.
-  bug(
-    "j13-002 : un Lecteur éditeur par groupe ne peut ni publier (anonyme), ni rendre public, ni créer de lien",
-    async () => {
-      const it = await mkItem(creator, `${TAG}-editor-reader`);
-      const g = await mkGroup(creator, `${TAG}-ge`, [readerId]);
-      expect(await share(creator, it.pk, [{ groupId: g, role: "editor" }])).toBe(204);
-      // Contrôle : l'écriture de config, elle, est bien refusée au Lecteur.
-      expect((await reader.send("PUT", `/v1/configs/by-item/${it.pk}`, appConfig())).status).toBe(
-        403,
-      );
-      expect((await reader.send("PATCH", `/v1/items/${it.pk}`, { isPublished: true })).status).toBe(
-        403,
-      );
-      expect(await anon(`/v1/public/configs/by-item/${it.pk}`)).toBe(404);
-      expect(
-        (await reader.send("PUT", `/v1/items/${it.pk}/sharing`, { public: true, groups: [] }))
-          .status,
-      ).toBe(403);
-    },
-  );
-
-  test("constat j13-002 : le Lecteur éditeur publie l'app, qui devient lisible par un anonyme", async () => {
-    const it = await mkItem(creator, `${TAG}-editor-reader-obs`);
-    const g = await mkGroup(creator, `${TAG}-geo`, [readerId]);
+  test("j13-002 : un Lecteur éditeur par groupe ne peut ni publier (anonyme), ni rendre public, ni créer de lien", async () => {
+    const it = await mkItem(creator, `${TAG}-editor-reader`);
+    const g = await mkGroup(creator, `${TAG}-ge`, [readerId]);
     expect(await share(creator, it.pk, [{ groupId: g, role: "editor" }])).toBe(204);
+    // Contrôle : l'écriture de config, elle, est bien refusée au Lecteur.
     expect((await reader.send("PUT", `/v1/configs/by-item/${it.pk}`, appConfig())).status).toBe(
       403,
     );
-    const renamed = await reader.send("PATCH", `/v1/items/${it.pk}`, {
-      title: `${TAG}-renomme-par-lecteur`,
-      isPublished: true,
-    });
-    expect(renamed.status).toBe(200);
-    expect(await anon(`/v1/public/configs/by-item/${it.pk}`)).toBe(200);
-    // Il peut aussi rendre l'item visible de tout le tenant.
+    expect((await reader.send("PATCH", `/v1/items/${it.pk}`, { isPublished: true })).status).toBe(
+      403,
+    );
+    expect(await anon(`/v1/public/configs/by-item/${it.pk}`)).toBe(404);
     expect(
-      (
-        await reader.send("PUT", `/v1/items/${it.pk}/sharing`, {
-          public: true,
-          groups: [{ groupId: g, role: "editor" }],
-        })
-      ).status,
-    ).toBe(204);
+      (await reader.send("PUT", `/v1/items/${it.pk}/sharing`, { public: true, groups: [] })).status,
+    ).toBe(403);
   });
 
-  test("un éditeur par groupe peut accorder « editor » à un autre groupe (rôle = co-propriétaire)", async () => {
-    // Constat (j13-012) : pas de rôle intermédiaire « modifier sans re-partager ».
+  test("seul un gestionnaire par groupe change le partage ; un éditeur modifie sans re-partager (REV-270/P14.12)", async () => {
     const it = await mkItem(creator, `${TAG}-coowner`);
-    const g = await mkGroup(creator, `${TAG}-gco`, [analystId]);
+    const g = await mkGroup(creator, `${TAG}-gco`, [adminId]);
     const other = await mkGroup(creator, `${TAG}-gco2`);
     expect(await share(creator, it.pk, [{ groupId: g, role: "editor" }])).toBe(204);
     expect(
-      await share(analyst, it.pk, [
+      await share(admin, it.pk, [
         { groupId: g, role: "editor" },
+        { groupId: other, role: "editor" },
+      ]),
+    ).toBe(403);
+    expect(await share(creator, it.pk, [{ groupId: g, role: "manager" }])).toBe(204);
+    expect(
+      await share(admin, it.pk, [
+        { groupId: g, role: "manager" },
         { groupId: other, role: "editor" },
       ]),
     ).toBe(204);
@@ -191,45 +170,22 @@ test.describe("j13 rôle de partage viewer / editor", () => {
 });
 
 test.describe("j13 groupes de partage", () => {
-  test("seul le créateur d'un groupe y ajoute un membre (404 pour les autres, y compris l'Administrateur)", async () => {
+  test("le créateur d'un groupe y ajoute un membre ; 404 pour un autre créateur, 204 pour l'Administrateur (admin.users.manage)", async () => {
     const g = await mkGroup(creator, `${TAG}-gown`);
-    for (const api of [analyst, admin]) {
-      const r = await api.send("POST", `/v1/groups/${g}/members`, { userId: analystId });
-      expect(r.status).toBe(404);
-    }
+    const denied = await analyst.send("POST", `/v1/groups/${g}/members`, { userId: analystId });
+    expect(denied.status).toBe(404);
+    const viaAdmin = await admin.send("POST", `/v1/groups/${g}/members`, { userId: analystId });
+    expect(viaAdmin.status).toBe(204);
     const bogus = await creator.send("POST", `/v1/groups/${g}/members`, { userId: "nope" });
     expect(bogus.status).toBe(404);
   });
 
-  // Finding j13-004 : aucune route pour retirer un membre, lister les membres,
-  // renommer ou supprimer un groupe.
-  bug(
-    "j13-004 : le créateur d'un groupe peut lister ses membres, en retirer un et supprimer le groupe",
-    async () => {
-      const g = await mkGroup(creator, `${TAG}-gmgmt`, [readerId]);
-      const members = await creator.get(`/v1/groups/${g}/members`);
-      expect(members.status).toBe(200);
-      expect((await creator.send("DELETE", `/v1/groups/${g}/members/${readerId}`)).status).toBe(
-        204,
-      );
-      expect((await creator.send("DELETE", `/v1/groups/${g}`)).status).toBe(204);
-    },
-  );
-
-  test("constat j13-004 : un membre ajouté par erreur ne peut être retiré que par… rien (routes absentes)", async () => {
-    const it = await mkItem(creator, `${TAG}-stuck`);
-    const g = await mkGroup(creator, `${TAG}-gstuck`, [readerId]);
-    expect(await share(creator, it.pk, [{ groupId: g, role: "viewer" }])).toBe(204);
-    for (const [m, p] of [
-      ["GET", `/v1/groups/${g}/members`],
-      ["DELETE", `/v1/groups/${g}/members/${readerId}`],
-      ["DELETE", `/v1/groups/${g}`],
-      ["PATCH", `/v1/groups/${g}`],
-    ] as const) {
-      const r = await creator.send(m, p, m === "PATCH" ? { name: "x" } : undefined);
-      expect([404, 405]).toContain(r.status);
-    }
-    expect((await reader.get(`/v1/items/${it.pk}`)).status).toBe(200);
+  test("j13-004 : le créateur d'un groupe peut lister ses membres, en retirer un et supprimer le groupe", async () => {
+    const g = await mkGroup(creator, `${TAG}-gmgmt`, [readerId]);
+    const members = await creator.get(`/v1/groups/${g}/members`);
+    expect(members.status).toBe(200);
+    expect((await creator.send("DELETE", `/v1/groups/${g}/members/${readerId}`)).status).toBe(204);
+    expect((await creator.send("DELETE", `/v1/groups/${g}`)).status).toBe(204);
   });
 
   test("partage vers un groupe inconnu → 404, groupe dupliqué → 422, rien n'est modifié", async () => {
@@ -295,36 +251,17 @@ test.describe("j13 partage d'une carte et de ses données", () => {
 
 test.describe("j13 suppression et références", () => {
   // Finding j13-003 : DELETE /configs/{id} ne vérifie pas les références inverses.
-  bug(
-    "j13-003 : supprimer un dataset référencé par une alerte est refusé (409) sur les trois routes de suppression",
-    async () => {
-      const col = await mkCollection(creator, `${TAG}-refcol`);
-      const d = await mkItem(creator, `${TAG}-refds`, {
-        version: 1,
-        kind: "dataset",
-        dataset: { source: "collection", collectionId: col },
-      });
-      await mkItem(creator, `${TAG}-refalert`, alertOn(d.pk));
-      expect((await creator.send("DELETE", `/v1/items/${d.pk}`)).status).toBe(409);
-      expect((await creator.send("DELETE", `/v1/configs/by-item/${d.pk}`)).status).toBe(409);
-      expect((await creator.send("DELETE", `/v1/configs/${d.configId}`)).status).toBe(409);
-    },
-  );
-
-  test("constat j13-003 : DELETE /configs/{id} supprime le dataset référencé (204) et laisse l'alerte orpheline", async () => {
-    const col = await mkCollection(creator, `${TAG}-refcol2`);
-    const d = await mkItem(creator, `${TAG}-refds2`, {
+  test("j13-003 : supprimer un dataset référencé par une alerte est refusé (409) sur les trois routes de suppression", async () => {
+    const col = await mkCollection(creator, `${TAG}-refcol`);
+    const d = await mkItem(creator, `${TAG}-refds`, {
       version: 1,
       kind: "dataset",
       dataset: { source: "collection", collectionId: col },
     });
-    const a = await mkItem(creator, `${TAG}-refalert2`, alertOn(d.pk));
+    await mkItem(creator, `${TAG}-refalert`, alertOn(d.pk));
     expect((await creator.send("DELETE", `/v1/items/${d.pk}`)).status).toBe(409);
-    expect((await creator.send("DELETE", `/v1/configs/${d.configId}`)).status).toBe(204);
-    expect((await creator.get(`/v1/items/${d.pk}`)).status).toBe(404);
-    const orphan = await creator.get(`/v1/configs/by-item/${a.pk}`);
-    expect(orphan.status).toBe(200);
-    expect(orphan.body.config.alert.datasetItemId).toBe(d.pk);
+    expect((await creator.send("DELETE", `/v1/configs/by-item/${d.pk}`)).status).toBe(409);
+    expect((await creator.send("DELETE", `/v1/configs/${d.configId}`)).status).toBe(409);
   });
 });
 
@@ -360,23 +297,11 @@ test.describe("j13 administration et modération", () => {
 
 test.describe("j13 liens de partage à échéance", () => {
   // Finding j13-001 : CORE_SHARE_LINK_TOKEN_SECRET vide (jamais généré) → 500.
-  bug(
-    "j13-001 : le propriétaire crée un lien de partage (201) et un anonyme le résout",
-    async () => {
-      const it = await mkItem(creator, `${TAG}-link`);
-      const r = await creator.send("POST", `/v1/items/${it.pk}/share-links`, { ttlDays: 7 });
-      expect(r.status).toBe(201);
-      expect(await anon(`/v1/share-links/${r.body.token}`)).toBe(200);
-    },
-  );
-
-  test("constat j13-001 : POST share-links répond 500 sans laisser de lien en base", async () => {
-    const it = await mkItem(creator, `${TAG}-link-obs`);
+  test("j13-001 : le propriétaire crée un lien de partage (201) et un anonyme le résout", async () => {
+    const it = await mkItem(creator, `${TAG}-link`);
     const r = await creator.send("POST", `/v1/items/${it.pk}/share-links`, { ttlDays: 7 });
-    expect(r.status).toBe(500);
-    const list = await creator.get(`/v1/items/${it.pk}/share-links`);
-    expect(list.status).toBe(200);
-    expect(list.body).toEqual([]);
+    expect(r.status).toBe(201);
+    expect(await anon(`/v1/share-links/${r.body.token}`)).toBe(200);
   });
 
   test("bornes du TTL (0 et 31 jours → 422), jeton invalide → 401, lien d'un item non partageable → 403", async () => {

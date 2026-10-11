@@ -7,6 +7,7 @@ import { LayoutEditor } from "../LayoutEditor";
 import { GridCanvas } from "../GridCanvas";
 import { WidgetHost } from "../WidgetHost";
 import { t } from "../../i18n";
+import "../../i18n/domains/widgets";
 
 type DrawerProps = { title: string; items: WidgetItem[]; side: "left" | "right" };
 

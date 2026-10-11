@@ -442,6 +442,29 @@ def test_purge_tenant_deletes_data_export_objects_in_exports_bucket(pg_engine, m
     assert s3.objects == {}
 
 
+def test_purge_tenant_deletes_lake_of_that_tenant_only(pg_engine, monkeypatch):
+    # REV-322 : bucket CDC (partitions + snapshots) purgé pour ce tenant seul.
+    from app.db import make_session_factory
+
+    Session = make_session_factory(pg_engine)
+    with Session() as session:
+        tenant_id = _create_tenant_with_one_row_in_every_model(session)
+    monkeypatch.setenv("S3_CDC_BUCKET", "geostudio-cdc")
+    other = "cdc/tenant_id=autre/collection_id=c/dt=2026-01-01/p.parquet"
+    s3 = _PaginatingFakeS3Client(
+        {
+            f"cdc/tenant_id={tenant_id}/collection_id=c/dt=2026-01-01/p.parquet": b"x",
+            f"cdc/tenant_id={tenant_id}/collection_id=c/snapshot/snap-1-2.parquet": b"x",
+            other: b"x",
+        },
+        bucket="geostudio-cdc",
+    )
+    with Session() as session:
+        purge_tenant(session, s3, tenant_id=tenant_id, requested_by_user_id="requester")
+        session.commit()
+    assert list(s3.objects) == [other]
+
+
 def test_purge_tenant_is_resumable_after_a_crash_mid_way(pg_engine):
     """Simule un purge_tenant interrompu juste après la suppression des
     roles (users déjà supprimés à cette étape, cf. app/compliance/purge.py

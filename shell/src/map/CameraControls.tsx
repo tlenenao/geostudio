@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { Button } from "../ui/kit/Button";
 import { t } from "../i18n";
+import "../i18n/domains/map";
 
 export function CameraControls({
   pitch,

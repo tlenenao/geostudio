@@ -16,6 +16,7 @@ from app.appexport import repository as appexport_repo
 from app.appexport.bundler import build_bundle_zip, build_standalone_bundle_zip
 from app.appexport.freeze import freeze_config
 from app.appexport.guard import check_export_guard
+from app.appexport.models import AppExportJob
 from app.appexport.snapshot import write_snapshot
 from app.auth.dependency import is_appexport_enabled
 from app.configs import repository as configs_repo
@@ -160,13 +161,17 @@ def build_app_export_task(job_id: str, tenant_id: str) -> None:
         with request_scoped_session(session_factory) as session:
             # SP-58 Tâche 2 (GAP-73) : `zip_bytes` est déjà en mémoire — même
             # rationale que app.export.jobs.
-            appexport_repo.mark_done(
+            done = appexport_repo.mark_done(
                 session,
                 job_id=job_id,
                 result_key=result_key,
                 byte_size=len(zip_bytes),
                 warning="; ".join(export_warnings) or None,
             )
+        if not done:  # REV-323 B : repris en erreur pendant l'envoi — objet orphelin
+            logger.warning("app export job %s terminé tardivement, objet supprimé", job_id)
+            s3_client.delete_object(Bucket=bucket, Key=result_key)
+            return
         _notify(
             session_factory,
             tenant_id=tenant_id,
@@ -195,11 +200,22 @@ def sweep_appexport_jobs_task(timestamp: int) -> None:
     """Réclame les appexport_jobs restés "running" (export-worker/process
     tué en cours de zip) : appexport_repo.reclaim_stuck_jobs existait déjà
     mais n'était appelée par aucune tâche périodique (GAP-56.2, SP-49).
-    Cron aligné sur les 3 balayages */5 existants. Pas de notification :
-    reclaim_stuck_jobs n'en a jamais prévu (même contrat côté export, câblé
-    depuis SP-17b via le sweep de rapports — silencieux là aussi), rester
-    symétrique par défaut est le choix le moins risqué."""
+    Cron aligné sur les 3 balayages */5 existants. Chaque job
+    repris est notifié à son demandeur (REV-323 B)."""
     factory = _session_factory()
     with request_scoped_session(factory) as session:
-        appexport_repo.reclaim_stuck_jobs(session)
+        reclaimed = [
+            (j.tenant_id, j.item_id, j.user_id, j.error)
+            for job_id in appexport_repo.reclaim_stuck_jobs(session)
+            if (j := session.get(AppExportJob, job_id)) is not None
+        ]
         session.commit()
+    for tenant_id, item_id, user_id, error in reclaimed:  # REV-323 B : abandon notifié
+        _notify(
+            factory,
+            tenant_id=tenant_id,
+            item_id=item_id,
+            user_id=user_id,
+            status="failure",
+            error=error,
+        )

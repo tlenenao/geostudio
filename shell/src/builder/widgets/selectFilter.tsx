@@ -6,6 +6,7 @@ import { useItemClient } from "../../api/ItemClientProvider";
 import { useAnalyticsContext, useClearCrossFilter, useSetCrossFilter } from "../AnalyticsContext";
 import { t } from "../../i18n";
 import { LoadingState } from "../../ui/kit/LoadingState";
+import "../../i18n/domains/widgets";
 
 type SelectOption = { value: string; count: number };
 

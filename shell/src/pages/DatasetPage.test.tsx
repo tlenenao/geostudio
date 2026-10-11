@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { expect, test, vi } from "vitest";
 import type { AppConfig, CollectionAdmin, ItemClient, WidgetItem } from "../api/types";
@@ -157,4 +158,31 @@ test("la carte et la table de l'aperçu portent un ordinal (nom stable)", async 
   await screen.findByRole("heading", { name: "Parcs" });
   const lastCall = appRendererMock.mock.calls.at(-1)?.[0] as { config: AppConfig };
   expect(lastCall.config.layout.items.map((i: WidgetItem) => i.ordinal)).toEqual([1, 1]);
+});
+
+test("« Explorer » ne charge le profil qu'au clic (REV-117)", async () => {
+  const getCollectionProfile = vi.fn().mockResolvedValue({
+    rowCount: 3,
+    sampled: false,
+    truncatedColumns: false,
+    pending: false,
+    columns: [{ name: "nom", type: "string", nonNull: 3, nulls: 0, distinct: 3 }],
+    geometry: null,
+  });
+  renderPage({
+    getCollection: vi.fn().mockResolvedValue(collection),
+    getCollectionSchema: vi
+      .fn()
+      .mockResolvedValue({ collection: "parcs", pk: "id", geometry: null, fields: [] }),
+    getCollectionProfile,
+    featuresUrl: vi.fn().mockReturnValue("https://core.test/collections/parcs/items?limit=1000"),
+    queryDataSource: vi.fn().mockResolvedValue([]),
+  });
+  const toggle = await screen.findByRole("button", { name: "Explorer" });
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
+  expect(getCollectionProfile).not.toHaveBeenCalled();
+  await userEvent.click(toggle);
+  expect(toggle).toHaveAttribute("aria-expanded", "true");
+  expect(await screen.findByRole("rowheader", { name: "nom" })).toBeInTheDocument();
+  expect(getCollectionProfile).toHaveBeenCalledWith("parcs");
 });

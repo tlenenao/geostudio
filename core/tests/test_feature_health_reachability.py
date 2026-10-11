@@ -46,11 +46,11 @@ def _feature(**overrides) -> Feature:
 
 def test_declared_shell_routes_lists_every_route_of_routes_tsx():
     routes = declared_shell_routes(REPO)
-    # 28 → 29 (GAP-19) : nouvelle route publique /embed/:token
-    # (shell/src/shell/routes.tsx) — canari volontairement en dur (même
-    # patron que le catalogue de widgets SP-52) pour forcer une décision
-    # consciente à chaque route ajoutée, jamais un décompte automatique.
-    assert len(routes) == 30
+    # REV-291 b : décompte dérivé de l'inventaire (plus de canari en dur
+    # recalé à la main à chaque route ; la décision consciente reste forcée
+    # par test_feature_inventory.py, qui refuse une route non inventoriée).
+    inventory = REPO / "docs/revue/inventaire-fonctionnalites.jsonl"
+    assert set(routes) == {r for f in load_inventory(inventory) for r in f.shell}
     assert "/bookmarks" in routes
     assert "/public/datasets/:collectionId" in routes
 

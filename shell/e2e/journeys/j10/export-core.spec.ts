@@ -15,6 +15,10 @@ test.beforeAll(async () => {
 test.describe("j10 export d'apps : capacité éteinte", () => {
   test("l'instance annonce appExportEnabled=false et les routes /app-exports sont absentes", async () => {
     const inst = await creator.get("/v1/instance");
+    test.skip(
+      inst.body.appExportEnabled === true,
+      "capacité allumée sur cette stack (enable-flags.sh)",
+    );
     expect(inst.body.appExportEnabled).toBe(false);
     expect(inst.body.exportEnabled).toBe(false);
     const cfg = await creator.send("POST", "/v1/configs", {

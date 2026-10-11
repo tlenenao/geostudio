@@ -51,7 +51,7 @@ def create_secret_route(
         [Privilege.ADMIN_SECRETS_MANAGE.value, Privilege.AUTOMATION_SECRETS_MANAGE.value],
     )
     if repo.get_secret_by_name(session, tenant_id=user.tenant_id, name=body.name):
-        raise HTTPException(status_code=409, detail="secret name already exists")
+        raise HTTPException(status_code=409, detail="Un secret porte déjà ce nom.")
     ciphertext, nonce = crypto.encrypt(body.payload.model_dump())
     try:
         secret = repo.create_secret(
@@ -76,7 +76,7 @@ def create_secret_route(
         # ciphertext ou un nonce", a promise chaining would risk breaking
         # the moment this exception reaches a traceback-capturing sink
         # (logs, Sentry/OTel) rather than just the HTTP response.
-        raise HTTPException(status_code=409, detail="secret name already exists") from None
+        raise HTTPException(status_code=409, detail="Un secret porte déjà ce nom.") from None
     write_audit(
         session,
         tenant_id=user.tenant_id,

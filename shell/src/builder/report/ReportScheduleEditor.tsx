@@ -4,6 +4,7 @@ import { t } from "../../i18n";
 import { PipelineScheduleEditor } from "../pipeline/PipelineScheduleEditor";
 import { NativeSelect } from "../../ui/kit/NativeSelect";
 import { Input } from "../../ui/kit/Input";
+import "../../i18n/domains/automation";
 
 // Composant contrôlé (reproduit la forme value/onChange de
 // PipelineScheduleEditor, pas la forme autonome création-et-réinitialisation

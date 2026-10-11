@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import update
+from sqlalchemy import select, update
 
 from app.configs import repository as configs_repo
+from app.configs.models import ConfigRevision
 from app.configs.schemas import BuilderConfig
 from app.db import init_db, make_engine, make_session_factory
 from app.items import repository as items_repo
@@ -385,7 +386,14 @@ def test_list_due_pipelines_includes_never_run_enabled_pipeline():
             refresh_policy={"enabled": True, "cron": "*/5 * * * *"},
         )
         s.commit()
-        assert repo.list_due_pipelines(s) == [(item_id, tenant.id)]
+        # REV-312 : sans run, la cadence part de la création/activation de la config —
+        # dû à la 1re échéance suivante (cron */5), pas au tout premier balayage.
+        written = s.execute(select(ConfigRevision.created_at)).scalar_one()
+        written = written.replace(tzinfo=UTC)
+        assert repo.list_due_pipelines(s, now=written) == []
+        assert repo.list_due_pipelines(s, now=written + timedelta(minutes=10)) == [
+            (item_id, tenant.id)
+        ]
 
 
 def test_list_due_pipelines_excludes_pipeline_not_yet_due():

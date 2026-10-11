@@ -5,6 +5,8 @@ import type { HarvestSource } from "../api/types";
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { t } from "../i18n";
+import "../i18n/domains/automation";
+import "../i18n/domains/misc";
 
 export function EditHarvestSourcePanel({
   source,

@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: Apache-2.0
-import os
 import uuid
 from datetime import timedelta
 
@@ -7,8 +6,9 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from app.dataexport.models import CollectionExportJob, _now
+from app.job_timeouts import running_reclaim_minutes
 
-_TERMINAL = ("done", "failed")
+_TERMINAL = ("done", "failed", "cancelled")  # cancelled : D6, annulation par le demandeur
 
 
 def create_job(
@@ -68,23 +68,35 @@ def mark_done(session: Session, job_id: str, *, result_key: str, filename: str) 
     return bool(result.rowcount)  # type: ignore[attr-defined]
 
 
-def mark_failed(session: Session, job_id: str, error: str) -> None:
-    session.execute(
+def mark_failed(session: Session, job_id: str, error: str) -> bool:
+    """False si le job est déjà terminal (ex. annulé pendant le calcul)."""
+    result = session.execute(
         update(CollectionExportJob)
         .where(CollectionExportJob.id == job_id, CollectionExportJob.status.notin_(_TERMINAL))
         .values(status="failed", error=error, finished_at=_now())
     )
     session.flush()
+    return bool(result.rowcount)  # type: ignore[attr-defined]
+
+
+def request_cancel(session: Session, job_id: str) -> bool:
+    """D6 : `pending|running -> cancelled` (UPDATE conditionnel). Un export
+    `running` n'est pas interrompu (calcul en mémoire) : son résultat tardif est
+    refusé par `mark_done` (statut terminal) et l'objet téléversé supprimé."""
+    result = session.execute(
+        update(CollectionExportJob)
+        .where(
+            CollectionExportJob.id == job_id,
+            CollectionExportJob.status.in_(("pending", "running")),
+        )
+        .values(status="cancelled", finished_at=_now())
+    )
+    session.flush()
+    return bool(result.rowcount)  # type: ignore[attr-defined]
 
 
 BATCH = 100
 PENDING_RETRY_MINUTES = 5
-RUNNING_RECLAIM_MINUTES = 60  # defaut ; CORE_EXPORT_RUNNING_TIMEOUT_MINUTES le surcharge
-
-
-def running_reclaim_minutes() -> int:
-    """Duree max d'un export `running` avant reprise en `failed` (worker tue)."""
-    return int(os.environ.get("CORE_EXPORT_RUNNING_TIMEOUT_MINUTES") or RUNNING_RECLAIM_MINUTES)
 
 
 def stale_pending_ids(session: Session, *, older_than_minutes: int = PENDING_RETRY_MINUTES):

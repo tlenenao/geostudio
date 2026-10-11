@@ -8,6 +8,7 @@ import { detectGeometryKind, renderAsFor } from "../builder/widgets/mapSymbology
 import { fetchFeatureCollection } from "./geojsonIntrospect";
 import { Button } from "../ui/kit/Button";
 import { plural, t, type MessageKey } from "../i18n";
+import "../i18n/domains/map";
 
 const KIND_LABEL_KEYS = {
   vector: "layerPicker.kindVector",

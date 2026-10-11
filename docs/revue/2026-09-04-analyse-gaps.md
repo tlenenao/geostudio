@@ -205,10 +205,10 @@ gap22-securite-colonne-design.md`) — voir l'entrée `GAP-22` de la table
 | GAP-18 | Référentiel 2 (benchmark), aucune décision produit prise |
 | GAP-20 | Référentiel 2 (benchmark), aucune décision produit prise |
 | GAP-21 | Référentiel 2 (benchmark), aucune décision produit prise |
-| GAP-23 | Référentiel 2 (benchmark), aucune décision produit prise |
+| GAP-23 | **Fermé** (2026-10-10, SP exploration automatique, REV-117) |
 | GAP-25 | Référentiel 2 (benchmark), aucune décision produit prise |
 | GAP-26 | Référentiel 2 (benchmark), aucune décision produit prise |
-| GAP-27 | Référentiel 2 (benchmark), aucune décision produit prise |
+| GAP-27 | **Fermé** (2026-10-10, SP limites géographiques, REV-121) |
 | GAP-34 | Décision produit non tranchée (implémenter le rendu ou retirer du schéma) |
 | GAP-37 | `scripts/generate-pmtiles.sh` toujours orphelin |
 | GAP-55 | Éditeur d'actions narratif toujours limité à un payload de centrage carte |

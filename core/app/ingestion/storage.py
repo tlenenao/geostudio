@@ -78,6 +78,17 @@ def ensure_uploads_bucket(client, bucket: str, *, expire_days: int | None = None
             logger.warning("cycle de vie non posé sur %s", bucket, exc_info=True)
 
 
+def require_public_s3_endpoint() -> None:
+    """REV-315 : hors CORE_ENV=development, S3_PUBLIC_ENDPOINT_URL vide signerait
+    des liens vers http://minio:9000, injoignable du navigateur — échec au démarrage."""
+    if os.environ.get("CORE_ENV") != "development" and not os.environ.get("S3_PUBLIC_ENDPOINT_URL"):
+        raise RuntimeError(
+            "S3_PUBLIC_ENDPOINT_URL est vide : les liens présignés pointeraient sur l'hôte "
+            "interne (minio:9000). Renseignez l'URL publique du stockage (cf. .env.example) "
+            "ou CORE_ENV=development."
+        )
+
+
 def _signing_client(client):
     """Client dont l'hôte est celui que voit le destinataire du lien.
 
@@ -164,6 +175,7 @@ def download_object_head(
     key: str,
     max_bytes: int | None = None,
     head_bytes: int = INSPECT_HEAD_BYTES,
+    max_first_line_factor: int = 16,
 ) -> bytes:
     """Lit au plus `head_bytes` octets (requête S3 `Range`) d'un objet dont
     la taille reste plafonnée par `max_bytes` (même garde que
@@ -179,6 +191,16 @@ def download_object_head(
     data = obj["Body"].read()
     if size > head_bytes:
         cut = data.rfind(b"\n")
+        if cut < 0:
+            # REV-323 A : 1re ligne plus longue que la tête — on étend la lecture
+            # (bornée) plutôt que de renvoyer un JSON tronqué.
+            ext = head_bytes * max_first_line_factor
+            data = client.get_object(Bucket=bucket, Key=key, Range=f"bytes=0-{ext - 1}")[
+                "Body"
+            ].read()
+            cut = data.rfind(b"\n")
+            if cut < 0 and size > ext:
+                raise ObjectTooLarge(f"première ligne de plus de {ext} octets")
         if cut >= 0:
             data = data[: cut + 1]
     return data

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { registerWidget } from "../registry";
 import { t } from "../../i18n";
+import "../../i18n/domains/widgets";
 
 export function registerNavigationWidget(): void {
   registerWidget({

@@ -93,7 +93,9 @@ test.describe("t02 UI : import de fichier sous file de jobs à l'arrêt ou insta
     await expect(s.page.getByRole("button", { name: "Import en cours…" })).toBeVisible();
     await s.page.waitForTimeout(20_000);
     await expect(s.page.getByRole("button", { name: "Import en cours…" })).toBeDisabled();
-    await expect(s.page.getByRole("button", { name: "Annuler" })).toBeDisabled();
+    await expect(s.page.getByRole("button", { name: "Annuler", exact: true })).toBeDisabled();
+    // L'issue de secours existe depuis D6 : « Annuler l'import » reste actif (t02-010).
+    await expect(s.page.getByRole("button", { name: "Annuler l'import" })).toBeEnabled();
     await s.ctx.close();
   });
 
@@ -107,7 +109,9 @@ test.describe("t02 UI : import de fichier sous file de jobs à l'arrêt ou insta
     await stubUploadPipeline(s.page, () => "pending");
     await startImport(s.page);
     await s.page.waitForTimeout(60_000);
-    const cancelEnabled = await s.page.getByRole("button", { name: "Annuler" }).isEnabled();
+    const cancelEnabled = await s.page
+      .getByRole("button", { name: "Annuler l'import" })
+      .isEnabled();
     const hint = await s.page.getByRole("dialog").innerText();
     expect(cancelEnabled || /toujours en cours|plus long|en attente|arrière-plan/i.test(hint)).toBe(
       true,

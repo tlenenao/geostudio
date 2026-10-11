@@ -342,6 +342,75 @@ def test_sweep_reclaims_a_stuck_job(monkeypatch, tmp_path):
     assert job.status == "error"
 
 
+def _backdate_running(Session, job_id, *, minutes):
+    from datetime import UTC, datetime, timedelta
+
+    from app.appexport.models import AppExportJob
+
+    with Session() as s:
+        appexport_repo.mark_running(s, job_id=job_id)
+        s.get(AppExportJob, job_id).started_at = datetime.now(UTC) - timedelta(minutes=minutes)
+        s.commit()
+
+
+def test_sweep_notifies_the_owner_of_a_reclaimed_job(monkeypatch, tmp_path):
+    """REV-323 B : un export abandonné (worker tué) est notifié, pas silencieux."""
+    from app.appexport.jobs import sweep_appexport_jobs_task
+
+    Session, tenant_id, job_id = _setup(monkeypatch, tmp_path)
+    monkeypatch.setattr("app.appexport.jobs._session_factory", lambda: Session)
+    _backdate_running(Session, job_id, minutes=90)
+    sweep_appexport_jobs_task(timestamp=0)
+    with Session() as s:
+        notif = s.scalar(select(Notification).where(Notification.tenant_id == tenant_id))
+    assert notif is not None and notif.status == "failure"
+    assert "timed out" in (notif.error_message or "")
+
+
+def test_reclaim_threshold_is_configurable(monkeypatch, tmp_path):
+    """REV-323 B : plus de 60 min en dur."""
+    from app.appexport.jobs import sweep_appexport_jobs_task
+
+    Session, tenant_id, job_id = _setup(monkeypatch, tmp_path)
+    monkeypatch.setattr("app.appexport.jobs._session_factory", lambda: Session)
+    _backdate_running(Session, job_id, minutes=30)
+    sweep_appexport_jobs_task(timestamp=0)
+    with Session() as s:
+        assert appexport_repo.get_job(s, tenant_id=tenant_id, job_id=job_id).status == "running"
+    monkeypatch.setenv("CORE_EXPORT_RUNNING_TIMEOUT_MINUTES", "10")
+    sweep_appexport_jobs_task(timestamp=0)
+    with Session() as s:
+        assert appexport_repo.get_job(s, tenant_id=tenant_id, job_id=job_id).status == "error"
+
+
+def test_job_reclaimed_during_upload_deletes_the_object_and_does_not_notify_success(
+    monkeypatch, tmp_path
+):
+    """REV-323 B : mark_done refusé (job déjà repris en erreur) => pas d'objet
+    orphelin, pas de notification de succès mensongère."""
+    from app.appexport.models import AppExportJob
+
+    Session, tenant_id, job_id = _setup(monkeypatch, tmp_path)
+    monkeypatch.setattr("app.appexport.jobs._session_factory", lambda: Session)
+    deleted = []
+
+    class _Racing(_fake_s3().__class__):
+        def put_object(self, **kwargs):
+            with Session() as s:  # le balayage reprend le job pendant l'envoi
+                s.get(AppExportJob, job_id).status = "error"
+                s.commit()
+
+        def delete_object(self, **kwargs):
+            deleted.append(kwargs["Key"])
+
+    monkeypatch.setattr("app.appexport.jobs.s3_client_from_env", lambda: _Racing())
+    build_app_export_task(job_id=job_id, tenant_id=tenant_id)
+    assert deleted == [f"appexports/{job_id}.zip"]
+    with Session() as s:
+        assert appexport_repo.get_job(s, tenant_id=tenant_id, job_id=job_id).status == "error"
+        assert s.scalar(select(Notification)) is None
+
+
 def test_sweep_leaves_recent_running_jobs_alone(monkeypatch, tmp_path):
     from app.appexport.jobs import sweep_appexport_jobs_task
 

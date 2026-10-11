@@ -2,6 +2,7 @@
 import type { CollectionSchema } from "../../api/types";
 import { JoinConfig } from "./inferSchema";
 import { t } from "../../i18n";
+import "../../i18n/domains/automation";
 
 export function QueryJoinPicker({
   baseSchema,

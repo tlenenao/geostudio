@@ -26,6 +26,7 @@ from app.collections.routes import get_collection_for_read, get_introspector
 from app.configs.guest_access import GuestActor, get_share_link_actor
 from app.db import get_session
 from app.features.routes import get_masked_for_user, get_rls_scope
+from app.sharing.geo_limits import geo_source
 from app.sql_ident import quote_ident
 
 MVT_EXTENT = 4096
@@ -87,9 +88,10 @@ def mvt_feature_id_column(info: TableInfo) -> str | None:
     return None
 
 
-def build_mvt_sql(quote: Callable[[str], str], info: TableInfo) -> str:
+def build_mvt_sql(quote: Callable[[str], str], info: TableInfo, src: str | None = None) -> str:
     assert info.geometry_column is not None, "build_mvt_sql exige une géométrie"
-    table = f"public.{quote(info.table_name)}"
+    # `src` : élément FROM aliasé `t` fourni par geo_source (géométrie découpée si limité)
+    table = src or f"public.{quote(info.table_name)} t"
     geom = f"t.{quote(info.geometry_column)}"
     by_name = {c.name: c for c in info.columns}
 
@@ -118,7 +120,7 @@ def build_mvt_sql(quote: Callable[[str], str], info: TableInfo) -> str:
         f"SELECT ST_AsMVTGeom(ST_Transform({geom}, 3857), "
         "ST_TileEnvelope(:z, :x, :y), :extent, :buffer, true) AS geom"
         f"{props_clause} "
-        f"FROM {table} t "
+        f"FROM {table} "
         # Le filtre porte sur la géométrie brute pour rester indexable par le
         # GiST posé par apply_collection_ddl : ST_Transform à gauche du && le
         # rendrait inutilisable.
@@ -152,19 +154,19 @@ def tile_agg_max_zoom() -> int:
     return 7
 
 
-def build_probe_sql(quote: Callable[[str], str], info: TableInfo) -> str:
+def build_probe_sql(quote: Callable[[str], str], info: TableInfo, src: str | None = None) -> str:
     """Sonde bornée (LIMIT max+1, aucune colonne lue) : « l'enveloppe dépasse-t-elle
     le plafond ? » sans lire ni sérialiser les 5001 lignes de la tuile normale."""
     assert info.geometry_column is not None, "build_probe_sql exige une géométrie"
     geom = f"t.{quote(info.geometry_column)}"
     return (
-        f"SELECT count(*) FROM (SELECT 1 FROM public.{quote(info.table_name)} t "
+        f"SELECT count(*) FROM (SELECT 1 FROM {src or f'public.{quote(info.table_name)} t'} "
         f"WHERE {geom} && ST_Transform(ST_TileEnvelope(:z, :x, :y), :srid) "
         "LIMIT :max_features + 1) s"
     )
 
 
-def build_agg_mvt_sql(quote: Callable[[str], str], info: TableInfo) -> str:
+def build_agg_mvt_sql(quote: Callable[[str], str], info: TableInfo, src: str | None = None) -> str:
     """Cellules `count(*)` d'une tuile dense. Ne projette AUCUNE colonne de
     données (ni valeur masquée GAP-22) : seulement la géométrie et un compte,
     lus sous la même `rls_scope` que la tuile normale (RLS avant agrégation).
@@ -174,12 +176,12 @@ def build_agg_mvt_sql(quote: Callable[[str], str], info: TableInfo) -> str:
     son CENTRE (floor(x/c)*c + c/2) : une cellule n'appartient qu'à une tuile,
     pas de nœud de grille partagé entre deux voisines."""
     assert info.geometry_column is not None, "build_agg_mvt_sql exige une géométrie"
-    table = f"public.{quote(info.table_name)}"
+    table = src or f"public.{quote(info.table_name)} t"
     geom = f"t.{quote(info.geometry_column)}"
     return (
         "WITH pts AS ("
         f"SELECT ST_PointOnSurface(ST_Transform({geom}, 3857)) AS p "
-        f"FROM {table} t "
+        f"FROM {table} "
         f"WHERE {geom} && ST_Transform(ST_TileEnvelope(:z, :x, :y), :srid)"
         "), cells AS ("
         "SELECT floor(ST_X(p) / :cell) AS cx, floor(ST_Y(p) / :cell) AS cy, "
@@ -242,8 +244,6 @@ def get_collection_tile(
         info = hide_sensitive_columns(info, col.sensitive_fields)
 
     quote = functools.partial(quote_ident, session)
-    sql = build_mvt_sql(quote, info)
-    agg_sql = build_agg_mvt_sql(quote, info)
     aggregated = False
     params = {
         "z": z,
@@ -256,13 +256,18 @@ def get_collection_tile(
     }
     # L'isolation tenant vient de la RLS (rôle gis_rls + GUC app.tenant_id),
     # jamais d'un WHERE applicatif.
-    with rls(session, col.tenant_id, masked=masked):
+    # `geo_source` après l'entrée dans `rls` (limites de la session) : sous une limite
+    # géographique, toutes les requêtes de tuile lisent la géométrie DÉCOUPÉE.
+    with rls(session, col.tenant_id, masked=masked), geo_source(session, info, quote=quote) as src:
+        sql = build_mvt_sql(quote, info, src)
+        agg_sql = build_agg_mvt_sql(quote, info, src)
         apply_tile_statement_timeout(session)
         # REV-283a : à bas zoom, une sonde bornée décide AVANT toute lecture
         # lourde ; tuile dense => agrégation seule (pas de lecture brute jetée).
         if 0 < tile_agg_max_zoom() >= z and (
             session.execute(
-                text(build_probe_sql(quote, info)), {**params, "max_features": MAX_TILE_FEATURES}
+                text(build_probe_sql(quote, info, src)),
+                {**params, "max_features": MAX_TILE_FEATURES},
             ).scalar()
             > MAX_TILE_FEATURES
         ):

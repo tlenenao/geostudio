@@ -14,6 +14,7 @@ import { Input } from "../ui/kit/Input";
 import { ItemCard } from "../ui/kit/ItemCard";
 import { LoadingState } from "../ui/kit/LoadingState";
 import { PageTitle } from "../ui/kit/PageTitle";
+import "../i18n/domains/misc";
 
 // Types servis par GET /public/items (core/app/items/repository.py::PUBLIC_KINDS).
 const PUBLIC_TYPES: ResourceType[] = ["site", "app", "dashboard", "map", "dataset"];

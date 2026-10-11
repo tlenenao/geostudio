@@ -7,6 +7,7 @@ un widget d'extension)."""
 
 import json
 import logging
+import os
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -24,11 +25,18 @@ BUILTIN_WIDGET_TYPES: frozenset[str] = frozenset(
     json.loads((Path(__file__).parent / "builtin_widget_types.json").read_text(encoding="utf-8"))
 )
 
+# REV-323 A : widgets d'exemple du SDK, enregistrés par le shell en mode d'auth
+# « mock » seulement (dev/E2E) — le cœur les accepte dans ce même mode.
+EXAMPLE_WIDGET_TYPES: frozenset[str] = frozenset({"example.counter", "example.counter-wc"})
+
 
 def widget_type_errors(session: Session, config: BuilderConfig, *, tenant_id: str) -> list[str]:
     layouts = ([config.layout] if config.layout else []) + [p.layout for p in config.pages]
     nodes = widget_nodes([lay.model_dump() for lay in layouts])
-    unknown = [n for n in nodes if n["widget"] not in BUILTIN_WIDGET_TYPES]
+    known = BUILTIN_WIDGET_TYPES
+    if os.environ.get("CORE_AUTH_MODE", "oidc") == "mock":
+        known = known | EXAMPLE_WIDGET_TYPES
+    unknown = [n for n in nodes if n["widget"] not in known]
     if not unknown:
         return []
     registered = set(

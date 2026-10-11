@@ -75,7 +75,7 @@ def test_create_upload_refuses_a_reader_with_no_privilege(env):
     client, Session, tenant, alice, _deferred, _fake_s3 = env
     with Session() as s:
         roles = ensure_built_in_roles(s, tenant_id=tenant.id)
-        assert roles["reader"].privileges == []
+        assert roles["reader"].privileges == ["analytics.view"]
         reader_role_id = roles["reader"].id
         set_user_role(
             s,
@@ -150,7 +150,7 @@ def test_presign_refuses_a_reader_with_no_privilege(env):
     client, Session, tenant, alice, _deferred, _fake_s3 = env
     with Session() as s:
         roles = ensure_built_in_roles(s, tenant_id=tenant.id)
-        assert roles["reader"].privileges == []
+        assert roles["reader"].privileges == ["analytics.view"]
         reader_role_id = roles["reader"].id
         set_user_role(
             s,

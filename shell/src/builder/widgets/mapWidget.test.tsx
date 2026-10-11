@@ -1316,6 +1316,44 @@ test("le widget carte fusionne la couche feature liée à la DataSource avec les
   expect(lastMapConfig().layers[1]).toMatchObject({ id: "raster-1", kind: "raster" });
 });
 
+test("le contexte temps global filtre les couches feature de props.layers qui déclarent timeField (REV-304)", async () => {
+  const Map = getWidget("map")!.Component;
+  const ctx = { mode: "runtime", data: state({ url: "/ds", records: [] }) } as WidgetContext;
+  render(
+    withClient(
+      <AnalyticsContextProvider
+        initialState={{
+          timeRange: { from: "2026-01-01", to: "2026-01-31" },
+          extent: null,
+          crossFilter: {},
+        }}
+      >
+        <Map
+          props={{
+            dataSourceId: "ds-1",
+            layers: [
+              {
+                id: "t",
+                title: "T",
+                visible: true,
+                kind: "feature",
+                url: "/f?x=1",
+                timeField: "d",
+              },
+              { id: "n", title: "N", visible: true, kind: "feature", url: "/g" },
+            ],
+          }}
+          ctx={ctx}
+        />
+      </AnalyticsContextProvider>,
+    ),
+  );
+  await screen.findByTestId("mapview");
+  const layers = lastMapConfig().layers as Array<{ id: string; url?: string }>;
+  expect(layers.find((l) => l.id === "t")?.url).toBe("/f?x=1&d__gte=2026-01-01&d__lte=2026-01-31");
+  expect(layers.find((l) => l.id === "n")?.url).toBe("/g");
+});
+
 // La brief de cette tâche décrivait un bouton générique "Ajouter une couche"
 // suivi d'un choix de type puis d'une saisie d'URL de tuiles — ce flux
 // n'existe pas dans LayerPicker.tsx (vérifié contre `LayerPicker.test.tsx` et

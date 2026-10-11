@@ -173,6 +173,54 @@ def test_pin_httpx_request_none_is_a_noop():
     assert req.url.host == "example.test" and "sni_hostname" not in req.extensions
 
 
+def test_harvest_guarded_httpx_follows_redirects_through_the_guard_at_every_hop(monkeypatch):
+    """REV-323 A, bout en bout (vrai serveur) : un 302 (relatif puis absolu vers
+    un autre nom) est revalidé et épinglé à chaque saut ; un saut vers un hôte
+    refusé est bloqué."""
+    from app.harvest import egress
+
+    class Redirect(_Handler):
+        def do_GET(self):
+            host = self.headers["Host"]
+            if self.path == "/" and host.startswith("first.invalid"):
+                self.send_response(302)
+                self.send_header("Location", "/relative")  # relatif : repart du NOM
+            elif self.path == "/relative":
+                self.send_response(302)
+                self.send_header("Location", f"http://second.invalid:{port}/final")
+            elif self.path == "/to-evil":
+                self.send_response(302)
+                self.send_header("Location", f"http://evil.invalid:{port}/x")
+            else:
+                return super().do_GET()
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+    srv = HTTPServer(("127.0.0.1", 0), Redirect)
+    port = _serve(srv)
+    asked: list[str] = []
+
+    def allow(url: str) -> str:
+        host = httpx.URL(url).host
+        asked.append(host)
+        if host == "evil.invalid":
+            raise egress.EgressBlockedError("interdit")
+        return "127.0.0.1"
+
+    monkeypatch.setattr(egress, "assert_egress_allowed", allow)
+    try:
+        with httpx.Client(
+            transport=egress._GuardedTransport(httpx.HTTPTransport()), follow_redirects=True
+        ) as c:
+            r = c.get(f"http://first.invalid:{port}/")
+            assert r.status_code == 200 and r.text == "ok"
+            assert asked == ["first.invalid", "first.invalid", "second.invalid"]
+            with pytest.raises(egress.EgressBlockedError):
+                c.get(f"http://first.invalid:{port}/to-evil")
+    finally:
+        srv.shutdown()
+
+
 def test_harvest_guarded_httpx_https_keeps_sni_and_verifies_cert_against_hostname(
     tls_server, monkeypatch
 ):

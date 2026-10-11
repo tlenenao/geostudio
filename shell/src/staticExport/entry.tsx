@@ -34,6 +34,7 @@ import { createStaticItemClient } from "./StaticItemClient";
 import type { AppConfig, ExtensionManifest, ItemClient } from "../api/types";
 import "../index.css";
 import { t } from "../i18n";
+import "../i18n/domains/widgets";
 
 enableMockAuth();
 registerBuiltinWidgets();

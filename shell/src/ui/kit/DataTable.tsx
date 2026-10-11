@@ -2,6 +2,7 @@
 import { Checkbox } from "./Checkbox";
 import { Table } from "./Table";
 import { t } from "../../i18n";
+import "../../i18n/domains/misc";
 
 export function DataTable<T>({
   columns,

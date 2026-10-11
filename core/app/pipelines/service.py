@@ -90,7 +90,16 @@ def run_pipeline_service(
     require_pipeline_access(session, user=user, item_id=item_id, action="write")
     config = require_pipeline_config(session, item_id)
     require_data_manage_if_pipeline_writes_dataset(session, user, config)
-    run = pipelines_repo.create_run(session, tenant_id=user.tenant_id, pipeline_item_id=item_id)
+    try:
+        run = pipelines_repo.create_run_unless_active(
+            session, tenant_id=user.tenant_id, pipeline_item_id=item_id
+        )
+    except pipelines_repo.PipelineRunActive:
+        # REV-310 : REST, MCP (HTTPException -> ValueError) et webhook partagent ce garde.
+        raise HTTPException(
+            status_code=409,
+            detail="Une exécution de ce pipeline est déjà en cours ou en file d'attente.",
+        ) from None
     write_audit(
         session,
         tenant_id=user.tenant_id,

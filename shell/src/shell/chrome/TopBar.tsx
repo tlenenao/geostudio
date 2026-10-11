@@ -1,9 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { Menu, Search } from "lucide-react";
-import { NewItemButton } from "../NewItemButton";
-import { ImportFileButton } from "../ImportFileButton";
-import { Tileset3DUploadButton } from "../Tileset3DUploadButton";
+const NewItemButton = lazy(() =>
+  import("../NewItemButton").then((m) => ({ default: m.NewItemButton })),
+);
+const ImportFileButton = lazy(() =>
+  import("../ImportFileButton").then((m) => ({ default: m.ImportFileButton })),
+);
+const Tileset3DUploadButton = lazy(() =>
+  import("../Tileset3DUploadButton").then((m) => ({ default: m.Tileset3DUploadButton })),
+);
 import { AccountMenu } from "./AccountMenu";
 import { NotificationBell } from "./NotificationBell";
 import { Kbd } from "../../ui/kit/Kbd";
@@ -41,9 +47,11 @@ export function TopBar({
             <Kbd>⌘K</Kbd>
           </span>
         </button>
-        <NewItemButton />
-        <ImportFileButton />
-        {tileset3dEnabled && <Tileset3DUploadButton />}
+        <Suspense fallback={null}>
+          <NewItemButton />
+          <ImportFileButton />
+          {tileset3dEnabled && <Tileset3DUploadButton />}
+        </Suspense>
       </div>
       <div className="flex items-center gap-1 sm:gap-3 sm:text-sm">
         <button

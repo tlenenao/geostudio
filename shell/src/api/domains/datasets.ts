@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { ifMatchHeader } from "../ifMatch";
 import type {
+  CollectionProfile,
   CollectionSchema,
   CreateDatasetInput,
   DataRecord,
@@ -10,7 +11,7 @@ import type {
   ItemClient,
 } from "../types";
 import type { ItemClientBase } from "../base";
-import { requestBlob, type ExportedFile } from "../base";
+import { requestBlob, type ExportedFile, type ExportJobHandler } from "../base";
 import { OWNER_PERMISSIONS } from "../../auth/permissions";
 
 // Statistics config keys carried in DataSource.query; excluded from the fetch
@@ -126,6 +127,7 @@ type DatasetsMethods = Pick<
   | "featuresUrl"
   | "exportDataSource"
   | "getCollectionSchema"
+  | "getCollectionProfile"
 >;
 
 export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
@@ -314,6 +316,7 @@ export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
       source: DataSource,
       format: string,
       signal?: AbortSignal,
+      onJob?: ExportJobHandler,
     ): Promise<ExportedFile> {
       const cachedDataset = source.datasetId ? await resolveDataset(source.datasetId) : null;
       const isArcgis = cachedDataset?.source === "arcgis" && Boolean(source.datasetId);
@@ -322,7 +325,17 @@ export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
         const path = isArcgis
           ? `/datasets/${source.datasetId}/arcgis/export?format=${format}`
           : `/collections/${cachedDataset?.collectionId ?? source.layer}/export?format=${format}`;
-        return requestBlob(coreUrl, getToken, "POST", path, body, undefined, renewToken, signal);
+        return requestBlob(
+          coreUrl,
+          getToken,
+          "POST",
+          path,
+          body,
+          undefined,
+          renewToken,
+          signal,
+          onJob,
+        );
       }
       const resolved = source.datasetId
         ? { ...source, layer: cachedDataset?.collectionId ?? source.layer }
@@ -332,11 +345,25 @@ export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
       const path = isArcgis
         ? `/datasets/${source.datasetId}/arcgis/export/items?format=${format}${suffix}`
         : `/collections/${resolved.layer}/export/items?format=${format}${suffix}`;
-      return requestBlob(coreUrl, getToken, "GET", path, undefined, undefined, renewToken, signal);
+      return requestBlob(
+        coreUrl,
+        getToken,
+        "GET",
+        path,
+        undefined,
+        undefined,
+        renewToken,
+        signal,
+        onJob,
+      );
     },
 
     async getCollectionSchema(collectionId: string): Promise<CollectionSchema> {
       return request<CollectionSchema>("GET", `/collections/${collectionId}/schema`);
+    },
+
+    async getCollectionProfile(collectionId: string): Promise<CollectionProfile> {
+      return request<CollectionProfile>("GET", `/collections/${collectionId}/profile`);
     },
   };
 }

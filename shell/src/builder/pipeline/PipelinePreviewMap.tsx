@@ -8,6 +8,7 @@ import { t } from "../../i18n";
 import type { MessageKey } from "../../i18n";
 import { bboxFromFeatureCollection } from "../../lib/geometryBbox";
 import { onThemeChange, readToken } from "../../lib/theme";
+import "../../i18n/domains/map";
 
 const SOURCE_ID = "pipeline-preview";
 

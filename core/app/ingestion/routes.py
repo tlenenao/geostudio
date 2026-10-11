@@ -230,12 +230,7 @@ def create_upload_job(
     return IngestionJobCreated(jobId=job.id)
 
 
-@router.get("/uploads/{job_id}", response_model=IngestionJobStatus)
-def get_upload_job(
-    job_id: str,
-    session: Session = Depends(get_session, scope="function"),
-    user: User = Depends(get_current_user),
-) -> IngestionJobStatus:
+def _visible_job(session: Session, user: User, job_id: str):
     job = repo.get_job(session, tenant_id=user.tenant_id, job_id=job_id)
     # REV-010 : le tenant seul ne suffit pas à autoriser la lecture — le
     # statut/message d'erreur d'un job d'import est visible par son auteur,
@@ -245,6 +240,10 @@ def get_upload_job(
         job.created_by != user.id and not has_privilege(session, user, Privilege.DATA_MANAGE.value)
     ):
         raise HTTPException(status_code=404, detail="job not found")
+    return job
+
+
+def _job_status(session: Session, job) -> IngestionJobStatus:
     item = session.get(Item, job.item_id) if job.item_id else None
     return IngestionJobStatus(
         status=job.status,
@@ -253,3 +252,53 @@ def get_upload_job(
         itemId=job.item_id,
         itemResourceType=item.resource_type if item is not None else None,
     )
+
+
+@router.post("/uploads/{job_id}/cancel", response_model=IngestionJobStatus)
+def cancel_upload_job(
+    job_id: str,
+    session: Session = Depends(get_session, scope="function"),
+    user: User = Depends(get_current_user),
+    s3=Depends(get_s3_client),
+    bucket: str = Depends(get_uploads_bucket),
+) -> IngestionJobStatus:
+    """D6 : annule un import. `pending` -> `cancelled` (source supprimée) ; `running`
+    -> `cancel_requested` (le worker s'arrête avant l'import, sinon l'import
+    s'achève). Même autorisation que la lecture ; idempotent ; 409 si terminé."""
+    job = _visible_job(session, user, job_id)
+    if job.status in ("cancelled", "cancel_requested"):
+        return _job_status(session, job)
+    if job.status in ("done", "error"):
+        raise HTTPException(status_code=409, detail=f"job is {job.status}, cannot be cancelled")
+    new_status = repo.request_cancel(session, job_id=job_id)
+    if new_status is None:  # terminé entre la lecture et l'UPDATE : rien annulé, pas d'audit
+        session.rollback()
+        raise HTTPException(status_code=409, detail="job already finished, cannot be cancelled")
+    write_audit(
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="ingestion.cancel",
+        object_type="ingestion_job",
+        object_id=job_id,
+        payload={"status": new_status},
+    )
+    session.commit()
+    if new_status == "cancelled":
+        try:  # best-effort : la source n'a plus d'utilité, le filet est l'expiration S3
+            s3.delete_object(Bucket=bucket, Key=job.source_key)
+        except Exception:
+            pass
+    session.refresh(job)
+    return _job_status(session, job)
+
+
+@router.get("/uploads/{job_id}", response_model=IngestionJobStatus)
+def get_upload_job(
+    job_id: str,
+    session: Session = Depends(get_session, scope="function"),
+    user: User = Depends(get_current_user),
+) -> IngestionJobStatus:
+    job = _visible_job(session, user, job_id)
+    return _job_status(session, job)
