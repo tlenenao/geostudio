@@ -197,7 +197,8 @@ def parse_csv_latlon(
         raise IngestionParseError("encodage invalide, attendu UTF-8") from exc
     reader = csv.DictReader(io.StringIO(text), delimiter=sniff_delimiter(text))
     try:
-        fieldnames = reader.fieldnames or []
+        fieldnames = [unsanitize_cell(f) for f in reader.fieldnames or []]
+        reader.fieldnames = fieldnames
     except csv.Error as exc:
         raise IngestionParseError("en-tête CSV invalide ou mal formé") from exc
     effective_mode = _resolve_latlon_mode_from_fields(mode, fieldnames)
@@ -231,6 +232,10 @@ def _xlsx_cell_value(value):
     return unsanitize_cell(value)
 
 
+def _xlsx_header(name: object) -> str:
+    return str(unsanitize_cell(name)) if name is not None else ""
+
+
 def parse_xlsx_sheet(
     content: bytes,
     sheet_name: str | None,
@@ -252,7 +257,7 @@ def parse_xlsx_sheet(
         header_row = next(rows_iter)
     except StopIteration:
         raise IngestionParseError("classeur XLSX vide") from None
-    fieldnames = [str(name) if name is not None else "" for name in header_row]
+    fieldnames = [_xlsx_header(name) for name in header_row]
     effective_mode = _resolve_latlon_mode_from_fields(mode, fieldnames)
     if effective_mode.kind == "latlon" and (
         effective_mode.lat_field not in fieldnames or effective_mode.lon_field not in fieldnames
@@ -292,7 +297,7 @@ def read_xlsx_header_fields(content: bytes, sheet_name: str | None = None) -> li
         header_row = next(ws.iter_rows(max_row=1, values_only=True))
     except StopIteration:
         raise IngestionParseError("classeur XLSX vide") from None
-    return [str(name) if name is not None else "" for name in header_row]
+    return [_xlsx_header(name) for name in header_row]
 
 
 @dataclass

@@ -7,13 +7,21 @@ typé négatif (-5) reste numérique ; le texte "-5" devient "'-5" (convention O
 _DANGEROUS = ("=", "+", "-", "@", "\t", "\r")
 
 
+# Un texte déjà préfixé d'une apostrophe suivie d'un caractère dangereux (ou d'une autre
+# apostrophe) est doublement préfixé : l'inverse retire exactement une apostrophe, donc
+# `unsanitize(sanitize(x)) == x` pour toute chaîne.
+_ESCAPED = ("'", *_DANGEROUS)
+
+
 def sanitize_cell(value: object) -> object:
-    if isinstance(value, str) and value.startswith(_DANGEROUS):
+    if isinstance(value, str) and (
+        value.startswith(_DANGEROUS) or (value.startswith("'") and value[1:].startswith(_ESCAPED))
+    ):
         return "'" + value
     return value
 
 
 def unsanitize_cell(value: object) -> object:
-    if isinstance(value, str) and value.startswith("'") and value[1:].startswith(_DANGEROUS):
+    if isinstance(value, str) and value.startswith("'") and value[1:].startswith(_ESCAPED):
         return value[1:]
     return value
