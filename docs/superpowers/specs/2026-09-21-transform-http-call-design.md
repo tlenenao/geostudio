@@ -12,6 +12,48 @@ tête de DAG**, sous une garde d'egress SSRF vérifiée au démarrage ; un appel
 pipeline, pose une garde structurellement différente (un budget/débit par ligne plutôt qu'un contrôle
 unique sur l'URL de lecture) — ce document construit ce mécanisme.
 
+## Révision 2026-10-11 (vérifiée contre le code)
+
+Écarts entre la spec du 2026-09-21 et le dépôt actuel (piège CLAUDE.md n°3/n°12) ; les sections ci-dessous
+sont corrigées en conséquence, ce bloc en liste les raisons.
+
+1. **Mécanisme d'exécution.** `transform.qgis` n'existe plus. Le patron actuel est le champ
+   `OperationContract.execute` (signature `(conn, *, input_view, view_name, params)`, dispatch générique
+   `elif contract.execute is not None` dans `runtime.py::_execute_transform_chain`, exemples dans
+   `ops/execute.py`) : `compile=None` + `execute=`, **aucune** branche spéciale `node.op == …`. Nouveau champ
+   `needs_secrets: bool = False` sur `OperationContract` : quand il est vrai, `runtime.py` passe
+   `secret_resolver=` à `execute`. `_execute_transform_chain` reçoit pour cela un kwarg `secret_resolver`,
+   construit par `preview_pipeline`/`run_pipeline` (`PostgresSecretResolver(session, tenant_id, user)`, `None`
+   si `session is None`).
+2. **Comptes.** Catalogue exposé 58 → 59 op, registre brut `OPERATIONS` 60 → 61 (test
+   `test_operations_registry_has_60_entries` → 61 ; le compte exposé est à vérifier par comptage, pas supposé).
+3. **Retry.** Abandon de l'extension `urllib3.Retry` de `egress.py` : le backoff d'urllib3 2.x ne dort pas
+   avant le 1ᵉʳ retry (≠ « doublé à chaque tentative ») et `raise_on_status` est piégeux. À la place, une
+   **boucle de retry maison** dans `http_call_runtime.py` autour de chaque appel de ligne ; la garde d'egress
+   s'exécute donc à **chaque tentative** (plus fort que la spec d'origine) et `egress.py` n'est **pas modifié**.
+   Limite assumée : en mode paginé, un retry rejoue toute la pagination depuis la page 1.
+4. **Trou de sécurité de la spec d'origine : portée du secret (REV-294).** Un secret REST est LIÉ à
+   `payload.baseUrl`. Pour `httpCall`, l'URL de **chaque ligne** doit être dans cette portée (helper partagé
+   `_url_within_scope(scope, url)`, extrait de `_assert_url_within_secret_scope` de `connector_runtime.py`) ;
+   un secret sans `baseUrl` fait échouer le nœud ; une URL hors portée = ligne en erreur **sans appel réseau**
+   (le jeton n'est jamais envoyé hors portée).
+5. **Bornes ajoutées** (un appel réseau par ligne est un vecteur d'amplification sur un cœur multi-tenant) :
+   plafond de lignes `CORE_PIPELINES_HTTP_CALL_MAX_ROWS` (défaut 10000, échec du nœud au-delà), plafond de
+   taille de réponse (5 Mo, ligne en erreur), bornes de schéma `maxRetries ≤ 10`, `maxConcurrency ≤ 16`,
+   `timeoutSeconds ≤ 120`, `requestsPerSecond > 0`.
+6. **Matérialisation.** Ne PAS relire les colonnes d'entrée en Python (la géométrie ne round-trippe pas) :
+   table temp `node_x__stage` = `row_number() OVER () - 1 AS __rn, *, (urlExpr) AS __http_url, …`, résultats
+   des appels (DataFrame enregistré) joints sur `__rn` ; `SELECT * EXCLUDE (…)` conserve géométrie et ordre. Une
+   collision entre un nom de colonne de sortie et une colonne d'entrée = `PipelineRuntimeError` à
+   l'exécution (le validateur de schéma ne connaît que l'unicité des 4 noms de sortie entre eux).
+7. **Pas de nouveau flag** : l'op vit déjà sous `CORE_ETL_ENABLED` (pipelines) — décision consignée.
+   `RESTClient(base_url="")` accepte une URL absolue en `path` (vérifié : `join_url` retourne `path` si
+   `base_url == ""`).
+8. **Tests.** `pytest-httpserver` est déjà une dépendance de test ; patron de
+   `tests/test_pipeline_connector_runtime.py` (autouse `_no_ssrf_guard` qui monkeypatch
+   `pipelines_egress.assert_egress_allowed`, `_REAL_ASSERT_EGRESS_ALLOWED` pour un test de garde réelle) ;
+   tests runtime en `session=None` + `_FakeS3` (cf. `test_run_pipeline_transform_triangulate_end_to_end`).
+
 ## 0. Correction trouvée en explorant le dépôt (piège CLAUDE.md n°3, vérifié pas supposé)
 
 `CLAUDE.md` (§ Décisions figées) dit « Expressions no-code : CEL ». C'est vrai **côté shell** (`cel-js`,
@@ -24,8 +66,8 @@ mécanisme réel, pas celui supposé au brainstorm initial (décision validée p
 
 ## 1. Ce que ce chantier construit, en une phrase
 
-Une nouvelle op **`transform.httpCall`** (transform, `execution_model="in_process"`, `compile=None` — comme
-`transform.qgis`, spécial-casée dans `runtime.py`, jamais dans `compiler.py` qui reste pur) : un appel HTTP
+Une nouvelle op **`transform.httpCall`** (transform, `execution_model="in_process"`, `compile=None`, `execute=`
+comme `transform.triangulate`, dispatch générique de `runtime.py`, jamais dans `compiler.py` qui reste pur) : un appel HTTP
 **par ligne** d'entrée, URL/headers/corps construits par expression SQL DuckDB bornée précalculée en une
 passe vectorisée, avec auth par secret (mêmes 4 `kind` que `reader.connector.rest`), pagination multi-page
 agrégée en une ligne, corps `multipart/form-data` avec fichier depuis une colonne, retry à backoff
@@ -38,15 +80,17 @@ exponentiel respectant `Retry-After`, concurrence bornée + débit configurable,
 
 - 1 op `transform.httpCall`, 1 nouvelle classe `TransformHttpCallParams` (`ops/schemas.py`), 1 nouvelle
   entrée `OPERATIONS` (`ops/contracts.py`), 1 nouveau module `core/app/pipelines/http_call_runtime.py`
-  (même rôle que `connector_runtime.py` : matérialisation, jamais dans `compiler.py`), 1 branche spéciale
-  dans `runtime.py::_execute_transform_chain` (même patron que `node.op == "transform.qgis"`).
+  (même rôle que `connector_runtime.py` : matérialisation, jamais dans `compiler.py`), branchée via
+  `OperationContract.execute` + `needs_secrets=True` (dispatch générique de
+  `runtime.py::_execute_transform_chain`, plus aucune branche spéciale par `node.op`).
 - Réutilisation stricte, zéro duplication de logique déjà auditée :
   - Auth : `_build_auth`/`_REST_SECRET_KINDS`/`SecretResolver` de `connector_runtime.py`, appelés tels
     quels (import direct, pas de copie).
   - Pagination : `dlt.sources.helpers.rest_client.RESTClient` + les 4 paginateurs déjà utilisés par
     `materialize_rest_connector` (`_build_paginator`, réutilisé tel quel).
-  - Egress SSRF : `assert_egress_allowed`/`build_guarded_session` de `egress.py`, **étendu** (pas dupliqué)
-    pour accepter une politique de retry (§5).
+  - Portée du secret : helper `_url_within_scope(scope, url)` extrait de `_assert_url_within_secret_scope`
+    (`connector_runtime.py`) et réutilisé par les deux appelants (§4).
+  - Egress SSRF : `assert_egress_allowed`/`build_guarded_session` de `egress.py`, **inchangés** (§5).
 - Retry, concurrence bornée, débit, capture d'erreur par ligne, `multipartFields` : code nouveau (§4-§6),
   rien d'équivalent n'existe ailleurs dans le dépôt pour un appel réseau répété par ligne.
 
@@ -70,19 +114,23 @@ exponentiel respectant `Retry-After`, concurrence bornée + débit configurable,
 
 Templating entièrement en **expressions SQL DuckDB bornées** (§0), précalculées en une seule passe
 vectorisée **avant** la boucle Python d'appels réseau — jamais évaluées ligne par ligne côté Python. Le
-runtime construit une vue intermédiaire :
+runtime construit une table intermédiaire (révision 2026-10-11 : une table numérotée, pas une vue relue) :
 
 ```sql
-CREATE TEMP VIEW node_xxx__templated AS
-SELECT *,
+CREATE TEMP TABLE node_xxx__stage AS
+SELECT row_number() OVER () - 1 AS __rn,
+       *,
        ({urlExpr}) AS __http_url,
        ({headersExpr or 'NULL'}) AS __http_headers,
        ({bodyExpr or 'NULL'}) AS __http_body
+       -- + une colonne __mp_{i} par MultipartField (valueExpr)
 FROM {input_view}
 ```
 
-puis lit cette vue avec DuckDB (`fetchall()` + `description` pour les noms de colonnes) pour obtenir, par
-ligne, des valeurs Python déjà résolues — le code Python de la boucle réseau ne voit plus jamais de SQL.
+puis lit **seulement** `__rn` + les colonnes `__http_*`/`__mp_*` (`fetchall()` + `description`) pour obtenir, par
+ligne, des valeurs Python déjà résolues — le code Python de la boucle réseau ne voit plus jamais de SQL, ni les
+colonnes d'entrée (la géométrie ne round-trippe pas par Python). Les résultats (`__rn` + 4 colonnes de sortie)
+sont enregistrés en DataFrame et joints à `node_xxx__stage` sur `__rn` (§4.6).
 
 Champs :
 
@@ -93,16 +141,16 @@ Champs :
 | `headersExpr` | `str \| None` | `None` | expression SQL produisant un objet JSON (`json_object(...)`), parsé en dict de headers |
 | `bodyType` | `Literal["none","json","form","raw","multipart"]` | `"none"` | forme du corps |
 | `bodyExpr` | `str \| None` | `None` | pour `json`/`form`/`raw` |
-| `multipartFields` | `list[MultipartField]` | `[]` | pour `bodyType="multipart"` (§5) |
+| `multipartFields` | `list[MultipartField]` | `[]` | pour `bodyType="multipart"` (§6) |
 | `secretName` | `str \| None` | `None` | mêmes 4 `kind` que `reader.connector.rest` |
 | `paginator` | `Literal["none","page_number","offset","cursor"]` | `"none"` | mêmes paginateurs dlt que `reader.connector.rest` |
 | `paginatorConfig` | `dict` | `{}` | mêmes clés que `ReaderConnectorRestParams.paginatorConfig` |
 | `recordsPath` | `str \| None` | `None` | sélecteur dlt (`data_selector`), utilisé seulement si `paginator != "none"` |
-| `maxConcurrency` | `int` | `1` | appels simultanés max (`ThreadPoolExecutor` borné) |
-| `requestsPerSecond` | `float \| None` | `None` | débit max, `None` = pas de limite au-delà de `maxConcurrency` |
-| `maxRetries` | `int` | `3` | tentatives max sur timeout/5xx/429 |
-| `initialBackoffSeconds` | `float` | `1.0` | délai initial, doublé à chaque tentative |
-| `timeoutSeconds` | `float` | `30.0` | timeout par tentative |
+| `maxConcurrency` | `int` (1–16) | `1` | appels simultanés max (`ThreadPoolExecutor` borné) |
+| `requestsPerSecond` | `float \| None` (> 0) | `None` | débit max, `None` = pas de limite au-delà de `maxConcurrency` |
+| `maxRetries` | `int` (0–10) | `3` | tentatives de rejeu max sur ConnectionError/Timeout/429/5xx |
+| `initialBackoffSeconds` | `float` | `1.0` | délai initial, doublé à chaque tentative (`× 2**n`) ; `Retry-After` prioritaire, plafonné à 60 s |
+| `timeoutSeconds` | `float` (≤ 120) | `30.0` | timeout par tentative |
 | `responseColumn` | `str` | `"responseBody"` | colonne de sortie : corps de réponse |
 | `statusCodeColumn` | `str` | `"httpStatusCode"` | colonne de sortie : code HTTP (dernier essai) |
 | `statusColumn` | `str` | `"httpStatus"` | colonne de sortie : `"success"` \| `"error"` |
@@ -113,43 +161,53 @@ contentType: str | None = None}`.
 
 `OperationContract` : `kind="transform"`, `engine="python"`, `engine_license="Apache-2.0 (requests) +
 Apache-2.0 (dlt, utilisé seulement si paginator≠none)"`, `is_copyleft=False`, `execution_model="in_process"`,
-`compile=None` (comme `transform.qgis`, jamais dans `compiler.py`), `needs_columns=False` (les colonnes
-requises sont résolues par la vue templée, pas par introspection `DESCRIBE`).
+`compile=None`, `execute=_execute_http_call` (même mécanisme que `transform.triangulate`, jamais dans
+`compiler.py`), `needs_secrets=True` (nouveau champ de `OperationContract`, défaut `False` : `runtime.py`
+passe alors `secret_resolver=` à `execute`), `needs_columns=False` (les colonnes requises sont résolues par
+la table `__stage`, pas par introspection `DESCRIBE`).
 
 `model_validator` : `bodyExpr` requis si `bodyType` ∈ {`json`,`form`,`raw`} ; `multipartFields` non vide si
 `bodyType="multipart"` ; les 4 noms de colonnes de sortie (`responseColumn`/`statusCodeColumn`/
-`statusColumn`/`errorColumn`) doivent être distincts entre eux (une collision silencieuse écraserait une
-colonne de données de l'utilisateur).
+`statusColumn`/`errorColumn`) doivent être distincts entre eux. Leur collision avec une colonne **d'entrée**
+n'est détectable qu'à l'exécution (le schéma ne connaît pas les colonnes) : `PipelineRuntimeError` explicite
+plutôt qu'un écrasement silencieux d'une colonne de données de l'utilisateur.
 
 Docstring française courte sur `TransformHttpCallParams` (devient le tooltip de palette, même mécanisme que
-les 47 op existantes — vérifié en Vague 1/2, `PipelinePalette.tsx` reste générique-depuis-catalogue, aucun
+les op existantes — vérifié en Vague 1/2, `PipelinePalette.tsx` reste générique-depuis-catalogue, aucun
 changement front nécessaire).
 
 ## 4. Exécution — `http_call_runtime.py`
 
-Nouvelle fonction `execute_http_call_transform(conn, node, *, secret_resolver, input_view, view_name)`,
-appelée depuis `runtime.py::_execute_transform_chain` dans une branche `elif node.op ==
-"transform.httpCall":` symétrique à celle de `transform.qgis`.
+Nouvelle fonction `execute_http_call_transform(conn, *, input_view, view_name, params, secret_resolver)`,
+référencée par `OperationContract.execute` (avec `needs_secrets=True`) et appelée par le dispatch générique
+de `runtime.py::_execute_transform_chain` (`contract.execute(conn, input_view=…, view_name=…, params=…,
+secret_resolver=…)`) — aucune branche `node.op == …`. Les expressions sont validées en amont par
+`_validate_node_exprs` (étendu à `transform.httpCall`).
 
 1. Valider les expressions bornées (`urlExpr`/`headersExpr`/`bodyExpr`/chaque `valueExpr` de
    `multipartFields`) avec `validate_bounded_expr`, comme le fait déjà `_validate_node_exprs` pour
    `transform.filter`/`derive` — réutilisation, pas une 2e implémentation de validation.
-2. Créer la vue templée (§3), la lire intégralement en mémoire Python (liste de dicts) — **limite assumée** :
-   pas de streaming/batching, cohérent avec le fait qu'un appel réseau par ligne est de toute façon l'axe
-   dominant de lenteur bien avant la taille mémoire d'une ligne (à documenter comme limite connue, pas un
-   oubli — un jeu de plusieurs millions de lignes n'est pas un cas d'usage visé par cette op).
-3. Résoudre l'auth une fois (`_build_auth` de `connector_runtime.py`, réutilisé) — jamais par ligne, un seul
-   secret par nœud.
+2. Compter les lignes d'entrée : au-delà de `CORE_PIPELINES_HTTP_CALL_MAX_ROWS` (défaut 10000) → échec du
+   nœud (`PipelineRuntimeError`), avant toute requête. Vérifier l'absence de collision entre les 4 noms de
+   colonnes de sortie et les colonnes d'entrée (`DESCRIBE`). Créer la table `__stage` (§3) et en lire
+   `__rn` + `__http_*`/`__mp_*` en mémoire Python — **limite assumée** : pas de streaming/batching, borné par le
+   plafond de lignes ci-dessus (un appel réseau par ligne est de toute façon l'axe dominant de lenteur).
+3. Résoudre l'auth une fois (`_resolve_secret` + `_build_auth` de `connector_runtime.py`, réutilisés) — jamais
+   par ligne, un seul secret par nœud. Si le secret n'a pas de `baseUrl` → `ConnectorRuntimeError` (échec du
+   nœud, REV-294). Par ligne, l'URL doit satisfaire `_url_within_scope(payload.baseUrl, url)` (helper partagé
+   extrait de `_assert_url_within_secret_scope`) ; sinon la ligne passe en `error` **sans appel réseau**.
 4. Traiter les lignes via un `ThreadPoolExecutor(max_workers=maxConcurrency)` ; un limiteur à jetons partagé
    (implémentation minimale maison, aucun équivalent existant dans le dépôt pour un débit sortant) applique
    `requestsPerSecond` si renseigné.
 5. Par ligne (fonction exécutée dans le pool) :
-   - Si `paginator == "none"` : un appel direct via une session gardée à retry (§5) — `requests.Session`,
-     pas `httpx` (cohérence avec `egress.py`, qui garde `requests` — noté dans son propre docstring que
-     copier le transport `httpx` de `app.harvest.egress` ne garderait rien en pratique ici non plus).
-     `responseBody` = texte brut exact de la réponse, sans aucun parsing.
-   - Si `paginator != "none"` : `RESTClient(...).paginate(url, method=, params=, json=)` (même client que
-     `materialize_rest_connector`), pages concaténées en une liste, `responseBody` =
+   - Si `paginator == "none"` : un appel direct via `build_guarded_session()` (inchangé), dans la boucle de
+     retry maison (§5) — `requests.Session`, pas `httpx` (cohérence avec `egress.py`, qui garde `requests` —
+     noté dans son propre docstring que copier le transport `httpx` de `app.harvest.egress` ne garderait
+     rien en pratique ici non plus). Réponse lue en `stream=True` avec un plafond de 5 Mo (au-delà : ligne en
+     erreur). `responseBody` = texte brut exact de la réponse, sans aucun parsing.
+   - Si `paginator != "none"` : `RESTClient(base_url="", session=build_guarded_session(), …).paginate(url,
+     method=, params=, json=)` (même client que `materialize_rest_connector` ; `base_url=""` accepte une URL
+     absolue en `path`, vérifié), pages concaténées en une liste, `responseBody` =
      `json.dumps(all_records)` — **parsing JSON interne nécessaire** pour suivre le curseur/offset entre
      pages (§ pagination, décision assumée : pas de contradiction avec « responseBody brut », qui ne
      s'applique qu'au cas `paginator="none"`, le cas courant).
@@ -158,33 +216,29 @@ appelée depuis `runtime.py::_execute_transform_chain` dans une branche `elif no
      timeout/erreur de connexion sans réponse), `httpStatus="error"`, `httpError` = message borné (jamais
      l'URL complète ni un secret — même discipline que `ConnectorRuntimeError` dans `connector_runtime.py`).
 6. Écrire les résultats collectés (dans l'ordre d'entrée, pas l'ordre de complétion — un `ThreadPoolExecutor`
-   avec `executor.map` préserve cet ordre nativement) dans une `CREATE TEMP TABLE` combinant les colonnes
-   d'entrée + les 4 colonnes de sortie.
+   avec `executor.map` préserve cet ordre nativement) en DataFrame `(__rn, <4 colonnes de sortie>)`
+   enregistré sur la connexion, puis matérialiser :
+   `CREATE TEMP TABLE {view_name} AS SELECT s.* EXCLUDE (__rn, __http_url, __http_headers, __http_body,
+   __mp_*), r.* EXCLUDE (__rn) FROM node_xxx__stage s JOIN results r USING (__rn) ORDER BY s.__rn`.
+   Les colonnes d'entrée (géométrie comprise) ne transitent jamais par Python.
 
-## 5. Retry — extension de `egress.py`, pas une 2e garde
+## 5. Retry — boucle maison, `egress.py` inchangé
 
-`build_guarded_session()` prend un nouveau paramètre optionnel `retry: urllib3.util.Retry | None = None`,
-monté sur `_GuardedHTTPAdapter(max_retries=retry)`. `http_call_runtime.py` construit :
+Révision 2026-10-11 : l'extension `urllib3.Retry` prévue à l'origine est abandonnée (backoff urllib3 2.x :
+0 s avant le 1ᵉʳ retry, pas de « doublé à chaque tentative » ; `raise_on_status` piégeux ; retries invisibles
+de la garde d'egress). `http_call_runtime.py` porte une boucle explicite autour de chaque appel de ligne
+(appel direct, ou pagination complète) :
 
-```python
-Retry(
-    total=params.maxRetries,
-    backoff_factor=params.initialBackoffSeconds,
-    status_forcelist=[429, 500, 502, 503, 504],
-    respect_retry_after_header=True,
-    allowed_methods=None,  # retry sur toutes les méthodes, pas seulement les idempotentes — HTTPCaller FME
-                           # ne fait pas cette distinction, et le contrat n'a pas d'a priori sur le sens
-                           # métier de l'appel de l'auteur du pipeline
-)
-```
-
-Point vérifié (pas supposé) à confirmer par test avant clôture : les retries d'`urllib3` se produisent
-**dans** `HTTPAdapter.send()` (au niveau `HTTPConnectionPool.urlopen`), donc `_GuardedHTTPAdapter.send()`
-n'est appelé **qu'une fois par requête logique** — la garde d'egress s'exécute avant la 1ʳᵉ tentative, pas
-avant chaque retry individuellement. Ce n'est pas une régression de sécurité : un retry cible le **même**
-hôte déjà validé (aucune redirection n'est concernée par ce mécanisme, `requests` la traite séparément en
-rappelant `send()` à chaque redirection, donc déjà re-gardée). À vérifier explicitement en test (§7) plutôt
-que supposé — piège CLAUDE.md n°3.
+- tentatives = `1 + maxRetries` ; rejeu sur `requests.ConnectionError`/`Timeout`, statuts
+  `{429, 500, 502, 503, 504}` (appel direct) ou `requests.HTTPError` portant l'un de ces statuts (mode paginé,
+  dlt appelle `raise_for_status`) ; **toutes les méthodes** sont rejouées (HTTPCaller FME ne distingue pas les
+  idempotentes, le contrat n'a pas d'a priori sur le sens métier de l'appel de l'auteur du pipeline) ;
+- délai avant le rejeu n = `Retry-After` (secondes, plafonné à 60 s) s'il est présent, sinon
+  `initialBackoffSeconds * 2**n` ;
+- la garde d'egress (`assert_egress_allowed` dans `_GuardedHTTPAdapter.send()`) s'exécute à **chaque
+  tentative**, puisque chaque tentative est un `session.request` complet (plus fort que la spec d'origine) ;
+  `egress.py` n'est pas modifié ;
+- limite assumée (`ponytail:`) : en mode paginé, un rejeu repart de la page 1.
 
 ## 6. Pagination et multipart — reformulation précise des choix validés
 
@@ -198,8 +252,10 @@ que supposé — piège CLAUDE.md n°3.
 ## 7. Tests (falsifiés avant clôture, piège CLAUDE.md n°10)
 
 - Un test par branche `bodyType` (`none`/`json`/`form`/`raw`/`multipart`) contre un serveur HTTP de test
-  local (`httpserver`/`responses`, à choisir contre ce qui est déjà une dépendance de test du dépôt —
-  vérifier avant d'en ajouter une nouvelle).
+  local (`pytest-httpserver`, déjà dépendance de test — fixture `httpserver`). Patron de
+  `tests/test_pipeline_connector_runtime.py` : autouse `_no_ssrf_guard` (monkeypatch
+  `pipelines_egress.assert_egress_allowed`, le serveur écoute sur 127.0.0.1) ; tests runtime de bout en bout
+  en `session=None` + `_FakeS3` (cf. `test_run_pipeline_transform_triangulate_end_to_end`).
 - Test de retry : serveur de test renvoyant `503` puis `200`, assertion sur le nombre réel de tentatives et
   le délai observé (pas une assertion de durée seule — mesurer l'intervalle entre tentatives, piège CLAUDE.md
   n°7) ; un 2e test avec en-tête `Retry-After` explicite, assertion que le délai réel respecte cette valeur
@@ -210,12 +266,22 @@ que supposé — piège CLAUDE.md n°3.
   `500` (au-delà de `maxRetries`) — assertion que **seule** cette ligne a `httpStatus="error"`, les autres
   `"success"`, et que le run se termine sans exception.
 - Test de la garde d'egress : une `urlExpr` qui résout vers une IP interne (`127.0.0.1`/`10.x`) — assertion
-  de rejet avant toute tentative réseau, comme pour `reader.connector.rest`.
+  de rejet avant toute tentative réseau, comme pour `reader.connector.rest` (test isolé qui réactive la vraie
+  garde via `_REAL_ASSERT_EGRESS_ALLOWED`) ; la garde s'applique à **chaque tentative de retry** (un 2ᵉ appel
+  de la garde est observé après un `503`).
+- Test de portée du secret (REV-294) : secret `bearer_token` avec `baseUrl` → une ligne dans la portée reçoit
+  l'en-tête `Authorization`, une ligne hors portée est en `error` **sans aucune requête reçue** par le
+  serveur de test ; secret sans `baseUrl` → échec du nœud.
+- Bornes : plafond de lignes (`CORE_PIPELINES_HTTP_CALL_MAX_ROWS=2`, 3 lignes → échec avant toute requête) ;
+  réponse > 5 Mo → ligne en erreur ; collision de nom de colonne de sortie avec une colonne d'entrée →
+  `PipelineRuntimeError` ; géométrie et ordre d'entrée conservés dans la sortie.
 - Test de concurrence : falsification explicite du budget — avec `maxConcurrency=2` et un serveur de test qui
   enregistre les intervalles de requêtes reçues, vérifier qu'au plus 2 requêtes sont in-flight simultanément
   (mesurer le recouvrement des intervalles, pas une durée totale — même piège CLAUDE.md n°7).
-- Test de non-régression sur le compte d'op (`len(OPERATIONS) == 48` — 47 aujourd'hui, vérifié par
-  comptage direct dans `ops/contracts.py`, + `transform.httpCall`).
+- Test de non-régression sur le compte d'op : `test_operations_registry_has_60_entries` passe à 61 (60
+  aujourd'hui, + `transform.httpCall`) ; compte du catalogue exposé 58 → 59, à vérifier par comptage.
+- `test_every_registered_transform_has_exactly_one_of_compile_or_execute` reste vert (`execute=` seul) ;
+  `needs_secrets` : une op à `needs_secrets=True` reçoit bien `secret_resolver` (test runtime).
 - `test_pipeline_routes.py` : `GET /pipelines/ops` contient `transform.httpCall` avec son `paramsSchema`.
 - Test de sécurité des messages d'erreur : un `secretName` avec un jeton bearer réel, forcer un échec, vérifier
   que le jeton n'apparaît nulle part dans `errorColumn` ni dans les logs.
@@ -236,4 +302,8 @@ que supposé — piège CLAUDE.md n°3.
   avant de clore, ne pas présumer par analogie (piège CLAUDE.md n°12).
 - `CLAUDE.md` à la clôture : une ligne dans `### Livré` (« `transform.httpCall` (HTTPCaller) — appel HTTP par
   ligne avec retry exponentiel/Retry-After, pagination agrégée, multipart, concurrence+débit bornés, erreurs
-  capturées par ligne ; catalogue à 48 op »).
+  capturées par ligne ; catalogue exposé à 59 op, brut à 61 »).
+- Pas de flag dédié : l'op vit déjà sous `CORE_ETL_ENABLED` (pipelines) ; les bornes du §« Révision »
+  (lignes, taille de réponse, concurrence) tiennent lieu de garde-fou d'amplification.
+- Si `runtime.py` ou `OperationContract` changent (`needs_secrets`, kwarg `secret_resolver`) : vérifier que
+  `preview_pipeline` **et** `run_pipeline` passent le resolver (jumelles, piège CLAUDE.md n°14).
