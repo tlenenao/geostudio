@@ -79,21 +79,26 @@ test.describe("j04 droits, historique, concurrence", () => {
     expect([403, 404]).toContain(r.status);
   });
 
-  // finding j04-008
+  // À basculer en test() après rejeu sous --verify (j04-008, parcours réécrit avec If-Match).
+  // j04-008 : l'écriture concurrente est opt-in (REV-271) : sans `If-Match` la dernière gagne ;
+  // avec `If-Match: <version lue>`, la seconde sauvegarde fondée sur une version périmée est refusée (412).
   fixme(
-    "j04-008 : deux sessions d'édition concurrentes — la seconde sauvegarde est refusée ou fusionnée (pas d'écrasement silencieux)",
+    "j04-008 : deux sessions d'édition concurrentes — la seconde sauvegarde (If-Match périmé) est refusée sans écrasement",
     async () => {
       const s = await getSeed();
       const id = await s.mkApp("concurrence", baseApp({ layout: grid([text("a", "V1")]) }));
-      const first = await s.creator.get(`/v1/configs/by-item/${id}`);
-      const v = first.body.version;
+      const url = `/v1/configs/by-item/${id}`;
+      const first = await s.creator.get(url);
+      const ifMatch = { "If-Match": `"${first.body.version}"` };
       const cfgA = { ...first.body.config, layout: grid([text("a", "Edition A")]) };
       const cfgB = { ...first.body.config, layout: grid([text("a", "Edition B")]) };
-      const ra = await s.creator.send("PUT", `/v1/configs/by-item/${id}`, { ...cfgA, version: v });
-      const rb = await s.creator.send("PUT", `/v1/configs/by-item/${id}`, { ...cfgB, version: v });
+      const ra = await s.creator.send("PUT", url, cfgA, ifMatch);
+      const rb = await s.creator.send("PUT", url, cfgB, ifMatch);
       expect(ra.status).toBe(200);
-      // Attendu : 409/412 sur la version périmée. Observé : 200 et l'édition A est perdue.
-      expect(rb.status).toBeGreaterThanOrEqual(409);
+      expect(rb.status).toBe(412);
+      const after = JSON.stringify((await s.creator.get(url)).body.config);
+      expect(after).toContain("Edition A");
+      expect(after).not.toContain("Edition B");
     },
   );
 

@@ -79,7 +79,10 @@ test.describe("j13 panneau de partage (propriétaire)", () => {
       const it = await mkItem(creator, `${TAG}-ui-publabel`);
       await openAs(page, "creator");
       await go(page, `/items/${it.pk}?panel=share`, 2500);
-      await expect(page.getByText(/organisation|comptes|connectés/i)).toBeVisible();
+      // Locator précis (le motif large /organisation|…/ trouvait 2 éléments, strict mode).
+      await expect(
+        page.getByRole("checkbox", { name: "Visible par tous les membres de l'organisation" }),
+      ).toBeVisible();
     },
   );
 });

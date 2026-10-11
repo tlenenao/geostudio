@@ -21,16 +21,27 @@ export async function token(persona: PersonaName): Promise<string> {
 
 export interface Api {
   get(path: string): Promise<{ status: number; body: any }>;
-  send(method: string, path: string, body?: unknown): Promise<{ status: number; body: any }>;
+  send(
+    method: string,
+    path: string,
+    body?: unknown,
+    headers?: Record<string, string>,
+  ): Promise<{ status: number; body: any }>;
 }
 
 export async function apiFor(persona: PersonaName): Promise<Api> {
   const tok = await token(persona);
-  const send = async (method: string, path: string, body?: unknown) => {
+  const send = async (
+    method: string,
+    path: string,
+    body?: unknown,
+    headers: Record<string, string> = {},
+  ) => {
     const r = await fetch(`${CORE_URL}${path}`, {
       method,
       headers: {
         authorization: `Bearer ${tok}`,
+        ...headers,
         ...(body !== undefined ? { "content-type": "application/json" } : {}),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
