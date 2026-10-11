@@ -484,6 +484,8 @@ Les lignes `chemin:ligne` ont été relues dans le code le 2026-10-11. Les numé
 
 ##### Vague 0 : quick wins (≤ 1 mois, jusqu'à 2026-11-11, 26 j-h)
 
+> **Statut d'exécution (2026-10-12)** : ARC-01, 02, 04, 05, 06, 07, 08 livrés ; ARC-03 livré **partiellement** (lot synchrone, sans job de reprise ; `transform.geocode` reporté) ; ARC-09 livré **partiellement** (REV-356 fermé, lecteur temps selon C3, **fonds de carte par tenant non livrés** : table + migration requises). Reliquats : REV-366/367. Les compteurs ISO+MIEUX de §3 ne sont pas recalculés ici ; la ligne « clustering absent côté serveur » de §3.1 reste à nuancer (ARC-01 livre le clustering client des couches GeoJSON, les tuiles denses étaient déjà agrégées côté serveur).
+
 | ID | Capacité ArcGIS visée (réf., ligne §3) | État GeoStudio vérifié | Livrable | Critères d'acceptation | Dépendances | Effort | Valeur C/B/I | Risque / arbitrage |
 |---|---|---|---|---|---|---|---|---|
 | ARC-01 | Clustering de points avec étiquettes/popups de cluster, 11.3 [S38] (§3.3 « Clustering de points », ABSENT) | aucune occurrence `cluster` dans `shell/src/map` ; sources GeoJSON simples (`shell/src/map/MapView.tsx:356`) | option `cluster: {radius, maxZoom, label}` sur couche `feature`/GeoJSON (MapLibre natif), calques cercle+compte, clic = zoom ; champ ajouté à `MapLayer` **et** à `toFrontLayer()` (piège n°5) | 1) 10 000 points GeoJSON : 1 cluster à z4, points individuels à z14 (Vitest + E2E) ; 2) rechargement de la page conserve l'option ; 3) incompatible heatmap signalé dans l'éditeur | SP-25/27 (symbologie), REV-283a | S, 3 j | C ●● B ● I – | aucun ; MVT non couvert (ARC-22) |
