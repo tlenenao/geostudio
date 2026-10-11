@@ -14,10 +14,10 @@ vi.mock("react-oidc-context", () => ({
     captured = props;
     return <>{props.children}</>;
   },
-  useAuth: () => ({ user: { profile: { sub: "u1" } }, signinRedirect }),
+  useAuth: () => ({ user: { profile: { sub: "u1" } }, signinRedirect, isLoading: false }),
 }));
 
-const { AuthProvider } = await import("./AuthProvider");
+const { default: AuthProvider } = await import("./OidcAuthProvider");
 
 const config = {
   authMode: "oidc",
