@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
-import { bug } from "../_fixtures/verify";
 import { expect, test } from "@playwright/test";
 import { aggregate, apiFor, expectedByCat, type Api } from "./helpers";
 import { getSeed, type Seed } from "./seed";
@@ -165,14 +164,16 @@ test.describe("j05 agrégats — API", () => {
     expect(r.body.rows[0]?.value).toBe(0);
   });
 
-  // Finding j05-018 : cat__in découpe la valeur sur « , » (cross-filter multi-sélection).
-  bug("j05-018 : un filtre __in accepte une valeur contenant une virgule", async () => {
+  // Finding j05-018 : cat__in découpait la valeur sur « , » (cross-filter multi-sélection).
+  // REV-313 : une virgule littérale s'écrit « \, » (core/app/filter_values.py) ; la valeur
+  // brute non échappée reste une liste séparée par des virgules (ancien format conservé).
+  test("j05-018 : un filtre __in accepte une valeur contenant une virgule (échappée)", async () => {
     const value = '=1+1,"cité"\nligne2';
     const eq = await aggregate(analyst, seed.ventes, { agg: "count", filters: { note: value } });
     expect(eq.body.rows[0].value).toBe(1);
     const inn = await aggregate(analyst, seed.ventes, {
       agg: "count",
-      filters: { note__in: value },
+      filters: { note__in: value.replaceAll(",", "\\,") },
     });
     expect(inn.body.rows[0]?.value).toBe(1);
   });
