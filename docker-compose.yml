@@ -394,6 +394,8 @@ services:
       S3_PUBLIC_ENDPOINT_URL: ${S3_PUBLIC_ENDPOINT_URL:-}
       # Pairs dont X-Forwarded-For est honoré (réseau Traefik) ; jamais `*` en production.
       CORE_TRUSTED_PROXIES: ${CORE_TRUSTED_PROXIES:-127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7}
+      # Budget /min (par IP) des liens de partage : route publique + en-tête X-Share-Link-Token (REV-299).
+      CORE_RATELIMIT_SHARE_LINK_PER_MIN: ${CORE_RATELIMIT_SHARE_LINK_PER_MIN:-60}
       # Plafond de lecture d'un fichier importé (octets) ; vide = 512 Mio (P03.05).
       CORE_UPLOAD_MAX_BYTES: ${CORE_UPLOAD_MAX_BYTES:-}
       S3_ACCESS_KEY: ${MINIO_USER}

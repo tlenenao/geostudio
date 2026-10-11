@@ -2303,6 +2303,18 @@ def test_s3_public_endpoint_has_a_dev_default_and_a_startup_guard():
         assert "S3_PUBLIC_ENDPOINT_URL" in services(BASE)[name]["environment"], name
 
 
+def test_env_example_dev_env_and_localhost_s3_are_labelled_dev_only():
+    """REV-315 : `.env.example` est copié tel quel en `.env` ; `CORE_ENV=development`
+    neutralise la garde S3. Tant qu'il porte les deux défauts de dev (CORE_ENV=development
+    + S3 localhost), un « DEV UNIQUEMENT » doit les précéder, et install.sh repasse
+    CORE_ENV en production (test_install_script)."""
+    lines = (REPO / ".env.example").read_text().splitlines()
+    for key in ("CORE_ENV=development", "S3_PUBLIC_ENDPOINT_URL=http://localhost"):
+        i = next(n for n, line in enumerate(lines) if line.startswith(key))
+        window = "\n".join(lines[max(0, i - 12) : i])
+        assert "DEV UNIQUEMENT" in window, key
+
+
 def test_core_start_period_covers_migrations_and_martin_restarts():
     """REV-320 : le cœur applique Alembic avant de servir (90 s observé sur base
     vide) ; Martin, dans le fichier de base seul, doit aussi redémarrer."""

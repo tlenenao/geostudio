@@ -26,6 +26,11 @@ jobs:
       contents: read
       packages: write
       security-events: write
+      # ADR 0014 : id-token = jeton OIDC pour la signature cosign keyless ;
+      # attestations = attestation SBOM (actions/attest). Les appelants
+      # (release.yml, publish-edge.yml) doivent accorder AU MOINS autant.
+      id-token: write
+      attestations: write
     strategy:
       # Sans ceci, un échec sur une seule des neuf legs (par ex. disque ou
       # timeout sur geostudio-export-worker, 3.14 Go) annule les huit
@@ -108,12 +113,42 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        id: build
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.context }}/${{ matrix.dockerfile }}
           platforms: ${{ matrix.platforms }}
           push: true
           tags: ${{ steps.tags.outputs.tags }}
+
+      # ADR 0014 : signature keyless (identité OIDC du workflow, journal Rekor),
+      # TOUJOURS par digest — un tag est mutable, la signature doit viser le
+      # contenu. `outputs.digest` = digest de l'index multi-arch publié.
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign image (cosign keyless, by digest)
+        shell: bash
+        env:
+          IMAGE: ${{ matrix.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "ghcr.io/tlenenao/${IMAGE}@${DIGEST}"
+
+      # Les `outputs` d'un job à matrice ne remontent que la dernière leg : le
+      # digest de chaque image passe par un artefact, consommé par `pin-digests`
+      # (release.yml) pour générer le compose épinglé.
+      - name: Record digest
+        shell: bash
+        env:
+          IMAGE: ${{ matrix.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p digests
+          printf '%s\n' "$DIGEST" > "digests/${IMAGE}.digest"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: digest-${{ matrix.image }}
+          path: digests/${{ matrix.image }}.digest
 
       # Report-only : exit-code 0 quel que soit le résultat, ce scan ne
       # bloque jamais la publication. Réservé aux vraies releases
@@ -165,6 +200,20 @@ jobs:
         continue-on-error: true
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
-          image: ghcr.io/tlenenao/${{ matrix.image }}:${{ inputs.image_tag }}
+          image: ghcr.io/tlenenao/${{ matrix.image }}@${{ steps.build.outputs.digest }}
           artifact-name: ${{ matrix.image }}-sbom.spdx.json
           output-file: ${{ matrix.image }}-sbom.spdx.json
+
+      # ADR 0014 : attestation SBOM attachée au digest dans le registre.
+      # `actions/attest` (et non `actions/attest-sbom`, déprécié : son action.yml
+      # émet un avertissement et délègue à `actions/attest`, vérifié au SHA épinglé).
+      # `create-storage-record: false` évite la permission `artifact-metadata`.
+      - name: Attest SBOM
+        if: inputs.run_scans && hashFiles(format('{0}-sbom.spdx.json', matrix.image)) != ''
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-name: ghcr.io/tlenenao/${{ matrix.image }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          sbom-path: ${{ matrix.image }}-sbom.spdx.json
+          push-to-registry: true
+          create-storage-record: false
