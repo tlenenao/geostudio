@@ -7,6 +7,7 @@ commit de statut — SP-39). Toute erreur finit `failed`, jamais zombie."""
 import logging
 import os
 import tempfile
+from contextlib import ExitStack
 from pathlib import Path
 
 from app.analytics.duckdb_conn import open_spatial_connection
@@ -58,7 +59,8 @@ def _build_file(factory, job, scratch: Path) -> tuple[Path | bytes, str, str]:
     O(page), téléversement multipart disque→S3). GPKG et XLSX restent en mémoire
     (non streamables sans bibliothèque supplémentaire) : leur plafond
     `CORE_EXPORT_JOB_MAX` est le garde-fou."""
-    with request_scoped_session(factory) as session:
+    # ExitStack : `sink` est fermé même si la boucle de pages lève.
+    with request_scoped_session(factory) as session, ExitStack() as stack:
         user = session.get(User, job.requested_by)
         if user is None:
             raise LookupError("requesting user not found")
@@ -85,8 +87,10 @@ def _build_file(factory, job, scratch: Path) -> tuple[Path | bytes, str, str]:
         cursor = None
         sink = writer = None
         if job.format in ("csv", "geojson"):
-            sink = scratch.open("w", encoding="utf-8", newline="")
-            writer = StreamingFeatureWriter(sink, format=job.format)
+            sink = stack.enter_context(scratch.open("w", encoding="utf-8", newline=""))
+            writer = StreamingFeatureWriter(
+                sink, format=job.format, with_geometry=info.geometry_column is not None
+            )
         while True:
             with rls_scope(session, job.tenant_id, masked=masked, geo_limits=geo_limits):
                 page = features_repo.select_features(
@@ -110,10 +114,10 @@ def _build_file(factory, job, scratch: Path) -> tuple[Path | bytes, str, str]:
             cursor = page.next_cursor
             if cursor is None:
                 break
+        if writer is not None:
+            writer.close()
         title = col.title
     if writer is not None:
-        writer.close()
-        sink.close()
         return scratch, export_filename(title, format=job.format), title
     # ponytail: gpkg/xlsx en mémoire, plafonnés par CORE_EXPORT_JOB_MAX ; passer en flux
     # si gpkg/xlsx dépassent la RAM du worker.

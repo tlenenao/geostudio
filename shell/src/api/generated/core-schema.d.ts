@@ -2900,6 +2900,8 @@ export interface components {
         GroupShare: {
             /** Groupid */
             groupId: string;
+            /** Name */
+            name?: string | null;
             /**
              * Role
              * @enum {string}

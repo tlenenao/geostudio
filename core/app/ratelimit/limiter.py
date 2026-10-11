@@ -122,7 +122,9 @@ def route_group(
         return "geocode"
     # REV-299 (c) : le jeton invité X-Share-Link-Token est aussi présenté en
     # en-tête sur les routes d'items/configs — même budget par IP que la route publique.
-    if has_share_token:
+    # Les GET (tuiles MVT, items, configs, GeoJSON d'un embed) en sont exclus : une
+    # carte en charge en émet des dizaines par vue et un 429 trouerait l'embed.
+    if has_share_token and method != "GET":
         return "share-link"
     return None
 

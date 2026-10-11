@@ -208,3 +208,17 @@ def test_restore_sh_passes_when_every_referenced_object_is_present(tmp_path, fak
     )
 
     assert result.returncode == 0, result.stderr
+
+
+def test_restore_sh_ignores_jobs_whose_source_is_purged_by_design(tmp_path, fake_bin_path):
+    """I2 : jobs annulés/en erreur ou > 7 j (expiration du bucket) : source absente légitime."""
+    restore_dir = tmp_path / "archive"
+    restore_dir.mkdir()
+    (restore_dir / "postgres.dump").write_bytes(b"fake-dump")
+
+    _result, log = _run_restore(tmp_path, fake_bin_path, restore_dir)
+
+    sql = next(line for line in log.splitlines() if "FROM ingestion_jobs" in line)
+    assert "'pending','running','cancel_requested'" in sql
+    assert "interval '7 days'" in sql
+    assert "<> 'done'" not in sql

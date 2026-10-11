@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useState } from "react";
 import { useGroups } from "../api/hooks";
+import type { Group } from "../api/types";
 import { t } from "../i18n";
 import { Input } from "../ui/kit/Input";
 import "../i18n/domains/admin";
@@ -8,7 +9,7 @@ import "../i18n/domains/admin";
 /** REV-277 : `GET /groups` ne renvoie que les groupes de l'appelant ; `?q=` (2 à 100
  *  caractères côté cœur) atteint les autres. Sous 2 caractères on garde la liste par défaut.
  *  Hors recherche on affiche la liste par défaut, pendant une recherche ses résultats. */
-export function useGroupSearch() {
+export function useGroupSearch(shared?: { groupId: string; name?: string | null }[]) {
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
   useEffect(() => {
@@ -24,8 +25,23 @@ export function useGroupSearch() {
     defaults,
     searching,
     searched,
-    groups: (searching ? searched.data : defaults.data) ?? [],
+    groups: withSharedGroups((searching ? searched.data : defaults.data) ?? [], shared, searching),
   };
+}
+
+/** REV-277 : les groupes déjà ciblés par un partage restent lisibles (nom fourni par le cœur
+ *  en lecture seule) même hors de l'annuaire borné ; ils ne s'ajoutent pas pendant une recherche. */
+function withSharedGroups(
+  groups: Group[],
+  shared: { groupId: string; name?: string | null }[] | undefined,
+  searching: boolean,
+): Group[] {
+  if (searching || !shared) return groups;
+  const known = new Set(groups.map((g) => g.id));
+  const extra = shared
+    .filter((g) => !known.has(g.groupId))
+    .map((g) => ({ id: g.groupId, title: g.name ?? g.groupId }));
+  return extra.length ? [...groups, ...extra] : groups;
 }
 
 type GroupSearchState = Pick<

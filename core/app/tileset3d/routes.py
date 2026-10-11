@@ -203,7 +203,8 @@ def complete_tileset3d_upload(
     # dépassé : un tileset qui n'ira jamais plus loin (le job reste
     # "pending", jamais "finalizing") ne doit pas laisser d'objet orphelin.
     enforce_storage_quota(session, s3, tenant_id=user.tenant_id, bucket=bucket, key=job.source_key)
-    repo.mark_finalizing(session, job_id=job.id)
+    # Le job reste "pending" : seul le worker fait `pending -> finalizing`
+    # (REV-295, transition conditionnelle) — la faire ici bloquerait la tâche.
     write_audit(
         session,
         tenant_id=user.tenant_id,

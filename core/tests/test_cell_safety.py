@@ -6,7 +6,12 @@ from openpyxl import load_workbook
 
 from app.analytics.export import rows_to_csv, rows_to_xlsx
 from app.cell_safety import sanitize_cell, unsanitize_cell
-from app.ingestion.parsers import GeometryMode, parse_csv_latlon, parse_xlsx_sheet
+from app.ingestion.parsers import (
+    GeometryMode,
+    parse_csv_latlon,
+    parse_xlsx_sheet,
+    read_xlsx_header_fields,
+)
 
 HOSTILE = ["=1+1", "+cmd|' /C calc'!A0", "-2+3", "@SUM(A1)", "\t=x", "\r=x"]
 
@@ -29,6 +34,17 @@ def test_round_trip_csv_and_xlsx():
     assert props == rows[0]
     [(_, props)] = parse_xlsx_sheet(rows_to_xlsx(rows), None, mode)
     assert props == rows[0]
+
+
+def test_round_trip_headers_and_apostrophe_prefixed_dangerous_text():
+    """M1 : en-têtes dangereux et texte légitime « '=abc » round-trippent."""
+    rows = [{"-x": "'=abc", "=h": "''-2", "ok": "plain"}]
+    mode = GeometryMode(kind="none")
+    [(_, props)] = parse_csv_latlon(rows_to_csv(rows), mode)
+    assert props == rows[0]
+    [(_, props)] = parse_xlsx_sheet(rows_to_xlsx(rows), None, mode)
+    assert props == rows[0]
+    assert read_xlsx_header_fields(rows_to_xlsx(rows)) == ["-x", "=h", "ok"]
 
 
 def test_sanitize_inverse():

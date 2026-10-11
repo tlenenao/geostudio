@@ -432,9 +432,9 @@ function UnsharedSource({
 }
 
 export function ShareForm({ item, onDone }: { item: Item; onDone: () => void }) {
-  const gs = useGroupSearch();
-  const groupsQuery = gs.defaults;
   const sharingQuery = useSharing(item.pk);
+  const gs = useGroupSearch(sharingQuery.data?.groups);
+  const groupsQuery = gs.defaults;
   const setSharing = useSetSharing(item.pk);
   const createGroup = useCreateGroup();
 

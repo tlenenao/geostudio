@@ -2685,6 +2685,17 @@
             "title": "Groupid",
             "type": "string"
           },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
           "role": {
             "enum": [
               "viewer",
