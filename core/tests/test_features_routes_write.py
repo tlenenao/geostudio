@@ -284,6 +284,8 @@ def test_feature_writes_use_the_collection_tenant_not_the_actor_tenant(env, monk
             table_name=col.table_name,
             editable=col.editable,
             tenant_id=other_tenant_id,
+            sensitive_fields=col.sensitive_fields,
+            owner_id=col.owner_id,
         )
 
     monkeypatch.setattr(features_routes, "_get_writable", _fake_get_writable)
