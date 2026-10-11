@@ -322,7 +322,12 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def rate_limit_guard(request: Request, call_next):
-        group = route_group(request.url.path, request.method, _EXPORT_PATH_RE)
+        group = route_group(
+            request.url.path,
+            request.method,
+            _EXPORT_PATH_RE,
+            has_share_token="x-share-link-token" in request.headers,
+        )
         if group is not None:
             caller_key_value = caller_key(
                 request.headers.get("authorization"),
