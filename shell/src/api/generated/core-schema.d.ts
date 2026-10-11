@@ -6228,7 +6228,9 @@ export interface operations {
     };
     list_groups_v1_groups_get: {
         parameters: {
-            query?: never;
+            query?: {
+                q?: string | null;
+            };
             header?: {
                 authorization?: string;
             };
