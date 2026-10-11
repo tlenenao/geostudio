@@ -117,6 +117,9 @@ export const map = {
   // LayersPanel (map)
   "layersPanel.timeFieldAria": "Champ temporel",
   "layersPanel.timeFieldNone": "Aucun (pas de filtre temporel)",
+  // MapTimePlayer (ARC-09b)
+  "mapTimePlayer.title": "Lecteur temps",
+  "mapTimePlayer.remove": "Retirer le lecteur temps",
   "layersPanel.timeNotFilterable": "Cette couche ne peut pas être filtrée dans le temps.",
   "layersPanel.geojsonNotLoadedError": "La couche GeoJSON n'est pas encore chargée",
   "layersPanel.clusterEnable": "Regrouper les points",

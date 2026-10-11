@@ -413,6 +413,15 @@ export type MapLayer =
     }
   | { id: string; title: string; visible: boolean; kind: "tiles3d"; url: string };
 export type MapTerrainConfig = { tilesUrl: string; encoding: "terrarium"; exaggeration?: number };
+// ARC-09b : état persisté du lecteur temps de l'éditeur de carte.
+export type MapTimePlayerConfig = {
+  start: string;
+  end: string;
+  stepDays: number;
+  windowDays: number;
+  intervalMs: number;
+  windowIndex: number;
+};
 export type PrintLayoutConfig = {
   pageSize?: "a4" | "a3";
   orientation?: "portrait" | "landscape";
@@ -427,6 +436,7 @@ export type MapConfig = {
   layers: MapLayer[];
   printLayout?: PrintLayoutConfig | null;
   terrain?: MapTerrainConfig | null;
+  timePlayer?: MapTimePlayerConfig | null;
   // Version serveur lue au chargement (REV-271) : renvoyée en `If-Match` à
   // l'enregistrement pour que le cœur refuse (412) une écriture périmée.
   // Jamais persistée dans le corps de la config.

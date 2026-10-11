@@ -2,7 +2,7 @@
 import { expect, test } from "vitest";
 import type { AnalyticsContextState } from "../builder/AnalyticsContext";
 import type { DataSource, DatasetConfig } from "../api/types";
-import { derivePatch, escapeInValue, withTimeRange } from "./analyticsPatch";
+import { derivePatch, escapeInValue, withDatetime, withTimeRange } from "./analyticsPatch";
 
 test("withTimeRange ajoute les bornes __gte/__lte au champ temporel (URL avec ou sans query)", () => {
   const range = { from: "2026-01-01", to: "2026-01-31" };
@@ -18,6 +18,15 @@ test("withTimeRange est neutre sans plage ou sans champ temporel", () => {
   const range = { from: "a", to: "b" };
   expect(withTimeRange("/u", undefined, range)).toBe("/u");
   expect(withTimeRange("/u", "date", null)).toBe("/u");
+});
+
+test("withDatetime pose datetime=from/to et datetime_field (ARC-02), neutre sans plage", () => {
+  const range = { from: "2026-01-01", to: "2026-01-31" };
+  expect(withDatetime("/v1/collections/c/items?limit=5", "date", range)).toBe(
+    "/v1/collections/c/items?limit=5&datetime=2026-01-01%2F2026-01-31&datetime_field=date",
+  );
+  expect(withDatetime("/u", "date", null)).toBe("/u");
+  expect(withDatetime("/u", undefined, range)).toBe("/u");
 });
 
 const EMPTY: AnalyticsContextState = { timeRange: null, extent: null, crossFilter: {} };
