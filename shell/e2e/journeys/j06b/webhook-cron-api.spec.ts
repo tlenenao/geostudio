@@ -1,4 +1,3 @@
-import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { apiFor, type Api } from "./seeds";
 import { stamp, CORE_URL } from "../_fixtures/env";
@@ -125,12 +124,9 @@ test.describe("j06b planification cron", () => {
     });
 
     // Finding j06b-013 : sans run antérieur, tout pipeline activé est « dû » au premier balayage, quel que soit son cron.
-    bug(
-      "j06b-013 : un pipeline planifié « 1er janvier 3h » ne s'exécute pas au premier balayage",
-      async () => {
-        const n = psql(`SELECT count(*) FROM pipeline_runs WHERE pipeline_item_id='${yearlyId}'`);
-        expect(Number(n.trim())).toBe(0);
-      },
-    );
+    test("j06b-013 : un pipeline planifié « 1er janvier 3h » ne s'exécute pas au premier balayage", async () => {
+      const n = psql(`SELECT count(*) FROM pipeline_runs WHERE pipeline_item_id='${yearlyId}'`);
+      expect(Number(n.trim())).toBe(0);
+    });
   });
 });

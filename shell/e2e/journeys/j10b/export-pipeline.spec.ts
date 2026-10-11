@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- corps JSON du cœur, forme libre */
-import { bug } from "../_fixtures/verify";
 import { test, expect } from "@playwright/test";
 import { spawnSync } from "node:child_process";
 import { stamp } from "../_fixtures/env";
@@ -119,49 +118,63 @@ test.describe("j10b export d'apps : pipeline API -> job -> zip", () => {
   });
 
   // Confirme j10-008 : la garde ne parcourt pas les widgets imbriqués.
-  bug(
-    "j10b-004 : widget tiers imbriqué dans tabs refusé en statique (confirme j10-008)",
-    async () => {
-      const id = await createApp(
-        creator,
-        `${tag}-nest`,
-        appConfig([
-          {
-            id: "tabs",
-            widget: "tabs",
-            x: 0,
-            y: 0,
-            w: 12,
-            h: 6,
-            props: {
-              tabs: [
-                {
-                  id: "t1",
-                  label: "A",
-                  items: [{ id: "g", widget: "acme-gauge", x: 0, y: 0, w: 4, h: 2, props: {} }],
-                },
-              ],
-            },
+  test("j10b-004 : widget tiers imbriqué dans tabs refusé en statique (confirme j10-008)", async () => {
+    // Depuis REV-278a l'écriture refuse un type inconnu : le widget tiers doit être une
+    // extension activée du tenant pour atteindre le garde d'export.
+    const admin = await apiFor("admin");
+    const extId = `${tag}-gauge`;
+    const made = await admin.send("POST", "/v1/extensions", {
+      id: extId,
+      tag: `${tag}-gauge-wc`,
+      label: "Jauge tierce",
+      moduleUrl: "https://example.org/never-loaded.js",
+      defaultSize: { w: 4, h: 2 },
+    });
+    expect(made.status).toBe(201);
+    const id = await createApp(
+      creator,
+      `${tag}-nest`,
+      appConfig([
+        {
+          id: "tabs",
+          widget: "tabs",
+          x: 0,
+          y: 0,
+          w: 12,
+          h: 6,
+          props: {
+            tabs: [
+              {
+                id: "t1",
+                label: "A",
+                items: [{ id: "g", widget: extId, x: 0, y: 0, w: 4, h: 2, props: {} }],
+              },
+            ],
           },
-        ]),
-      );
+        },
+      ]),
+    );
+    try {
       const run = await runExport(creator, id, "static");
       expect(run.result?.status).toBe("error");
-    },
-  );
+      expect(run.result?.error).toContain(`widget '${extId}' non supporté`);
+    } finally {
+      await admin.send("DELETE", `/v1/extensions/${extId}`);
+    }
+  });
 
   // Confirme j10-010 : troncature silencieuse à 50 000 enregistrements.
-  bug(
-    "j10b-005 : le gel signale une collection de plus de 50 000 lignes (confirme j10-010)",
-    async () => {
-      const col = await makeCollection(creator, `${tag}-big`, { pub: true, rows: 50_001 });
-      const id = await createApp(creator, `${tag}-bigapp`, tableApp(col.id, ["nom"]));
-      const run = await runExport(creator, id, "static");
-      const n = readBundleFile(run, "geostudio-app-config.json").dataSources[0].query.records
-        .length;
-      expect(n).toBe(50_001);
-    },
-  );
+  test("j10b-005 : le gel signale une collection de plus de 50 000 lignes (confirme j10-010)", async () => {
+    const col = await makeCollection(creator, `${tag}-big`, { pub: true, rows: 50_001 });
+    const id = await createApp(creator, `${tag}-bigapp`, tableApp(col.id, ["nom"]));
+    const run = await runExport(creator, id, "static");
+    const n = readBundleFile(run, "geostudio-app-config.json").dataSources[0].query.records.length;
+    // Plafond assumé à 50 000 (freeze.py) ; la troncature n'est plus silencieuse : job « done »
+    // avec avertissement dans `error`.
+    expect(n).toBe(50_000);
+    expect(run.result?.status).toBe("done");
+    expect(run.result?.error).toContain("tronquée à 50000");
+  });
 
   // Confirme j10-007 de bout en bout (job réel + zip), modes static et standalone.
   test("j10b-006 : les champs sensibles ne sont pas écrits dans les bundles (confirme j10-007)", async () => {
@@ -196,13 +209,17 @@ test.describe("j10b export d'apps : pipeline API -> job -> zip", () => {
 
   // FINDING j10b-007 : aucun contrôle du kind : n'importe quel item lisible
   // (site, alerte, pipeline…) est « exporté » en bundle d'app.
-  bug("j10b-007 : l'export refuse un item qui n'est pas une app", async () => {
+  test("j10b-007 : l'export refuse un item qui n'est pas une app (422)", async () => {
     const r = await creator.send("POST", "/v1/configs", {
       title: `${tag}-site`,
       config: { version: 1, kind: "site", layout: { type: "grid", items: [] } },
     });
     expect(r.status).toBe(201);
-    const run = await runExport(creator, r.body.itemId, "static");
-    expect(run.result?.status).toBe("error");
+    const post = await creator.send("POST", "/v1/app-exports", {
+      itemId: r.body.itemId,
+      mode: "static",
+    });
+    expect(post.status).toBe(422);
+    expect(JSON.stringify(post.body)).toContain("not exportable");
   });
 });

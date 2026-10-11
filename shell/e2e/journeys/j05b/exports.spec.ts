@@ -146,9 +146,11 @@ print(json.dumps(out))
     expect(job.body.status).not.toBe("pending");
   });
 
-  // Finding j05b-006 : le job déféré à la main s'exécute mais échoue après 30 s avec une trace
+  // Finding j05b-006 : le job échouait après 30 s avec une trace
   // Playwright brute (le shell embarque VITE_CORE_URL=http://localhost:8200, injoignable depuis
   // export-worker, contrainte documentée dans .env.example mais sans détection ni message).
+  // reste bug() : le worker de la stack tourne encore avec le -q coupé (corrigé dans le compose, à
+  // recréer : docker compose up -d worker) — le job est volé, erreur KeyError au lieu du message.
   bug(
     "j05b-006 : un export qui ne peut pas joindre le cœur échoue vite avec un message exploitable",
     async () => {
@@ -176,7 +178,11 @@ print(json.dumps(out))
         job = (await creator.get(`/v1/export/jobs/${id}`)).body;
         if (job.status === "done" || job.status === "error") break;
       }
-      expect(job.status).toBe("done");
+      // Stack dont VITE_CORE_URL est joignable depuis export-worker : rien à vérifier ici.
+      test.skip(job.status === "done", "cœur joignable depuis export-worker (stack configurée)");
+      // Sonde de joignabilité (export/jobs.py) : échec franc, message qui nomme la variable.
+      expect(job.status).toBe("error");
+      expect(job.error ?? "").toContain("VITE_CORE_URL");
       expect(job.error ?? "").not.toMatch(/wait_for_selector|Call log/);
     },
   );

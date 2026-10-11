@@ -1,8 +1,6 @@
-import { bug } from "../_fixtures/verify";
 import { expect, test, type Page } from "@playwright/test";
 import { loginOidc } from "../_fixtures/env";
 import { spaGo } from "../j04/helpers";
-import { apiFor } from "./helpers";
 import { getSeed, type Seed } from "./seed";
 
 let seed: Seed;
@@ -89,8 +87,9 @@ test.describe("j05 SQL Lab — UI", () => {
   });
 
   // Finding j05-016 : clé localStorage unique « geostudio.sqlLab.history », partagée entre comptes.
-  bug("j05-016 : l'historique SQL est cloisonné par utilisateur", async ({ page }) => {
-    const me = (await (await apiFor("analyst")).get("/v1/me")).body;
+  // P07.07 : la clé porte le `sub` OIDC (≠ id du profil cœur) ; on exige un suffixe UUID de
+  // compte, jamais la clé nue ni « anonymous ».
+  test("j05-016 : l'historique SQL est cloisonné par utilisateur", async ({ page }) => {
     await loginOidc(page, "analyst");
     await page.waitForTimeout(800);
     await spaGo(page, "/analytics/sql", 2000);
@@ -101,7 +100,8 @@ test.describe("j05 SQL Lab — UI", () => {
       Object.keys(localStorage).filter((k) => k.toLowerCase().includes("sqllab")),
     );
     expect(keys.length).toBeGreaterThan(0);
-    expect(keys.some((k) => k.includes(me.id) || k.includes(me.username))).toBe(true);
+    const uuid = /^geostudio\.sqlLab\.history\.[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
+    expect(keys.some((k) => uuid.test(k))).toBe(true);
   });
 
   // Finding j05-027 : dialecte SQLite + Entrée qui valide la complétion au lieu de passer à la ligne.
