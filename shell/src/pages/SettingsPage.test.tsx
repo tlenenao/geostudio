@@ -60,6 +60,8 @@ function mockPreference(value = "all") {
 }
 
 function renderPage(config: AppConfig = OIDC_CONFIG) {
+  // ARC-06 : la section « Clés d'API » charge sa liste à chaque rendu de la page.
+  server.use(http.get("https://core.test/v1/api-keys", () => HttpResponse.json([])));
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const client = createItemClient({ coreUrl: "https://core.test", getToken: () => "t" });
   return render(

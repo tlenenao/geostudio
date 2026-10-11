@@ -380,6 +380,10 @@ layers = [
     "app.catalog",
     "app.geocoding",
     "app.auth",
+    # app.apikeys (ARC-06, ADR 0016) : sous app.auth (dependency.get_current_user
+    # appelle apikeys.service.authenticate), au-dessus d'app.audit (trace d'usage)
+    # et d'app.users. Ses routes ont besoin de get_current_user : exemption nommée.
+    "app.apikeys",
     "app.audit",
     "app.users",
     "app.tenants",
@@ -443,6 +447,7 @@ ignore_imports = [
     # retirée quand cette tâche a remplacé `isAdmin`/`isAnalyst`/
     # `hasAnyEditorRole` par `role`/`privileges` : `app.auth.routes`
     # n'importe plus rien d'`app.sharing`.
+    "app.apikeys.routes -> app.auth.dependency",
     "app.auth.routes -> app.roles.repository",
     "app.auth.routes -> app.roles.privileges",
     "app.auth.routes -> app.roles.guards",
@@ -486,6 +491,7 @@ ignore_imports = [
     "app.db -> app.sharing.models",
     "app.db -> app.ingestion.models",
     "app.db -> app.notifications.models",
+    "app.db -> app.apikeys.models",
     "app.db -> app.extensions.models",
     "app.db -> app.harvest.models",
     "app.db -> app.pipelines.models",

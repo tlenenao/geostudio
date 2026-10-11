@@ -23,6 +23,7 @@ from datetime import UTC, datetime
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
+from app.apikeys.service import revoke_all_for_user
 from app.audit.writer import write_audit
 from app.notifications.models import Notification
 from app.roles.repository import count_users_with_privileges, get_role
@@ -79,6 +80,7 @@ def anonymize_user(
     user.oidc_sub = erased_sub(user.oidc_sub)
     user.erased_at = datetime.now(UTC)
 
+    revoke_all_for_user(session, tenant_id=tenant_id, user_id=user_id)
     session.execute(delete(Notification).where(Notification.recipient_user_id == user_id))
     session.execute(delete(GroupMember).where(GroupMember.user_id == user_id))
     session.flush()

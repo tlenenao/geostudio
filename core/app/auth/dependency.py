@@ -6,6 +6,7 @@ import jwt
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
+from app.apikeys import service as api_key_service
 from app.auth.export_tokens import ExportTokenError, decode_export_token, is_export_token
 from app.db import get_session
 from app.tenants.repository import get_or_create_default_tenant
@@ -179,6 +180,16 @@ def get_current_user(
     token = authorization.removeprefix("Bearer ")
 
     tenant = get_or_create_default_tenant(session)
+
+    # ARC-06 (ADR 0016) : clé d'API de service. Résout vers son créateur — mêmes
+    # rôle/partages que lui, donc même porte can()/require_privilege en aval.
+    # Avant la branche mock : en mock tout Bearer est accepté, la clé serait
+    # sinon intestable ; un jeton "gsk_" invalide reste un 401 dans tous les modes.
+    if api_key_service.is_api_key(token):
+        api_user = api_key_service.authenticate(session, token=token, tenant_id=tenant.id)
+        if api_user is None:
+            raise HTTPException(status_code=401, detail="invalid api key")
+        return api_user
 
     if _mock_mode():
         return get_or_create_user(
