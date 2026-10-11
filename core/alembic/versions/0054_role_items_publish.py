@@ -8,7 +8,7 @@ mesure ne sont PAS modifiés : un administrateur leur attribue `items.publish`
 à la carte. Une ligne audit_log « role.privilege_added » par rôle touché.
 
 Revision ID: 0054
-Revises: 0051
+Revises: 0053
 Create Date: 2026-10-11
 """
 
@@ -19,7 +19,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "0054"
-down_revision = "0051"
+down_revision = "0053"
 branch_labels = None
 depends_on = None
 

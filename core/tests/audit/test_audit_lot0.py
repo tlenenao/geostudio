@@ -123,7 +123,6 @@ def test_mcp_profile_dataset_refuses_geo_limited_user(app_client, _local_duckdb)
 # --- 4. PATCH /items : un éditeur publie à l'anonyme -----------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="REV-audit: PATCH /items isPublished sans garde 'share'")
 def test_editor_cannot_publish_item_via_patch(items_env):  # noqa: F811
     client = items_env["as_user"](items_env["editor"])
     r = client.patch("/v1/items/shared", json={"isPublished": True})

@@ -2,11 +2,8 @@
 """api_keys : clés d'API de service (ARC-06, ADR 0016)
 
 Revision ID: 0053
-Revises: 0051
+Revises: 0052
 Create Date: 2026-10-11
-
-Voie D de la vague 0 : down_revision = 0051 ; l'intégration réordonne la
-chaîne 0051 -> 0052 -> 0053 -> 0054 (0053 passera alors à down_revision 0052).
 """
 
 import sqlalchemy as sa
@@ -14,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "0053"
-down_revision = "0051"
+down_revision = "0052"
 branch_labels = None
 depends_on = None
 
