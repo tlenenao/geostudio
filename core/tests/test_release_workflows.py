@@ -85,6 +85,13 @@ def test_verify_published_checks_signatures_in_both_publish_workflows():
         steps = _load(name)["jobs"]["verify-published"]["steps"]
         assert any("--verify-signatures" in str(s.get("run", "")) for s in steps), name
         assert any(str(s.get("uses", "")).startswith("sigstore/cosign-installer@") for s in steps)
+        # cosign n'authentifie pas seul : sans login, un package GHCR privé paraît « non signé ».
+        assert any(str(s.get("uses", "")).startswith("docker/login-action@") for s in steps), name
+
+
+def test_pin_digests_waits_for_signature_verification():
+    needs = _load("release.yml")["jobs"]["pin-digests"]["needs"]
+    assert "verify-published" in needs
 
 
 def test_check_signatures_fails_on_an_unsigned_image():
