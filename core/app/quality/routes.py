@@ -68,14 +68,14 @@ def start_quality_check(
         raise HTTPException(status_code=409, detail="collection has no constraint/batch rule")
     report = repo.create_report(
         session,
-        tenant_id=user.tenant_id,
+        tenant_id=col.tenant_id,
         collection_id=col.id,
         requested_by=user.id,
         masked=not may_read_sensitive(session, user, col),
     )
     write_audit(
         session,
-        tenant_id=user.tenant_id,
+        tenant_id=col.tenant_id,
         actor_id=user.id,
         actor_kind="user",
         action="collection.quality_check",
@@ -84,7 +84,7 @@ def start_quality_check(
         payload={"collectionId": col.id},
     )
     session.commit()  # visible avant le defer (piège n°14)
-    run_quality_check_task.defer(report_id=report.id, tenant_id=user.tenant_id)
+    run_quality_check_task.defer(report_id=report.id, tenant_id=col.tenant_id)
     return _out(report)
 
 
@@ -94,10 +94,13 @@ def list_quality_checks(
     limit: int = Query(20, ge=1, le=100),
     user=Depends(get_current_user),
     session: Session = Depends(get_session, scope="function"),
+    geo_limits=Depends(get_request_geo_limits),
 ) -> list[QualityReportOut]:
     col = get_collection_for_read(session, user, collection_id)
+    # Fail-closed : un rapport couvre toute la collection, il n'est pas découpé.
+    refuse_if_geo_limited(geo_limits, col.table_name, path="quality report")
     sees = may_read_sensitive(session, user, col)
-    rows = repo.list_reports(session, tenant_id=user.tenant_id, collection_id=col.id, limit=limit)
+    rows = repo.list_reports(session, tenant_id=col.tenant_id, collection_id=col.id, limit=limit)
     return [_out(r) for r in rows if sees or r.masked]
 
 
@@ -107,9 +110,11 @@ def get_quality_check(
     report_id: str,
     user=Depends(get_current_user),
     session: Session = Depends(get_session, scope="function"),
+    geo_limits=Depends(get_request_geo_limits),
 ) -> QualityReportOut:
     col = get_collection_for_read(session, user, collection_id)
-    report = repo.get_report(session, report_id, user.tenant_id)
+    refuse_if_geo_limited(geo_limits, col.table_name, path="quality report")
+    report = repo.get_report(session, report_id, col.tenant_id)
     # Un rapport non masqué (règles sur champs sensibles) ne se lit pas par un lecteur masqué.
     if (
         report is None
