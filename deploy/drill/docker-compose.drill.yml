@@ -15,6 +15,10 @@ services:
       - keycloak-data:/opt/keycloak/data
       - ${DRILL_REALM_FILE}:/opt/keycloak/data/import/geostudio-realm.json:ro
   core:
+    # Isolation : aucun Traefik dans ce projet, mais celui d'une stack de référence lit le même
+    # docker.sock et fusionnerait nos routeurs homonymes (core, shell) avec les siens.
+    labels:
+      traefik.enable: "false"
     ports: !override
       - "${DRILL_CORE_PORT}:8200"
     depends_on: !override
@@ -23,6 +27,8 @@ services:
       minio:
         condition: service_started
   shell:
+    labels:
+      traefik.enable: "false"
     ports: !override
       - "${DRILL_SHELL_PORT}:8300"
     environment:
