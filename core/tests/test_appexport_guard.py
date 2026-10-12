@@ -328,7 +328,10 @@ def test_allowlist_matches_shell_builtin_widget_registry():
     # REV-102 : addressSearch appelle GET /v1/geocode du cœur, absent d'un export
     # statique/autoporté — exclusion volontaire de l'allowlist.
     assert "addressSearch" in registered and "addressSearch" not in _SUPPORTED_WIDGET_TYPES
-    assert registered - {"addressSearch"} == _SUPPORTED_WIDGET_TYPES
+    # ARC-26 : featureReport exporte sa fiche via le worker d'export du cœur
+    # (POST /export) — absent d'un export statique/autoporté.
+    assert "featureReport" in registered and "featureReport" not in _SUPPORTED_WIDGET_TYPES
+    assert registered - {"addressSearch", "featureReport"} == _SUPPORTED_WIDGET_TYPES
 
 
 def _nested_config(widget: str, props: dict) -> BuilderConfig:

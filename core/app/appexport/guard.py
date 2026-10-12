@@ -55,6 +55,9 @@ _SUPPORTED_WIDGET_TYPES = frozenset(
         "filter",
         "variableInput",
         "timePlayer",
+        # ARC-26 : purement clients (fonds de carte publics), sans appel au cœur.
+        "swipe",
+        "basemapGallery",
     }
 )
 

@@ -27,6 +27,7 @@ from app.collections.schema_json import table_info_to_schema
 from app.configs import repository as configs_repo
 from app.configs.alert_validation import validate_alert_payload as _validate_alert_payload
 from app.configs.bookmark_validation import validate_bookmark_payload as _validate_bookmark_payload
+from app.configs.builder_templates import build_config_from_template
 from app.configs.dataset_validation import validate_dataset_payload as _validate_dataset_payload
 from app.configs.document_validation import validate_document
 from app.configs.extension_permissions import (
@@ -227,15 +228,25 @@ def register(server: FastMCP, session_factory) -> None:
         ctx: Context,
         kind: Literal["app", "dashboard"],
         title: str,
-        config: BuilderConfig,
+        config: BuilderConfig | None = None,
+        template: str | None = None,
     ) -> ItemRead:
         """Create a new app or dashboard — mirrors POST /configs, including
         its privilege guard (apps.manage, app.roles.kind_registry::
         privilege_for_kind). The item's owner is always the
         authenticated caller; there is no owner parameter to accept from
-        the agent."""
+        the agent. Pass exactly one of `config` (full document) or
+        `template` (id of a builder gallery template of the same kind, e.g.
+        "tableau-de-bord-territorial" for a dashboard, "suivi-de-chantier" or
+        "atlas-par-entite" for an app — the same document the builder creates
+        from that template; rebind its data sources afterwards)."""
         if is_read_only_mode():
             raise ValueError("Mode démo : lecture seule, écritures désactivées.")
+        if (config is None) == (template is None):
+            raise ValueError("create_item: provide exactly one of 'config' or 'template'")
+        if template is not None:
+            config = build_config_from_template(template)
+        assert config is not None
         access_token = get_access_token()
         with request_scoped_session(session_factory) as session:
             user = resolve_actor(session, access_token)
