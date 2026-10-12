@@ -349,6 +349,8 @@ layers = [
     # relit features et téléverse en S3. La route de features le démarre par injection
     # (get_export_job_starter, câblé dans main.py) : aucune arête vers le haut.
     "app.dataexport",
+    # app.quality (ARC-14) : rapports de règles d'attributs CEL en job ; relit features.
+    "app.quality",
     "app.tileset3d",
     "app.terrain3d",
     "app.mapicons",
@@ -510,4 +512,5 @@ ignore_imports = [
     "app.db -> app.attachments.models",
     "app.db -> app.compliance.models",
     "app.db -> app.dataexport.models",
+    "app.db -> app.quality.models",
 ]

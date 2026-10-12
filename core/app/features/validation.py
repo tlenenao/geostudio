@@ -6,6 +6,8 @@ formulaires SP-4 ({"field", "code", "message"})."""
 from datetime import date, datetime
 
 from app.collections.introspection import ColumnInfo, TableInfo
+from app.features.cel_rules import constraint_errors
+from app.features.rules import apply_write_rules
 
 
 def _err(field: str, code: str, message: str) -> dict:
@@ -50,6 +52,48 @@ def geometry_type_accepted(layer_type: str | None, geometry: dict) -> bool:
     return layer_type == f"Multi{gtype}"
 
 
+def _subtype_of(info: TableInfo, props: dict) -> dict | None:
+    sub = info.subtypes
+    if not sub:
+        return None
+    value = props.get(sub["field"])
+    return next((i for i in sub["items"] if i["value"] == value), None)
+
+
+def _effective_domain(info: TableInfo, props: dict, name: str) -> dict | None:
+    """Domaine du sous-type courant s'il en déclare un pour ce champ, sinon domaine du champ ;
+    la colonne de sous-type a pour domaine implicite la liste de ses sous-types."""
+    sub = info.subtypes
+    if sub and name == sub["field"]:
+        return {"type": "list", "values": [i["value"] for i in sub["items"]]}
+    item = _subtype_of(info, props)
+    if item and name in item.get("domains", {}):
+        return item["domains"][name]
+    return info.domains.get(name)
+
+
+def _outside_domain(domain: dict, value) -> bool:
+    if domain["type"] == "list":
+        return value not in domain["values"]
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return True
+    lo, hi = domain.get("min"), domain.get("max")
+    return (lo is not None and value < lo) or (hi is not None and value > hi)
+
+
+def _domain_message(domain: dict) -> str:
+    if domain["type"] == "list":
+        return f"value not in {domain['values']}"
+    return f"value outside range [{domain.get('min')}, {domain.get('max')}]"
+
+
+def validate_for_write(info: TableInfo, feature: dict) -> list[dict]:
+    """Point d'entrée de TOUS les chemins d'écriture (REST, pipeline, import) : défauts de
+    sous-type puis calculs (ARC-13/14, mutent `feature`), puis validation."""
+    apply_write_rules(info, feature)
+    return validate_feature(info, feature)
+
+
 def validate_feature(info: TableInfo, feature: dict) -> list[dict]:
     if not isinstance(feature, dict) or feature.get("type") != "Feature":
         return [_err("", "invalid_feature", "payload must be a GeoJSON Feature")]
@@ -75,9 +119,13 @@ def validate_feature(info: TableInfo, feature: dict) -> list[dict]:
         if col.type == "enum":
             if value is not None and value not in (col.enum_values or []):
                 errors.append(_err(name, "invalid_enum", f"'{value}' not in {col.enum_values}"))
-            continue
-        if not _type_ok(col, value):
+                continue
+        elif not _type_ok(col, value):
             errors.append(_err(name, "invalid_type", f"expected {col.type}"))
+            continue
+        if value is not None and (dom := _effective_domain(info, props, name)):
+            if _outside_domain(dom, value):
+                errors.append(_err(name, "out_of_domain", _domain_message(dom)))
 
     for col in info.columns:
         if col.required and col.name not in reserved and props.get(col.name) is None:
@@ -95,4 +143,6 @@ def validate_feature(info: TableInfo, feature: dict) -> list[dict]:
             )
         elif not geometry_type_accepted(info.geometry_type, geometry):
             errors.append(_err("geometry", "geometry_mismatch", f"expected {info.geometry_type}"))
+    if not errors and info.rules:  # ARC-14 : contraintes CEL sur des valeurs déjà valides
+        errors.extend(constraint_errors(info, props))
     return errors

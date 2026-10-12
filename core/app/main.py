@@ -65,6 +65,7 @@ from app.ows import routes as ows_routes
 from app.pipelines import config_validation as pipelines_config_validation  # noqa: F401
 from app.pipelines import routes as pipelines_routes
 from app.public import routes as public_routes
+from app.quality import routes as quality_routes
 from app.quotas import routes as quotas_routes
 from app.quotas.service import QuotaExceededError
 from app.ratelimit.limiter import RateLimiter, caller_key, route_group
@@ -404,6 +405,7 @@ def create_app() -> FastAPI:
     v1_router.include_router(collections_geo_limits_routes.router)
     v1_router.include_router(catalog_routes.router)
     v1_router.include_router(features_routes.router)
+    v1_router.include_router(quality_routes.router)
     v1_router.include_router(dataexport_routes.router)
     v1_router.include_router(tiles_routes.router)
     v1_router.include_router(attachments_routes.router)

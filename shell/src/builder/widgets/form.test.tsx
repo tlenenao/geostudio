@@ -1407,3 +1407,58 @@ test("a 412 shows the conflict message and reloads the up-to-date values", async
   expect(await screen.findByText(t("widgetForm.conflict"))).toBeInTheDocument();
   expect(await screen.findByDisplayValue("Version d'un collègue")).toBeInTheDocument();
 });
+
+// ARC-13 : liste déroulante filtrée par sous-type, domaine lu au schéma courant.
+test("le sous-type choisi filtre la liste déroulante du champ et pré-remplit ses défauts", async () => {
+  const domainSchema: CollectionSchema = {
+    collection: "voirie",
+    pk: "id",
+    geometry: null,
+    fields: [
+      { name: "categorie", type: "string", required: false },
+      {
+        name: "etat",
+        type: "string",
+        required: false,
+        domain: { type: "list", values: ["bon", "moyen", "mauvais"] },
+      },
+      { name: "vitesse", type: "integer", required: false },
+    ],
+    subtypes: {
+      field: "categorie",
+      items: [
+        { value: "route", label: "Route", defaults: { vitesse: 50 } },
+        { value: "chemin", label: "Chemin", domains: { etat: { type: "list", values: ["bon"] } } },
+      ],
+    },
+  };
+  const f = (name: string, order: number): FormField => ({
+    name,
+    type: name === "vitesse" ? "integer" : "string",
+    label: name,
+    order,
+    hidden: false,
+    required: false,
+  });
+  renderConnectedForm({
+    fields: [f("categorie", 0), f("etat", 1), f("vitesse", 2)],
+    layer: "voirie",
+    client: { getCollectionSchema: vi.fn().mockResolvedValue(domainSchema) },
+  });
+  const categorie = await screen.findByRole("combobox", { name: "categorie" });
+  const options = (el: HTMLElement) =>
+    within(el)
+      .getAllByRole("option")
+      .map((o) => o.textContent);
+  expect(options(categorie)).toEqual(["", "Route", "Chemin"]);
+  expect(options(screen.getByRole("combobox", { name: "etat" }))).toEqual([
+    "",
+    "bon",
+    "moyen",
+    "mauvais",
+  ]);
+  await userEvent.selectOptions(categorie, "chemin");
+  expect(options(screen.getByRole("combobox", { name: "etat" }))).toEqual(["", "bon"]);
+  await userEvent.selectOptions(categorie, "route");
+  expect(screen.getByRole("spinbutton", { name: "vitesse" })).toHaveValue(50);
+});

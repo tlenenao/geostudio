@@ -47,6 +47,7 @@ from app.items.models import Item
 from app.mapicons.models import MapIcon
 from app.notifications.models import Notification, NotificationPreference
 from app.pipelines.models import PipelineRun
+from app.quality.models import QualityReport
 from app.reports.models import ReportRun
 from app.roles.models import Role
 from app.secrets.models import ConnectorSecret
@@ -139,6 +140,7 @@ def purge_tenant(
     counts["app_export_jobs"] = _delete_all(session, AppExportJob, tenant_id)
     counts["export_jobs"] = _delete_all(session, ExportJob, tenant_id)
     counts["collection_export_jobs"] = _delete_all(session, CollectionExportJob, tenant_id)
+    counts["quality_reports"] = _delete_all(session, QualityReport, tenant_id)
     counts["pipeline_runs"] = _delete_all(session, PipelineRun, tenant_id)
     counts["report_runs"] = _delete_all(session, ReportRun, tenant_id)
     counts["harvest_records"] = _delete_all(session, HarvestRecord, tenant_id)

@@ -28,6 +28,7 @@ def create_job(
     layer_name: str | None = None,
     wkt_field: str | None = None,
     geometry_mode: str | None = None,
+    target_collection_id: str | None = None,
 ) -> IngestionJob:
     job = IngestionJob(
         id=uuid.uuid4().hex,
@@ -42,6 +43,7 @@ def create_job(
         layer_name=layer_name,
         wkt_field=wkt_field,
         geometry_mode=geometry_mode,
+        target_collection_id=target_collection_id,
     )
     session.add(job)
     session.flush()
@@ -104,13 +106,20 @@ def mark_cancelled(session: Session, *, job_id: str) -> None:
     session.flush()
 
 
-def mark_done(session: Session, *, job_id: str, collection_id: str, item_id: str | None) -> None:
+def mark_done(
+    session: Session,
+    *,
+    job_id: str,
+    collection_id: str,
+    item_id: str | None,
+    report: dict | None = None,
+) -> None:
     # c02-006 : UPDATE conditionnel — un job déjà clos (réclamé en erreur par le
     # balayage) ne repasse jamais « done ».
     session.execute(
         update(IngestionJob)
         .where(IngestionJob.id == job_id, IngestionJob.status.notin_(_TERMINAL))
-        .values(status="done", collection_id=collection_id, item_id=item_id)
+        .values(status="done", collection_id=collection_id, item_id=item_id, report=report)
     )
     session.flush()
 

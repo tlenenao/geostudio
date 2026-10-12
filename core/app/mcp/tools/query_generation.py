@@ -16,9 +16,11 @@ from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.fastmcp import Context, FastMCP
 from pydantic import BaseModel, ValidationError, model_validator
 
+from app.collections.domains import check_rules_config
 from app.collections.introspection import TableNotFound, UnsupportedTable
 from app.collections.introspection_pg import introspect_table
 from app.collections.schema_json import table_info_to_schema
+from app.collections.schemas import AttributeRule
 from app.configs.document_validation import _cel_syntax_error
 from app.copilot.egress import EgressBlockedError
 from app.copilot.llm_provider import get_llm_provider
@@ -120,6 +122,17 @@ _CEL_CONTEXT_PROMPTS: dict[str, str] = {
     "binding": "Écris une unique expression CEL (Common Expression Language) "
     "servant de liaison dynamique (binding) d'une propriété de widget.",
 }
+
+_CEL_WORDS = frozenset({"true", "false", "null", "in", "size", "int", "double", "string", "has"})
+_CEL_IDENT_RE = re.compile(rf"{_STR}|(?<![.\w])([A-Za-z_]\w*)\b(?!\s*\()")
+
+
+def _rule_refs(expression: str) -> set[str]:
+    """Identifiants nus (colonnes) d'une expression de règle d'attribut, hors littéraux,
+    méthodes (`.startsWith(`) et mots réservés CEL."""
+    refs = {m.group(1) for m in _CEL_IDENT_RE.finditer(expression) if m.group(1)}
+    return refs - _CEL_WORDS
+
 
 _MAX_CEL_QUESTION_CHARS = 2000
 _MAX_CEL_FIELDS = 200
@@ -377,3 +390,63 @@ def register(server: FastMCP, session_factory) -> None:
         if unknown:
             raise ValueError(f"champs inconnus dans l'expression : {', '.join(unknown)}")
         return {"expression": expression}
+
+    @server.tool()
+    async def generate_attribute_rule(
+        ctx: Context,
+        collectionId: str,
+        question: str,
+        kind: Literal["calculation", "constraint", "batch"] = "constraint",
+    ) -> dict:
+        """Generate a CEL attribute rule draft ({id, kind, field, expression, message, mode})
+        for a collection from a natural-language question. The collection's columns are the
+        CEL variables. Never writes anything: the human reviews the draft and saves it via
+        PATCH /v1/collections/{id} (attributeRules). ARC-14."""
+        if len(question) > _MAX_CEL_QUESTION_CHARS:
+            raise ValueError("question trop longue (2000 caractères maximum)")
+        access_token = get_access_token()
+        with request_scoped_session(session_factory) as session:
+            user = resolve_actor(session, access_token)
+            col = require_collection_read(session, user=user, collection_id=collectionId)
+            try:
+                info = introspect_table(session, col.table_name)
+            except TableNotFound as exc:
+                raise ValueError("collection backing table not found") from exc
+            except UnsupportedTable as exc:
+                raise ValueError(exc.reason) from exc
+            info = visible_table_info(session, user, col, info)
+            schema = table_info_to_schema(info)
+        names = {f["name"] for f in schema["fields"]}
+        prompt = (
+            "Écris UNE règle d'attribut CEL (Common Expression Language) de type "
+            f"{kind} pour la collection. Les colonnes ci-dessous sont les variables CEL "
+            "(utilise leur nom nu, ex. `surface > 0.0`) ; N'utilise QUE ces colonnes. "
+            "constraint/batch : expression booléenne vraie quand la donnée est valide, et "
+            "message = explication en français affichée si elle est fausse. calculation : "
+            "expression qui calcule la valeur du champ cible `field`. Réponds uniquement par "
+            'un objet JSON {"id": slug minuscule, "field": colonne cible ou null, '
+            '"expression": str, "message": str} sans texte autour. '
+            f"Colonnes (JSON) : {json.dumps(schema['fields'])}. Question : {question}"
+        )
+        provider = get_llm_provider()
+        try:
+            turn = await provider.chat(messages=[{"role": "user", "content": prompt}], tools=[])
+        except (EgressBlockedError, httpx.HTTPError) as exc:
+            raise ValueError("le fournisseur LLM est indisponible") from exc
+        try:
+            parsed = json.loads(_strip_code_fence(turn.text))
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"réponse LLM non-JSON : {exc}") from exc
+        if not isinstance(parsed, dict):
+            raise ValueError("réponse LLM mal formée : objet JSON attendu")
+        try:
+            rule = AttributeRule.model_validate({**parsed, "kind": kind})
+        except ValidationError as exc:
+            raise ValueError(f"réponse LLM mal formée : {exc.error_count()} erreur(s)") from exc
+        draft = rule.model_dump(exclude_none=True)
+        if problems := check_rules_config(info, [draft]):
+            raise ValueError("règle invalide : " + "; ".join(problems))
+        unknown = sorted(_rule_refs(rule.expression) - names)
+        if unknown:
+            raise ValueError(f"champs inconnus dans l'expression : {', '.join(unknown)}")
+        return {"rule": draft}

@@ -43,6 +43,7 @@ from app.audit.writer import write_audit
 from app.auth.dependency import is_pipeline_file_io_enabled
 from app.cell_safety import sanitize_cell
 from app.collections import repository as collections_repo
+from app.collections.domains import with_attribute_rules
 from app.collections.introspection import (
     TableInfo,
     TableNotFound,
@@ -55,7 +56,7 @@ from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig, DatasetPayload, PipelineNode, PipelinePayload
 from app.features.repository import delete_all_features, insert_features
 from app.features.rls import rls_scope
-from app.features.validation import validate_feature
+from app.features.validation import validate_for_write
 from app.ingestion.storage import ensure_uploads_bucket
 from app.items import repository as items_repo
 from app.pipelines import compiler, connector_runtime
@@ -974,7 +975,9 @@ def _write_collection(
     collection = _require_writable_collection(
         session, tenant_id=tenant_id, user=user, collection_id=p.collectionId
     )
-    info = _table_info_for_collection(session, collection.table_name)
+    info = with_attribute_rules(  # ARC-13/14 : domaines et règles aussi pour un pipeline
+        _table_info_for_collection(session, collection.table_name), collection
+    )
     # view_by_node[node.id] is set by the caller (run_pipeline) to the
     # predecessor's view name before calling this function.
     input_view = view_by_node[node.id]
@@ -1027,7 +1030,7 @@ def _write_collection(
                 )
                 for key in reserved_on_write:
                     row.pop(key, None)
-                errors = validate_feature(
+                errors = validate_for_write(
                     info, {"type": "Feature", "properties": row, "geometry": geometry}
                 )
                 if errors:

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+import dataclasses
 import logging
 import os
 from collections.abc import Callable
@@ -14,6 +15,13 @@ from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user, get_current_user_optional
 from app.collections import repository as repo
 from app.collections.ddl import TenantColumnMismatch, sync_masked_role_grants
+from app.collections.domains import (
+    check_domain_config,
+    check_rules_config,
+    strip_hidden,
+    strip_hidden_rules,
+    with_attribute_rules,
+)
 from app.collections.introspection import (
     Introspector,
     TableNotFound,
@@ -285,6 +293,8 @@ def _collection_json(
     reveal_sensitive: bool = False,
     geo_limited: bool = False,
 ) -> dict:
+    hidden = [] if reveal_sensitive else col.sensitive_fields
+    field_domains, subtypes = strip_hidden(col.field_domains, col.subtypes, hidden)
     return {
         "id": col.id,
         "title": col.title,
@@ -302,6 +312,9 @@ def _collection_json(
         "owner": owner,
         "attachmentFields": col.attachment_fields,
         "sensitiveFields": col.sensitive_fields if reveal_sensitive else [],
+        "fieldDomains": field_domains,
+        "subtypes": subtypes or None,
+        "attributeRules": strip_hidden_rules(col.attribute_rules, hidden),
         "license": col.license,
         "licenseUri": col.license_uri,
         "producer": col.producer,
@@ -700,8 +713,16 @@ def get_collection_schema(
         raise HTTPException(status_code=404, detail="backing table not found") from exc
     except UnsupportedTable as exc:
         raise HTTPException(status_code=409, detail=exc.reason) from exc
+    info = with_attribute_rules(info, col)
     if not _may_see_sensitive(session, user, col):
         info = hide_sensitive_columns(info, col.sensitive_fields)
+        domains, subtypes = strip_hidden(info.domains, info.subtypes, col.sensitive_fields)
+        info = dataclasses.replace(
+            info,
+            domains=domains,
+            subtypes=subtypes,
+            rules=strip_hidden_rules(info.rules, col.sensitive_fields),
+        )
     return table_info_to_schema(info, attachment_fields=col.attachment_fields)
 
 
@@ -763,6 +784,30 @@ def _reject_invalid_sensitive_fields(
         )
 
 
+def _dump_domain(dom) -> dict:
+    return {k: v for k, v in dom.model_dump().items() if v is not None}
+
+
+def _reject_invalid_domains(
+    session: Session, col, field_domains: dict, subtypes: dict, introspect: Introspector
+) -> None:
+    try:
+        info = introspect(session, col.table_name)
+    except (TableNotFound, UnsupportedTable):
+        return
+    if problems := check_domain_config(info, field_domains, subtypes):
+        raise HTTPException(status_code=422, detail="; ".join(problems))
+
+
+def _reject_invalid_rules(session: Session, col, rules: list, introspect: Introspector) -> None:
+    try:
+        info = introspect(session, col.table_name)
+    except (TableNotFound, UnsupportedTable):
+        return
+    if problems := check_rules_config(info, rules):
+        raise HTTPException(status_code=422, detail="; ".join(problems))
+
+
 @router.patch("/collections/{collection_id}")
 def patch_collection(
     collection_id: str,
@@ -804,6 +849,41 @@ def patch_collection(
         )
     if body.sensitiveFields is not None:
         _reject_invalid_sensitive_fields(session, col, body.sensitiveFields, introspect)
+    new_domains = (
+        {k: _dump_domain(v) for k, v in body.fieldDomains.items()}
+        if body.fieldDomains is not None
+        else None
+    )
+    new_subtypes = None
+    if "subtypes" in body.model_fields_set:  # null explicite = effacer
+        new_subtypes = (
+            {
+                "field": body.subtypes.field,
+                "items": [
+                    {
+                        "value": i.value,
+                        "label": i.label,
+                        "defaults": i.defaults,
+                        "domains": {k: _dump_domain(v) for k, v in i.domains.items()},
+                    }
+                    for i in body.subtypes.items
+                ],
+            }
+            if body.subtypes
+            else {}
+        )
+    if new_domains is not None or new_subtypes is not None:
+        _reject_invalid_domains(
+            session,
+            col,
+            col.field_domains if new_domains is None else new_domains,
+            col.subtypes if new_subtypes is None else new_subtypes,
+            introspect,
+        )
+    new_rules = None
+    if body.attributeRules is not None:
+        new_rules = [r.model_dump(exclude_none=True) for r in body.attributeRules]
+        _reject_invalid_rules(session, col, new_rules, introspect)
     eff_start = (
         body.temporalStart if "temporalStart" in body.model_fields_set else col.temporal_start
     )
@@ -843,6 +923,12 @@ def patch_collection(
         col.temporal_end = body.temporalEnd
     if body.attachmentFields is not None:
         col.attachment_fields = [f.model_dump() for f in body.attachmentFields]
+    if new_domains is not None:
+        col.field_domains = new_domains
+    if new_subtypes is not None:
+        col.subtypes = new_subtypes
+    if new_rules is not None:
+        col.attribute_rules = new_rules
     if body.sensitiveFields is not None:
         sync_masked_role_grants(session, col.table_name, body.sensitiveFields)
         col.sensitive_fields = body.sensitiveFields

@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
+from app.collections.repository import get_access_facts
+from app.collections.routes import get_readable_collection
 from app.db import get_session
 from app.ingestion import repository as repo
 from app.ingestion.parsers import (
@@ -44,6 +46,7 @@ from app.items.models import Item
 from app.quotas.service import enforce_storage_quota
 from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
+from app.sharing.authorization import can
 from app.users.models import User
 
 router = APIRouter()
@@ -182,7 +185,21 @@ def create_upload_job(
     # résultat (app.roles.kind_registry::privilege_for_kind mappe "map" sur
     # maps.manage) — la garde ci-dessus ne couvrait que la moitié de ce que
     # cette route crée réellement.
-    require_privilege(session, user, Privilege.MAPS_MANAGE.value)
+    if body.collectionId is None:
+        require_privilege(session, user, Privilege.MAPS_MANAGE.value)
+    else:
+        # ARC-13 : un ajout n'écrit que des entités — droit d'écriture sur la collection
+        # (404 si elle n'est pas lisible, 403 sinon), revérifié par le worker à l'exécution.
+        col = get_readable_collection(session, user, body.collectionId)
+        if not col.editable or not can(
+            session,
+            user_id=user.id,
+            action="write",
+            item=get_access_facts(col),
+            kind="collection",
+            actor_is_admin=user.is_admin,
+        ):
+            raise HTTPException(status_code=403, detail="write access required")
     # La clé est censée venir du présigné (/uploads/presign), qui la préfixe
     # toujours par le tenant de l'appelant — un client qui en soumet une
     # sous le préfixe d'un AUTRE tenant (deviné, réutilisé depuis une fuite,
@@ -208,6 +225,7 @@ def create_upload_job(
         layer_name=body.layerName,
         wkt_field=body.wktField,
         geometry_mode=body.geometryMode,
+        target_collection_id=body.collectionId,
     )
     write_audit(
         session,
@@ -251,6 +269,7 @@ def _job_status(session: Session, job) -> IngestionJobStatus:
         collectionId=job.collection_id,
         itemId=job.item_id,
         itemResourceType=item.resource_type if item is not None else None,
+        report=job.report,
     )
 
 
