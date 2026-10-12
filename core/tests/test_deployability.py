@@ -719,6 +719,14 @@ def test_core_env_default_cannot_silently_satisfy_the_mock_mode_guard():
     )
 
 
+def test_ows_flag_is_wired_to_core_and_off_by_default():
+    """ARC-11 / ADR 0018 : CORE_OWS_ENABLED est câblée sur `core` (qui monte les
+    routes WFS/Tiles) et la valeur RÉSOLUE sans .env est « false » : capacité
+    absente tant que l'opérateur ne l'allume pas (piège n°2, par valeur)."""
+    raw = services(BASE)["core"]["environment"]["CORE_OWS_ENABLED"]
+    assert _resolve_effective_value(raw, "CORE_OWS_ENABLED") == "false"
+
+
 def test_worker_has_a_resolved_memory_limit():
     """REV-275 (d) : borner la mémoire du PROCESS worker (t03b-008 ne borne que
     l'écrivain). Vérifie la valeur RÉSOLUE sans `.env` (piège n°2 : une
