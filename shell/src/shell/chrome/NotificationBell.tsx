@@ -33,6 +33,7 @@ const KIND_LABEL_KEYS: Record<NotificationSummary["kind"], MessageKey> = {
   tileset3d: "notifications.kindTileset3d",
   terrain3d: "notifications.kindTerrain3d",
   data_export: "notifications.kindDataExport",
+  submission: "notifications.kindSubmission",
 };
 
 const PREFERENCE_LABEL_KEYS: Record<NotificationPreferenceValue, MessageKey> = {

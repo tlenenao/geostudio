@@ -120,6 +120,7 @@ export const fr = {
   "notifications.kindTileset3d": "Tileset 3D",
   "notifications.kindTerrain3d": "Terrain 3D",
   "notifications.kindDataExport": "Export de données",
+  "notifications.kindSubmission": "Soumission à modérer",
   "notifications.panel": "Centre de notifications",
   "notifications.preference": "Préférence de notification",
   "notifications.unread": "Non lue",

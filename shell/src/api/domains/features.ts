@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { CollectionAdmin, FeatureVersion, GeoJSONFeatureInput, ItemClient } from "../types";
+import type {
+  CollectionAdmin,
+  FeatureVersion,
+  GeoJSONFeatureInput,
+  ItemClient,
+  Submission,
+  SubmissionTokenInfo,
+} from "../types";
 import type { ItemClientBase } from "../base";
 import { FeatureValidationError, parseErrorResponse } from "../base";
 
@@ -40,6 +47,12 @@ type FeaturesMethods = Pick<
   | "getFeature"
   | "listFeatureHistory"
   | "restoreFeatureVersion"
+  | "listSubmissions"
+  | "approveSubmission"
+  | "rejectSubmission"
+  | "listSubmissionTokens"
+  | "createSubmissionToken"
+  | "revokeSubmissionToken"
 >;
 
 export function createFeaturesMethods(base: ItemClientBase): FeaturesMethods {
@@ -111,6 +124,49 @@ export function createFeaturesMethods(base: ItemClientBase): FeaturesMethods {
         "POST",
         `/collections/${collectionId}/items/${fid}/history/${versionId}/restore`,
       );
+    },
+
+    async listSubmissions(collectionId: string) {
+      const data = await request<{ submissions: Submission[] }>(
+        "GET",
+        `/collections/${collectionId}/submissions`,
+      );
+      return data.submissions;
+    },
+
+    async approveSubmission(collectionId: string, submissionId: string) {
+      await request<unknown>(
+        "POST",
+        `/collections/${collectionId}/submissions/${submissionId}/approve`,
+      );
+    },
+
+    async rejectSubmission(collectionId: string, submissionId: string, reason: string) {
+      await request<void>(
+        "POST",
+        `/collections/${collectionId}/submissions/${submissionId}/reject`,
+        { reason },
+      );
+    },
+
+    async listSubmissionTokens(collectionId: string) {
+      const data = await request<{ tokens: SubmissionTokenInfo[] }>(
+        "GET",
+        `/collections/${collectionId}/submission-tokens`,
+      );
+      return data.tokens;
+    },
+
+    async createSubmissionToken(collectionId: string, input) {
+      return request<SubmissionTokenInfo & { token: string }>(
+        "POST",
+        `/collections/${collectionId}/submission-tokens`,
+        input,
+      );
+    },
+
+    async revokeSubmissionToken(collectionId: string, tokenId: string) {
+      await request<void>("DELETE", `/collections/${collectionId}/submission-tokens/${tokenId}`);
     },
 
     async getFeature(collectionId: string, fid: string) {

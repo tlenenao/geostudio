@@ -135,7 +135,8 @@ export type NotificationSummary = {
     | "harvest"
     | "tileset3d"
     | "terrain3d"
-    | "data_export";
+    | "data_export"
+    | "submission";
   status: "success" | "failure";
   itemId: string | null;
   itemResourceType: ResourceType | null;
@@ -575,6 +576,25 @@ export type MapIconOut = {
 // GET /pipelines/{id}/runs, GET /alerts/{id}/evaluations.
 export type PageParams = { limit?: number; offset?: number };
 
+export interface Submission {
+  id: string;
+  status: "pending" | "approved" | "rejected";
+  properties: Record<string, unknown>;
+  geometry: unknown;
+  attachment: { filename: string; contentType: string; byteSize: number } | null;
+  createdAt: string | null;
+}
+
+export interface SubmissionTokenInfo {
+  id: string;
+  name: string;
+  prefix: string;
+  expiresAt: string | null;
+  maxSubmissions: number;
+  submissionCount: number;
+  revokedAt: string | null;
+}
+
 export interface ItemClient {
   listItems(params?: ListItemsParams): Promise<ItemPage>;
   getItemFacets(
@@ -853,6 +873,17 @@ export interface ItemClient {
     opts?: { ifMatch?: string },
   ): Promise<void>;
   deleteFeature(collectionId: string, fid: string, opts?: { ifMatch?: string }): Promise<void>;
+  /** Soumission publique modérée (ARC-10). Optionnels : absents d'un client sans cœur. */
+  listSubmissions?(collectionId: string): Promise<Submission[]>;
+  approveSubmission?(collectionId: string, submissionId: string): Promise<void>;
+  rejectSubmission?(collectionId: string, submissionId: string, reason: string): Promise<void>;
+  listSubmissionTokens?(collectionId: string): Promise<SubmissionTokenInfo[]>;
+  /** Le jeton en clair n'est renvoyé qu'ici, une seule fois. */
+  createSubmissionToken?(
+    collectionId: string,
+    input: { name: string; expiresInDays: number; maxSubmissions: number },
+  ): Promise<SubmissionTokenInfo & { token: string }>;
+  revokeSubmissionToken?(collectionId: string, tokenId: string): Promise<void>;
   /** Historique d'une entité (ARC-15), plus récent d'abord. Optionnel : absent d'un client sans cœur. */
   listFeatureHistory?(collectionId: string, fid: string): Promise<FeatureVersion[]>;
   /** Restaure l'état APRÈS d'une version (ARC-15) : écriture normale, journalisée `restore`. */
