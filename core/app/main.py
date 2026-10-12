@@ -61,6 +61,7 @@ from app.jobs.engine import jobs_backlog
 from app.mapicons import routes as mapicons_routes
 from app.mcp.server import create_mcp_server
 from app.notifications import routes as notifications_routes
+from app.ows import routes as ows_routes
 from app.pipelines import config_validation as pipelines_config_validation  # noqa: F401
 from app.pipelines import routes as pipelines_routes
 from app.public import routes as public_routes
@@ -424,6 +425,8 @@ def create_app() -> FastAPI:
         v1_router.include_router(export_routes.router)
     if is_appexport_enabled():
         v1_router.include_router(appexport_routes.router)
+    if ows_routes.is_ows_enabled():  # ARC-11 : WFS + OGC API Tiles (ADR 0018)
+        v1_router.include_router(ows_routes.router)
     if is_tileset3d_enabled():
         v1_router.include_router(tileset3d_routes.router)
     if is_terrain3d_enabled():
