@@ -110,3 +110,41 @@ def test_mark_error_sets_status_and_message(env):
         job = repo.get_job(s, tenant_id=tenant.id, job_id=job_id)
         assert job.status == "error"
         assert job.error_message == "archive zip invalide"
+
+
+def test_reclaim_stuck_jobs_marks_old_active_jobs_error_and_spares_recent_and_done(env):
+    """REV-345 : balayage des jobs zombies `pending`/`finalizing`."""
+    from datetime import UTC, datetime, timedelta
+
+    from app.tileset3d.models import Tileset3DJob
+
+    Session, tenant, alice = env
+    with Session() as s:
+        ids = {}
+        for name in ("old_pending", "old_finalizing", "recent", "old_done"):
+            job = repo.create_job(
+                s,
+                tenant_id=tenant.id,
+                created_by=alice.id,
+                source_key=f"{tenant.id}/{name}/city.zip",
+                upload_id=f"mpu-{name}",
+                filename="city.zip",
+                title=name,
+            )
+            ids[name] = job.id
+        s.commit()
+        repo.mark_finalizing(s, job_id=ids["old_finalizing"])
+        s.get(Tileset3DJob, ids["old_done"]).status = "done"
+        s.commit()
+        old = datetime.now(UTC) - timedelta(minutes=120)
+        for name in ("old_pending", "old_finalizing", "old_done"):
+            s.get(Tileset3DJob, ids[name]).updated_at = old
+        s.commit()
+
+        reclaimed = repo.reclaim_stuck_jobs(s, older_than_minutes=60)
+        s.commit()
+
+        assert {j.id for j in reclaimed} == {ids["old_pending"], ids["old_finalizing"]}
+        assert s.get(Tileset3DJob, ids["old_pending"]).status == "error"
+        assert s.get(Tileset3DJob, ids["recent"]).status == "pending"
+        assert s.get(Tileset3DJob, ids["old_done"]).status == "done"

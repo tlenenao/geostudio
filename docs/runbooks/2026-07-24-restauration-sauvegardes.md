@@ -340,3 +340,28 @@ reconnecté, pas seulement par l'API). Un échec à l'étape 6 (impossible de
 se reconnecter) est le signal le plus grave possible de ce runbook — à
 documenter précisément (message d'erreur réel), jamais à arrondir en
 « probablement OK ».
+
+## 8. Drill automatisé (ARC-19)
+
+`scripts/replay/drill.sh` rejoue de bout en bout, sans intervention, les étapes 1 à 7 sur une stack
+**jetable** : projet compose dédié (`arc1-drill`, `.env` généré, volumes propres — jamais `./.env` ni
+la stack de référence ; le script refuse le projet `geostudio` et tout port occupé).
+
+```bash
+scripts/replay/drill.sh                          # CI : ports 8180/8300/8200/9000
+DRILL_PORT_OFFSET=10000 scripts/replay/drill.sh  # poste de dev avec une stack déjà levée
+DRILL_FALSIFY=1 ...                              # auto-test : le drill DOIT échouer (sentinelle retirée)
+```
+
+Déroulé : stack OIDC réelle -> alice crée une carte -> sentinelle dans chacun des 7 buckets sauvegardés
+-> `backup.sh` réel (clé `age` jetable) -> sonde de fraîcheur (`.last_success`) -> `down -v` ->
+`restore.sh` -> redémarrage -> sentinelles relues, realm Keycloak servi, reconnexion OIDC du même
+compte et carte visible. Échec (code 1) si un bucket sauvegardé est manquant ou altéré, si l'export du
+realm est absent de l'archive ou le realm non servi après restauration, si la fraîcheur est périmée,
+si la reconnexion échoue, ou si `DRILL_RTO_MAX_S` est dépassé. Les 2 buckets non sauvegardés par
+décision (`exports`, `appexports`, régénérables) ne sont pas vérifiés : le « 9 buckets » se lit 7 + 2.
+
+Temps publié : `.replay-results/drill/result.json` (artefact CI `restore-drill-result` et résumé du job
+hebdomadaire `.github/workflows/restore-drill.yml`). Mesure locale (2026-10-12, images en cache) :
+`restore.sh` 44 s, stack saine 110 s après `down -v`, **RTO jusqu'à reconnexion OIDC : 129 s**,
+sauvegarde 5 s. En CI (build à froid) le total est plus long ; le plafond CI est 900 s.

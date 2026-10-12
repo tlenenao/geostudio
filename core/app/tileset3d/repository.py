@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import uuid
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
@@ -71,3 +72,41 @@ def mark_error(session: Session, *, job_id: str, error_message: str) -> None:
     job.status = "error"
     job.error_message = error_message
     session.flush()
+
+
+# Seuil de reprise (minutes), > timeout de conversion (15 min) ; pas de variable d'env (YAGNI).
+RECLAIM_MINUTES = 60
+
+
+def reclaim_stuck_jobs(
+    session: Session, *, older_than_minutes: int | None = None
+) -> list[Tileset3DJob]:
+    """REV-345 : jobs restés `pending`/`finalizing` au-delà du seuil (worker tué,
+    `.defer()` perdu) -> `error`. Conditionnel sur le statut lu : un `done` committé
+    entre-temps n'est pas écrasé. Même patron que app.appexport.repository."""
+    threshold = datetime.now(UTC) - timedelta(minutes=older_than_minutes or RECLAIM_MINUTES)
+    rows = (
+        session.execute(
+            select(Tileset3DJob).where(
+                Tileset3DJob.status.in_(("pending", "finalizing")),
+                Tileset3DJob.updated_at < threshold,
+            )
+        )
+        .scalars()
+        .all()
+    )
+    reclaimed: list[Tileset3DJob] = []
+    for job in rows:
+        claimed = session.execute(
+            update(Tileset3DJob)
+            .where(Tileset3DJob.id == job.id, Tileset3DJob.status == job.status)
+            .values(
+                status="error",
+                error_message="finalisation abandonnée (worker arrêté ou file perdue)",
+            )
+        )
+        if claimed.rowcount:  # type: ignore[attr-defined]
+            reclaimed.append(job)
+    if reclaimed:
+        session.flush()
+    return reclaimed

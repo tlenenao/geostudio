@@ -7,6 +7,9 @@ import { readFileSync, writeFileSync } from "node:fs";
 // RESTORE_PHASE=before : alice crée une carte. RESTORE_PHASE=after : même compte, après sinistre.
 const ALICE = { username: "alice", password: "Demo1234!" };
 const PHASE = process.env.RESTORE_PHASE;
+// scripts/replay/drill.sh décale les ports pour cohabiter avec une stack de référence.
+const SHELL_URL = process.env.OIDC_SHELL_URL ?? "http://localhost:8300";
+const CORE_URL = process.env.OIDC_CORE_URL ?? "http://localhost:8200";
 const ID_FILE = process.env.RESTORE_ID_FILE ?? "../.replay-results/restore-item-id";
 
 test.setTimeout(120_000);
@@ -15,12 +18,12 @@ test.setTimeout(120_000);
 // n'expose aucun CORS global.
 async function allowCrossOriginCore(page: Page) {
   const cors = {
-    "access-control-allow-origin": "http://localhost:8300",
+    "access-control-allow-origin": SHELL_URL,
     "access-control-allow-headers": "authorization, content-type, if-match",
     "access-control-allow-methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
     "access-control-expose-headers": "etag, location",
   };
-  await page.route(/:8200\/v1\//, async (route) => {
+  await page.route(`${CORE_URL}/v1/**`, async (route) => {
     if (route.request().method() === "OPTIONS")
       return route.fulfill({ status: 204, headers: cors });
     try {

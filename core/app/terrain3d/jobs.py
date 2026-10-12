@@ -222,3 +222,29 @@ def _purge_raw_upload(
                 job_id,
                 source_key,
             )
+
+
+@app.periodic(cron="*/5 * * * *")
+@app.task(queue="terrain3d", queueing_lock="sweep_terrain3d_jobs_task")
+def sweep_terrain3d_jobs_task(timestamp: int) -> None:
+    """REV-345 : réclame les jobs terrain3d zombies (worker tué pendant la conversion, defer
+    perdu) — même patron que sweep_appexport_jobs_task. Chaque job repris est notifié."""
+    factory = _session_factory()
+    with request_scoped_session(factory) as session:
+        reclaimed = [
+            (j.tenant_id, j.created_by, j.title, j.error_message)
+            for j in terrain3d_repo.reclaim_stuck_jobs(session)
+        ]
+        session.commit()
+    for tenant_id, user_id, title, error in reclaimed:
+        notify_best_effort(
+            factory,
+            tenant_id=tenant_id,
+            recipient_user_id=user_id,
+            kind="terrain3d",
+            status="failure",
+            item_id=None,
+            item_resource_type=None,
+            item_title=title,
+            error=error,
+        )

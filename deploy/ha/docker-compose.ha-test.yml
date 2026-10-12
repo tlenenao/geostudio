@@ -1,0 +1,48 @@
+# Surcouche du test de HA bornée (ARC-18, ADR 0019, scripts/replay/ha-failover.sh).
+# Appliquée par-dessus docker-compose.yml sous un projet dédié (`-p arc1-ha`) :
+#   - `core` sans port hôte (2 réplicas ne peuvent pas se partager 8200) : l'accès passe par Traefik ;
+#     en production l'overlay prod fait déjà `ports: !reset []`, `--scale core=2` y marche tel quel ;
+#   - ports décalés, titiler retiré du démarrage de `core` (inutile ici) ;
+#   - Traefik ISOLÉ de la stack de référence : voir la note du script (labels `traefik.enable`
+#     retirés par docker-compose.ha-labels.yml généré, provider contraint au projet).
+# Variables HA_* fournies par le --env-file généré par le script.
+services:
+  minio:
+    ports: !override
+      - "${HA_MINIO_PORT}:9000"
+      - "${HA_MINIO_CONSOLE_PORT}:9001"
+  core:
+    ports: !reset []
+    depends_on: !override
+      pgbouncer:
+        condition: service_started
+      minio:
+        condition: service_started
+  shell:
+    ports: !reset []
+  traefik:
+    command: !override
+      - --providers.docker=true
+      # Isolation (piège vécu en préparation) : le Traefik de la stack de référence lit le même
+      # docker.sock. Ici exposedbydefault=true + contrainte sur le projet compose, et les services
+      # routés n'ont PAS le label traefik.enable=true (cf. générateur) : l'autre Traefik, en
+      # exposedbydefault=false, les ignore ; celui-ci ne voit que ce projet.
+      - --providers.docker.exposedbydefault=true
+      - "--providers.docker.constraints=Label(`com.docker.compose.project`,`${HA_PROJECT}`)"
+      - --providers.docker.network=${HA_PROJECT}_gis-net
+      - --providers.file.directory=/csp-dynamic
+      - --providers.file.watch=true
+      - --ping=true
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      # Résolveur déclaré pour que les routeurs `tls.certresolver=letsencrypt` restent valides ; ACME
+      # échoue (pas de DNS public), Traefik sert son certificat par défaut auto-signé.
+      - --certificatesresolvers.letsencrypt.acme.email=ha-test@example.org
+      - --certificatesresolvers.letsencrypt.acme.storage=/tmp/acme.json
+      - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
+    ports: !override
+      - "${HA_HTTP_PORT}:80"
+      - "${HA_HTTPS_PORT}:443"
+    volumes: !override
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - csp-dynamic-conf:/csp-dynamic
