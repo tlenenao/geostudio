@@ -338,6 +338,10 @@ export const widgets = {
   // Widget Carte (mapWidget.tsx)
   "widgetMap.strokeLegendAria": "Contour",
   "widgetMap.iconLegendAria": "Icônes",
+  "widgetMap.advancedLegendAria": "Légende du mode de symbologie",
+  "widgetMap.bivariateAxes": "{fieldX} (→) × {fieldY} (↑)",
+  "widgetMap.compareCaption": "{fieldA} − {fieldB}",
+  "widgetMap.dotDensityCaption": "1 point = {value} ({field})",
   "widgetMap.paletteLabel": "Carte",
   "widgetMap.dataSourceConfig": "Source de données",
   "widgetMap.layerTitle": "Données",

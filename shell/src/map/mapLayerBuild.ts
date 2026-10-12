@@ -4,12 +4,18 @@ import { type ExpressionSpecification, type FilterSpecification } from "maplibre
 import type { ClusterConfig, DataRecord, MapLayer, ThemeColors } from "../api/types";
 import {
   buildMapPaint,
+  paintExtrasOf,
   renderAsFor,
   symbologyToPaintInputs,
   type GeometryKind,
   type LayerLabel,
   type MapPaintResult,
 } from "../builder/widgets/mapSymbology";
+import {
+  EMPTY_DOTS,
+  buildEffectLayers,
+  type LayerEffects,
+} from "../builder/widgets/advancedSymbology";
 import { t } from "../i18n";
 import { readToken } from "../lib/theme";
 import "../i18n/domains/map";
@@ -74,11 +80,15 @@ export const SUBLAYER_SUFFIXES = [
   "__agg",
   "__cluster",
   "__cluster_count",
+  "__fx_shadow",
+  "__fx_bloom",
+  "__fx_blend",
+  "__dots",
 ] as const;
 
 // Les sources auxiliaires posées par applyLayers, à retirer avec la couche.
 // (`__labels` est une SOURCE, `__label` la couche qui la consomme.)
-export const SUBSOURCE_SUFFIXES = ["__labels"] as const;
+export const SUBSOURCE_SUFFIXES = ["__labels", "__dotsrc"] as const;
 
 // Le `paint` de l'auteur est typé pour UNE géométrie : poser un "fill-color"
 // sur un layer "circle" fait lever MapLibre, et la garde par couche
@@ -123,11 +133,14 @@ export function effectivePaint(
     layer.symbology,
     themeColors,
   );
-  return buildMapPaint(encodings, colorDomain, sizeDomain, geometryKind, palette, {
-    stroke,
-    opacity: layer.symbology.opacity,
-    icon: layer.symbology.icon,
-  });
+  return buildMapPaint(
+    encodings,
+    colorDomain,
+    sizeDomain,
+    geometryKind,
+    palette,
+    paintExtrasOf(layer.symbology, stroke),
+  );
 }
 
 // `AddLayerObject` est une union discriminée par `type` : un `type` calculé ne
@@ -293,6 +306,56 @@ export function addLabelLayer(
     },
   } as maplibregl.AddLayerObject);
   return true;
+}
+
+// ARC-17 : couches « dessous » (ombre, halo, fusion) posées AVANT la couche
+// principale, sans handler de clic (comme le contour). Retourne les ids posés.
+export function addEffectLayers(
+  map: maplibregl.Map,
+  spec: {
+    parentId: string;
+    source: string;
+    sourceLayer?: string;
+    filter?: FilterSpecification;
+    renderAs: "fill" | "circle" | "line";
+    paint: Record<string, unknown>;
+    effects: LayerEffects | undefined;
+  },
+): string[] {
+  return buildEffectLayers(spec.effects, spec.renderAs, spec.paint).map((fx) => {
+    const id = `${spec.parentId}${fx.suffix}`;
+    map.addLayer(
+      {
+        id,
+        type: fx.type,
+        source: spec.source,
+        ...(spec.sourceLayer !== undefined ? { "source-layer": spec.sourceLayer } : {}),
+        ...(spec.filter !== undefined ? { filter: spec.filter } : {}),
+        paint: fx.paint,
+      } as maplibregl.AddLayerObject,
+      spec.parentId,
+    );
+    return id;
+  });
+}
+
+// ARC-17 Dot Density : source GeoJSON de points remplie par
+// `refreshDotSources` (mapApplyLayers) depuis les polygones chargés, comme
+// les étiquettes.
+export function addDotLayer(
+  map: maplibregl.Map,
+  spec: { parentId: string; color: string },
+  lastLabelPayloads: Map<string, string>,
+) {
+  const sourceId = `${spec.parentId}__dotsrc`;
+  map.addSource(sourceId, { type: "geojson", data: EMPTY_DOTS });
+  lastLabelPayloads.set(sourceId, JSON.stringify(EMPTY_DOTS));
+  map.addLayer({
+    id: `${spec.parentId}__dots`,
+    type: "circle",
+    source: sourceId,
+    paint: { "circle-color": spec.color, "circle-radius": 2 },
+  });
 }
 
 export function makeFeatureClickHandler(

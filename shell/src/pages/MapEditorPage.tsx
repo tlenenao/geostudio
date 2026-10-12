@@ -4,7 +4,11 @@ import { useInstanceInfo, useItem, useMapConfig, useSaveMap } from "../api/hooks
 import { useItemClient } from "../api/ItemClientProvider";
 import type { MapConfig, MapLayer, MapTerrainConfig, PrintLayoutConfig } from "../api/types";
 import { hasPermission } from "../auth/permissions";
-import { buildLegend, symbologyToPaintInputs } from "../builder/widgets/mapSymbology";
+import {
+  buildLegend,
+  paintExtrasOf,
+  symbologyToPaintInputs,
+} from "../builder/widgets/mapSymbology";
 import { MapSymbologyLegend } from "../map/MapSymbologyLegend";
 import type { MapViewHandle } from "../map/MapView";
 // Lazy, comme mapWidget.tsx/ExplorerDrawer.tsx : un import statique ici
@@ -308,7 +312,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
                       sizeDomain,
                       l.geometryKind ?? "polygon",
                       palette,
-                      { stroke, icon: l.symbology.icon },
+                      paintExtrasOf(l.symbology, stroke),
                     );
                     return legend ? (
                       <MapSymbologyLegend key={l.id} legend={legend} variant="static" />

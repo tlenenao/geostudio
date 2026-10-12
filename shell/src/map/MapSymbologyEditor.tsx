@@ -14,6 +14,7 @@ import { LUCIDE_ICONS, type IconCategory } from "../builder/widgets/iconLibrary"
 import { Button } from "../ui/kit/Button";
 import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
+import { AdvancedSymbologyEditor } from "./AdvancedSymbologyEditor";
 import { FieldClassificationPicker, type ClassifiedEncoding } from "./FieldClassificationPicker";
 import { labelCls, inputCls } from "./formFieldStyles";
 import type { ThemeColors } from "../api/types";
@@ -752,6 +753,12 @@ export function MapSymbologyEditor({
         </div>
       )}
 
+      <AdvancedSymbologyEditor
+        value={value}
+        availableFields={availableFields}
+        runStatistics={runStatistics}
+        onChange={onChange}
+      />
       {!value?.label && (
         <Button
           type="button"

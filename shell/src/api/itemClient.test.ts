@@ -4829,3 +4829,62 @@ test("REV-317 : updateItem envoie baseUpdatedAt en If-Match (hors corps) ; sans 
     status: 412,
   });
 });
+
+// ARC-17 : chaque mode avancé et les effets survivent au rechargement (piège n°5).
+test.each([
+  { advanced: { kind: "dotDensity", field: "pop", valuePerDot: 50, color: "#dc2626" } },
+  { advanced: { kind: "predominant", fields: ["a", "b", "c"] } },
+  {
+    advanced: {
+      kind: "bivariate",
+      fieldX: "x",
+      fieldY: "y",
+      domainX: { min: 0, max: 9 },
+      domainY: { min: 1, max: 8 },
+      computedAt: "2026-10-12T00:00:00.000Z",
+    },
+  },
+  {
+    advanced: {
+      kind: "compare",
+      fieldA: "a",
+      fieldB: "b",
+      maxAbs: 12,
+      computedAt: "2026-10-12T00:00:00.000Z",
+    },
+    effects: { bloom: true, shadow: true, blend: true },
+  },
+])("getMapConfig round-trippe la symbologie avancée %j", async (symbology) => {
+  server.use(
+    http.get("https://core.test/v1/configs/by-item/77", () =>
+      HttpResponse.json({
+        id: "cfg-1",
+        itemId: "77",
+        kind: "map",
+        config: {
+          kind: "map",
+          map: {
+            basemap: { style: "https://demo/s.json" },
+            view: { center: [1, 47], zoom: 8 },
+            layers: [
+              {
+                id: "c",
+                title: "C",
+                visible: true,
+                kind: "vector",
+                tilesUrl: "https://core.test/collections/c/tiles/{z}/{x}/{y}.mvt",
+                sourceLayer: "c",
+                collectionId: "c",
+                geometryKind: "polygon",
+                pkColumn: "id",
+                symbology,
+              },
+            ],
+          },
+        },
+      }),
+    ),
+  );
+  const cfg = await makeClient().getMapConfig("77");
+  expect((cfg.layers[0] as { symbology?: unknown }).symbology).toEqual(symbology);
+});
