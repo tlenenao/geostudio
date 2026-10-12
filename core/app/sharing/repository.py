@@ -201,6 +201,10 @@ def add_member(
     if existing is None:
         session.add(GroupMember(group_id=group_id, user_id=user_id, tenant_id=tenant_id))
         session.flush()
+    elif existing.origin != "manual":
+        # ARC-24 : un ajout humain prime — la synchro ne le retirera plus.
+        existing.origin = "manual"
+        session.flush()
     return True
 
 
