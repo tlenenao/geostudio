@@ -46,7 +46,7 @@ def run_batch(
     read_info = dataclasses.replace(info, geometry_column=None, geometry_type=None)
     cursor = None
     while True:
-        with rls_scope(session, tenant_id, masked=masked):
+        with rls_scope(session, tenant_id, masked=masked, geo_limits={}):
             page = features_repo.select_features(
                 session, read_info, limit=PAGE_SIZE, offset=0, after=cursor, count_mode="none"
             )
