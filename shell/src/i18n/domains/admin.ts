@@ -284,6 +284,17 @@ export const admin = {
   // UsersAdminPage
   "usersAdmin.roleUpdateError": "Échec de la mise à jour du rôle.",
   "usersAdmin.title": "Utilisateurs",
+  "claimMap.title": "Groupes issus de l'annuaire (IdP)",
+  "claimMap.help":
+    "Les utilisateurs dont le jeton porte cette valeur rejoignent le groupe à la connexion. Les ajouts manuels ne sont jamais retirés ; un groupe ne donne que du partage, jamais un rôle.",
+  "claimMap.claimLabel": "Valeur du claim",
+  "claimMap.groupLabel": "Groupe",
+  "claimMap.add": "Ajouter le mapping",
+  "claimMap.remove": "Retirer le mapping {claim} vers {group}",
+  "claimMap.empty": "Aucun mapping : aucun groupe n'est alimenté par l'annuaire.",
+  "claimMap.loadError": "Échec du chargement des mappings.",
+  "claimMap.saveError": "Échec de l'enregistrement du mapping (déjà existant ?).",
+  "claimMap.pickGroup": "Choisir un groupe",
   "usersAdmin.loadError": "Échec du chargement des utilisateurs.",
   "usersAdmin.rolesLoadError":
     "Le chargement des rôles a échoué (privilège « Gestion des rôles » requis en plus de « Gestion des utilisateurs » pour afficher cette page).",

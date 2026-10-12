@@ -320,6 +320,8 @@ export type UpdatePatch = {
 // canManage : l'appelant est créateur du groupe ou administrateur des
 // utilisateurs (membres, renommage, suppression) — calculé par le cœur (j13-006).
 export type Group = { id: string; title: string; createdBy?: string; canManage?: boolean };
+// ARC-24 (ADR 0022) : mapping administré valeur de claim IdP -> groupe du cœur.
+export type GroupClaimMapping = { id: string; groupId: string; claimValue: string };
 export type GroupMember = { userId: string; username: string; email: string | null };
 export type DirectoryUser = { id: string; username: string; email: string | null };
 export type ShareLinkInfo = {
@@ -709,6 +711,9 @@ export interface ItemClient {
   removeGroupMember(groupId: string, userId: string): Promise<void>;
   renameGroup(groupId: string, name: string): Promise<Group>;
   deleteGroup(groupId: string): Promise<void>;
+  listGroupClaimMappings(): Promise<GroupClaimMapping[]>;
+  createGroupClaimMapping(groupId: string, claimValue: string): Promise<GroupClaimMapping>;
+  deleteGroupClaimMapping(mappingId: string): Promise<void>;
   // j13-005 : annuaire restreint (catalog.manage) pour ajouter un membre.
   searchUserDirectory(q: string): Promise<DirectoryUser[]>;
   getSharing(pk: string): Promise<Sharing>;

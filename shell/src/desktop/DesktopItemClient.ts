@@ -262,6 +262,15 @@ export function createDesktopItemClient(connection: {
     async deleteGroup(..._args: unknown[]) {
       return unsupported();
     },
+    async listGroupClaimMappings(..._args: unknown[]) {
+      return unsupported();
+    },
+    async createGroupClaimMapping(..._args: unknown[]) {
+      return unsupported();
+    },
+    async deleteGroupClaimMapping(..._args: unknown[]) {
+      return unsupported();
+    },
     async searchUserDirectory(..._args: unknown[]) {
       return unsupported();
     },

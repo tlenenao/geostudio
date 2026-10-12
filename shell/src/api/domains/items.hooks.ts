@@ -222,6 +222,33 @@ export function useDeleteGroup(groupId: string) {
   });
 }
 
+export function useGroupClaimMappings() {
+  const client = useItemClientInternal();
+  return useQuery({
+    queryKey: ["group-claim-mappings"],
+    queryFn: () => client.listGroupClaimMappings(),
+  });
+}
+
+export function useCreateGroupClaimMapping() {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { groupId: string; claimValue: string }) =>
+      client.createGroupClaimMapping(v.groupId, v.claimValue),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["group-claim-mappings"] }),
+  });
+}
+
+export function useDeleteGroupClaimMapping() {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (mappingId: string) => client.deleteGroupClaimMapping(mappingId),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["group-claim-mappings"] }),
+  });
+}
+
 /** Annuaire restreint (j13-005) : actif dès 2 caractères saisis. */
 export function useUserDirectory(q: string) {
   const client = useItemClientInternal();
