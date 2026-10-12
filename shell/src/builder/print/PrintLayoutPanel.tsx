@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
+import { useState, type ChangeEvent } from "react";
 import type { PrintLayoutConfig } from "../../api/types";
 import { t } from "../../i18n";
+import { Button } from "../../ui/kit/Button";
 import { NativeSelect } from "../../ui/kit/NativeSelect";
 import { Input } from "../../ui/kit/Input";
 import { Textarea } from "../../ui/kit/Textarea";
 import "../../i18n/domains/widgets";
+
+// ~200 Ko : borne la config (le cœur plafonne le data URI à 400 000 car.).
+const MAX_LOGO_BYTES = 200_000;
 
 const DEFAULTS: Required<Pick<PrintLayoutConfig, "pageSize" | "orientation" | "showLegend">> = {
   pageSize: "a4",
@@ -20,6 +25,24 @@ export function PrintLayoutPanel({
   onChange: (next: PrintLayoutConfig | null) => void;
 }) {
   const current = { ...DEFAULTS, ...(value ?? {}) };
+
+  const [logoError, setLogoError] = useState<string | null>(null);
+
+  // Le logo est embarqué en data URI dans la config (jamais une URL : le
+  // navigateur du worker d'export ne fait aucune requête sortante).
+  function onLogoFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.size > MAX_LOGO_BYTES) {
+      setLogoError(t("printLayout.logoTooLarge"));
+      return;
+    }
+    setLogoError(null);
+    const reader = new FileReader();
+    reader.onload = () => patch({ logo: String(reader.result) });
+    reader.readAsDataURL(file);
+  }
 
   function patch(partial: Partial<PrintLayoutConfig>) {
     onChange({ ...current, ...partial });
@@ -68,13 +91,22 @@ export function PrintLayoutPanel({
         />
         {t("printLayout.legendLabel")}
       </label>
-      {/* showScaleBar/showNorthArrow (fix round, finding I4) were removed
-          entirely from PrintLayoutConfig/PrintLayout (core schema, REV-128):
-          they were authorable, validated, and round-tripped but never
-          actually rendered anywhere in map or app export views — inert
-          fields that silently did nothing. Real scale-bar/north-arrow
-          rendering remains out of scope; if it's ever built, it should add
-          new fields rather than resurrect these. */}
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={current.scaleBar ?? false}
+          onChange={(e) => patch({ scaleBar: e.target.checked })}
+        />
+        {t("printLayout.scaleBarLabel")}
+      </label>
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={current.northArrow ?? false}
+          onChange={(e) => patch({ northArrow: e.target.checked })}
+        />
+        {t("printLayout.northArrowLabel")}
+      </label>
       <label className="flex flex-col gap-1 text-sm">
         {t("printLayout.cartoucheLabel")}
         <Textarea
@@ -82,6 +114,33 @@ export function PrintLayoutPanel({
           onChange={(e) => patch({ cartouche: e.target.value || null })}
         />
       </label>
+      <label className="flex flex-col gap-1 text-sm">
+        {t("printLayout.freeTextLabel")}
+        <Textarea
+          value={current.freeText ?? ""}
+          onChange={(e) => patch({ freeText: e.target.value || null })}
+        />
+      </label>
+      <div className="flex flex-col gap-1 text-sm">
+        <label className="flex flex-col gap-1">
+          {t("printLayout.logoLabel")}
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/svg+xml,image/webp"
+            onChange={onLogoFile}
+          />
+        </label>
+        {current.logo && (
+          <Button type="button" variant="outline" size="sm" onClick={() => patch({ logo: null })}>
+            {t("printLayout.logoRemove")}
+          </Button>
+        )}
+        {logoError && (
+          <p role="alert" className="text-xs text-danger">
+            {logoError}
+          </p>
+        )}
+      </div>
     </div>
   );
 }

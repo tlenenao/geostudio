@@ -4,12 +4,8 @@ import { useInstanceInfo, useItem, useMapConfig, useSaveMap } from "../api/hooks
 import { useItemClient } from "../api/ItemClientProvider";
 import type { MapConfig, MapLayer, MapTerrainConfig, PrintLayoutConfig } from "../api/types";
 import { hasPermission } from "../auth/permissions";
-import {
-  buildLegend,
-  paintExtrasOf,
-  symbologyToPaintInputs,
-} from "../builder/widgets/mapSymbology";
-import { MapSymbologyLegend } from "../map/MapSymbologyLegend";
+import { LayerSymbologyLegends } from "../map/LayerSymbologyLegends";
+import { PrintLayerTitles, PrintOverlays } from "../builder/print/PrintOverlays";
 import type { MapViewHandle } from "../map/MapView";
 // Lazy, comme mapWidget.tsx/ExplorerDrawer.tsx : un import statique ici
 // neutralisait leur propre lazy() de MapView (Rollup ne peut isoler un
@@ -199,33 +195,21 @@ export function MapEditorPage({ pk }: { pk: string }) {
               setMapReady(true);
             }}
             hideLegend
+            showScaleBar={draft.printLayout?.scaleBar}
             getAuthToken={client.getAuthToken}
             getCoreUrl={client.getCoreUrl}
             loadCustomIcon={(iconId) => client.fetchMapIconBlob(iconId)}
           />
         </Suspense>
-        {draft.printLayout?.title && (
-          // gs-raw-color-ok: bg-white/90, cf. commentaire plus haut
-          <div className="absolute left-2 top-2 rounded bg-white/90 px-2 py-1 text-sm font-medium">
-            {draft.printLayout.title}
-          </div>
-        )}
-        {draft.printLayout?.showLegend && (
-          // gs-raw-color-ok: bg-white/90, cf. commentaire plus haut
-          <ul className="absolute bottom-2 left-2 rounded bg-white/90 px-2 py-1 text-xs">
-            {draft.layers
-              .filter((l) => l.visible)
-              .map((l) => (
-                <li key={l.id}>{l.title}</li>
-              ))}
-          </ul>
-        )}
-        {draft.printLayout?.cartouche && (
-          // gs-raw-color-ok: bg-white/90, cf. commentaire plus haut
-          <div className="absolute bottom-2 right-2 rounded bg-white/90 px-2 py-1 text-xs">
-            {draft.printLayout.cartouche}
-          </div>
-        )}
+        <PrintOverlays
+          layout={draft.printLayout}
+          legend={
+            <>
+              <PrintLayerTitles titles={draft.layers.filter((l) => l.visible)} />
+              <LayerSymbologyLegends layers={draft.layers} />
+            </>
+          }
+        />
       </div>
     );
   }
@@ -297,27 +281,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
                 data-testid="map-symbology-legend-panel"
                 className="pointer-events-none absolute bottom-2 right-2 z-10 flex flex-col gap-2"
               >
-                {draft.layers
-                  .filter(
-                    (l): l is Extract<MapLayer, { kind: "vector" }> =>
-                      l.kind === "vector" && l.visible,
-                  )
-                  .map((l) => {
-                    if (!l.symbology) return null;
-                    const { encodings, colorDomain, sizeDomain, palette, stroke } =
-                      symbologyToPaintInputs(l.symbology, undefined);
-                    const legend = buildLegend(
-                      encodings,
-                      colorDomain,
-                      sizeDomain,
-                      l.geometryKind ?? "polygon",
-                      palette,
-                      paintExtrasOf(l.symbology, stroke),
-                    );
-                    return legend ? (
-                      <MapSymbologyLegend key={l.id} legend={legend} variant="static" />
-                    ) : null;
-                  })}
+                <LayerSymbologyLegends layers={draft.layers} />
               </div>
             </div>
           ),

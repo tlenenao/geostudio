@@ -117,6 +117,10 @@ export const MapView = forwardRef<
     // REV-304 : fenêtre du contexte temps global, appliquée par setFilter aux
     // couches `vector` qui déclarent un `timeField` (sans les reconstruire).
     timeRange?: { from: string; to: string } | null;
+    // ARC-16 : échelle graphique MapLibre (mode export, `printLayout.scaleBar`).
+    // Monté une fois ; la largeur affichée est calculée par MapLibre depuis la
+    // résolution réelle au centre de la carte (mesurée en E2E à ±1 %).
+    showScaleBar?: boolean;
   }
   // Il n'y a délibérément pas de prop `exprContext` : le gabarit de popup
   // n'a qu'un seul vocabulaire, `record.*` (cf. popupContent.ts). La prop
@@ -139,6 +143,7 @@ export const MapView = forwardRef<
     getShareLinkToken,
     loadCustomIcon,
     timeRange,
+    showScaleBar,
   },
   ref,
 ) {
@@ -342,6 +347,9 @@ export const MapView = forwardRef<
     const overlay = new MapboxOverlay({ layers: [], interleaved: true });
     overlayRef.current = overlay;
     map.addControl(overlay);
+    if (showScaleBar) {
+      map.addControl(new maplibregl.ScaleControl({ maxWidth: 160, unit: "metric" }), "bottom-left");
+    }
     map.on("load", () => {
       styleLoadedRef.current = true;
       setReadyMap(map);

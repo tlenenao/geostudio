@@ -398,6 +398,9 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async getExportJob(..._args: unknown[]) {
       return unsupported();
     },
+    async cancelExport(..._args: unknown[]) {
+      return unsupported();
+    },
     async createAppExport(..._args: unknown[]) {
       return unsupported();
     },

@@ -22,6 +22,7 @@ import { markExportReady } from "../shell/exportReady";
 import { ExportPanel } from "../builder/print/ExportPanel";
 import { t } from "../i18n";
 import { LoadingState } from "../ui/kit/LoadingState";
+import { PrintLayerTitles, PrintOverlays } from "../builder/print/PrintOverlays";
 import "../i18n/domains/misc";
 import "../i18n/domains/widgets";
 
@@ -237,25 +238,11 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
           MapEditorPage (SP-B12a grounding): a print artifact meant to look
           like paper, not UI chrome — it must stay light regardless of
           ambiance, so it is deliberately NOT a --gs-* token. */}
-      {isExportRender && query.data.printLayout?.title && (
-        // gs-raw-color-ok: bg-white/90, cf. commentaire plus haut
-        <div className="absolute left-2 top-2 rounded bg-white/90 px-2 py-1 text-sm font-medium">
-          {query.data.printLayout.title}
-        </div>
-      )}
-      {isExportRender && query.data.printLayout?.showLegend && legendLayers.length > 0 && (
-        // gs-raw-color-ok: bg-white/90, cf. commentaire plus haut
-        <ul className="absolute bottom-2 left-2 rounded bg-white/90 px-2 py-1 text-xs">
-          {legendLayers.map((layer) => (
-            <li key={layer.id}>{layer.title}</li>
-          ))}
-        </ul>
-      )}
-      {isExportRender && query.data.printLayout?.cartouche && (
-        // gs-raw-color-ok: bg-white/90, cf. commentaire plus haut
-        <div className="absolute bottom-2 right-2 rounded bg-white/90 px-2 py-1 text-xs">
-          {query.data.printLayout.cartouche}
-        </div>
+      {isExportRender && (
+        <PrintOverlays
+          layout={query.data.printLayout}
+          legend={legendLayers.length > 0 ? <PrintLayerTitles titles={legendLayers} /> : undefined}
+        />
       )}
       <Dialog
         open={saveDialogOpen}

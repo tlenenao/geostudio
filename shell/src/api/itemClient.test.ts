@@ -4047,6 +4047,16 @@ test("getExportJob GETs the job status by id", async () => {
   });
 });
 
+test("cancelExport POSTs the cancel route and returns the job status (ARC-16)", async () => {
+  server.use(
+    http.post("https://core.test/v1/export/jobs/job-1/cancel", () =>
+      HttpResponse.json({ id: "job-1", status: "cancel_requested", resultUrl: null, error: null }),
+    ),
+  );
+  const job = await makeClient().cancelExport("job-1");
+  expect(job.status).toBe("cancel_requested");
+});
+
 test("createEmptyCollection posts to /collections/empty and returns the created id", async () => {
   let body: unknown;
   server.use(

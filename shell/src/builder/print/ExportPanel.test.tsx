@@ -189,3 +189,26 @@ describe("ExportPanel — plafond de poll (finding I7)", () => {
     expect(getExportJob.mock.calls.length).toBe(callsAtCap);
   });
 });
+
+describe("ExportPanel ARC-16", () => {
+  it("ARC-16 : propose SVG, et annule un export en cours puis affiche l'annulation demandée", async () => {
+    const createExport = vi.fn().mockResolvedValue({ jobId: "job-1" });
+    const getExportJob = vi
+      .fn()
+      .mockResolvedValue({ id: "job-1", status: "running", resultUrl: null, error: null });
+    const cancelExport = vi
+      .fn()
+      .mockResolvedValue({ id: "job-1", status: "cancel_requested", resultUrl: null, error: null });
+    renderPanel({ createExport, getExportJob, cancelExport });
+    await userEvent.click(screen.getByRole("button", { name: "Exporter" }));
+    await userEvent.click(screen.getByRole("button", { name: "SVG" }));
+    expect(createExport).toHaveBeenCalledWith("item-1", "svg");
+    await userEvent.click(await screen.findByRole("button", { name: "Annuler l'export" }));
+    expect(cancelExport).toHaveBeenCalledWith("job-1");
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent("Annulation demandée"),
+    );
+    // plus de bouton d'annulation une fois la demande faite
+    expect(screen.queryByRole("button", { name: "Annuler l'export" })).toBeNull();
+  });
+});

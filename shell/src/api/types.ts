@@ -428,6 +428,11 @@ export type PrintLayoutConfig = {
   title?: string | null;
   showLegend?: boolean;
   cartouche?: string | null;
+  // ARC-16 : éléments de gabarit (logo = data URI, jamais une URL).
+  scaleBar?: boolean;
+  northArrow?: boolean;
+  freeText?: string | null;
+  logo?: string | null;
 };
 
 export type MapConfig = {
@@ -878,6 +883,7 @@ export interface ItemClient {
   ): Promise<{ columns: string[]; rows: unknown[][]; truncated: boolean }>;
   createExport(itemId: string, format: ExportFormat): Promise<{ jobId: string }>;
   getExportJob(jobId: string): Promise<ExportJob>;
+  cancelExport(jobId: string): Promise<ExportJob>;
   createAppExport(itemId: string, mode: AppExportMode): Promise<{ jobId: string }>;
   getAppExportJob(itemId: string, jobId: string): Promise<AppExportJobStatus>;
   createTileset3DUpload(input: { filename: string; title: string }): Promise<{ jobId: string }>;
@@ -1429,8 +1435,9 @@ export type PipelineOpEntry = {
 
 export type PipelineOpsCatalog = Record<string, PipelineOpEntry>;
 
-export type ExportFormat = "png" | "pdf";
-export type ExportJobStatus = "pending" | "running" | "done" | "error";
+export type ExportFormat = "png" | "pdf" | "svg";
+export type ExportJobStatus =
+  "pending" | "running" | "done" | "error" | "cancelled" | "cancel_requested";
 export type ExportJob = {
   id: string;
   status: ExportJobStatus;

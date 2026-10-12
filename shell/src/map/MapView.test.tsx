@@ -17,7 +17,10 @@ import { validateStyleMin } from "@maplibre/maplibre-gl-style-spec";
 
 vi.mock("maplibre-gl", async () => {
   const { MockMap } = await import("../test/MockMaplibreMap");
-  return { Map: MockMap, setWorkerUrl: () => {} };
+  class ScaleControl {
+    constructor(public opts: unknown) {}
+  }
+  return { Map: MockMap, ScaleControl, setWorkerUrl: () => {} };
 });
 
 vi.mock("@deck.gl/mapbox", async () => {
@@ -67,6 +70,19 @@ test("initializes a MapLibre map with the basemap and view", () => {
   expect(mapInstances[0].opts.style).toBe("https://demotiles.maplibre.org/style.json");
   expect(mapInstances[0].opts.center).toEqual([2.35, 48.85]);
   expect(mapInstances[0].opts.zoom).toBe(5);
+});
+
+test("ARC-16 : monte une échelle graphique seulement avec showScaleBar", () => {
+  const scaleControls = () =>
+    (mapInstances[0].controls as { opts?: unknown }[]).filter(
+      (c) => c.constructor.name === "ScaleControl",
+    );
+  const { unmount } = render(<MapView config={config} />);
+  expect(scaleControls()).toHaveLength(0);
+  unmount();
+  mapInstances.length = 0;
+  render(<MapView config={config} showScaleBar />);
+  expect(scaleControls()).toHaveLength(1);
 });
 
 test("removes the map on unmount", () => {
