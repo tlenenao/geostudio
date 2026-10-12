@@ -52,6 +52,7 @@ from app.features import tiles as tiles_routes
 from app.geocoding import routes as geocoding_routes
 from app.harvest import dataset_validation as harvest_dataset_validation  # noqa: F401
 from app.harvest import routes as harvest_routes
+from app.history import routes as history_routes
 from app.ingestion import routes as ingestion_routes
 from app.ingestion.storage import require_public_s3_endpoint
 from app.instance import routes as instance_routes
@@ -403,6 +404,7 @@ def create_app() -> FastAPI:
     v1_router.include_router(collections_geo_limits_routes.router)
     v1_router.include_router(catalog_routes.router)
     v1_router.include_router(features_routes.router)
+    v1_router.include_router(history_routes.router)
     v1_router.include_router(dataexport_routes.router)
     v1_router.include_router(tiles_routes.router)
     v1_router.include_router(attachments_routes.router)

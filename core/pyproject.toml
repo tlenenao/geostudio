@@ -361,6 +361,9 @@ layers = [
     "app.dcat",
     "app.stac",
     "app.features",
+    # app.history (ARC-15) : journal d'entité ; écrit par app.features.routes (au-dessus),
+    # lit les collections/privilèges (en dessous).
+    "app.history",
     "app.attachments",
     "app.collections",
     "app.configs",
@@ -507,4 +510,5 @@ ignore_imports = [
     "app.db -> app.attachments.models",
     "app.db -> app.compliance.models",
     "app.db -> app.dataexport.models",
+    "app.db -> app.history.models",
 ]

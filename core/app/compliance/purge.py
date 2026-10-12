@@ -41,6 +41,7 @@ from app.dataexport.models import CollectionExportJob
 from app.export.models import ExportJob
 from app.extensions.models import Extension
 from app.harvest.models import HarvestRecord, HarvestSource
+from app.history.models import EntityHistory
 from app.ingestion.models import IngestionJob
 from app.ingestion.routes import get_uploads_bucket
 from app.items.models import Item
@@ -117,6 +118,7 @@ def purge_tenant(
     #    items, sans quoi leur suppression — explicite ou via cascade
     #    depuis configs->items — violerait leur propre FK non-cascade).
     counts["config_revisions"] = _delete_all(session, ConfigRevision, tenant_id)
+    counts["entity_history"] = _delete_all(session, EntityHistory, tenant_id)  # ARC-15
     counts["alert_evaluations"] = _delete_all(session, AlertEvaluation, tenant_id)
     # result_key capturé AVANT suppression des lignes : ExportJob/
     # AppExportJob vivent dans 2 buckets non tenant-préfixés (renders/
