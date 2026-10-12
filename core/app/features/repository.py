@@ -175,8 +175,16 @@ def _where(
     bbox_srid: int = 4326,
     datetime_: str | None = None,
     datetime_field: str | None = None,
+    cql2: str | None = None,
+    cql2_srid: int = 4326,
 ):
     clauses, params = [], {}
+    if cql2 is not None:
+        from app.features.cql2 import compile_cql2  # import tardif : cql2 importe ce module
+
+        sql, cql_params = compile_cql2(session, info, cql2, srid=cql2_srid)
+        clauses.append(sql)
+        params.update(cql_params)
     if datetime_ is not None:
         clauses.append(_temporal_clause(session, info, datetime_, datetime_field, params))
     if filters:
@@ -305,6 +313,8 @@ def _select_features(
     datetime_field: str | None = None,
     out_srid: int | None = None,
     bbox_srid: int = 4326,
+    cql2: str | None = None,
+    cql2_srid: int = 4326,
     src: str,
 ) -> FeaturePage:
     if after is not None and offset > 0:
@@ -322,6 +332,8 @@ def _select_features(
         bbox_srid=bbox_srid,
         datetime_=datetime_,
         datetime_field=datetime_field,
+        cql2=cql2,
+        cql2_srid=cql2_srid,
     )
     page_where, page_params = where, dict(params)
     if after is not None:
