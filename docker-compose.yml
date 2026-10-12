@@ -251,6 +251,7 @@ services:
       CORE_ENV: ${CORE_ENV:-}
       CORE_OIDC_ISSUER: ${CORE_OIDC_ISSUER:-http://localhost:8180/realms/geostudio}
       CORE_OIDC_AUDIENCE: ${CORE_OIDC_AUDIENCE:-geostudio-core}
+      CORE_OIDC_GROUPS_CLAIM: ${CORE_OIDC_GROUPS_CLAIM:-groups}
       CORE_OIDC_JWKS_URL: ${CORE_OIDC_JWKS_URL:-http://keycloak:8080/realms/geostudio/protocol/openid-connect/certs}
       CORE_MCP_AUDIENCE: ${CORE_MCP_AUDIENCE:-geostudio-mcp}
       CORE_BASE_URL: ${CORE_BASE_URL:-http://localhost:8200}
