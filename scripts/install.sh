@@ -242,6 +242,21 @@ configure_otel_export() {
 
 configure_otel_export
 
+configure_capability_flags() {
+  # REV-355 : un profil compose démarre le conteneur, pas la capacité — sans
+  # CORE_EXPORT_ENABLED / CORE_APPEXPORT_ENABLED le cœur refuse les exports
+  # (même classe que CORE_ETL_ENABLED, piège n°2). Un flag par profil.
+  local p export_enabled=false appexport_enabled=false
+  for p in "${SELECTED_PROFILES[@]+"${SELECTED_PROFILES[@]}"}"; do
+    [ "$p" = "export" ] && export_enabled=true
+    [ "$p" = "appexport" ] && appexport_enabled=true
+  done
+  set_env_var CORE_EXPORT_ENABLED "$export_enabled"
+  set_env_var CORE_APPEXPORT_ENABLED "$appexport_enabled"
+}
+
+configure_capability_flags
+
 prompt_etl_engine() {
   echo ""
   local etl_enabled=false
