@@ -41,12 +41,14 @@ from app.dataexport.models import CollectionExportJob
 from app.export.models import ExportJob
 from app.extensions.models import Extension
 from app.harvest.models import HarvestRecord, HarvestSource
+from app.history.models import EntityHistory
 from app.ingestion.models import IngestionJob
 from app.ingestion.routes import get_uploads_bucket
 from app.items.models import Item
 from app.mapicons.models import MapIcon
 from app.notifications.models import Notification, NotificationPreference
 from app.pipelines.models import PipelineRun
+from app.public_submit.models import Submission, SubmissionToken
 from app.quality.models import QualityReport
 from app.reports.models import ReportRun
 from app.roles.models import Role
@@ -118,6 +120,7 @@ def purge_tenant(
     #    items, sans quoi leur suppression — explicite ou via cascade
     #    depuis configs->items — violerait leur propre FK non-cascade).
     counts["config_revisions"] = _delete_all(session, ConfigRevision, tenant_id)
+    counts["entity_history"] = _delete_all(session, EntityHistory, tenant_id)  # ARC-15
     counts["alert_evaluations"] = _delete_all(session, AlertEvaluation, tenant_id)
     # result_key capturé AVANT suppression des lignes : ExportJob/
     # AppExportJob vivent dans 2 buckets non tenant-préfixés (renders/
@@ -145,6 +148,8 @@ def purge_tenant(
     counts["report_runs"] = _delete_all(session, ReportRun, tenant_id)
     counts["harvest_records"] = _delete_all(session, HarvestRecord, tenant_id)
     counts["configs"] = _delete_all(session, Config, tenant_id)
+    counts["submissions"] = _delete_all(session, Submission, tenant_id)
+    counts["submission_tokens"] = _delete_all(session, SubmissionToken, tenant_id)
     session.flush()
 
     # 2. Collections : dépublication CDC + DROP réel de la table dynamique
@@ -181,7 +186,13 @@ def purge_tenant(
     #    ci-dessus) + les 2 buckets de sortie de job (result_key connu,
     #    pas de préfixe commun, cf. spec §1.4/§3.1).
     counts["s3_objects_deleted"] = 0
-    for bucket_getter in (get_uploads_bucket, get_tileset3d_bucket, get_terrain3d_bucket):
+    # ARC-10 : pièces jointes de soumissions en attente (aucune ligne `attachments`).
+    for bucket_getter in (
+        get_uploads_bucket,
+        get_tileset3d_bucket,
+        get_terrain3d_bucket,
+        get_attachments_bucket,
+    ):
         counts["s3_objects_deleted"] += _delete_tenant_prefixed_objects(
             s3, bucket_getter(), tenant_id
         )

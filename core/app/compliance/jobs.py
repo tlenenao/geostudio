@@ -14,6 +14,7 @@ import os
 from app.compliance.orphans import sweep_orphan_job_objects
 from app.compliance.purge import purge_tenant
 from app.db import request_scoped_session
+from app.history.service import purge_expired as purge_expired_history
 from app.ingestion.storage import make_s3_client
 from app.jobs import app
 from app.jobs.common import session_factory as _session_factory
@@ -56,3 +57,14 @@ def sweep_orphan_job_objects_task(timestamp: int) -> None:
         n = sweep_orphan_job_objects(session, s3_client_from_env())
     if n:
         logging.getLogger(__name__).info("%d objet(s) S3 orphelin(s) supprimé(s)", n)
+
+
+@app.periodic(cron="41 3 * * *")
+@app.task(queue="etl", queueing_lock="purge_entity_history_task")
+def purge_entity_history_task(timestamp: int) -> None:
+    """Rétention du journal d'entité (ARC-15, 365 j)."""
+    with request_scoped_session(_session_factory()) as session:
+        n = purge_expired_history(session)
+        session.commit()
+    if n:
+        logging.getLogger(__name__).info("%d version(s) d'historique expirée(s) purgée(s)", n)

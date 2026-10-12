@@ -52,7 +52,7 @@ def test_0056_columns_on_non_empty_base_both_ways(throwaway_database_url):
     previous = os.environ.get("DATABASE_URL")
     os.environ["DATABASE_URL"] = throwaway_database_url
     try:
-        command.upgrade(cfg, "0054")
+        command.upgrade(cfg, "0055")
         engine = sa.create_engine(throwaway_database_url)
         with engine.begin() as conn:
             conn.execute(
@@ -89,7 +89,7 @@ def test_0056_columns_on_non_empty_base_both_ways(throwaway_database_url):
             ).one()
         assert row == ("{}", "{}")  # collection préexistante : aucun domaine
         command.upgrade(cfg, "head")  # rejouable
-        command.downgrade(cfg, "0054")
+        command.downgrade(cfg, "0055")
         cols = {c["name"] for c in sa.inspect(engine).get_columns("collections")}
         assert not {"field_domains", "subtypes"} & cols
         with engine.connect() as conn:  # la base préexistante est intacte

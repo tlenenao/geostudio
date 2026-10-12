@@ -63,6 +63,7 @@ from app.features.etag import feature_etag, if_match_satisfied
 from app.features.repository import SUPPORTED_EPSG, CursorError, FilterError
 from app.features.validation import validate_for_write
 from app.filter_values import fold_query_filters
+from app.history import service as history
 from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
 from app.sharing.authorization import can
@@ -891,6 +892,7 @@ def create_feature(
                 geometry=payload.get("geometry"),
             )
             _set_etag(response, session, repo, info, fid)
+            after = history.snapshot(repo.get_feature(session, info, fid=str(fid)))
     except IntegrityError as exc:
         raise HTTPException(
             status_code=409, detail="feature conflicts with an existing row"
@@ -898,6 +900,16 @@ def create_feature(
     except DBAPIError as exc:
         _raise_if_outside_geo_limit(exc)
         raise
+    history.record_change(  # ARC-15 : même transaction que l'écriture
+        session,
+        tenant_id=col.tenant_id,
+        collection_id=col.id,
+        fid=str(fid),
+        op="create",
+        before=None,
+        after=after,
+        actor_id=user.id,
+    )
     session.execute(
         text("UPDATE collections SET feature_count = feature_count + 1 WHERE id = :id"),
         {"id": col.id},
@@ -936,11 +948,31 @@ def put_feature(
     masked: bool = Depends(get_masked_for_user),
 ):
     col = _get_writable(session, user, collection_id)
+    _replace(
+        col,
+        fid,
+        payload,
+        response,
+        if_match,
+        user,
+        session,
+        introspect,
+        repo,
+        rls,
+        masked,
+        "update",
+    )
+
+
+def _replace(
+    col, fid, payload, response, if_match, user, session, introspect, repo, rls, masked, op
+):
     masked = unmask_for_owner(masked, user, col)
     # GAP-22 : le PUT remplace tout — sans ça, un utilisateur masqué mettrait à
     # NULL les colonnes sensibles qu'il n'a jamais vues. Retirées de `info`,
     # elles ne sont ni validées ni écrites (donc conservées en base).
     info = with_attribute_rules(introspect(session, col.table_name), col)
+    full_info = info  # journal ARC-15 : instantanés complets (masqués à la lecture)
     # Vue de l'ETag = celle de GET /items/{fid} (masquage inclus).
     view_info = hide_sensitive_columns(info, col.sensitive_fields) if masked else info
     # Même chose pour un lecteur autorisé (propriétaire, REV-276) : une colonne
@@ -954,6 +986,7 @@ def put_feature(
     try:
         with rls(session, col.tenant_id):
             _enforce_if_match(session, repo, view_info, fid, if_match)
+            before = history.snapshot(repo.get_feature(session, full_info, fid=fid))
             ok = repo.replace_feature(
                 session,
                 info,
@@ -963,6 +996,7 @@ def put_feature(
             )
             if ok:
                 _set_etag(response, session, repo, view_info, fid)
+                after = history.snapshot(repo.get_feature(session, full_info, fid=fid))
     except IntegrityError as exc:
         # Même réponse qu'à la création : une collision avec une ligne cachée par une
         # limite géographique est indiscernable d'une collision avec une ligne visible.
@@ -974,15 +1008,65 @@ def put_feature(
         raise
     if not ok:
         raise HTTPException(status_code=404, detail="feature not found")
+    history.record_change(
+        session,
+        tenant_id=col.tenant_id,
+        collection_id=col.id,
+        fid=fid,
+        op=op,
+        before=before,
+        after=after,
+        actor_id=user.id,
+    )
     write_audit(
         session,
         tenant_id=col.tenant_id,
         actor_id=user.id,
         actor_kind="user",
-        action="feature.update",
+        action="feature.update" if op == "update" else "feature.restore",
         object_type="feature",
         object_id=fid,
         payload={"collection": col.id, "fid": fid},
+    )
+
+
+@router.post(
+    "/collections/{collection_id}/items/{fid}/history/{version_id}/restore", status_code=204
+)
+def restore_feature_version(
+    collection_id: str,
+    fid: str,
+    version_id: int,
+    response: Response,
+    user=Depends(get_current_user),
+    session: Session = Depends(get_session, scope="function"),
+    introspect=Depends(get_introspector),
+    repo=Depends(get_features_repo),
+    rls=Depends(get_rls_scope),
+    masked: bool = Depends(get_masked_for_user),
+):
+    """ARC-15 : ré-applique l'état APRÈS d'une version (écriture normale : droit
+    d'écriture, validation, RLS ; journalisée `restore`). Une suppression n'est pas
+    restaurable (409) : la PK ne peut pas être ré-imposée."""
+    col = _get_writable(session, user, collection_id)
+    version = history.get_version(
+        session, tenant_id=col.tenant_id, collection_id=col.id, fid=fid, version_id=version_id
+    )
+    if version is None:
+        raise HTTPException(status_code=404, detail="version not found")
+    if version.after is None:
+        raise HTTPException(status_code=409, detail="a deletion cannot be restored")
+    hidden = (
+        frozenset() if not unmask_for_owner(masked, user, col) else frozenset(col.sensitive_fields)
+    )
+    target = history.mask_snapshot(version.after, hidden) or {}
+    payload = {
+        "type": "Feature",
+        "properties": target.get("properties") or {},
+        "geometry": target.get("geometry"),
+    }
+    _replace(
+        col, fid, payload, response, None, user, session, introspect, repo, rls, masked, "restore"
     )
 
 
@@ -1005,9 +1089,20 @@ def remove_feature(
     view_info = hide_sensitive_columns(info, col.sensitive_fields) if masked else info
     with rls(session, col.tenant_id):
         _enforce_if_match(session, repo, view_info, fid, if_match)
+        before = history.snapshot(repo.get_feature(session, info, fid=fid))
         ok = repo.delete_feature(session, info, fid=fid)
     if not ok:
         raise HTTPException(status_code=404, detail="feature not found")
+    history.record_change(
+        session,
+        tenant_id=col.tenant_id,
+        collection_id=col.id,
+        fid=fid,
+        op="delete",
+        before=before,
+        after=None,
+        actor_id=user.id,
+    )
     session.execute(
         text("UPDATE collections SET feature_count = feature_count - 1 WHERE id = :id"),
         {"id": col.id},

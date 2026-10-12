@@ -129,7 +129,9 @@ def test_public_by_design_routes_carry_no_guard():
     facts = [f for f in index_rest_routes(REPO) if not f.guards and f.auth == "none"]
     unguarded = {f.function for f in facts}
     assert {"public_sitemap", "public_robots", "get_public_item", "conformance"} <= unguarded
-    assert len({(f.module, f.function) for f in facts}) == 18
+    # 19 : + `app/public_submit/routes.py::submit` (ARC-10), public par conception — son
+    # jeton de lien fait office d authentification, la soumission reste en attente.
+    assert len({(f.module, f.function) for f in facts}) == 19
 
 
 def test_surface_id_is_method_space_path():

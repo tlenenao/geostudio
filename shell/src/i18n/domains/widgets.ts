@@ -691,6 +691,18 @@ export const widgets = {
   "gridCanvas.duplicate": "Dupliquer {name}",
   "gridCanvas.remove": "Supprimer {name}",
   "staticExport.unsupported": "Non disponible dans un export statique (aucun backend).",
+  // FeatureHistoryPanel (ARC-15)
+  "featureHistory.toggle": "Historique",
+  "featureHistory.empty": "Aucune version enregistrée.",
+  "featureHistory.error": "Impossible de charger l'historique.",
+  "featureHistory.opCreate": "Création",
+  "featureHistory.opUpdate": "Modification",
+  "featureHistory.opDelete": "Suppression",
+  "featureHistory.opRestore": "Restauration",
+  "featureHistory.unknownActor": "auteur effacé",
+  "featureHistory.changed": "Champs modifiés : {fields}",
+  "featureHistory.restore": "Restaurer cette version",
+
   "staticExport.loadError": "Erreur de chargement : {message}",
   "colorField.pickerAria": "{label} (sélecteur)",
 

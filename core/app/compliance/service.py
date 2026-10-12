@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.apikeys.service import revoke_all_for_user
 from app.audit.writer import write_audit
+from app.history.service import erase_actor
 from app.notifications.models import Notification
 from app.roles.repository import count_users_with_privileges, get_role
 from app.sharing.models import GroupMember
@@ -83,6 +84,7 @@ def anonymize_user(
     revoke_all_for_user(session, tenant_id=tenant_id, user_id=user_id)
     session.execute(delete(Notification).where(Notification.recipient_user_id == user_id))
     session.execute(delete(GroupMember).where(GroupMember.user_id == user_id))
+    erase_actor(session, tenant_id=tenant_id, user_id=user_id)  # ARC-15 : journal d'entité
     session.flush()
 
     write_audit(

@@ -52,6 +52,7 @@ from app.features import tiles as tiles_routes
 from app.geocoding import routes as geocoding_routes
 from app.harvest import dataset_validation as harvest_dataset_validation  # noqa: F401
 from app.harvest import routes as harvest_routes
+from app.history import routes as history_routes
 from app.ingestion import routes as ingestion_routes
 from app.ingestion.storage import require_public_s3_endpoint
 from app.instance import routes as instance_routes
@@ -65,6 +66,7 @@ from app.ows import routes as ows_routes
 from app.pipelines import config_validation as pipelines_config_validation  # noqa: F401
 from app.pipelines import routes as pipelines_routes
 from app.public import routes as public_routes
+from app.public_submit import routes as public_submit_routes
 from app.quality import routes as quality_routes
 from app.quotas import routes as quotas_routes
 from app.quotas.service import QuotaExceededError
@@ -406,6 +408,7 @@ def create_app() -> FastAPI:
     v1_router.include_router(catalog_routes.router)
     v1_router.include_router(features_routes.router)
     v1_router.include_router(quality_routes.router)
+    v1_router.include_router(history_routes.router)
     v1_router.include_router(dataexport_routes.router)
     v1_router.include_router(tiles_routes.router)
     v1_router.include_router(attachments_routes.router)
@@ -416,6 +419,7 @@ def create_app() -> FastAPI:
     v1_router.include_router(alerts_routes.router)
     v1_router.include_router(reports_routes.router)
     v1_router.include_router(notifications_routes.router)
+    v1_router.include_router(public_submit_routes.router)
     v1_router.include_router(apikeys_routes.router)
     v1_router.include_router(usage_routes.router)
     v1_router.include_router(quotas_routes.router)
