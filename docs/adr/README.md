@@ -59,3 +59,6 @@ plus.
 | [0014](0014-supply-chain-cosign-digests.md) | Chaîne d'approvisionnement : cosign keyless, SBOM, digests (cible, non implémentée) | acceptée | Spec clôture 38 REV, arbitrage 281 b ; REV-281 |
 | [0015](0015-tombstone-rgpd-statu-quo.md) | Tombstone RGPD : statu quo (conditionnel DPO) | acceptée (conditionnelle) | Spec clôture 38 REV, arbitrage 272 a ; REV-272 |
 | [0016](0016-cles-api-service.md) | Clés d'API de service : secret machine, identité du créateur, porte `can()` unique | acceptée | ARC-06 |
+| [0017](0017-soumission-publique-moderee.md) | Soumission publique anonyme : écriture `pending` seulement, derrière un jeton | acceptée | ARC-10 |
+| [0018](0018-ows-wfs-par-le-coeur.md) | OWS (WFS 2.0, OGC API Tiles) servis par le cœur, sans sidecar GPL | acceptée | ARC-11 |
+| [0019](0019-borne-ha-documentee.md) | HA : borne de la Vague 1 (documentée et testée, pas « réelle ») | acceptée | ARC-18/19 |
