@@ -23,6 +23,9 @@ class IngestionJobCreate(BaseModel):
     layerName: str | None = None
     wktField: str | None = None
     geometryMode: Literal["latlon", "wkt", "none"] | None = None
+    # ARC-13 : ajoute les lignes à cette collection existante (domaines/règles appliqués,
+    # lignes refusées dans `report`) au lieu d'en créer une.
+    collectionId: str | None = None
 
 
 class IngestionJobCreated(BaseModel):
@@ -35,6 +38,7 @@ class IngestionJobStatus(BaseModel):
     collectionId: str | None
     itemId: str | None
     itemResourceType: str | None = None
+    report: dict | None = None
 
 
 class InspectRequest(BaseModel):

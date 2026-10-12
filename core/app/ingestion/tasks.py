@@ -12,7 +12,7 @@ import os
 from app.auth.dependency import is_read_only_mode
 from app.db import request_scoped_session
 from app.ingestion import repository as ingestion_repo
-from app.ingestion.importer import run_import
+from app.ingestion.importer import run_append, run_import
 from app.ingestion.models import IngestionJob
 from app.ingestion.parsers import IngestionParseError
 from app.ingestion.storage import (
@@ -24,6 +24,7 @@ from app.ingestion.storage import (
 from app.jobs import app
 from app.jobs.common import notify_best_effort, session_factory
 from app.quotas.service import QuotaExceededError
+from app.users.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +108,7 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
                 wkt_field,
                 geometry_mode,
                 created_by,
+                target_collection_id,
             ) = (
                 job.filename,
                 job.source_key,
@@ -117,6 +119,7 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
                 job.wkt_field,
                 job.geometry_mode,
                 job.created_by,
+                job.target_collection_id,
             )
 
         s3 = _make_s3_client_from_env()
@@ -134,6 +137,42 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
         if cancelled:
             logger.info("ingestion job %s annulé avant l'import", job_id)
             _delete_source(s3, source_key)
+            return
+        if target_collection_id is not None:  # ARC-13 : ajout + rapport de rejet
+            with request_scoped_session(factory) as session:
+                author = session.get(User, created_by)
+                if author is None:
+                    raise IngestionParseError("auteur de l'import introuvable")
+                report = run_append(
+                    session,
+                    tenant_id=tenant_id,
+                    user=author,
+                    collection_id=target_collection_id,
+                    filename=filename,
+                    content=content,
+                    lat_field=lat_field,
+                    lon_field=lon_field,
+                    layer_name=layer_name,
+                    wkt_field=wkt_field,
+                    geometry_mode=geometry_mode,
+                )
+            _delete_source(s3, source_key)
+            with request_scoped_session(factory) as session:
+                ingestion_repo.mark_done(
+                    session,
+                    job_id=job_id,
+                    collection_id=target_collection_id,
+                    item_id=None,
+                    report=report,
+                )
+            _notify(
+                factory,
+                tenant_id=tenant_id,
+                created_by=created_by,
+                status="success",
+                item_id=None,
+                collection_title=collection_title,
+            )
             return
         with request_scoped_session(factory) as session:
             result = run_import(

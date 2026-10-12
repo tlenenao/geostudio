@@ -128,6 +128,7 @@ def test_create_upload_job_defers_task_and_returns_job_id(env):
         "collectionId": None,
         "itemId": None,
         "itemResourceType": None,
+        "report": None,
     }
 
 
@@ -806,3 +807,19 @@ def test_cancel_finished_upload_job_is_409_unknown_404_and_foreign_user_404(env)
     # contrat est celui de GET /uploads/{id} — créateur ou data.manage, sinon 404.
     r = client.get(f"/v1/uploads/{other_id}")
     assert client.post(f"/v1/uploads/{other_id}/cancel").status_code == r.status_code
+
+
+def test_create_upload_job_append_to_unknown_collection_is_404(env):
+    """ARC-13 : un ajout vise une collection lisible et modifiable par l'appelant."""
+    client, Session, tenant, alice, deferred, _fake_s3 = env
+    r = client.post(
+        "/v1/uploads",
+        json={
+            "key": "default/abc-villes.geojson",
+            "filename": "villes.geojson",
+            "collectionTitle": "Villes",
+            "collectionId": "inexistante",
+        },
+    )
+    assert r.status_code == 404
+    assert deferred == []

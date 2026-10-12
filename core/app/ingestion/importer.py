@@ -12,16 +12,21 @@ import re
 import uuid
 from dataclasses import dataclass
 
+from shapely.geometry import mapping
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
 from app.collections import repository as collections_repo
 from app.collections.ddl import apply_collection_ddl
+from app.collections.domains import with_attribute_rules
 from app.collections.extent import table_extent
 from app.collections.introspection_pg import introspect_table
 from app.configs import repository as configs_repo
 from app.configs.schemas import BaseMap, BuilderConfig, DatasetPayload, MapConfig, MapLayer, MapView
+from app.features.repository import insert_features
+from app.features.rls import rls_scope
+from app.features.validation import validate_for_write
 from app.ingestion.parsers import (
     GeometryMode,
     IngestionParseError,
@@ -41,6 +46,8 @@ from app.ingestion.parsers import (
 )
 from app.items import repository as items_repo
 from app.quotas.service import check_quota_or_raise
+from app.sharing.authorization import can
+from app.sharing.geo_limits import resolve_geo_limits
 from app.sql_ident import quote_ident
 
 # Doit rester synchronisé avec shell/src/map/basemaps.ts DEFAULT_BASEMAP.style.
@@ -195,20 +202,17 @@ def _zoom_for_extent(bbox: list[float]) -> float:
     return max(0.0, min(18.0, math.log2(360.0 / span)))
 
 
-def run_import(
-    session: Session,
-    *,
-    tenant_id: str,
-    created_by: str,
+def _load_rows(
     filename: str,
     content: bytes,
-    collection_title: str,
+    *,
     lat_field: str | None,
     lon_field: str | None,
-    layer_name: str | None = None,
-    wkt_field: str | None = None,
-    geometry_mode: str | None = None,
-) -> ImportResult:
+    layer_name: str | None,
+    wkt_field: str | None,
+    geometry_mode: str | None,
+) -> list:
+    """Parse le fichier en [(géométrie shapely | None, propriétés)] (types CSV déduits)."""
     mode = _resolve_geometry_mode(
         lat_field=lat_field, lon_field=lon_field, wkt_field=wkt_field, geometry_mode=geometry_mode
     )
@@ -245,6 +249,32 @@ def run_import(
     if fmt == "csv":
         # même détection que parse_csv_latlon (décodage déjà validé par lui)
         _infer_csv_types(rows, decimal_comma=sniff_delimiter(content.decode("utf-8-sig")) != ",")
+    return rows
+
+
+def run_import(
+    session: Session,
+    *,
+    tenant_id: str,
+    created_by: str,
+    filename: str,
+    content: bytes,
+    collection_title: str,
+    lat_field: str | None,
+    lon_field: str | None,
+    layer_name: str | None = None,
+    wkt_field: str | None = None,
+    geometry_mode: str | None = None,
+) -> ImportResult:
+    rows = _load_rows(
+        filename,
+        content,
+        lat_field=lat_field,
+        lon_field=lon_field,
+        layer_name=layer_name,
+        wkt_field=wkt_field,
+        geometry_mode=geometry_mode,
+    )
 
     # Colonnes : union des clés de propriétés rencontrées, type déduit de la
     # première valeur non nulle vue pour chaque clé (repli "text" si toujours
@@ -451,3 +481,117 @@ def run_import(
     configs_repo.create_config(session, config, item_id=item.id, tenant_id=tenant_id)
 
     return ImportResult(collection_id=col.id, item_id=item.id, item_resource_type="map")
+
+
+REPORT_SAMPLE_MAX = 1000
+_APPEND_BATCH = 2000
+
+
+def _coerce_for_column(col, value):
+    """Types CSV déduits ≠ type cible : ramène au type de la colonne si sans perte."""
+    if value is None:
+        return None
+    if col.type == "string" and not isinstance(value, str):
+        return str(value)
+    if col.type == "integer" and isinstance(value, float) and value.is_integer():
+        return int(value)
+    return value
+
+
+def run_append(
+    session: Session,
+    *,
+    tenant_id: str,
+    user,
+    collection_id: str,
+    filename: str,
+    content: bytes,
+    lat_field: str | None,
+    lon_field: str | None,
+    layer_name: str | None = None,
+    wkt_field: str | None = None,
+    geometry_mode: str | None = None,
+) -> dict:
+    """ARC-13 : ajoute les lignes d'un fichier à une collection EXISTANTE. Chaque ligne passe
+    par `validate_for_write` (domaines, sous-types, règles) comme une écriture REST ; les
+    lignes refusées ne sont pas insérées et figurent dans le rapport (échantillon plafonné).
+    Rapport : {inserted, rejectedCount, rejected: [{row, errors}], ignoredColumns}."""
+    col = collections_repo.get_collection(session, tenant_id=tenant_id, collection_id=collection_id)
+    if col is None:
+        raise IngestionParseError(f"collection '{collection_id}' introuvable")
+    if not col.editable or not can(
+        session,
+        user_id=user.id,
+        action="write",
+        item=collections_repo.get_access_facts(col),
+        kind="collection",
+        actor_is_admin=user.is_admin,
+    ):
+        raise IngestionParseError(f"collection '{collection_id}' non modifiable")
+    if col.srid not in (None, 4326):
+        # ponytail: les fichiers sont lus en WGS84 ; reprojection à ajouter si besoin réel
+        raise IngestionParseError("ajout supporté seulement sur une collection en EPSG:4326")
+    info = with_attribute_rules(introspect_table(session, col.table_name), col)
+    rows = _load_rows(
+        filename,
+        content,
+        lat_field=lat_field,
+        lon_field=lon_field,
+        layer_name=layer_name,
+        wkt_field=wkt_field,
+        geometry_mode=geometry_mode,
+    )
+    writable = {
+        c.name: c
+        for c in info.columns
+        if c.name not in (info.pk_column, "tenant_id", info.geometry_column)
+        and c.type != "unsupported"
+    }
+    ignored: dict[str, None] = {}
+    rejected: list[dict] = []
+    rejected_count = inserted = 0
+    batch: list[tuple[dict, dict | None]] = []
+    geo_limits = resolve_geo_limits(session, tenant_id=tenant_id, user_id=user.id)
+
+    def flush() -> None:
+        nonlocal inserted
+        if batch:
+            insert_features(session, info, batch)
+            inserted += len(batch)
+            batch.clear()
+
+    with rls_scope(session, tenant_id, geo_limits=geo_limits):
+        for number, (geom, props) in enumerate(rows, start=1):
+            clean = {}
+            for key, value in props.items():
+                if key in writable:
+                    clean[key] = _coerce_for_column(writable[key], value)
+                else:
+                    ignored.setdefault(key)
+            geometry = mapping(geom) if geom is not None and info.geometry_column else None
+            feature = {"type": "Feature", "properties": clean, "geometry": geometry}
+            if errors := validate_for_write(info, feature):
+                rejected_count += 1
+                if len(rejected) < REPORT_SAMPLE_MAX:
+                    rejected.append({"row": number, "errors": errors})
+                continue
+            batch.append((feature["properties"], geometry))
+            if len(batch) >= _APPEND_BATCH:
+                flush()
+        flush()
+    write_audit(
+        session,
+        tenant_id=tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="collection.append_import",
+        object_type="collection",
+        object_id=col.id,
+        payload={"filename": filename, "inserted": inserted, "rejected": rejected_count},
+    )
+    return {
+        "inserted": inserted,
+        "rejectedCount": rejected_count,
+        "rejected": rejected,
+        "ignoredColumns": list(ignored),
+    }

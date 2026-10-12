@@ -378,3 +378,50 @@ def test_cancel_requested_during_download_stops_before_the_import(env, monkeypat
     with Session() as s:
         assert ingestion_repo.get_job(s, tenant_id=tenant.id, job_id=job_id).status == "cancelled"
         assert s.scalars(select(Notification)).all() == []
+
+
+def test_append_job_reports_rejected_rows(env, monkeypatch):
+    """ARC-13 : un job avec target_collection_id ajoute à la collection et porte le rapport."""
+    from app.collections import repository as collections_repo
+    from app.ingestion.importer import run_import
+
+    app, Session, tenant, user = env
+    with Session() as s:
+        res = run_import(
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            filename="seed.csv",
+            content=b"nom,etat,lat,lon\nPont,bon,48.8,2.3\n",
+            collection_title="Ponts",
+            lat_field=None,
+            lon_field=None,
+        )
+        col = collections_repo.get_collection(
+            s, tenant_id=tenant.id, collection_id=res.collection_id
+        )
+        col.field_domains = {"etat": {"type": "list", "values": ["bon", "mauvais"]}}
+        job = ingestion_repo.create_job(
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            source_key="k9",
+            filename="more.csv",
+            collection_title="Ponts",
+            lat_field=None,
+            lon_field=None,
+            target_collection_id=res.collection_id,
+        )
+        s.commit()
+        job_id, cid = job.id, res.collection_id
+    monkeypatch.setattr(
+        ingestion_tasks,
+        "_make_s3_client_from_env",
+        lambda: _FakeS3Client({"k9": b"nom,etat,lat,lon\nA,bon,48.1,2.1\nB,ruine,48.2,2.2\n"}),
+    )
+    ingestion_tasks.run_ingestion_task.defer(job_id=job_id, tenant_id=tenant.id)
+    app.run_worker(wait=False, queues=["ingestion"])
+    with Session() as s:
+        fetched = ingestion_repo.get_job(s, tenant_id=tenant.id, job_id=job_id)
+        assert fetched.status == "done" and fetched.collection_id == cid
+        assert fetched.report["inserted"] == 1 and fetched.report["rejectedCount"] == 1
