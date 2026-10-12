@@ -42,6 +42,7 @@ from app.attachments import repository as attachments_repo
 from app.attachments.routes import get_attachments_bucket, get_s3_client
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user, get_current_user_optional
+from app.collections.domains import with_attribute_rules
 from app.collections.introspection import TableNotFound, hide_sensitive_columns
 from app.collections.repository import get_access_facts, list_visible_collections
 from app.collections.routes import (
@@ -60,7 +61,7 @@ from app.db import get_session
 from app.errors import ValidationHTTPException
 from app.features.etag import feature_etag, if_match_satisfied
 from app.features.repository import SUPPORTED_EPSG, CursorError, FilterError
-from app.features.validation import validate_feature
+from app.features.validation import validate_for_write
 from app.filter_values import fold_query_filters
 from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
@@ -834,8 +835,8 @@ def _get_writable(session, user, collection_id):
 
 
 def _validated(introspect, session, col, payload):
-    info = introspect(session, col.table_name)
-    errors = validate_feature(info, payload)
+    info = with_attribute_rules(introspect(session, col.table_name), col)
+    errors = validate_for_write(info, payload)
     if errors:
         raise _validation_error(errors)
     return info
@@ -913,7 +914,7 @@ def put_feature(
     # GAP-22 : le PUT remplace tout — sans ça, un utilisateur masqué mettrait à
     # NULL les colonnes sensibles qu'il n'a jamais vues. Retirées de `info`,
     # elles ne sont ni validées ni écrites (donc conservées en base).
-    info = introspect(session, col.table_name)
+    info = with_attribute_rules(introspect(session, col.table_name), col)
     # Vue de l'ETag = celle de GET /items/{fid} (masquage inclus).
     view_info = hide_sensitive_columns(info, col.sensitive_fields) if masked else info
     # Même chose pour un lecteur autorisé (propriétaire, REV-276) : une colonne
@@ -922,7 +923,7 @@ def put_feature(
     info = hide_sensitive_columns(
         info, [f for f in col.sensitive_fields if masked or f not in sent]
     )
-    if errors := validate_feature(info, payload):
+    if errors := validate_for_write(info, payload):
         raise _validation_error(errors)
     try:
         with rls(session, col.tenant_id):

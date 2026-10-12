@@ -443,7 +443,7 @@ def insert_features(
 ) -> None:
     """Insertion groupée (executemany, un seul aller-retour par lot) de lignes
     (properties, geometry) déjà validées. Contrairement à insert_feature, toutes
-    les lignes du lot partagent les colonnes de la première (clés absentes →
+    les lignes du lot partagent l'union des colonnes présentes (clés absentes →
     NULL, pas le défaut de colonne) : réservé aux producteurs à schéma uniforme
     (pipelines, t03b-001)."""
     if not rows:
@@ -451,8 +451,9 @@ def insert_features(
     t = quote_ident(session, info.table_name)
     cols, values = ["tenant_id"], ["current_setting('app.tenant_id')"]
     keys: dict[str, str] = {}  # paramètre -> nom de colonne
+    present = set().union(*(props.keys() for props, _ in rows))  # ARC-13 : défauts par ligne
     for i, col in enumerate(_property_columns(info)):
-        if col.type != "unsupported" and col.name in rows[0][0]:
+        if col.type != "unsupported" and col.name in present:
             cols.append(quote_ident(session, col.name))
             values.append(f":p{i}")
             keys[f"p{i}"] = col.name

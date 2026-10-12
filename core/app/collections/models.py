@@ -57,6 +57,13 @@ class Collection(Base):
     sensitive_fields: Mapped[list] = mapped_column(
         JSON, default=list, nullable=False, server_default="[]"
     )
+    # ARC-13 : {champ: {"type": "list", "values": [...]} | {"type": "range", "min", "max"}} et
+    # {"field": str, "items": [{"value", "label", "defaults", "domains"}]} (ou {} = aucun) ;
+    # appliqués à l'écriture seulement (app/features/validation.py), jamais rétro-appliqués.
+    field_domains: Mapped[dict] = mapped_column(
+        JSON, default=dict, nullable=False, server_default="{}"
+    )
+    subtypes: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False, server_default="{}")
     # Métadonnées ouvertes (chantier 4.9, docs/superpowers/specs/
     # 2026-09-04-sp41-metadonnees-licence-design.md §1.1). Convention
     # str/default="" (pas None) : un PATCH ne peut jamais distinguer un champ

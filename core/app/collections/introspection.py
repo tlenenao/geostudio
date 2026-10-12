@@ -46,6 +46,11 @@ class TableInfo:
     geometry_type: str | None
     srid: int | None
     columns: list[ColumnInfo] = field(default_factory=list)
+    # ARC-13/14 : règles métier de la collection (jamais issues de l'introspection
+    # SQL ; posées par `features.rules.with_attribute_rules`). Vides = comportement inchangé.
+    domains: dict = field(default_factory=dict)
+    subtypes: dict = field(default_factory=dict)
+    rules: list = field(default_factory=list)
 
 
 Introspector = Callable[[Session, str], TableInfo]

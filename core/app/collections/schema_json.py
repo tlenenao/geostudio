@@ -17,6 +17,8 @@ def table_info_to_schema(info: TableInfo, attachment_fields: list[dict] | None =
             entry["values"] = col.enum_values
         if col.list_item_type is not None:
             entry["itemType"] = col.list_item_type
+        if col.name in info.domains:  # ARC-13 : le formulaire en tire une liste déroulante
+            entry["domain"] = info.domains[col.name]
         fields.append(entry)
     for spec in attachment_fields or []:
         fields.append(
@@ -25,9 +27,12 @@ def table_info_to_schema(info: TableInfo, attachment_fields: list[dict] | None =
     geometry = None
     if info.geometry_column:
         geometry = {"column": info.geometry_column, "type": info.geometry_type, "srid": info.srid}
-    return {
+    schema = {
         "collection": info.table_name,
         "pk": info.pk_column,
         "geometry": geometry,
         "fields": fields,
     }
+    if info.subtypes:
+        schema["subtypes"] = info.subtypes
+    return schema

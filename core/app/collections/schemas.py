@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 import re
 from datetime import date
-from typing import Literal
+from typing import Any, Literal
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.catalog.metadata import validate_frequency_id, validate_language_id, validate_license_id
 
@@ -67,6 +67,52 @@ class AttachmentFieldSpec(BaseModel):
     label: str
 
 
+class FieldDomain(BaseModel):
+    """ARC-13 : domaine `list` (valeurs admises) ou `range` (bornes incluses)."""
+
+    model_config = ConfigDict(extra="forbid")
+    type: Literal["list", "range"]
+    values: list[str | int | float] | None = None
+    min: float | None = None
+    max: float | None = None
+
+    @model_validator(mode="after")
+    def _shape(self) -> "FieldDomain":
+        if self.type == "list":
+            if not self.values or self.min is not None or self.max is not None:
+                raise ValueError("a list domain needs non-empty values (and no min/max)")
+        else:
+            if self.values is not None or (self.min is None and self.max is None):
+                raise ValueError("a range domain needs min and/or max (and no values)")
+            if self.min is not None and self.max is not None and self.min > self.max:
+                raise ValueError("range min must not exceed max")
+        return self
+
+
+class SubtypeItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    value: str | int
+    label: str = Field(min_length=1)
+    defaults: dict[str, Any] = Field(default_factory=dict)
+    domains: dict[str, FieldDomain] = Field(default_factory=dict)
+
+
+class Subtypes(BaseModel):
+    """Sous-types d'une collection : une colonne discriminante, et par valeur des défauts
+    et des domaines propres (qui l'emportent sur ceux du champ)."""
+
+    model_config = ConfigDict(extra="forbid")
+    field: str = Field(min_length=1)
+    items: list[SubtypeItem] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _unique_values(self) -> "Subtypes":
+        values = [i.value for i in self.items]
+        if len(values) != len(set(values)):
+            raise ValueError("duplicate subtype value(s)")
+        return self
+
+
 class CollectionPatch(BaseModel):
     title: str | None = None
     description: str | None = None
@@ -74,6 +120,9 @@ class CollectionPatch(BaseModel):
     editable: bool | None = None
     attachmentFields: list[AttachmentFieldSpec] | None = None
     sensitiveFields: list[str] | None = None
+    # ARC-13 : null explicite (subtypes) = effacer ; fieldDomains {} = effacer tous.
+    fieldDomains: dict[str, FieldDomain] | None = None
+    subtypes: Subtypes | None = None
     license: str | None = None
     licenseUri: str | None = None
     producer: str | None = None
