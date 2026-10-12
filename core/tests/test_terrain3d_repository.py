@@ -108,3 +108,41 @@ def test_mark_error_sets_status_and_message(env):
         job = repo.get_job(s, tenant_id=tenant.id, job_id=job_id)
         assert job.status == "error"
         assert job.error_message == "GeoTIFF illisible"
+
+
+def test_reclaim_stuck_jobs_marks_old_active_jobs_error_and_spares_recent_and_done(env):
+    """REV-345 : balayage des jobs zombies `uploaded`/`converting`."""
+    from datetime import UTC, datetime, timedelta
+
+    from app.terrain3d.models import Terrain3DJob
+
+    Session, tenant, alice = env
+    with Session() as s:
+        ids = {}
+        for name in ("old_uploaded", "old_converting", "recent", "old_done"):
+            job = repo.create_job(
+                s,
+                tenant_id=tenant.id,
+                created_by=alice.id,
+                source_key=f"{tenant.id}/{name}/dem.tif",
+                filename="dem.tif",
+                title=name,
+            )
+            ids[name] = job.id
+        s.commit()
+        repo.mark_converting(s, job_id=ids["old_converting"])
+        s.get(Terrain3DJob, ids["old_done"]).status = "done"
+        s.commit()
+        old = datetime.now(UTC) - timedelta(minutes=120)
+        for name in ("old_uploaded", "old_converting", "old_done"):
+            s.get(Terrain3DJob, ids[name]).updated_at = old
+        s.commit()
+
+        reclaimed = repo.reclaim_stuck_jobs(s, older_than_minutes=60)
+        s.commit()
+
+        assert {j.id for j in reclaimed} == {ids["old_uploaded"], ids["old_converting"]}
+        assert s.get(Terrain3DJob, ids["old_uploaded"]).status == "error"
+        assert s.get(Terrain3DJob, ids["old_uploaded"]).error_message
+        assert s.get(Terrain3DJob, ids["recent"]).status == "uploaded"
+        assert s.get(Terrain3DJob, ids["old_done"]).status == "done"
