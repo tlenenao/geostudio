@@ -338,6 +338,10 @@ export const widgets = {
   // Widget Carte (mapWidget.tsx)
   "widgetMap.strokeLegendAria": "Contour",
   "widgetMap.iconLegendAria": "Icônes",
+  "widgetMap.advancedLegendAria": "Légende du mode de symbologie",
+  "widgetMap.bivariateAxes": "{fieldX} (→) × {fieldY} (↑)",
+  "widgetMap.compareCaption": "{fieldA} − {fieldB}",
+  "widgetMap.dotDensityCaption": "1 point = {value} ({field})",
   "widgetMap.paletteLabel": "Carte",
   "widgetMap.dataSourceConfig": "Source de données",
   "widgetMap.layerTitle": "Données",
@@ -460,6 +464,16 @@ export const widgets = {
   "printLayout.titleLabel": "Titre",
   "printLayout.legendLabel": "Légende",
   "printLayout.cartoucheLabel": "Cartouche",
+  "printLayout.scaleBarLabel": "Échelle graphique",
+  "printLayout.northArrowLabel": "Flèche du nord",
+  "printLayout.freeTextLabel": "Texte libre",
+  "printLayout.logoLabel": "Logo (PNG, JPEG, SVG ou WebP, 200 Ko max)",
+  "printLayout.logoRemove": "Retirer le logo",
+  "printLayout.logoTooLarge": "Logo trop volumineux (200 Ko maximum).",
+  "printOverlay.logoAlt": "Logo",
+  "printOverlay.northArrowAria": "Nord",
+  "exportPanel.cancelExport": "Annuler l'export",
+  "exportPanel.cancelRequested": "Annulation demandée…",
 
   // generatedPropsPanel (builder/wc)
   "generatedPropsPanel.outOfPermissions":

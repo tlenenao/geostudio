@@ -3,6 +3,7 @@
 // (comportement inchangé) pour être réutilisé par MapEditorPage.tsx, qui
 // n'affichait jusqu'ici aucune légende de symbologie.
 import type { LegendSpec } from "../builder/widgets/mapSymbology";
+import type { AdvancedLegend } from "../builder/widgets/advancedSymbology";
 import { t } from "../i18n";
 import { formatNumber } from "../lib/format";
 import "../i18n/domains/widgets";
@@ -131,6 +132,7 @@ export function MapSymbologyLegend({
           </span>
         </div>
       )}
+      {legend.advanced && <AdvancedLegendBlock adv={legend.advanced} />}
       {legend.icon && (
         <ul aria-label={t("widgetMap.iconLegendAria")}>
           {legend.icon.entries.map((e) => (
@@ -142,6 +144,71 @@ export function MapSymbologyLegend({
             </li>
           ))}
         </ul>
+      )}
+    </div>
+  );
+}
+
+// ARC-17 : légende des modes avancés (prédominant, bivarié, comparer, densité de points).
+function AdvancedLegendBlock({ adv }: { adv: AdvancedLegend }) {
+  return (
+    <div aria-label={t("widgetMap.advancedLegendAria")} data-testid="legend-advanced">
+      {adv.kind === "predominant" && (
+        <ul>
+          {adv.entries.map((e) => (
+            <li key={e.value} className="flex items-center gap-1">
+              <span
+                className="inline-block h-3 w-3 rounded-sm"
+                style={{ backgroundColor: e.color }}
+              />
+              {e.value}
+            </li>
+          ))}
+        </ul>
+      )}
+      {adv.kind === "bivariate" && (
+        <div>
+          <div className="grid w-fit grid-cols-3">
+            {/* ligne du haut = y fort : ordre des lignes inversé */}
+            {[2, 1, 0].flatMap((y) =>
+              [0, 1, 2].map((x) => (
+                <span
+                  key={`${x}-${y}`}
+                  className="h-4 w-4"
+                  style={{ backgroundColor: adv.colors[y * 3 + x] }}
+                />
+              )),
+            )}
+          </div>
+          <span>{t("widgetMap.bivariateAxes", { fieldX: adv.fieldX, fieldY: adv.fieldY })}</span>
+        </div>
+      )}
+      {adv.kind === "compare" && (
+        <div>
+          <div
+            className="h-2 w-24 rounded"
+            style={{
+              background: `linear-gradient(to right, ${adv.colorLow}, ${adv.colorMid}, ${adv.colorHigh})`,
+            }}
+          />
+          <span>
+            {formatNumber(-adv.maxAbs, 1)} – {formatNumber(adv.maxAbs, 1)}
+          </span>
+          <br />
+          <span>{t("widgetMap.compareCaption", { fieldA: adv.fieldA, fieldB: adv.fieldB })}</span>
+        </div>
+      )}
+      {adv.kind === "dotDensity" && (
+        <div className="flex items-center gap-1">
+          <span
+            className="inline-block h-2 w-2 rounded-full"
+            style={{ backgroundColor: adv.color }}
+          />
+          {t("widgetMap.dotDensityCaption", {
+            value: formatNumber(adv.valuePerDot, 2),
+            field: adv.field,
+          })}
+        </div>
       )}
     </div>
   );

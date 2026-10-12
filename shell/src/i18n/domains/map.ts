@@ -228,6 +228,30 @@ export const map = {
   "mapSymbology.labelSizeLabel": "Taille du texte (px)",
   "mapSymbology.labelColorLabel": "Couleur du texte",
   "mapSymbology.removeLabelButton": "Retirer l'étiquette",
+  "mapSymbology.advancedModeLabel": "Mode avancé",
+  "mapSymbology.advancedModeNone": "Aucun",
+  "mapSymbology.advancedModeDotDensity": "Densité de points",
+  "mapSymbology.advancedModePredominant": "Catégorie prédominante",
+  "mapSymbology.advancedModeBivariate": "Bivarié (deux champs)",
+  "mapSymbology.advancedModeCompare": "Comparer A à B",
+  "mapSymbology.advancedFieldLabel": "Champ",
+  "mapSymbology.advancedFieldXLabel": "Champ X",
+  "mapSymbology.advancedFieldYLabel": "Champ Y",
+  "mapSymbology.advancedFieldALabel": "Champ A",
+  "mapSymbology.advancedFieldBLabel": "Champ B",
+  "mapSymbology.advancedValuePerDotLabel": "Valeur par point",
+  "mapSymbology.advancedDotColorLabel": "Couleur des points",
+  "mapSymbology.advancedPredominantFieldsLegend": "Champs en concurrence (2 minimum)",
+  "mapSymbology.advancedRecomputeButton": "Recalculer l'échelle",
+  "mapSymbology.advancedNotComputedHint":
+    "Échelle non calculée : cliquez sur « Recalculer l'échelle ».",
+  "mapSymbology.advancedPolygonOnlyHint":
+    "La densité de points ne s'affiche que sur des polygones.",
+  "mapSymbology.advancedOverridesColorHint": "Le mode avancé remplace la couleur de remplissage.",
+  "mapSymbology.effectsLegend": "Effets visuels",
+  "mapSymbology.effectBloom": "Halo (bloom)",
+  "mapSymbology.effectShadow": "Ombre portée",
+  "mapSymbology.effectBlend": "Fusion des formes voisines",
 
   // MapView (map)
   "mapView.labelsSkippedNoStyleWarning":

@@ -37,6 +37,7 @@ type ExportsIngestionMethods = Pick<
   ItemClient,
   | "createExport"
   | "getExportJob"
+  | "cancelExport"
   | "createAppExport"
   | "getAppExportJob"
   | "presignUpload"
@@ -58,6 +59,10 @@ export function createExportsIngestionMethods(base: ItemClientBase): ExportsInge
 
     async getExportJob(jobId: string): Promise<ExportJob> {
       return request<ExportJob>("GET", `/export/jobs/${jobId}`);
+    },
+
+    async cancelExport(jobId: string): Promise<ExportJob> {
+      return request<ExportJob>("POST", `/export/jobs/${jobId}/cancel`);
     },
 
     async createAppExport(itemId: string, mode: AppExportMode): Promise<{ jobId: string }> {

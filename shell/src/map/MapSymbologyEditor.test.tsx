@@ -1178,3 +1178,68 @@ test("« Ajouter des icônes » est câblé au bloc qu'il révèle (aria-control
   await userEvent.click(trigger);
   expect(document.getElementById(panelId)).toContainElement(screen.getByLabelText("Champ icône"));
 });
+
+// ARC-17 : mode avancé et effets dans l'éditeur partagé.
+test("choisir un mode avancé pose sa configuration par défaut", async () => {
+  const onChange = vi.fn();
+  render(
+    <MapSymbologyEditor
+      value={undefined}
+      availableFields={["pop"]}
+      themeColors={undefined}
+      runStatistics={vi.fn()}
+      sampleField={vi.fn()}
+      onChange={onChange}
+    />,
+  );
+  await userEvent.selectOptions(screen.getByLabelText("Mode avancé"), "dotDensity");
+  expect(onChange).toHaveBeenCalledWith({
+    advanced: { kind: "dotDensity", field: "", valuePerDot: 100, color: "#dc2626" },
+  });
+});
+
+test("bivarié : recalculer fige les domaines des deux champs", async () => {
+  const onChange = vi.fn();
+  const runStatistics = vi.fn().mockResolvedValue([{ properties: { min: 2, max: 8 } }]);
+  render(
+    <MapSymbologyEditor
+      value={{
+        advanced: {
+          kind: "bivariate",
+          fieldX: "pop",
+          fieldY: "rev",
+          domainX: { min: 0, max: 0 },
+          domainY: { min: 0, max: 0 },
+          computedAt: "",
+        },
+      }}
+      availableFields={["pop", "rev"]}
+      themeColors={undefined}
+      runStatistics={runStatistics}
+      sampleField={vi.fn()}
+      onChange={onChange}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Recalculer l'échelle" }));
+  await vi.waitFor(() => expect(onChange).toHaveBeenCalled());
+  const adv = onChange.mock.calls[0][0].advanced;
+  expect(adv.domainX).toEqual({ min: 2, max: 8 });
+  expect(adv.domainY).toEqual({ min: 2, max: 8 });
+  expect(adv.computedAt).not.toBe("");
+});
+
+test("effets : cocher puis décocher retire la clé, sans vider le reste", async () => {
+  const onChange = vi.fn();
+  render(
+    <MapSymbologyEditor
+      value={{ opacity: 50, effects: { bloom: true } }}
+      availableFields={[]}
+      themeColors={undefined}
+      runStatistics={vi.fn()}
+      sampleField={vi.fn()}
+      onChange={onChange}
+    />,
+  );
+  await userEvent.click(screen.getByLabelText("Halo (bloom)"));
+  expect(onChange).toHaveBeenCalledWith({ opacity: 50 });
+});

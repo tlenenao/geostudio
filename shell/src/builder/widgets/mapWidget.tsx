@@ -9,6 +9,7 @@ import { withTimeRange } from "../../lib/analyticsPatch";
 import { useItemClient } from "../../api/ItemClientProvider";
 import {
   buildLegend,
+  paintExtrasOf,
   detectGeometryKind,
   renderAsFor,
   symbologyToPaintInputs,
@@ -304,10 +305,14 @@ export function registerMapWidget(): void {
         symbology,
         ctx.theme?.colors,
       );
-      const legend = buildLegend(encodings, colorDomain, sizeDomain, geometryKind, palette, {
-        stroke,
-        icon: symbology?.icon,
-      });
+      const legend = buildLegend(
+        encodings,
+        colorDomain,
+        sizeDomain,
+        geometryKind,
+        palette,
+        paintExtrasOf(symbology, stroke),
+      );
 
       const config: MapConfig = {
         basemap: { style: String(props.basemapStyle ?? DEFAULT_STYLE) },

@@ -4,6 +4,7 @@ import type { DataRecord, MapConfig, ThemeColors } from "../api/types";
 import { type GeometryKind } from "../builder/widgets/mapSymbology";
 import { decodeIconImage, rasterizeLucideIcon } from "../builder/widgets/iconLibrary";
 import { buildLabelFeatureCollection } from "./labelSource";
+import { generateDots } from "../builder/widgets/advancedSymbology";
 import { t } from "../i18n";
 import {
   layerTypeFor,
@@ -20,6 +21,8 @@ import {
   addLabelLayer,
   makeFeatureClickHandler,
   addClusterLayers,
+  addDotLayer,
+  addEffectLayers,
   clusterSourceOptions,
   makeClusterClickHandler,
 } from "./mapLayerBuild";
@@ -106,6 +109,23 @@ export function applyLayers(
               paint: paintFor(result.paint, sub.paintPrefix),
             });
             layerIds.push(id);
+            decorativeIds.push(
+              ...addEffectLayers(map, {
+                parentId: id,
+                source: layer.id,
+                sourceLayer: layer.sourceLayer,
+                filter: notAggregated([
+                  "match",
+                  ["geometry-type"],
+                  [...sub.geometries],
+                  true,
+                  false,
+                ]),
+                renderAs: sub.type,
+                paint: paintFor(result.paint, sub.paintPrefix),
+                effects: layer.symbology?.effects,
+              }),
+            );
             if (sub.suffix === "point" && result.iconLayout) {
               addIconLayer(map, {
                 parentId: id,
@@ -151,6 +171,17 @@ export function applyLayers(
             paint: result.paint,
           });
           layerIds.push(layer.id);
+          decorativeIds.push(
+            ...addEffectLayers(map, {
+              parentId: layer.id,
+              source: layer.id,
+              sourceLayer: layer.sourceLayer,
+              filter: notAggregated(),
+              renderAs: layerTypeFor(layer.geometryKind),
+              paint: result.paint,
+              effects: layer.symbology?.effects,
+            }),
+          );
           if (layer.geometryKind === "point" && result.iconLayout) {
             addIconLayer(map, {
               parentId: layer.id,
@@ -189,6 +220,16 @@ export function applyLayers(
           applied.add(id);
         }
         for (const id of decorativeIds) applied.add(id);
+        const dotColor = layer.symbology?.advanced;
+        if (
+          dotColor?.kind === "dotDensity" &&
+          layer.geometryKind !== "point" &&
+          layer.geometryKind !== "line"
+        ) {
+          addDotLayer(map, { parentId: layer.id, color: dotColor.color }, lastLabelPayloads);
+          applied.add(`${layer.id}__dots`);
+          applied.add(`${layer.id}__dotsrc`);
+        }
         const label = layer.symbology?.label;
         if (label && addLabelLayer(map, { parentId: layer.id, label }, lastLabelPayloads)) {
           applied.add(`${layer.id}__label`);
@@ -241,6 +282,24 @@ export function applyLayers(
               paint: featureResult.paint,
             });
             break;
+        }
+        for (const id of addEffectLayers(map, {
+          parentId: layer.id,
+          source: layer.id,
+          ...unclustered,
+          renderAs: layer.renderAs ?? "fill",
+          paint: featureResult.paint,
+          effects: layer.symbology?.effects,
+        }))
+          applied.add(id);
+        if (featureResult.dots) {
+          addDotLayer(
+            map,
+            { parentId: layer.id, color: featureResult.dots.color },
+            lastLabelPayloads,
+          );
+          applied.add(`${layer.id}__dots`);
+          applied.add(`${layer.id}__dotsrc`);
         }
         if (featureGeometryKind === "polygon" && featureResult.outlinePaint) {
           addOutlineLayer(map, {
@@ -386,6 +445,7 @@ export function refreshLabelSources(
   // instances (revue post-Task 14).
   lastLabelPayloads: Map<string, string>,
 ) {
+  refreshDotSources(map, layers, lastLabelPayloads);
   for (const layer of layers) {
     if (!layer.visible) continue;
     if (layer.kind !== "vector" && layer.kind !== "feature") continue;
@@ -423,6 +483,40 @@ export function refreshLabelSources(
     const serialized = JSON.stringify(collection);
     if (lastLabelPayloads.get(sourceId) === serialized) continue;
     lastLabelPayloads.set(sourceId, serialized);
+    source.setData(collection);
+  }
+}
+
+// ARC-17 : remplit les sources de points Dot Density depuis les polygones
+// chargés (même mécanique et même garde d'idempotence que les étiquettes ;
+// déterministe, donc un `idle` sur carte immobile ne repose rien).
+function refreshDotSources(
+  map: maplibregl.Map,
+  layers: MapConfig["layers"],
+  lastPayloads: Map<string, string>,
+) {
+  for (const layer of layers) {
+    if (!layer.visible || (layer.kind !== "vector" && layer.kind !== "feature")) continue;
+    const adv = layer.symbology?.advanced;
+    if (adv?.kind !== "dotDensity") continue;
+    const sourceId = `${layer.id}__dotsrc`;
+    const source = map.getSource(sourceId) as { setData?: (d: unknown) => void } | undefined;
+    if (!source?.setData) continue;
+    const features =
+      layer.kind === "vector"
+        ? map.querySourceFeatures(layer.id, { sourceLayer: layer.sourceLayer })
+        : map.querySourceFeatures(layer.id);
+    const collection = generateDots(
+      features.map((f) => ({
+        id: f.id ?? (layer.kind === "vector" ? f.properties?.[layer.pkColumn ?? ""] : undefined),
+        properties: (f.properties ?? {}) as Record<string, unknown>,
+        geometry: f.geometry,
+      })),
+      adv,
+    );
+    const serialized = JSON.stringify(collection);
+    if (lastPayloads.get(sourceId) === serialized) continue;
+    lastPayloads.set(sourceId, serialized);
     source.setData(collection);
   }
 }

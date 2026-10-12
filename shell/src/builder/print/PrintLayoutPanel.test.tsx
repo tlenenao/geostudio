@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PrintLayoutPanel } from "./PrintLayoutPanel";
 
@@ -48,5 +48,39 @@ describe("PrintLayoutPanel", () => {
     render(<PrintLayoutPanel value={null} onChange={onChange} />);
     await userEvent.selectOptions(screen.getByLabelText("Format"), "a3");
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ pageSize: "a3" }));
+  });
+
+  it("ARC-16 : bascule échelle et flèche du nord, saisit un texte libre", async () => {
+    const onChange = vi.fn();
+    render(<PrintLayoutPanel value={null} onChange={onChange} />);
+    await userEvent.click(screen.getByLabelText("Échelle graphique"));
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ scaleBar: true }));
+    await userEvent.click(screen.getByLabelText("Flèche du nord"));
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ northArrow: true }));
+    fireEvent.change(screen.getByLabelText("Texte libre"), { target: { value: "Source : INSEE" } });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ freeText: "Source : INSEE" }),
+    );
+  });
+
+  it("ARC-16 : le logo est embarqué en data URI, refusé au-delà de 200 Ko, retirable", async () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<PrintLayoutPanel value={null} onChange={onChange} />);
+    const input = screen.getByLabelText(/Logo/) as HTMLInputElement;
+    const ok = new File(["x"], "logo.png", { type: "image/png" });
+    await userEvent.upload(input, ok);
+    await waitFor(() =>
+      expect(onChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ logo: expect.stringMatching(/^data:image\/png;base64,/) }),
+      ),
+    );
+    const big = new File([new Uint8Array(200_001)], "big.png", { type: "image/png" });
+    await userEvent.upload(input, big);
+    expect(await screen.findByRole("alert")).toHaveTextContent("trop volumineux");
+    rerender(
+      <PrintLayoutPanel value={{ logo: "data:image/png;base64,AAAA" }} onChange={onChange} />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Retirer le logo" }));
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ logo: null }));
   });
 });
