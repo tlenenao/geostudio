@@ -5,6 +5,7 @@ Un seul chemin d'écriture anonyme : `POST /public/submit/{token}`, qui ne fait
 qu'INSÉRER une soumission en attente dans `submissions` (jamais dans la table de la
 collection). Modération et gestion des jetons : authentifiées, droit d'écriture."""
 
+import copy
 import json
 import uuid
 from datetime import UTC, datetime
@@ -26,24 +27,28 @@ from app.attachments.routes import (
 )
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
+from app.collections.domains import with_attribute_rules
 from app.collections.introspection import hide_sensitive_columns
 from app.collections.models import Collection
 from app.collections.repository import get_collection
 from app.collections.routes import get_introspector
+from app.configs.geo_limits_dep import get_request_geo_limits
 from app.db import get_session
 from app.features.routes import (
     _get_writable,
     _raise_if_outside_geo_limit,
+    _snapshot,
     _validation_error,
     get_features_repo,
     get_rls_scope,
 )
-from app.features.validation import validate_feature
+from app.features.validation import validate_for_write
 from app.history import service as history
 from app.ingestion.storage import ensure_uploads_bucket
 from app.public_submit import service
 from app.public_submit.models import Submission, SubmissionToken
 from app.quotas.service import enforce_storage_quota
+from app.sharing.geo_limits import refuse_if_geo_limited
 
 router = APIRouter()
 
@@ -88,16 +93,20 @@ def submit(
             [{"field": "payload", "code": "invalid_json", "message": "payload must be JSON"}]
         ) from None
     # Le public n'écrit jamais un champ sensible : retiré du schéma, il est refusé.
-    info = hide_sensitive_columns(introspect(session, col.table_name), col.sensitive_fields)
-    if errors := validate_feature(info, feature):
+    # Domaines/sous-types/règles (ARC-13/14) contrôlés sur une copie : la charge brute est
+    # stockée, défauts et calculs sont posés à l'approbation (règles alors en vigueur).
+    info = with_attribute_rules(
+        hide_sensitive_columns(introspect(session, col.table_name), col.sensitive_fields), col
+    )
+    if errors := validate_for_write(info, copy.deepcopy(feature)):
         raise _validation_error(errors)
+    # Quota réservé AVANT tout envoi S3 : un jeton épuisé n'écrit rien. Un échec ensuite
+    # (fichier refusé, S3) annule la transaction, donc la réservation avec.
+    if not service.reserve_slot(session, row):
+        raise HTTPException(status_code=429, detail="submission quota exhausted")
     attachment, attachment_key = None, None
     if file is not None and file.filename:
         attachment, attachment_key = _store_attachment(session, s3, col, file, fieldKey)
-    if not service.reserve_slot(session, row):
-        if attachment_key:
-            _delete_object(s3, attachment_key)
-        raise HTTPException(status_code=429, detail="submission quota exhausted")
     sub = service.create_submission(
         session,
         token=row,
@@ -249,6 +258,14 @@ def _submission_json(s: Submission) -> dict:
     }
 
 
+def _get_moderable(session: Session, user, collection_id: str, geo_limits) -> Collection:
+    """Droit d'écriture + fail-closed sous limite géographique : la file d'attente n'est
+    pas découpée (comme le journal d'entité et les rapports de qualité)."""
+    col = _get_writable(session, user, collection_id)
+    refuse_if_geo_limited(geo_limits, col.table_name, path="submission moderation")
+    return col
+
+
 def _get_submission(session: Session, col: Collection, submission_id: str) -> Submission:
     sub = session.scalar(
         select(Submission)
@@ -270,8 +287,9 @@ def list_submissions(
     status: str = "pending",
     user=Depends(get_current_user),
     session: Session = Depends(get_session, scope="function"),
+    geo_limits=Depends(get_request_geo_limits),
 ):
-    col = _get_writable(session, user, collection_id)
+    col = _get_moderable(session, user, collection_id, geo_limits)
     if status not in ("pending", "approved", "rejected"):
         raise HTTPException(status_code=400, detail="invalid status")
     rows = session.scalars(
@@ -294,8 +312,9 @@ def read_submission_attachment(
     user=Depends(get_current_user),
     session: Session = Depends(get_session, scope="function"),
     s3=Depends(get_s3_client),
+    geo_limits=Depends(get_request_geo_limits),
 ):
-    col = _get_writable(session, user, collection_id)
+    col = _get_moderable(session, user, collection_id, geo_limits)
     sub = _get_submission(session, col, submission_id)
     if sub.status != "pending" or not sub.attachment_key or not sub.attachment:
         raise HTTPException(status_code=404, detail="attachment not found")
@@ -323,26 +342,28 @@ def approve_submission(
     introspect=Depends(get_introspector),
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
+    geo_limits=Depends(get_request_geo_limits),
 ):
     """Insère la soumission dans la collection par l'écriture normale (droit d'écriture,
     validation, RLS, journal d'entité) ; la ligne d'attente est vidée."""
-    col = _get_writable(session, user, collection_id)
+    col = _get_moderable(session, user, collection_id, geo_limits)
     sub = _get_submission(session, col, submission_id)
     if sub.status != "pending":
         raise HTTPException(status_code=409, detail="submission already moderated")
-    info = introspect(session, col.table_name)
-    feature = {"type": "Feature", **sub.payload}
-    if errors := validate_feature(info, feature):  # le schéma a pu évoluer depuis
+    # Même validation que le POST REST (ARC-13/14) ; le schéma et les règles ont pu évoluer.
+    info = with_attribute_rules(introspect(session, col.table_name), col)
+    feature = {"type": "Feature", **copy.deepcopy(sub.payload)}
+    if errors := validate_for_write(info, feature):
         raise _validation_error(errors)
     try:
         with rls(session, col.tenant_id):
             fid = repo.insert_feature(
                 session,
                 info,
-                properties=sub.payload.get("properties") or {},
-                geometry=sub.payload.get("geometry"),
+                properties=feature.get("properties") or {},  # défauts/calculs posés
+                geometry=feature.get("geometry"),
             )
-            after = history.snapshot(repo.get_feature(session, info, fid=str(fid)))
+        after = _snapshot(session, repo, info, fid)
     except IntegrityError as exc:
         raise HTTPException(
             status_code=409, detail="feature conflicts with an existing row"
@@ -409,8 +430,9 @@ def reject_submission(
     user=Depends(get_current_user),
     session: Session = Depends(get_session, scope="function"),
     s3=Depends(get_s3_client),
+    geo_limits=Depends(get_request_geo_limits),
 ):
-    col = _get_writable(session, user, collection_id)
+    col = _get_moderable(session, user, collection_id, geo_limits)
     sub = _get_submission(session, col, submission_id)
     if sub.status != "pending":
         raise HTTPException(status_code=409, detail="submission already moderated")

@@ -30,8 +30,10 @@ PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
 class _S3:
     def __init__(self):
         self.objects: dict[str, bytes] = {}
+        self.puts = 0
 
     def put_object(self, *, Bucket, Key, Body, ContentType=None):
+        self.puts += 1
         self.objects[Key] = Body
 
     def get_object(self, *, Bucket, Key):
@@ -55,7 +57,8 @@ def pg_app(pg_engine):
         conn.execute(
             text(
                 "CREATE TABLE demo_sub (id serial PRIMARY KEY, "
-                "nom text NOT NULL, geom geometry(Point, 4326))"
+                "nom text NOT NULL, categorie text, gravite integer, surface double precision, "
+                "geom geometry(Point, 4326))"
             )
         )
     Session = make_session_factory(pg_engine)
@@ -366,3 +369,80 @@ def test_moderation_requires_write_permission(ready):
         "/v1/collections/demo_sub/submission-tokens",
         json={"name": "x", "expiresInDays": 1, "maxSubmissions": 1},
     ).status_code in (401, 403)
+
+
+RULES = {
+    "fieldDomains": {"gravite": {"type": "range", "min": 1, "max": 5}},
+    "subtypes": {
+        "field": "categorie",
+        "items": [{"value": "voirie", "label": "Voirie", "defaults": {"gravite": 3}}],
+    },
+    "attributeRules": [
+        {
+            "id": "surface",
+            "kind": "calculation",
+            "field": "surface",
+            "mode": "derived",
+            "expression": "double(gravite) * 2.0",
+        },
+        {
+            "id": "pas-interdit",
+            "kind": "constraint",
+            "field": "nom",
+            "expression": "nom != 'interdit'",
+            "message": "nom interdit",
+        },
+    ],
+}
+
+
+def _submit_props(client, token, props):
+    feat = {"type": "Feature", "properties": props, "geometry": None}
+    return client.post(f"/v1/public/submit/{token}", data={"payload": json.dumps(feat)})
+
+
+def test_attribute_rules_apply_at_deposit_and_approval(ready):
+    """I1 : domaines/sous-types/règles ARC-13/14 au dépôt ET à l'approbation."""
+    client, app, admin, Session, _s3, tok = ready
+    _anon(app)
+    # Déposées avant que les règles existent : à revalider à l'approbation.
+    assert _submit_props(client, tok["token"], {"nom": "a", "gravite": 9}).status_code == 202
+    assert _submit_props(client, tok["token"], {"nom": "interdit"}).status_code == 202
+    ok = _submit_props(client, tok["token"], {"nom": "ok", "categorie": "voirie"})
+    assert ok.status_code == 202
+    _as(app, admin)
+    assert client.patch("/v1/collections/demo_sub", json=RULES).status_code == 200
+    _anon(app)
+    # Au dépôt : hors domaine et contrainte CEL refusés.
+    assert _submit_props(client, tok["token"], {"nom": "b", "gravite": 9}).status_code == 400
+    assert _submit_props(client, tok["token"], {"nom": "interdit"}).status_code == 400
+    _as(app, admin)
+    queue = client.get("/v1/collections/demo_sub/submissions").json()["submissions"]
+    by_nom = {s["properties"]["nom"]: s["id"] for s in queue}
+    base = "/v1/collections/demo_sub/submissions"
+    r = client.post(f"{base}/{by_nom['a']}/approve")
+    assert r.status_code == 400 and r.json()["errors"][0]["code"] == "out_of_domain"
+    r = client.post(f"{base}/{by_nom['interdit']}/approve")
+    assert r.status_code == 400 and r.json()["errors"][0]["code"] == "constraint_violation"
+    r = client.post(f"{base}/{by_nom['ok']}/approve")
+    assert r.status_code == 200, r.text
+    got = client.get(f"/v1/collections/demo_sub/items/{r.json()['fid']}").json()["properties"]
+    assert got["gravite"] == 3 and got["surface"] == 6.0  # défaut de sous-type puis calcul
+
+
+def test_exhausted_token_never_uploads_the_attachment(ready):
+    """M4a : quota réservé avant l'envoi S3."""
+    client, app, _admin, _S, s3, _tok = ready
+    one = client.post(
+        "/v1/collections/demo_sub/submission-tokens",
+        json={"name": "q", "expiresInDays": 1, "maxSubmissions": 1},
+    ).json()
+    _anon(app)
+    assert _submit(client, one["token"]).status_code == 202
+    r = client.post(
+        f"/v1/public/submit/{one['token']}",
+        data={"payload": _payload(), "fieldKey": "photo"},
+        files={"file": ("photo.png", PNG, "image/png")},
+    )
+    assert r.status_code == 429
+    assert s3.puts == 0
