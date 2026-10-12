@@ -254,6 +254,9 @@ services:
     image: ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}
     build: !reset null
     environment:
+      # REV-354 : sans cette ligne le worker garde `http://localhost:8200` du
+      # fichier de base et ses liens/appels (exports, rapports) visent lui-même.
+      CORE_BASE_URL: https://${GEOSTUDIO_PUBLIC_HOST}/api
       # SP-48/GAP-72 : "enforce" par défaut en production (contrairement au
       # fichier de base, "report-only") — rollback opérateur possible sans
       # redéployer d'image en réglant CORE_CSP_MODE=report-only dans

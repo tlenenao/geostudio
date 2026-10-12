@@ -50,20 +50,25 @@ def test_bbox_nan_rejected():
         parse_bbox("nan,0,1,1")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="REV-audit: worker prod garde CORE_BASE_URL localhost (docker-compose.prod.yml:253)",
-)
 def test_prod_worker_overrides_core_base_url():
-    prod = yaml.safe_load((REPO / "docker-compose.prod.yml").read_text())
+    # `!reset`/`!override` (tags de fusion Compose) : valeur nue, cf. test_deployability.
+    class _Loader(yaml.SafeLoader):
+        pass
+
+    def _bare(loader, _suffix, node):
+        if isinstance(node, yaml.SequenceNode):
+            return loader.construct_sequence(node)
+        if isinstance(node, yaml.MappingNode):
+            return loader.construct_mapping(node)
+        return node.value
+
+    _Loader.add_multi_constructor("!", _bare)
+
+    prod = yaml.load((REPO / "docker-compose.prod.yml").read_text(), Loader=_Loader)
     env = prod["services"]["worker"].get("environment") or {}
     assert "CORE_BASE_URL" in env
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="REV-audit: install.sh ne couple pas profils export/appexport aux flags (install.sh:248)",  # noqa: E501
-)
 @pytest.mark.parametrize("flag", ["CORE_EXPORT_ENABLED", "CORE_APPEXPORT_ENABLED"])
 def test_install_sets_capability_flag(flag):
     src = (REPO / "scripts/install.sh").read_text()
