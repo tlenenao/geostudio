@@ -162,6 +162,22 @@ def null_rls_scope(
     yield
 
 
+class _NoRelationHooks:
+    """ARC-21 : points d'extension des relations entre collections (clé étrangère
+    logique à l'écriture, politique de suppression). Câblés dans main.py par
+    app.relations (couche au-dessus de features : injection, pas d'import)."""
+
+    def check_write(self, session, user, col, properties, fid, rls) -> None:
+        return None
+
+    def before_delete(self, session, user, col, fid, rls, s3) -> None:
+        return None
+
+
+def get_relation_hooks():  # overridé dans main.py
+    return _NoRelationHooks()
+
+
 def get_rls_scope(geo_limits=Depends(get_request_geo_limits)):  # overridé en test SQLite
     """Scope RLS lié aux limites géographiques de la requête (GAP-27) : chaque
     `rls(session, tenant, ...)` des routes (features, tuiles, STAC, DCAT) est
@@ -887,9 +903,11 @@ def create_feature(
     introspect=Depends(get_introspector),
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
+    relations=Depends(get_relation_hooks),
 ):
     col = _get_writable(session, user, collection_id)
     info = _validated(introspect, session, col, payload)
+    relations.check_write(session, user, col, payload.get("properties") or {}, None, rls)
     try:
         with rls(session, col.tenant_id):
             fid = repo.insert_feature(
@@ -953,6 +971,7 @@ def put_feature(
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
     masked: bool = Depends(get_masked_for_user),
+    relations=Depends(get_relation_hooks),
 ):
     col = _get_writable(session, user, collection_id)
     _replace(
@@ -968,11 +987,24 @@ def put_feature(
         rls,
         masked,
         "update",
+        relations,
     )
 
 
 def _replace(
-    col, fid, payload, response, if_match, user, session, introspect, repo, rls, masked, op
+    col,
+    fid,
+    payload,
+    response,
+    if_match,
+    user,
+    session,
+    introspect,
+    repo,
+    rls,
+    masked,
+    op,
+    relations,
 ):
     masked = unmask_for_owner(masked, user, col)
     # GAP-22 : le PUT remplace tout — sans ça, un utilisateur masqué mettrait à
@@ -990,6 +1022,7 @@ def _replace(
     )
     if errors := validate_for_write(info, payload):
         raise _validation_error(errors)
+    relations.check_write(session, user, col, sent, fid, rls)
     try:
         with rls(session, col.tenant_id):
             _enforce_if_match(session, repo, view_info, fid, if_match)
@@ -1054,6 +1087,7 @@ def restore_feature_version(
     rls=Depends(get_rls_scope),
     masked: bool = Depends(get_masked_for_user),
     geo_limits=Depends(get_request_geo_limits),
+    relations=Depends(get_relation_hooks),
 ):
     """ARC-15 : ré-applique l'état APRÈS d'une version (écriture normale : droit
     d'écriture, validation, RLS ; journalisée `restore`). Une suppression n'est pas
@@ -1083,7 +1117,19 @@ def restore_feature_version(
         "geometry": target.get("geometry"),
     }
     _replace(
-        col, fid, payload, response, None, user, session, introspect, repo, rls, masked, "restore"
+        col,
+        fid,
+        payload,
+        response,
+        None,
+        user,
+        session,
+        introspect,
+        repo,
+        rls,
+        masked,
+        "restore",
+        relations,
     )
 
 
@@ -1099,11 +1145,13 @@ def remove_feature(
     rls=Depends(get_rls_scope),
     s3=Depends(get_s3_client),
     masked: bool = Depends(get_masked_for_user),
+    relations=Depends(get_relation_hooks),
 ):
     col = _get_writable(session, user, collection_id)
     masked = unmask_for_owner(masked, user, col)
     info = introspect(session, col.table_name)
     view_info = hide_sensitive_columns(info, col.sensitive_fields) if masked else info
+    relations.before_delete(session, user, col, fid, rls, s3)  # ARC-21 : restrict / cascade
     with rls(session, col.tenant_id):
         _enforce_if_match(session, repo, view_info, fid, if_match)
     before = _snapshot(session, repo, info, fid)
