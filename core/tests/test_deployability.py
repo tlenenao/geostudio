@@ -727,6 +727,13 @@ def test_ows_flag_is_wired_to_core_and_off_by_default():
     assert _resolve_effective_value(raw, "CORE_OWS_ENABLED") == "false"
 
 
+def test_wms_flag_is_wired_to_core_and_off_by_default():
+    """ARC-20 / ADR 0020 : CORE_OWS_WMS_ENABLED est câblée sur `core` et la valeur
+    RÉSOLUE sans .env est « false » (piège n°2, par valeur)."""
+    raw = services(BASE)["core"]["environment"]["CORE_OWS_WMS_ENABLED"]
+    assert _resolve_effective_value(raw, "CORE_OWS_WMS_ENABLED") == "false"
+
+
 def test_worker_has_a_resolved_memory_limit():
     """REV-275 (d) : borner la mémoire du PROCESS worker (t03b-008 ne borne que
     l'écrivain). Vérifie la valeur RÉSOLUE sans `.env` (piège n°2 : une
