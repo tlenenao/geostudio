@@ -140,6 +140,7 @@ dependencies = [
     "procrastinate>=2.0",
     "pyogrio>=0.9",
     "pyproj>=3.6",
+    "pillow>=10",  # ARC-20 : raster PNG du renderer WMS/WMTS interne (ADR 0020), licence HPND
     "rasterio>=1.3",  # terrain3d : lecture/écriture GeoTIFF (GDAL embarqué
                       # dans la wheel, pas de dépendance système séparée à
                       # installer) ; wheel comparable en poids à pyogrio,
@@ -184,6 +185,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.2",
+    "xmlschema>=3.0",  # ARC-28 : validation XSD des SLD exportés (schémas OGC vendus hors-ligne), dep de test
     "import-linter>=2.0",
     "pip-audit>=2.7",
     "stac-pydantic>=3.1",  # SP-12a : validation de conformité STAC, offline, dep de test uniquement
@@ -368,6 +370,8 @@ layers = [
     # app.ows (ARC-11, ADR 0018) : WFS 2.0 + OGC API Tiles, au-dessus de app.features
     # dont il réutilise la porte de lecture (rls, masquage, select_features, tuiles).
     "app.ows",
+    # app.styles (ARC-28) : symbologie -> règles -> SLD ; consommé par app.ows (renderer WMS).
+    "app.styles",
     "app.features",
     # app.history (ARC-15) : journal d'entité ; écrit par app.features.routes (au-dessus),
     # lit les collections/privilèges (en dessous).

@@ -78,6 +78,7 @@ from app.secrets import crypto as secrets_crypto
 from app.secrets import routes as secrets_routes
 from app.sharing import routes as sharing_routes
 from app.stac import routes as stac_routes
+from app.styles import routes as styles_routes
 from app.terrain3d import routes as terrain3d_routes
 from app.tileset3d import routes as tileset3d_routes
 from app.usage import routes as usage_routes
@@ -425,6 +426,7 @@ def create_app() -> FastAPI:
     v1_router.include_router(quotas_routes.router)
     v1_router.include_router(compliance_routes.router)
     v1_router.include_router(geocoding_routes.router)
+    v1_router.include_router(styles_routes.router)
     if is_etl_enabled():
         v1_router.include_router(pipelines_routes.router)
     if is_export_enabled():
