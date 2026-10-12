@@ -12,6 +12,7 @@ import type { CollectionSchema, DataRecord, DataSource } from "../../api/types";
 import type { WidgetContext } from "../registry";
 import { plural, t } from "../../i18n";
 import { ConfirmDialog } from "../../ui/kit/ConfirmDialog";
+import { FeatureHistoryPanel } from "./FeatureHistoryPanel";
 import { LoadingState } from "../../ui/kit/LoadingState";
 import "../../i18n/domains/widgets";
 
@@ -864,6 +865,18 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
             </button>
           )}
         </p>
+      )}
+      {editingId !== null && (
+        <FeatureHistoryPanel
+          client={client}
+          collectionId={collectionId}
+          fid={String(editingId)}
+          canWrite={canWrite}
+          onRestored={() => {
+            void syncFromServer(editingId, true);
+            void queryClient.invalidateQueries({ queryKey: ["datasource"] });
+          }}
+        />
       )}
       <ConfirmDialog
         open={confirmingDelete}

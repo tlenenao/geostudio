@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { CollectionAdmin, GeoJSONFeatureInput, ItemClient } from "../types";
+import type { CollectionAdmin, FeatureVersion, GeoJSONFeatureInput, ItemClient } from "../types";
 import type { ItemClientBase } from "../base";
 import { FeatureValidationError, parseErrorResponse } from "../base";
 
@@ -38,6 +38,8 @@ type FeaturesMethods = Pick<
   | "updateFeature"
   | "deleteFeature"
   | "getFeature"
+  | "listFeatureHistory"
+  | "restoreFeatureVersion"
 >;
 
 export function createFeaturesMethods(base: ItemClientBase): FeaturesMethods {
@@ -93,6 +95,21 @@ export function createFeaturesMethods(base: ItemClientBase): FeaturesMethods {
         "DELETE",
         undefined,
         opts?.ifMatch,
+      );
+    },
+
+    async listFeatureHistory(collectionId: string, fid: string) {
+      const data = await request<{ versions: FeatureVersion[] }>(
+        "GET",
+        `/collections/${collectionId}/items/${fid}/history`,
+      );
+      return data.versions;
+    },
+
+    async restoreFeatureVersion(collectionId: string, fid: string, versionId: number) {
+      await request<void>(
+        "POST",
+        `/collections/${collectionId}/items/${fid}/history/${versionId}/restore`,
       );
     },
 

@@ -518,6 +518,21 @@ export type CollectionProfile = {
   pending: boolean;
 };
 
+export type FeatureSnapshot = {
+  properties: Record<string, unknown>;
+  geometry: unknown;
+};
+
+export type FeatureVersion = {
+  id: number;
+  fid: string;
+  op: "create" | "update" | "delete" | "restore";
+  at: string;
+  actor: { id: string; username: string } | null;
+  before: FeatureSnapshot | null;
+  after: FeatureSnapshot | null;
+};
+
 export type AttachmentSummary = {
   id: string;
   fieldKey: string;
@@ -838,6 +853,10 @@ export interface ItemClient {
     opts?: { ifMatch?: string },
   ): Promise<void>;
   deleteFeature(collectionId: string, fid: string, opts?: { ifMatch?: string }): Promise<void>;
+  /** Historique d'une entité (ARC-15), plus récent d'abord. Optionnel : absent d'un client sans cœur. */
+  listFeatureHistory?(collectionId: string, fid: string): Promise<FeatureVersion[]>;
+  /** Restaure l'état APRÈS d'une version (ARC-15) : écriture normale, journalisée `restore`. */
+  restoreFeatureVersion?(collectionId: string, fid: string, versionId: number): Promise<void>;
   /** Entité + ETag courant (ARC-04). Optionnel : absent d'un client sans écriture. */
   getFeature?(
     collectionId: string,
