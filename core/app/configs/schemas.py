@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
+import re
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel as _PydanticBaseModel
-from pydantic import ConfigDict, Field, ValidationInfo, model_validator
+from pydantic import ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
 from app.analytics.aggregate import (
     AggregateRequestBody,
@@ -485,6 +486,22 @@ class PrintLayout(BaseModel):
     title: str | None = None
     showLegend: bool = True
     cartouche: str | None = None
+    # ARC-16 : éléments de gabarit. Défaut False — les exports enregistrés avant
+    # ne changent pas. `logo` est un data URI (jamais une URL : le navigateur du
+    # worker n'a alors aucune requête sortante à faire, donc pas de SSRF).
+    scaleBar: bool = False
+    northArrow: bool = False
+    freeText: str | None = Field(default=None, max_length=2000)
+    logo: str | None = Field(default=None, max_length=400_000)
+
+    @field_validator("logo")
+    @classmethod
+    def _logo_is_inline_image(cls, v: str | None) -> str | None:
+        if v is not None and not re.match(
+            r"^data:image/(png|jpeg|svg\+xml|webp);base64,[A-Za-z0-9+/=]+$", v
+        ):
+            raise ValueError("logo must be a base64 data URI (png, jpeg, svg or webp)")
+        return v
 
 
 class BuilderConfig(BaseModel):

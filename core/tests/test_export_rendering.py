@@ -59,3 +59,24 @@ def test_render_export_pdf_sets_display_header_footer_with_generation_date_templ
     assert page.pdf_kwargs["display_header_footer"] is True
     assert "Généré le" in page.pdf_kwargs["footer_template"]
     assert '<span class="date">' in page.pdf_kwargs["footer_template"]
+
+
+# ARC-16 : SVG enveloppe, taille de feuille.
+def test_page_pixels_orientation_and_size():
+    from app.export.rendering import page_pixels
+
+    assert page_pixels(None) == (794, 1123)
+    assert page_pixels(PrintLayout(pageSize="a3", orientation="landscape")) == (1587, 1123)
+
+
+def test_render_export_svg_wraps_the_capture_at_page_size():
+    import base64
+    import re
+
+    page = _FakePage()
+    layout = PrintLayout(pageSize="a3", orientation="landscape")
+    out = render_export(page, format="svg", print_layout=layout).decode()
+    assert out.startswith("<svg ") and 'width="1587" height="1123"' in out
+    b64 = re.search(r"base64,([^\"]+)", out).group(1)
+    assert base64.b64decode(b64) == b"PNGDATA"
+    assert page.screenshot_calls == [True] and page.pdf_calls == []

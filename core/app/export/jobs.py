@@ -8,6 +8,7 @@ en "running" (même critère qu'app.pipelines.jobs.run_pipeline_task)."""
 import logging
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 from urllib.parse import quote
@@ -18,7 +19,7 @@ from app.configs import repository as configs_repo
 from app.db import request_scoped_session
 from app.export import repository as export_repo
 from app.export.models import ExportJob
-from app.export.rendering import RenderPage, render_export
+from app.export.rendering import RENDER_TIMEOUT_MS, RenderPage, page_pixels, render_export
 from app.ingestion.storage import ensure_uploads_bucket, make_s3_client
 from app.items import repository as items_repo
 from app.jobs import app
@@ -26,7 +27,7 @@ from app.jobs.common import notify_best_effort, session_factory
 
 logger = logging.getLogger(__name__)
 
-_CONTENT_TYPE = {"png": "image/png", "pdf": "application/pdf"}
+_CONTENT_TYPE = {"png": "image/png", "pdf": "application/pdf", "svg": "image/svg+xml"}
 
 
 def _notify(
@@ -88,6 +89,15 @@ def _notify(
     )
 
 
+def _cancelled(factory, job_id: str) -> bool:
+    """True (et statut final `cancelled`) si l'annulation a été demandée."""
+    with request_scoped_session(factory) as session:
+        if not export_repo.is_cancel_requested(session, job_id=job_id):
+            return False
+        export_repo.mark_cancelled(session, job_id=job_id)
+        return True
+
+
 def reclaim_and_notify_stuck_exports(session, factory) -> None:
     """Reprend les exports `running` trop vieux (worker tué) et notifie leur
     demandeur (REV-323 B : l'abandon était silencieux). Commit le statut AVANT
@@ -146,7 +156,7 @@ def core_unreachable_error(shell_base_url: str) -> str | None:
     return None
 
 
-def _launch_and_navigate(url: str) -> RenderPage:
+def _launch_and_navigate(url: str, viewport: tuple[int, int] | None = None) -> RenderPage:
     # Seule fonction de ce module qui a besoin d'un vrai Chromium — isolée
     # pour être monkeypatchée en test (cf. tests/test_export_jobs.py). La
     # tâche appelante ferme la page/le navigateur retournés dans un
@@ -161,11 +171,25 @@ def _launch_and_navigate(url: str) -> RenderPage:
 
     playwright = sync_playwright().start()
     browser = None
+    # ARC-16 : un seul budget de RENDER_TIMEOUT_MS pour navigation + prêt +
+    # capture (le défaut Playwright s'applique ensuite à screenshot/pdf).
+    deadline = time.monotonic() + RENDER_TIMEOUT_MS / 1000
+
+    def remaining_ms() -> int:
+        return max(1, int((deadline - time.monotonic()) * 1000))
+
     try:
         browser = playwright.chromium.launch(headless=True)
-        page = browser.new_page()
-        page.goto(url, wait_until="load")
-        page.wait_for_selector('[data-export-ready="true"]', timeout=30_000, state="attached")
+        page = (
+            browser.new_page(viewport={"width": viewport[0], "height": viewport[1]})
+            if viewport
+            else browser.new_page()
+        )
+        page.goto(url, wait_until="load", timeout=remaining_ms())
+        page.wait_for_selector(
+            '[data-export-ready="true"]', timeout=remaining_ms(), state="attached"
+        )
+        page.set_default_timeout(remaining_ms())
     except Exception:
         try:
             if browser is not None:
@@ -243,7 +267,11 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
         if (reason := core_unreachable_error(os.environ["SHELL_BASE_URL"])) is not None:
             raise RuntimeError(reason)
 
-        browser_page = _launch_and_navigate(target_url)
+        # ARC-16 : annulation demandée pendant l'attente en file / le démarrage.
+        if _cancelled(factory, job_id):
+            return
+
+        browser_page = _launch_and_navigate(target_url, viewport=page_pixels(print_layout))
         try:
             content = render_export(browser_page, format=export_format, print_layout=print_layout)
         finally:
@@ -261,6 +289,10 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
             finally:
                 if playwright_driver is not None:
                     playwright_driver.stop()
+
+        # Dernier point d'annulation avant l'envoi (le rendu n'est pas interruptible).
+        if _cancelled(factory, job_id):
+            return
 
         result_key = f"renders/{job_id}.{export_format}"
         bucket = os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports")
@@ -289,6 +321,7 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
         if not done:  # REV-323 B : repris en erreur pendant l'envoi — objet orphelin
             logger.warning("export job %s terminé tardivement, objet supprimé", job_id)
             s3_client.delete_object(Bucket=bucket, Key=result_key)
+            _cancelled(factory, job_id)  # annulé pendant l'envoi : statut final
             return
         _notify(
             factory,
