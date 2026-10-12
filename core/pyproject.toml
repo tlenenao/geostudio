@@ -316,6 +316,9 @@ name = "layered architecture"
 type = "layers"
 layers = [
     "app.main",
+    # app.xlsform (ARC-27) : import XLSForm + « mes saisies » ; compose l'App de collecte avec
+    # app.mcp.form_app (d'où sa place au-dessus d'app.mcp).
+    "app.xlsform",
     "app.mcp",
     "app.copilot",
     "app.public",

@@ -81,6 +81,7 @@ from app.stac import routes as stac_routes
 from app.terrain3d import routes as terrain3d_routes
 from app.tileset3d import routes as tileset3d_routes
 from app.usage import routes as usage_routes
+from app.xlsform import routes as xlsform_routes
 
 MAX_CONFIG_BODY_BYTES = 5 * 1024 * 1024
 _CONFIG_WRITE_PATH_RE = re.compile(r"^/v1/configs(/[^/]+){0,2}$")
@@ -420,6 +421,7 @@ def create_app() -> FastAPI:
     v1_router.include_router(reports_routes.router)
     v1_router.include_router(notifications_routes.router)
     v1_router.include_router(public_submit_routes.router)
+    v1_router.include_router(xlsform_routes.router)
     v1_router.include_router(apikeys_routes.router)
     v1_router.include_router(usage_routes.router)
     v1_router.include_router(quotas_routes.router)
