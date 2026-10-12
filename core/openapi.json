@@ -9712,6 +9712,22 @@
               "title": "Authorization",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
           }
         ],
         "responses": {
@@ -9836,6 +9852,22 @@
               "default": "",
               "title": "Authorization",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
             }
           }
         ],
@@ -10218,6 +10250,22 @@
               "title": "Authorization",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
           }
         ],
         "responses": {
@@ -10347,6 +10395,22 @@
               "title": "Authorization",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
           }
         ],
         "responses": {
@@ -10402,6 +10466,22 @@
               "default": "",
               "title": "Authorization",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
             }
           }
         ],

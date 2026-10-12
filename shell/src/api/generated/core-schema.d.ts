@@ -6064,6 +6064,7 @@ export interface operations {
             };
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -6131,6 +6132,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -6373,6 +6375,7 @@ export interface operations {
             };
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -6441,6 +6444,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -6475,6 +6479,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
