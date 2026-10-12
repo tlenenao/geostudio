@@ -356,6 +356,9 @@ layers = [
     "app.usage",
     "app.secrets",
     "app.cdc",
+    # app.public_submit (ARC-10) : soumission publique modérée ; réutilise l'écriture de
+    # features, les pièces jointes, les quotas et les notifications (tous en dessous).
+    "app.public_submit",
     "app.ingestion",
     "app.notifications",
     "app.dcat",
@@ -511,4 +514,5 @@ ignore_imports = [
     "app.db -> app.compliance.models",
     "app.db -> app.dataexport.models",
     "app.db -> app.history.models",
+    "app.db -> app.public_submit.models",
 ]

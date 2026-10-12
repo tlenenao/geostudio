@@ -48,6 +48,7 @@ from app.items.models import Item
 from app.mapicons.models import MapIcon
 from app.notifications.models import Notification, NotificationPreference
 from app.pipelines.models import PipelineRun
+from app.public_submit.models import Submission, SubmissionToken
 from app.reports.models import ReportRun
 from app.roles.models import Role
 from app.secrets.models import ConnectorSecret
@@ -145,6 +146,8 @@ def purge_tenant(
     counts["report_runs"] = _delete_all(session, ReportRun, tenant_id)
     counts["harvest_records"] = _delete_all(session, HarvestRecord, tenant_id)
     counts["configs"] = _delete_all(session, Config, tenant_id)
+    counts["submissions"] = _delete_all(session, Submission, tenant_id)
+    counts["submission_tokens"] = _delete_all(session, SubmissionToken, tenant_id)
     session.flush()
 
     # 2. Collections : dépublication CDC + DROP réel de la table dynamique
@@ -181,7 +184,13 @@ def purge_tenant(
     #    ci-dessus) + les 2 buckets de sortie de job (result_key connu,
     #    pas de préfixe commun, cf. spec §1.4/§3.1).
     counts["s3_objects_deleted"] = 0
-    for bucket_getter in (get_uploads_bucket, get_tileset3d_bucket, get_terrain3d_bucket):
+    # ARC-10 : pièces jointes de soumissions en attente (aucune ligne `attachments`).
+    for bucket_getter in (
+        get_uploads_bucket,
+        get_tileset3d_bucket,
+        get_terrain3d_bucket,
+        get_attachments_bucket,
+    ):
         counts["s3_objects_deleted"] += _delete_tenant_prefixed_objects(
             s3, bucket_getter(), tenant_id
         )

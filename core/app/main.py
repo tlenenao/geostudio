@@ -65,6 +65,7 @@ from app.notifications import routes as notifications_routes
 from app.pipelines import config_validation as pipelines_config_validation  # noqa: F401
 from app.pipelines import routes as pipelines_routes
 from app.public import routes as public_routes
+from app.public_submit import routes as public_submit_routes
 from app.quotas import routes as quotas_routes
 from app.quotas.service import QuotaExceededError
 from app.ratelimit.limiter import RateLimiter, caller_key, route_group
@@ -415,6 +416,7 @@ def create_app() -> FastAPI:
     v1_router.include_router(alerts_routes.router)
     v1_router.include_router(reports_routes.router)
     v1_router.include_router(notifications_routes.router)
+    v1_router.include_router(public_submit_routes.router)
     v1_router.include_router(apikeys_routes.router)
     v1_router.include_router(usage_routes.router)
     v1_router.include_router(quotas_routes.router)
