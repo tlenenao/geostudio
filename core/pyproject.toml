@@ -360,6 +360,9 @@ layers = [
     "app.notifications",
     "app.dcat",
     "app.stac",
+    # app.ows (ARC-11, ADR 0018) : WFS 2.0 + OGC API Tiles, au-dessus de app.features
+    # dont il réutilise la porte de lecture (rls, masquage, select_features, tuiles).
+    "app.ows",
     "app.features",
     "app.attachments",
     "app.collections",

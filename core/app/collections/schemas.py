@@ -72,6 +72,7 @@ class CollectionPatch(BaseModel):
     description: str | None = None
     isPublic: bool | None = None
     editable: bool | None = None
+    owsEnabled: bool | None = None
     attachmentFields: list[AttachmentFieldSpec] | None = None
     sensitiveFields: list[str] | None = None
     license: str | None = None

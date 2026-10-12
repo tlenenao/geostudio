@@ -94,6 +94,9 @@ RESERVED_QUERY_PARAMS = {
     "datetime_field",
     "crs",
     "bbox-crs",
+    "filter",
+    "filter-lang",
+    "filter-crs",
 }
 MAX_LIMIT = 1000
 
@@ -103,6 +106,14 @@ CONFORMANCE_CLASSES = [
     "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/geojson",
     "http://www.opengis.net/spec/ogcapi-features-2/1.0/conf/crs",
     "http://www.opengis.net/spec/ogcapi-features-4/1.0/conf/create-replace-delete",
+    # ARC-12 : CQL2-text en sous-ensemble (cf. app/features/cql2.py)
+    "http://www.opengis.net/spec/ogcapi-features-3/1.0/conf/filter",
+    "http://www.opengis.net/spec/ogcapi-features-3/1.0/conf/features-filter",
+    "http://www.opengis.net/spec/cql2/1.0/conf/cql2-text",
+    "http://www.opengis.net/spec/cql2/1.0/conf/basic-cql2",
+    "http://www.opengis.net/spec/cql2/1.0/conf/advanced-comparison-operators",
+    "http://www.opengis.net/spec/cql2/1.0/conf/basic-spatial-functions",
+    "http://www.opengis.net/spec/cql2/1.0/conf/temporal-functions",
 ]
 
 
@@ -304,6 +315,9 @@ def list_features(
     datetime_field: str | None = None,
     crs: str | None = None,
     bbox_crs: str | None = Query(None, alias="bbox-crs"),
+    filter_q: str | None = Query(None, alias="filter"),
+    filter_lang: str | None = Query(None, alias="filter-lang"),
+    filter_crs: str | None = Query(None, alias="filter-crs"),
     response: Response = None,  # type: ignore[assignment]
     user=Depends(get_current_user_optional),
     guest: GuestActor | None = Depends(get_share_link_actor),
@@ -324,6 +338,16 @@ def list_features(
     parsed_bbox = parse_bbox(bbox, check_bounds=bbox_srid == 4326)
     parsed_geom_intersects = _parse_geom_intersects(geom_intersects)
     filters = _collect_filters(request)
+    if filter_lang is not None and filter_lang != "cql2-text":
+        raise _validation_error(
+            [
+                {
+                    "field": "filter-lang",
+                    "code": "invalid_filter_lang",
+                    "message": "only cql2-text is supported",
+                }
+            ]
+        )
     if cursor is not None and offset > 0:
         raise _validation_error(
             [{"field": "cursor", "code": "invalid_cursor", "message": "cursor excludes offset"}]
@@ -337,6 +361,8 @@ def list_features(
             "datetime_field": datetime_field,
             "out_srid": out_srid,
             "bbox_srid": bbox_srid if bbox_srid != 4326 else None,
+            "cql2": filter_q,
+            "cql2_srid": parse_crs(filter_crs, "filter-crs"),
         }.items()
         if v is not None
     }

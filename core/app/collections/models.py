@@ -34,6 +34,11 @@ class Collection(Base):
     is_public: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False, server_default=sa.false()
     )
+    # ARC-11 / ADR 0018 : exposition WFS 2.0 + OGC API Tiles, désactivée par défaut
+    # (comme Esri : « à activer explicitement ») ; sans effet si CORE_OWS_ENABLED=false.
+    ows_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default=sa.false()
+    )
     editable: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False, server_default=sa.true()
     )
