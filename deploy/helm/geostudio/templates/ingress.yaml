@@ -1,0 +1,30 @@
+{{- if .Values.ingress.enabled }}
+{{- $fn := include "geostudio.fullname" . -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fn }}
+  labels:
+    {{- include "geostudio.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations: {{ toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- if .Values.ingress.tlsSecretName }}
+  tls:
+    - secretName: {{ .Values.ingress.tlsSecretName }}
+      hosts: [{{ required "ingress.host" .Values.ingress.host | quote }}, {{ required "ingress.apiHost" .Values.ingress.apiHost | quote }}]
+  {{- end }}
+  rules:
+    - host: {{ required "ingress.host" .Values.ingress.host | quote }}
+      http:
+        paths:
+          - {path: /, pathType: Prefix, backend: {service: {name: {{ $fn }}-shell, port: {number: 8300}}}}
+    - host: {{ required "ingress.apiHost" .Values.ingress.apiHost | quote }}
+      http:
+        paths:
+          - {path: /, pathType: Prefix, backend: {service: {name: {{ $fn }}-core, port: {number: 8200}}}}
+{{- end }}

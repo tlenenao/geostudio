@@ -1,0 +1,54 @@
+{{- if .Values.observability.enabled }}
+{{- $fn := include "geostudio.fullname" . -}}
+{{- $sel := dict "root" . "component" "otel-lgtm" -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fn }}-otel-lgtm
+  labels:
+    {{- include "geostudio.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels:
+      {{- include "geostudio.selector" $sel | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "geostudio.selector" $sel | nindent 8 }}
+    spec:
+      containers:
+        - name: otel-lgtm
+          image: {{ .Values.observability.image }}
+          ports:
+            - {name: grafana, containerPort: 3000}
+            - {name: otlp-grpc, containerPort: 4317}
+            - {name: otlp-http, containerPort: 4318}
+          readinessProbe:
+            httpGet: {path: /api/health, port: grafana}
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: {path: /api/health, port: grafana}
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+            initialDelaySeconds: 120
+          resources: {{ toYaml .Values.observability.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fn }}-otel-lgtm
+  labels:
+    {{- include "geostudio.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "geostudio.selector" $sel | nindent 4 }}
+  ports:
+    - {name: grafana, port: 3000, targetPort: grafana}
+    - {name: otlp-grpc, port: 4317, targetPort: otlp-grpc}
+    - {name: otlp-http, port: 4318, targetPort: otlp-http}
+{{- end }}

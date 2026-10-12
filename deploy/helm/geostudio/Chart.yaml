@@ -1,0 +1,7 @@
+apiVersion: v2
+name: geostudio
+description: GeoStudio (core, worker, cdc-worker, shell, export-worker, observabilité optionnelle) sur Kubernetes
+type: application
+version: 0.1.0
+# Tag d'image par défaut ; aligné sur GEOSTUDIO_VERSION de .env.example (images amd64+arm64).
+appVersion: "v0.1.0"
