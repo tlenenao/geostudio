@@ -39,7 +39,9 @@ class SubmissionToken(Base):
     token_hash: Mapped[str] = mapped_column(String, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     max_submissions: Mapped[int] = mapped_column(Integer, nullable=False)
-    submission_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    submission_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
