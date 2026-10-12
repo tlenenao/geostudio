@@ -2,7 +2,13 @@
 """Journal d'entité (ARC-15). Les fonctions écrivent dans la session de l'appelant :
 le journal est donc dans la MÊME transaction que l'écriture qu'il décrit (commit ou
 rollback communs). À appeler HORS `rls_scope` (rôle propriétaire : `entity_history`
-n'est pas accordée à gis_rls)."""
+n'est pas accordée à gis_rls).
+
+Limites connues (revue finale vague 1 ARC) :
+- seules les écritures REST (`app.features.routes`) et l'approbation d'une soumission
+  publique sont journalisées ; les écritures de pipeline et l'import en ajout
+  (`app.ingestion.importer.run_append`) ne le sont pas (ARC-15 = REST seulement) ;
+- l'import en ajout ne met pas non plus à jour `collections.feature_count`."""
 
 from datetime import UTC, datetime, timedelta
 
