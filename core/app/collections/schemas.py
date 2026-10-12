@@ -113,6 +113,26 @@ class Subtypes(BaseModel):
         return self
 
 
+class AttributeRule(BaseModel):
+    """Règle d'attribut CEL (ARC-14). Les colonnes de la collection sont les variables."""
+
+    model_config = ConfigDict(extra="forbid")
+    id: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]{0,63}$")
+    kind: Literal["calculation", "constraint", "batch"]
+    field: str | None = None
+    expression: str = Field(min_length=1, max_length=2000)
+    message: str = Field(default="", max_length=300)
+    mode: Literal["default", "derived"] = "default"
+
+    @model_validator(mode="after")
+    def _shape(self) -> "AttributeRule":
+        if self.kind == "calculation" and not self.field:
+            raise ValueError("a calculation rule needs a target field")
+        if self.kind != "calculation" and not self.message:
+            raise ValueError("a constraint/batch rule needs a message")
+        return self
+
+
 class CollectionPatch(BaseModel):
     title: str | None = None
     description: str | None = None
@@ -123,6 +143,7 @@ class CollectionPatch(BaseModel):
     # ARC-13 : null explicite (subtypes) = effacer ; fieldDomains {} = effacer tous.
     fieldDomains: dict[str, FieldDomain] | None = None
     subtypes: Subtypes | None = None
+    attributeRules: list[AttributeRule] | None = None
     license: str | None = None
     licenseUri: str | None = None
     producer: str | None = None

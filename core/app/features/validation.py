@@ -6,6 +6,7 @@ formulaires SP-4 ({"field", "code", "message"})."""
 from datetime import date, datetime
 
 from app.collections.introspection import ColumnInfo, TableInfo
+from app.features.cel_rules import constraint_errors
 from app.features.rules import apply_write_rules
 
 
@@ -142,4 +143,6 @@ def validate_feature(info: TableInfo, feature: dict) -> list[dict]:
             )
         elif not geometry_type_accepted(info.geometry_type, geometry):
             errors.append(_err("geometry", "geometry_mismatch", f"expected {info.geometry_type}"))
+    if not errors and info.rules:  # ARC-14 : contraintes CEL sur des valeurs déjà valides
+        errors.extend(constraint_errors(info, props))
     return errors

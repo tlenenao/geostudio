@@ -64,6 +64,11 @@ class Collection(Base):
         JSON, default=dict, nullable=False, server_default="{}"
     )
     subtypes: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False, server_default="{}")
+    # ARC-14 : règles d'attributs CEL [{id, kind: calculation|constraint|batch, field?, expression,
+    # message, mode}] ; calculation/constraint appliquées à l'écriture, batch en job de qualité.
+    attribute_rules: Mapped[list] = mapped_column(
+        JSON, default=list, nullable=False, server_default="[]"
+    )
     # Métadonnées ouvertes (chantier 4.9, docs/superpowers/specs/
     # 2026-09-04-sp41-metadonnees-licence-design.md §1.1). Convention
     # str/default="" (pas None) : un PATCH ne peut jamais distinguer un champ

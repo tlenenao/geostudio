@@ -3,6 +3,9 @@
 (pur ; le contrôle de forme est fait par les modèles Pydantic de `schemas`)."""
 
 import dataclasses
+import re
+
+import celpy
 
 from app.collections.introspection import TableInfo
 
@@ -88,3 +91,41 @@ def check_domain_config(info: TableInfo, field_domains: dict, subtypes: dict) ->
             for name, dom in item.get("domains", {}).items():
                 check_domain(name, dom)
     return problems
+
+
+_ENV = celpy.Environment()
+
+
+def cel_syntax_error(expression: str) -> str | None:
+    """Message si l'expression n'est pas du CEL syntaxiquement valide, sinon None."""
+    try:
+        _ENV.compile(expression)
+    except Exception as exc:  # CELParseError, pas de hiérarchie publique stable
+        return str(exc).splitlines()[0][:200]
+    return None
+
+
+def check_rules_config(info: TableInfo, rules: list[dict]) -> list[str]:
+    """ARC-14 : cohérence des règles avec les colonnes réelles et la syntaxe CEL."""
+    reserved = (info.pk_column, "tenant_id", info.geometry_column)
+    cols = {c.name for c in info.columns if c.name not in reserved}
+    problems: list[str] = []
+    ids = [r["id"] for r in rules]
+    if len(ids) != len(set(ids)):
+        problems.append("duplicate rule id(s)")
+    for r in rules:
+        if r["kind"] == "calculation" and r.get("field") not in cols:
+            problems.append(f"rule '{r['id']}': unknown target field {r.get('field')!r}")
+        elif r["kind"] == "constraint" and r.get("field") and r["field"] not in cols:
+            problems.append(f"rule '{r['id']}': unknown field {r['field']!r}")
+        if err := cel_syntax_error(r["expression"]):
+            problems.append(f"rule '{r['id']}': invalid CEL ({err})")
+    return problems
+
+
+def strip_hidden_rules(rules: list[dict], hidden: list[str]) -> list[dict]:
+    """GAP-22 : une règle qui cible ou lit un champ sensible est cachée aux lecteurs masqués."""
+    if not hidden:
+        return rules
+    pat = re.compile(r"(" + "|".join(re.escape(h) for h in hidden) + r")")
+    return [r for r in rules if r.get("field") not in hidden and not pat.search(r["expression"])]
