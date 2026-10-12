@@ -37,6 +37,14 @@ function defaultFor(mode: Exclude<Mode, "none">): AdvancedSymbology {
   }
 }
 
+const MODE_LABEL = {
+  none: "mapSymbology.advancedModeNone",
+  dotDensity: "mapSymbology.advancedModeDotDensity",
+  predominant: "mapSymbology.advancedModePredominant",
+  bivariate: "mapSymbology.advancedModeBivariate",
+  compare: "mapSymbology.advancedModeCompare",
+} as const;
+
 export function AdvancedSymbologyEditor({
   value,
   availableFields,
@@ -133,7 +141,7 @@ export function AdvancedSymbologyEditor({
         >
           {MODES.map((m) => (
             <option key={m} value={m}>
-              {t(`mapSymbology.advancedMode.${m}`)}
+              {t(MODE_LABEL[m])}
             </option>
           ))}
         </select>
