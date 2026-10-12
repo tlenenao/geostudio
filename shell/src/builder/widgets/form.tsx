@@ -8,7 +8,7 @@ import { useInstanceInfo } from "../../api/hooks";
 import { useBusAction } from "../ActionBusContext";
 import { FeatureValidationError } from "../../api/itemClient";
 import { ApiError } from "../../api/ApiError";
-import type { CollectionSchema, DataRecord, DataSource } from "../../api/types";
+import type { CollectionSchema, DataRecord, DataSource, FieldDomain } from "../../api/types";
 import type { WidgetContext } from "../registry";
 import { plural, t } from "../../i18n";
 import { ConfirmDialog } from "../../ui/kit/ConfirmDialog";
@@ -27,7 +27,39 @@ export type FormField = {
   min?: number;
   max?: number;
   pattern?: string;
+  // ARC-13 : choix imposés par un domaine `list` ou par les sous-types (calculé à l'affichage
+  // depuis le schéma courant, jamais persisté dans la config du widget).
+  options?: { value: string | number; label: string }[];
 };
+
+// ARC-13 : champs enrichis des domaines/sous-types du schéma courant ; le domaine du sous-type
+// sélectionné l'emporte sur celui du champ. Une plage devient min/max (validés par validateField).
+export function applyDomains(
+  fields: FormField[],
+  schema: CollectionSchema | undefined,
+  values: Record<string, unknown>,
+): FormField[] {
+  if (!schema) return fields;
+  const domains = new Map<string, FieldDomain>();
+  for (const f of schema.fields) if (f.domain) domains.set(f.name, f.domain);
+  const sub = schema.subtypes;
+  const current = sub?.items.find((i) => String(i.value) === String(values[sub.field]));
+  return fields.map((f) => {
+    if (sub && f.name === sub.field) {
+      return { ...f, options: sub.items.map((i) => ({ value: i.value, label: i.label })) };
+    }
+    const dom = current?.domains?.[f.name] ?? domains.get(f.name);
+    if (!dom) return f;
+    if (dom.type === "list") {
+      return { ...f, options: dom.values.map((v) => ({ value: v, label: String(v) })) };
+    }
+    return {
+      ...f,
+      ...(dom.min !== undefined ? { min: dom.min } : {}),
+      ...(dom.max !== undefined ? { max: dom.max } : {}),
+    };
+  });
+}
 
 function fieldsFromSchema(schema: CollectionSchema): FormField[] {
   return schema.fields.map((f, i) => ({
@@ -425,6 +457,30 @@ function FieldInput({
   // fields.map) : AttachmentFieldInput y est rendu directement, avec son
   // propre <span id> de label relié par aria-labelledby (D38) — FieldInput
   // n'est donc jamais appelé pour ce type.
+  if (field.options && field.type !== "boolean" && field.type !== "attachment") {
+    const options = field.options;
+    return (
+      <select
+        id={fieldId}
+        aria-label={field.label}
+        className={fieldInputCls}
+        value={value === undefined || value === null ? "" : String(value)}
+        onChange={(e) =>
+          onChange(options.find((o) => String(o.value) === e.target.value)?.value ?? undefined)
+        }
+        onBlur={onBlur}
+        {...errorProps}
+        {...requiredProps}
+      >
+        <option value=""></option>
+        {options.map((o) => (
+          <option key={String(o.value)} value={String(o.value)}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    );
+  }
   if (field.type === "boolean") {
     return (
       <input
@@ -523,7 +579,7 @@ function FieldInput({
 function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: WidgetContext }) {
   const client = useItemClient();
   const queryClient = useQueryClient();
-  const fields = ((props.fields as FormField[] | undefined) ?? [])
+  const baseFields = ((props.fields as FormField[] | undefined) ?? [])
     .filter((f) => !f.hidden && f.type !== "unsupported" && f.type !== "list")
     .sort((a, b) => a.order - b.order);
   // Les colonnes `list` (non éditables ici) sont renvoyées telles que chargées :
@@ -551,6 +607,16 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
   const [summaryNames, setSummaryNames] = useState<string[] | null>(null);
 
   const collectionId = ctx.data?.layer ?? "";
+  // ARC-13 : domaines et sous-types lus au schéma courant (ils peuvent changer après la
+  // configuration du widget) ; sans schéma, le formulaire reste celui de la config.
+  const schemaQuery = useQuery({
+    queryKey: ["collection-schema-domains", collectionId],
+    queryFn: () => client.getCollectionSchema(collectionId),
+    enabled: collectionId !== "",
+    staleTime: 60_000,
+    retry: false,
+  });
+  const fields = applyDomains(baseFields, schemaQuery.data, values);
   const permissionQuery = useQuery({
     queryKey: ["collection-permission", collectionId],
     queryFn: () => client.getCollectionPermission(collectionId),
@@ -805,7 +871,19 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
             <FieldInput
               field={f}
               value={values[f.name]}
-              onChange={(v) => setValues((old) => ({ ...old, [f.name]: v }))}
+              onChange={(v) =>
+                setValues((old) => {
+                  const next = { ...old, [f.name]: v };
+                  // ARC-13 : choisir un sous-type pré-remplit ses défauts sur les champs vides.
+                  const sub = schemaQuery.data?.subtypes;
+                  if (sub && sub.field === f.name) {
+                    const picked = sub.items.find((i) => String(i.value) === String(v));
+                    for (const [k, d] of Object.entries(picked?.defaults ?? {}))
+                      if (next[k] === undefined || next[k] === "") next[k] = d;
+                  }
+                  return next;
+                })
+              }
               onBlur={() => setTouched((t) => ({ ...t, [f.name]: true }))}
               error={errorFor(f)}
             />

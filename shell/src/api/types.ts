@@ -469,6 +469,20 @@ export type CollectionFieldType =
   | "attachment"
   | "unsupported";
 
+// ARC-13 : domaine d'attribut (liste de valeurs admises ou plage bornée incluse).
+export type FieldDomain =
+  { type: "list"; values: (string | number)[] } | { type: "range"; min?: number; max?: number };
+
+export type CollectionSubtypes = {
+  field: string;
+  items: {
+    value: string | number;
+    label: string;
+    defaults?: Record<string, unknown>;
+    domains?: Record<string, FieldDomain>;
+  }[];
+};
+
 export type CollectionSchemaField = {
   name: string;
   type: CollectionFieldType;
@@ -477,6 +491,7 @@ export type CollectionSchemaField = {
   values?: string[];
   itemType?: CollectionFieldType;
   label?: string;
+  domain?: FieldDomain;
 };
 
 export type CollectionSchema = {
@@ -484,6 +499,7 @@ export type CollectionSchema = {
   pk: string;
   geometry: { column: string; type: string | null; srid: number } | null;
   fields: CollectionSchemaField[];
+  subtypes?: CollectionSubtypes;
 };
 
 // REV-117 : profil exploratoire d'une collection (GET /collections/{id}/profile).
