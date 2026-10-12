@@ -861,6 +861,13 @@ def _get_writable(session, user, collection_id):
     return col
 
 
+def _snapshot(session, repo, info, fid):
+    """Instantané du journal ARC-15. À appeler HORS `rls(...)` : rôle propriétaire, donc
+    géométrie complète (jamais découpée par `geo_source` sous une limite géographique) ;
+    l'appelant n'y lit que la ligne qu'il vient d'écrire (ou va écrire) sous RLS."""
+    return history.snapshot(repo.get_feature(session, info, fid=str(fid)))
+
+
 def _validated(introspect, session, col, payload):
     info = with_attribute_rules(introspect(session, col.table_name), col)
     errors = validate_for_write(info, payload)
@@ -892,7 +899,7 @@ def create_feature(
                 geometry=payload.get("geometry"),
             )
             _set_etag(response, session, repo, info, fid)
-            after = history.snapshot(repo.get_feature(session, info, fid=str(fid)))
+        after = _snapshot(session, repo, info, fid)
     except IntegrityError as exc:
         raise HTTPException(
             status_code=409, detail="feature conflicts with an existing row"
@@ -986,7 +993,8 @@ def _replace(
     try:
         with rls(session, col.tenant_id):
             _enforce_if_match(session, repo, view_info, fid, if_match)
-            before = history.snapshot(repo.get_feature(session, full_info, fid=fid))
+        before = _snapshot(session, repo, full_info, fid)
+        with rls(session, col.tenant_id):
             ok = repo.replace_feature(
                 session,
                 info,
@@ -996,7 +1004,8 @@ def _replace(
             )
             if ok:
                 _set_etag(response, session, repo, view_info, fid)
-                after = history.snapshot(repo.get_feature(session, full_info, fid=fid))
+        if ok:
+            after = _snapshot(session, repo, full_info, fid)
     except IntegrityError as exc:
         # Même réponse qu'à la création : une collision avec une ligne cachée par une
         # limite géographique est indiscernable d'une collision avec une ligne visible.
@@ -1044,11 +1053,14 @@ def restore_feature_version(
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
     masked: bool = Depends(get_masked_for_user),
+    geo_limits=Depends(get_request_geo_limits),
 ):
     """ARC-15 : ré-applique l'état APRÈS d'une version (écriture normale : droit
     d'écriture, validation, RLS ; journalisée `restore`). Une suppression n'est pas
     restaurable (409) : la PK ne peut pas être ré-imposée."""
     col = _get_writable(session, user, collection_id)
+    # Fail-closed, comme la lecture du journal : une version n'est pas découpée.
+    refuse_if_geo_limited(geo_limits, col.table_name, path="entity restore")
     version = history.get_version(
         session, tenant_id=col.tenant_id, collection_id=col.id, fid=fid, version_id=version_id
     )
@@ -1060,9 +1072,14 @@ def restore_feature_version(
         frozenset() if not unmask_for_owner(masked, user, col) else frozenset(col.sensitive_fields)
     )
     target = history.mask_snapshot(version.after, hidden) or {}
+    # Seules les colonnes écrivables aujourd'hui : ni `unsupported` (lecture seule), ni
+    # réservées, ni supprimées depuis la version.
+    info = introspect(session, col.table_name)
+    reserved = {info.pk_column, "tenant_id", info.geometry_column}
+    writable = {c.name for c in info.columns if c.type != "unsupported" and c.name not in reserved}
     payload = {
         "type": "Feature",
-        "properties": target.get("properties") or {},
+        "properties": {k: v for k, v in (target.get("properties") or {}).items() if k in writable},
         "geometry": target.get("geometry"),
     }
     _replace(
@@ -1089,7 +1106,8 @@ def remove_feature(
     view_info = hide_sensitive_columns(info, col.sensitive_fields) if masked else info
     with rls(session, col.tenant_id):
         _enforce_if_match(session, repo, view_info, fid, if_match)
-        before = history.snapshot(repo.get_feature(session, info, fid=fid))
+    before = _snapshot(session, repo, info, fid)
+    with rls(session, col.tenant_id):
         ok = repo.delete_feature(session, info, fid=fid)
     if not ok:
         raise HTTPException(status_code=404, detail="feature not found")
