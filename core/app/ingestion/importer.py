@@ -32,6 +32,9 @@ from app.ingestion.parsers import (
     IngestionParseError,
     _is_geoparquet_from_bytes,
     parse_csv_latlon,
+    parse_dgn,
+    parse_dxf,
+    parse_filegdb_zip,
     parse_geojson,
     parse_geoparquet,
     parse_gml,
@@ -96,8 +99,14 @@ def _pick_format(filename: str) -> str:
         return "xlsx"
     if lower.endswith(".gpkg"):
         return "gpkg"
+    if lower.endswith(".gdb.zip"):
+        return "filegdb"
     if lower.endswith(".zip"):
         return "shapefile"
+    if lower.endswith(".dxf"):
+        return "dxf"
+    if lower.endswith(".dgn"):
+        return "dgn"
     if lower.endswith((".kml", ".kmz")):
         return "kml"
     if lower.endswith(".gml"):
@@ -227,6 +236,12 @@ def _load_rows(
         rows = list(parse_gpkg(content, layer_name))
     elif fmt == "shapefile":
         rows = list(parse_shapefile_zip(content, layer_name))
+    elif fmt == "filegdb":
+        rows = list(parse_filegdb_zip(content, layer_name))
+    elif fmt == "dxf":
+        rows = list(parse_dxf(content, layer_name))
+    elif fmt == "dgn":
+        rows = list(parse_dgn(content, layer_name))
     elif fmt == "kml":
         rows = list(parse_kml(content, layer_name))
     elif fmt == "gml":

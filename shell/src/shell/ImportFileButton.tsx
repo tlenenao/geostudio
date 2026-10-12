@@ -99,7 +99,9 @@ function isLayeredFormat(filename: string): boolean {
     lower.endsWith(".zip") ||
     lower.endsWith(".kml") ||
     lower.endsWith(".kmz") ||
-    lower.endsWith(".gml")
+    lower.endsWith(".gml") ||
+    lower.endsWith(".dxf") ||
+    lower.endsWith(".dgn")
   );
 }
 
@@ -637,7 +639,7 @@ export function ImportFileButton() {
               {t("importFile.fileToImport")}
               <input
                 type="file"
-                accept=".geojson,.json,.csv,.xlsx,.kml,.kmz,.gpkg,.zip,.parquet,.jsonl,.gml,.xml"
+                accept=".geojson,.json,.csv,.xlsx,.kml,.kmz,.gpkg,.zip,.parquet,.jsonl,.gml,.xml,.dxf,.dgn"
                 onChange={(e) => void onFileChange(e)}
               />
             </label>

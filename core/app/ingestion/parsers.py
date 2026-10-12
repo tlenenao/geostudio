@@ -338,7 +338,45 @@ def list_xlsx_sheets(content: bytes) -> list[LayerInfo]:
 # plutôt qu'une validation par motif : les cinq formats qui ont besoin d'un
 # fichier sur disque (GDAL/pyogrio ne lisent pas depuis la mémoire) sont
 # connus, et une liste se relit sans avoir à raisonner sur une regex.
-_ALLOWED_TEMP_SUFFIXES = frozenset({".gpkg", ".zip", ".kml", ".kmz", ".parquet", ".gml"})
+_ALLOWED_TEMP_SUFFIXES = frozenset(
+    {".gpkg", ".zip", ".kml", ".kmz", ".parquet", ".gml", ".dxf", ".dgn"}
+)
+_SQLITE_MAGIC = b"SQLite format 3\x00"
+_MAX_ZIP_UNCOMPRESSED = 2 * 1024**3  # garde anti zip-bomb (ARC-23)
+_GDB_DIR_RE = re.compile(r"^[\w. -]+\.gdb$")
+
+
+def _reject_vrt_and_check_signature(content: bytes, suffix: str) -> None:
+    """REV-333 : pyogrio choisit le driver sur le contenu, pas sur l'extension —
+    un VRT OGR déguisé référence des fichiers du serveur. Refusé par signature
+    (en-tête) et, pour un zip, par nom de membre. GPKG : en-tête SQLite exigé."""
+    if b"ogrvrtdatasource" in content[:4096].lower():
+        raise IngestionParseError("fichier VRT refusé")
+    if suffix == ".gpkg" and not content.startswith(_SQLITE_MAGIC):
+        raise IngestionParseError(_UNREADABLE)
+    if suffix == ".zip":
+        try:
+            with zipfile.ZipFile(io.BytesIO(content)) as z:
+                infos = z.infolist()
+        except zipfile.BadZipFile as exc:
+            raise IngestionParseError(_UNREADABLE) from exc
+        if any(i.filename.lower().endswith(".vrt") for i in infos):
+            raise IngestionParseError("fichier VRT refusé")
+        if sum(i.file_size for i in infos) > _MAX_ZIP_UNCOMPRESSED:
+            raise IngestionParseError("archive trop volumineuse une fois décompressée")
+
+
+def _zip_dataset_path(tmp_path: str, content: bytes, *, require_gdb: bool = False) -> str:
+    """Chemin GDAL d'un zip : racine, ou le dossier `X.gdb` de premier niveau
+    (FileGDB, que GDAL n'ouvre pas depuis la racine du zip)."""
+    with zipfile.ZipFile(io.BytesIO(content)) as z:
+        tops = {n.split("/", 1)[0] for n in z.namelist() if "/" in n}
+    gdbs = sorted(t for t in tops if _GDB_DIR_RE.match(t))
+    if gdbs:  # ponytail: un seul .gdb par archive (le premier), pas de .gdb imbriqué
+        return f"/vsizip/{tmp_path}/{gdbs[0]}"
+    if require_gdb:
+        raise IngestionParseError("aucun dossier .gdb à la racine de l'archive")
+    return f"/vsizip/{tmp_path}"
 
 
 @contextmanager
@@ -356,6 +394,7 @@ def _temp_file(content: bytes, suffix: str) -> Iterator[str]:
     silencieusement."""
     if suffix not in _ALLOWED_TEMP_SUFFIXES:
         raise ValueError(f"suffixe de fichier temporaire non autorisé : {suffix!r}")
+    _reject_vrt_and_check_signature(content, suffix)
     with tempfile.NamedTemporaryFile(suffix=suffix) as tmp:
         tmp.write(content)
         tmp.flush()
@@ -377,6 +416,9 @@ def _crs_transform(crs: str | None):
 
 
 def _native_value(value):
+    if isinstance(value, np.ndarray | list | tuple):
+        # champs multivalués (GML complexe : StringList/IntegerList) -> texte JSON
+        return json.dumps([_native_value(v) for v in value], ensure_ascii=False)
     if isinstance(value, np.generic):
         value = value.item()
     if isinstance(value, float) and math.isnan(value):
@@ -384,7 +426,12 @@ def _native_value(value):
     return value
 
 
-def _read_features(path: str, layer_name: str | None) -> Iterator[tuple[BaseGeometry, dict]]:
+def _read_features(
+    path: str, layer_name: str | None, *, cad: bool = False
+) -> Iterator[tuple[BaseGeometry, dict]]:
+    """`cad` (DXF/DGN, sans CRS dans le fichier) : coordonnées lues en WGS84 si
+    elles en respectent l'étendue, sinon refus (CRS requis) ; entités sans
+    géométrie (textes, blocs) ignorées."""
     try:
         raw_layers = pyogrio.list_layers(path)
     except _OGR_ERRORS as exc:
@@ -418,16 +465,26 @@ def _read_features(path: str, layer_name: str | None) -> Iterator[tuple[BaseGeom
     except _OGR_ERRORS as exc:
         raise IngestionParseError(f"couche '{layer_name}' illisible") from exc
 
-    transform = _crs_transform(meta["crs"])
+    crs = meta["crs"] or ("EPSG:4326" if cad else None)
+    transform = _crs_transform(crs)
     fields = list(meta["fields"])
 
     for i, wkb in enumerate(geometry):
+        if wkb is None and cad:
+            continue
         if wkb is None:
             raise IngestionParseError(f"entité {i} : géométrie manquante")
         try:
             geom = shapely.from_wkb(wkb)
         except ShapelyError as exc:
             raise IngestionParseError(f"entité {i} : géométrie invalide ({exc})") from exc
+        if cad and not meta["crs"]:
+            minx, miny, maxx, maxy = geom.bounds
+            if not (-180 <= minx <= maxx <= 180 and -90 <= miny <= maxy <= 90):
+                raise IngestionParseError(
+                    f"entité {i} : CRS absent et coordonnées hors étendue WGS84 "
+                    "(CAO en repère local non supporté)"
+                )
         if transform is not None:
             geom = shapely_transform(transform, geom)
         if not geom.is_valid:
@@ -449,7 +506,29 @@ def parse_shapefile_zip(
     layer_name: str | None = None,
 ) -> Iterator[tuple[BaseGeometry, dict]]:
     with _temp_file(content, ".zip") as path:
-        yield from _read_features(f"/vsizip/{path}", layer_name)
+        yield from _read_features(_zip_dataset_path(path, content), layer_name)
+
+
+def parse_filegdb_zip(
+    content: bytes,
+    layer_name: str | None = None,
+) -> Iterator[tuple[BaseGeometry, dict]]:
+    """File Geodatabase (OpenFileGDB, lecture seule) : zip d'un dossier `X.gdb`."""
+    with _temp_file(content, ".zip") as path:
+        yield from _read_features(_zip_dataset_path(path, content, require_gdb=True), layer_name)
+
+
+def parse_dxf(content: bytes, layer_name: str | None = None) -> Iterator[tuple[BaseGeometry, dict]]:
+    with _temp_file(content, ".dxf") as path:
+        for geom, props in _read_features(path, layer_name, cad=True):
+            yield geom, _rename_reserved_property_keys(props, "dxf")
+
+
+def parse_dgn(content: bytes, layer_name: str | None = None) -> Iterator[tuple[BaseGeometry, dict]]:
+    """DGN v7 uniquement (le V8 n'a pas de driver libre)."""
+    with _temp_file(content, ".dgn") as path:
+        for geom, props in _read_features(path, layer_name, cad=True):
+            yield geom, _rename_reserved_property_keys(props, "dgn")
 
 
 # Le driver KML de GDAL impose un schéma de champs fixe sur TOUT Placemark,
@@ -763,7 +842,9 @@ def list_layers(content: bytes, filename: str) -> list[LayerInfo]:
     if lower.endswith(".gpkg"):
         suffix, wrap = ".gpkg", (lambda p: p)
     elif lower.endswith(".zip"):
-        suffix, wrap = ".zip", (lambda p: f"/vsizip/{p}")
+        suffix, wrap = ".zip", None
+    elif lower.endswith((".dxf", ".dgn")):
+        suffix, wrap = (".dxf" if lower.endswith(".dxf") else ".dgn"), (lambda p: p)
     elif lower.endswith((".kml", ".kmz", ".gml")):
         # Identité : PAS le wrap /vsizip/ de la branche .zip ci-dessus, cf.
         # parse_kml/parse_gml — un .kmz ou un .gml se lit tel quel.
@@ -786,7 +867,7 @@ def list_layers(content: bytes, filename: str) -> list[LayerInfo]:
     else:
         raise ValueError(f"format non concerné par l'inspection : {filename}")
     with _temp_file(content, suffix) as tmp_path:
-        path = wrap(tmp_path)
+        path = _zip_dataset_path(tmp_path, content) if wrap is None else wrap(tmp_path)
         try:
             raw_layers = pyogrio.list_layers(path)
         except _OGR_ERRORS as exc:

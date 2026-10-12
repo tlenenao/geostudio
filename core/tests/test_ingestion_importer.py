@@ -806,3 +806,32 @@ def test_semicolon_csv_with_decimal_comma_imports_numbers(env):
             .all()
         )
     assert rows == [1.5, 2.25]
+
+
+def test_filegdb_zip_import_end_to_end(env, tmp_path):
+    """ARC-23 : FileGDB 3 couches -> la couche choisie devient une collection."""
+    import geopandas as gpd
+
+    from tests.test_ingestion_gdal_formats import _zip_tree
+
+    Session, tenant, user = env
+    g = str(tmp_path / "p.gdb")
+    for name, geom in [("pts", Point(2, 48)), ("pts2", Point(3, 49)), ("pts3", Point(4, 50))]:
+        gpd.GeoDataFrame({"nom": [name]}, geometry=[geom], crs=4326).to_file(
+            g, driver="OpenFileGDB", layer=name
+        )
+    with Session() as s:
+        result = run_import(
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            filename="p.gdb.zip",
+            content=_zip_tree(g),
+            collection_title="Parcelles",
+            lat_field=None,
+            lon_field=None,
+            layer_name="pts2",
+        )
+        s.commit()
+        n = s.execute(text(f"SELECT count(*) FROM public.{result.collection_id}")).scalar()
+    assert n == 1

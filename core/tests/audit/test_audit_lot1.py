@@ -159,10 +159,6 @@ def test_alert_config_write_checks_secret_usage_by_editor():
     pytest.xfail("non testable unitairement sans scénario HTTP complet")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="REV-audit: parsers GDAL sans drivers=, VRT déguisé en .gpkg (parsers.py:415)",
-)
 def test_gpkg_import_rejects_vrt_disguised_file(tmp_path):
     from app.ingestion.parsers import IngestionParseError, parse_gpkg
 
