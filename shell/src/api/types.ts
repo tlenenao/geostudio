@@ -947,7 +947,12 @@ export interface ItemClient {
   runAnalyticsSql(
     sql: string,
   ): Promise<{ columns: string[]; rows: unknown[][]; truncated: boolean }>;
-  createExport(itemId: string, format: ExportFormat): Promise<{ jobId: string }>;
+  // ARC-26/30 : `entityId` = fiche d'une entité, `atlas` = une page par entité.
+  createExport(
+    itemId: string,
+    format: ExportFormat,
+    scope?: { entityId?: string; atlas?: boolean },
+  ): Promise<{ jobId: string }>;
   getExportJob(jobId: string): Promise<ExportJob>;
   cancelExport(jobId: string): Promise<ExportJob>;
   createAppExport(itemId: string, mode: AppExportMode): Promise<{ jobId: string }>;

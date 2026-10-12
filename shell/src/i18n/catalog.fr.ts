@@ -258,6 +258,14 @@ export const fr = {
   "template.incidentApp": "Application de saisie",
   "template.story": "Story cartographique",
   "template.portal": "Portail de données",
+  "template.territorialDashboard": "Tableau de bord territorial",
+  "template.worksite": "Suivi de chantier",
+  "template.survey": "Enquête citoyenne",
+  "template.openDataObservatory": "Observatoire de données ouvertes",
+  "template.mapCompare": "Comparateur de cartes",
+  "template.basemapGallery": "Galerie de fonds de carte",
+  "template.entitySheet": "Fiches d'entités",
+  "template.atlas": "Atlas (une page par entité)",
 
   // ConnectivityBanner (SP-B7) — bannière globale sur injoignabilité du cœur
   "connectivity.unreachable": "Connexion au serveur perdue — nouvelle tentative en cours…",
