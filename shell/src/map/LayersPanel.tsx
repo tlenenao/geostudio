@@ -10,6 +10,7 @@ import {
   makeStatQueryFn,
 } from "./geojsonIntrospect";
 import { LayerPicker } from "./LayerPicker";
+import { MapStyleTransfer } from "./MapStyleTransfer";
 import { isHostedCollectionUrl } from "./hostedCoreUrl";
 import { MapSymbologyEditor } from "./MapSymbologyEditor";
 import { PopupEditor } from "./PopupEditor";
@@ -658,6 +659,7 @@ export function LayersPanel({
         <p className="mb-1 text-xs font-medium text-ink-2">{t("layersPanel.addLayerHeading")}</p>
         <LayerPicker onAdd={(layer) => onChange([...layers, layer])} />
       </div>
+      <MapStyleTransfer layers={layers} onChange={onChange} />
     </div>
   );
 }
