@@ -2,7 +2,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useItemFacets, useItems, useMe } from "../api/hooks";
-import type { Item, ItemScope, ItemSort, ResourceType } from "../api/types";
+import type { ContentStatus, Item, ItemScope, ItemSort, ResourceType } from "../api/types";
 import { RESOURCE_TYPE_LABELS, RESOURCE_TYPE_ORDER } from "../api/resourceTypes";
 import { ItemCard } from "../ui/kit/ItemCard";
 import { ItemActions } from "../shell/ItemActions";
@@ -41,6 +41,12 @@ const SORT_LABELS: Record<ItemSort, string> = {
   title_asc: t("catalog.sortTitleAsc"),
   title_desc: t("catalog.sortTitleDesc"),
 };
+const STATUS_OPTIONS = ["authoritative", "deprecated", "none"] as const;
+const STATUS_LABEL_KEYS = {
+  none: "catalog.statusNone",
+  authoritative: "catalog.statusAuthoritative",
+  deprecated: "catalog.statusDeprecated",
+} as const;
 const SORT_ORDER: ItemSort[] = [
   "relevance",
   "date_desc",
@@ -86,6 +92,7 @@ export function CatalogPage({
   // le tri par date écrase l'ordre de la recherche hybride), « Date » sinon.
   const [sortChoice, setSortChoice] = useState<ItemSort | null>(null);
   const [ownerFilter, setOwnerFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<ContentStatus | "">("");
   const [selectedKeywords, setSelectedKeywords] = useState<string[]>([]);
   const [spatialBbox, setSpatialBbox] = useState<Bbox | null>(null);
   const [spatialOpen, setSpatialOpen] = useState(false);
@@ -114,6 +121,7 @@ export function CatalogPage({
       scope,
       sort,
       owner: ownerFilter || undefined,
+      status: statusFilter || undefined,
       keywords: selectedKeywords.length > 0 ? selectedKeywords : undefined,
       bbox: spatialBbox ? spatialBbox.join(",") : undefined,
       me: requiresMe ? me.data?.username : undefined,
@@ -130,6 +138,7 @@ export function CatalogPage({
     (!fixedType && type !== "") ||
     scope !== "all" ||
     ownerFilter.length > 0 ||
+    statusFilter !== "" ||
     selectedKeywords.length > 0 ||
     spatialBbox !== null;
   const total = query.data?.total ?? 0;
@@ -255,6 +264,28 @@ export function CatalogPage({
                   ))}
                 </select>
               </label>
+              <label className="flex flex-col gap-1 text-sm text-ink">
+                {t("catalog.statusLabel")}
+                <select
+                  className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
+                  value={statusFilter}
+                  onChange={(e) => {
+                    setStatusFilter(e.target.value as ContentStatus | "");
+                    setPage(1);
+                  }}
+                >
+                  <option value="">{t("catalog.allOption")}</option>
+                  {STATUS_OPTIONS.map((st) => {
+                    const count = facetsQuery.data?.statuses?.find((f) => f.status === st)?.count;
+                    return (
+                      <option key={st} value={st}>
+                        {t(STATUS_LABEL_KEYS[st])}
+                        {count === undefined ? "" : ` (${count})`}
+                      </option>
+                    );
+                  })}
+                </select>
+              </label>
               {(facetsQuery.data?.keywords.length ?? 0) > 0 && (
                 <div className="flex flex-col gap-1 text-sm text-ink">
                   {t("catalog.keywordsLabel")}
@@ -346,6 +377,7 @@ export function CatalogPage({
                               setSearchParams({});
                               setQ("");
                               setOwnerFilter("");
+                              setStatusFilter("");
                               setSelectedKeywords([]);
                               setScope("all");
                               setSpatialBbox(null);

@@ -17,6 +17,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from app import db, observability
 from app.admin_tools import routes as admin_tools_routes
 from app.alerts import routes as alerts_routes
+from app.apikeys import routes as apikeys_routes
 from app.appexport import routes as appexport_routes
 from app.attachments import routes as attachments_routes
 from app.auth import routes as auth_routes
@@ -412,6 +413,7 @@ def create_app() -> FastAPI:
     v1_router.include_router(alerts_routes.router)
     v1_router.include_router(reports_routes.router)
     v1_router.include_router(notifications_routes.router)
+    v1_router.include_router(apikeys_routes.router)
     v1_router.include_router(usage_routes.router)
     v1_router.include_router(quotas_routes.router)
     v1_router.include_router(compliance_routes.router)

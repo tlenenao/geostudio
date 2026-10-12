@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 import procrastinate
 from opentelemetry import metrics
-from sqlalchemy import cast, func, or_, select
+from sqlalchemy import case, cast, func, or_, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session, defer
 
@@ -18,10 +18,12 @@ from app.items.schemas import (
     ItemRead,
     KeywordFacet,
     OwnerFacet,
+    StatusFacet,
 )
 from app.items.slug import InvalidSlugError, SlugCollisionError, is_valid_slug, slugify
 from app.quotas.service import check_quota_or_raise
 from app.roles.kind_registry import privilege_for_kind
+from app.roles.privileges import Privilege
 from app.roles.repository import get_role
 from app.search.providers import get_embedding_provider
 from app.search.ranking import hybrid_search_ids
@@ -103,11 +105,14 @@ def _permissions(
             actor_is_admin=False,
         )
 
+    can_share = kind_ok and verdict("share")
     return ItemPermissions(
         read=verdict("read"),
         write=kind_ok and verdict("write"),
         delete=kind_ok and verdict("delete"),
-        share=kind_ok and verdict("share"),
+        share=can_share,
+        # require_publish_rights : share + items.publish (PATCH exige aussi write).
+        publish=can_share and verdict("write") and Privilege.ITEMS_PUBLISH.value in held,
     )
 
 
@@ -165,6 +170,8 @@ def _to_read(
         keywords=item.keywords or [],
         license=item.license,
         language=item.language,
+        contentStatus=item.content_status,  # type: ignore[arg-type]
+        categories=item.categories or [],
         bbox=(
             [item.bbox_min_x, item.bbox_min_y, item.bbox_max_x, item.bbox_max_y]
             if item.bbox_min_x is not None
@@ -332,9 +339,14 @@ def _keyword_match(item: Item, keywords: list[str]) -> bool:
     return all(k in item_keywords for k in keywords)
 
 
+def _boost_authoritative(rows: list[tuple[Item, str]]) -> list[tuple[Item, str]]:
+    """ARC-05 : les items « Référence » passent devant, ordre relatif conservé (tri stable)."""
+    return sorted(rows, key=lambda row: row[0].content_status != "authoritative")
+
+
 def _sort_rows(rows: list[tuple[Item, str]], sort: str) -> list[tuple[Item, str]]:
     key_fn, reverse = _SORT_KEY_FNS.get(sort, _SORT_KEY_FNS["date_desc"])
-    return sorted(rows, key=key_fn, reverse=reverse)
+    return _boost_authoritative(sorted(rows, key=key_fn, reverse=reverse))
 
 
 def _visible_items_base_query(
@@ -385,6 +397,16 @@ def _visible_items_base_query(
     return query
 
 
+def _apply_status(query, *, scope: str, status: str | None):
+    """ARC-05 : filtre `status` ; le catalogue public (scope=public) exclut les
+    items dépréciés sauf demande explicite `status=deprecated`."""
+    if status:
+        return query.where(Item.content_status == status)
+    if scope == "public":
+        return query.where(Item.content_status != "deprecated")
+    return query
+
+
 # REV-323 B : plafond au point unique (REST /items + outils MCP list_items/
 # search_catalog) ; 200 = plus grand pageSize demandé par le shell.
 MAX_PAGE_SIZE = 200
@@ -404,6 +426,7 @@ def list_items(
     owner: str | None = None,
     keywords: list[str] | None = None,
     bbox: tuple[float, float, float, float] | None = None,
+    status: str | None = None,
 ) -> ItemPage:
     page_size = min(page_size, MAX_PAGE_SIZE)
     query = _visible_items_base_query(
@@ -418,6 +441,7 @@ def list_items(
     # owner="bob" doit rester vide, pas retomber sur tous les items de bob).
     if owner:
         query = query.where(User.username == owner)
+    query = _apply_status(query, scope=scope, status=status)
 
     if bbox is not None:
         # Intersection de rectangles sur les 4 colonnes persistées (spec
@@ -465,6 +489,8 @@ def list_items(
             # (spec §1.1) : le chemin hybride trie les lignes récupérées au
             # lieu de suivre l'ordre de candidate_ids (pertinence).
             ordered_rows = _sort_rows(ordered_rows, sort)
+        else:
+            ordered_rows = _boost_authoritative(ordered_rows)
         total = len(ordered_rows)
         page_rows = ordered_rows[(page - 1) * page_size : (page - 1) * page_size + page_size]
         page_items = [item for item, _owner_username in page_rows]
@@ -508,7 +534,9 @@ def list_items(
     order_clause = _SORT_CLAUSES.get(sort or "date_desc", _SORT_CLAUSES["date_desc"])
     total = session.scalar(select(func.count()).select_from(query.subquery())) or 0
     rows = session.execute(
-        query.order_by(order_clause).offset((page - 1) * page_size).limit(page_size)
+        query.order_by(case((Item.content_status == "authoritative", 0), else_=1), order_clause)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
     ).all()
     page_items = [item for item, _owner_username in rows]
     perms = _permissions_by_id(
@@ -531,6 +559,7 @@ def get_facets(
     resource_type: str | None,
     scope: str,
     owner: str | None = None,
+    status: str | None = None,
 ) -> ItemFacets:
     """Compteurs propriétaire/mot-clé sur l'ensemble visible filtré (mêmes
     filtres d'entrée que list_items sauf pagination/tri, spec §1.1).
@@ -549,15 +578,19 @@ def get_facets(
     )
     if owner:
         query = query.where(User.username == owner)
+    query = _apply_status(query, scope=scope, status=status)
     if q:
         like = f"%{q}%"
         query = query.where(or_(Item.title.ilike(like), Item.abstract.ilike(like)))
 
-    # Colonnes owner/keywords seules (P24.07) : ni embedding ni documents.
-    rows = session.execute(query.with_only_columns(User.username, Item.keywords)).all()
-    owner_counts = Counter(owner_username for owner_username, _kw in rows)
+    # Colonnes owner/keywords/statut seules (P24.07) : ni embedding ni documents.
+    rows = session.execute(
+        query.with_only_columns(User.username, Item.keywords, Item.content_status)
+    ).all()
+    owner_counts = Counter(owner_username for owner_username, _kw, _st in rows)
+    status_counts = Counter(st for _o, _kw, st in rows)
     keyword_counts: Counter[str] = Counter()
-    for _owner_username, kws in rows:
+    for _owner_username, kws, _st in rows:
         keyword_counts.update(kws or [])
 
     owners = [
@@ -568,7 +601,8 @@ def get_facets(
         KeywordFacet(keyword=keyword, count=count)
         for keyword, count in keyword_counts.most_common(_MAX_FACET_KEYWORDS)
     ]
-    return ItemFacets(owners=owners, keywords=keywords)
+    statuses = [StatusFacet(status=st, count=n) for st, n in status_counts.most_common()]  # type: ignore[arg-type]
+    return ItemFacets(owners=owners, keywords=keywords, statuses=statuses)
 
 
 # Kinds destinés au public : jamais alert/pipeline/report/etc. (config sensible).
@@ -617,6 +651,7 @@ def list_published_items(
         .where(
             Item.tenant_id == tenant_id,
             Item.is_published.is_(True),
+            Item.content_status != "deprecated",  # ARC-05
             Item.resource_type.in_(PUBLIC_KINDS),
         )
     )
@@ -699,6 +734,8 @@ def update_item(
     language: str | None = None,
     current_user_id: str | None = None,
     expected_updated_at: str | None = None,
+    content_status: str | None = None,
+    categories: list[str] | None = None,
 ) -> ItemRead | None:
     item = session.execute(
         select(Item).where(Item.id == item_id, Item.tenant_id == tenant_id)
@@ -728,6 +765,10 @@ def update_item(
         item.license = license
     if language is not None:
         item.language = language
+    if content_status is not None:
+        item.content_status = content_status
+    if categories is not None:
+        item.categories = categories
     session.flush()
     session.refresh(item)
     owner_username = session.scalar(select(User.username).where(User.id == item.owner_id)) or ""

@@ -184,6 +184,11 @@ def test_bbox_parsing(env):
     client.get("/v1/collections/incidents/items?bbox=0.5,44.5,1.5,45.5")
     assert repo.calls["bbox"] == (0.5, 44.5, 1.5, 45.5)
     assert client.get("/v1/collections/incidents/items?bbox=zzz").status_code == 400
+    # REV-353 : hors bornes / non fini = 400 RFC 7807, jamais 500
+    for bad in ("999,0,0,0", "0,0,1,95", "nan,0,1,1", "inf,0,1,1"):
+        r = client.get(f"/v1/collections/incidents/items?bbox={bad}")
+        assert r.status_code == 400, bad
+        assert r.json()["errors"][0]["code"] == "invalid_bbox"
 
 
 def test_geom_intersects_parsing(env):

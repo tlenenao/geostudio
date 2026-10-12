@@ -148,9 +148,7 @@ def test_surface_id_is_method_space_path():
 def test_rest_surface_ids_feeds_the_reachability_facts():
     ids = rest_surface_ids(index_rest_routes(REPO))
     assert "GET /v1/items" in ids
-    assert (
-        len(ids) == 173
-    )  # +2 annulation D6, +routes limites géographiques/profil (clôture REV-27)
+    assert len(ids) == 178  # +5 vague 0 ARC (api-keys x3, geocode batch/reverse)
 
 
 def _fact(function, guards, auth):

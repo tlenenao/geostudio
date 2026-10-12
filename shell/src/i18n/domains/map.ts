@@ -117,8 +117,17 @@ export const map = {
   // LayersPanel (map)
   "layersPanel.timeFieldAria": "Champ temporel",
   "layersPanel.timeFieldNone": "Aucun (pas de filtre temporel)",
+  // MapTimePlayer (ARC-09b)
+  "mapTimePlayer.title": "Lecteur temps",
+  "mapTimePlayer.remove": "Retirer le lecteur temps",
   "layersPanel.timeNotFilterable": "Cette couche ne peut pas être filtrée dans le temps.",
   "layersPanel.geojsonNotLoadedError": "La couche GeoJSON n'est pas encore chargée",
+  "layersPanel.clusterEnable": "Regrouper les points",
+  "layersPanel.clusterRadius": "Rayon de regroupement (pixels)",
+  "layersPanel.clusterMaxZoom": "Zoom max du regroupement",
+  "layersPanel.clusterLabel": "Afficher le nombre de points",
+  "layersPanel.clusterHeatmapWarning":
+    "Le regroupement est incompatible avec une carte de chaleur sur les mêmes données : les deux couches se superposent.",
   "layersPanel.paintAdvancedButton": "Avancé : peinture MapLibre",
   "layersPanel.paintAria": "Peinture MapLibre (JSON)",
   "layersPanel.paintInvalidJson": "JSON invalide — la peinture n'a pas été enregistrée.",

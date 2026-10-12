@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { Item, ResourceType } from "../../api/types";
 import { RESOURCE_TYPE_LABELS } from "../../api/resourceTypes";
+import { Badge } from "./Badge";
 import { Button } from "./Button";
 import { Panel } from "./Panel";
 import { t } from "../../i18n";
@@ -31,6 +32,16 @@ export function ItemCard({
         />
       )}
       <h3 className="text-base font-semibold text-ink">{item.title}</h3>
+      {item.contentStatus === "authoritative" && (
+        <Badge variant="ok" className="w-fit">
+          {t("catalog.statusAuthoritative")}
+        </Badge>
+      )}
+      {item.contentStatus === "deprecated" && (
+        <Badge variant="warn" className="w-fit">
+          {t("catalog.statusDeprecated")}
+        </Badge>
+      )}
       <p className="line-clamp-2 text-sm text-ink-2">{item.abstract}</p>
       <Button
         size="sm"

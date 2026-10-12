@@ -62,12 +62,13 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
   }
 
   const canWrite = hasPermission(item, "write");
+  const canPublish = canWrite && hasPermission(item, "publish");
   const publishLabel = item.isPublished ? t("actions.unpublish") : t("actions.publish");
   // « Modifier/Publier/Miniature » : verrouillés et expliqués (note du menu) ;
   // « Partager/Supprimer » : absents, pas grisés (doctrine §6.2).
   const items = [
     { label: t("actions.edit"), onSelect: () => goToPanel("edit"), disabled: !canWrite },
-    { label: publishLabel, onSelect: () => void togglePublish(), disabled: !canWrite },
+    { label: publishLabel, onSelect: () => void togglePublish(), disabled: !canPublish },
     { label: t("actions.thumbnail"), onSelect: () => goToPanel("thumbnail"), disabled: !canWrite },
     ...(item.resourceType === "bookmark" && exportEnabled
       ? [
@@ -99,7 +100,7 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
           </Button>
         }
         items={items}
-        note={canWrite ? undefined : t("locked.needWrite")}
+        note={canPublish ? undefined : canWrite ? t("locked.needPublish") : t("locked.needWrite")}
       />
 
       <PublishDialog

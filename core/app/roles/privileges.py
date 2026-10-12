@@ -23,6 +23,7 @@ class Privilege(StrEnum):
     SETTINGS_INSTANCE_MANAGE = "settings.instance.manage"
     COMPLIANCE_MANAGE = "compliance.manage"
     DATA_VIEW_SENSITIVE = "data.view_sensitive"
+    ITEMS_PUBLISH = "items.publish"
 
 
 # (domaine shell/src/auth/capabilities.ts::DomainId, clé i18n shell/src/i18n/catalog.fr.ts)
@@ -57,6 +58,7 @@ PRIVILEGE_METADATA: dict[Privilege, tuple[str, str]] = {
     # privilège consommé par une unique action admin, jugé disproportionné.
     Privilege.COMPLIANCE_MANAGE: ("settings", "roles.privilege.complianceManage"),
     Privilege.DATA_VIEW_SENSITIVE: ("data", "roles.privilege.dataViewSensitive"),
+    Privilege.ITEMS_PUBLISH: ("catalog", "roles.privilege.itemsPublish"),
 }
 
 # c01-010 : privilèges catalogués mais volontairement SANS garde serveur — ils
@@ -87,6 +89,7 @@ BUILT_IN_ROLE_PRIVILEGES: dict[str, list[str]] = {
     "admin": [p for p in ALL_PRIVILEGE_VALUES if p != Privilege.COMPLIANCE_MANAGE.value],
     "creator": [
         Privilege.CATALOG_MANAGE.value,
+        Privilege.ITEMS_PUBLISH.value,
         Privilege.MAPS_MANAGE.value,
         Privilege.DATA_VIEW.value,
         Privilege.DATA_MANAGE.value,

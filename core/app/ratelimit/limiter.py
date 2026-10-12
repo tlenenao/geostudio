@@ -53,7 +53,7 @@ _SHARE_LINK_RE = re.compile(r"^/v1/share-links/[^/]+$")
 # REV-102 : GET /v1/geocode déclenche un appel sortant vers la Géoplateforme
 # (BAN, 50 req/s/IP côté amont) — budget propre, le shell n'appelle qu'à la
 # soumission du formulaire, jamais à la frappe.
-_GEOCODE_RE = re.compile(r"^/v1/geocode$")
+_GEOCODE_RE = re.compile(r"^/v1/geocode(/batch|/reverse)?$")
 
 # Budgets par groupe de coût réel (requêtes / 60s). Réutilise _EXPORT_PATH_RE
 # de app.main pour le groupe "jobs" plutôt que de le redéfinir ici.

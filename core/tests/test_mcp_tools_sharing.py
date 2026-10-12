@@ -411,3 +411,35 @@ def test_create_group_via_mcp_refuses_a_reader_with_no_privilege(app_client):
         error_text = call_tool_expecting_error(app_client, "create_group", {"name": "Interdit"})
 
     assert "catalog.manage" in error_text
+
+
+def test_set_sharing_public_requires_items_publish(app_client):
+    # ARC-07 : jumelle MCP de PUT /items/{id}/sharing — rôle sans `items.publish`.
+    from app.roles.kind_registry import privilege_for_kind
+    from app.roles.models import Role
+    from app.users.models import User
+
+    item_id = _seed_item(app_client, owner_id=app_client.mock_user.id)
+    with app_client.session_factory() as session:
+        role = Role(
+            id="custom-r",
+            tenant_id=app_client.tenant.id,
+            name="Sans publication",
+            slug="custom-r",
+            is_built_in=False,
+            privileges=[privilege_for_kind("app")],
+        )
+        session.add(role)
+        session.flush()
+        user = session.get(User, app_client.mock_user.id)
+        user.role_id = role.id
+        user.is_admin = False
+        session.commit()
+
+    with app_client:
+        error_text = call_tool_expecting_error(
+            app_client,
+            "set_sharing",
+            {"itemId": item_id, "sharing": {"public": True, "groups": []}},
+        )
+    assert "items.publish" in error_text

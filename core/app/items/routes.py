@@ -19,16 +19,19 @@ from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
 from app.db import get_session
 from app.items import repository as repo
-from app.items.schemas import ItemFacets, ItemPage, ItemRead, ItemUpdatePatch
+from app.items.schemas import ContentStatus, ItemFacets, ItemPage, ItemRead, ItemUpdatePatch
 from app.items.service import (
     get_item_service,
     get_sharing_service,
     link_creator_can_still_share,
     require_kind_privilege,
+    require_publish_rights,
     set_sharing_service,
 )
 from app.items.slug import InvalidSlugError, SlugCollisionError
 from app.items.storage import InMemoryThumbnailStore, ThumbnailStore
+from app.roles.guards import require_privilege
+from app.roles.privileges import Privilege
 from app.sharing import repository as sharing_repo
 from app.sharing.authorization import can
 from app.sharing.schemas import (
@@ -93,6 +96,7 @@ def list_items(
     owner: str | None = None,
     keyword: list[str] | None = Query(default=None),
     bbox: str | None = None,
+    status: ContentStatus | None = None,
     session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> ItemPage:
@@ -109,6 +113,7 @@ def list_items(
         owner=owner,
         keywords=keyword,
         bbox=_parse_bbox(bbox),
+        status=status,
     )
 
 
@@ -118,6 +123,7 @@ def get_item_facets(
     type: str | None = None,
     scope: Literal["all", "mine", "shared", "public"] = "all",
     owner: str | None = None,
+    status: ContentStatus | None = None,
     session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> ItemFacets:
@@ -132,6 +138,7 @@ def get_item_facets(
         resource_type=type,
         scope=scope,
         owner=owner,
+        status=status,
     )
 
 
@@ -165,6 +172,11 @@ def update_item(
     if not can(session, user_id=user.id, action="write", item=facts):
         raise HTTPException(status_code=403, detail="not allowed to modify this item")
     require_kind_privilege(session, user, facts)
+    if patch.isPublished is not None and patch.isPublished != facts.is_published:
+        require_publish_rights(session, user, facts)
+    # ARC-05 : statut de contenu et catégories = gouvernance du catalogue.
+    if patch.contentStatus is not None or patch.categories is not None:
+        require_privilege(session, user, Privilege.CATALOG_MANAGE.value)
 
     try:
         result = repo.update_item(
@@ -178,6 +190,8 @@ def update_item(
             slug=patch.slug,
             license=patch.license,
             language=patch.language,
+            content_status=patch.contentStatus,
+            categories=patch.categories,
             current_user_id=user.id,
             expected_updated_at=_parse_if_match(if_match),
         )
@@ -302,6 +316,7 @@ def create_share_link_route(
     user: User = Depends(get_current_user),
 ) -> ShareLinkCreated:
     _require_share_access(session, item_id=item_id, user=user)
+    require_privilege(session, user, Privilege.ITEMS_PUBLISH.value)  # lien anonyme = publication
     if not share_link_secret_configured():
         raise HTTPException(
             status_code=503,

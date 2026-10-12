@@ -36,11 +36,17 @@ export type Item = {
   keywords?: string[];
   license: string;
   language: string;
+  // ARC-05 : statut de contenu et catégories (optionnels : absents des items
+  // construits localement, "none"/[] côté cœur).
+  contentStatus?: ContentStatus;
+  categories?: string[];
   // D18 : emprise spatiale de l'item (SP-55), consommée par l'auto-cadrage
   // de l'éditeur de carte autonome (MapEditorPage) — cf. `fitBounds`.
   bbox?: [number, number, number, number] | null;
   permissions: ItemPermissions;
 };
+
+export type ContentStatus = "none" | "authoritative" | "deprecated";
 
 export type ItemPage = {
   items: Item[];
@@ -140,6 +146,18 @@ export type NotificationSummary = {
 };
 
 export type NotificationPreferenceValue = "all" | "failuresOnly" | "none";
+
+export type ApiKeySummary = {
+  id: string;
+  name: string;
+  prefix: string;
+  createdAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  lastUsedAt: string | null;
+};
+/** Seule réponse qui porte le secret (`token`), affiché une seule fois. */
+export type ApiKeyCreated = ApiKeySummary & { token: string };
 
 export type UsageTask = {
   id: number;
@@ -271,11 +289,17 @@ export type ListItemsParams = {
   owner?: string;
   keywords?: string[];
   bbox?: string; // "minLon,minLat,maxLon,maxLat"
+  status?: ContentStatus;
 };
 
 export type OwnerFacet = { username: string; count: number };
 export type KeywordFacet = { keyword: string; count: number };
-export type ItemFacets = { owners: OwnerFacet[]; keywords: KeywordFacet[] };
+export type StatusFacet = { status: ContentStatus; count: number };
+export type ItemFacets = {
+  owners: OwnerFacet[];
+  keywords: KeywordFacet[];
+  statuses?: StatusFacet[];
+};
 
 export type UpdatePatch = {
   title?: string;
@@ -285,6 +309,8 @@ export type UpdatePatch = {
   slug?: string;
   license?: string;
   language?: string;
+  contentStatus?: ContentStatus;
+  categories?: string[];
   // REV-317 : `updatedAt` lu par l'éditeur ; envoyé en `If-Match` (jamais dans
   // le corps) -> 412 si l'item a changé depuis.
   baseUpdatedAt?: string;
@@ -332,6 +358,9 @@ export type PopupConfig = {
   template?: string;
   attachmentField?: string;
 };
+// ARC-01 : regroupement de points d'une couche `feature` (MapLibre `cluster: true`).
+// Défauts côté rendu : radius 50, maxZoom 14, label vrai.
+export type ClusterConfig = { radius?: number; maxZoom?: number; label?: boolean };
 export type MapLayer =
   | {
       id: string;
@@ -365,6 +394,7 @@ export type MapLayer =
       url: string;
       paint?: Record<string, unknown>;
       renderAs?: "fill" | "circle" | "line";
+      cluster?: ClusterConfig;
       popup?: PopupConfig;
       symbology?: import("../builder/widgets/mapSymbology").LayerSymbology;
       collectionId?: string;
@@ -383,6 +413,15 @@ export type MapLayer =
     }
   | { id: string; title: string; visible: boolean; kind: "tiles3d"; url: string };
 export type MapTerrainConfig = { tilesUrl: string; encoding: "terrarium"; exaggeration?: number };
+// ARC-09b : état persisté du lecteur temps de l'éditeur de carte.
+export type MapTimePlayerConfig = {
+  start: string;
+  end: string;
+  stepDays: number;
+  windowDays: number;
+  intervalMs: number;
+  windowIndex: number;
+};
 export type PrintLayoutConfig = {
   pageSize?: "a4" | "a3";
   orientation?: "portrait" | "landscape";
@@ -397,6 +436,7 @@ export type MapConfig = {
   layers: MapLayer[];
   printLayout?: PrintLayoutConfig | null;
   terrain?: MapTerrainConfig | null;
+  timePlayer?: MapTimePlayerConfig | null;
   // Version serveur lue au chargement (REV-271) : renvoyée en `If-Match` à
   // l'enregistrement pour que le cœur refuse (412) une écriture périmée.
   // Jamais persistée dans le corps de la config.
@@ -523,7 +563,7 @@ export type PageParams = { limit?: number; offset?: number };
 export interface ItemClient {
   listItems(params?: ListItemsParams): Promise<ItemPage>;
   getItemFacets(
-    params?: Pick<ListItemsParams, "q" | "type" | "scope" | "owner">,
+    params?: Pick<ListItemsParams, "q" | "type" | "scope" | "owner" | "status">,
   ): Promise<ItemFacets>;
   getItem(pk: string): Promise<Item>;
   getItemBySlug(slug: string): Promise<Item>;
@@ -559,6 +599,9 @@ export interface ItemClient {
   updateNotificationPreference(
     value: NotificationPreferenceValue,
   ): Promise<NotificationPreferenceValue>;
+  listApiKeys(): Promise<ApiKeySummary[]>;
+  createApiKey(params: { name: string; expiresInDays: number }): Promise<ApiKeyCreated>;
+  revokeApiKey(id: string): Promise<ApiKeySummary>;
   listUsageTasks(params: {
     page: number;
     pageSize: number;
@@ -787,8 +830,24 @@ export interface ItemClient {
     collectionId: string,
     feature: GeoJSONFeatureInput,
   ): Promise<{ id: string | number }>;
-  updateFeature(collectionId: string, fid: string, feature: GeoJSONFeatureInput): Promise<void>;
-  deleteFeature(collectionId: string, fid: string): Promise<void>;
+  /** `opts.ifMatch` (ARC-04) : ETag lu via `getFeature` ; périmé = ApiError 412. */
+  updateFeature(
+    collectionId: string,
+    fid: string,
+    feature: GeoJSONFeatureInput,
+    opts?: { ifMatch?: string },
+  ): Promise<void>;
+  deleteFeature(collectionId: string, fid: string, opts?: { ifMatch?: string }): Promise<void>;
+  /** Entité + ETag courant (ARC-04). Optionnel : absent d'un client sans écriture. */
+  getFeature?(
+    collectionId: string,
+    fid: string,
+  ): Promise<{
+    id: string | number;
+    properties: Record<string, unknown>;
+    geometry: unknown;
+    etag: string | null;
+  }>;
   presignUpload(filename: string, contentType: string): Promise<{ uploadUrl: string; key: string }>;
   uploadToPresignedUrl(url: string, file: File): Promise<void>;
   inspectUpload(input: { key: string; filename: string; layerName?: string }): Promise<{

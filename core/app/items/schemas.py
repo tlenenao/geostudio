@@ -1,7 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
 
 from app.catalog.metadata import validate_language_id, validate_license_id
+
+ContentStatus = Literal["none", "authoritative", "deprecated"]
 
 
 class ItemPermissions(BaseModel):
@@ -18,6 +22,7 @@ class ItemPermissions(BaseModel):
     write: bool
     delete: bool
     share: bool
+    publish: bool = False  # share + privilège `items.publish` (ARC-07)
 
 
 class ItemRead(BaseModel):
@@ -39,6 +44,8 @@ class ItemRead(BaseModel):
     keywords: list[str] = []
     license: str = ""
     language: str = "fr"
+    contentStatus: ContentStatus = "none"
+    categories: list[str] = []
     bbox: list[float] | None = None
     permissions: ItemPermissions
 
@@ -60,9 +67,15 @@ class KeywordFacet(BaseModel):
     count: int
 
 
+class StatusFacet(BaseModel):
+    status: ContentStatus
+    count: int
+
+
 class ItemFacets(BaseModel):
     owners: list[OwnerFacet]
     keywords: list[KeywordFacet]
+    statuses: list[StatusFacet] = []
 
 
 class ItemUpdatePatch(BaseModel):
@@ -73,6 +86,8 @@ class ItemUpdatePatch(BaseModel):
     slug: str | None = None
     license: str | None = None
     language: str | None = None
+    contentStatus: ContentStatus | None = None
+    categories: list[str] | None = None
 
     @field_validator("license")
     @classmethod

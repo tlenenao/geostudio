@@ -29,7 +29,8 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, Upl
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.auth.dependency import get_current_user
+from app.auth.dependency import get_current_user, get_current_user_optional
+from app.configs.guest_access import GuestActor, get_share_link_actor, read_tenant_id
 from app.db import get_session
 from app.errors import ValidationHTTPException
 from app.ingestion.routes import get_s3_client
@@ -237,12 +238,19 @@ def delete_map_icon(
 @router.get("/map-icons/{icon_id}/file")
 def read_map_icon_file(
     icon_id: str,
-    user: User = Depends(get_current_user),
+    user: User | None = Depends(get_current_user_optional),
+    guest: GuestActor | None = Depends(get_share_link_actor),
     session: Session = Depends(get_session, scope="function"),
     s3_client=Depends(get_s3_client),
 ) -> Response:
-    icon = repo.get_icon(session, tenant_id=user.tenant_id, icon_id=icon_id)
-    if icon is None:
+    icon = repo.get_icon(session, tenant_id=read_tenant_id(session, user, guest), icon_id=icon_id)
+    # REV-359 : hors session authentifiée, l'icône n'est servie que si un item
+    # lisible publiquement (ou le jeton invité) la référence — jamais par simple id.
+    if icon is None or (
+        user is None
+        and guest is None
+        and not repo.is_used_by_public_item(session, tenant_id=icon.tenant_id, icon_id=icon_id)
+    ):
         raise HTTPException(status_code=404, detail="icon not found")
     try:
         obj = s3_client.get_object(Bucket=get_mapicons_bucket(), Key=icon.s3_key)

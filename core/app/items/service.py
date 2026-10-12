@@ -16,6 +16,7 @@ from app.items import repository as repo
 from app.items.schemas import ItemRead
 from app.roles.guards import require_privilege
 from app.roles.kind_registry import privilege_for_kind
+from app.roles.privileges import Privilege
 from app.sharing import repository as sharing_repo
 from app.sharing.authorization import ItemAccessFacts, can
 from app.sharing.schemas import GroupShare, Sharing
@@ -28,6 +29,16 @@ def require_kind_privilege(session: Session, user: User, facts: ItemAccessFacts)
     l'écriture de config (configs.routes._require_privilege_for_kind). Un
     Lecteur membre d'un groupe « editor » n'obtient plus ces droits."""
     require_privilege(session, user, privilege_for_kind(facts.resource_type or ""))
+
+
+def require_publish_rights(session: Session, user: User, facts: ItemAccessFacts) -> None:
+    """ARC-07 / REV-335 : rendre un item public ou le (dé)publier exige le droit
+    de partage (rôle « manager », comme PUT /sharing et PATCH /collections) ET
+    le privilège `items.publish`. Appelée par PATCH /items (isPublished) et par
+    set_sharing_service (public) — donc aussi par le tool MCP `set_sharing`."""
+    if not can(session, user_id=user.id, action="share", item=facts):
+        raise HTTPException(status_code=403, detail="share access required to publish")
+    require_privilege(session, user, Privilege.ITEMS_PUBLISH.value)
 
 
 def link_creator_can_still_share(
@@ -90,6 +101,8 @@ def set_sharing_service(
     if not can(session, user_id=user.id, action="share", item=facts):
         raise HTTPException(status_code=403, detail="not allowed to share this item")
     require_kind_privilege(session, user, facts)
+    if sharing.public != facts.is_public:
+        require_publish_rights(session, user, facts)
 
     ok = sharing_repo.replace_shares(
         session,

@@ -16,17 +16,16 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.auth.dependency import get_current_user
+from app.auth.dependency import get_current_user, get_current_user_optional
 from app.configs import repository as configs_repo
+from app.configs.guest_access import GuestActor, can_read_item, get_share_link_actor
 from app.db import get_session
 from app.ingestion.routes import get_s3_client
 from app.ingestion.storage import ensure_uploads_bucket, generate_presigned_put_url
-from app.items import repository as items_repo
 from app.quotas.service import enforce_storage_quota
 from app.roles.guards import has_privilege, require_privilege
 from app.roles.kind_registry import privilege_for_kind
 from app.roles.privileges import Privilege
-from app.sharing.authorization import can
 from app.terrain3d import repository as repo
 from app.terrain3d.schemas import (
     Terrain3DJobStatus,
@@ -161,12 +160,12 @@ def read_terrain3d_tile(
     x: int,
     y: int,
     session: Session = Depends(get_session, scope="function"),
-    user: User = Depends(get_current_user),
+    user: User | None = Depends(get_current_user_optional),
+    guest: GuestActor | None = Depends(get_share_link_actor),
     bucket: str = Depends(get_terrain3d_bucket),
     titiler_url: str = Depends(get_titiler_url),
 ) -> Response:
-    facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
-    if facts is None or not can(session, user_id=user.id, action="read", item=facts):
+    if not can_read_item(session, user, guest, item_id):
         raise HTTPException(status_code=404, detail="item not found")
     config = configs_repo.get_config_by_item(session, item_id)
     if config is None or config.config.terrain3d is None:

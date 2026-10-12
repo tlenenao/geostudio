@@ -6,6 +6,7 @@ import type {
   FieldError,
   LayerSource,
   MapLayer,
+  ClusterConfig,
   PopupConfig,
 } from "./types";
 import { CoreUnreachableError } from "./CoreUnreachableError";
@@ -140,6 +141,7 @@ export type RawMapLayer = {
   geometryKind?: "point" | "line" | "polygon" | null;
   pkColumn?: string | null;
   renderAs?: "fill" | "circle" | "line" | null;
+  cluster?: ClusterConfig | null;
   symbology?: import("../builder/widgets/mapSymbology").LayerSymbology | null;
 };
 
@@ -195,6 +197,7 @@ function toFrontLayerKind(l: RawMapLayer): MapLayer {
         ...(l.pkColumn ? { pkColumn: l.pkColumn } : {}),
         ...(l.popup ? { popup: l.popup } : {}),
         ...(l.renderAs ? { renderAs: l.renderAs } : {}),
+        ...(l.cluster ? { cluster: l.cluster } : {}),
         ...(l.symbology ? { symbology: l.symbology } : {}),
       };
   }

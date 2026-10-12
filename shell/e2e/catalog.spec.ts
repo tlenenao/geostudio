@@ -196,6 +196,7 @@ test("SP-55 : dessine un rectangle et ne garde que les items dont la bbox inters
     .locator('[aria-label="Dessiner un rectangle de recherche spatiale"] canvas')
     .first();
   await expect(canvas).toBeVisible();
+  await canvas.scrollIntoViewIfNeeded();
   const box = (await canvas.boundingBox())!;
   await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
   await page.mouse.down();

@@ -941,6 +941,7 @@ describe("toFrontLayer characteristic test — no optional field is ever dropped
       pkColumn: "fid",
       popup: { titleField: "nom", fields: [] },
       renderAs: "circle",
+      cluster: { radius: 60, maxZoom: 12, label: false },
       symbology: { kind: "categorical", field: "type", categories: [] } as never,
     };
     const out = toFrontLayer(raw) as Record<string, unknown>;
@@ -949,6 +950,7 @@ describe("toFrontLayer characteristic test — no optional field is ever dropped
     expect(out.pkColumn).toBe(raw.pkColumn);
     expect(out.popup).toEqual(raw.popup);
     expect(out.renderAs).toBe(raw.renderAs);
+    expect(out.cluster).toEqual(raw.cluster);
     expect(out.symbology).toEqual(raw.symbology);
   });
 
@@ -2712,6 +2714,37 @@ test("updateFeature sends a PUT and resolves on 204", async () => {
     geometry: null,
   });
   expect(body).toEqual({ type: "Feature", properties: { titre: "Mise à jour" }, geometry: null });
+});
+
+test("getFeature returns the ETag and updateFeature/deleteFeature forward If-Match (ARC-04)", async () => {
+  const seen: Record<string, string | null> = {};
+  server.use(
+    http.get("https://core.test/v1/collections/incidents/items/7", () =>
+      HttpResponse.json(
+        { id: 7, properties: { titre: "a" }, geometry: null },
+        { headers: { ETag: '"abc"' } },
+      ),
+    ),
+    http.put("https://core.test/v1/collections/incidents/items/7", ({ request }) => {
+      seen.put = request.headers.get("If-Match");
+      return new HttpResponse(null, { status: 204 });
+    }),
+    http.delete("https://core.test/v1/collections/incidents/items/7", ({ request }) => {
+      seen.del = request.headers.get("If-Match");
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  const client = makeClient();
+  const f = await client.getFeature!("incidents", "7");
+  expect(f.etag).toBe('"abc"');
+  await client.updateFeature(
+    "incidents",
+    "7",
+    { type: "Feature", properties: {}, geometry: null },
+    { ifMatch: f.etag! },
+  );
+  await client.deleteFeature("incidents", "7", { ifMatch: f.etag! });
+  expect(seen).toEqual({ put: '"abc"', del: '"abc"' });
 });
 
 test("updateFeature throws a plain Error with the server message on 404", async () => {

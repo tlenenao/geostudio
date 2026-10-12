@@ -17,6 +17,8 @@ const AddressSearch = lazy(() =>
   import("../map/AddressSearch").then((m) => ({ default: m.AddressSearch })),
 );
 import { LayersPanel } from "../map/LayersPanel";
+import { MapTimePlayer } from "../map/MapTimePlayer";
+import { withDatetime } from "../lib/analyticsPatch";
 import { BasemapSelect } from "../map/BasemapSelect";
 import { TerrainPanel } from "../map/TerrainPanel";
 import { CameraControls } from "../map/CameraControls";
@@ -89,6 +91,8 @@ export function MapEditorPage({ pk }: { pk: string }) {
   // avant même que `fitBounds` ait pu s'exécuter (no-op via `?.`), et ne se
   // redéclenchait jamais une fois le chunk chargé.
   const [mapReady, setMapReady] = useState(false);
+  // ARC-09b : fenêtre courante du lecteur temps (jamais persistée telle quelle).
+  const [timeRange, setTimeRange] = useState<{ from: string; to: string } | null>(null);
   const isExportRender = useIsExportRender();
   const instanceQuery = useInstanceInfo();
   const exportEnabled = instanceQuery.data?.exportEnabled === true;
@@ -133,6 +137,17 @@ export function MapEditorPage({ pk }: { pk: string }) {
     );
 
   const setLayers = (layers: MapLayer[]) => updateDraft({ ...draft, layers });
+  // ARC-09b : les couches `feature` à `timeField` interrogent le cœur avec le
+  // filtre `datetime` (ARC-02) ; les `vector` sont filtrées par MapView.
+  const viewConfig: MapConfig = {
+    ...draft,
+    layers: draft.layers.map((l) =>
+      l.kind === "feature" && l.timeField
+        ? { ...l, url: withDatetime(l.url, l.timeField, timeRange) }
+        : l,
+    ),
+  };
+  const hasTimeLayer = draft.layers.some((l) => "timeField" in l && l.timeField);
   const setStyle = (style: string) => updateDraft({ ...draft, basemap: { style } });
   const setView = (view: {
     center: [number, number];
@@ -231,7 +246,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
           label: t("mapEditor.layersLabel"),
           content: (
             <div className="p-3">
-              <LayersPanel layers={draft.layers} onChange={setLayers} />
+              <LayersPanel layers={draft.layers} onChange={setLayers} timeFilterable />
             </div>
           ),
         }}
@@ -240,10 +255,20 @@ export function MapEditorPage({ pk }: { pk: string }) {
           label: t("mapEditor.mapLabel"),
           content: (
             <div className="relative h-full w-full">
+              {(hasTimeLayer || draft.timePlayer) && (
+                <div className="absolute left-2 top-2 z-10 rounded bg-surface p-2 shadow">
+                  <MapTimePlayer
+                    value={draft.timePlayer ?? null}
+                    onChange={(timePlayer) => updateDraft((d) => (d ? { ...d, timePlayer } : d))}
+                    onRange={setTimeRange}
+                  />
+                </div>
+              )}
               <Suspense fallback={<div className="text-xs text-ink-3">Carte…</div>}>
                 <MapView
                   ref={mapViewRef}
-                  config={draft}
+                  config={viewConfig}
+                  timeRange={timeRange}
                   onViewChange={setView}
                   onReady={() => setMapReady(true)}
                   interactiveTools

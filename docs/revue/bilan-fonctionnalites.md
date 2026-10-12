@@ -1,8 +1,8 @@
 # Bilan de fonctionnalités — GeoStudio
 
-**Généré le 2026-10-10** par `uv run python scripts/feature_health_cli.py --repo .. --write`. **Ne pas éditer à la main** : ce fichier est regénéré à chaque clôture de SP.
+**Généré le 2026-10-12** par `uv run python scripts/feature_health_cli.py --repo .. --write`. **Ne pas éditer à la main** : ce fichier est regénéré à chaque clôture de SP.
 
-314 fonctionnalités — santé médiane 99.0 sur 314 mesurables.
+317 fonctionnalités — santé médiane 99.0 sur 317 mesurables.
 
 La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** est déclarée (spec §4). Les deux ne sont jamais moyennées. Le tri est `priorité × (100 − santé)`.
 
@@ -10,8 +10,8 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 
 | Fonctionnalités | Domaine | Santé médiane |
 |---|---|---|
-| 4 | **Administration** | 99.3 |
-| 4 | **Analytique** | 97.0 |
+| 5 | **Administration** | 100.0 |
+| 5 | **Analytique** | 97.9 |
 | 3 | **Apps & sites** | 99.3 |
 | 30 | **Automatisation** | 98.7 |
 | 3 | **Builder — Actions composees** | 100.0 |
@@ -38,7 +38,7 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | 10 | **Catalogue/Items** | 98.7 |
 | 1 | **Catalogue/Métadonnées** | 100.0 |
 | 6 | **Catalogue/Portails publics** | 96.6 |
-| 12 | **Collections** | 98.3 |
+| 13 | **Collections** | 98.3 |
 | 2 | **Configs/Alerte** | 98.8 |
 | 2 | **Configs/AppConfig** | 96.6 |
 | 2 | **Configs/Bookmark** | 99.8 |
@@ -54,7 +54,7 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | 3 | **Export statique** | 100.0 |
 | 3 | **Extensibilité** | 98.8 |
 | 11 | **Features (OGC API)** | 99.0 |
-| 11 | **Fédération des données** | 98.8 |
+| 11 | **Fédération des données** | 96.8 |
 | 1 | **Gouvernance/Licences** | 100.0 |
 | 1 | **Interne** | 74.3 |
 | 4 | **Navigation** | 100.0 |
@@ -126,11 +126,11 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | Features (OGC API) | Exécution SQL sous rôle non-propriétaire borné au tenant (RLS transactionnelle) | `features-ogc-api-execution-sql-sous-role-non-proprietaire-borne-au-tenant-rls-tr` | 96.2 | = | haute (amorcée) | 93.8 | — | — | 100.0 |
 | Automatisation | Définir une règle d'alerte de seuil sur un dataset | `automatisation-definir-une-regle-d-alerte-de-seuil-sur-un-dataset` | 94.4 | = | moyenne (amorcée) | 95.3 | 100.0 | 83.3 | 100.0 |
 | Configs/AppConfig | Restreindre les widgets d'extension aux collections déclarées | `configs-appconfig-restreindre-les-widgets-d-extension-aux-collections-declarees` | 94.4 | = | moyenne (amorcée) | 90.7 | — | — | 100.0 |
-| sharing | Partager un item avec des groupes (rôle lecteur/éditeur) et basculer sa visibilité publique | `sharing-partager-un-item-avec-des-groupes-role-lecteur-editeur-et-basculer-sa-vi` | 96.3 | +0.1 | haute (amorcée) | 94.7 | 100.0 | 91.7 | 100.0 |
+| sharing | Partager un item avec des groupes (rôle lecteur/éditeur) et basculer sa visibilité publique | `sharing-partager-un-item-avec-des-groupes-role-lecteur-editeur-et-basculer-sa-vi` | 96.3 | = | haute (amorcée) | 94.7 | 100.0 | 91.7 | 100.0 |
 | Builder — Automatisation (pipelines) | Canevas DAG de pipeline avec branchements et fusion | `builder-automatisation-pipelines-canevas-dag-de-pipeline-avec-branchements-et-fu` | 94.5 | = | moyenne (amorcée) | 90.9 | — | — | 100.0 |
 | Carte | Popup au clic sur une entité (liste de champs configurable) | `carte-popup-au-clic-sur-une-entite-liste-de-champs-configurable` | 96.4 | = | haute (amorcée) | 94.0 | — | — | 100.0 |
 | users | Liste des utilisateurs du tenant, avec recherche et pagination | `users-liste-des-utilisateurs-du-tenant-avec-recherche-et-pagination` | 94.7 | = | moyenne (amorcée) | 96.1 | 100.0 | 83.3 | 100.0 |
-| Catalogue/Items | Publier / dépublier un item | `catalogue-items-publier-depublier-un-item` | 96.5 | +0.2 | haute (amorcée) | 95.3 | 100.0 | 91.7 | 100.0 |
+| Catalogue/Items | Publier / dépublier un item | `catalogue-items-publier-depublier-un-item` | 96.5 | = | haute (amorcée) | 95.3 | 100.0 | 91.7 | 100.0 |
 | Catalogue/Portails publics | Lister/lire les items publiés, anonymement | `catalogue-portails-publics-lister-lire-les-items-publies-anonymement` | 96.6 | = | haute (amorcée) | 99.0 | 100.0 | 87.5 | 100.0 |
 | sharing | Créer un groupe de partage et y ajouter des membres | `sharing-creer-un-groupe-de-partage-et-y-ajouter-des-membres` | 94.9 | = | moyenne (amorcée) | 98.7 | 100.0 | 81.2 | 100.0 |
 | Analytique | Export (agrégat CSV/XLSX et entités GeoJSON/CSV/XLSX) d'un dataset ArcGIS Feature Service live | `analytique-export-agregat-csv-xlsx-et-entites-geojson-csv-xlsx-d-un-dataset-arcg` | 95.0 | = | moyenne (amorcée) | 90.2 | 100.0 | 91.7 | 100.0 |
@@ -138,7 +138,8 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | Fédération des données | Exécution manuelle immédiate d'un moissonnage (bouton « Lancer ») | `federation-des-donnees-execution-manuelle-immediate-d-un-moissonnage-bouton-lanc` | 95.0 | = | moyenne (amorcée) | 90.2 | 100.0 | 91.7 | 100.0 |
 | Builder — Widgets | Widget Plage de dates (pilote le contexte temporel global) | `builder-widgets-widget-plage-de-dates-pilote-le-contexte-temporel-global` | 95.0 | = | moyenne (amorcée) | 91.7 | — | — | 100.0 |
 | Plateforme IA | Générer une condition d'affichage CEL (visibleWhen) en langage naturel (agent MCP) | `plateforme-ia-generer-une-condition-d-affichage-cel-en-langage-naturel-agent-mcp` | 95.1 | = | moyenne (amorcée) | 87.7 | 100.0 | — | 100.0 |
-| Fédération des données | Fraîcheur quasi temps réel des données pour l'analytique (capture de réplication logique Postgres → GeoParquet) | `federation-des-donnees-fraicheur-quasi-temps-reel-des-donnees-pour-l-analytique-` | 96.8 | +0.1 | haute (amorcée) | 94.6 | — | — | 100.0 |
+| Fédération des données | Fraîcheur quasi temps réel des données pour l'analytique (capture de réplication logique Postgres → GeoParquet) | `federation-des-donnees-fraicheur-quasi-temps-reel-des-donnees-pour-l-analytique-` | 96.8 | = | haute (amorcée) | 94.6 | — | — | 100.0 |
+| Fédération des données | API STAC native (landing, conformance, collections, items, recherche cross-collection) | `federation-des-donnees-api-stac-native-landing-conformance-collections-items-rec` | 95.7 | -3.1 | moyenne (amorcée) | 96.0 | 100.0 | 87.5 | 100.0 |
 | Automatisation | Lancer l'exécution d'un pipeline à la demande | `automatisation-lancer-l-execution-d-un-pipeline-a-la-demande` | 97.1 | = | haute (amorcée) | 95.1 | 100.0 | 94.4 | 100.0 |
 | Collections | Inscrire/retirer une table de la publication logique CDC | `collections-inscrire-retirer-une-table-de-la-publication-logique-cdc` | 95.7 | = | moyenne (amorcée) | 92.9 | — | — | 100.0 |
 | Builder — Runtime | Editeur d'actions a l'entree de chapitre limite a un payload de centrage carte | `builder-runtime-editeur-d-actions-a-l-entree-de-chapitre-limite-a-un-payload-de-` | 95.9 | = | moyenne (amorcée) | 93.2 | — | — | 100.0 |
@@ -153,19 +154,19 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | Carte | Options de gabarit d'impression : barre d'échelle et flèche du nord | `carte-options-de-gabarit-d-impression-barre-d-echelle-et-fleche-du-nord` | 92.9 | = | basse (amorcée) | 88.1 | — | — | 100.0 |
 | Configs/MapConfig | Terrain 3D raster-dem sur une carte | `configs-mapconfig-terrain-3d-raster-dem-sur-une-carte` | 96.4 | = | moyenne (amorcée) | 94.1 | — | — | 100.0 |
 | Catalogue | Menu d'actions sur un item (modifier/publier/miniature/partager/supprimer/programmer un rapport) | `catalogue-menu-d-actions-sur-un-item-modifier-publier-miniature-partager-supprim` | 96.5 | = | moyenne (amorcée) | 94.1 | — | — | 100.0 |
-| Catalogue/Items | Miniature d'un item (upload/lecture) | `catalogue-items-miniature-d-un-item-upload-lecture` | 96.5 | +0.2 | moyenne (amorcée) | 95.3 | 100.0 | 91.7 | 100.0 |
+| Catalogue/Items | Miniature d'un item (upload/lecture) | `catalogue-items-miniature-d-un-item-upload-lecture` | 96.5 | = | moyenne (amorcée) | 95.3 | 100.0 | 91.7 | 100.0 |
 | Cartographie | Héberger un tileset 3D (zip, ex. Cesium 3D Tiles) sans jamais l'extraire sur disque | `cartographie-heberger-un-tileset-3d-zip-ex-cesium-3d-tiles-sans-jamais-l-extrair` | 96.5 | = | moyenne (amorcée) | 88.5 | 100.0 | 100.0 | 100.0 |
 | Catalogue/Portails publics | Résoudre un site publié par son slug | `catalogue-portails-publics-resoudre-un-site-publie-par-son-slug` | 96.6 | = | moyenne (amorcée) | 99.0 | 100.0 | 87.5 | 100.0 |
 | Fédération des données | Mode « copie » du moissonnage : matérialise le contenu distant en une collection propre au tenant (RLS, édition, etc.) | `federation-des-donnees-mode-copie-du-moissonnage-materialise-le-contenu-distant-` | 96.6 | = | moyenne (amorcée) | 94.4 | — | — | 100.0 |
 | Catalogue/Portails publics | Lire la config d'un item publié (anonyme) | `catalogue-portails-publics-lire-la-config-d-un-item-publie-anonyme` | 96.6 | = | moyenne (amorcée) | 99.2 | 100.0 | 87.5 | 100.0 |
 | Plateforme IA | Serveur MCP authentifié (OAuth 2.1 + PKCE) exposant des outils au catalogue/aux items/au partage | `plateforme-ia-serveur-mcp-authentifie-oauth-2-1-pkce-exposant-des-outils-au-cata` | 97.8 | = | haute (amorcée) | 94.4 | 100.0 | — | 100.0 |
-| Catalogue/Items | Slug d'URL unique pour un site publié (attribution + renommage) | `catalogue-items-slug-d-url-unique-pour-un-site-publie-attribution-renommage` | 96.7 | +0.1 | moyenne (amorcée) | 96.0 | 100.0 | 91.7 | 100.0 |
+| Catalogue/Items | Slug d'URL unique pour un site publié (attribution + renommage) | `catalogue-items-slug-d-url-unique-pour-un-site-publie-attribution-renommage` | 96.7 | = | moyenne (amorcée) | 96.0 | 100.0 | 91.7 | 100.0 |
 | Builder — Automatisation (pipelines) | Inspecteur de noeud genere depuis un schema JSON serveur | `builder-automatisation-pipelines-inspecteur-de-noeud-genere-depuis-un-schema-jso` | 96.8 | = | moyenne (amorcée) | 94.7 | — | — | 100.0 |
 | Builder — Widgets | Widget Graphique (15 types ECharts, clic -> cross-filter) | `builder-widgets-widget-graphique-15-types-echarts-clic-cross-filter` | 97.9 | = | haute (amorcée) | 96.5 | — | — | 100.0 |
-| roles | Quatre rôles prédéfinis immuables par tenant (Administrateur, Créateur, Analyste, Lecteur) | `roles-quatre-roles-predefinis-immuables-par-tenant-administrateur-createur-analy` | 98.0 | +6.0 | haute (amorcée) | 96.7 | — | — | 100.0 |
+| roles | Quatre rôles prédéfinis immuables par tenant (Administrateur, Créateur, Analyste, Lecteur) | `roles-quatre-roles-predefinis-immuables-par-tenant-administrateur-createur-analy` | 98.0 | = | haute (amorcée) | 96.7 | — | — | 100.0 |
 | Builder — Widgets | Comparaison de periode sur le widget Graphique (lignes/aires) | `builder-widgets-comparaison-de-periode-sur-le-widget-graphique-lignes-aires` | 97.1 | = | moyenne (amorcée) | 95.2 | — | — | 100.0 |
-| Automatisation | Attacher un fichier (photo, document) à une entité depuis le widget Formulaire | `automatisation-attacher-un-fichier-photo-document-a-une-entite-depuis-le-widget-` | 98.1 | +0.1 | haute (amorcée) | 93.8 | 100.0 | 100.0 | 100.0 |
-| Automatisation | Être notifié en in-app quand un rapport a été déclenché avec succès ou en échec | `automatisation-etre-notifie-en-in-app-quand-un-rapport-a-ete-declenche-avec-succ` | 97.2 | +0.4 | moyenne (amorcée) | 95.4 | — | — | 100.0 |
+| Automatisation | Attacher un fichier (photo, document) à une entité depuis le widget Formulaire | `automatisation-attacher-un-fichier-photo-document-a-une-entite-depuis-le-widget-` | 98.1 | = | haute (amorcée) | 93.8 | 100.0 | 100.0 | 100.0 |
+| Automatisation | Être notifié en in-app quand un rapport a été déclenché avec succès ou en échec | `automatisation-etre-notifie-en-in-app-quand-un-rapport-a-ete-declenche-avec-succ` | 97.2 | = | moyenne (amorcée) | 95.4 | — | — | 100.0 |
 | Plateforme IA | Décrire un rapport planifié sans le déclencher (agent MCP) | `plateforme-ia-decrire-un-rapport-planifie-sans-le-declencher-agent-mcp` | 97.3 | = | moyenne (amorcée) | 93.3 | 100.0 | — | 100.0 |
 | Collections | Ré-embedding sémantique automatique d'une collection modifiée | `collections-re-embedding-semantique-automatique-d-une-collection-modifiee` | 97.4 | = | moyenne (amorcée) | 95.7 | — | — | 100.0 |
 | instance | Statut des capacités du déploiement, visible sans authentification | `instance-statut-des-capacites-du-deploiement-visible-sans-authentification` | 98.3 | = | haute (amorcée) | 94.2 | 100.0 | 100.0 | 100.0 |
@@ -174,7 +175,7 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | Builder — Analytique globale | Panneau Explorer (table + mini-carte) sur une source de donnees | `builder-analytique-globale-panneau-explorer-table-mini-carte-sur-une-source-de-d` | 97.5 | = | moyenne (amorcée) | 95.8 | — | — | 100.0 |
 | Cartes | Rendu export headless (chrome masqué pour capture Playwright) | `cartes-rendu-export-headless-chrome-masque-pour-capture-playwright` | 97.5 | = | moyenne (amorcée) | 95.8 | — | — | 100.0 |
 | Tâches | Centre de tâches | `taches-centre-de-taches` | 97.5 | = | moyenne (amorcée) | 91.7 | 100.0 | 100.0 | 100.0 |
-| Automatisation | Importer un fichier géospatial (GeoJSON/CSV/GeoPackage/Shapefile zippé) comme nouvelle collection | `automatisation-importer-un-fichier-geospatial-geojson-csv-geopackage-shapefile-z` | 98.4 | -0.1 | haute (amorcée) | 94.6 | 100.0 | 100.0 | 100.0 |
+| Automatisation | Importer un fichier géospatial (GeoJSON/CSV/GeoPackage/Shapefile zippé) comme nouvelle collection | `automatisation-importer-un-fichier-geospatial-geojson-csv-geopackage-shapefile-z` | 98.4 | = | haute (amorcée) | 94.6 | 100.0 | 100.0 | 100.0 |
 | Builder — Pages | Gestion multi-pages d'une app (PageManager) | `builder-pages-gestion-multi-pages-d-une-app-pagemanager` | 97.6 | = | moyenne (amorcée) | 96.0 | — | — | 100.0 |
 | Automatisation | Créer/expliquer une règle d'alerte via un agent MCP | `automatisation-creer-expliquer-une-regle-d-alerte-via-un-agent-mcp` | 97.6 | = | moyenne (amorcée) | 94.0 | 100.0 | — | 100.0 |
 | Cartographie | Choisir une icône Lucide curatée pour la symbologie catégorielle d'une couche | `cartographie-choisir-une-icone-lucide-curatee-pour-la-symbologie-categorielle-d-` | 97.6 | = | moyenne (amorcée) | 96.0 | — | — | 100.0 |
@@ -182,20 +183,21 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | Configs/Alerte | Évaluer une expression de condition d'alerte en SQL borné (sandboxé) | `configs-alerte-evaluer-une-expression-de-condition-d-alerte-en-sql-borne-sandbox` | 97.7 | = | moyenne (amorcée) | 96.2 | — | — | 100.0 |
 | Données | Éditeur de dataset partagé (métadonnées, colonnes, champ temporel, cross-filter) | `donnees-editeur-de-dataset-partage-metadonnees-colonnes-champ-temporel-cross-fil` | 98.5 | = | haute (amorcée) | 96.3 | 100.0 | — | 100.0 |
 | Features (OGC API) | Créer/modifier/supprimer une entité (OGC Part 4) | `features-ogc-api-creer-modifier-supprimer-une-entite-ogc-part-4` | 98.6 | = | haute (amorcée) | 95.2 | 100.0 | 100.0 | 100.0 |
+| Analytique | Exploration automatique d'une collection en un clic (profil par colonne : nulls, distincts, min/max/quantiles, histogramme, valeurs fréquentes, emprise et types de géométrie) | `analytique-exploration-automatique-d-une-collection-profil-par-colonne-x-rays` | 97.9 | — | moyenne (amorcée) | 93.0 | 100.0 | 100.0 | 100.0 |
 | Collections | Lister/rechercher les collections (recherche hybride) | `collections-lister-rechercher-les-collections-recherche-hybride` | 97.9 | = | moyenne (amorcée) | 94.8 | 100.0 | — | 100.0 |
-| Features (OGC API) | Suivre un export asynchrone de collection (statut, lien présigné) | `features-ogc-api-statut-d-un-export-asynchrone-de-collection` | 98.0 | +0.2 | moyenne (amorcée) | 93.2 | 100.0 | 100.0 | 100.0 |
+| Features (OGC API) | Suivre un export asynchrone de collection (statut, lien présigné) | `features-ogc-api-statut-d-un-export-asynchrone-de-collection` | 98.0 | = | moyenne (amorcée) | 93.2 | 100.0 | 100.0 | 100.0 |
 | Catalogue/Items | Lire/mettre à jour un config par id ou par item | `catalogue-items-lire-mettre-a-jour-un-config-par-id-ou-par-item` | 98.6 | = | haute (amorcée) | 95.5 | 100.0 | 100.0 | 100.0 |
 | Catalogue/Items | Lister et rechercher les items du catalogue (recherche hybride) | `catalogue-items-lister-et-rechercher-les-items-du-catalogue-recherche-hybride` | 98.7 | = | haute (amorcée) | 96.7 | 100.0 | — | 100.0 |
 | Catalogue/Items | Créer un objet de plateforme versionné (AppConfig/MapConfig/Dataset/...) | `catalogue-items-creer-un-objet-de-plateforme-versionne-appconfig-mapconfig-datas` | 98.7 | = | haute (amorcée) | 95.6 | 100.0 | 100.0 | 100.0 |
-| roles | Catalogue des privilèges pour construire l'UI de gestion des rôles | `roles-catalogue-des-privileges-pour-construire-l-ui-de-gestion-des-roles` | 98.0 | +6.0 | moyenne (amorcée) | 96.7 | — | — | 100.0 |
-| roles | Garde anti-lockout sur la modification ou suppression d'un rôle | `roles-garde-anti-lockout-sur-la-modification-ou-suppression-d-un-role` | 98.0 | +6.0 | moyenne (amorcée) | 96.7 | — | — | 100.0 |
+| roles | Catalogue des privilèges pour construire l'UI de gestion des rôles | `roles-catalogue-des-privileges-pour-construire-l-ui-de-gestion-des-roles` | 98.0 | = | moyenne (amorcée) | 96.7 | — | — | 100.0 |
+| roles | Garde anti-lockout sur la modification ou suppression d'un rôle | `roles-garde-anti-lockout-sur-la-modification-ou-suppression-d-un-role` | 98.0 | = | moyenne (amorcée) | 96.7 | — | — | 100.0 |
 | roles | Créer, éditer, supprimer un rôle sur mesure avec privilèges cochés par domaine | `roles-creer-editer-supprimer-un-role-sur-mesure-avec-privileges-coches-par-domai` | 98.0 | = | moyenne (amorcée) | 93.4 | 100.0 | 100.0 | 100.0 |
 | Paramètres | Paramètres d'instance et de tenant | `parametres-parametres-d-instance-et-de-tenant` | 98.1 | = | moyenne (amorcée) | 95.2 | 100.0 | — | 100.0 |
 | Catalogue | Catalogue (recherche, filtre type, filtre portée, pagination) | `catalogue-catalogue-recherche-filtre-type-filtre-portee-pagination` | 98.7 | = | haute (amorcée) | 96.8 | 100.0 | — | 100.0 |
 | Plateforme IA | Générer une application de saisie complète sur une collection depuis un agent MCP | `plateforme-ia-generer-une-application-de-saisie-complete-sur-une-collection-depu` | 98.2 | = | moyenne (amorcée) | 95.4 | 100.0 | — | 100.0 |
-| Automatisation | Planifier l'exécution récurrente d'un pipeline (cron) | `automatisation-planifier-l-execution-recurrente-d-un-pipeline-cron` | 98.2 | +0.1 | moyenne (amorcée) | 94.0 | 100.0 | 100.0 | 100.0 |
+| Automatisation | Planifier l'exécution récurrente d'un pipeline (cron) | `automatisation-planifier-l-execution-recurrente-d-un-pipeline-cron` | 98.2 | = | moyenne (amorcée) | 94.0 | 100.0 | 100.0 | 100.0 |
 | Configs/AppConfig | Bâtir une app/dashboard/site no-code (pages, layout en grille, messages) | `configs-appconfig-batir-une-app-dashboard-site-no-code-pages-layout-en-grille-me` | 98.8 | = | haute (amorcée) | 97.1 | 100.0 | — | 100.0 |
-| Carte | Recherche d'adresse (BAN) et centrage de la carte | `carte-recherche-d-adresse-ban-et-centrage-de-la-carte` | 98.3 | -0.1 | moyenne (amorcée) | 94.4 | 100.0 | 100.0 | 100.0 |
+| Carte | Recherche d'adresse (BAN) et centrage de la carte | `carte-recherche-d-adresse-ban-et-centrage-de-la-carte` | 98.3 | = | moyenne (amorcée) | 94.4 | 100.0 | 100.0 | 100.0 |
 | Extensibilité | Découvrir les extensions actives et les capacités de l'instance depuis une page d'admin | `extensibilite-decouvrir-les-extensions-actives-et-les-capacites-de-l-instance-de` | 98.3 | = | moyenne (amorcée) | 95.8 | 100.0 | — | 100.0 |
 | Collections | Enregistrer une table PostGIS existante comme collection | `collections-enregistrer-une-table-postgis-existante-comme-collection` | 98.3 | = | moyenne (amorcée) | 94.5 | 100.0 | 100.0 | 100.0 |
 | Collections | Lister les tables PostGIS candidates à l'enregistrement | `collections-lister-les-tables-postgis-candidates-a-l-enregistrement` | 98.3 | = | moyenne (amorcée) | 94.5 | 100.0 | 100.0 | 100.0 |
@@ -234,7 +236,6 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | Extensibilité | Activer/désactiver ou supprimer une extension enregistrée | `extensibilite-activer-desactiver-une-extension-enregistree-sans-la-supprimer` | 98.8 | = | moyenne (amorcée) | 95.9 | 100.0 | 100.0 | 100.0 |
 | Extensibilité | Enregistrer un widget externe (Web Component) dans le registre d'extensions du tenant | `extensibilite-enregistrer-un-widget-externe-web-component-dans-le-registre-d-ext` | 98.8 | = | moyenne (amorcée) | 95.9 | 100.0 | 100.0 | 100.0 |
 | Builder — Automatisation (pipelines) | Planification cron partagee (pipelines, rapports, alertes) | `builder-automatisation-pipelines-planification-cron-partagee-pipelines-rapports-` | 98.8 | = | moyenne (amorcée) | 98.0 | — | — | 100.0 |
-| Fédération des données | API STAC native (landing, conformance, collections, items, recherche cross-collection) | `federation-des-donnees-api-stac-native-landing-conformance-collections-items-rec` | 98.8 | = | moyenne (amorcée) | 96.0 | 100.0 | 100.0 | 100.0 |
 | Automatisation | Exporter une carte enregistrée (Bookmark) en image PNG ou PDF | `automatisation-exporter-une-carte-enregistree-bookmark-en-image-png-ou-pdf` | 98.9 | = | moyenne (amorcée) | 96.3 | 100.0 | 100.0 | 100.0 |
 | Plateforme IA | Modifier le partage d'un item depuis un agent MCP | `plateforme-ia-modifier-le-partage-d-un-item-depuis-un-agent-mcp` | 98.9 | = | moyenne (amorcée) | 97.3 | 100.0 | — | 100.0 |
 | Catalogue | Créer un nouvel élément (App/Dashboard/Map/Site/Dataset/Pipeline/Requête visuelle) | `catalogue-creer-un-nouvel-element-app-dashboard-map-site-dataset-pipeline-requet` | 99.3 | = | haute (amorcée) | 98.9 | — | — | 100.0 |
@@ -242,7 +243,7 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | Features (OGC API) | Cascade de suppression des pièces jointes à la suppression d'une entité | `features-ogc-api-cascade-de-suppression-des-pieces-jointes-a-la-suppression-d-un` | 99.0 | = | moyenne (amorcée) | 96.6 | 100.0 | 100.0 | 100.0 |
 | Features (OGC API) | Exporter un agrégat en CSV/XLSX | `features-ogc-api-exporter-un-agregat-en-csv-xlsx` | 99.0 | = | moyenne (amorcée) | 96.6 | 100.0 | 100.0 | 100.0 |
 | Features (OGC API) | Landing page et déclaration de conformité OGC API Features | `features-ogc-api-landing-page-et-declaration-de-conformite-ogc-api-features` | 99.0 | = | moyenne (amorcée) | 96.6 | 100.0 | 100.0 | 100.0 |
-| Automatisation | Voir les pièces jointes d'une entité dans le popup de la carte | `automatisation-voir-les-pieces-jointes-d-une-entite-dans-le-popup-de-la-carte` | 99.0 | +0.1 | moyenne (amorcée) | 96.7 | 100.0 | 100.0 | 100.0 |
+| Automatisation | Voir les pièces jointes d'une entité dans le popup de la carte | `automatisation-voir-les-pieces-jointes-d-une-entite-dans-le-popup-de-la-carte` | 99.0 | = | moyenne (amorcée) | 96.7 | 100.0 | 100.0 | 100.0 |
 | Features (OGC API) | Exporter les entités brutes d'une collection (CSV/XLSX/GeoJSON/GPKG) | `features-ogc-api-exporter-les-entites-brutes-d-une-collection-csv-xlsx-geojson-g` | 99.0 | = | moyenne (amorcée) | 96.7 | 100.0 | 100.0 | 100.0 |
 | Conformité | Anonymiser un utilisateur (droit à l'effacement RGPD) | `conformite-anonymiser-un-utilisateur-droit-a-l-effacement-rgpd` | 99.0 | = | moyenne | 96.7 | 100.0 | 100.0 | 100.0 |
 | Conformité | Purger un tenant (suppression complète et irréversible) | `conformite-purger-un-tenant-suppression-complete-et-irreversible` | 99.0 | = | moyenne | 96.7 | 100.0 | 100.0 | 100.0 |
@@ -252,10 +253,10 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | Export statique | Client zero-backend pour le mode Statique (donnees gelees) | `export-statique-client-zero-backend-pour-le-mode-statique-donnees-gelees` | 99.2 | = | moyenne (amorcée) | 98.6 | — | — | 100.0 |
 | Automatisation | Recevoir un rapport PDF périodique d'un Bookmark, envoyé par email/webhook | `automatisation-recevoir-un-rapport-pdf-periodique-d-un-bookmark-envoye-par-email` | 99.2 | = | moyenne (amorcée) | 97.3 | 100.0 | 100.0 | 100.0 |
 | Automatisation | Exporter une App en conteneur Autoporté (mini-serveur embarqué) | `automatisation-exporter-une-app-en-conteneur-autoporte-mini-serveur-embarque` | 99.2 | = | moyenne (amorcée) | 97.4 | 100.0 | 100.0 | 100.0 |
-| Fédération des données | Compaction périodique des petits fichiers GeoParquet du lakehouse | `federation-des-donnees-compaction-periodique-des-petits-fichiers-geoparquet-du-l` | 99.3 | +0.1 | moyenne (amorcée) | 98.8 | — | — | 100.0 |
+| Fédération des données | Compaction périodique des petits fichiers GeoParquet du lakehouse | `federation-des-donnees-compaction-periodique-des-petits-fichiers-geoparquet-du-l` | 99.3 | = | moyenne (amorcée) | 98.8 | — | — | 100.0 |
 | Apps & sites | Annuler/Rétablir dans le builder d'app | `apps-sites-annuler-retablir-dans-le-builder-d-app` | 99.3 | = | moyenne (amorcée) | 98.2 | 100.0 | — | 100.0 |
 | Features (OGC API) | SQL Lab : requête SQL en lecture seule sandboxée sur les collections visibles | `features-ogc-api-sql-lab-requete-sql-en-lecture-seule-sandboxee-sur-les-collecti` | 99.3 | = | moyenne (amorcée) | 97.6 | 100.0 | 100.0 | 100.0 |
-| Automatisation | Inspecter les couches d'un GeoPackage/Shapefile avant de choisir laquelle importer | `automatisation-inspecter-les-couches-d-un-geopackage-shapefile-avant-de-choisir-` | 99.3 | -0.4 | moyenne (amorcée) | 97.7 | 100.0 | 100.0 | 100.0 |
+| Automatisation | Inspecter les couches d'un GeoPackage/Shapefile avant de choisir laquelle importer | `automatisation-inspecter-les-couches-d-un-geopackage-shapefile-avant-de-choisir-` | 99.3 | = | moyenne (amorcée) | 97.7 | 100.0 | 100.0 | 100.0 |
 | Fédération des données | Créer un Dataset de plateforme à partir d'un Feature Service ArcGIS déjà moissonné (source live, sans copie) | `federation-des-donnees-creer-un-dataset-de-plateforme-a-partir-d-un-feature-serv` | 99.3 | = | moyenne (amorcée) | 98.9 | — | — | 100.0 |
 | Automatisation | Choisir sa préférence de notification (toutes / échecs seulement / aucune) | `automatisation-choisir-sa-preference-de-notification-toutes-echecs-seulement-auc` | 99.3 | = | moyenne (amorcée) | 97.7 | 100.0 | 100.0 | 100.0 |
 | Automatisation | Être notifié dans une cloche persistante du shell des jobs en échec/succès (ingestion, pipeline, export, export d'app, rapport) | `automatisation-etre-notifie-dans-une-cloche-persistante-du-shell-des-jobs-en-ech` | 99.3 | = | moyenne (amorcée) | 97.7 | 100.0 | 100.0 | 100.0 |
@@ -395,3 +396,5 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | Supervision | Observabilité packagée (Grafana + Prometheus + Loki + Tempo, dashboards pré-provisionnés) | `supervision-observabilite-packagee-grafana-prometheus-loki-tempo-dashboards-pre-` | 100.0 | = | moyenne (amorcée) | 100.0 | — | — | 100.0 |
 | Supervision | Recevoir une alerte SLO par webhook (latence API/tuiles, backlog de jobs, taux de 5xx) | `supervision-recevoir-une-alerte-slo-par-webhook-latence-api-tuiles-backlog-de-jo` | 100.0 | = | moyenne (amorcée) | 100.0 | — | — | 100.0 |
 | Sécurité | Limiter le débit des routes sensibles (SQL Lab, LLM/copilote, jobs d'export/appexport, écritures harvest) par jeton appelant | `securite-limiter-le-debit-des-routes-sensibles-sql-lab-llm-copilote-jobs-d-expor` | 100.0 | = | moyenne (amorcée) | 100.0 | — | — | 100.0 |
+| Collections | Limiter géographiquement la lecture d'une collection par rôle ou groupe | `collections-limite-geographique-de-lecture-par-role-ou-groupe` | 100.0 | — | moyenne (amorcée) | 100.0 | 100.0 | 100.0 | 100.0 |
+| Administration | Clés d'API de service (jeton machine à expiration) | `administration-cles-d-api-de-service` | 100.0 | — | moyenne (amorcée) | 100.0 | 100.0 | 100.0 | 100.0 |

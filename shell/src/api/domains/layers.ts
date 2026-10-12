@@ -6,6 +6,7 @@ import type {
   LayerSource,
   MapConfig,
   MapIconOut,
+  MapTimePlayerConfig,
   PrintLayoutConfig,
 } from "../types";
 import type { ItemClientBase, RawMapLayer } from "../base";
@@ -89,6 +90,7 @@ export function createLayersMethods(base: ItemClientBase): LayersMethods {
               encoding: "terrarium";
               exaggeration?: number | null;
             } | null;
+            timePlayer?: MapTimePlayerConfig | null;
           } | null;
           printLayout?: PrintLayoutConfig | null;
         };
@@ -106,6 +108,7 @@ export function createLayersMethods(base: ItemClientBase): LayersMethods {
         layers: (map.layers ?? []).map(toFrontLayer),
         printLayout: data.config?.printLayout ?? null,
         baseVersion: data.version,
+        ...(map.timePlayer ? { timePlayer: map.timePlayer } : {}),
         terrain: map.terrain
           ? {
               tilesUrl: map.terrain.tilesUrl,

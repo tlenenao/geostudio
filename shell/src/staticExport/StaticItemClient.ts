@@ -479,6 +479,15 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async updateNotificationPreference(..._args: unknown[]) {
       return unsupported();
     },
+    async listApiKeys(..._args: unknown[]) {
+      return unsupported();
+    },
+    async createApiKey(..._args: unknown[]) {
+      return unsupported();
+    },
+    async revokeApiKey(..._args: unknown[]) {
+      return unsupported();
+    },
     async geocode(..._args: unknown[]) {
       return unsupported();
     },

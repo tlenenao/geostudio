@@ -106,6 +106,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/api-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Keys */
+        get: operations["list_keys_v1_api_keys_get"];
+        put?: never;
+        /** Create Key */
+        post: operations["create_key_v1_api_keys_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/api-keys/{key_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke Key */
+        delete: operations["revoke_key_v1_api_keys__key_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/collections": {
         parameters: {
             query?: never;
@@ -802,6 +837,40 @@ export interface paths {
         };
         /** Geocode */
         get: operations["geocode_v1_geocode_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/geocode/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Geocode Many */
+        post: operations["geocode_many_v1_geocode_batch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/geocode/reverse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Reverse Geocode */
+        get: operations["reverse_geocode_v1_geocode_reverse_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2096,6 +2165,35 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** ApiKeyCreate */
+        ApiKeyCreate: {
+            /**
+             * Expiresindays
+             * @default 90
+             */
+            expiresInDays: number;
+            /** Name */
+            name: string;
+        };
+        /** ApiKeyCreated */
+        ApiKeyCreated: {
+            /** Createdat */
+            createdAt: string;
+            /** Expiresat */
+            expiresAt: string;
+            /** Id */
+            id: string;
+            /** Lastusedat */
+            lastUsedAt: string | null;
+            /** Name */
+            name: string;
+            /** Prefix */
+            prefix: string;
+            /** Revokedat */
+            revokedAt: string | null;
+            /** Token */
+            token: string;
+        };
         /**
          * ApiKeyPayload
          * @description `location="query"` couvre les jetons en paramètre d'URL (ex.
@@ -2119,6 +2217,23 @@ export interface components {
             location: "header" | "query";
             /** Value */
             value: string;
+        };
+        /** ApiKeyRead */
+        ApiKeyRead: {
+            /** Createdat */
+            createdAt: string;
+            /** Expiresat */
+            expiresAt: string;
+            /** Id */
+            id: string;
+            /** Lastusedat */
+            lastUsedAt: string | null;
+            /** Name */
+            name: string;
+            /** Prefix */
+            prefix: string;
+            /** Revokedat */
+            revokedAt: string | null;
         };
         /** AttachmentConfirmRequest */
         AttachmentConfirmRequest: {
@@ -2231,6 +2346,38 @@ export interface components {
             password: string;
             /** Username */
             username: string;
+        };
+        /** BatchRequest */
+        BatchRequest: {
+            /** Addresses */
+            addresses: string[];
+        };
+        /** BatchResponse */
+        BatchResponse: {
+            /** Errors */
+            errors: number;
+            /** Found */
+            found: number;
+            /** Not Found */
+            not_found: number;
+            /** Results */
+            results: components["schemas"]["BatchRow"][];
+        };
+        /** BatchRow */
+        BatchRow: {
+            /** Address */
+            address: string;
+            /** Label */
+            label?: string | null;
+            /** Lat */
+            lat?: number | null;
+            /** Lon */
+            lon?: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "trouvé" | "non_trouvé" | "erreur";
         };
         /** BearerTokenPayload */
         BearerTokenPayload: {
@@ -2380,6 +2527,18 @@ export interface components {
              * @default 1
              */
             version: number;
+        };
+        /**
+         * ClusterConfig
+         * @description ARC-01 : regroupement de points (MapLibre `cluster: true`) d'une couche `feature`.
+         */
+        ClusterConfig: {
+            /** Label */
+            label?: boolean | null;
+            /** Maxzoom */
+            maxZoom?: number | null;
+            /** Radius */
+            radius?: number | null;
         };
         /** CollectionCreate */
         CollectionCreate: {
@@ -3017,6 +3176,11 @@ export interface components {
             keywords: components["schemas"]["KeywordFacet"][];
             /** Owners */
             owners: components["schemas"]["OwnerFacet"][];
+            /**
+             * Statuses
+             * @default []
+             */
+            statuses: components["schemas"]["StatusFacet"][];
         };
         /** ItemPage */
         ItemPage: {
@@ -3042,6 +3206,11 @@ export interface components {
         ItemPermissions: {
             /** Delete */
             delete: boolean;
+            /**
+             * Publish
+             * @default false
+             */
+            publish: boolean;
             /** Read */
             read: boolean;
             /** Share */
@@ -3055,8 +3224,19 @@ export interface components {
             abstract: string;
             /** Bbox */
             bbox?: number[] | null;
+            /**
+             * Categories
+             * @default []
+             */
+            categories: string[];
             /** Configid */
             configId: string | null;
+            /**
+             * Contentstatus
+             * @default none
+             * @enum {string}
+             */
+            contentStatus: "none" | "authoritative" | "deprecated";
             /** Date */
             date: string;
             /** Ispublished */
@@ -3096,6 +3276,10 @@ export interface components {
         ItemUpdatePatch: {
             /** Abstract */
             abstract?: string | null;
+            /** Categories */
+            categories?: string[] | null;
+            /** Contentstatus */
+            contentStatus?: ("none" | "authoritative" | "deprecated") | null;
             /** Ispublished */
             isPublished?: boolean | null;
             /** Keywords */
@@ -3192,6 +3376,7 @@ export interface components {
             /** Layers */
             layers?: components["schemas"]["MapLayer"][];
             terrain?: components["schemas"]["MapTerrain"] | null;
+            timePlayer?: components["schemas"]["MapTimePlayer"] | null;
             view: components["schemas"]["MapView"];
         };
         /** MapIconOut */
@@ -3209,6 +3394,7 @@ export interface components {
         };
         /** MapLayer */
         MapLayer: {
+            cluster?: components["schemas"]["ClusterConfig"] | null;
             /** Collectionid */
             collectionId?: string | null;
             /** Dataurl */
@@ -3247,6 +3433,8 @@ export interface components {
             } | null;
             /** Tilesurl */
             tilesUrl?: string | null;
+            /** Timefield */
+            timeField?: string | null;
             /** Title */
             title: string;
             /** Url */
@@ -3269,6 +3457,37 @@ export interface components {
             exaggeration?: number | null;
             /** Tilesurl */
             tilesUrl: string;
+        };
+        /**
+         * MapTimePlayer
+         * @description ARC-09b : lecteur temps de l'éditeur de carte (pilote le filtre `datetime`
+         *     des couches ayant `timeField`). Mêmes bornes que le widget `timePlayer`.
+         */
+        MapTimePlayer: {
+            /** End */
+            end: string;
+            /**
+             * Intervalms
+             * @default 1000
+             */
+            intervalMs: number;
+            /** Start */
+            start: string;
+            /**
+             * Stepdays
+             * @default 1
+             */
+            stepDays: number;
+            /**
+             * Windowdays
+             * @default 7
+             */
+            windowDays: number;
+            /**
+             * Windowindex
+             * @default 0
+             */
+            windowIndex: number;
         };
         /** MapView */
         MapView: {
@@ -3626,6 +3845,8 @@ export interface components {
          *     titleField/fields — un seul mode s'applique à la fois.
          */
         PopupConfig: {
+            /** Attachmentfield */
+            attachmentField?: string | null;
             /** Fields */
             fields?: components["schemas"]["PopupField"][] | null;
             /** Template */
@@ -3762,6 +3983,10 @@ export interface components {
             resourceType: string;
             /** Title */
             title: string;
+        };
+        /** ReverseResponse */
+        ReverseResponse: {
+            result: components["schemas"]["GeocodeResult"] | null;
         };
         /** RevisionInfo */
         RevisionInfo: {
@@ -3956,6 +4181,16 @@ export interface components {
         SqlQueryBody: {
             /** Sql */
             sql: string;
+        };
+        /** StatusFacet */
+        StatusFacet: {
+            /** Count */
+            count: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "none" | "authoritative" | "deprecated";
         };
         /** Terrain3DPayload */
         Terrain3DPayload: {
@@ -4279,6 +4514,105 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_keys_v1_api_keys_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_key_v1_api_keys_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApiKeyCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_key_v1_api_keys__key_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                key_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyRead"];
                 };
             };
             /** @description Validation Error */
@@ -4835,6 +5169,11 @@ export interface operations {
                 cursor?: string | null;
                 bbox?: string | null;
                 geom_intersects?: string | null;
+                sortby?: string | null;
+                datetime?: string | null;
+                datetime_field?: string | null;
+                crs?: string | null;
+                "bbox-crs"?: string | null;
             };
             header?: {
                 authorization?: string;
@@ -4946,6 +5285,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "if-match"?: string | null;
                 authorization?: string;
                 "X-Share-Link-Token"?: string | null;
             };
@@ -4985,6 +5325,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "if-match"?: string | null;
                 authorization?: string;
                 "X-Share-Link-Token"?: string | null;
             };
@@ -6228,6 +6569,75 @@ export interface operations {
             };
         };
     };
+    geocode_many_v1_geocode_batch_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reverse_geocode_v1_geocode_reverse_get: {
+        parameters: {
+            query: {
+                lon: number;
+                lat: number;
+            };
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReverseResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_groups_v1_groups_get: {
         parameters: {
             query?: {
@@ -6833,6 +7243,7 @@ export interface operations {
                 owner?: string | null;
                 keyword?: string[] | null;
                 bbox?: string | null;
+                status?: ("none" | "authoritative" | "deprecated") | null;
             };
             header?: {
                 authorization?: string;
@@ -6869,6 +7280,7 @@ export interface operations {
                 type?: string | null;
                 scope?: "all" | "mine" | "shared" | "public";
                 owner?: string | null;
+                status?: ("none" | "authoritative" | "deprecated") | null;
             };
             header?: {
                 authorization?: string;
@@ -7340,6 +7752,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 icon_id: string;

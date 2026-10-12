@@ -137,3 +137,34 @@ def get_share_link_actor(
     if link is None:
         return None
     return resolve_guest_scope(session, claims, created_by=link.created_by)
+
+
+def read_tenant_id(session: Session, user, guest: GuestActor | None) -> str:
+    """Tenant de lecture : utilisateur, sinon invité, sinon tenant par défaut
+    (anonyme sur contenu public — même résolution que get_collection_for_read)."""
+    if user is not None:
+        return user.tenant_id
+    if guest is not None:
+        return guest.tenant_id
+    from app.tenants.repository import get_or_create_default_tenant
+
+    return get_or_create_default_tenant(session).id
+
+
+def can_read_item(session: Session, user, guest: GuestActor | None, item_id: str) -> bool:
+    """REV-359 : `can(read)` pour l'utilisateur, le délégant d'un jeton invité
+    (portée recoupée, comme GET /configs/by-item) ou l'anonyme (`user_id=""` :
+    seul un item public passe). Faux = l'appelant répond 404."""
+    tenant_id = read_tenant_id(session, user, guest)
+    facts = items_repo.get_access_facts(session, tenant_id=tenant_id, item_id=item_id)
+    if facts is None:
+        return False
+    if user is not None:
+        return can(session, user_id=user.id, action="read", item=facts)
+    if guest is not None:
+        if not authorize_guest_item_read(guest, item_id):
+            return False
+        return item_id == guest.item_id or can(
+            session, user_id=guest.created_by, action="read", item=facts
+        )
+    return can(session, user_id="", action="read", item=facts)

@@ -5,11 +5,12 @@ un fake et un scope nul ; le vrai chemin est PostGIS-only."""
 
 import functools
 import json
+import math
 import os
 from contextlib import contextmanager
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 from opentelemetry import metrics
 from pydantic import BaseModel
@@ -57,7 +58,8 @@ from app.configs.geo_limits_dep import get_request_geo_limits
 from app.configs.guest_access import GuestActor, get_share_link_actor
 from app.db import get_session
 from app.errors import ValidationHTTPException
-from app.features.repository import CursorError, FilterError
+from app.features.etag import feature_etag, if_match_satisfied
+from app.features.repository import SUPPORTED_EPSG, CursorError, FilterError
 from app.features.validation import validate_feature
 from app.filter_values import fold_query_filters
 from app.roles.guards import has_privilege, require_privilege
@@ -79,13 +81,27 @@ class SqlQueryBody(BaseModel):
     sql: str
 
 
-RESERVED_QUERY_PARAMS = {"limit", "offset", "cursor", "bbox", "geom_intersects", "f", "format"}
+RESERVED_QUERY_PARAMS = {
+    "limit",
+    "offset",
+    "cursor",
+    "bbox",
+    "geom_intersects",
+    "f",
+    "format",
+    "sortby",
+    "datetime",
+    "datetime_field",
+    "crs",
+    "bbox-crs",
+}
 MAX_LIMIT = 1000
 
 CONFORMANCE_CLASSES = [
     "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/core",
     "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/oas30",
     "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/geojson",
+    "http://www.opengis.net/spec/ogcapi-features-2/1.0/conf/crs",
     "http://www.opengis.net/spec/ogcapi-features-4/1.0/conf/create-replace-delete",
 ]
 
@@ -159,14 +175,23 @@ def _validation_error(errors: list[dict], status: int = 400):
     return ValidationHTTPException(errors=errors, status_code=status)
 
 
-def _parse_bbox(raw: str | None):
+def parse_bbox(raw: str | None, *, check_bounds: bool = True):
+    """`minx,miny,maxx,maxy` ; fini ; bornes EPSG:4326 sauf `check_bounds=False`
+    (bbox-crs projeté). REV-353 : sinon l'erreur SQL de ST_MakeEnvelope = 500."""
     if raw is None:
         return None
     parts = raw.split(",")
     try:
         if len(parts) != 4:
             raise ValueError(raw)
-        return tuple(float(p) for p in parts)
+        vals = tuple(float(p) for p in parts)
+        if not all(math.isfinite(v) for v in vals):
+            raise ValueError(raw)
+        if check_bounds and (
+            max(abs(vals[0]), abs(vals[2])) > 180 or max(abs(vals[1]), abs(vals[3])) > 90
+        ):
+            raise ValueError(raw)
+        return vals
     except ValueError:
         raise _validation_error(
             [
@@ -177,6 +202,43 @@ def _parse_bbox(raw: str | None):
                 }
             ]
         ) from None
+
+
+def parse_crs(raw: str | None, field: str) -> int | None:
+    """`EPSG:2154`, `epsg:2154` ou URI `.../def/crs/EPSG/0/2154` (+ CRS84 = 4326) -> code
+    EPSG parmi SUPPORTED_EPSG, sinon 400 `invalid_crs`."""
+    if raw is None:
+        return None
+    tail = raw.strip().rstrip("/").rsplit("/", 1)[-1].rsplit(":", 1)[-1]
+    code = 4326 if tail.upper() == "CRS84" else int(tail) if tail.isdigit() else None
+    if code not in SUPPORTED_EPSG:
+        raise _validation_error(
+            [
+                {
+                    "field": field,
+                    "code": "invalid_crs",
+                    "message": f"unsupported crs, expected one of EPSG {list(SUPPORTED_EPSG)}",
+                }
+            ]
+        )
+    return code
+
+
+def parse_sortby(raw: str | None) -> list[tuple[str, bool]] | None:
+    """`sortby=-nom,+id` -> [("nom", True), ("id", False)] ; `+` (espace après décodage) ok."""
+    if raw is None:
+        return None
+    out = []
+    for part in raw.split(","):
+        name = part.strip().removeprefix("+")
+        desc = name.startswith("-")
+        name = name.removeprefix("-").strip()
+        if not name:
+            raise _validation_error(
+                [{"field": "sortby", "code": "invalid_sortby", "message": "empty sortby term"}]
+            )
+        out.append((name, desc))
+    return out
 
 
 def _parse_geom_intersects(raw: str | None):
@@ -219,6 +281,9 @@ def _page_links(request: Request, *, limit: int, offset: int, page, cursor=None)
             limit=limit, cursor=page.next_cursor
         )
         links.append({"rel": "next", "type": "application/geo+json", "href": str(url)})
+    if page.next_offset is not None:  # tri personnalisé : pas de curseur keyset
+        url = request.url.include_query_params(limit=limit, offset=page.next_offset)
+        links.append({"rel": "next", "type": "application/geo+json", "href": str(url)})
     if offset > 0 and cursor is None:
         href = str(request.url.include_query_params(limit=limit, offset=max(0, offset - limit)))
         links.append({"rel": "prev", "type": "application/geo+json", "href": href})
@@ -234,6 +299,12 @@ def list_features(
     cursor: str | None = None,
     bbox: str | None = None,
     geom_intersects: str | None = None,
+    sortby: str | None = None,
+    datetime_q: str | None = Query(None, alias="datetime"),
+    datetime_field: str | None = None,
+    crs: str | None = None,
+    bbox_crs: str | None = Query(None, alias="bbox-crs"),
+    response: Response = None,  # type: ignore[assignment]
     user=Depends(get_current_user_optional),
     guest: GuestActor | None = Depends(get_share_link_actor),
     session: Session = Depends(get_session, scope="function"),
@@ -248,13 +319,27 @@ def list_features(
     if masked:
         info = hide_sensitive_columns(info, col.sensitive_fields)
     limit = min(limit, MAX_LIMIT)
-    parsed_bbox = _parse_bbox(bbox)
+    out_srid = parse_crs(crs, "crs")
+    bbox_srid = parse_crs(bbox_crs, "bbox-crs") or 4326
+    parsed_bbox = parse_bbox(bbox, check_bounds=bbox_srid == 4326)
     parsed_geom_intersects = _parse_geom_intersects(geom_intersects)
     filters = _collect_filters(request)
     if cursor is not None and offset > 0:
         raise _validation_error(
             [{"field": "cursor", "code": "invalid_cursor", "message": "cursor excludes offset"}]
         )
+    # ARC-02 : paramètres transmis seulement s'ils sont posés (contrat inchangé sinon)
+    extra: dict = {
+        k: v
+        for k, v in {
+            "sortby": parse_sortby(sortby),
+            "datetime_": datetime_q,
+            "datetime_field": datetime_field,
+            "out_srid": out_srid,
+            "bbox_srid": bbox_srid if bbox_srid != 4326 else None,
+        }.items()
+        if v is not None
+    }
     try:
         with rls(session, col.tenant_id, masked=masked):
             page = repo.select_features(
@@ -267,6 +352,7 @@ def list_features(
                 filters=filters or None,
                 after=cursor,
                 count_mode="capped",
+                **extra,
             )
     except CursorError as exc:
         raise _validation_error(
@@ -274,8 +360,10 @@ def list_features(
         ) from exc
     except FilterError as exc:
         raise _validation_error(
-            [{"field": exc.field, "code": "unknown_filter", "message": exc.message}]
+            [{"field": exc.field, "code": exc.code, "message": exc.message}]
         ) from exc
+    if out_srid is not None:
+        response.headers["Content-Crs"] = f"<http://www.opengis.net/def/crs/EPSG/0/{out_srid}>"
     body: dict = {"type": "FeatureCollection", "features": page.features}
     if page.number_matched is not None:
         body["numberMatched"] = page.number_matched
@@ -504,7 +592,7 @@ def export_collection_items(
     info = introspect(session, col.table_name)
     if masked:
         info = hide_sensitive_columns(info, col.sensitive_fields)
-    parsed_bbox = _parse_bbox(bbox)
+    parsed_bbox = parse_bbox(bbox)
     parsed_geom_intersects = _parse_geom_intersects(geom_intersects)
     filters = _collect_filters(request)
     sync_max = export_sync_max()
@@ -676,6 +764,7 @@ def analytics_sql(
 def get_single_feature(
     collection_id: str,
     fid: str,
+    response: Response,
     user=Depends(get_current_user_optional),
     guest: GuestActor | None = Depends(get_share_link_actor),
     session: Session = Depends(get_session, scope="function"),
@@ -693,7 +782,30 @@ def get_single_feature(
         feature = repo.get_feature(session, info, fid=fid)
     if feature is None:
         raise HTTPException(status_code=404, detail="feature not found")
+    response.headers["ETag"] = feature_etag(feature)
     return feature
+
+
+def _enforce_if_match(session, repo, view_info, fid, if_match):
+    """ARC-04 : `If-Match` optionnel. Verrouille la ligne puis compare l'ETag recalculé
+    (même vue que GET) : 404 si absente, 412 si périmé. À appeler dans le scope RLS, avant
+    l'écriture ; sans en-tête : aucun effet (rétro-compatible)."""
+    if if_match is None:
+        return
+    repo.lock_feature(session, view_info, fid=fid)
+    current = repo.get_feature(session, view_info, fid=fid)
+    if current is None:
+        raise HTTPException(status_code=404, detail="feature not found")
+    if not if_match_satisfied(if_match, feature_etag(current)):
+        raise HTTPException(
+            status_code=412, detail="precondition failed: the feature changed since it was read"
+        )
+
+
+def _set_etag(response, session, repo, view_info, fid):
+    feature = repo.get_feature(session, view_info, fid=str(fid))
+    if feature is not None:
+        response.headers["ETag"] = feature_etag(feature)
 
 
 def _raise_if_outside_geo_limit(exc: DBAPIError) -> None:
@@ -751,6 +863,7 @@ def create_feature(
                 properties=payload.get("properties") or {},
                 geometry=payload.get("geometry"),
             )
+            _set_etag(response, session, repo, info, fid)
     except IntegrityError as exc:
         raise HTTPException(
             status_code=409, detail="feature conflicts with an existing row"
@@ -786,6 +899,8 @@ def put_feature(
     collection_id: str,
     fid: str,
     payload: dict,
+    response: Response,
+    if_match: str | None = Header(default=None),
     user=Depends(get_current_user),
     session: Session = Depends(get_session, scope="function"),
     introspect=Depends(get_introspector),
@@ -799,6 +914,8 @@ def put_feature(
     # NULL les colonnes sensibles qu'il n'a jamais vues. Retirées de `info`,
     # elles ne sont ni validées ni écrites (donc conservées en base).
     info = introspect(session, col.table_name)
+    # Vue de l'ETag = celle de GET /items/{fid} (masquage inclus).
+    view_info = hide_sensitive_columns(info, col.sensitive_fields) if masked else info
     # Même chose pour un lecteur autorisé (propriétaire, REV-276) : une colonne
     # sensible absente du corps est conservée, pas remise à NULL.
     sent = payload.get("properties") or {}
@@ -809,6 +926,7 @@ def put_feature(
         raise _validation_error(errors)
     try:
         with rls(session, col.tenant_id):
+            _enforce_if_match(session, repo, view_info, fid, if_match)
             ok = repo.replace_feature(
                 session,
                 info,
@@ -816,6 +934,8 @@ def put_feature(
                 properties=payload.get("properties") or {},
                 geometry=payload.get("geometry"),
             )
+            if ok:
+                _set_etag(response, session, repo, view_info, fid)
     except IntegrityError as exc:
         # Même réponse qu'à la création : une collision avec une ligne cachée par une
         # limite géographique est indiscernable d'une collision avec une ligne visible.
@@ -843,16 +963,21 @@ def put_feature(
 def remove_feature(
     collection_id: str,
     fid: str,
+    if_match: str | None = Header(default=None),
     user=Depends(get_current_user),
     session: Session = Depends(get_session, scope="function"),
     introspect=Depends(get_introspector),
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
     s3=Depends(get_s3_client),
+    masked: bool = Depends(get_masked_for_user),
 ):
     col = _get_writable(session, user, collection_id)
+    masked = unmask_for_owner(masked, user, col)
     info = introspect(session, col.table_name)
+    view_info = hide_sensitive_columns(info, col.sensitive_fields) if masked else info
     with rls(session, col.tenant_id):
+        _enforce_if_match(session, repo, view_info, fid, if_match)
         ok = repo.delete_feature(session, info, fid=fid)
     if not ok:
         raise HTTPException(status_code=404, detail="feature not found")

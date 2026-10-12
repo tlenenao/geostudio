@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import * as maplibregl from "maplibre-gl";
 import { type ExpressionSpecification, type FilterSpecification } from "maplibre-gl";
-import type { DataRecord, MapLayer, ThemeColors } from "../api/types";
+import type { ClusterConfig, DataRecord, MapLayer, ThemeColors } from "../api/types";
 import {
   buildMapPaint,
   renderAsFor,
@@ -72,6 +72,8 @@ export const SUBLAYER_SUFFIXES = [
   "__icon",
   "__label",
   "__agg",
+  "__cluster",
+  "__cluster_count",
 ] as const;
 
 // Les sources auxiliaires posées par applyLayers, à retirer avec la couche.
@@ -353,4 +355,66 @@ export function addAggregateLayer(
       "circle-opacity": 0.6,
     },
   });
+}
+
+// ARC-01 : regroupement de points d'une couche `feature` (GeoJSON). MapLibre
+// calcule les clusters (`cluster: true`) ; les couches de données écartent les
+// entités `point_count` (notAggregated, même propriété que REV-283a), `__cluster`
+// dessine le cercle, `__cluster_count` le compte (exige `glyphs`, comme les
+// étiquettes — sans lui on omet le compte au lieu de faire rejeter la couche).
+export const CLUSTER_DEFAULTS = { radius: 50, maxZoom: 14 } as const;
+
+export function clusterSourceOptions(cluster: ClusterConfig) {
+  return {
+    cluster: true,
+    clusterRadius: cluster.radius ?? CLUSTER_DEFAULTS.radius,
+    clusterMaxZoom: cluster.maxZoom ?? CLUSTER_DEFAULTS.maxZoom,
+  };
+}
+
+export function addClusterLayers(
+  map: maplibregl.Map,
+  parentId: string,
+  cluster: ClusterConfig,
+  color = aggregateDefaultColor(),
+) {
+  map.addLayer({
+    id: `${parentId}__cluster`,
+    type: "circle",
+    source: parentId,
+    filter: ["has", "point_count"],
+    paint: {
+      "circle-radius": ["step", ["get", "point_count"], 14, 100, 18, 750, 24],
+      "circle-color": color,
+      "circle-opacity": 0.8,
+    },
+  });
+  const style = map.getStyle() as { glyphs?: string } | undefined;
+  if (cluster.label === false || !style?.glyphs) return;
+  map.addLayer({
+    id: `${parentId}__cluster_count`,
+    type: "symbol",
+    source: parentId,
+    filter: ["has", "point_count"],
+    layout: { "text-field": ["get", "point_count_abbreviated"], "text-size": 12 },
+    paint: { "text-color": themeLabelOnPrimary() },
+  });
+}
+
+// gs-raw-color-ok-begin: repli hors navigateur réel (jsdom ne résout pas les jetons)
+const themeLabelOnPrimary = () => readToken("--gs-raised", "#ffffff");
+// gs-raw-color-ok-end
+
+// Clic sur un cluster : zoome jusqu'au niveau qui l'éclate.
+export function makeClusterClickHandler(map: maplibregl.Map, sourceId: string) {
+  return (e: maplibregl.MapLayerMouseEvent) => {
+    const f = e.features?.[0];
+    const clusterId = f?.properties?.cluster_id;
+    if (f?.geometry.type !== "Point" || typeof clusterId !== "number") return;
+    const center = f.geometry.coordinates as [number, number];
+    const source = map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined;
+    void source?.getClusterExpansionZoom(clusterId).then((zoom) => {
+      map.easeTo({ center, zoom });
+    });
+  };
 }

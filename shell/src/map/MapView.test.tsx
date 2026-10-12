@@ -188,6 +188,84 @@ test("re-applies layers even while the style has tiles in flight", () => {
   expect(map.getLayer("b")).toBeDefined();
 });
 
+// ARC-01 : clustering de points d'une couche GeoJSON.
+const clusterCfg = (cluster: Extract<MapLayer, { kind: "feature" }>["cluster"]): MapConfig => ({
+  ...config,
+  layers: [
+    {
+      id: "pts",
+      title: "Points",
+      visible: true,
+      kind: "feature",
+      url: "https://fs/pts",
+      renderAs: "circle",
+      cluster,
+    },
+  ],
+});
+
+test("cluster: the GeoJSON source is clustered and cluster/count layers are added", () => {
+  render(<MapView config={clusterCfg({ radius: 60, maxZoom: 12 })} />);
+  const map = mapInstances[0];
+  expect(map.getSource("pts")?.spec).toMatchObject({
+    type: "geojson",
+    cluster: true,
+    clusterRadius: 60,
+    clusterMaxZoom: 12,
+  });
+  // Les points individuels excluent les clusters ; les clusters ont leur couche.
+  expect(map.getLayer("pts")).toMatchObject({ filter: ["!", ["has", "point_count"]] });
+  expect(map.getLayer("pts__cluster")).toMatchObject({
+    type: "circle",
+    filter: ["has", "point_count"],
+  });
+  expect(map.getLayer("pts__cluster_count")).toMatchObject({ type: "symbol" });
+});
+
+test("cluster: defaults radius 50 / maxZoom 14, label:false omits the count layer", () => {
+  render(<MapView config={clusterCfg({ label: false })} />);
+  const map = mapInstances[0];
+  expect(map.getSource("pts")?.spec).toMatchObject({ clusterRadius: 50, clusterMaxZoom: 14 });
+  expect(map.getLayer("pts__cluster")).toBeDefined();
+  expect(map.getLayer("pts__cluster_count")).toBeUndefined();
+});
+
+test("cluster: no cluster option leaves a plain source (non-regression)", () => {
+  render(<MapView config={clusterCfg(undefined)} />);
+  const map = mapInstances[0];
+  expect(map.getSource("pts")?.spec).not.toHaveProperty("cluster");
+  expect(map.getLayer("pts")).not.toHaveProperty("filter");
+  expect(map.getLayer("pts__cluster")).toBeUndefined();
+});
+
+test("cluster: ignored when the layer is not rendered as circles", () => {
+  const cfg = clusterCfg({});
+  (cfg.layers[0] as { renderAs?: string }).renderAs = "fill";
+  render(<MapView config={cfg} />);
+  expect(mapInstances[0].getSource("pts")?.spec).not.toHaveProperty("cluster");
+});
+
+test("cluster: clicking a cluster eases the camera to its expansion zoom", async () => {
+  render(<MapView config={clusterCfg({})} />);
+  const map = mapInstances[0];
+  map.fireOnLayer("click", "pts__cluster", {
+    features: [
+      { properties: { cluster_id: 3 }, geometry: { type: "Point", coordinates: [2, 47] } },
+    ],
+    lngLat: { lng: 2, lat: 47 },
+  });
+  await waitFor(() => expect(map.easeToArgs).toEqual([{ center: [2, 47], zoom: 7 }]));
+});
+
+test("cluster: toggling cluster off removes the cluster layers on the next apply", () => {
+  const { rerender } = render(<MapView config={clusterCfg({})} />);
+  const map = mapInstances[0];
+  expect(map.getLayer("pts__cluster")).toBeDefined();
+  rerender(<MapView config={clusterCfg(undefined)} />);
+  expect(map.getLayer("pts__cluster")).toBeUndefined();
+  expect(map.getLayer("pts__cluster_count")).toBeUndefined();
+});
+
 test('renders a circle layer for a feature layer with renderAs "circle"', () => {
   const cfg: MapConfig = {
     ...config,

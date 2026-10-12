@@ -98,3 +98,18 @@ export function withTimeRange(
   });
   return `${url}${url.includes("?") ? "&" : "?"}${q}`;
 }
+
+// ARC-09b : filtre `datetime` OGC (ARC-02) d'une couche `feature` pilotée par
+// le lecteur temps de l'éditeur de carte (`to` couvre toute la journée côté cœur).
+export function withDatetime(
+  url: string,
+  timeField: string | undefined,
+  range: { from: string; to: string } | null,
+): string {
+  if (!timeField || !range) return url;
+  const q = new URLSearchParams({
+    datetime: `${range.from}/${range.to}`,
+    datetime_field: timeField,
+  });
+  return `${url}${url.includes("?") ? "&" : "?"}${q}`;
+}

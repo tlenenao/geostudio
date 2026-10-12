@@ -117,6 +117,16 @@ class PopupConfig(BaseModel):
     titleField: str | None = None
     fields: list[PopupField] | None = None
     template: str | None = None
+    # SP-40 : champ « pièce jointe » de la collection listé dans le popup.
+    attachmentField: str | None = None
+
+
+class ClusterConfig(BaseModel):
+    """ARC-01 : regroupement de points (MapLibre `cluster: true`) d'une couche `feature`."""
+
+    radius: float | None = None
+    maxZoom: float | None = None
+    label: bool | None = None
 
 
 class MapLayer(BaseModel):
@@ -141,6 +151,9 @@ class MapLayer(BaseModel):
     geometryKind: Literal["point", "line", "polygon"] | None = None
     pkColumn: str | None = None
     renderAs: Literal["fill", "circle", "line"] | None = None
+    # REV-304 : champ date filtré par le contexte temps (widget carte).
+    timeField: str | None = None
+    cluster: ClusterConfig | None = None
 
 
 class MapTerrain(BaseModel):
@@ -149,11 +162,24 @@ class MapTerrain(BaseModel):
     exaggeration: float | None = None
 
 
+class MapTimePlayer(BaseModel):
+    """ARC-09b : lecteur temps de l'éditeur de carte (pilote le filtre `datetime`
+    des couches ayant `timeField`). Mêmes bornes que le widget `timePlayer`."""
+
+    start: str  # AAAA-MM-JJ
+    end: str
+    stepDays: int = Field(1, ge=1, le=3660)
+    windowDays: int = Field(7, ge=1, le=3660)
+    intervalMs: int = Field(1000, ge=500, le=10000)
+    windowIndex: int = Field(0, ge=0)
+
+
 class MapConfig(BaseModel):
     basemap: BaseMap
     view: MapView
     layers: list[MapLayer] = Field(default_factory=list)
     terrain: MapTerrain | None = None
+    timePlayer: MapTimePlayer | None = None
 
 
 class DatasetColumnMeta(BaseModel):

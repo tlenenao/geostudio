@@ -417,6 +417,90 @@
         "title": "AlertRuleSummary",
         "type": "object"
       },
+      "ApiKeyCreate": {
+        "properties": {
+          "expiresInDays": {
+            "default": 90,
+            "maximum": 365.0,
+            "minimum": 1.0,
+            "title": "Expiresindays",
+            "type": "integer"
+          },
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ApiKeyCreate",
+        "type": "object"
+      },
+      "ApiKeyCreated": {
+        "properties": {
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "expiresAt": {
+            "title": "Expiresat",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "lastUsedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastusedat"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "prefix": {
+            "title": "Prefix",
+            "type": "string"
+          },
+          "revokedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revokedat"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "prefix",
+          "createdAt",
+          "expiresAt",
+          "revokedAt",
+          "lastUsedAt",
+          "token"
+        ],
+        "title": "ApiKeyCreated",
+        "type": "object"
+      },
       "ApiKeyPayload": {
         "description": "`location=\"query\"` couvre les jetons en param\u00e8tre d'URL (ex.\n`?token=...` d'un ArcGIS Feature Service, cl\u00e9 GeoServer sur un WFS) ;\n`location=\"header\"` couvre le cas g\u00e9n\u00e9rique (`X-API-Key`, etc.).",
         "properties": {
@@ -462,6 +546,63 @@
           "value"
         ],
         "title": "ApiKeyPayload",
+        "type": "object"
+      },
+      "ApiKeyRead": {
+        "properties": {
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "expiresAt": {
+            "title": "Expiresat",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "lastUsedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastusedat"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "prefix": {
+            "title": "Prefix",
+            "type": "string"
+          },
+          "revokedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revokedat"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "prefix",
+          "createdAt",
+          "expiresAt",
+          "revokedAt",
+          "lastUsedAt"
+        ],
+        "title": "ApiKeyRead",
         "type": "object"
       },
       "AttachmentConfirmRequest": {
@@ -693,6 +834,111 @@
           "password"
         ],
         "title": "BasicAuthPayload",
+        "type": "object"
+      },
+      "BatchRequest": {
+        "properties": {
+          "addresses": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Addresses",
+            "type": "array"
+          }
+        },
+        "required": [
+          "addresses"
+        ],
+        "title": "BatchRequest",
+        "type": "object"
+      },
+      "BatchResponse": {
+        "properties": {
+          "errors": {
+            "title": "Errors",
+            "type": "integer"
+          },
+          "found": {
+            "title": "Found",
+            "type": "integer"
+          },
+          "not_found": {
+            "title": "Not Found",
+            "type": "integer"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/BatchRow"
+            },
+            "title": "Results",
+            "type": "array"
+          }
+        },
+        "required": [
+          "results",
+          "found",
+          "not_found",
+          "errors"
+        ],
+        "title": "BatchResponse",
+        "type": "object"
+      },
+      "BatchRow": {
+        "properties": {
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "lat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lat"
+          },
+          "lon": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lon"
+          },
+          "status": {
+            "enum": [
+              "trouv\u00e9",
+              "non_trouv\u00e9",
+              "erreur"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "address",
+          "status"
+        ],
+        "title": "BatchRow",
         "type": "object"
       },
       "BearerTokenPayload": {
@@ -1098,6 +1344,46 @@
           "kind"
         ],
         "title": "BuilderConfig",
+        "type": "object"
+      },
+      "ClusterConfig": {
+        "description": "ARC-01 : regroupement de points (MapLibre `cluster: true`) d'une couche `feature`.",
+        "properties": {
+          "label": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "maxZoom": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxzoom"
+          },
+          "radius": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Radius"
+          }
+        },
+        "title": "ClusterConfig",
         "type": "object"
       },
       "CollectionCreate": {
@@ -3101,6 +3387,14 @@
             },
             "title": "Owners",
             "type": "array"
+          },
+          "statuses": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/StatusFacet"
+            },
+            "title": "Statuses",
+            "type": "array"
           }
         },
         "required": [
@@ -3148,6 +3442,11 @@
             "title": "Delete",
             "type": "boolean"
           },
+          "publish": {
+            "default": false,
+            "title": "Publish",
+            "type": "boolean"
+          },
           "read": {
             "title": "Read",
             "type": "boolean"
@@ -3190,6 +3489,14 @@
             ],
             "title": "Bbox"
           },
+          "categories": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
           "configId": {
             "anyOf": [
               {
@@ -3200,6 +3507,16 @@
               }
             ],
             "title": "Configid"
+          },
+          "contentStatus": {
+            "default": "none",
+            "enum": [
+              "none",
+              "authoritative",
+              "deprecated"
+            ],
+            "title": "Contentstatus",
+            "type": "string"
           },
           "date": {
             "title": "Date",
@@ -3301,6 +3618,36 @@
               }
             ],
             "title": "Abstract"
+          },
+          "categories": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categories"
+          },
+          "contentStatus": {
+            "anyOf": [
+              {
+                "enum": [
+                  "none",
+                  "authoritative",
+                  "deprecated"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contentstatus"
           },
           "isPublished": {
             "anyOf": [
@@ -3603,6 +3950,16 @@
               }
             ]
           },
+          "timePlayer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MapTimePlayer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "view": {
             "$ref": "#/components/schemas/MapView"
           }
@@ -3649,6 +4006,16 @@
       },
       "MapLayer": {
         "properties": {
+          "cluster": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClusterConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "collectionId": {
             "anyOf": [
               {
@@ -3819,6 +4186,17 @@
             ],
             "title": "Tilesurl"
           },
+          "timeField": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timefield"
+          },
           "title": {
             "title": "Title",
             "type": "string"
@@ -3876,6 +4254,52 @@
           "tilesUrl"
         ],
         "title": "MapTerrain",
+        "type": "object"
+      },
+      "MapTimePlayer": {
+        "description": "ARC-09b : lecteur temps de l'\u00e9diteur de carte (pilote le filtre `datetime`\ndes couches ayant `timeField`). M\u00eames bornes que le widget `timePlayer`.",
+        "properties": {
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "intervalMs": {
+            "default": 1000,
+            "maximum": 10000.0,
+            "minimum": 500.0,
+            "title": "Intervalms",
+            "type": "integer"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          },
+          "stepDays": {
+            "default": 1,
+            "maximum": 3660.0,
+            "minimum": 1.0,
+            "title": "Stepdays",
+            "type": "integer"
+          },
+          "windowDays": {
+            "default": 7,
+            "maximum": 3660.0,
+            "minimum": 1.0,
+            "title": "Windowdays",
+            "type": "integer"
+          },
+          "windowIndex": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Windowindex",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "MapTimePlayer",
         "type": "object"
       },
       "MapView": {
@@ -4617,6 +5041,17 @@
       "PopupConfig": {
         "description": "Contenu du popup d'une couche (SP-24). `template` non vide l'emporte sur\ntitleField/fields \u2014 un seul mode s'applique \u00e0 la fois.",
         "properties": {
+          "attachmentField": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attachmentfield"
+          },
           "fields": {
             "anyOf": [
               {
@@ -5018,6 +5453,25 @@
           "expiresAt"
         ],
         "title": "ResolvedShareLink",
+        "type": "object"
+      },
+      "ReverseResponse": {
+        "properties": {
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GeocodeResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "result"
+        ],
+        "title": "ReverseResponse",
         "type": "object"
       },
       "RevisionInfo": {
@@ -5607,6 +6061,29 @@
           "sql"
         ],
         "title": "SqlQueryBody",
+        "type": "object"
+      },
+      "StatusFacet": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "none",
+              "authoritative",
+              "deprecated"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "count"
+        ],
+        "title": "StatusFacet",
         "type": "object"
       },
       "Terrain3DPayload": {
@@ -6338,6 +6815,147 @@
           }
         },
         "summary": "Analytics Sql"
+      }
+    },
+    "/v1/api-keys": {
+      "get": {
+        "operationId": "list_keys_v1_api_keys_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ApiKeyRead"
+                  },
+                  "title": "Response List Keys V1 Api Keys Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Keys"
+      },
+      "post": {
+        "operationId": "create_key_v1_api_keys_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiKeyCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Key"
+      }
+    },
+    "/v1/api-keys/{key_id}": {
+      "delete": {
+        "operationId": "revoke_key_v1_api_keys__key_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key_id",
+            "required": true,
+            "schema": {
+              "title": "Key Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Key"
       }
     },
     "/v1/collections": {
@@ -7388,6 +8006,86 @@
             }
           },
           {
+            "in": "query",
+            "name": "sortby",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sortby"
+            }
+          },
+          {
+            "in": "query",
+            "name": "datetime",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Datetime"
+            }
+          },
+          {
+            "in": "query",
+            "name": "datetime_field",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Datetime Field"
+            }
+          },
+          {
+            "in": "query",
+            "name": "crs",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Crs"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bbox-crs",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bbox-Crs"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -7534,6 +8232,22 @@
           },
           {
             "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
             "name": "authorization",
             "required": false,
             "schema": {
@@ -7665,6 +8379,22 @@
             "schema": {
               "title": "Fid",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
             }
           },
           {
@@ -9881,6 +10611,124 @@
         ]
       }
     },
+    "/v1/geocode/batch": {
+      "post": {
+        "operationId": "geocode_many_v1_geocode_batch_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Geocode Many",
+        "tags": [
+          "geocoding"
+        ]
+      }
+    },
+    "/v1/geocode/reverse": {
+      "get": {
+        "operationId": "reverse_geocode_v1_geocode_reverse_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "lon",
+            "required": true,
+            "schema": {
+              "maximum": 180,
+              "minimum": -180,
+              "title": "Lon",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lat",
+            "required": true,
+            "schema": {
+              "maximum": 90,
+              "minimum": -90,
+              "title": "Lat",
+              "type": "number"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReverseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reverse Geocode",
+        "tags": [
+          "geocoding"
+        ]
+      }
+    },
     "/v1/groups": {
       "get": {
         "operationId": "list_groups_v1_groups_get",
@@ -10899,6 +11747,27 @@
             }
           },
           {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "none",
+                    "authoritative",
+                    "deprecated"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -11000,6 +11869,27 @@
                 }
               ],
               "title": "Owner"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "none",
+                    "authoritative",
+                    "deprecated"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
             }
           },
           {
@@ -11712,6 +12602,22 @@
               "default": "",
               "title": "Authorization",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
             }
           }
         ],
