@@ -6,6 +6,7 @@ n'est pas accordée à gis_rls)."""
 
 from datetime import UTC, datetime, timedelta
 
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
@@ -21,7 +22,10 @@ def snapshot(feature: dict | None) -> dict | None:
     """Feature GeoJSON -> instantané {properties, geometry} (sans id)."""
     if feature is None:
         return None
-    return {"properties": feature.get("properties") or {}, "geometry": feature.get("geometry")}
+    # Colonnes date/numeric/uuid : la colonne `before`/`after` est JSON, pas le driver.
+    return jsonable_encoder(
+        {"properties": feature.get("properties") or {}, "geometry": feature.get("geometry")}
+    )
 
 
 def mask_snapshot(snap: dict | None, masked_fields: frozenset[str]) -> dict | None:

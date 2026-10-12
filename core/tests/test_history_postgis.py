@@ -235,3 +235,21 @@ def test_retention_purges_old_rows(seeded):
         n = history.purge_expired(s, now=datetime.now(UTC) + timedelta(seconds=1))
         s.commit()
     assert n == 2
+
+
+def test_snapshot_serializes_dates_and_numerics():
+    """Colonnes timestamptz/numeric : l instantané doit être JSON (régression ARC-15)."""
+    import datetime
+    import decimal
+
+    snap = history.snapshot(
+        {
+            "properties": {
+                "quand": datetime.datetime(2026, 1, 2, tzinfo=datetime.UTC),
+                "prix": decimal.Decimal("1.5"),
+            },
+            "geometry": None,
+        }
+    )
+    assert snap["properties"]["quand"].startswith("2026-01-02")
+    assert snap["properties"]["prix"] == 1.5
