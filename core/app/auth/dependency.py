@@ -85,6 +85,12 @@ def is_tileset3d_enabled() -> bool:
     return os.environ.get("CORE_TILESET3D_ENABLED", "false").lower() == "true"
 
 
+def is_raster_enabled() -> bool:
+    """CORE_RASTER_ENABLED (ARC-33, ADR 0024) — capacité instance-wide optionnelle :
+    bucket raster, file `raster`, proxy de tuiles TiTiler. Défaut false."""
+    return os.environ.get("CORE_RASTER_ENABLED", "false").lower() == "true"
+
+
 def is_terrain3d_enabled() -> bool:
     """CORE_TERRAIN3D_ENABLED — capacité instance-wide optionnelle, même
     convention que is_tileset3d_enabled : lue à chaque appel, sans cache.

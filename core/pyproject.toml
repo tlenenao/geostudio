@@ -359,6 +359,9 @@ layers = [
     "app.dataexport",
     # app.quality (ARC-14) : rapports de règles d'attributs CEL en job ; relit features.
     "app.quality",
+    # app.raster (ARC-33) : COG + proxy TiTiler + zonal stats ; relit features/collections
+    # (polygones sous RLS) et réutilise la conversion/le stockage S3 de app.terrain3d.
+    "app.raster",
     "app.tileset3d",
     "app.terrain3d",
     "app.mapicons",
@@ -532,6 +535,7 @@ ignore_imports = [
     "app.db -> app.export.models",
     "app.db -> app.tileset3d.models",
     "app.db -> app.terrain3d.models",
+    "app.db -> app.raster.models",
     "app.db -> app.reports.models",
     "app.db -> app.appexport.models",
     "app.db -> app.mapicons.models",

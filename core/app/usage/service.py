@@ -40,6 +40,7 @@ JOB_AUDIT_ACTIONS: frozenset[str] = frozenset(
         "harvest_source.run",
         "tileset3d.job_create",
         "terrain3d.job_create",
+        "raster.job_create",
     }
 )
 
