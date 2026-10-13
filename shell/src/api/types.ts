@@ -274,6 +274,45 @@ export type CopilotSurface =
 // REV-102 : un résultat de GET /v1/geocode.
 export type GeocodeResult = { label: string; lon: number; lat: number };
 
+// ARC-25 : widget « Analyse » — outils d'analyse spatiale (GET /v1/analysis/tools).
+export type AnalysisTool = {
+  name: string;
+  label: string;
+  help: string;
+  needsOtherCollection: boolean;
+  paramsSchema: {
+    properties?: Record<
+      string,
+      {
+        type?: string;
+        anyOf?: { type?: string }[];
+        title?: string;
+        description?: string;
+        enum?: string[];
+        default?: unknown;
+      }
+    >;
+    required?: string[];
+  };
+};
+export type AnalysisRequest = {
+  tool: string;
+  params: Record<string, unknown>;
+  otherCollectionId?: string;
+  output: "ephemeral" | "collection";
+  title?: string;
+  limit?: number;
+};
+export type AnalysisResult = {
+  tool: string;
+  output: "ephemeral" | "collection";
+  srid: number;
+  rowCount?: number;
+  collectionId?: string;
+  truncated?: boolean;
+  featureCollection?: { type: "FeatureCollection"; features: unknown[] };
+};
+
 export type ItemScope = "all" | "mine" | "shared" | "public";
 
 export type ItemSort =
@@ -670,6 +709,9 @@ export interface ItemClient {
   }): Promise<UsageSummary>;
   // REV-102 : recherche d'adresse (BAN via le cœur).
   geocode(q: string, limit?: number): Promise<GeocodeResult[]>;
+  // ARC-25 : widget « Analyse ».
+  listAnalysisTools(): Promise<AnalysisTool[]>;
+  runAnalysis(collectionId: string, body: AnalysisRequest): Promise<AnalysisResult>;
   getInstanceInfo(): Promise<InstanceInfo>;
   getQuotaUsage(): Promise<QuotaUsage>;
   copilotTurn(
