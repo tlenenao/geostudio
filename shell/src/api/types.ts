@@ -900,10 +900,12 @@ export interface ItemClient {
   savePipelineConfig(pk: string, payload: PipelinePayload): Promise<number | undefined>;
   getPipelineOps(): Promise<PipelineOpsCatalog>;
   getPipelineNextRun(cron: string): Promise<{ nextRun: string }>;
-  runPipeline(pk: string): Promise<{ runId: string }>;
+  runPipeline(pk: string, params?: Record<string, unknown>): Promise<{ runId: string }>;
   getPipelineRuns(pk: string, params?: PageParams): Promise<PipelineRun[]>;
   // t03b-009 : absent côté sidecar desktop / export statique (pas d'annulation).
   cancelPipelineRun?(pk: string, runId: string): Promise<PipelineRun>;
+  // ARC-K2/F5 : reprise (défaut) ou rejeu complet (fromStart) d'un run échoué.
+  retryPipelineRun?(runId: string, opts?: { fromStart?: boolean }): Promise<{ runId: string }>;
   listPipelineWebhookTokens(pk: string): Promise<PipelineWebhookToken[]>;
   createPipelineWebhookToken(pk: string): Promise<{ id: string; token: string; createdAt: string }>;
   revokePipelineWebhookToken(pk: string, tokenId: string): Promise<void>;
@@ -1552,6 +1554,8 @@ export type PipelinePayload = {
   edges: PipelineEdge[];
   refreshPolicy?: PipelineRefreshPolicy | null;
   notes?: PipelineCanvasNote[];
+  parameters?: PipelineParameter[];
+  retry?: PipelineRetryPolicy | null;
   baseVersion?: number; // version serveur lue (REV-271), jamais persistée
 };
 
@@ -1659,7 +1663,8 @@ export type PipelineRunStatus =
   | "succeeded_with_rejects"
   | "failed"
   | "cancel_requested"
-  | "cancelled";
+  | "cancelled"
+  | "retrying";
 
 // F1/F2 : `writer.collection` détaille son écriture, ses rejets (quarantaine
 // `<cible>__rejected`) et un rapport qualité de l'entrée ; les autres ops n'ont que rowCount.
@@ -1688,6 +1693,26 @@ export type PipelineRun = {
   finishedAt: string | null;
   error: string | null;
   nodeStats: Record<string, PipelineNodeStat>;
+  // ARC-K2 (F3/F5) : paramètres du run, tentative en cours, prochaine reprise
+  // automatique, run racine repris, points de reprise disponibles (« Reprendre »).
+  params?: Record<string, unknown> | null;
+  attempt?: number;
+  nextRetryAt?: string | null;
+  resumeOf?: string | null;
+  resumable?: boolean;
+};
+
+export type PipelineParameter = {
+  name: string;
+  type: "string" | "number" | "integer" | "boolean" | "date";
+  default?: unknown;
+  required?: boolean;
+};
+
+export type PipelineRetryPolicy = {
+  max: number;
+  backoff?: "fixed" | "exponential";
+  delaySeconds?: number;
 };
 
 // Jeton de déclenchement webhook (GAP-24, SP-53) : jamais le jeton en clair

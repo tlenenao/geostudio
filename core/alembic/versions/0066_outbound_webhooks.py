@@ -2,11 +2,10 @@
 """outbound_webhooks + outbox + file_triggers : webhooks sortants, déclencheurs (ARC4-F6, ADR 0027)
 
 Revision ID: 0066
-Revises: 0062
+Revises: 0065
 Create Date: 2026-10-13
 
-NB : `down_revision` vaut 0062 (tête vérifiée au départ de la voie L) ; les voies
-K2 allouent 0063-0065 — l'intégration rebase cette ligne sur 0065.
+NB : écrite sur 0062 par la voie L, rebasée sur 0065 (voie K2) à l'intégration.
 """
 
 import sqlalchemy as sa
@@ -14,7 +13,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "0066"
-down_revision = "0062"
+down_revision = "0065"
 branch_labels = None
 depends_on = None
 

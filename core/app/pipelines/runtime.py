@@ -58,6 +58,7 @@ from app.features.repository import delete_all_features
 from app.ingestion.storage import ensure_uploads_bucket
 from app.items import repository as items_repo
 from app.pipelines import compiler, connector_runtime
+from app.pipelines.checkpoints import Checkpoint
 from app.pipelines.collection_writer import write_rows
 from app.pipelines.errors import (  # noqa: F401 (réexportés pour compatibilité)
     PipelineCancelledError,
@@ -85,6 +86,7 @@ from app.pipelines.ops.schemas import (
     WriterExportParams,
     WriterFileParams,
 )
+from app.pipelines.reader_state import ReaderState, apply_incremental
 from app.relations.service import restricting_relation
 from app.roles.guards import require_privilege
 from app.roles.privileges import Privilege
@@ -644,6 +646,8 @@ def _prepare(
     tenant_id: str,
     user: User,
     base_uri: str,
+    reader_state: ReaderState | None = None,
+    checkpoint: Checkpoint | None = None,
 ) -> tuple[list[PipelineNode], dict[str, str], dict[str, int], dict[str, int]]:
     """Passe 1 : matérialise tous les readers (+ le withCollectionId de
     chaque transform.join/intersection/countWithin), puis verrouille.
@@ -669,6 +673,15 @@ def _prepare(
         if node.kind != "reader":
             continue
         view_name = f"node_{node.id}"
+        if checkpoint is not None and checkpoint.has(node.id):
+            # F5 : reprise — la sortie du reader (et son curseur incrémental en
+            # attente) vient du point de reprise, la source n'est pas relue.
+            srid_by_node[node.id] = checkpoint.load(conn, node.id, view_name)
+            view_by_node[node.id] = view_name
+            if reader_state is not None:
+                for k, v in checkpoint.cursors(node.id).items():
+                    reader_state.stage(k, v)
+            continue
         reader_fn = READERS.get(node.op)
         if reader_fn is None:
             raise PipelineRuntimeError(f"unknown reader op '{node.op}'")
@@ -683,6 +696,18 @@ def _prepare(
             base_uri=base_uri,
         )
         view_by_node[node.id] = view_name
+        # ARC-K2/F4 : lecture incrémentale des readers connecteurs (table
+        # temporaire) — filtre aux lignes plus récentes que le curseur du dernier
+        # run réussi ; le nouveau curseur reste « en attente » jusqu'au succès.
+        incremental = (
+            node.params.get("incremental") if node.op.startswith("reader.connector.") else None
+        )
+        if reader_state is not None and isinstance(incremental, dict):
+            cursor = apply_incremental(
+                conn, view_name, str(incremental.get("cursorField", "")), reader_state.get(node.id)
+            )
+            if cursor is not None:
+                reader_state.stage(node.id, cursor)
 
     join_srid_by_node: dict[str, int] = {}
     for node in ordered:
@@ -740,7 +765,9 @@ def _prepare(
         if is_pipeline_file_io_enabled()
         else []
     )
-    _lock_down(conn, extra_allowed_dirs=writer_file_dirs)
+    # F5 : le répertoire des points de reprise DU RUN est le seul ajouté.
+    checkpoint_dirs = [checkpoint.dir] if checkpoint is not None else []
+    _lock_down(conn, extra_allowed_dirs=[*writer_file_dirs, *checkpoint_dirs])
     return ordered, view_by_node, srid_by_node, join_srid_by_node
 
 
@@ -764,10 +791,23 @@ def _execute_transform_chain(
     on_node_complete: Callable[["NodeStat"], None] | None = None,
     secret_resolver=None,
     preview: bool = False,
+    checkpoint: Checkpoint | None = None,
+    reader_state: ReaderState | None = None,
 ) -> list["NodeStat"]:
     stats: list[NodeStat] = []
     for node in ordered:
         if node.kind == "reader":
+            if checkpoint is not None and not checkpoint.has(node.id):
+                _checkpoint_save(
+                    checkpoint,
+                    conn,
+                    node.id,
+                    view_by_node[node.id],
+                    srid_by_node[node.id],
+                    {node.id: reader_state.pending[node.id]}
+                    if reader_state is not None and node.id in reader_state.pending
+                    else None,
+                )
             stat = NodeStat(node.id, node.op, _view_row_count(conn, view_by_node[node.id]))
             stats.append(stat)
             if on_node_complete is not None:
@@ -780,6 +820,18 @@ def _execute_transform_chain(
         pred_id = compiler.predecessor_id(node.id, edges)
         if pred_id is None:
             raise PipelineRuntimeError(f"node '{node.id}' has no incoming edge")
+        if checkpoint is not None and checkpoint.has(node.id):
+            # F5 : nœud déjà réussi lors d'une exécution précédente — jamais rejoué.
+            view_name = f"node_{node.id}"
+            srid_by_node[node.id] = checkpoint.load(conn, node.id, view_name)
+            view_by_node[node.id] = view_name
+            stat = NodeStat(node.id, node.op, _view_row_count(conn, view_name))
+            stats.append(stat)
+            if on_node_complete is not None:
+                on_node_complete(stat)
+            if stop_at == node.id:
+                return stats
+            continue
         input_view = view_by_node[pred_id]
         input_srid = srid_by_node[pred_id]
         join_view = None
@@ -852,12 +904,23 @@ def _execute_transform_chain(
             raise _node_error(node, exc) from exc
         view_by_node[node.id] = view_name
         srid_by_node[node.id] = output_srid
+        if checkpoint is not None:
+            _checkpoint_save(checkpoint, conn, node.id, view_name, output_srid, None)
         stats.append(stat)
         if on_node_complete is not None:
             on_node_complete(stat)
         if stop_at == node.id:
             return stats
     return stats
+
+
+def _checkpoint_save(checkpoint, conn, node_id, view_name, srid, cursors) -> None:
+    """Best-effort : un disque plein ou une erreur d'écriture coûte la reprise
+    de ce nœud, jamais le run."""
+    try:
+        checkpoint.save(conn, node_id, view_name, srid, cursors)
+    except Exception:  # noqa: BLE001
+        logger.warning("point de reprise du nœud %s non écrit", node_id, exc_info=True)
 
 
 def _node_error(node: PipelineNode, exc: Exception) -> PipelineRuntimeError:
@@ -1316,6 +1379,9 @@ def run_pipeline(
     on_progress: Callable[["NodeStat"], None] | None = None,
     should_cancel: Callable[[], bool] | None = None,
     run_id: str | None = None,
+    reader_state: ReaderState | None = None,
+    checkpoint: Checkpoint | None = None,
+    prior_stats: dict | None = None,
 ) -> list[NodeStat]:
     # Import local, même rationale que dans _prepare() : voir registries.py
     # pour le raisonnement complet sur pourquoi cet import doit rester
@@ -1333,6 +1399,8 @@ def run_pipeline(
             tenant_id=tenant_id,
             user=user,
             base_uri=base_uri,
+            reader_state=reader_state,
+            checkpoint=checkpoint,
         )
         stats = _execute_transform_chain(
             conn,
@@ -1343,9 +1411,26 @@ def run_pipeline(
             join_srid_by_node,
             on_node_complete=on_node_complete,
             secret_resolver=_chain_resolver(session, tenant_id, user),
+            checkpoint=checkpoint,
+            reader_state=reader_state,
         )
         for node in ordered:
             if node.kind != "writer":
+                continue
+            if (
+                checkpoint is not None
+                and checkpoint.usable
+                and prior_stats
+                and node.id in prior_stats
+            ):
+                # F5 : writer déjà réussi lors d'une exécution précédente de ce run.
+                # Le détail d'écriture (rejets F2) est conservé : sinon un run repris
+                # passerait de `succeeded_with_rejects` à `succeeded`.
+                prior = dict(prior_stats[node.id])
+                row_count = prior.pop("rowCount", None)
+                prior.pop("nodeId", None)
+                prior.pop("op", None)
+                stats.append(NodeStat(node.id, node.op, row_count, extra=prior))
                 continue
             pred_id = compiler.predecessor_id(node.id, payload.edges)
             if pred_id is None:

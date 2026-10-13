@@ -6,10 +6,11 @@ par requête : cf. design §3.2 et ce plan, Global Constraints)."""
 import os
 from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Any
 
 import croniter
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -24,6 +25,7 @@ from app.pipelines.service import (
     default_task_deferrer,
     require_pipeline_access,
     require_pipeline_config,
+    retry_pipeline_run_service,
     revoke_webhook_token_service,
     run_pipeline_service,
     trigger_pipeline_by_webhook_service,
@@ -37,6 +39,15 @@ class RunResponse(BaseModel):
     runId: str
 
 
+class RunRequest(BaseModel):
+    """Corps optionnel de POST /pipelines/{id}/run et /trigger (ARC-K2/F3).
+
+    Les `params` sont conservés EN CLAIR dans pipeline_runs et l'audit : n'y mettez
+    jamais de secret (utilisez le coffre de secrets des connecteurs)."""
+
+    params: dict[str, Any] = Field(default_factory=dict)
+
+
 class RunStatus(BaseModel):
     id: str
     status: str
@@ -44,6 +55,12 @@ class RunStatus(BaseModel):
     finishedAt: str | None
     error: str | None
     nodeStats: dict
+    params: dict | None = None
+    attempt: int = 1
+    nextRetryAt: str | None = None
+    resumeOf: str | None = None
+    # Des points de reprise existent encore : « Reprendre » évite de rejouer les nœuds réussis.
+    resumable: bool = False
 
 
 class WebhookTokenCreated(BaseModel):
@@ -91,14 +108,46 @@ def get_pipeline_next_run(
     return NextRunResponse(nextRun=next_tick.isoformat())
 
 
-@router.post("/pipelines/{item_id}/run", response_model=RunResponse, status_code=202)
-def run_pipeline_route(
-    item_id: str,
+class RetryRequest(BaseModel):
+    # True : rejoue tout depuis le début (« Rejouer ») ; False : reprend au nœud en échec.
+    fromStart: bool = False
+
+
+# Déclarée AVANT les routes à paramètre de chemin : /pipelines/runs/... ne doit pas
+# être capturée par /pipelines/{item_id}/...
+@router.post("/pipelines/runs/{run_id}/retry", response_model=RunResponse, status_code=202)
+def retry_pipeline_run_route(
+    run_id: str,
+    body: RetryRequest | None = None,
     session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
     defer_task: Callable[[str, str], None] = Depends(get_task_deferrer),
 ) -> RunResponse:
-    run_id = run_pipeline_service(session, user=user, item_id=item_id, defer_task=defer_task)
+    new_id = retry_pipeline_run_service(
+        session,
+        user=user,
+        run_id=run_id,
+        defer_task=defer_task,
+        from_start=bool(body and body.fromStart),
+    )
+    return RunResponse(runId=new_id)
+
+
+@router.post("/pipelines/{item_id}/run", response_model=RunResponse, status_code=202)
+def run_pipeline_route(
+    item_id: str,
+    body: RunRequest | None = None,
+    session: Session = Depends(get_session, scope="function"),
+    user: User = Depends(get_current_user),
+    defer_task: Callable[[str, str], None] = Depends(get_task_deferrer),
+) -> RunResponse:
+    run_id = run_pipeline_service(
+        session,
+        user=user,
+        item_id=item_id,
+        defer_task=defer_task,
+        params=body.params if body else None,
+    )
     return RunResponse(runId=run_id)
 
 
@@ -110,6 +159,11 @@ def _run_status(r) -> RunStatus:
         finishedAt=r.finished_at.isoformat() if r.finished_at else None,
         error=r.error,
         nodeStats=r.node_stats,
+        params=r.params,
+        attempt=r.attempt,
+        nextRetryAt=r.next_retry_at.isoformat() if r.next_retry_at else None,
+        resumeOf=r.resume_of,
+        resumable=r.status == "failed" and r.resumable,
     )
 
 
@@ -128,7 +182,7 @@ def cancel_pipeline_run_route(
         raise HTTPException(status_code=404, detail="run not found")
     if run.status in ("cancel_requested", "cancelled"):
         return _run_status(run)  # idempotent (REV-275 c) : déjà demandé, pas de nouvel audit
-    if run.status not in ("queued", "running"):
+    if run.status not in ("queued", "running", "retrying"):
         raise HTTPException(status_code=409, detail=f"run is {run.status}, cannot be cancelled")
     if pipelines_repo.request_cancel(session, run) not in ("cancelled", "cancel_requested"):
         # Le run a fini entre la lecture et l'UPDATE conditionnel : rien annulé, pas d'audit.
@@ -166,6 +220,50 @@ def list_pipeline_runs(
         session, tenant_id=user.tenant_id, pipeline_item_id=item_id, limit=limit, offset=offset
     )
     return [_run_status(r) for r in runs]
+
+
+class ReaderStateEntry(BaseModel):
+    nodeId: str
+    cursor: str
+
+
+@router.get("/pipelines/{item_id}/reader-state", response_model=list[ReaderStateEntry])
+def get_reader_state_route(
+    item_id: str,
+    session: Session = Depends(get_session, scope="function"),
+    user: User = Depends(get_current_user),
+) -> list[ReaderStateEntry]:
+    """Curseurs de lecture incrémentale par nœud reader (ARC-K2/F4)."""
+    require_pipeline_access(session, user=user, item_id=item_id, action="read")
+    states = pipelines_repo.get_reader_states(
+        session, tenant_id=user.tenant_id, pipeline_item_id=item_id
+    )
+    return [ReaderStateEntry(nodeId=n, cursor=c) for n, c in sorted(states.items())]
+
+
+@router.delete("/pipelines/{item_id}/reader-state", status_code=204)
+def reset_reader_state_route(
+    item_id: str,
+    nodeId: str | None = Query(None),
+    session: Session = Depends(get_session, scope="function"),
+    user: User = Depends(get_current_user),
+) -> None:
+    """Réinitialise le curseur (un nœud, ou tous) : le prochain run relit tout."""
+    require_pipeline_access(session, user=user, item_id=item_id, action="write")
+    removed = pipelines_repo.delete_reader_states(
+        session, tenant_id=user.tenant_id, pipeline_item_id=item_id, node_id=nodeId
+    )
+    write_audit(
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="pipeline.reader_state.reset",
+        object_type="pipeline",
+        object_id=item_id,
+        payload={"nodeId": nodeId, "removed": removed},
+    )
+    session.commit()
 
 
 @router.post("/pipelines/{item_id}/preview")
@@ -240,6 +338,7 @@ def delete_webhook_token_route(
 @router.post("/pipelines/{item_id}/trigger", response_model=RunResponse, status_code=202)
 def trigger_pipeline_webhook_route(
     item_id: str,
+    body: RunRequest | None = None,
     authorization: str | None = Header(default=None),
     session: Session = Depends(get_session, scope="function"),
     defer_task: Callable[[str, str], None] = Depends(get_task_deferrer),
@@ -252,6 +351,10 @@ def trigger_pipeline_webhook_route(
         raise HTTPException(status_code=401, detail="missing bearer token")
     raw_token = authorization.removeprefix("Bearer ")
     run_id = trigger_pipeline_by_webhook_service(
-        session, item_id=item_id, raw_token=raw_token, defer_task=defer_task
+        session,
+        item_id=item_id,
+        raw_token=raw_token,
+        defer_task=defer_task,
+        params=body.params if body else None,
     )
     return RunResponse(runId=run_id)

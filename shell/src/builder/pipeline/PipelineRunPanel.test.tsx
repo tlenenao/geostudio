@@ -408,3 +408,40 @@ test("shows rejects, quarantine and null rates of a writer node in the run detai
   expect(screen.getByText(/collection cible__rejected/)).toBeInTheDocument();
   expect(screen.getByText(/name : 14,0 % de valeurs nulles/)).toBeInTheDocument();
 });
+
+test("un run échoué reprenable propose Reprendre et Rejouer, qui appellent retryPipelineRun", async () => {
+  const retryPipelineRun = vi.fn().mockResolvedValue({ runId: "run-2" });
+  renderPanel({
+    retryPipelineRun,
+    getPipelineRuns: vi.fn().mockResolvedValue([
+      {
+        id: "run-0",
+        status: "failed",
+        startedAt: null,
+        finishedAt: null,
+        error: "boom",
+        nodeStats: {},
+        attempt: 2,
+        resumable: true,
+      },
+    ]),
+  });
+  await userEvent.click(await screen.findByRole("button", { name: "Reprendre" }));
+  expect(retryPipelineRun).toHaveBeenCalledWith("run-0", { fromStart: false });
+  await userEvent.click(screen.getByRole("button", { name: "Rejouer" }));
+  expect(retryPipelineRun).toHaveBeenLastCalledWith("run-0", { fromStart: true });
+  expect(screen.getByText("tentative 2")).toBeInTheDocument();
+});
+
+test("sans points de reprise, seul Rejouer est proposé", async () => {
+  renderPanel({
+    retryPipelineRun: vi.fn(),
+    getPipelineRuns: vi
+      .fn()
+      .mockResolvedValue([
+        { id: "r", status: "failed", startedAt: null, finishedAt: null, error: "x", nodeStats: {} },
+      ]),
+  });
+  await screen.findByRole("button", { name: "Rejouer" });
+  expect(screen.queryByRole("button", { name: "Reprendre" })).toBeNull();
+});

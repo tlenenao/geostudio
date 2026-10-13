@@ -22,6 +22,19 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
+class IncrementalSpec(BaseModel):
+    """Lecture incrémentale d'un reader connecteur (ARC-K2/F4) : seules les
+    lignes dont `cursorField` dépasse STRICTEMENT le curseur du dernier run
+    réussi sont conservées. Premier run : tout. Le curseur n'avance qu'après un
+    run réussi et se réinitialise par DELETE /pipelines/{id}/reader-state."""
+
+    cursorField: str = Field(..., min_length=1)
+
+
+class _IncrementalReader(BaseModel):
+    incremental: IncrementalSpec | None = None
+
+
 class ReaderCollectionParams(BaseModel):
     collectionId: str = Field(..., json_schema_extra={"format": "collection-id"})
 
@@ -172,7 +185,7 @@ class WriterDatasetParams(BaseModel):
         return self
 
 
-class ReaderConnectorRestParams(BaseModel):
+class ReaderConnectorRestParams(_IncrementalReader):
     """Lecture d'une ressource REST paginée, avec authentification optionnelle
     (clé API, jeton, identifiants, ou OAuth2 client_credentials) et
     pagination configurable. `recordsPath` pointe vers le tableau
@@ -194,7 +207,7 @@ class ReaderConnectorRestParams(BaseModel):
     secretName: str | None = Field(default=None, json_schema_extra={"format": "secret-name"})
 
 
-class ReaderConnectorPostgresParams(BaseModel):
+class ReaderConnectorPostgresParams(_IncrementalReader):
     """Lecture d'une requête SQL libre (SELECT uniquement) sur un Postgres
     distant, via un secret de connexion dédié. Fonctionne aussi contre un
     cluster Amazon Redshift, mêmes identifiants — attention : le SQL
@@ -219,7 +232,7 @@ class ReaderConnectorPostgresParams(BaseModel):
     query: str
 
 
-class ReaderConnectorSnowflakeParams(BaseModel):
+class ReaderConnectorSnowflakeParams(_IncrementalReader):
     """Lecture d'une requête SQL libre (SELECT uniquement) sur un entrepôt
     Snowflake distant, via un secret de connexion dédié. Attention : la
     plupart des requêtes SnowSQL courantes passent (QUALIFY, accesseur
@@ -239,7 +252,7 @@ class ReaderConnectorSnowflakeParams(BaseModel):
     query: str
 
 
-class ReaderConnectorBigQueryParams(BaseModel):
+class ReaderConnectorBigQueryParams(_IncrementalReader):
     """Lecture d'une requête SQL libre (SELECT uniquement) sur Google
     BigQuery, via un secret de connexion dédié (bigquery_dsn).
 
@@ -258,7 +271,7 @@ class ReaderConnectorBigQueryParams(BaseModel):
     query: str
 
 
-class ReaderConnectorMssqlParams(BaseModel):
+class ReaderConnectorMssqlParams(_IncrementalReader):
     """Lecture d'une requête SQL libre (SELECT uniquement) sur un Microsoft
     SQL Server distant, via un secret de connexion dédié (mssql_dsn).
 
@@ -280,7 +293,7 @@ class ReaderConnectorMssqlParams(BaseModel):
     query: str
 
 
-class ReaderConnectorOracleParams(BaseModel):
+class ReaderConnectorOracleParams(_IncrementalReader):
     """Lecture d'une requête SQL libre (SELECT uniquement) sur une base
     Oracle Database distante, via un secret de connexion dédié (oracle_dsn).
 
@@ -300,7 +313,7 @@ class ReaderConnectorOracleParams(BaseModel):
     query: str
 
 
-class ReaderConnectorDatabricksParams(BaseModel):
+class ReaderConnectorDatabricksParams(_IncrementalReader):
     """Lecture d'une requête SQL libre (SELECT uniquement) sur un entrepôt
     Databricks SQL, via un secret de connexion dédié (databricks_dsn) — REV-110,
     pendant de ReaderConnectorSnowflakeParams/ReaderConnectorOracleParams.
@@ -312,7 +325,7 @@ class ReaderConnectorDatabricksParams(BaseModel):
     query: str
 
 
-class ReaderConnectorBlobParams(BaseModel):
+class ReaderConnectorBlobParams(_IncrementalReader):
     """Lecture d'un fichier tabulaire unique (CSV/JSONL/Parquet) depuis un
     objet de stockage cloud (S3, Azure Blob, GCS), résolu par un secret de
     connexion lié à un bucket (champ `bucketUrl` du secret, REV-197) — jamais

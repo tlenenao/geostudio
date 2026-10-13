@@ -26,6 +26,7 @@ const KNOWN_STATUSES = [
   "error",
   "cancelled",
   "cancel_requested",
+  "retrying",
   "unknown",
 ] as const;
 type KnownStatus = (typeof KNOWN_STATUSES)[number];

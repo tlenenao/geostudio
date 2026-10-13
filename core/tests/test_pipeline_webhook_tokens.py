@@ -157,7 +157,9 @@ def test_trigger_by_webhook_calls_run_pipeline_service_not_a_parallel_path(db, m
 
     calls = []
 
-    def fake_run_pipeline_service(session, *, user, item_id, defer_task, actor_kind="user"):
+    def fake_run_pipeline_service(
+        session, *, user, item_id, defer_task, actor_kind="user", params=None
+    ):
         calls.append({"user": user, "item_id": item_id, "actor_kind": actor_kind})
         return "run-1"
 
