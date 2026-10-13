@@ -130,6 +130,7 @@ def test_get_pipelines_ops_returns_all_exposed_ops(monkeypatch):
         "transform.httpCall",
         "transform.geocode",
         "reader.wfs",
+        "reader.raster",
         "transform.testFilter",
         "transform.sampler",
         "transform.neighborFinder",

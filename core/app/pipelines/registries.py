@@ -46,6 +46,7 @@ qu'attributs du module au moment où ce fichier-ci y accède ci-dessous."""
 from collections.abc import Callable
 
 from app.pipelines import runtime as _runtime
+from app.pipelines.ops.raster import read_raster as _read_raster
 from app.pipelines.ops.wfs import read_wfs as _read_wfs
 
 READERS: dict[str, Callable] = {
@@ -59,6 +60,7 @@ READERS: dict[str, Callable] = {
     "reader.connector.databricks": _runtime._read_connector_databricks,
     "reader.connector.blob": _runtime._read_connector_blob,
     "reader.file": _runtime._read_file,
+    "reader.raster": _read_raster,  # ARC-33 : défini dans ops/raster.py
     "reader.wfs": _read_wfs,  # ARC vague 4, voie M (F7) : défini dans ops/wfs.py
 }
 
