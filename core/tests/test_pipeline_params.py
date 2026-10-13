@@ -146,6 +146,75 @@ def test_param_in_http_call_expression_keys_is_an_escaped_literal(key):
     assert duckdb.connect().execute(f"SELECT {out}").fetchone() == ("v=" + value,)
 
 
+def _node_payload(op, params):
+    kind = "reader" if op.startswith("reader") else "writer"
+    nodes = [
+        {"id": "r", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "c"}},
+        {"id": "w", "kind": "writer", "op": "writer.collection", "params": {"collectionId": "d"}},
+    ]
+    nodes[0 if kind == "reader" else 1] = {"id": "n", "kind": kind, "op": op, "params": params}
+    return PipelinePayload.model_validate(
+        {
+            "parameters": [{"name": "p", "type": "string", "default": "/etc/passwd"}],
+            "nodes": nodes,
+            "edges": [{"id": "e", "from": nodes[0]["id"], "to": nodes[1]["id"]}],
+        }
+    )
+
+
+@pytest.mark.parametrize("op", ["reader.file", "writer.file"])
+def test_param_in_file_path_is_refused(op):
+    """Un paramètre de run ne pilote jamais un chemin du disque du worker."""
+    with pytest.raises(ValidationError, match="interdit"):
+        _node_payload(op, {"path": "{{param.p}}"})
+
+
+def test_param_in_blob_path_is_still_allowed():
+    p = _node_payload("reader.connector.blob", {"secretName": "s", "path": "{{param.p}}"})
+    applied = apply_params(p, resolve_params(p.parameters, {"p": "data/a.csv"}))
+    assert applied.nodes[0].params["path"] == "data/a.csv"
+
+
+def test_defense_in_depth_refuses_file_path_substitution_at_runtime():
+    p = _payload([{"name": "p", "type": "string", "default": "/etc/passwd"}], {"x": 1})
+    # contourne la validation : le nœud est modifié après coup
+    p.nodes[1] = p.nodes[1].model_copy(
+        update={"op": "reader.file", "params": {"path": "{{param.p}}"}}
+    )
+    with pytest.raises(PipelineParamError):
+        apply_params(p, resolve_params(p.parameters, {}))
+
+
+def test_injected_collection_id_is_a_plain_value_resolved_by_lookup():
+    """collectionId paramétré : valeur injectée jamais interprétée (recherche par id)."""
+    from app.db import init_db, make_engine, make_session_factory
+    from app.pipelines import runtime
+    from app.tenants.repository import get_or_create_default_tenant
+    from app.users.repository import get_or_create_user
+
+    evil = "villes'; DROP TABLE villes; --"
+    p = _node_payload("reader.collection", {"collectionId": "{{param.p}}"})
+    applied = apply_params(p, resolve_params(p.parameters, {"p": evil}))
+    assert applied.nodes[0].params["collectionId"] == evil
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    with make_session_factory(engine)() as session:
+        tenant = get_or_create_default_tenant(session)
+        user = get_or_create_user(
+            session,
+            tenant_id=tenant.id,
+            oidc_sub="u",
+            username="u",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        with pytest.raises(runtime.PipelineRuntimeError, match="not found"):
+            runtime._require_readable_collection_id(
+                session, tenant_id=tenant.id, user=user, collection_id=evil
+            )
+
+
 def test_param_in_non_whitelisted_key_is_refused():
     with pytest.raises(ValidationError, match="interdit"):
         _payload([{"name": "x", "type": "string", "default": "a"}], {"anything": "{{param.x}}"})

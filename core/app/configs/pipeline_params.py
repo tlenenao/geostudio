@@ -129,26 +129,39 @@ def _plain_text(value: Any) -> str:
     return "true" if value is True else "false" if value is False else str(value)
 
 
-def _mode_for(key: str) -> str | None:
+# Couples (op, clé) exclus de la liste blanche : `path` de reader.file/writer.file
+# est un chemin du disque du worker (ST_Read/COPY TO, `allowed_directories` élargi) —
+# un paramètre de run ne doit jamais le piloter. `path` reste admis pour les ops dont
+# le préfixe/la portée est imposé (blob, REST).
+_FORBIDDEN_PAIRS = frozenset({("reader.file", "path"), ("writer.file", "path")})
+
+
+def _mode_for(key: str, op: str | None = None) -> str | None:
+    if (op, key) in _FORBIDDEN_PAIRS:
+        return None
     return "sql" if key in _EXPR_KEYS else "data" if key in _DATA_KEYS else None
 
 
-def misplaced_param_refs(params: Any, mode: str | None = None) -> set[str]:
+def misplaced_param_refs(params: Any, mode: str | None = None, op: str | None = None) -> set[str]:
     """Clés de params où une référence `{{param.x}}` est hors liste blanche."""
     if isinstance(params, str):
         return set() if mode or not _REF.search(params) else {"?"}
     if isinstance(params, list):
-        return set().union(*(misplaced_param_refs(v, mode) for v in params)) if params else set()
+        return (
+            set().union(*(misplaced_param_refs(v, mode, op) for v in params)) if params else set()
+        )
     if isinstance(params, dict):
         bad: set[str] = set()
         for k, v in params.items():
-            found = misplaced_param_refs(v, mode or _mode_for(k))
+            found = misplaced_param_refs(v, mode or _mode_for(k, op), op)
             bad |= {k} if "?" in found else found
         return bad
     return set()
 
 
-def _subst(node: Any, values: dict[str, Any], types: dict[str, str], *, mode: str | None) -> Any:
+def _subst(
+    node: Any, values: dict[str, Any], types: dict[str, str], *, mode: str | None, op: str | None
+) -> Any:
     if isinstance(node, str):
         if mode is None:
             if _REF.search(node):  # défense en profondeur : la validation l'a déjà refusé
@@ -168,9 +181,12 @@ def _subst(node: Any, values: dict[str, Any], types: dict[str, str], *, mode: st
 
         return _REF.sub(repl, node)
     if isinstance(node, dict):
-        return {k: _subst(v, values, types, mode=mode or _mode_for(k)) for k, v in node.items()}
+        return {
+            k: _subst(v, values, types, mode=mode or _mode_for(k, op), op=op)
+            for k, v in node.items()
+        }
     if isinstance(node, list):
-        return [_subst(v, values, types, mode=mode) for v in node]
+        return [_subst(v, values, types, mode=mode, op=op) for v in node]
     return node
 
 
@@ -182,7 +198,7 @@ def apply_params(payload, values: dict[str, Any]):
         return payload
     types = {p.name: p.type for p in declared}
     nodes = [
-        n.model_copy(update={"params": _subst(n.params, values, types, mode=None)})
+        n.model_copy(update={"params": _subst(n.params, values, types, mode=None, op=n.op)})
         for n in payload.nodes
     ]
     return payload.model_copy(update={"nodes": nodes})

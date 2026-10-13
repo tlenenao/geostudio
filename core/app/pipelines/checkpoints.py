@@ -75,6 +75,9 @@ def discard(tenant_id: str, root_run_id: str) -> None:
 
 def purge_tenant(tenant_id: str) -> None:
     """Supprime tous les points de reprise d'un tenant (RGPD : purge_tenant)."""
+    # Garde : un id vide ou à séparateur viserait la base entière ou un autre chemin.
+    if not tenant_id or os.path.basename(tenant_id) != tenant_id or tenant_id in (".", ".."):
+        raise ValueError("tenant_id invalide pour la purge des points de reprise")
     shutil.rmtree(os.path.join(base_dir(), tenant_id), ignore_errors=True)
 
 

@@ -380,7 +380,7 @@ class PipelinePayload(BaseModel):
         from app.configs.pipeline_params import misplaced_param_refs, param_refs
 
         for n in self.nodes:
-            bad = misplaced_param_refs(n.params)
+            bad = misplaced_param_refs(n.params, op=n.op)
             if bad:
                 raise ValueError(
                     f"nœud '{n.id}' : {{{{param.x}}}} interdit dans le(s) champ(s) "

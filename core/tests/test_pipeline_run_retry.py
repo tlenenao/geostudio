@@ -276,6 +276,13 @@ def test_checkpoint_dir_is_purged_after_retention(tmp_path, monkeypatch):
     assert not (tmp_path / "t-1").exists()
 
 
+@pytest.mark.parametrize("bad", ["", "..", ".", "a/b", "../x"])
+def test_purge_tenant_refuses_unsafe_tenant_id(bad, tmp_path, monkeypatch):
+    monkeypatch.setenv("CORE_PIPELINE_CHECKPOINT_DIR", str(tmp_path))
+    with pytest.raises(ValueError):
+        checkpoints.purge_tenant(bad)
+
+
 def test_checkpoint_files_are_private_and_tenant_scoped(tmp_path, monkeypatch):
     monkeypatch.setenv("CORE_PIPELINE_CHECKPOINT_DIR", str(tmp_path / "base"))
     cp = checkpoints.Checkpoint("t-1", "run-x", "fp")
