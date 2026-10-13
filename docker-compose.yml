@@ -409,6 +409,8 @@ services:
       # Limiteur de débit : `postgres` = budget partagé entre réplicas `core` (ARC-32, repli mémoire si
       # la base est lente) ; `memory` = budget par process (ADR 0019).
       CORE_RATELIMIT_BACKEND: ${CORE_RATELIMIT_BACKEND:-postgres}
+      # MCP sans session en mémoire : requis dès que `core` tourne à plusieurs réplicas (ARC-32).
+      CORE_MCP_STATELESS: ${CORE_MCP_STATELESS:-true}
       # Plafond de lecture d'un fichier importé (octets) ; vide = 512 Mio (P03.05).
       CORE_UPLOAD_MAX_BYTES: ${CORE_UPLOAD_MAX_BYTES:-}
       S3_ACCESS_KEY: ${MINIO_USER}

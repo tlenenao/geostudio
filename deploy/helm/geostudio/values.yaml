@@ -97,6 +97,7 @@ config:
   CORE_RATELIMIT_SHARE_LINK_PER_MIN: "60"
   CORE_READ_ONLY_MODE: "false"
   CORE_SQL_EXECUTOR_TIMEOUT_S: "60"
+  CORE_MCP_STATELESS: "true"           # MCP sans session en mémoire (ARC-32)
   CORE_RATELIMIT_BACKEND: "postgres"   # budget de débit partagé entre réplicas (ARC-32)
   CORE_STALLED_JOB_MINUTES: "60"
   CORE_TERRAIN3D_CONVERSION_TIMEOUT_SECONDS: "900"

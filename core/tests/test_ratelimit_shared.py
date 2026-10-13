@@ -60,3 +60,65 @@ def test_circuit_breaker_skips_db_after_failure(monkeypatch):
     monkeypatch.setattr(lim, "_allow_pg", lambda *a: calls.append(a) or True)
     lim.allow("Bearer k", "sql")
     assert calls == []  # disjoncteur ouvert : pas de nouvel aller-retour pendant le délai
+
+
+def test_mcp_server_is_stateless_for_multi_replica_core(monkeypatch):
+    """ARC-32 : une session MCP en mémoire casserait la bascule entre réplicas."""
+    from app.mcp.server import create_mcp_server
+
+    monkeypatch.setenv("CORE_MCP_STATELESS", "true")
+
+    server = create_mcp_server("http://localhost:8200", lambda: None)
+    assert server.settings.stateless_http is True
+
+
+def test_stateless_mcp_serves_a_tool_call_without_any_session_id(monkeypatch):
+    """Un appel autonome tombant sur l'AUTRE réplica doit réussir : pas d'id de session requis."""
+    import json
+
+    from fastapi.testclient import TestClient
+
+    from app import db
+    from app.db import init_db, make_engine, make_session_factory, request_scoped_session
+    from app.main import create_app
+
+    monkeypatch.setenv("CORE_AUTH_MODE", "mock")
+    monkeypatch.setenv("CORE_MCP_STATELESS", "true")
+    monkeypatch.setenv("CORE_BASE_URL", "http://localhost:8200")
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+    app = create_app()
+
+    def override_session():
+        with request_scoped_session(factory) as session:
+            yield session
+
+    app.dependency_overrides[db.get_session] = override_session
+    headers = {"Accept": "application/json, text/event-stream", "Authorization": "Bearer x"}
+    init_params = {
+        "protocolVersion": "2025-06-18",
+        "capabilities": {},
+        "clientInfo": {"name": "t", "version": "0"},
+    }
+    with TestClient(app, base_url="http://localhost:8200") as client:
+        init = client.post(
+            "/mcp",
+            json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": init_params},
+            headers=headers,
+        )
+        assert init.status_code == 200 and "mcp-session-id" not in init.headers
+        call = client.post(
+            "/mcp",
+            json={
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {"name": "whoami", "arguments": {}},
+            },
+            headers=headers,
+        )
+        assert call.status_code == 200
+        line = next(x for x in call.text.splitlines() if x.startswith("data: "))
+        assert "mockuser" in json.loads(line.removeprefix("data: "))["result"]["content"][0]["text"]
+    engine.dispose()

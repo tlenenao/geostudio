@@ -15,6 +15,10 @@ def create_mcp_server(base_url: str, session_factory) -> FastMCP:
     server = FastMCP(
         "GeoStudio",
         instructions="GeoStudio cœur MCP endpoint.",
+        # ARC-32 : CORE_MCP_STATELESS=true -> sans état. Une session MCP en mémoire serait
+        # introuvable sur l'autre réplica `core` (404 « session not found » après bascule) ; les
+        # outils sont requête/réponse. Défaut false (clients attendant mcp-session-id).
+        stateless_http=os.environ.get("CORE_MCP_STATELESS", "false").lower() == "true",
         token_verifier=get_token_verifier(),
         auth=AuthSettings(
             issuer_url=os.environ.get("CORE_OIDC_ISSUER", "http://localhost:8180/realms/geostudio"),
