@@ -101,3 +101,9 @@ def test_reader_decimates_over_max_cells(env):
 def test_reader_denies_user_without_read_access(env):
     with pytest.raises(PipelineRuntimeError, match="not found"):
         _run(_conn(), env, {"itemId": env[2]}, env[4])
+
+
+def test_reader_refuses_geo_limited_caller_when_raster_is_unattached(env, monkeypatch):
+    monkeypatch.setattr(raster_op, "resolve_geo_limits", lambda *a, **k: {"t": []})
+    with pytest.raises(PipelineRuntimeError, match="geo-limited"):
+        _run(_conn(), env, {"itemId": env[2]}, env[3])

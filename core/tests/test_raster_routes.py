@@ -349,7 +349,7 @@ def test_upload_refused_413_when_storage_quota_exceeded(env, monkeypatch):
     env.app.dependency_overrides[ingestion_routes.get_s3_client] = lambda: full
     monkeypatch.setenv("CORE_QUOTAS_ENABLED", "true")
     monkeypatch.setenv("CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT", "1000")
-    key = f"{env.ids.tenant}/x/o.tif"
+    key = f"{env.ids.tenant}/{'a' * 32}/o.tif"
     r = env.client.post("/v1/raster/uploads", json={"key": key, "filename": "o.tif", "title": "t"})
     assert r.status_code == 413 and full.deleted == [key] and env.deferred == []
 

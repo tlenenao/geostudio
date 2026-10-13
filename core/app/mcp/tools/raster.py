@@ -10,12 +10,17 @@ from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.fastmcp import Context, FastMCP
 
 from app.auth.dependency import is_raster_enabled
-from app.collections.models import Collection
 from app.db import request_scoped_session
-from app.mcp.tools.identity import refuse_geo_limited, require_access, resolve_actor
+from app.mcp.tools.identity import (
+    McpToolError,
+    require_access,
+    resolve_actor,
+    user_geo_limits,
+)
 from app.raster import repository as raster_repo
 from app.raster import zonal
-from app.raster.service import open_asset, polygons_from_geojson
+from app.raster.service import open_asset, polygons_from_geojson, refuse_if_raster_geo_limited
+from app.sharing.geo_limits import GeoLimitRefused
 
 
 def register(server: FastMCP, session_factory) -> None:
@@ -35,12 +40,12 @@ def register(server: FastMCP, session_factory) -> None:
             asset = raster_repo.get_asset(session, tenant_id=user.tenant_id, item_id=item_id)
             if asset is None:
                 raise ValueError("item not found")
-            if asset.limit_collection_id is not None:
-                col = session.get(Collection, asset.limit_collection_id)
-                if col is not None:
-                    refuse_geo_limited(
-                        session, user, col.table_name, path="raster zonal statistics"
-                    )
+            try:
+                refuse_if_raster_geo_limited(
+                    session, asset, user_geo_limits(session, user), "raster zonal statistics"
+                )
+            except GeoLimitRefused as exc:
+                raise McpToolError(403, exc.detail) from exc
             polys = polygons_from_geojson(geojson)
             try:
                 with open_asset(asset) as ds:

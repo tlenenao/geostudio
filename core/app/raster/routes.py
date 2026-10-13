@@ -22,7 +22,6 @@ from sqlalchemy.orm import Session
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user, get_current_user_optional
 from app.collections.introspection import hide_sensitive_columns
-from app.collections.models import Collection
 from app.collections.routes import get_collection_for_read, get_introspector
 from app.collections.sensitive import unmask_for_owner
 from app.configs.geo_limits_dep import get_request_geo_limits
@@ -46,10 +45,9 @@ from app.raster.schemas import (
     ZonalStatsRequest,
     ZonalStatsResponse,
 )
-from app.raster.service import open_asset, polygons_from_geojson
+from app.raster.service import open_asset, polygons_from_geojson, refuse_if_raster_geo_limited
 from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
-from app.sharing.geo_limits import refuse_if_geo_limited
 from app.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -125,8 +123,14 @@ def create_raster_upload(
     bucket: str = Depends(get_raster_bucket),
 ) -> RasterUploadCreated:
     require_privilege(session, user, Privilege.CATALOG_MANAGE.value)
-    if not body.key.startswith(f"{user.tenant_id}/"):
+    # Forme imposée `{tenant}/{uuid hex}/{nom}` (celle du presign) ; `cog.tif` est le nom des COG
+    # convertis et une clé déjà portée par un job/raster n'est jamais ré-acceptée : sinon un
+    # appelant ferait écraser puis supprimer l'objet servi par un raster existant.
+    key_ok = re.fullmatch(rf"{re.escape(user.tenant_id)}/[0-9a-f]{{32}}/([^/]+)", body.key)
+    if key_ok is None or key_ok.group(1) in ("cog.tif", "..") or ".." in key_ok.group(1):
         raise HTTPException(status_code=400, detail="invalid upload key")
+    if repo.key_in_use(session, tenant_id=user.tenant_id, key=body.key):
+        raise HTTPException(status_code=409, detail="upload key already used")
     _check_limit_collection(session, user, body.limitCollectionId)
     # Quota de stockage (SP-58) : mesuré sur l'objet déjà téléversé, avant la ligne de job.
     enforce_storage_quota(session, s3, tenant_id=user.tenant_id, bucket=bucket, key=body.key)
@@ -184,22 +188,16 @@ def _readable_asset(
     return asset
 
 
-def _refuse_if_geo_limited(session: Session, asset: RasterAsset, limits, path: str) -> None:
-    if asset.limit_collection_id is None:
-        return
-    col = session.get(Collection, asset.limit_collection_id)
-    if col is not None:
-        refuse_if_geo_limited(limits, col.table_name, path=path)
-
-
 @router.get("/raster/{item_id}", response_model=RasterInfo)
 def get_raster_info(
     item_id: str,
     session: Session = Depends(get_session, scope="function"),
     user: User | None = Depends(get_current_user_optional),
     guest: GuestActor | None = Depends(get_share_link_actor),
+    limits=Depends(get_request_geo_limits),
 ) -> RasterInfo:
     a = _readable_asset(session, user, guest, item_id)
+    refuse_if_raster_geo_limited(session, a, limits, "raster metadata")
     return RasterInfo(
         itemId=a.item_id,
         srid=a.srid,
@@ -231,7 +229,7 @@ def read_raster_tile(
     titiler_url: str = Depends(get_titiler_url),
 ) -> Response:
     asset = _readable_asset(session, user, guest, item_id)
-    _refuse_if_geo_limited(session, asset, limits, "raster tiles")
+    refuse_if_raster_geo_limited(session, asset, limits, "raster tiles")
     if not (0 <= z <= _MAX_ZOOM and 0 <= x < 2**z and 0 <= y < 2**z):
         raise HTTPException(status_code=404, detail="tile not found")
     params: dict[str, str] = {"url": f"s3://{bucket}/{asset.source_key}"}
@@ -271,7 +269,7 @@ def raster_zonal_stats(
     masked=Depends(get_masked_for_user),
 ) -> ZonalStatsResponse:
     asset = _readable_asset(session, user, None, item_id)
-    _refuse_if_geo_limited(session, asset, limits, "raster zonal statistics")
+    refuse_if_raster_geo_limited(session, asset, limits, "raster zonal statistics")
     if body.geojson is not None:
         try:
             polys = polygons_from_geojson(body.geojson)

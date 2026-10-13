@@ -29,11 +29,24 @@ class RasterMetadata:
     bands: list[dict]
 
 
+# GeoTIFF classique, BigTIFF, little/big endian. Tout autre contenu (VRT, formats GDAL à
+# références externes comme /vsicurl/ ou fichiers locaux) est refusé AVANT toute ouverture GDAL
+# (même classe que REV-333).
+_TIFF_MAGIC = (b"II*\x00", b"MM\x00*", b"II+\x00", b"MM\x00+")
+
+
+def require_tiff(path: str) -> None:
+    with open(path, "rb") as f:
+        if f.read(4) not in _TIFF_MAGIC:
+            raise RasterIngestError("seuls les GeoTIFF/COG sont acceptés")
+
+
 def to_cog(raw_path: str, cog_path: str, *, timeout_seconds: int | None = None) -> bool:
     """Produit `cog_path`. Renvoie True si une conversion a eu lieu, False si la source
     était déjà un COG valide (simple copie)."""
+    require_tiff(raw_path)
     try:
-        with rasterio.open(raw_path) as src:
+        with rasterio.open(raw_path, driver="GTiff") as src:
             has_crs = src.crs is not None
     except RasterioIOError as exc:
         raise RasterIngestError(f"fichier non lisible comme raster : {exc}") from exc
@@ -48,8 +61,9 @@ def to_cog(raw_path: str, cog_path: str, *, timeout_seconds: int | None = None) 
 
 
 def read_metadata(path: str) -> RasterMetadata:
+    require_tiff(path)
     try:
-        with rasterio.open(path) as src:
+        with rasterio.open(path, driver="GTiff") as src:
             srid = src.crs.to_epsg() if src.crs else None
             if srid is None:
                 raise RasterIngestError("le raster n'a pas de code EPSG identifiable")

@@ -15,13 +15,12 @@ import rasterio.transform
 from pydantic import BaseModel, Field
 from rasterio.enums import Resampling
 
-from app.collections.models import Collection
 from app.items import repository as items_repo
 from app.pipelines.errors import PipelineRuntimeError
 from app.raster import repository as raster_repo
-from app.raster.service import open_asset
+from app.raster.service import open_asset, refuse_if_raster_geo_limited
 from app.sharing.authorization import can
-from app.sharing.geo_limits import resolve_geo_limits
+from app.sharing.geo_limits import GeoLimitRefused, resolve_geo_limits
 from app.sql_ident import quote_ident_duckdb as _qi
 
 MAX_CELLS = 2_000_000
@@ -54,14 +53,15 @@ def read_raster(
     asset = raster_repo.get_asset(session, tenant_id=tenant_id, item_id=p.itemId)
     if asset is None:
         raise PipelineRuntimeError(f"raster '{p.itemId}' not found")
-    if asset.limit_collection_id is not None:
-        col = session.get(Collection, asset.limit_collection_id)
-        if col is not None and col.table_name in resolve_geo_limits(
-            session, tenant_id=tenant_id, user_id=user.id
-        ):
-            raise PipelineRuntimeError(
-                f"raster '{p.itemId}' is geo-limited: not readable by a pipeline"
-            )
+    try:
+        refuse_if_raster_geo_limited(
+            session,
+            asset,
+            resolve_geo_limits(session, tenant_id=tenant_id, user_id=user.id),
+            "reader.raster",
+        )
+    except GeoLimitRefused as exc:
+        raise PipelineRuntimeError(f"raster '{p.itemId}' is geo-limited: {exc.detail}") from exc
 
     with open_asset(asset) as ds:
         if p.band not in ds.indexes:

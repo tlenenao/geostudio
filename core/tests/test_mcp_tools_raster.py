@@ -81,3 +81,12 @@ def test_unknown_item_and_bad_stat_are_errors(app_client, raster):
             "raster_zonal_stats",
             {"item_id": raster, "geojson": POLY, "stats": ["bogus"]},
         )
+
+
+def test_unattached_raster_refused_to_geo_limited_caller(app_client, raster, monkeypatch):
+    monkeypatch.setattr("app.mcp.tools.raster.user_geo_limits", lambda *a, **k: {"t": []})
+    with app_client:
+        err = call_tool_expecting_error(
+            app_client, "raster_zonal_stats", {"item_id": raster, "geojson": POLY}
+        )
+    assert "geo_limit_unsupported" in err

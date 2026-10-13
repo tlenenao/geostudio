@@ -37,6 +37,25 @@ def create_job(
     return job
 
 
+def key_in_use(session: Session, *, tenant_id: str, key: str) -> bool:
+    """La clé est déjà la source/le COG d'un job, ou la source d'un raster."""
+    return (
+        session.scalar(
+            select(RasterJob.id).where(
+                RasterJob.tenant_id == tenant_id,
+                (RasterJob.source_key == key) | (RasterJob.converted_key == key),
+            )
+        )
+        is not None
+        or session.scalar(
+            select(RasterAsset.item_id).where(
+                RasterAsset.tenant_id == tenant_id, RasterAsset.source_key == key
+            )
+        )
+        is not None
+    )
+
+
 def get_job(session: Session, *, tenant_id: str, job_id: str) -> RasterJob | None:
     return session.scalar(
         select(RasterJob).where(RasterJob.id == job_id, RasterJob.tenant_id == tenant_id)
