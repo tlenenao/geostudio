@@ -629,3 +629,33 @@ def test_aggregation_of_a_polygon_collection(pg_app, pg_engine, monkeypatch):
     r = client.get(TILE_PATH)
     assert r.headers.get("X-Tile-Aggregated") == "true"
     assert [c[0] for c in _decode_cells(r.content)] == [3]
+
+
+def test_bin_tile_is_binned_even_below_the_cap_and_never_carries_raw_features(pg_app, monkeypatch):
+    """ARC-22 : `?bin=` ne contourne pas le plafond — la tuile brute reste plafonnée
+    (X-Tile-Truncated), la tuile binnée ne porte que des cellules (jamais de valeur)."""
+    from app.features import tiles as tiles_module
+
+    client, _, _ = pg_app
+    monkeypatch.setattr(tiles_module, "MAX_TILE_FEATURES", 2)
+    monkeypatch.setenv("CORE_TILE_AGG_MAX_ZOOM", "0")
+    for i in range(5):
+        _insert(client, f"Secret{i}")
+    raw = client.get("/v1/collections/demo_incidents/tiles/10/518/352.mvt")
+    assert raw.headers.get("X-Tile-Truncated") == "true"
+    for shape in ("square", "hex"):
+        r = client.get(f"/v1/collections/demo_incidents/tiles/10/518/352.mvt?bin={shape}")
+        assert r.status_code == 200
+        assert r.headers.get("X-Tile-Aggregated") == "true"
+        assert "X-Tile-Truncated" not in r.headers
+        assert b"point_count" in r.content and b"Secret" not in r.content
+
+
+def test_bin_stat_requires_a_numeric_field(pg_app):
+    client, _, _ = pg_app
+    base = "/v1/collections/demo_incidents/tiles/0/0/0.mvt?bin=hex"
+    assert client.get(base + "&stat=sum").status_code == 400
+    assert client.get(base + "&stat=sum&field=titre").status_code == 400  # non numérique
+    assert client.get(base + "&stat=sum&field=nope").status_code == 400
+    assert client.get(base + "&stat=median").status_code == 422
+    assert client.get(base + "&bins=1").status_code == 422
