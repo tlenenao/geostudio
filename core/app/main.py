@@ -78,6 +78,7 @@ from app.relations import routes as relations_routes
 from app.relations.service import RelationHooks
 from app.reports import routes as reports_routes
 from app.roles import routes as roles_routes
+from app.routing import routes as routing_routes
 from app.schemas_routes import router as schemas_router
 from app.secrets import crypto as secrets_crypto
 from app.secrets import routes as secrets_routes
@@ -438,6 +439,7 @@ def create_app() -> FastAPI:
     v1_router.include_router(quotas_routes.router)
     v1_router.include_router(compliance_routes.router)
     v1_router.include_router(geocoding_routes.router)
+    v1_router.include_router(routing_routes.router)
     v1_router.include_router(styles_routes.router)
     if is_etl_enabled():
         v1_router.include_router(pipelines_routes.router)

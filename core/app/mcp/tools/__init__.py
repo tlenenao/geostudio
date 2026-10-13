@@ -23,6 +23,7 @@ from app.mcp.tools import (
     pipelines,
     query_generation,
     reports,
+    routing,
     secrets,
     sharing,
 )
@@ -53,6 +54,7 @@ def register_tools(server: FastMCP, session_factory) -> None:
         sharing,
         attachments,
         lineage,
+        routing,
         secrets,
     ):
         module.register(tools_server, session_factory)

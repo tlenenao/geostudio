@@ -402,6 +402,8 @@ layers = [
     "app.items",
     "app.sharing",
     "app.instance",
+    # app.routing (ARC-34, ADR 0025) : client Valhalla ; consommé par les ops de pipeline et le MCP.
+    "app.routing",
     "app.roles",
     "app.catalog",
     "app.geocoding",
