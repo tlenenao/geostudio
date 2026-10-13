@@ -8,14 +8,16 @@ import hashlib
 import hmac
 import json
 import logging
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
 import requests
-from sqlalchemy import select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.alerts.egress import EgressBlockedError, build_guarded_session
+from app.audit.writer import write_audit
 from app.notifications import repository as notifications_repo
 from app.outbox.models import OutboundWebhook, OutboxEvent
 from app.secrets import repository as secrets_repo
@@ -24,10 +26,14 @@ from app.users.models import User
 logger = logging.getLogger(__name__)
 
 MAX_CONSECUTIVE_FAILURES = 5
-BATCH_SIZE = 20
 _BACKOFF_BASE_S = 30
 _BACKOFF_CAP_S = 3600
 _TIMEOUT_S = 10
+# Lot réservé à la fois ; le bail doit couvrir le pire cas du lot (BATCH_SIZE x _TIMEOUT_S).
+BATCH_SIZE = 10
+LEASE_S = 300
+SWEEP_BUDGET_S = 45  # le balayage tourne chaque minute
+OUTBOX_RETENTION_DAYS = 30
 
 Poster = Callable[[str, bytes, dict], None]
 
@@ -88,6 +94,12 @@ def deliver_one(
         event.next_attempt_at = _now() + timedelta(
             seconds=min(_BACKOFF_BASE_S * 2 ** (event.attempts - 1), _BACKOFF_CAP_S)
         )
+        # Verrou de ligne : deux balayages livrant la même destination ne perdent pas
+        # d'incrément (lecture fraîche sous FOR UPDATE, relâché au commit de l'appelant).
+        session.refresh(hook, with_for_update=True)
+        if not hook.enabled:  # désactivée entre-temps par un autre balayage
+            session.flush()
+            return False
         hook.consecutive_failures += 1
         if hook.consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
             _disable(session, hook, reason=str(exc)[:500])
@@ -97,6 +109,7 @@ def deliver_one(
     event.attempts += 1
     event.last_error = None
     event.delivered_at = _now()
+    session.refresh(hook, with_for_update=True)
     hook.consecutive_failures = 0
     session.flush()
     return True
@@ -123,29 +136,106 @@ def _disable(session: Session, hook: OutboundWebhook, *, reason: str) -> None:
         item_title=hook.url,
         error_message=reason,
     )
+    write_audit(
+        session,
+        tenant_id=hook.tenant_id,
+        actor_id=None,
+        actor_kind="system",
+        action="webhook.disabled",
+        object_type="outbound_webhook",
+        object_id=hook.id,
+        payload={
+            "url": hook.url,
+            "consecutiveFailures": hook.consecutive_failures,
+            "reason": reason,
+        },
+    )
     logger.warning("webhook %s désactivé après %s échecs", hook.id, hook.consecutive_failures)
 
 
-def deliver_due(session: Session, *, post: Poster = _http_post, limit: int = BATCH_SIZE) -> int:
-    """Livre jusqu'à `limit` événements dus (SKIP LOCKED : plusieurs workers sans
-    double livraison) ; commit après chacun. Retourne le nombre livré."""
-    delivered = 0
-    due = session.scalars(
-        select(OutboxEvent)
-        .join(OutboundWebhook, OutboundWebhook.id == OutboxEvent.webhook_id)
-        .where(
-            OutboxEvent.status == "pending",
-            OutboxEvent.next_attempt_at <= _now(),
-            OutboundWebhook.enabled.is_(True),
+def _claim(session: Session, limit: int) -> list[str]:
+    """Réserve jusqu'à `limit` événements dus en repoussant leur échéance d'un bail
+    (`UPDATE … WHERE id IN (SELECT … FOR UPDATE SKIP LOCKED) RETURNING`), puis
+    commit : un balayage concurrent ne les voit plus dus, sans qu'aucun verrou ne
+    soit tenu pendant les appels HTTP. Tourniquet par tenant (rang dans le tenant
+    d'abord) : un backlog d'un tenant n'affame pas les autres (I6)."""
+    now = _now()
+    due = (
+        OutboxEvent.status == "pending",
+        OutboxEvent.next_attempt_at <= now,
+    )
+    ranked = (
+        select(
+            OutboxEvent.id,
+            func.row_number()
+            .over(partition_by=OutboxEvent.tenant_id, order_by=OutboxEvent.next_attempt_at)
+            .label("rn"),
         )
-        .order_by(OutboxEvent.next_attempt_at)
+        .join(OutboundWebhook, OutboundWebhook.id == OutboxEvent.webhook_id)
+        .where(*due, OutboundWebhook.enabled.is_(True))
+        .subquery()
+    )
+    # Les conditions « dû » sont répétées sur la requête verrouillante : Postgres les
+    # réévalue sur la version courante d'une ligne réservée entre-temps par un autre.
+    locked = (
+        select(OutboxEvent.id)
+        .join(ranked, ranked.c.id == OutboxEvent.id)
+        .where(*due)
+        .order_by(ranked.c.rn, OutboxEvent.next_attempt_at)
         .limit(limit)
         .with_for_update(skip_locked=True, of=OutboxEvent)
-    ).all()
-    for event in due:
-        hook = session.get(OutboundWebhook, event.webhook_id)
-        assert hook is not None
-        if deliver_one(session, event, hook, post=post):
-            delivered += 1
-        session.commit()
-    return delivered
+    )
+    ids = list(
+        session.scalars(
+            update(OutboxEvent)
+            .where(OutboxEvent.id.in_(locked))
+            .values(next_attempt_at=now + timedelta(seconds=LEASE_S))
+            .returning(OutboxEvent.id)
+            .execution_options(synchronize_session=False)
+        )
+    )
+    session.commit()
+    return ids
+
+
+def deliver_due(
+    session: Session,
+    *,
+    post: Poster = _http_post,
+    limit: int = BATCH_SIZE,
+    budget_s: float = SWEEP_BUDGET_S,
+) -> int:
+    """Livre les événements dus par lots réservés (`_claim`) jusqu'à épuisement ou
+    jusqu'au budget de temps du balayage ; commit après chaque événement. Livraison
+    « au moins une fois » : un worker mort en plein lot laisse ses réservations
+    expirer (bail) et un balayage suivant les relivre. Retourne le nombre livré."""
+    delivered = 0
+    deadline = time.monotonic() + budget_s
+    while True:
+        ids = _claim(session, limit)
+        for event_id in ids:
+            event = session.get(OutboxEvent, event_id, populate_existing=True)
+            # Destination désactivée en cours de lot : ses événements sont déjà `failed`.
+            if event is None or event.status != "pending":
+                continue
+            hook = session.get(OutboundWebhook, event.webhook_id)
+            if hook is None or not hook.enabled:  # désactivée à la main : bail laissé expirer
+                continue
+            if deliver_one(session, event, hook, post=post):
+                delivered += 1
+            session.commit()
+        if len(ids) < limit or time.monotonic() >= deadline:
+            return delivered
+
+
+def purge_outbox(session: Session) -> int:
+    """Rétention : supprime les lignes livrées/abandonnées de plus de
+    OUTBOX_RETENTION_DAYS (les `pending` restent, quel que soit leur âge)."""
+    res = session.execute(
+        delete(OutboxEvent).where(
+            OutboxEvent.status.in_(("delivered", "failed")),
+            OutboxEvent.created_at < _now() - timedelta(days=OUTBOX_RETENTION_DAYS),
+        )
+    )
+    session.commit()
+    return int(res.rowcount)  # type: ignore[attr-defined]

@@ -105,6 +105,18 @@ def test_private_url_is_rejected_at_creation(monkeypatch):
         assert r.status_code == 422, url
 
 
+def test_webhooks_are_capped_per_tenant(monkeypatch):
+    from app.webhooks import routes as webhook_routes
+
+    monkeypatch.setattr(webhook_routes, "MAX_WEBHOOKS_PER_TENANT", 2, raising=False)
+    client = _client(monkeypatch, admin=True)
+    assert [client.post("/v1/webhooks", json=_BODY).status_code for _ in range(3)] == [
+        201,
+        201,
+        409,
+    ]
+
+
 def test_unknown_secret_is_rejected(monkeypatch):
     client = _client(monkeypatch, admin=True)
     assert client.post("/v1/webhooks", json={**_BODY, "secretName": "nope"}).status_code == 422

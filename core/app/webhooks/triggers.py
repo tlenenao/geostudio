@@ -9,11 +9,11 @@ Seuls les objets plus récents que la création du déclencheur sont considéré
 import logging
 import uuid
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.outbox.models import FileTrigger, FileTriggerSeen
@@ -26,6 +26,7 @@ from app.users.models import User
 logger = logging.getLogger(__name__)
 
 MAX_KEYS = 20000  # plafond de clés parcourues (pagination complète) par déclencheur et par passage
+SEEN_RETENTION_DAYS = 30
 
 # (secret, bucket, key_prefix) -> [(clé, etag, dernière modification naïve UTC)]
 Lister = Callable[[S3CredentialsPayload, str, str], list[tuple[str, str, datetime]]]
@@ -77,6 +78,28 @@ def s3_lister(secret: S3CredentialsPayload, bucket: str, key_prefix: str):
     return out
 
 
+def considered_since(trigger: FileTrigger, *, now: datetime | None = None) -> datetime:
+    """Seuls les objets modifiés après la création du déclencheur ET dans l'horizon de
+    rétention des clés vues sont candidats : une clé purgée ne relance donc jamais
+    son fichier. # ponytail: un fichier resté non vu plus de SEEN_RETENTION_DAYS
+    (run actif aussi long) est ignoré ; horizon configurable si cela arrive."""
+    now = now or datetime.now(UTC).replace(tzinfo=None)
+    return max(trigger.created_at, now - timedelta(days=SEEN_RETENTION_DAYS))
+
+
+def purge_seen(session: Session) -> int:
+    """Rétention des clés d'idempotence : une marge d'un jour au-delà de l'horizon de
+    `considered_since` (la clé est créée APRÈS la dernière modification de l'objet)."""
+    res = session.execute(
+        delete(FileTriggerSeen).where(
+            FileTriggerSeen.created_at
+            < datetime.now(UTC).replace(tzinfo=None) - timedelta(days=SEEN_RETENTION_DAYS + 1)
+        )
+    )
+    session.commit()
+    return int(res.rowcount)  # type: ignore[attr-defined]
+
+
 def poll_trigger(
     session: Session,
     trigger: FileTrigger,
@@ -103,7 +126,8 @@ def poll_trigger(
         bucket, key_prefix = split_prefix(trigger.prefix)
         listed = lister(secret, bucket, key_prefix)
         capped = len(listed) >= MAX_KEYS
-        objects = sorted((o for o in listed if o[2] > trigger.created_at), key=lambda o: o[2])
+        since = considered_since(trigger)
+        objects = sorted((o for o in listed if o[2] > since), key=lambda o: o[2])
         for key, etag, _ in objects:
             seen = session.scalar(
                 select(FileTriggerSeen.id).where(

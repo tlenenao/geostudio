@@ -10,7 +10,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.alerts.egress import EgressBlockedError, assert_egress_allowed
@@ -30,6 +30,9 @@ router = APIRouter()
 
 EventType = Literal["item.created", "item.updated", "pipeline.run.finished", "submission.pending"]
 assert set(EventType.__args__) == set(EVENT_TYPES)  # type: ignore[attr-defined]
+
+# Borne l'éventail d'`emit` (une ligne d'outbox par destination et par écriture).
+MAX_WEBHOOKS_PER_TENANT = 50
 
 
 def _guard(session: Session, user: User) -> None:
@@ -133,6 +136,16 @@ def create_webhook(
     except EgressBlockedError as exc:
         raise HTTPException(status_code=422, detail=f"URL refusée : {exc}") from exc
     _require_secret(session, user, body.secretName, "bearer_token")
+    count = session.scalar(
+        select(func.count())
+        .select_from(OutboundWebhook)
+        .where(OutboundWebhook.tenant_id == user.tenant_id)
+    )
+    if (count or 0) >= MAX_WEBHOOKS_PER_TENANT:
+        raise HTTPException(
+            status_code=409,
+            detail=f"plafond de {MAX_WEBHOOKS_PER_TENANT} webhooks par tenant atteint",
+        )
     hook = OutboundWebhook(
         id=uuid.uuid4().hex,
         tenant_id=user.tenant_id,

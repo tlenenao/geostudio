@@ -26,6 +26,8 @@ def deliver_outbox_task(timestamp: int) -> None:
         return
     with request_scoped_session(_session_factory()) as session:
         delivery.deliver_due(session)
+        delivery.purge_outbox(session)
+        triggers.purge_seen(session)
 
 
 @app.periodic(cron="*/5 * * * *")
