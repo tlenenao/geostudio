@@ -555,6 +555,24 @@ export type FeatureVersion = {
   after: FeatureSnapshot | null;
 };
 
+export type CollectionRelation = {
+  id: string;
+  name: string;
+  cardinality: "one_to_one" | "one_to_many" | "many_to_many";
+  parentCollectionId: string;
+  childCollectionId: string;
+  onDelete: "restrict" | "cascade";
+};
+
+export type RelatedRecords = {
+  relation: CollectionRelation;
+  direction: "children" | "parents";
+  collectionId: string;
+  features: { id: string | number; properties: Record<string, unknown> }[];
+  numberReturned: number;
+  numberMatched: number | null;
+};
+
 export type AttachmentSummary = {
   id: string;
   fieldKey: string;
@@ -909,6 +927,14 @@ export interface ItemClient {
   listFeatureHistory?(collectionId: string, fid: string): Promise<FeatureVersion[]>;
   /** Restaure l'état APRÈS d'une version (ARC-15) : écriture normale, journalisée `restore`. */
   restoreFeatureVersion?(collectionId: string, fid: string, versionId: number): Promise<void>;
+  /** Relations touchant une collection (ARC-21). Optionnel : absent d'un client sans cœur. */
+  listCollectionRelations?(collectionId: string): Promise<CollectionRelation[]>;
+  /** Enregistrements liés à une entité selon une relation (ARC-21), sous les droits du lecteur. */
+  listRelatedRecords?(
+    collectionId: string,
+    fid: string,
+    relationId: string,
+  ): Promise<RelatedRecords>;
   /** Entité + ETag courant (ARC-04). Optionnel : absent d'un client sans écriture. */
   getFeature?(
     collectionId: string,

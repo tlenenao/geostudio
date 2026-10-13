@@ -702,6 +702,11 @@ export const widgets = {
   "featureHistory.unknownActor": "auteur effacé",
   "featureHistory.changed": "Champs modifiés : {fields}",
   "featureHistory.restore": "Restaurer cette version",
+  "relatedRecords.toggle": "Enregistrements liés",
+  "relatedRecords.error": "Impossible de charger les enregistrements liés.",
+  "relatedRecords.children": "{name} ({count})",
+  "relatedRecords.parents": "{name} — parent ({count})",
+  "relatedRecords.empty": "Aucun enregistrement lié.",
 
   "staticExport.loadError": "Erreur de chargement : {message}",
   "colorField.pickerAria": "{label} (sélecteur)",
