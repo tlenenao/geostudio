@@ -7,16 +7,15 @@ l'URL transmise à TiTiler. Autorisation = celle de l'item (`can()`), plus les l
 géographiques de la collection de référence du raster (fail-closed : une tuile ne peut
 pas être découpée, un lecteur limité reçoit 403)."""
 
+import functools
 import logging
 import os
 import re
 import uuid
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from collections.abc import Callable
 from typing import Any
 
 import httpx
-import rasterio
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
@@ -47,6 +46,7 @@ from app.raster.schemas import (
     ZonalStatsRequest,
     ZonalStatsResponse,
 )
+from app.raster.service import open_asset, polygons_from_geojson
 from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
 from app.sharing.geo_limits import refuse_if_geo_limited
@@ -87,23 +87,7 @@ RasterOpener = Callable[[RasterAsset], Any]  # asset -> context manager rasterio
 
 def get_raster_opener(bucket: str = Depends(get_raster_bucket)) -> RasterOpener:
     """Ouvre le COG via /vsis3/ (GDAL), jamais via une URL fournie par l'appelant."""
-
-    @contextmanager
-    def opener(asset: RasterAsset) -> Iterator[Any]:
-        endpoint = os.environ["S3_ENDPOINT_URL"]
-        host = endpoint.split("://", 1)[-1].rstrip("/")
-        with rasterio.Env(
-            AWS_S3_ENDPOINT=host,
-            AWS_HTTPS="YES" if endpoint.startswith("https") else "NO",
-            AWS_VIRTUAL_HOSTING="FALSE",
-            AWS_ACCESS_KEY_ID=os.environ["S3_ACCESS_KEY"],
-            AWS_SECRET_ACCESS_KEY=os.environ["S3_SECRET_KEY"],
-            GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR",
-        ):
-            with rasterio.open(f"/vsis3/{bucket}/{asset.source_key}") as ds:
-                yield ds
-
-    return opener
+    return functools.partial(open_asset, bucket=bucket)
 
 
 # --- ingestion ----------------------------------------------------------------
@@ -273,26 +257,6 @@ def read_raster_tile(
     )
 
 
-def _polygons(geojson: dict) -> list[tuple[str | int | None, dict]]:
-    """Polygones (id, géométrie) d'un FeatureCollection/Feature/géométrie GeoJSON."""
-    t = geojson.get("type")
-    if t == "FeatureCollection":
-        feats = geojson.get("features")
-        if not isinstance(feats, list):
-            raise HTTPException(status_code=422, detail="invalid FeatureCollection")
-        items = [(f.get("id"), f.get("geometry")) for f in feats if isinstance(f, dict)]
-    elif t == "Feature":
-        items = [(geojson.get("id"), geojson.get("geometry"))]
-    else:
-        items = [(None, geojson)]
-    out = []
-    for fid, g in items:
-        if not isinstance(g, dict) or g.get("type") not in ("Polygon", "MultiPolygon"):
-            raise HTTPException(status_code=422, detail="only Polygon/MultiPolygon are supported")
-        out.append((fid, g))
-    return out
-
-
 @router.post("/raster/{item_id}/zonal-stats", response_model=ZonalStatsResponse)
 def raster_zonal_stats(
     item_id: str,
@@ -309,7 +273,10 @@ def raster_zonal_stats(
     asset = _readable_asset(session, user, None, item_id)
     _refuse_if_geo_limited(session, asset, limits, "raster zonal statistics")
     if body.geojson is not None:
-        polys = _polygons(body.geojson)
+        try:
+            polys = polygons_from_geojson(body.geojson)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     else:
         # Polygones d'une collection : même porte de lecture, RLS, limites et masquage
         # que GET /collections/{id}/items.
