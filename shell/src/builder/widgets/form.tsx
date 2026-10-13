@@ -11,10 +11,13 @@ import { ApiError } from "../../api/ApiError";
 import type { CollectionSchema, DataRecord, DataSource, FieldDomain } from "../../api/types";
 import type { WidgetContext } from "../registry";
 import { plural, t } from "../../i18n";
+import { Button } from "../../ui/kit/Button";
 import { ConfirmDialog } from "../../ui/kit/ConfirmDialog";
 import { FeatureHistoryPanel } from "./FeatureHistoryPanel";
 import { RelatedRecordsPanel } from "./RelatedRecordsPanel";
 import { LoadingState } from "../../ui/kit/LoadingState";
+import { evaluateExpression, type ExprContext } from "../expr";
+import { formatDateTime } from "../../lib/format";
 import "../../i18n/domains/widgets";
 
 export type FormField = {
@@ -29,6 +32,10 @@ export type FormField = {
   min?: number;
   max?: number;
   pattern?: string;
+  // ARC-27 (XLSForm) : aide sous le libellé et condition CEL de pertinence (`relevant`),
+  // évaluée sur les valeurs saisies ; un champ non pertinent est masqué, non validé, non envoyé.
+  hint?: string;
+  visibleWhen?: string;
   // ARC-13 : choix imposés par un domaine `list` ou par les sous-types (calculé à l'affichage
   // depuis le schéma courant, jamais persisté dans la config du widget).
   options?: { value: string | number; label: string }[];
@@ -266,6 +273,44 @@ function FormPropsPanel({
   );
 }
 
+// ARC-27 : un champ sans `visibleWhen` est toujours pertinent ; sinon la condition CEL est évaluée
+// avec chaque champ du formulaire lié à sa valeur (null si non renseigné). Un résultat qui n'est
+// pas exactement `true` (faux, erreur d'opérande nul…) masque le champ, comme `relevant`.
+export function isFieldVisible(
+  field: FormField,
+  values: Record<string, unknown>,
+  allNames: string[],
+): boolean {
+  if (!field.visibleWhen) return true;
+  const bindings: Record<string, unknown> = {};
+  for (const n of allNames) bindings[n] = values[n] === undefined ? null : values[n];
+  return evaluateExpression(field.visibleWhen, bindings as unknown as ExprContext) === true;
+}
+
+type Client = ReturnType<typeof useItemClient>;
+
+async function uploadAttachment(
+  client: Client,
+  collectionId: string,
+  fid: string,
+  fieldKey: string,
+  file: File,
+) {
+  const contentType = file.type || "application/octet-stream";
+  const { uploadUrl, key } = await client.presignAttachmentUpload(collectionId, fid, {
+    fieldKey,
+    filename: file.name,
+    contentType,
+  });
+  await fetch(uploadUrl, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+  await client.confirmAttachmentUpload(collectionId, fid, {
+    key,
+    fieldKey,
+    filename: file.name,
+    contentType,
+  });
+}
+
 function validateField(field: FormField, value: unknown): string | null {
   const empty = value === undefined || value === null || value === "";
   // Un champ attachment ne passe jamais par values/onChange
@@ -304,12 +349,18 @@ function AttachmentFieldInput({
   fieldKey,
   client,
   labelledBy,
+  queued,
+  onQueue,
 }: {
   collectionId: string;
   fid: string | null;
   fieldKey: string;
   client: ReturnType<typeof useItemClient>;
   labelledBy: string;
+  // ARC-27 (mode mobile) : sur une nouvelle saisie, le fichier est gardé puis envoyé après
+  // l'enregistrement, au lieu d'exiger d'enregistrer d'abord.
+  queued?: File | null;
+  onQueue?: (file: File | null) => void;
 }) {
   const queryClient = useQueryClient();
   const query = useQuery({
@@ -325,22 +376,7 @@ function AttachmentFieldInput({
     for (const file of Array.from(files)) {
       setFileStatus((s) => ({ ...s, [file.name]: "uploading" }));
       try {
-        const { uploadUrl, key } = await client.presignAttachmentUpload(collectionId, fid, {
-          fieldKey,
-          filename: file.name,
-          contentType: file.type || "application/octet-stream",
-        });
-        await fetch(uploadUrl, {
-          method: "PUT",
-          body: file,
-          headers: { "Content-Type": file.type },
-        });
-        await client.confirmAttachmentUpload(collectionId, fid, {
-          key,
-          fieldKey,
-          filename: file.name,
-          contentType: file.type || "application/octet-stream",
-        });
+        await uploadAttachment(client, collectionId, fid, fieldKey, file);
         setFileStatus((s) => ({ ...s, [file.name]: "done" }));
       } catch (err) {
         console.error("AttachmentFieldInput: upload failed", err);
@@ -369,6 +405,24 @@ function AttachmentFieldInput({
     URL.revokeObjectURL(url);
   }
 
+  if (fid === null && onQueue) {
+    return (
+      <div className="flex flex-col gap-1">
+        <input
+          type="file"
+          accept="image/*"
+          capture="environment"
+          aria-labelledby={labelledBy}
+          onChange={(e) => onQueue(e.target.files?.[0] ?? null)}
+        />
+        {queued && (
+          <p className="text-xs text-ink-2">
+            {t("widgetForm.photoReady", { filename: queued.name })}
+          </p>
+        )}
+      </div>
+    );
+  }
   if (fid === null) {
     return <p className="text-xs text-ink-3">{t("widgetForm.attachmentsSaveFirst")}</p>;
   }
@@ -578,6 +632,38 @@ function FieldInput({
   );
 }
 
+// ARC-27 : « mes saisies » — enregistrements créés par l'appelant, plus récents d'abord.
+function MyEntries({ client, collectionId }: { client: Client; collectionId: string }) {
+  const query = useQuery({
+    queryKey: ["my-entries", collectionId],
+    queryFn: () => (client.listMyEntries ? client.listMyEntries(collectionId, 20) : []),
+    retry: false,
+  });
+  const entries = query.data ?? [];
+  return (
+    <section aria-label={t("widgetForm.myEntries")} className="flex flex-col gap-1">
+      <h3 className="text-sm font-medium">{t("widgetForm.myEntries")}</h3>
+      {query.isError && <p className="text-xs text-danger">{t("widgetForm.myEntriesError")}</p>}
+      {!query.isError && entries.length === 0 && (
+        <p className="text-xs text-ink-2">{t("widgetForm.myEntriesEmpty")}</p>
+      )}
+      <ul className="flex flex-col gap-1">
+        {entries.map((e) => {
+          const first = Object.values(e.properties).find((v) => typeof v === "string" && v !== "");
+          return (
+            <li key={e.fid} className="flex justify-between gap-2 text-xs">
+              <span className="truncate">{String(first ?? `#${e.fid}`)}</span>
+              <time dateTime={e.at} className="text-ink-2">
+                {formatDateTime(e.at)}
+              </time>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: WidgetContext }) {
   const client = useItemClient();
   const queryClient = useQueryClient();
@@ -590,6 +676,23 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     (f) => f.type !== "unsupported",
   );
   const geometryType = props.geometryType as string | null | undefined;
+  // ARC-27 : mode collecte mobile (GPS, photo à l'enregistrement, « mes saisies »).
+  const mobile = props.mobile === true;
+  const showMyEntries = props.showMyEntries === true;
+  const [pendingFiles, setPendingFiles] = useState<Record<string, File | null>>({});
+  const [geoError, setGeoError] = useState(false);
+  function locate() {
+    setGeoError(false);
+    if (!navigator.geolocation) return setGeoError(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLon(String(pos.coords.longitude));
+        setLat(String(pos.coords.latitude));
+      },
+      () => setGeoError(true),
+      { enableHighAccuracy: true, timeout: 15000 },
+    );
+  }
   const [lon, setLon] = useState<string>("");
   const [lat, setLat] = useState<string>("");
   const [loadedGeometry, setLoadedGeometry] = useState<unknown>(null);
@@ -618,7 +721,11 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     staleTime: 60_000,
     retry: false,
   });
-  const fields = applyDomains(baseFields, schemaQuery.data, values);
+  const withDomains = applyDomains(baseFields, schemaQuery.data, values);
+  const everyName = withDomains.map((f) => f.name);
+  // ARC-27 : seuls les champs pertinents (`visibleWhen`) sont affichés, validés et envoyés.
+  const fields = withDomains.filter((f) => isFieldVisible(f, values, everyName));
+  const irrelevant = new Set(withDomains.filter((f) => !fields.includes(f)).map((f) => f.name));
   const permissionQuery = useQuery({
     queryKey: ["collection-permission", collectionId],
     queryFn: () => client.getCollectionPermission(collectionId),
@@ -650,7 +757,18 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
         if (etag) await client.updateFeature(...args, { ifMatch: etag });
         else await client.updateFeature(...args);
       } else {
-        await client.createFeature(collectionId, feature);
+        const created = await client.createFeature(collectionId, feature);
+        // Photos mises en file (mode mobile) : envoyées maintenant que la saisie a un identifiant.
+        // Un échec d'envoi ne fait pas échouer la saisie déjà enregistrée.
+        for (const [key, file] of Object.entries(pendingFiles)) {
+          if (!file) continue;
+          try {
+            await uploadAttachment(client, collectionId, String(created.id), key, file);
+          } catch {
+            setGeoError(false);
+            setGenericError(true);
+          }
+        }
       }
     },
   });
@@ -710,6 +828,8 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     setLoadedGeometry(null);
     setEditingId(null);
     setSummaryNames(null);
+    setPendingFiles({});
+    setGeoError(false);
     write.reset();
   }
   useBusAction(ctx.bus, ctx.widgetId, "reset", resetTo);
@@ -765,7 +885,8 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     setGenericError(false);
     const properties: Record<string, unknown> = {};
     allFields.forEach((f) => {
-      if (values[f.name] !== undefined) properties[f.name] = values[f.name];
+      if (values[f.name] !== undefined && !irrelevant.has(f.name))
+        properties[f.name] = values[f.name];
     });
     const geometry =
       geometryType === "Point"
@@ -776,6 +897,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     try {
       await write.mutateAsync({ properties, geometry });
       void queryClient.invalidateQueries({ queryKey: ["datasource"] });
+      void queryClient.invalidateQueries({ queryKey: ["my-entries", collectionId] });
       ctx.bus?.emit(ctx.widgetId ?? "", "submitted", { properties });
       if (editingId === null) {
         resetTo();
@@ -813,7 +935,11 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
 
   return (
     <form
-      className="flex h-full flex-col gap-2 overflow-auto text-sm"
+      className={
+        mobile
+          ? "flex h-full flex-col gap-3 overflow-auto text-base [&_input]:min-h-11 [&_select]:min-h-11 [&_button]:min-h-11"
+          : "flex h-full flex-col gap-2 overflow-auto text-sm"
+      }
       onSubmit={(e) => void handleSubmit(e)}
       noValidate
     >
@@ -858,18 +984,27 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
               {f.label}
               {f.required ? " *" : ""}
             </span>
+            {f.hint && <span className="text-xs text-ink-2">{f.hint}</span>}
             <AttachmentFieldInput
               collectionId={collectionId}
               fid={editingId === null ? null : String(editingId)}
               fieldKey={f.name}
               client={client}
               labelledBy={`field-${f.name}-label`}
+              {...(mobile
+                ? {
+                    queued: pendingFiles[f.name] ?? null,
+                    onQueue: (file: File | null) =>
+                      setPendingFiles((old) => ({ ...old, [f.name]: file })),
+                  }
+                : {})}
             />
           </div>
         ) : (
           <label key={f.name} className="flex flex-col gap-1">
             {f.label}
             {f.required ? " *" : ""}
+            {f.hint && <span className="text-xs text-ink-2">{f.hint}</span>}
             <FieldInput
               field={f}
               value={values[f.name]}
@@ -902,6 +1037,19 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
             )}
           </label>
         ),
+      )}
+      {mobile && geometryType === "Point" && (
+        <div className="flex flex-col gap-1">
+          {/* eslint-disable-next-line geostudio/panel-trigger-aria -- message d'erreur transitoire, pas un panneau */}
+          <Button type="button" variant="outline" onClick={locate}>
+            {t("widgetForm.useMyPosition")}
+          </Button>
+          {geoError && (
+            <p role="alert" className="text-xs text-danger">
+              {t("widgetForm.positionError")}
+            </p>
+          )}
+        </div>
       )}
       {geometryType === "Point" && (
         <div className="flex gap-2">
@@ -992,6 +1140,9 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
           {t("widgetForm.reset")}
         </button>
       </div>
+      {showMyEntries && collectionId !== "" && (
+        <MyEntries client={client} collectionId={collectionId} />
+      )}
       {conflict && (
         <p role="alert" className="text-xs text-danger">
           {t("widgetForm.conflict")}

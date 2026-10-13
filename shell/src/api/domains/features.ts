@@ -6,10 +6,13 @@ import type {
   GeoJSONFeatureInput,
   ItemClient,
   RelatedRecords,
+  MyEntry,
   Submission,
   SubmissionTokenInfo,
+  XlsFormImportResult,
 } from "../types";
 import type { ItemClientBase } from "../base";
+import { ApiError } from "../ApiError";
 import { FeatureValidationError, parseErrorResponse } from "../base";
 
 async function requestFeatureWrite<T>(
@@ -57,6 +60,8 @@ type FeaturesMethods = Pick<
   | "listSubmissionTokens"
   | "createSubmissionToken"
   | "revokeSubmissionToken"
+  | "listMyEntries"
+  | "importXlsForm"
 >;
 
 export function createFeaturesMethods(base: ItemClientBase): FeaturesMethods {
@@ -139,6 +144,26 @@ export function createFeaturesMethods(base: ItemClientBase): FeaturesMethods {
         "GET",
         `/collections/${collectionId}/items/${fid}/related/${relationId}`,
       );
+    },
+
+    async listMyEntries(collectionId: string, limit = 20) {
+      const data = await request<{ entries: MyEntry[] }>(
+        "GET",
+        `/collections/${collectionId}/my-entries?limit=${limit}`,
+      );
+      return data.entries;
+    },
+
+    async importXlsForm(file: File) {
+      // Multipart : `request()` sérialise en JSON ; pas de Content-Type posé à la main.
+      const form = new FormData();
+      form.append("file", file);
+      const res = await authFetch(`${coreUrl}/xlsform/import`, { method: "POST", body: form });
+      if (!res.ok) {
+        const e = await parseErrorResponse(res);
+        throw new ApiError(e.status, { title: e.title, detail: e.detail, errors: e.errors });
+      }
+      return (await res.json()) as XlsFormImportResult;
     },
 
     async listSubmissions(collectionId: string) {

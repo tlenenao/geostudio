@@ -318,6 +318,9 @@ name = "layered architecture"
 type = "layers"
 layers = [
     "app.main",
+    # app.xlsform (ARC-27) : import XLSForm + « mes saisies » ; compose l'App de collecte avec
+    # app.mcp.form_app (d'où sa place au-dessus d'app.mcp).
+    "app.xlsform",
     "app.mcp",
     "app.copilot",
     "app.public",
@@ -466,6 +469,9 @@ ignore_imports = [
     # `hasAnyEditorRole` par `role`/`privileges` : `app.auth.routes`
     # n'importe plus rien d'`app.sharing`.
     "app.apikeys.routes -> app.auth.dependency",
+    # ARC-24 (ADR 0022) : la synchro des groupes par claims s'exécute au login,
+    # donc depuis app.auth.dependency (une seule arête, vers claim_sync).
+    "app.auth.dependency -> app.sharing.claim_sync",
     "app.auth.routes -> app.roles.repository",
     "app.auth.routes -> app.roles.privileges",
     "app.auth.routes -> app.roles.guards",

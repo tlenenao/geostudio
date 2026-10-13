@@ -7,6 +7,9 @@ const NewItemButton = lazy(() =>
 const ImportFileButton = lazy(() =>
   import("../ImportFileButton").then((m) => ({ default: m.ImportFileButton })),
 );
+const XlsFormImportButton = lazy(() =>
+  import("../XlsFormImportButton").then((m) => ({ default: m.XlsFormImportButton })),
+);
 const Tileset3DUploadButton = lazy(() =>
   import("../Tileset3DUploadButton").then((m) => ({ default: m.Tileset3DUploadButton })),
 );
@@ -50,6 +53,7 @@ export function TopBar({
         <Suspense fallback={null}>
           <NewItemButton />
           <ImportFileButton />
+          <XlsFormImportButton />
           {tileset3dEnabled && <Tileset3DUploadButton />}
         </Suspense>
       </div>

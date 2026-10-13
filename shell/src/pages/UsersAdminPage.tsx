@@ -4,6 +4,7 @@ import { useEraseUser, useRoles, useUpdateUserRole, useUsers } from "../api/hook
 import type { UserSummary } from "../api/types";
 import { Button } from "../ui/kit/Button";
 import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
+import { GroupClaimMappingsSection } from "./GroupClaimMappingsSection";
 import { eraseErrorMessage } from "./eraseErrorMessage";
 import { DataTable } from "../ui/kit/DataTable";
 import { EmptyState } from "../ui/kit/EmptyState";
@@ -217,6 +218,7 @@ export function UsersAdminPage() {
                   {t("usage.next")}
                 </Button>
               </div>
+              <GroupClaimMappingsSection />
             </div>
           ),
         }}

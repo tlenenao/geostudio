@@ -359,6 +359,8 @@ export type UpdatePatch = {
 // canManage : l'appelant est créateur du groupe ou administrateur des
 // utilisateurs (membres, renommage, suppression) — calculé par le cœur (j13-006).
 export type Group = { id: string; title: string; createdBy?: string; canManage?: boolean };
+// ARC-24 (ADR 0022) : mapping administré valeur de claim IdP -> groupe du cœur.
+export type GroupClaimMapping = { id: string; groupId: string; claimValue: string };
 export type GroupMember = { userId: string; username: string; email: string | null };
 export type DirectoryUser = { id: string; username: string; email: string | null };
 export type ShareLinkInfo = {
@@ -663,6 +665,27 @@ export interface Submission {
   createdAt: string | null;
 }
 
+/** Saisie de l'appelant (« mes saisies », ARC-27). */
+export interface MyEntry {
+  fid: string;
+  at: string;
+  properties: Record<string, unknown>;
+}
+
+export interface XlsFormReportItem {
+  code: "not_ported" | "approximated" | "renamed" | "ignored";
+  message: string;
+  row: number | null;
+  name: string | null;
+}
+
+export interface XlsFormImportResult {
+  collectionId: string;
+  itemId: string;
+  title: string;
+  report: XlsFormReportItem[];
+}
+
 export interface SubmissionTokenInfo {
   id: string;
   name: string;
@@ -769,6 +792,9 @@ export interface ItemClient {
   removeGroupMember(groupId: string, userId: string): Promise<void>;
   renameGroup(groupId: string, name: string): Promise<Group>;
   deleteGroup(groupId: string): Promise<void>;
+  listGroupClaimMappings(): Promise<GroupClaimMapping[]>;
+  createGroupClaimMapping(groupId: string, claimValue: string): Promise<GroupClaimMapping>;
+  deleteGroupClaimMapping(mappingId: string): Promise<void>;
   // j13-005 : annuaire restreint (catalog.manage) pour ajouter un membre.
   searchUserDirectory(q: string): Promise<DirectoryUser[]>;
   getSharing(pk: string): Promise<Sharing>;
@@ -954,6 +980,10 @@ export interface ItemClient {
     opts?: { ifMatch?: string },
   ): Promise<void>;
   deleteFeature(collectionId: string, fid: string, opts?: { ifMatch?: string }): Promise<void>;
+  /** Saisies créées par l'appelant (ARC-27), plus récentes d'abord. Optionnel : sans cœur. */
+  listMyEntries?(collectionId: string, limit?: number): Promise<MyEntry[]>;
+  /** Import XLSForm -> collection + App de collecte mobile (ARC-27). Optionnel : sans cœur. */
+  importXlsForm?(file: File): Promise<XlsFormImportResult>;
   /** Soumission publique modérée (ARC-10). Optionnels : absents d'un client sans cœur. */
   listSubmissions?(collectionId: string): Promise<Submission[]>;
   approveSubmission?(collectionId: string, submissionId: string): Promise<void>;

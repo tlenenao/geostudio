@@ -135,3 +135,42 @@ def build_config(*, collection_id: str, schema: dict, include_form: bool) -> Bui
         layout=Layout(type="grid", breakpoints={}, items=items),
         messages=messages,
     )
+
+
+def build_collect_config(
+    *, collection_id: str, form_fields: list[dict], geometry_type: str | None
+) -> BuilderConfig:
+    """App de collecte terrain issue d'un XLSForm (ARC-27) : un seul widget formulaire
+    mobile-first (GPS, photo, liste « mes saisies »), champs et `visibleWhen` tels qu'importés."""
+    data_source_id = f"{collection_id}-ds"
+    return BuilderConfig(
+        kind="app",
+        dataSources=[
+            DataSource(
+                id=data_source_id, type="features", service="core", layer=collection_id, query={}
+            )
+        ],
+        layout=Layout(
+            type="grid",
+            breakpoints={},
+            items=[
+                LayoutItem(
+                    id="form",
+                    widget="form",
+                    x=0,
+                    y=0,
+                    w=12,
+                    h=10,
+                    props={
+                        "dataSourceId": data_source_id,
+                        "fields": form_fields,
+                        "submitLabel": "Envoyer",
+                        "geometryType": geometry_type,
+                        "mobile": True,
+                        "showMyEntries": True,
+                    },
+                )
+            ],
+        ),
+        messages=[],
+    )
