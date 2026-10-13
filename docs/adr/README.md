@@ -66,3 +66,5 @@ plus.
 | [0021](0021-relations-entre-collections.md) | Relations entre collections : clé étrangère logique déclarée | acceptée | ARC-21 |
 | [0022](0022-groupes-externes-alimentes-par-claims.md) | Groupes externes : appartenance alimentée par les claims | acceptée | ARC-24 |
 | [0027](0027-webhooks-sortants-et-declencheurs.md) | Webhooks sortants et déclencheurs fichier/S3 : outbox transactionnelle | acceptée | rang 6 FME |
+| [0024](0024-raster-cog-proxy-titiler-authentifie.md) | Raster : COG seul, proxy TiTiler authentifié par `can()` | acceptée | ARC-33 |
+| [0025](0025-routage-valhalla-service-externe.md) | Routage/isochrones : Valhalla (MIT) en service externe | acceptée | ARC-34 |
