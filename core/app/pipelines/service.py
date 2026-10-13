@@ -156,8 +156,8 @@ def retry_pipeline_run_service(
             status_code=409,
             detail=(
                 f"Reprise/rejeu refusé : le writer {', '.join(appenders)} est en mode 'append' "
-                "et dupliquerait des lignes déjà écrites. Utilisez le mode 'upsert' (ou "
-                "'replace'), ou relancez une exécution complète."
+                "et dupliquerait des lignes déjà écrites. Utilisez le mode 'upsert' "
+                "(writer.collection) ou 'replace', ou relancez une exécution complète."
             ),
         )
     try:

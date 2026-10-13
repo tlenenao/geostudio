@@ -339,3 +339,21 @@ def test_retry_route_refuses_append_writer(rig):
     with Session() as s, pytest.raises(HTTPException) as exc:
         retry_pipeline_run_service(s, user=user, run_id=r1.id, defer_task=lambda *a: None)
     assert exc.value.status_code == 409 and "upsert" in exc.value.detail
+
+
+@pytest.mark.parametrize("mode", ["upsert", "update", "delete", "replace"])
+def test_automatic_retry_accepts_idempotent_writer_modes(mode):
+    """K1×K2 (intégration vague 4) : les modes idempotents de writer.collection (F1)
+    sont compatibles avec retry.max > 0 ; `insert` (alias d'append) ne l'est pas."""
+    payload = _payload(None).model_dump(by_alias=True)
+    payload["nodes"][-1]["params"] = {"collectionId": "villes", "mode": mode, "keyColumns": ["id"]}
+    payload["retry"] = {"max": 2}
+    assert PipelinePayload.model_validate(payload).append_writers() == []
+
+
+def test_automatic_retry_refuses_insert_alias_of_append():
+    payload = _payload(None).model_dump(by_alias=True)
+    payload["nodes"][-1]["params"] = {"collectionId": "villes", "mode": "insert"}
+    payload["retry"] = {"max": 2}
+    with pytest.raises(ValueError, match="upsert"):
+        PipelinePayload.model_validate(payload)

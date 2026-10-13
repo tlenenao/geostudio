@@ -211,13 +211,16 @@ def request_cancel(session: Session, run: PipelineRun) -> str:
         )
         return bool(res.rowcount)  # type: ignore[attr-defined]
 
-    if not (
-        _transition("queued", status="cancelled", finished_at=_now())
-        or _transition("retrying", status="cancelled", finished_at=_now(), next_retry_at=None)
-    ):
+    terminal = _transition("queued", status="cancelled", finished_at=_now()) or _transition(
+        "retrying", status="cancelled", finished_at=_now(), next_retry_at=None
+    )
+    if not terminal:
         _transition("running", status="cancel_requested")
     session.flush()
     session.refresh(run)
+    if terminal:
+        # F6 : clôture directe (queued/retrying -> cancelled) = fin de run, comme mark_cancelled.
+        _emit_run_finished(session, run)
     return run.status
 
 

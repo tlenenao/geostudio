@@ -215,6 +215,23 @@ def test_injected_collection_id_is_a_plain_value_resolved_by_lookup():
             )
 
 
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"collectionId": "d", "mode": "{{param.p}}"},
+        {"collectionId": "d", "mode": "upsert", "keyColumns": ["{{param.p}}"]},
+        {"collectionId": "d", "keyColumns": ["id"], "statusColumn": "{{param.p}}"},
+        {"collectionId": "d", "rejectWhenFalse": ["{{param.p}}"]},
+        {"collectionId": "d", "onInvalid": "{{param.p}}"},
+    ],
+)
+def test_param_in_writer_collection_mode_keys_is_refused(params):
+    """K1×K2 (intégration vague 4) : les paramètres F1/F2 de writer.collection (mode,
+    clés, colonne de statut, rejets) sont des identifiants/contrôles, jamais paramétrables."""
+    with pytest.raises(ValidationError, match="interdit"):
+        _node_payload("writer.collection", params)
+
+
 def test_param_in_non_whitelisted_key_is_refused():
     with pytest.raises(ValidationError, match="interdit"):
         _payload([{"name": "x", "type": "string", "default": "a"}], {"anything": "{{param.x}}"})

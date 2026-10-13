@@ -112,3 +112,32 @@ def test_reclaim_leaves_a_finished_run_untouched_and_silent(db):  # noqa: F811
         s.commit()
         assert done.status == "succeeded" and done.error is None
         assert s.scalar(select(func.count()).select_from(OutboxEvent)) == before
+
+
+def test_rejects_and_direct_cancels_emit_their_terminal_status(db):  # noqa: F811
+    """Intégration vague 4 (K1×K2×L) : `succeeded_with_rejects` part tel quel dans
+    `pipeline.run.finished`, et une annulation directe (queued/retrying -> cancelled,
+    sans passage par le worker) émet aussi la fin du run."""
+    tenant_id, user_id = _seed(db)
+    pipeline_id = _pipeline(db, tenant_id, user_id)
+    with db() as s:
+        rejects, queued, retrying = (
+            prepo.create_run(s, tenant_id=tenant_id, pipeline_item_id=pipeline_id) for _ in range(3)
+        )
+        retrying.status = "retrying"
+        s.commit()
+        prepo.mark_succeeded(s, run_id=rejects.id, node_stats={"w1": {"rejected": 7}})
+        assert prepo.request_cancel(s, queued) == "cancelled"
+        assert prepo.request_cancel(s, retrying) == "cancelled"
+        s.commit()
+        got = {
+            e.payload["runId"]: e.payload["status"]
+            for e in s.scalars(
+                select(OutboxEvent).where(OutboxEvent.event_type == "pipeline.run.finished")
+            )
+        }
+        assert got == {
+            rejects.id: "succeeded_with_rejects",
+            queued.id: "cancelled",
+            retrying.id: "cancelled",
+        }

@@ -395,19 +395,19 @@ class PipelinePayload(BaseModel):
             raise ValueError(
                 "reprise automatique (retry.max > 0) impossible avec un writer en mode "
                 f"'append' ({', '.join(self.append_writers())}) : un rejeu dupliquerait "
-                "des lignes ; utilisez le mode 'upsert' (ou 'replace')"
+                "des lignes ; utilisez le mode 'upsert' (writer.collection) ou 'replace'"
             )
         return self
 
     def append_writers(self) -> list[str]:
-        """Ids des writers collection/dataset en mode `append` (défaut) : non idempotents,
-        donc incompatibles avec un rejeu/une reprise (doublons)."""
+        """Ids des writers collection/dataset en mode `append` (défaut) ou `insert` (alias
+        d'append, F1) : non idempotents, donc incompatibles avec un rejeu/une reprise."""
         return [
             n.id
             for n in self.nodes
             if n.kind == "writer"
             and n.op in {"writer.collection", "writer.dataset"}
-            and (n.params or {}).get("mode", "append") == "append"
+            and (n.params or {}).get("mode", "append") in ("append", "insert")
         ]
 
 
