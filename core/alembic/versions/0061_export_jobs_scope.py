@@ -2,8 +2,8 @@
 """Portée d'un export PDF d'app (ARC-26 fiche d'entité, ARC-30 atlas) :
 `export_jobs.scope`, NULL pour tous les jobs existants.
 
-Revision ID: 0060
-Revises: 0059
+Revision ID: 0061
+Revises: 0060
 Create Date: 2026-10-13
 """
 
@@ -11,8 +11,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "0060"
-down_revision = "0059"
+revision = "0061"
+down_revision = "0060"
 branch_labels = None
 depends_on = None
 

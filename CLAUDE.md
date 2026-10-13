@@ -662,6 +662,11 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
 - **Clôture REV-27** — 10 REV fermées (183/268/285/295/299/305/315/317/323/324), 16 restent partielles (rejeu réel non exécuté : base de référence polluée, manuels REV-284 d/286 c, actions propriétaire REV-269), REV-119 différée (constat Cas 2) ; revue finale : 1 Critical (tileset3d bloqué en `finalizing`) + 3 Important corrigés. Détail et items « pour Tanguy » dans l'archive.
 - **`transform.httpCall` (HTTPCaller)** — appel HTTP par ligne (op `execute` à contexte : secrets + aperçu), retry exponentiel/`Retry-After`, pagination agrégée, multipart, concurrence+débit bornés, erreurs par ligne, URL de chaque ligne bornée à la portée du secret (REV-294) ; aperçu limité aux GET ; catalogue 59 op exposées / 61 brutes.
 - **Vague 0 « quick wins » ARC (rattrapage ArcGIS Enterprise)** — clustering de points, `sortby`/`datetime`/`crs` et ETag/`If-Match` sur OGC Features, géocodage par lot/reverse (synchrone), statut de contenu, clés d'API de service (ADR 0016), privilège `items.publish`, lecteur temps de la carte ; ferme REV-335/352/353/356/359. Fonds de carte par tenant, job de géocodage avec reprise et `transform.geocode` reportés ; reliquats `REV-366`/`367`. Migrations 0052-0054. Détail dans l'archive.
+- **Vagues 2-3 ARC, voie F (style + OWS)** — export SLD 1.1 + import/export de style MapLibre (ARC-28), WMS 1.3.0/WMTS 1.0.0 rendus par le cœur (ARC-20, ADR 0020, `CORE_OWS_WMS_ENABLED`).
+- **Vagues 2-3 ARC, voie G (builder + cartes)** — gabarits déclaratifs, widgets swipe/galerie de fonds/fiche d'entité (ARC-26), atlas d'impression (ARC-30), binning de tuiles (ARC-22) ; migration 0061.
+- **Vagues 2-3 ARC, voie H (données)** — import FileGDB/DXF/DGN/MapInfo via GDAL, VRT refusés (ARC-23, ferme REV-333), relations entre collections (ARC-21, ADR 0021) ; migration 0060.
+- **Vagues 2-3 ARC, voie I (identité + collecte)** — groupes alimentés par claims OIDC (ARC-24, ADR 0022), import XLSForm + collecte mobile + mes saisies (ARC-27) ; migration 0062.
+- **Vagues 2-3 ARC, voie J (plateforme + analyse)** — chart Helm (ARC-29), widget Analyse sur 10 outils de pipeline (ARC-25). Détail, collisions de migration et défauts d'intégration dans l'archive.
 
 ### Conventions tranchées (2026-09-01)
 

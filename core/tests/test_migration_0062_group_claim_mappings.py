@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Migration 0061 (ARC-24) : group_members.origin + group_claim_mappings,
+"""Migration 0062 (ARC-24) : group_members.origin + group_claim_mappings,
 base non vide, deux sens (piège n°8)."""
 
 import os
@@ -44,13 +44,13 @@ def throwaway_database_url(test_db_url):
 
 
 @pytest.mark.postgis
-def test_0061_on_non_empty_base_both_ways(throwaway_database_url):
+def test_0062_on_non_empty_base_both_ways(throwaway_database_url):
     cfg = Config()
     cfg.set_main_option("script_location", str(CORE_DIR / "alembic"))
     previous = os.environ.get("DATABASE_URL")
     os.environ["DATABASE_URL"] = throwaway_database_url
     try:
-        command.upgrade(cfg, "0059")
+        command.upgrade(cfg, "0061")
         engine = sa.create_engine(throwaway_database_url)
         with engine.begin() as conn:
             conn.execute(sa.text("SET session_replication_role = replica"))  # FK hors sujet
@@ -60,7 +60,7 @@ def test_0061_on_non_empty_base_both_ways(throwaway_database_url):
                     "VALUES ('g1', 'u1', 't1')"
                 )
             )
-        command.upgrade(cfg, "0061")
+        command.upgrade(cfg, "0062")
         with engine.begin() as conn:
             conn.execute(sa.text("SET session_replication_role = replica"))
             origin = conn.execute(sa.text("SELECT origin FROM group_members")).scalar()
@@ -72,13 +72,13 @@ def test_0061_on_non_empty_base_both_ways(throwaway_database_url):
                     "VALUES ('m', 't1', 'g1', 'SIG', 'u1', now())"
                 )
             )
-        command.downgrade(cfg, "0059")
+        command.downgrade(cfg, "0061")
         with engine.connect() as conn:
             insp = sa.inspect(conn)
             assert "origin" not in {c["name"] for c in insp.get_columns("group_members")}
             assert "group_claim_mappings" not in insp.get_table_names()
             assert conn.execute(sa.text("SELECT count(*) FROM group_members")).scalar() == 1
-        command.upgrade(cfg, "0061")
+        command.upgrade(cfg, "0062")
         engine.dispose()
     finally:
         if previous is None:

@@ -89,6 +89,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/analysis/tools": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Analysis Tools */
+        get: operations["list_analysis_tools_v1_analysis_tools_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/analytics/sql": {
         parameters: {
             query?: never;
@@ -223,6 +240,23 @@ export interface paths {
         put?: never;
         /** Aggregate Features */
         post: operations["aggregate_features_v1_collections__collection_id__aggregate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/analysis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run Collection Analysis */
+        post: operations["run_collection_analysis_v1_collections__collection_id__analysis_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -499,6 +533,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/collections/{collection_id}/items/{fid}/related/{relation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Related Records */
+        get: operations["related_records_v1_collections__collection_id__items__fid__related__relation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/my-entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My Entries
+         * @description Saisies créées par l'appelant (journal d'entité), les plus récentes d'abord, hors
+         *     enregistrements supprimés depuis.
+         */
+        get: operations["my_entries_v1_collections__collection_id__my_entries_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/collections/{collection_id}/profile": {
         parameters: {
             query?: never;
@@ -547,6 +619,27 @@ export interface paths {
         };
         /** Get Quality Check */
         get: operations["get_quality_check_v1_collections__collection_id__quality_checks__report_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/relations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Collection Relations
+         * @description Relations touchant la collection ; celles dont un autre côté est illisible pour
+         *     l'appelant sont omises (il n'en apprend pas l'existence).
+         */
+        get: operations["list_collection_relations_v1_collections__collection_id__relations_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1090,6 +1183,41 @@ export interface paths {
         /** Create Group */
         post: operations["create_group_v1_groups_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/groups/claim-mappings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Claim Mappings */
+        get: operations["list_claim_mappings_v1_groups_claim_mappings_get"];
+        put?: never;
+        /** Create Claim Mapping */
+        post: operations["create_claim_mapping_v1_groups_claim_mappings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/groups/claim-mappings/{mapping_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Claim Mapping */
+        delete: operations["delete_claim_mapping_v1_groups_claim_mappings__mapping_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1791,6 +1919,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/relations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Relation */
+        post: operations["create_relation_v1_relations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/relations/{relation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Relation */
+        delete: operations["delete_relation_v1_relations__relation_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/reports/{item_id}/runs": {
         parameters: {
             query?: never;
@@ -2062,6 +2224,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/styles/sld": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Export Sld */
+        post: operations["export_sld_v1_styles_sld_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/uploads": {
         parameters: {
             query?: never;
@@ -2242,6 +2421,23 @@ export interface paths {
         patch: operations["patch_user_v1_users__user_id__patch"];
         trace?: never;
     };
+    "/v1/xlsform/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Xlsform */
+        post: operations["import_xlsform_v1_xlsform_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2380,6 +2576,33 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** AnalysisRequest */
+        AnalysisRequest: {
+            /**
+             * Limit
+             * @default 1000
+             */
+            limit: number;
+            /** Othercollectionid */
+            otherCollectionId?: string | null;
+            /**
+             * Output
+             * @default ephemeral
+             * @enum {string}
+             */
+            output: "ephemeral" | "collection";
+            /** Params */
+            params?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Title
+             * @description Titre de la collection créée (output=collection).
+             */
+            title?: string | null;
+            /** Tool */
+            tool: string;
+        };
         /** ApiKeyCreate */
         ApiKeyCreate: {
             /**
@@ -2449,6 +2672,32 @@ export interface components {
             prefix: string;
             /** Revokedat */
             revokedAt: string | null;
+        };
+        /**
+         * AtlasConfig
+         * @description ARC-30 : atlas = une page PDF par entité de la source `dataSourceId`.
+         *     Les champs sont des gabarits CEL évalués par entité côté shell (rendu par
+         *     le worker d'export). `maxPages` borne le nombre de pages d'un rendu.
+         */
+        AtlasConfig: {
+            /** Datasourceid */
+            dataSourceId: string;
+            /** Fields */
+            fields?: components["schemas"]["AtlasField"][];
+            /**
+             * Maxpages
+             * @default 50
+             */
+            maxPages: number;
+            /** Titletemplate */
+            titleTemplate?: string | null;
+        };
+        /** AtlasField */
+        AtlasField: {
+            /** Label */
+            label: string;
+            /** Template */
+            template: string;
         };
         /** AttachmentConfirmRequest */
         AttachmentConfirmRequest: {
@@ -2686,6 +2935,11 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** Body_import_xlsform_v1_xlsform_import_post */
+        Body_import_xlsform_v1_xlsform_import_post: {
+            /** File */
+            file: string;
+        };
         /** Body_submit_v1_public_submit__token__post */
         Body_submit_v1_public_submit__token__post: {
             /** Fieldkey */
@@ -2788,6 +3042,22 @@ export interface components {
              * @default 1
              */
             version: number;
+        };
+        /** ClaimMappingCreate */
+        ClaimMappingCreate: {
+            /** Claimvalue */
+            claimValue: string;
+            /** Groupid */
+            groupId: string;
+        };
+        /** ClaimMappingRead */
+        ClaimMappingRead: {
+            /** Claimvalue */
+            claimValue: string;
+            /** Groupid */
+            groupId: string;
+            /** Id */
+            id: string;
         };
         /**
          * ClusterConfig
@@ -4180,6 +4450,7 @@ export interface components {
         };
         /** PrintLayout */
         PrintLayout: {
+            atlas?: components["schemas"]["AtlasConfig"] | null;
             /** Cartouche */
             cartouche?: string | null;
             /** Freetext */
@@ -4282,6 +4553,86 @@ export interface components {
              * @default
              */
             reason: string;
+        };
+        /** RelatedRecords */
+        RelatedRecords: {
+            /** Collectionid */
+            collectionId: string;
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "children" | "parents";
+            /** Features */
+            features: {
+                [key: string]: unknown;
+            }[];
+            /** Numbermatched */
+            numberMatched?: number | null;
+            /** Numberreturned */
+            numberReturned: number;
+            relation: components["schemas"]["RelationOut"];
+        };
+        /** RelationCreate */
+        RelationCreate: {
+            /**
+             * Cardinality
+             * @enum {string}
+             */
+            cardinality: "one_to_one" | "one_to_many" | "many_to_many";
+            /** Childcollectionid */
+            childCollectionId: string;
+            /** Childkey */
+            childKey?: string | null;
+            /** Linkchildkey */
+            linkChildKey?: string | null;
+            /** Linkcollectionid */
+            linkCollectionId?: string | null;
+            /** Linkparentkey */
+            linkParentKey?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Ondelete
+             * @default restrict
+             * @enum {string}
+             */
+            onDelete: "restrict" | "cascade";
+            /** Parentcollectionid */
+            parentCollectionId: string;
+            /** Parentkey */
+            parentKey?: string | null;
+        };
+        /** RelationOut */
+        RelationOut: {
+            /**
+             * Cardinality
+             * @enum {string}
+             */
+            cardinality: "one_to_one" | "one_to_many" | "many_to_many";
+            /** Childcollectionid */
+            childCollectionId: string;
+            /** Childkey */
+            childKey: string;
+            /** Id */
+            id: string;
+            /** Linkchildkey */
+            linkChildKey: string | null;
+            /** Linkcollectionid */
+            linkCollectionId: string | null;
+            /** Linkparentkey */
+            linkParentKey: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Ondelete
+             * @enum {string}
+             */
+            onDelete: "restrict" | "cascade";
+            /** Parentcollectionid */
+            parentCollectionId: string;
+            /** Parentkey */
+            parentKey: string;
         };
         /** RenameGroupRequest */
         RenameGroupRequest: {
@@ -4467,6 +4818,26 @@ export interface components {
             groups: components["schemas"]["GroupShare"][];
             /** Public */
             public: boolean;
+        };
+        /** SldExportBody */
+        SldExportBody: {
+            /**
+             * Geometrykind
+             * @default polygon
+             * @enum {string}
+             */
+            geometryKind: "point" | "line" | "polygon";
+            /**
+             * Name
+             * @default layer
+             */
+            name: string;
+            /** Symbology */
+            symbology?: {
+                [key: string]: unknown;
+            } | null;
+            /** Title */
+            title?: string | null;
         };
         /**
          * SmtpCredentialsPayload
@@ -4851,6 +5222,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EvaluationStatus"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_analysis_tools_v1_analysis_tools_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -5263,6 +5667,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AggregateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_collection_analysis_v1_collections__collection_id__analysis_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+                "X-Share-Link-Token"?: string | null;
+            };
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnalysisRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -6023,6 +6467,83 @@ export interface operations {
             };
         };
     };
+    related_records_v1_collections__collection_id__items__fid__related__relation_id__get: {
+        parameters: {
+            query?: {
+                /** @description children | parents (auto sauf auto-relation) */
+                direction?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                authorization?: string;
+                "X-Share-Link-Token"?: string | null;
+            };
+            path: {
+                collection_id: string;
+                fid: string;
+                relation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelatedRecords"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_entries_v1_collections__collection_id__my_entries_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: {
+                authorization?: string;
+                "X-Share-Link-Token"?: string | null;
+            };
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     profile_collection_v1_collections__collection_id__profile_get: {
         parameters: {
             query?: never;
@@ -6149,6 +6670,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QualityReportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_collection_relations_v1_collections__collection_id__relations_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelationOut"][];
                 };
             };
             /** @description Validation Error */
@@ -6513,7 +7067,12 @@ export interface operations {
     };
     get_collection_tile_v1_collections__collection_id__tiles__z___x___y__mvt_get: {
         parameters: {
-            query?: never;
+            query?: {
+                bin?: ("square" | "hex") | null;
+                stat?: "count" | "sum" | "avg";
+                field?: string | null;
+                bins?: number;
+            };
             header?: {
                 authorization?: string;
                 "X-Share-Link-Token"?: string | null;
@@ -7527,6 +8086,103 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["GroupRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_claim_mappings_v1_groups_claim_mappings_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaimMappingRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_claim_mapping_v1_groups_claim_mappings_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaimMappingCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaimMappingRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_claim_mapping_v1_groups_claim_mappings__mapping_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                mapping_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -9214,6 +9870,72 @@ export interface operations {
             };
         };
     };
+    create_relation_v1_relations_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RelationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_relation_v1_relations__relation_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                relation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_report_runs_route_v1_reports__item_id__runs_get: {
         parameters: {
             query?: {
@@ -9870,6 +10592,41 @@ export interface operations {
             };
         };
     };
+    export_sld_v1_styles_sld_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SldExportBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.ogc.sld+xml": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_upload_job_v1_uploads_post: {
         parameters: {
             query?: never;
@@ -10212,6 +10969,41 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_xlsform_v1_xlsform_import_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_xlsform_v1_xlsform_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

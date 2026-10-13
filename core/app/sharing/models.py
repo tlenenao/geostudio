@@ -35,7 +35,9 @@ class GroupMember(Base):
     # ARC-24 (ADR 0022) : "manual" (ajout humain, jamais retiré par la synchro) ou
     # "claim" (alimentée par le mapping claims→groupes, retirée au login suivant
     # quand le claim disparaît).
-    origin: Mapped[str] = mapped_column(String, nullable=False, default="manual")
+    origin: Mapped[str] = mapped_column(
+        String, nullable=False, default="manual", server_default="manual"
+    )
 
 
 class GroupClaimMapping(Base):

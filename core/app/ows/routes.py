@@ -318,5 +318,19 @@ def get_ogc_tile(
     if tms != TMS:
         raise HTTPException(status_code=404, detail="unknown tile matrix set")
     return get_collection_tile(
-        collection_id, z, x, y, request, user, guest, session, introspect, rls, masked
+        collection_id,
+        z,
+        x,
+        y,
+        request,
+        bin=None,  # le binning ARC-22 reste propre à la route `.mvt`
+        stat="count",
+        field=None,
+        bins=16,
+        user=user,
+        guest=guest,
+        session=session,
+        introspect=introspect,
+        rls=rls,
+        masked=masked,
     )

@@ -384,8 +384,11 @@ def before_delete(session: Session, user, col: Collection, fid: str, rls, s3, *,
     voie normale (can() write, RLS, journal ARC-15, audit), récursivement (profondeur 5)."""
     if depth > MAX_DEPTH:
         raise HTTPException(status_code=409, detail="relation cascade too deep")
+    rels = relations_of(session, col.tenant_id, col.id)
+    if not rels:  # chemin chaud (aucune relation) : pas d'introspection
+        return
     info = introspect_table(session, col.table_name)
-    for rel in relations_of(session, col.tenant_id, col.id):
+    for rel in rels:
         if rel.cardinality == "many_to_many":
             if col.id == rel.parent_collection_id:
                 key, lk = rel.parent_key, rel.link_parent_key

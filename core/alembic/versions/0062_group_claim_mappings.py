@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """group_claim_mappings + group_members.origin : groupes alimentés par claims (ARC-24, ADR 0022)
 
-Revision ID: 0061
-Revises: 0059
+Revision ID: 0062
+Revises: 0061
 Create Date: 2026-10-12
 """
 
@@ -10,9 +10,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "0061"
-# INTÉGRATION : la voie H prend 0060 ; à la fusion, `down_revision` doit devenir "0060".
-down_revision = "0059"
+revision = "0062"
+down_revision = "0061"
 branch_labels = None
 depends_on = None
 

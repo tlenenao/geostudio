@@ -417,6 +417,64 @@
         "title": "AlertRuleSummary",
         "type": "object"
       },
+      "AnalysisRequest": {
+        "properties": {
+          "limit": {
+            "default": 1000,
+            "maximum": 5000.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "otherCollectionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Othercollectionid"
+          },
+          "output": {
+            "default": "ephemeral",
+            "enum": [
+              "ephemeral",
+              "collection"
+            ],
+            "title": "Output",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": true,
+            "title": "Params",
+            "type": "object"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Titre de la collection cr\u00e9\u00e9e (output=collection).",
+            "title": "Title"
+          },
+          "tool": {
+            "title": "Tool",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool"
+        ],
+        "title": "AnalysisRequest",
+        "type": "object"
+      },
       "ApiKeyCreate": {
         "properties": {
           "expiresInDays": {
@@ -603,6 +661,68 @@
           "lastUsedAt"
         ],
         "title": "ApiKeyRead",
+        "type": "object"
+      },
+      "AtlasConfig": {
+        "description": "ARC-30 : atlas = une page PDF par entit\u00e9 de la source `dataSourceId`.\nLes champs sont des gabarits CEL \u00e9valu\u00e9s par entit\u00e9 c\u00f4t\u00e9 shell (rendu par\nle worker d'export). `maxPages` borne le nombre de pages d'un rendu.",
+        "properties": {
+          "dataSourceId": {
+            "maxLength": 200,
+            "title": "Datasourceid",
+            "type": "string"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/AtlasField"
+            },
+            "maxItems": 50,
+            "title": "Fields",
+            "type": "array"
+          },
+          "maxPages": {
+            "default": 50,
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Maxpages",
+            "type": "integer"
+          },
+          "titleTemplate": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Titletemplate"
+          }
+        },
+        "required": [
+          "dataSourceId"
+        ],
+        "title": "AtlasConfig",
+        "type": "object"
+      },
+      "AtlasField": {
+        "properties": {
+          "label": {
+            "maxLength": 100,
+            "title": "Label",
+            "type": "string"
+          },
+          "template": {
+            "maxLength": 500,
+            "title": "Template",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "template"
+        ],
+        "title": "AtlasField",
         "type": "object"
       },
       "AttachmentConfirmRequest": {
@@ -1076,6 +1196,20 @@
         "title": "Body_create_map_icon_v1_map_icons_post",
         "type": "object"
       },
+      "Body_import_xlsform_v1_xlsform_import_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_import_xlsform_v1_xlsform_import_post",
+        "type": "object"
+      },
       "Body_submit_v1_public_submit__token__post": {
         "properties": {
           "fieldKey": {
@@ -1446,6 +1580,49 @@
           "kind"
         ],
         "title": "BuilderConfig",
+        "type": "object"
+      },
+      "ClaimMappingCreate": {
+        "properties": {
+          "claimValue": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Claimvalue",
+            "type": "string"
+          },
+          "groupId": {
+            "title": "Groupid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "groupId",
+          "claimValue"
+        ],
+        "title": "ClaimMappingCreate",
+        "type": "object"
+      },
+      "ClaimMappingRead": {
+        "properties": {
+          "claimValue": {
+            "title": "Claimvalue",
+            "type": "string"
+          },
+          "groupId": {
+            "title": "Groupid",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "groupId",
+          "claimValue"
+        ],
+        "title": "ClaimMappingRead",
         "type": "object"
       },
       "ClusterConfig": {
@@ -5417,6 +5594,16 @@
       },
       "PrintLayout": {
         "properties": {
+          "atlas": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AtlasConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "cartouche": {
             "anyOf": [
               {
@@ -5681,6 +5868,249 @@
           }
         },
         "title": "RejectBody",
+        "type": "object"
+      },
+      "RelatedRecords": {
+        "properties": {
+          "collectionId": {
+            "title": "Collectionid",
+            "type": "string"
+          },
+          "direction": {
+            "enum": [
+              "children",
+              "parents"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "features": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Features",
+            "type": "array"
+          },
+          "numberMatched": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Numbermatched"
+          },
+          "numberReturned": {
+            "title": "Numberreturned",
+            "type": "integer"
+          },
+          "relation": {
+            "$ref": "#/components/schemas/RelationOut"
+          }
+        },
+        "required": [
+          "relation",
+          "direction",
+          "collectionId",
+          "features",
+          "numberReturned"
+        ],
+        "title": "RelatedRecords",
+        "type": "object"
+      },
+      "RelationCreate": {
+        "properties": {
+          "cardinality": {
+            "enum": [
+              "one_to_one",
+              "one_to_many",
+              "many_to_many"
+            ],
+            "title": "Cardinality",
+            "type": "string"
+          },
+          "childCollectionId": {
+            "title": "Childcollectionid",
+            "type": "string"
+          },
+          "childKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Childkey"
+          },
+          "linkChildKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linkchildkey"
+          },
+          "linkCollectionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linkcollectionid"
+          },
+          "linkParentKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linkparentkey"
+          },
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "onDelete": {
+            "default": "restrict",
+            "enum": [
+              "restrict",
+              "cascade"
+            ],
+            "title": "Ondelete",
+            "type": "string"
+          },
+          "parentCollectionId": {
+            "title": "Parentcollectionid",
+            "type": "string"
+          },
+          "parentKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parentkey"
+          }
+        },
+        "required": [
+          "name",
+          "cardinality",
+          "parentCollectionId",
+          "childCollectionId"
+        ],
+        "title": "RelationCreate",
+        "type": "object"
+      },
+      "RelationOut": {
+        "properties": {
+          "cardinality": {
+            "enum": [
+              "one_to_one",
+              "one_to_many",
+              "many_to_many"
+            ],
+            "title": "Cardinality",
+            "type": "string"
+          },
+          "childCollectionId": {
+            "title": "Childcollectionid",
+            "type": "string"
+          },
+          "childKey": {
+            "title": "Childkey",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "linkChildKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linkchildkey"
+          },
+          "linkCollectionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linkcollectionid"
+          },
+          "linkParentKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linkparentkey"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "onDelete": {
+            "enum": [
+              "restrict",
+              "cascade"
+            ],
+            "title": "Ondelete",
+            "type": "string"
+          },
+          "parentCollectionId": {
+            "title": "Parentcollectionid",
+            "type": "string"
+          },
+          "parentKey": {
+            "title": "Parentkey",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "cardinality",
+          "parentCollectionId",
+          "childCollectionId",
+          "parentKey",
+          "childKey",
+          "linkCollectionId",
+          "linkParentKey",
+          "linkChildKey",
+          "onDelete"
+        ],
+        "title": "RelationOut",
         "type": "object"
       },
       "RenameGroupRequest": {
@@ -6346,6 +6776,53 @@
           "groups"
         ],
         "title": "Sharing",
+        "type": "object"
+      },
+      "SldExportBody": {
+        "properties": {
+          "geometryKind": {
+            "default": "polygon",
+            "enum": [
+              "point",
+              "line",
+              "polygon"
+            ],
+            "title": "Geometrykind",
+            "type": "string"
+          },
+          "name": {
+            "default": "layer",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "symbology": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symbology"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "SldExportBody",
         "type": "object"
       },
       "SmtpCredentialsPayload": {
@@ -7214,6 +7691,48 @@
         "summary": "Get Alert Evaluations"
       }
     },
+    "/v1/analysis/tools": {
+      "get": {
+        "operationId": "list_analysis_tools_v1_analysis_tools_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Analysis Tools V1 Analysis Tools Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Analysis Tools"
+      }
+    },
     "/v1/analytics/sql": {
       "post": {
         "operationId": "analytics_sql_v1_analytics_sql_post",
@@ -7874,6 +8393,83 @@
           }
         },
         "summary": "Aggregate Features"
+      }
+    },
+    "/v1/collections/{collection_id}/analysis": {
+      "post": {
+        "operationId": "run_collection_analysis_v1_collections__collection_id__analysis_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalysisRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Run Collection Analysis V1 Collections  Collection Id  Analysis Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Collection Analysis"
       }
     },
     "/v1/collections/{collection_id}/changes": {
@@ -9612,6 +10208,205 @@
         "summary": "Restore Feature Version"
       }
     },
+    "/v1/collections/{collection_id}/items/{fid}/related/{relation_id}": {
+      "get": {
+        "operationId": "related_records_v1_collections__collection_id__items__fid__related__relation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "fid",
+            "required": true,
+            "schema": {
+              "title": "Fid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "relation_id",
+            "required": true,
+            "schema": {
+              "title": "Relation Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "children | parents (auto sauf auto-relation)",
+            "in": "query",
+            "name": "direction",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "children | parents (auto sauf auto-relation)",
+              "title": "Direction"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelatedRecords"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Related Records"
+      }
+    },
+    "/v1/collections/{collection_id}/my-entries": {
+      "get": {
+        "description": "Saisies cr\u00e9\u00e9es par l'appelant (journal d'entit\u00e9), les plus r\u00e9centes d'abord, hors\nenregistrements supprim\u00e9s depuis.",
+        "operationId": "my_entries_v1_collections__collection_id__my_entries_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "My Entries"
+      }
+    },
     "/v1/collections/{collection_id}/profile": {
       "get": {
         "description": "R\u00e9sum\u00e9 exploratoire (REV-117) : m\u00eames droits, m\u00eame masquage de colonnes\nsensibles et m\u00eames bornes DuckDB que POST /aggregate.",
@@ -9894,6 +10689,60 @@
           }
         },
         "summary": "Get Quality Check"
+      }
+    },
+    "/v1/collections/{collection_id}/relations": {
+      "get": {
+        "description": "Relations touchant la collection ; celles dont un autre c\u00f4t\u00e9 est illisible pour\nl'appelant sont omises (il n'en apprend pas l'existence).",
+        "operationId": "list_collection_relations_v1_collections__collection_id__relations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RelationOut"
+                  },
+                  "title": "Response List Collection Relations V1 Collections  Collection Id  Relations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Collection Relations"
       }
     },
     "/v1/collections/{collection_id}/schema": {
@@ -10550,6 +11399,70 @@
             "required": true,
             "schema": {
               "title": "Y",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bin",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "square",
+                    "hex"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bin"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stat",
+            "required": false,
+            "schema": {
+              "default": "count",
+              "enum": [
+                "count",
+                "sum",
+                "avg"
+              ],
+              "title": "Stat",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "field",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Field"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bins",
+            "required": false,
+            "schema": {
+              "default": 16,
+              "maximum": 64,
+              "minimum": 2,
+              "title": "Bins",
               "type": "integer"
             }
           },
@@ -12248,6 +13161,140 @@
           }
         },
         "summary": "Create Group"
+      }
+    },
+    "/v1/groups/claim-mappings": {
+      "get": {
+        "operationId": "list_claim_mappings_v1_groups_claim_mappings_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ClaimMappingRead"
+                  },
+                  "title": "Response List Claim Mappings V1 Groups Claim Mappings Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Claim Mappings"
+      },
+      "post": {
+        "operationId": "create_claim_mapping_v1_groups_claim_mappings_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimMappingCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimMappingRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Claim Mapping"
+      }
+    },
+    "/v1/groups/claim-mappings/{mapping_id}": {
+      "delete": {
+        "operationId": "delete_claim_mapping_v1_groups_claim_mappings__mapping_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mapping_id",
+            "required": true,
+            "schema": {
+              "title": "Mapping Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Claim Mapping"
       }
     },
     "/v1/groups/{group_id}": {
@@ -14844,6 +15891,98 @@
         "summary": "Submit"
       }
     },
+    "/v1/relations": {
+      "post": {
+        "operationId": "create_relation_v1_relations_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RelationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Relation"
+      }
+    },
+    "/v1/relations/{relation_id}": {
+      "delete": {
+        "operationId": "delete_relation_v1_relations__relation_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "relation_id",
+            "required": true,
+            "schema": {
+              "title": "Relation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Relation"
+      }
+    },
     "/v1/reports/{item_id}/runs": {
       "get": {
         "operationId": "get_report_runs_route_v1_reports__item_id__runs_get",
@@ -16003,6 +17142,55 @@
         ]
       }
     },
+    "/v1/styles/sld": {
+      "post": {
+        "operationId": "export_sld_v1_styles_sld_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SldExportBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/vnd.ogc.sld+xml": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Sld",
+        "tags": [
+          "styles"
+        ]
+      }
+    },
     "/v1/uploads": {
       "post": {
         "operationId": "create_upload_job_v1_uploads_post",
@@ -16655,6 +17843,54 @@
           }
         },
         "summary": "Patch User"
+      }
+    },
+    "/v1/xlsform/import": {
+      "post": {
+        "operationId": "import_xlsform_v1_xlsform_import_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_xlsform_v1_xlsform_import_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Xlsform"
       }
     }
   }
