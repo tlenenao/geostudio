@@ -6,10 +6,11 @@ par requête : cf. design §3.2 et ce plan, Global Constraints)."""
 import os
 from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Any
 
 import croniter
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -37,6 +38,12 @@ class RunResponse(BaseModel):
     runId: str
 
 
+class RunRequest(BaseModel):
+    """Corps optionnel de POST /pipelines/{id}/run et /trigger (ARC-K2/F3)."""
+
+    params: dict[str, Any] = Field(default_factory=dict)
+
+
 class RunStatus(BaseModel):
     id: str
     status: str
@@ -44,6 +51,7 @@ class RunStatus(BaseModel):
     finishedAt: str | None
     error: str | None
     nodeStats: dict
+    params: dict | None = None
 
 
 class WebhookTokenCreated(BaseModel):
@@ -94,11 +102,18 @@ def get_pipeline_next_run(
 @router.post("/pipelines/{item_id}/run", response_model=RunResponse, status_code=202)
 def run_pipeline_route(
     item_id: str,
+    body: RunRequest | None = None,
     session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
     defer_task: Callable[[str, str], None] = Depends(get_task_deferrer),
 ) -> RunResponse:
-    run_id = run_pipeline_service(session, user=user, item_id=item_id, defer_task=defer_task)
+    run_id = run_pipeline_service(
+        session,
+        user=user,
+        item_id=item_id,
+        defer_task=defer_task,
+        params=body.params if body else None,
+    )
     return RunResponse(runId=run_id)
 
 
@@ -110,6 +125,7 @@ def _run_status(r) -> RunStatus:
         finishedAt=r.finished_at.isoformat() if r.finished_at else None,
         error=r.error,
         nodeStats=r.node_stats,
+        params=r.params,
     )
 
 
@@ -240,6 +256,7 @@ def delete_webhook_token_route(
 @router.post("/pipelines/{item_id}/trigger", response_model=RunResponse, status_code=202)
 def trigger_pipeline_webhook_route(
     item_id: str,
+    body: RunRequest | None = None,
     authorization: str | None = Header(default=None),
     session: Session = Depends(get_session, scope="function"),
     defer_task: Callable[[str, str], None] = Depends(get_task_deferrer),
@@ -252,6 +269,10 @@ def trigger_pipeline_webhook_route(
         raise HTTPException(status_code=401, detail="missing bearer token")
     raw_token = authorization.removeprefix("Bearer ")
     run_id = trigger_pipeline_by_webhook_service(
-        session, item_id=item_id, raw_token=raw_token, defer_task=defer_task
+        session,
+        item_id=item_id,
+        raw_token=raw_token,
+        defer_task=defer_task,
+        params=body.params if body else None,
     )
     return RunResponse(runId=run_id)

@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
 from app.configs import repository as configs_repo
+from app.configs.pipeline_params import PipelineParamError, resolve_params
 from app.configs.repository import ConfigRead
 from app.items import repository as items_repo
 from app.jobs.common import resolve_owner_user
@@ -82,6 +83,7 @@ def run_pipeline_service(
     item_id: str,
     defer_task: Callable[[str, str], None],
     actor_kind: str = "user",
+    params: dict | None = None,
 ) -> str:
     """Extrait de app/pipelines/routes.py::run_pipeline_route — même
     séquence de gardes, identique pour la route REST et pour le tool MCP
@@ -90,9 +92,15 @@ def run_pipeline_service(
     require_pipeline_access(session, user=user, item_id=item_id, action="write")
     config = require_pipeline_config(session, item_id)
     require_data_manage_if_pipeline_writes_dataset(session, user, config)
+    payload = config.config.pipeline
+    assert payload is not None
+    try:
+        values = resolve_params(payload.parameters, params)
+    except PipelineParamError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     try:
         run = pipelines_repo.create_run_unless_active(
-            session, tenant_id=user.tenant_id, pipeline_item_id=item_id
+            session, tenant_id=user.tenant_id, pipeline_item_id=item_id, params=values
         )
     except pipelines_repo.PipelineRunActive:
         # REV-310 : REST, MCP (HTTPException -> ValueError) et webhook partagent ce garde.
@@ -108,7 +116,7 @@ def run_pipeline_service(
         action="pipeline.run",
         object_type="pipeline_run",
         object_id=run.id,
-        payload={"pipelineItemId": item_id},
+        payload={"pipelineItemId": item_id, **({"params": values} if values else {})},
     )
     # Commit avant de déférer : même raison que ingestion/routes.py
     # (create_upload_job) — un worker pourrait ramasser la tâche avant que
@@ -185,6 +193,7 @@ def trigger_pipeline_by_webhook_service(
     item_id: str,
     raw_token: str,
     defer_task: Callable[[str, str], None],
+    params: dict | None = None,
 ) -> str:
     """Seul point d'entrée du déclenchement webhook — réutilise
     run_pipeline_service tel quel (mêmes gardes que REST/MCP), seul
@@ -209,6 +218,7 @@ def trigger_pipeline_by_webhook_service(
         item_id=token.pipeline_item_id,
         defer_task=defer_task,
         actor_kind="webhook",
+        params=params,
     )
     # Best-effort, hors du chemin critique : un échec ici ne doit jamais
     # faire échouer un déclenchement par ailleurs réussi.

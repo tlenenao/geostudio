@@ -43,6 +43,9 @@ class PipelineRun(Base):
     # (tests/test_model_alembic_parity.py::_compare_server_default), pas ici.
     node_stats: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    # ARC-K2/F3 : valeurs effectives des paramètres de run publiés (défauts
+    # résolus) — le run historisé garde ses paramètres. NULL = run antérieur.
+    params: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True)
 
 
 class PipelineWebhookToken(Base):

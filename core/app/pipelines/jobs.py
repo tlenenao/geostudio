@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.audit.writer import write_audit
 from app.auth.dependency import is_etl_enabled, is_read_only_mode
 from app.configs import repository as configs_repo
+from app.configs.pipeline_params import apply_params, resolve_params
 from app.configs.schemas import PipelinePayload
 from app.db import request_scoped_session
 from app.items.models import Item
@@ -228,6 +229,7 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
             if run.status == "cancelled":  # annulé avant sa prise en charge (t03b-009)
                 return
             pipeline_item_id = run.pipeline_item_id
+            run_params = dict(run.params or {})
         # `item_id` n'est affecté qu'APRÈS tracker.mark_running(), pas avant —
         # comme dans le code original où pipelines_repo.mark_running(...)
         # précédait `item_id = run.pipeline_item_id` dans le même bloc `with`.
@@ -245,6 +247,10 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
 
         with request_scoped_session(factory) as session:
             payload = _get_pipeline_payload(session, item_id=item_id)
+            # Re-résolution idempotente : couvre les runs planifiés (cron, sans
+            # params) qui retombent sur les défauts ; un paramètre requis sans
+            # valeur échoue ici avec un message clair.
+            payload = apply_params(payload, resolve_params(payload.parameters, run_params))
             user = _acting_user(session, tenant_id=tenant_id, item_id=item_id)
             stats = run_pipeline(
                 session,

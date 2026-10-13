@@ -319,11 +319,33 @@ class PipelineRefreshPolicy(BaseModel):
         return self
 
 
+class PipelineParameter(BaseModel):
+    """Paramètre de run publié (ARC-K2/F3) : saisi au lancement, référencé par
+    `{{param.nom}}` dans les params de nœud (cf. app.configs.pipeline_params)."""
+
+    name: str = Field(..., pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")
+    type: Literal["string", "number", "integer", "boolean", "date"] = "string"
+    default: Any | None = None
+    required: bool = False
+
+    @model_validator(mode="after")
+    def _default_matches_type(self) -> "PipelineParameter":
+        if self.default is not None:
+            from app.configs.pipeline_params import PipelineParamError, coerce_value
+
+            try:
+                coerce_value(self.name, self.type, self.default)
+            except PipelineParamError as exc:
+                raise ValueError(f"default invalide : {exc}") from exc
+        return self
+
+
 class PipelinePayload(BaseModel):
     nodes: list[PipelineNode] = Field(default_factory=list)
     edges: list[PipelineEdge] = Field(default_factory=list)
     refreshPolicy: PipelineRefreshPolicy | None = None
     notes: list[PipelineCanvasNote] = Field(default_factory=list)
+    parameters: list[PipelineParameter] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _validate_graph(self) -> "PipelinePayload":
@@ -340,6 +362,14 @@ class PipelinePayload(BaseModel):
             raise ValueError("pipeline requires at least one reader node")
         if not any(n.kind == "writer" for n in self.nodes):
             raise ValueError("pipeline requires at least one writer node")
+        names = [p.name for p in self.parameters]
+        if len(names) != len(set(names)):
+            raise ValueError("pipeline parameter names must be unique")
+        from app.configs.pipeline_params import param_refs
+
+        unknown = set().union(*(param_refs(n.params) for n in self.nodes)) - set(names)
+        if unknown:
+            raise ValueError(f"unknown parameter reference(s): {', '.join(sorted(unknown))}")
         return self
 
 

@@ -18,12 +18,15 @@ def _now() -> datetime:
 _RUNNING_RECLAIM_MINUTES = 60
 
 
-def create_run(session: Session, *, tenant_id: str, pipeline_item_id: str) -> PipelineRun:
+def create_run(
+    session: Session, *, tenant_id: str, pipeline_item_id: str, params: dict | None = None
+) -> PipelineRun:
     run = PipelineRun(
         id=uuid.uuid4().hex,
         tenant_id=tenant_id,
         pipeline_item_id=pipeline_item_id,
         status="queued",
+        params=params or None,
     )
     session.add(run)
     session.flush()
@@ -56,6 +59,7 @@ def create_run_unless_active(
     tenant_id: str,
     pipeline_item_id: str,
     stale_minutes: int = _RUNNING_RECLAIM_MINUTES,
+    params: dict | None = None,
 ) -> PipelineRun:
     """REV-310 : crée un run SAUF si un run actif non périmé existe (lève
     PipelineRunActive). Point unique REST / MCP / webhook / cron. Atomique :
@@ -81,7 +85,9 @@ def create_run_unless_active(
     ).first()
     if active is not None:
         raise PipelineRunActive(pipeline_item_id)
-    return create_run(session, tenant_id=tenant_id, pipeline_item_id=pipeline_item_id)
+    return create_run(
+        session, tenant_id=tenant_id, pipeline_item_id=pipeline_item_id, params=params
+    )
 
 
 def get_run(session: Session, *, tenant_id: str, run_id: str) -> PipelineRun | None:
