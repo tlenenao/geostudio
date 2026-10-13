@@ -154,7 +154,8 @@ export type NotificationSummary = {
     | "tileset3d"
     | "terrain3d"
     | "data_export"
-    | "submission";
+    | "submission"
+    | "webhook_disabled";
   status: "success" | "failure";
   itemId: string | null;
   itemResourceType: ResourceType | null;

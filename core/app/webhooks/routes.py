@@ -255,6 +255,10 @@ def replay_delivery(
     )
     if ev is None:
         raise HTTPException(status_code=404, detail="delivery not found")
+    if not hook.enabled:
+        raise HTTPException(
+            status_code=409, detail="webhook disabled: re-enable it (PATCH enabled=true) first"
+        )
     ev.status = "pending"
     ev.attempts = 0
     ev.last_error = None

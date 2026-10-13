@@ -25,7 +25,7 @@ from app.users.models import User
 
 logger = logging.getLogger(__name__)
 
-MAX_KEYS = 1000  # plafond de sondage par déclencheur et par passage
+MAX_KEYS = 20000  # plafond de clés parcourues (pagination complète) par déclencheur et par passage
 
 # (secret, bucket, key_prefix) -> [(clé, etag, dernière modification naïve UTC)]
 Lister = Callable[[S3CredentialsPayload, str, str], list[tuple[str, str, datetime]]]
@@ -67,13 +67,13 @@ def s3_lister(secret: S3CredentialsPayload, bucket: str, key_prefix: str):
     )
     out: list[tuple[str, str, datetime]] = []
     paginator = client.get_paginator("list_objects_v2")
-    for page in paginator.paginate(
-        Bucket=bucket, Prefix=key_prefix, PaginationConfig={"MaxItems": MAX_KEYS}
-    ):
+    for page in paginator.paginate(Bucket=bucket, Prefix=key_prefix):
         for o in page.get("Contents", []):
             if o["Key"].endswith("/"):
                 continue
             out.append((o["Key"], o["ETag"].strip('"'), o["LastModified"].replace(tzinfo=None)))
+            if len(out) >= MAX_KEYS:
+                return out  # plafond atteint : signalé par poll_trigger (last_error)
     return out
 
 
@@ -101,10 +101,9 @@ def poll_trigger(
             raise TriggerConfigError(f"secret '{trigger.secret_name}' introuvable ou inutilisable")
         check_scope(secret, trigger.prefix)
         bucket, key_prefix = split_prefix(trigger.prefix)
-        objects = sorted(
-            (o for o in lister(secret, bucket, key_prefix) if o[2] > trigger.created_at),
-            key=lambda o: o[2],
-        )
+        listed = lister(secret, bucket, key_prefix)
+        capped = len(listed) >= MAX_KEYS
+        objects = sorted((o for o in listed if o[2] > trigger.created_at), key=lambda o: o[2])
         for key, etag, _ in objects:
             seen = session.scalar(
                 select(FileTriggerSeen.id).where(
@@ -140,7 +139,12 @@ def poll_trigger(
                 break  # run actif : le fichier sera repris au passage suivant
             session.commit()
             created += 1
-        trigger.last_error = None
+        trigger.last_error = (
+            f"listage tronqué à {MAX_KEYS} clés : des fichiers récents peuvent être ignorés, "
+            "restreindre le préfixe"
+            if capped
+            else None
+        )
     except TriggerConfigError as exc:
         session.rollback()
         trigger.last_error = str(exc)[:500]

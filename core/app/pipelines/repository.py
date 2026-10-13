@@ -206,6 +206,7 @@ def mark_cancelled(session: Session, *, run_id: str) -> None:
     run.status = "cancelled"
     run.finished_at = _now()
     session.flush()
+    _emit_run_finished(session, run)
 
 
 def _emit_run_finished(session: Session, run: PipelineRun) -> None:
@@ -257,19 +258,19 @@ def reclaim_stuck_runs(
         (PipelineRun.status.in_(("running", "cancel_requested")), PipelineRun.started_at),
         else_=PipelineRun.created_at,
     )
-    result = session.execute(
-        update(PipelineRun)
-        .where(
+    runs = session.scalars(
+        select(PipelineRun).where(
             PipelineRun.status.in_(("queued", "running", "cancel_requested")),
             func.coalesce(anchor, PipelineRun.created_at) < threshold,
         )
-        .values(
-            status="failed",
-            finished_at=_now(),
-            error="run périmé : jamais terminé, clos par le balayage de planification",
-        )
-    )
-    return int(result.rowcount or 0)  # type: ignore[attr-defined]
+    ).all()
+    for run in runs:
+        run.status = "failed"
+        run.finished_at = _now()
+        run.error = "run périmé : jamais terminé, clos par le balayage de planification"
+        session.flush()
+        _emit_run_finished(session, run)  # F6 : une fois par run touché, même transaction
+    return len(runs)
 
 
 def append_node_stat(

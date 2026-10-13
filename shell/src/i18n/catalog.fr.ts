@@ -121,6 +121,7 @@ export const fr = {
   "notifications.kindTerrain3d": "Terrain 3D",
   "notifications.kindDataExport": "Export de données",
   "notifications.kindSubmission": "Soumission à modérer",
+  "notifications.kindWebhookDisabled": "Webhook désactivé",
   "notifications.panel": "Centre de notifications",
   "notifications.preference": "Préférence de notification",
   "notifications.unread": "Non lue",

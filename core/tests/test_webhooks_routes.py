@@ -137,5 +137,7 @@ def test_crud_and_replay_never_expose_the_secret(monkeypatch):
 
     r = client.patch(f"/v1/webhooks/{hook['id']}", json={"enabled": False})
     assert r.json()["enabled"] is False
+    # destination désactivée : le rejeu est refusé explicitement
+    assert client.post(f"/v1/webhooks/{hook['id']}/deliveries/e1/replay").status_code == 409
     assert client.delete(f"/v1/webhooks/{hook['id']}").status_code == 204
     assert client.get("/v1/webhooks").json() == []

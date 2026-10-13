@@ -80,7 +80,9 @@ def deliver_one(
                 "X-GeoStudio-Signature": sign(body, secret.token),
             },
         )
-    except DeliveryError as exc:
+    except Exception as exc:  # noqa: BLE001 — DeliveryError ou imprévu (déchiffrement…) : l'échec reste sur CETTE destination
+        if not isinstance(exc, DeliveryError):
+            logger.exception("livraison %s : échec inattendu", event.id)
         event.attempts += 1
         event.last_error = str(exc)[:500]
         event.next_attempt_at = _now() + timedelta(
