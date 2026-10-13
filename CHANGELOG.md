@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **ARC/FME wave 4** (2026-10-14): `writer.collection` `upsert`/`update`/`delete`
+  modes and a `<target>__rejected` quarantine (new run status `succeeded_with_rejects`),
+  run parameters (`{{param.x}}`, whitelisted keys), incremental dlt reads, automatic
+  retry and per-node resume (new run status `retrying`; refused for `append`/`insert`
+  writers, use `upsert` or `replace`), outbound webhooks (transactional outbox, HMAC)
+  and S3 file triggers, lineage and pre-delete impact view (MCP `get_item_impact`),
+  6 pipeline ops (`transform.geocode`, `reader.wfs`, `testFilter`, `sampler`,
+  `neighborFinder`, read-only `sqlExecutor`). Migrations 0063-0066. New settings
+  `CORE_SQL_EXECUTOR_TIMEOUT_S`, `CORE_PIPELINE_CHECKPOINT_DIR`,
+  `CORE_PIPELINE_CHECKPOINT_RETENTION_HOURS`; the geocoding settings now also reach
+  the `worker`. Clients polling run status must treat `retrying` as active and
+  `succeeded_with_rejects` as terminal.
 - **ARC vagues 2-3** (2026-10-13): WMS 1.3.0 / WMTS 1.0.0 rendered by the core
   (`CORE_OWS_WMS_ENABLED`), SLD 1.1 export and MapLibre style import/export,
   relations between collections (migration 0060), square/hex tile binning,

@@ -455,6 +455,8 @@ Ordre = valeur décroissante, effort croissant. Reliée à la campagne (`2026-10
 | 21 | Notebooks (JupyterLite ou SQL Lab étendu) | B9 | L | nouveau |
 | 22 | Analyse réseau (pgRouting/valhalla en service externe) | B9 | L | nouveau |
 
+**Statut au 2026-10-13 (vague 4 ARC, plan `2026-10-13-arc-vagues-4-6-iso-esri-et-etl.md`)** : rangs **1 à 8, 11 et 15 livrés**. Limites assumées : rang 2 = rejets portés par le writer (pas de port de graphe), rapport qualité visible dans le détail de run du builder (pas dans `/tasks`) ; rang 5 = bouton « Reprendre / Rejouer » dans le panneau d'exécution du builder ; rang 7 = `reader.file` couvrait déjà les formats fichier, seul `reader.wfs` (sans authentification) est neuf ; rang 8 = `testFilter`/`sampler`/`neighborFinder`/`sqlExecutor` (lecture seule) ; rang 11 = `transform.geocode` sans score ni option à l'import CSV. Rangs 9, 10, 12, 13, 14, 16, 17 livrés par les ARC des vagues 0 à 3.
+
 Séquencement conseillé : lot « ETL robuste » (1 à 5, environ 5 SP moyens) puis lot « ouverture » (6, 7, 9, 11) puis lot « exploitation » (16). Les chantiers 14, 18 à 22 sont des décisions produit (positionnement horizontal acté en Q2, parité de couverture de connecteurs comme différenciateur) à arbitrer, pas à lancer sans ADR.
 
 ### 6.1 Feuille de route de rattrapage ArcGIS Enterprise
