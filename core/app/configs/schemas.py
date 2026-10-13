@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
+import re
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel as _PydanticBaseModel
-from pydantic import ConfigDict, Field, ValidationInfo, model_validator
+from pydantic import ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
 from app.analytics.aggregate import (
     AggregateRequestBody,
@@ -479,12 +480,47 @@ class Terrain3DPayload(BaseModel):
     originalFilename: str
 
 
+class AtlasField(BaseModel):
+    label: str = Field(max_length=100)
+    # Gabarit CEL `${record.champ}` (même syntaxe que les popups de carte).
+    template: str = Field(max_length=500)
+
+
+class AtlasConfig(BaseModel):
+    """ARC-30 : atlas = une page PDF par entité de la source `dataSourceId`.
+    Les champs sont des gabarits CEL évalués par entité côté shell (rendu par
+    le worker d'export). `maxPages` borne le nombre de pages d'un rendu."""
+
+    dataSourceId: str = Field(max_length=200)
+    titleTemplate: str | None = Field(default=None, max_length=500)
+    fields: list[AtlasField] = Field(default_factory=list, max_length=50)
+    maxPages: int = Field(default=50, ge=1, le=200)
+
+
 class PrintLayout(BaseModel):
     pageSize: Literal["a4", "a3"] = "a4"
     orientation: Literal["portrait", "landscape"] = "portrait"
     title: str | None = None
     showLegend: bool = True
     cartouche: str | None = None
+    # ARC-16 : éléments de gabarit. Défaut False — les exports enregistrés avant
+    # ne changent pas. `logo` est un data URI (jamais une URL : le navigateur du
+    # worker n'a alors aucune requête sortante à faire, donc pas de SSRF).
+    scaleBar: bool = False
+    northArrow: bool = False
+    freeText: str | None = Field(default=None, max_length=2000)
+    logo: str | None = Field(default=None, max_length=400_000)
+    # ARC-30 : mise en page en série (atlas). Absent = export d'une seule page.
+    atlas: AtlasConfig | None = None
+
+    @field_validator("logo")
+    @classmethod
+    def _logo_is_inline_image(cls, v: str | None) -> str | None:
+        if v is not None and not re.match(
+            r"^data:image/(png|jpeg|svg\+xml|webp);base64,[A-Za-z0-9+/=]+$", v
+        ):
+            raise ValueError("logo must be a base64 data URI (png, jpeg, svg or webp)")
+        return v
 
 
 class BuilderConfig(BaseModel):

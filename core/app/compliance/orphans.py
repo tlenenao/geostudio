@@ -42,6 +42,7 @@ from app.export.models import ExportJob
 from app.ingestion.models import IngestionJob
 from app.items.models import Item
 from app.mapicons.models import MapIcon
+from app.public_submit.models import Submission
 from app.terrain3d.models import Terrain3DJob
 from app.tileset3d.models import Tileset3DJob
 
@@ -91,7 +92,14 @@ def _alive_ingestion_sources(session: Session, keys: set[str]) -> set[str]:
 
 
 def _alive_attachment_keys(session: Session, keys: set[str]) -> set[str]:
-    return set(session.scalars(select(Attachment.s3_key).where(Attachment.s3_key.in_(keys))))
+    alive = set(session.scalars(select(Attachment.s3_key).where(Attachment.s3_key.in_(keys))))
+    # ARC-10 : pièce jointe d'une soumission (en attente ou approuvée) = vivante.
+    alive |= set(
+        session.scalars(
+            select(Submission.attachment_key).where(Submission.attachment_key.in_(keys))
+        )
+    )
+    return alive
 
 
 def _alive_mapicon_keys(session: Session, keys: set[str]) -> set[str]:

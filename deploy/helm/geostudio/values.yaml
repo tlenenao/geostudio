@@ -1,0 +1,168 @@
+# Valeurs du chart GeoStudio (ARC-29). Toute valeur sensible vit dans un Secret EXISTANT
+# (secrets.existingSecret) : le chart ne rend jamais un secret depuis values.
+# Postgres (PostGIS + pgvector, wal_level=logical pour le cdc-worker), S3 compatible, Keycloak et
+# titiler sont EXTERNES au chart : on leur pointe via config.* et le Secret.
+
+image:
+  registry: ghcr.io/tlenenao        # images geostudio-{core,shell,export-worker} (amd64 + arm64)
+  tag: ""                           # vide = appVersion du chart
+  pullPolicy: IfNotPresent
+  pullSecrets: []                   # [{name: ...}] si le registre est privé
+
+secrets:
+  # Secret existant, clés = noms des variables d'environnement. Obligatoires : DATABASE_URL (via
+  # pgbouncer ou direct), CORE_SECRETS_MASTER_KEY, S3_ACCESS_KEY, S3_SECRET_KEY, et CDC_DATABASE_URL
+  # (connexion DIRECTE au primaire, pas de pgbouncer : réplication logique) si cdcWorker.enabled.
+  # Optionnelles : CORE_EXPORT_TOKEN_SECRET (obligatoire si export.enabled), CORE_SHARE_LINK_TOKEN_SECRET,
+  # CORE_ADMIN_TOOLS_TOKEN_SECRET, CORE_LLM_API_KEY, CORE_EMBEDDING_API_KEY.
+  existingSecret: ""
+
+# Réglages non secrets : ConfigMap partagé par core, worker, cdc-worker et export-worker. Mêmes noms et
+# mêmes défauts que le service homonyme de docker-compose.yml (gardé par core/tests/test_helm_chart.py).
+# Défauts qui diffèrent volontairement du compose : CORE_AUTH_MODE=oidc (core refuse mock hors
+# CORE_ENV=development), CORE_ADMIN_TOOLS_GATEWAY_URL vide (passerelle Traefik-only, cf. ADR 0019).
+# SHELL_BASE_URL vide = service shell du release ; OTEL_EXPORTER_OTLP_ENDPOINT vide + observability.enabled
+# = otel-lgtm du release.
+config:
+  APPEXPORT_RUNTIME_DIR: "/export-runtime"
+  CORE_ADMIN_SUBS: ""
+  CORE_ADMIN_TOOLS_ENABLED: "false"
+  CORE_ALERTS_EGRESS_ALLOWLIST: ""
+  CORE_ANALYST_SUBS: ""
+  CORE_APPEXPORT_ENABLED: "false"
+  CORE_AUTH_MODE: "oidc"
+  CORE_CDC_COMPACTION_MONTHLY: "false"
+  CORE_CDC_COMPACTION_RECENT_DAYS: "7"
+  CORE_CSP_MODE: "report-only"
+  CORE_DUCKDB_MAX_TEMP_SIZE: "5GB"
+  CORE_DUCKDB_MEMORY_LIMIT: "2GB"
+  CORE_DUCKDB_STATEMENT_TIMEOUT_S: "30"
+  CORE_DUCKDB_THREADS: "4"
+  CORE_EMBEDDING_API_URL: ""
+  CORE_EMBEDDING_EGRESS_ALLOWLIST: ""
+  CORE_EMBEDDING_MODEL: "text-embedding-3-small"
+  CORE_EMBEDDING_PROVIDER: "fake"
+  CORE_ENV: ""
+  CORE_ETL_ENABLED: "false"
+  CORE_EXPORT_ENABLED: "false"
+  CORE_EXPORT_ITEMS_MAX: "100000"
+  CORE_EXPORT_JOB_MAX: ""
+  CORE_EXPORT_RUNNING_TIMEOUT_MINUTES: "60"
+  CORE_EXPORT_SYNC_MAX: "100000"
+  CORE_GEOCODING_EGRESS_ALLOWLIST: "data.geopf.fr"
+  CORE_GEOCODING_PROVIDER: "ban"
+  CORE_GEOCODING_URL: "https://data.geopf.fr/geocodage/search"
+  CORE_GEOCODING_USER_AGENT: ""
+  CORE_HARVEST_EGRESS_ALLOWLIST: ""
+  CORE_HARVEST_MAX_RESPONSE_BYTES: ""
+  CORE_INTERNAL_BASE_URL: "http://localhost:8200"
+  CORE_LAKE_SNAPSHOT_ENABLED: "false"
+  CORE_LAKE_SNAPSHOT_GRACE_S: "300"
+  CORE_LAKE_SNAPSHOT_KEEP: "2"
+  CORE_LAKE_SNAPSHOT_MAX_AGE_HOURS: "24"
+  CORE_LAKE_SNAPSHOT_MIN_DELTA_FILES: "20"
+  CORE_LLM_API_URL: ""
+  CORE_LLM_EGRESS_ALLOWLIST: ""
+  CORE_LLM_MODEL: "gpt-4o-mini"
+  CORE_LLM_PROVIDER: ""
+  CORE_MCP_AUDIENCE: "geostudio-mcp"
+  CORE_MINIO_CONSOLE_PUBLISHED: "true"
+  CORE_OIDC_AUDIENCE: "geostudio-core"
+  CORE_OIDC_ISSUER: "http://localhost:8180/realms/geostudio"
+  CORE_OIDC_JWKS_URL: "http://keycloak:8080/realms/geostudio/protocol/openid-connect/certs"
+  CORE_OWS_ENABLED: "false"
+  CORE_PIPELINES_BLOB_MAX_BYTES: "1073741824"
+  CORE_PIPELINES_BLOB_MAX_FILES: "100"
+  CORE_PIPELINES_BLOB_TIMEOUT_S: "600"
+  CORE_PIPELINES_CONNECTOR_MAX_PAGES: "1000"
+  CORE_PIPELINES_CONNECTOR_MAX_ROWS: "1000000"
+  CORE_PIPELINES_CONNECT_TIMEOUT_S: "10"
+  CORE_PIPELINES_EGRESS_ALLOWLIST: ""
+  CORE_PIPELINES_HTTP_CALL_MAX_RESPONSE_BYTES: "5242880"
+  CORE_PIPELINES_HTTP_CALL_MAX_ROWS: "10000"
+  CORE_PIPELINES_HTTP_CALL_MAX_TOTAL_BYTES: "268435456"
+  CORE_PIPELINES_PREVIEW_TIMEOUT_S: "30"
+  CORE_PIPELINES_QUERY_TIMEOUT_S: "60"
+  CORE_PIPELINE_FILE_IO_ENABLED: "false"
+  CORE_QUOTAS_ENABLED: "false"
+  CORE_QUOTA_MAX_COLLECTIONS_PER_TENANT: ""
+  CORE_QUOTA_MAX_ITEMS_PER_TENANT: ""
+  CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT: ""
+  CORE_RATELIMIT_SHARE_LINK_PER_MIN: "60"
+  CORE_READ_ONLY_MODE: "false"
+  CORE_STALLED_JOB_MINUTES: "60"
+  CORE_TERRAIN3D_CONVERSION_TIMEOUT_SECONDS: "900"
+  CORE_TERRAIN3D_ENABLED: "false"
+  CORE_TERRAIN3D_MAX_UPLOAD_BYTES: "2147483648"
+  CORE_TILESET3D_ENABLED: "false"
+  CORE_TILESET3D_MAX_ENTRIES: "20000"
+  CORE_TILESET3D_MAX_ENTRY_BYTES: "2147483648"
+  CORE_TILESET3D_MAX_PROXY_READ_BYTES: "134217728"
+  CORE_TILESET3D_MAX_TOTAL_BYTES: "21474836480"
+  CORE_TILE_AGG_MAX_ZOOM: "7"
+  CORE_TRUSTED_PROXIES: "127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7"
+  CORE_UPLOAD_MAX_BYTES: ""
+  HEALTHCHECK_QUEUE: "export"
+  OTEL_EXPORTER_OTLP_ENDPOINT: ""
+  S3_APPEXPORTS_BUCKET: "geostudio-appexports"
+  S3_ATTACHMENTS_BUCKET: "geostudio-attachments"
+  S3_CDC_BUCKET: "geostudio-cdc"
+  S3_ENDPOINT_URL: "http://minio:9000"
+  S3_EXPORTS_BUCKET: "geostudio-exports"
+  S3_MAPICONS_BUCKET: "geostudio-mapicons"
+  S3_PUBLIC_ENDPOINT_URL: ""
+  S3_TERRAIN3D_BUCKET: "geostudio-terrain3d"
+  S3_THUMBNAILS_BUCKET: "geostudio-thumbnails"
+  S3_TILESET3D_BUCKET: "geostudio-tileset3d"
+  S3_UPLOADS_BUCKET: "geostudio-uploads"
+  TITILER_URL: "http://titiler:8000"
+  CORE_BASE_URL: "http://localhost:8200"
+  PUBLIC_BASE_URL: "http://localhost:8300"
+  CORE_ADMIN_TOOLS_GATEWAY_URL: ""
+  SHELL_BASE_URL: ""
+
+core:
+  replicas: 1                       # >1 : écart du limiteur en mémoire par process (ADR 0019)
+  resources: {requests: {cpu: 250m, memory: 512Mi}, limits: {memory: 2Gi}}
+  podSecurityUid: 1001
+
+worker:
+  replicas: 1
+  concurrency: 4                    # CORE_WORKER_CONCURRENCY du compose
+  queues: [ingestion, search, cdc, etl, tileset3d, terrain3d, appexport, harvest, dataexport]
+  scratchSizeLimit: 5Gi             # emptyDir /scratch (volume etl-scratch du compose)
+  resources: {requests: {cpu: 250m, memory: 512Mi}, limits: {memory: 2Gi}}  # WORKER_MEM_LIMIT=2g
+  podSecurityUid: 1001
+
+cdcWorker:
+  enabled: true
+  # JAMAIS replicas > 1 : mono-writer par conception (slot de réplication logique).
+  resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {memory: 1Gi}}
+  podSecurityUid: 1001
+
+exportWorker:                       # profil compose « export » ; requiert config.CORE_EXPORT_ENABLED="true"
+  enabled: false
+  replicas: 1
+  resources: {requests: {cpu: 250m, memory: 512Mi}, limits: {memory: 2Gi}}
+  podSecurityUid: 999               # uid de l'utilisateur `app` de deploy/export-worker/Dockerfile (système, non fixé : à revérifier)
+
+shell:
+  replicas: 1
+  env:
+    VITE_CORE_URL: "http://localhost:8200"   # URL publique du core vue du navigateur
+    VITE_AUTH_MODE: "oidc"
+  resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {memory: 256Mi}}
+  podSecurityUid: 101               # nginx
+
+observability:                      # profil compose « observability » (otel-lgtm ; dashboards non provisionnés par le chart)
+  enabled: false
+  image: grafana/otel-lgtm:0.11.4
+  resources: {requests: {cpu: 250m, memory: 1Gi}, limits: {memory: 3Gi}}
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: ""                          # shell
+  apiHost: ""                       # core (VITE_CORE_URL / CORE_BASE_URL doivent y pointer)
+  tlsSecretName: ""

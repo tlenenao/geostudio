@@ -6,6 +6,7 @@ import type {
   CreateKind,
   DirectoryUser,
   Group,
+  GroupClaimMapping,
   GroupMember,
   ShareLinkInfo,
   InstanceInfo,
@@ -46,6 +47,9 @@ type ItemsMethods = Pick<
   | "removeGroupMember"
   | "renameGroup"
   | "deleteGroup"
+  | "listGroupClaimMappings"
+  | "createGroupClaimMapping"
+  | "deleteGroupClaimMapping"
   | "searchUserDirectory"
   | "getSharing"
   | "setSharing"
@@ -140,6 +144,7 @@ export function createItemsMethods(base: ItemClientBase): ItemsMethods {
         pages: template?.pages ?? [],
         navigationMode: template?.navigationMode ?? "tabs",
         interactions: "auto",
+        ...(template?.printLayout ? { printLayout: template.printLayout } : {}),
       };
       const payload: Record<string, unknown> = { title: input.title, config };
       if (input.slug) payload.slug = input.slug;
@@ -221,6 +226,18 @@ export function createItemsMethods(base: ItemClientBase): ItemsMethods {
 
     async deleteGroup(groupId: string): Promise<void> {
       await request<void>("DELETE", `/groups/${groupId}`);
+    },
+
+    async listGroupClaimMappings(): Promise<GroupClaimMapping[]> {
+      return request<GroupClaimMapping[]>("GET", `/groups/claim-mappings`);
+    },
+
+    async createGroupClaimMapping(groupId: string, claimValue: string): Promise<GroupClaimMapping> {
+      return request<GroupClaimMapping>("POST", `/groups/claim-mappings`, { groupId, claimValue });
+    },
+
+    async deleteGroupClaimMapping(mappingId: string): Promise<void> {
+      await request<void>("DELETE", `/groups/claim-mappings/${mappingId}`);
     },
 
     async searchUserDirectory(q: string): Promise<DirectoryUser[]> {

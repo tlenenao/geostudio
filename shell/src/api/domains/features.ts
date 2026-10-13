@@ -1,6 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { CollectionAdmin, GeoJSONFeatureInput, ItemClient } from "../types";
+import type {
+  CollectionAdmin,
+  CollectionRelation,
+  FeatureVersion,
+  GeoJSONFeatureInput,
+  ItemClient,
+  RelatedRecords,
+  MyEntry,
+  Submission,
+  SubmissionTokenInfo,
+  XlsFormImportResult,
+} from "../types";
 import type { ItemClientBase } from "../base";
+import { ApiError } from "../ApiError";
 import { FeatureValidationError, parseErrorResponse } from "../base";
 
 async function requestFeatureWrite<T>(
@@ -38,6 +50,18 @@ type FeaturesMethods = Pick<
   | "updateFeature"
   | "deleteFeature"
   | "getFeature"
+  | "listFeatureHistory"
+  | "restoreFeatureVersion"
+  | "listCollectionRelations"
+  | "listRelatedRecords"
+  | "listSubmissions"
+  | "approveSubmission"
+  | "rejectSubmission"
+  | "listSubmissionTokens"
+  | "createSubmissionToken"
+  | "revokeSubmissionToken"
+  | "listMyEntries"
+  | "importXlsForm"
 >;
 
 export function createFeaturesMethods(base: ItemClientBase): FeaturesMethods {
@@ -94,6 +118,95 @@ export function createFeaturesMethods(base: ItemClientBase): FeaturesMethods {
         undefined,
         opts?.ifMatch,
       );
+    },
+
+    async listFeatureHistory(collectionId: string, fid: string) {
+      const data = await request<{ versions: FeatureVersion[] }>(
+        "GET",
+        `/collections/${collectionId}/items/${fid}/history`,
+      );
+      return data.versions;
+    },
+
+    async restoreFeatureVersion(collectionId: string, fid: string, versionId: number) {
+      await request<void>(
+        "POST",
+        `/collections/${collectionId}/items/${fid}/history/${versionId}/restore`,
+      );
+    },
+
+    async listCollectionRelations(collectionId: string) {
+      return request<CollectionRelation[]>("GET", `/collections/${collectionId}/relations`);
+    },
+
+    async listRelatedRecords(collectionId: string, fid: string, relationId: string) {
+      return request<RelatedRecords>(
+        "GET",
+        `/collections/${collectionId}/items/${fid}/related/${relationId}`,
+      );
+    },
+
+    async listMyEntries(collectionId: string, limit = 20) {
+      const data = await request<{ entries: MyEntry[] }>(
+        "GET",
+        `/collections/${collectionId}/my-entries?limit=${limit}`,
+      );
+      return data.entries;
+    },
+
+    async importXlsForm(file: File) {
+      // Multipart : `request()` sérialise en JSON ; pas de Content-Type posé à la main.
+      const form = new FormData();
+      form.append("file", file);
+      const res = await authFetch(`${coreUrl}/xlsform/import`, { method: "POST", body: form });
+      if (!res.ok) {
+        const e = await parseErrorResponse(res);
+        throw new ApiError(e.status, { title: e.title, detail: e.detail, errors: e.errors });
+      }
+      return (await res.json()) as XlsFormImportResult;
+    },
+
+    async listSubmissions(collectionId: string) {
+      const data = await request<{ submissions: Submission[] }>(
+        "GET",
+        `/collections/${collectionId}/submissions`,
+      );
+      return data.submissions;
+    },
+
+    async approveSubmission(collectionId: string, submissionId: string) {
+      await request<unknown>(
+        "POST",
+        `/collections/${collectionId}/submissions/${submissionId}/approve`,
+      );
+    },
+
+    async rejectSubmission(collectionId: string, submissionId: string, reason: string) {
+      await request<void>(
+        "POST",
+        `/collections/${collectionId}/submissions/${submissionId}/reject`,
+        { reason },
+      );
+    },
+
+    async listSubmissionTokens(collectionId: string) {
+      const data = await request<{ tokens: SubmissionTokenInfo[] }>(
+        "GET",
+        `/collections/${collectionId}/submission-tokens`,
+      );
+      return data.tokens;
+    },
+
+    async createSubmissionToken(collectionId: string, input) {
+      return request<SubmissionTokenInfo & { token: string }>(
+        "POST",
+        `/collections/${collectionId}/submission-tokens`,
+        input,
+      );
+    },
+
+    async revokeSubmissionToken(collectionId: string, tokenId: string) {
+      await request<void>("DELETE", `/collections/${collectionId}/submission-tokens/${tokenId}`);
     },
 
     async getFeature(collectionId: string, fid: string) {

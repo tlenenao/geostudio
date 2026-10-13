@@ -1,0 +1,50 @@
+{{- if .Values.exportWorker.enabled }}
+{{- $fn := include "geostudio.fullname" . -}}
+{{- $sel := dict "root" . "component" "export-worker" -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fn }}-export-worker
+  labels:
+    {{- include "geostudio.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.exportWorker.replicas }}
+  selector:
+    matchLabels:
+      {{- include "geostudio.selector" $sel | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "geostudio.selector" $sel | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: export-worker
+          image: {{ include "geostudio.image" (dict "root" . "name" "export-worker") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "-m", "procrastinate", "--app", "app.jobs.app", "worker", "-q", "export"]
+          envFrom:
+            - configMapRef: {name: {{ $fn }}-config}
+          env:
+            - {name: OTEL_SERVICE_NAME, value: geostudio-export-worker}
+            - {name: HEALTHCHECK_QUEUE, value: export}
+            {{- include "geostudio.secretEnv" (dict "root" . "optional" false "names" (list "DATABASE_URL" "S3_ACCESS_KEY" "S3_SECRET_KEY" "CORE_EXPORT_TOKEN_SECRET")) | nindent 12 }}
+          startupProbe:
+            exec: &probe
+              command: ["python", "-m", "scripts.healthcheck_worker_stalled"]
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            exec: *probe
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          resources: {{ toYaml .Values.exportWorker.resources | nindent 12 }}
+          securityContext:
+            {{- include "geostudio.securityContext" (dict "uid" .Values.exportWorker.podSecurityUid) | nindent 12 }}
+{{- end }}

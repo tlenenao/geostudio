@@ -34,6 +34,11 @@ class Collection(Base):
     is_public: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False, server_default=sa.false()
     )
+    # ARC-11 / ADR 0018 : exposition WFS 2.0 + OGC API Tiles, désactivée par défaut
+    # (comme Esri : « à activer explicitement ») ; sans effet si CORE_OWS_ENABLED=false.
+    ows_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default=sa.false()
+    )
     editable: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False, server_default=sa.true()
     )
@@ -55,6 +60,18 @@ class Collection(Base):
     # colonne) — jamais pk_column/geometry_column/tenant_id, validé côté
     # route (app/collections/routes.py::_reject_invalid_sensitive_fields).
     sensitive_fields: Mapped[list] = mapped_column(
+        JSON, default=list, nullable=False, server_default="[]"
+    )
+    # ARC-13 : {champ: {"type": "list", "values": [...]} | {"type": "range", "min", "max"}} et
+    # {"field": str, "items": [{"value", "label", "defaults", "domains"}]} (ou {} = aucun) ;
+    # appliqués à l'écriture seulement (app/features/validation.py), jamais rétro-appliqués.
+    field_domains: Mapped[dict] = mapped_column(
+        JSON, default=dict, nullable=False, server_default="{}"
+    )
+    subtypes: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False, server_default="{}")
+    # ARC-14 : règles d'attributs CEL [{id, kind: calculation|constraint|batch, field?, expression,
+    # message, mode}] ; calculation/constraint appliquées à l'écriture, batch en job de qualité.
+    attribute_rules: Mapped[list] = mapped_column(
         JSON, default=list, nullable=False, server_default="[]"
     )
     # Métadonnées ouvertes (chantier 4.9, docs/superpowers/specs/

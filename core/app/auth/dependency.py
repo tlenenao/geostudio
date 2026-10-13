@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.apikeys import service as api_key_service
 from app.auth.export_tokens import ExportTokenError, decode_export_token, is_export_token
 from app.db import get_session
+from app.sharing.claim_sync import apply_from_token_claims
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.models import User
 from app.users.repository import get_or_create_user
@@ -236,7 +237,7 @@ def get_current_user(
     except jwt.PyJWTError as exc:
         raise HTTPException(status_code=401, detail="invalid token") from exc
 
-    return get_or_create_user(
+    user = get_or_create_user(
         session,
         tenant_id=tenant.id,
         oidc_sub=oidc_claims["sub"],
@@ -247,6 +248,9 @@ def get_current_user(
         bootstrap_admin=oidc_claims["sub"] in admin_subs(),
         bootstrap_analyst=oidc_claims["sub"] in analyst_subs(),
     )
+    # ARC-24 (ADR 0022) : appartenances alimentées par les claims, additif, jamais bloquant.
+    apply_from_token_claims(session, tenant_id=tenant.id, user_id=user.id, claims=oidc_claims)
+    return user
 
 
 def get_current_user_optional(

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **ARC vagues 2-3** (2026-10-13): WMS 1.3.0 / WMTS 1.0.0 rendered by the core
+  (`CORE_OWS_WMS_ENABLED`), SLD 1.1 export and MapLibre style import/export,
+  relations between collections (migration 0060), square/hex tile binning,
+  FileGDB/DXF/DGN/MapInfo import via GDAL (VRT refused), claim-fed OIDC groups
+  (migration 0062, `CORE_OIDC_GROUPS_CLAIM`), XLSForm import and field collection,
+  Swipe / basemap gallery / feature report / Analysis widgets, app templates and
+  print atlas (migration 0061 `export_jobs.scope`), Helm chart.
+  `CORE_ANALYSIS_MAX_FEATURES` caps analysis reads.
+
 ### Changed
 
 - **`S3_PUBLIC_ENDPOINT_URL` is now required outside `CORE_ENV=development`**

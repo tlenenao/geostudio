@@ -7,11 +7,12 @@ import os
 from collections.abc import Callable
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
+from app.configs import repository as configs_repo
 from app.db import get_session
 from app.export import repository as export_repo
 from app.export.jobs import render_export_task
@@ -36,6 +37,9 @@ router = APIRouter()
 class CreateExportRequest(BaseModel):
     itemId: str
     format: str
+    # ARC-26 / ARC-30 (PDF d'app seulement) : fiche d'une entité, ou atlas.
+    entityId: str | None = Field(default=None, max_length=200)
+    atlas: bool = False
 
 
 class CreateExportResponse(BaseModel):
@@ -73,11 +77,26 @@ def create_export_route(
     user: User = Depends(get_current_user),
     defer_task: Callable[[str, str], None] = Depends(get_task_deferrer),
 ) -> CreateExportResponse:
-    if body.format not in ("png", "pdf"):
-        raise HTTPException(status_code=422, detail="format must be 'png' or 'pdf'")
+    if body.format not in ("png", "pdf", "svg"):
+        raise HTTPException(status_code=422, detail="format must be 'png', 'pdf' or 'svg'")
     _require_export_read_access(session, user=user, item_id=body.itemId)
+    scope = f"entity:{body.entityId}" if body.entityId else ("atlas" if body.atlas else None)
+    if scope is not None:
+        if body.format != "pdf":
+            raise HTTPException(status_code=422, detail="entityId/atlas require format 'pdf'")
+        config = configs_repo.get_config_by_item(session, body.itemId)
+        layout = getattr(config.config, "printLayout", None) if config else None
+        if config is None or config.kind == "map" or layout is None or layout.atlas is None:
+            raise HTTPException(
+                status_code=422, detail="entityId/atlas require an app with printLayout.atlas"
+            )
     job = export_repo.create_job(
-        session, tenant_id=user.tenant_id, item_id=body.itemId, user_id=user.id, format=body.format
+        session,
+        tenant_id=user.tenant_id,
+        item_id=body.itemId,
+        user_id=user.id,
+        format=body.format,
+        scope=scope,
     )
     write_audit(
         session,
@@ -87,7 +106,7 @@ def create_export_route(
         action="export.create",
         object_type="export_job",
         object_id=job.id,
-        payload={"itemId": body.itemId, "format": body.format},
+        payload={"itemId": body.itemId, "format": body.format, "scope": scope},
     )
     # Commit avant de déférer : même raison que run_pipeline_route.
     session.commit()
@@ -113,3 +132,35 @@ def get_export_job_route(
     if job.status == "done" and job.result_key:
         result_url = generate_presigned_get_url(s3, bucket=bucket, key=job.result_key)
     return ExportJobStatus(id=job.id, status=job.status, resultUrl=result_url, error=job.error)
+
+
+@router.post("/export/jobs/{job_id}/cancel", response_model=ExportJobStatus)
+def cancel_export_job_route(
+    job_id: str,
+    session: Session = Depends(get_session, scope="function"),
+    user: User = Depends(get_current_user),
+) -> ExportJobStatus:
+    """ARC-16 : `pending` -> `cancelled` ; `running` -> `cancel_requested` (le
+    worker s'arrête avant l'envoi du résultat). 409 si déjà terminé."""
+    job = export_repo.get_job(session, tenant_id=user.tenant_id, job_id=job_id)
+    if job is None or (
+        job.user_id != user.id and not has_privilege(session, user, Privilege.DATA_MANAGE.value)
+    ):
+        raise HTTPException(status_code=404, detail="export job not found")
+    if job.status in ("cancelled", "cancel_requested"):
+        return ExportJobStatus(id=job.id, status=job.status, resultUrl=None, error=job.error)
+    new_status = export_repo.request_cancel(session, job_id=job_id)
+    if new_status is None:
+        raise HTTPException(status_code=409, detail=f"job is {job.status}, cannot be cancelled")
+    write_audit(
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="export.cancel",
+        object_type="export_job",
+        object_id=job.id,
+        payload={"status": new_status},
+    )
+    session.commit()
+    return ExportJobStatus(id=job.id, status=new_status, resultUrl=None, error=None)

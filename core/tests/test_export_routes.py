@@ -211,7 +211,7 @@ def test_post_export_rejects_invalid_format(env):
     client, _calls = make_client()
     client.app.dependency_overrides[get_current_user] = lambda: owner
     client.app.dependency_overrides[get_current_user_optional] = lambda: owner
-    response = client.post("/v1/export", json={"itemId": item_id, "format": "svg"})
+    response = client.post("/v1/export", json={"itemId": item_id, "format": "gif"})
     assert response.status_code == 422
 
 
@@ -243,3 +243,94 @@ def test_get_export_job_done_status_includes_result_url(env):
     assert body["status"] == "done"
     assert body["error"] is None
     assert body["resultUrl"] == f"https://minio.test/geostudio-exports/renders/{job_id}.png"
+
+
+# ARC-16 : SVG accepté, annulation.
+def _owner_client(env):
+    make_client, owner, stranger, item_id, Session = env
+    client, _calls = make_client()
+    client.app.dependency_overrides[get_current_user] = lambda: owner
+    client.app.dependency_overrides[get_current_user_optional] = lambda: owner
+    return client, item_id, Session, stranger
+
+
+def test_post_export_accepts_svg(env):
+    client, item_id, _S, _x = _owner_client(env)
+    assert client.post("/v1/export", json={"itemId": item_id, "format": "svg"}).status_code == 202
+
+
+def test_cancel_pending_export_is_cancelled_and_never_taken(env):
+    client, item_id, Session, _x = _owner_client(env)
+    job_id = client.post("/v1/export", json={"itemId": item_id, "format": "pdf"}).json()["jobId"]
+    r = client.post(f"/v1/export/jobs/{job_id}/cancel")
+    assert r.status_code == 200 and r.json()["status"] == "cancelled"
+    with Session() as s:
+        assert export_repo.mark_running(s, job_id=job_id) is False
+
+
+def test_cancel_running_export_requests_cancellation_and_is_idempotent(env):
+    client, item_id, Session, _x = _owner_client(env)
+    job_id = client.post("/v1/export", json={"itemId": item_id, "format": "pdf"}).json()["jobId"]
+    with Session() as s:
+        export_repo.mark_running(s, job_id=job_id)
+        s.commit()
+    assert client.post(f"/v1/export/jobs/{job_id}/cancel").json()["status"] == "cancel_requested"
+    assert client.post(f"/v1/export/jobs/{job_id}/cancel").json()["status"] == "cancel_requested"
+    with Session() as s:
+        # un « done » tardif n'écrase pas la demande d'annulation
+        assert export_repo.mark_done(s, job_id=job_id, result_key="k") is False
+
+
+def test_cancel_finished_export_is_409_and_foreign_job_404(env):
+    client, item_id, Session, _x = _owner_client(env)
+    job_id = client.post("/v1/export", json={"itemId": item_id, "format": "png"}).json()["jobId"]
+    with Session() as s:
+        export_repo.mark_done(s, job_id=job_id, result_key="k")
+        s.commit()
+    assert client.post(f"/v1/export/jobs/{job_id}/cancel").status_code == 409
+    assert client.post("/v1/export/jobs/nope/cancel").status_code == 404
+
+
+def _app_with_atlas(Session, owner, atlas):
+    with Session() as s:
+        item = create_item(
+            s, tenant_id=owner.tenant_id, owner_id=owner.id, resource_type="app", title="Atlas"
+        )
+        cfg = {"kind": "app", "layout": {"type": "grid"}}
+        if atlas:
+            cfg["printLayout"] = {
+                "atlas": {
+                    "dataSourceId": "s",
+                    "fields": [{"label": "Nom", "template": "${record.nom}"}],
+                }
+            }
+        configs_repo.create_config(s, BuilderConfig(**cfg), item.id, tenant_id=owner.tenant_id)
+        s.commit()
+        return item.id
+
+
+def test_post_export_atlas_scope_is_stored_and_defaults_max_pages(env):
+    make_client, owner, _stranger, _item_id, Session = env
+    app_id = _app_with_atlas(Session, owner, atlas=True)
+    client, _calls = make_client()
+    client.app.dependency_overrides[get_current_user] = lambda: owner
+    r = client.post("/v1/export", json={"itemId": app_id, "format": "pdf", "atlas": True})
+    assert r.status_code == 202
+    with Session() as s:
+        job = export_repo.get_job(s, tenant_id=owner.tenant_id, job_id=r.json()["jobId"])
+        assert job.scope == "atlas"
+
+
+def test_post_export_atlas_rejected_without_atlas_config_or_non_pdf(env):
+    make_client, owner, _stranger, map_id, Session = env
+    plain = _app_with_atlas(Session, owner, atlas=False)
+    atlas_app = _app_with_atlas(Session, owner, atlas=True)
+    client, calls = make_client()
+    client.app.dependency_overrides[get_current_user] = lambda: owner
+    for body in (
+        {"itemId": plain, "format": "pdf", "atlas": True},
+        {"itemId": map_id, "format": "pdf", "entityId": "1"},
+        {"itemId": atlas_app, "format": "png", "atlas": True},
+    ):
+        assert client.post("/v1/export", json=body).status_code == 422
+    assert calls == []

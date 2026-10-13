@@ -29,6 +29,7 @@ from app.configs.schemas import BuilderConfig
 # en phase manuellement (pas de génération partagée TS/Python), même
 # discipline que l'allowlist QGIS (SP-15d) ou les champs AggregateRequestBody.
 # Pertinent pour mode="static" ET mode="standalone" — cf. docstring.
+_AUTHENTICATED_ONLY_WIDGETS = frozenset({"addressSearch", "analysis"})
 _SUPPORTED_WIDGET_TYPES = frozenset(
     {
         "text",
@@ -55,6 +56,9 @@ _SUPPORTED_WIDGET_TYPES = frozenset(
         "filter",
         "variableInput",
         "timePlayer",
+        # ARC-26 : purement clients (fonds de carte publics), sans appel au cœur.
+        "swipe",
+        "basemapGallery",
     }
 )
 
@@ -153,11 +157,14 @@ def check_export_guard(
                 "(extension tierce, non prise en charge)"
             )
 
-    elif "addressSearch" in _collect_widget_types(config):
-        # /v1/geocode exige un utilisateur authentifié (REV-102) : inutilisable
-        # depuis un export connecté anonyme. (Modes stricts : déjà hors allowlist.)
-        reasons.append(
-            "widget 'addressSearch' non supporté par l'export connecté (géocodage authentifié)"
-        )
+    else:
+        # /v1/geocode (REV-102) et /v1/collections/{id}/analysis (ARC-25) exigent un
+        # utilisateur authentifié : inutilisables depuis un export connecté anonyme.
+        # (Modes stricts : déjà hors allowlist.)
+        for widget_type in sorted(_collect_widget_types(config) & _AUTHENTICATED_ONLY_WIDGETS):
+            reasons.append(
+                f"widget '{widget_type}' non supporté par l'export connecté "
+                "(appel authentifié au cœur)"
+            )
 
     return ExportGuardResult(allowed=not reasons, reasons=reasons)

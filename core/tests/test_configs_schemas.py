@@ -50,3 +50,24 @@ def test_builder_config_accepts_print_layout_on_app_kind():
     )
     assert config.printLayout is not None
     assert config.printLayout.cartouche == "GeoStudio"
+
+
+# ARC-16 : éléments de gabarit et logo en data URI uniquement.
+def test_print_layout_template_elements_default_off_and_round_trip():
+    assert PrintLayout().scaleBar is False and PrintLayout().northArrow is False
+    layout = PrintLayout(
+        scaleBar=True,
+        northArrow=True,
+        freeText="Source : INSEE",
+        logo="data:image/png;base64,iVBORw0KGgo=",
+    )
+    assert PrintLayout.model_validate(layout.model_dump()) == layout
+
+
+@pytest.mark.parametrize(
+    "logo",
+    ["https://evil.test/logo.png", "data:text/html;base64,PGI+", "data:image/png;base64,@@@"],
+)
+def test_print_layout_logo_rejects_urls_and_non_images(logo):
+    with pytest.raises(ValueError):
+        PrintLayout(logo=logo)

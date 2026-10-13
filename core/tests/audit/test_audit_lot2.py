@@ -70,14 +70,12 @@ def test_second_purge_request_while_first_pending_is_rejected(env):  # noqa: F81
     assert len(env["deferred"]) == 1
 
 
-@pytest.mark.xfail(strict=True, reason="REV-audit: terrain3d sans balayage de reprise")
 def test_terrain3d_has_periodic_reclaim():
     import app.terrain3d.jobs as m
 
     assert "periodic" in inspect.getsource(m)
 
 
-@pytest.mark.xfail(strict=True, reason="REV-audit: tileset3d sans balayage de reprise")
 def test_tileset3d_has_periodic_reclaim():
     import app.tileset3d.jobs as m
 

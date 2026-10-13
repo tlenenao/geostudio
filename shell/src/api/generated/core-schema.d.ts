@@ -89,6 +89,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/analysis/tools": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Analysis Tools */
+        get: operations["list_analysis_tools_v1_analysis_tools_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/analytics/sql": {
         parameters: {
             query?: never;
@@ -223,6 +240,40 @@ export interface paths {
         put?: never;
         /** Aggregate Features */
         post: operations["aggregate_features_v1_collections__collection_id__aggregate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/analysis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run Collection Analysis */
+        post: operations["run_collection_analysis_v1_collections__collection_id__analysis_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Collection Changes */
+        get: operations["collection_changes_v1_collections__collection_id__changes_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -443,6 +494,83 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/collections/{collection_id}/items/{fid}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Entity History */
+        get: operations["entity_history_v1_collections__collection_id__items__fid__history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/items/{fid}/history/{version_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Feature Version
+         * @description ARC-15 : ré-applique l'état APRÈS d'une version (écriture normale : droit
+         *     d'écriture, validation, RLS ; journalisée `restore`). Une suppression n'est pas
+         *     restaurable (409) : la PK ne peut pas être ré-imposée.
+         */
+        post: operations["restore_feature_version_v1_collections__collection_id__items__fid__history__version_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/items/{fid}/related/{relation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Related Records */
+        get: operations["related_records_v1_collections__collection_id__items__fid__related__relation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/my-entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My Entries
+         * @description Saisies créées par l'appelant (journal d'entité), les plus récentes d'abord, hors
+         *     enregistrements supprimés depuis.
+         */
+        get: operations["my_entries_v1_collections__collection_id__my_entries_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/collections/{collection_id}/profile": {
         parameters: {
             query?: never;
@@ -456,6 +584,62 @@ export interface paths {
          *     sensibles et mêmes bornes DuckDB que POST /aggregate.
          */
         get: operations["profile_collection_v1_collections__collection_id__profile_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/quality-checks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Quality Checks */
+        get: operations["list_quality_checks_v1_collections__collection_id__quality_checks_get"];
+        put?: never;
+        /** Start Quality Check */
+        post: operations["start_quality_check_v1_collections__collection_id__quality_checks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/quality-checks/{report_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Quality Check */
+        get: operations["get_quality_check_v1_collections__collection_id__quality_checks__report_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/relations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Collection Relations
+         * @description Relations touchant la collection ; celles dont un autre côté est illisible pour
+         *     l'appelant sont omises (il n'en apprend pas l'existence).
+         */
+        get: operations["list_collection_relations_v1_collections__collection_id__relations_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -493,6 +677,113 @@ export interface paths {
         /** Put Sharing */
         put: operations["put_sharing_v1_collections__collection_id__sharing_put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/submission-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Submission Tokens */
+        get: operations["list_submission_tokens_v1_collections__collection_id__submission_tokens_get"];
+        put?: never;
+        /** Create Submission Token */
+        post: operations["create_submission_token_v1_collections__collection_id__submission_tokens_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/submission-tokens/{token_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke Submission Token */
+        delete: operations["revoke_submission_token_v1_collections__collection_id__submission_tokens__token_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/submissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Submissions */
+        get: operations["list_submissions_v1_collections__collection_id__submissions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/submissions/{submission_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Submission
+         * @description Insère la soumission dans la collection par l'écriture normale (droit d'écriture,
+         *     validation, RLS, journal d'entité) ; la ligne d'attente est vidée.
+         */
+        post: operations["approve_submission_v1_collections__collection_id__submissions__submission_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/submissions/{submission_id}/attachment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Submission Attachment */
+        get: operations["read_submission_attachment_v1_collections__collection_id__submissions__submission_id__attachment_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/submissions/{submission_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Submission */
+        post: operations["reject_submission_v1_collections__collection_id__submissions__submission_id__reject_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -892,6 +1183,41 @@ export interface paths {
         /** Create Group */
         post: operations["create_group_v1_groups_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/groups/claim-mappings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Claim Mappings */
+        get: operations["list_claim_mappings_v1_groups_claim_mappings_get"];
+        put?: never;
+        /** Create Claim Mapping */
+        post: operations["create_claim_mapping_v1_groups_claim_mappings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/groups/claim-mappings/{mapping_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Claim Mapping */
+        delete: operations["delete_claim_mapping_v1_groups_claim_mappings__mapping_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1576,6 +1902,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/public/submit/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit */
+        post: operations["submit_v1_public_submit__token__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/relations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Relation */
+        post: operations["create_relation_v1_relations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/relations/{relation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Relation */
+        delete: operations["delete_relation_v1_relations__relation_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/reports/{item_id}/runs": {
         parameters: {
             query?: never;
@@ -1847,6 +2224,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/styles/sld": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Export Sld */
+        post: operations["export_sld_v1_styles_sld_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/uploads": {
         parameters: {
             query?: never;
@@ -2027,6 +2421,23 @@ export interface paths {
         patch: operations["patch_user_v1_users__user_id__patch"];
         trace?: never;
     };
+    "/v1/xlsform/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Xlsform */
+        post: operations["import_xlsform_v1_xlsform_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2165,6 +2576,33 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** AnalysisRequest */
+        AnalysisRequest: {
+            /**
+             * Limit
+             * @default 1000
+             */
+            limit: number;
+            /** Othercollectionid */
+            otherCollectionId?: string | null;
+            /**
+             * Output
+             * @default ephemeral
+             * @enum {string}
+             */
+            output: "ephemeral" | "collection";
+            /** Params */
+            params?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Title
+             * @description Titre de la collection créée (output=collection).
+             */
+            title?: string | null;
+            /** Tool */
+            tool: string;
+        };
         /** ApiKeyCreate */
         ApiKeyCreate: {
             /**
@@ -2235,6 +2673,32 @@ export interface components {
             /** Revokedat */
             revokedAt: string | null;
         };
+        /**
+         * AtlasConfig
+         * @description ARC-30 : atlas = une page PDF par entité de la source `dataSourceId`.
+         *     Les champs sont des gabarits CEL évalués par entité côté shell (rendu par
+         *     le worker d'export). `maxPages` borne le nombre de pages d'un rendu.
+         */
+        AtlasConfig: {
+            /** Datasourceid */
+            dataSourceId: string;
+            /** Fields */
+            fields?: components["schemas"]["AtlasField"][];
+            /**
+             * Maxpages
+             * @default 50
+             */
+            maxPages: number;
+            /** Titletemplate */
+            titleTemplate?: string | null;
+        };
+        /** AtlasField */
+        AtlasField: {
+            /** Label */
+            label: string;
+            /** Template */
+            template: string;
+        };
         /** AttachmentConfirmRequest */
         AttachmentConfirmRequest: {
             /** Contenttype */
@@ -2293,6 +2757,34 @@ export interface components {
             filename: string;
             /** Id */
             id: string;
+        };
+        /**
+         * AttributeRule
+         * @description Règle d'attribut CEL (ARC-14). Les colonnes de la collection sont les variables.
+         */
+        AttributeRule: {
+            /** Expression */
+            expression: string;
+            /** Field */
+            field?: string | null;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "calculation" | "constraint" | "batch";
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+            /**
+             * Mode
+             * @default default
+             * @enum {string}
+             */
+            mode: "default" | "derived";
         };
         /**
          * AzureBlobCredentialsPayload
@@ -2443,6 +2935,29 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** Body_import_xlsform_v1_xlsform_import_post */
+        Body_import_xlsform_v1_xlsform_import_post: {
+            /** File */
+            file: string;
+        };
+        /** Body_submit_v1_public_submit__token__post */
+        Body_submit_v1_public_submit__token__post: {
+            /** Fieldkey */
+            fieldKey?: string | null;
+            /** File */
+            file?: string | null;
+            /**
+             * Payload
+             * @description GeoJSON Feature (JSON)
+             */
+            payload: string;
+            /**
+             * Website
+             * @description honeypot : doit rester vide
+             * @default
+             */
+            website: string;
+        };
         /** Body_upload_thumbnail_v1_items__item_id__thumbnail_post */
         Body_upload_thumbnail_v1_items__item_id__thumbnail_post: {
             /** File */
@@ -2528,6 +3043,22 @@ export interface components {
              */
             version: number;
         };
+        /** ClaimMappingCreate */
+        ClaimMappingCreate: {
+            /** Claimvalue */
+            claimValue: string;
+            /** Groupid */
+            groupId: string;
+        };
+        /** ClaimMappingRead */
+        ClaimMappingRead: {
+            /** Claimvalue */
+            claimValue: string;
+            /** Groupid */
+            groupId: string;
+            /** Id */
+            id: string;
+        };
         /**
          * ClusterConfig
          * @description ARC-01 : regroupement de points (MapLibre `cluster: true`) d'une couche `feature`.
@@ -2574,12 +3105,18 @@ export interface components {
         CollectionPatch: {
             /** Attachmentfields */
             attachmentFields?: components["schemas"]["AttachmentFieldSpec"][] | null;
+            /** Attributerules */
+            attributeRules?: components["schemas"]["AttributeRule"][] | null;
             /** Contact */
             contact?: string | null;
             /** Description */
             description?: string | null;
             /** Editable */
             editable?: boolean | null;
+            /** Fielddomains */
+            fieldDomains?: {
+                [key: string]: components["schemas"]["FieldDomain"];
+            } | null;
             /** Ispublic */
             isPublic?: boolean | null;
             /** Language */
@@ -2590,10 +3127,13 @@ export interface components {
             licenseUri?: string | null;
             /** Lineage */
             lineage?: string | null;
+            /** Owsenabled */
+            owsEnabled?: boolean | null;
             /** Producer */
             producer?: string | null;
             /** Sensitivefields */
             sensitiveFields?: string[] | null;
+            subtypes?: components["schemas"]["Subtypes"] | null;
             /** Temporalend */
             temporalEnd?: string | null;
             /** Temporalstart */
@@ -2940,6 +3480,23 @@ export interface components {
             /** W */
             w: number;
         };
+        /**
+         * FieldDomain
+         * @description ARC-13 : domaine `list` (valeurs admises) ou `range` (bornes incluses).
+         */
+        FieldDomain: {
+            /** Max */
+            max?: number | null;
+            /** Min */
+            min?: number | null;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "list" | "range";
+            /** Values */
+            values?: (string | number)[] | null;
+        };
         /** FrequencyCatalogEntry */
         FrequencyCatalogEntry: {
             /** Id */
@@ -3119,6 +3676,8 @@ export interface components {
         };
         /** IngestionJobCreate */
         IngestionJobCreate: {
+            /** Collectionid */
+            collectionId?: string | null;
             /** Collectiontitle */
             collectionTitle: string;
             /** Filename */
@@ -3151,6 +3710,10 @@ export interface components {
             itemId: string | null;
             /** Itemresourcetype */
             itemResourceType?: string | null;
+            /** Report */
+            report?: {
+                [key: string]: unknown;
+            } | null;
             /** Status */
             status: string;
         };
@@ -3887,8 +4450,18 @@ export interface components {
         };
         /** PrintLayout */
         PrintLayout: {
+            atlas?: components["schemas"]["AtlasConfig"] | null;
             /** Cartouche */
             cartouche?: string | null;
+            /** Freetext */
+            freeText?: string | null;
+            /** Logo */
+            logo?: string | null;
+            /**
+             * Northarrow
+             * @default false
+             */
+            northArrow: boolean;
             /**
              * Orientation
              * @default portrait
@@ -3901,6 +4474,11 @@ export interface components {
              * @enum {string}
              */
             pageSize: "a4" | "a3";
+            /**
+             * Scalebar
+             * @default false
+             */
+            scaleBar: boolean;
             /**
              * Showlegend
              * @default true
@@ -3944,6 +4522,117 @@ export interface components {
         PurgeTriggeredResponse: {
             /** Jobid */
             jobId: string;
+        };
+        /** QualityReportOut */
+        QualityReportOut: {
+            /** Checked */
+            checked: number;
+            /** Collectionid */
+            collectionId: string;
+            /** Createdat */
+            createdAt: string;
+            /** Error */
+            error: string | null;
+            /** Finishedat */
+            finishedAt: string | null;
+            /** Id */
+            id: string;
+            /** Status */
+            status: string;
+            /** Summary */
+            summary: {
+                [key: string]: unknown;
+            } | null;
+            /** Violations */
+            violations: unknown[] | null;
+        };
+        /** RejectBody */
+        RejectBody: {
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+        };
+        /** RelatedRecords */
+        RelatedRecords: {
+            /** Collectionid */
+            collectionId: string;
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "children" | "parents";
+            /** Features */
+            features: {
+                [key: string]: unknown;
+            }[];
+            /** Numbermatched */
+            numberMatched?: number | null;
+            /** Numberreturned */
+            numberReturned: number;
+            relation: components["schemas"]["RelationOut"];
+        };
+        /** RelationCreate */
+        RelationCreate: {
+            /**
+             * Cardinality
+             * @enum {string}
+             */
+            cardinality: "one_to_one" | "one_to_many" | "many_to_many";
+            /** Childcollectionid */
+            childCollectionId: string;
+            /** Childkey */
+            childKey?: string | null;
+            /** Linkchildkey */
+            linkChildKey?: string | null;
+            /** Linkcollectionid */
+            linkCollectionId?: string | null;
+            /** Linkparentkey */
+            linkParentKey?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Ondelete
+             * @default restrict
+             * @enum {string}
+             */
+            onDelete: "restrict" | "cascade";
+            /** Parentcollectionid */
+            parentCollectionId: string;
+            /** Parentkey */
+            parentKey?: string | null;
+        };
+        /** RelationOut */
+        RelationOut: {
+            /**
+             * Cardinality
+             * @enum {string}
+             */
+            cardinality: "one_to_one" | "one_to_many" | "many_to_many";
+            /** Childcollectionid */
+            childCollectionId: string;
+            /** Childkey */
+            childKey: string;
+            /** Id */
+            id: string;
+            /** Linkchildkey */
+            linkChildKey: string | null;
+            /** Linkcollectionid */
+            linkCollectionId: string | null;
+            /** Linkparentkey */
+            linkParentKey: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Ondelete
+             * @enum {string}
+             */
+            onDelete: "restrict" | "cascade";
+            /** Parentcollectionid */
+            parentCollectionId: string;
+            /** Parentkey */
+            parentKey: string;
         };
         /** RenameGroupRequest */
         RenameGroupRequest: {
@@ -4130,6 +4819,26 @@ export interface components {
             /** Public */
             public: boolean;
         };
+        /** SldExportBody */
+        SldExportBody: {
+            /**
+             * Geometrykind
+             * @default polygon
+             * @enum {string}
+             */
+            geometryKind: "point" | "line" | "polygon";
+            /**
+             * Name
+             * @default layer
+             */
+            name: string;
+            /** Symbology */
+            symbology?: {
+                [key: string]: unknown;
+            } | null;
+            /** Title */
+            title?: string | null;
+        };
         /**
          * SmtpCredentialsPayload
          * @description SMTP credentials for AlertRule email delivery (SP-16b §5). Unlike
@@ -4192,6 +4901,32 @@ export interface components {
              */
             status: "none" | "authoritative" | "deprecated";
         };
+        /** SubtypeItem */
+        SubtypeItem: {
+            /** Defaults */
+            defaults?: {
+                [key: string]: unknown;
+            };
+            /** Domains */
+            domains?: {
+                [key: string]: components["schemas"]["FieldDomain"];
+            };
+            /** Label */
+            label: string;
+            /** Value */
+            value: string | number;
+        };
+        /**
+         * Subtypes
+         * @description Sous-types d'une collection : une colonne discriminante, et par valeur des défauts
+         *     et des domaines propres (qui l'emportent sur ceux du champ).
+         */
+        Subtypes: {
+            /** Field */
+            field: string;
+            /** Items */
+            items: components["schemas"]["SubtypeItem"][];
+        };
         /** Terrain3DPayload */
         Terrain3DPayload: {
             /** Originalfilename */
@@ -4209,6 +4944,15 @@ export interface components {
             tilesetJsonPath: string;
             /** Totalbytes */
             totalBytes: number;
+        };
+        /** TokenCreate */
+        TokenCreate: {
+            /** Expiresindays */
+            expiresInDays: number;
+            /** Maxsubmissions */
+            maxSubmissions: number;
+            /** Name */
+            name: string;
         };
         /** TopValue */
         TopValue: {
@@ -4478,6 +5222,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EvaluationStatus"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_analysis_tools_v1_analysis_tools_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -4903,6 +5680,84 @@ export interface operations {
             };
         };
     };
+    run_collection_analysis_v1_collections__collection_id__analysis_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+                "X-Share-Link-Token"?: string | null;
+            };
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnalysisRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    collection_changes_v1_collections__collection_id__changes_get: {
+        parameters: {
+            query: {
+                /** @description ISO 8601 ; renvoie les changements strictement postérieurs */
+                since: string;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string;
+                "X-Share-Link-Token"?: string | null;
+            };
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     export_collection_aggregate_v1_collections__collection_id__export_post: {
         parameters: {
             query: {
@@ -5174,6 +6029,9 @@ export interface operations {
                 datetime_field?: string | null;
                 crs?: string | null;
                 "bbox-crs"?: string | null;
+                filter?: string | null;
+                "filter-lang"?: string | null;
+                "filter-crs"?: string | null;
             };
             header?: {
                 authorization?: string;
@@ -5540,6 +6398,152 @@ export interface operations {
             };
         };
     };
+    entity_history_v1_collections__collection_id__items__fid__history_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+                "X-Share-Link-Token"?: string | null;
+            };
+            path: {
+                collection_id: string;
+                fid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_feature_version_v1_collections__collection_id__items__fid__history__version_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+                "X-Share-Link-Token"?: string | null;
+            };
+            path: {
+                collection_id: string;
+                fid: string;
+                version_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    related_records_v1_collections__collection_id__items__fid__related__relation_id__get: {
+        parameters: {
+            query?: {
+                /** @description children | parents (auto sauf auto-relation) */
+                direction?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                authorization?: string;
+                "X-Share-Link-Token"?: string | null;
+            };
+            path: {
+                collection_id: string;
+                fid: string;
+                relation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelatedRecords"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_entries_v1_collections__collection_id__my_entries_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: {
+                authorization?: string;
+                "X-Share-Link-Token"?: string | null;
+            };
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     profile_collection_v1_collections__collection_id__profile_get: {
         parameters: {
             query?: never;
@@ -5561,6 +6565,144 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CollectionProfileResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_quality_checks_v1_collections__collection_id__quality_checks_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: {
+                authorization?: string;
+                "X-Share-Link-Token"?: string | null;
+            };
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualityReportOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_quality_check_v1_collections__collection_id__quality_checks_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+                "X-Share-Link-Token"?: string | null;
+            };
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualityReportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_quality_check_v1_collections__collection_id__quality_checks__report_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+                "X-Share-Link-Token"?: string | null;
+            };
+            path: {
+                collection_id: string;
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualityReportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_collection_relations_v1_collections__collection_id__relations_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelationOut"][];
                 };
             };
             /** @description Validation Error */
@@ -5678,9 +6820,259 @@ export interface operations {
             };
         };
     };
-    get_collection_tile_v1_collections__collection_id__tiles__z___x___y__mvt_get: {
+    list_submission_tokens_v1_collections__collection_id__submission_tokens_get: {
         parameters: {
             query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_submission_token_v1_collections__collection_id__submission_tokens_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TokenCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_submission_token_v1_collections__collection_id__submission_tokens__token_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                collection_id: string;
+                token_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_submissions_v1_collections__collection_id__submissions_get: {
+        parameters: {
+            query?: {
+                status?: string;
+            };
+            header?: {
+                authorization?: string;
+                "X-Share-Link-Token"?: string | null;
+            };
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_submission_v1_collections__collection_id__submissions__submission_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+                "X-Share-Link-Token"?: string | null;
+            };
+            path: {
+                collection_id: string;
+                submission_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_submission_attachment_v1_collections__collection_id__submissions__submission_id__attachment_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+                "X-Share-Link-Token"?: string | null;
+            };
+            path: {
+                collection_id: string;
+                submission_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_submission_v1_collections__collection_id__submissions__submission_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+                "X-Share-Link-Token"?: string | null;
+            };
+            path: {
+                collection_id: string;
+                submission_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_collection_tile_v1_collections__collection_id__tiles__z___x___y__mvt_get: {
+        parameters: {
+            query?: {
+                bin?: ("square" | "hex") | null;
+                stat?: "count" | "sum" | "avg";
+                field?: string | null;
+                bins?: number;
+            };
             header?: {
                 authorization?: string;
                 "X-Share-Link-Token"?: string | null;
@@ -6694,6 +8086,103 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["GroupRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_claim_mappings_v1_groups_claim_mappings_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaimMappingRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_claim_mapping_v1_groups_claim_mappings_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaimMappingCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaimMappingRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_claim_mapping_v1_groups_claim_mappings__mapping_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                mapping_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -8346,6 +9835,107 @@ export interface operations {
             };
         };
     };
+    submit_v1_public_submit__token__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_submit_v1_public_submit__token__post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_relation_v1_relations_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RelationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_relation_v1_relations__relation_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                relation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_report_runs_route_v1_reports__item_id__runs_get: {
         parameters: {
             query?: {
@@ -9002,6 +10592,41 @@ export interface operations {
             };
         };
     };
+    export_sld_v1_styles_sld_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SldExportBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.ogc.sld+xml": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_upload_job_v1_uploads_post: {
         parameters: {
             query?: never;
@@ -9344,6 +10969,41 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_xlsform_v1_xlsform_import_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_xlsform_v1_xlsform_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

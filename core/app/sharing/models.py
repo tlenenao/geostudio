@@ -32,6 +32,30 @@ class GroupMember(Base):
     )
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
+    # ARC-24 (ADR 0022) : "manual" (ajout humain, jamais retiré par la synchro) ou
+    # "claim" (alimentée par le mapping claims→groupes, retirée au login suivant
+    # quand le claim disparaît).
+    origin: Mapped[str] = mapped_column(
+        String, nullable=False, default="manual", server_default="manual"
+    )
+
+
+class GroupClaimMapping(Base):
+    """Mapping administré `valeur de claim IdP → groupe du cœur` (ARC-24, ADR 0022).
+    Sa seule existence vaut opt-in du groupe : un groupe sans mapping n'est jamais
+    alimenté par l'IdP."""
+
+    __tablename__ = "group_claim_mappings"
+    __table_args__ = (UniqueConstraint("tenant_id", "claim_value", "group_id", name="uq_gcm"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
+    group_id: Mapped[str] = mapped_column(
+        ForeignKey("groups.id", ondelete="CASCADE"), nullable=False
+    )
+    claim_value: Mapped[str] = mapped_column(String, nullable=False)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
 _ROLE_CHECK = "role IN ('viewer', 'editor', 'manager')"

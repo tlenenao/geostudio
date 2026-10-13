@@ -12,6 +12,7 @@ import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { CollectionSharePanel } from "../shell/CollectionSharePanel";
 import { EditCollectionPanel } from "../shell/EditCollectionPanel";
 import { RegisterCollectionPanel } from "../shell/RegisterCollectionPanel";
+import { SubmissionsPanel } from "../shell/SubmissionsPanel";
 import { SettingsNav } from "../shell/chrome/SettingsNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
@@ -42,10 +43,12 @@ export function CollectionsAdminPage() {
   const [registering, setRegistering] = useState(false);
   const [editing, setEditing] = useState<CollectionAdmin | null>(null);
   const [sharing, setSharing] = useState<CollectionAdmin | null>(null);
+  const [moderating, setModerating] = useState<CollectionAdmin | null>(null);
   const [deleting, setDeleting] = useState<CollectionAdmin | null>(null);
   const registerPanel = usePanelTrigger(registering);
   const editPanel = usePanelTrigger(editing !== null);
   const sharingPanel = usePanelTrigger(sharing !== null);
+  const moderationPanel = usePanelTrigger(moderating !== null);
   const [sortKey, setSortKey] = useState<string | undefined>(undefined);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
@@ -267,6 +270,23 @@ export function CollectionsAdminPage() {
                                   {t("actions.share")}
                                 </Button>
                               </Gate>
+                              <Gate on={col} can="write">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  aria-controls={moderationPanel.panelId}
+                                  aria-expanded={moderating?.id === col.id}
+                                  onClick={() => {
+                                    setRegistering(false);
+                                    setEditing(null);
+                                    setSharing(null);
+                                    setModerating(col);
+                                  }}
+                                >
+                                  {t("collectionsAdmin.submissions")}
+                                </Button>
+                              </Gate>
                               <Button
                                 type="button"
                                 variant="outline"
@@ -326,6 +346,15 @@ export function CollectionsAdminPage() {
                     key={editing.id}
                     collection={editing}
                     onClose={() => setEditing(null)}
+                  />
+                </div>
+              )}
+              {moderating && (
+                <div id={moderationPanel.panelId}>
+                  <SubmissionsPanel
+                    key={moderating.id}
+                    collectionId={moderating.id}
+                    onClose={() => setModerating(null)}
                   />
                 </div>
               )}

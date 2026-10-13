@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -9,6 +12,7 @@ from app.db import get_session
 from app.roles.guards import has_privilege, require_privilege, require_sharing_privilege
 from app.roles.privileges import Privilege
 from app.sharing import repository as repo
+from app.sharing.models import Group, GroupClaimMapping
 from app.users.models import User
 
 router = APIRouter()
@@ -217,5 +221,107 @@ def delete_group(
         object_type="group",
         object_id=group_id,
         payload={},
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --- ARC-24 (ADR 0022) : mapping claim IdP -> groupe du coeur -------------------
+
+
+class ClaimMappingRead(BaseModel):
+    id: str
+    groupId: str
+    claimValue: str
+
+
+class ClaimMappingCreate(BaseModel):
+    groupId: str
+    claimValue: str = Field(min_length=1, max_length=256)
+
+
+def _require_mapping_admin(session: Session, user: User) -> None:
+    require_privilege(session, user, Privilege.ADMIN_USERS_MANAGE.value)
+
+
+@router.get("/groups/claim-mappings", response_model=list[ClaimMappingRead])
+def list_claim_mappings(
+    session: Session = Depends(get_session, scope="function"),
+    user: User = Depends(get_current_user),
+) -> list[ClaimMappingRead]:
+    _require_mapping_admin(session, user)
+    return [
+        ClaimMappingRead(id=m.id, groupId=m.group_id, claimValue=m.claim_value)
+        for m in session.scalars(
+            select(GroupClaimMapping)
+            .where(GroupClaimMapping.tenant_id == user.tenant_id)
+            .order_by(GroupClaimMapping.claim_value, GroupClaimMapping.id)
+        )
+    ]
+
+
+@router.post(
+    "/groups/claim-mappings", response_model=ClaimMappingRead, status_code=status.HTTP_201_CREATED
+)
+def create_claim_mapping(
+    body: ClaimMappingCreate,
+    session: Session = Depends(get_session, scope="function"),
+    user: User = Depends(get_current_user),
+) -> ClaimMappingRead:
+    _require_mapping_admin(session, user)
+    group = session.get(Group, body.groupId)
+    if group is None or group.tenant_id != user.tenant_id:
+        raise HTTPException(status_code=404, detail="group not found")
+    existing = session.scalar(
+        select(GroupClaimMapping).where(
+            GroupClaimMapping.tenant_id == user.tenant_id,
+            GroupClaimMapping.group_id == body.groupId,
+            GroupClaimMapping.claim_value == body.claimValue,
+        )
+    )
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="mapping already exists")
+    m = GroupClaimMapping(
+        id=uuid.uuid4().hex,
+        tenant_id=user.tenant_id,
+        group_id=body.groupId,
+        claim_value=body.claimValue,
+        created_by=user.id,
+    )
+    session.add(m)
+    session.flush()
+    write_audit(
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="group.claim_mapping.create",
+        object_type="group",
+        object_id=body.groupId,
+        payload={"claimValue": body.claimValue},
+    )
+    return ClaimMappingRead(id=m.id, groupId=m.group_id, claimValue=m.claim_value)
+
+
+@router.delete("/groups/claim-mappings/{mapping_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_claim_mapping(
+    mapping_id: str,
+    session: Session = Depends(get_session, scope="function"),
+    user: User = Depends(get_current_user),
+) -> Response:
+    _require_mapping_admin(session, user)
+    m = session.get(GroupClaimMapping, mapping_id)
+    if m is None or m.tenant_id != user.tenant_id:
+        raise HTTPException(status_code=404, detail="mapping not found")
+    session.delete(m)
+    session.flush()
+    write_audit(
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="group.claim_mapping.delete",
+        object_type="group",
+        object_id=m.group_id,
+        payload={"claimValue": m.claim_value},
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)

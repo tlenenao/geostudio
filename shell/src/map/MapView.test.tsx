@@ -17,7 +17,10 @@ import { validateStyleMin } from "@maplibre/maplibre-gl-style-spec";
 
 vi.mock("maplibre-gl", async () => {
   const { MockMap } = await import("../test/MockMaplibreMap");
-  return { Map: MockMap, setWorkerUrl: () => {} };
+  class ScaleControl {
+    constructor(public opts: unknown) {}
+  }
+  return { Map: MockMap, ScaleControl, setWorkerUrl: () => {} };
 });
 
 vi.mock("@deck.gl/mapbox", async () => {
@@ -67,6 +70,19 @@ test("initializes a MapLibre map with the basemap and view", () => {
   expect(mapInstances[0].opts.style).toBe("https://demotiles.maplibre.org/style.json");
   expect(mapInstances[0].opts.center).toEqual([2.35, 48.85]);
   expect(mapInstances[0].opts.zoom).toBe(5);
+});
+
+test("ARC-16 : monte une échelle graphique seulement avec showScaleBar", () => {
+  const scaleControls = () =>
+    (mapInstances[0].controls as { opts?: unknown }[]).filter(
+      (c) => c.constructor.name === "ScaleControl",
+    );
+  const { unmount } = render(<MapView config={config} />);
+  expect(scaleControls()).toHaveLength(0);
+  unmount();
+  mapInstances.length = 0;
+  render(<MapView config={config} showScaleBar />);
+  expect(scaleControls()).toHaveLength(1);
 });
 
 test("removes the map on unmount", () => {
@@ -2606,4 +2622,75 @@ test("a vector layer without timeField is left alone by timeRange", () => {
   render(<MapView config={cfg} timeRange={{ from: "2024-01-01", to: "2024-01-07" }} />);
   const layer = mapInstances[0].getLayer("communes") as { filter?: unknown };
   expect(JSON.stringify(layer.filter)).not.toContain("2024-01-01");
+});
+
+// ARC-17 : effets (couches « dessous ») et Dot Density.
+test("effets : ombre et halo posés avant la couche principale, sans handler de clic", () => {
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "point",
+        popup: { titleField: "nom" },
+        symbology: { effects: { shadow: true, bloom: true } },
+      })}
+    />,
+  );
+  const map = mapInstances[0];
+  expect(map.getLayer("communes__fx_shadow")).toMatchObject({ type: "circle", source: "communes" });
+  expect(map.getLayer("communes__fx_bloom")).toMatchObject({
+    type: "circle",
+    paint: { "circle-blur": 1 },
+  });
+  expect(map.layerHandlers["click:communes__fx_bloom"] ?? []).toHaveLength(0);
+});
+
+test("effets : retirer la couche retire aussi ses couches d'effet", () => {
+  const { rerender } = render(
+    <MapView
+      config={tiled({ geometryKind: "polygon", symbology: { effects: { blend: true } } })}
+    />,
+  );
+  expect(mapInstances[0].getLayer("communes__fx_blend")).toBeDefined();
+  rerender(<MapView config={config} />);
+  expect(mapInstances[0].getLayer("communes__fx_blend")).toBeUndefined();
+  expect(mapInstances[0].getSource("communes")).toBeUndefined();
+});
+
+test("Dot Density : idle génère les points dans la source dédiée", async () => {
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "polygon",
+        pkColumn: "code",
+        symbology: {
+          advanced: { kind: "dotDensity", field: "pop", valuePerDot: 10, color: "#112233" },
+        },
+      })}
+    />,
+  );
+  const map = mapInstances[0];
+  expect(map.getLayer("communes__dots")).toMatchObject({ type: "circle" });
+  map.sourceFeatures["communes"] = [
+    {
+      id: 1,
+      properties: { pop: 50 },
+      geometry: {
+        type: "Polygon",
+        coordinates: [
+          [
+            [0, 0],
+            [1, 0],
+            [1, 1],
+            [0, 1],
+            [0, 0],
+          ],
+        ],
+      },
+    },
+  ];
+  act(() => map.fire("idle"));
+  await vi.waitFor(() => {
+    const src = map.getSource("communes__dotsrc") as { spec: { data?: { features: unknown[] } } };
+    expect(src.spec.data?.features).toHaveLength(5);
+  });
 });

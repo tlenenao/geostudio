@@ -129,7 +129,7 @@ def test_render_export_task_marks_done_on_success(db_session, monkeypatch):
     )
     session.commit()
 
-    monkeypatch.setattr(export_jobs, "_launch_and_navigate", lambda url: _FakePage())
+    monkeypatch.setattr(export_jobs, "_launch_and_navigate", lambda url, **kw: _FakePage())
     uploaded = {}
     calls = []
 
@@ -211,7 +211,7 @@ def test_render_export_task_marks_error_never_zombie_on_navigation_failure(db_se
     )
     session.commit()
 
-    def _boom(url):
+    def _boom(url, **kw):
         raise RuntimeError("navigation timeout")
 
     monkeypatch.setattr(export_jobs, "_launch_and_navigate", _boom)
@@ -234,7 +234,7 @@ def test_render_export_task_builds_url_with_page_id_and_ctx(db_session, monkeypa
     session, tenant, user, item = db_session
     captured_urls = []
 
-    def fake_launch_and_navigate(url):
+    def fake_launch_and_navigate(url, **kw):
         captured_urls.append(url)
         return _FakePage()
 
@@ -276,7 +276,7 @@ def test_render_export_task_url_unchanged_when_page_id_and_ctx_absent(db_session
     monkeypatch.setattr(
         export_jobs,
         "_launch_and_navigate",
-        lambda url: captured_urls.append(url) or _FakePage(),
+        lambda url, **kw: captured_urls.append(url) or _FakePage(),
     )
     monkeypatch.setattr(export_jobs, "s3_client_from_env", lambda: _FakeUploadS3Client())
     job = export_repo.create_job(
@@ -418,7 +418,7 @@ def test_success_writes_a_notification_for_the_requester(db_session, monkeypatch
         session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png"
     )
     session.commit()
-    monkeypatch.setattr(export_jobs, "_launch_and_navigate", lambda url: _FakePage())
+    monkeypatch.setattr(export_jobs, "_launch_and_navigate", lambda url, **kw: _FakePage())
     monkeypatch.setattr(export_jobs, "s3_client_from_env", lambda: _FakeUploadS3Client())
 
     export_jobs.render_export_task(job_id=job.id, tenant_id=tenant.id)
@@ -439,7 +439,7 @@ def test_failure_writes_a_notification(db_session, monkeypatch):
     )
     session.commit()
 
-    def _boom(url):
+    def _boom(url, **kw):
         raise RuntimeError("navigation timeout")
 
     monkeypatch.setattr(export_jobs, "_launch_and_navigate", _boom)
@@ -472,7 +472,7 @@ def test_report_triggered_export_does_not_write_an_export_notification(db_sessio
         page_id="page-1",
     )
     session.commit()
-    monkeypatch.setattr(export_jobs, "_launch_and_navigate", lambda url: _FakePage())
+    monkeypatch.setattr(export_jobs, "_launch_and_navigate", lambda url, **kw: _FakePage())
     monkeypatch.setattr(export_jobs, "s3_client_from_env", lambda: _FakeUploadS3Client())
 
     export_jobs.render_export_task(job_id=job.id, tenant_id=tenant.id)
@@ -493,7 +493,7 @@ def test_notification_write_failure_does_not_affect_job_status(db_session, monke
         session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png"
     )
     session.commit()
-    monkeypatch.setattr(export_jobs, "_launch_and_navigate", lambda url: _FakePage())
+    monkeypatch.setattr(export_jobs, "_launch_and_navigate", lambda url, **kw: _FakePage())
     monkeypatch.setattr(export_jobs, "s3_client_from_env", lambda: _FakeUploadS3Client())
 
     def _boom(session, **kwargs):
@@ -606,3 +606,152 @@ def test_render_export_task_fails_fast_when_core_unreachable(db_session, monkeyp
     refreshed = export_repo.get_job(session, tenant_id=tenant.id, job_id=job.id)
     assert refreshed.status == "error"
     assert "pas joignable depuis export-worker" in refreshed.error
+
+
+# ARC-16 : annulation, viewport à la taille de la feuille, budget de 120 s.
+def _job(db_session, fmt="pdf"):
+    session, tenant, user, item = db_session
+    job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format=fmt
+    )
+    session.commit()
+    return job
+
+
+def _status(db_session, job):
+    session, tenant, _u, _i = db_session
+    session.expire_all()
+    return export_repo.get_job(session, tenant_id=tenant.id, job_id=job.id).status
+
+
+def test_cancel_requested_before_launch_never_starts_chromium(db_session, monkeypatch):
+    session, tenant, _u, _i = db_session
+    job = _job(db_session)
+    launched = []
+    monkeypatch.setattr(
+        export_jobs, "_launch_and_navigate", lambda url, **kw: launched.append(url) or _FakePage()
+    )
+    # annulation demandée juste après mark_running
+    real = export_repo.mark_running
+
+    def mark_then_cancel(s, *, job_id):
+        ok = real(s, job_id=job_id)
+        export_repo.request_cancel(s, job_id=job_id)
+        return ok
+
+    monkeypatch.setattr(export_repo, "mark_running", mark_then_cancel)
+    export_jobs.render_export_task(job_id=job.id, tenant_id=tenant.id)
+    assert launched == []
+    assert _status(db_session, job) == "cancelled"
+
+
+def test_cancel_requested_during_render_skips_the_upload(db_session, monkeypatch):
+    session, tenant, _u, _i = db_session
+    job = _job(db_session)
+
+    class _CancellingPage(_FakePage):
+        def pdf(self, **kwargs):
+            with export_jobs.request_scoped_session(export_jobs.session_factory()) as s:
+                export_repo.request_cancel(s, job_id=job.id)
+            return b"PDFDATA"
+
+    uploads = []
+
+    class _S3(_FakeUploadS3Client):
+        def put_object(self, **kw):
+            uploads.append(kw)
+
+    monkeypatch.setattr(export_jobs, "_launch_and_navigate", lambda url, **kw: _CancellingPage())
+    monkeypatch.setattr(export_jobs, "s3_client_from_env", lambda: _S3())
+    export_jobs.render_export_task(job_id=job.id, tenant_id=tenant.id)
+    assert uploads == []
+    assert _status(db_session, job) == "cancelled"
+
+
+def test_render_viewport_matches_the_sheet(db_session, monkeypatch):
+    session, tenant, user, _item = db_session
+    item = create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="map", title="A3"
+    )
+    configs_repo.create_config(
+        session,
+        BuilderConfig(
+            kind="map",
+            map={
+                "basemap": {"style": "https://x.test/s.json"},
+                "view": {"center": [0.0, 0.0], "zoom": 2.0},
+            },
+            printLayout={"pageSize": "a3", "orientation": "landscape"},
+        ),
+        item.id,
+        tenant_id=tenant.id,
+    )
+    job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png"
+    )
+    session.commit()
+    seen = {}
+    monkeypatch.setattr(
+        export_jobs,
+        "_launch_and_navigate",
+        lambda url, viewport=None: seen.update(viewport=viewport) or _FakePage(),
+    )
+    monkeypatch.setattr(export_jobs, "s3_client_from_env", lambda: _FakeUploadS3Client())
+    export_jobs.render_export_task(job_id=job.id, tenant_id=tenant.id)
+    assert seen["viewport"] == (1587, 1123)
+
+
+def test_launch_and_navigate_shares_one_120s_budget(monkeypatch):
+    calls = {}
+
+    class _Page:
+        context = None
+
+        def goto(self, url, wait_until, timeout):
+            calls["goto"] = timeout
+
+        def wait_for_selector(self, sel, timeout, state):
+            calls["wait"] = timeout
+
+        def set_default_timeout(self, ms):
+            calls["default"] = ms
+
+    class _Browser:
+        def new_page(self, **kw):
+            calls["viewport"] = kw.get("viewport")
+            return _Page()
+
+    class _Chromium:
+        def launch(self, headless):
+            return _Browser()
+
+    class _Driver:
+        chromium = _Chromium()
+
+    class _CM:
+        def start(self):
+            return _Driver()
+
+    monkeypatch.setattr("playwright.sync_api.sync_playwright", lambda: _CM())
+    export_jobs._launch_and_navigate("http://shell.test/maps/x", (1587, 1123))
+    assert calls["viewport"] == {"width": 1587, "height": 1123}
+    assert calls["goto"] <= 120_000 and calls["wait"] <= 120_000 and calls["default"] <= 120_000
+    assert calls["goto"] >= calls["wait"] >= calls["default"] > 100_000
+
+
+@pytest.mark.parametrize(
+    ("scope", "suffix"), [("atlas", "&atlas=1"), ("entity:a b", "&entityId=a%20b")]
+)
+def test_render_export_task_appends_atlas_scope(db_session, monkeypatch, scope, suffix):
+    session, tenant, user, item = db_session
+    urls = []
+    monkeypatch.setattr(
+        export_jobs, "_launch_and_navigate", lambda url, **kw: urls.append(url) or _FakePage()
+    )
+    monkeypatch.setattr(export_jobs, "s3_client_from_env", lambda: _FakeUploadS3Client())
+    job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="pdf", scope=scope
+    )
+    session.commit()
+    export_jobs.render_export_task(job_id=job.id, tenant_id=tenant.id)
+    assert urls[0].endswith(suffix)

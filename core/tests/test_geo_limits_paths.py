@@ -131,6 +131,9 @@ _RAW_TABLE_READS = {
     "collections/routes.py": 1,  # compteur physique à l'enregistrement, hors scope utilisateur
     "collections/ddl.py": 1,  # contrôle de tenant à l'enregistrement (DDL, hors scope utilisateur)
     "cdc/backfill.py": 1,  # lac CDC, système
+    # ARC-21 : contrôles d'intégrité (restrict/cascade/1-1) au rang propriétaire, tenant explicite ;
+    # ne renvoient jamais de ligne ni de géométrie à l'appelant (valeurs de clé internes seulement)
+    "relations/service.py": 3,
 }
 
 

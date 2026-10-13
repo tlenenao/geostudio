@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import JSON, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -32,5 +32,9 @@ class IngestionJob(Base):
     error_message: Mapped[str | None] = mapped_column(String, nullable=True)
     collection_id: Mapped[str | None] = mapped_column(String, nullable=True)
     item_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    # ARC-13 : import dans une collection existante (None = crée une collection) et son
+    # rapport {inserted, rejectedCount, rejected[], ignoredColumns}.
+    target_collection_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    report: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)

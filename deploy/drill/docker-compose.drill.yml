@@ -1,0 +1,36 @@
+# Surcouche du drill de restauration (ARC-19, scripts/replay/drill.sh).
+# Appliquée par-dessus docker-compose.yml sous un projet dédié (`-p arc1-drill`) :
+# ports décalés de DRILL_PORT_OFFSET pour cohabiter avec une stack de référence,
+# URLs OIDC recalculées, titiler retiré (inutile au drill, -700 Mo).
+# Les variables DRILL_* viennent du --env-file généré par le script.
+services:
+  minio:
+    ports: !override
+      - "${DRILL_MINIO_PORT}:9000"
+      - "${DRILL_MINIO_CONSOLE_PORT}:9001"
+  keycloak:
+    ports: !override
+      - "${DRILL_KC_PORT}:8080"
+    volumes: !override
+      - keycloak-data:/opt/keycloak/data
+      - ${DRILL_REALM_FILE}:/opt/keycloak/data/import/geostudio-realm.json:ro
+  core:
+    # Isolation : aucun Traefik dans ce projet, mais celui d'une stack de référence lit le même
+    # docker.sock et fusionnerait nos routeurs homonymes (core, shell) avec les siens.
+    labels:
+      traefik.enable: "false"
+    ports: !override
+      - "${DRILL_CORE_PORT}:8200"
+    depends_on: !override
+      pgbouncer:
+        condition: service_started
+      minio:
+        condition: service_started
+  shell:
+    labels:
+      traefik.enable: "false"
+    ports: !override
+      - "${DRILL_SHELL_PORT}:8300"
+    environment:
+      VITE_OIDC_AUTHORITY: ${CORE_OIDC_ISSUER}
+      VITE_OIDC_REDIRECT_URI: http://localhost:${DRILL_SHELL_PORT}/

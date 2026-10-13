@@ -2,6 +2,16 @@
 import { colorsForClasses, resolvePalette } from "./palette";
 import type { PaletteId, ResolvedPalette } from "./palette";
 import type { DataRecord, ThemeColors } from "../../api/types";
+import {
+  DOT_BASE_FILL,
+  advancedColorExpression,
+  advancedLegend,
+  type AdvancedLegend,
+  type AdvancedSymbology,
+  type LayerEffects,
+} from "./advancedSymbology";
+
+export type { AdvancedSymbology, LayerEffects };
 
 export type GeometryKind = "point" | "line" | "polygon";
 
@@ -114,6 +124,9 @@ export type LayerSymbology = {
   opacity?: number; // 0-100
   icon?: LayerIcon;
   label?: LayerLabel;
+  // ARC-17 : mode avancé (remplace la couleur de remplissage) et effets.
+  advanced?: AdvancedSymbology;
+  effects?: LayerEffects;
 };
 
 export type MapPaintResult = {
@@ -131,6 +144,8 @@ export type MapPaintResult = {
   iconImages: string[];
   // Layout de la couche `symbol` appariée (Task 7/7). Absent sans icône.
   iconLayout?: Record<string, unknown>;
+  // ARC-17 Dot Density : points générés côté client (source `__dotsrc`).
+  dots?: { field: string; valuePerDot: number; color: string };
 };
 
 export type LegendSpec = {
@@ -164,6 +179,7 @@ export type LegendSpec = {
         colorHigh: string;
       };
   icon?: { field: string; entries: { value: string; imageId: string }[] };
+  advanced?: AdvancedLegend;
 };
 
 // gs-raw-color-ok-begin: palette catégorielle et rampe numérique par défaut de la symbologie (SP-25)
@@ -472,7 +488,22 @@ export type PaintExtras = {
   stroke?: StrokePaintInput;
   opacity?: number; // 0-100
   icon?: LayerIcon;
+  advanced?: AdvancedSymbology;
 };
+
+// Un seul endroit qui projette une symbologie sur les extras de rendu — la
+// couche, la légende de l'éditeur et celle du widget l'appellent.
+export function paintExtrasOf(
+  symbology: LayerSymbology | undefined,
+  stroke: StrokePaintInput | undefined,
+): PaintExtras {
+  return {
+    stroke,
+    opacity: symbology?.opacity,
+    icon: symbology?.icon,
+    advanced: symbology?.advanced,
+  };
+}
 
 export function buildMapPaint(
   encodings: MapEncodings | undefined,
@@ -505,6 +536,18 @@ export function buildMapPaint(
             sizeDomain.max,
             SIZE_RADIUS_MAX,
           ];
+  }
+
+  const adv = extras?.advanced;
+  if (adv?.kind === "dotDensity") {
+    if (geometryKind === "polygon" && adv.field && adv.valuePerDot > 0) {
+      paint["fill-color"] = DOT_BASE_FILL.color;
+      paint["fill-opacity"] = DOT_BASE_FILL.opacity;
+      result.dots = { field: adv.field, valuePerDot: adv.valuePerDot, color: adv.color };
+    }
+  } else if (adv) {
+    const expr = advancedColorExpression(adv, CATEGORICAL_PALETTE);
+    if (expr !== undefined) paint[colorPaintProperty(renderAs)] = expr;
   }
 
   const stroke = extras?.stroke;
@@ -717,7 +760,15 @@ export function buildLegend(
     }
   }
 
-  return legend.color || legend.size || legend.stroke || legend.icon ? legend : null;
+  if (extras?.advanced) {
+    const adv = advancedLegend(extras.advanced, CATEGORICAL_PALETTE);
+    // Dot Density : légende seulement là où des points sont réellement posés.
+    if (adv && (adv.kind !== "dotDensity" || geometryKind === "polygon")) legend.advanced = adv;
+  }
+
+  return legend.color || legend.size || legend.stroke || legend.icon || legend.advanced
+    ? legend
+    : null;
 }
 
 // Adaptateur pur : `LayerSymbology` est l'enveloppe de stockage/édition

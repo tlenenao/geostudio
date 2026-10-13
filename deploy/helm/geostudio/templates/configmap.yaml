@@ -1,0 +1,14 @@
+{{- $cfg := deepCopy .Values.config -}}
+{{- $fn := include "geostudio.fullname" . -}}
+{{- if not $cfg.SHELL_BASE_URL }}{{- $_ := set $cfg "SHELL_BASE_URL" (printf "http://%s-shell:8300" $fn) }}{{- end }}
+{{- if and .Values.observability.enabled (not $cfg.OTEL_EXPORTER_OTLP_ENDPOINT) }}{{- $_ := set $cfg "OTEL_EXPORTER_OTLP_ENDPOINT" (printf "http://%s-otel-lgtm:4318" $fn) }}{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fn }}-config
+  labels:
+    {{- include "geostudio.labels" . | nindent 4 }}
+data:
+  {{- range $k, $v := $cfg }}
+  {{ $k }}: {{ $v | toString | quote }}
+  {{- end }}

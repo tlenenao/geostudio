@@ -1,0 +1,53 @@
+name: Restore drill
+
+# ARC-19 : drill de restauration hebdomadaire sur stack JETABLE (runner éphémère,
+# projet compose dédié) — sauvegarde réelle -> `down -v` -> restore.sh -> reconnexion
+# OIDC réelle. Jamais sur une base de référence : `scripts/replay/drill.sh` refuse le
+# projet `geostudio` et génère son propre .env. Échoue si un bucket sauvegardé ou le
+# realm manque, si la sonde de fraîcheur est périmée, ou si le RTO dépasse le plafond.
+on:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: restore-drill
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  drill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/docker-mirror
+        with:
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: shell
+      - run: npx playwright install --with-deps chromium
+        working-directory: shell
+      - name: Drill (sauvegarde -> down -v -> restauration -> fumée OIDC)
+        env:
+          DRILL_RTO_MAX_S: "900"
+        run: scripts/replay/drill.sh
+      - name: Temps de restauration publié
+        if: always()
+        run: cat .replay-results/drill/result.json || true
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: restore-drill-result
+          path: .replay-results/drill/result.json
+          if-no-files-found: warn
+      - name: Journaux des services en cas d'échec
+        if: failure()
+        run: docker ps -a && for c in $(docker ps -aq --filter label=com.docker.compose.project=arc1-drill); do docker logs --tail=80 "$c" 2>&1 | sed "s/^/[$c] /"; done

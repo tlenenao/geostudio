@@ -140,6 +140,7 @@ dependencies = [
     "procrastinate>=2.0",
     "pyogrio>=0.9",
     "pyproj>=3.6",
+    "pillow>=10",  # ARC-20 : raster PNG du renderer WMS/WMTS interne (ADR 0020), licence HPND
     "rasterio>=1.3",  # terrain3d : lecture/écriture GeoTIFF (GDAL embarqué
                       # dans la wheel, pas de dépendance système séparée à
                       # installer) ; wheel comparable en poids à pyogrio,
@@ -184,6 +185,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.2",
+    "xmlschema>=3.0",  # ARC-28 : validation XSD des SLD exportés (schémas OGC vendus hors-ligne), dep de test
     "import-linter>=2.0",
     "pip-audit>=2.7",
     "stac-pydantic>=3.1",  # SP-12a : validation de conformité STAC, offline, dep de test uniquement
@@ -316,6 +318,9 @@ name = "layered architecture"
 type = "layers"
 layers = [
     "app.main",
+    # app.xlsform (ARC-27) : import XLSForm + « mes saisies » ; compose l'App de collecte avec
+    # app.mcp.form_app (d'où sa place au-dessus d'app.mcp).
+    "app.xlsform",
     "app.mcp",
     "app.copilot",
     "app.public",
@@ -349,6 +354,8 @@ layers = [
     # relit features et téléverse en S3. La route de features le démarre par injection
     # (get_export_job_starter, câblé dans main.py) : aucune arête vers le haut.
     "app.dataexport",
+    # app.quality (ARC-14) : rapports de règles d'attributs CEL en job ; relit features.
+    "app.quality",
     "app.tileset3d",
     "app.terrain3d",
     "app.mapicons",
@@ -356,11 +363,25 @@ layers = [
     "app.usage",
     "app.secrets",
     "app.cdc",
+    # app.public_submit (ARC-10) : soumission publique modérée ; réutilise l'écriture de
+    # features, les pièces jointes, les quotas et les notifications (tous en dessous).
+    "app.public_submit",
     "app.ingestion",
     "app.notifications",
     "app.dcat",
     "app.stac",
+    # app.ows (ARC-11, ADR 0018) : WFS 2.0 + OGC API Tiles, au-dessus de app.features
+    # dont il réutilise la porte de lecture (rls, masquage, select_features, tuiles).
+    "app.ows",
+    # app.styles (ARC-28) : symbologie -> règles -> SLD ; consommé par app.ows (renderer WMS).
+    "app.styles",
+    # app.relations (ARC-21, ADR 0021) : relations entre collections ; relit features
+    # (RLS, masquage) et écrit leur journal. features l'appelle par injection (main.py).
+    "app.relations",
     "app.features",
+    # app.history (ARC-15) : journal d'entité ; écrit par app.features.routes (au-dessus),
+    # lit les collections/privilèges (en dessous).
+    "app.history",
     "app.attachments",
     "app.collections",
     "app.configs",
@@ -448,6 +469,9 @@ ignore_imports = [
     # `hasAnyEditorRole` par `role`/`privileges` : `app.auth.routes`
     # n'importe plus rien d'`app.sharing`.
     "app.apikeys.routes -> app.auth.dependency",
+    # ARC-24 (ADR 0022) : la synchro des groupes par claims s'exécute au login,
+    # donc depuis app.auth.dependency (une seule arête, vers claim_sync).
+    "app.auth.dependency -> app.sharing.claim_sync",
     "app.auth.routes -> app.roles.repository",
     "app.auth.routes -> app.roles.privileges",
     "app.auth.routes -> app.roles.guards",
@@ -507,4 +531,8 @@ ignore_imports = [
     "app.db -> app.attachments.models",
     "app.db -> app.compliance.models",
     "app.db -> app.dataexport.models",
+    "app.db -> app.quality.models",
+    "app.db -> app.history.models",
+    "app.db -> app.relations.models",
+    "app.db -> app.public_submit.models",
 ]

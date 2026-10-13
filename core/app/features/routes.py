@@ -42,6 +42,7 @@ from app.attachments import repository as attachments_repo
 from app.attachments.routes import get_attachments_bucket, get_s3_client
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user, get_current_user_optional
+from app.collections.domains import with_attribute_rules
 from app.collections.introspection import TableNotFound, hide_sensitive_columns
 from app.collections.repository import get_access_facts, list_visible_collections
 from app.collections.routes import (
@@ -60,8 +61,9 @@ from app.db import get_session
 from app.errors import ValidationHTTPException
 from app.features.etag import feature_etag, if_match_satisfied
 from app.features.repository import SUPPORTED_EPSG, CursorError, FilterError
-from app.features.validation import validate_feature
+from app.features.validation import validate_for_write
 from app.filter_values import fold_query_filters
+from app.history import service as history
 from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
 from app.sharing.authorization import can
@@ -94,6 +96,9 @@ RESERVED_QUERY_PARAMS = {
     "datetime_field",
     "crs",
     "bbox-crs",
+    "filter",
+    "filter-lang",
+    "filter-crs",
 }
 MAX_LIMIT = 1000
 
@@ -103,6 +108,14 @@ CONFORMANCE_CLASSES = [
     "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/geojson",
     "http://www.opengis.net/spec/ogcapi-features-2/1.0/conf/crs",
     "http://www.opengis.net/spec/ogcapi-features-4/1.0/conf/create-replace-delete",
+    # ARC-12 : CQL2-text en sous-ensemble (cf. app/features/cql2.py)
+    "http://www.opengis.net/spec/ogcapi-features-3/1.0/conf/filter",
+    "http://www.opengis.net/spec/ogcapi-features-3/1.0/conf/features-filter",
+    "http://www.opengis.net/spec/cql2/1.0/conf/cql2-text",
+    "http://www.opengis.net/spec/cql2/1.0/conf/basic-cql2",
+    "http://www.opengis.net/spec/cql2/1.0/conf/advanced-comparison-operators",
+    "http://www.opengis.net/spec/cql2/1.0/conf/basic-spatial-functions",
+    "http://www.opengis.net/spec/cql2/1.0/conf/temporal-functions",
 ]
 
 
@@ -147,6 +160,22 @@ def null_rls_scope(
     session, tenant_id, *, masked: bool = False, geo_limits=None
 ):  # pour SQLite (pas de rôles/GUC)
     yield
+
+
+class _NoRelationHooks:
+    """ARC-21 : points d'extension des relations entre collections (clé étrangère
+    logique à l'écriture, politique de suppression). Câblés dans main.py par
+    app.relations (couche au-dessus de features : injection, pas d'import)."""
+
+    def check_write(self, session, user, col, properties, fid, rls) -> None:
+        return None
+
+    def before_delete(self, session, user, col, fid, rls, s3) -> None:
+        return None
+
+
+def get_relation_hooks():  # overridé dans main.py
+    return _NoRelationHooks()
 
 
 def get_rls_scope(geo_limits=Depends(get_request_geo_limits)):  # overridé en test SQLite
@@ -304,6 +333,9 @@ def list_features(
     datetime_field: str | None = None,
     crs: str | None = None,
     bbox_crs: str | None = Query(None, alias="bbox-crs"),
+    filter_q: str | None = Query(None, alias="filter"),
+    filter_lang: str | None = Query(None, alias="filter-lang"),
+    filter_crs: str | None = Query(None, alias="filter-crs"),
     response: Response = None,  # type: ignore[assignment]
     user=Depends(get_current_user_optional),
     guest: GuestActor | None = Depends(get_share_link_actor),
@@ -324,6 +356,16 @@ def list_features(
     parsed_bbox = parse_bbox(bbox, check_bounds=bbox_srid == 4326)
     parsed_geom_intersects = _parse_geom_intersects(geom_intersects)
     filters = _collect_filters(request)
+    if filter_lang is not None and filter_lang != "cql2-text":
+        raise _validation_error(
+            [
+                {
+                    "field": "filter-lang",
+                    "code": "invalid_filter_lang",
+                    "message": "only cql2-text is supported",
+                }
+            ]
+        )
     if cursor is not None and offset > 0:
         raise _validation_error(
             [{"field": "cursor", "code": "invalid_cursor", "message": "cursor excludes offset"}]
@@ -337,6 +379,8 @@ def list_features(
             "datetime_field": datetime_field,
             "out_srid": out_srid,
             "bbox_srid": bbox_srid if bbox_srid != 4326 else None,
+            "cql2": filter_q,
+            "cql2_srid": parse_crs(filter_crs, "filter-crs"),
         }.items()
         if v is not None
     }
@@ -833,9 +877,16 @@ def _get_writable(session, user, collection_id):
     return col
 
 
+def _snapshot(session, repo, info, fid):
+    """Instantané du journal ARC-15. À appeler HORS `rls(...)` : rôle propriétaire, donc
+    géométrie complète (jamais découpée par `geo_source` sous une limite géographique) ;
+    l'appelant n'y lit que la ligne qu'il vient d'écrire (ou va écrire) sous RLS."""
+    return history.snapshot(repo.get_feature(session, info, fid=str(fid)))
+
+
 def _validated(introspect, session, col, payload):
-    info = introspect(session, col.table_name)
-    errors = validate_feature(info, payload)
+    info = with_attribute_rules(introspect(session, col.table_name), col)
+    errors = validate_for_write(info, payload)
     if errors:
         raise _validation_error(errors)
     return info
@@ -852,9 +903,11 @@ def create_feature(
     introspect=Depends(get_introspector),
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
+    relations=Depends(get_relation_hooks),
 ):
     col = _get_writable(session, user, collection_id)
     info = _validated(introspect, session, col, payload)
+    relations.check_write(session, user, col, payload.get("properties") or {}, None, rls)
     try:
         with rls(session, col.tenant_id):
             fid = repo.insert_feature(
@@ -864,6 +917,7 @@ def create_feature(
                 geometry=payload.get("geometry"),
             )
             _set_etag(response, session, repo, info, fid)
+        after = _snapshot(session, repo, info, fid)
     except IntegrityError as exc:
         raise HTTPException(
             status_code=409, detail="feature conflicts with an existing row"
@@ -871,6 +925,16 @@ def create_feature(
     except DBAPIError as exc:
         _raise_if_outside_geo_limit(exc)
         raise
+    history.record_change(  # ARC-15 : même transaction que l'écriture
+        session,
+        tenant_id=col.tenant_id,
+        collection_id=col.id,
+        fid=str(fid),
+        op="create",
+        before=None,
+        after=after,
+        actor_id=user.id,
+    )
     session.execute(
         text("UPDATE collections SET feature_count = feature_count + 1 WHERE id = :id"),
         {"id": col.id},
@@ -907,13 +971,47 @@ def put_feature(
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
     masked: bool = Depends(get_masked_for_user),
+    relations=Depends(get_relation_hooks),
 ):
     col = _get_writable(session, user, collection_id)
+    _replace(
+        col,
+        fid,
+        payload,
+        response,
+        if_match,
+        user,
+        session,
+        introspect,
+        repo,
+        rls,
+        masked,
+        "update",
+        relations,
+    )
+
+
+def _replace(
+    col,
+    fid,
+    payload,
+    response,
+    if_match,
+    user,
+    session,
+    introspect,
+    repo,
+    rls,
+    masked,
+    op,
+    relations,
+):
     masked = unmask_for_owner(masked, user, col)
     # GAP-22 : le PUT remplace tout — sans ça, un utilisateur masqué mettrait à
     # NULL les colonnes sensibles qu'il n'a jamais vues. Retirées de `info`,
     # elles ne sont ni validées ni écrites (donc conservées en base).
-    info = introspect(session, col.table_name)
+    info = with_attribute_rules(introspect(session, col.table_name), col)
+    full_info = info  # journal ARC-15 : instantanés complets (masqués à la lecture)
     # Vue de l'ETag = celle de GET /items/{fid} (masquage inclus).
     view_info = hide_sensitive_columns(info, col.sensitive_fields) if masked else info
     # Même chose pour un lecteur autorisé (propriétaire, REV-276) : une colonne
@@ -922,11 +1020,14 @@ def put_feature(
     info = hide_sensitive_columns(
         info, [f for f in col.sensitive_fields if masked or f not in sent]
     )
-    if errors := validate_feature(info, payload):
+    if errors := validate_for_write(info, payload):
         raise _validation_error(errors)
+    relations.check_write(session, user, col, sent, fid, rls)
     try:
         with rls(session, col.tenant_id):
             _enforce_if_match(session, repo, view_info, fid, if_match)
+        before = _snapshot(session, repo, full_info, fid)
+        with rls(session, col.tenant_id):
             ok = repo.replace_feature(
                 session,
                 info,
@@ -936,6 +1037,8 @@ def put_feature(
             )
             if ok:
                 _set_etag(response, session, repo, view_info, fid)
+        if ok:
+            after = _snapshot(session, repo, full_info, fid)
     except IntegrityError as exc:
         # Même réponse qu'à la création : une collision avec une ligne cachée par une
         # limite géographique est indiscernable d'une collision avec une ligne visible.
@@ -947,15 +1050,86 @@ def put_feature(
         raise
     if not ok:
         raise HTTPException(status_code=404, detail="feature not found")
+    history.record_change(
+        session,
+        tenant_id=col.tenant_id,
+        collection_id=col.id,
+        fid=fid,
+        op=op,
+        before=before,
+        after=after,
+        actor_id=user.id,
+    )
     write_audit(
         session,
         tenant_id=col.tenant_id,
         actor_id=user.id,
         actor_kind="user",
-        action="feature.update",
+        action="feature.update" if op == "update" else "feature.restore",
         object_type="feature",
         object_id=fid,
         payload={"collection": col.id, "fid": fid},
+    )
+
+
+@router.post(
+    "/collections/{collection_id}/items/{fid}/history/{version_id}/restore", status_code=204
+)
+def restore_feature_version(
+    collection_id: str,
+    fid: str,
+    version_id: int,
+    response: Response,
+    user=Depends(get_current_user),
+    session: Session = Depends(get_session, scope="function"),
+    introspect=Depends(get_introspector),
+    repo=Depends(get_features_repo),
+    rls=Depends(get_rls_scope),
+    masked: bool = Depends(get_masked_for_user),
+    geo_limits=Depends(get_request_geo_limits),
+    relations=Depends(get_relation_hooks),
+):
+    """ARC-15 : ré-applique l'état APRÈS d'une version (écriture normale : droit
+    d'écriture, validation, RLS ; journalisée `restore`). Une suppression n'est pas
+    restaurable (409) : la PK ne peut pas être ré-imposée."""
+    col = _get_writable(session, user, collection_id)
+    # Fail-closed, comme la lecture du journal : une version n'est pas découpée.
+    refuse_if_geo_limited(geo_limits, col.table_name, path="entity restore")
+    version = history.get_version(
+        session, tenant_id=col.tenant_id, collection_id=col.id, fid=fid, version_id=version_id
+    )
+    if version is None:
+        raise HTTPException(status_code=404, detail="version not found")
+    if version.after is None:
+        raise HTTPException(status_code=409, detail="a deletion cannot be restored")
+    hidden = (
+        frozenset() if not unmask_for_owner(masked, user, col) else frozenset(col.sensitive_fields)
+    )
+    target = history.mask_snapshot(version.after, hidden) or {}
+    # Seules les colonnes écrivables aujourd'hui : ni `unsupported` (lecture seule), ni
+    # réservées, ni supprimées depuis la version.
+    info = introspect(session, col.table_name)
+    reserved = {info.pk_column, "tenant_id", info.geometry_column}
+    writable = {c.name for c in info.columns if c.type != "unsupported" and c.name not in reserved}
+    payload = {
+        "type": "Feature",
+        "properties": {k: v for k, v in (target.get("properties") or {}).items() if k in writable},
+        "geometry": target.get("geometry"),
+    }
+    _replace(
+        col,
+        fid,
+        payload,
+        response,
+        None,
+        user,
+        session,
+        introspect,
+        repo,
+        rls,
+        masked,
+        "restore",
+        relations,
     )
 
 
@@ -971,16 +1145,30 @@ def remove_feature(
     rls=Depends(get_rls_scope),
     s3=Depends(get_s3_client),
     masked: bool = Depends(get_masked_for_user),
+    relations=Depends(get_relation_hooks),
 ):
     col = _get_writable(session, user, collection_id)
     masked = unmask_for_owner(masked, user, col)
     info = introspect(session, col.table_name)
     view_info = hide_sensitive_columns(info, col.sensitive_fields) if masked else info
+    relations.before_delete(session, user, col, fid, rls, s3)  # ARC-21 : restrict / cascade
     with rls(session, col.tenant_id):
         _enforce_if_match(session, repo, view_info, fid, if_match)
+    before = _snapshot(session, repo, info, fid)
+    with rls(session, col.tenant_id):
         ok = repo.delete_feature(session, info, fid=fid)
     if not ok:
         raise HTTPException(status_code=404, detail="feature not found")
+    history.record_change(
+        session,
+        tenant_id=col.tenant_id,
+        collection_id=col.id,
+        fid=fid,
+        op="delete",
+        before=before,
+        after=None,
+        actor_id=user.id,
+    )
     session.execute(
         text("UPDATE collections SET feature_count = feature_count - 1 WHERE id = :id"),
         {"id": col.id},

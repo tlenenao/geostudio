@@ -21,6 +21,7 @@ const POLL_INTERVAL_MS = 1500;
 // toujours. 200 tentatives × 1.5s = 5 minutes, un budget large pour un rendu
 // Playwright réel mais fini.
 const MAX_POLL_ATTEMPTS = 200;
+const IN_FLIGHT = new Set(["pending", "running", "cancel_requested"]);
 
 // Patron de poll identique à PipelineRunPanel (SP-15a) / ImportFileButton
 // (SP-6a) : boucle récursive manuelle via le client, jamais un
@@ -30,13 +31,27 @@ const MAX_POLL_ATTEMPTS = 200;
 // navigation), donc chaque `setState` après un `await` est gardé par
 // `mountedRef`, et le timer en attente est explicitement annulé au
 // démontage pour ne rien laisser en suspens.
-export function ExportPanel({ itemId }: { itemId: string }) {
+export function ExportPanel({
+  itemId,
+  entityId,
+  atlas,
+  label,
+}: {
+  itemId: string;
+  // ARC-26 : fiche d'une seule entité / ARC-30 : atlas (une page par entité).
+  // Ces deux modes n'ont qu'un format (PDF) : pas de sélecteur.
+  entityId?: string;
+  atlas?: boolean;
+  label?: string;
+}) {
+  const pdfOnly = entityId !== undefined || atlas === true;
   const client = useItemClient();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [job, setJob] = useState<ExportJob | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const mountedRef = useRef(true);
+  const jobIdRef = useRef<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const exportPanel = usePanelTrigger(pickerOpen);
 
@@ -53,7 +68,9 @@ export function ExportPanel({ itemId }: { itemId: string }) {
     const latest = await client.getExportJob(jobId);
     if (!mountedRef.current) return;
     setJob(latest);
-    if (latest.status !== "pending" && latest.status !== "running") return;
+    // `cancel_requested` : le worker n'a pas encore acquitté, on continue de
+    // sonder jusqu'à `cancelled` (ou `done` si le rendu a fini en même temps).
+    if (!IN_FLIGHT.has(latest.status)) return;
     if (attempt + 1 >= MAX_POLL_ATTEMPTS) {
       setError(t("exportPanel.stillRunning"));
       return;
@@ -71,7 +88,13 @@ export function ExportPanel({ itemId }: { itemId: string }) {
     setError(null);
     setJob(null);
     try {
-      const { jobId } = await client.createExport(itemId, format);
+      const { jobId } = pdfOnly
+        ? await client.createExport(itemId, format, {
+            ...(entityId !== undefined ? { entityId } : {}),
+            ...(atlas ? { atlas } : {}),
+          })
+        : await client.createExport(itemId, format);
+      jobIdRef.current = jobId;
       await poll(jobId);
     } catch {
       // Message générique volontaire : ne pas répéter le texte brut d'une
@@ -84,16 +107,31 @@ export function ExportPanel({ itemId }: { itemId: string }) {
     }
   }
 
+  // ARC-16 : annulation. `pending` -> annulé tout de suite ; `running` ->
+  // « annulation demandée » (le worker s'arrête avant l'envoi du résultat).
+  async function onCancelExport() {
+    const jobId = jobIdRef.current;
+    if (!jobId) return;
+    try {
+      const latest = await client.cancelExport(jobId);
+      if (mountedRef.current) setJob(latest);
+    } catch {
+      if (mountedRef.current) setError(t("exportPanel.exportFailed"));
+    }
+  }
+
+  const cancellable = job?.status === "pending" || job?.status === "running";
+
   return (
     <div className="flex flex-col gap-2">
       <Button
         size="sm"
         variant="outline"
         {...exportPanel.triggerProps}
-        onClick={() => setPickerOpen((open) => !open)}
+        onClick={() => (pdfOnly ? void onExport("pdf") : setPickerOpen((open) => !open))}
         disabled={running}
       >
-        {t("exportPanel.exportButton")}
+        {label ?? t("exportPanel.exportButton")}
       </Button>
       {pickerOpen && (
         // Panneau en ligne, pas une fenêtre modale (spec §2.1, ConfirmDialog
@@ -125,6 +163,14 @@ export function ExportPanel({ itemId }: { itemId: string }) {
               >
                 PNG
               </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void onExport("svg")}
+              >
+                SVG
+              </Button>
               <Button type="button" size="sm" onClick={() => void onExport("pdf")}>
                 PDF
               </Button>
@@ -133,8 +179,17 @@ export function ExportPanel({ itemId }: { itemId: string }) {
         </div>
       )}
       <p role="status" className={job ? "text-sm text-ink-2" : "sr-only"}>
-        {job ? t("exportPanel.statusLine", { status: jobStatusLabel(job.status) }) : ""}
+        {job
+          ? job.status === "cancel_requested"
+            ? t("exportPanel.cancelRequested")
+            : t("exportPanel.statusLine", { status: jobStatusLabel(job.status) })
+          : ""}
       </p>
+      {cancellable && (
+        <Button type="button" size="sm" variant="outline" onClick={() => void onCancelExport()}>
+          {t("exportPanel.cancelExport")}
+        </Button>
+      )}
       <WorkerStalledNotice active={job?.status === "pending"} />
       {job?.status === "done" && job.resultUrl && (
         <a href={job.resultUrl} download className="text-sm text-accent underline">

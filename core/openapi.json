@@ -417,6 +417,64 @@
         "title": "AlertRuleSummary",
         "type": "object"
       },
+      "AnalysisRequest": {
+        "properties": {
+          "limit": {
+            "default": 1000,
+            "maximum": 5000.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "otherCollectionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Othercollectionid"
+          },
+          "output": {
+            "default": "ephemeral",
+            "enum": [
+              "ephemeral",
+              "collection"
+            ],
+            "title": "Output",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": true,
+            "title": "Params",
+            "type": "object"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Titre de la collection cr\u00e9\u00e9e (output=collection).",
+            "title": "Title"
+          },
+          "tool": {
+            "title": "Tool",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool"
+        ],
+        "title": "AnalysisRequest",
+        "type": "object"
+      },
       "ApiKeyCreate": {
         "properties": {
           "expiresInDays": {
@@ -605,6 +663,68 @@
         "title": "ApiKeyRead",
         "type": "object"
       },
+      "AtlasConfig": {
+        "description": "ARC-30 : atlas = une page PDF par entit\u00e9 de la source `dataSourceId`.\nLes champs sont des gabarits CEL \u00e9valu\u00e9s par entit\u00e9 c\u00f4t\u00e9 shell (rendu par\nle worker d'export). `maxPages` borne le nombre de pages d'un rendu.",
+        "properties": {
+          "dataSourceId": {
+            "maxLength": 200,
+            "title": "Datasourceid",
+            "type": "string"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/AtlasField"
+            },
+            "maxItems": 50,
+            "title": "Fields",
+            "type": "array"
+          },
+          "maxPages": {
+            "default": 50,
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Maxpages",
+            "type": "integer"
+          },
+          "titleTemplate": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Titletemplate"
+          }
+        },
+        "required": [
+          "dataSourceId"
+        ],
+        "title": "AtlasConfig",
+        "type": "object"
+      },
+      "AtlasField": {
+        "properties": {
+          "label": {
+            "maxLength": 100,
+            "title": "Label",
+            "type": "string"
+          },
+          "template": {
+            "maxLength": 500,
+            "title": "Template",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "template"
+        ],
+        "title": "AtlasField",
+        "type": "object"
+      },
       "AttachmentConfirmRequest": {
         "properties": {
           "contentType": {
@@ -745,6 +865,65 @@
           "createdAt"
         ],
         "title": "AttachmentRead",
+        "type": "object"
+      },
+      "AttributeRule": {
+        "additionalProperties": false,
+        "description": "R\u00e8gle d'attribut CEL (ARC-14). Les colonnes de la collection sont les variables.",
+        "properties": {
+          "expression": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Expression",
+            "type": "string"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "id": {
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "calculation",
+              "constraint",
+              "batch"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "message": {
+            "default": "",
+            "maxLength": 300,
+            "title": "Message",
+            "type": "string"
+          },
+          "mode": {
+            "default": "default",
+            "enum": [
+              "default",
+              "derived"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "expression"
+        ],
+        "title": "AttributeRule",
         "type": "object"
       },
       "AzureBlobCredentialsPayload": {
@@ -1015,6 +1194,63 @@
           "category"
         ],
         "title": "Body_create_map_icon_v1_map_icons_post",
+        "type": "object"
+      },
+      "Body_import_xlsform_v1_xlsform_import_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_import_xlsform_v1_xlsform_import_post",
+        "type": "object"
+      },
+      "Body_submit_v1_public_submit__token__post": {
+        "properties": {
+          "fieldKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fieldkey"
+          },
+          "file": {
+            "anyOf": [
+              {
+                "contentMediaType": "application/octet-stream",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File"
+          },
+          "payload": {
+            "description": "GeoJSON Feature (JSON)",
+            "title": "Payload",
+            "type": "string"
+          },
+          "website": {
+            "default": "",
+            "description": "honeypot : doit rester vide",
+            "title": "Website",
+            "type": "string"
+          }
+        },
+        "required": [
+          "payload"
+        ],
+        "title": "Body_submit_v1_public_submit__token__post",
         "type": "object"
       },
       "Body_upload_thumbnail_v1_items__item_id__thumbnail_post": {
@@ -1346,6 +1582,49 @@
         "title": "BuilderConfig",
         "type": "object"
       },
+      "ClaimMappingCreate": {
+        "properties": {
+          "claimValue": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Claimvalue",
+            "type": "string"
+          },
+          "groupId": {
+            "title": "Groupid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "groupId",
+          "claimValue"
+        ],
+        "title": "ClaimMappingCreate",
+        "type": "object"
+      },
+      "ClaimMappingRead": {
+        "properties": {
+          "claimValue": {
+            "title": "Claimvalue",
+            "type": "string"
+          },
+          "groupId": {
+            "title": "Groupid",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "groupId",
+          "claimValue"
+        ],
+        "title": "ClaimMappingRead",
+        "type": "object"
+      },
       "ClusterConfig": {
         "description": "ARC-01 : regroupement de points (MapLibre `cluster: true`) d'une couche `feature`.",
         "properties": {
@@ -1489,6 +1768,20 @@
             ],
             "title": "Attachmentfields"
           },
+          "attributeRules": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AttributeRule"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attributerules"
+          },
           "contact": {
             "anyOf": [
               {
@@ -1521,6 +1814,20 @@
               }
             ],
             "title": "Editable"
+          },
+          "fieldDomains": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/FieldDomain"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fielddomains"
           },
           "isPublic": {
             "anyOf": [
@@ -1577,6 +1884,17 @@
             ],
             "title": "Lineage"
           },
+          "owsEnabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owsenabled"
+          },
           "producer": {
             "anyOf": [
               {
@@ -1601,6 +1919,16 @@
               }
             ],
             "title": "Sensitivefields"
+          },
+          "subtypes": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Subtypes"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "temporalEnd": {
             "anyOf": [
@@ -2702,6 +3030,71 @@
         "title": "ExtensionSize",
         "type": "object"
       },
+      "FieldDomain": {
+        "additionalProperties": false,
+        "description": "ARC-13 : domaine `list` (valeurs admises) ou `range` (bornes incluses).",
+        "properties": {
+          "max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "type": {
+            "enum": [
+              "list",
+              "range"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "values": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Values"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "FieldDomain",
+        "type": "object"
+      },
       "FrequencyCatalogEntry": {
         "properties": {
           "id": {
@@ -3155,6 +3548,17 @@
       },
       "IngestionJobCreate": {
         "properties": {
+          "collectionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collectionid"
+          },
           "collectionTitle": {
             "minLength": 1,
             "title": "Collectiontitle",
@@ -3298,6 +3702,18 @@
               }
             ],
             "title": "Itemresourcetype"
+          },
+          "report": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report"
           },
           "status": {
             "title": "Status",
@@ -5178,6 +5594,16 @@
       },
       "PrintLayout": {
         "properties": {
+          "atlas": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AtlasConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "cartouche": {
             "anyOf": [
               {
@@ -5188,6 +5614,35 @@
               }
             ],
             "title": "Cartouche"
+          },
+          "freeText": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Freetext"
+          },
+          "logo": {
+            "anyOf": [
+              {
+                "maxLength": 400000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo"
+          },
+          "northArrow": {
+            "default": false,
+            "title": "Northarrow",
+            "type": "boolean"
           },
           "orientation": {
             "default": "portrait",
@@ -5206,6 +5661,11 @@
             ],
             "title": "Pagesize",
             "type": "string"
+          },
+          "scaleBar": {
+            "default": false,
+            "title": "Scalebar",
+            "type": "boolean"
           },
           "showLegend": {
             "default": true,
@@ -5313,6 +5773,344 @@
           "jobId"
         ],
         "title": "PurgeTriggeredResponse",
+        "type": "object"
+      },
+      "QualityReportOut": {
+        "properties": {
+          "checked": {
+            "title": "Checked",
+            "type": "integer"
+          },
+          "collectionId": {
+            "title": "Collectionid",
+            "type": "string"
+          },
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finishedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finishedat"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "violations": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Violations"
+          }
+        },
+        "required": [
+          "id",
+          "collectionId",
+          "status",
+          "checked",
+          "summary",
+          "violations",
+          "error",
+          "createdAt",
+          "finishedAt"
+        ],
+        "title": "QualityReportOut",
+        "type": "object"
+      },
+      "RejectBody": {
+        "properties": {
+          "reason": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "title": "RejectBody",
+        "type": "object"
+      },
+      "RelatedRecords": {
+        "properties": {
+          "collectionId": {
+            "title": "Collectionid",
+            "type": "string"
+          },
+          "direction": {
+            "enum": [
+              "children",
+              "parents"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "features": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Features",
+            "type": "array"
+          },
+          "numberMatched": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Numbermatched"
+          },
+          "numberReturned": {
+            "title": "Numberreturned",
+            "type": "integer"
+          },
+          "relation": {
+            "$ref": "#/components/schemas/RelationOut"
+          }
+        },
+        "required": [
+          "relation",
+          "direction",
+          "collectionId",
+          "features",
+          "numberReturned"
+        ],
+        "title": "RelatedRecords",
+        "type": "object"
+      },
+      "RelationCreate": {
+        "properties": {
+          "cardinality": {
+            "enum": [
+              "one_to_one",
+              "one_to_many",
+              "many_to_many"
+            ],
+            "title": "Cardinality",
+            "type": "string"
+          },
+          "childCollectionId": {
+            "title": "Childcollectionid",
+            "type": "string"
+          },
+          "childKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Childkey"
+          },
+          "linkChildKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linkchildkey"
+          },
+          "linkCollectionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linkcollectionid"
+          },
+          "linkParentKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linkparentkey"
+          },
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "onDelete": {
+            "default": "restrict",
+            "enum": [
+              "restrict",
+              "cascade"
+            ],
+            "title": "Ondelete",
+            "type": "string"
+          },
+          "parentCollectionId": {
+            "title": "Parentcollectionid",
+            "type": "string"
+          },
+          "parentKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parentkey"
+          }
+        },
+        "required": [
+          "name",
+          "cardinality",
+          "parentCollectionId",
+          "childCollectionId"
+        ],
+        "title": "RelationCreate",
+        "type": "object"
+      },
+      "RelationOut": {
+        "properties": {
+          "cardinality": {
+            "enum": [
+              "one_to_one",
+              "one_to_many",
+              "many_to_many"
+            ],
+            "title": "Cardinality",
+            "type": "string"
+          },
+          "childCollectionId": {
+            "title": "Childcollectionid",
+            "type": "string"
+          },
+          "childKey": {
+            "title": "Childkey",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "linkChildKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linkchildkey"
+          },
+          "linkCollectionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linkcollectionid"
+          },
+          "linkParentKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linkparentkey"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "onDelete": {
+            "enum": [
+              "restrict",
+              "cascade"
+            ],
+            "title": "Ondelete",
+            "type": "string"
+          },
+          "parentCollectionId": {
+            "title": "Parentcollectionid",
+            "type": "string"
+          },
+          "parentKey": {
+            "title": "Parentkey",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "cardinality",
+          "parentCollectionId",
+          "childCollectionId",
+          "parentKey",
+          "childKey",
+          "linkCollectionId",
+          "linkParentKey",
+          "linkChildKey",
+          "onDelete"
+        ],
+        "title": "RelationOut",
         "type": "object"
       },
       "RenameGroupRequest": {
@@ -5980,6 +6778,53 @@
         "title": "Sharing",
         "type": "object"
       },
+      "SldExportBody": {
+        "properties": {
+          "geometryKind": {
+            "default": "polygon",
+            "enum": [
+              "point",
+              "line",
+              "polygon"
+            ],
+            "title": "Geometrykind",
+            "type": "string"
+          },
+          "name": {
+            "default": "layer",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "symbology": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symbology"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "SldExportBody",
+        "type": "object"
+      },
       "SmtpCredentialsPayload": {
         "description": "SMTP credentials for AlertRule email delivery (SP-16b \u00a75). Unlike\nthe webhook channel's URL, this comes from an admin-only secret\n(POST /secrets is admin-only, SP-15e) rather than arbitrary per-rule\nuser input \u2014 no egress guard applies to it (Global Constraints,\nSP-16b plan), same trust model as postgres_dsn.",
         "properties": {
@@ -6086,6 +6931,70 @@
         "title": "StatusFacet",
         "type": "object"
       },
+      "SubtypeItem": {
+        "additionalProperties": false,
+        "properties": {
+          "defaults": {
+            "additionalProperties": true,
+            "title": "Defaults",
+            "type": "object"
+          },
+          "domains": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/FieldDomain"
+            },
+            "title": "Domains",
+            "type": "object"
+          },
+          "label": {
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value",
+          "label"
+        ],
+        "title": "SubtypeItem",
+        "type": "object"
+      },
+      "Subtypes": {
+        "additionalProperties": false,
+        "description": "Sous-types d'une collection : une colonne discriminante, et par valeur des d\u00e9fauts\net des domaines propres (qui l'emportent sur ceux du champ).",
+        "properties": {
+          "field": {
+            "minLength": 1,
+            "title": "Field",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SubtypeItem"
+            },
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "field",
+          "items"
+        ],
+        "title": "Subtypes",
+        "type": "object"
+      },
       "Terrain3DPayload": {
         "properties": {
           "originalFilename": {
@@ -6130,6 +7039,35 @@
           "entryCount"
         ],
         "title": "Tileset3DPayload",
+        "type": "object"
+      },
+      "TokenCreate": {
+        "properties": {
+          "expiresInDays": {
+            "maximum": 365.0,
+            "minimum": 1.0,
+            "title": "Expiresindays",
+            "type": "integer"
+          },
+          "maxSubmissions": {
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Maxsubmissions",
+            "type": "integer"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "expiresInDays",
+          "maxSubmissions"
+        ],
+        "title": "TokenCreate",
         "type": "object"
       },
       "TopValue": {
@@ -6751,6 +7689,48 @@
           }
         },
         "summary": "Get Alert Evaluations"
+      }
+    },
+    "/v1/analysis/tools": {
+      "get": {
+        "operationId": "list_analysis_tools_v1_analysis_tools_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Analysis Tools V1 Analysis Tools Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Analysis Tools"
       }
     },
     "/v1/analytics/sql": {
@@ -7413,6 +8393,170 @@
           }
         },
         "summary": "Aggregate Features"
+      }
+    },
+    "/v1/collections/{collection_id}/analysis": {
+      "post": {
+        "operationId": "run_collection_analysis_v1_collections__collection_id__analysis_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalysisRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Run Collection Analysis V1 Collections  Collection Id  Analysis Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Collection Analysis"
+      }
+    },
+    "/v1/collections/{collection_id}/changes": {
+      "get": {
+        "operationId": "collection_changes_v1_collections__collection_id__changes_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "ISO 8601 ; renvoie les changements strictement post\u00e9rieurs",
+            "in": "query",
+            "name": "since",
+            "required": true,
+            "schema": {
+              "description": "ISO 8601 ; renvoie les changements strictement post\u00e9rieurs",
+              "format": "date-time",
+              "title": "Since",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Collection Changes"
       }
     },
     "/v1/collections/{collection_id}/export": {
@@ -8083,6 +9227,54 @@
                 }
               ],
               "title": "Bbox-Crs"
+            }
+          },
+          {
+            "in": "query",
+            "name": "filter",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Filter"
+            }
+          },
+          {
+            "in": "query",
+            "name": "filter-lang",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Filter-Lang"
+            }
+          },
+          {
+            "in": "query",
+            "name": "filter-crs",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Filter-Crs"
             }
           },
           {
@@ -8867,6 +10059,354 @@
         "summary": "Read Attachment File"
       }
     },
+    "/v1/collections/{collection_id}/items/{fid}/history": {
+      "get": {
+        "operationId": "entity_history_v1_collections__collection_id__items__fid__history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "fid",
+            "required": true,
+            "schema": {
+              "title": "Fid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Entity History"
+      }
+    },
+    "/v1/collections/{collection_id}/items/{fid}/history/{version_id}/restore": {
+      "post": {
+        "description": "ARC-15 : r\u00e9-applique l'\u00e9tat APR\u00c8S d'une version (\u00e9criture normale : droit\nd'\u00e9criture, validation, RLS ; journalis\u00e9e `restore`). Une suppression n'est pas\nrestaurable (409) : la PK ne peut pas \u00eatre r\u00e9-impos\u00e9e.",
+        "operationId": "restore_feature_version_v1_collections__collection_id__items__fid__history__version_id__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "fid",
+            "required": true,
+            "schema": {
+              "title": "Fid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restore Feature Version"
+      }
+    },
+    "/v1/collections/{collection_id}/items/{fid}/related/{relation_id}": {
+      "get": {
+        "operationId": "related_records_v1_collections__collection_id__items__fid__related__relation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "fid",
+            "required": true,
+            "schema": {
+              "title": "Fid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "relation_id",
+            "required": true,
+            "schema": {
+              "title": "Relation Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "children | parents (auto sauf auto-relation)",
+            "in": "query",
+            "name": "direction",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "children | parents (auto sauf auto-relation)",
+              "title": "Direction"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelatedRecords"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Related Records"
+      }
+    },
+    "/v1/collections/{collection_id}/my-entries": {
+      "get": {
+        "description": "Saisies cr\u00e9\u00e9es par l'appelant (journal d'entit\u00e9), les plus r\u00e9centes d'abord, hors\nenregistrements supprim\u00e9s depuis.",
+        "operationId": "my_entries_v1_collections__collection_id__my_entries_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "My Entries"
+      }
+    },
     "/v1/collections/{collection_id}/profile": {
       "get": {
         "description": "R\u00e9sum\u00e9 exploratoire (REV-117) : m\u00eames droits, m\u00eame masquage de colonnes\nsensibles et m\u00eames bornes DuckDB que POST /aggregate.",
@@ -8931,6 +10471,278 @@
           }
         },
         "summary": "Profile Collection"
+      }
+    },
+    "/v1/collections/{collection_id}/quality-checks": {
+      "get": {
+        "operationId": "list_quality_checks_v1_collections__collection_id__quality_checks_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/QualityReportOut"
+                  },
+                  "title": "Response List Quality Checks V1 Collections  Collection Id  Quality Checks Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Quality Checks"
+      },
+      "post": {
+        "operationId": "start_quality_check_v1_collections__collection_id__quality_checks_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualityReportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Quality Check"
+      }
+    },
+    "/v1/collections/{collection_id}/quality-checks/{report_id}": {
+      "get": {
+        "operationId": "get_quality_check_v1_collections__collection_id__quality_checks__report_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "title": "Report Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualityReportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Quality Check"
+      }
+    },
+    "/v1/collections/{collection_id}/relations": {
+      "get": {
+        "description": "Relations touchant la collection ; celles dont un autre c\u00f4t\u00e9 est illisible pour\nl'appelant sont omises (il n'en apprend pas l'existence).",
+        "operationId": "list_collection_relations_v1_collections__collection_id__relations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RelationOut"
+                  },
+                  "title": "Response List Collection Relations V1 Collections  Collection Id  Relations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Collection Relations"
       }
     },
     "/v1/collections/{collection_id}/schema": {
@@ -9102,6 +10914,454 @@
         "summary": "Put Sharing"
       }
     },
+    "/v1/collections/{collection_id}/submission-tokens": {
+      "get": {
+        "operationId": "list_submission_tokens_v1_collections__collection_id__submission_tokens_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Submission Tokens"
+      },
+      "post": {
+        "operationId": "create_submission_token_v1_collections__collection_id__submission_tokens_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Submission Token"
+      }
+    },
+    "/v1/collections/{collection_id}/submission-tokens/{token_id}": {
+      "delete": {
+        "operationId": "revoke_submission_token_v1_collections__collection_id__submission_tokens__token_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "token_id",
+            "required": true,
+            "schema": {
+              "title": "Token Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Submission Token"
+      }
+    },
+    "/v1/collections/{collection_id}/submissions": {
+      "get": {
+        "operationId": "list_submissions_v1_collections__collection_id__submissions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "pending",
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Submissions"
+      }
+    },
+    "/v1/collections/{collection_id}/submissions/{submission_id}/approve": {
+      "post": {
+        "description": "Ins\u00e8re la soumission dans la collection par l'\u00e9criture normale (droit d'\u00e9criture,\nvalidation, RLS, journal d'entit\u00e9) ; la ligne d'attente est vid\u00e9e.",
+        "operationId": "approve_submission_v1_collections__collection_id__submissions__submission_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "submission_id",
+            "required": true,
+            "schema": {
+              "title": "Submission Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Submission"
+      }
+    },
+    "/v1/collections/{collection_id}/submissions/{submission_id}/attachment": {
+      "get": {
+        "operationId": "read_submission_attachment_v1_collections__collection_id__submissions__submission_id__attachment_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "submission_id",
+            "required": true,
+            "schema": {
+              "title": "Submission Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Submission Attachment"
+      }
+    },
+    "/v1/collections/{collection_id}/submissions/{submission_id}/reject": {
+      "post": {
+        "operationId": "reject_submission_v1_collections__collection_id__submissions__submission_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "submission_id",
+            "required": true,
+            "schema": {
+              "title": "Submission Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject Submission"
+      }
+    },
     "/v1/collections/{collection_id}/tiles/{z}/{x}/{y}.mvt": {
       "get": {
         "operationId": "get_collection_tile_v1_collections__collection_id__tiles__z___x___y__mvt_get",
@@ -9139,6 +11399,70 @@
             "required": true,
             "schema": {
               "title": "Y",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bin",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "square",
+                    "hex"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bin"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stat",
+            "required": false,
+            "schema": {
+              "default": "count",
+              "enum": [
+                "count",
+                "sum",
+                "avg"
+              ],
+              "title": "Stat",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "field",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Field"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bins",
+            "required": false,
+            "schema": {
+              "default": 16,
+              "maximum": 64,
+              "minimum": 2,
+              "title": "Bins",
               "type": "integer"
             }
           },
@@ -10837,6 +13161,140 @@
           }
         },
         "summary": "Create Group"
+      }
+    },
+    "/v1/groups/claim-mappings": {
+      "get": {
+        "operationId": "list_claim_mappings_v1_groups_claim_mappings_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ClaimMappingRead"
+                  },
+                  "title": "Response List Claim Mappings V1 Groups Claim Mappings Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Claim Mappings"
+      },
+      "post": {
+        "operationId": "create_claim_mapping_v1_groups_claim_mappings_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimMappingCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimMappingRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Claim Mapping"
+      }
+    },
+    "/v1/groups/claim-mappings/{mapping_id}": {
+      "delete": {
+        "operationId": "delete_claim_mapping_v1_groups_claim_mappings__mapping_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mapping_id",
+            "required": true,
+            "schema": {
+              "title": "Mapping Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Claim Mapping"
       }
     },
     "/v1/groups/{group_id}": {
@@ -13386,6 +15844,145 @@
         "summary": "Public Site Social Preview"
       }
     },
+    "/v1/public/submit/{token}": {
+      "post": {
+        "operationId": "submit_v1_public_submit__token__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_submit_v1_public_submit__token__post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit"
+      }
+    },
+    "/v1/relations": {
+      "post": {
+        "operationId": "create_relation_v1_relations_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RelationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Relation"
+      }
+    },
+    "/v1/relations/{relation_id}": {
+      "delete": {
+        "operationId": "delete_relation_v1_relations__relation_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "relation_id",
+            "required": true,
+            "schema": {
+              "title": "Relation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Relation"
+      }
+    },
     "/v1/reports/{item_id}/runs": {
       "get": {
         "operationId": "get_report_runs_route_v1_reports__item_id__runs_get",
@@ -14545,6 +17142,55 @@
         ]
       }
     },
+    "/v1/styles/sld": {
+      "post": {
+        "operationId": "export_sld_v1_styles_sld_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SldExportBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/vnd.ogc.sld+xml": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Sld",
+        "tags": [
+          "styles"
+        ]
+      }
+    },
     "/v1/uploads": {
       "post": {
         "operationId": "create_upload_job_v1_uploads_post",
@@ -15197,6 +17843,54 @@
           }
         },
         "summary": "Patch User"
+      }
+    },
+    "/v1/xlsform/import": {
+      "post": {
+        "operationId": "import_xlsform_v1_xlsform_import_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_xlsform_v1_xlsform_import_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Xlsform"
       }
     }
   }

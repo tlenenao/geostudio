@@ -543,6 +543,22 @@ test("map flyTo action flies to a selected record's point", async () => {
   expect(flyToSpy).toHaveBeenCalledWith({ center: [5, 6], zoom: 12 });
 });
 
+test("map setBasemap action (ARC-26) remounts the map on the chosen basemap style", async () => {
+  const bus = new ActionBus();
+  bus.configure([
+    { id: "m", from: "gal", event: "basemapChanged", to: "map1", action: "setBasemap" },
+  ]);
+  const Map = getWidget("map")!.Component;
+  render(
+    withClient(
+      <Map props={{}} ctx={{ mode: "runtime", bus, widgetId: "map1" } as WidgetContext} />,
+    ),
+  );
+  await screen.findByTestId("mapview");
+  act(() => bus.emit("gal", "basemapChanged", { style: "https://x/style.json" }));
+  await waitFor(() => expect(lastConfig?.basemap.style).toBe("https://x/style.json"));
+});
+
 test("map emits itemSelected when a feature is clicked", async () => {
   const bus = new ActionBus();
   const handler = vi.fn();

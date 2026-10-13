@@ -1,0 +1,57 @@
+{{- $fn := include "geostudio.fullname" . -}}
+{{- $sel := dict "root" . "component" "shell" -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fn }}-shell
+  labels:
+    {{- include "geostudio.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.shell.replicas }}
+  selector:
+    matchLabels:
+      {{- include "geostudio.selector" $sel | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "geostudio.selector" $sel | nindent 8 }}
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: shell
+          image: {{ include "geostudio.image" (dict "root" . "name" "shell") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - {name: http, containerPort: 8300}
+          env:
+            {{- range $k, $v := .Values.shell.env }}
+            - {name: {{ $k }}, value: {{ $v | quote }}}
+            {{- end }}
+          # compose : wget http://127.0.0.1:8300/, interval 30s, timeout 5s, retries 3
+          readinessProbe:
+            httpGet: {path: /, port: http}
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: {path: /, port: http}
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources: {{ toYaml .Values.shell.resources | nindent 12 }}
+          securityContext:
+            {{- include "geostudio.securityContext" (dict "uid" .Values.shell.podSecurityUid) | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fn }}-shell
+  labels:
+    {{- include "geostudio.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "geostudio.selector" $sel | nindent 4 }}
+  ports:
+    - {name: http, port: 8300, targetPort: http}

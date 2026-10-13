@@ -7,11 +7,11 @@
 | Statut | Nombre |
 |---|---|
 | `capability_removed` | 7 |
-| `implemented` | 110 |
+| `implemented` | 120 |
 | `license_blocked` | 10 |
 | `out_of_scope` | 25 |
 | `planned_duckdb` | 50 |
-| `planned_gdal` | 55 |
+| `planned_gdal` | 45 |
 | `planned_otb` | 3 |
 | `planned_pdal` | 16 |
 | `planned_rust` | 2 |
@@ -22,11 +22,11 @@
 | Moteur | Nombre |
 |---|---|
 | `duckdb` | 159 |
-| `gdal` | 59 |
+| `gdal` | 49 |
 | `n/a` | 49 |
 | `otb` | 3 |
 | `pdal` | 17 |
-| `python` | 1 |
+| `python` | 11 |
 | `rust:encoding_rs` | 2 |
 
 ## Détail par catégorie
@@ -267,9 +267,9 @@ Sommaire : [Attribute](#attribute) · [Coordinate System](#coordinate-system) ·
 | Amazon Redshift | reader.connector.postgres | duckdb | MIT (DuckDB) + Apache-2.0 (dlt) | `implemented` | niche | D'après le chantier GAP-16 : compatibilité documentée par la littérature Amazon (protocole filaire Postgres) et non vérifiée sur un cluster réel en session — pas de nouveau code requis, reader.connector.postgres suffit tel quel. |
 | Apache Parquet | reader.connector.blob | duckdb | MIT (DuckDB, lecteur Parquet natif) | `implemented` | courant | Ingestion GeoStudio importe déjà le GeoParquet géospatial (SP-56, parse_geoparquet) et le Parquet tabulaire pur (GAP-29, parse_parquet_tabular) ; toujours aucun op de pipeline reader.* de fichier Parquet arbitraire. |
 | Autodesk AutoCAD DWG |  | gdal | Nécessite le SDK propriétaire ODA/Teigha (licence commerciale) pour un support DWG complet via GDAL ; alternative LibreDWG sous GPL-3.0 (copyleft fort) | `license_blocked` | niche | Aucune implémentation DWG mature et permissive trouvée : soit SDK Autodesk/ODA commercial, soit LibreDWG GPL-3.0 (incompatible avec une intégration Apache-2.0 sans obligations de copyleft) — jugement distinct du DXF (texte, librement lisible par GDAL sans SDK tiers). |
-| Autodesk AutoCAD DXF |  | gdal | MIT/X (GDAL/OGR, pilote DXF) | `planned_gdal` | niche | DXF est un format texte documenté publiquement par Autodesk, pilote GDAL natif sans dépendance propriétaire — distinct du binaire DWG (cf. ligne séparée). |
+| Autodesk AutoCAD DXF | ingestion:dxf | python | MIT/X (GDAL/OGR via pyogrio) | `implemented` | niche | ARC-23 : couvert par l'import de fichiers (core/app/ingestion, pyogrio/GDAL), pas par un op de pipeline. CRS absent : WGS84 seulement si l'étendue le permet, sinon refus ; DWG exclu (licence) |
 | Autodesk Revit |  | n/a | API Autodesk Revit / plateforme Forge (propriétaire, licence commerciale) — aucune bibliothèque open source ne lit le format .rvt natif (IfcOpenShell couvre l'export IFC, pas le format natif) | `license_blocked` | niche |  |
-| Bentley MicroStation Design (DGN) |  | gdal | MIT/X (GDAL/OGR, pilote DGN v7 uniquement) | `planned_gdal` | niche | Le pilote DGN de GDAL ne couvre que le format DGN v7 (V8 non supporté en open source) — limitation à documenter si ce format est priorisé plus tard. |
+| Bentley MicroStation Design (DGN) | ingestion:dgn | python | MIT/X (GDAL/OGR via pyogrio) | `implemented` | niche | ARC-23 : couvert par l'import de fichiers (core/app/ingestion, pyogrio/GDAL), pas par un op de pipeline. DGN v7 seulement, mêmes règles CRS que DXF |
 | CSV (Comma-Separated Value) | reader.connector.blob | duckdb | MIT (DuckDB, lecteur CSV natif) | `implemented` | courant | Ingestion GeoStudio importe déjà le CSV géoréférencé (lat/lon, WKT) ; aucun op pipeline reader.* de fichier CSV arbitraire (hors connecteurs SQL) n'existe. |
 | CityGML |  | gdal | MIT/X (GDAL, lisible partiellement via le pilote générique GML ou le pilote GMLAS — aucun pilote CityGML dédié) ; une intégration dédiée utiliserait plus probablement libcitygml directement (LGPL-2.1, bibliothèque distincte, pas une dépendance de GDAL) | `planned_gdal` | niche | GDAL n'a pas de pilote CityGML dédié : la lecture partielle passe par le pilote générique GML (schéma non interprété sémantiquement) ou par le pilote GMLAS depuis GDAL 2.2 (mapping piloté par schéma XSD, tous deux MIT/X). Une intégration dédiée et complète du modèle CityGML (LOD1-4, sémantique des objets) utiliserait plus probablement libcitygml directement (LGPL-2.1) — une bibliothèque séparée qui peut optionnellement s'appuyer sur GDAL pour les transformations de coordonnées (LIBCITYGML_USE_GDAL), pas l'inverse. Écriture non couverte par cette voie. |
 | CityJSON |  | gdal | MIT/X (GDAL/OGR, pilote CityJSON) | `planned_gdal` | niche |  |
@@ -278,12 +278,12 @@ Sommaire : [Attribute](#attribute) · [Coordinate System](#coordinate-system) ·
 | ER Mapper ECW |  | gdal | SDK Hexagon ERDAS ECW/JP2 (propriétaire) requis pour l'écriture et pour une lecture complète — licence commerciale, decodeur gratuit limité | `license_blocked` | niche |  |
 | ERDAS IMAGINE (.img) |  | gdal | MIT/X (GDAL, pilote HFA — spécification ouverte, aucune SDK requise) | `planned_gdal` | niche |  |
 | Entwine Point Tile (EPT) |  | pdal | BSD-3-Clause (PDAL, pilote natif EPT) | `planned_pdal` | niche |  |
-| Esri File Geodatabase (FileGDB) |  | gdal | MIT/X (GDAL/OGR, pilote OpenFileGDB — lecture et écriture partielle sans SDK Esri) | `planned_gdal` | courant | Le pilote OpenFileGDB de GDAL est indépendant du SDK propriétaire Esri FileGDB API — écriture complète plus limitée que la lecture, mais aucun blocage de licence pour un usage basique. |
+| Esri File Geodatabase (FileGDB) | ingestion:filegdb | python | MIT/X (GDAL/OGR via pyogrio) | `implemented` | courant | ARC-23 : couvert par l'import de fichiers (core/app/ingestion, pyogrio/GDAL), pas par un op de pipeline. zip d'un dossier .gdb, lecture OpenFileGDB |
 | Esri Geodatabase (ArcSDE, entreprise) |  | gdal | Nécessite le SDK propriétaire Esri ArcSDE/ArcObjects (licence commerciale ArcGIS) pour un accès complet — pas d'implémentation ouverte équivalente connue | `license_blocked` | niche | À distinguer du FileGDB de bureau (ligne séparée), qui lui n'exige aucune SDK Esri. |
-| Esri Shapefile |  | gdal | MIT/X (GDAL/OGR) | `planned_gdal` | courant | Le module d'ingestion GeoStudio importe déjà le Shapefile (core/app/ingestion, branche zip) — mais aucun op de pipeline no-code n'expose ce format en lecture/écriture ; catégorisé contre ops_catalog()/QGIS uniquement, pas contre l'ingestion (cf. consigne de la tâche). |
+| Esri Shapefile | ingestion:shapefile | python | MIT/X (GDAL/OGR via pyogrio) | `implemented` | courant | ARC-23 : couvert par l'import de fichiers (core/app/ingestion, pyogrio/GDAL), pas par un op de pipeline. zip .shp (SP-56) |
 | Extensis MrSID |  | gdal | SDK LizardTech : décodage gratuit mais encodage (écriture) sous licence commerciale — propriétaire pour un usage complet lecture+écriture | `license_blocked` | niche |  |
-| GML (Geography Markup Language) |  | gdal | MIT/X (GDAL/OGR, pilote GML) | `planned_gdal` | courant | Ingestion GeoStudio traite déjà GML comme KML (driver GDAL, cf. GAP-29) ; pas d'op pipeline équivalent pour un GML arbitraire en entrée/sortie de pipeline. |
-| GeoJSON |  | gdal | MIT/X (GDAL/OGR) | `planned_gdal` | courant | Ingestion GeoStudio couvre déjà l'import GeoJSON (branche geojson/json) ; aucun op pipeline reader.* générique de fichier ne l'expose aujourd'hui. |
+| GML (Geography Markup Language) | ingestion:gml | python | MIT/X (GDAL/OGR via pyogrio) | `implemented` | courant | ARC-23 : couvert par l'import de fichiers (core/app/ingestion, pyogrio/GDAL), pas par un op de pipeline. multi-couches, éléments imbriqués aplatis, listes en texte JSON |
+| GeoJSON | ingestion:geojson | python | MIT/X (GDAL/OGR via pyogrio) | `implemented` | courant | ARC-23 : couvert par l'import de fichiers (core/app/ingestion, pyogrio/GDAL), pas par un op de pipeline. |
 | GeoTIFF |  | gdal | MIT/X (GDAL/OGR, pilote GTiff) | `planned_gdal` | courant |  |
 | Google BigQuery | reader.connector.bigquery | duckdb | MIT (DuckDB) + Apache-2.0 (dlt sql_database source, dialecte SQLAlchemy) | `implemented` | courant | Même architecture que reader.connector.snowflake (dialecte SQLAlchemy résolu par entry point, sqlalchemy-bigquery) — nouvel op reader.connector.bigquery à ajouter au catalogue, aucun nouveau moteur d'exécution. |
 | Google Sheets |  | duckdb | MIT (DuckDB) + Apache-2.0 (dlt, source Google Sheets vérifiée) | `planned_duckdb` | niche | Source attributaire par API plutôt que fichier — même famille architecturale que les futurs connecteurs SQL (dlt → DuckDB), pas un simple fichier statique. |
@@ -291,20 +291,20 @@ Sommaire : [Attribute](#attribute) · [Coordinate System](#coordinate-system) ·
 | JSON (JavaScript Object Notation) | reader.connector.blob | duckdb | MIT (DuckDB, extension json) | `implemented` | courant | Ingestion GeoStudio traite le JSON Lines (GAP-29, parse_jsonlines) ; le JSON générique (document unique ou tableau) n'a pas d'op pipeline dédié. |
 | LDAP/Active Directory |  | n/a |  | `out_of_scope` | niche | Service d'annuaire d'identités, sans rapport avec le domaine géospatial/analytique — l'identité de GeoStudio passe par OIDC/Keycloak, jamais par un accès direct LDAP en pipeline. |
 | Landsat-8 |  | gdal | MIT/X (GDAL, pilote raster générique + métadonnées MTL) | `planned_gdal` | niche |  |
-| MapInfo MIF/MID |  | gdal | MIT/X (GDAL/OGR) | `planned_gdal` | niche | Même famille de pilote GDAL que MapInfo TAB. |
+| MapInfo MIF/MID | ingestion:mapinfo | python | MIT/X (GDAL/OGR via pyogrio) | `implemented` | niche | ARC-23 : couvert par l'import de fichiers (core/app/ingestion, pyogrio/GDAL), pas par un op de pipeline. zip .mif/.mid |
 | Microsoft Excel |  | duckdb | MIT (DuckDB, extension spatial/excel) | `planned_duckdb` | courant | Ingestion GeoStudio importe déjà l'XLSX géoréférencé (SP-56, parse_xlsx_latlon) et le multi-feuilles (GAP-29, list_xlsx_sheets) — aucun op de pipeline n'expose un classeur Excel arbitraire en lecture/écriture pour un usage attributaire hors ingestion. |
 | Microsoft PowerPoint |  | n/a |  | `out_of_scope` | niche | Format de présentation bureautique, sans rapport avec le pipeline de données — GeoStudio a son propre mécanisme de rapport PDF (ReportSchedule, SP-17), pas un besoin PowerPoint. |
 | Microsoft SQL Server Spatial (JDBC) | reader.connector.mssql | duckdb | MIT (DuckDB) + Apache-2.0 (dlt sql_database source, dialecte pyodbc/pymssql) | `implemented` | courant | Même patron que postgres/snowflake : nouvel op reader.connector.mssql, dialecte SQLAlchemy. |
 | MongoDB |  | duckdb | MIT (DuckDB) + Apache-2.0 (dlt, source MongoDB vérifiée) | `planned_duckdb` | niche | Jugement limite : MongoDB est un magasin de documents, pas relationnel/SQL au sens strict — classé ici car dlt fournit déjà une source MongoDB vérifiée matérialisant vers DuckDB, même architecture connecteur que postgres/snowflake malgré la nature non tabulaire de la source. |
 | NetCDF (Network Common Data Form) |  | gdal | MIT/X (GDAL, pilote netCDF, dépend de libnetcdf sous licence BSD-like) | `planned_gdal` | niche |  |
-| OGC GeoPackage |  | gdal | MIT/X (GDAL/OGR) | `planned_gdal` | courant | Ingestion GeoStudio couvre déjà le GeoPackage (branche gpkg) ; pas d'op pipeline équivalent. |
+| OGC GeoPackage | ingestion:gpkg | python | MIT/X (GDAL/OGR via pyogrio) | `implemented` | courant | ARC-23 : couvert par l'import de fichiers (core/app/ingestion, pyogrio/GDAL), pas par un op de pipeline. signature SQLite exigée (REV-333) |
 | OGC WFS (Web Feature Service) |  | gdal | MIT/X (GDAL/OGR, pilote WFS) | `planned_gdal` | courant | GeoStudio a par ailleurs un connecteur de moissonnage WFS/WMS/WMTS côté fédération (app/harvest, SP-12) — module distinct de reader.* pipeline, hors périmètre de comparaison de cette tâche. |
-| OGC/Google KML |  | gdal | MIT/X (GDAL/OGR, pilote LIBKML) | `planned_gdal` | courant | Ingestion GeoStudio importe déjà KML/KMZ (SP-56, parse_kml) ; aucun op pipeline reader.*/writer.* ne l'expose — bon exemple de la distinction ingestion ≠ op de pipeline demandée par cette tâche. |
+| OGC/Google KML | ingestion:kml | python | MIT/X (GDAL/OGR via pyogrio) | `implemented` | courant | ARC-23 : couvert par l'import de fichiers (core/app/ingestion, pyogrio/GDAL), pas par un op de pipeline. |
 | OpenStreetMap (OSM) XML / PBF |  | gdal | MIT/X (GDAL/OGR, pilote OSM) | `planned_gdal` | courant |  |
 | Oracle Spatial Relational | reader.connector.oracle | duckdb | MIT (DuckDB) + Apache-2.0 (dlt) + Apache-2.0 (python-oracledb, mode thin sans Instant Client) | `implemented` | niche | python-oracledb en mode thin (pur Python, Apache-2.0) évite la dépendance à l'Instant Client Oracle et sa licence OTN à part — pas de blocage de licence identifié pour un futur connecteur. |
 | PostGIS | reader.connector.postgres | duckdb | MIT (DuckDB) + Apache-2.0 (dlt) | `implemented` | courant | Même op que PostgreSQL Non-Spatial — la géométrie transite en texte (WKT/WKB hexadécimal) via la requête SQL, pas en tant que type géométrique natif décodé automatiquement ; jugement assumé, à vérifier si un besoin de géométrie native sur ce connecteur émerge. |
 | PostgreSQL Non-Spatial (JDBC) | reader.connector.postgres | duckdb | MIT (DuckDB) + Apache-2.0 (dlt) | `implemented` | courant | Correspond à l'op reader.connector.postgres (dlt → destination DuckDB), déjà livré SP-15f — requête SQL arbitraire sur une base Postgres externe au tenant, distincte de reader.collection (collections propres à GeoStudio). |
-| Precisely MapInfo TAB (MITAB) |  | gdal | MIT/X (GDAL/OGR, pilote MITAB) | `planned_gdal` | niche | Pilote MITAB de GDAL entièrement open source (lecture et écriture), aucune SDK propriétaire requise. |
+| Precisely MapInfo TAB (MITAB) | ingestion:mapinfo | python | MIT/X (GDAL/OGR via pyogrio) | `implemented` | niche | ARC-23 : couvert par l'import de fichiers (core/app/ingestion, pyogrio/GDAL), pas par un op de pipeline. zip .tab/.dat/.map/.id |
 | RIEGL Laser Scan Database (RDB) |  | pdal | SDK propriétaire RIEGL rdblib requis (licence constructeur) — pas d'implémentation ouverte connue pour lire le format RDB natif | `license_blocked` | niche |  |
 | SAP Sybase Adaptive Server Enterprise (ASE) |  | n/a |  | `out_of_scope` | niche | Base de données métier legacy d'entreprise, exemple typique cité par la méthode de catégorisation (« bases propriétaires métier ») — aucun cas d'usage géospatial identifié. |
 | Salesforce |  | n/a |  | `out_of_scope` | niche | Connecteur métier CRM sans rapport avec un pipeline de données géospatiales/analytiques. |

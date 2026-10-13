@@ -23,7 +23,7 @@ def _now() -> datetime:
 # started_at (posé par mark_running), jamais created_at : un job resté
 # longtemps "pending" en file avant de démarrer ne doit pas être réclamé dès
 # qu'il passe "running".
-_TERMINAL = ("done", "error")
+_TERMINAL = ("done", "error", "cancelled")
 
 
 def create_job(
@@ -35,6 +35,7 @@ def create_job(
     format: str,
     page_id: str | None = None,
     ctx: str | None = None,
+    scope: str | None = None,
 ) -> ExportJob:
     job = ExportJob(
         id=uuid.uuid4().hex,
@@ -45,6 +46,7 @@ def create_job(
         status="pending",
         page_id=page_id,
         ctx=ctx,
+        scope=scope,
     )
     session.add(job)
     session.flush()
@@ -78,11 +80,50 @@ def mark_done(
     # balayage) ne repasse jamais « done ».
     result = session.execute(
         update(ExportJob)
-        .where(ExportJob.id == job_id, ExportJob.status.notin_(_TERMINAL))
+        .where(
+            ExportJob.id == job_id,
+            ExportJob.status.notin_((*_TERMINAL, "cancel_requested")),
+        )
         .values(status="done", result_key=result_key, byte_size=byte_size, finished_at=_now())
     )
     session.flush()
     return bool(result.rowcount)  # type: ignore[attr-defined]
+
+
+def request_cancel(session: Session, *, job_id: str) -> str | None:
+    """ARC-16 (jumelle de ingestion.repository.request_cancel, D6) : `pending ->
+    cancelled` (le worker ne le prendra plus) ou `running -> cancel_requested`
+    (testé par le worker avant le lancement et avant l'envoi : le rendu Chromium
+    lui-même n'est pas interruptible, borné à RENDER_TIMEOUT_MS). Renvoie le
+    nouveau statut, None si le job n'est plus annulable."""
+    for src, dst in (("pending", "cancelled"), ("running", "cancel_requested")):
+        result = session.execute(
+            update(ExportJob)
+            .where(ExportJob.id == job_id, ExportJob.status == src)
+            .values(status=dst)
+        )
+        session.flush()
+        if result.rowcount:  # type: ignore[attr-defined]
+            if dst == "cancelled":
+                session.execute(
+                    update(ExportJob).where(ExportJob.id == job_id).values(finished_at=_now())
+                )
+            return dst
+    return None
+
+
+def is_cancel_requested(session: Session, *, job_id: str) -> bool:
+    status = session.execute(select(ExportJob.status).where(ExportJob.id == job_id)).scalar()
+    return status == "cancel_requested"
+
+
+def mark_cancelled(session: Session, *, job_id: str) -> None:
+    session.execute(
+        update(ExportJob)
+        .where(ExportJob.id == job_id, ExportJob.status == "cancel_requested")
+        .values(status="cancelled", finished_at=_now())
+    )
+    session.flush()
 
 
 def mark_error(session: Session, *, job_id: str, error: str) -> None:
@@ -107,7 +148,11 @@ def reclaim_stuck_jobs(session: Session, *, older_than_minutes: int | None = Non
     équivalent dans tests/test_export_repository.py)."""
     threshold = _now() - timedelta(minutes=older_than_minutes or running_reclaim_minutes())
     rows = (
-        session.execute(select(ExportJob).where(ExportJob.status.in_(("pending", "running"))))
+        session.execute(
+            select(ExportJob).where(
+                ExportJob.status.in_(("pending", "running", "cancel_requested"))
+            )
+        )
         .scalars()
         .all()
     )
@@ -115,7 +160,7 @@ def reclaim_stuck_jobs(session: Session, *, older_than_minutes: int | None = Non
     for job in rows:
         # P01.04 : « pending » (jamais démarré : defer perdu, file non
         # consommée) s'ancre sur created_at, « running » sur started_at.
-        started_at = job.started_at if job.status == "running" else job.created_at
+        started_at = job.started_at if job.status != "pending" else job.created_at
         if started_at is None:
             continue
         if started_at.tzinfo is None:

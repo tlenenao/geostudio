@@ -175,8 +175,16 @@ def _where(
     bbox_srid: int = 4326,
     datetime_: str | None = None,
     datetime_field: str | None = None,
+    cql2: str | None = None,
+    cql2_srid: int = 4326,
 ):
     clauses, params = [], {}
+    if cql2 is not None:
+        from app.features.cql2 import compile_cql2  # import tardif : cql2 importe ce module
+
+        sql, cql_params = compile_cql2(session, info, cql2, srid=cql2_srid)
+        clauses.append(sql)
+        params.update(cql_params)
     if datetime_ is not None:
         clauses.append(_temporal_clause(session, info, datetime_, datetime_field, params))
     if filters:
@@ -305,6 +313,8 @@ def _select_features(
     datetime_field: str | None = None,
     out_srid: int | None = None,
     bbox_srid: int = 4326,
+    cql2: str | None = None,
+    cql2_srid: int = 4326,
     src: str,
 ) -> FeaturePage:
     if after is not None and offset > 0:
@@ -322,6 +332,8 @@ def _select_features(
         bbox_srid=bbox_srid,
         datetime_=datetime_,
         datetime_field=datetime_field,
+        cql2=cql2,
+        cql2_srid=cql2_srid,
     )
     page_where, page_params = where, dict(params)
     if after is not None:
@@ -443,7 +455,7 @@ def insert_features(
 ) -> None:
     """Insertion groupée (executemany, un seul aller-retour par lot) de lignes
     (properties, geometry) déjà validées. Contrairement à insert_feature, toutes
-    les lignes du lot partagent les colonnes de la première (clés absentes →
+    les lignes du lot partagent l'union des colonnes présentes (clés absentes →
     NULL, pas le défaut de colonne) : réservé aux producteurs à schéma uniforme
     (pipelines, t03b-001)."""
     if not rows:
@@ -451,8 +463,9 @@ def insert_features(
     t = quote_ident(session, info.table_name)
     cols, values = ["tenant_id"], ["current_setting('app.tenant_id')"]
     keys: dict[str, str] = {}  # paramètre -> nom de colonne
+    present = set().union(*(props.keys() for props, _ in rows))  # ARC-13 : défauts par ligne
     for i, col in enumerate(_property_columns(info)):
-        if col.type != "unsupported" and col.name in rows[0][0]:
+        if col.type != "unsupported" and col.name in present:
             cols.append(quote_ident(session, col.name))
             values.append(f":p{i}")
             keys[f"p{i}"] = col.name

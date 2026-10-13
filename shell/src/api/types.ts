@@ -135,7 +135,8 @@ export type NotificationSummary = {
     | "harvest"
     | "tileset3d"
     | "terrain3d"
-    | "data_export";
+    | "data_export"
+    | "submission";
   status: "success" | "failure";
   itemId: string | null;
   itemResourceType: ResourceType | null;
@@ -273,6 +274,45 @@ export type CopilotSurface =
 // REV-102 : un résultat de GET /v1/geocode.
 export type GeocodeResult = { label: string; lon: number; lat: number };
 
+// ARC-25 : widget « Analyse » — outils d'analyse spatiale (GET /v1/analysis/tools).
+export type AnalysisTool = {
+  name: string;
+  label: string;
+  help: string;
+  needsOtherCollection: boolean;
+  paramsSchema: {
+    properties?: Record<
+      string,
+      {
+        type?: string;
+        anyOf?: { type?: string }[];
+        title?: string;
+        description?: string;
+        enum?: string[];
+        default?: unknown;
+      }
+    >;
+    required?: string[];
+  };
+};
+export type AnalysisRequest = {
+  tool: string;
+  params: Record<string, unknown>;
+  otherCollectionId?: string;
+  output: "ephemeral" | "collection";
+  title?: string;
+  limit?: number;
+};
+export type AnalysisResult = {
+  tool: string;
+  output: "ephemeral" | "collection";
+  srid: number;
+  rowCount?: number;
+  collectionId?: string;
+  truncated?: boolean;
+  featureCollection?: { type: "FeatureCollection"; features: unknown[] };
+};
+
 export type ItemScope = "all" | "mine" | "shared" | "public";
 
 export type ItemSort =
@@ -319,6 +359,8 @@ export type UpdatePatch = {
 // canManage : l'appelant est créateur du groupe ou administrateur des
 // utilisateurs (membres, renommage, suppression) — calculé par le cœur (j13-006).
 export type Group = { id: string; title: string; createdBy?: string; canManage?: boolean };
+// ARC-24 (ADR 0022) : mapping administré valeur de claim IdP -> groupe du cœur.
+export type GroupClaimMapping = { id: string; groupId: string; claimValue: string };
 export type GroupMember = { userId: string; username: string; email: string | null };
 export type DirectoryUser = { id: string; username: string; email: string | null };
 export type ShareLinkInfo = {
@@ -428,6 +470,20 @@ export type PrintLayoutConfig = {
   title?: string | null;
   showLegend?: boolean;
   cartouche?: string | null;
+  // ARC-16 : éléments de gabarit (logo = data URI, jamais une URL).
+  scaleBar?: boolean;
+  northArrow?: boolean;
+  freeText?: string | null;
+  logo?: string | null;
+  // ARC-30 : atlas = une page par entité de la source (apps/dashboards).
+  atlas?: AtlasConfig | null;
+};
+
+export type AtlasConfig = {
+  dataSourceId: string;
+  titleTemplate?: string | null;
+  fields: { label: string; template: string }[];
+  maxPages: number;
 };
 
 export type MapConfig = {
@@ -469,6 +525,20 @@ export type CollectionFieldType =
   | "attachment"
   | "unsupported";
 
+// ARC-13 : domaine d'attribut (liste de valeurs admises ou plage bornée incluse).
+export type FieldDomain =
+  { type: "list"; values: (string | number)[] } | { type: "range"; min?: number; max?: number };
+
+export type CollectionSubtypes = {
+  field: string;
+  items: {
+    value: string | number;
+    label: string;
+    defaults?: Record<string, unknown>;
+    domains?: Record<string, FieldDomain>;
+  }[];
+};
+
 export type CollectionSchemaField = {
   name: string;
   type: CollectionFieldType;
@@ -477,6 +547,7 @@ export type CollectionSchemaField = {
   values?: string[];
   itemType?: CollectionFieldType;
   label?: string;
+  domain?: FieldDomain;
 };
 
 export type CollectionSchema = {
@@ -484,6 +555,7 @@ export type CollectionSchema = {
   pk: string;
   geometry: { column: string; type: string | null; srid: number } | null;
   fields: CollectionSchemaField[];
+  subtypes?: CollectionSubtypes;
 };
 
 // REV-117 : profil exploratoire d'une collection (GET /collections/{id}/profile).
@@ -516,6 +588,39 @@ export type CollectionProfile = {
   } | null;
   asOf?: string | null;
   pending: boolean;
+};
+
+export type FeatureSnapshot = {
+  properties: Record<string, unknown>;
+  geometry: unknown;
+};
+
+export type FeatureVersion = {
+  id: number;
+  fid: string;
+  op: "create" | "update" | "delete" | "restore";
+  at: string;
+  actor: { id: string; username: string } | null;
+  before: FeatureSnapshot | null;
+  after: FeatureSnapshot | null;
+};
+
+export type CollectionRelation = {
+  id: string;
+  name: string;
+  cardinality: "one_to_one" | "one_to_many" | "many_to_many";
+  parentCollectionId: string;
+  childCollectionId: string;
+  onDelete: "restrict" | "cascade";
+};
+
+export type RelatedRecords = {
+  relation: CollectionRelation;
+  direction: "children" | "parents";
+  collectionId: string;
+  features: { id: string | number; properties: Record<string, unknown> }[];
+  numberReturned: number;
+  numberMatched: number | null;
 };
 
 export type AttachmentSummary = {
@@ -559,6 +664,46 @@ export type MapIconOut = {
 // constat non corrigé côté shell) : GET /collections, GET /reports/{id}/runs,
 // GET /pipelines/{id}/runs, GET /alerts/{id}/evaluations.
 export type PageParams = { limit?: number; offset?: number };
+
+export interface Submission {
+  id: string;
+  status: "pending" | "approved" | "rejected";
+  properties: Record<string, unknown>;
+  geometry: unknown;
+  attachment: { filename: string; contentType: string; byteSize: number } | null;
+  createdAt: string | null;
+}
+
+/** Saisie de l'appelant (« mes saisies », ARC-27). */
+export interface MyEntry {
+  fid: string;
+  at: string;
+  properties: Record<string, unknown>;
+}
+
+export interface XlsFormReportItem {
+  code: "not_ported" | "approximated" | "renamed" | "ignored";
+  message: string;
+  row: number | null;
+  name: string | null;
+}
+
+export interface XlsFormImportResult {
+  collectionId: string;
+  itemId: string;
+  title: string;
+  report: XlsFormReportItem[];
+}
+
+export interface SubmissionTokenInfo {
+  id: string;
+  name: string;
+  prefix: string;
+  expiresAt: string | null;
+  maxSubmissions: number;
+  submissionCount: number;
+  revokedAt: string | null;
+}
 
 export interface ItemClient {
   listItems(params?: ListItemsParams): Promise<ItemPage>;
@@ -614,6 +759,9 @@ export interface ItemClient {
   }): Promise<UsageSummary>;
   // REV-102 : recherche d'adresse (BAN via le cœur).
   geocode(q: string, limit?: number): Promise<GeocodeResult[]>;
+  // ARC-25 : widget « Analyse ».
+  listAnalysisTools(): Promise<AnalysisTool[]>;
+  runAnalysis(collectionId: string, body: AnalysisRequest): Promise<AnalysisResult>;
   getInstanceInfo(): Promise<InstanceInfo>;
   getQuotaUsage(): Promise<QuotaUsage>;
   copilotTurn(
@@ -653,6 +801,9 @@ export interface ItemClient {
   removeGroupMember(groupId: string, userId: string): Promise<void>;
   renameGroup(groupId: string, name: string): Promise<Group>;
   deleteGroup(groupId: string): Promise<void>;
+  listGroupClaimMappings(): Promise<GroupClaimMapping[]>;
+  createGroupClaimMapping(groupId: string, claimValue: string): Promise<GroupClaimMapping>;
+  deleteGroupClaimMapping(mappingId: string): Promise<void>;
   // j13-005 : annuaire restreint (catalog.manage) pour ajouter un membre.
   searchUserDirectory(q: string): Promise<DirectoryUser[]>;
   getSharing(pk: string): Promise<Sharing>;
@@ -838,6 +989,33 @@ export interface ItemClient {
     opts?: { ifMatch?: string },
   ): Promise<void>;
   deleteFeature(collectionId: string, fid: string, opts?: { ifMatch?: string }): Promise<void>;
+  /** Saisies créées par l'appelant (ARC-27), plus récentes d'abord. Optionnel : sans cœur. */
+  listMyEntries?(collectionId: string, limit?: number): Promise<MyEntry[]>;
+  /** Import XLSForm -> collection + App de collecte mobile (ARC-27). Optionnel : sans cœur. */
+  importXlsForm?(file: File): Promise<XlsFormImportResult>;
+  /** Soumission publique modérée (ARC-10). Optionnels : absents d'un client sans cœur. */
+  listSubmissions?(collectionId: string): Promise<Submission[]>;
+  approveSubmission?(collectionId: string, submissionId: string): Promise<void>;
+  rejectSubmission?(collectionId: string, submissionId: string, reason: string): Promise<void>;
+  listSubmissionTokens?(collectionId: string): Promise<SubmissionTokenInfo[]>;
+  /** Le jeton en clair n'est renvoyé qu'ici, une seule fois. */
+  createSubmissionToken?(
+    collectionId: string,
+    input: { name: string; expiresInDays: number; maxSubmissions: number },
+  ): Promise<SubmissionTokenInfo & { token: string }>;
+  revokeSubmissionToken?(collectionId: string, tokenId: string): Promise<void>;
+  /** Historique d'une entité (ARC-15), plus récent d'abord. Optionnel : absent d'un client sans cœur. */
+  listFeatureHistory?(collectionId: string, fid: string): Promise<FeatureVersion[]>;
+  /** Restaure l'état APRÈS d'une version (ARC-15) : écriture normale, journalisée `restore`. */
+  restoreFeatureVersion?(collectionId: string, fid: string, versionId: number): Promise<void>;
+  /** Relations touchant une collection (ARC-21). Optionnel : absent d'un client sans cœur. */
+  listCollectionRelations?(collectionId: string): Promise<CollectionRelation[]>;
+  /** Enregistrements liés à une entité selon une relation (ARC-21), sous les droits du lecteur. */
+  listRelatedRecords?(
+    collectionId: string,
+    fid: string,
+    relationId: string,
+  ): Promise<RelatedRecords>;
   /** Entité + ETag courant (ARC-04). Optionnel : absent d'un client sans écriture. */
   getFeature?(
     collectionId: string,
@@ -876,8 +1054,14 @@ export interface ItemClient {
   runAnalyticsSql(
     sql: string,
   ): Promise<{ columns: string[]; rows: unknown[][]; truncated: boolean }>;
-  createExport(itemId: string, format: ExportFormat): Promise<{ jobId: string }>;
+  // ARC-26/30 : `entityId` = fiche d'une entité, `atlas` = une page par entité.
+  createExport(
+    itemId: string,
+    format: ExportFormat,
+    scope?: { entityId?: string; atlas?: boolean },
+  ): Promise<{ jobId: string }>;
   getExportJob(jobId: string): Promise<ExportJob>;
+  cancelExport(jobId: string): Promise<ExportJob>;
   createAppExport(itemId: string, mode: AppExportMode): Promise<{ jobId: string }>;
   getAppExportJob(itemId: string, jobId: string): Promise<AppExportJobStatus>;
   createTileset3DUpload(input: { filename: string; title: string }): Promise<{ jobId: string }>;
@@ -1429,8 +1613,9 @@ export type PipelineOpEntry = {
 
 export type PipelineOpsCatalog = Record<string, PipelineOpEntry>;
 
-export type ExportFormat = "png" | "pdf";
-export type ExportJobStatus = "pending" | "running" | "done" | "error";
+export type ExportFormat = "png" | "pdf" | "svg";
+export type ExportJobStatus =
+  "pending" | "running" | "done" | "error" | "cancelled" | "cancel_requested";
 export type ExportJob = {
   id: string;
   status: ExportJobStatus;

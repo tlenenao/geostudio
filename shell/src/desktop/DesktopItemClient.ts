@@ -262,6 +262,15 @@ export function createDesktopItemClient(connection: {
     async deleteGroup(..._args: unknown[]) {
       return unsupported();
     },
+    async listGroupClaimMappings(..._args: unknown[]) {
+      return unsupported();
+    },
+    async createGroupClaimMapping(..._args: unknown[]) {
+      return unsupported();
+    },
+    async deleteGroupClaimMapping(..._args: unknown[]) {
+      return unsupported();
+    },
     async searchUserDirectory(..._args: unknown[]) {
       return unsupported();
     },
@@ -501,6 +510,9 @@ export function createDesktopItemClient(connection: {
     async getExportJob(..._args: unknown[]) {
       return unsupported();
     },
+    async cancelExport(..._args: unknown[]) {
+      return unsupported();
+    },
     async createAppExport(..._args: unknown[]) {
       return unsupported();
     },
@@ -592,6 +604,12 @@ export function createDesktopItemClient(connection: {
       return unsupported();
     },
     async geocode(..._args: unknown[]) {
+      return unsupported();
+    },
+    async listAnalysisTools(..._args: unknown[]) {
+      return unsupported();
+    },
+    async runAnalysis(..._args: unknown[]) {
       return unsupported();
     },
     async listUsageTasks(..._args: unknown[]) {

@@ -52,6 +52,7 @@ from app.features import tiles as tiles_routes
 from app.geocoding import routes as geocoding_routes
 from app.harvest import dataset_validation as harvest_dataset_validation  # noqa: F401
 from app.harvest import routes as harvest_routes
+from app.history import routes as history_routes
 from app.ingestion import routes as ingestion_routes
 from app.ingestion.storage import require_public_s3_endpoint
 from app.instance import routes as instance_routes
@@ -61,12 +62,19 @@ from app.jobs.engine import jobs_backlog
 from app.mapicons import routes as mapicons_routes
 from app.mcp.server import create_mcp_server
 from app.notifications import routes as notifications_routes
+from app.ows import routes as ows_routes
+from app.ows import wms_routes
+from app.pipelines import analysis_routes as analysis_routes
 from app.pipelines import config_validation as pipelines_config_validation  # noqa: F401
 from app.pipelines import routes as pipelines_routes
 from app.public import routes as public_routes
+from app.public_submit import routes as public_submit_routes
+from app.quality import routes as quality_routes
 from app.quotas import routes as quotas_routes
 from app.quotas.service import QuotaExceededError
 from app.ratelimit.limiter import RateLimiter, caller_key, route_group
+from app.relations import routes as relations_routes
+from app.relations.service import RelationHooks
 from app.reports import routes as reports_routes
 from app.roles import routes as roles_routes
 from app.schemas_routes import router as schemas_router
@@ -74,9 +82,11 @@ from app.secrets import crypto as secrets_crypto
 from app.secrets import routes as secrets_routes
 from app.sharing import routes as sharing_routes
 from app.stac import routes as stac_routes
+from app.styles import routes as styles_routes
 from app.terrain3d import routes as terrain3d_routes
 from app.tileset3d import routes as tileset3d_routes
 from app.usage import routes as usage_routes
+from app.xlsform import routes as xlsform_routes
 
 MAX_CONFIG_BODY_BYTES = 5 * 1024 * 1024
 _CONFIG_WRITE_PATH_RE = re.compile(r"^/v1/configs(/[^/]+){0,2}$")
@@ -403,6 +413,10 @@ def create_app() -> FastAPI:
     v1_router.include_router(collections_geo_limits_routes.router)
     v1_router.include_router(catalog_routes.router)
     v1_router.include_router(features_routes.router)
+    v1_router.include_router(analysis_routes.router)
+    v1_router.include_router(quality_routes.router)
+    v1_router.include_router(history_routes.router)
+    v1_router.include_router(relations_routes.router)  # ARC-21
     v1_router.include_router(dataexport_routes.router)
     v1_router.include_router(tiles_routes.router)
     v1_router.include_router(attachments_routes.router)
@@ -413,17 +427,24 @@ def create_app() -> FastAPI:
     v1_router.include_router(alerts_routes.router)
     v1_router.include_router(reports_routes.router)
     v1_router.include_router(notifications_routes.router)
+    v1_router.include_router(public_submit_routes.router)
+    v1_router.include_router(xlsform_routes.router)
     v1_router.include_router(apikeys_routes.router)
     v1_router.include_router(usage_routes.router)
     v1_router.include_router(quotas_routes.router)
     v1_router.include_router(compliance_routes.router)
     v1_router.include_router(geocoding_routes.router)
+    v1_router.include_router(styles_routes.router)
     if is_etl_enabled():
         v1_router.include_router(pipelines_routes.router)
     if is_export_enabled():
         v1_router.include_router(export_routes.router)
     if is_appexport_enabled():
         v1_router.include_router(appexport_routes.router)
+    if ows_routes.is_ows_enabled():  # ARC-11 : WFS + OGC API Tiles (ADR 0018)
+        v1_router.include_router(ows_routes.router)
+    if wms_routes.is_wms_enabled():  # ARC-20 : WMS 1.3.0 + WMTS 1.0.0 rendus par le cœur (ADR 0020)
+        v1_router.include_router(wms_routes.router)
     if is_tileset3d_enabled():
         v1_router.include_router(tileset3d_routes.router)
     if is_terrain3d_enabled():
@@ -448,6 +469,7 @@ def create_app() -> FastAPI:
             bucket=s3_bucket,
         )
 
+    app.dependency_overrides[features_routes.get_relation_hooks] = lambda: RelationHooks()  # ARC-21
     app.dependency_overrides[features_routes.get_export_job_starter] = lambda: (
         dataexport_routes.default_starter
     )

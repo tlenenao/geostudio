@@ -37,6 +37,7 @@ type ExportsIngestionMethods = Pick<
   ItemClient,
   | "createExport"
   | "getExportJob"
+  | "cancelExport"
   | "createAppExport"
   | "getAppExportJob"
   | "presignUpload"
@@ -52,12 +53,20 @@ type ExportsIngestionMethods = Pick<
 export function createExportsIngestionMethods(base: ItemClientBase): ExportsIngestionMethods {
   const { request, coreUrl, authFetch } = base;
   return {
-    async createExport(itemId: string, format: ExportFormat): Promise<{ jobId: string }> {
-      return request<{ jobId: string }>("POST", `/export`, { itemId, format });
+    async createExport(
+      itemId: string,
+      format: ExportFormat,
+      scope?: { entityId?: string; atlas?: boolean },
+    ): Promise<{ jobId: string }> {
+      return request<{ jobId: string }>("POST", `/export`, { itemId, format, ...scope });
     },
 
     async getExportJob(jobId: string): Promise<ExportJob> {
       return request<ExportJob>("GET", `/export/jobs/${jobId}`);
+    },
+
+    async cancelExport(jobId: string): Promise<ExportJob> {
+      return request<ExportJob>("POST", `/export/jobs/${jobId}/cancel`);
     },
 
     async createAppExport(itemId: string, mode: AppExportMode): Promise<{ jobId: string }> {
