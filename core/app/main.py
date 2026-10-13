@@ -155,7 +155,14 @@ def _make_rate_limiter(database_url: str) -> RateLimiter:
         "postgresql"
     ):
         engine = create_engine(
-            database_url, pool_size=2, max_overflow=2, pool_timeout=0.25, pool_pre_ping=True
+            database_url,
+            pool_size=2,
+            max_overflow=2,
+            pool_timeout=0.25,
+            pool_pre_ping=True,
+            # PgBouncer en mode transaction : pas de requêtes préparées côté serveur (psycopg 3
+            # en pose une dès la 5e exécution) — vu au rejeu HA, repli mémoire silencieux sinon.
+            connect_args={"prepare_threshold": None},
         )
         return PgRateLimiter(engine)
     return RateLimiter()
