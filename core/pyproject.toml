@@ -386,6 +386,8 @@ layers = [
     # lit les collections/privilèges (en dessous).
     "app.history",
     "app.attachments",
+    # app.lineage (ARC4-F15) : graphe de dépendances dérivé des configs (lecture seule).
+    "app.lineage",
     "app.collections",
     "app.configs",
     # app.quotas (SP-58) : compteurs/mesure de stockage par tenant

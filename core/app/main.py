@@ -59,6 +59,7 @@ from app.instance import routes as instance_routes
 from app.items import routes as items_routes
 from app.jobs import open_sync_defer
 from app.jobs.engine import jobs_backlog
+from app.lineage import routes as lineage_routes
 from app.mapicons import routes as mapicons_routes
 from app.mcp.server import create_mcp_server
 from app.notifications import routes as notifications_routes
@@ -427,6 +428,7 @@ def create_app() -> FastAPI:
     v1_router.include_router(harvest_routes.router)
     v1_router.include_router(alerts_routes.router)
     v1_router.include_router(webhooks_routes.router)  # ARC4-F6
+    v1_router.include_router(lineage_routes.router)  # ARC4-F15
     v1_router.include_router(reports_routes.router)
     v1_router.include_router(notifications_routes.router)
     v1_router.include_router(public_submit_routes.router)
