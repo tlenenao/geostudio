@@ -440,6 +440,20 @@ export const admin = {
   "registerCollection.tableLabel": "Table",
   "registerCollection.registerFailed": "Échec de l'enregistrement.",
 
+  // XlsFormImportButton (ARC-27)
+  "xlsform.button": "Importer un XLSForm",
+  "xlsform.title": "Importer un XLSForm",
+  "xlsform.help":
+    "Crée une collection et une application de collecte mobile à partir d'un formulaire XLSForm (.xlsx).",
+  "xlsform.fileLabel": "Fichier XLSForm",
+  "xlsform.importing": "Import en cours…",
+  "xlsform.importError": "Échec de l'import du XLSForm.",
+  "xlsform.done": "Formulaire « {title} » importé.",
+  "xlsform.openApp": "Ouvrir l'application de collecte",
+  "xlsform.reportTitle": "Rapport d'import",
+  "xlsform.reportEmpty": "Tout le formulaire a été porté sans perte.",
+  "xlsform.row": "ligne {row}",
+
   // ImportFileButton
   "importFile.button": "Importer un fichier",
   "importFile.genericError": "Échec de l'import.",

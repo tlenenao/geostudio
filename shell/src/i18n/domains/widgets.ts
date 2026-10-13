@@ -211,6 +211,13 @@ export const widgets = {
 
   // Widget Formulaire (form.tsx)
   "widgetForm.paletteLabel": "Formulaire",
+  "widgetForm.useMyPosition": "Utiliser ma position",
+  "widgetForm.positionError":
+    "Position indisponible : autorisez la localisation ou saisissez les coordonnées.",
+  "widgetForm.photoReady": "Photo prête : {filename}",
+  "widgetForm.myEntries": "Mes saisies",
+  "widgetForm.myEntriesEmpty": "Aucune saisie pour le moment.",
+  "widgetForm.myEntriesError": "Échec du chargement de vos saisies.",
   "widgetForm.dataSourceConfig": "Source de données",
   "widgetForm.submitLabelConfig": "Libellé du bouton",
   "widgetForm.hiddenToggle": "Masqué",
