@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useItemClient } from "../../api/hooks";
 import { ApiError } from "../../api/ApiError";
-import type { PipelineRun } from "../../api/types";
+import type { PipelineParameter, PipelineRun } from "../../api/types";
 import { t } from "../../i18n";
 import { jobStatusLabel } from "../../lib/jobStatusLabel";
 import { Button } from "../../ui/kit/Button";
@@ -40,16 +40,18 @@ function RunRow({
   run,
   totalNodes,
   onCancel,
+  onRetry,
 }: {
   run: PipelineRun;
   totalNodes?: number;
   onCancel?: (runId: string) => void;
+  onRetry?: (runId: string, fromStart: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const detail = usePanelTrigger(open);
   const nodeEntries = Object.values(run.nodeStats);
   const showNodeProgress = run.status === "running" && totalNodes !== undefined && totalNodes > 0;
-  const active = run.status === "queued" || run.status === "running";
+  const active = run.status === "queued" || run.status === "running" || run.status === "retrying";
   // t03b-009 : l'écrivain publie sa progression par lot dans nodeStats.
   const lastStat = nodeEntries[nodeEntries.length - 1];
   return (
@@ -71,6 +73,34 @@ function RunRow({
             {t("pipelineRun.cancelButton")}
           </button>
         )}
+        {(run.attempt ?? 1) > 1 && (
+          <span className="text-ink-2">{t("pipelineRun.attempt", { n: run.attempt ?? 1 })}</span>
+        )}
+        {run.status === "retrying" && run.nextRetryAt && (
+          <span className="text-ink-2">
+            {t("pipelineRun.nextRetry", { date: formatDateTime(run.nextRetryAt) })}
+          </span>
+        )}
+        {run.status === "failed" && onRetry && (
+          <>
+            {run.resumable && (
+              <button
+                type="button"
+                className="text-accent underline"
+                onClick={() => onRetry(run.id, false)}
+              >
+                {t("pipelineRun.resumeButton")}
+              </button>
+            )}
+            <button
+              type="button"
+              className="text-accent underline"
+              onClick={() => onRetry(run.id, true)}
+            >
+              {t("pipelineRun.replayButton")}
+            </button>
+          </>
+        )}
         {run.startedAt && <span className="text-ink-2">{formatDateTime(run.startedAt)}</span>}
         {formatDuration(run.startedAt, run.finishedAt) && (
           <span className="text-ink-2">{formatDuration(run.startedAt, run.finishedAt)}</span>
@@ -88,6 +118,15 @@ function RunRow({
           </button>
         )}
       </div>
+      {run.params && Object.keys(run.params).length > 0 && (
+        <p className="text-ink-2">
+          {t("pipelineRun.paramsSummary", {
+            params: Object.entries(run.params)
+              .map(([k, v]) => `${k}=${String(v)}`)
+              .join(", "),
+          })}
+        </p>
+      )}
       {run.error && (
         <p role="alert" className="text-danger">
           {run.error}
@@ -113,6 +152,7 @@ export function PipelineRunPanel({
   pipelineId,
   onLatestRunChange,
   totalNodes,
+  parameters,
 }: {
   pipelineId: string;
   onLatestRunChange?: (run: PipelineRun | null) => void;
@@ -121,8 +161,11 @@ export function PipelineRunPanel({
   // main (ex. VisualQueryWizardPage) — la progression N/M ne s'affiche
   // simplement pas dans ce cas, additif.
   totalNodes?: number;
+  // ARC-K2/F3 : paramètres déclarés du pipeline, saisis avant « Exécuter ».
+  parameters?: PipelineParameter[];
 }) {
   const client = useItemClient();
+  const [paramValues, setParamValues] = useState<Record<string, string>>({});
   const [runs, setRuns] = useState<PipelineRun[]>([]);
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
@@ -175,7 +218,12 @@ export function PipelineRunPanel({
       setRuns(latest);
       onLatestRunChange?.(latest[0] ?? null);
       const status = latest[0]?.status;
-      if (status !== "queued" && status !== "running" && status !== "cancel_requested") {
+      if (
+        status !== "queued" &&
+        status !== "running" &&
+        status !== "cancel_requested" &&
+        status !== "retrying"
+      ) {
         setRunning(false);
         return;
       }
@@ -190,7 +238,13 @@ export function PipelineRunPanel({
     setRunning(true);
     setRunError(null);
     try {
-      await client.runPipeline(pipelineId);
+      const supplied: Record<string, unknown> = {};
+      for (const p of parameters ?? []) {
+        const raw = paramValues[p.name];
+        if (raw === undefined || raw === "") continue;
+        supplied[p.name] = p.type === "boolean" ? raw === "true" : raw;
+      }
+      await client.runPipeline(pipelineId, supplied);
       await poll();
     } catch (e) {
       if (!mountedRef.current) return;
@@ -216,8 +270,42 @@ export function PipelineRunPanel({
     }
   }
 
+  async function onRetry(runId: string, fromStart: boolean) {
+    setRunError(null);
+    try {
+      await client.retryPipelineRun?.(runId, { fromStart });
+      await poll();
+    } catch (e) {
+      if (!mountedRef.current) return;
+      setRunError(e instanceof Error ? e.message : t("pipelineRun.retryFailed"));
+    }
+  }
+
   return (
     <div className="flex flex-col gap-2">
+      {parameters && parameters.length > 0 && (
+        <fieldset className="flex flex-col gap-1 text-xs">
+          <legend className="text-ink-2">{t("pipelineRun.paramsLegend")}</legend>
+          {parameters.map((p) => (
+            <label key={p.name} className="flex flex-col gap-0.5">
+              {p.required ? t("pipelineRun.paramRequired", { name: p.name }) : p.name}
+              <input
+                className="h-9 rounded border border-rule bg-surface px-2"
+                type={
+                  p.type === "number" || p.type === "integer"
+                    ? "number"
+                    : p.type === "date"
+                      ? "date"
+                      : "text"
+                }
+                placeholder={p.default !== undefined ? String(p.default) : undefined}
+                value={paramValues[p.name] ?? ""}
+                onChange={(e) => setParamValues((v) => ({ ...v, [p.name]: e.target.value }))}
+              />
+            </label>
+          ))}
+        </fieldset>
+      )}
       <Button size="sm" onClick={() => void onRun()} disabled={running}>
         {running ? t("pipelineRun.running") : t("pipelineRun.runButton")}
       </Button>
@@ -233,6 +321,7 @@ export function PipelineRunPanel({
             run={run}
             totalNodes={totalNodes}
             onCancel={client.cancelPipelineRun ? (id) => void onCancel(id) : undefined}
+            onRetry={client.retryPipelineRun ? (id, fs) => void onRetry(id, fs) : undefined}
           />
         ))}
       </ul>

@@ -4898,3 +4898,23 @@ test.each([
   const cfg = await makeClient().getMapConfig("77");
   expect((cfg.layers[0] as { symbology?: unknown }).symbology).toEqual(symbology);
 });
+
+test("runPipeline envoie les paramètres et retryPipelineRun cible la route de reprise", async () => {
+  let runBody: unknown = null;
+  let retryBody: unknown = null;
+  server.use(
+    http.post("https://core.test/v1/pipelines/p-5/run", async ({ request }) => {
+      runBody = await request.json();
+      return HttpResponse.json({ runId: "run-9" }, { status: 202 });
+    }),
+    http.post("https://core.test/v1/pipelines/runs/run-1/retry", async ({ request }) => {
+      retryBody = await request.json();
+      return HttpResponse.json({ runId: "run-10" }, { status: 202 });
+    }),
+  );
+  await makeClient().runPipeline("p-5", { minPop: 5 });
+  expect(runBody).toEqual({ params: { minPop: 5 } });
+  const r = await makeClient().retryPipelineRun?.("run-1", { fromStart: true });
+  expect(retryBody).toEqual({ fromStart: true });
+  expect(r).toEqual({ runId: "run-10" });
+});

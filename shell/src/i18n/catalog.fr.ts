@@ -290,6 +290,7 @@ export const fr = {
   "jobStatus.error": "Échoué",
   "jobStatus.cancelled": "Annulé",
   "jobStatus.cancelRequested": "Annulation demandée",
+  "jobStatus.retrying": "Nouvelle tentative planifiée",
   "jobStatus.unknown": "Inconnu",
   "docTitle.publicCatalog": "Catalogue public",
 } as const;

@@ -210,6 +210,14 @@ export const automation = {
   "pipelineRun.runButton": "Exécuter",
   "pipelineRun.cancelButton": "Annuler le run",
   "pipelineRun.cancelFailed": "Échec de l'annulation du run.",
+  "pipelineRun.resumeButton": "Reprendre",
+  "pipelineRun.replayButton": "Rejouer",
+  "pipelineRun.retryFailed": "Échec de la relance du run.",
+  "pipelineRun.attempt": "tentative {n}",
+  "pipelineRun.nextRetry": "prochaine tentative {date}",
+  "pipelineRun.paramsLegend": "Paramètres du run",
+  "pipelineRun.paramRequired": "{name} (obligatoire)",
+  "pipelineRun.paramsSummary": "Paramètres : {params}",
   "pipelineRun.rowsProgress": "{rows} lignes traitées",
   // GET /pipelines/{id}/runs pagine déjà côté cœur (limit/offset, SP-50) —
   // ce bouton évite de tronquer silencieusement l'historique au-delà de la
