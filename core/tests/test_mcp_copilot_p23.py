@@ -184,6 +184,8 @@ PARITY: dict[str, tuple[str, object]] = {
     "relations": ("excluded", "modèle de données : administration humaine (ARC-21, ADR 0021)"),
     "styles": ("excluded", "conversion de style SLD pour l'UI (ARC-28)"),
     "xlsform": ("excluded", "import de fichier binaire : pas de canal MCP (ARC-27)"),
+    "webhooks": ("excluded", "abonnements sortants (egress, HMAC) : humain seulement (ARC4)"),
+    "file-triggers": ("excluded", "déclencheurs S3 de pipeline : configuration humaine (ARC4)"),
     "health": ("excluded", "sonde d'infrastructure"),
     "instance": ("excluded", "configuration d'instance, lue par le shell"),
     "map-icons": ("excluded", "téléversement binaire : pas de canal MCP"),
