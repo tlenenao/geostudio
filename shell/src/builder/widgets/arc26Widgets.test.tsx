@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { forwardRef, useImperativeHandle } from "react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, expect, test, vi } from "vitest";
 import type { ItemClient, MapConfig } from "../../api/types";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
@@ -136,4 +136,69 @@ test("fiche d'entité sans champs déclarés : liste toutes les propriétés", (
   });
   expect(screen.getByText("nom")).toBeInTheDocument();
   expect(screen.getByText("Tulle")).toBeInTheDocument();
+});
+
+test("PropsPanel des 3 widgets ARC-26 : chaque saisie remonte la config modifiée", () => {
+  for (const [type, label, value, expected] of [
+    ["basemapGallery", /Titre/, "Mes fonds", { title: "Mes fonds" }],
+    ["featureReport", /Titre/, "Fiche", { titleTemplate: "Fiche" }],
+  ] as const) {
+    const onChange = vi.fn();
+    const Panel = getWidget(type)!.PropsPanel!;
+    const { unmount } = render(<Panel props={{}} onChange={onChange} />);
+    fireEvent.change(screen.getAllByLabelText(label)[0], { target: { value } });
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining(expected));
+    unmount();
+  }
+  const onChange = vi.fn();
+  const Panel = getWidget("featureReport")!.PropsPanel!;
+  const { container } = render(<Panel props={{}} onChange={onChange} />);
+  fireEvent.change(container.querySelector("textarea")!, {
+    target: { value: "Habitants = ${record.pop}\nsans égal" },
+  });
+  expect(onChange).toHaveBeenCalledWith({
+    fields: [{ label: "Habitants", template: "${record.pop}" }],
+  });
+  const swipeChange = vi.fn();
+  const SwipePanel = getWidget("swipe")!.PropsPanel!;
+  const swipe = render(<SwipePanel props={{}} onChange={swipeChange} />);
+  const sel = swipe.container.querySelectorAll("select")[1];
+  fireEvent.change(sel, { target: { value: sel.querySelectorAll("option")[1].value } });
+  expect(swipeChange).toHaveBeenCalledWith(
+    expect.objectContaining({ rightStyle: sel.querySelectorAll("option")[1].value }),
+  );
+});
+
+test("fiche d'entité en runtime : export PDF proposé quand l'export est activé et pk présent", async () => {
+  const bus = new ActionBus();
+  const client = {
+    getInstanceInfo: async () => ({ exportEnabled: true }),
+  } as unknown as ItemClient;
+  const Fiche = getWidget("featureReport")!.Component;
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <ItemClientProvider client={client}>
+        <MemoryRouter initialEntries={["/apps/app-1"]}>
+          <Routes>
+            <Route
+              path="/apps/:pk"
+              element={
+                <Fiche
+                  props={{}}
+                  ctx={{ mode: "runtime", bus, widgetId: "fiche" } as WidgetContext}
+                />
+              }
+            />
+          </Routes>
+        </MemoryRouter>
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  act(() => {
+    bus.configure([
+      { id: "m", from: "tbl", event: "itemSelected", to: "fiche", action: "showRecord" },
+    ]);
+    bus.emit("tbl", "itemSelected", { id: 7, properties: { nom: "Tulle" } });
+  });
+  expect(await screen.findByRole("button", { name: /PDF|Exporter/i })).toBeInTheDocument();
 });
