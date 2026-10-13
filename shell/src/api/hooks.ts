@@ -6,6 +6,7 @@ export * from "./domains/apiKeys.hooks";
 export * from "./domains/notifications.hooks";
 export * from "./domains/items.hooks";
 export * from "./domains/collectionsAdmin.hooks";
+export * from "./domains/impact.hooks";
 export * from "./domains/extensionsAdminTools.hooks";
 export * from "./domains/layers.hooks";
 export * from "./domains/datasets.hooks";

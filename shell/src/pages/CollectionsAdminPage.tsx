@@ -5,7 +5,7 @@ import type { CollectionAdmin } from "../api/types";
 import { Gate } from "../auth/Gate";
 import { Locked } from "../auth/Locked";
 import { Button } from "../ui/kit/Button";
-import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
+import { ImpactConfirmDialog } from "../shell/ImpactConfirmDialog";
 import { DataTable } from "../ui/kit/DataTable";
 import { EmptyState } from "../ui/kit/EmptyState";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
@@ -371,8 +371,8 @@ export function CollectionsAdminPage() {
           ),
         }}
       />
-      <ConfirmDialog
-        open={!!deleting}
+      <ImpactConfirmDialog
+        target={deleting ? { type: "collection", id: deleting.id } : null}
         title={t("collectionsAdmin.deleteTitle")}
         message={deleting ? t("collectionsAdmin.deleteMessage", { title: deleting.title }) : ""}
         confirmLabel={t("actions.delete")}

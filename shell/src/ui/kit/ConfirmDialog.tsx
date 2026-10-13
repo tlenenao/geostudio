@@ -13,6 +13,7 @@ export function ConfirmDialog({
   onCancel,
   pending,
   returnFocusRef,
+  children,
 }: {
   open: boolean;
   title: string;
@@ -22,6 +23,8 @@ export function ConfirmDialog({
   onCancel: () => void;
   pending?: boolean;
   returnFocusRef?: React.RefObject<HTMLElement | null>;
+  /** Contenu complémentaire entre le message et les boutons (ex. vue d'impact). */
+  children?: React.ReactNode;
 }) {
   return (
     <Dialog
@@ -32,6 +35,7 @@ export function ConfirmDialog({
       alert
       returnFocusRef={returnFocusRef}
     >
+      {children}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" size="sm" onClick={onCancel}>
           {t("confirmDialog.cancel")}

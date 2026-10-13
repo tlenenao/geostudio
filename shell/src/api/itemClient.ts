@@ -11,6 +11,7 @@ import { createAlertsMethods } from "./domains/alerts";
 import { createAppsMethods } from "./domains/apps";
 import { createAttachmentsMethods } from "./domains/attachments";
 import { createCollectionsAdminMethods } from "./domains/collectionsAdmin";
+import { createImpactMethods } from "./domains/impact";
 import { createDatasetsMethods } from "./domains/datasets";
 import { createExportsIngestionMethods } from "./domains/exportsIngestion";
 import { createExtensionsAdminToolsMethods } from "./domains/extensionsAdminTools";
@@ -45,6 +46,7 @@ export function createItemClient(opts: {
     ...createNotificationsMethods(base),
     ...createItemsMethods(base),
     ...createCollectionsAdminMethods(base),
+    ...createImpactMethods(base),
     ...createExtensionsAdminToolsMethods(base),
     ...createLayersMethods(base),
     ...createDatasetsMethods(base),

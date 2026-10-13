@@ -343,6 +343,9 @@ export function createDesktopItemClient(connection: {
     async updateCollection(..._args: unknown[]) {
       return unsupported();
     },
+    async getImpact(..._args: unknown[]) {
+      return unsupported();
+    },
     async deleteCollection(..._args: unknown[]) {
       return unsupported();
     },
