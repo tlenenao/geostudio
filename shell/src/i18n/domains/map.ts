@@ -144,6 +144,11 @@ export const map = {
   "layersPanel.truncatedBadge": "Tuile tronquée (trop d'entités)",
   "layersPanel.aggregatedBadge": "Tuiles agrégées : zoomez pour le détail",
   "layersPanel.addLayerHeading": "Ajouter une couche",
+  "styleTransfer.heading": "Style de la carte",
+  "styleTransfer.export": "Exporter (style MapLibre)",
+  "styleTransfer.import": "Importer un style MapLibre",
+  "styleTransfer.importResult": "{imported} couche(s) importée(s), {skipped} ignorée(s).",
+  "styleTransfer.invalid": "Fichier de style illisible ou trop volumineux.",
 
   // MapMeasureSketchToolbar (map)
   "mapMeasure.shapeFreehandSingular": "tracé",
