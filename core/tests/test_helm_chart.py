@@ -217,10 +217,22 @@ def test_worker_checkpoints_live_on_its_scratch_volume(docs):
     assert any(path.startswith(m.rstrip("/") + "/") for m in mounts), (path, mounts)
 
 
-def test_cdc_worker_is_single_writer_even_if_values_ask_for_more():
-    docs = render("cdcWorker.replicas=3")
-    d = _deployment(docs, "cdc-worker")
-    assert d["spec"]["replicas"] == 1 and d["spec"]["strategy"]["type"] == "Recreate"
+def test_cdc_worker_replicas_are_safe_thanks_to_leader_election():
+    """ARC-32 : le mono-writer n'est plus garanti par replicas=1 mais par l'élection
+    (app.cdc.election) ; la mise à jour ne surcharge jamais (maxSurge 0)."""
+    d = _deployment(render("cdcWorker.replicas=3"), "cdc-worker")
+    assert d["spec"]["replicas"] == 3
+    assert d["spec"]["strategy"]["rollingUpdate"]["maxSurge"] == 0
+
+
+def test_core_ha_defaults_two_replicas_with_pdb_and_shared_limiter():
+    docs = render()
+    assert _deployment(docs, "core")["spec"]["replicas"] == 2
+    (pdb,) = [d for d in docs if d["kind"] == "PodDisruptionBudget"]
+    assert pdb["spec"]["minAvailable"] == 1
+    plain, _ = _rendered_env(docs, "core")
+    assert plain["CORE_RATELIMIT_BACKEND"] == "postgres"
+    assert not [d for d in render("core.replicas=1") if d["kind"] == "PodDisruptionBudget"]
 
 
 def test_ingress_requires_hosts():

@@ -8,6 +8,9 @@ metadata:
     {{- include "geostudio.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.core.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxSurge: 1, maxUnavailable: 0}
   selector:
     matchLabels:
       {{- include "geostudio.selector" $sel | nindent 6 }}
@@ -18,6 +21,15 @@ spec:
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
     spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    {{- include "geostudio.selector" $sel | nindent 22 }}
       {{- with .Values.image.pullSecrets }}
       imagePullSecrets: {{ toYaml . | nindent 8 }}
       {{- end }}
@@ -66,3 +78,17 @@ spec:
     {{- include "geostudio.selector" $sel | nindent 4 }}
   ports:
     - {name: http, port: 8200, targetPort: http}
+{{- if gt (int .Values.core.replicas) 1 }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $fn }}-core
+  labels:
+    {{- include "geostudio.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.core.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "geostudio.selector" $sel | nindent 6 }}
+{{- end }}
