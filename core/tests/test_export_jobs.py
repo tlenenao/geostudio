@@ -737,3 +737,21 @@ def test_launch_and_navigate_shares_one_120s_budget(monkeypatch):
     assert calls["viewport"] == {"width": 1587, "height": 1123}
     assert calls["goto"] <= 120_000 and calls["wait"] <= 120_000 and calls["default"] <= 120_000
     assert calls["goto"] >= calls["wait"] >= calls["default"] > 100_000
+
+
+@pytest.mark.parametrize(
+    ("scope", "suffix"), [("atlas", "&atlas=1"), ("entity:a b", "&entityId=a%20b")]
+)
+def test_render_export_task_appends_atlas_scope(db_session, monkeypatch, scope, suffix):
+    session, tenant, user, item = db_session
+    urls = []
+    monkeypatch.setattr(
+        export_jobs, "_launch_and_navigate", lambda url, **kw: urls.append(url) or _FakePage()
+    )
+    monkeypatch.setattr(export_jobs, "s3_client_from_env", lambda: _FakeUploadS3Client())
+    job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="pdf", scope=scope
+    )
+    session.commit()
+    export_jobs.render_export_task(job_id=job.id, tenant_id=tenant.id)
+    assert urls[0].endswith(suffix)

@@ -289,3 +289,48 @@ def test_cancel_finished_export_is_409_and_foreign_job_404(env):
         s.commit()
     assert client.post(f"/v1/export/jobs/{job_id}/cancel").status_code == 409
     assert client.post("/v1/export/jobs/nope/cancel").status_code == 404
+
+
+def _app_with_atlas(Session, owner, atlas):
+    with Session() as s:
+        item = create_item(
+            s, tenant_id=owner.tenant_id, owner_id=owner.id, resource_type="app", title="Atlas"
+        )
+        cfg = {"kind": "app", "layout": {"type": "grid"}}
+        if atlas:
+            cfg["printLayout"] = {
+                "atlas": {
+                    "dataSourceId": "s",
+                    "fields": [{"label": "Nom", "template": "${record.nom}"}],
+                }
+            }
+        configs_repo.create_config(s, BuilderConfig(**cfg), item.id, tenant_id=owner.tenant_id)
+        s.commit()
+        return item.id
+
+
+def test_post_export_atlas_scope_is_stored_and_defaults_max_pages(env):
+    make_client, owner, _stranger, _item_id, Session = env
+    app_id = _app_with_atlas(Session, owner, atlas=True)
+    client, _calls = make_client()
+    client.app.dependency_overrides[get_current_user] = lambda: owner
+    r = client.post("/v1/export", json={"itemId": app_id, "format": "pdf", "atlas": True})
+    assert r.status_code == 202
+    with Session() as s:
+        job = export_repo.get_job(s, tenant_id=owner.tenant_id, job_id=r.json()["jobId"])
+        assert job.scope == "atlas"
+
+
+def test_post_export_atlas_rejected_without_atlas_config_or_non_pdf(env):
+    make_client, owner, _stranger, map_id, Session = env
+    plain = _app_with_atlas(Session, owner, atlas=False)
+    atlas_app = _app_with_atlas(Session, owner, atlas=True)
+    client, calls = make_client()
+    client.app.dependency_overrides[get_current_user] = lambda: owner
+    for body in (
+        {"itemId": plain, "format": "pdf", "atlas": True},
+        {"itemId": map_id, "format": "pdf", "entityId": "1"},
+        {"itemId": atlas_app, "format": "png", "atlas": True},
+    ):
+        assert client.post("/v1/export", json=body).status_code == 422
+    assert calls == []

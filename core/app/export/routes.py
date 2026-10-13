@@ -7,11 +7,12 @@ import os
 from collections.abc import Callable
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
+from app.configs import repository as configs_repo
 from app.db import get_session
 from app.export import repository as export_repo
 from app.export.jobs import render_export_task
@@ -36,6 +37,9 @@ router = APIRouter()
 class CreateExportRequest(BaseModel):
     itemId: str
     format: str
+    # ARC-26 / ARC-30 (PDF d'app seulement) : fiche d'une entité, ou atlas.
+    entityId: str | None = Field(default=None, max_length=200)
+    atlas: bool = False
 
 
 class CreateExportResponse(BaseModel):
@@ -76,8 +80,23 @@ def create_export_route(
     if body.format not in ("png", "pdf", "svg"):
         raise HTTPException(status_code=422, detail="format must be 'png', 'pdf' or 'svg'")
     _require_export_read_access(session, user=user, item_id=body.itemId)
+    scope = f"entity:{body.entityId}" if body.entityId else ("atlas" if body.atlas else None)
+    if scope is not None:
+        if body.format != "pdf":
+            raise HTTPException(status_code=422, detail="entityId/atlas require format 'pdf'")
+        config = configs_repo.get_config_by_item(session, body.itemId)
+        layout = getattr(config.config, "printLayout", None) if config else None
+        if config is None or config.kind == "map" or layout is None or layout.atlas is None:
+            raise HTTPException(
+                status_code=422, detail="entityId/atlas require an app with printLayout.atlas"
+            )
     job = export_repo.create_job(
-        session, tenant_id=user.tenant_id, item_id=body.itemId, user_id=user.id, format=body.format
+        session,
+        tenant_id=user.tenant_id,
+        item_id=body.itemId,
+        user_id=user.id,
+        format=body.format,
+        scope=scope,
     )
     write_audit(
         session,
@@ -87,7 +106,7 @@ def create_export_route(
         action="export.create",
         object_type="export_job",
         object_id=job.id,
-        payload={"itemId": body.itemId, "format": body.format},
+        payload={"itemId": body.itemId, "format": body.format, "scope": scope},
     )
     # Commit avant de déférer : même raison que run_pipeline_route.
     session.commit()

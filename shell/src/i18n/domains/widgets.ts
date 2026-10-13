@@ -195,6 +195,8 @@ export const widgets = {
   "widgetFeatureReport.fieldsConfig": "Champs (un par ligne : libellé = ${record.champ})",
   "widgetFeatureReport.empty": "Sélectionnez une entité pour afficher sa fiche.",
   "widgetFeatureReport.exportPdf": "Exporter la fiche (PDF)",
+  "atlas.exportPdf": "Exporter l'atlas (PDF)",
+  "atlas.sourceError": "Source de données de l'atlas introuvable ou illisible.",
   "widgetTimePlayer.from": "Début de l'animation",
   "widgetTimePlayer.to": "Fin de l'animation",
   "widgetTimePlayer.stepDays": "Pas (jours)",

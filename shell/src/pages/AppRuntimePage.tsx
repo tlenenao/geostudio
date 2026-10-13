@@ -19,6 +19,7 @@ import { Dialog } from "../ui/kit/Dialog";
 import { Input } from "../ui/kit/Input";
 import { useIsExportRender } from "../shell/useIsExportRender";
 import { markExportReady } from "../shell/exportReady";
+import { AtlasPages } from "../builder/print/AtlasPages";
 import { ExportPanel } from "../builder/print/ExportPanel";
 import { t } from "../i18n";
 import { LoadingState } from "../ui/kit/LoadingState";
@@ -68,11 +69,18 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
   // be showing the "Chargement…" spinner below (gated on the same flag) while
   // query.isSuccess alone would already fire the ready signal — the worker
   // would then capture a spinner, not the rendered app.
+  // ARC-30 : atlas / fiche d'entité — AtlasPages signale lui-même « prêt ».
+  const exportParams = useSearchParams()[0];
+  const exportEntityId = exportParams.get("entityId") ?? undefined;
+  const atlasMode =
+    isExportRender &&
+    !!query.data?.printLayout?.atlas &&
+    (exportParams.get("atlas") === "1" || !!exportEntityId);
   useEffect(() => {
-    if (isExportRender && query.isSuccess && extensionsRegistered) {
+    if (isExportRender && !atlasMode && query.isSuccess && extensionsRegistered) {
       requestAnimationFrame(() => markExportReady());
     }
-  }, [isExportRender, query.isSuccess, extensionsRegistered]);
+  }, [isExportRender, atlasMode, query.isSuccess, extensionsRegistered]);
 
   const [searchParams, setSearchParams] = useSearchParams();
   // Read once at mount ("au montage" per spec) — this component itself
@@ -192,6 +200,15 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
   // absent/"manual", which previously trapped ExportPanel inside a condition
   // that hid it on most apps/dashboards. The interactions-gated "Enregistrer
   // la vue" button keeps its own independent gate.
+  if (atlasMode && query.data.printLayout?.atlas) {
+    return (
+      <AtlasPages
+        atlas={query.data.printLayout.atlas}
+        dataSources={query.data.dataSources}
+        {...(exportEntityId ? { entityId: exportEntityId } : {})}
+      />
+    );
+  }
   const showActionBar =
     !isExportRender && (exportEnabled || (query.data.interactions === "auto" && canSaveView));
   // Finition SP-B12/D14 (cf. plan SP-C3) : une app/dashboard n'a pas de
@@ -210,6 +227,9 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
       {showActionBar && (
         <div className="flex justify-end gap-2 border-b border-rule p-2">
           {exportEnabled && <ExportPanel itemId={pk} />}
+          {exportEnabled && query.data.printLayout?.atlas && (
+            <ExportPanel itemId={pk} atlas label={t("atlas.exportPdf")} />
+          )}
           {query.data.interactions === "auto" && canSaveView && (
             <Button size="sm" variant="outline" onClick={() => setSaveDialogOpen(true)}>
               {t("appRuntime.saveView")}
