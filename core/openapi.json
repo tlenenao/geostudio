@@ -2579,6 +2579,140 @@
         "title": "DatasetPayload",
         "type": "object"
       },
+      "DeliveryRead": {
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "createdAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdat"
+          },
+          "deliveredAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deliveredat"
+          },
+          "eventType": {
+            "title": "Eventtype",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "lastError": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lasterror"
+          },
+          "nextAttemptAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextattemptat"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "eventType",
+          "status",
+          "attempts",
+          "lastError",
+          "nextAttemptAt",
+          "createdAt",
+          "deliveredAt"
+        ],
+        "title": "DeliveryRead",
+        "type": "object"
+      },
+      "DependentRead": {
+        "properties": {
+          "depth": {
+            "title": "Depth",
+            "type": "integer"
+          },
+          "direct": {
+            "title": "Direct",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "resourceType": {
+            "title": "Resourcetype",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "item",
+              "collection"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "title",
+          "resourceType",
+          "depth",
+          "direct"
+        ],
+        "title": "DependentRead",
+        "type": "object"
+      },
+      "EdgeRead": {
+        "properties": {
+          "from": {
+            "$ref": "#/components/schemas/NodeRef"
+          },
+          "to": {
+            "$ref": "#/components/schemas/NodeRef"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "title": "EdgeRead",
+        "type": "object"
+      },
       "EmptyCollectionColumn": {
         "properties": {
           "name": {
@@ -3095,6 +3229,88 @@
         "title": "FieldDomain",
         "type": "object"
       },
+      "FileTriggerCreate": {
+        "properties": {
+          "pipelineItemId": {
+            "title": "Pipelineitemid",
+            "type": "string"
+          },
+          "prefix": {
+            "minLength": 1,
+            "title": "Prefix",
+            "type": "string"
+          },
+          "secretName": {
+            "minLength": 1,
+            "title": "Secretname",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pipelineItemId",
+          "secretName",
+          "prefix"
+        ],
+        "title": "FileTriggerCreate",
+        "type": "object"
+      },
+      "FileTriggerRead": {
+        "properties": {
+          "createdAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdat"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "lastError": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lasterror"
+          },
+          "pipelineItemId": {
+            "title": "Pipelineitemid",
+            "type": "string"
+          },
+          "prefix": {
+            "title": "Prefix",
+            "type": "string"
+          },
+          "secretName": {
+            "title": "Secretname",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "pipelineItemId",
+          "secretName",
+          "prefix",
+          "enabled",
+          "lastError",
+          "createdAt"
+        ],
+        "title": "FileTriggerRead",
+        "type": "object"
+      },
       "FrequencyCatalogEntry": {
         "properties": {
           "id": {
@@ -3544,6 +3760,31 @@
           "count"
         ],
         "title": "HistogramBin",
+        "type": "object"
+      },
+      "ImpactRead": {
+        "properties": {
+          "dependents": {
+            "items": {
+              "$ref": "#/components/schemas/DependentRead"
+            },
+            "title": "Dependents",
+            "type": "array"
+          },
+          "hiddenCount": {
+            "title": "Hiddencount",
+            "type": "integer"
+          },
+          "target": {
+            "$ref": "#/components/schemas/NodeRead"
+          }
+        },
+        "required": [
+          "target",
+          "dependents",
+          "hiddenCount"
+        ],
+        "title": "ImpactRead",
         "type": "object"
       },
       "IngestionJobCreate": {
@@ -4344,6 +4585,80 @@
         "title": "LicenseCatalogEntry",
         "type": "object"
       },
+      "LineageNodeRead": {
+        "properties": {
+          "direction": {
+            "enum": [
+              "upstream",
+              "downstream"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "resourceType": {
+            "title": "Resourcetype",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "item",
+              "collection"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "title",
+          "resourceType",
+          "direction"
+        ],
+        "title": "LineageNodeRead",
+        "type": "object"
+      },
+      "LineageRead": {
+        "properties": {
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/EdgeRead"
+            },
+            "title": "Edges",
+            "type": "array"
+          },
+          "hiddenCount": {
+            "title": "Hiddencount",
+            "type": "integer"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/LineageNodeRead"
+            },
+            "title": "Nodes",
+            "type": "array"
+          },
+          "target": {
+            "$ref": "#/components/schemas/NodeRead"
+          }
+        },
+        "required": [
+          "target",
+          "nodes",
+          "edges",
+          "hiddenCount"
+        ],
+        "title": "LineageRead",
+        "type": "object"
+      },
       "MapConfig": {
         "properties": {
           "basemap": {
@@ -5008,6 +5323,60 @@
         "title": "MssqlDsnPayload",
         "type": "object"
       },
+      "NodeRead": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "resourceType": {
+            "title": "Resourcetype",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "item",
+              "collection"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "title",
+          "resourceType"
+        ],
+        "title": "NodeRead",
+        "type": "object"
+      },
+      "NodeRef": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "item",
+              "collection"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id"
+        ],
+        "title": "NodeRef",
+        "type": "object"
+      },
       "NotificationPage": {
         "properties": {
           "notifications": {
@@ -5399,6 +5768,47 @@
         "title": "PipelineNode",
         "type": "object"
       },
+      "PipelineParameter": {
+        "description": "Param\u00e8tre de run publi\u00e9 (ARC-K2/F3) : saisi au lancement, r\u00e9f\u00e9renc\u00e9 par\n`{{param.nom}}` dans les params de n\u0153ud (cf. app.configs.pipeline_params).\nValeurs conserv\u00e9es en clair (historique des runs, audit) : pas de secrets ici.",
+        "properties": {
+          "default": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default"
+          },
+          "name": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+            "title": "Name",
+            "type": "string"
+          },
+          "required": {
+            "default": false,
+            "title": "Required",
+            "type": "boolean"
+          },
+          "type": {
+            "default": "string",
+            "enum": [
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "date"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "PipelineParameter",
+        "type": "object"
+      },
       "PipelinePayload": {
         "properties": {
           "edges": {
@@ -5422,10 +5832,27 @@
             "title": "Notes",
             "type": "array"
           },
+          "parameters": {
+            "items": {
+              "$ref": "#/components/schemas/PipelineParameter"
+            },
+            "title": "Parameters",
+            "type": "array"
+          },
           "refreshPolicy": {
             "anyOf": [
               {
                 "$ref": "#/components/schemas/PipelineRefreshPolicy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "retry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PipelineRetryPolicy"
               },
               {
                 "type": "null"
@@ -5452,6 +5879,36 @@
           "cron"
         ],
         "title": "PipelineRefreshPolicy",
+        "type": "object"
+      },
+      "PipelineRetryPolicy": {
+        "description": "Politique de reprise (ARC-K2/F5) : `max` reprises automatiques apr\u00e8s un\n\u00e9chec (0 = aucune, mais les points de reprise restent \u00e9crits pour une\nreprise manuelle), d\u00e9lai fixe ou exponentiel (`delaySeconds` * 2^(n-1)).",
+        "properties": {
+          "backoff": {
+            "default": "exponential",
+            "enum": [
+              "fixed",
+              "exponential"
+            ],
+            "title": "Backoff",
+            "type": "string"
+          },
+          "delaySeconds": {
+            "default": 30,
+            "maximum": 3600.0,
+            "minimum": 1.0,
+            "title": "Delayseconds",
+            "type": "integer"
+          },
+          "max": {
+            "default": 0,
+            "maximum": 10.0,
+            "minimum": 0.0,
+            "title": "Max",
+            "type": "integer"
+          }
+        },
+        "title": "PipelineRetryPolicy",
         "type": "object"
       },
       "PopupConfig": {
@@ -7482,6 +7939,145 @@
         ],
         "title": "Variable",
         "type": "object"
+      },
+      "WebhookCreate": {
+        "properties": {
+          "eventTypes": {
+            "items": {
+              "enum": [
+                "item.created",
+                "item.updated",
+                "pipeline.run.finished",
+                "submission.pending"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Eventtypes",
+            "type": "array"
+          },
+          "secretName": {
+            "minLength": 1,
+            "title": "Secretname",
+            "type": "string"
+          },
+          "url": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "eventTypes",
+          "secretName"
+        ],
+        "title": "WebhookCreate",
+        "type": "object"
+      },
+      "WebhookRead": {
+        "properties": {
+          "consecutiveFailures": {
+            "title": "Consecutivefailures",
+            "type": "integer"
+          },
+          "createdAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdat"
+          },
+          "disabledReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disabledreason"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "eventTypes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Eventtypes",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "secretName": {
+            "title": "Secretname",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "url",
+          "eventTypes",
+          "secretName",
+          "enabled",
+          "consecutiveFailures",
+          "disabledReason",
+          "createdAt"
+        ],
+        "title": "WebhookRead",
+        "type": "object"
+      },
+      "WebhookUpdate": {
+        "properties": {
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "eventTypes": {
+            "anyOf": [
+              {
+                "items": {
+                  "enum": [
+                    "item.created",
+                    "item.updated",
+                    "pipeline.run.finished",
+                    "submission.pending"
+                  ],
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eventtypes"
+          }
+        },
+        "title": "WebhookUpdate",
+        "type": "object"
       }
     }
   },
@@ -9066,6 +9662,55 @@
         ]
       }
     },
+    "/v1/collections/{collection_id}/impact": {
+      "get": {
+        "operationId": "collection_impact_v1_collections__collection_id__impact_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImpactRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Collection Impact"
+      }
+    },
     "/v1/collections/{collection_id}/items": {
       "get": {
         "operationId": "list_features_v1_collections__collection_id__items_get",
@@ -10329,6 +10974,55 @@
           }
         },
         "summary": "Related Records"
+      }
+    },
+    "/v1/collections/{collection_id}/lineage": {
+      "get": {
+        "operationId": "collection_lineage_v1_collections__collection_id__lineage_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LineageRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Collection Lineage"
       }
     },
     "/v1/collections/{collection_id}/my-entries": {
@@ -12869,6 +13563,140 @@
         "summary": "Patch Extension"
       }
     },
+    "/v1/file-triggers": {
+      "get": {
+        "operationId": "list_file_triggers_v1_file_triggers_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FileTriggerRead"
+                  },
+                  "title": "Response List File Triggers V1 File Triggers Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List File Triggers"
+      },
+      "post": {
+        "operationId": "create_file_trigger_v1_file_triggers_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FileTriggerCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileTriggerRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create File Trigger"
+      }
+    },
+    "/v1/file-triggers/{trigger_id}": {
+      "delete": {
+        "operationId": "delete_file_trigger_v1_file_triggers__trigger_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trigger_id",
+            "required": true,
+            "schema": {
+              "title": "Trigger Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete File Trigger"
+      }
+    },
     "/v1/geocode": {
       "get": {
         "operationId": "geocode_v1_geocode_get",
@@ -14546,6 +15374,104 @@
           }
         },
         "summary": "Update Item"
+      }
+    },
+    "/v1/items/{item_id}/impact": {
+      "get": {
+        "operationId": "item_impact_v1_items__item_id__impact_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImpactRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Item Impact"
+      }
+    },
+    "/v1/items/{item_id}/lineage": {
+      "get": {
+        "operationId": "item_lineage_v1_items__item_id__lineage_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LineageRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Item Lineage"
       }
     },
     "/v1/items/{item_id}/share-links": {
@@ -17843,6 +18769,321 @@
           }
         },
         "summary": "Patch User"
+      }
+    },
+    "/v1/webhooks": {
+      "get": {
+        "operationId": "list_webhooks_v1_webhooks_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WebhookRead"
+                  },
+                  "title": "Response List Webhooks V1 Webhooks Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Webhooks"
+      },
+      "post": {
+        "operationId": "create_webhook_v1_webhooks_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Webhook"
+      }
+    },
+    "/v1/webhooks/{webhook_id}": {
+      "delete": {
+        "operationId": "delete_webhook_v1_webhooks__webhook_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "webhook_id",
+            "required": true,
+            "schema": {
+              "title": "Webhook Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Webhook"
+      },
+      "patch": {
+        "operationId": "update_webhook_v1_webhooks__webhook_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "webhook_id",
+            "required": true,
+            "schema": {
+              "title": "Webhook Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Webhook"
+      }
+    },
+    "/v1/webhooks/{webhook_id}/deliveries": {
+      "get": {
+        "operationId": "list_deliveries_v1_webhooks__webhook_id__deliveries_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "webhook_id",
+            "required": true,
+            "schema": {
+              "title": "Webhook Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DeliveryRead"
+                  },
+                  "title": "Response List Deliveries V1 Webhooks  Webhook Id  Deliveries Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Deliveries"
+      }
+    },
+    "/v1/webhooks/{webhook_id}/deliveries/{event_id}/replay": {
+      "post": {
+        "description": "Remet l'\u00e9v\u00e9nement en file (livr\u00e9 par le balayage suivant) ; la destination doit\n\u00eatre active \u2014 la r\u00e9activer d'abord (PATCH enabled=true) si elle a \u00e9t\u00e9 d\u00e9sactiv\u00e9e.",
+        "operationId": "replay_delivery_v1_webhooks__webhook_id__deliveries__event_id__replay_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "webhook_id",
+            "required": true,
+            "schema": {
+              "title": "Webhook Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "title": "Event Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Replay Delivery V1 Webhooks  Webhook Id  Deliveries  Event Id  Replay Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Replay Delivery"
       }
     },
     "/v1/xlsform/import": {

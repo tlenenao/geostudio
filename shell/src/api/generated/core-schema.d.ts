@@ -388,6 +388,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/collections/{collection_id}/impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Collection Impact */
+        get: operations["collection_impact_v1_collections__collection_id__impact_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/collections/{collection_id}/items": {
         parameters: {
             query?: never;
@@ -542,6 +559,23 @@ export interface paths {
         };
         /** Related Records */
         get: operations["related_records_v1_collections__collection_id__items__fid__related__relation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/lineage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Collection Lineage */
+        get: operations["collection_lineage_v1_collections__collection_id__lineage_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1119,6 +1153,41 @@ export interface paths {
         patch: operations["patch_extension_v1_extensions__extension_id__patch"];
         trace?: never;
     };
+    "/v1/file-triggers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List File Triggers */
+        get: operations["list_file_triggers_v1_file_triggers_get"];
+        put?: never;
+        /** Create File Trigger */
+        post: operations["create_file_trigger_v1_file_triggers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/file-triggers/{trigger_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete File Trigger */
+        delete: operations["delete_file_trigger_v1_file_triggers__trigger_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/geocode": {
         parameters: {
             query?: never;
@@ -1470,6 +1539,40 @@ export interface paths {
         head?: never;
         /** Update Item */
         patch: operations["update_item_v1_items__item_id__patch"];
+        trace?: never;
+    };
+    "/v1/items/{item_id}/impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Item Impact */
+        get: operations["item_impact_v1_items__item_id__impact_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/items/{item_id}/lineage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Item Lineage */
+        get: operations["item_lineage_v1_items__item_id__lineage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/items/{item_id}/share-links": {
@@ -2421,6 +2524,80 @@ export interface paths {
         patch: operations["patch_user_v1_users__user_id__patch"];
         trace?: never;
     };
+    "/v1/webhooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Webhooks */
+        get: operations["list_webhooks_v1_webhooks_get"];
+        put?: never;
+        /** Create Webhook */
+        post: operations["create_webhook_v1_webhooks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/webhooks/{webhook_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Webhook */
+        delete: operations["delete_webhook_v1_webhooks__webhook_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Webhook */
+        patch: operations["update_webhook_v1_webhooks__webhook_id__patch"];
+        trace?: never;
+    };
+    "/v1/webhooks/{webhook_id}/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Deliveries */
+        get: operations["list_deliveries_v1_webhooks__webhook_id__deliveries_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/webhooks/{webhook_id}/deliveries/{event_id}/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replay Delivery
+         * @description Remet l'événement en file (livré par le balayage suivant) ; la destination doit
+         *     être active — la réactiver d'abord (PATCH enabled=true) si elle a été désactivée.
+         */
+        post: operations["replay_delivery_v1_webhooks__webhook_id__deliveries__event_id__replay_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/xlsform/import": {
         parameters: {
             query?: never;
@@ -3355,6 +3532,48 @@ export interface components {
             /** Timefield */
             timeField?: string | null;
         };
+        /** DeliveryRead */
+        DeliveryRead: {
+            /** Attempts */
+            attempts: number;
+            /** Createdat */
+            createdAt: string | null;
+            /** Deliveredat */
+            deliveredAt: string | null;
+            /** Eventtype */
+            eventType: string;
+            /** Id */
+            id: string;
+            /** Lasterror */
+            lastError: string | null;
+            /** Nextattemptat */
+            nextAttemptAt: string | null;
+            /** Status */
+            status: string;
+        };
+        /** DependentRead */
+        DependentRead: {
+            /** Depth */
+            depth: number;
+            /** Direct */
+            direct: boolean;
+            /** Id */
+            id: string;
+            /** Resourcetype */
+            resourceType: string;
+            /** Title */
+            title: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "item" | "collection";
+        };
+        /** EdgeRead */
+        EdgeRead: {
+            from: components["schemas"]["NodeRef"];
+            to: components["schemas"]["NodeRef"];
+        };
         /** EmptyCollectionColumn */
         EmptyCollectionColumn: {
             /** Name */
@@ -3496,6 +3715,32 @@ export interface components {
             type: "list" | "range";
             /** Values */
             values?: (string | number)[] | null;
+        };
+        /** FileTriggerCreate */
+        FileTriggerCreate: {
+            /** Pipelineitemid */
+            pipelineItemId: string;
+            /** Prefix */
+            prefix: string;
+            /** Secretname */
+            secretName: string;
+        };
+        /** FileTriggerRead */
+        FileTriggerRead: {
+            /** Createdat */
+            createdAt: string | null;
+            /** Enabled */
+            enabled: boolean;
+            /** Id */
+            id: string;
+            /** Lasterror */
+            lastError: string | null;
+            /** Pipelineitemid */
+            pipelineItemId: string;
+            /** Prefix */
+            prefix: string;
+            /** Secretname */
+            secretName: string;
         };
         /** FrequencyCatalogEntry */
         FrequencyCatalogEntry: {
@@ -3673,6 +3918,14 @@ export interface components {
             bucketStart: number;
             /** Count */
             count: number;
+        };
+        /** ImpactRead */
+        ImpactRead: {
+            /** Dependents */
+            dependents: components["schemas"]["DependentRead"][];
+            /** Hiddencount */
+            hiddenCount: number;
+            target: components["schemas"]["NodeRead"];
         };
         /** IngestionJobCreate */
         IngestionJobCreate: {
@@ -3933,6 +4186,35 @@ export interface components {
             /** Spdxid */
             spdxId: string;
         };
+        /** LineageNodeRead */
+        LineageNodeRead: {
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "upstream" | "downstream";
+            /** Id */
+            id: string;
+            /** Resourcetype */
+            resourceType: string;
+            /** Title */
+            title: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "item" | "collection";
+        };
+        /** LineageRead */
+        LineageRead: {
+            /** Edges */
+            edges: components["schemas"]["EdgeRead"][];
+            /** Hiddencount */
+            hiddenCount: number;
+            /** Nodes */
+            nodes: components["schemas"]["LineageNodeRead"][];
+            target: components["schemas"]["NodeRead"];
+        };
         /** MapConfig */
         MapConfig: {
             basemap: components["schemas"]["BaseMap"];
@@ -4191,6 +4473,30 @@ export interface components {
              */
             kind: "mssql_dsn";
         };
+        /** NodeRead */
+        NodeRead: {
+            /** Id */
+            id: string;
+            /** Resourcetype */
+            resourceType: string;
+            /** Title */
+            title: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "item" | "collection";
+        };
+        /** NodeRef */
+        NodeRef: {
+            /** Id */
+            id: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "item" | "collection";
+        };
         /** NotificationPage */
         NotificationPage: {
             /** Notifications */
@@ -4382,6 +4688,29 @@ export interface components {
              */
             y: number;
         };
+        /**
+         * PipelineParameter
+         * @description Paramètre de run publié (ARC-K2/F3) : saisi au lancement, référencé par
+         *     `{{param.nom}}` dans les params de nœud (cf. app.configs.pipeline_params).
+         *     Valeurs conservées en clair (historique des runs, audit) : pas de secrets ici.
+         */
+        PipelineParameter: {
+            /** Default */
+            default?: unknown | null;
+            /** Name */
+            name: string;
+            /**
+             * Required
+             * @default false
+             */
+            required: boolean;
+            /**
+             * Type
+             * @default string
+             * @enum {string}
+             */
+            type: "string" | "number" | "integer" | "boolean" | "date";
+        };
         /** PipelinePayload */
         PipelinePayload: {
             /** Edges */
@@ -4390,7 +4719,10 @@ export interface components {
             nodes?: components["schemas"]["PipelineNode"][];
             /** Notes */
             notes?: components["schemas"]["PipelineCanvasNote"][];
+            /** Parameters */
+            parameters?: components["schemas"]["PipelineParameter"][];
             refreshPolicy?: components["schemas"]["PipelineRefreshPolicy"] | null;
+            retry?: components["schemas"]["PipelineRetryPolicy"] | null;
         };
         /** PipelineRefreshPolicy */
         PipelineRefreshPolicy: {
@@ -4401,6 +4733,30 @@ export interface components {
              * @default false
              */
             enabled: boolean;
+        };
+        /**
+         * PipelineRetryPolicy
+         * @description Politique de reprise (ARC-K2/F5) : `max` reprises automatiques après un
+         *     échec (0 = aucune, mais les points de reprise restent écrits pour une
+         *     reprise manuelle), délai fixe ou exponentiel (`delaySeconds` * 2^(n-1)).
+         */
+        PipelineRetryPolicy: {
+            /**
+             * Backoff
+             * @default exponential
+             * @enum {string}
+             */
+            backoff: "fixed" | "exponential";
+            /**
+             * Delayseconds
+             * @default 30
+             */
+            delaySeconds: number;
+            /**
+             * Max
+             * @default 0
+             */
+            max: number;
         };
         /**
          * PopupConfig
@@ -5083,6 +5439,41 @@ export interface components {
              * @enum {string}
              */
             type: "string" | "number" | "bool" | "date" | "record" | "list";
+        };
+        /** WebhookCreate */
+        WebhookCreate: {
+            /** Eventtypes */
+            eventTypes: ("item.created" | "item.updated" | "pipeline.run.finished" | "submission.pending")[];
+            /** Secretname */
+            secretName: string;
+            /** Url */
+            url: string;
+        };
+        /** WebhookRead */
+        WebhookRead: {
+            /** Consecutivefailures */
+            consecutiveFailures: number;
+            /** Createdat */
+            createdAt: string | null;
+            /** Disabledreason */
+            disabledReason: string | null;
+            /** Enabled */
+            enabled: boolean;
+            /** Eventtypes */
+            eventTypes: string[];
+            /** Id */
+            id: string;
+            /** Secretname */
+            secretName: string;
+            /** Url */
+            url: string;
+        };
+        /** WebhookUpdate */
+        WebhookUpdate: {
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Eventtypes */
+            eventTypes?: ("item.created" | "item.updated" | "pipeline.run.finished" | "submission.pending")[] | null;
         };
     };
     responses: never;
@@ -6016,6 +6407,39 @@ export interface operations {
             };
         };
     };
+    collection_impact_v1_collections__collection_id__impact_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpactRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_features_v1_collections__collection_id__items_get: {
         parameters: {
             query?: {
@@ -6495,6 +6919,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RelatedRecords"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    collection_lineage_v1_collections__collection_id__lineage_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LineageRead"];
                 };
             };
             /** @description Validation Error */
@@ -7927,6 +8384,103 @@ export interface operations {
             };
         };
     };
+    list_file_triggers_v1_file_triggers_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileTriggerRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_file_trigger_v1_file_triggers_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FileTriggerCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileTriggerRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_file_trigger_v1_file_triggers__trigger_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                trigger_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     geocode_v1_geocode_get: {
         parameters: {
             query: {
@@ -8888,6 +9442,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ItemRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    item_impact_v1_items__item_id__impact_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpactRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    item_lineage_v1_items__item_id__lineage_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LineageRead"];
                 };
             };
             /** @description Validation Error */
@@ -10962,6 +11582,211 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_webhooks_v1_webhooks_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_webhook_v1_webhooks_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebhookCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_webhook_v1_webhooks__webhook_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                webhook_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_webhook_v1_webhooks__webhook_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                webhook_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebhookUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_deliveries_v1_webhooks__webhook_id__deliveries_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                webhook_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replay_delivery_v1_webhooks__webhook_id__deliveries__event_id__replay_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                webhook_id: string;
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
