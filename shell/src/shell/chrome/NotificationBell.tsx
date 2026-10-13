@@ -32,6 +32,7 @@ const KIND_LABEL_KEYS: Record<NotificationSummary["kind"], MessageKey> = {
   harvest: "notifications.kindHarvest",
   tileset3d: "notifications.kindTileset3d",
   terrain3d: "notifications.kindTerrain3d",
+  raster: "notifications.kindRaster",
   data_export: "notifications.kindDataExport",
   submission: "notifications.kindSubmission",
   webhook_disabled: "notifications.kindWebhookDisabled",

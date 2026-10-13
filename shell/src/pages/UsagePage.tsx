@@ -55,6 +55,7 @@ const ACTION_LABELS: Partial<Record<string, MessageKey>> = {
   "harvest_source.run": "usageAction.harvestSourceRun",
   "tileset3d.job_create": "usageAction.tileset3dJobCreate",
   "terrain3d.job_create": "usageAction.terrain3dJobCreate",
+  "raster.job_create": "usageAction.rasterJobCreate",
 };
 
 function actionLabel(action: string): string {

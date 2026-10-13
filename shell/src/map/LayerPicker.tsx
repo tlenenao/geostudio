@@ -7,6 +7,7 @@ import type { LayerSource, MapLayer } from "../api/types";
 import { detectGeometryKind, renderAsFor } from "../builder/widgets/mapSymbology";
 import { fetchFeatureCollection } from "./geojsonIntrospect";
 import { Button } from "../ui/kit/Button";
+import { RasterLayerForm } from "./RasterLayerForm";
 import { plural, t, type MessageKey } from "../i18n";
 import "../i18n/domains/map";
 
@@ -175,6 +176,7 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
           ))}
         </ul>
       )}
+      <RasterLayerForm onAdd={onAdd} />
       <div className="border-t border-rule pt-2">
         <p className="mb-1 text-xs font-medium text-ink-2">
           {t("layerPicker.addTileset3dHeading")}

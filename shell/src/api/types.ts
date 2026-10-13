@@ -14,7 +14,25 @@ export type ResourceType =
   | "alert"
   | "report"
   | "tileset3d"
-  | "terrain3d";
+  | "terrain3d"
+  | "raster";
+
+export type RasterInfo = {
+  itemId: string;
+  srid: number;
+  bounds: [number, number, number, number];
+  width: number;
+  height: number;
+  dtype: string;
+  nodata: number | null;
+  bands: {
+    index: number;
+    min: number | null;
+    max: number | null;
+    mean: number | null;
+    std: number | null;
+  }[];
+};
 
 export type CreateKind = "app" | "dashboard" | "site";
 
@@ -153,6 +171,7 @@ export type NotificationSummary = {
     | "harvest"
     | "tileset3d"
     | "terrain3d"
+    | "raster"
     | "data_export"
     | "submission"
     | "webhook_disabled";
@@ -1132,6 +1151,35 @@ export interface ItemClient {
     status: "uploaded" | "converting" | "done" | "error";
     errorMessage: string | null;
     itemId: string | null;
+  }>;
+  // ARC-33 : rasters COG hébergés (domaine `raster`, tuiles sous can()).
+  listHostedRasterSources(q?: string): Promise<{ id: string; title: string }[]>;
+  presignRasterUpload(
+    filename: string,
+    contentType: string,
+  ): Promise<{ uploadUrl: string; key: string }>;
+  createRasterUpload(input: {
+    key: string;
+    filename: string;
+    title: string;
+  }): Promise<{ jobId: string }>;
+  getRasterUploadJob(jobId: string): Promise<{
+    status: "uploaded" | "converting" | "done" | "error";
+    errorMessage: string | null;
+    itemId: string | null;
+  }>;
+  getRasterInfo(itemId: string): Promise<RasterInfo>;
+  rasterZonalStats(
+    itemId: string,
+    body: {
+      geojson?: Record<string, unknown>;
+      collectionId?: string;
+      band?: number;
+      stats?: string[];
+    },
+  ): Promise<{
+    count: number;
+    results: { id: string | number | null; stats: Record<string, number | null> }[];
   }>;
   // Coffre de secrets connecteur (GAP-43, SP-53) : le cœur ne rend jamais un
   // payload déchiffré — listSecrets()/createSecret() ne portent que

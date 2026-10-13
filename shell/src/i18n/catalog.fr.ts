@@ -119,6 +119,7 @@ export const fr = {
   "notifications.kindHarvest": "Moissonnage",
   "notifications.kindTileset3d": "Tileset 3D",
   "notifications.kindTerrain3d": "Terrain 3D",
+  "notifications.kindRaster": "Raster",
   "notifications.kindDataExport": "Export de données",
   "notifications.kindSubmission": "Soumission à modérer",
   "notifications.kindWebhookDisabled": "Webhook désactivé",
