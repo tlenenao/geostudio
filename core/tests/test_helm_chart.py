@@ -208,6 +208,15 @@ def test_optional_workloads_render_only_when_enabled():
     assert plain["OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://rel-geostudio-otel-lgtm:4318"
 
 
+def test_worker_checkpoints_live_on_its_scratch_volume(docs):
+    """F5 : les points de reprise vont sur le volume scratch monté du worker, jamais
+    sur la racine du conteneur (readOnlyRootFilesystem) ni sous un tmp non monté."""
+    plain, _ = _rendered_env(docs, "worker")
+    path = plain["CORE_PIPELINE_CHECKPOINT_DIR"]
+    mounts = [m["mountPath"] for m in _container(docs, "worker").get("volumeMounts", [])]
+    assert any(path.startswith(m.rstrip("/") + "/") for m in mounts), (path, mounts)
+
+
 def test_cdc_worker_is_single_writer_even_if_values_ask_for_more():
     docs = render("cdcWorker.replicas=3")
     d = _deployment(docs, "cdc-worker")
