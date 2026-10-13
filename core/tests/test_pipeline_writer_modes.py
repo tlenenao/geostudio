@@ -338,3 +338,86 @@ def test_upsert_100k_rows_under_60s(setup):
     assert st.extra["updated"] == 100_000 and _count(s) == 100_000
     print(f"upsert 100k : insertion {t_insert:.1f}s, mise à jour {t_update:.1f}s")
     assert t_insert < 60 and t_update < 60, (t_insert, t_update)
+
+
+@pytest.mark.postgis
+def test_rejected_source_row_never_leaks_sensitive_fields(setup, monkeypatch):
+    """GAP-22 : la quarantaine est lue par des groupes qui ne lisent pas la cible en clair."""
+    s = setup[0]
+    s.execute(text("UPDATE collections SET sensitive_fields = '[\"name\"]'::jsonb"))
+    s.commit()
+    monkeypatch.setattr(runtime, "_masked_fields", lambda *a, **k: frozenset({"name"}))
+    _run(
+        setup,
+        [("a", "secret", 1)],
+        {**_UPSERT, "onInvalid": "reject"},
+        mid={"op": "transform.derive", "params": {"column": "name", "expr": "'LEAK-VALUE'"}},
+    )
+    src = s.execute(text('SELECT source_row FROM "k1_target__rejected"')).scalar_one()
+    assert "LEAK-VALUE" not in src and "secret" not in src and '"pop"' in src
+
+
+def _group(s, tenant, owner, gid, role, suffix):
+    u = get_or_create_user(
+        s, tenant_id=tenant.id, oidc_sub=suffix, username=suffix,
+        email=None, first_name="", last_name="",
+    )  # fmt: skip
+    s.execute(
+        text(
+            "INSERT INTO groups (id, tenant_id, name, created_by, created_at) "
+            "VALUES (:g, :t, :g, :o, now())"
+        ),
+        {"g": gid, "t": tenant.id, "o": owner.id},
+    )
+    s.execute(
+        text("INSERT INTO group_members (group_id, user_id, tenant_id) VALUES (:g, :u, :t)"),
+        {"g": gid, "u": u.id, "t": tenant.id},
+    )
+    s.execute(
+        text(
+            "INSERT INTO collection_shares (collection_id, group_id, tenant_id, role) "
+            "VALUES ('k1_target', :g, :t, :r)"
+        ),
+        {"g": gid, "t": tenant.id, "r": role},
+    )
+    return u
+
+
+@pytest.mark.postgis
+def test_quarantine_shares_follow_target_even_without_rejects(setup):
+    s, tenant, owner, _ = setup
+    editor = _group(s, tenant, owner, "g-ed", "editor", "ed")
+    s.commit()
+    _run(setup, [(None, "n", 1)], {**_UPSERT, "onInvalid": "reject"})
+    from app.collections import repository as crepo
+
+    def readable():
+        q = crepo.get_collection(s, tenant_id=tenant.id, collection_id="k1_target__rejected")
+        facts = crepo.get_access_facts(q)
+        return can(s, user_id=editor.id, action="read", item=facts, kind="collection")
+
+    assert readable() is True
+    s.execute(text("DELETE FROM collection_shares WHERE collection_id = 'k1_target'"))
+    s.commit()
+    _run(setup, [("a", "n", 1)], {**_UPSERT, "onInvalid": "reject"}, run_id="run-2")  # sans rejet
+    s.expire_all()
+    assert readable() is False
+
+
+@pytest.mark.postgis
+def test_quarantine_quota_fails_the_run_with_a_clear_message(setup, monkeypatch):
+    s = setup[0]
+    monkeypatch.setenv("CORE_QUOTAS_ENABLED", "true")
+    monkeypatch.setenv("CORE_QUOTA_MAX_COLLECTIONS_PER_TENANT", "1")
+    with pytest.raises(PipelineRuntimeError, match="quota de collections"):
+        _run(setup, [("ok", "n", 1), (None, "n", 2)], {**_UPSERT, "onInvalid": "reject"})
+    s.rollback()
+    assert _count(s) == 0  # échec en bloc : aucune écriture partielle
+
+
+@pytest.mark.postgis
+def test_deleted_counts_rows_actually_deleted(setup):
+    s = setup[0]
+    _run(setup, [("a", "n", 1)], _UPSERT)
+    st = _run(setup, [("a", "n", 1), ("zz", "n", 1)], {**_UPSERT, "mode": "delete"})
+    assert st.extra["deleted"] == 1 and _count(s) == 0

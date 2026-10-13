@@ -34,6 +34,7 @@ from app.features.validation import validate_for_write
 from app.history import service as history
 from app.history.models import EntityHistory
 from app.pipelines.errors import PipelineCancelledError, PipelineRuntimeError
+from app.quotas.service import QuotaExceededError
 from app.sql_ident import quote_ident
 from app.sql_ident import quote_ident_duckdb as _qi
 
@@ -129,20 +130,29 @@ def _ensure_quarantine(session: Session, target) -> str:
         )
         info = introspect_table(session, qid)
         apply_collection_ddl(session, qid)
-        col = collections_repo.create_collection(
-            session,
-            tenant_id=target.tenant_id,
-            owner_id=target.owner_id,
-            table_name=qid,
-            title=f"{target.title} (rejets)",
-            description=f"Lignes rejetées par les pipelines écrivant dans « {target.title} ».",
-            is_public=False,
-            pk_column=info.pk_column,
-            geometry_column=None,
-            geometry_type=None,
-            srid=None,
-            feature_count=0,
-        )
+        try:
+            col = collections_repo.create_collection(
+                session,
+                tenant_id=target.tenant_id,
+                owner_id=target.owner_id,
+                table_name=qid,
+                title=f"{target.title} (rejets)",
+                description=f"Lignes rejetées par les pipelines écrivant dans « {target.title} ».",
+                is_public=False,
+                pk_column=info.pk_column,
+                geometry_column=None,
+                geometry_type=None,
+                srid=None,
+                feature_count=0,
+            )
+        except QuotaExceededError as exc:
+            # Le run échoue en bloc (la transaction est annulée par l'appelant : aucune écriture
+            # partielle) plutôt que de perdre silencieusement les lignes rejetées.
+            raise PipelineRuntimeError(
+                "writer.collection: des lignes sont rejetées mais la collection de quarantaine "
+                f"« {target.title} (rejets) » ne peut pas être créée : quota de collections "
+                "atteint. Libérez un emplacement ou corrigez les données, puis relancez."
+            ) from exc
         col.editable = False  # lecture seule via REST (le pipeline écrit en SQL direct)
         session.flush()
         write_audit(
@@ -156,6 +166,14 @@ def _ensure_quarantine(session: Session, target) -> str:
             payload={"tableName": col.table_name, "quarantineOf": target.id},
         )
         col_id = col.id
+    _sync_quarantine_shares(session, target, col_id)
+    return col_id
+
+
+def _sync_quarantine_shares(session: Session, target, col_id: str) -> None:
+    """Réaligne le partage de la quarantaine sur la cible (editor/manager -> viewer) : appelé à
+    CHAQUE run dès que la quarantaine existe, rejets ou non, pour retirer les groupes qui ont
+    perdu l'accès à la cible."""
     session.execute(text("DELETE FROM collection_shares WHERE collection_id = :q"), {"q": col_id})
     session.execute(
         text(
@@ -165,7 +183,6 @@ def _ensure_quarantine(session: Session, target) -> str:
         ),
         {"q": col_id, "t": target.id},
     )
-    return col_id
 
 
 def _store_rejects(session: Session, target, rejects: list[tuple], run_id: str | None) -> str:
@@ -372,11 +389,15 @@ def write_rows(
 
     rejects: list[tuple] = []
     seen: set[tuple] = set()
+    sensitive = frozenset(collection.sensitive_fields or ())
 
     def reject(raw_row: dict, rule: str, message: str) -> None:
         res.rejected += 1
         res.rejects_by_rule[rule] = res.rejects_by_rule.get(rule, 0) + 1
-        rejects.append((json.dumps(raw_row, default=str, ensure_ascii=False), rule, message))
+        # GAP-22 : la quarantaine est lisible par des groupes qui ne lisent pas forcément les champs
+        # sensibles de la cible : jamais de valeur sensible dans `source_row`.
+        safe = {k: v for k, v in raw_row.items() if k not in sensitive}
+        rejects.append((json.dumps(safe, default=str, ensure_ascii=False), rule, message))
 
     if mode == "replace":
         with rls_scope(session, tenant_id, geo_limits=geo_limits):
@@ -459,6 +480,10 @@ def write_rows(
 
     if rejects:
         res.rejected_collection = _store_rejects(session, collection, rejects, run_id)
+    else:
+        qid = f"{collection.id}__rejected"[:63]
+        if collections_repo.get_collection(session, tenant_id=tenant_id, collection_id=qid):
+            _sync_quarantine_shares(session, collection, qid)
     if res.inserted or res.deleted:
         delta = res.inserted - res.deleted if mode in ("upsert", "update", "delete") else 0
         if delta:
@@ -494,11 +519,16 @@ def _match_and_write(
     if to_delete:
         before = _snapshots(session, info, tenant_id, to_delete)
         with scope():
-            session.execute(
-                text(f"DELETE FROM public.{t} WHERE {pk_col} = ANY(:pks)"), {"pks": to_delete}
+            gone = (
+                session.execute(
+                    text(f"DELETE FROM public.{t} WHERE {pk_col} = ANY(:pks) RETURNING {pk_col}"),
+                    {"pks": to_delete},
+                )
+                .scalars()
+                .all()
             )
-        res.deleted += len(to_delete)
-        journal += [(pk, "delete", before.get(pk), None) for pk in to_delete]
+        res.deleted += len(gone)
+        journal += [(pk, "delete", before.get(pk), None) for pk in gone]
     if to_insert:
         with scope():
             insert_features(session, info, [(b["props"], b["geom"]) for b in to_insert])

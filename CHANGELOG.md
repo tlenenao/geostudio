@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`writer.collection` and sensitive fields (GAP-22)**: column masking now also applies
+  to the `append`/`insert` modes. A pipeline whose append writes a sensitive field the
+  running user cannot read now fails (or rejects the row, with `onInvalid: "reject"`)
+  with `invalid`/`unknown_property` instead of writing it. Rejected rows kept in the
+  `<collection>__rejected` quarantine never contain sensitive-field values.
+
 - **`S3_PUBLIC_ENDPOINT_URL` is now required outside `CORE_ENV=development`**
   (REV-315): the core refuses to start with it empty, since presigned links
   would point to the unreachable `minio:9000`. `.env.example` defaults it to
