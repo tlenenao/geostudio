@@ -27,7 +27,11 @@ from pydantic import BaseModel
 from app.auth.dependency import is_pipeline_file_io_enabled
 from app.pipelines import compiler as _compiler
 from app.pipelines import http_call_runtime as _http_call
+from app.pipelines.ops import database as _database
 from app.pipelines.ops import execute as _execute
+from app.pipelines.ops import filtering as _filtering
+from app.pipelines.ops import geocode as _geocode
+from app.pipelines.ops import wfs as _wfs
 from app.pipelines.ops.schemas import (
     ReaderCollectionParams,
     ReaderConnectorBigQueryParams,
@@ -620,6 +624,54 @@ OPERATIONS: dict[str, OperationContract] = {
         kind="writer",
         params_schema=WriterFileParams,
         enabled_when=is_pipeline_file_io_enabled,
+    ),
+    # Voie M (ARC vague 4) : params définis dans le module de chaque op (fichiers neufs).
+    "transform.geocode": OperationContract(
+        op="transform.geocode",
+        kind="transform",
+        params_schema=_geocode.TransformGeocodeParams,
+        engine="python",
+        engine_license="Apache-2.0 (httpx) ; BAN/Géoplateforme (Etalab 2.0) ou Nominatim (ODbL)",
+        execute=_geocode.execute_geocode,
+        needs_runtime_context=True,
+        output_srid=_geocode._output_srid,
+    ),
+    "reader.wfs": OperationContract(
+        op="reader.wfs",
+        kind="reader",
+        params_schema=_wfs.ReaderWfsParams,
+    ),
+    "transform.testFilter": OperationContract(
+        op="transform.testFilter",
+        kind="transform",
+        params_schema=_filtering.TransformTestFilterParams,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        execute=_filtering.execute_test_filter,
+    ),
+    "transform.sampler": OperationContract(
+        op="transform.sampler",
+        kind="transform",
+        params_schema=_filtering.TransformSamplerParams,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        compile=_filtering.compile_sampler,
+    ),
+    "transform.neighborFinder": OperationContract(
+        op="transform.neighborFinder",
+        kind="transform",
+        params_schema=_filtering.TransformNeighborFinderParams,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        compile=_filtering.compile_neighbor_finder,
+    ),
+    "transform.sqlExecutor": OperationContract(
+        op="transform.sqlExecutor",
+        kind="transform",
+        params_schema=_database.TransformSqlExecutorParams,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        execute=_database.execute_sql_executor,
     ),
     "transform.httpCall": OperationContract(
         op="transform.httpCall",
