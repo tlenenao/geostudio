@@ -73,6 +73,7 @@ def assert_egress_allowed(url: str) -> ValidatedIp:
     if not addresses:
         raise _EgressBlocked(f"hôte non résoluble : {host!r}")
     for ip in addresses:
+        ip = getattr(ip, "ipv4_mapped", None) or ip  # ::ffff:169.254.169.254 = 169.254.169.254
         if ip.is_link_local or ip.is_multicast or ip.is_unspecified or ip.is_reserved:
             raise _EgressBlocked(f"adresse interdite : {ip}")
     return ValidatedIp(str(addresses[0]), [str(a) for a in addresses])
@@ -115,12 +116,27 @@ class _Window:
     def check(self, key: str) -> None:
         now = time.monotonic()
         with self._lock:
+            if len(self._hits) > 1024:  # purge des clés inactives (pas de fuite par utilisateur)
+                for k in [k for k, h in self._hits.items() if not h or now - h[-1] > self.window]:
+                    del self._hits[k]
             hits = self._hits[key]
             while hits and now - hits[0] > self.window:
                 hits.popleft()
             if len(hits) >= self.budget:
                 raise RateLimited()
             hits.append(now)
+
+    def acquire(self, key: str, wait: float) -> None:
+        """Comme `check`, mais attend jusqu'à `wait` s qu'un créneau se libère (ops de pipeline :
+        un run long ralentit au lieu d'échouer)."""
+        deadline = time.monotonic() + wait
+        while True:
+            try:
+                return self.check(key)
+            except RateLimited:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(min(1.0, self.window / 60))
 
 
 rate_window = _Window()
@@ -163,12 +179,19 @@ def _costing(costing: str) -> str:
 
 class Valhalla:
     def __init__(
-        self, base_url: str, client_factory: Callable[[], httpx.Client] = build_guarded_client
+        self,
+        base_url: str,
+        client_factory: Callable[[], httpx.Client] = build_guarded_client,
+        throttle: Callable[[], None] | None = None,
     ):
         self._url = base_url
         self._client_factory = client_factory
+        # Appelé avant CHAQUE requête amont (service_area = 1 par origine) ; lève RateLimited.
+        self._throttle = throttle
 
     def _post(self, path: str, body: dict) -> dict:
+        if self._throttle is not None:
+            self._throttle()
         try:
             with self._client_factory() as client:
                 response = client.post(f"{self._url}{path}", json=body)
@@ -296,5 +319,7 @@ class Valhalla:
         return {"matrix": rows}
 
 
-def get_routing() -> Valhalla:
-    return Valhalla(_configured_url())  # RoutingUnavailable si CORE_ROUTING_URL est vide
+def get_routing(throttle: Callable[[], None] | None = None) -> Valhalla:
+    return Valhalla(
+        _configured_url(), throttle=throttle
+    )  # RoutingUnavailable si CORE_ROUTING_URL est vide

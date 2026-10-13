@@ -9,18 +9,43 @@ Une ligne sans solution (point hors réseau, pas d'itinéraire) est conservée, 
 silencieux). Au plus MAX_ROWS lignes par nœud (appels séquentiels : la borne protège Valhalla) ;
 l'aperçu n'en traite que PREVIEW_ROWS."""
 
+import functools
 import json
+import threading
 from typing import Literal
 
 import pandas as pd
 from pydantic import BaseModel, Field
 
+from app.audit.writer import write_audit
 from app.pipelines.errors import PipelineRuntimeError
-from app.routing.client import RoutingError, RoutingUnavailable, get_routing
+from app.routing.client import (
+    RateLimited,
+    RoutingError,
+    RoutingUnavailable,
+    Valhalla,
+    get_routing,
+    rate_window,
+)
+from app.routing.gate import can_route
 from app.sql_ident import quote_ident_duckdb as _qi
 
-MAX_ROWS = 500
+MAX_ROWS = 500  # lignes par nœud ; avec <= 4 contours : <= 2000 lignes de sortie par nœud
 PREVIEW_ROWS = 5
+RATE_WAIT_S = 600.0  # un run attend un créneau du budget partagé (100/min/utilisateur)
+# Concurrence plafonnée : au plus 4 nœuds de routage simultanés par processus worker.
+_SLOTS = threading.BoundedSemaphore(4)
+
+
+def _slotted(fn):
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        with _SLOTS:
+            return fn(*args, **kwargs)
+
+    return wrapper
+
+
 CostingName = Literal["auto", "bicycle", "pedestrian", "truck", "bus", "motor_scooter"]
 
 
@@ -55,15 +80,43 @@ def _origins(conn, input_view: str, extra: list[str], preview: bool) -> list[tup
     if missing:
         raise PipelineRuntimeError(f"transform: column(s) not found: {missing}")
     sel = "".join(f", {_qi(c)}" for c in extra)
+    # L'aperçu tronque AVANT le plafond : il ne traite que ses PREVIEW_ROWS premières lignes.
+    limit = f" LIMIT {PREVIEW_ROWS}" if preview else f" LIMIT {MAX_ROWS + 1}"
     rows = conn.execute(
         f"SELECT row_number() OVER () AS rn, ST_X(ST_Centroid(geometry)), "
-        f"ST_Y(ST_Centroid(geometry)){sel} FROM {_qi(input_view)}"
+        f"ST_Y(ST_Centroid(geometry)){sel} FROM {_qi(input_view)}{limit}"
     ).fetchall()
     if len(rows) > MAX_ROWS:
         raise PipelineRuntimeError(
-            f"transform: {len(rows)} rows exceed the {MAX_ROWS} rows cap of a routing node"
+            f"transform: more than {MAX_ROWS} rows exceed the cap of a routing node"
         )
-    return rows[:PREVIEW_ROWS] if preview else rows
+    return rows
+
+
+def _authorized_routing(secret_resolver, *, op: str, costing: str, calls: int) -> Valhalla:
+    """Même porte que REST/MCP (`can_route`, analytics.view) sur l'acteur du run, une ligne
+    d'audit par nœud (commitée avant les appels amont), et chaque requête amont consomme le
+    budget partagé `rate_window` (le run attend un créneau plutôt que de saturer Valhalla)."""
+    session = getattr(secret_resolver, "session", None)
+    user = getattr(secret_resolver, "user", None)
+    if session is None or not can_route(session, user):
+        raise PipelineRuntimeError(f"{op}: privilège 'analytics.view' requis pour le routage")
+    write_audit(
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="routing.pipeline_op",
+        object_type="routing",
+        object_id=op,
+        payload={"op": op, "costing": costing, "calls": calls},
+    )
+    session.commit()
+    return get_routing(lambda: rate_window.acquire(user.id, RATE_WAIT_S))
+
+
+def row_dest(row: tuple) -> tuple:
+    return row[3], row[4]
 
 
 def _origin(row: tuple) -> dict | None:
@@ -101,6 +154,7 @@ def _columns(conn, view: str) -> list[str]:
     return [d[0] for d in conn.execute(f"DESCRIBE {_qi(view)}").fetchall()]
 
 
+@_slotted
 def execute_isochrone(
     conn,
     *,
@@ -114,7 +168,12 @@ def execute_isochrone(
     rows = _origins(conn, input_view, [], preview)
     results: list[dict] = []
     try:
-        routing = get_routing()
+        routing = _authorized_routing(
+            secret_resolver,
+            op="transform.isochrone",
+            costing=p.costing,
+            calls=sum(1 for r in rows if _origin(r) is not None),
+        )
         for row in rows:
             origin = _origin(row)
             features = []
@@ -143,6 +202,8 @@ def execute_isochrone(
                 )
     except RoutingUnavailable as exc:
         raise PipelineRuntimeError(f"transform.isochrone: {exc}") from exc
+    except RateLimited as exc:
+        raise PipelineRuntimeError("transform.isochrone: budget de routage épuisé") from exc
     _materialize(
         conn,
         input_view=input_view,
@@ -153,6 +214,7 @@ def execute_isochrone(
     )
 
 
+@_slotted
 def execute_route(
     conn,
     *,
@@ -166,7 +228,12 @@ def execute_route(
     rows = _origins(conn, input_view, [p.destLonColumn, p.destLatColumn], preview)
     results: list[dict] = []
     try:
-        routing = get_routing()
+        routing = _authorized_routing(
+            secret_resolver,
+            op="transform.route",
+            costing=p.costing,
+            calls=sum(1 for r in rows if _origin(r) is not None and None not in row_dest(r)),
+        )
         for row in rows:
             origin = _origin(row)
             res = None
@@ -186,6 +253,8 @@ def execute_route(
             )
     except RoutingUnavailable as exc:
         raise PipelineRuntimeError(f"transform.route: {exc}") from exc
+    except RateLimited as exc:
+        raise PipelineRuntimeError("transform.route: budget de routage épuisé") from exc
     _materialize(
         conn,
         input_view=input_view,

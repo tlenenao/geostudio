@@ -11,8 +11,6 @@ from mcp.server.fastmcp import Context, FastMCP
 
 from app.db import request_scoped_session
 from app.mcp.tools.identity import McpToolError, resolve_actor
-from app.roles.guards import has_privilege
-from app.roles.privileges import Privilege
 from app.routing.client import (
     RateLimited,
     RoutingError,
@@ -21,23 +19,22 @@ from app.routing.client import (
     get_routing,
     rate_window,
 )
+from app.routing.gate import can_route
 
 
 def register(server: FastMCP, session_factory) -> None:
     def run(call: Callable[[Valhalla], dict]) -> dict:
         with request_scoped_session(session_factory) as session:
             user = resolve_actor(session, get_access_token())
-            if not has_privilege(session, user, Privilege.ANALYTICS_VIEW.value):
+            if not can_route(session, user):
                 raise McpToolError(403, "privilege 'analytics.view' required")
             user_id = user.id
         try:
-            rate_window.check(user_id)
+            return call(get_routing(lambda: rate_window.check(user_id)))
         except RateLimited:
             raise McpToolError(
                 429, "Trop de requêtes de routage, réessayez dans une minute."
             ) from None
-        try:
-            return call(get_routing())
         except RoutingUnavailable as exc:
             raise McpToolError(503, str(exc)) from None
         except (RoutingError, ValueError, KeyError, TypeError) as exc:

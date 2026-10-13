@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
 from app.db import get_session
-from app.roles.guards import require_privilege
+from app.roles.guards import privilege_required_error
 from app.roles.privileges import Privilege
 from app.routing.client import (
     MAX_CONTOURS,
@@ -28,6 +28,7 @@ from app.routing.client import (
     get_routing,
     rate_window,
 )
+from app.routing.gate import can_route
 from app.users.models import User
 
 router = APIRouter(prefix="/routing", tags=["routing"])
@@ -72,14 +73,10 @@ def serve(
     audit: dict,
     call: Callable[[Valhalla], dict],
 ) -> Any:
-    """Porte commune : privilège -> débit -> audit (commité) -> appel Valhalla."""
-    require_privilege(session, user, Privilege.ANALYTICS_VIEW.value)
-    try:
-        rate_window.check(user.id)
-    except RateLimited:
-        raise HTTPException(
-            status_code=429, detail="Trop de requêtes de routage, réessayez dans une minute."
-        ) from None
+    """Porte commune : privilège -> audit (commité) -> appel Valhalla (débit compté par requête
+    amont, via `throttle`)."""
+    if not can_route(session, user):
+        raise privilege_required_error(Privilege.ANALYTICS_VIEW.value)
     write_audit(
         session,
         tenant_id=user.tenant_id,
@@ -92,7 +89,11 @@ def serve(
     )
     session.commit()
     try:
-        return call(get_routing())
+        return call(get_routing(lambda: rate_window.check(user.id)))
+    except RateLimited:
+        raise HTTPException(
+            status_code=429, detail="Trop de requêtes de routage, réessayez dans une minute."
+        ) from None
     except RoutingUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except (RoutingError, ValueError) as exc:
