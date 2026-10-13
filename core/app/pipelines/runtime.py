@@ -86,6 +86,7 @@ from app.pipelines.ops.schemas import (
     WriterExportParams,
     WriterFileParams,
 )
+from app.relations.service import restricting_relation
 from app.roles.guards import require_privilege
 from app.roles.privileges import Privilege
 from app.sharing.authorization import can
@@ -1011,6 +1012,11 @@ def _write_collection(
         # GAP-27 : un remplacement ne verrait (et ne supprimerait) que le périmètre limité.
         raise PipelineRuntimeError(
             "writer.collection: mode replace refused on a geo-limited collection"
+        )
+    if p.mode == "replace" and (blocking := restricting_relation(session, collection)):
+        # ARC-21 : le remplacement en masse contourne la politique de suppression des relations.
+        raise PipelineRuntimeError(
+            f"writer.collection: mode replace refused: relation '{blocking}' has related records"
         )
     with rls_scope(session, tenant_id, geo_limits=geo_limits):
         if p.mode == "replace":

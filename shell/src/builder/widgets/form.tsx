@@ -13,6 +13,7 @@ import type { WidgetContext } from "../registry";
 import { plural, t } from "../../i18n";
 import { ConfirmDialog } from "../../ui/kit/ConfirmDialog";
 import { FeatureHistoryPanel } from "./FeatureHistoryPanel";
+import { RelatedRecordsPanel } from "./RelatedRecordsPanel";
 import { LoadingState } from "../../ui/kit/LoadingState";
 import "../../i18n/domains/widgets";
 
@@ -943,6 +944,9 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
             </button>
           )}
         </p>
+      )}
+      {editingId !== null && (
+        <RelatedRecordsPanel client={client} collectionId={collectionId} fid={String(editingId)} />
       )}
       {editingId !== null && (
         <FeatureHistoryPanel

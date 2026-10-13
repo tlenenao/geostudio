@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 import type {
   CollectionAdmin,
+  CollectionRelation,
   FeatureVersion,
   GeoJSONFeatureInput,
   ItemClient,
+  RelatedRecords,
   Submission,
   SubmissionTokenInfo,
 } from "../types";
@@ -47,6 +49,8 @@ type FeaturesMethods = Pick<
   | "getFeature"
   | "listFeatureHistory"
   | "restoreFeatureVersion"
+  | "listCollectionRelations"
+  | "listRelatedRecords"
   | "listSubmissions"
   | "approveSubmission"
   | "rejectSubmission"
@@ -123,6 +127,17 @@ export function createFeaturesMethods(base: ItemClientBase): FeaturesMethods {
       await request<void>(
         "POST",
         `/collections/${collectionId}/items/${fid}/history/${versionId}/restore`,
+      );
+    },
+
+    async listCollectionRelations(collectionId: string) {
+      return request<CollectionRelation[]>("GET", `/collections/${collectionId}/relations`);
+    },
+
+    async listRelatedRecords(collectionId: string, fid: string, relationId: string) {
+      return request<RelatedRecords>(
+        "GET",
+        `/collections/${collectionId}/items/${fid}/related/${relationId}`,
       );
     },
 

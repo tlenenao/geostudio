@@ -73,6 +73,8 @@ from app.quality import routes as quality_routes
 from app.quotas import routes as quotas_routes
 from app.quotas.service import QuotaExceededError
 from app.ratelimit.limiter import RateLimiter, caller_key, route_group
+from app.relations import routes as relations_routes
+from app.relations.service import RelationHooks
 from app.reports import routes as reports_routes
 from app.roles import routes as roles_routes
 from app.schemas_routes import router as schemas_router
@@ -413,6 +415,7 @@ def create_app() -> FastAPI:
     v1_router.include_router(analysis_routes.router)
     v1_router.include_router(quality_routes.router)
     v1_router.include_router(history_routes.router)
+    v1_router.include_router(relations_routes.router)  # ARC-21
     v1_router.include_router(dataexport_routes.router)
     v1_router.include_router(tiles_routes.router)
     v1_router.include_router(attachments_routes.router)
@@ -464,6 +467,7 @@ def create_app() -> FastAPI:
             bucket=s3_bucket,
         )
 
+    app.dependency_overrides[features_routes.get_relation_hooks] = lambda: RelationHooks()  # ARC-21
     app.dependency_overrides[features_routes.get_export_job_starter] = lambda: (
         dataexport_routes.default_starter
     )

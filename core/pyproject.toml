@@ -372,6 +372,9 @@ layers = [
     "app.ows",
     # app.styles (ARC-28) : symbologie -> règles -> SLD ; consommé par app.ows (renderer WMS).
     "app.styles",
+    # app.relations (ARC-21, ADR 0021) : relations entre collections ; relit features
+    # (RLS, masquage) et écrit leur journal. features l'appelle par injection (main.py).
+    "app.relations",
     "app.features",
     # app.history (ARC-15) : journal d'entité ; écrit par app.features.routes (au-dessus),
     # lit les collections/privilèges (en dessous).
@@ -524,5 +527,6 @@ ignore_imports = [
     "app.db -> app.dataexport.models",
     "app.db -> app.quality.models",
     "app.db -> app.history.models",
+    "app.db -> app.relations.models",
     "app.db -> app.public_submit.models",
 ]

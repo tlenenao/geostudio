@@ -50,6 +50,7 @@ from app.notifications.models import Notification, NotificationPreference
 from app.pipelines.models import PipelineRun
 from app.public_submit.models import Submission, SubmissionToken
 from app.quality.models import QualityReport
+from app.relations.models import CollectionRelation
 from app.reports.models import ReportRun
 from app.roles.models import Role
 from app.secrets.models import ConnectorSecret
@@ -121,6 +122,7 @@ def purge_tenant(
     #    depuis configs->items — violerait leur propre FK non-cascade).
     counts["config_revisions"] = _delete_all(session, ConfigRevision, tenant_id)
     counts["entity_history"] = _delete_all(session, EntityHistory, tenant_id)  # ARC-15
+    counts["collection_relations"] = _delete_all(session, CollectionRelation, tenant_id)  # ARC-21
     counts["alert_evaluations"] = _delete_all(session, AlertEvaluation, tenant_id)
     # result_key capturé AVANT suppression des lignes : ExportJob/
     # AppExportJob vivent dans 2 buckets non tenant-préfixés (renders/
