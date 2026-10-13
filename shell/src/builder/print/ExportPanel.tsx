@@ -88,13 +88,12 @@ export function ExportPanel({
     setError(null);
     setJob(null);
     try {
-      const { jobId } = await client.createExport(
-        itemId,
-        format,
-        pdfOnly
-          ? { ...(entityId !== undefined ? { entityId } : {}), ...(atlas ? { atlas } : {}) }
-          : undefined,
-      );
+      const { jobId } = pdfOnly
+        ? await client.createExport(itemId, format, {
+            ...(entityId !== undefined ? { entityId } : {}),
+            ...(atlas ? { atlas } : {}),
+          })
+        : await client.createExport(itemId, format);
       jobIdRef.current = jobId;
       await poll(jobId);
     } catch {

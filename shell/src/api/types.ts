@@ -434,6 +434,15 @@ export type PrintLayoutConfig = {
   northArrow?: boolean;
   freeText?: string | null;
   logo?: string | null;
+  // ARC-30 : atlas = une page par entité de la source (apps/dashboards).
+  atlas?: AtlasConfig | null;
+};
+
+export type AtlasConfig = {
+  dataSourceId: string;
+  titleTemplate?: string | null;
+  fields: { label: string; template: string }[];
+  maxPages: number;
 };
 
 export type MapConfig = {
