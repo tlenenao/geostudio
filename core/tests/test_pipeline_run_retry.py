@@ -11,11 +11,14 @@ from sqlalchemy import text
 
 from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig, PipelinePayload
-from app.pipelines import checkpoints, compiler
+from app.pipelines import checkpoints, compiler, runtime
 from app.pipelines import jobs as pipeline_jobs
 from app.pipelines import repository as pipelines_repo
-from app.pipelines.registries import READERS
+from app.pipelines.errors import PipelineRuntimeError
+from app.pipelines.registries import READERS, WRITERS
+from app.pipelines.runtime import NodeStat
 from app.pipelines.service import retry_pipeline_run_service
+from app.quotas.service import QuotaExceededError
 from tests.test_pipeline_jobs import env  # noqa: F401  (fixture partagée)
 
 
@@ -90,7 +93,9 @@ def rig(env, monkeypatch, tmp_path):  # noqa: F811
 
     monkeypatch.setattr(compiler, "compile_transform_sql", spy_compile)
     monkeypatch.setattr(
-        pipeline_jobs, "_get_pipeline_payload", lambda session, item_id: _payload(state["retry"])
+        pipeline_jobs,
+        "_get_pipeline_payload",
+        lambda session, item_id: state.get("payload_fn", _payload)(state["retry"]),
     )
     with Session() as s:
         configs_repo.create_config(
@@ -357,3 +362,141 @@ def test_automatic_retry_refuses_insert_alias_of_append():
     payload["retry"] = {"max": 2}
     with pytest.raises(ValueError, match="upsert"):
         PipelinePayload.model_validate(payload)
+
+
+# --- Revue finale de branche (vague 4) : C1 / I1 ----------------------------------------
+
+
+def _two_writers(retry):
+    p = _payload(retry).model_dump(by_alias=True)
+    p["nodes"][0]["params"]["incremental"] = {"cursorField": "pop"}
+    p["nodes"].append(
+        {
+            "id": "w2",
+            "kind": "writer",
+            "op": "writer.collection",
+            "params": {"collectionId": "villes_propres", "mode": "replace"},
+        }
+    )
+    p["edges"].append({"id": "e5", "from": "t3", "to": "w2"})
+    return PipelinePayload.model_validate(p)
+
+
+def _spy_writers(monkeypatch, state):
+    """w2 échoue tant que `fail_w2` (puis « réussit » sans écrire) ; w1 peut publier une
+    progression puis buter sur un quota (`quota_w1`, une fois)."""
+    real = WRITERS["writer.collection"]
+
+    def spy(session, conn, *, node, **kw):
+        if node.id == "w2":
+            if state.get("fail_w2"):
+                raise PipelineRuntimeError("boom w2")
+            return NodeStat(node.id, node.op, 0)
+        if state.get("quota_w1"):
+            state["quota_w1"] = False
+            kw["on_progress"](NodeStat(node.id, node.op, 2))  # commitée hors transaction du run
+            raise QuotaExceededError("collections", 1, 1, "quota atteint")
+        return real(session, conn, node=node, **kw)
+
+    monkeypatch.setitem(WRITERS, "writer.collection", spy)
+
+
+def _cursors(Session, tenant, item_id):
+    with Session() as s:
+        return pipelines_repo.get_reader_states(s, tenant_id=tenant.id, pipeline_item_id=item_id)
+
+
+@pytest.mark.postgis
+def test_retry_replays_a_writer_that_succeeded_before_the_failure(rig, monkeypatch):
+    """C1 (a)+(c) : w1 réussit puis w2 échoue — la transaction du run (écritures de w1
+    comprises) est annulée, mais la progression de w1 est commitée à part. Le retry doit
+    rejouer w1 (sinon : run « succeeded » sans ligne écrite) et le curseur incrémental
+    n'avance qu'avec les lignes réellement écrites."""
+    _app, Session, tenant, user, item_id, state = rig
+    state.update(
+        fail_t3=False,
+        fail_w2=True,
+        retry={"max": 1, "backoff": "fixed", "delaySeconds": 1},
+        payload_fn=_two_writers,
+    )
+    _spy_writers(monkeypatch, state)
+    run_id = _new_run(Session, tenant, item_id)
+    r = _exec(Session, tenant, run_id)
+    assert r.status == "retrying" and "w1" in (r.node_stats or {})
+    assert _rows(Session) == 0 and _cursors(Session, tenant, item_id) == {}
+
+    state["fail_w2"] = False
+    r = _exec(Session, tenant, run_id)
+    assert r.status == "succeeded", r.error
+    assert _rows(Session) == 3  # w1 rejoué : ses lignes sont bien là
+    assert set(_cursors(Session, tenant, item_id)) == {"r1"}
+
+
+@pytest.mark.postgis
+def test_resume_after_a_quota_failure_mid_writer_never_succeeds_empty(rig, monkeypatch):
+    """C1 (b) : un quota atteint après une progression publiée laisse `w1` dans node_stats ;
+    la reprise doit écrire les lignes (ou échouer), jamais finir `succeeded` à vide."""
+    _app, Session, tenant, user, item_id, state = rig
+    state.update(fail_t3=False, quota_w1=True, retry={"max": 0})
+    _spy_writers(monkeypatch, state)
+    r1 = _exec(Session, tenant, _new_run(Session, tenant, item_id))
+    assert r1.status == "failed" and "w1" in (r1.node_stats or {})
+    with Session() as s:
+        new_id = retry_pipeline_run_service(s, user=user, run_id=r1.id, defer_task=lambda *a: None)
+    r2 = _exec(Session, tenant, new_id)
+    assert r2.status == "succeeded", r2.error
+    assert _rows(Session) == 3
+
+
+def _collection_reader(retry):
+    p = _payload(retry).model_dump(by_alias=True)
+    p["nodes"][0] = {
+        "id": "r1",
+        "kind": "reader",
+        "op": "reader.collection",
+        "params": {"collectionId": "villes"},
+    }
+    return PipelinePayload.model_validate(p)
+
+
+@pytest.mark.postgis
+@pytest.mark.parametrize("change", ["revoke", "mask"])
+def test_resume_rechecks_reader_access_rights(rig, monkeypatch, change):
+    """I1 : une reprise ne relit pas la source d'un reader déjà réussi — mais si le droit de
+    lecture, les limites géographiques ou le masquage ont changé depuis l'échec, les points
+    de reprise sont invalidés : la source est relue (et un accès retiré fait échouer)."""
+    _app, Session, tenant, user, item_id, state = rig
+    state["payload_fn"] = _collection_reader
+    access = {"readable": True, "masked": frozenset()}
+
+    def check(session, *, tenant_id, user, collection_id):
+        if not access["readable"]:
+            raise PipelineRuntimeError(f"collection '{collection_id}' not found")
+        return collection_id
+
+    monkeypatch.setattr(runtime, "_require_readable_collection_id", check)
+    monkeypatch.setattr(runtime, "_masked_fields", lambda *a, **k: access["masked"])
+    connector = READERS["reader.connector.rest"]  # faux reader du rig
+
+    def collection_reader(conn, *, session, tenant_id, params, user, **kw):
+        runtime._require_readable_collection_id(
+            session, tenant_id=tenant_id, user=user, collection_id=params["collectionId"]
+        )
+        return connector(conn, **kw)
+
+    monkeypatch.setitem(READERS, "reader.collection", collection_reader)
+    r1 = _exec(Session, tenant, _new_run(Session, tenant, item_id))
+    assert r1.status == "failed" and state["reader_calls"] == 1
+
+    if change == "revoke":
+        access["readable"] = False
+    else:
+        access["masked"] = frozenset({"pop"})
+    state["fail_t3"] = False
+    with Session() as s:
+        new_id = retry_pipeline_run_service(s, user=user, run_id=r1.id, defer_task=lambda *a: None)
+    r2 = _exec(Session, tenant, new_id)
+    if change == "revoke":
+        assert r2.status == "failed" and "not found" in (r2.error or "")
+    else:  # source relue sous le nouveau masquage (le point de reprise n'est pas réutilisé)
+        assert state["reader_calls"] == 2

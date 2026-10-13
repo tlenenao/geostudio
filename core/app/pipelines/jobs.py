@@ -27,7 +27,7 @@ from app.pipelines import checkpoints
 from app.pipelines import repository as pipelines_repo
 from app.pipelines.errors import PipelineCancelledError
 from app.pipelines.reader_state import ReaderState
-from app.pipelines.runtime import NodeStat, PipelineRuntimeError, run_pipeline
+from app.pipelines.runtime import NodeStat, PipelineRuntimeError, access_facts, run_pipeline
 from app.quotas.service import QuotaExceededError
 from app.users.models import User
 
@@ -298,7 +298,6 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
             # Racine des points de reprise : le run lui-même (reprise auto) ou le
             # run dont celui-ci reprend le travail (reprise manuelle).
             root_id = run.resume_of or run.id
-            prior_stats = dict(run.node_stats or {}) if (run.resume_of or run.attempt > 1) else None
         # `item_id` n'est affecté qu'APRÈS tracker.mark_running(), pas avant —
         # comme dans le code original où pipelines_repo.mark_running(...)
         # précédait `item_id = run.pipeline_item_id` dans le même bloc `with`.
@@ -323,7 +322,14 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
             user = _acting_user(session, tenant_id=tenant_id, item_id=item_id)
             retry_policy = payload.retry
             checkpoint = (
-                checkpoints.Checkpoint(tenant_id, root_id, checkpoints.config_fingerprint(payload))
+                checkpoints.Checkpoint(
+                    tenant_id,
+                    root_id,
+                    checkpoints.config_fingerprint(
+                        payload,
+                        access_facts(session, payload, tenant_id=tenant_id, user=user),
+                    ),
+                )
                 if retry_policy is not None
                 else None
             )
@@ -351,7 +357,6 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
                 run_id=run_id,
                 reader_state=reader_state,
                 checkpoint=checkpoint,
-                prior_stats=prior_stats,
             )
             # F4 : le curseur n'avance qu'ici, run réussi (jamais sur échec).
             if reader_state.pending:

@@ -160,6 +160,9 @@ def retry_pipeline_run_service(
                 "(writer.collection) ou 'replace', ou relancez une exécution complète."
             ),
         )
+    # Les writers sont toujours rejoués (C1) : leurs stats de l'échec ne sont pas reprises.
+    nodes = config.config.pipeline.nodes if config.config.pipeline else []
+    writer_ids = {n.id for n in nodes if n.kind == "writer"}
     try:
         new_run = pipelines_repo.create_run_unless_active(
             session,
@@ -167,7 +170,9 @@ def retry_pipeline_run_service(
             pipeline_item_id=item_id,
             params=run.params,
             resume_of=None if from_start else (run.resume_of or run.id),
-            node_stats=None if from_start else dict(run.node_stats or {}),
+            node_stats=None
+            if from_start
+            else {k: v for k, v in (run.node_stats or {}).items() if k not in writer_ids},
         )
     except pipelines_repo.PipelineRunActive:
         raise HTTPException(

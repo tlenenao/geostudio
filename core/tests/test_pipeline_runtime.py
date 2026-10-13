@@ -175,6 +175,78 @@ def test_preview_filter_and_derive(tmp_path, monkeypatch):
     assert 2 not in by_id  # filtered out (pop=5 <= 8)
 
 
+@pytest.mark.parametrize(("params", "expected"), [(None, {1, 3}), ({"min": 15}, {3})])
+def test_preview_resolves_run_parameters(tmp_path, monkeypatch, params, expected):
+    """Revue finale vague 4, I5 : un pipeline à `{{param.x}}` s'aperçoit avec les valeurs par
+    défaut, ou avec des paramètres d'aperçu fournis (mêmes règles que le run)."""
+    _write_partition(tmp_path, rows=[_row(1, "Nord", 10), _row(2, "Sud", 5), _row(3, "Nord", 20)])
+    monkeypatch.setattr(
+        runtime, "_table_info_for_collection", lambda session, cid: _table_info_for(cid)
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: collection_id,
+    )
+    from app.configs.schemas import PipelinePayload
+
+    payload = PipelinePayload.model_validate(
+        {
+            "parameters": [{"name": "min", "type": "integer", "default": 8}],
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "villes"},
+                },
+                {
+                    "id": "t1",
+                    "kind": "transform",
+                    "op": "transform.filter",
+                    "params": {"expr": "pop > {{param.min}}"},
+                },
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.export",
+                    "params": {"format": "csv", "key": "out.csv"},
+                },
+            ],
+            "edges": [
+                {"id": "e1", "from": "r1", "to": "t1"},
+                {"id": "e2", "from": "t1", "to": "w1"},
+            ],
+        }
+    )
+    rows = runtime.preview_pipeline(
+        session=None,
+        payload=payload,
+        tenant_id="t1",
+        user=None,
+        up_to="t1",
+        endpoint_url="http://localhost:9000",
+        access_key="x",
+        secret_key="y",
+        base_uri=str(tmp_path),
+        params=params,
+    )
+    assert {r["id"] for r in rows} == expected
+    with pytest.raises(runtime.PipelineRuntimeError, match="non déclaré"):
+        runtime.preview_pipeline(
+            session=None,
+            payload=payload,
+            tenant_id="t1",
+            user=None,
+            up_to="t1",
+            endpoint_url="http://localhost:9000",
+            access_key="x",
+            secret_key="y",
+            base_uri=str(tmp_path),
+            params={"inconnu": 1},
+        )
+
+
 def test_preview_rejects_writer_node_as_up_to(tmp_path, monkeypatch):
     monkeypatch.setattr(
         runtime,

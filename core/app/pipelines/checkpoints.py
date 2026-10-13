@@ -38,14 +38,16 @@ def _retention_s() -> float:
     return float(os.environ.get("CORE_PIPELINE_CHECKPOINT_RETENTION_HOURS") or 24) * 3600
 
 
-def config_fingerprint(payload) -> str:
-    """Empreinte des nœuds+arêtes (params déjà résolus) : change dès qu'un nœud change."""
+def config_fingerprint(payload, access: list | None = None) -> str:
+    """Empreinte des nœuds+arêtes (params déjà résolus) et des droits de lecture de l'acteur
+    (`runtime.access_facts`) : change dès qu'un nœud ou un de ces droits change."""
     raw = json.dumps(
         {
             "nodes": [
                 n.model_dump(mode="json", exclude={"x", "y", "title"}) for n in payload.nodes
             ],
             "edges": [e.model_dump(mode="json", by_alias=True) for e in payload.edges],
+            "access": access or [],
         },
         sort_keys=True,
         default=str,

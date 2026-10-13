@@ -77,6 +77,8 @@ class WebhookTokenSummary(BaseModel):
 
 class PipelinePreviewRequest(BaseModel):
     pipeline: PipelinePayload | None = None
+    # Valeurs de `{{param.x}}` pour l'aperçu (défauts déclarés sinon).
+    params: dict[str, Any] | None = None
 
 
 class NextRunResponse(BaseModel):
@@ -288,6 +290,7 @@ def preview_pipeline_route(
             access_key=os.environ.get("S3_ACCESS_KEY", ""),
             secret_key=os.environ.get("S3_SECRET_KEY", ""),
             base_uri=f"s3://{os.environ.get('S3_CDC_BUCKET', 'geostudio-cdc')}/cdc",
+            params=body.params if body else None,
         )
     except PipelineRuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

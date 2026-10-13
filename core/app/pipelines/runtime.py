@@ -53,6 +53,7 @@ from app.collections.introspection import (
 from app.collections.introspection_pg import introspect_table
 from app.collections.sensitive import masked_fields_for
 from app.configs import repository as configs_repo
+from app.configs.pipeline_params import PipelineParamError, apply_params, resolve_params
 from app.configs.schemas import BuilderConfig, DatasetPayload, PipelineNode, PipelinePayload
 from app.features.repository import delete_all_features
 from app.ingestion.storage import ensure_uploads_bucket
@@ -182,6 +183,42 @@ def _masked_fields(
     if collection is None:
         return frozenset()
     return masked_fields_for(session, user, collection)
+
+
+def access_facts(session: Session, payload: PipelinePayload, *, tenant_id: str, user: User) -> list:
+    """Droits dont dépend ce que les lecteurs ont lu (lisibilité et limites géographiques des
+    collections lues ou jointes, champs masqués, secrets de connecteur), pour l'acteur du run.
+    Ils entrent dans l'empreinte des points de reprise F5 (revue finale vague 4, I1) : un
+    droit retiré ou un masquage changé entre l'échec et la reprise invalide les points de
+    reprise, donc la reprise relit les sources et réapplique tous les contrôles."""
+    facts: list = [user.id]
+    resolver = _chain_resolver(session, tenant_id, user)
+    for node in payload.nodes:
+        refs = [node.params.get("withCollectionId")]
+        if node.op == "reader.collection":
+            refs.append(node.params.get("collectionId"))
+        for cid in refs:
+            if not isinstance(cid, str):
+                continue
+            try:
+                _require_readable_collection_id(
+                    session, tenant_id=tenant_id, user=user, collection_id=cid
+                )
+                verdict: object = sorted(
+                    _masked_fields(session, tenant_id=tenant_id, user=user, collection_id=cid)
+                )
+            except PipelineRuntimeError as exc:
+                verdict = str(exc)
+            facts.append([node.id, cid, verdict])
+        name = node.params.get("secretName")
+        if isinstance(name, str) and resolver is not None:
+            try:
+                resolver.get(name)
+                usable = True
+            except (KeyError, RuntimeError):
+                usable = False
+            facts.append([node.id, name, usable])
+    return facts
 
 
 def _readable_table_info(
@@ -952,7 +989,14 @@ def preview_pipeline(
     secret_key: str,
     base_uri: str,
     limit: int = 50,
+    params: dict | None = None,
 ) -> list[dict]:
+    # `{{param.x}}` résolus comme pour un run (défauts + valeurs fournies) —
+    # sinon l'aperçu filtre sur le littéral `{{param.x}}` (revue vague 4, I5).
+    try:
+        payload = apply_params(payload, resolve_params(payload.parameters, params))
+    except PipelineParamError as exc:
+        raise PipelineRuntimeError(str(exc)) from exc
     target = next((n for n in payload.nodes if n.id == up_to), None)
     if target is None:
         raise PipelineRuntimeError(f"node '{up_to}' not found")
@@ -1381,7 +1425,6 @@ def run_pipeline(
     run_id: str | None = None,
     reader_state: ReaderState | None = None,
     checkpoint: Checkpoint | None = None,
-    prior_stats: dict | None = None,
 ) -> list[NodeStat]:
     # Import local, même rationale que dans _prepare() : voir registries.py
     # pour le raisonnement complet sur pourquoi cet import doit rester
@@ -1417,21 +1460,10 @@ def run_pipeline(
         for node in ordered:
             if node.kind != "writer":
                 continue
-            if (
-                checkpoint is not None
-                and checkpoint.usable
-                and prior_stats
-                and node.id in prior_stats
-            ):
-                # F5 : writer déjà réussi lors d'une exécution précédente de ce run.
-                # Le détail d'écriture (rejets F2) est conservé : sinon un run repris
-                # passerait de `succeeded_with_rejects` à `succeeded`.
-                prior = dict(prior_stats[node.id])
-                row_count = prior.pop("rowCount", None)
-                prior.pop("nodeId", None)
-                prior.pop("op", None)
-                stats.append(NodeStat(node.id, node.op, row_count, extra=prior))
-                continue
+            # F5 : une reprise REJOUE toujours les writers (jamais sautés sur la foi de
+            # node_stats) : leurs écritures vivent dans la transaction du run, annulée à
+            # l'échec, alors que node_stats est commité à part (revue finale vague 4, C1).
+            # Rejeu sûr : `append_writers()` refuse la reprise des modes non idempotents.
             pred_id = compiler.predecessor_id(node.id, payload.edges)
             if pred_id is None:
                 raise PipelineRuntimeError(f"node '{node.id}' has no incoming edge")
