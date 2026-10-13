@@ -90,3 +90,27 @@ def test_trigger_webhook_accepts_params(monkeypatch):
     r = client.post(f"/v1/pipelines/{item_id}/trigger", headers=h, json={"params": {"suffix": "z"}})
     assert r.status_code == 202, r.text
     assert client.get(f"/v1/pipelines/{item_id}/runs").json()[0]["params"] == {"suffix": "z"}
+
+
+def test_reader_state_routes_list_and_reset(monkeypatch):
+    from app.pipelines import repository as pipelines_repo
+
+    client = _make_app(monkeypatch, etl_enabled=True)
+    item_id = _seed(client, _PARAMS)
+    with client.session_factory() as s:
+        pipelines_repo.upsert_reader_states(
+            s,
+            tenant_id=client.tenant.id,
+            pipeline_item_id=item_id,
+            cursors={"r1": "5", "r2": "7"},
+        )
+        s.commit()
+    assert client.get(f"/v1/pipelines/{item_id}/reader-state").json() == [
+        {"nodeId": "r1", "cursor": "5"},
+        {"nodeId": "r2", "cursor": "7"},
+    ]
+    assert client.delete(f"/v1/pipelines/{item_id}/reader-state?nodeId=r1").status_code == 204
+    states = client.get(f"/v1/pipelines/{item_id}/reader-state").json()
+    assert [e["nodeId"] for e in states] == ["r2"]
+    assert client.delete(f"/v1/pipelines/{item_id}/reader-state").status_code == 204
+    assert client.get(f"/v1/pipelines/{item_id}/reader-state").json() == []

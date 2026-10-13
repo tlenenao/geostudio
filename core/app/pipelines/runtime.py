@@ -86,6 +86,7 @@ from app.pipelines.ops.schemas import (
     WriterExportParams,
     WriterFileParams,
 )
+from app.pipelines.reader_state import ReaderState, apply_incremental
 from app.relations.service import restricting_relation
 from app.roles.guards import require_privilege
 from app.roles.privileges import Privilege
@@ -642,6 +643,7 @@ def _prepare(
     tenant_id: str,
     user: User,
     base_uri: str,
+    reader_state: ReaderState | None = None,
 ) -> tuple[list[PipelineNode], dict[str, str], dict[str, int], dict[str, int]]:
     """Passe 1 : matérialise tous les readers (+ le withCollectionId de
     chaque transform.join/intersection/countWithin), puis verrouille.
@@ -681,6 +683,18 @@ def _prepare(
             base_uri=base_uri,
         )
         view_by_node[node.id] = view_name
+        # ARC-K2/F4 : lecture incrémentale des readers connecteurs (table
+        # temporaire) — filtre aux lignes plus récentes que le curseur du dernier
+        # run réussi ; le nouveau curseur reste « en attente » jusqu'au succès.
+        incremental = (
+            node.params.get("incremental") if node.op.startswith("reader.connector.") else None
+        )
+        if reader_state is not None and isinstance(incremental, dict):
+            cursor = apply_incremental(
+                conn, view_name, str(incremental.get("cursorField", "")), reader_state.get(node.id)
+            )
+            if cursor is not None:
+                reader_state.stage(node.id, cursor)
 
     join_srid_by_node: dict[str, int] = {}
     for node in ordered:
@@ -1319,6 +1333,7 @@ def run_pipeline(
     on_node_complete: Callable[["NodeStat"], None] | None = None,
     on_progress: Callable[["NodeStat"], None] | None = None,
     should_cancel: Callable[[], bool] | None = None,
+    reader_state: ReaderState | None = None,
 ) -> list[NodeStat]:
     # Import local, même rationale que dans _prepare() : voir registries.py
     # pour le raisonnement complet sur pourquoi cet import doit rester
@@ -1336,6 +1351,7 @@ def run_pipeline(
             tenant_id=tenant_id,
             user=user,
             base_uri=base_uri,
+            reader_state=reader_state,
         )
         stats = _execute_transform_chain(
             conn,

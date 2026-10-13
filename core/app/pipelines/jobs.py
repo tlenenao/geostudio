@@ -25,6 +25,7 @@ from app.jobs.common import notify_best_effort, resolve_owner_user
 from app.jobs.common import session_factory as _session_factory
 from app.pipelines import repository as pipelines_repo
 from app.pipelines.errors import PipelineCancelledError
+from app.pipelines.reader_state import ReaderState
 from app.pipelines.runtime import NodeStat, PipelineRuntimeError, run_pipeline
 from app.quotas.service import QuotaExceededError
 from app.users.models import User
@@ -252,6 +253,11 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
             # valeur échoue ici avec un message clair.
             payload = apply_params(payload, resolve_params(payload.parameters, run_params))
             user = _acting_user(session, tenant_id=tenant_id, item_id=item_id)
+            reader_state = ReaderState(
+                pipelines_repo.get_reader_states(
+                    session, tenant_id=tenant_id, pipeline_item_id=item_id
+                )
+            )
             stats = run_pipeline(
                 session,
                 payload=payload,
@@ -268,7 +274,16 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
                 ),
                 on_progress=_make_progress_callback(factory, run_id=run_id, tenant_id=tenant_id),
                 should_cancel=tracker.is_cancel_requested,
+                reader_state=reader_state,
             )
+            # F4 : le curseur n'avance qu'ici, run réussi (jamais sur échec).
+            if reader_state.pending:
+                pipelines_repo.upsert_reader_states(
+                    session,
+                    tenant_id=tenant_id,
+                    pipeline_item_id=item_id,
+                    cursors=reader_state.pending,
+                )
         tracker.mark_succeeded({s.nodeId: s.to_dict() for s in stats})
         assert item_id is not None  # affecté ci-dessus, jamais atteint sinon (cf. return/raise)
         _notify(factory, tenant_id=tenant_id, item_id=item_id, status="success")

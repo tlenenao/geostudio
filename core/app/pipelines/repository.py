@@ -3,12 +3,12 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import croniter
-from sqlalchemy import case, func, select, update
+from sqlalchemy import case, delete, func, select, update
 from sqlalchemy.orm import Session, aliased
 
 from app.configs import repository as configs_repo
 from app.configs.models import Config, ConfigRevision
-from app.pipelines.models import PipelineRun, PipelineWebhookToken
+from app.pipelines.models import PipelineReaderState, PipelineRun, PipelineWebhookToken
 
 
 def _now() -> datetime:
@@ -426,3 +426,60 @@ def list_webhook_tokens_for_pipeline(
         .all()
     )
     return list(rows)
+
+
+# --- PipelineReaderState (ARC-K2/F4) ---
+
+
+def get_reader_states(session: Session, *, tenant_id: str, pipeline_item_id: str) -> dict[str, str]:
+    rows = session.execute(
+        select(PipelineReaderState.node_id, PipelineReaderState.cursor_value).where(
+            PipelineReaderState.tenant_id == tenant_id,
+            PipelineReaderState.pipeline_item_id == pipeline_item_id,
+        )
+    ).all()
+    return {node_id: value for node_id, value in rows}
+
+
+def upsert_reader_states(
+    session: Session, *, tenant_id: str, pipeline_item_id: str, cursors: dict[str, str]
+) -> None:
+    existing = {
+        r.node_id: r
+        for r in session.execute(
+            select(PipelineReaderState).where(
+                PipelineReaderState.tenant_id == tenant_id,
+                PipelineReaderState.pipeline_item_id == pipeline_item_id,
+            )
+        ).scalars()
+    }
+    for node_id, value in cursors.items():
+        row = existing.get(node_id)
+        if row is None:
+            session.add(
+                PipelineReaderState(
+                    id=uuid.uuid4().hex,
+                    tenant_id=tenant_id,
+                    pipeline_item_id=pipeline_item_id,
+                    node_id=node_id,
+                    cursor_value=value,
+                )
+            )
+        else:
+            row.cursor_value = value
+            row.updated_at = _now()
+    session.flush()
+
+
+def delete_reader_states(
+    session: Session, *, tenant_id: str, pipeline_item_id: str, node_id: str | None = None
+) -> int:
+    stmt = delete(PipelineReaderState).where(
+        PipelineReaderState.tenant_id == tenant_id,
+        PipelineReaderState.pipeline_item_id == pipeline_item_id,
+    )
+    if node_id is not None:
+        stmt = stmt.where(PipelineReaderState.node_id == node_id)
+    result = session.execute(stmt)
+    session.flush()
+    return int(result.rowcount or 0)  # type: ignore[attr-defined]

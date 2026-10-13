@@ -184,6 +184,50 @@ def list_pipeline_runs(
     return [_run_status(r) for r in runs]
 
 
+class ReaderStateEntry(BaseModel):
+    nodeId: str
+    cursor: str
+
+
+@router.get("/pipelines/{item_id}/reader-state", response_model=list[ReaderStateEntry])
+def get_reader_state_route(
+    item_id: str,
+    session: Session = Depends(get_session, scope="function"),
+    user: User = Depends(get_current_user),
+) -> list[ReaderStateEntry]:
+    """Curseurs de lecture incrémentale par nœud reader (ARC-K2/F4)."""
+    require_pipeline_access(session, user=user, item_id=item_id, action="read")
+    states = pipelines_repo.get_reader_states(
+        session, tenant_id=user.tenant_id, pipeline_item_id=item_id
+    )
+    return [ReaderStateEntry(nodeId=n, cursor=c) for n, c in sorted(states.items())]
+
+
+@router.delete("/pipelines/{item_id}/reader-state", status_code=204)
+def reset_reader_state_route(
+    item_id: str,
+    nodeId: str | None = Query(None),
+    session: Session = Depends(get_session, scope="function"),
+    user: User = Depends(get_current_user),
+) -> None:
+    """Réinitialise le curseur (un nœud, ou tous) : le prochain run relit tout."""
+    require_pipeline_access(session, user=user, item_id=item_id, action="write")
+    removed = pipelines_repo.delete_reader_states(
+        session, tenant_id=user.tenant_id, pipeline_item_id=item_id, node_id=nodeId
+    )
+    write_audit(
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="pipeline.reader_state.reset",
+        object_type="pipeline",
+        object_id=item_id,
+        payload={"nodeId": nodeId, "removed": removed},
+    )
+    session.commit()
+
+
 @router.post("/pipelines/{item_id}/preview")
 def preview_pipeline_route(
     item_id: str,
