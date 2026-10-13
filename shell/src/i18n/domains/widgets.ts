@@ -199,7 +199,7 @@ export const widgets = {
   "widgetTimePlayer.paletteLabel": "Lecteur temporel",
 
   // ARC-26 : galerie de fonds de carte, Swipe, fiche d'entité
-  "widgetBasemapGallery.paletteLabel": "Galerie de fonds de carte",
+  "widgetBasemapGallery.paletteLabel": "Fonds de plan",
   "widgetBasemapGallery.titleConfig": "Titre",
   "widgetBasemapGallery.defaultTitle": "Fonds de carte",
   "widgetSwipe.paletteLabel": "Comparateur (swipe)",
