@@ -262,6 +262,7 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
                 ),
                 on_progress=_make_progress_callback(factory, run_id=run_id, tenant_id=tenant_id),
                 should_cancel=tracker.is_cancel_requested,
+                run_id=run_id,
             )
         tracker.mark_succeeded({s.nodeId: s.to_dict() for s in stats})
         assert item_id is not None  # affecté ci-dessus, jamais atteint sinon (cf. return/raise)

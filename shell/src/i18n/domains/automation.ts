@@ -218,6 +218,14 @@ export const automation = {
   "pipelineRun.detailAria": "Détail du run {id}",
   "pipelineRun.showDetail": "Détail",
   "pipelineRun.hideDetail": "Masquer le détail",
+  // F1/F2 : détail d'écriture, rejets et rapport qualité d'un nœud writer.collection
+  "pipelineRun.writeSummary":
+    "{inserted} insérées, {updated} mises à jour, {deleted} supprimées, {unchanged} inchangées",
+  "pipelineRun.rejectedSummary": "{count} lignes rejetées",
+  "pipelineRun.rejectedRule": "{rule} : {count}",
+  "pipelineRun.quarantineHint": "Quarantaine : collection {id}",
+  "pipelineRun.qualityHeading": "Qualité de l'entrée ({rows} lignes)",
+  "pipelineRun.qualityNullRate": "{name} : {rate} % de valeurs nulles",
   // Progression grossière par nœud (SP-B10d) : `completed` compte les entrées
   // de nodeStats déjà écrites pendant l'exécution (append_node_stat,
   // core/app/pipelines/repository.py), `total` vient de la définition

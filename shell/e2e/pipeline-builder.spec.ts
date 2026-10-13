@@ -359,3 +359,77 @@ test("un auteur planifie un pipeline existant sans écrire de cron à la main", 
   await expect(page.getByLabel("Mode de planification")).toHaveValue("daily");
   await expect(page.getByLabel("Heure d'exécution")).toHaveValue("02:00");
 });
+
+test("un run avec lignes rejetées affiche la quarantaine et le rapport qualité (F2)", async ({
+  page,
+}) => {
+  await mockCore(page);
+  await mockPipelineFlow(page);
+  const config = {
+    kind: "pipeline",
+    pipeline: {
+      nodes: [
+        {
+          id: "r1",
+          kind: "reader",
+          op: "reader.collection",
+          x: 0,
+          y: 0,
+          params: { collectionId: "villes" },
+        },
+        {
+          id: "w1",
+          kind: "writer",
+          op: "writer.collection",
+          x: 300,
+          y: 0,
+          params: { collectionId: "villes_propres" },
+        },
+      ],
+      edges: [{ id: "e1", from: "r1", to: "w1" }],
+    },
+  };
+  await page.route("https://core.test/v1/configs/by-item/pipe-1", async (route) => {
+    await route.fulfill({
+      json: { id: "cfg-pipe1", itemId: "pipe-1", kind: "pipeline", config },
+    });
+  });
+  await page.route("https://core.test/v1/pipelines/pipe-1/runs*", async (route) => {
+    await route.fulfill({
+      json: [
+        {
+          id: "run-rej",
+          status: "succeeded_with_rejects",
+          startedAt: "2026-10-13T10:00:00Z",
+          finishedAt: "2026-10-13T10:00:02Z",
+          error: null,
+          nodeStats: {
+            w1: {
+              nodeId: "w1",
+              op: "writer.collection",
+              rowCount: 43,
+              inserted: 43,
+              updated: 0,
+              deleted: 0,
+              unchanged: 0,
+              rejected: 7,
+              rejectedCollectionId: "villes_propres__rejected",
+              rejectsByRule: { name_ok: 7 },
+              quality: {
+                rowCount: 50,
+                columns: [{ name: "name", nonNull: 43, nulls: 7, nullRate: 0.14 }],
+              },
+            },
+          },
+        },
+      ],
+    });
+  });
+
+  await page.goto("/pipelines/pipe-1/edit");
+  await expect(page.locator('span:text-is("Terminé avec rejets")')).toBeVisible();
+  await page.getByRole("button", { name: /Détail du run run-rej/ }).click();
+  await expect(page.getByText(/7 lignes rejetées \(name_ok : 7\)/)).toBeVisible();
+  await expect(page.getByText(/collection villes_propres__rejected/)).toBeVisible();
+  await expect(page.getByText(/name : 14,0 % de valeurs nulles/)).toBeAttached();
+});

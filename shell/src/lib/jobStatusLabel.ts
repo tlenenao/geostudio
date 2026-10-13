@@ -20,6 +20,7 @@ const KNOWN_STATUSES = [
   "queued",
   "running",
   "succeeded",
+  "succeeded_with_rejects",
   "done",
   "failed",
   "error",

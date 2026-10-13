@@ -286,6 +286,7 @@ export const fr = {
   "jobStatus.queued": "En attente",
   "jobStatus.running": "En cours",
   "jobStatus.succeeded": "Terminé",
+  "jobStatus.succeededWithRejects": "Terminé avec rejets",
   "jobStatus.done": "Terminé",
   "jobStatus.failed": "Échoué",
   "jobStatus.error": "Échoué",

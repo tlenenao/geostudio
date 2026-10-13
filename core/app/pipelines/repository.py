@@ -223,7 +223,9 @@ def mark_succeeded(session: Session, *, run_id: str, node_stats: dict) -> None:
     run = session.get(PipelineRun, run_id)
     if run is None:
         return
-    run.status = "succeeded"
+    # F2 : un run qui a écarté des lignes vers la quarantaine n'est pas un succès net.
+    rejected = any((s or {}).get("rejected") for s in node_stats.values())
+    run.status = "succeeded_with_rejects" if rejected else "succeeded"
     run.error = None  # run vivant clos à tort par reclaim_stuck_runs : la fin réelle prime
     run.finished_at = _now()
     run.node_stats = node_stats
