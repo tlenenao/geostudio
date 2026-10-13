@@ -223,7 +223,7 @@ def test_missing_and_duplicate_keys_are_rejected_not_written(setup):
 
 
 @pytest.mark.postgis
-def test_quarantine_50_rows_7_invalid(setup):
+def test_quarantine_50_rows_7_invalid(setup, monkeypatch):
     s, tenant, user, _ = setup
     rows = [(f"c{i}", None if i % 7 == 0 and i else f"n{i}", i) for i in range(50)]
     invalid = sum(1 for r in rows if r[1] is None)  # 7
@@ -241,7 +241,8 @@ def test_quarantine_50_rows_7_invalid(setup):
     # rapport qualité : taux de nulls de l'entrée
     name = next(c for c in st.extra["quality"]["columns"] if c["name"] == "name")
     assert name["nulls"] == 7 and name["nullRate"] == 0.14
-    # le run est « succeeded_with_rejects »
+    # le run est « succeeded_with_rejects » (émission outbox F6 hors sujet ici)
+    monkeypatch.setattr(pipelines_repo, "_emit_run_finished", lambda *_: None)
     run = SimpleNamespace(status="running")
     fake = SimpleNamespace(get=lambda *_: run, flush=lambda: None)
     pipelines_repo.mark_succeeded(fake, run_id="x", node_stats={"w1": st.to_dict()})
