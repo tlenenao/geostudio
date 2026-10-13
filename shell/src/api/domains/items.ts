@@ -144,6 +144,7 @@ export function createItemsMethods(base: ItemClientBase): ItemsMethods {
         pages: template?.pages ?? [],
         navigationMode: template?.navigationMode ?? "tabs",
         interactions: "auto",
+        ...(template?.printLayout ? { printLayout: template.printLayout } : {}),
       };
       const payload: Record<string, unknown> = { title: input.title, config };
       if (input.slug) payload.slug = input.slug;

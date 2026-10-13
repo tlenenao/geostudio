@@ -12,10 +12,12 @@ base) et une route mince qui les assemble."""
 import functools
 import hashlib
 import logging
+import math
 import os
 from collections.abc import Callable
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
@@ -217,6 +219,129 @@ def build_agg_mvt_sql(quote: Callable[[str], str], info: TableInfo, src: str | N
     )
 
 
+# ARC-22 : binning explicite (`?bin=square|hex`), distinct de l'agrégation
+# automatique de REV-283a. Il N'ALTÈRE PAS le plafond MAX_TILE_FEATURES (qui borne
+# les entités brutes servies) : une tuile binnée ne porte jamais d'entité brute,
+# seulement des cellules {point_count, value}, et lit toutes les lignes de
+# l'enveloppe sous le budget TILE_AGG_STATEMENT_TIMEOUT_MS (503 si dépassé).
+BIN_SHAPES = ("square", "hex")
+BIN_STATS = ("count", "sum", "avg")
+BIN_NUMERIC_TYPES = ("integer", "number")
+_MERC_MAX_LAT = 85.0511287798066
+# Hexagone « pointy-top » de rayon 1 (WKT constant, mis à l'échelle en SQL).
+_HEX_WKT = (
+    "POLYGON(("
+    + ",".join(
+        f"{math.cos(math.radians(30 + 60 * k)):.12f} {math.sin(math.radians(30 + 60 * k)):.12f}"
+        for k in (0, 1, 2, 3, 4, 5, 0)
+    )
+    + "))"
+)
+
+
+def bin_cell_size(z: int, bins: int) -> float:
+    """Côté (carré) ou rayon (hexagone) de cellule : une tuile fait `bins` cellules de large."""
+    return 40075016.685578488 / (2**z) / bins
+
+
+# Bornes de propriété d'une tuile, semi-ouvertes ; les tuiles de bord du monde
+# (x/y = 0 ou 2^z - 1) possèdent aussi ce qui dépasse (point à lon = 180, centre
+# d'hexagone hors du monde) : sans cela ces comptes ne seraient dans aucune tuile.
+_OWN_X = (
+    "{c} >= CASE WHEN :x = 0 THEN -1e15 ELSE ST_XMin(e) END AND "
+    "{c} < CASE WHEN :x = (1 << CAST(:z AS int)) - 1 THEN 1e15 ELSE ST_XMax(e) END"
+)
+_OWN_Y = (
+    "{c} >= CASE WHEN :y = (1 << CAST(:z AS int)) - 1 THEN -1e15 ELSE ST_YMin(e) END AND "
+    "{c} < CASE WHEN :y = 0 THEN 1e15 ELSE ST_YMax(e) END"
+)
+
+
+def _own(cx: str, cy: str) -> str:
+    return _OWN_X.format(c=cx) + " AND " + _OWN_Y.format(c=cy)
+
+
+def build_bin_mvt_sql(
+    quote: Callable[[str], str],
+    info: TableInfo,
+    src: str | None,
+    shape: str,
+    stat: str,
+    field: str | None,
+) -> str:
+    """Binning carré/hexagonal d'une tuile, une cellule = {point_count, value}.
+
+    Exactitude : un point appartient à exactement une cellule, et une cellule à
+    exactement une tuile (celle qui contient son CENTRE, intervalle semi-ouvert) ;
+    la lecture est élargie d'un rayon de cellule pour que les cellules à cheval sur
+    deux tuiles soient comptées entières. La somme des `point_count` de toutes les
+    tuiles d'un zoom vaut donc `count(*)`. Seuls shape/stat/field validés
+    (listes fermées, colonne introspectée) atteignent le SQL."""
+    assert info.geometry_column is not None, "build_bin_mvt_sql exige une géométrie"
+    assert shape in BIN_SHAPES and stat in BIN_STATS
+    table = src or f"public.{quote(info.table_name)} t"
+    geom = f"t.{quote(info.geometry_column)}"
+    val = f"t.{quote(field)}::double precision" if field else "NULL::double precision"
+    if info.srid == 4326 and info.geometry_type == "Point":
+        lat = f"least(greatest(ST_Y({geom}), -{_MERC_MAX_LAT}), {_MERC_MAX_LAT})"
+        pxy = (
+            f"ST_X({geom}) * {_MERC_PER_DEG} AS px, "
+            f"{_MERC_R} * ln(tan({_PI4} + radians({lat}) / 2)) AS py"
+        )
+    else:
+        pxy = "ST_X(l.pp) AS px, ST_Y(l.pp) AS py"
+        table += f", LATERAL (SELECT ST_PointOnSurface(ST_Transform({geom}, 3857)) AS pp) l"
+    envelope = "ST_TileEnvelope(:z, :x, :y)"
+    if shape == "hex":
+        # Borné au monde : PROJ replie les longitudes > 180° au retour en 4326, ce
+        # qui inverserait la boîte sur les tuiles de bord.
+        w = 20037508.342789244
+        e = envelope
+        envelope = (
+            f"ST_MakeEnvelope(greatest(ST_XMin({e}) - :cell, -{w}), "
+            f"greatest(ST_YMin({e}) - :cell, -{w}), least(ST_XMax({e}) + :cell, {w}), "
+            f"least(ST_YMax({e}) + :cell, {w}), 3857)"
+        )
+    where = f"{geom} && ST_Transform({envelope}, :srid)"
+    if shape == "hex":
+        cells = (
+            f"f AS (SELECT (sqrt(3.0) / 3 * px - py / 3) / :cell AS fq, "
+            f"(2.0 / 3 * py) / :cell AS fr, v FROM pts), "
+            "r1 AS (SELECT round(fq) AS rq, round(fr) AS rr, round(-fq - fr) AS rs, "
+            "abs(round(fq) - fq) AS dx, abs(round(fr) - fr) AS dz, "
+            "abs(round(-fq - fr) + fq + fr) AS dy, v FROM f), "
+            "h AS (SELECT CASE WHEN dx > dy AND dx > dz THEN -rr - rs ELSE rq END AS q, "
+            "CASE WHEN dx > dy AND dx > dz THEN rr WHEN dy > dz THEN rr ELSE -rq - rs END AS r, "
+            "v FROM r1), "
+            "cells AS (SELECT :cell * sqrt(3.0) * (q + r / 2.0) AS mx, :cell * 1.5 * r AS my, "
+            "count(*) AS point_count, {agg} AS value FROM h GROUP BY 1, 2), "
+            "own AS (SELECT * FROM cells, (SELECT ST_TileEnvelope(:z, :x, :y) AS e) env "
+            f"WHERE {_own('mx', 'my')}), "
+            "q AS (SELECT point_count, value, ST_AsMVTGeom("
+            f"ST_Translate(ST_Scale(ST_GeomFromText('{_HEX_WKT}'), :cell, :cell), mx, my), "
+            "e, :extent, :buffer, true) AS geom FROM own)"
+        )
+    else:
+        cells = (
+            # Intervalle semi-ouvert : un point exactement sur la frontière de deux
+            # tuiles (`&&` est inclusif) n'est compté que dans l'une d'elles.
+            "cells AS (SELECT floor(px / :cell) AS cx, floor(py / :cell) AS cy, "
+            "count(*) AS point_count, {agg} AS value FROM pts, "
+            "(SELECT ST_TileEnvelope(:z, :x, :y) AS e) env "
+            f"WHERE {_own('px', 'py')} "
+            "GROUP BY 1, 2), "
+            "q AS (SELECT point_count, value, ST_AsMVTGeom("
+            "ST_MakeEnvelope(cx * :cell, cy * :cell, (cx + 1) * :cell, (cy + 1) * :cell, 3857), "
+            "ST_TileEnvelope(:z, :x, :y), :extent, :buffer, true) AS geom FROM cells)"
+        )
+    agg = {"count": "count(*)::double precision", "sum": "sum(v)", "avg": "avg(v)"}[stat]
+    return (
+        f"WITH pts AS (SELECT {pxy}, {val} AS v FROM {table} WHERE {where}), "
+        + cells.replace("{agg}", agg)
+        + " SELECT ST_AsMVT(q, :layer, :extent, 'geom') FROM q WHERE q.geom IS NOT NULL"
+    )
+
+
 def apply_tile_statement_timeout(session: Session, ms: int = TILE_STATEMENT_TIMEOUT_MS) -> None:
     """Borne la durée d'UNE requête de tuile, dans la transaction courante.
 
@@ -245,6 +370,10 @@ def get_collection_tile(
     x: int,
     y: int,
     request: Request,
+    bin: Literal["square", "hex"] | None = Query(default=None),  # noqa: A002
+    stat: Literal["count", "sum", "avg"] = "count",
+    field: str | None = Query(default=None, max_length=128),
+    bins: int = Query(default=16, ge=2, le=64),
     user=Depends(get_current_user_optional),
     guest: GuestActor | None = Depends(get_share_link_actor),
     session: Session = Depends(get_session, scope="function"),
@@ -269,6 +398,18 @@ def get_collection_tile(
     if masked:
         info = hide_sensitive_columns(info, col.sensitive_fields)
 
+    bin_field: str | None = None
+    if bin is not None:
+        if stat != "count":
+            by_name = {c.name: c for c in info.columns}
+            col_info = by_name.get(field or "")
+            if col_info is None or col_info.type not in BIN_NUMERIC_TYPES:
+                raise HTTPException(
+                    status_code=400,
+                    detail="stat sum/avg requires a numeric 'field' of the collection",
+                )
+            bin_field = col_info.name
+
     quote = functools.partial(quote_ident, session)
     aggregated = False
     params = {
@@ -286,21 +427,30 @@ def get_collection_tile(
     # géographique, toutes les requêtes de tuile lisent la géométrie DÉCOUPÉE.
     with rls(session, col.tenant_id, masked=masked), geo_source(session, info, quote=quote) as src:
         sql = build_mvt_sql(quote, info, src)
-        agg_sql = build_agg_mvt_sql(quote, info, src)
+        agg_sql = (
+            build_bin_mvt_sql(quote, info, src, bin, stat, bin_field)
+            if bin is not None
+            else build_agg_mvt_sql(quote, info, src)
+        )
+        cell = bin_cell_size(z, bins) if bin is not None else agg_cell_size(z)
         apply_tile_statement_timeout(session)
         # REV-283a : à bas zoom, une sonde bornée décide AVANT toute lecture
         # lourde ; tuile dense => agrégation seule (pas de lecture brute jetée).
-        if 0 < tile_agg_max_zoom() >= z and (
-            session.execute(
-                text(build_probe_sql(quote, info, src)),
-                {**params, "max_features": MAX_TILE_FEATURES},
-            ).scalar()
-            > MAX_TILE_FEATURES
+        if (
+            bin is not None
+            or 0 < tile_agg_max_zoom() >= z
+            and (
+                session.execute(
+                    text(build_probe_sql(quote, info, src)),
+                    {**params, "max_features": MAX_TILE_FEATURES},
+                ).scalar()
+                > MAX_TILE_FEATURES
+            )
         ):
             aggregated = True
             apply_tile_statement_timeout(session, TILE_AGG_STATEMENT_TIMEOUT_MS)
             try:
-                row = session.execute(text(agg_sql), {**params, "cell": agg_cell_size(z)}).first()
+                row = session.execute(text(agg_sql), {**params, "cell": cell}).first()
             except DBAPIError as exc:
                 if getattr(exc.orig, "sqlstate", None) != "57014":  # query_canceled
                     raise

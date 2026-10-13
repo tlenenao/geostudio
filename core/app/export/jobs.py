@@ -247,7 +247,7 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
                 logger.warning("export job %s non prenable (déjà pris ou terminé)", job_id)
                 return
             item_id, user_id, export_format = job.item_id, job.user_id, job.format
-            page_id, ctx = job.page_id, job.ctx
+            page_id, ctx, scope = job.page_id, job.ctx, job.scope
 
         with request_scoped_session(factory) as session:
             config = configs_repo.get_config_by_item(session, item_id)
@@ -263,6 +263,10 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
         target_url = f"{base}?exportToken={token}&exportRender=1"
         if ctx:
             target_url = f"{target_url}&ctx={ctx}"
+        if scope == "atlas":
+            target_url = f"{target_url}&atlas=1"
+        elif scope and scope.startswith("entity:"):
+            target_url = f"{target_url}&entityId={quote(scope[7:], safe='')}"
 
         if (reason := core_unreachable_error(os.environ["SHELL_BASE_URL"])) is not None:
             raise RuntimeError(reason)

@@ -35,6 +35,7 @@ def create_job(
     format: str,
     page_id: str | None = None,
     ctx: str | None = None,
+    scope: str | None = None,
 ) -> ExportJob:
     job = ExportJob(
         id=uuid.uuid4().hex,
@@ -45,6 +46,7 @@ def create_job(
         status="pending",
         page_id=page_id,
         ctx=ctx,
+        scope=scope,
     )
     session.add(job)
     session.flush()

@@ -53,8 +53,12 @@ type ExportsIngestionMethods = Pick<
 export function createExportsIngestionMethods(base: ItemClientBase): ExportsIngestionMethods {
   const { request, coreUrl, authFetch } = base;
   return {
-    async createExport(itemId: string, format: ExportFormat): Promise<{ jobId: string }> {
-      return request<{ jobId: string }>("POST", `/export`, { itemId, format });
+    async createExport(
+      itemId: string,
+      format: ExportFormat,
+      scope?: { entityId?: string; atlas?: boolean },
+    ): Promise<{ jobId: string }> {
+      return request<{ jobId: string }>("POST", `/export`, { itemId, format, ...scope });
     },
 
     async getExportJob(jobId: string): Promise<ExportJob> {

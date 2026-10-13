@@ -62,7 +62,7 @@ export function registerMapWidget(): void {
       },
     ],
     events: ["extentChanged", "itemSelected"],
-    actions: ["flyTo", "highlight"],
+    actions: ["flyTo", "highlight", "setBasemap"],
     PropsPanel: ({ props, onChange, dataSources, theme }) => {
       const client = useItemClient();
       const dataSourceId = String(props.dataSourceId ?? "");
@@ -254,6 +254,16 @@ export function registerMapWidget(): void {
         const center = centerFromPayload(payload);
         if (center) handle.current?.flyTo({ center, zoom: 12 });
       });
+      // ARC-26 : fond choisi par une galerie de fonds (action `setBasemap`) ;
+      // MapView ne lit le style qu'au montage, d'où le `key` plus bas.
+      const [basemapOverride, setBasemapOverride] = useState<string | null>(null);
+      useBusAction(ctx.bus, ctx.widgetId, "setBasemap", (payload) => {
+        const style = (payload as { style?: unknown } | undefined)?.style;
+        if (typeof style === "string" && style) {
+          setMapReady(false);
+          setBasemapOverride(style);
+        }
+      });
       useBusAction(ctx.bus, ctx.widgetId, "highlight", (payload) => {
         handle.current?.highlight(geometryFromPayload(payload));
       });
@@ -315,7 +325,7 @@ export function registerMapWidget(): void {
       );
 
       const config: MapConfig = {
-        basemap: { style: String(props.basemapStyle ?? DEFAULT_STYLE) },
+        basemap: { style: basemapOverride ?? String(props.basemapStyle ?? DEFAULT_STYLE) },
         terrain: (props.terrain as MapTerrainConfig | null) ?? null,
         view: {
           center: (props.center as [number, number] | undefined) ?? [2.4, 46.6],
@@ -359,6 +369,7 @@ export function registerMapWidget(): void {
             fallback={<div className="text-xs text-ink-2">{t("widgetMap.loadingFallback")}</div>}
           >
             <MapView
+              key={basemapOverride ?? "props"}
               ref={handle}
               config={config}
               timeRange={analyticsCtx.timeRange}

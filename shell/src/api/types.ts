@@ -475,6 +475,15 @@ export type PrintLayoutConfig = {
   northArrow?: boolean;
   freeText?: string | null;
   logo?: string | null;
+  // ARC-30 : atlas = une page par entité de la source (apps/dashboards).
+  atlas?: AtlasConfig | null;
+};
+
+export type AtlasConfig = {
+  dataSourceId: string;
+  titleTemplate?: string | null;
+  fields: { label: string; template: string }[];
+  maxPages: number;
 };
 
 export type MapConfig = {
@@ -1045,7 +1054,12 @@ export interface ItemClient {
   runAnalyticsSql(
     sql: string,
   ): Promise<{ columns: string[]; rows: unknown[][]; truncated: boolean }>;
-  createExport(itemId: string, format: ExportFormat): Promise<{ jobId: string }>;
+  // ARC-26/30 : `entityId` = fiche d'une entité, `atlas` = une page par entité.
+  createExport(
+    itemId: string,
+    format: ExportFormat,
+    scope?: { entityId?: string; atlas?: boolean },
+  ): Promise<{ jobId: string }>;
   getExportJob(jobId: string): Promise<ExportJob>;
   cancelExport(jobId: string): Promise<ExportJob>;
   createAppExport(itemId: string, mode: AppExportMode): Promise<{ jobId: string }>;

@@ -29,6 +29,9 @@ class ExportJob(Base):
     # uniquement par le sweep de app.reports.jobs.
     page_id: Mapped[str | None] = mapped_column(String, nullable=True)
     ctx: Mapped[str | None] = mapped_column(String, nullable=True)
+    # ARC-26/ARC-30 : portée d'un export PDF d'app — "atlas" (une page par
+    # entité) ou "entity:<id>" (fiche d'une entité) ; NULL = export ordinaire.
+    scope: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(
         String, nullable=False, default="pending", server_default="pending"
     )

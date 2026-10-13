@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
-import { expect, test } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { beforeAll, expect, test } from "vitest";
 import { TEMPLATES, getTemplate } from "./templates";
+import { getWidget } from "./registry";
+import { registerBuiltinWidgets } from "./widgets";
 
 test("exposes the expected number of templates per kind", () => {
-  expect(TEMPLATES.filter((t) => t.kind === "app")).toHaveLength(3);
-  expect(TEMPLATES.filter((t) => t.kind === "dashboard")).toHaveLength(1);
-  expect(TEMPLATES.filter((t) => t.kind === "site")).toHaveLength(1);
+  expect(TEMPLATES.filter((t) => t.kind === "app")).toHaveLength(9);
+  expect(TEMPLATES.filter((t) => t.kind === "dashboard")).toHaveLength(2);
+  expect(TEMPLATES.filter((t) => t.kind === "site")).toHaveLength(2);
 });
 
 test("story cartographique template has 3 chapters each with a flyTo onEnter", () => {
@@ -81,4 +85,75 @@ test("les widgets d'un même type d'un modèle portent un ordinal croissant (nom
       seen.set(i.widget, [...(seen.get(i.widget) ?? []), i.ordinal ?? 0]);
     for (const ords of seen.values()) expect(ords).toEqual(ords.map((_, k) => k + 1));
   }
+});
+
+// ARC-26 : 8 gabarits supplémentaires, des données déclaratives qui se
+// vérifient mécaniquement (types de widgets connus, références de sources et
+// de câblage résolues, ids uniques).
+beforeAll(() => registerBuiltinWidgets());
+
+const ARC26_IDS = [
+  "tableau-de-bord-territorial",
+  "suivi-de-chantier",
+  "enquete-citoyenne",
+  "observatoire-donnees-ouvertes",
+  "comparateur-de-cartes",
+  "galerie-de-fonds-de-carte",
+  "fiches-d-entites",
+  "atlas-par-entite",
+];
+
+test("les 8 gabarits ARC-26 sont au catalogue, avec un nom i18n", () => {
+  for (const id of ARC26_IDS) {
+    const tpl = getTemplate(id);
+    expect(tpl, id).toBeDefined();
+    expect(tpl!.name).not.toMatch(/^template\./);
+  }
+});
+
+test.each(TEMPLATES.map((t) => [t.id, t] as const))(
+  "gabarit %s : widgets connus, sources et câblage résolus, ids uniques",
+  (_id, tpl) => {
+    const layouts = tpl.pages ? tpl.pages.map((p) => p.layout) : [tpl.layout];
+    const items = layouts.flatMap((l) => l.items);
+    const ids = items.map((i) => i.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    const dsIds = new Set((tpl.dataSources ?? []).map((d) => d.id));
+    for (const item of items) {
+      const def = getWidget(item.widget);
+      expect(def, `widget ${item.widget}`).toBeDefined();
+      if (item.props.dataSourceId) expect(dsIds.has(String(item.props.dataSourceId))).toBe(true);
+    }
+    for (const m of tpl.messages ?? []) {
+      const from = items.find((i) => i.id === m.from);
+      const to = items.find((i) => i.id === m.to);
+      expect(from, `from ${m.from}`).toBeDefined();
+      expect(to, `to ${m.to}`).toBeDefined();
+      expect(getWidget(from!.widget)!.events ?? [], m.id).toContain(m.event);
+      expect(getWidget(to!.widget)!.actions ?? [], m.id).toContain(m.action);
+    }
+  },
+);
+
+test("galerie de fonds de carte : câblée vers l'action setBasemap de la carte", () => {
+  const tpl = getTemplate("galerie-de-fonds-de-carte")!;
+  expect(tpl.messages).toEqual([
+    expect.objectContaining({ event: "basemapChanged", action: "setBasemap" }),
+  ]);
+});
+
+test("atlas-par-entite : printLayout.atlas pointe une source du gabarit", () => {
+  const tpl = getTemplate("atlas-par-entite")!;
+  const atlas = (tpl.printLayout as { atlas?: { dataSourceId: string; maxPages: number } }).atlas!;
+  expect(tpl.dataSources!.map((d) => d.id)).toContain(atlas.dataSourceId);
+  expect(atlas.maxPages).toBe(50);
+});
+
+test("la copie cœur des gabarits (create_item MCP) est identique aux données du shell", () => {
+  const core = readFileSync(
+    resolve(process.cwd(), "../core/app/configs/builder_templates.json"),
+    "utf-8",
+  );
+  const shell = readFileSync(resolve(process.cwd(), "src/builder/templates.data.json"), "utf-8");
+  expect(JSON.parse(core)).toEqual(JSON.parse(shell));
 });

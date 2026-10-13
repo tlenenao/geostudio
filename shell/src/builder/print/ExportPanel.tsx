@@ -31,7 +31,20 @@ const IN_FLIGHT = new Set(["pending", "running", "cancel_requested"]);
 // navigation), donc chaque `setState` après un `await` est gardé par
 // `mountedRef`, et le timer en attente est explicitement annulé au
 // démontage pour ne rien laisser en suspens.
-export function ExportPanel({ itemId }: { itemId: string }) {
+export function ExportPanel({
+  itemId,
+  entityId,
+  atlas,
+  label,
+}: {
+  itemId: string;
+  // ARC-26 : fiche d'une seule entité / ARC-30 : atlas (une page par entité).
+  // Ces deux modes n'ont qu'un format (PDF) : pas de sélecteur.
+  entityId?: string;
+  atlas?: boolean;
+  label?: string;
+}) {
+  const pdfOnly = entityId !== undefined || atlas === true;
   const client = useItemClient();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [job, setJob] = useState<ExportJob | null>(null);
@@ -75,7 +88,12 @@ export function ExportPanel({ itemId }: { itemId: string }) {
     setError(null);
     setJob(null);
     try {
-      const { jobId } = await client.createExport(itemId, format);
+      const { jobId } = pdfOnly
+        ? await client.createExport(itemId, format, {
+            ...(entityId !== undefined ? { entityId } : {}),
+            ...(atlas ? { atlas } : {}),
+          })
+        : await client.createExport(itemId, format);
       jobIdRef.current = jobId;
       await poll(jobId);
     } catch {
@@ -110,10 +128,10 @@ export function ExportPanel({ itemId }: { itemId: string }) {
         size="sm"
         variant="outline"
         {...exportPanel.triggerProps}
-        onClick={() => setPickerOpen((open) => !open)}
+        onClick={() => (pdfOnly ? void onExport("pdf") : setPickerOpen((open) => !open))}
         disabled={running}
       >
-        {t("exportPanel.exportButton")}
+        {label ?? t("exportPanel.exportButton")}
       </Button>
       {pickerOpen && (
         // Panneau en ligne, pas une fenêtre modale (spec §2.1, ConfirmDialog

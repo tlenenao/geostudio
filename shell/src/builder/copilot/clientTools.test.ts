@@ -28,7 +28,7 @@ describe("buildClientToolSchemas", () => {
     expect(enumValues).toContain("chart");
     // 26 depuis le widget "analysis" (ARC-25), après "addressSearch" (REV-102), après "timePlayer" (REV-104) et "variableInput" (SP-52) — mettre à jour
     // ce compte à chaque widget builtin ajouté au catalogue.
-    expect(enumValues).toHaveLength(26);
+    expect(enumValues).toHaveLength(29);
   });
 
   it("updateWidgetProps' schema includes chart's scalar fields", () => {

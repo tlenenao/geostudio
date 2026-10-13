@@ -330,7 +330,10 @@ def test_allowlist_matches_shell_builtin_widget_registry():
     # ARC-25 : idem pour analysis (POST /v1/collections/{id}/analysis, authentifié).
     for w in ("addressSearch", "analysis"):
         assert w in registered and w not in _SUPPORTED_WIDGET_TYPES
-    assert registered - {"addressSearch", "analysis"} == _SUPPORTED_WIDGET_TYPES
+    # ARC-26 : featureReport exporte sa fiche via le worker d'export du cœur
+    # (POST /export) — absent d'un export statique/autoporté.
+    assert "featureReport" in registered and "featureReport" not in _SUPPORTED_WIDGET_TYPES
+    assert registered - {"addressSearch", "analysis", "featureReport"} == _SUPPORTED_WIDGET_TYPES
 
 
 def _nested_config(widget: str, props: dict) -> BuilderConfig:
