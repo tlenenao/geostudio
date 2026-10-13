@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """ARC-K2/F5 : retry automatique et reprise par nœud d'un run de pipeline."""
 
+import os
 from datetime import UTC, datetime, timedelta
 
 import duckdb
@@ -51,7 +52,7 @@ def _payload(retry):
                     "id": "w1",
                     "kind": "writer",
                     "op": "writer.collection",
-                    "params": {"collectionId": "villes_propres"},
+                    "params": {"collectionId": "villes_propres", "mode": "replace"},
                 },
             ],
             "edges": [
@@ -135,7 +136,7 @@ def test_manual_resume_does_not_replay_succeeded_nodes(rig):
     assert r1.status == "failed"
     assert state["compiled"] == ["pop >= 0", "region = 'R'", "pop >= 1"]
     assert state["reader_calls"] == 1
-    assert checkpoints.exists(r1.id)
+    assert checkpoints.exists(tenant.id, r1.id)
 
     state["fail_t3"] = False
     deferred: list = []
@@ -150,7 +151,7 @@ def test_manual_resume_does_not_replay_succeeded_nodes(rig):
     assert state["reader_calls"] == 1  # la source n'est pas relue
     assert _rows(Session) == 3
     assert r2.resume_of == r1.id
-    assert not checkpoints.exists(r1.id)  # nettoyé après succès
+    assert not checkpoints.exists(tenant.id, r1.id)  # nettoyé après succès
 
 
 @pytest.mark.postgis
@@ -172,10 +173,13 @@ def test_replay_from_start_reruns_everything(rig):
 def test_config_change_invalidates_checkpoints(rig):
     _app, Session, tenant, user, item_id, state = rig
     r1 = _exec(Session, tenant, _new_run(Session, tenant, item_id))
-    assert checkpoints.exists(r1.id)
+    assert checkpoints.exists(tenant.id, r1.id)
     changed = _payload({"max": 0})
     changed.nodes[1].params["expr"] = "pop >= -1"
-    assert checkpoints.Checkpoint(r1.id, checkpoints.config_fingerprint(changed)).usable is False
+    assert (
+        checkpoints.Checkpoint(tenant.id, r1.id, checkpoints.config_fingerprint(changed)).usable
+        is False
+    )
 
 
 @pytest.mark.postgis
@@ -266,7 +270,65 @@ def test_sweep_requeues_retries_whose_defer_was_lost(rig):
 def test_checkpoint_dir_is_purged_after_retention(tmp_path, monkeypatch):
     monkeypatch.setenv("CORE_PIPELINE_CHECKPOINT_DIR", str(tmp_path))
     monkeypatch.setenv("CORE_PIPELINE_CHECKPOINT_RETENTION_HOURS", "0")
-    checkpoints.Checkpoint("run-x", "fp")
-    assert (tmp_path / "run-x").is_dir()
-    assert checkpoints.purge_expired() == 1
-    assert not (tmp_path / "run-x").exists()
+    checkpoints.Checkpoint("t-1", "run-x", "fp")
+    assert (tmp_path / "t-1" / "run-x").is_dir()
+    assert checkpoints.purge_expired() == [("t-1", "run-x")]
+    assert not (tmp_path / "t-1").exists()
+
+
+def test_checkpoint_files_are_private_and_tenant_scoped(tmp_path, monkeypatch):
+    monkeypatch.setenv("CORE_PIPELINE_CHECKPOINT_DIR", str(tmp_path / "base"))
+    cp = checkpoints.Checkpoint("t-1", "run-x", "fp")
+    conn = duckdb.connect()
+    conn.execute("CREATE TEMP VIEW v AS SELECT 1 AS a")
+    cp.save(conn, "n1", "v", 4326)
+    mode = lambda p: os.stat(p).st_mode & 0o777  # noqa: E731
+    assert mode(tmp_path / "base") == 0o700
+    assert mode(tmp_path / "base" / "t-1") == 0o700
+    assert mode(cp.dir) == 0o700
+    assert {mode(os.path.join(cp.dir, f)) for f in os.listdir(cp.dir)} == {0o600}
+    checkpoints.purge_tenant("t-1")
+    assert not (tmp_path / "base" / "t-1").exists()
+
+
+@pytest.mark.postgis
+def test_purge_expired_clears_resumable(rig, monkeypatch):
+    _app, Session, tenant, user, item_id, state = rig
+    r1 = _exec(Session, tenant, _new_run(Session, tenant, item_id))
+    assert r1.status == "failed" and r1.resumable is True
+    monkeypatch.setenv("CORE_PIPELINE_CHECKPOINT_RETENTION_HOURS", "0")
+    expired = checkpoints.purge_expired()
+    assert (tenant.id, r1.id) in expired
+    with Session() as s:
+        pipelines_repo.clear_resumable_for_roots(s, [r for _, r in expired])
+        s.commit()
+        assert pipelines_repo.get_run(s, tenant_id=tenant.id, run_id=r1.id).resumable is False
+
+
+def test_automatic_retry_with_append_writer_is_refused_at_validation():
+    payload = _payload(None).model_dump(by_alias=True)
+    payload["nodes"][-1]["params"].pop("mode")  # défaut = append
+    payload["retry"] = {"max": 2}
+    with pytest.raises(ValueError, match="upsert"):
+        PipelinePayload.model_validate(payload)
+    payload["retry"] = {"max": 0}  # sans reprise auto : accepté
+    PipelinePayload.model_validate(payload)
+
+
+@pytest.mark.postgis
+def test_retry_route_refuses_append_writer(rig):
+    _app, Session, tenant, user, item_id, state = rig
+    r1 = _exec(Session, tenant, _new_run(Session, tenant, item_id))
+    append = _payload(None).model_dump(by_alias=True)
+    append["nodes"][-1]["params"].pop("mode")
+    with Session() as s:  # nouvelle révision de config avec un writer append
+        configs_repo.update_config(
+            s,
+            configs_repo.get_config_by_item(s, item_id).id,
+            BuilderConfig.model_validate({"version": 1, "kind": "pipeline", "pipeline": append}),
+            tenant_id=tenant.id,
+        )
+        s.commit()
+    with Session() as s, pytest.raises(HTTPException) as exc:
+        retry_pipeline_run_service(s, user=user, run_id=r1.id, defer_task=lambda *a: None)
+    assert exc.value.status_code == 409 and "upsert" in exc.value.detail

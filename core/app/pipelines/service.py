@@ -150,6 +150,16 @@ def retry_pipeline_run_service(
         raise HTTPException(
             status_code=409, detail=f"run is {run.status}, only a failed run can be retried"
         )
+    appenders = config.config.pipeline.append_writers() if config.config.pipeline else []
+    if appenders:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Reprise/rejeu refusé : le writer {', '.join(appenders)} est en mode 'append' "
+                "et dupliquerait des lignes déjà écrites. Utilisez le mode 'upsert' (ou "
+                "'replace'), ou relancez une exécution complète."
+            ),
+        )
     try:
         new_run = pipelines_repo.create_run_unless_active(
             session,

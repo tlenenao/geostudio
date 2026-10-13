@@ -282,6 +282,20 @@ def set_resumable(session: Session, *, run_id: str, value: bool) -> None:
     session.flush()
 
 
+def clear_resumable_for_roots(session: Session, root_ids: list[str]) -> None:
+    """Points de reprise supprimés (expirés / run réussi) : retire `resumable` du run
+    racine et des runs qui le reprennent."""
+    if not root_ids:
+        return
+    session.execute(
+        update(PipelineRun)
+        .where(PipelineRun.resumable.is_(True))
+        .where((PipelineRun.id.in_(root_ids)) | (PipelineRun.resume_of.in_(root_ids)))
+        .values(resumable=False)
+    )
+    session.flush()
+
+
 def requeue_overdue_retries(
     session: Session, *, grace_seconds: int = 120, now: datetime | None = None
 ) -> list[tuple[str, str]]:

@@ -598,8 +598,9 @@ services:
       CORE_PIPELINES_HTTP_CALL_MAX_TOTAL_BYTES: ${CORE_PIPELINES_HTTP_CALL_MAX_TOTAL_BYTES:-268435456}
       CORE_PIPELINES_HTTP_CALL_MAX_RESPONSE_BYTES: ${CORE_PIPELINES_HTTP_CALL_MAX_RESPONSE_BYTES:-5242880}
       # Points de reprise des runs de pipeline (ARC-K2/F5) : lus/écrits par le worker
-      # seul (disque local du conteneur, perdu à sa recréation), purgés après rétention.
-      CORE_PIPELINE_CHECKPOINT_DIR: ${CORE_PIPELINE_CHECKPOINT_DIR:-/tmp/geostudio-pipeline-checkpoints}
+      # seul, sur le volume nommé persistant etl-scratch (survit à la recréation du conteneur),
+      # purgés après rétention.
+      CORE_PIPELINE_CHECKPOINT_DIR: ${CORE_PIPELINE_CHECKPOINT_DIR:-/scratch/pipeline-checkpoints}
       CORE_PIPELINE_CHECKPOINT_RETENTION_HOURS: ${CORE_PIPELINE_CHECKPOINT_RETENTION_HOURS:-24}
       CORE_DUCKDB_MEMORY_LIMIT: ${CORE_DUCKDB_MEMORY_LIMIT:-2GB}
       CORE_DUCKDB_MAX_TEMP_SIZE: ${CORE_DUCKDB_MAX_TEMP_SIZE:-5GB}

@@ -53,36 +53,61 @@ def config_fingerprint(payload) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-def exists(root_run_id: str) -> bool:
-    return os.path.isfile(os.path.join(base_dir(), root_run_id, "manifest.json"))
+def _run_dir(tenant_id: str, root_run_id: str) -> str:
+    return os.path.join(base_dir(), tenant_id, root_run_id)
 
 
-def discard(root_run_id: str) -> None:
-    shutil.rmtree(os.path.join(base_dir(), root_run_id), ignore_errors=True)
+def _private_dirs(*paths: str) -> None:
+    """Crée (si besoin) puis restreint à 0700 : les fichiers contiennent des données
+    tenant post-RLS, lisibles du seul utilisateur du worker."""
+    for path in paths:
+        os.makedirs(path, exist_ok=True)
+        os.chmod(path, 0o700)
 
 
-def purge_expired() -> int:
-    """Supprime les répertoires plus vieux que la rétention (balayage cron)."""
+def exists(tenant_id: str, root_run_id: str) -> bool:
+    return os.path.isfile(os.path.join(_run_dir(tenant_id, root_run_id), "manifest.json"))
+
+
+def discard(tenant_id: str, root_run_id: str) -> None:
+    shutil.rmtree(_run_dir(tenant_id, root_run_id), ignore_errors=True)
+
+
+def purge_tenant(tenant_id: str) -> None:
+    """Supprime tous les points de reprise d'un tenant (RGPD : purge_tenant)."""
+    shutil.rmtree(os.path.join(base_dir(), tenant_id), ignore_errors=True)
+
+
+def purge_expired() -> list[tuple[str, str]]:
+    """Supprime les points de reprise plus vieux que la rétention (24 h par défaut,
+    CORE_PIPELINE_CHECKPOINT_RETENTION_HOURS ; balayage cron). Retourne les
+    (tenant_id, run_racine) supprimés pour que l'appelant retire `resumable`."""
     root = base_dir()
     if not os.path.isdir(root):
-        return 0
-    n = 0
+        return []
+    removed: list[tuple[str, str]] = []
     limit = time.time() - _retention_s()
-    for name in os.listdir(root):
-        path = os.path.join(root, name)
-        if os.path.isdir(path) and os.path.getmtime(path) < limit:
-            shutil.rmtree(path, ignore_errors=True)
-            n += 1
-    return n
+    for tenant in os.listdir(root):
+        tdir = os.path.join(root, tenant)
+        if not os.path.isdir(tdir):
+            continue
+        for run in os.listdir(tdir):
+            path = os.path.join(tdir, run)
+            if os.path.isdir(path) and os.path.getmtime(path) < limit:
+                shutil.rmtree(path, ignore_errors=True)
+                removed.append((tenant, run))
+        if not os.listdir(tdir):
+            os.rmdir(tdir)
+    return removed
 
 
 class Checkpoint:
     """Points de reprise d'UN run racine ; `fingerprint` = empreinte de la config courante."""
 
-    def __init__(self, root_run_id: str, fingerprint: str) -> None:
-        self.dir = os.path.join(base_dir(), root_run_id)
+    def __init__(self, tenant_id: str, root_run_id: str, fingerprint: str) -> None:
+        self.dir = _run_dir(tenant_id, root_run_id)
         self.fingerprint = fingerprint
-        os.makedirs(self.dir, exist_ok=True)
+        _private_dirs(base_dir(), os.path.dirname(self.dir), self.dir)
         self._manifest: dict[str, Any] = {"fingerprint": fingerprint, "nodes": {}}
         self.usable = False  # des points de reprise valides pour CETTE config existent
         path = os.path.join(self.dir, "manifest.json")
@@ -118,10 +143,11 @@ class Checkpoint:
     def save(self, conn, node_id: str, view: str, srid: int, cursors: dict | None = None) -> None:
         tmp = self._file(node_id) + ".tmp"
         conn.execute(f"COPY (SELECT * FROM {_qi(view)}) TO {self._ql(tmp)} (FORMAT PARQUET)")
+        os.chmod(tmp, 0o600)
         os.replace(tmp, self._file(node_id))
         self._manifest["nodes"][node_id] = {"srid": srid, "cursors": cursors or {}}
         mtmp = os.path.join(self.dir, "manifest.json.tmp")
-        with open(mtmp, "w") as fh:
+        with os.fdopen(os.open(mtmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as fh:
             json.dump(self._manifest, fh)
         os.replace(mtmp, os.path.join(self.dir, "manifest.json"))
 

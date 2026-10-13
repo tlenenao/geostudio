@@ -114,17 +114,25 @@ def _notify(
 _MAX_RETRY_DELAY_S = 6 * 3600
 
 
-def _flag_resumable(factory, run_id: str, root_id: str | None) -> None:
+def _flag_resumable(factory, run_id: str, root_id: str | None, tenant_id: str) -> None:
     """Échec définitif : signale à l'API (autre conteneur) que des points de
     reprise existent côté worker, pour proposer « Reprendre »."""
     if root_id is None:
         return
     try:
-        if checkpoints.exists(root_id):
+        if checkpoints.exists(tenant_id, root_id):
             with request_scoped_session(factory) as session:
                 pipelines_repo.set_resumable(session, run_id=run_id, value=True)
     except Exception:
         logger.exception("pipeline run %s : drapeau resumable non posé", run_id)
+
+
+def _clear_resumable(factory, root_ids: list[str]) -> None:
+    try:
+        with request_scoped_session(factory) as session:
+            pipelines_repo.clear_resumable_for_roots(session, root_ids)
+    except Exception:
+        logger.exception("pipeline : drapeau resumable non retiré")
 
 
 def _schedule_retry(
@@ -315,7 +323,7 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
             user = _acting_user(session, tenant_id=tenant_id, item_id=item_id)
             retry_policy = payload.retry
             checkpoint = (
-                checkpoints.Checkpoint(root_id, checkpoints.config_fingerprint(payload))
+                checkpoints.Checkpoint(tenant_id, root_id, checkpoints.config_fingerprint(payload))
                 if retry_policy is not None
                 else None
             )
@@ -352,7 +360,9 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
                     pipeline_item_id=item_id,
                     cursors=reader_state.pending,
                 )
-        checkpoints.discard(root_id)  # run réussi : plus rien à reprendre
+        checkpoints.discard(tenant_id, root_id)  # run réussi : plus rien à reprendre
+        if checkpoint is not None:
+            _clear_resumable(factory, [root_id])
         tracker.mark_succeeded({s.nodeId: s.to_dict() for s in stats})
         assert item_id is not None  # affecté ci-dessus, jamais atteint sinon (cf. return/raise)
         _notify(factory, tenant_id=tenant_id, item_id=item_id, status="success")
@@ -371,7 +381,7 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
         ):
             return
         tracker.mark_failed(str(exc))
-        _flag_resumable(factory, run_id, root_id)
+        _flag_resumable(factory, run_id, root_id, tenant_id)
         if item_id is not None:
             _notify(
                 factory,
@@ -394,7 +404,7 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
         ):
             return
         tracker.mark_failed(f"erreur interne : {exc}")
-        _flag_resumable(factory, run_id, root_id)
+        _flag_resumable(factory, run_id, root_id, tenant_id)
         if item_id is not None:
             _notify(
                 factory,
@@ -424,7 +434,10 @@ def run_pipeline_sweep_task(timestamp: int) -> None:
         for overdue_run_id, overdue_tenant_id in overdue:
             run_pipeline_task.defer(run_id=overdue_run_id, tenant_id=overdue_tenant_id)
         try:
-            checkpoints.purge_expired()
+            expired = checkpoints.purge_expired()
+            if expired:  # plus de points de reprise : ne plus proposer « Reprendre »
+                pipelines_repo.clear_resumable_for_roots(session, [r for _, r in expired])
+                session.commit()
         except Exception:
             logger.exception("purge des points de reprise échouée")
         pipelines_repo.reclaim_stuck_runs(session)

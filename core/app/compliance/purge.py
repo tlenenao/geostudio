@@ -47,6 +47,7 @@ from app.ingestion.routes import get_uploads_bucket
 from app.items.models import Item
 from app.mapicons.models import MapIcon
 from app.notifications.models import Notification, NotificationPreference
+from app.pipelines import checkpoints
 from app.pipelines.models import PipelineRun
 from app.public_submit.models import Submission, SubmissionToken
 from app.quality.models import QualityReport
@@ -154,6 +155,10 @@ def purge_tenant(
     counts["collection_export_jobs"] = _delete_all(session, CollectionExportJob, tenant_id)
     counts["quality_reports"] = _delete_all(session, QualityReport, tenant_id)
     counts["pipeline_runs"] = _delete_all(session, PipelineRun, tenant_id)
+    # F5 : points de reprise Parquet (données tenant) du disque local du processus
+    # qui exécute la purge. ponytail: un autre worker/hôte garde ses fichiers jusqu'à
+    # la rétention (24 h) ; volume partagé ou purge par worker si multi-hôte.
+    checkpoints.purge_tenant(tenant_id)
     counts["report_runs"] = _delete_all(session, ReportRun, tenant_id)
     counts["harvest_records"] = _delete_all(session, HarvestRecord, tenant_id)
     counts["configs"] = _delete_all(session, Config, tenant_id)

@@ -40,7 +40,10 @@ class RunResponse(BaseModel):
 
 
 class RunRequest(BaseModel):
-    """Corps optionnel de POST /pipelines/{id}/run et /trigger (ARC-K2/F3)."""
+    """Corps optionnel de POST /pipelines/{id}/run et /trigger (ARC-K2/F3).
+
+    Les `params` sont conservés EN CLAIR dans pipeline_runs et l'audit : n'y mettez
+    jamais de secret (utilisez le coffre de secrets des connecteurs)."""
 
     params: dict[str, Any] = Field(default_factory=dict)
 

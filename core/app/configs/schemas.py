@@ -321,7 +321,8 @@ class PipelineRefreshPolicy(BaseModel):
 
 class PipelineParameter(BaseModel):
     """Paramètre de run publié (ARC-K2/F3) : saisi au lancement, référencé par
-    `{{param.nom}}` dans les params de nœud (cf. app.configs.pipeline_params)."""
+    `{{param.nom}}` dans les params de nœud (cf. app.configs.pipeline_params).
+    Valeurs conservées en clair (historique des runs, audit) : pas de secrets ici."""
 
     name: str = Field(..., pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")
     type: Literal["string", "number", "integer", "boolean", "date"] = "string"
@@ -376,12 +377,38 @@ class PipelinePayload(BaseModel):
         names = [p.name for p in self.parameters]
         if len(names) != len(set(names)):
             raise ValueError("pipeline parameter names must be unique")
-        from app.configs.pipeline_params import param_refs
+        from app.configs.pipeline_params import misplaced_param_refs, param_refs
 
+        for n in self.nodes:
+            bad = misplaced_param_refs(n.params)
+            if bad:
+                raise ValueError(
+                    f"nœud '{n.id}' : {{{{param.x}}}} interdit dans le(s) champ(s) "
+                    f"{', '.join(sorted(bad))} (risque d'injection) ; réservé aux expressions "
+                    "(expr, metrics, *Expr) et aux champs de donnée (collectionId, path…). "
+                    "La requête native d'un connecteur ne peut pas être paramétrée."
+                )
         unknown = set().union(*(param_refs(n.params) for n in self.nodes)) - set(names)
         if unknown:
             raise ValueError(f"unknown parameter reference(s): {', '.join(sorted(unknown))}")
+        if self.retry is not None and self.retry.max > 0 and self.append_writers():
+            raise ValueError(
+                "reprise automatique (retry.max > 0) impossible avec un writer en mode "
+                f"'append' ({', '.join(self.append_writers())}) : un rejeu dupliquerait "
+                "des lignes ; utilisez le mode 'upsert' (ou 'replace')"
+            )
         return self
+
+    def append_writers(self) -> list[str]:
+        """Ids des writers collection/dataset en mode `append` (défaut) : non idempotents,
+        donc incompatibles avec un rejeu/une reprise (doublons)."""
+        return [
+            n.id
+            for n in self.nodes
+            if n.kind == "writer"
+            and n.op in {"writer.collection", "writer.dataset"}
+            and (n.params or {}).get("mode", "append") == "append"
+        ]
 
 
 class AlertCondition(BaseModel):

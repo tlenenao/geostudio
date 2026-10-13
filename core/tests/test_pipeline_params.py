@@ -87,3 +87,65 @@ def test_whole_string_ref_keeps_type_and_embedded_is_text():
 def test_no_parameters_returns_payload_unchanged():
     p = _payload([], {"expr": "true"})
     assert apply_params(p, {}) is p
+
+
+_EVIL = "1 OR 1=1; --"
+
+
+@pytest.mark.parametrize(
+    "op",
+    [
+        "reader.connector.postgres",
+        "reader.connector.snowflake",
+        "reader.connector.bigquery",
+        "reader.connector.mssql",
+        "reader.connector.oracle",
+        "reader.connector.databricks",
+    ],
+)
+def test_param_in_native_connector_query_is_refused_at_validation(op):
+    """Injection : la requête native d'un connecteur n'est jamais paramétrable."""
+    with pytest.raises(ValidationError, match="interdit"):
+        PipelinePayload.model_validate(
+            {
+                "parameters": [{"name": "x", "type": "string", "default": _EVIL}],
+                "nodes": [
+                    {
+                        "id": "r",
+                        "kind": "reader",
+                        "op": op,
+                        "params": {
+                            "secretName": "s",
+                            "query": "SELECT * FROM t WHERE a = {{param.x}}",
+                        },
+                    },
+                    {
+                        "id": "w",
+                        "kind": "writer",
+                        "op": "writer.collection",
+                        "params": {"collectionId": "d"},
+                    },
+                ],
+                "edges": [{"id": "e", "from": "r", "to": "w"}],
+            }
+        )
+
+
+@pytest.mark.parametrize("key", ["valueExpr", "urlExpr", "headersExpr", "bodyExpr"])
+def test_param_in_http_call_expression_keys_is_an_escaped_literal(key):
+    value = _EVIL + "' OR 'a'='a"
+    p = _payload(
+        [{"name": "x", "type": "string", "default": value}],
+        {key: "concat('v=', {{param.x}})"},
+        op="transform.httpCall",
+    )
+    applied = apply_params(p, resolve_params(p.parameters, {}))
+    out = applied.nodes[1].params[key]
+    # la valeur reste UN littéral : guillemets doublés, rien ne sort de la chaîne
+    assert out == "concat('v=', '1 OR 1=1; --'' OR ''a''=''a')"
+    assert duckdb.connect().execute(f"SELECT {out}").fetchone() == ("v=" + value,)
+
+
+def test_param_in_non_whitelisted_key_is_refused():
+    with pytest.raises(ValidationError, match="interdit"):
+        _payload([{"name": "x", "type": "string", "default": "a"}], {"anything": "{{param.x}}"})
