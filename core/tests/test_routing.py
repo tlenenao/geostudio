@@ -94,9 +94,11 @@ def fake_valhalla(seen: list):
     return handler
 
 
-def _valhalla(handler) -> Valhalla:
+def _valhalla(handler, throttle=None) -> Valhalla:
     return Valhalla(
-        "http://valhalla:8002", lambda: httpx.Client(transport=httpx.MockTransport(handler))
+        "http://valhalla:8002",
+        lambda: httpx.Client(transport=httpx.MockTransport(handler)),
+        throttle=throttle,
     )
 
 
@@ -109,7 +111,10 @@ def api(monkeypatch, tmp_path):
     engine = make_engine(url)
     init_db(engine)
     seen: list = []
-    monkeypatch.setattr("app.routing.routes.get_routing", lambda: _valhalla(fake_valhalla(seen)))
+    monkeypatch.setattr(
+        "app.routing.routes.get_routing",
+        lambda throttle=None: _valhalla(fake_valhalla(seen), throttle),
+    )
     monkeypatch.setattr(rc, "rate_window", rc._Window())
     monkeypatch.setattr("app.routing.routes.rate_window", rc.rate_window)
     client = TestClient(create_app())
@@ -186,7 +191,10 @@ def test_unreachable_or_broken_upstream_is_503(api, monkeypatch):
         lambda r: httpx.Response(200, content=b"pas du json"),
         lambda r: httpx.Response(200, json={"trip": {}}),
     ):
-        monkeypatch.setattr("app.routing.routes.get_routing", lambda h=handler: _valhalla(h))
+        monkeypatch.setattr(
+            "app.routing.routes.get_routing",
+            lambda throttle=None, h=handler: _valhalla(h, throttle),
+        )
         r = api.post("/v1/routing/route", json={"points": [TULLE, BRIVE]})
         assert r.status_code == 503
         assert r.json()["detail"] == "Le service de routage est indisponible."
@@ -208,7 +216,8 @@ def test_101st_call_in_a_minute_is_429(api):
 def test_every_call_is_audited_even_when_service_is_down(api, monkeypatch):
     api.post("/v1/routing/route", json={"points": [TULLE, BRIVE]})
     monkeypatch.setattr(
-        "app.routing.routes.get_routing", lambda: _valhalla(lambda r: httpx.Response(500))
+        "app.routing.routes.get_routing",
+        lambda throttle=None: _valhalla(lambda r: httpx.Response(500), throttle),
     )
     api.post("/v1/routing/isochrone", json={"origin": TULLE, "minutes": [10]})
     from sqlalchemy.orm import Session
@@ -267,3 +276,83 @@ def test_default_client_goes_through_the_guard(monkeypatch):
 
 def test_polyline_roundtrip():
     assert rc.decode_polyline6(_encode6(SHAPE)) == SHAPE
+
+
+# --- privilège analytics.view (I3), débit par requête amont, redirections (I4), IPv4 mappée -----
+
+
+def _revoke_privilege(api):
+    from sqlalchemy.orm import Session
+
+    from app.auth.dependency import get_current_user
+    from app.roles.repository import create_role
+    from app.users.models import User
+
+    # Le mode mock re-promeut l'identité mock en admin à chaque requête : on substitue donc
+    # l'acteur par un utilisateur réel dont le rôle ne porte aucun privilège.
+    with Session(api.engine, expire_on_commit=False) as s:
+        user = s.scalars(select(User)).first()
+        role = create_role(s, tenant_id=user.tenant_id, name="sans-routage", privileges=[])
+        user.role_id = role.id
+        user.is_admin = False
+        s.commit()
+    api.app.dependency_overrides[get_current_user] = lambda: user
+
+
+_BODIES = {
+    "route": {"points": [TULLE, BRIVE]},
+    "isochrone": {"origin": TULLE, "minutes": [10]},
+    "service-area": {"origins": [TULLE], "minutes": [10]},
+    "matrix": {"sources": [TULLE], "targets": [BRIVE]},
+}
+
+
+def test_every_route_requires_analytics_view(api):
+    assert api.post("/v1/routing/route", json=_BODIES["route"]).status_code == 200
+    _revoke_privilege(api)
+    api.seen.clear()
+    for name, body in _BODIES.items():
+        r = api.post(f"/v1/routing/{name}", json=body)
+        assert r.status_code == 403, name
+        assert "analytics.view" in r.json()["detail"]
+    assert api.seen == []  # refus avant tout appel amont
+
+
+def test_service_area_costs_one_unit_per_upstream_call(api, monkeypatch):
+    monkeypatch.setattr(rc, "rate_window", rc._Window(budget=3))
+    monkeypatch.setattr("app.routing.routes.rate_window", rc.rate_window)
+    r = api.post("/v1/routing/service-area", json={"origins": [TULLE, BRIVE], "minutes": [5]})
+    assert r.status_code == 200  # 2 unités sur 3
+    r = api.post("/v1/routing/service-area", json={"origins": [TULLE, BRIVE], "minutes": [5]})
+    assert r.status_code == 429  # la 4e requête amont dépasse le budget
+    assert len(api.seen) == 3
+
+
+def test_window_purges_idle_keys():
+    w = rc._Window(window=0.0)
+    for i in range(1100):
+        w.check(f"u{i}")
+    w.check("again")
+    assert len(w._hits) < 1100
+
+
+def test_redirects_are_never_followed(monkeypatch):
+    monkeypatch.setenv("CORE_ROUTING_URL", "http://10.1.2.3:8002")
+    calls = []
+
+    def redirecting(handle, request, validated):
+        calls.append(str(request.url))
+        return httpx.Response(
+            302, headers={"location": "http://10.1.2.3:8002/ailleurs"}, request=request
+        )
+
+    monkeypatch.setattr(rc, "send_pinned", redirecting)
+    with pytest.raises(rc.RoutingUnavailable):
+        rc.get_routing().route([TULLE, BRIVE])
+    assert calls == ["http://10.1.2.3:8002/route"]  # une seule requête, la redirection est ignorée
+
+
+def test_egress_refuses_ipv4_mapped_link_local(monkeypatch):
+    monkeypatch.setenv("CORE_ROUTING_URL", "http://[::ffff:169.254.169.254]:8002")
+    with pytest.raises(rc._EgressBlocked):
+        rc.assert_egress_allowed("http://[::ffff:169.254.169.254]:8002/route")

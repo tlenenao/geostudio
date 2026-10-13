@@ -23,7 +23,9 @@ def fake(monkeypatch):
     transport = httpx.MockTransport(fake_valhalla(seen))
     monkeypatch.setattr(
         "app.mcp.tools.routing.get_routing",
-        lambda: Valhalla("http://valhalla:8002", lambda: httpx.Client(transport=transport)),
+        lambda throttle=None: Valhalla(
+            "http://valhalla:8002", lambda: httpx.Client(transport=transport), throttle=throttle
+        ),
     )
     monkeypatch.setattr("app.mcp.tools.routing.rate_window", rc._Window())
     return seen
@@ -64,3 +66,28 @@ def test_call_is_audited_and_rate_limited(app_client, fake, monkeypatch):
     with app_client.session_factory() as session:
         rows = [r for r in session.scalars(select(AuditLog)) if r.action == "mcp.tool_call"]
     assert [r.object_id for r in rows] == ["route"] * 3
+
+
+def test_tool_requires_analytics_view(app_client, fake):
+    from app.roles.models import Role
+    from app.users.models import User
+
+    with app_client.session_factory() as session:
+        role = Role(
+            id="no-routing",
+            tenant_id=app_client.tenant.id,
+            name="Sans routage",
+            slug="no-routing",
+            is_built_in=False,
+            privileges=[],
+        )
+        session.add(role)
+        session.flush()
+        user = session.get(User, app_client.mock_user.id)
+        user.role_id = role.id
+        user.is_admin = False
+        session.commit()
+    with app_client:
+        error = call_tool_expecting_error(app_client, "route", {"points": [TULLE, BRIVE]})
+    assert "[403]" in error and "analytics.view" in error
+    assert fake == []
