@@ -7949,4 +7949,25 @@ Plan `docs/superpowers/plans/2026-10-13-arc-vagues-4-6-iso-esri-et-etl.md`, 4 vo
 - **Décisions/limites assumées** : rapport qualité dans le détail de run du builder et non dans `/tasks` ; le journal ARC-15 ne trace pas les créations par upsert ; partages de la quarantaine recopiés à chaque run ; `reader.wfs` sans authentification ; `transform.geocode` sans score ni option à l'import CSV ; `neighborFinder` sans plafond de lignes.
 - **Minor non corrigés** : notification d'un run avec rejets restée « succès » ; lineage aveugle à un `collectionId` paramétré ; pas de test dédié du chemin de reprise avec extra ; le tracker du sidecar écrit encore `succeeded` ; un paramètre dans `collectionId` du writer permet à l'auteur de rediriger la cible (choix de l'auteur, droits vérifiés à l'exécution) ; scratch du worker en `emptyDir` dans le chart Helm (checkpoints perdus au redémarrage).
 - **Portes** : ruff, format, mypy --strict (39 fichiers), lint-imports verts ; pytest cœur 4999 passed / 23 skipped / 24 xfailed en 4 lots sur PG jetable, 6 échecs au premier passage : 3 corrigés ci-dessus, 2 `test_cdc_consumer_postgis` environnementaux (verts sur un conteneur avec `output_plugin_libraries=wal2json`), 1 `test_upsert_100k_rows_under_60s` dépendant de la charge machine (64,6 s en suite, vert isolé) ; couverture 94,22 % ; vitest 3187 passed, couverture au-dessus des seuils ; build + bundle 614 Ko (seuil 735) ; E2E complète 272 passed / 4 skipped / 0 failed ; `feature_health_cli --check`/`--check-snapshot` verts (médiane 98,9) ; FME `--check` OK ; `test_deployability` vert.
-- **Reste** : revue finale de branche croisée (masquage/RLS/limites géographiques sur les modes upsert/update/delete, la quarantaine, `sqlExecutor`, les webhooks) ; rejeu sur stack réelle ; promotion vers `dev` puis nettoyage des worktrees des voies.
+- **Revue finale de branche (NON prête → corrigée en un lot, tests rouges d'abord, falsifiés)** :
+  - C1 : une reprise sautait les writers présents dans `node_stats`, commités à part alors que leurs écritures vivaient dans la transaction annulée. Le run finissait `succeeded` sans rien écrire, et le curseur F4 avançait. Corrigé : les writers sont toujours rejoués (`prior_stats` retiré, stats des writers non recopiées par `retry_pipeline_run_service`). Trois tests : deux writers dont le 2e échoue, quota atteint après `on_progress`, curseur non avancé.
+  - I1 : un lecteur repris depuis un checkpoint sautait lisibilité, masquage et limites. Corrigé : `runtime.access_facts` (lisibilité + champs masqués de chaque collection lue, utilisabilité des secrets) entre dans `config_fingerprint`, donc un droit changé invalide les checkpoints. Test sur retrait d'accès et sur masquage ajouté.
+  - I2 : `quality_report` exclut `sensitive_fields`.
+  - I3 : `source_row` de la quarantaine ne porte plus la géométrie (ni les champs sensibles) ; la quarantaine peut être lue par des éditeurs limités géographiquement.
+  - I4 : double livraison d'outbox (le commit après chaque événement relâchait les verrous du lot). Corrigé par une réservation par lot `UPDATE … SET next_attempt_at = now()+bail WHERE id IN (SELECT … FOR UPDATE SKIP LOCKED) RETURNING`, commitée avant les appels HTTP, avec un bail de 300 s couvrant 10 × 10 s. Test Postgres à deux sessions qui compte les livraisons, pas une durée.
+  - I5 : l'aperçu REST résout `{{param.x}}` (défauts + `params` optionnel dans le corps). Il n'existe pas d'outil MCP d'aperçu.
+  - I6 : le balayage boucle par lots de 10 jusqu'à un budget de 45 s, en tourniquet par tenant (`row_number() over (partition by tenant_id)`). Test de non-famine.
+  - Mineurs :
+    - purge de l'outbox (`delivered`/`failed` > 30 j) et de `file_trigger_seen` (> 31 j ; le sondage ignore désormais les objets de plus de 30 j) ;
+    - plafond de 50 webhooks par tenant (409) ;
+    - `audit_log` `webhook.disabled` à la désactivation automatique ;
+    - `consecutive_failures` mis à jour sous `FOR UPDATE` ;
+    - `CORE_PIPELINE_CHECKPOINT_DIR` sous `/scratch` dans le chart, gardé par un test, ainsi que 3 variables de config manquantes du chart (`CORE_ANALYSIS_MAX_FEATURES`, `CORE_OIDC_GROUPS_CLAIM`, `CORE_OWS_WMS_ENABLED`) ;
+    - `pipeline.run.finished` n'est émis que sur un vrai changement de statut, lu en base (reclaim → `failed` puis worker → `failed` = un seul événement ; une fin réelle qui corrige un reclaim reste émise).
+  - Documentés sans code :
+    - un `{{param.*}}` dans `collectionId` est pilotable par un porteur de jeton webhook ou MCP (droits revérifiés à l'exécution, mais la cible change) ;
+    - la quarantaine n'est reconnue que par le suffixe `__rejected` ;
+    - il n'existe pas d'outil MCP de retry ni d'état de lecteur ;
+    - `visible_nodes` passe `actor_is_admin=False` à `decide()`, mais le court-circuit admin des collections y est déjà assuré par `has_privilege(admin.collections.manage)` (au moins aussi large que `is_admin`), et `decide()` l'ignore pour les items : pas de défaut.
+  - Spec OpenAPI/types TS : diff vide (route d'aperçu derrière `CORE_ETL_ENABLED`, éteint à l'export).
+- **Reste** : rejeu sur stack réelle ; promotion vers `dev` puis nettoyage des worktrees des voies.
