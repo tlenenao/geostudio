@@ -259,10 +259,14 @@ def reclaim_stuck_runs(
         else_=PipelineRun.created_at,
     )
     runs = session.scalars(
-        select(PipelineRun).where(
+        select(PipelineRun)
+        .where(
             PipelineRun.status.in_(("queued", "running", "cancel_requested")),
             func.coalesce(anchor, PipelineRun.created_at) < threshold,
         )
+        # verrou de ligne : un run qui se termine pendant le balayage n'est pas écrasé
+        # (skip_locked : sans effet sous sqlite, effectif sous Postgres)
+        .with_for_update(skip_locked=True)
     ).all()
     for run in runs:
         run.status = "failed"

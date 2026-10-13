@@ -6,7 +6,7 @@ import sys
 import types
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.outbox.models import FileTrigger, OutboundWebhook, OutboxEvent
 from app.pipelines import repository as prepo
@@ -96,3 +96,19 @@ def test_an_unexpected_error_is_counted_on_the_faulty_destination(db, monkeypatc
         assert deliver_due(s, post=lambda *a: None) == 0
         hook = s.get(OutboundWebhook, "h1")
         assert hook.consecutive_failures == 1 and ev.attempts == 1 and ev.status == "pending"
+
+
+def test_reclaim_leaves_a_finished_run_untouched_and_silent(db):  # noqa: F811
+    tenant_id, user_id = _seed(db)
+    pipeline_id = _pipeline(db, tenant_id, user_id)
+    with db() as s:
+        done = prepo.create_run(s, tenant_id=tenant_id, pipeline_item_id=pipeline_id)
+        done.created_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=5)
+        s.commit()
+        prepo.mark_succeeded(s, run_id=done.id, node_stats={})
+        s.commit()
+        before = s.scalar(select(func.count()).select_from(OutboxEvent))
+        assert prepo.reclaim_stuck_runs(s) == 0
+        s.commit()
+        assert done.status == "succeeded" and done.error is None
+        assert s.scalar(select(func.count()).select_from(OutboxEvent)) == before
