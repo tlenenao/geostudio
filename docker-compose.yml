@@ -8,6 +8,7 @@ volumes:
   keycloak-data:
   etl-scratch:
   appexport-runtime:
+  valhalla-data:  # extrait OSM (.pbf) + tuiles de routage (profil `routing`, ARC-34)
   # SP-48/GAP-72 : partagé entre `worker` (écrivain, tâche périodique
   # refresh_csp_dynamic_conf_task) et `traefik` (lecteur, provider fichier)
   # — le seul moyen de pousser une CSP calculée dynamiquement à Traefik
@@ -315,6 +316,10 @@ services:
       CORE_GEOCODING_URL: ${CORE_GEOCODING_URL:-https://data.geopf.fr/geocodage/search}
       CORE_GEOCODING_EGRESS_ALLOWLIST: ${CORE_GEOCODING_EGRESS_ALLOWLIST:-data.geopf.fr}
       CORE_GEOCODING_USER_AGENT: ${CORE_GEOCODING_USER_AGENT:-}
+      # Routage/isochrones (ARC-34, ADR 0025) : Valhalla externe (profil `routing`, service
+      # `valhalla` ci-dessous ; mettre CORE_ROUTING_URL=http://valhalla:8002). Vide = routes
+      # /v1/routing/* en 503. Le worker en a besoin pour transform.isochrone/route.
+      CORE_ROUTING_URL: ${CORE_ROUTING_URL:-}
       # Allowlists des trois gardes d'egress SSRF (pipelines/harvest/alerts,
       # chacune dupliquée délibérément — cf. leurs docstrings respectives).
       # Trouvées non câblées à AUCUN service par l'élargissement de la règle
@@ -603,6 +608,10 @@ services:
       CORE_GEOCODING_URL: ${CORE_GEOCODING_URL:-https://data.geopf.fr/geocodage/search}
       CORE_GEOCODING_EGRESS_ALLOWLIST: ${CORE_GEOCODING_EGRESS_ALLOWLIST:-data.geopf.fr}
       CORE_GEOCODING_USER_AGENT: ${CORE_GEOCODING_USER_AGENT:-}
+      # Routage/isochrones (ARC-34, ADR 0025) : Valhalla externe (profil `routing`, service
+      # `valhalla` ci-dessous ; mettre CORE_ROUTING_URL=http://valhalla:8002). Vide = routes
+      # /v1/routing/* en 503. Le worker en a besoin pour transform.isochrone/route.
+      CORE_ROUTING_URL: ${CORE_ROUTING_URL:-}
       CORE_PIPELINES_HTTP_CALL_MAX_ROWS: ${CORE_PIPELINES_HTTP_CALL_MAX_ROWS:-10000}
       CORE_PIPELINES_HTTP_CALL_MAX_TOTAL_BYTES: ${CORE_PIPELINES_HTTP_CALL_MAX_TOTAL_BYTES:-268435456}
       CORE_PIPELINES_HTTP_CALL_MAX_RESPONSE_BYTES: ${CORE_PIPELINES_HTTP_CALL_MAX_RESPONSE_BYTES:-5242880}
@@ -784,6 +793,32 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+
+  # Routage et isochrones (ARC-34, ADR 0025) — Valhalla (MIT), profil optionnel `routing`.
+  # L'opérateur fournit les données OSM : déposer un extrait .pbf dans le volume valhalla-data
+  # (monté sur /custom_files) ou régler VALHALLA_TILE_URLS ; les tuiles de routage sont
+  # construites au premier démarrage (long : start_period large). Jamais exposé : réseau
+  # interne seulement, le cœur est le seul client (garde d'egress sur CORE_ROUTING_URL).
+  valhalla:
+    image: ghcr.io/gis-ops/docker-valhalla/valhalla:3.5.1
+    profiles: ["routing"]
+    environment:
+      tile_urls: ${VALHALLA_TILE_URLS:-}
+      use_tiles_ignore_pbf: "True"
+      build_elevation: "False"
+      build_admins: "True"
+      build_time_zones: "False"
+      server_threads: ${VALHALLA_SERVER_THREADS:-2}
+    volumes:
+      - valhalla-data:/custom_files
+    networks: [gis-net]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8002/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 900s
 
   # ─── Observabilité (SP-10b, profil optionnel) ──────────
 

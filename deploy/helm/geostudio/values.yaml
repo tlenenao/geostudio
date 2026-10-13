@@ -96,6 +96,7 @@ config:
   CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT: ""
   CORE_RATELIMIT_SHARE_LINK_PER_MIN: "60"
   CORE_READ_ONLY_MODE: "false"
+  CORE_ROUTING_URL: ""               # vide + valhalla.enabled = service valhalla du release
   CORE_SQL_EXECUTOR_TIMEOUT_S: "60"
   CORE_STALLED_JOB_MINUTES: "60"
   CORE_TERRAIN3D_CONVERSION_TIMEOUT_SECONDS: "900"
@@ -165,6 +166,14 @@ observability:                      # profil compose « observability » (otel-l
   enabled: false
   image: grafana/otel-lgtm:0.11.4
   resources: {requests: {cpu: 250m, memory: 1Gi}, limits: {memory: 3Gi}}
+
+valhalla:                           # profil compose « routing » (ARC-34, ADR 0025) ; données OSM fournies par l'opérateur
+  enabled: false
+  image: ghcr.io/gis-ops/docker-valhalla/valhalla:3.5.1
+  tileUrls: ""                      # URL(s) de .pbf séparées par des espaces ; sinon un extrait déposé dans le volume
+  existingClaim: ""                 # PVC contenant /custom_files (extrait .pbf + tuiles) ; vide = emptyDir (tuiles reconstruites)
+  serverThreads: 2
+  resources: {requests: {cpu: 500m, memory: 1Gi}, limits: {memory: 6Gi}}
 
 ingress:
   enabled: false

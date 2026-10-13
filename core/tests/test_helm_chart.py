@@ -208,6 +208,19 @@ def test_optional_workloads_render_only_when_enabled():
     assert plain["OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://rel-geostudio-otel-lgtm:4318"
 
 
+def test_valhalla_renders_only_when_enabled_and_wires_core_url():
+    """ARC-34 : sous-chart optionnel ; CORE_ROUTING_URL pointe le service du release."""
+    base = render()
+    assert not [d for d in base if "valhalla" in d["metadata"]["name"]]
+    assert _rendered_env(base, "core")[0]["CORE_ROUTING_URL"] == ""
+    full = render("valhalla.enabled=true")
+    kinds = {d["kind"] for d in full if d["metadata"]["name"] == "rel-geostudio-valhalla"}
+    assert kinds == {"Deployment", "Service"}
+    for service in ("core", "worker"):
+        plain, _ = _rendered_env(full, service)
+        assert plain["CORE_ROUTING_URL"] == "http://rel-geostudio-valhalla:8002"
+
+
 def test_worker_checkpoints_live_on_its_scratch_volume(docs):
     """F5 : les points de reprise vont sur le volume scratch monté du worker, jamais
     sur la racine du conteneur (readOnlyRootFilesystem) ni sous un tmp non monté."""
