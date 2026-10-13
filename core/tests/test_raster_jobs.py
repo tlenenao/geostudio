@@ -126,3 +126,35 @@ def test_sweep_reclaims_stuck_jobs_only(env):
         s.commit()
         assert s.get(RasterJob, stuck).status == "error"
         assert s.get(RasterJob, fresh).status == "uploaded"
+
+
+def test_sweep_purges_raw_upload_of_reclaimed_job(env, monkeypatch):
+    Session, tenant, alice = env
+    key = f"{tenant.id}/x/stuck.tif"
+    s3 = _FakeS3({(BUCKET, key): b"raw"})
+    stuck = _job(Session, tenant, alice, key)
+    with Session() as s:
+        s.get(RasterJob, stuck).updated_at = datetime.now(UTC) - timedelta(hours=2)
+        s.commit()
+    monkeypatch.setattr(jobs, "_session_factory", lambda: Session)
+    monkeypatch.setattr(jobs, "s3_client_from_env", lambda: s3)
+    jobs.sweep_raster_jobs_task(0)
+    assert (BUCKET, key) in s3.deleted and (BUCKET, key) not in s3.objects
+
+
+def test_converted_cog_is_rechecked_against_storage_quota(env, tmp_path, monkeypatch):
+    Session, tenant, alice = env
+    raw = tmp_path / "raw.tif"
+    write_tif(str(raw), size=600)
+    key = f"{tenant.id}/x/o.tif"
+    s3 = _FakeS3({(BUCKET, key): raw.read_bytes()})
+    s3.list_objects_v2 = lambda **kw: {"Contents": [{"Size": 10**9}], "IsTruncated": False}
+    monkeypatch.setenv("CORE_QUOTAS_ENABLED", "true")
+    monkeypatch.setenv("CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT", "1000")
+    job_id = _job(Session, tenant, alice, key)
+    jobs.run_ingest(Session, s3, job_id=job_id, tenant_id=tenant.id)
+    with Session() as s:
+        job = repo.get_job(s, tenant_id=tenant.id, job_id=job_id)
+        assert job.status == "error" and "quota" in job.error_message
+        assert s.query(RasterAsset).count() == 0
+    assert (BUCKET, f"{tenant.id}/{job_id}/cog.tif") not in s3.objects

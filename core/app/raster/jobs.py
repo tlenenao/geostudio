@@ -17,6 +17,7 @@ from app.items import repository as items_repo
 from app.jobs import app
 from app.jobs.common import notify_best_effort
 from app.jobs.engine import session_factory as common_session_factory
+from app.quotas.service import QuotaExceededError, enforce_storage_quota
 from app.raster import ingest
 from app.raster import repository as repo
 from app.raster.models import RasterAsset
@@ -108,6 +109,17 @@ def run_ingest(session_factory, s3, *, job_id: str, tenant_id: str) -> None:
         size_bytes = os.path.getsize(cog_path)
         converted_key = f"{tenant_id}/{job_id}/cog.tif"
         upload_file(s3, bucket=bucket, key=converted_key, src_path=cog_path)
+        # Le COG deflate peut dépasser le brut : recontrôle du quota (le brut, déjà converti,
+        # est libéré d'abord pour ne pas être compté deux fois ; la purge du `finally` est
+        # idempotente). En cas de refus, enforce_storage_quota supprime le COG.
+        s3.delete_object(Bucket=bucket, Key=source_key)
+        try:
+            with request_scoped_session(session_factory) as session:
+                enforce_storage_quota(
+                    session, s3, tenant_id=tenant_id, bucket=bucket, key=converted_key
+                )
+        except QuotaExceededError as exc:
+            raise ingest.RasterIngestError(str(exc)) from exc
 
         with request_scoped_session(session_factory) as session:
             item = items_repo.create_item(
@@ -171,11 +183,16 @@ def sweep_raster_jobs_task(timestamp: int) -> None:
     factory = _session_factory()
     with request_scoped_session(factory) as session:
         reclaimed = [
-            (j.tenant_id, j.created_by, j.title, j.error_message)
+            (j.tenant_id, j.created_by, j.title, j.error_message, j.source_key)
             for j in repo.reclaim_stuck_jobs(session)
         ]
         session.commit()
-    for tenant_id, user_id, title, error in reclaimed:
+    s3 = s3_client_from_env()
+    for tenant_id, user_id, title, error, raw_key in reclaimed:
+        try:  # l'upload brut d'un job abandonné ne reste pas compté au quota
+            s3.delete_object(Bucket=raster_bucket(), Key=raw_key)
+        except Exception:
+            logger.exception("raster sweep : échec de purge de %s", raw_key)
         notify_best_effort(
             factory,
             tenant_id=tenant_id,
