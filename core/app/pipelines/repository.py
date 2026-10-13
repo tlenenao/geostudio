@@ -233,14 +233,25 @@ def mark_cancelled(session: Session, *, run_id: str) -> None:
     run = session.get(PipelineRun, run_id)
     if run is None:
         return
+    previous = _stored_status(session, run_id)
     run.status = "cancelled"
     run.finished_at = _now()
     session.flush()
-    _emit_run_finished(session, run)
+    _emit_run_finished(session, run, previous=previous)
 
 
-def _emit_run_finished(session: Session, run: PipelineRun) -> None:
-    # F6 (ADR 0027) : dans la transaction qui clôt le run.
+def _stored_status(session: Session, run_id: str) -> str | None:
+    # Statut en base (pas l'instance ORM, possiblement périmée : un reclaim a pu le
+    # clore depuis un autre processus).
+    return session.scalar(select(PipelineRun.status).where(PipelineRun.id == run_id))
+
+
+def _emit_run_finished(session: Session, run: PipelineRun, *, previous: str | None = None) -> None:
+    # F6 (ADR 0027) : dans la transaction qui clôt le run — seulement sur un VRAI
+    # changement de statut (reclaim -> failed puis worker -> failed : un seul
+    # événement ; une fin réelle qui corrige un reclaim, elle, est émise).
+    if previous == run.status:
+        return
     emit(
         session,
         tenant_id=run.tenant_id,
@@ -255,23 +266,25 @@ def mark_succeeded(session: Session, *, run_id: str, node_stats: dict) -> None:
         return
     # F2 : un run qui a écarté des lignes vers la quarantaine n'est pas un succès net.
     rejected = any((s or {}).get("rejected") for s in node_stats.values())
+    previous = _stored_status(session, run_id)
     run.status = "succeeded_with_rejects" if rejected else "succeeded"
     run.error = None  # run vivant clos à tort par reclaim_stuck_runs : la fin réelle prime
     run.finished_at = _now()
     run.node_stats = node_stats
     session.flush()
-    _emit_run_finished(session, run)
+    _emit_run_finished(session, run, previous=previous)
 
 
 def mark_failed(session: Session, *, run_id: str, error: str) -> None:
     run = session.get(PipelineRun, run_id)
     if run is None:
         return
+    previous = _stored_status(session, run_id)
     run.status = "failed"
     run.finished_at = _now()
     run.error = error
     session.flush()
-    _emit_run_finished(session, run)
+    _emit_run_finished(session, run, previous=previous)
 
 
 def mark_retrying(

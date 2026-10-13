@@ -87,11 +87,18 @@ def _bind(col: ColumnInfo, v: Any) -> Any:
     return v
 
 
-def quality_report(conn, view: str, info: TableInfo, row_count: int) -> dict[str, Any]:
+def quality_report(
+    conn, view: str, info: TableInfo, row_count: int, sensitive: frozenset[str] = frozenset()
+) -> dict[str, Any]:
     """Taux de nulls (+ distincts/min/max) des colonnes de l'entrée présentes dans la cible,
-    avec les agrégats de `analytics.profile._stat_selects` appliqués à la vue du run."""
+    avec les agrégats de `analytics.profile._stat_selects` appliqués à la vue du run. Jamais
+    les champs sensibles de la cible (GAP-22) : le rapport est lisible par qui lit le pipeline."""
     in_cols = {d[0] for d in conn.execute(f"SELECT * FROM {_qi(view)} LIMIT 0").description}
-    cols = [c for c in info.columns if c.name in in_cols and c.type != "unsupported"][:50]
+    cols = [
+        c
+        for c in info.columns
+        if c.name in in_cols and c.type != "unsupported" and c.name not in sensitive
+    ][:50]
     if not cols or row_count == 0:
         return {"rowCount": row_count, "columns": []}
     selects = [s for i, c in enumerate(cols) for s in _stat_selects(i, c.name, c.type)]
@@ -358,7 +365,8 @@ def write_rows(
     has_geom_in = "geometry" in in_cols
     select_list = "* EXCLUDE (geometry), ST_AsGeoJSON(geometry) AS geometry" if has_geom_in else "*"
     n_in = conn.execute(f"SELECT COUNT(*) FROM {_qi(input_view)}").fetchone()[0]
-    res.quality = quality_report(conn, input_view, info, n_in)
+    sensitive = frozenset(collection.sensitive_fields or ())
+    res.quality = quality_report(conn, input_view, info, n_in, sensitive)
     cursor = conn.execute(f"SELECT {select_list} FROM {_qi(input_view)}")
     cols = [d[0] for d in cursor.description]
 
@@ -389,14 +397,15 @@ def write_rows(
 
     rejects: list[tuple] = []
     seen: set[tuple] = set()
-    sensitive = frozenset(collection.sensitive_fields or ())
 
     def reject(raw_row: dict, rule: str, message: str) -> None:
         res.rejected += 1
         res.rejects_by_rule[rule] = res.rejects_by_rule.get(rule, 0) + 1
         # GAP-22 : la quarantaine est lisible par des groupes qui ne lisent pas forcément les champs
-        # sensibles de la cible : jamais de valeur sensible dans `source_row`.
-        safe = {k: v for k, v in raw_row.items() if k not in sensitive}
+        # sensibles de la cible : jamais de valeur sensible dans `source_row`. GAP-27 : ces groupes
+        # peuvent être limités géographiquement, et la quarantaine (sans géométrie, hors RLS
+        # spatiale) ne peut pas découper : la géométrie n'est jamais recopiée.
+        safe = {k: v for k, v in raw_row.items() if k not in sensitive and k != "geometry"}
         rejects.append((json.dumps(safe, default=str, ensure_ascii=False), rule, message))
 
     if mode == "replace":

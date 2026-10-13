@@ -242,13 +242,13 @@ def test_quarantine_50_rows_7_invalid(setup, monkeypatch):
     name = next(c for c in st.extra["quality"]["columns"] if c["name"] == "name")
     assert name["nulls"] == 7 and name["nullRate"] == 0.14
     # le run est « succeeded_with_rejects » (émission outbox F6 hors sujet ici)
-    monkeypatch.setattr(pipelines_repo, "_emit_run_finished", lambda *_: None)
+    monkeypatch.setattr(pipelines_repo, "_emit_run_finished", lambda *_, **__: None)
     run = SimpleNamespace(status="running")
-    fake = SimpleNamespace(get=lambda *_: run, flush=lambda: None)
+    fake = SimpleNamespace(get=lambda *_: run, flush=lambda: None, scalar=lambda *_: "running")
     pipelines_repo.mark_succeeded(fake, run_id="x", node_stats={"w1": st.to_dict()})
     assert run.status == "succeeded_with_rejects"
     run2 = SimpleNamespace(status="running")
-    fake2 = SimpleNamespace(get=lambda *_: run2, flush=lambda: None)
+    fake2 = SimpleNamespace(get=lambda *_: run2, flush=lambda: None, scalar=lambda *_: "running")
     pipelines_repo.mark_succeeded(fake2, run_id="x", node_stats={"w1": {"rowCount": 1}})
     assert run2.status == "succeeded"
 
@@ -356,6 +356,31 @@ def test_rejected_source_row_never_leaks_sensitive_fields(setup, monkeypatch):
     )
     src = s.execute(text('SELECT source_row FROM "k1_target__rejected"')).scalar_one()
     assert "LEAK-VALUE" not in src and "secret" not in src and '"pop"' in src
+
+
+@pytest.mark.postgis
+def test_quality_report_never_profiles_sensitive_fields(setup):
+    """Revue finale vague 4, I2 : le rapport qualité (servi par GET /pipelines/{id}/runs, lecture
+    du pipeline) ne publie ni min/max ni distincts d'un champ sensible de la cible, même quand
+    l'acteur du run le lit en clair."""
+    s = setup[0]
+    s.execute(text("UPDATE collections SET sensitive_fields = '[\"name\"]'::jsonb"))
+    s.commit()
+    st = _run(setup, [("a", "zz-secret", 1), ("b", "aa-secret", 2)], _UPSERT)
+    names = {c["name"] for c in st.extra["quality"]["columns"]}
+    assert "name" not in names and {"code", "pop"} <= names
+    assert "secret" not in json.dumps(st.extra["quality"])
+
+
+@pytest.mark.postgis
+def test_rejected_source_row_carries_no_geometry(setup):
+    """Revue finale vague 4, I3 : la quarantaine est lisible par les groupes editor/manager de la
+    cible, éventuellement limités géographiquement (GAP-27) : jamais de géométrie dans
+    `source_row` (la ligne reste identifiable par ses attributs)."""
+    s = setup[0]
+    _run(setup, [(None, "n", 1)], {**_UPSERT, "onInvalid": "reject"})
+    src = json.loads(s.execute(text('SELECT source_row FROM "k1_target__rejected"')).scalar_one())
+    assert "geometry" not in src and src["pop"] == 1
 
 
 def _group(s, tenant, owner, gid, role, suffix):

@@ -141,3 +141,31 @@ def test_rejects_and_direct_cancels_emit_their_terminal_status(db):  # noqa: F81
             queued.id: "cancelled",
             retrying.id: "cancelled",
         }
+
+
+def test_run_finished_is_emitted_only_on_a_real_status_change(db):  # noqa: F811
+    """Revue finale vague 4 : reclaim -> failed puis le worker re-marque `failed`
+    n'émet pas deux fois ; la fin réelle (`succeeded`) qui corrige un reclaim, si."""
+    tenant_id, user_id = _seed(db)
+    pipeline_id = _pipeline(db, tenant_id, user_id)
+    with db() as s:
+        run = prepo.create_run(s, tenant_id=tenant_id, pipeline_item_id=pipeline_id)
+        run.created_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=5)
+        s.commit()
+        assert prepo.reclaim_stuck_runs(s) == 1
+        s.commit()
+        prepo.mark_failed(s, run_id=run.id, error="boom")
+        prepo.mark_succeeded(s, run_id=run.id, node_stats={})
+        prepo.mark_succeeded(s, run_id=run.id, node_stats={})
+        prepo.mark_cancelled(s, run_id=run.id)
+        prepo.mark_cancelled(s, run_id=run.id)
+        s.commit()
+        got = [
+            e.payload["status"]
+            for e in s.scalars(
+                select(OutboxEvent)
+                .where(OutboxEvent.event_type == "pipeline.run.finished")
+                .order_by(OutboxEvent.created_at)
+            )
+        ]
+        assert got == ["failed", "succeeded", "cancelled"]
