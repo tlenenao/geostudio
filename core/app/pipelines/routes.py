@@ -25,6 +25,7 @@ from app.pipelines.service import (
     default_task_deferrer,
     require_pipeline_access,
     require_pipeline_config,
+    retry_pipeline_run_service,
     revoke_webhook_token_service,
     run_pipeline_service,
     trigger_pipeline_by_webhook_service,
@@ -52,6 +53,11 @@ class RunStatus(BaseModel):
     error: str | None
     nodeStats: dict
     params: dict | None = None
+    attempt: int = 1
+    nextRetryAt: str | None = None
+    resumeOf: str | None = None
+    # Des points de reprise existent encore : « Reprendre » évite de rejouer les nœuds réussis.
+    resumable: bool = False
 
 
 class WebhookTokenCreated(BaseModel):
@@ -99,6 +105,31 @@ def get_pipeline_next_run(
     return NextRunResponse(nextRun=next_tick.isoformat())
 
 
+class RetryRequest(BaseModel):
+    # True : rejoue tout depuis le début (« Rejouer ») ; False : reprend au nœud en échec.
+    fromStart: bool = False
+
+
+# Déclarée AVANT les routes à paramètre de chemin : /pipelines/runs/... ne doit pas
+# être capturée par /pipelines/{item_id}/...
+@router.post("/pipelines/runs/{run_id}/retry", response_model=RunResponse, status_code=202)
+def retry_pipeline_run_route(
+    run_id: str,
+    body: RetryRequest | None = None,
+    session: Session = Depends(get_session, scope="function"),
+    user: User = Depends(get_current_user),
+    defer_task: Callable[[str, str], None] = Depends(get_task_deferrer),
+) -> RunResponse:
+    new_id = retry_pipeline_run_service(
+        session,
+        user=user,
+        run_id=run_id,
+        defer_task=defer_task,
+        from_start=bool(body and body.fromStart),
+    )
+    return RunResponse(runId=new_id)
+
+
 @router.post("/pipelines/{item_id}/run", response_model=RunResponse, status_code=202)
 def run_pipeline_route(
     item_id: str,
@@ -126,6 +157,10 @@ def _run_status(r) -> RunStatus:
         error=r.error,
         nodeStats=r.node_stats,
         params=r.params,
+        attempt=r.attempt,
+        nextRetryAt=r.next_retry_at.isoformat() if r.next_retry_at else None,
+        resumeOf=r.resume_of,
+        resumable=r.status == "failed" and r.resumable,
     )
 
 
@@ -144,7 +179,7 @@ def cancel_pipeline_run_route(
         raise HTTPException(status_code=404, detail="run not found")
     if run.status in ("cancel_requested", "cancelled"):
         return _run_status(run)  # idempotent (REV-275 c) : déjà demandé, pas de nouvel audit
-    if run.status not in ("queued", "running"):
+    if run.status not in ("queued", "running", "retrying"):
         raise HTTPException(status_code=409, detail=f"run is {run.status}, cannot be cancelled")
     if pipelines_repo.request_cancel(session, run) not in ("cancelled", "cancel_requested"):
         # Le run a fini entre la lecture et l'UPDATE conditionnel : rien annulé, pas d'audit.

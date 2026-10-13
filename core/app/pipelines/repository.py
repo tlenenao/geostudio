@@ -19,7 +19,13 @@ _RUNNING_RECLAIM_MINUTES = 60
 
 
 def create_run(
-    session: Session, *, tenant_id: str, pipeline_item_id: str, params: dict | None = None
+    session: Session,
+    *,
+    tenant_id: str,
+    pipeline_item_id: str,
+    params: dict | None = None,
+    resume_of: str | None = None,
+    node_stats: dict | None = None,
 ) -> PipelineRun:
     run = PipelineRun(
         id=uuid.uuid4().hex,
@@ -27,6 +33,8 @@ def create_run(
         pipeline_item_id=pipeline_item_id,
         status="queued",
         params=params or None,
+        resume_of=resume_of,
+        node_stats=node_stats or {},
     )
     session.add(run)
     session.flush()
@@ -38,7 +46,7 @@ class PipelineRunActive(Exception):
     """Un run non périmé (queued/running/cancel_requested) existe déjà (REV-310)."""
 
 
-_ACTIVE_STATUSES = ("queued", "pending", "running", "cancel_requested")
+_ACTIVE_STATUSES = ("queued", "pending", "running", "cancel_requested", "retrying")
 
 
 def _run_anchor():
@@ -47,6 +55,7 @@ def _run_anchor():
     return func.coalesce(
         case(
             (PipelineRun.status.in_(("running", "cancel_requested")), PipelineRun.started_at),
+            (PipelineRun.status == "retrying", PipelineRun.next_retry_at),
             else_=PipelineRun.created_at,
         ),
         PipelineRun.created_at,
@@ -60,6 +69,8 @@ def create_run_unless_active(
     pipeline_item_id: str,
     stale_minutes: int = _RUNNING_RECLAIM_MINUTES,
     params: dict | None = None,
+    resume_of: str | None = None,
+    node_stats: dict | None = None,
 ) -> PipelineRun:
     """REV-310 : crée un run SAUF si un run actif non périmé existe (lève
     PipelineRunActive). Point unique REST / MCP / webhook / cron. Atomique :
@@ -86,7 +97,12 @@ def create_run_unless_active(
     if active is not None:
         raise PipelineRunActive(pipeline_item_id)
     return create_run(
-        session, tenant_id=tenant_id, pipeline_item_id=pipeline_item_id, params=params
+        session,
+        tenant_id=tenant_id,
+        pipeline_item_id=pipeline_item_id,
+        params=params,
+        resume_of=resume_of,
+        node_stats=node_stats,
     )
 
 
@@ -169,8 +185,10 @@ def mark_running(session: Session, *, run_id: str) -> bool:
     repassait `running`)."""
     result = session.execute(
         update(PipelineRun)
-        .where(PipelineRun.id == run_id, PipelineRun.status.in_(("queued", "pending")))
-        .values(status="running", started_at=_now(), finished_at=None, error=None)
+        .where(PipelineRun.id == run_id, PipelineRun.status.in_(("queued", "pending", "retrying")))
+        .values(
+            status="running", started_at=_now(), finished_at=None, error=None, next_retry_at=None
+        )
     )
     session.flush()
     return bool(result.rowcount)  # type: ignore[attr-defined]
@@ -192,7 +210,10 @@ def request_cancel(session: Session, run: PipelineRun) -> str:
         )
         return bool(res.rowcount)  # type: ignore[attr-defined]
 
-    if not _transition("queued", status="cancelled", finished_at=_now()):
+    if not (
+        _transition("queued", status="cancelled", finished_at=_now())
+        or _transition("retrying", status="cancelled", finished_at=_now(), next_retry_at=None)
+    ):
         _transition("running", status="cancel_requested")
     session.flush()
     session.refresh(run)
@@ -234,6 +255,57 @@ def mark_failed(session: Session, *, run_id: str, error: str) -> None:
     session.flush()
 
 
+def mark_retrying(
+    session: Session, *, run_id: str, error: str, delay_seconds: int
+) -> datetime | None:
+    """F5 : `running -> retrying` (UPDATE conditionnel : un run annulé entre-temps
+    n'est pas relancé), attempt+1, échéance posée. Retourne l'échéance, ou None
+    si le run n'était plus `running`."""
+    due = _now() + timedelta(seconds=delay_seconds)
+    result = session.execute(
+        update(PipelineRun)
+        .where(PipelineRun.id == run_id, PipelineRun.status == "running")
+        .values(
+            status="retrying",
+            attempt=PipelineRun.attempt + 1,
+            next_retry_at=due,
+            error=error,
+            finished_at=None,
+        )
+    )
+    session.flush()
+    return due if result.rowcount else None  # type: ignore[attr-defined]
+
+
+def set_resumable(session: Session, *, run_id: str, value: bool) -> None:
+    session.execute(update(PipelineRun).where(PipelineRun.id == run_id).values(resumable=value))
+    session.flush()
+
+
+def requeue_overdue_retries(
+    session: Session, *, grace_seconds: int = 120, now: datetime | None = None
+) -> list[tuple[str, str]]:
+    """Runs `retrying` dont l'échéance est dépassée de plus de `grace_seconds`
+    (defer perdu — piège n°14) : repousse l'échéance (la grâce repart) et
+    retourne (run_id, tenant_id) à re-déférer. `mark_running` conditionnel rend
+    un doublon de défer inoffensif. Cross-tenant, appelée par le balayage cron."""
+    now = now or _now()
+    rows = session.execute(
+        select(PipelineRun.id, PipelineRun.tenant_id).where(
+            PipelineRun.status == "retrying",
+            PipelineRun.next_retry_at < now - timedelta(seconds=grace_seconds),
+        )
+    ).all()
+    if rows:
+        session.execute(
+            update(PipelineRun)
+            .where(PipelineRun.id.in_([r[0] for r in rows]), PipelineRun.status == "retrying")
+            .values(next_retry_at=now)
+        )
+        session.flush()
+    return [(r[0], r[1]) for r in rows]
+
+
 def reclaim_stuck_runs(
     session: Session, *, older_than_minutes: int = _RUNNING_RECLAIM_MINUTES
 ) -> int:
@@ -248,12 +320,13 @@ def reclaim_stuck_runs(
     threshold = _now() - timedelta(minutes=older_than_minutes)
     anchor = case(
         (PipelineRun.status.in_(("running", "cancel_requested")), PipelineRun.started_at),
+        (PipelineRun.status == "retrying", PipelineRun.next_retry_at),
         else_=PipelineRun.created_at,
     )
     result = session.execute(
         update(PipelineRun)
         .where(
-            PipelineRun.status.in_(("queued", "running", "cancel_requested")),
+            PipelineRun.status.in_(("queued", "running", "cancel_requested", "retrying")),
             func.coalesce(anchor, PipelineRun.created_at) < threshold,
         )
         .values(
@@ -338,7 +411,7 @@ def list_due_pipelines(session: Session, *, now: datetime | None = None) -> list
         created_at = latest.created_at
         if created_at.tzinfo is None:
             created_at = created_at.replace(tzinfo=UTC)
-        if latest.status in ("queued", "running", "cancel_requested"):
+        if latest.status in ("queued", "running", "cancel_requested", "retrying"):
             # Ancre de péremption : pour un run "running", l'horloge pertinente
             # est started_at (posé par mark_running), pas created_at (heure de
             # mise en file) — sinon un run resté longtemps en file d'attente

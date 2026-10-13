@@ -114,3 +114,32 @@ def test_reader_state_routes_list_and_reset(monkeypatch):
     assert [e["nodeId"] for e in states] == ["r2"]
     assert client.delete(f"/v1/pipelines/{item_id}/reader-state").status_code == 204
     assert client.get(f"/v1/pipelines/{item_id}/reader-state").json() == []
+
+
+def test_retry_route_404_unknown_409_not_failed_and_202_failed(monkeypatch):
+    from app.pipelines import repository as pipelines_repo
+
+    client = _make_app(monkeypatch, etl_enabled=True)
+    item_id = _seed(client, _PARAMS)
+    deferred = []
+    client.app.dependency_overrides[pipelines_routes.get_task_deferrer] = lambda: (
+        lambda *a: deferred.append(a)
+    )
+    assert client.post("/v1/pipelines/runs/nope/retry").status_code == 404
+    with client.session_factory() as s:
+        run = pipelines_repo.create_run(
+            s, tenant_id=client.tenant.id, pipeline_item_id=item_id, params={"suffix": "a"}
+        )
+        s.commit()
+        run_id = run.id
+    assert client.post(f"/v1/pipelines/runs/{run_id}/retry").status_code == 409  # queued
+    with client.session_factory() as s:
+        pipelines_repo.mark_failed(s, run_id=run_id, error="boom")
+        s.commit()
+    r = client.post(f"/v1/pipelines/runs/{run_id}/retry", json={"fromStart": False})
+    assert r.status_code == 202, r.text
+    runs = {x["id"]: x for x in client.get(f"/v1/pipelines/{item_id}/runs").json()}
+    new = runs[r.json()["runId"]]
+    assert new["params"] == {"suffix": "a"} and new["resumeOf"] == run_id
+    assert deferred == [(r.json()["runId"], client.tenant.id)]
+    assert client.post(f"/v1/pipelines/runs/{run_id}/retry").status_code == 409  # déjà une reprise

@@ -340,12 +340,23 @@ class PipelineParameter(BaseModel):
         return self
 
 
+class PipelineRetryPolicy(BaseModel):
+    """Politique de reprise (ARC-K2/F5) : `max` reprises automatiques après un
+    échec (0 = aucune, mais les points de reprise restent écrits pour une
+    reprise manuelle), délai fixe ou exponentiel (`delaySeconds` * 2^(n-1))."""
+
+    max: int = Field(0, ge=0, le=10)
+    backoff: Literal["fixed", "exponential"] = "exponential"
+    delaySeconds: int = Field(30, ge=1, le=3600)
+
+
 class PipelinePayload(BaseModel):
     nodes: list[PipelineNode] = Field(default_factory=list)
     edges: list[PipelineEdge] = Field(default_factory=list)
     refreshPolicy: PipelineRefreshPolicy | None = None
     notes: list[PipelineCanvasNote] = Field(default_factory=list)
     parameters: list[PipelineParameter] = Field(default_factory=list)
+    retry: PipelineRetryPolicy | None = None
 
     @model_validator(mode="after")
     def _validate_graph(self) -> "PipelinePayload":

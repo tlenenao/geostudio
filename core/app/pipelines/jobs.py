@@ -17,12 +17,13 @@ from app.audit.writer import write_audit
 from app.auth.dependency import is_etl_enabled, is_read_only_mode
 from app.configs import repository as configs_repo
 from app.configs.pipeline_params import apply_params, resolve_params
-from app.configs.schemas import PipelinePayload
+from app.configs.schemas import PipelinePayload, PipelineRetryPolicy
 from app.db import request_scoped_session
 from app.items.models import Item
 from app.jobs import app
 from app.jobs.common import notify_best_effort, resolve_owner_user
 from app.jobs.common import session_factory as _session_factory
+from app.pipelines import checkpoints
 from app.pipelines import repository as pipelines_repo
 from app.pipelines.errors import PipelineCancelledError
 from app.pipelines.reader_state import ReaderState
@@ -108,6 +109,57 @@ def _notify(
         item_title=title,
         error=error,
     )
+
+
+_MAX_RETRY_DELAY_S = 6 * 3600
+
+
+def _flag_resumable(factory, run_id: str, root_id: str | None) -> None:
+    """Échec définitif : signale à l'API (autre conteneur) que des points de
+    reprise existent côté worker, pour proposer « Reprendre »."""
+    if root_id is None:
+        return
+    try:
+        if checkpoints.exists(root_id):
+            with request_scoped_session(factory) as session:
+                pipelines_repo.set_resumable(session, run_id=run_id, value=True)
+    except Exception:
+        logger.exception("pipeline run %s : drapeau resumable non posé", run_id)
+
+
+def _schedule_retry(
+    factory,
+    *,
+    run_id: str,
+    tenant_id: str,
+    policy: PipelineRetryPolicy | None,
+    attempt: int,
+    error: str,
+) -> bool:
+    """F5 : si la politique `retry` le permet, passe le run en `retrying` et
+    programme la reprise. Écriture validée AVANT defer (piège n°14) : un defer
+    perdu est rattrapé par le balayage (`requeue_overdue_retries`)."""
+    if policy is None or attempt > policy.max:
+        return False
+    delay = policy.delaySeconds * (2 ** (attempt - 1) if policy.backoff == "exponential" else 1)
+    delay = min(delay, _MAX_RETRY_DELAY_S)
+    try:
+        with request_scoped_session(factory) as session:
+            due = pipelines_repo.mark_retrying(
+                session, run_id=run_id, error=error, delay_seconds=delay
+            )
+    except Exception:
+        logger.exception("pipeline run %s : passage en reprise impossible", run_id)
+        return False
+    if due is None:  # annulé entre-temps : l'annulation suit son cours
+        return False
+    try:
+        run_pipeline_task.configure(schedule_in={"seconds": delay}).defer(
+            run_id=run_id, tenant_id=tenant_id
+        )
+    except Exception:
+        logger.exception("pipeline run %s : defer de reprise perdu, le balayage reprendra", run_id)
+    return True
 
 
 def _s3_client_from_env():
@@ -220,6 +272,9 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
     # ailleurs, la garantie best-effort porte sur la notification, pas sur
     # le statut du run).
     item_id: str | None = None
+    retry_policy: PipelineRetryPolicy | None = None
+    attempt = 1
+    root_id: str | None = None
 
     try:
         with request_scoped_session(factory) as session:
@@ -231,6 +286,11 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
                 return
             pipeline_item_id = run.pipeline_item_id
             run_params = dict(run.params or {})
+            attempt = run.attempt
+            # Racine des points de reprise : le run lui-même (reprise auto) ou le
+            # run dont celui-ci reprend le travail (reprise manuelle).
+            root_id = run.resume_of or run.id
+            prior_stats = dict(run.node_stats or {}) if (run.resume_of or run.attempt > 1) else None
         # `item_id` n'est affecté qu'APRÈS tracker.mark_running(), pas avant —
         # comme dans le code original où pipelines_repo.mark_running(...)
         # précédait `item_id = run.pipeline_item_id` dans le même bloc `with`.
@@ -253,6 +313,12 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
             # valeur échoue ici avec un message clair.
             payload = apply_params(payload, resolve_params(payload.parameters, run_params))
             user = _acting_user(session, tenant_id=tenant_id, item_id=item_id)
+            retry_policy = payload.retry
+            checkpoint = (
+                checkpoints.Checkpoint(root_id, checkpoints.config_fingerprint(payload))
+                if retry_policy is not None
+                else None
+            )
             reader_state = ReaderState(
                 pipelines_repo.get_reader_states(
                     session, tenant_id=tenant_id, pipeline_item_id=item_id
@@ -275,6 +341,8 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
                 on_progress=_make_progress_callback(factory, run_id=run_id, tenant_id=tenant_id),
                 should_cancel=tracker.is_cancel_requested,
                 reader_state=reader_state,
+                checkpoint=checkpoint,
+                prior_stats=prior_stats,
             )
             # F4 : le curseur n'avance qu'ici, run réussi (jamais sur échec).
             if reader_state.pending:
@@ -284,6 +352,7 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
                     pipeline_item_id=item_id,
                     cursors=reader_state.pending,
                 )
+        checkpoints.discard(root_id)  # run réussi : plus rien à reprendre
         tracker.mark_succeeded({s.nodeId: s.to_dict() for s in stats})
         assert item_id is not None  # affecté ci-dessus, jamais atteint sinon (cf. return/raise)
         _notify(factory, tenant_id=tenant_id, item_id=item_id, status="success")
@@ -292,7 +361,17 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
     # REV-288a : un quota atteint est un refus métier (message destiné à
     # l'utilisateur), même traitement que l'ingestion (ingestion/tasks.py).
     except (PipelineRuntimeError, ValueError, QuotaExceededError) as exc:
+        if isinstance(exc, PipelineRuntimeError) and _schedule_retry(
+            factory,
+            run_id=run_id,
+            tenant_id=tenant_id,
+            policy=retry_policy,
+            attempt=attempt,
+            error=str(exc),
+        ):
+            return
         tracker.mark_failed(str(exc))
+        _flag_resumable(factory, run_id, root_id)
         if item_id is not None:
             _notify(
                 factory,
@@ -305,7 +384,17 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
             logger.info("pipeline run %s : notification ignorée (item inconnu)", run_id)
     except Exception as exc:  # toute erreur inattendue finit "failed", jamais zombie
         logger.exception("pipeline run %s : erreur inattendue", run_id)
+        if _schedule_retry(
+            factory,
+            run_id=run_id,
+            tenant_id=tenant_id,
+            policy=retry_policy,
+            attempt=attempt,
+            error=f"erreur interne : {exc}",
+        ):
+            return
         tracker.mark_failed(f"erreur interne : {exc}")
+        _flag_resumable(factory, run_id, root_id)
         if item_id is not None:
             _notify(
                 factory,
@@ -328,6 +417,16 @@ def run_pipeline_sweep_task(timestamp: int) -> None:
         return
     factory = _session_factory()
     with request_scoped_session(factory) as session:
+        # F5 : reprises dont le defer a été perdu (piège n°14), puis purge des
+        # points de reprise expirés (best-effort, disque local du worker).
+        overdue = pipelines_repo.requeue_overdue_retries(session)
+        session.commit()
+        for overdue_run_id, overdue_tenant_id in overdue:
+            run_pipeline_task.defer(run_id=overdue_run_id, tenant_id=overdue_tenant_id)
+        try:
+            checkpoints.purge_expired()
+        except Exception:
+            logger.exception("purge des points de reprise échouée")
         pipelines_repo.reclaim_stuck_runs(session)
         session.commit()  # sinon le rollback d'un PipelineRunActive annule la reprise
         due = pipelines_repo.list_due_pipelines(session)

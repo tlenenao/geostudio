@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, UniqueConstraint
+import sqlalchemy as sa
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
 
@@ -46,6 +47,16 @@ class PipelineRun(Base):
     # ARC-K2/F3 : valeurs effectives des paramètres de run publiés (défauts
     # résolus) — le run historisé garde ses paramètres. NULL = run antérieur.
     params: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True)
+    # ARC-K2/F5 : numéro d'exécution (1 = première ; incrémenté à chaque reprise
+    # automatique du MÊME run), échéance de la prochaine reprise (statut
+    # `retrying`), et run racine dont les points de reprise sont réutilisés
+    # (reprise manuelle : nouveau run, `resume_of` = racine ; NULL = repart de zéro).
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    resume_of: Mapped[str | None] = mapped_column(String, nullable=True)
+    resumable: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sa.false()
+    )
 
 
 class PipelineWebhookToken(Base):

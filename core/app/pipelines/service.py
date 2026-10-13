@@ -126,6 +126,59 @@ def run_pipeline_service(
     return run.id
 
 
+def retry_pipeline_run_service(
+    session: Session,
+    *,
+    user: User,
+    run_id: str,
+    defer_task: Callable[[str, str], None],
+    from_start: bool = False,
+) -> str:
+    """F5 : relance un run `failed` dans un NOUVEAU run (l'historique garde
+    l'échec). Par défaut REPREND : les nœuds réussis ne sont pas rejoués (points
+    de reprise du run racine) ; `from_start=True` rejoue tout. Mêmes gardes que
+    run_pipeline_service ; `create_run_unless_active` fait office de verrou
+    (une 2e reprise concurrente reçoit 409)."""
+    run = pipelines_repo.get_run(session, tenant_id=user.tenant_id, run_id=run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="run not found")
+    item_id = run.pipeline_item_id
+    require_pipeline_access(session, user=user, item_id=item_id, action="write")
+    config = require_pipeline_config(session, item_id)
+    require_data_manage_if_pipeline_writes_dataset(session, user, config)
+    if run.status != "failed":
+        raise HTTPException(
+            status_code=409, detail=f"run is {run.status}, only a failed run can be retried"
+        )
+    try:
+        new_run = pipelines_repo.create_run_unless_active(
+            session,
+            tenant_id=user.tenant_id,
+            pipeline_item_id=item_id,
+            params=run.params,
+            resume_of=None if from_start else (run.resume_of or run.id),
+            node_stats=None if from_start else dict(run.node_stats or {}),
+        )
+    except pipelines_repo.PipelineRunActive:
+        raise HTTPException(
+            status_code=409,
+            detail="Une exécution de ce pipeline est déjà en cours ou en file d'attente.",
+        ) from None
+    write_audit(
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="pipeline.run.retry",
+        object_type="pipeline_run",
+        object_id=new_run.id,
+        payload={"pipelineItemId": item_id, "retryOf": run.id, "fromStart": from_start},
+    )
+    session.commit()  # avant defer : le worker doit voir la ligne
+    defer_task(new_run.id, user.tenant_id)
+    return new_run.id
+
+
 # --- Déclenchement de pipeline par webhook entrant (GAP-24, SP-53) ---
 
 
