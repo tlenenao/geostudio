@@ -1632,9 +1632,33 @@ export type AppExportJobStatus = {
 };
 
 export type PipelineRunStatus =
-  "queued" | "running" | "succeeded" | "failed" | "cancel_requested" | "cancelled";
+  | "queued"
+  | "running"
+  | "succeeded"
+  | "succeeded_with_rejects"
+  | "failed"
+  | "cancel_requested"
+  | "cancelled";
 
-export type PipelineNodeStat = { nodeId: string; op: string; rowCount: number | null };
+// F1/F2 : `writer.collection` détaille son écriture, ses rejets (quarantaine
+// `<cible>__rejected`) et un rapport qualité de l'entrée ; les autres ops n'ont que rowCount.
+export type PipelineNodeQuality = {
+  rowCount: number;
+  columns: { name: string; nonNull: number; nulls: number; nullRate: number }[];
+};
+export type PipelineNodeStat = {
+  nodeId: string;
+  op: string;
+  rowCount: number | null;
+  inserted?: number;
+  updated?: number;
+  deleted?: number;
+  unchanged?: number;
+  rejected?: number;
+  rejectedCollectionId?: string | null;
+  rejectsByRule?: Record<string, number>;
+  quality?: PipelineNodeQuality;
+};
 
 export type PipelineRun = {
   id: string;

@@ -205,7 +205,7 @@ export function VisualQueryWizardPage({
           if (cancelled) return;
           const latest = runs[0];
           if (latest && latest.status !== "queued" && latest.status !== "running") {
-            if (latest.status === "succeeded") {
+            if (latest.status === "succeeded" || latest.status === "succeeded_with_rejects") {
               void navigate(`/datasets/${createdDatasetPk}/edit`);
               return;
             }

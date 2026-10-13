@@ -6,6 +6,7 @@ import type { PipelineRun } from "../../api/types";
 import { t } from "../../i18n";
 import { jobStatusLabel } from "../../lib/jobStatusLabel";
 import { Button } from "../../ui/kit/Button";
+import { RunNodeWriteReport } from "./RunNodeWriteReport";
 import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
 import { formatDateTime } from "../../lib/format";
 import "../../i18n/domains/automation";
@@ -98,6 +99,7 @@ function RunRow({
           {nodeEntries.map((stat) => (
             <li key={stat.nodeId}>
               {stat.op} : {stat.rowCount ?? "—"}
+              <RunNodeWriteReport stat={stat} />
             </li>
           ))}
         </ul>
