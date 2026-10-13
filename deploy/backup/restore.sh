@@ -51,6 +51,7 @@ for bucket in "${S3_THUMBNAILS_BUCKET:-geostudio-thumbnails}" \
               "${S3_CDC_BUCKET:-geostudio-cdc}" \
               "${S3_TILESET3D_BUCKET:-geostudio-tileset3d}" \
               "${S3_TERRAIN3D_BUCKET:-geostudio-terrain3d}" \
+              "${S3_RASTER_BUCKET:-geostudio-raster}" \
               "${S3_MAPICONS_BUCKET:-geostudio-mapicons}" \
               "${S3_ATTACHMENTS_BUCKET:-geostudio-attachments}"; do
   mc mb --ignore-existing "local/${bucket}"
@@ -97,6 +98,8 @@ check_refs "${S3_TILESET3D_BUCKET:-geostudio-tileset3d}" \
   "SELECT source_key FROM tileset3d_jobs WHERE status = 'done' AND item_id IN (SELECT id FROM items)"
 check_refs "${S3_TERRAIN3D_BUCKET:-geostudio-terrain3d}" \
   "SELECT converted_key FROM terrain3d_jobs WHERE status = 'done' AND converted_key IS NOT NULL AND item_id IN (SELECT id FROM items)"
+check_refs "${S3_RASTER_BUCKET:-geostudio-raster}" \
+  "SELECT source_key FROM raster_assets WHERE item_id IN (SELECT id FROM items)"
 if [ "$MISSING_TOTAL" -gt 0 ]; then
   echo "[restore] ${TS} — ÉCHEC : ${MISSING_TOTAL} objet(s) référencé(s) manquant(s) (base et buckets incohérents)." >&2
   exit 1

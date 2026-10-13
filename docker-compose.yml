@@ -194,13 +194,15 @@ services:
       # L'image (base tiangolo/uvicorn-gunicorn) écoute par défaut sur le
       # port 80 tant qu'aucun `PORT` n'est fourni (`gunicorn_conf.py` :
       # `port = os.getenv("PORT", "80")`, confirmé en conteneur réel). Trois
-      # éléments supposent pourtant que titiler écoute sur 8000 : le mapping
-      # `ports:` ci-dessous, `TITILER_URL: http://titiler:8000` lu par `core`
+      # éléments supposent pourtant que titiler écoute sur 8000 : le port Traefik
+      # ci-dessous, `TITILER_URL: http://titiler:8000` lu par `core`
       # (`core/app/terrain3d/routes.py`) pour le proxy COG terrain3d, et la
       # sonde ci-dessous — d'où ce `PORT` explicite.
       PORT: "8000"
-    ports:
-      - "127.0.0.1:8000:8000"
+    # ARC-33 (ADR 0024) : TiTiler n'est JAMAIS publié sur l'hôte ni exposé au
+    # navigateur — réseau interne (gis-net) seulement. Les tuiles de rasters et de
+    # terrain passent par le cœur (proxy sous can()), l'admin par la passerelle
+    # Traefik /admin/titiler (admin-auth, SP-32).
     networks: [gis-net]
     # Sonde vérifiée à l'exécution (SP-21) : image `titiler:0.18.4` a curl,
     # et `/healthz` répond `{"ping":"pong!"}` sur le port 8000 une fois
@@ -372,6 +374,9 @@ services:
       # n'appartiennent qu'à `worker` (cf. ce service plus bas).
       CORE_TILESET3D_MAX_PROXY_READ_BYTES: ${CORE_TILESET3D_MAX_PROXY_READ_BYTES:-134217728}
       CORE_TERRAIN3D_ENABLED: ${CORE_TERRAIN3D_ENABLED:-false}
+      # ARC-33 (ADR 0024) : rasters COG + proxy de tuiles TiTiler + zonal-stats.
+      CORE_RASTER_ENABLED: ${CORE_RASTER_ENABLED:-false}
+      S3_RASTER_BUCKET: geostudio-raster
       CORE_ADMIN_TOOLS_ENABLED: ${CORE_ADMIN_TOOLS_ENABLED:-false}
       # Secret HMAC du gate /admin/* (Martin/Titiler/Grafana) — signe le
       # jeton de lancement (60s) et le cookie de session (30 min) qu'il
@@ -522,7 +527,7 @@ services:
     # export-worker (j05b-006, test_sh_c_commands_have_no_orphan_option_line).
     command: >
       sh -c "python -m scripts.ensure_procrastinate_schema &&
-             python -m procrastinate --app app.jobs.app worker -c ${CORE_WORKER_CONCURRENCY:-4} -q ingestion,search,cdc,etl,tileset3d,terrain3d,appexport,harvest,dataexport"
+             python -m procrastinate --app app.jobs.app worker -c ${CORE_WORKER_CONCURRENCY:-4} -q ingestion,search,cdc,etl,tileset3d,terrain3d,raster,appexport,harvest,dataexport"
     environment:
       DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
       S3_ENDPOINT_URL: http://minio:9000
@@ -629,6 +634,10 @@ services:
       # s'exécutent dans ce process (`worker`).
       CORE_TERRAIN3D_MAX_UPLOAD_BYTES: ${CORE_TERRAIN3D_MAX_UPLOAD_BYTES:-2147483648}
       CORE_TERRAIN3D_CONVERSION_TIMEOUT_SECONDS: ${CORE_TERRAIN3D_CONVERSION_TIMEOUT_SECONDS:-900}
+      # Ingestion raster (ingest_raster_task, app/raster/jobs.py) — process `worker`.
+      S3_RASTER_BUCKET: geostudio-raster
+      CORE_RASTER_MAX_UPLOAD_BYTES: ${CORE_RASTER_MAX_UPLOAD_BYTES:-2147483648}
+      CORE_RASTER_CONVERSION_TIMEOUT_SECONDS: ${CORE_RASTER_CONVERSION_TIMEOUT_SECONDS:-900}
       CORE_BASE_URL: ${CORE_BASE_URL:-http://localhost:8200}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_SERVICE_NAME: geostudio-worker
