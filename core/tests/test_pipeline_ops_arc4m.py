@@ -261,6 +261,12 @@ class _Resp:
     def raise_for_status(self):
         pass
 
+    def iter_content(self, chunk_size):
+        yield self.content
+
+    def close(self):
+        pass
+
 
 def _read_wfs(c, params):
     from app.pipelines.ops import wfs
@@ -322,6 +328,105 @@ def test_sql_executor_allows_cte_but_not_qualified_tables(conn):
     assert _ids(conn) == [9, 10]
     with pytest.raises(SqlSandboxError):
         _run(conn, "transform.sqlExecutor", {"sql": "SELECT * FROM main.src"}, "o2")
+
+
+def test_sql_executor_cte_cannot_shadow_another_node_view(conn):
+    # Régression : `WITH n1 AS (SELECT * FROM n1) ...` relisait la vue du nœud n1.
+    conn.execute("CREATE TEMP VIEW node_other AS SELECT 123 AS secret")
+    with pytest.raises(SqlSandboxError):
+        _run(
+            conn,
+            "transform.sqlExecutor",
+            {"sql": "WITH node_other AS (SELECT * FROM node_other) SELECT * FROM node_other"},
+        )
+    with pytest.raises(SqlSandboxError):  # casse différente
+        _run(
+            conn,
+            "transform.sqlExecutor",
+            {"sql": 'WITH "Node_Other" AS (SELECT * FROM node_other) SELECT * FROM "Node_Other"'},
+        )
+
+
+def test_sql_executor_recursive_cte_times_out(conn, monkeypatch):
+    import time
+
+    from app.pipelines.ops import database
+
+    monkeypatch.setattr(database, "_TIMEOUT_S", 1.0)
+    t0 = time.monotonic()
+    with pytest.raises(PipelineRuntimeError, match="time limit"):
+        _run(
+            conn,
+            "transform.sqlExecutor",
+            {
+                "sql": "WITH RECURSIVE r(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM r) "
+                "SELECT count(*) FROM r"
+            },
+        )
+    assert time.monotonic() - t0 < 10
+    assert conn.execute("SELECT count(*) FROM src").fetchone()[0] == 10  # conn réutilisable
+
+
+def test_wfs_reader_aborts_oversized_stream(monkeypatch):
+    from app.pipelines.ops import wfs
+
+    monkeypatch.setattr(wfs, "MAX_RESPONSE_BYTES", 1000)
+    read = []
+
+    class Big:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            for _ in range(1000):  # 1000 x 400 o : le plafond saute au 3e bloc
+                read.append(1)
+                yield b"x" * 400
+
+        def close(self):
+            pass
+
+    class S:
+        def get(self, url, params=None, **kw):
+            assert kw.get("stream") is True
+            return Big()
+
+    monkeypatch.setattr(wfs, "build_guarded_session", lambda: S())
+    c = duckdb.connect(":memory:")
+    c.execute("INSTALL spatial; LOAD spatial;")
+    with pytest.raises(PipelineRuntimeError, match="too large"):
+        _read_wfs(c, {"url": "https://wfs.example.org/ows", "typeName": "x"})
+    assert len(read) <= 4  # abandon au dépassement, pas de lecture complète
+
+
+def test_wfs_reader_global_deadline(monkeypatch):
+    from app.pipelines.ops import wfs
+
+    monkeypatch.setattr(wfs, "DEADLINE_S", 0.0)
+
+    class Slow:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            yield b"x"
+            yield b"x"
+
+        def close(self):
+            pass
+
+    class S:
+        def get(self, url, params=None, **kw):
+            return Slow()
+
+    monkeypatch.setattr(wfs, "build_guarded_session", lambda: S())
+    c = duckdb.connect(":memory:")
+    c.execute("INSTALL spatial; LOAD spatial;")
+    with pytest.raises(PipelineRuntimeError, match="time limit"):
+        _read_wfs(c, {"url": "https://wfs.example.org/ows", "typeName": "x"})
 
 
 def test_wfs_reader_registered_in_readers():

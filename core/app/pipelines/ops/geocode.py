@@ -38,6 +38,7 @@ class TransformGeocodeParams(BaseModel):
 
 
 def _output_srid(params: dict, *, op: str, input_srid: int, join_srid: int | None = None) -> int:
+    # Les coordonnées viennent du géocodeur (WGS84), quel que soit le CRS de l'entrée.
     return 4326
 
 

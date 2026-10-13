@@ -12,6 +12,7 @@ besoin réel. Axe des coordonnées : on demande `srsName=EPSG:<srid>` ; certains
 renvoient lat/lon pour l'EPSG:4326 — vérifier l'aperçu sur un service inconnu."""
 
 import json
+import time
 from typing import Literal
 
 import pandas as pd
@@ -25,6 +26,9 @@ from app.pipelines.errors import PipelineRuntimeError
 from app.sql_ident import quote_ident_duckdb as _qi
 
 MAX_RESPONSE_BYTES = 100 * 1024 * 1024
+# Budget global de téléchargement : le délai de lecture seul ne borne pas un goutte-à-goutte.
+DEADLINE_S = 120.0
+_CHUNK = 64 * 1024
 
 
 class ReaderWfsParams(BaseModel):
@@ -36,6 +40,35 @@ class ReaderWfsParams(BaseModel):
     version: Literal["1.1.0", "2.0.0"] = "2.0.0"
     maxFeatures: int = Field(10_000, ge=1, le=100_000)
     srid: int = Field(4326, ge=1)
+
+
+def _download(url: str, query: dict) -> bytes:
+    """GET en flux : lecture par blocs, abandon au dépassement de taille ou de temps."""
+    deadline = time.monotonic() + DEADLINE_S
+    response = None
+    try:
+        response = build_guarded_session().get(url, params=query, stream=True)
+        response.raise_for_status()
+        chunks: list[bytes] = []
+        total = 0
+        for chunk in response.iter_content(_CHUNK):
+            total += len(chunk)
+            if total > MAX_RESPONSE_BYTES:
+                raise PipelineRuntimeError("reader.wfs: response too large")
+            if time.monotonic() > deadline:
+                raise PipelineRuntimeError("reader.wfs: download exceeded the time limit")
+            chunks.append(chunk)
+        return b"".join(chunks)
+    except EgressBlockedError as exc:
+        raise PipelineRuntimeError(f"reader.wfs: egress blocked: {exc}") from exc
+    except requests.RequestException as exc:
+        cause = exc.__cause__ or exc.__context__
+        if isinstance(cause, EgressBlockedError):
+            raise PipelineRuntimeError(f"reader.wfs: egress blocked: {cause}") from exc
+        raise PipelineRuntimeError(f"reader.wfs: request failed: {exc}") from exc
+    finally:
+        if response is not None:
+            response.close()
 
 
 def read_wfs(
@@ -63,22 +96,9 @@ def read_wfs(
         query.update(typeNames=p.typeName, count=p.maxFeatures)
     else:
         query.update(typeName=p.typeName, maxFeatures=p.maxFeatures)
+    body = _download(p.url, query)
     try:
-        response = build_guarded_session().get(p.url, params=query)
-        response.raise_for_status()
-    except EgressBlockedError as exc:
-        raise PipelineRuntimeError(f"reader.wfs: egress blocked: {exc}") from exc
-    except requests.RequestException as exc:
-        cause = exc.__cause__ or exc.__context__
-        if isinstance(cause, EgressBlockedError):
-            raise PipelineRuntimeError(f"reader.wfs: egress blocked: {cause}") from exc
-        raise PipelineRuntimeError(f"reader.wfs: request failed: {exc}") from exc
-    # ponytail: réponse lue en entier (plafond d'entités + cette borne) ; lecture en flux si
-    # des couches de plusieurs dizaines de Mo deviennent courantes.
-    if len(response.content) > MAX_RESPONSE_BYTES:
-        raise PipelineRuntimeError("reader.wfs: response too large")
-    try:
-        features = json.loads(response.content)["features"]
+        features = json.loads(body)["features"]
     except (ValueError, KeyError, TypeError) as exc:
         raise PipelineRuntimeError(
             "reader.wfs: response is not a GeoJSON FeatureCollection "
