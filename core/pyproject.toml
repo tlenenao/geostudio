@@ -345,6 +345,9 @@ layers = [
     # uniquement par le worker (tâche périodique) — jamais par app.mcp.
     "app.security",
     "app.harvest",
+    # app.webhooks (ARC4-F6, ADR 0027) : livraison de l'outbox + déclencheurs fichier S3 ;
+    # réutilise la garde d'egress d'app.alerts et lance des runs via app.pipelines.service.
+    "app.webhooks",
     "app.pipelines",
     "app.reports",
     "app.alerts",
@@ -407,6 +410,9 @@ layers = [
     "app.apikeys",
     "app.audit",
     "app.users",
+    # app.outbox (ARC4-F6) : modèles + `emit` transactionnel, couche BASSE appelée par
+    # items/pipelines/public_submit ; la livraison est dans app.webhooks (couche haute).
+    "app.outbox",
     "app.tenants",
     "app.search",
     "app.analytics",
@@ -535,4 +541,5 @@ ignore_imports = [
     "app.db -> app.history.models",
     "app.db -> app.relations.models",
     "app.db -> app.public_submit.models",
+    "app.db -> app.outbox.models",
 ]

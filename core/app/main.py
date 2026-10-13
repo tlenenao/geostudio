@@ -86,6 +86,7 @@ from app.styles import routes as styles_routes
 from app.terrain3d import routes as terrain3d_routes
 from app.tileset3d import routes as tileset3d_routes
 from app.usage import routes as usage_routes
+from app.webhooks import routes as webhooks_routes
 from app.xlsform import routes as xlsform_routes
 
 MAX_CONFIG_BODY_BYTES = 5 * 1024 * 1024
@@ -425,6 +426,7 @@ def create_app() -> FastAPI:
     v1_router.include_router(dcat_routes.router)
     v1_router.include_router(harvest_routes.router)
     v1_router.include_router(alerts_routes.router)
+    v1_router.include_router(webhooks_routes.router)  # ARC4-F6
     v1_router.include_router(reports_routes.router)
     v1_router.include_router(notifications_routes.router)
     v1_router.include_router(public_submit_routes.router)

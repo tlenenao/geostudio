@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, aliased
 
 from app.configs import repository as configs_repo
 from app.configs.models import Config, ConfigRevision
+from app.outbox.emit import emit
 from app.pipelines.models import PipelineRun, PipelineWebhookToken
 
 
@@ -207,6 +208,16 @@ def mark_cancelled(session: Session, *, run_id: str) -> None:
     session.flush()
 
 
+def _emit_run_finished(session: Session, run: PipelineRun) -> None:
+    # F6 (ADR 0027) : dans la transaction qui clôt le run.
+    emit(
+        session,
+        tenant_id=run.tenant_id,
+        event_type="pipeline.run.finished",
+        payload={"pipelineItemId": run.pipeline_item_id, "runId": run.id, "status": run.status},
+    )
+
+
 def mark_succeeded(session: Session, *, run_id: str, node_stats: dict) -> None:
     run = session.get(PipelineRun, run_id)
     if run is None:
@@ -216,6 +227,7 @@ def mark_succeeded(session: Session, *, run_id: str, node_stats: dict) -> None:
     run.finished_at = _now()
     run.node_stats = node_stats
     session.flush()
+    _emit_run_finished(session, run)
 
 
 def mark_failed(session: Session, *, run_id: str, error: str) -> None:
@@ -226,6 +238,7 @@ def mark_failed(session: Session, *, run_id: str, error: str) -> None:
     run.finished_at = _now()
     run.error = error
     session.flush()
+    _emit_run_finished(session, run)
 
 
 def reclaim_stuck_runs(

@@ -47,6 +47,7 @@ from app.ingestion.routes import get_uploads_bucket
 from app.items.models import Item
 from app.mapicons.models import MapIcon
 from app.notifications.models import Notification, NotificationPreference
+from app.outbox.models import FileTrigger, FileTriggerSeen, OutboundWebhook, OutboxEvent
 from app.pipelines.models import PipelineRun
 from app.public_submit.models import Submission, SubmissionToken
 from app.quality.models import QualityReport
@@ -130,6 +131,11 @@ def purge_tenant(
     counts["config_revisions"] = _delete_all(session, ConfigRevision, tenant_id)
     counts["entity_history"] = _delete_all(session, EntityHistory, tenant_id)  # ARC-15
     counts["collection_relations"] = _delete_all(session, CollectionRelation, tenant_id)  # ARC-21
+    # ARC4-F6 : outbox, déclencheurs fichier (+ clés d'idempotence), destinations (ordre FK)
+    counts["outbox"] = _delete_all(session, OutboxEvent, tenant_id)
+    counts["file_trigger_seen"] = _delete_all(session, FileTriggerSeen, tenant_id)
+    counts["file_triggers"] = _delete_all(session, FileTrigger, tenant_id)
+    counts["outbound_webhooks"] = _delete_all(session, OutboundWebhook, tenant_id)
     counts["alert_evaluations"] = _delete_all(session, AlertEvaluation, tenant_id)
     # result_key capturé AVANT suppression des lignes : ExportJob/
     # AppExportJob vivent dans 2 buckets non tenant-préfixés (renders/

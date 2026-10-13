@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.audit.writer import write_audit
 from app.collections.models import Collection
 from app.notifications import repository as notifications_repo
+from app.outbox.emit import emit
 from app.public_submit.models import Submission, SubmissionToken
 from app.sharing.models import CollectionShare, GroupMember
 
@@ -181,6 +182,12 @@ def create_submission(
     )
     session.add(sub)
     session.flush()
+    emit(  # F6 : identifiants seulement, jamais le contenu de la soumission (ADR 0017/0027)
+        session,
+        tenant_id=token.tenant_id,
+        event_type="submission.pending",
+        payload={"submissionId": sub.id, "collectionId": token.collection_id},
+    )
     write_audit(
         session,
         tenant_id=token.tenant_id,
