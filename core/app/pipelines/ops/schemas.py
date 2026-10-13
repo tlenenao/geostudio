@@ -52,14 +52,49 @@ class TransformJoinParams(BaseModel):
 
 class WriterCollectionParams(BaseModel):
     collectionId: str = Field(..., json_schema_extra={"format": "collection-id"})
-    mode: Literal["append", "replace"] = Field(
+    mode: Literal["append", "insert", "replace", "upsert", "update", "delete"] = Field(
         default="append",
         description=(
             '"replace" supprime TOUTES les données existantes de la '
             "collection cible avant d'écrire — irréversible, à réserver à "
-            "une collection dédiée à ce pipeline."
+            'une collection dédiée à ce pipeline. "insert" = "append". "upsert"/"update"/'
+            '"delete" rapprochent les lignes de la cible par `keyColumns` ; "delete" ne '
+            "supprime que les clés fournies (jamais de vidage implicite)."
         ),
     )
+    keyColumns: list[str] = Field(
+        default_factory=list,
+        max_length=8,
+        description="Colonnes-clés métier de la cible (obligatoires pour upsert/update/delete).",
+    )
+    statusColumn: str | None = Field(
+        default=None,
+        description=(
+            "Colonne produite par transform.detectChanges (inserted/updated/deleted/unchanged) : "
+            "upsert écrit inserted/updated et ignore unchanged ; update n'applique que updated ; "
+            "delete ne retient que deleted."
+        ),
+    )
+    onInvalid: Literal["fail", "reject"] = Field(
+        default="fail",
+        description=(
+            '"reject" écarte les lignes invalides vers la collection de quarantaine '
+            "`<cible>__rejected` au lieu de faire échouer le run."
+        ),
+    )
+    rejectWhenFalse: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Colonnes booléennes (ex. résultats de transform.validateAttributes) : une ligne "
+            "à `false` est rejetée (règle = nom de la colonne). Jamais écrites dans la cible."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _keys_for_matching_modes(self) -> "WriterCollectionParams":
+        if self.mode in ("upsert", "update", "delete") and not self.keyColumns:
+            raise ValueError(f"writer.collection mode '{self.mode}' requires keyColumns")
+        return self
 
 
 class WriterExportParams(BaseModel):
