@@ -31,6 +31,7 @@ from app.pipelines.ops import database as _database
 from app.pipelines.ops import execute as _execute
 from app.pipelines.ops import filtering as _filtering
 from app.pipelines.ops import geocode as _geocode
+from app.pipelines.ops import routing as _routing
 from app.pipelines.ops import wfs as _wfs
 from app.pipelines.ops.schemas import (
     ReaderCollectionParams,
@@ -635,6 +636,27 @@ OPERATIONS: dict[str, OperationContract] = {
         execute=_geocode.execute_geocode,
         needs_runtime_context=True,
         output_srid=_geocode._output_srid,
+    ),
+    # Voie P (ARC-34, ADR 0025) : routage Valhalla, params dans ops/routing.py (fichier neuf).
+    "transform.isochrone": OperationContract(
+        op="transform.isochrone",
+        kind="transform",
+        params_schema=_routing.TransformIsochroneParams,
+        engine="python",
+        engine_license="MIT (Valhalla, service externe) ; données OSM (ODbL) de l'opérateur",
+        execute=_routing.execute_isochrone,
+        needs_runtime_context=True,
+        output_srid=_routing._output_srid,
+    ),
+    "transform.route": OperationContract(
+        op="transform.route",
+        kind="transform",
+        params_schema=_routing.TransformRouteParams,
+        engine="python",
+        engine_license="MIT (Valhalla, service externe) ; données OSM (ODbL) de l'opérateur",
+        execute=_routing.execute_route,
+        needs_runtime_context=True,
+        output_srid=_routing._output_srid,
     ),
     "reader.wfs": OperationContract(
         op="reader.wfs",
