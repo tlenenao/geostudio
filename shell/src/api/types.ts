@@ -18,6 +18,24 @@ export type ResourceType =
 
 export type CreateKind = "app" | "dashboard" | "site";
 
+/** Cible d'une vue d'impact (ARC4-F15). */
+export type ImpactTarget = { type: "item" | "collection"; id: string };
+export type ImpactDependent = {
+  type: "item" | "collection";
+  id: string;
+  title: string;
+  resourceType: string;
+  /** 1 = dépendant direct, >1 = transitif. */
+  depth: number;
+  direct: boolean;
+};
+export type Impact = {
+  target: { type: "item" | "collection"; id: string; title: string; resourceType: string };
+  dependents: ImpactDependent[];
+  /** Dépendants que l'utilisateur ne peut pas lire : comptés, jamais nommés. */
+  hiddenCount: number;
+};
+
 export type Item = {
   pk: string;
   resourceType: ResourceType;
@@ -136,7 +154,8 @@ export type NotificationSummary = {
     | "tileset3d"
     | "terrain3d"
     | "data_export"
-    | "submission";
+    | "submission"
+    | "webhook_disabled";
   status: "success" | "failure";
   itemId: string | null;
   itemResourceType: ResourceType | null;
@@ -838,6 +857,8 @@ export interface ItemClient {
   createEmptyCollection(input: CreateEmptyCollectionInput): Promise<{ id: string }>;
   updateCollection(id: string, patch: CollectionPatchInput): Promise<CollectionAdmin>;
   deleteCollection(id: string): Promise<void>;
+  /** ARC4-F15 : dépendants (visibles) d'un item/d'une collection + compte des masqués. */
+  getImpact(target: ImpactTarget): Promise<Impact>;
   listHarvestSources(): Promise<HarvestSource[]>;
   createHarvestSource(input: HarvestSourceCreateInput): Promise<HarvestSource>;
   updateHarvestSource(id: string, patch: HarvestSourcePatchInput): Promise<HarvestSource>;

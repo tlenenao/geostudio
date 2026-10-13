@@ -19,6 +19,16 @@ export const misc = {
   "actions.saveFailed": "Échec de l'enregistrement.",
   "actions.uploadFailed": "Échec de l'envoi.",
   "actions.deleteFailed": "Échec de la suppression.",
+
+  // Vue d'impact avant suppression (ARC4-F15)
+  "impact.loading": "Analyse des dépendances…",
+  "impact.failed": "Dépendances non vérifiées : la vue d'impact est indisponible.",
+  "impact.none": "Aucun autre objet ne dépend de celui-ci.",
+  "impact.headingOne": "{n} objet dépend de celui-ci et sera affecté :",
+  "impact.headingMany": "{n} objets dépendent de celui-ci et seront affectés :",
+  "impact.indirect": "indirect",
+  "impact.hiddenOne": "+ {n} autre objet que vous n'avez pas le droit de voir.",
+  "impact.hiddenMany": "+ {n} autres objets que vous n'avez pas le droit de voir.",
   "actions.publishFailed": "Échec de la publication.",
 
   // Titres de document par vue (WCAG 2.4.2)

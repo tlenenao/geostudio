@@ -34,6 +34,7 @@ const KIND_LABEL_KEYS: Record<NotificationSummary["kind"], MessageKey> = {
   terrain3d: "notifications.kindTerrain3d",
   data_export: "notifications.kindDataExport",
   submission: "notifications.kindSubmission",
+  webhook_disabled: "notifications.kindWebhookDisabled",
 };
 
 const PREFERENCE_LABEL_KEYS: Record<NotificationPreferenceValue, MessageKey> = {

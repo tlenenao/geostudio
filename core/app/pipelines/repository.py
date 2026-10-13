@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, aliased
 
 from app.configs import repository as configs_repo
 from app.configs.models import Config, ConfigRevision
+from app.outbox.emit import emit
 from app.pipelines.models import PipelineRun, PipelineWebhookToken
 
 
@@ -205,6 +206,17 @@ def mark_cancelled(session: Session, *, run_id: str) -> None:
     run.status = "cancelled"
     run.finished_at = _now()
     session.flush()
+    _emit_run_finished(session, run)
+
+
+def _emit_run_finished(session: Session, run: PipelineRun) -> None:
+    # F6 (ADR 0027) : dans la transaction qui clôt le run.
+    emit(
+        session,
+        tenant_id=run.tenant_id,
+        event_type="pipeline.run.finished",
+        payload={"pipelineItemId": run.pipeline_item_id, "runId": run.id, "status": run.status},
+    )
 
 
 def mark_succeeded(session: Session, *, run_id: str, node_stats: dict) -> None:
@@ -216,6 +228,7 @@ def mark_succeeded(session: Session, *, run_id: str, node_stats: dict) -> None:
     run.finished_at = _now()
     run.node_stats = node_stats
     session.flush()
+    _emit_run_finished(session, run)
 
 
 def mark_failed(session: Session, *, run_id: str, error: str) -> None:
@@ -226,6 +239,7 @@ def mark_failed(session: Session, *, run_id: str, error: str) -> None:
     run.finished_at = _now()
     run.error = error
     session.flush()
+    _emit_run_finished(session, run)
 
 
 def reclaim_stuck_runs(
@@ -244,19 +258,23 @@ def reclaim_stuck_runs(
         (PipelineRun.status.in_(("running", "cancel_requested")), PipelineRun.started_at),
         else_=PipelineRun.created_at,
     )
-    result = session.execute(
-        update(PipelineRun)
+    runs = session.scalars(
+        select(PipelineRun)
         .where(
             PipelineRun.status.in_(("queued", "running", "cancel_requested")),
             func.coalesce(anchor, PipelineRun.created_at) < threshold,
         )
-        .values(
-            status="failed",
-            finished_at=_now(),
-            error="run périmé : jamais terminé, clos par le balayage de planification",
-        )
-    )
-    return int(result.rowcount or 0)  # type: ignore[attr-defined]
+        # verrou de ligne : un run qui se termine pendant le balayage n'est pas écrasé
+        # (skip_locked : sans effet sous sqlite, effectif sous Postgres)
+        .with_for_update(skip_locked=True)
+    ).all()
+    for run in runs:
+        run.status = "failed"
+        run.finished_at = _now()
+        run.error = "run périmé : jamais terminé, clos par le balayage de planification"
+        session.flush()
+        _emit_run_finished(session, run)  # F6 : une fois par run touché, même transaction
+    return len(runs)
 
 
 def append_node_stat(

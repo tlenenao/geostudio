@@ -210,6 +210,9 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async updateCollection(..._args: unknown[]) {
       return unsupported();
     },
+    async getImpact(..._args: unknown[]) {
+      return unsupported();
+    },
     async deleteCollection(..._args: unknown[]) {
       return unsupported();
     },
