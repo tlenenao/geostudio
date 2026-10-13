@@ -27,6 +27,7 @@ import { createSecretsMethods } from "./domains/secrets";
 import { createTiles3dMethods } from "./domains/tiles3d";
 import { createUsageMethods } from "./domains/usage";
 import { createGeocodingMethods } from "./domains/geocoding";
+import { createAnalysisMethods } from "./domains/analysis";
 
 export { FeatureValidationError, SqlQueryError, toFrontLayer, type RawMapLayer };
 
@@ -57,6 +58,7 @@ export function createItemClient(opts: {
     ...createTiles3dMethods(base),
     ...createUsageMethods(base),
     ...createGeocodingMethods(base),
+    ...createAnalysisMethods(base),
     ...createQuotaUsageMethods(base),
     ...createSecretsMethods(base),
     getAuthToken: base.getToken,

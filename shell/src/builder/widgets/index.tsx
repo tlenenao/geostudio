@@ -23,6 +23,7 @@ import { registerDrawerWidget } from "./drawer";
 import { registerVariableInputWidget } from "./variableInput";
 import { registerTimePlayerWidget } from "./timePlayer";
 import { registerAddressSearchWidget } from "./addressSearch";
+import { registerAnalysisWidget } from "./analysis";
 import { t } from "../../i18n";
 import "../../i18n/domains/widgets";
 
@@ -212,4 +213,5 @@ export function registerBuiltinWidgets(): void {
   registerVariableInputWidget();
   registerTimePlayerWidget();
   registerAddressSearchWidget();
+  registerAnalysisWidget();
 }

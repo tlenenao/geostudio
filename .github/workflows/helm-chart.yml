@@ -1,0 +1,80 @@
+name: Helm chart
+
+# ARC-29. Deux jobs : (1) lint + rendu + garde-fou pytest (rapide, bloquant) ; (2) `helm install` sur un
+# cluster kind jetable puis fumée HTTP. helm et kind sont préinstallés sur ubuntu-latest (pas d'action tierce).
+
+on:
+  pull_request:
+    paths:
+      - "deploy/helm/**"
+      - "core/tests/test_helm_chart.py"
+      - ".github/workflows/helm-chart.yml"
+  push:
+    branches: [dev, main]
+    paths:
+      - "deploy/helm/**"
+      - "core/tests/test_helm_chart.py"
+      - ".github/workflows/helm-chart.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: helm lint (toutes les options activées)
+        run: |
+          helm lint deploy/helm/geostudio \
+            --set secrets.existingSecret=s --set exportWorker.enabled=true --set observability.enabled=true \
+            --set ingress.enabled=true --set ingress.host=app.example --set ingress.apiHost=api.example
+      - name: helm template (défauts et toutes options)
+        run: |
+          helm template rel deploy/helm/geostudio --set secrets.existingSecret=s > /dev/null
+          helm template rel deploy/helm/geostudio --set secrets.existingSecret=s \
+            --set exportWorker.enabled=true --set observability.enabled=true > /dev/null
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - name: Équivalent de test_deployability pour le chart
+        working-directory: core
+        env:
+          GEOSTUDIO_REQUIRE_HELM: "1"
+        run: uv run pytest tests/test_helm_chart.py -q --no-cov
+
+  kind-smoke:
+    needs: lint-and-render
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Cluster kind jetable
+        run: kind create cluster --name gs-smoke --wait 120s
+      - name: Dépendances externes (PostGIS, MinIO) et Secret jetable
+        run: |
+          kubectl apply -f deploy/helm/ci/smoke-deps.yaml
+          kubectl rollout status deploy/postgis deploy/minio --timeout=300s
+          kubectl create secret generic gs-secrets \
+            --from-literal=DATABASE_URL='postgresql+psycopg://gis:gis@postgis:5432/gis' \
+            --from-literal=CORE_SECRETS_MASTER_KEY="$(head -c 32 /dev/urandom | base64)" \
+            --from-literal=S3_ACCESS_KEY=smoke-user --from-literal=S3_SECRET_KEY=smoke-password
+      - name: helm install --wait
+        # cdc-worker désactivé : il exige une publication logique + un slot préparés sur le primaire,
+        # hors périmètre de cette fumée (probes et rendu couverts par test_helm_chart.py).
+        run: |
+          helm install gs deploy/helm/geostudio --wait --timeout 10m \
+            --set secrets.existingSecret=gs-secrets --set cdcWorker.enabled=false \
+            --set config.CORE_AUTH_MODE=mock --set config.CORE_ENV=development \
+            --set shell.env.VITE_AUTH_MODE=mock
+      - name: Fumée HTTP (core /health, shell /)
+        run: |
+          kubectl port-forward svc/gs-geostudio-core 8200:8200 &
+          kubectl port-forward svc/gs-geostudio-shell 8300:8300 &
+          for _ in $(seq 1 15); do curl -fsS http://127.0.0.1:8200/health && break; sleep 2; done
+          curl -fsS -o /dev/null http://127.0.0.1:8300/
+      - name: Diagnostic en cas d'échec
+        if: failure()
+        run: |
+          kubectl get pods -o wide
+          kubectl describe pods | tail -120
+          kubectl logs -l app.kubernetes.io/component=core --tail=80 || true
