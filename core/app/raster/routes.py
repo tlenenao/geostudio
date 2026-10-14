@@ -284,7 +284,9 @@ def raster_zonal_stats(
         if masked:
             info = hide_sensitive_columns(info, col.sensitive_fields)
         with rls(session, col.tenant_id, masked=masked):
-            page = repo_features.select_features(session, info, limit=zonal.MAX_POLYGONS + 1)
+            page = repo_features.select_features(
+                session, info, limit=zonal.MAX_POLYGONS + 1, out_srid=4326
+            )
         polys = [
             (f.get("id"), f["geometry"])
             for f in page.features

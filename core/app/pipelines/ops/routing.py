@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """`transform.isochrone` et `transform.route` (ARC-34, ADR 0025) : analyse de réseau par ligne
 via le client Valhalla du cœur (`app.routing.client` : garde d'egress, plafonds, 503 si service
-absent). L'origine d'une ligne = centroïde de sa géométrie (EPSG:4326 attendu : Valhalla ne
-parle que WGS84 et l'op ne reçoit pas le SRID d'entrée).
+absent). L'origine d'une ligne = centroïde de sa géométrie (reprojeté en EPSG:4326 depuis le SRID
+d'entrée : Valhalla ne parle que WGS84).
 
 Une ligne sans solution (point hors réseau, pas d'itinéraire) est conservée, géométrie NULL et
 `routing_status` = non_trouvé ; service absent/injoignable = le run échoue (jamais de crash
@@ -72,7 +72,9 @@ def _output_srid(params: dict, *, op: str, input_srid: int, join_srid: int | Non
     return 4326
 
 
-def _origins(conn, input_view: str, extra: list[str], preview: bool) -> list[tuple]:
+def _origins(
+    conn, input_view: str, extra: list[str], preview: bool, input_srid: int | None = None
+) -> list[tuple]:
     cols = [d[0] for d in conn.execute(f"DESCRIBE {_qi(input_view)}").fetchall()]
     if "geometry" not in cols:
         raise PipelineRuntimeError("transform: input has no 'geometry' column")
@@ -82,9 +84,13 @@ def _origins(conn, input_view: str, extra: list[str], preview: bool) -> list[tup
     sel = "".join(f", {_qi(c)}" for c in extra)
     # L'aperçu tronque AVANT le plafond : il ne traite que ses PREVIEW_ROWS premières lignes.
     limit = f" LIMIT {PREVIEW_ROWS}" if preview else f" LIMIT {MAX_ROWS + 1}"
+    # Valhalla ne parle que WGS84 : une entrée projetée (Lambert-93…) est reprojetée d'abord.
+    pt = "ST_Centroid(geometry)"
+    if input_srid and input_srid != 4326:
+        pt = f"ST_Transform({pt}, 'EPSG:{int(input_srid)}', 'EPSG:4326', true)"
     rows = conn.execute(
-        f"SELECT row_number() OVER () AS rn, ST_X(ST_Centroid(geometry)), "
-        f"ST_Y(ST_Centroid(geometry)){sel} FROM {_qi(input_view)}{limit}"
+        f"SELECT row_number() OVER () AS rn, ST_X({pt}), ST_Y({pt}){sel} "
+        f"FROM {_qi(input_view)}{limit}"
     ).fetchall()
     if len(rows) > MAX_ROWS:
         raise PipelineRuntimeError(
@@ -166,7 +172,7 @@ def execute_isochrone(
     input_srid: int | None = None,
 ) -> None:
     p = TransformIsochroneParams.model_validate(params)
-    rows = _origins(conn, input_view, [], preview)
+    rows = _origins(conn, input_view, [], preview, input_srid)
     results: list[dict] = []
     try:
         routing = _authorized_routing(
@@ -227,7 +233,7 @@ def execute_route(
     input_srid: int | None = None,
 ) -> None:
     p = TransformRouteParams.model_validate(params)
-    rows = _origins(conn, input_view, [p.destLonColumn, p.destLatColumn], preview)
+    rows = _origins(conn, input_view, [p.destLonColumn, p.destLatColumn], preview, input_srid)
     results: list[dict] = []
     try:
         routing = _authorized_routing(

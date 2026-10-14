@@ -116,3 +116,16 @@ def test_no_actor_is_refused(env):  # noqa: F811
         OPERATIONS["transform.zonalStats"].execute(
             conn, input_view="src", view_name="out", params={"itemId": env[2]}
         )
+
+
+def test_failed_zonal_does_not_commit_the_callers_transaction(env):  # noqa: F811
+    """Le nœud partage la session de l'appelant (Analyse → collection) : un échec de zonal
+    doit pouvoir tout annuler, audit compris (jamais de commit en plein run)."""
+    conn = _conn()
+    _src(conn, [("carre", SQUARE)])
+    with pytest.raises(PipelineRuntimeError):
+        _run(conn, env, env[3], params={"band": 99})
+    env[0].rollback()
+    assert (
+        env[0].scalars(select(AuditLog).where(AuditLog.action == "raster.zonal_stats")).all() == []
+    )

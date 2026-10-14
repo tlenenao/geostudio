@@ -195,3 +195,21 @@ def test_op_consumes_the_shared_rate_budget(conn, seen, monkeypatch, actor):
     with pytest.raises(PipelineRuntimeError, match="budget"):
         _run(conn, "transform.isochrone", {"minutes": [5]}, secret_resolver=actor)
     assert len(seen) == 1  # le 2e appel amont est refusé
+
+
+def test_projected_input_is_reprojected_to_wgs84(conn, seen, actor):
+    """Entrée en Lambert-93 : sans reprojection, les centroïdes (mètres) seraient hors limites
+    et toutes les lignes sortiraient `non_trouvé`."""
+    conn.execute(
+        "CREATE TABLE lam AS SELECT 1 AS id, "
+        "ST_Transform(ST_Point(1.77, 45.26), 'EPSG:4326', 'EPSG:2154', true) AS geometry"
+    )
+    OPERATIONS["transform.isochrone"].execute(
+        conn,
+        input_view="lam",
+        view_name="out",
+        params={"minutes": [5]},
+        secret_resolver=actor,
+        input_srid=2154,
+    )
+    assert conn.execute("SELECT routing_status FROM out").fetchall() == [("ok",)]

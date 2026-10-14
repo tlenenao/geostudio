@@ -169,7 +169,9 @@ def execute_zonal_stats(
         object_id=p.itemId,
         payload={"polygons": len(polys), "band": p.band, "op": "transform.zonalStats"},
     )
-    session.commit()
+    # flush, pas commit : `run_analysis(output="collection")` partage cette session avec la
+    # création de la collection cible, qu'un échec de zonal doit annuler avec le reste.
+    session.flush()
     try:
         with open_asset(asset) as ds:
             results = zonal.zonal_stats(
