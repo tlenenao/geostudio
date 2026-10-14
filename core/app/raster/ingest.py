@@ -13,7 +13,7 @@ from rasterio.errors import RasterioIOError
 from rasterio.warp import transform_bounds
 from rio_cogeo.cogeo import cog_validate
 
-from app.terrain3d.conversion import Terrain3DConversionError, convert_to_cog
+from app.terrain3d.conversion import LOCAL_ONLY_GDAL, Terrain3DConversionError, convert_to_cog
 
 RasterIngestError = Terrain3DConversionError
 
@@ -45,14 +45,15 @@ def to_cog(raw_path: str, cog_path: str, *, timeout_seconds: int | None = None) 
     """Produit `cog_path`. Renvoie True si une conversion a eu lieu, False si la source
     était déjà un COG valide (simple copie)."""
     require_tiff(raw_path)
-    try:
-        with rasterio.open(raw_path, driver="GTiff") as src:
-            has_crs = src.crs is not None
-    except RasterioIOError as exc:
-        raise RasterIngestError(f"fichier non lisible comme raster : {exc}") from exc
-    if not has_crs:
-        raise RasterIngestError("le raster n'a pas de CRS défini")
-    is_valid, _errors, _warnings = cog_validate(raw_path, strict=True)
+    with rasterio.Env(**LOCAL_ONLY_GDAL):
+        try:
+            with rasterio.open(raw_path, driver="GTiff") as src:
+                has_crs = src.crs is not None
+        except RasterioIOError as exc:
+            raise RasterIngestError(f"fichier non lisible comme raster : {exc}") from exc
+        if not has_crs:
+            raise RasterIngestError("le raster n'a pas de CRS défini")
+        is_valid, _errors, _warnings = cog_validate(raw_path, strict=True)
     if is_valid:
         shutil.copyfile(raw_path, cog_path)
         return False
@@ -63,7 +64,7 @@ def to_cog(raw_path: str, cog_path: str, *, timeout_seconds: int | None = None) 
 def read_metadata(path: str) -> RasterMetadata:
     require_tiff(path)
     try:
-        with rasterio.open(path, driver="GTiff") as src:
+        with rasterio.Env(**LOCAL_ONLY_GDAL), rasterio.open(path, driver="GTiff") as src:
             srid = src.crs.to_epsg() if src.crs else None
             if srid is None:
                 raise RasterIngestError("le raster n'a pas de code EPSG identifiable")

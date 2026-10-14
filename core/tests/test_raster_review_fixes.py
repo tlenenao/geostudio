@@ -70,6 +70,65 @@ def test_vrt_and_other_gdal_formats_are_refused(tmp_path):
         ingest.read_metadata(str(vrt))
 
 
+def _count_gdal_requests(path_tmpl: str, **cfg) -> int:
+    import http.server
+    import threading
+
+    hits: list[str] = []
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            hits.append(self.path)
+            self.send_response(404)
+            self.end_headers()
+
+        do_HEAD = do_GET
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    port = srv.server_port
+    try:
+        with rasterio.Env(
+            AWS_S3_ENDPOINT=f"127.0.0.1:{port}",
+            AWS_HTTPS="NO",
+            AWS_VIRTUAL_HOSTING="FALSE",
+            AWS_NO_SIGN_REQUEST="YES",
+            **cfg,
+        ):
+            with pytest.raises(rasterio.errors.RasterioIOError):
+                rasterio.open(path_tmpl.format(port=port))
+    finally:
+        srv.shutdown()
+    return len(hits)
+
+
+@pytest.mark.parametrize("path", ["/vsicurl/http://127.0.0.1:{port}/x.tif", "/vsis3/b/x.tif"])
+def test_local_only_gdal_env_emits_no_network_request(path):
+    from app.terrain3d.conversion import LOCAL_ONLY_GDAL
+
+    assert _count_gdal_requests(path) > 0  # la sonde voit bien les requêtes sans le garde
+    assert _count_gdal_requests(path, **LOCAL_ONLY_GDAL) == 0
+
+
+def test_ingest_runs_gdal_under_the_local_only_env(tmp_path, monkeypatch):
+    from app.terrain3d.conversion import LOCAL_ONLY_GDAL
+
+    seen: list[dict] = []
+
+    def fake_validate(path, strict):
+        seen.append(rasterio.env.getenv())
+        return True, [], []
+
+    monkeypatch.setattr(ingest, "cog_validate", fake_validate)
+    src = tmp_path / "o.tif"
+    write_tif(str(src))
+    ingest.to_cog(str(src), str(tmp_path / "cog.tif"))
+    assert seen and all(seen[0].get(k) == v for k, v in LOCAL_ONLY_GDAL.items())
+
+
 # --- 3. limites géographiques fail-closed --------------------------------------
 
 
