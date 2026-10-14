@@ -166,6 +166,8 @@ def test_all_known_ops_are_registered():
         "transform.sort",
         "transform.httpCall",
         "transform.geocode",
+        "transform.isochrone",
+        "transform.route",
         "reader.wfs",
         "reader.raster",
         "transform.testFilter",

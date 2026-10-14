@@ -24,6 +24,7 @@ from app.mcp.tools import (
     query_generation,
     raster,
     reports,
+    routing,
     secrets,
     sharing,
 )
@@ -54,6 +55,7 @@ def register_tools(server: FastMCP, session_factory) -> None:
         sharing,
         attachments,
         lineage,
+        routing,
         secrets,
         raster,
     ):

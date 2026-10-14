@@ -101,6 +101,8 @@ def test_operations_registry_has_exactly_the_known_ops():
         "transform.sort",
         "transform.httpCall",
         "transform.geocode",
+        "transform.isochrone",
+        "transform.route",
         "reader.wfs",
         "reader.raster",
         "transform.testFilter",
@@ -170,10 +172,10 @@ def test_ops_catalog_never_exposes_the_exchange_field():
         assert set(entry) == {"kind", "paramsSchema", "acceptsSecondaryInput"}, op
 
 
-def test_operations_registry_has_68_entries():
+def test_operations_registry_has_70_entries():
     from app.pipelines.ops.contracts import OPERATIONS
 
-    assert len(OPERATIONS) == 68
+    assert len(OPERATIONS) == 70
 
 
 def test_binary_ops_are_covered_by_the_parallel_tables():
@@ -223,6 +225,8 @@ def test_python_executed_ops_declare_the_shapely_engine():
         not in {  # engine python/duckdb, pas shapely
             "transform.httpCall",
             "transform.geocode",
+            "transform.isochrone",
+            "transform.route",
             "transform.testFilter",
             "transform.sqlExecutor",
         }

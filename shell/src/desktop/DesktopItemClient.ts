@@ -627,6 +627,9 @@ export function createDesktopItemClient(connection: {
     async geocode(..._args: unknown[]) {
       return unsupported();
     },
+    async computeRoute(..._args: unknown[]) {
+      return unsupported();
+    },
     async listAnalysisTools(..._args: unknown[]) {
       return unsupported();
     },

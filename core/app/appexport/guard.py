@@ -29,7 +29,7 @@ from app.configs.schemas import BuilderConfig
 # en phase manuellement (pas de génération partagée TS/Python), même
 # discipline que l'allowlist QGIS (SP-15d) ou les champs AggregateRequestBody.
 # Pertinent pour mode="static" ET mode="standalone" — cf. docstring.
-_AUTHENTICATED_ONLY_WIDGETS = frozenset({"addressSearch", "analysis"})
+_AUTHENTICATED_ONLY_WIDGETS = frozenset({"addressSearch", "analysis", "directions"})
 _SUPPORTED_WIDGET_TYPES = frozenset(
     {
         "text",

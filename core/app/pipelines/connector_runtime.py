@@ -115,6 +115,14 @@ class PostgresSecretResolver:
         self._tenant_id = tenant_id
         self._user = user
 
+    @property
+    def session(self) -> Session:
+        return self._session
+
+    @property
+    def user(self) -> User | None:
+        return self._user
+
     def get(self, name: str) -> SecretPayload:
         if self._user is None:  # pas d'acteur (P16.01) : aucun secret utilisable
             raise KeyError(name)

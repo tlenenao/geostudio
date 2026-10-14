@@ -312,6 +312,20 @@ export type CopilotSurface =
 // REV-102 : un résultat de GET /v1/geocode.
 export type GeocodeResult = { label: string; lon: number; lat: number };
 
+// ARC-34 : widget « Directions » — POST /v1/routing/route (Valhalla derrière le cœur, 503 si absent).
+export type RouteCosting = "auto" | "bicycle" | "pedestrian" | "truck" | "bus" | "motor_scooter";
+export type RoutePoint = { lon: number; lat: number };
+export type RouteResult = {
+  distance_km: number;
+  duration_s: number;
+  geometry: { type: "LineString"; coordinates: [number, number][] };
+  legs: {
+    distance_km: number;
+    duration_s: number;
+    maneuvers: { instruction: string; distance_km: number; duration_s: number }[];
+  }[];
+};
+
 // ARC-25 : widget « Analyse » — outils d'analyse spatiale (GET /v1/analysis/tools).
 export type AnalysisTool = {
   name: string;
@@ -797,6 +811,8 @@ export interface ItemClient {
   }): Promise<UsageSummary>;
   // REV-102 : recherche d'adresse (BAN via le cœur).
   geocode(q: string, limit?: number): Promise<GeocodeResult[]>;
+  // ARC-34 : itinéraire (routage Valhalla via le cœur).
+  computeRoute(points: RoutePoint[], costing?: RouteCosting): Promise<RouteResult>;
   // ARC-25 : widget « Analyse ».
   listAnalysisTools(): Promise<AnalysisTool[]>;
   runAnalysis(collectionId: string, body: AnalysisRequest): Promise<AnalysisResult>;

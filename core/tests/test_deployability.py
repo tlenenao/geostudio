@@ -2404,3 +2404,14 @@ def test_playbook_forwards_the_public_s3_host_to_the_installer():
     for target in ("proxmox", "oci"):
         vars_ = (REPO / f"deploy/{target}/ansible/group_vars/all.yml").read_text()
         assert "geostudio_s3_public_host:" in vars_, target
+
+
+def test_routing_is_wired_by_value_and_valhalla_is_profile_gated_and_unpublished():
+    """ARC-34 : CORE_ROUTING_URL dans core ET worker (transform.isochrone/route s'exécutent
+    dans le worker), vide par défaut ; Valhalla derrière le profil `routing`, jamais publié."""
+    svc = services(BASE)
+    for name in ("core", "worker"):
+        assert svc[name]["environment"]["CORE_ROUTING_URL"] == "${CORE_ROUTING_URL:-}", name
+    assert svc["valhalla"]["profiles"] == ["routing"]
+    assert not svc["valhalla"].get("ports")
+    assert "CORE_ROUTING_URL" in documented_env_vars()

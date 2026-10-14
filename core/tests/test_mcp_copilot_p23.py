@@ -179,6 +179,7 @@ PARITY: dict[str, tuple[str, object]] = {
         "excluded",
         "recherche d'adresse interactive du shell ; outil MCP hors v1 (REV-102)",
     ),
+    "routing": (MCP, ["route", "isochrone", "service_area", "travel_matrix"]),
     "harvest": ("excluded", "sources de moissonnage externes : humain uniquement (SSRF)"),
     "analysis": ("excluded", "catalogue d'outils du widget Analyse, exécuté par l'UI (ARC-25)"),
     "relations": ("excluded", "modèle de données : administration humaine (ARC-21, ADR 0021)"),
