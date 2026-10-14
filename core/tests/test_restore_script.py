@@ -92,7 +92,7 @@ def test_restore_sh_calls_pg_restore_with_expected_flags(tmp_path, fake_bin_path
     assert str(restore_dir / "postgres.dump") in log
 
 
-def test_restore_sh_mb_covers_all_seven_buckets(tmp_path, fake_bin_path):
+def test_restore_sh_mb_covers_all_eight_buckets(tmp_path, fake_bin_path):
     restore_dir = tmp_path / "archive"
     restore_dir.mkdir()
     (restore_dir / "postgres.dump").write_bytes(b"fake-dump")
@@ -109,6 +109,7 @@ def test_restore_sh_mb_covers_all_seven_buckets(tmp_path, fake_bin_path):
         "geostudio-terrain3d",
         "geostudio-mapicons",
         "geostudio-attachments",
+        "geostudio-raster",
     ):
         assert f"mb --ignore-existing local/{bucket}" in log
 
@@ -181,7 +182,7 @@ def test_restore_sh_fails_when_a_referenced_object_is_missing_from_its_bucket(
             "FAKE_REFS": "t/present.svg\nt/ghost.svg\n",
             "FAKE_FOUND": "".join(
                 f"local/geostudio-{b}/t/present.svg\n"
-                for b in ("uploads", "attachments", "mapicons", "tileset3d", "terrain3d")
+                for b in ("uploads", "attachments", "mapicons", "tileset3d", "terrain3d", "raster")
             ),
         },
     )
@@ -196,7 +197,7 @@ def test_restore_sh_passes_when_every_referenced_object_is_present(tmp_path, fak
     restore_dir.mkdir()
     (restore_dir / "postgres.dump").write_bytes(b"fake-dump")
     buckets = (
-        "uploads attachments mapicons tileset3d terrain3d".split()
+        "uploads attachments mapicons tileset3d terrain3d raster".split()
     )  # chaque bucket est interrogé avec la même liste factice
     found = "".join(f"local/geostudio-{b}/t/a.bin\n" for b in buckets)
 
