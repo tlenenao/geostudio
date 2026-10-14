@@ -93,6 +93,25 @@ def test_local_fallback_is_thread_safe_under_concurrent_requests():
     assert errors == []
 
 
+def test_routing_budget_is_shared_between_processes(engine, test_db_url, monkeypatch):
+    """Le budget routage (100/min/utilisateur) vaut pour core ET worker : deux _Window distincts
+    (deux process) consomment le même compteur Postgres (repli du limiteur de la voie P)."""
+    from app.routing import client as rc
+
+    monkeypatch.setenv("CORE_RATELIMIT_BACKEND", "postgres")
+    monkeypatch.setenv("DATABASE_URL", test_db_url)
+    rc._shared_limiter.cache_clear()
+    try:
+        core_proc, worker_proc = rc._Window(), rc._Window()
+        for i in range(100):
+            (core_proc if i % 2 else worker_proc).check("u1")
+        with pytest.raises(rc.RateLimited):
+            core_proc.check("u1")
+        worker_proc.check("u2")  # autre utilisateur : budget propre
+    finally:
+        rc._shared_limiter.cache_clear()
+
+
 def test_mcp_server_is_stateless_for_multi_replica_core(monkeypatch):
     """ARC-32 : une session MCP en mémoire casserait la bascule entre réplicas."""
     from app.mcp.server import create_mcp_server

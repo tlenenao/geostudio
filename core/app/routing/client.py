@@ -9,6 +9,7 @@ multicast et non-spécifiées restent toujours bloquées ; pas de redirection su
 épinglée sur l'IP validée (net_pin). Service non configuré ou injoignable =
 `RoutingUnavailable` (503 côté REST/MCP), jamais un crash."""
 
+import functools
 import ipaddress
 import os
 import socket
@@ -21,6 +22,7 @@ from urllib.parse import urlparse
 import httpx
 
 from app.net_pin import ValidatedIp, send_pinned
+from app.ratelimit.limiter import PgRateLimiter, make_rate_limiter
 
 COSTINGS = ("auto", "bicycle", "pedestrian", "truck", "bus", "motor_scooter")
 MAX_ROUTE_POINTS = 20
@@ -104,9 +106,17 @@ class RateLimited(Exception):
     pass
 
 
+@functools.cache
+def _shared_limiter(backend: str, database_url: str) -> PgRateLimiter | None:
+    del backend  # clé de cache seulement (les tests basculent l'env)
+    limiter = make_rate_limiter(database_url)
+    return limiter if isinstance(limiter, PgRateLimiter) else None
+
+
 class _Window:
-    """Fenêtre glissante par clé (utilisateur), 100 appels/min. Par process : même limite
-    assumée que app.ratelimit (la voie HA la partagera)."""
+    """Fenêtre glissante par clé (utilisateur), 100 appels/min. CORE_RATELIMIT_BACKEND=postgres :
+    budget partagé entre réplicas `core` ET workers (PgRateLimiter, groupe `routing`, ARC-32) ;
+    sinon compteur par process (ADR 0019)."""
 
     def __init__(self, budget: int = RATE_LIMIT_PER_MIN, window: float = 60.0):
         self.budget, self.window = budget, window
@@ -114,6 +124,13 @@ class _Window:
         self._lock = threading.Lock()
 
     def check(self, key: str) -> None:
+        shared = _shared_limiter(
+            os.environ.get("CORE_RATELIMIT_BACKEND", "memory"), os.environ.get("DATABASE_URL", "")
+        )
+        if shared is not None:
+            if not shared.allow(f"routing:{key}", "routing"):
+                raise RateLimited()
+            return
         now = time.monotonic()
         with self._lock:
             if len(self._hits) > 1024:  # purge des clés inactives (pas de fuite par utilisateur)

@@ -16,7 +16,7 @@ import threading
 import time
 from collections import defaultdict, deque
 
-from sqlalchemy import Engine, text
+from sqlalchemy import Engine, create_engine, text
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +76,9 @@ _BUDGETS = {
     "webhook-trigger": 30,
     "share-link": 60,
     "geocode": 60,
+    # ARC-34 : compté par appel amont Valhalla (REST, MCP, ops de pipeline), pas par route ;
+    # route_group ne le renvoie jamais, seul app.routing.client le consomme.
+    "routing": 100,
 }
 _WINDOW_SECONDS = 60.0
 
@@ -263,3 +266,23 @@ class PgRateLimiter(RateLimiter):
                 self._open_until = time.monotonic() + _BREAKER_SECONDS
         with self._local_lock:
             return super().allow(key, group)
+
+
+def make_rate_limiter(database_url: str) -> RateLimiter:
+    """CORE_RATELIMIT_BACKEND=postgres : budget partagé entre réplicas (ARC-32), sur un
+    moteur dédié au pool minuscule (jamais en concurrence avec le pool des requêtes)."""
+    if os.environ.get("CORE_RATELIMIT_BACKEND", "memory") == "postgres" and database_url.startswith(
+        "postgresql"
+    ):
+        engine = create_engine(
+            database_url,
+            pool_size=2,
+            max_overflow=2,
+            pool_timeout=0.25,
+            pool_pre_ping=True,
+            # PgBouncer en mode transaction : pas de requêtes préparées côté serveur (psycopg 3
+            # en pose une dès la 5e exécution) — vu au rejeu HA, repli mémoire silencieux sinon.
+            connect_args={"prepare_threshold": None},
+        )
+        return PgRateLimiter(engine)
+    return RateLimiter()

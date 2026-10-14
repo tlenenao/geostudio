@@ -11,7 +11,6 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
@@ -77,7 +76,7 @@ from app.quality import routes as quality_routes
 from app.quotas import routes as quotas_routes
 from app.quotas.service import QuotaExceededError
 from app.raster import routes as raster_routes
-from app.ratelimit.limiter import PgRateLimiter, RateLimiter, caller_key, route_group
+from app.ratelimit.limiter import PgRateLimiter, caller_key, make_rate_limiter, route_group
 from app.relations import routes as relations_routes
 from app.relations.service import RelationHooks
 from app.reports import routes as reports_routes
@@ -149,26 +148,6 @@ def trusted_proxy_hosts() -> str:
     return os.environ.get(
         "CORE_TRUSTED_PROXIES", "127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7"
     )
-
-
-def _make_rate_limiter(database_url: str) -> RateLimiter:
-    """CORE_RATELIMIT_BACKEND=postgres : budget partagé entre réplicas (ARC-32), sur un
-    moteur dédié au pool minuscule (jamais en concurrence avec le pool des requêtes)."""
-    if os.environ.get("CORE_RATELIMIT_BACKEND", "memory") == "postgres" and database_url.startswith(
-        "postgresql"
-    ):
-        engine = create_engine(
-            database_url,
-            pool_size=2,
-            max_overflow=2,
-            pool_timeout=0.25,
-            pool_pre_ping=True,
-            # PgBouncer en mode transaction : pas de requêtes préparées côté serveur (psycopg 3
-            # en pose une dès la 5e exécution) — vu au rejeu HA, repli mémoire silencieux sinon.
-            connect_args={"prepare_threshold": None},
-        )
-        return PgRateLimiter(engine)
-    return RateLimiter()
 
 
 def create_app() -> FastAPI:
@@ -356,7 +335,7 @@ def create_app() -> FastAPI:
     # repeatedly by the test suite (same reasoning as mcp_server above) — a
     # module-level RateLimiter singleton would leak rate-limit state across
     # unrelated tests.
-    rate_limiter = _make_rate_limiter(database_url)
+    rate_limiter = make_rate_limiter(database_url)
     shared_limiter = isinstance(rate_limiter, PgRateLimiter)
 
     @app.middleware("http")

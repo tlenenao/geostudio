@@ -624,6 +624,8 @@ services:
       # `valhalla` ci-dessous ; mettre CORE_ROUTING_URL=http://valhalla:8002). Vide = routes
       # /v1/routing/* en 503. Le worker en a besoin pour transform.isochrone/route.
       CORE_ROUTING_URL: ${CORE_ROUTING_URL:-}
+      # Budget routage (100 appels Valhalla/min/utilisateur) partagé avec `core` (ARC-32/34).
+      CORE_RATELIMIT_BACKEND: ${CORE_RATELIMIT_BACKEND:-postgres}
       CORE_PIPELINES_HTTP_CALL_MAX_ROWS: ${CORE_PIPELINES_HTTP_CALL_MAX_ROWS:-10000}
       CORE_PIPELINES_HTTP_CALL_MAX_TOTAL_BYTES: ${CORE_PIPELINES_HTTP_CALL_MAX_TOTAL_BYTES:-268435456}
       CORE_PIPELINES_HTTP_CALL_MAX_RESPONSE_BYTES: ${CORE_PIPELINES_HTTP_CALL_MAX_RESPONSE_BYTES:-5242880}
