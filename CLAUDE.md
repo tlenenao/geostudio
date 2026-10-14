@@ -668,6 +668,7 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
 - **Vagues 2-3 ARC, voie I (identité + collecte)** — groupes alimentés par claims OIDC (ARC-24, ADR 0022), import XLSForm + collecte mobile + mes saisies (ARC-27) ; migration 0062.
 - **Vagues 2-3 ARC, voie J (plateforme + analyse)** — chart Helm (ARC-29), widget Analyse sur 10 outils de pipeline (ARC-25). Détail, collisions de migration et défauts d'intégration dans l'archive.
 - **Vague 4 ARC/FME (ETL robuste et ouverture, voies K1/K2/L/M)** — `writer.collection` upsert/update/delete + quarantaine `<cible>__rejected` (`succeeded_with_rejects`), paramètres de run, incrémental dlt, retry/reprise par nœud (`retrying`), webhooks sortants (outbox, ADR 0027) + déclencheur S3, lineage/impact (+ MCP `get_item_impact`), 6 op (geocode, `reader.wfs`, testFilter/sampler/neighborFinder/sqlExecutor) ; catalogue 65 op exposées / 67 brutes ; migrations 0063-0066. Rangs FME 1-8, 11, 15 livrés ; détail et limites dans l'archive.
+- **Vague 5 ARC (raster, HA, routage)** — rasters COG hébergés + proxy TiTiler sous `can()` + `transform.zonalStats` (ARC-33), HA multi-réplicas : limiteur Postgres partagé, élection cdc-worker, MCP sans état, verrou de migration (ARC-32, ADR 0019), routage Valhalla + widget Directions (ARC-34) ; capacités `rasterEnabled`/`routingEnabled`. Détail et reliquats dans l'archive.
 
 ### Conventions tranchées (2026-09-01)
 

@@ -7971,3 +7971,14 @@ Plan `docs/superpowers/plans/2026-10-13-arc-vagues-4-6-iso-esri-et-etl.md`, 4 vo
     - `visible_nodes` passe `actor_is_admin=False` à `decide()`, mais le court-circuit admin des collections y est déjà assuré par `has_privilege(admin.collections.manage)` (au moins aussi large que `is_admin`), et `decide()` l'ignore pour les items : pas de défaut.
   - Spec OpenAPI/types TS : diff vide (route d'aperçu derrière `CORE_ETL_ENABLED`, éteint à l'export).
 - **Reste** : rejeu sur stack réelle ; promotion vers `dev` puis nettoyage des worktrees des voies.
+
+## Vague 5 ARC (raster, HA, routage) — intégration des voies N, O, P (2026-10-14)
+
+- **Voies** : N (ARC-33 raster COG, proxy TiTiler sous `can()`, `reader.raster`, `transform.zonalStats`, MCP `raster_zonal_stats`), O (ARC-32 HA : limiteur de débit partagé Postgres, élection du cdc-worker, MCP sans état, verrou consultatif de migration, ADR 0019 mis à jour), P (ARC-34 routage Valhalla : route/isochrone/zone de service/matrice, ops `transform.isochrone`/`transform.route`, widget Directions). Branche d'intégration `arc4-integ-w5`.
+- **Portes rejouées à la clôture (2026-10-14)** : ruff/format/lint-imports/mypy verts ; shell 3199 tests verts, couverture 91,53/83,32/86,11/89,51 %, bundle 615 Ko/735 ; E2E 276 passed/4 skipped/0 failed ; OpenAPI/TS diff vide ; bilan régénéré (337 fonctionnalités).
+- **Défauts trouvés à la clôture** (invisibles par voie, vus à l'intégration) :
+  - `meSchemaParity.test.ts` ignorait `rasterEnabled`/`routingEnabled` ;
+  - le filtre de type du catalogue passe à 13 types (`raster`) ;
+  - `test_restore_script.py` ne simulait pas le 8e bucket `geostudio-raster` (restore.sh le vérifie désormais).
+- **Cœur** : 5142 passed ; 3 échecs non imputables : 2 tests CDC `wal2json` (image Postgres de test : plugin refusé aux rôles REPLICATION, `election.py`/`main.py` seuls touchés côté `app/cdc`) et `test_upsert_100k_rows_under_60s` (passe en isolation, 20 s ; échoue sous charge, machine).
+- **Reliquats** : `rasterEnabled` (flag) côté ops, durcissement GDAL du worker, plafond GeoJSON post-parse, plafond BAN par process (×N réplicas), UI admin webhooks.
