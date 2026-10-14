@@ -2126,6 +2126,74 @@ export interface paths {
         patch: operations["patch_role_v1_roles__role_id__patch"];
         trace?: never;
     };
+    "/v1/routing/isochrone": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Isochrone */
+        post: operations["isochrone_v1_routing_isochrone_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/routing/matrix": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Matrix */
+        post: operations["matrix_v1_routing_matrix_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/routing/route": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Route */
+        post: operations["route_v1_routing_route_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/routing/service-area": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Service Area */
+        post: operations["service_area_v1_routing_service_area_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/schemas/app-config": {
         parameters: {
             query?: never;
@@ -3986,6 +4054,17 @@ export interface components {
             /** Layers */
             layers?: components["schemas"]["LayerInfoOut"][];
         };
+        /** IsochroneRequest */
+        IsochroneRequest: {
+            /**
+             * Costing
+             * @default auto
+             */
+            costing: string;
+            /** Minutes */
+            minutes: number[];
+            origin: components["schemas"]["Point"];
+        };
         /** ItemFacets */
         ItemFacets: {
             /** Keywords */
@@ -4348,6 +4427,18 @@ export interface components {
             /** Zoom */
             zoom: number;
         };
+        /** MatrixRequest */
+        MatrixRequest: {
+            /**
+             * Costing
+             * @default auto
+             */
+            costing: string;
+            /** Sources */
+            sources: components["schemas"]["Point"][];
+            /** Targets */
+            targets: components["schemas"]["Point"][];
+        };
         /**
          * MeCapabilities
          * @description Les capacités du déploiement, servies avec le profil.
@@ -4371,8 +4462,12 @@ export interface components {
             exportEnabled: boolean;
             /** Quotasenabled */
             quotasEnabled: boolean;
+            /** Rasterenabled */
+            rasterEnabled: boolean;
             /** Readonly */
             readOnly: boolean;
+            /** Routingenabled */
+            routingEnabled: boolean;
             /** Terrain3Denabled */
             terrain3dEnabled: boolean;
             /** Tileset3Denabled */
@@ -4758,6 +4853,13 @@ export interface components {
              */
             max: number;
         };
+        /** Point */
+        Point: {
+            /** Lat */
+            lat: number;
+            /** Lon */
+            lon: number;
+        };
         /**
          * PopupConfig
          * @description Contenu du popup d'une couche (SP-24). `template` non vide l'emporte sur
@@ -5084,6 +5186,16 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** RouteRequest */
+        RouteRequest: {
+            /**
+             * Costing
+             * @default auto
+             */
+            costing: string;
+            /** Points */
+            points: components["schemas"]["Point"][];
+        };
         /**
          * S3CredentialsPayload
          * @description Identifiants d'accès à un bucket S3 (ou compatible S3 — MinIO, etc. via
@@ -5145,6 +5257,18 @@ export interface components {
         SecretUpdate: {
             /** Payload */
             payload: components["schemas"]["ApiKeyPayload"] | components["schemas"]["BearerTokenPayload"] | components["schemas"]["BasicAuthPayload"] | components["schemas"]["OAuth2ClientCredentialsPayload"] | components["schemas"]["PostgresDsnPayload"] | components["schemas"]["SmtpCredentialsPayload"] | components["schemas"]["SnowflakeDsnPayload"] | components["schemas"]["BigQueryDsnPayload"] | components["schemas"]["MssqlDsnPayload"] | components["schemas"]["OracleDsnPayload"] | components["schemas"]["DatabricksDsnPayload"] | components["schemas"]["S3CredentialsPayload"] | components["schemas"]["AzureBlobCredentialsPayload"] | components["schemas"]["GcsCredentialsPayload"];
+        };
+        /** ServiceAreaRequest */
+        ServiceAreaRequest: {
+            /**
+             * Costing
+             * @default auto
+             */
+            costing: string;
+            /** Minutes */
+            minutes: number[];
+            /** Origins */
+            origins: components["schemas"]["Point"][];
         };
         /** ShareLinkCreated */
         ShareLinkCreated: {
@@ -10744,6 +10868,154 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RoleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    isochrone_v1_routing_isochrone_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IsochroneRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    matrix_v1_routing_matrix_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MatrixRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    route_v1_routing_route_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RouteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    service_area_v1_routing_service_area_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServiceAreaRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

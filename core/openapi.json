@@ -4029,6 +4029,34 @@
         "title": "InspectResponse",
         "type": "object"
       },
+      "IsochroneRequest": {
+        "properties": {
+          "costing": {
+            "default": "auto",
+            "pattern": "^(auto|bicycle|pedestrian|truck|bus|motor_scooter)$",
+            "title": "Costing",
+            "type": "string"
+          },
+          "minutes": {
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Minutes",
+            "type": "array"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/Point"
+          }
+        },
+        "required": [
+          "origin",
+          "minutes"
+        ],
+        "title": "IsochroneRequest",
+        "type": "object"
+      },
       "ItemFacets": {
         "properties": {
           "keywords": {
@@ -5083,6 +5111,40 @@
         "title": "MapView",
         "type": "object"
       },
+      "MatrixRequest": {
+        "properties": {
+          "costing": {
+            "default": "auto",
+            "pattern": "^(auto|bicycle|pedestrian|truck|bus|motor_scooter)$",
+            "title": "Costing",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/Point"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Sources",
+            "type": "array"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/Point"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sources",
+          "targets"
+        ],
+        "title": "MatrixRequest",
+        "type": "object"
+      },
       "MeCapabilities": {
         "description": "Les capacit\u00e9s du d\u00e9ploiement, servies avec le profil.\n\nM\u00eame contenu que `GET /instance`, qui reste servi sans authentification\n(page de connexion, mode d\u00e9mo). Le doublon est d\u00e9lib\u00e9r\u00e9 : le shell d\u00e9rive\nl'\u00e9tat de ses domaines d'un profil unique (spec \u00a76.6) au lieu de croiser\ndeux requ\u00eates dans chaque \u00e9cran. `tests/test_auth_me_capabilities.py`\ninterdit aux deux routes de diverger.",
         "properties": {
@@ -5110,8 +5172,16 @@
             "title": "Quotasenabled",
             "type": "boolean"
           },
+          "rasterEnabled": {
+            "title": "Rasterenabled",
+            "type": "boolean"
+          },
           "readOnly": {
             "title": "Readonly",
+            "type": "boolean"
+          },
+          "routingEnabled": {
+            "title": "Routingenabled",
             "type": "boolean"
           },
           "terrain3dEnabled": {
@@ -5132,7 +5202,9 @@
           "terrain3dEnabled",
           "copilotEnabled",
           "adminToolsEnabled",
-          "quotasEnabled"
+          "quotasEnabled",
+          "rasterEnabled",
+          "routingEnabled"
         ],
         "title": "MeCapabilities",
         "type": "object"
@@ -5909,6 +5981,28 @@
           }
         },
         "title": "PipelineRetryPolicy",
+        "type": "object"
+      },
+      "Point": {
+        "properties": {
+          "lat": {
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "title": "Lat",
+            "type": "number"
+          },
+          "lon": {
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "title": "Lon",
+            "type": "number"
+          }
+        },
+        "required": [
+          "lon",
+          "lat"
+        ],
+        "title": "Point",
         "type": "object"
       },
       "PopupConfig": {
@@ -6876,6 +6970,30 @@
         "title": "RollbackRequest",
         "type": "object"
       },
+      "RouteRequest": {
+        "properties": {
+          "costing": {
+            "default": "auto",
+            "pattern": "^(auto|bicycle|pedestrian|truck|bus|motor_scooter)$",
+            "title": "Costing",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/Point"
+            },
+            "maxItems": 20,
+            "minItems": 2,
+            "title": "Points",
+            "type": "array"
+          }
+        },
+        "required": [
+          "points"
+        ],
+        "title": "RouteRequest",
+        "type": "object"
+      },
       "S3CredentialsPayload": {
         "description": "Identifiants d'acc\u00e8s \u00e0 un bucket S3 (ou compatible S3 \u2014 MinIO, etc. via\n`endpointUrl`) pour `reader.connector.blob` (Task 15, Vague 2 \u00a76.1).\n\nChamps align\u00e9s \u2014 pas devin\u00e9s \u2014 sur le constructeur r\u00e9el de\n`dlt.common.configuration.specs.aws_credentials.AwsCredentials`\n(`aws_access_key_id`/`aws_secret_access_key`/`endpoint_url`, v\u00e9rifi\u00e9 par\nintrospection du paquet `dlt` install\u00e9, pi\u00e8ge CLAUDE.md n\u00b03) : ce module\nconstruit un `AwsCredentials(...)` directement \u00e0 partir de ces 3 champs\net le passe tel quel \u00e0 `dlt.sources.filesystem.filesystem(credentials=)` \u2014\nc'est CETTE classe, jamais ce payload, qui sait produire les kwargs r\u00e9els\nde s3fs (`.to_s3fs_credentials()` \u2192 `key`/`secret`/`endpoint_url`).\n\n`bucketUrl` lie le secret \u00e0 un bucket/pr\u00e9fixe : `params.path` d'un\n`reader.connector.blob` doit en porter le pr\u00e9fixe (REV-197).",
         "properties": {
@@ -7156,6 +7274,40 @@
           "payload"
         ],
         "title": "SecretUpdate",
+        "type": "object"
+      },
+      "ServiceAreaRequest": {
+        "properties": {
+          "costing": {
+            "default": "auto",
+            "pattern": "^(auto|bicycle|pedestrian|truck|bus|motor_scooter)$",
+            "title": "Costing",
+            "type": "string"
+          },
+          "minutes": {
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Minutes",
+            "type": "array"
+          },
+          "origins": {
+            "items": {
+              "$ref": "#/components/schemas/Point"
+            },
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Origins",
+            "type": "array"
+          }
+        },
+        "required": [
+          "origins",
+          "minutes"
+        ],
+        "title": "ServiceAreaRequest",
         "type": "object"
       },
       "ShareLinkCreated": {
@@ -17217,6 +17369,226 @@
           }
         },
         "summary": "Patch Role"
+      }
+    },
+    "/v1/routing/isochrone": {
+      "post": {
+        "operationId": "isochrone_v1_routing_isochrone_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IsochroneRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Isochrone V1 Routing Isochrone Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Isochrone",
+        "tags": [
+          "routing"
+        ]
+      }
+    },
+    "/v1/routing/matrix": {
+      "post": {
+        "operationId": "matrix_v1_routing_matrix_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MatrixRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Matrix V1 Routing Matrix Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Matrix",
+        "tags": [
+          "routing"
+        ]
+      }
+    },
+    "/v1/routing/route": {
+      "post": {
+        "operationId": "route_v1_routing_route_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RouteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Route V1 Routing Route Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Route",
+        "tags": [
+          "routing"
+        ]
+      }
+    },
+    "/v1/routing/service-area": {
+      "post": {
+        "operationId": "service_area_v1_routing_service_area_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServiceAreaRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Service Area V1 Routing Service Area Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Service Area",
+        "tags": [
+          "routing"
+        ]
       }
     },
     "/v1/schemas/app-config": {
