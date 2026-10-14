@@ -24,7 +24,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from app.auth.dependency import is_pipeline_file_io_enabled
+from app.auth.dependency import is_pipeline_file_io_enabled, is_raster_enabled
 from app.pipelines import compiler as _compiler
 from app.pipelines import http_call_runtime as _http_call
 from app.pipelines.ops import database as _database
@@ -121,8 +121,8 @@ class OperationContract:
     # chaîne SQL exécutée par l'appelant).
     execute: Callable[..., None] | None = None
     # transform.httpCall : quand True (et seulement avec `execute`), runtime.py passe en plus
-    # `secret_resolver=` et `preview=` à `execute`. Les autres op `execute` gardent leur
-    # signature (conn, *, input_view, view_name, params).
+    # `secret_resolver=`, `preview=` et `input_srid=` à `execute`. Les autres op `execute`
+    # gardent leur signature (conn, *, input_view, view_name, params).
     needs_runtime_context: bool = False
     # Piège Python latent : un `def` nu donné ici en défaut (au lieu de `None`)
     # deviendrait un attribut de classe et serait lié comme méthode (self/le
@@ -668,6 +668,17 @@ OPERATIONS: dict[str, OperationContract] = {
         op="reader.raster",
         kind="reader",
         params_schema=_raster.ReaderRasterParams,
+        enabled_when=is_raster_enabled,
+    ),
+    "transform.zonalStats": OperationContract(
+        op="transform.zonalStats",
+        kind="transform",
+        params_schema=_raster.TransformZonalStatsParams,
+        engine="python",
+        engine_license="BSD-3-Clause (rasterio) ; GDAL (MIT)",
+        execute=_raster.execute_zonal_stats,
+        needs_runtime_context=True,
+        enabled_when=is_raster_enabled,
     ),
     "transform.testFilter": OperationContract(
         op="transform.testFilter",

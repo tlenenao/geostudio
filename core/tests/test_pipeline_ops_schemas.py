@@ -170,6 +170,7 @@ def test_all_known_ops_are_registered():
         "transform.route",
         "reader.wfs",
         "reader.raster",
+        "transform.zonalStats",
         "transform.testFilter",
         "transform.sampler",
         "transform.neighborFinder",

@@ -48,10 +48,15 @@ def _summarize(values: np.ndarray, stats: Sequence[str]) -> dict[str, float | in
 
 
 def zonal_stats(
-    ds: Any, geometries: Sequence[dict], *, band: int = 1, stats: Sequence[str] = STATS
+    ds: Any,
+    geometries: Sequence[dict],
+    *,
+    band: int = 1,
+    stats: Sequence[str] = STATS,
+    src_crs: str = "EPSG:4326",
 ) -> list[dict[str, float | int | None]]:
-    """Une entrée par géométrie (GeoJSON EPSG:4326), dans l'ordre. Zone hors raster ou
-    sans pixel valide : count = 0, autres statistiques None."""
+    """Une entrée par géométrie (GeoJSON dans `src_crs`, EPSG:4326 par défaut), dans l'ordre.
+    Zone hors raster ou sans pixel valide : count = 0, autres statistiques None."""
     bad = [s for s in stats if s not in STATS]
     if bad:
         raise ZonalError(f"statistique inconnue : {bad[0]}")
@@ -67,7 +72,7 @@ def zonal_stats(
             raise ZonalError(
                 f"délai dépassé ({MAX_SECONDS:.0f} s) : réduisez le nombre de polygones"
             )
-        g = transform_geom("EPSG:4326", ds.crs, geom)
+        g = transform_geom(src_crs, ds.crs, geom)
         try:
             win = geometry_window(ds, [g])
             if win.width * win.height > MAX_WINDOW_PIXELS:

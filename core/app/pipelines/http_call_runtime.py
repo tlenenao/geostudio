@@ -393,6 +393,7 @@ def execute_http_call(
     params: dict,
     secret_resolver=None,
     preview: bool = False,
+    input_srid: int | None = None,
 ) -> None:
     from app.pipelines.ops.schemas import TransformHttpCallParams
 

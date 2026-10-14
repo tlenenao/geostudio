@@ -22,6 +22,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
+from app.auth.dependency import is_raster_enabled
 from app.collections.introspection import (
     ColumnInfo,
     Introspector,
@@ -122,6 +123,20 @@ class ReprojectArgs(BaseModel):
     targetCrs: str = Field(..., pattern=r"^EPSG:\d+$", description="CRS cible, ex. EPSG:2154.")
 
 
+class ZonalStatsArgs(BaseModel):
+    rasterItemId: str = Field(
+        ..., min_length=1, title="Raster", description="Raster (COG hébergé) à résumer."
+    )
+    band: int = Field(1, ge=1, title="Bande", description="Bande du raster.")
+    stats: list[Literal["count", "min", "max", "mean", "sum", "std"]] = Field(
+        default_factory=lambda: ["count", "mean", "min", "max"],
+        title="Statistiques",
+        min_length=1,
+        max_length=6,
+        description="Statistiques, séparées par des virgules : count, min, max, mean, sum, std.",
+    )
+
+
 @dataclass(frozen=True)
 class AnalysisTool:
     name: str
@@ -136,6 +151,8 @@ class AnalysisTool:
     # colonnes propriétés conservées en sortie (None = toutes) et colonnes ajoutées
     keep: Callable[[BaseModel, list[str]], list[str]] = lambda a, cols: cols
     added: Callable[[BaseModel], list[tuple[str, str]]] = lambda a: []
+    # capacité d'instance optionnelle (outil absent du catalogue et refusé si éteinte)
+    enabled: Callable[[], bool] = lambda: True
 
 
 _POLYGON = lambda g: "MultiPolygon"  # noqa: E731
@@ -230,6 +247,24 @@ TOOLS: dict[str, AnalysisTool] = {
             "transform.reproject",
             ReprojectArgs,
         ),
+        AnalysisTool(
+            "zonalStats",
+            "Statistiques raster par zone",
+            "Résume une bande d'un raster sous chaque polygone (au plus 1 000 polygones) : "
+            "une colonne zonal_<statistique> par statistique demandée.",
+            "transform.zonalStats",
+            ZonalStatsArgs,
+            op_params=lambda a: {
+                "itemId": a.rasterItemId,  # type: ignore[attr-defined]
+                "band": a.band,  # type: ignore[attr-defined]
+                "stats": a.stats,  # type: ignore[attr-defined]
+            },
+            added=lambda a: [
+                (f"zonal_{s}", "double precision")
+                for s in dict.fromkeys(a.stats)  # type: ignore[attr-defined]
+            ],
+            enabled=is_raster_enabled,
+        ),
     ]
 }
 
@@ -244,6 +279,7 @@ def tool_catalog() -> list[dict[str, Any]]:
             "paramsSchema": t.args.model_json_schema(),
         }
         for t in TOOLS.values()
+        if t.enabled()
     ]
 
 
@@ -270,8 +306,10 @@ def _validate(
     req: AnalysisRequest, info: TableInfo, other: TableInfo | None, feature_count: int | None
 ) -> tuple[AnalysisTool, BaseModel]:
     tool = TOOLS.get(req.tool)
-    if tool is None:
-        raise AnalysisError(f"outil inconnu '{req.tool}' (disponibles : {', '.join(TOOLS)})")
+    if tool is None or not tool.enabled():
+        raise AnalysisError(
+            f"outil inconnu '{req.tool}' (disponibles : {', '.join(n for n, t in TOOLS.items() if t.enabled())})"
+        )
     try:
         args = tool.args.model_validate(req.params)
     except ValidationError as exc:

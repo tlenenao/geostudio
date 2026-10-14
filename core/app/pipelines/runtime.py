@@ -904,7 +904,11 @@ def _execute_transform_chain(
         try:
             if contract.execute is not None:
                 extra = (
-                    {"secret_resolver": secret_resolver, "preview": preview}
+                    {
+                        "secret_resolver": secret_resolver,
+                        "preview": preview,
+                        "input_srid": input_srid,
+                    }
                     if contract.needs_runtime_context
                     else {}
                 )

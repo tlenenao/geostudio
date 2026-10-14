@@ -59,6 +59,7 @@ def execute_geocode(
     params: dict,
     secret_resolver=None,
     preview: bool = False,
+    input_srid: int | None = None,
 ) -> None:
     p = TransformGeocodeParams.model_validate(params)
     cols = [d[0] for d in conn.execute(f"DESCRIBE {_qi(input_view)}").fetchall()]

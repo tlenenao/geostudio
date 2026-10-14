@@ -163,6 +163,7 @@ def execute_isochrone(
     params: dict,
     secret_resolver=None,
     preview: bool = False,
+    input_srid: int | None = None,
 ) -> None:
     p = TransformIsochroneParams.model_validate(params)
     rows = _origins(conn, input_view, [], preview)
@@ -223,6 +224,7 @@ def execute_route(
     params: dict,
     secret_resolver=None,
     preview: bool = False,
+    input_srid: int | None = None,
 ) -> None:
     p = TransformRouteParams.model_validate(params)
     rows = _origins(conn, input_view, [p.destLonColumn, p.destLatColumn], preview)
