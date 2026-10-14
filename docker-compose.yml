@@ -234,6 +234,8 @@ services:
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8200"
     environment:
       DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
+      # Verrou des migrations (ARC-32) : connexion DIRECTE (un verrou de session ne survit pas à pgbouncer en mode transaction)
+      CORE_MIGRATION_DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@postgis:5432/gis
       CORE_AUTH_MODE: ${CORE_AUTH_MODE:-mock}
       # Marqueur explicite requis par la garde de démarrage SP-26/3.1 :
       # CORE_AUTH_MODE=mock sans CORE_ENV=development refuse de démarrer.
