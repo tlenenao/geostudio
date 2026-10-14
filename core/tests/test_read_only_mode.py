@@ -55,6 +55,8 @@ def test_instance_defaults_to_read_write(env):
         "copilotEnabled": False,
         "adminToolsEnabled": False,
         "quotasEnabled": False,
+        "rasterEnabled": False,
+        "routingEnabled": False,
     }
 
 
@@ -72,6 +74,8 @@ def test_instance_reports_read_only_without_needing_auth(env, monkeypatch):
         "copilotEnabled": False,
         "adminToolsEnabled": False,
         "quotasEnabled": False,
+        "rasterEnabled": False,
+        "routingEnabled": False,
     }
 
 

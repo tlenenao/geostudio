@@ -27,6 +27,8 @@ CAPABILITY_KEYS = {
     "copilotEnabled",
     "adminToolsEnabled",
     "quotasEnabled",
+    "rasterEnabled",
+    "routingEnabled",
 }
 
 
@@ -131,6 +133,9 @@ _CAPABILITY_PROBES = [
     ("CORE_LLM_PROVIDER", "copilotEnabled", "openai", ""),
     ("CORE_ADMIN_TOOLS_ENABLED", "adminToolsEnabled", "true", "false"),
     ("CORE_QUOTAS_ENABLED", "quotasEnabled", "true", "false"),
+    ("CORE_RASTER_ENABLED", "rasterEnabled", "true", "false"),
+    # Routage : actif dès que CORE_ROUTING_URL est renseignée (comme copilotEnabled).
+    ("CORE_ROUTING_URL", "routingEnabled", "http://valhalla:8002", ""),
 ]
 
 

@@ -65,6 +65,8 @@ def test_instance_reports_etl_disabled_by_default(env):
         "copilotEnabled": False,
         "adminToolsEnabled": False,
         "quotasEnabled": False,
+        "rasterEnabled": False,
+        "routingEnabled": False,
     }
 
 
@@ -82,4 +84,6 @@ def test_instance_reports_etl_enabled(env, monkeypatch):
         "copilotEnabled": False,
         "adminToolsEnabled": False,
         "quotasEnabled": False,
+        "rasterEnabled": False,
+        "routingEnabled": False,
     }
