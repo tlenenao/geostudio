@@ -39,7 +39,7 @@ spec:
     spec:
       containers:
         - name: minio
-          image: ghcr.io/tlenenao/geostudio-minio:v0.1.0
+          image: ghcr.io/tlenenao/geostudio-minio:edge
           args: ["server", "/data"]
           env:
             - {name: MINIO_ROOT_USER, value: smoke-user}
