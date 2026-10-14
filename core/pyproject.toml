@@ -10,129 +10,129 @@ dependencies = [
     "pydantic>=2.7",
     "httpx>=0.27",
     "anyio>=4.14.2,<4.15",  # transitif (httpx/mcp/starlette/sse-starlette/
-                      # watchfiles) ; contrainte explicite car la 4.14.1 que
-                      # le résolveur choisissait porte
-                      # CVE-2026-63374/64847/63349 et `pip-audit --strict`
-                      # refusait de passer. Déclaré ici (dépendances
-                      # principales, pas dev) car anyio est embarqué dans
-                      # l'image de prod via httpx/starlette/mcp. Borne haute
-                      # délibérée : 4.15.0 déprécie `anyio.abc.BlockingPortal`
-                      # (utilisé par la version de starlette installée), et
-                      # `filterwarnings = ["error"]` transforme ce
-                      # DeprecationWarning en échec de collecte pytest sur
-                      # tout module import ant `fastapi.testclient`.
+    # watchfiles) ; contrainte explicite car la 4.14.1 que
+    # le résolveur choisissait porte
+    # CVE-2026-63374/64847/63349 et `pip-audit --strict`
+    # refusait de passer. Déclaré ici (dépendances
+    # principales, pas dev) car anyio est embarqué dans
+    # l'image de prod via httpx/starlette/mcp. Borne haute
+    # délibérée : 4.15.0 déprécie `anyio.abc.BlockingPortal`
+    # (utilisé par la version de starlette installée), et
+    # `filterwarnings = ["error"]` transforme ce
+    # DeprecationWarning en échec de collecte pytest sur
+    # tout module import ant `fastapi.testclient`.
     "requests>=2.31",  # SP-15f : garde SSRF pour reader.connector.rest — dlt's
-                       # RESTClient utilise `requests`, pas httpx (que le reste
-                       # du dépôt utilise déjà) ; déclaré ici en dépendance
-                       # directe plutôt que de compter sur la transitive de dlt.
+    # RESTClient utilise `requests`, pas httpx (que le reste
+    # du dépôt utilise déjà) ; déclaré ici en dépendance
+    # directe plutôt que de compter sur la transitive de dlt.
     "dlt>=1.6",  # SP-15f : reader.connector.rest/postgres — extraction,
-                # normalisation, inférence de schéma (design §3.1) ; destination
-                # duckdb, aucun extra requis (core/déjà présent).
+    # normalisation, inférence de schéma (design §3.1) ; destination
+    # duckdb, aucun extra requis (core/déjà présent).
     "snowflake-sqlalchemy>=1.11,<2",  # GAP-16 : reader.connector.snowflake —
-                       # dialecte SQLAlchemy pour un entrepôt Snowflake
-                       # distant, résolu automatiquement par
-                       # sa.create_engine("snowflake://...") via les entry
-                       # points du paquet (aucun import explicite requis
-                       # dans ce dépôt). Borne haute délibérée : 2.0.0a2 est
-                       # une pré-version alpha au moment de cet ajout —
-                       # jamais installée silencieusement par une
-                       # résolution de dépendances. Apache-2.0, comme sa
-                       # dépendance transitive snowflake-connector-python
-                       # (vérifiées toutes deux sur PyPI).
+    # dialecte SQLAlchemy pour un entrepôt Snowflake
+    # distant, résolu automatiquement par
+    # sa.create_engine("snowflake://...") via les entry
+    # points du paquet (aucun import explicite requis
+    # dans ce dépôt). Borne haute délibérée : 2.0.0a2 est
+    # une pré-version alpha au moment de cet ajout —
+    # jamais installée silencieusement par une
+    # résolution de dépendances. Apache-2.0, comme sa
+    # dépendance transitive snowflake-connector-python
+    # (vérifiées toutes deux sur PyPI).
     "sqlalchemy-bigquery>=1.17,<2",  # Vague 2 §6.1 : reader.connector.bigquery —
-                       # dialecte SQLAlchemy pour Google BigQuery, résolu
-                       # automatiquement par sa.create_engine("bigquery://...")
-                       # via les entry points du paquet (aucun import
-                       # explicite requis dans ce dépôt), même patron que
-                       # snowflake-sqlalchemy ci-dessus. Authentification par
-                       # compte de service passée inline dans le DSN via le
-                       # paramètre de requête `credentials_base64` (JSON du
-                       # compte de service encodé en base64) — jamais un
-                       # `credentials_path` sur disque, qui ne survivrait pas
-                       # au trajet secret chiffré -> chaîne opaque -> DSN
-                       # (vérifié contre sqlalchemy_bigquery/parse_url.py et
-                       # base.py du dépôt googleapis/python-bigquery-sqlalchemy
-                       # réel, pas seulement le README). MIT, vérifiée sur
-                       # PyPI (classifiers).
+    # dialecte SQLAlchemy pour Google BigQuery, résolu
+    # automatiquement par sa.create_engine("bigquery://...")
+    # via les entry points du paquet (aucun import
+    # explicite requis dans ce dépôt), même patron que
+    # snowflake-sqlalchemy ci-dessus. Authentification par
+    # compte de service passée inline dans le DSN via le
+    # paramètre de requête `credentials_base64` (JSON du
+    # compte de service encodé en base64) — jamais un
+    # `credentials_path` sur disque, qui ne survivrait pas
+    # au trajet secret chiffré -> chaîne opaque -> DSN
+    # (vérifié contre sqlalchemy_bigquery/parse_url.py et
+    # base.py du dépôt googleapis/python-bigquery-sqlalchemy
+    # réel, pas seulement le README). MIT, vérifiée sur
+    # PyPI (classifiers).
     "pymssql>=2.3,<3",  # Vague 2 §6.1 : reader.connector.mssql — driver DBAPI
-                       # pur Python (FreeTDS statiquement embarqué dans ses
-                       # wheels officielles) pour Microsoft SQL Server, préféré
-                       # à pyodbc (nécessiterait unixodbc + un driver ODBC
-                       # système sur l'image du worker) faute de limitation
-                       # bloquante trouvée. Contrairement à
-                       # snowflake-sqlalchemy/sqlalchemy-bigquery ci-dessus :
-                       # le dialecte SQLAlchemy "mssql+pymssql" est intégré à
-                       # SQLAlchemy elle-même (dialects/mssql/pymssql.py, pas
-                       # un entry point tiers) — ce paquet ne fournit que le
-                       # driver DBAPI importé en interne par ce dialecte.
-                       # LGPL-2.1, vérifiée sur PyPI (classifiers réels,
-                       # pas supposée).
+    # pur Python (FreeTDS statiquement embarqué dans ses
+    # wheels officielles) pour Microsoft SQL Server, préféré
+    # à pyodbc (nécessiterait unixodbc + un driver ODBC
+    # système sur l'image du worker) faute de limitation
+    # bloquante trouvée. Contrairement à
+    # snowflake-sqlalchemy/sqlalchemy-bigquery ci-dessus :
+    # le dialecte SQLAlchemy "mssql+pymssql" est intégré à
+    # SQLAlchemy elle-même (dialects/mssql/pymssql.py, pas
+    # un entry point tiers) — ce paquet ne fournit que le
+    # driver DBAPI importé en interne par ce dialecte.
+    # LGPL-2.1, vérifiée sur PyPI (classifiers réels,
+    # pas supposée).
     "oracledb>=2.0,<27",  # Vague 2 §6.1 : reader.connector.oracle — driver
-                       # DBAPI officiel Oracle (remplace cx_Oracle), utilisé
-                       # en mode thin (pur Python, aucune bibliothèque
-                       # cliente Oracle native requise) par défaut — vérifié
-                       # empiriquement contre le code source réel du
-                       # dialecte SQLAlchemy intégré "oracle+oracledb"
-                       # (sqlalchemy/dialects/oracle/oracledb.py) : ce
-                       # paquet ne fournit que le driver DBAPI importé en
-                       # interne par ce dialecte, même patron que pymssql
-                       # ci-dessus (pas un dialecte tiers à entry points
-                       # comme snowflake-sqlalchemy/sqlalchemy-bigquery).
-                       # Borne haute délibérée : le projet a adopté un
-                       # schéma de version proche du calendaire (26.0.0 au
-                       # moment de cet ajout, après les séries 1.x/2.x/3.x/
-                       # 4.x — vérifié contre le changelog amont réel,
-                       # doc/src/release_notes.rst, pas déduit d'un tri
-                       # lexicographique de numéros de version) — `<27`
-                       # évite une bascule silencieuse vers une prochaine
-                       # série majeure non vérifiée, plutôt qu'une borne
-                       # `<3` qui serait déjà fausse aujourd'hui.
-                       # License-Expression PyPI réelle (pas supposée) :
-                       # "UPL-1.0 OR Apache-2.0" (double licence, vérifiée
-                       # via importlib.metadata) — Apache-2.0 retenue.
+    # DBAPI officiel Oracle (remplace cx_Oracle), utilisé
+    # en mode thin (pur Python, aucune bibliothèque
+    # cliente Oracle native requise) par défaut — vérifié
+    # empiriquement contre le code source réel du
+    # dialecte SQLAlchemy intégré "oracle+oracledb"
+    # (sqlalchemy/dialects/oracle/oracledb.py) : ce
+    # paquet ne fournit que le driver DBAPI importé en
+    # interne par ce dialecte, même patron que pymssql
+    # ci-dessus (pas un dialecte tiers à entry points
+    # comme snowflake-sqlalchemy/sqlalchemy-bigquery).
+    # Borne haute délibérée : le projet a adopté un
+    # schéma de version proche du calendaire (26.0.0 au
+    # moment de cet ajout, après les séries 1.x/2.x/3.x/
+    # 4.x — vérifié contre le changelog amont réel,
+    # doc/src/release_notes.rst, pas déduit d'un tri
+    # lexicographique de numéros de version) — `<27`
+    # évite une bascule silencieuse vers une prochaine
+    # série majeure non vérifiée, plutôt qu'une borne
+    # `<3` qui serait déjà fausse aujourd'hui.
+    # License-Expression PyPI réelle (pas supposée) :
+    # "UPL-1.0 OR Apache-2.0" (double licence, vérifiée
+    # via importlib.metadata) — Apache-2.0 retenue.
     "s3fs>=2024.10,<2027",  # Task 15 (Vague 2 §6.1) : reader.connector.blob (S3) —
-                       # implémentation fsspec pour S3/compatible-S3 consommée
-                       # par la source `filesystem` de dlt (dlt.sources.filesystem,
-                       # déjà présente dans le paquet `dlt` de base, aucun extra
-                       # requis — vérifié empiriquement : `dlt.sources.filesystem`
-                       # s'importe sans lui). Le pipeline dlt reçoit un objet
-                       # `AwsCredentials` typé (dlt.common.configuration.specs)
-                       # dont `to_s3fs_credentials()` produit les kwargs s3fs
-                       # réels (`key`/`secret`/`endpoint_url`, vérifié
-                       # empiriquement) — ce module ne construit jamais lui-même
-                       # de dict de kwargs s3fs. BSD-3-Clause, vérifiée sur PyPI
-                       # (classifiers réels).
+    # implémentation fsspec pour S3/compatible-S3 consommée
+    # par la source `filesystem` de dlt (dlt.sources.filesystem,
+    # déjà présente dans le paquet `dlt` de base, aucun extra
+    # requis — vérifié empiriquement : `dlt.sources.filesystem`
+    # s'importe sans lui). Le pipeline dlt reçoit un objet
+    # `AwsCredentials` typé (dlt.common.configuration.specs)
+    # dont `to_s3fs_credentials()` produit les kwargs s3fs
+    # réels (`key`/`secret`/`endpoint_url`, vérifié
+    # empiriquement) — ce module ne construit jamais lui-même
+    # de dict de kwargs s3fs. BSD-3-Clause, vérifiée sur PyPI
+    # (classifiers réels).
     "adlfs>=2024.7,<2027",  # Task 15 : reader.connector.blob (Azure Blob) —
-                       # implémentation fsspec pour Azure Blob Storage ;
-                       # `AzureCredentialsWithoutDefaults.to_adlfs_credentials()`
-                       # produit les kwargs adlfs réels (`account_name`/
-                       # `account_key`, vérifié empiriquement). BSD-3-Clause,
-                       # vérifiée sur PyPI (classifiers réels).
+    # implémentation fsspec pour Azure Blob Storage ;
+    # `AzureCredentialsWithoutDefaults.to_adlfs_credentials()`
+    # produit les kwargs adlfs réels (`account_name`/
+    # `account_key`, vérifié empiriquement). BSD-3-Clause,
+    # vérifiée sur PyPI (classifiers réels).
     "gcsfs>=2024.10,<2027",  # Task 15 : reader.connector.blob (GCS) —
-                       # implémentation fsspec pour Google Cloud Storage ;
-                       # `GcpServiceAccountCredentials.to_gcs_credentials()`
-                       # produit les kwargs gcsfs réels (`project`/`token`,
-                       # vérifié empiriquement). BSD-3-Clause, vérifiée sur PyPI
-                       # (classifiers réels).
+    # implémentation fsspec pour Google Cloud Storage ;
+    # `GcpServiceAccountCredentials.to_gcs_credentials()`
+    # produit les kwargs gcsfs réels (`project`/`token`,
+    # vérifié empiriquement). BSD-3-Clause, vérifiée sur PyPI
+    # (classifiers réels).
     "psycopg[binary]>=3.1",
     "psycopg2-binary>=2.9",  # SP-11a : seul driver Python avec support du protocole
-                             # de réplication logique (psycopg v3 ne l'expose pas) ;
-                             # utilisé uniquement par app/cdc/ pour la connexion de
-                             # réplication elle-même, psycopg[binary] reste le driver
-                             # de tout le reste du cœur.
+    # de réplication logique (psycopg v3 ne l'expose pas) ;
+    # utilisé uniquement par app/cdc/ pour la connexion de
+    # réplication elle-même, psycopg[binary] reste le driver
+    # de tout le reste du cœur.
     "alembic>=1.13",
     "pyjwt[crypto]>=2.8",
     "cryptography>=42.0",  # SP-15e : chiffrement applicatif AES-GCM du
-                           # coffre de secrets ; déjà présent transitivement
-                           # via pyjwt[crypto] (49.0.0 dans uv.lock, vérifié),
-                           # déclaré ici en dépendance directe pour ne pas
-                           # dépendre d'une extra tierce pour un import de
-                           # production.
+    # coffre de secrets ; déjà présent transitivement
+    # via pyjwt[crypto] (49.0.0 dans uv.lock, vérifié),
+    # déclaré ici en dépendance directe pour ne pas
+    # dépendre d'une extra tierce pour un import de
+    # production.
     "croniter>=6.2",  # SP-15h : validation + calcul du prochain tick pour
-                      # refreshPolicy des pipelines ; déjà dépendance
-                      # transitive de procrastinate (utilisée en interne par
-                      # @app.periodic), déclarée ici en directe car importée
-                      # directement par app.configs et app.pipelines.
+    # refreshPolicy des pipelines ; déjà dépendance
+    # transitive de procrastinate (utilisée en interne par
+    # @app.periodic), déclarée ici en directe car importée
+    # directement par app.configs et app.pipelines.
     "boto3>=1.34",
     "python-multipart>=0.0.9",
     "mcp>=1.12,<2.0",
@@ -142,30 +142,30 @@ dependencies = [
     "pyproj>=3.6",
     "pillow>=10",  # ARC-20 : raster PNG du renderer WMS/WMTS interne (ADR 0020), licence HPND
     "rasterio>=1.3",  # terrain3d : lecture/écriture GeoTIFF (GDAL embarqué
-                      # dans la wheel, pas de dépendance système séparée à
-                      # installer) ; wheel comparable en poids à pyogrio,
-                      # déjà présent — pas un sidecar comme qgis-worker.
+    # dans la wheel, pas de dépendance système séparée à
+    # installer) ; wheel comparable en poids à pyogrio,
+    # déjà présent — pas un sidecar comme qgis-worker.
     "rio-cogeo>=5.3",  # terrain3d : cog_translate/cog_validate — conversion
-                       # d'un GeoTIFF brut en Cloud Optimized GeoTIFF et
-                       # validation structurelle du résultat.
+    # d'un GeoTIFF brut en Cloud Optimized GeoTIFF et
+    # validation structurelle du résultat.
     "defusedxml>=0.7",  # SP-12e : parsing XML sûr (XXE + billion-laughs) des GetCapabilities OGC
     "geopandas>=0.14",  # SP-11a : GeoDataFrame.to_parquet gère nativement les
-                        # métadonnées GeoParquet 1.0 ; s'appuie sur shapely,
-                        # déjà présent.
+    # métadonnées GeoParquet 1.0 ; s'appuie sur shapely,
+    # déjà présent.
     "pyarrow>=15.0",  # SP-11a : requis pour geopandas.to_parquet
     "pgvector>=0.3",
     "duckdb>=1.0",  # SP-11b : module analytique — lit le GeoParquet CDC (SP-11a)
-                    # via httpfs (S3/MinIO) + spatial (ST_Intersects sur la colonne
-                    # géométrie WKB), connexion in-process éphémère par requête.
+    # via httpfs (S3/MinIO) + spatial (ST_Intersects sur la colonne
+    # géométrie WKB), connexion in-process éphémère par requête.
     "openpyxl>=3.1",  # SP-16a : sérialisation d'export XLSX (app/analytics/export.py) —
-                      # aucune dépendance XLSX n'existait dans le cœur avant ce sous-plan.
+    # aucune dépendance XLSX n'existait dans le cœur avant ce sous-plan.
     "playwright>=1.45",  # SP-17a : rendu headless Chromium pour l'export
-                        # PNG/PDF (app/export/jobs.py) — installé sans le
-                        # binaire navigateur par défaut ; `playwright install
-                        # --with-deps chromium` est requis en plus (fait dans
-                        # le Dockerfile export-worker, tâche 13 ; à faire à la
-                        # main en dev local pour lancer les tests marqués
-                        # @pytest.mark.playwright de cette tâche).
+    # PNG/PDF (app/export/jobs.py) — installé sans le
+    # binaire navigateur par défaut ; `playwright install
+    # --with-deps chromium` est requis en plus (fait dans
+    # le Dockerfile export-worker, tâche 13 ; à faire à la
+    # main en dev local pour lancer les tests marqués
+    # @pytest.mark.playwright de cette tâche).
     "opentelemetry-sdk>=1.27",
     "opentelemetry-exporter-otlp-proto-http>=1.27",
     "opentelemetry-instrumentation-fastapi>=0.48b0",
@@ -173,13 +173,14 @@ dependencies = [
     "opentelemetry-instrumentation-httpx>=0.48b0",
     "opentelemetry-instrumentation-botocore>=0.48b0",
     "cel-python>=0.5,<0.6",  # REV-278b : parseur CEL (syntaxe seulement) pour la validation
-                      # à l'écriture des expressions ; Apache-2.0, tire lark (MIT) et google-re2 (BSD-3).
+    # à l'écriture des expressions ; Apache-2.0, tire lark (MIT) et google-re2 (BSD-3).
     "databricks-sqlalchemy>=2,<3",  # REV-110 : reader.connector.databricks — dialecte
-                      # SQLAlchemy "databricks://" (entry point, aucun import
-                      # explicite). Apache-2.0 (METADATA vérifié) ; tire
-                      # databricks-sql-connector (Apache-2.0), thrift (Apache-2.0),
-                      # lz4 (BSD, wheel aarch64 présente), pybreaker (BSD) et épingle
-                      # oauthlib<4 (3.3.1, BSD-3).
+    # SQLAlchemy "databricks://" (entry point, aucun import
+    # explicite). Apache-2.0 (METADATA vérifié) ; tire
+    # databricks-sql-connector (Apache-2.0), thrift (Apache-2.0),
+    # lz4 (BSD, wheel aarch64 présente), pybreaker (BSD) et épingle
+    # oauthlib<4 (3.3.1, BSD-3).
+    "mgrs>=1.5.4",
 ]
 
 [dependency-groups]
