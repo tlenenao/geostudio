@@ -237,6 +237,8 @@ services:
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8200"
     environment:
       DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
+      # Verrou des migrations (ARC-32) : connexion DIRECTE (un verrou de session ne survit pas à pgbouncer en mode transaction)
+      CORE_MIGRATION_DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@postgis:5432/gis
       CORE_AUTH_MODE: ${CORE_AUTH_MODE:-mock}
       # Marqueur explicite requis par la garde de démarrage SP-26/3.1 :
       # CORE_AUTH_MODE=mock sans CORE_ENV=development refuse de démarrer.
@@ -416,6 +418,11 @@ services:
       CORE_TRUSTED_PROXIES: ${CORE_TRUSTED_PROXIES:-127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7}
       # Budget /min (par IP) des liens de partage : route publique + en-tête X-Share-Link-Token (REV-299).
       CORE_RATELIMIT_SHARE_LINK_PER_MIN: ${CORE_RATELIMIT_SHARE_LINK_PER_MIN:-60}
+      # Limiteur de débit : `postgres` = budget partagé entre réplicas `core` (ARC-32, repli mémoire si
+      # la base est lente) ; `memory` = budget par process (ADR 0019).
+      CORE_RATELIMIT_BACKEND: ${CORE_RATELIMIT_BACKEND:-postgres}
+      # MCP sans session en mémoire : requis dès que `core` tourne à plusieurs réplicas (ARC-32).
+      CORE_MCP_STATELESS: ${CORE_MCP_STATELESS:-true}
       # Plafond de lecture d'un fichier importé (octets) ; vide = 512 Mio (P03.05).
       CORE_UPLOAD_MAX_BYTES: ${CORE_UPLOAD_MAX_BYTES:-}
       S3_ACCESS_KEY: ${MINIO_USER}

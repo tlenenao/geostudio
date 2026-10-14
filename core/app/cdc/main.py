@@ -20,6 +20,7 @@ observability.setup()
 from app.cdc import (  # noqa: E402  (après setup(), même patron que app.jobs)
     backfill,
     consumer,
+    election,
     storage,
 )
 from app.cdc.buffer import CdcBufferManager  # noqa: E402
@@ -127,6 +128,12 @@ def run() -> None:
     shutdown = _ShutdownState()
     signal.signal(signal.SIGTERM, shutdown.handle_sigterm)
     observability.register_cdc_lag_gauge(state.get_lag_seconds)
+
+    # ARC-32 : N cdc-worker possibles, un seul leader (verrou consultatif) ; les autres attendent.
+    election_guard = election.acquire_leadership(raw_dsn, should_stop=shutdown.should_stop)
+    if election_guard is None:  # SIGTERM pendant l'attente
+        return
+    election.watch_leadership(election_guard)
 
     consumer.ensure_replication_slot(raw_dsn)
 

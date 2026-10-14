@@ -8,10 +8,17 @@ logique de app.auth.dependency pour un usage qui n'a besoin que d'une clé
 stable, pas d'une identité vérifiée. Limite assumée : ne tient pas
 multi-process (pas de --workers aujourd'hui côté uvicorn, cf. C2/vague 0)."""
 
+import hashlib
+import logging
 import os
 import re
+import threading
 import time
 from collections import defaultdict, deque
+
+from sqlalchemy import Engine, text
+
+logger = logging.getLogger(__name__)
 
 _SQL_RE = re.compile(r"^/v1/analytics/sql$")
 _LLM_RE = re.compile(r"^/mcp$|^/v1/copilot/turn$")
@@ -196,3 +203,63 @@ class RateLimiter:
             self._sweep(now)
             self._calls_since_sweep = 0
         return allowed
+
+
+# Disjoncteur : après un échec Postgres, on reste en repli local ce nombre de secondes plutôt
+# que de payer le timeout à chaque requête.
+_BREAKER_SECONDS = 5.0
+_UPSERT = text(
+    "INSERT INTO rate_limit_counters (key_hash, grp, window_start, hits) "
+    "VALUES (:k, :g, :w, 1) "
+    "ON CONFLICT (key_hash, grp, window_start) DO UPDATE "
+    "SET hits = rate_limit_counters.hits + 1 RETURNING hits"
+)
+
+
+class PgRateLimiter(RateLimiter):
+    """Limiteur partagé entre réplicas `core` (ARC-32) : compteur à fenêtre fixe de 60 s en
+    UPSERT Postgres, un aller-retour par requête limitée. La clé (en-tête Authorization brut)
+    n'est jamais stockée, seulement son SHA-256. Base lente ou injoignable : timeout court puis
+    repli sur le compteur mémoire du process (budget par réplica, comportement ADR 0019) avec
+    disjoncteur — la limitation ne doit jamais rendre l'API indisponible.
+    ponytail: fenêtre fixe (jusqu'à 2x le budget à cheval sur deux fenêtres), fenêtre glissante
+    pondérée si le besoin est mesuré."""
+
+    def __init__(self, engine: Engine, *, timeout_ms: int = 250) -> None:
+        super().__init__()
+        self._engine = engine
+        self._timeout_ms = timeout_ms
+        self._open_until = 0.0
+        self._calls_since_purge = 0
+        # Le repli mémoire est appelé depuis le threadpool (run_in_threadpool) : RateLimiter n'est
+        # pas thread-safe (_sweep itère _hits).
+        self._local_lock = threading.Lock()
+
+    @property
+    def degraded(self) -> bool:
+        return time.monotonic() < self._open_until
+
+    def _allow_pg(self, key: str, group: str, budget: int) -> bool:
+        window = int(time.time() // _WINDOW_SECONDS)
+        key_hash = hashlib.sha256(key.encode()).hexdigest()
+        with self._engine.begin() as conn:
+            conn.execute(text(f"SET LOCAL statement_timeout = {int(self._timeout_ms)}"))
+            hits = conn.execute(_UPSERT, {"k": key_hash, "g": group, "w": window}).scalar_one()
+            self._calls_since_purge += 1
+            if self._calls_since_purge >= 500:
+                self._calls_since_purge = 0
+                conn.execute(
+                    text("DELETE FROM rate_limit_counters WHERE window_start < :w"),
+                    {"w": window - 1},
+                )
+        return bool(hits <= budget)
+
+    def allow(self, key: str, group: str) -> bool:
+        if not self.degraded:
+            try:
+                return self._allow_pg(key, group, self._budgets[group])
+            except Exception:
+                logger.warning("ratelimit: Postgres indisponible, repli local", exc_info=True)
+                self._open_until = time.monotonic() + _BREAKER_SECONDS
+        with self._local_lock:
+            return super().allow(key, group)

@@ -14,7 +14,8 @@ secrets:
   # pgbouncer ou direct), CORE_SECRETS_MASTER_KEY, S3_ACCESS_KEY, S3_SECRET_KEY, et CDC_DATABASE_URL
   # (connexion DIRECTE au primaire, pas de pgbouncer : réplication logique) si cdcWorker.enabled.
   # Optionnelles : CORE_EXPORT_TOKEN_SECRET (obligatoire si export.enabled), CORE_SHARE_LINK_TOKEN_SECRET,
-  # CORE_ADMIN_TOOLS_TOKEN_SECRET, CORE_LLM_API_KEY, CORE_EMBEDDING_API_KEY.
+  # CORE_ADMIN_TOOLS_TOKEN_SECRET, CORE_LLM_API_KEY, CORE_EMBEDDING_API_KEY, CORE_MIGRATION_DATABASE_URL
+  # (connexion DIRECTE au primaire pour le verrou des migrations : requis si DATABASE_URL passe par pgbouncer).
   existingSecret: ""
 
 # Réglages non secrets : ConfigMap partagé par core, worker, cdc-worker et export-worker. Mêmes noms et
@@ -101,6 +102,8 @@ config:
   CORE_READ_ONLY_MODE: "false"
   CORE_ROUTING_URL: ""               # vide + valhalla.enabled = service valhalla du release
   CORE_SQL_EXECUTOR_TIMEOUT_S: "60"
+  CORE_MCP_STATELESS: "true"           # MCP sans session en mémoire (ARC-32)
+  CORE_RATELIMIT_BACKEND: "postgres"   # budget de débit partagé entre réplicas (ARC-32)
   CORE_STALLED_JOB_MINUTES: "60"
   CORE_TERRAIN3D_CONVERSION_TIMEOUT_SECONDS: "900"
   CORE_TERRAIN3D_ENABLED: "false"
@@ -134,7 +137,8 @@ config:
   SHELL_BASE_URL: ""
 
 core:
-  replicas: 1                       # >1 : écart du limiteur en mémoire par process (ADR 0019)
+  replicas: 2                       # HA (ARC-32) : limiteur partagé Postgres, `core` sans état
+  pdb: {minAvailable: 1}            # PodDisruptionBudget (rendu si replicas > 1)
   resources: {requests: {cpu: 250m, memory: 512Mi}, limits: {memory: 2Gi}}
   podSecurityUid: 1001
 
@@ -148,7 +152,9 @@ worker:
 
 cdcWorker:
   enabled: true
-  # JAMAIS replicas > 1 : mono-writer par conception (slot de réplication logique).
+  # Mono-writer garanti par élection (verrou consultatif Postgres, ARC-32) : N pods, 1 leader, les
+  # autres attendent et reprennent < 30 s si le leader tombe.
+  replicas: 2
   resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {memory: 1Gi}}
   podSecurityUid: 1001
 
