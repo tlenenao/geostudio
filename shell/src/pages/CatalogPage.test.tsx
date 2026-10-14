@@ -246,11 +246,11 @@ test("SP-55 : dessiner un rectangle sur CatalogSpatialFilter filtre le catalogue
   await waitFor(() => expect(new URL(lastUrl).searchParams.get("bbox")).toBe("1,45,2,46"));
 });
 
-test("le filtre Type propose les douze types plus « Tous »", () => {
+test("le filtre Type propose les treize types plus « Tous »", () => {
   render(<CatalogPage onOpenItem={() => {}} />, { wrapper });
 
   const select = screen.getByLabelText("Type");
-  expect(select.querySelectorAll("option")).toHaveLength(13);
+  expect(select.querySelectorAll("option")).toHaveLength(14);
   expect(Array.from(select.querySelectorAll("option")).map((o) => o.value)).toContain("dataset");
   expect(Array.from(select.querySelectorAll("option")).map((o) => o.value)).toContain("tileset3d");
 });

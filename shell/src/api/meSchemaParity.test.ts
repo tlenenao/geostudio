@@ -73,7 +73,9 @@ const INSTANCE_INFO_FIELDS = [
   "etlEnabled",
   "exportEnabled",
   "quotasEnabled",
+  "rasterEnabled",
   "readOnly",
+  "routingEnabled",
   "terrain3dEnabled",
   "tileset3dEnabled",
 ].sort();
