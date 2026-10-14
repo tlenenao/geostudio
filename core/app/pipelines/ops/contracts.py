@@ -24,10 +24,16 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from app.auth.dependency import is_pipeline_file_io_enabled
+from app.auth.dependency import is_pipeline_file_io_enabled, is_raster_enabled
 from app.pipelines import compiler as _compiler
 from app.pipelines import http_call_runtime as _http_call
+from app.pipelines.ops import database as _database
 from app.pipelines.ops import execute as _execute
+from app.pipelines.ops import filtering as _filtering
+from app.pipelines.ops import geocode as _geocode
+from app.pipelines.ops import raster as _raster
+from app.pipelines.ops import routing as _routing
+from app.pipelines.ops import wfs as _wfs
 from app.pipelines.ops.schemas import (
     ReaderCollectionParams,
     ReaderConnectorBigQueryParams,
@@ -115,8 +121,8 @@ class OperationContract:
     # chaîne SQL exécutée par l'appelant).
     execute: Callable[..., None] | None = None
     # transform.httpCall : quand True (et seulement avec `execute`), runtime.py passe en plus
-    # `secret_resolver=` et `preview=` à `execute`. Les autres op `execute` gardent leur
-    # signature (conn, *, input_view, view_name, params).
+    # `secret_resolver=`, `preview=` et `input_srid=` à `execute`. Les autres op `execute`
+    # gardent leur signature (conn, *, input_view, view_name, params).
     needs_runtime_context: bool = False
     # Piège Python latent : un `def` nu donné ici en défaut (au lieu de `None`)
     # deviendrait un attribut de classe et serait lié comme méthode (self/le
@@ -620,6 +626,91 @@ OPERATIONS: dict[str, OperationContract] = {
         kind="writer",
         params_schema=WriterFileParams,
         enabled_when=is_pipeline_file_io_enabled,
+    ),
+    # Voie M (ARC vague 4) : params définis dans le module de chaque op (fichiers neufs).
+    "transform.geocode": OperationContract(
+        op="transform.geocode",
+        kind="transform",
+        params_schema=_geocode.TransformGeocodeParams,
+        engine="python",
+        engine_license="Apache-2.0 (httpx) ; BAN/Géoplateforme (Etalab 2.0) ou Nominatim (ODbL)",
+        execute=_geocode.execute_geocode,
+        needs_runtime_context=True,
+        output_srid=_geocode._output_srid,
+    ),
+    # Voie P (ARC-34, ADR 0025) : routage Valhalla, params dans ops/routing.py (fichier neuf).
+    "transform.isochrone": OperationContract(
+        op="transform.isochrone",
+        kind="transform",
+        params_schema=_routing.TransformIsochroneParams,
+        engine="python",
+        engine_license="MIT (Valhalla, service externe) ; données OSM (ODbL) de l'opérateur",
+        execute=_routing.execute_isochrone,
+        needs_runtime_context=True,
+        output_srid=_routing._output_srid,
+    ),
+    "transform.route": OperationContract(
+        op="transform.route",
+        kind="transform",
+        params_schema=_routing.TransformRouteParams,
+        engine="python",
+        engine_license="MIT (Valhalla, service externe) ; données OSM (ODbL) de l'opérateur",
+        execute=_routing.execute_route,
+        needs_runtime_context=True,
+        output_srid=_routing._output_srid,
+    ),
+    "reader.wfs": OperationContract(
+        op="reader.wfs",
+        kind="reader",
+        params_schema=_wfs.ReaderWfsParams,
+    ),
+    "reader.raster": OperationContract(
+        op="reader.raster",
+        kind="reader",
+        params_schema=_raster.ReaderRasterParams,
+        enabled_when=is_raster_enabled,
+    ),
+    "transform.zonalStats": OperationContract(
+        op="transform.zonalStats",
+        kind="transform",
+        params_schema=_raster.TransformZonalStatsParams,
+        engine="python",
+        engine_license="BSD-3-Clause (rasterio) ; GDAL (MIT)",
+        execute=_raster.execute_zonal_stats,
+        needs_runtime_context=True,
+        enabled_when=is_raster_enabled,
+    ),
+    "transform.testFilter": OperationContract(
+        op="transform.testFilter",
+        kind="transform",
+        params_schema=_filtering.TransformTestFilterParams,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        execute=_filtering.execute_test_filter,
+    ),
+    "transform.sampler": OperationContract(
+        op="transform.sampler",
+        kind="transform",
+        params_schema=_filtering.TransformSamplerParams,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        compile=_filtering.compile_sampler,
+    ),
+    "transform.neighborFinder": OperationContract(
+        op="transform.neighborFinder",
+        kind="transform",
+        params_schema=_filtering.TransformNeighborFinderParams,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        compile=_filtering.compile_neighbor_finder,
+    ),
+    "transform.sqlExecutor": OperationContract(
+        op="transform.sqlExecutor",
+        kind="transform",
+        params_schema=_database.TransformSqlExecutorParams,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        execute=_database.execute_sql_executor,
     ),
     "transform.httpCall": OperationContract(
         op="transform.httpCall",

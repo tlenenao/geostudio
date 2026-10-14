@@ -61,7 +61,10 @@ plus.
 | [0016](0016-cles-api-service.md) | Clés d'API de service : secret machine, identité du créateur, porte `can()` unique | acceptée | ARC-06 |
 | [0017](0017-soumission-publique-moderee.md) | Soumission publique anonyme : écriture `pending` seulement, derrière un jeton | acceptée | ARC-10 |
 | [0018](0018-ows-wfs-par-le-coeur.md) | OWS (WFS 2.0, OGC API Tiles) servis par le cœur, sans sidecar GPL | acceptée | ARC-11 |
-| [0019](0019-borne-ha-documentee.md) | HA : borne de la Vague 1 (documentée et testée, pas « réelle ») | acceptée | ARC-18/19 |
+| [0019](0019-borne-ha-documentee.md) | HA : borne de la Vague 1, puis HA multi-réplicas livrée (limiteur partagé, élection CDC, verrou de migration) | acceptée | ARC-18/19/32 |
 | [0020](0020-rendu-wms-wmts-interne.md) | WMS/WMTS : renderer interne du cœur, sans sidecar GPL | acceptée | ARC-20 |
 | [0021](0021-relations-entre-collections.md) | Relations entre collections : clé étrangère logique déclarée | acceptée | ARC-21 |
 | [0022](0022-groupes-externes-alimentes-par-claims.md) | Groupes externes : appartenance alimentée par les claims | acceptée | ARC-24 |
+| [0027](0027-webhooks-sortants-et-declencheurs.md) | Webhooks sortants et déclencheurs fichier/S3 : outbox transactionnelle | acceptée | rang 6 FME |
+| [0024](0024-raster-cog-proxy-titiler-authentifie.md) | Raster : COG seul, proxy TiTiler authentifié par `can()` | acceptée | ARC-33 |
+| [0025](0025-routage-valhalla-service-externe.md) | Routage/isochrones : Valhalla (MIT) en service externe | acceptée | ARC-34 |

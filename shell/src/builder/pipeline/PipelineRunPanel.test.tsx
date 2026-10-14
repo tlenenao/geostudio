@@ -371,3 +371,77 @@ test("sans cancelPipelineRun (sidecar desktop), aucun bouton d'annulation", asyn
   await screen.findByText("En cours");
   expect(screen.queryByRole("button", { name: "Annuler le run" })).not.toBeInTheDocument();
 });
+
+test("shows rejects, quarantine and null rates of a writer node in the run detail (F2)", async () => {
+  renderPanel({
+    getPipelineRuns: vi.fn().mockResolvedValue([
+      {
+        id: "run-r",
+        status: "succeeded_with_rejects",
+        startedAt: "2026-10-13T10:00:00Z",
+        finishedAt: "2026-10-13T10:00:02Z",
+        error: null,
+        nodeStats: {
+          w1: {
+            nodeId: "w1",
+            op: "writer.collection",
+            rowCount: 43,
+            inserted: 43,
+            updated: 0,
+            deleted: 0,
+            unchanged: 0,
+            rejected: 7,
+            rejectedCollectionId: "cible__rejected",
+            rejectsByRule: { name_ok: 7 },
+            quality: {
+              rowCount: 50,
+              columns: [{ name: "name", nonNull: 43, nulls: 7, nullRate: 0.14 }],
+            },
+          },
+        },
+      },
+    ]),
+  });
+  await waitFor(() => expect(screen.getByText("Terminé avec rejets")).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: /Détail du run run-r/ }));
+  expect(screen.getByText(/7 lignes rejetées \(name_ok : 7\)/)).toBeInTheDocument();
+  expect(screen.getByText(/collection cible__rejected/)).toBeInTheDocument();
+  expect(screen.getByText(/name : 14,0 % de valeurs nulles/)).toBeInTheDocument();
+});
+
+test("un run échoué reprenable propose Reprendre et Rejouer, qui appellent retryPipelineRun", async () => {
+  const retryPipelineRun = vi.fn().mockResolvedValue({ runId: "run-2" });
+  renderPanel({
+    retryPipelineRun,
+    getPipelineRuns: vi.fn().mockResolvedValue([
+      {
+        id: "run-0",
+        status: "failed",
+        startedAt: null,
+        finishedAt: null,
+        error: "boom",
+        nodeStats: {},
+        attempt: 2,
+        resumable: true,
+      },
+    ]),
+  });
+  await userEvent.click(await screen.findByRole("button", { name: "Reprendre" }));
+  expect(retryPipelineRun).toHaveBeenCalledWith("run-0", { fromStart: false });
+  await userEvent.click(screen.getByRole("button", { name: "Rejouer" }));
+  expect(retryPipelineRun).toHaveBeenLastCalledWith("run-0", { fromStart: true });
+  expect(screen.getByText("tentative 2")).toBeInTheDocument();
+});
+
+test("sans points de reprise, seul Rejouer est proposé", async () => {
+  renderPanel({
+    retryPipelineRun: vi.fn(),
+    getPipelineRuns: vi
+      .fn()
+      .mockResolvedValue([
+        { id: "r", status: "failed", startedAt: null, finishedAt: null, error: "x", nodeStats: {} },
+      ]),
+  });
+  await screen.findByRole("button", { name: "Rejouer" });
+  expect(screen.queryByRole("button", { name: "Reprendre" })).toBeNull();
+});

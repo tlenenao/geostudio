@@ -85,6 +85,18 @@ def is_tileset3d_enabled() -> bool:
     return os.environ.get("CORE_TILESET3D_ENABLED", "false").lower() == "true"
 
 
+def is_raster_enabled() -> bool:
+    """CORE_RASTER_ENABLED (ARC-33, ADR 0024) — capacité instance-wide optionnelle :
+    bucket raster, file `raster`, proxy de tuiles TiTiler. Défaut false."""
+    return os.environ.get("CORE_RASTER_ENABLED", "false").lower() == "true"
+
+
+def is_routing_enabled() -> bool:
+    """Routage Valhalla (ARC-34, ADR 0025) configuré : CORE_ROUTING_URL non vide. Sinon les
+    routes /v1/routing/* répondent 503 ; le shell masque les surfaces qui en dépendent."""
+    return bool(os.environ.get("CORE_ROUTING_URL", "").strip())
+
+
 def is_terrain3d_enabled() -> bool:
     """CORE_TERRAIN3D_ENABLED — capacité instance-wide optionnelle, même
     convention que is_tileset3d_enabled : lue à chaque appel, sans cache.

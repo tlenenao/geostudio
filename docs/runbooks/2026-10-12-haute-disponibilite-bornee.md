@@ -1,5 +1,9 @@
 # Runbook — haute disponibilité bornée (ARC-18, ADR 0019)
 
+> **Mis à jour par ARC-32** : limiteur partagé, élection du `cdc-worker` et MCP sans état sont livrés — voir
+> `2026-10-14-haute-disponibilite-reelle.md`. Les passages ci-dessous sur ces trois points décrivent l'état
+> d'ARC-18 (mesures historiques conservées).
+
 **Promesse commerciale : « HA documentée et testée », pas « HA réelle ».** Périmètre = un datacenter,
 comme Esri (2 portails + LB). Limiteur partagé, élection du `cdc-worker`, `core` sans état total,
 Helm : **ARC-32** (hors périmètre).

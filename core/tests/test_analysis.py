@@ -169,7 +169,104 @@ def test_catalog_route(env):
     _app, client, *_ = env
     r = client.get("/v1/analysis/tools")
     assert r.status_code == 200
-    assert {t["name"] for t in r.json()["tools"]} == set(analysis.TOOLS)
+    assert {t["name"] for t in r.json()["tools"]} == {
+        n for n, t in analysis.TOOLS.items() if t.enabled()
+    }
+
+
+# --- statistiques raster par zone (ARC-33 × ARC-25) ---------------------------------------------------
+
+
+def _raster_item(env, tmp_path, monkeypatch):
+    """Item raster lisible par l'admin + COG local (ouverture S3 remplacée)."""
+    from contextlib import contextmanager
+
+    import rasterio
+
+    from app.items import repository as items_repo
+    from app.pipelines.ops import raster as raster_op
+    from app.raster.models import RasterAsset
+    from tests.raster_fixtures import write_tif
+
+    app, _client, _p, tenant_id, cols = env
+    tif = str(tmp_path / "r.tif")
+    write_tif(tif)
+
+    @contextmanager
+    def opener(asset):
+        with rasterio.open(tif) as ds:
+            yield ds
+
+    monkeypatch.setattr(raster_op, "open_asset", opener)
+    admin = app.dependency_overrides[get_current_user]()
+    gen = app.dependency_overrides[db.get_session]()
+    s = next(gen)
+    item = items_repo.create_item(
+        s, tenant_id=tenant_id, owner_id=admin.id, resource_type="raster", title="R"
+    )
+    s.add(
+        RasterAsset(
+            item_id=item.id,
+            tenant_id=tenant_id,
+            source_key="k",
+            srid=4326,
+            bounds=[2.0, 48.36, 2.64, 49.0],
+            width=64,
+            height=64,
+            dtype="float32",
+            nodata=-9999.0,
+            bands=[],
+            size_bytes=1,
+        )
+    )
+    s.commit()
+    item_id = item.id
+    gen.close()
+    _write_partition(
+        tmp_path,
+        tenant_id=tenant_id,
+        collection_id=cols["zones"],
+        rows=[
+            {
+                "id": 1,
+                "nom": "Z1",
+                "_op": "insert",
+                "_lsn": 1,
+                "_ts": 1.0,
+                "geometry": box(2.1, 48.7, 2.3, 48.9),
+            }
+        ],
+    )
+    return item_id
+
+
+def test_zonal_stats_tool_hidden_and_refused_when_raster_is_off(env, monkeypatch):
+    monkeypatch.delenv("CORE_RASTER_ENABLED", raising=False)
+    assert "zonalStats" not in {t["name"] for t in analysis.tool_catalog()}
+    r = _post(env, {"tool": "zonalStats", "params": {"rasterItemId": "x"}}, source="zones")
+    assert r.status_code == 422
+
+
+def test_zonal_stats_tool_runs_on_polygons(env, tmp_path, monkeypatch):
+    monkeypatch.setenv("CORE_RASTER_ENABLED", "true")
+    item_id = _raster_item(env, tmp_path, monkeypatch)
+    assert "zonalStats" in {t["name"] for t in analysis.tool_catalog()}
+    r = _post(
+        env,
+        {"tool": "zonalStats", "params": {"rasterItemId": item_id, "stats": ["count", "mean"]}},
+        source="zones",
+    )
+    assert r.status_code == 200, r.text
+    (feat,) = r.json()["featureCollection"]["features"]
+    assert feat["properties"]["nom"] == "Z1"
+    assert feat["properties"]["zonal_count"] == 400 and feat["properties"]["zonal_mean"] > 0
+
+
+def test_zonal_stats_tool_refuses_an_unreadable_raster(env, tmp_path, monkeypatch):
+    monkeypatch.setenv("CORE_RASTER_ENABLED", "true")
+    _raster_item(env, tmp_path, monkeypatch)
+    r = _post(env, {"tool": "zonalStats", "params": {"rasterItemId": "inconnu"}}, source="zones")
+    assert r.status_code == 422 and "not found" in r.text
 
 
 # --- sortie éphémère ---------------------------------------------------------------------------------

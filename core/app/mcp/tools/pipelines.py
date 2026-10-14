@@ -91,9 +91,11 @@ def register(server: FastMCP, session_factory) -> None:
 
     @server.tool()
     @write_tool
-    async def run_pipeline(ctx: Context, pipelineId: str) -> dict:
+    async def run_pipeline(ctx: Context, pipelineId: str, params: dict | None = None) -> dict:
         """Defer a run of a Pipeline — mirrors POST /pipelines/{id}/run.
-        Only registered when CORE_ETL_ENABLED is on. SP-15a."""
+        Only registered when CORE_ETL_ENABLED is on. SP-15a. `params` : valeurs
+        des paramètres de run déclarés par le pipeline (validés par type, 422
+        sinon) — ARC-K2/F3."""
         if is_read_only_mode():
             raise ValueError("Mode démo : lecture seule, écritures désactivées.")
         access_token = get_access_token()
@@ -110,6 +112,7 @@ def register(server: FastMCP, session_factory) -> None:
                     item_id=pipelineId,
                     defer_task=defer_task,
                     actor_kind="agent",
+                    params=params,
                 )
             except HTTPException as exc:
                 raise http_exception_to_value_error(exc) from exc

@@ -43,6 +43,26 @@ export const map = {
   "terrainPanel.tilesUrlLabel": "URL de tuiles terrain (terrain-RGB, encodage terrarium)",
   "terrainPanel.exaggerationLabel": "Exagération du relief",
 
+  // RasterLayerForm + RasterUploadButton (ARC-33)
+  "rasterLayer.heading": "Ajouter un raster hébergé",
+  "rasterLayer.itemAria": "Raster hébergé",
+  "rasterLayer.chooseOption": "— choisir un raster —",
+  "rasterLayer.colormapAria": "Rampe de couleurs",
+  "rasterLayer.minAria": "Valeur minimale",
+  "rasterLayer.maxAria": "Valeur maximale",
+  "rasterLayer.addButton": "Ajouter le raster",
+  "rasterUpload.conversionErrorFallback": "Échec de la conversion du raster.",
+  "rasterUpload.timeoutError": "La conversion du raster prend trop de temps. Réessayez plus tard.",
+  "rasterUpload.uploadErrorFallback": "Échec de l'envoi du raster.",
+  "rasterUpload.newButton": "Nouveau raster",
+  "rasterUpload.fileLabel": "Fichier raster (GeoTIFF)",
+  "rasterUpload.titleLabel": "Titre",
+  "rasterUpload.uploadingStatus": "Envoi du fichier…",
+  "rasterUpload.convertingStatus": "Conversion en COG…",
+  "rasterUpload.cancelButton": "Annuler",
+  "rasterUpload.busyButton": "Envoi…",
+  "rasterUpload.submitButton": "Importer",
+
   // Terrain3DUploadButton (map)
   "terrain3dUpload.conversionErrorFallback": "Échec de la conversion du DEM.",
   "terrain3dUpload.timeoutError": "La conversion du DEM prend trop de temps. Réessayez plus tard.",

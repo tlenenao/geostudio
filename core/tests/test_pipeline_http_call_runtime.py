@@ -155,8 +155,10 @@ def test_runtime_passes_context_only_to_ops_that_ask(monkeypatch, conn):
 
     seen = {}
 
-    def fake_execute(c, *, input_view, view_name, params, secret_resolver=None, preview=False):
-        seen.update(resolver=secret_resolver, preview=preview)
+    def fake_execute(
+        c, *, input_view, view_name, params, secret_resolver=None, preview=False, input_srid=None
+    ):
+        seen.update(resolver=secret_resolver, preview=preview, input_srid=input_srid)
         c.execute(f'CREATE TEMP TABLE "{view_name}" AS SELECT * FROM "{input_view}"')
 
     fake = contracts.OperationContract(
@@ -177,7 +179,7 @@ def test_runtime_passes_context_only_to_ops_that_ask(monkeypatch, conn):
     runtime._execute_transform_chain(
         conn, nodes, edges, {"r": "node_r"}, {"r": 4326}, {}, secret_resolver=marker, preview=True
     )
-    assert seen == {"resolver": marker, "preview": True}
+    assert seen == {"resolver": marker, "preview": True, "input_srid": 4326}
 
 
 def _recording_handler(statuses, stamps, headers=None):

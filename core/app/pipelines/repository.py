@@ -3,12 +3,13 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import croniter
-from sqlalchemy import case, func, select, update
+from sqlalchemy import case, delete, func, select, update
 from sqlalchemy.orm import Session, aliased
 
 from app.configs import repository as configs_repo
 from app.configs.models import Config, ConfigRevision
-from app.pipelines.models import PipelineRun, PipelineWebhookToken
+from app.outbox.emit import emit
+from app.pipelines.models import PipelineReaderState, PipelineRun, PipelineWebhookToken
 
 
 def _now() -> datetime:
@@ -18,12 +19,23 @@ def _now() -> datetime:
 _RUNNING_RECLAIM_MINUTES = 60
 
 
-def create_run(session: Session, *, tenant_id: str, pipeline_item_id: str) -> PipelineRun:
+def create_run(
+    session: Session,
+    *,
+    tenant_id: str,
+    pipeline_item_id: str,
+    params: dict | None = None,
+    resume_of: str | None = None,
+    node_stats: dict | None = None,
+) -> PipelineRun:
     run = PipelineRun(
         id=uuid.uuid4().hex,
         tenant_id=tenant_id,
         pipeline_item_id=pipeline_item_id,
         status="queued",
+        params=params or None,
+        resume_of=resume_of,
+        node_stats=node_stats or {},
     )
     session.add(run)
     session.flush()
@@ -35,7 +47,7 @@ class PipelineRunActive(Exception):
     """Un run non périmé (queued/running/cancel_requested) existe déjà (REV-310)."""
 
 
-_ACTIVE_STATUSES = ("queued", "pending", "running", "cancel_requested")
+_ACTIVE_STATUSES = ("queued", "pending", "running", "cancel_requested", "retrying")
 
 
 def _run_anchor():
@@ -44,6 +56,7 @@ def _run_anchor():
     return func.coalesce(
         case(
             (PipelineRun.status.in_(("running", "cancel_requested")), PipelineRun.started_at),
+            (PipelineRun.status == "retrying", PipelineRun.next_retry_at),
             else_=PipelineRun.created_at,
         ),
         PipelineRun.created_at,
@@ -56,6 +69,9 @@ def create_run_unless_active(
     tenant_id: str,
     pipeline_item_id: str,
     stale_minutes: int = _RUNNING_RECLAIM_MINUTES,
+    params: dict | None = None,
+    resume_of: str | None = None,
+    node_stats: dict | None = None,
 ) -> PipelineRun:
     """REV-310 : crée un run SAUF si un run actif non périmé existe (lève
     PipelineRunActive). Point unique REST / MCP / webhook / cron. Atomique :
@@ -81,7 +97,14 @@ def create_run_unless_active(
     ).first()
     if active is not None:
         raise PipelineRunActive(pipeline_item_id)
-    return create_run(session, tenant_id=tenant_id, pipeline_item_id=pipeline_item_id)
+    return create_run(
+        session,
+        tenant_id=tenant_id,
+        pipeline_item_id=pipeline_item_id,
+        params=params,
+        resume_of=resume_of,
+        node_stats=node_stats,
+    )
 
 
 def get_run(session: Session, *, tenant_id: str, run_id: str) -> PipelineRun | None:
@@ -163,8 +186,10 @@ def mark_running(session: Session, *, run_id: str) -> bool:
     repassait `running`)."""
     result = session.execute(
         update(PipelineRun)
-        .where(PipelineRun.id == run_id, PipelineRun.status.in_(("queued", "pending")))
-        .values(status="running", started_at=_now(), finished_at=None, error=None)
+        .where(PipelineRun.id == run_id, PipelineRun.status.in_(("queued", "pending", "retrying")))
+        .values(
+            status="running", started_at=_now(), finished_at=None, error=None, next_retry_at=None
+        )
     )
     session.flush()
     return bool(result.rowcount)  # type: ignore[attr-defined]
@@ -186,10 +211,16 @@ def request_cancel(session: Session, run: PipelineRun) -> str:
         )
         return bool(res.rowcount)  # type: ignore[attr-defined]
 
-    if not _transition("queued", status="cancelled", finished_at=_now()):
+    terminal = _transition("queued", status="cancelled", finished_at=_now()) or _transition(
+        "retrying", status="cancelled", finished_at=_now(), next_retry_at=None
+    )
+    if not terminal:
         _transition("running", status="cancel_requested")
     session.flush()
     session.refresh(run)
+    if terminal:
+        # F6 : clôture directe (queued/retrying -> cancelled) = fin de run, comme mark_cancelled.
+        _emit_run_finished(session, run)
     return run.status
 
 
@@ -202,30 +233,123 @@ def mark_cancelled(session: Session, *, run_id: str) -> None:
     run = session.get(PipelineRun, run_id)
     if run is None:
         return
+    previous = _stored_status(session, run_id)
     run.status = "cancelled"
     run.finished_at = _now()
     session.flush()
+    _emit_run_finished(session, run, previous=previous)
+
+
+def _stored_status(session: Session, run_id: str) -> str | None:
+    # Statut en base (pas l'instance ORM, possiblement périmée : un reclaim a pu le
+    # clore depuis un autre processus).
+    return session.scalar(select(PipelineRun.status).where(PipelineRun.id == run_id))
+
+
+def _emit_run_finished(session: Session, run: PipelineRun, *, previous: str | None = None) -> None:
+    # F6 (ADR 0027) : dans la transaction qui clôt le run — seulement sur un VRAI
+    # changement de statut (reclaim -> failed puis worker -> failed : un seul
+    # événement ; une fin réelle qui corrige un reclaim, elle, est émise).
+    if previous == run.status:
+        return
+    emit(
+        session,
+        tenant_id=run.tenant_id,
+        event_type="pipeline.run.finished",
+        payload={"pipelineItemId": run.pipeline_item_id, "runId": run.id, "status": run.status},
+    )
 
 
 def mark_succeeded(session: Session, *, run_id: str, node_stats: dict) -> None:
     run = session.get(PipelineRun, run_id)
     if run is None:
         return
-    run.status = "succeeded"
+    # F2 : un run qui a écarté des lignes vers la quarantaine n'est pas un succès net.
+    rejected = any((s or {}).get("rejected") for s in node_stats.values())
+    previous = _stored_status(session, run_id)
+    run.status = "succeeded_with_rejects" if rejected else "succeeded"
     run.error = None  # run vivant clos à tort par reclaim_stuck_runs : la fin réelle prime
     run.finished_at = _now()
     run.node_stats = node_stats
     session.flush()
+    _emit_run_finished(session, run, previous=previous)
 
 
 def mark_failed(session: Session, *, run_id: str, error: str) -> None:
     run = session.get(PipelineRun, run_id)
     if run is None:
         return
+    previous = _stored_status(session, run_id)
     run.status = "failed"
     run.finished_at = _now()
     run.error = error
     session.flush()
+    _emit_run_finished(session, run, previous=previous)
+
+
+def mark_retrying(
+    session: Session, *, run_id: str, error: str, delay_seconds: int
+) -> datetime | None:
+    """F5 : `running -> retrying` (UPDATE conditionnel : un run annulé entre-temps
+    n'est pas relancé), attempt+1, échéance posée. Retourne l'échéance, ou None
+    si le run n'était plus `running`."""
+    due = _now() + timedelta(seconds=delay_seconds)
+    result = session.execute(
+        update(PipelineRun)
+        .where(PipelineRun.id == run_id, PipelineRun.status == "running")
+        .values(
+            status="retrying",
+            attempt=PipelineRun.attempt + 1,
+            next_retry_at=due,
+            error=error,
+            finished_at=None,
+        )
+    )
+    session.flush()
+    return due if result.rowcount else None  # type: ignore[attr-defined]
+
+
+def set_resumable(session: Session, *, run_id: str, value: bool) -> None:
+    session.execute(update(PipelineRun).where(PipelineRun.id == run_id).values(resumable=value))
+    session.flush()
+
+
+def clear_resumable_for_roots(session: Session, root_ids: list[str]) -> None:
+    """Points de reprise supprimés (expirés / run réussi) : retire `resumable` du run
+    racine et des runs qui le reprennent."""
+    if not root_ids:
+        return
+    session.execute(
+        update(PipelineRun)
+        .where(PipelineRun.resumable.is_(True))
+        .where((PipelineRun.id.in_(root_ids)) | (PipelineRun.resume_of.in_(root_ids)))
+        .values(resumable=False)
+    )
+    session.flush()
+
+
+def requeue_overdue_retries(
+    session: Session, *, grace_seconds: int = 120, now: datetime | None = None
+) -> list[tuple[str, str]]:
+    """Runs `retrying` dont l'échéance est dépassée de plus de `grace_seconds`
+    (defer perdu — piège n°14) : repousse l'échéance (la grâce repart) et
+    retourne (run_id, tenant_id) à re-déférer. `mark_running` conditionnel rend
+    un doublon de défer inoffensif. Cross-tenant, appelée par le balayage cron."""
+    now = now or _now()
+    rows = session.execute(
+        select(PipelineRun.id, PipelineRun.tenant_id).where(
+            PipelineRun.status == "retrying",
+            PipelineRun.next_retry_at < now - timedelta(seconds=grace_seconds),
+        )
+    ).all()
+    if rows:
+        session.execute(
+            update(PipelineRun)
+            .where(PipelineRun.id.in_([r[0] for r in rows]), PipelineRun.status == "retrying")
+            .values(next_retry_at=now)
+        )
+        session.flush()
+    return [(r[0], r[1]) for r in rows]
 
 
 def reclaim_stuck_runs(
@@ -242,21 +366,26 @@ def reclaim_stuck_runs(
     threshold = _now() - timedelta(minutes=older_than_minutes)
     anchor = case(
         (PipelineRun.status.in_(("running", "cancel_requested")), PipelineRun.started_at),
+        (PipelineRun.status == "retrying", PipelineRun.next_retry_at),
         else_=PipelineRun.created_at,
     )
-    result = session.execute(
-        update(PipelineRun)
+    runs = session.scalars(
+        select(PipelineRun)
         .where(
-            PipelineRun.status.in_(("queued", "running", "cancel_requested")),
+            PipelineRun.status.in_(("queued", "running", "cancel_requested", "retrying")),
             func.coalesce(anchor, PipelineRun.created_at) < threshold,
         )
-        .values(
-            status="failed",
-            finished_at=_now(),
-            error="run périmé : jamais terminé, clos par le balayage de planification",
-        )
-    )
-    return int(result.rowcount or 0)  # type: ignore[attr-defined]
+        # verrou de ligne : un run qui se termine pendant le balayage n'est pas écrasé
+        # (skip_locked : sans effet sous sqlite, effectif sous Postgres)
+        .with_for_update(skip_locked=True)
+    ).all()
+    for run in runs:
+        run.status = "failed"
+        run.finished_at = _now()
+        run.error = "run périmé : jamais terminé, clos par le balayage de planification"
+        session.flush()
+        _emit_run_finished(session, run)  # F6 : une fois par run touché, même transaction
+    return len(runs)
 
 
 def append_node_stat(
@@ -332,7 +461,7 @@ def list_due_pipelines(session: Session, *, now: datetime | None = None) -> list
         created_at = latest.created_at
         if created_at.tzinfo is None:
             created_at = created_at.replace(tzinfo=UTC)
-        if latest.status in ("queued", "running", "cancel_requested"):
+        if latest.status in ("queued", "running", "cancel_requested", "retrying"):
             # Ancre de péremption : pour un run "running", l'horloge pertinente
             # est started_at (posé par mark_running), pas created_at (heure de
             # mise en file) — sinon un run resté longtemps en file d'attente
@@ -420,3 +549,60 @@ def list_webhook_tokens_for_pipeline(
         .all()
     )
     return list(rows)
+
+
+# --- PipelineReaderState (ARC-K2/F4) ---
+
+
+def get_reader_states(session: Session, *, tenant_id: str, pipeline_item_id: str) -> dict[str, str]:
+    rows = session.execute(
+        select(PipelineReaderState.node_id, PipelineReaderState.cursor_value).where(
+            PipelineReaderState.tenant_id == tenant_id,
+            PipelineReaderState.pipeline_item_id == pipeline_item_id,
+        )
+    ).all()
+    return {node_id: value for node_id, value in rows}
+
+
+def upsert_reader_states(
+    session: Session, *, tenant_id: str, pipeline_item_id: str, cursors: dict[str, str]
+) -> None:
+    existing = {
+        r.node_id: r
+        for r in session.execute(
+            select(PipelineReaderState).where(
+                PipelineReaderState.tenant_id == tenant_id,
+                PipelineReaderState.pipeline_item_id == pipeline_item_id,
+            )
+        ).scalars()
+    }
+    for node_id, value in cursors.items():
+        row = existing.get(node_id)
+        if row is None:
+            session.add(
+                PipelineReaderState(
+                    id=uuid.uuid4().hex,
+                    tenant_id=tenant_id,
+                    pipeline_item_id=pipeline_item_id,
+                    node_id=node_id,
+                    cursor_value=value,
+                )
+            )
+        else:
+            row.cursor_value = value
+            row.updated_at = _now()
+    session.flush()
+
+
+def delete_reader_states(
+    session: Session, *, tenant_id: str, pipeline_item_id: str, node_id: str | None = None
+) -> int:
+    stmt = delete(PipelineReaderState).where(
+        PipelineReaderState.tenant_id == tenant_id,
+        PipelineReaderState.pipeline_item_id == pipeline_item_id,
+    )
+    if node_id is not None:
+        stmt = stmt.where(PipelineReaderState.node_id == node_id)
+    result = session.execute(stmt)
+    session.flush()
+    return int(result.rowcount or 0)  # type: ignore[attr-defined]

@@ -71,6 +71,7 @@ class McpLoopbackSession:
         )
         self._owns_client = http_client is None
         self._session_id: str | None = None
+        self._initialized = False
 
     async def aclose(self) -> None:
         if self._owns_client:
@@ -88,7 +89,7 @@ class McpLoopbackSession:
         return headers
 
     async def _ensure_initialized(self) -> None:
-        if self._session_id:
+        if self._initialized:
             return
         response = await self._client.post(
             "/mcp",
@@ -106,10 +107,11 @@ class McpLoopbackSession:
         )
         if response.status_code != 200:
             raise McpLoopbackError(f"MCP initialize failed: {response.status_code}")
-        session_id = response.headers.get("mcp-session-id")
-        if not session_id:
+        # Serveur sans état (CORE_MCP_STATELESS, ARC-32) : pas d'id de session, chaque requête
+        # est autonome ; le contrôle d'id ne vaut donc que quand le serveur en émet un.
+        self._session_id = response.headers.get("mcp-session-id")
+        if not self._session_id and os.environ.get("CORE_MCP_STATELESS", "false").lower() != "true":
             raise McpLoopbackError("MCP initialize did not return a session id")
-        self._session_id = session_id
         notify = await self._client.post(
             "/mcp",
             json={"jsonrpc": "2.0", "method": "notifications/initialized"},
@@ -117,6 +119,7 @@ class McpLoopbackSession:
         )
         if notify.status_code != 202:
             raise McpLoopbackError(f"MCP notifications/initialized failed: {notify.status_code}")
+        self._initialized = True
 
     def _parse_sse(self, response: httpx.Response) -> dict[str, Any]:
         for line in response.text.splitlines():

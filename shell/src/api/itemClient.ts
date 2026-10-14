@@ -11,6 +11,7 @@ import { createAlertsMethods } from "./domains/alerts";
 import { createAppsMethods } from "./domains/apps";
 import { createAttachmentsMethods } from "./domains/attachments";
 import { createCollectionsAdminMethods } from "./domains/collectionsAdmin";
+import { createImpactMethods } from "./domains/impact";
 import { createDatasetsMethods } from "./domains/datasets";
 import { createExportsIngestionMethods } from "./domains/exportsIngestion";
 import { createExtensionsAdminToolsMethods } from "./domains/extensionsAdminTools";
@@ -24,10 +25,12 @@ import { createPipelinesMethods } from "./domains/pipelines";
 import { createQuotaUsageMethods } from "./domains/quotaUsage";
 import { createReportsMethods } from "./domains/reports";
 import { createSecretsMethods } from "./domains/secrets";
+import { createRasterMethods } from "./domains/raster";
 import { createTiles3dMethods } from "./domains/tiles3d";
 import { createUsageMethods } from "./domains/usage";
 import { createGeocodingMethods } from "./domains/geocoding";
 import { createAnalysisMethods } from "./domains/analysis";
+import { createRoutingMethods } from "./domains/routing";
 
 export { FeatureValidationError, SqlQueryError, toFrontLayer, type RawMapLayer };
 
@@ -45,6 +48,7 @@ export function createItemClient(opts: {
     ...createNotificationsMethods(base),
     ...createItemsMethods(base),
     ...createCollectionsAdminMethods(base),
+    ...createImpactMethods(base),
     ...createExtensionsAdminToolsMethods(base),
     ...createLayersMethods(base),
     ...createDatasetsMethods(base),
@@ -56,9 +60,11 @@ export function createItemClient(opts: {
     ...createFeaturesMethods(base),
     ...createExportsIngestionMethods(base),
     ...createTiles3dMethods(base),
+    ...createRasterMethods(base),
     ...createUsageMethods(base),
     ...createGeocodingMethods(base),
     ...createAnalysisMethods(base),
+    ...createRoutingMethods(base),
     ...createQuotaUsageMethods(base),
     ...createSecretsMethods(base),
     getAuthToken: base.getToken,

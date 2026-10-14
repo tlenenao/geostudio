@@ -319,11 +319,45 @@ class PipelineRefreshPolicy(BaseModel):
         return self
 
 
+class PipelineParameter(BaseModel):
+    """Paramètre de run publié (ARC-K2/F3) : saisi au lancement, référencé par
+    `{{param.nom}}` dans les params de nœud (cf. app.configs.pipeline_params).
+    Valeurs conservées en clair (historique des runs, audit) : pas de secrets ici."""
+
+    name: str = Field(..., pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")
+    type: Literal["string", "number", "integer", "boolean", "date"] = "string"
+    default: Any | None = None
+    required: bool = False
+
+    @model_validator(mode="after")
+    def _default_matches_type(self) -> "PipelineParameter":
+        if self.default is not None:
+            from app.configs.pipeline_params import PipelineParamError, coerce_value
+
+            try:
+                coerce_value(self.name, self.type, self.default)
+            except PipelineParamError as exc:
+                raise ValueError(f"default invalide : {exc}") from exc
+        return self
+
+
+class PipelineRetryPolicy(BaseModel):
+    """Politique de reprise (ARC-K2/F5) : `max` reprises automatiques après un
+    échec (0 = aucune, mais les points de reprise restent écrits pour une
+    reprise manuelle), délai fixe ou exponentiel (`delaySeconds` * 2^(n-1))."""
+
+    max: int = Field(0, ge=0, le=10)
+    backoff: Literal["fixed", "exponential"] = "exponential"
+    delaySeconds: int = Field(30, ge=1, le=3600)
+
+
 class PipelinePayload(BaseModel):
     nodes: list[PipelineNode] = Field(default_factory=list)
     edges: list[PipelineEdge] = Field(default_factory=list)
     refreshPolicy: PipelineRefreshPolicy | None = None
     notes: list[PipelineCanvasNote] = Field(default_factory=list)
+    parameters: list[PipelineParameter] = Field(default_factory=list)
+    retry: PipelineRetryPolicy | None = None
 
     @model_validator(mode="after")
     def _validate_graph(self) -> "PipelinePayload":
@@ -340,7 +374,41 @@ class PipelinePayload(BaseModel):
             raise ValueError("pipeline requires at least one reader node")
         if not any(n.kind == "writer" for n in self.nodes):
             raise ValueError("pipeline requires at least one writer node")
+        names = [p.name for p in self.parameters]
+        if len(names) != len(set(names)):
+            raise ValueError("pipeline parameter names must be unique")
+        from app.configs.pipeline_params import misplaced_param_refs, param_refs
+
+        for n in self.nodes:
+            bad = misplaced_param_refs(n.params, op=n.op)
+            if bad:
+                raise ValueError(
+                    f"nœud '{n.id}' : {{{{param.x}}}} interdit dans le(s) champ(s) "
+                    f"{', '.join(sorted(bad))} (risque d'injection) ; réservé aux expressions "
+                    "(expr, metrics, *Expr) et aux champs de donnée (collectionId, path…). "
+                    "La requête native d'un connecteur ne peut pas être paramétrée."
+                )
+        unknown = set().union(*(param_refs(n.params) for n in self.nodes)) - set(names)
+        if unknown:
+            raise ValueError(f"unknown parameter reference(s): {', '.join(sorted(unknown))}")
+        if self.retry is not None and self.retry.max > 0 and self.append_writers():
+            raise ValueError(
+                "reprise automatique (retry.max > 0) impossible avec un writer en mode "
+                f"'append' ({', '.join(self.append_writers())}) : un rejeu dupliquerait "
+                "des lignes ; utilisez le mode 'upsert' (writer.collection) ou 'replace'"
+            )
         return self
+
+    def append_writers(self) -> list[str]:
+        """Ids des writers collection/dataset en mode `append` (défaut) ou `insert` (alias
+        d'append, F1) : non idempotents, donc incompatibles avec un rejeu/une reprise."""
+        return [
+            n.id
+            for n in self.nodes
+            if n.kind == "writer"
+            and n.op in {"writer.collection", "writer.dataset"}
+            and (n.params or {}).get("mode", "append") in ("append", "insert")
+        ]
 
 
 class AlertCondition(BaseModel):

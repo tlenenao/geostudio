@@ -14,9 +14,45 @@ export type ResourceType =
   | "alert"
   | "report"
   | "tileset3d"
-  | "terrain3d";
+  | "terrain3d"
+  | "raster";
+
+export type RasterInfo = {
+  itemId: string;
+  srid: number;
+  bounds: [number, number, number, number];
+  width: number;
+  height: number;
+  dtype: string;
+  nodata: number | null;
+  bands: {
+    index: number;
+    min: number | null;
+    max: number | null;
+    mean: number | null;
+    std: number | null;
+  }[];
+};
 
 export type CreateKind = "app" | "dashboard" | "site";
+
+/** Cible d'une vue d'impact (ARC4-F15). */
+export type ImpactTarget = { type: "item" | "collection"; id: string };
+export type ImpactDependent = {
+  type: "item" | "collection";
+  id: string;
+  title: string;
+  resourceType: string;
+  /** 1 = dépendant direct, >1 = transitif. */
+  depth: number;
+  direct: boolean;
+};
+export type Impact = {
+  target: { type: "item" | "collection"; id: string; title: string; resourceType: string };
+  dependents: ImpactDependent[];
+  /** Dépendants que l'utilisateur ne peut pas lire : comptés, jamais nommés. */
+  hiddenCount: number;
+};
 
 export type Item = {
   pk: string;
@@ -135,8 +171,10 @@ export type NotificationSummary = {
     | "harvest"
     | "tileset3d"
     | "terrain3d"
+    | "raster"
     | "data_export"
-    | "submission";
+    | "submission"
+    | "webhook_disabled";
   status: "success" | "failure";
   itemId: string | null;
   itemResourceType: ResourceType | null;
@@ -228,6 +266,8 @@ export type InstanceInfo = {
   copilotEnabled: boolean;
   adminToolsEnabled: boolean;
   quotasEnabled: boolean;
+  rasterEnabled: boolean;
+  routingEnabled: boolean;
 };
 
 export type ProbeStatus = { ok: boolean; error?: string };
@@ -273,6 +313,20 @@ export type CopilotSurface =
 
 // REV-102 : un résultat de GET /v1/geocode.
 export type GeocodeResult = { label: string; lon: number; lat: number };
+
+// ARC-34 : widget « Directions » — POST /v1/routing/route (Valhalla derrière le cœur, 503 si absent).
+export type RouteCosting = "auto" | "bicycle" | "pedestrian" | "truck" | "bus" | "motor_scooter";
+export type RoutePoint = { lon: number; lat: number };
+export type RouteResult = {
+  distance_km: number;
+  duration_s: number;
+  geometry: { type: "LineString"; coordinates: [number, number][] };
+  legs: {
+    distance_km: number;
+    duration_s: number;
+    maneuvers: { instruction: string; distance_km: number; duration_s: number }[];
+  }[];
+};
 
 // ARC-25 : widget « Analyse » — outils d'analyse spatiale (GET /v1/analysis/tools).
 export type AnalysisTool = {
@@ -759,6 +813,8 @@ export interface ItemClient {
   }): Promise<UsageSummary>;
   // REV-102 : recherche d'adresse (BAN via le cœur).
   geocode(q: string, limit?: number): Promise<GeocodeResult[]>;
+  // ARC-34 : itinéraire (routage Valhalla via le cœur).
+  computeRoute(points: RoutePoint[], costing?: RouteCosting): Promise<RouteResult>;
   // ARC-25 : widget « Analyse ».
   listAnalysisTools(): Promise<AnalysisTool[]>;
   runAnalysis(collectionId: string, body: AnalysisRequest): Promise<AnalysisResult>;
@@ -838,6 +894,8 @@ export interface ItemClient {
   createEmptyCollection(input: CreateEmptyCollectionInput): Promise<{ id: string }>;
   updateCollection(id: string, patch: CollectionPatchInput): Promise<CollectionAdmin>;
   deleteCollection(id: string): Promise<void>;
+  /** ARC4-F15 : dépendants (visibles) d'un item/d'une collection + compte des masqués. */
+  getImpact(target: ImpactTarget): Promise<Impact>;
   listHarvestSources(): Promise<HarvestSource[]>;
   createHarvestSource(input: HarvestSourceCreateInput): Promise<HarvestSource>;
   updateHarvestSource(id: string, patch: HarvestSourcePatchInput): Promise<HarvestSource>;
@@ -879,10 +937,12 @@ export interface ItemClient {
   savePipelineConfig(pk: string, payload: PipelinePayload): Promise<number | undefined>;
   getPipelineOps(): Promise<PipelineOpsCatalog>;
   getPipelineNextRun(cron: string): Promise<{ nextRun: string }>;
-  runPipeline(pk: string): Promise<{ runId: string }>;
+  runPipeline(pk: string, params?: Record<string, unknown>): Promise<{ runId: string }>;
   getPipelineRuns(pk: string, params?: PageParams): Promise<PipelineRun[]>;
   // t03b-009 : absent côté sidecar desktop / export statique (pas d'annulation).
   cancelPipelineRun?(pk: string, runId: string): Promise<PipelineRun>;
+  // ARC-K2/F5 : reprise (défaut) ou rejeu complet (fromStart) d'un run échoué.
+  retryPipelineRun?(runId: string, opts?: { fromStart?: boolean }): Promise<{ runId: string }>;
   listPipelineWebhookTokens(pk: string): Promise<PipelineWebhookToken[]>;
   createPipelineWebhookToken(pk: string): Promise<{ id: string; token: string; createdAt: string }>;
   revokePipelineWebhookToken(pk: string, tokenId: string): Promise<void>;
@@ -1109,6 +1169,35 @@ export interface ItemClient {
     status: "uploaded" | "converting" | "done" | "error";
     errorMessage: string | null;
     itemId: string | null;
+  }>;
+  // ARC-33 : rasters COG hébergés (domaine `raster`, tuiles sous can()).
+  listHostedRasterSources(q?: string): Promise<{ id: string; title: string }[]>;
+  presignRasterUpload(
+    filename: string,
+    contentType: string,
+  ): Promise<{ uploadUrl: string; key: string }>;
+  createRasterUpload(input: {
+    key: string;
+    filename: string;
+    title: string;
+  }): Promise<{ jobId: string }>;
+  getRasterUploadJob(jobId: string): Promise<{
+    status: "uploaded" | "converting" | "done" | "error";
+    errorMessage: string | null;
+    itemId: string | null;
+  }>;
+  getRasterInfo(itemId: string): Promise<RasterInfo>;
+  rasterZonalStats(
+    itemId: string,
+    body: {
+      geojson?: Record<string, unknown>;
+      collectionId?: string;
+      band?: number;
+      stats?: string[];
+    },
+  ): Promise<{
+    count: number;
+    results: { id: string | number | null; stats: Record<string, number | null> }[];
   }>;
   // Coffre de secrets connecteur (GAP-43, SP-53) : le cœur ne rend jamais un
   // payload déchiffré — listSecrets()/createSecret() ne portent que
@@ -1531,6 +1620,8 @@ export type PipelinePayload = {
   edges: PipelineEdge[];
   refreshPolicy?: PipelineRefreshPolicy | null;
   notes?: PipelineCanvasNote[];
+  parameters?: PipelineParameter[];
+  retry?: PipelineRetryPolicy | null;
   baseVersion?: number; // version serveur lue (REV-271), jamais persistée
 };
 
@@ -1632,9 +1723,34 @@ export type AppExportJobStatus = {
 };
 
 export type PipelineRunStatus =
-  "queued" | "running" | "succeeded" | "failed" | "cancel_requested" | "cancelled";
+  | "queued"
+  | "running"
+  | "succeeded"
+  | "succeeded_with_rejects"
+  | "failed"
+  | "cancel_requested"
+  | "cancelled"
+  | "retrying";
 
-export type PipelineNodeStat = { nodeId: string; op: string; rowCount: number | null };
+// F1/F2 : `writer.collection` détaille son écriture, ses rejets (quarantaine
+// `<cible>__rejected`) et un rapport qualité de l'entrée ; les autres ops n'ont que rowCount.
+export type PipelineNodeQuality = {
+  rowCount: number;
+  columns: { name: string; nonNull: number; nulls: number; nullRate: number }[];
+};
+export type PipelineNodeStat = {
+  nodeId: string;
+  op: string;
+  rowCount: number | null;
+  inserted?: number;
+  updated?: number;
+  deleted?: number;
+  unchanged?: number;
+  rejected?: number;
+  rejectedCollectionId?: string | null;
+  rejectsByRule?: Record<string, number>;
+  quality?: PipelineNodeQuality;
+};
 
 export type PipelineRun = {
   id: string;
@@ -1643,6 +1759,26 @@ export type PipelineRun = {
   finishedAt: string | null;
   error: string | null;
   nodeStats: Record<string, PipelineNodeStat>;
+  // ARC-K2 (F3/F5) : paramètres du run, tentative en cours, prochaine reprise
+  // automatique, run racine repris, points de reprise disponibles (« Reprendre »).
+  params?: Record<string, unknown> | null;
+  attempt?: number;
+  nextRetryAt?: string | null;
+  resumeOf?: string | null;
+  resumable?: boolean;
+};
+
+export type PipelineParameter = {
+  name: string;
+  type: "string" | "number" | "integer" | "boolean" | "date";
+  default?: unknown;
+  required?: boolean;
+};
+
+export type PipelineRetryPolicy = {
+  max: number;
+  backoff?: "fixed" | "exponential";
+  delaySeconds?: number;
 };
 
 // Jeton de déclenchement webhook (GAP-24, SP-53) : jamais le jeton en clair

@@ -208,10 +208,44 @@ def test_optional_workloads_render_only_when_enabled():
     assert plain["OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://rel-geostudio-otel-lgtm:4318"
 
 
-def test_cdc_worker_is_single_writer_even_if_values_ask_for_more():
-    docs = render("cdcWorker.replicas=3")
-    d = _deployment(docs, "cdc-worker")
-    assert d["spec"]["replicas"] == 1 and d["spec"]["strategy"]["type"] == "Recreate"
+def test_valhalla_renders_only_when_enabled_and_wires_core_url():
+    """ARC-34 : sous-chart optionnel ; CORE_ROUTING_URL pointe le service du release."""
+    base = render()
+    assert not [d for d in base if "valhalla" in d["metadata"]["name"]]
+    assert _rendered_env(base, "core")[0]["CORE_ROUTING_URL"] == ""
+    full = render("valhalla.enabled=true")
+    kinds = {d["kind"] for d in full if d["metadata"]["name"] == "rel-geostudio-valhalla"}
+    assert kinds == {"Deployment", "Service"}
+    for service in ("core", "worker"):
+        plain, _ = _rendered_env(full, service)
+        assert plain["CORE_ROUTING_URL"] == "http://rel-geostudio-valhalla:8002"
+
+
+def test_worker_checkpoints_live_on_its_scratch_volume(docs):
+    """F5 : les points de reprise vont sur le volume scratch monté du worker, jamais
+    sur la racine du conteneur (readOnlyRootFilesystem) ni sous un tmp non monté."""
+    plain, _ = _rendered_env(docs, "worker")
+    path = plain["CORE_PIPELINE_CHECKPOINT_DIR"]
+    mounts = [m["mountPath"] for m in _container(docs, "worker").get("volumeMounts", [])]
+    assert any(path.startswith(m.rstrip("/") + "/") for m in mounts), (path, mounts)
+
+
+def test_cdc_worker_replicas_are_safe_thanks_to_leader_election():
+    """ARC-32 : le mono-writer n'est plus garanti par replicas=1 mais par l'élection
+    (app.cdc.election) ; la mise à jour ne surcharge jamais (maxSurge 0)."""
+    d = _deployment(render("cdcWorker.replicas=3"), "cdc-worker")
+    assert d["spec"]["replicas"] == 3
+    assert d["spec"]["strategy"]["rollingUpdate"]["maxSurge"] == 0
+
+
+def test_core_ha_defaults_two_replicas_with_pdb_and_shared_limiter():
+    docs = render()
+    assert _deployment(docs, "core")["spec"]["replicas"] == 2
+    (pdb,) = [d for d in docs if d["kind"] == "PodDisruptionBudget"]
+    assert pdb["spec"]["minAvailable"] == 1
+    plain, _ = _rendered_env(docs, "core")
+    assert plain["CORE_RATELIMIT_BACKEND"] == "postgres"
+    assert not [d for d in render("core.replicas=1") if d["kind"] == "PodDisruptionBudget"]
 
 
 def test_ingress_requires_hosts():

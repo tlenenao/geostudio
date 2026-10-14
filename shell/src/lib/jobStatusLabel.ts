@@ -20,11 +20,13 @@ const KNOWN_STATUSES = [
   "queued",
   "running",
   "succeeded",
+  "succeeded_with_rejects",
   "done",
   "failed",
   "error",
   "cancelled",
   "cancel_requested",
+  "retrying",
   "unknown",
 ] as const;
 type KnownStatus = (typeof KNOWN_STATUSES)[number];

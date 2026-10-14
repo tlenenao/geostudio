@@ -22,6 +22,7 @@ type PipelinesMethods = Pick<
   | "runPipeline"
   | "getPipelineRuns"
   | "cancelPipelineRun"
+  | "retryPipelineRun"
   | "previewPipeline"
   | "listPipelineWebhookTokens"
   | "createPipelineWebhookToken"
@@ -99,8 +100,21 @@ export function createPipelinesMethods(base: ItemClientBase): PipelinesMethods {
       );
     },
 
-    async runPipeline(pk: string): Promise<{ runId: string }> {
-      return request<{ runId: string }>("POST", `/pipelines/${pk}/run`);
+    async runPipeline(pk: string, params?: Record<string, unknown>): Promise<{ runId: string }> {
+      return request<{ runId: string }>(
+        "POST",
+        `/pipelines/${pk}/run`,
+        params && Object.keys(params).length > 0 ? { params } : undefined,
+      );
+    },
+
+    async retryPipelineRun(
+      runId: string,
+      opts?: { fromStart?: boolean },
+    ): Promise<{ runId: string }> {
+      return request<{ runId: string }>("POST", `/pipelines/runs/${runId}/retry`, {
+        fromStart: opts?.fromStart ?? false,
+      });
     },
 
     async getPipelineRuns(pk: string, params?: PageParams): Promise<PipelineRun[]> {

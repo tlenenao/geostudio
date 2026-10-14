@@ -65,7 +65,7 @@ jobs:
           helm install gs deploy/helm/geostudio --wait --timeout 10m \
             --set secrets.existingSecret=gs-secrets --set cdcWorker.enabled=false \
             --set config.CORE_AUTH_MODE=mock --set config.CORE_ENV=development \
-            --set shell.env.VITE_AUTH_MODE=mock
+            --set shell.env.VITE_AUTH_MODE=mock --set image.tag=edge
       - name: Fumée HTTP (core /health, shell /)
         run: |
           kubectl port-forward svc/gs-geostudio-core 8200:8200 &

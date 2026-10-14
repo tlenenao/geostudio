@@ -25,6 +25,7 @@ export const RESOURCE_TYPE_LABELS: Record<ResourceType, string> = {
   report: t("resourceType.report"),
   tileset3d: t("resourceType.tileset3d"),
   terrain3d: t("resourceType.terrain3d"),
+  raster: t("resourceType.raster"),
   external: t("resourceType.external"),
 };
 
@@ -42,5 +43,6 @@ export const RESOURCE_TYPE_ORDER: ResourceType[] = [
   "report",
   "tileset3d",
   "terrain3d",
+  "raster",
   "external",
 ];

@@ -557,6 +557,7 @@ export function PipelineBuilderPage({
                   </p>
                   <PipelineRunPanel
                     pipelineId={pk}
+                    parameters={draft.parameters}
                     onLatestRunChange={setLatestRun}
                     // hasUnsavedChanges, pas isDraftStale : cette dernière
                     // compare par référence à configQuery.data et ne redevient

@@ -14,7 +14,8 @@ secrets:
   # pgbouncer ou direct), CORE_SECRETS_MASTER_KEY, S3_ACCESS_KEY, S3_SECRET_KEY, et CDC_DATABASE_URL
   # (connexion DIRECTE au primaire, pas de pgbouncer : réplication logique) si cdcWorker.enabled.
   # Optionnelles : CORE_EXPORT_TOKEN_SECRET (obligatoire si export.enabled), CORE_SHARE_LINK_TOKEN_SECRET,
-  # CORE_ADMIN_TOOLS_TOKEN_SECRET, CORE_LLM_API_KEY, CORE_EMBEDDING_API_KEY.
+  # CORE_ADMIN_TOOLS_TOKEN_SECRET, CORE_LLM_API_KEY, CORE_EMBEDDING_API_KEY, CORE_MIGRATION_DATABASE_URL
+  # (connexion DIRECTE au primaire pour le verrou des migrations : requis si DATABASE_URL passe par pgbouncer).
   existingSecret: ""
 
 # Réglages non secrets : ConfigMap partagé par core, worker, cdc-worker et export-worker. Mêmes noms et
@@ -28,6 +29,7 @@ config:
   CORE_ADMIN_SUBS: ""
   CORE_ADMIN_TOOLS_ENABLED: "false"
   CORE_ALERTS_EGRESS_ALLOWLIST: ""
+  CORE_ANALYSIS_MAX_FEATURES: ""
   CORE_ANALYST_SUBS: ""
   CORE_APPEXPORT_ENABLED: "false"
   CORE_AUTH_MODE: "oidc"
@@ -68,9 +70,11 @@ config:
   CORE_MCP_AUDIENCE: "geostudio-mcp"
   CORE_MINIO_CONSOLE_PUBLISHED: "true"
   CORE_OIDC_AUDIENCE: "geostudio-core"
+  CORE_OIDC_GROUPS_CLAIM: "groups"
   CORE_OIDC_ISSUER: "http://localhost:8180/realms/geostudio"
   CORE_OIDC_JWKS_URL: "http://keycloak:8080/realms/geostudio/protocol/openid-connect/certs"
   CORE_OWS_ENABLED: "false"
+  CORE_OWS_WMS_ENABLED: "false"
   CORE_PIPELINES_BLOB_MAX_BYTES: "1073741824"
   CORE_PIPELINES_BLOB_MAX_FILES: "100"
   CORE_PIPELINES_BLOB_TIMEOUT_S: "600"
@@ -83,13 +87,23 @@ config:
   CORE_PIPELINES_HTTP_CALL_MAX_TOTAL_BYTES: "268435456"
   CORE_PIPELINES_PREVIEW_TIMEOUT_S: "30"
   CORE_PIPELINES_QUERY_TIMEOUT_S: "60"
+  # points de reprise F5 : sous /scratch (emptyDir du worker, perdus au redémarrage du pod)
+  CORE_PIPELINE_CHECKPOINT_DIR: "/scratch/pipeline-checkpoints"
+  CORE_PIPELINE_CHECKPOINT_RETENTION_HOURS: "24"
   CORE_PIPELINE_FILE_IO_ENABLED: "false"
   CORE_QUOTAS_ENABLED: "false"
   CORE_QUOTA_MAX_COLLECTIONS_PER_TENANT: ""
   CORE_QUOTA_MAX_ITEMS_PER_TENANT: ""
   CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT: ""
   CORE_RATELIMIT_SHARE_LINK_PER_MIN: "60"
+  CORE_RASTER_CONVERSION_TIMEOUT_SECONDS: "900"
+  CORE_RASTER_ENABLED: "false"
+  CORE_RASTER_MAX_UPLOAD_BYTES: "2147483648"
   CORE_READ_ONLY_MODE: "false"
+  CORE_ROUTING_URL: ""               # vide + valhalla.enabled = service valhalla du release
+  CORE_SQL_EXECUTOR_TIMEOUT_S: "60"
+  CORE_MCP_STATELESS: "true"           # MCP sans session en mémoire (ARC-32)
+  CORE_RATELIMIT_BACKEND: "postgres"   # budget de débit partagé entre réplicas (ARC-32)
   CORE_STALLED_JOB_MINUTES: "60"
   CORE_TERRAIN3D_CONVERSION_TIMEOUT_SECONDS: "900"
   CORE_TERRAIN3D_ENABLED: "false"
@@ -111,6 +125,7 @@ config:
   S3_EXPORTS_BUCKET: "geostudio-exports"
   S3_MAPICONS_BUCKET: "geostudio-mapicons"
   S3_PUBLIC_ENDPOINT_URL: ""
+  S3_RASTER_BUCKET: "geostudio-raster"
   S3_TERRAIN3D_BUCKET: "geostudio-terrain3d"
   S3_THUMBNAILS_BUCKET: "geostudio-thumbnails"
   S3_TILESET3D_BUCKET: "geostudio-tileset3d"
@@ -122,21 +137,24 @@ config:
   SHELL_BASE_URL: ""
 
 core:
-  replicas: 1                       # >1 : écart du limiteur en mémoire par process (ADR 0019)
+  replicas: 2                       # HA (ARC-32) : limiteur partagé Postgres, `core` sans état
+  pdb: {minAvailable: 1}            # PodDisruptionBudget (rendu si replicas > 1)
   resources: {requests: {cpu: 250m, memory: 512Mi}, limits: {memory: 2Gi}}
   podSecurityUid: 1001
 
 worker:
   replicas: 1
   concurrency: 4                    # CORE_WORKER_CONCURRENCY du compose
-  queues: [ingestion, search, cdc, etl, tileset3d, terrain3d, appexport, harvest, dataexport]
+  queues: [ingestion, search, cdc, etl, tileset3d, terrain3d, raster, appexport, harvest, dataexport]
   scratchSizeLimit: 5Gi             # emptyDir /scratch (volume etl-scratch du compose)
   resources: {requests: {cpu: 250m, memory: 512Mi}, limits: {memory: 2Gi}}  # WORKER_MEM_LIMIT=2g
   podSecurityUid: 1001
 
 cdcWorker:
   enabled: true
-  # JAMAIS replicas > 1 : mono-writer par conception (slot de réplication logique).
+  # Mono-writer garanti par élection (verrou consultatif Postgres, ARC-32) : N pods, 1 leader, les
+  # autres attendent et reprennent < 30 s si le leader tombe.
+  replicas: 2
   resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {memory: 1Gi}}
   podSecurityUid: 1001
 
@@ -158,6 +176,14 @@ observability:                      # profil compose « observability » (otel-l
   enabled: false
   image: grafana/otel-lgtm:0.11.4
   resources: {requests: {cpu: 250m, memory: 1Gi}, limits: {memory: 3Gi}}
+
+valhalla:                           # profil compose « routing » (ARC-34, ADR 0025) ; données OSM fournies par l'opérateur
+  enabled: false
+  image: ghcr.io/gis-ops/docker-valhalla/valhalla:3.5.1
+  tileUrls: ""                      # URL(s) de .pbf séparées par des espaces ; sinon un extrait déposé dans le volume
+  existingClaim: ""                 # PVC contenant /custom_files (extrait .pbf + tuiles) ; vide = emptyDir (tuiles reconstruites)
+  serverThreads: 2
+  resources: {requests: {cpu: 500m, memory: 1Gi}, limits: {memory: 6Gi}}
 
 ingress:
   enabled: false

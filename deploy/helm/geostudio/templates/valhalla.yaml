@@ -1,0 +1,70 @@
+{{- if .Values.valhalla.enabled }}
+{{- $fn := include "geostudio.fullname" . -}}
+{{- $sel := dict "root" . "component" "valhalla" -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fn }}-valhalla
+  labels:
+    {{- include "geostudio.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels:
+      {{- include "geostudio.selector" $sel | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "geostudio.selector" $sel | nindent 8 }}
+    spec:
+      containers:
+        - name: valhalla
+          image: {{ .Values.valhalla.image }}
+          ports:
+            - {name: http, containerPort: 8002}
+          env:
+            - {name: tile_urls, value: {{ .Values.valhalla.tileUrls | quote }}}
+            - {name: use_tiles_ignore_pbf, value: "True"}
+            - {name: build_elevation, value: "False"}
+            - {name: build_admins, value: "True"}
+            - {name: build_time_zones, value: "False"}
+            - {name: server_threads, value: {{ .Values.valhalla.serverThreads | quote }}}
+          volumeMounts:
+            - {name: data, mountPath: /custom_files}
+          # compose : curl /status, start_period 900s (construction des tuiles au premier démarrage)
+          startupProbe:
+            httpGet: {path: /status, port: http}
+            periodSeconds: 30
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: {path: /status, port: http}
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+          livenessProbe:
+            httpGet: {path: /status, port: http}
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+          resources: {{ toYaml .Values.valhalla.resources | nindent 12 }}
+      volumes:
+        - name: data
+          {{- if .Values.valhalla.existingClaim }}
+          persistentVolumeClaim: {claimName: {{ .Values.valhalla.existingClaim | quote }}}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fn }}-valhalla
+  labels:
+    {{- include "geostudio.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "geostudio.selector" $sel | nindent 4 }}
+  ports:
+    - {name: http, port: 8002, targetPort: http}
+{{- end }}

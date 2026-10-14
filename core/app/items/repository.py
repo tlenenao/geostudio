@@ -21,6 +21,7 @@ from app.items.schemas import (
     StatusFacet,
 )
 from app.items.slug import InvalidSlugError, SlugCollisionError, is_valid_slug, slugify
+from app.outbox.emit import emit
 from app.quotas.service import check_quota_or_raise
 from app.roles.kind_registry import privilege_for_kind
 from app.roles.privileges import Privilege
@@ -235,6 +236,12 @@ def create_item(
     session.add(item)
     session.flush()
     session.refresh(item)
+    emit(  # F6 : même transaction que l'écriture (ADR 0027)
+        session,
+        tenant_id=tenant_id,
+        event_type="item.created",
+        payload={"itemId": item.id, "resourceType": resource_type},
+    )
     _enqueue_embedding(item.id, tenant_id)
     _items_created_counter.add(1)
     return item
@@ -771,6 +778,12 @@ def update_item(
         item.categories = categories
     session.flush()
     session.refresh(item)
+    emit(
+        session,
+        tenant_id=tenant_id,
+        event_type="item.updated",
+        payload={"itemId": item.id, "resourceType": item.resource_type},
+    )
     owner_username = session.scalar(select(User.username).where(User.id == item.owner_id)) or ""
     _enqueue_embedding(item.id, tenant_id)
     if current_user_id is None:

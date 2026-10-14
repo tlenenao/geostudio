@@ -224,6 +224,8 @@ export function createDesktopItemClient(connection: {
         copilotEnabled: false,
         adminToolsEnabled: false,
         quotasEnabled: false,
+        rasterEnabled: false,
+        routingEnabled: false,
       };
     },
     async getQuotaUsage(..._args: unknown[]) {
@@ -341,6 +343,9 @@ export function createDesktopItemClient(connection: {
       return unsupported();
     },
     async updateCollection(..._args: unknown[]) {
+      return unsupported();
+    },
+    async getImpact(..._args: unknown[]) {
       return unsupported();
     },
     async deleteCollection(..._args: unknown[]) {
@@ -546,6 +551,24 @@ export function createDesktopItemClient(connection: {
     async getTerrain3DUploadJob(..._args: unknown[]) {
       return unsupported();
     },
+    async listHostedRasterSources(..._args: unknown[]) {
+      return unsupported();
+    },
+    async presignRasterUpload(..._args: unknown[]) {
+      return unsupported();
+    },
+    async createRasterUpload(..._args: unknown[]) {
+      return unsupported();
+    },
+    async getRasterUploadJob(..._args: unknown[]) {
+      return unsupported();
+    },
+    async getRasterInfo(..._args: unknown[]) {
+      return unsupported();
+    },
+    async rasterZonalStats(..._args: unknown[]) {
+      return unsupported();
+    },
     async getPrivilegeCatalog(..._args: unknown[]) {
       return unsupported();
     },
@@ -604,6 +627,9 @@ export function createDesktopItemClient(connection: {
       return unsupported();
     },
     async geocode(..._args: unknown[]) {
+      return unsupported();
+    },
+    async computeRoute(..._args: unknown[]) {
       return unsupported();
     },
     async listAnalysisTools(..._args: unknown[]) {

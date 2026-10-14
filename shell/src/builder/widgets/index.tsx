@@ -24,6 +24,7 @@ import { registerVariableInputWidget } from "./variableInput";
 import { registerTimePlayerWidget } from "./timePlayer";
 import { registerAddressSearchWidget } from "./addressSearch";
 import { registerAnalysisWidget } from "./analysis";
+import { registerDirectionsWidget } from "./directions";
 import { registerBasemapGalleryWidget } from "./basemapGallery";
 import { registerFeatureReportWidget } from "./featureReport";
 import { registerSwipeWidget } from "./swipe";
@@ -217,6 +218,7 @@ export function registerBuiltinWidgets(): void {
   registerTimePlayerWidget();
   registerAddressSearchWidget();
   registerAnalysisWidget();
+  registerDirectionsWidget();
   registerBasemapGalleryWidget();
   registerFeatureReportWidget();
   registerSwipeWidget();

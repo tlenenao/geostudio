@@ -204,8 +204,10 @@ export function VisualQueryWizardPage({
           const runs = await client.getPipelineRuns(createdPipelinePk!);
           if (cancelled) return;
           const latest = runs[0];
-          if (latest && latest.status !== "queued" && latest.status !== "running") {
-            if (latest.status === "succeeded") {
+          // "retrying" (F5) et "cancel_requested" ne sont pas terminaux : continuer à sonder.
+          const active = ["queued", "running", "retrying", "cancel_requested"];
+          if (latest && !active.includes(latest.status)) {
+            if (latest.status === "succeeded" || latest.status === "succeeded_with_rejects") {
               void navigate(`/datasets/${createdDatasetPk}/edit`);
               return;
             }

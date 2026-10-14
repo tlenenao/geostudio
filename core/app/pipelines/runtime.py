@@ -53,13 +53,14 @@ from app.collections.introspection import (
 from app.collections.introspection_pg import introspect_table
 from app.collections.sensitive import masked_fields_for
 from app.configs import repository as configs_repo
+from app.configs.pipeline_params import PipelineParamError, apply_params, resolve_params
 from app.configs.schemas import BuilderConfig, DatasetPayload, PipelineNode, PipelinePayload
-from app.features.repository import delete_all_features, insert_features
-from app.features.rls import rls_scope
-from app.features.validation import validate_for_write
+from app.features.repository import delete_all_features
 from app.ingestion.storage import ensure_uploads_bucket
 from app.items import repository as items_repo
 from app.pipelines import compiler, connector_runtime
+from app.pipelines.checkpoints import Checkpoint
+from app.pipelines.collection_writer import write_rows
 from app.pipelines.errors import (  # noqa: F401 (réexportés pour compatibilité)
     PipelineCancelledError,
     PipelineRuntimeError,
@@ -86,6 +87,7 @@ from app.pipelines.ops.schemas import (
     WriterExportParams,
     WriterFileParams,
 )
+from app.pipelines.reader_state import ReaderState, apply_incremental
 from app.relations.service import restricting_relation
 from app.roles.guards import require_privilege
 from app.roles.privileges import Privilege
@@ -114,13 +116,16 @@ _WRITE_BATCH_SIZE = 2000
 
 
 class NodeStat:
-    def __init__(self, node_id: str, op: str, row_count: int | None = None):
+    def __init__(
+        self, node_id: str, op: str, row_count: int | None = None, extra: dict | None = None
+    ):
         self.nodeId = node_id
         self.op = op
         self.rowCount = row_count
+        self.extra = extra or {}  # F1/F2 : détail d'écriture, rejets, rapport qualité
 
     def to_dict(self) -> dict:
-        return {"nodeId": self.nodeId, "op": self.op, "rowCount": self.rowCount}
+        return {"nodeId": self.nodeId, "op": self.op, "rowCount": self.rowCount, **self.extra}
 
 
 def _require_readable_collection_id(
@@ -178,6 +183,42 @@ def _masked_fields(
     if collection is None:
         return frozenset()
     return masked_fields_for(session, user, collection)
+
+
+def access_facts(session: Session, payload: PipelinePayload, *, tenant_id: str, user: User) -> list:
+    """Droits dont dépend ce que les lecteurs ont lu (lisibilité et limites géographiques des
+    collections lues ou jointes, champs masqués, secrets de connecteur), pour l'acteur du run.
+    Ils entrent dans l'empreinte des points de reprise F5 (revue finale vague 4, I1) : un
+    droit retiré ou un masquage changé entre l'échec et la reprise invalide les points de
+    reprise, donc la reprise relit les sources et réapplique tous les contrôles."""
+    facts: list = [user.id]
+    resolver = _chain_resolver(session, tenant_id, user)
+    for node in payload.nodes:
+        refs = [node.params.get("withCollectionId")]
+        if node.op == "reader.collection":
+            refs.append(node.params.get("collectionId"))
+        for cid in refs:
+            if not isinstance(cid, str):
+                continue
+            try:
+                _require_readable_collection_id(
+                    session, tenant_id=tenant_id, user=user, collection_id=cid
+                )
+                verdict: object = sorted(
+                    _masked_fields(session, tenant_id=tenant_id, user=user, collection_id=cid)
+                )
+            except PipelineRuntimeError as exc:
+                verdict = str(exc)
+            facts.append([node.id, cid, verdict])
+        name = node.params.get("secretName")
+        if isinstance(name, str) and resolver is not None:
+            try:
+                resolver.get(name)
+                usable = True
+            except (KeyError, RuntimeError):
+                usable = False
+            facts.append([node.id, name, usable])
+    return facts
 
 
 def _readable_table_info(
@@ -642,6 +683,8 @@ def _prepare(
     tenant_id: str,
     user: User,
     base_uri: str,
+    reader_state: ReaderState | None = None,
+    checkpoint: Checkpoint | None = None,
 ) -> tuple[list[PipelineNode], dict[str, str], dict[str, int], dict[str, int]]:
     """Passe 1 : matérialise tous les readers (+ le withCollectionId de
     chaque transform.join/intersection/countWithin), puis verrouille.
@@ -667,6 +710,15 @@ def _prepare(
         if node.kind != "reader":
             continue
         view_name = f"node_{node.id}"
+        if checkpoint is not None and checkpoint.has(node.id):
+            # F5 : reprise — la sortie du reader (et son curseur incrémental en
+            # attente) vient du point de reprise, la source n'est pas relue.
+            srid_by_node[node.id] = checkpoint.load(conn, node.id, view_name)
+            view_by_node[node.id] = view_name
+            if reader_state is not None:
+                for k, v in checkpoint.cursors(node.id).items():
+                    reader_state.stage(k, v)
+            continue
         reader_fn = READERS.get(node.op)
         if reader_fn is None:
             raise PipelineRuntimeError(f"unknown reader op '{node.op}'")
@@ -681,6 +733,18 @@ def _prepare(
             base_uri=base_uri,
         )
         view_by_node[node.id] = view_name
+        # ARC-K2/F4 : lecture incrémentale des readers connecteurs (table
+        # temporaire) — filtre aux lignes plus récentes que le curseur du dernier
+        # run réussi ; le nouveau curseur reste « en attente » jusqu'au succès.
+        incremental = (
+            node.params.get("incremental") if node.op.startswith("reader.connector.") else None
+        )
+        if reader_state is not None and isinstance(incremental, dict):
+            cursor = apply_incremental(
+                conn, view_name, str(incremental.get("cursorField", "")), reader_state.get(node.id)
+            )
+            if cursor is not None:
+                reader_state.stage(node.id, cursor)
 
     join_srid_by_node: dict[str, int] = {}
     for node in ordered:
@@ -738,7 +802,9 @@ def _prepare(
         if is_pipeline_file_io_enabled()
         else []
     )
-    _lock_down(conn, extra_allowed_dirs=writer_file_dirs)
+    # F5 : le répertoire des points de reprise DU RUN est le seul ajouté.
+    checkpoint_dirs = [checkpoint.dir] if checkpoint is not None else []
+    _lock_down(conn, extra_allowed_dirs=[*writer_file_dirs, *checkpoint_dirs])
     return ordered, view_by_node, srid_by_node, join_srid_by_node
 
 
@@ -762,10 +828,23 @@ def _execute_transform_chain(
     on_node_complete: Callable[["NodeStat"], None] | None = None,
     secret_resolver=None,
     preview: bool = False,
+    checkpoint: Checkpoint | None = None,
+    reader_state: ReaderState | None = None,
 ) -> list["NodeStat"]:
     stats: list[NodeStat] = []
     for node in ordered:
         if node.kind == "reader":
+            if checkpoint is not None and not checkpoint.has(node.id):
+                _checkpoint_save(
+                    checkpoint,
+                    conn,
+                    node.id,
+                    view_by_node[node.id],
+                    srid_by_node[node.id],
+                    {node.id: reader_state.pending[node.id]}
+                    if reader_state is not None and node.id in reader_state.pending
+                    else None,
+                )
             stat = NodeStat(node.id, node.op, _view_row_count(conn, view_by_node[node.id]))
             stats.append(stat)
             if on_node_complete is not None:
@@ -778,6 +857,18 @@ def _execute_transform_chain(
         pred_id = compiler.predecessor_id(node.id, edges)
         if pred_id is None:
             raise PipelineRuntimeError(f"node '{node.id}' has no incoming edge")
+        if checkpoint is not None and checkpoint.has(node.id):
+            # F5 : nœud déjà réussi lors d'une exécution précédente — jamais rejoué.
+            view_name = f"node_{node.id}"
+            srid_by_node[node.id] = checkpoint.load(conn, node.id, view_name)
+            view_by_node[node.id] = view_name
+            stat = NodeStat(node.id, node.op, _view_row_count(conn, view_name))
+            stats.append(stat)
+            if on_node_complete is not None:
+                on_node_complete(stat)
+            if stop_at == node.id:
+                return stats
+            continue
         input_view = view_by_node[pred_id]
         input_srid = srid_by_node[pred_id]
         join_view = None
@@ -813,7 +904,11 @@ def _execute_transform_chain(
         try:
             if contract.execute is not None:
                 extra = (
-                    {"secret_resolver": secret_resolver, "preview": preview}
+                    {
+                        "secret_resolver": secret_resolver,
+                        "preview": preview,
+                        "input_srid": input_srid,
+                    }
                     if contract.needs_runtime_context
                     else {}
                 )
@@ -850,12 +945,23 @@ def _execute_transform_chain(
             raise _node_error(node, exc) from exc
         view_by_node[node.id] = view_name
         srid_by_node[node.id] = output_srid
+        if checkpoint is not None:
+            _checkpoint_save(checkpoint, conn, node.id, view_name, output_srid, None)
         stats.append(stat)
         if on_node_complete is not None:
             on_node_complete(stat)
         if stop_at == node.id:
             return stats
     return stats
+
+
+def _checkpoint_save(checkpoint, conn, node_id, view_name, srid, cursors) -> None:
+    """Best-effort : un disque plein ou une erreur d'écriture coûte la reprise
+    de ce nœud, jamais le run."""
+    try:
+        checkpoint.save(conn, node_id, view_name, srid, cursors)
+    except Exception:  # noqa: BLE001
+        logger.warning("point de reprise du nœud %s non écrit", node_id, exc_info=True)
 
 
 def _node_error(node: PipelineNode, exc: Exception) -> PipelineRuntimeError:
@@ -887,7 +993,14 @@ def preview_pipeline(
     secret_key: str,
     base_uri: str,
     limit: int = 50,
+    params: dict | None = None,
 ) -> list[dict]:
+    # `{{param.x}}` résolus comme pour un run (défauts + valeurs fournies) —
+    # sinon l'aperçu filtre sur le littéral `{{param.x}}` (revue vague 4, I5).
+    try:
+        payload = apply_params(payload, resolve_params(payload.parameters, params))
+    except PipelineParamError as exc:
+        raise PipelineRuntimeError(str(exc)) from exc
     target = next((n for n in payload.nodes if n.id == up_to), None)
     if target is None:
         raise PipelineRuntimeError(f"node '{up_to}' not found")
@@ -971,6 +1084,7 @@ def _write_collection(
     user: User,
     on_progress: Callable[["NodeStat"], None] | None = None,
     should_cancel: Callable[[], bool] | None = None,
+    run_id: str | None = None,
 ) -> NodeStat:
     p = WriterCollectionParams.model_validate(node.params)
     collection = _require_writable_collection(
@@ -982,72 +1096,44 @@ def _write_collection(
     # view_by_node[node.id] is set by the caller (run_pipeline) to the
     # predecessor's view name before calling this function.
     input_view = view_by_node[node.id]
+    # GAP-22 : un champ sensible que l'utilisateur ne peut pas lire n'est pas écrivable
+    # (même contrat que PUT /items : retiré de `info`, donc rejeté comme propriété inconnue).
+    masked = _masked_fields(session, tenant_id=tenant_id, user=user, collection_id=collection.id)
+    info = hide_sensitive_columns(info, sorted(masked))
 
-    input_cols = {
-        d[0] for d in conn.execute(f"SELECT * FROM {_qi(input_view)} LIMIT 0").description
-    }
-    has_geometry = "geometry" in input_cols
-    # Convertit la géométrie en GeoJSON DANS la requête DuckDB (ST_AsGeoJSON),
-    # jamais en repassant un objet géométrie déjà récupéré comme paramètre
-    # lié d'une requête ultérieure — un aller-retour fragile, non nécessaire.
-    select_list = (
-        "* EXCLUDE (geometry), ST_AsGeoJSON(geometry) AS geometry" if has_geometry else "*"
-    )
-    cursor = conn.execute(f"SELECT {select_list} FROM {_qi(input_view)}")
-    cols = [d[0] for d in cursor.description]
-
-    # Colonnes réservées de la collection CIBLE : jamais des "properties",
-    # même contrat que app.features.validation (reserved) et
-    # app.features.repository._property_columns. Le pk qui a pu traverser la
-    # chaîne depuis le reader (utile pour la preview, une future jointure)
-    # est écarté ici, jamais transmis comme propriété d'écriture — un
-    # pipeline ré-émet des features comme n'importe quel client OGC (design
-    # SP-15a §6.2), qui n'envoie jamais pk/tenant_id dans "properties".
-    reserved_on_write = {info.pk_column, "tenant_id"}
-
-    count = 0
-    deleted: int | None = None
+    mode = "append" if p.mode == "insert" else p.mode
     geo_limits = resolve_geo_limits(session, tenant_id=tenant_id, user_id=user.id)
-    if p.mode == "replace" and collection.table_name in geo_limits:
-        # GAP-27 : un remplacement ne verrait (et ne supprimerait) que le périmètre limité.
+    if mode != "append" and collection.table_name in geo_limits:
+        # GAP-27 : un mode non-append ne verrait que le périmètre limité.
         raise PipelineRuntimeError(
-            "writer.collection: mode replace refused on a geo-limited collection"
+            f"writer.collection: mode {mode} refused on a geo-limited collection"
         )
-    if p.mode == "replace" and (blocking := restricting_relation(session, collection)):
-        # ARC-21 : le remplacement en masse contourne la politique de suppression des relations.
+    if mode in ("replace", "delete") and (blocking := restricting_relation(session, collection)):
+        # ARC-21 : l'écriture en masse contourne la politique de suppression des relations.
         raise PipelineRuntimeError(
-            f"writer.collection: mode replace refused: relation '{blocking}' has related records"
+            f"writer.collection: mode {mode} refused: relation '{blocking}' has related records"
         )
-    with rls_scope(session, tenant_id, geo_limits=geo_limits):
-        if p.mode == "replace":
-            deleted = delete_all_features(session, info)
-        # t03b-001/008 : lecture par lots (mémoire bornée) puis insertion groupée,
-        # au lieu de fetchall() + un INSERT par ligne. La transaction reste unique
-        # (annulation ou erreur = rien d'écrit). Entre deux lots : progression
-        # visible (t03b-009) et point d'annulation.
-        while batch := cursor.fetchmany(_WRITE_BATCH_SIZE):
-            items: list[tuple[dict, dict | None]] = []
-            for raw in batch:
-                row = dict(zip(cols, raw, strict=True))
-                geometry = (
-                    json.loads(row.pop("geometry"))
-                    if has_geometry and row.get("geometry") is not None
-                    else None
-                )
-                for key in reserved_on_write:
-                    row.pop(key, None)
-                errors = validate_for_write(
-                    info, {"type": "Feature", "properties": row, "geometry": geometry}
-                )
-                if errors:
-                    raise PipelineRuntimeError(f"writer.collection: invalid row: {errors}")
-                items.append((row, geometry))
-            insert_features(session, info, items)
-            count += len(items)
-            if on_progress is not None:
-                on_progress(NodeStat(node.id, node.op, count))
-            if should_cancel is not None and should_cancel():
-                raise PipelineCancelledError("run annulé")
+    res = write_rows(
+        session,
+        conn,
+        input_view=input_view,
+        p=p,
+        collection=collection,
+        info=info,
+        tenant_id=tenant_id,
+        user=user,
+        geo_limits=geo_limits,
+        node_id=node.id,
+        run_id=run_id,
+        batch_size=_WRITE_BATCH_SIZE,
+        on_progress=(lambda n: on_progress(NodeStat(node.id, node.op, n)))
+        if on_progress is not None
+        else None,
+        should_cancel=should_cancel,
+        replace_purge=lambda: delete_all_features(session, info),
+    )
+    count = res.written
+    deleted = res.replace_purged
     # write_audit APRÈS la sortie de rls_scope (RESET ROLE) : audit_log
     # n'est pas grantée au rôle borné gis_rls (cf. docstring de rls_scope),
     # écrire ici en aurait été un bug (permission denied), pas seulement au
@@ -1074,9 +1160,28 @@ def _write_collection(
         action="collection.pipeline_write",
         object_type="collection",
         object_id=collection.id,
-        payload={"pipelineNodeId": node.id, "mode": p.mode, "rows": count},
+        payload={
+            "pipelineNodeId": node.id,
+            "mode": p.mode,
+            "rows": count,
+            "rejected": res.rejected,
+        },
     )
-    return NodeStat(node.id, node.op, count)
+    return NodeStat(
+        node.id,
+        node.op,
+        count,
+        extra={
+            "inserted": res.inserted,
+            "updated": res.updated,
+            "deleted": res.deleted,
+            "unchanged": res.unchanged,
+            "rejected": res.rejected,
+            "rejectedCollectionId": res.rejected_collection,
+            "rejectsByRule": res.rejects_by_rule,
+            "quality": res.quality,
+        },
+    )
 
 
 def _write_dataset(
@@ -1089,6 +1194,7 @@ def _write_dataset(
     user: User,
     on_progress: Callable[["NodeStat"], None] | None = None,
     should_cancel: Callable[[], bool] | None = None,
+    run_id: str | None = None,
 ) -> NodeStat:
     # SP-42, revue de la dernière passe de correctifs (point 1, Critical) :
     # POST /pipelines/{id}/run (app.pipelines.routes) et le tool MCP
@@ -1122,6 +1228,7 @@ def _write_dataset(
         user=user,
         on_progress=on_progress,
         should_cancel=should_cancel,
+        run_id=run_id,
     )
 
     if p.datasetId is not None:
@@ -1319,6 +1426,9 @@ def run_pipeline(
     on_node_complete: Callable[["NodeStat"], None] | None = None,
     on_progress: Callable[["NodeStat"], None] | None = None,
     should_cancel: Callable[[], bool] | None = None,
+    run_id: str | None = None,
+    reader_state: ReaderState | None = None,
+    checkpoint: Checkpoint | None = None,
 ) -> list[NodeStat]:
     # Import local, même rationale que dans _prepare() : voir registries.py
     # pour le raisonnement complet sur pourquoi cet import doit rester
@@ -1336,6 +1446,8 @@ def run_pipeline(
             tenant_id=tenant_id,
             user=user,
             base_uri=base_uri,
+            reader_state=reader_state,
+            checkpoint=checkpoint,
         )
         stats = _execute_transform_chain(
             conn,
@@ -1346,10 +1458,16 @@ def run_pipeline(
             join_srid_by_node,
             on_node_complete=on_node_complete,
             secret_resolver=_chain_resolver(session, tenant_id, user),
+            checkpoint=checkpoint,
+            reader_state=reader_state,
         )
         for node in ordered:
             if node.kind != "writer":
                 continue
+            # F5 : une reprise REJOUE toujours les writers (jamais sautés sur la foi de
+            # node_stats) : leurs écritures vivent dans la transaction du run, annulée à
+            # l'échec, alors que node_stats est commité à part (revue finale vague 4, C1).
+            # Rejeu sûr : `append_writers()` refuse la reprise des modes non idempotents.
             pred_id = compiler.predecessor_id(node.id, payload.edges)
             if pred_id is None:
                 raise PipelineRuntimeError(f"node '{node.id}' has no incoming edge")
@@ -1382,7 +1500,7 @@ def run_pipeline(
                     {"on_progress": on_progress, "should_cancel": should_cancel}
                     if on_progress is not None or should_cancel is not None
                     else {}
-                )
+                ) | ({"run_id": run_id} if run_id is not None and node.kind == "writer" else {})
                 stat = writer_fn(
                     session,
                     conn,

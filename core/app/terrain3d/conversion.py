@@ -32,6 +32,18 @@ from rio_cogeo.profiles import cog_profiles
 
 _TERMINATE_GRACE_SECONDS = 5
 
+# Ingestion = fichiers locaux uniquement. GDAL n'a pas d'interrupteur « réseau coupé » ; une
+# liste d'extensions autorisées qu'aucune URL ne porte refuse toute ouverture /vsicurl/,
+# /vsis3/… avant connexion (mesuré : 0 requête émise), sans toucher aux lectures /vsis3/ des
+# routes raster qui n'utilisent pas cet environnement. Pas de lecture de répertoire ni de
+# fichiers .aux.xml (PAM) à côté de la source.
+LOCAL_ONLY_GDAL = {
+    "CPL_VSIL_CURL_ALLOWED_EXTENSIONS": ".gs-network-disabled",
+    "GDAL_HTTP_MAX_RETRY": "0",
+    "GDAL_DISABLE_READDIR_ON_OPEN": "EMPTY_DIR",
+    "GDAL_PAM_ENABLED": "NO",
+}
+
 
 class Terrain3DConversionError(ValueError):
     pass
@@ -50,7 +62,11 @@ def _cog_translate_child(src_path: str, dest_path: str, profile_name: str, conn)
             cog_profiles.get(profile_name),
             in_memory=False,
             quiet=True,
-            config={"GDAL_NUM_THREADS": "ALL_CPUS", "GDAL_TIFF_INTERNAL_MASK": True},
+            config={
+                "GDAL_NUM_THREADS": "ALL_CPUS",
+                "GDAL_TIFF_INTERNAL_MASK": True,
+                **LOCAL_ONLY_GDAL,
+            },
         )
     except Exception as exc:  # rio_cogeo/GDAL peuvent lever divers types selon la cause
         conn.send(str(exc) or exc.__class__.__name__)
@@ -101,7 +117,7 @@ def _run_cog_translate(src_path: str, dest_path: str, *, timeout_seconds: int | 
 
 def convert_to_cog(src_path: str, dest_path: str, *, timeout_seconds: int | None = None) -> None:
     try:
-        with rasterio.open(src_path) as src:
+        with rasterio.Env(**LOCAL_ONLY_GDAL), rasterio.open(src_path) as src:
             if src.crs is None:
                 raise Terrain3DConversionError("le raster n'a pas de CRS défini")
     except RasterioIOError as exc:

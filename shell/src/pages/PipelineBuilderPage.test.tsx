@@ -150,6 +150,8 @@ function renderPage(pk: string | null, overrides: Partial<ItemClient> = {}, rout
         copilotEnabled: false,
         adminToolsEnabled: false,
         quotasEnabled: false,
+        rasterEnabled: false,
+        routingEnabled: false,
       }),
     ...overrides,
   };
@@ -204,6 +206,8 @@ function renderPageWithNavigation(
         copilotEnabled: false,
         adminToolsEnabled: false,
         quotasEnabled: false,
+        rasterEnabled: false,
+        routingEnabled: false,
       }),
     ...overrides,
   };
@@ -256,6 +260,8 @@ function renderNewPipelineRoutes(overrides: Partial<ItemClient> = {}) {
         copilotEnabled: false,
         adminToolsEnabled: false,
         quotasEnabled: false,
+        rasterEnabled: false,
+        routingEnabled: false,
       }),
     ...overrides,
   };
@@ -308,6 +314,8 @@ test("unsaved mode: affiche un message de désactivation au lieu du spinner infi
         copilotEnabled: false,
         adminToolsEnabled: false,
         quotasEnabled: false,
+        rasterEnabled: false,
+        routingEnabled: false,
       }),
     // Simule des routes pipeline non montées côté cœur : jamais résolu,
     // pour prouver que la garde D09 n'attend pas opsQuery.
@@ -368,6 +376,8 @@ test("unsaved mode: n'affiche jamais le builder tant que /v1/instance n'a pas r�
       copilotEnabled: false,
       adminToolsEnabled: false,
       quotasEnabled: false,
+      rasterEnabled: false,
+      routingEnabled: false,
     });
   });
   expect(

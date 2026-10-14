@@ -108,7 +108,8 @@ def get_or_create_user(
             # construction du elif.
             user.role_id = roles["analyst"].id
     session.flush()
-    session.refresh(user)
+    # Même artefact de curseur partagé que les lectures ci-dessus (harnais SQLite en mémoire).
+    retry_on_sqlite_row_corruption(lambda: session.refresh(user))
     return user
 
 

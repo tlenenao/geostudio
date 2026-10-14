@@ -98,6 +98,44 @@ test("une erreur serveur est annoncée", async () => {
   await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("refusé"));
 });
 
+test("statistiques raster : le raster se choisit dans la liste des COG hébergés", async () => {
+  const zonal = {
+    name: "zonalStats",
+    label: "Statistiques raster par zone",
+    help: "",
+    needsOtherCollection: false,
+    paramsSchema: {
+      properties: {
+        rasterItemId: { type: "string", title: "Raster" },
+        stats: { type: "array", title: "Statistiques" },
+      },
+      required: ["rasterItemId"],
+    },
+  };
+  const client = renderWidget("runtime", {
+    listAnalysisTools: vi.fn().mockResolvedValue([zonal]),
+    listHostedRasterSources: vi.fn().mockResolvedValue([{ id: "r1", title: "MNT" }]),
+  });
+  await screen.findByRole("option", { name: "Statistiques raster par zone" });
+  fireEvent.change(screen.getByLabelText("Outil d'analyse"), { target: { value: "zonalStats" } });
+  fireEvent.change(await screen.findByLabelText("Collection analysée"), {
+    target: { value: "c1" },
+  });
+  await screen.findByRole("option", { name: "MNT" });
+  fireEvent.change(screen.getByLabelText(/^Raster/), { target: { value: "r1" } });
+  fireEvent.change(screen.getByLabelText("Statistiques"), { target: { value: "count, mean" } });
+  fireEvent.click(screen.getByRole("button", { name: "Exécuter" }));
+  await waitFor(() =>
+    expect(client.runAnalysis).toHaveBeenCalledWith("c1", {
+      tool: "zonalStats",
+      params: { rasterItemId: "r1", stats: ["count", "mean"] },
+      otherCollectionId: undefined,
+      output: "ephemeral",
+      title: undefined,
+    }),
+  );
+});
+
 test("en mode edit : aucun appel réseau", () => {
   const client = renderWidget("edit");
   expect(client.listAnalysisTools).not.toHaveBeenCalled();

@@ -7,6 +7,7 @@ from collections.abc import Iterator
 from http import HTTPStatus
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
@@ -27,6 +28,7 @@ from app.auth.dependency import (
     is_copilot_enabled,
     is_etl_enabled,
     is_export_enabled,
+    is_raster_enabled,
     is_read_only_mode,
     is_terrain3d_enabled,
     is_tileset3d_enabled,
@@ -59,6 +61,7 @@ from app.instance import routes as instance_routes
 from app.items import routes as items_routes
 from app.jobs import open_sync_defer
 from app.jobs.engine import jobs_backlog
+from app.lineage import routes as lineage_routes
 from app.mapicons import routes as mapicons_routes
 from app.mcp.server import create_mcp_server
 from app.notifications import routes as notifications_routes
@@ -72,11 +75,13 @@ from app.public_submit import routes as public_submit_routes
 from app.quality import routes as quality_routes
 from app.quotas import routes as quotas_routes
 from app.quotas.service import QuotaExceededError
-from app.ratelimit.limiter import RateLimiter, caller_key, route_group
+from app.raster import routes as raster_routes
+from app.ratelimit.limiter import PgRateLimiter, caller_key, make_rate_limiter, route_group
 from app.relations import routes as relations_routes
 from app.relations.service import RelationHooks
 from app.reports import routes as reports_routes
 from app.roles import routes as roles_routes
+from app.routing import routes as routing_routes
 from app.schemas_routes import router as schemas_router
 from app.secrets import crypto as secrets_crypto
 from app.secrets import routes as secrets_routes
@@ -86,6 +91,7 @@ from app.styles import routes as styles_routes
 from app.terrain3d import routes as terrain3d_routes
 from app.tileset3d import routes as tileset3d_routes
 from app.usage import routes as usage_routes
+from app.webhooks import routes as webhooks_routes
 from app.xlsform import routes as xlsform_routes
 
 MAX_CONFIG_BODY_BYTES = 5 * 1024 * 1024
@@ -329,7 +335,8 @@ def create_app() -> FastAPI:
     # repeatedly by the test suite (same reasoning as mcp_server above) — a
     # module-level RateLimiter singleton would leak rate-limit state across
     # unrelated tests.
-    rate_limiter = RateLimiter()
+    rate_limiter = make_rate_limiter(database_url)
+    shared_limiter = isinstance(rate_limiter, PgRateLimiter)
 
     @app.middleware("http")
     async def rate_limit_guard(request: Request, call_next):
@@ -346,7 +353,13 @@ def create_app() -> FastAPI:
                 group,
                 request.url.path,
             )
-            if not rate_limiter.allow(caller_key_value, group):
+            # Backend Postgres : I/O bloquante -> thread ; backend mémoire : appel direct
+            # (non thread-safe, et sans I/O).
+            if shared_limiter:
+                allowed = await run_in_threadpool(rate_limiter.allow, caller_key_value, group)
+            else:
+                allowed = rate_limiter.allow(caller_key_value, group)
+            if not allowed:
                 return JSONResponse(
                     status_code=429,
                     media_type="application/problem+json",
@@ -425,6 +438,8 @@ def create_app() -> FastAPI:
     v1_router.include_router(dcat_routes.router)
     v1_router.include_router(harvest_routes.router)
     v1_router.include_router(alerts_routes.router)
+    v1_router.include_router(webhooks_routes.router)  # ARC4-F6
+    v1_router.include_router(lineage_routes.router)  # ARC4-F15
     v1_router.include_router(reports_routes.router)
     v1_router.include_router(notifications_routes.router)
     v1_router.include_router(public_submit_routes.router)
@@ -434,6 +449,7 @@ def create_app() -> FastAPI:
     v1_router.include_router(quotas_routes.router)
     v1_router.include_router(compliance_routes.router)
     v1_router.include_router(geocoding_routes.router)
+    v1_router.include_router(routing_routes.router)
     v1_router.include_router(styles_routes.router)
     if is_etl_enabled():
         v1_router.include_router(pipelines_routes.router)
@@ -449,6 +465,8 @@ def create_app() -> FastAPI:
         v1_router.include_router(tileset3d_routes.router)
     if is_terrain3d_enabled():
         v1_router.include_router(terrain3d_routes.router)
+    if is_raster_enabled():  # ARC-33 : COG + proxy TiTiler authentifié (ADR 0024)
+        v1_router.include_router(raster_routes.router)
     if is_copilot_enabled():
         v1_router.include_router(copilot_routes.router)
     if is_admin_tools_enabled():
@@ -498,6 +516,8 @@ def create_app() -> FastAPI:
         app.dependency_overrides[tileset3d_routes.get_tileset3d_bucket] = lambda: (
             s3_tileset3d_bucket
         )
+        s3_raster_bucket = os.environ.get("S3_RASTER_BUCKET", "geostudio-raster")
+        app.dependency_overrides[raster_routes.get_raster_bucket] = lambda: s3_raster_bucket
         s3_terrain3d_bucket = os.environ.get("S3_TERRAIN3D_BUCKET", "geostudio-terrain3d")
         app.dependency_overrides[terrain3d_routes.get_terrain3d_bucket] = lambda: (
             s3_terrain3d_bucket

@@ -69,6 +69,8 @@ function makeClient(): ItemClient {
         copilotEnabled: false,
         adminToolsEnabled: false,
         quotasEnabled: false,
+        rasterEnabled: false,
+        routingEnabled: false,
       }),
   };
   return client as ItemClient;

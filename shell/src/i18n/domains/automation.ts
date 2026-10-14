@@ -210,6 +210,14 @@ export const automation = {
   "pipelineRun.runButton": "Exécuter",
   "pipelineRun.cancelButton": "Annuler le run",
   "pipelineRun.cancelFailed": "Échec de l'annulation du run.",
+  "pipelineRun.resumeButton": "Reprendre",
+  "pipelineRun.replayButton": "Rejouer",
+  "pipelineRun.retryFailed": "Échec de la relance du run.",
+  "pipelineRun.attempt": "tentative {n}",
+  "pipelineRun.nextRetry": "prochaine tentative {date}",
+  "pipelineRun.paramsLegend": "Paramètres du run",
+  "pipelineRun.paramRequired": "{name} (obligatoire)",
+  "pipelineRun.paramsSummary": "Paramètres : {params}",
   "pipelineRun.rowsProgress": "{rows} lignes traitées",
   // GET /pipelines/{id}/runs pagine déjà côté cœur (limit/offset, SP-50) —
   // ce bouton évite de tronquer silencieusement l'historique au-delà de la
@@ -218,6 +226,14 @@ export const automation = {
   "pipelineRun.detailAria": "Détail du run {id}",
   "pipelineRun.showDetail": "Détail",
   "pipelineRun.hideDetail": "Masquer le détail",
+  // F1/F2 : détail d'écriture, rejets et rapport qualité d'un nœud writer.collection
+  "pipelineRun.writeSummary":
+    "{inserted} insérées, {updated} mises à jour, {deleted} supprimées, {unchanged} inchangées",
+  "pipelineRun.rejectedSummary": "{count} lignes rejetées",
+  "pipelineRun.rejectedRule": "{rule} : {count}",
+  "pipelineRun.quarantineHint": "Quarantaine : collection {id}",
+  "pipelineRun.qualityHeading": "Qualité de l'entrée ({rows} lignes)",
+  "pipelineRun.qualityNullRate": "{name} : {rate} % de valeurs nulles",
   // Progression grossière par nœud (SP-B10d) : `completed` compte les entrées
   // de nodeStats déjà écrites pendant l'exécution (append_node_stat,
   // core/app/pipelines/repository.py), `total` vient de la définition

@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { useDeleteItem, useInstanceInfo, useUpdateItem } from "../api/hooks";
 import type { Item } from "../api/types";
 import { Button } from "../ui/kit/Button";
-import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
+import { ImpactConfirmDialog } from "./ImpactConfirmDialog";
 import { Menu } from "../ui/kit/Menu";
 import { PublishDialog } from "./PublishDialog";
 import { hasPermission } from "../auth/permissions";
@@ -111,8 +111,8 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
         onCancel={() => setMenu("closed")}
         returnFocusRef={triggerRef}
       />
-      <ConfirmDialog
-        open={menu === "delete"}
+      <ImpactConfirmDialog
+        target={menu === "delete" ? { type: "item", id: String(item.pk) } : null}
         title={t("actions.deleteTitle")}
         message={t("actions.deleteMessage", { title: item.title })}
         confirmLabel={t("actions.delete")}

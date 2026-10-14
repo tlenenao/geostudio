@@ -14,7 +14,9 @@ from app.auth.dependency import (
     is_etl_enabled,
     is_export_enabled,
     is_quotas_enabled,
+    is_raster_enabled,
     is_read_only_mode,
+    is_routing_enabled,
     is_terrain3d_enabled,
     is_tileset3d_enabled,
 )
@@ -52,6 +54,8 @@ def get_instance_info() -> dict:
         "copilotEnabled": is_copilot_enabled(),
         "adminToolsEnabled": is_admin_tools_enabled(),
         "quotasEnabled": is_quotas_enabled(),
+        "rasterEnabled": is_raster_enabled(),
+        "routingEnabled": is_routing_enabled(),
     }
 
 

@@ -8,10 +8,12 @@ metadata:
   labels:
     {{- include "geostudio.labels" . | nindent 4 }}
 spec:
-  # Mono-writer (slot de réplication logique) : jamais configurable au-delà de 1 ; Recreate évite
-  # deux consommateurs du slot pendant une mise à jour.
-  replicas: 1
-  strategy: {type: Recreate}
+  # Mono-writer (slot de réplication logique) garanti par l'élection `app.cdc.election` (verrou
+  # consultatif Postgres) : N pods sont sûrs, un seul consomme. RollingUpdate sans surcharge.
+  replicas: {{ .Values.cdcWorker.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxSurge: 0, maxUnavailable: 1}
   selector:
     matchLabels:
       {{- include "geostudio.selector" $sel | nindent 6 }}

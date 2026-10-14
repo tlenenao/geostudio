@@ -55,6 +55,12 @@ function AnalysisPanel() {
 
   const tool = tools.data?.find((x) => x.name === toolName);
   const props = tool?.paramsSchema.properties ?? {};
+  // Outil raster (zonalStats) : choix du raster dans la liste des COG hébergés, pas un id à saisir.
+  const rasters = useQuery({
+    queryKey: ["analysis-rasters"],
+    queryFn: () => client.listHostedRasterSources(),
+    enabled: "rasterItemId" in props,
+  });
   const required = new Set(tool?.paramsSchema.required ?? []);
   const ready =
     Boolean(tool && sourceId) && (!tool?.needsOtherCollection || Boolean(otherId)) && !busy;
@@ -146,7 +152,20 @@ function AnalysisPanel() {
         const type = paramType(spec);
         return (
           <Field key={name} label={label} htmlFor={id} hint={spec.description}>
-            {spec.enum || type === "boolean" ? (
+            {name === "rasterItemId" ? (
+              <NativeSelect
+                id={id}
+                value={raw[name] ?? ""}
+                onChange={(e) => setRaw({ ...raw, [name]: e.target.value })}
+              >
+                <option value="">{t("widgetAnalysis.choose")}</option>
+                {(rasters.data ?? []).map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.title}
+                  </option>
+                ))}
+              </NativeSelect>
+            ) : spec.enum || type === "boolean" ? (
               <NativeSelect
                 id={id}
                 value={raw[name] ?? ""}

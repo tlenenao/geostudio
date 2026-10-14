@@ -145,14 +145,14 @@ test("PropsPanel des 3 widgets ARC-26 : chaque saisie remonte la config modifié
   ] as const) {
     const onChange = vi.fn();
     const Panel = getWidget(type)!.PropsPanel!;
-    const { unmount } = render(<Panel props={{}} onChange={onChange} />);
+    const { unmount } = render(<Panel props={{}} onChange={onChange} dataSources={[]} />);
     fireEvent.change(screen.getAllByLabelText(label)[0], { target: { value } });
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining(expected));
     unmount();
   }
   const onChange = vi.fn();
   const Panel = getWidget("featureReport")!.PropsPanel!;
-  const { container } = render(<Panel props={{}} onChange={onChange} />);
+  const { container } = render(<Panel props={{}} onChange={onChange} dataSources={[]} />);
   fireEvent.change(container.querySelector("textarea")!, {
     target: { value: "Habitants = ${record.pop}\nsans égal" },
   });
@@ -161,7 +161,7 @@ test("PropsPanel des 3 widgets ARC-26 : chaque saisie remonte la config modifié
   });
   const swipeChange = vi.fn();
   const SwipePanel = getWidget("swipe")!.PropsPanel!;
-  const swipe = render(<SwipePanel props={{}} onChange={swipeChange} />);
+  const swipe = render(<SwipePanel props={{}} onChange={swipeChange} dataSources={[]} />);
   const sel = swipe.container.querySelectorAll("select")[1];
   fireEvent.change(sel, { target: { value: sel.querySelectorAll("option")[1].value } });
   expect(swipeChange).toHaveBeenCalledWith(

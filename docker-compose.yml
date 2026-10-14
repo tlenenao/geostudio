@@ -8,6 +8,7 @@ volumes:
   keycloak-data:
   etl-scratch:
   appexport-runtime:
+  valhalla-data:  # extrait OSM (.pbf) + tuiles de routage (profil `routing`, ARC-34)
   # SP-48/GAP-72 : partagé entre `worker` (écrivain, tâche périodique
   # refresh_csp_dynamic_conf_task) et `traefik` (lecteur, provider fichier)
   # — le seul moyen de pousser une CSP calculée dynamiquement à Traefik
@@ -194,13 +195,15 @@ services:
       # L'image (base tiangolo/uvicorn-gunicorn) écoute par défaut sur le
       # port 80 tant qu'aucun `PORT` n'est fourni (`gunicorn_conf.py` :
       # `port = os.getenv("PORT", "80")`, confirmé en conteneur réel). Trois
-      # éléments supposent pourtant que titiler écoute sur 8000 : le mapping
-      # `ports:` ci-dessous, `TITILER_URL: http://titiler:8000` lu par `core`
+      # éléments supposent pourtant que titiler écoute sur 8000 : le port Traefik
+      # ci-dessous, `TITILER_URL: http://titiler:8000` lu par `core`
       # (`core/app/terrain3d/routes.py`) pour le proxy COG terrain3d, et la
       # sonde ci-dessous — d'où ce `PORT` explicite.
       PORT: "8000"
-    ports:
-      - "127.0.0.1:8000:8000"
+    # ARC-33 (ADR 0024) : TiTiler n'est JAMAIS publié sur l'hôte ni exposé au
+    # navigateur — réseau interne (gis-net) seulement. Les tuiles de rasters et de
+    # terrain passent par le cœur (proxy sous can()), l'admin par la passerelle
+    # Traefik /admin/titiler (admin-auth, SP-32).
     networks: [gis-net]
     # Sonde vérifiée à l'exécution (SP-21) : image `titiler:0.18.4` a curl,
     # et `/healthz` répond `{"ping":"pong!"}` sur le port 8000 une fois
@@ -234,6 +237,8 @@ services:
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8200"
     environment:
       DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
+      # Verrou des migrations (ARC-32) : connexion DIRECTE (un verrou de session ne survit pas à pgbouncer en mode transaction)
+      CORE_MIGRATION_DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@postgis:5432/gis
       CORE_AUTH_MODE: ${CORE_AUTH_MODE:-mock}
       # Marqueur explicite requis par la garde de démarrage SP-26/3.1 :
       # CORE_AUTH_MODE=mock sans CORE_ENV=development refuse de démarrer.
@@ -315,6 +320,10 @@ services:
       CORE_GEOCODING_URL: ${CORE_GEOCODING_URL:-https://data.geopf.fr/geocodage/search}
       CORE_GEOCODING_EGRESS_ALLOWLIST: ${CORE_GEOCODING_EGRESS_ALLOWLIST:-data.geopf.fr}
       CORE_GEOCODING_USER_AGENT: ${CORE_GEOCODING_USER_AGENT:-}
+      # Routage/isochrones (ARC-34, ADR 0025) : Valhalla externe (profil `routing`, service
+      # `valhalla` ci-dessous ; mettre CORE_ROUTING_URL=http://valhalla:8002). Vide = routes
+      # /v1/routing/* en 503. Le worker en a besoin pour transform.isochrone/route.
+      CORE_ROUTING_URL: ${CORE_ROUTING_URL:-}
       # Allowlists des trois gardes d'egress SSRF (pipelines/harvest/alerts,
       # chacune dupliquée délibérément — cf. leurs docstrings respectives).
       # Trouvées non câblées à AUCUN service par l'élargissement de la règle
@@ -334,6 +343,8 @@ services:
       CORE_PIPELINES_BLOB_MAX_BYTES: ${CORE_PIPELINES_BLOB_MAX_BYTES:-1073741824}
       CORE_PIPELINES_BLOB_TIMEOUT_S: ${CORE_PIPELINES_BLOB_TIMEOUT_S:-600}
       CORE_PIPELINES_PREVIEW_TIMEOUT_S: ${CORE_PIPELINES_PREVIEW_TIMEOUT_S:-30}
+      # transform.sqlExecutor (vague 4 ARC, voie M) : borne de temps propre à l'op, aperçu (core) et run (worker).
+      CORE_SQL_EXECUTOR_TIMEOUT_S: ${CORE_SQL_EXECUTOR_TIMEOUT_S:-60}
       CORE_PIPELINES_HTTP_CALL_MAX_ROWS: ${CORE_PIPELINES_HTTP_CALL_MAX_ROWS:-10000}
       CORE_PIPELINES_HTTP_CALL_MAX_TOTAL_BYTES: ${CORE_PIPELINES_HTTP_CALL_MAX_TOTAL_BYTES:-268435456}
       CORE_PIPELINES_HTTP_CALL_MAX_RESPONSE_BYTES: ${CORE_PIPELINES_HTTP_CALL_MAX_RESPONSE_BYTES:-5242880}
@@ -370,6 +381,9 @@ services:
       # n'appartiennent qu'à `worker` (cf. ce service plus bas).
       CORE_TILESET3D_MAX_PROXY_READ_BYTES: ${CORE_TILESET3D_MAX_PROXY_READ_BYTES:-134217728}
       CORE_TERRAIN3D_ENABLED: ${CORE_TERRAIN3D_ENABLED:-false}
+      # ARC-33 (ADR 0024) : rasters COG + proxy de tuiles TiTiler + zonal-stats.
+      CORE_RASTER_ENABLED: ${CORE_RASTER_ENABLED:-false}
+      S3_RASTER_BUCKET: geostudio-raster
       CORE_ADMIN_TOOLS_ENABLED: ${CORE_ADMIN_TOOLS_ENABLED:-false}
       # Secret HMAC du gate /admin/* (Martin/Titiler/Grafana) — signe le
       # jeton de lancement (60s) et le cookie de session (30 min) qu'il
@@ -404,6 +418,11 @@ services:
       CORE_TRUSTED_PROXIES: ${CORE_TRUSTED_PROXIES:-127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7}
       # Budget /min (par IP) des liens de partage : route publique + en-tête X-Share-Link-Token (REV-299).
       CORE_RATELIMIT_SHARE_LINK_PER_MIN: ${CORE_RATELIMIT_SHARE_LINK_PER_MIN:-60}
+      # Limiteur de débit : `postgres` = budget partagé entre réplicas `core` (ARC-32, repli mémoire si
+      # la base est lente) ; `memory` = budget par process (ADR 0019).
+      CORE_RATELIMIT_BACKEND: ${CORE_RATELIMIT_BACKEND:-postgres}
+      # MCP sans session en mémoire : requis dès que `core` tourne à plusieurs réplicas (ARC-32).
+      CORE_MCP_STATELESS: ${CORE_MCP_STATELESS:-true}
       # Plafond de lecture d'un fichier importé (octets) ; vide = 512 Mio (P03.05).
       CORE_UPLOAD_MAX_BYTES: ${CORE_UPLOAD_MAX_BYTES:-}
       S3_ACCESS_KEY: ${MINIO_USER}
@@ -520,7 +539,7 @@ services:
     # export-worker (j05b-006, test_sh_c_commands_have_no_orphan_option_line).
     command: >
       sh -c "python -m scripts.ensure_procrastinate_schema &&
-             python -m procrastinate --app app.jobs.app worker -c ${CORE_WORKER_CONCURRENCY:-4} -q ingestion,search,cdc,etl,tileset3d,terrain3d,appexport,harvest,dataexport"
+             python -m procrastinate --app app.jobs.app worker -c ${CORE_WORKER_CONCURRENCY:-4} -q ingestion,search,cdc,etl,tileset3d,terrain3d,raster,appexport,harvest,dataexport"
     environment:
       DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
       S3_ENDPOINT_URL: http://minio:9000
@@ -594,9 +613,30 @@ services:
       CORE_PIPELINES_BLOB_MAX_BYTES: ${CORE_PIPELINES_BLOB_MAX_BYTES:-1073741824}
       CORE_PIPELINES_BLOB_TIMEOUT_S: ${CORE_PIPELINES_BLOB_TIMEOUT_S:-600}
       CORE_PIPELINES_PREVIEW_TIMEOUT_S: ${CORE_PIPELINES_PREVIEW_TIMEOUT_S:-30}
+      CORE_SQL_EXECUTOR_TIMEOUT_S: ${CORE_SQL_EXECUTOR_TIMEOUT_S:-60}
+      # transform.geocode (vague 4 ARC, voie M) s'exécute dans ce process : même fournisseur
+      # et même garde d'egress que le géocodage du service `core`.
+      CORE_GEOCODING_PROVIDER: ${CORE_GEOCODING_PROVIDER:-ban}
+      CORE_GEOCODING_URL: ${CORE_GEOCODING_URL:-https://data.geopf.fr/geocodage/search}
+      CORE_GEOCODING_EGRESS_ALLOWLIST: ${CORE_GEOCODING_EGRESS_ALLOWLIST:-data.geopf.fr}
+      CORE_GEOCODING_USER_AGENT: ${CORE_GEOCODING_USER_AGENT:-}
+      # Routage/isochrones (ARC-34, ADR 0025) : Valhalla externe (profil `routing`, service
+      # `valhalla` ci-dessous ; mettre CORE_ROUTING_URL=http://valhalla:8002). Vide = routes
+      # /v1/routing/* en 503. Le worker en a besoin pour transform.isochrone/route.
+      CORE_ROUTING_URL: ${CORE_ROUTING_URL:-}
+      # Budget routage (100 appels Valhalla/min/utilisateur) partagé avec `core` (ARC-32/34).
+      CORE_RATELIMIT_BACKEND: ${CORE_RATELIMIT_BACKEND:-postgres}
+      # reader.raster / transform.zonalStats revérifient la capacité à l'exécution (ARC-33) :
+      # même valeur que le service `core`, sinon les pipelines raster échouent dans le worker.
+      CORE_RASTER_ENABLED: ${CORE_RASTER_ENABLED:-false}
       CORE_PIPELINES_HTTP_CALL_MAX_ROWS: ${CORE_PIPELINES_HTTP_CALL_MAX_ROWS:-10000}
       CORE_PIPELINES_HTTP_CALL_MAX_TOTAL_BYTES: ${CORE_PIPELINES_HTTP_CALL_MAX_TOTAL_BYTES:-268435456}
       CORE_PIPELINES_HTTP_CALL_MAX_RESPONSE_BYTES: ${CORE_PIPELINES_HTTP_CALL_MAX_RESPONSE_BYTES:-5242880}
+      # Points de reprise des runs de pipeline (ARC-K2/F5) : lus/écrits par le worker
+      # seul, sur le volume nommé persistant etl-scratch (survit à la recréation du conteneur),
+      # purgés après rétention.
+      CORE_PIPELINE_CHECKPOINT_DIR: ${CORE_PIPELINE_CHECKPOINT_DIR:-/scratch/pipeline-checkpoints}
+      CORE_PIPELINE_CHECKPOINT_RETENTION_HOURS: ${CORE_PIPELINE_CHECKPOINT_RETENTION_HOURS:-24}
       CORE_DUCKDB_MEMORY_LIMIT: ${CORE_DUCKDB_MEMORY_LIMIT:-2GB}
       CORE_DUCKDB_MAX_TEMP_SIZE: ${CORE_DUCKDB_MAX_TEMP_SIZE:-5GB}
       CORE_DUCKDB_THREADS: ${CORE_DUCKDB_THREADS:-4}
@@ -615,6 +655,10 @@ services:
       # s'exécutent dans ce process (`worker`).
       CORE_TERRAIN3D_MAX_UPLOAD_BYTES: ${CORE_TERRAIN3D_MAX_UPLOAD_BYTES:-2147483648}
       CORE_TERRAIN3D_CONVERSION_TIMEOUT_SECONDS: ${CORE_TERRAIN3D_CONVERSION_TIMEOUT_SECONDS:-900}
+      # Ingestion raster (ingest_raster_task, app/raster/jobs.py) — process `worker`.
+      S3_RASTER_BUCKET: geostudio-raster
+      CORE_RASTER_MAX_UPLOAD_BYTES: ${CORE_RASTER_MAX_UPLOAD_BYTES:-2147483648}
+      CORE_RASTER_CONVERSION_TIMEOUT_SECONDS: ${CORE_RASTER_CONVERSION_TIMEOUT_SECONDS:-900}
       CORE_BASE_URL: ${CORE_BASE_URL:-http://localhost:8200}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_SERVICE_NAME: geostudio-worker
@@ -770,6 +814,32 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+
+  # Routage et isochrones (ARC-34, ADR 0025) — Valhalla (MIT), profil optionnel `routing`.
+  # L'opérateur fournit les données OSM : déposer un extrait .pbf dans le volume valhalla-data
+  # (monté sur /custom_files) ou régler VALHALLA_TILE_URLS ; les tuiles de routage sont
+  # construites au premier démarrage (long : start_period large). Jamais exposé : réseau
+  # interne seulement, le cœur est le seul client (garde d'egress sur CORE_ROUTING_URL).
+  valhalla:
+    image: ghcr.io/gis-ops/docker-valhalla/valhalla:3.5.1
+    profiles: ["routing"]
+    environment:
+      tile_urls: ${VALHALLA_TILE_URLS:-}
+      use_tiles_ignore_pbf: "True"
+      build_elevation: "False"
+      build_admins: "True"
+      build_time_zones: "False"
+      server_threads: ${VALHALLA_SERVER_THREADS:-2}
+    volumes:
+      - valhalla-data:/custom_files
+    networks: [gis-net]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8002/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 900s
 
   # ─── Observabilité (SP-10b, profil optionnel) ──────────
 

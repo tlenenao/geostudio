@@ -19,9 +19,12 @@ from app.mcp.tools import (
     dataset,
     geocode,
     identity,
+    lineage,
     pipelines,
     query_generation,
+    raster,
     reports,
+    routing,
     secrets,
     sharing,
 )
@@ -51,7 +54,10 @@ def register_tools(server: FastMCP, session_factory) -> None:
         reports,
         sharing,
         attachments,
+        lineage,
+        routing,
         secrets,
+        raster,
     ):
         module.register(tools_server, session_factory)
 

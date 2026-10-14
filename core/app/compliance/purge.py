@@ -47,9 +47,13 @@ from app.ingestion.routes import get_uploads_bucket
 from app.items.models import Item
 from app.mapicons.models import MapIcon
 from app.notifications.models import Notification, NotificationPreference
+from app.outbox.models import FileTrigger, FileTriggerSeen, OutboundWebhook, OutboxEvent
+from app.pipelines import checkpoints
 from app.pipelines.models import PipelineRun
 from app.public_submit.models import Submission, SubmissionToken
 from app.quality.models import QualityReport
+from app.raster.models import RasterAsset, RasterJob
+from app.raster.routes import get_raster_bucket
 from app.relations.models import CollectionRelation
 from app.reports.models import ReportRun
 from app.roles.models import Role
@@ -130,6 +134,11 @@ def purge_tenant(
     counts["config_revisions"] = _delete_all(session, ConfigRevision, tenant_id)
     counts["entity_history"] = _delete_all(session, EntityHistory, tenant_id)  # ARC-15
     counts["collection_relations"] = _delete_all(session, CollectionRelation, tenant_id)  # ARC-21
+    # ARC4-F6 : outbox, déclencheurs fichier (+ clés d'idempotence), destinations (ordre FK)
+    counts["outbox"] = _delete_all(session, OutboxEvent, tenant_id)
+    counts["file_trigger_seen"] = _delete_all(session, FileTriggerSeen, tenant_id)
+    counts["file_triggers"] = _delete_all(session, FileTrigger, tenant_id)
+    counts["outbound_webhooks"] = _delete_all(session, OutboundWebhook, tenant_id)
     counts["alert_evaluations"] = _delete_all(session, AlertEvaluation, tenant_id)
     # result_key capturé AVANT suppression des lignes : ExportJob/
     # AppExportJob vivent dans 2 buckets non tenant-préfixés (renders/
@@ -154,6 +163,10 @@ def purge_tenant(
     counts["collection_export_jobs"] = _delete_all(session, CollectionExportJob, tenant_id)
     counts["quality_reports"] = _delete_all(session, QualityReport, tenant_id)
     counts["pipeline_runs"] = _delete_all(session, PipelineRun, tenant_id)
+    # F5 : points de reprise Parquet (données tenant) du disque local du processus
+    # qui exécute la purge. ponytail: un autre worker/hôte garde ses fichiers jusqu'à
+    # la rétention (24 h) ; volume partagé ou purge par worker si multi-hôte.
+    checkpoints.purge_tenant(tenant_id)
     counts["report_runs"] = _delete_all(session, ReportRun, tenant_id)
     counts["harvest_records"] = _delete_all(session, HarvestRecord, tenant_id)
     counts["configs"] = _delete_all(session, Config, tenant_id)
@@ -187,6 +200,7 @@ def purge_tenant(
     #    été vidé à l'étape 1 (configs/alert_evaluations/export_jobs/
     #    app_export_jobs/pipeline_runs/report_runs/harvest_records).
     #    item_shares cascade automatiquement (ON DELETE CASCADE).
+    counts["raster_assets"] = _delete_all(session, RasterAsset, tenant_id)  # FK items
     counts["items"] = _delete_all(session, Item, tenant_id)
     session.flush()
 
@@ -200,6 +214,7 @@ def purge_tenant(
         get_uploads_bucket,
         get_tileset3d_bucket,
         get_terrain3d_bucket,
+        get_raster_bucket,
         get_attachments_bucket,
     ):
         counts["s3_objects_deleted"] += _delete_tenant_prefixed_objects(
@@ -231,6 +246,7 @@ def purge_tenant(
     #    été traitées plus haut).
     counts["tileset3d_jobs"] = _delete_all(session, Tileset3DJob, tenant_id)
     counts["terrain3d_jobs"] = _delete_all(session, Terrain3DJob, tenant_id)
+    counts["raster_jobs"] = _delete_all(session, RasterJob, tenant_id)
     counts["ingestion_jobs"] = _delete_all(session, IngestionJob, tenant_id)
     counts["api_keys"] = _delete_all(session, ApiKey, tenant_id)
     counts["notifications"] = _delete_all(session, Notification, tenant_id)

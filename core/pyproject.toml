@@ -345,6 +345,9 @@ layers = [
     # uniquement par le worker (tâche périodique) — jamais par app.mcp.
     "app.security",
     "app.harvest",
+    # app.webhooks (ARC4-F6, ADR 0027) : livraison de l'outbox + déclencheurs fichier S3 ;
+    # réutilise la garde d'egress d'app.alerts et lance des runs via app.pipelines.service.
+    "app.webhooks",
     "app.pipelines",
     "app.reports",
     "app.alerts",
@@ -356,6 +359,9 @@ layers = [
     "app.dataexport",
     # app.quality (ARC-14) : rapports de règles d'attributs CEL en job ; relit features.
     "app.quality",
+    # app.raster (ARC-33) : COG + proxy TiTiler + zonal stats ; relit features/collections
+    # (polygones sous RLS) et réutilise la conversion/le stockage S3 de app.terrain3d.
+    "app.raster",
     "app.tileset3d",
     "app.terrain3d",
     "app.mapicons",
@@ -383,6 +389,8 @@ layers = [
     # lit les collections/privilèges (en dessous).
     "app.history",
     "app.attachments",
+    # app.lineage (ARC4-F15) : graphe de dépendances dérivé des configs (lecture seule).
+    "app.lineage",
     "app.collections",
     "app.configs",
     # app.quotas (SP-58) : compteurs/mesure de stockage par tenant
@@ -397,6 +405,8 @@ layers = [
     "app.items",
     "app.sharing",
     "app.instance",
+    # app.routing (ARC-34, ADR 0025) : client Valhalla ; consommé par les ops de pipeline et le MCP.
+    "app.routing",
     "app.roles",
     "app.catalog",
     "app.geocoding",
@@ -407,6 +417,9 @@ layers = [
     "app.apikeys",
     "app.audit",
     "app.users",
+    # app.outbox (ARC4-F6) : modèles + `emit` transactionnel, couche BASSE appelée par
+    # items/pipelines/public_submit ; la livraison est dans app.webhooks (couche haute).
+    "app.outbox",
     "app.tenants",
     "app.search",
     "app.analytics",
@@ -524,6 +537,7 @@ ignore_imports = [
     "app.db -> app.export.models",
     "app.db -> app.tileset3d.models",
     "app.db -> app.terrain3d.models",
+    "app.db -> app.raster.models",
     "app.db -> app.reports.models",
     "app.db -> app.appexport.models",
     "app.db -> app.mapicons.models",
@@ -535,4 +549,5 @@ ignore_imports = [
     "app.db -> app.history.models",
     "app.db -> app.relations.models",
     "app.db -> app.public_submit.models",
+    "app.db -> app.outbox.models",
 ]

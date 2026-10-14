@@ -65,6 +65,8 @@ def test_instance_reports_export_disabled_by_default(env):
         "copilotEnabled": False,
         "adminToolsEnabled": False,
         "quotasEnabled": False,
+        "rasterEnabled": False,
+        "routingEnabled": False,
     }
 
 

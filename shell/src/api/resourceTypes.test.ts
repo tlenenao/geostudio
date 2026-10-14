@@ -10,6 +10,6 @@ test("l'ordre d'affichage couvre exactement les types étiquetés", () => {
   expect([...RESOURCE_TYPE_ORDER].sort()).toEqual(Object.keys(RESOURCE_TYPE_LABELS).sort());
 });
 
-test("les douze types de ressource sont étiquetés", () => {
-  expect(RESOURCE_TYPE_ORDER).toHaveLength(12);
+test("les treize types de ressource sont étiquetés", () => {
+  expect(RESOURCE_TYPE_ORDER).toHaveLength(13);
 });

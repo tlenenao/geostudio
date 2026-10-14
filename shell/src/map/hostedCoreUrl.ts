@@ -7,6 +7,7 @@
 // looking path — the latter must never receive our session's bearer token.
 const HOSTED_TILESET3D_PATH = "/tileset3d/";
 const HOSTED_TERRAIN3D_PATH = "/terrain3d/";
+const HOSTED_RASTER_PATH = "/raster/";
 const HOSTED_COLLECTION_PATH = "/collections/";
 
 // Real "is this hosted by us" check: a substring match on the URL is not
@@ -52,4 +53,10 @@ export function isHostedTerrainUrl(url: string, coreUrl: string | undefined): bo
 // d'origine réelle que pour tileset3d/terrain3d — jamais un includes().
 export function isHostedCollectionUrl(url: string, coreUrl: string | undefined): boolean {
   return isHostedCoreUrl(url, coreUrl, HOSTED_COLLECTION_PATH);
+}
+
+// ARC-33 : tuiles d'un raster COG servies par le cœur (proxy TiTiler sous can()) — jeton de
+// session requis, même vérification d'origine réelle que les autres proxys hébergés.
+export function isHostedRasterUrl(url: string, coreUrl: string | undefined): boolean {
+  return isHostedCoreUrl(url, coreUrl, HOSTED_RASTER_PATH);
 }

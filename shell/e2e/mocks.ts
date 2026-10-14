@@ -137,6 +137,8 @@ const DEFAULT_ME = {
     copilotEnabled: false,
     adminToolsEnabled: false,
     quotasEnabled: false,
+    rasterEnabled: false,
+    routingEnabled: false,
   },
 };
 

@@ -1,0 +1,174 @@
+# SPDX-License-Identifier: Apache-2.0
+"""Limiteur partagé Postgres (ARC-32) : budget cohérent entre 2 « réplicas »."""
+
+import pytest
+from sqlalchemy import create_engine, text
+
+from app.ratelimit.limiter import PgRateLimiter
+
+
+@pytest.fixture
+def engine(test_db_url):
+    eng = create_engine(test_db_url)
+    with eng.begin() as c:
+        c.execute(
+            text(
+                "CREATE UNLOGGED TABLE IF NOT EXISTS rate_limit_counters (key_hash varchar(64), "
+                "grp varchar, window_start bigint, hits integer NOT NULL, "
+                "PRIMARY KEY (key_hash, grp, window_start))"
+            )
+        )
+        c.execute(text("DELETE FROM rate_limit_counters"))
+    yield eng
+    eng.dispose()
+
+
+def test_budget_is_shared_between_two_replicas(engine):
+    a, b = PgRateLimiter(engine), PgRateLimiter(engine)
+    results = [(a if i % 2 else b).allow("Bearer tok", "sql") for i in range(12)]
+    assert results == [True] * 10 + [False] * 2  # budget sql = 10, pas 10 par réplica
+
+
+def test_keys_are_hashed_never_stored_raw(engine):
+    PgRateLimiter(engine).allow("Bearer secret-token", "sql")
+    with engine.connect() as c:
+        keys = c.execute(text("SELECT key_hash FROM rate_limit_counters")).scalars().all()
+    assert keys and all("secret-token" not in k and len(k) == 64 for k in keys)
+
+
+def test_different_callers_independent(engine):
+    lim = PgRateLimiter(engine)
+    for _ in range(10):
+        lim.allow("Bearer a", "sql")
+    assert lim.allow("Bearer a", "sql") is False
+    assert lim.allow("Bearer b", "sql") is True
+
+
+def test_degrades_to_local_counter_when_db_unreachable():
+    dead = create_engine("postgresql+psycopg://u:p@127.0.0.1:1/x")
+    lim = PgRateLimiter(dead)
+    results = [lim.allow("Bearer k", "sql") for _ in range(12)]
+    assert results == [True] * 10 + [False] * 2  # repli en mémoire, jamais d'exception
+    assert lim.degraded is True
+
+
+def test_circuit_breaker_skips_db_after_failure(monkeypatch):
+    dead = create_engine("postgresql+psycopg://u:p@127.0.0.1:1/x")
+    lim = PgRateLimiter(dead)
+    lim.allow("Bearer k", "sql")
+    calls = []
+    monkeypatch.setattr(lim, "_allow_pg", lambda *a: calls.append(a) or True)
+    lim.allow("Bearer k", "sql")
+    assert calls == []  # disjoncteur ouvert : pas de nouvel aller-retour pendant le délai
+
+
+def test_local_fallback_is_thread_safe_under_concurrent_requests():
+    """Le repli mémoire tourne dans le threadpool : sans verrou, _sweep itère _hits pendant
+    qu'un autre thread y insère (RuntimeError: dictionary changed size)."""
+    import sys
+    import threading
+
+    dead = create_engine("postgresql+psycopg://u:p@127.0.0.1:1/x")
+    lim = PgRateLimiter(dead)
+    lim.allow("warm", "sql")  # ouvre le disjoncteur : tout passe par le repli local
+    errors: list[BaseException] = []
+
+    def hammer(n: int) -> None:
+        try:
+            for i in range(3000):
+                lim.allow(f"k{n}-{i}", "sql")
+        except BaseException as exc:
+            errors.append(exc)
+
+    old = sys.getswitchinterval()
+    sys.setswitchinterval(1e-6)
+    try:
+        threads = [threading.Thread(target=hammer, args=(n,)) for n in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+    finally:
+        sys.setswitchinterval(old)
+    assert errors == []
+
+
+def test_routing_budget_is_shared_between_processes(engine, test_db_url, monkeypatch):
+    """Le budget routage (100/min/utilisateur) vaut pour core ET worker : deux _Window distincts
+    (deux process) consomment le même compteur Postgres (repli du limiteur de la voie P)."""
+    from app.routing import client as rc
+
+    monkeypatch.setenv("CORE_RATELIMIT_BACKEND", "postgres")
+    monkeypatch.setenv("DATABASE_URL", test_db_url)
+    rc._shared_limiter.cache_clear()
+    try:
+        core_proc, worker_proc = rc._Window(), rc._Window()
+        for i in range(100):
+            (core_proc if i % 2 else worker_proc).check("u1")
+        with pytest.raises(rc.RateLimited):
+            core_proc.check("u1")
+        worker_proc.check("u2")  # autre utilisateur : budget propre
+    finally:
+        rc._shared_limiter.cache_clear()
+
+
+def test_mcp_server_is_stateless_for_multi_replica_core(monkeypatch):
+    """ARC-32 : une session MCP en mémoire casserait la bascule entre réplicas."""
+    from app.mcp.server import create_mcp_server
+
+    monkeypatch.setenv("CORE_MCP_STATELESS", "true")
+
+    server = create_mcp_server("http://localhost:8200", lambda: None)
+    assert server.settings.stateless_http is True
+
+
+def test_stateless_mcp_serves_a_tool_call_without_any_session_id(monkeypatch):
+    """Un appel autonome tombant sur l'AUTRE réplica doit réussir : pas d'id de session requis."""
+    import json
+
+    from fastapi.testclient import TestClient
+
+    from app import db
+    from app.db import init_db, make_engine, make_session_factory, request_scoped_session
+    from app.main import create_app
+
+    monkeypatch.setenv("CORE_AUTH_MODE", "mock")
+    monkeypatch.setenv("CORE_MCP_STATELESS", "true")
+    monkeypatch.setenv("CORE_BASE_URL", "http://localhost:8200")
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+    app = create_app()
+
+    def override_session():
+        with request_scoped_session(factory) as session:
+            yield session
+
+    app.dependency_overrides[db.get_session] = override_session
+    headers = {"Accept": "application/json, text/event-stream", "Authorization": "Bearer x"}
+    init_params = {
+        "protocolVersion": "2025-06-18",
+        "capabilities": {},
+        "clientInfo": {"name": "t", "version": "0"},
+    }
+    with TestClient(app, base_url="http://localhost:8200") as client:
+        init = client.post(
+            "/mcp",
+            json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": init_params},
+            headers=headers,
+        )
+        assert init.status_code == 200 and "mcp-session-id" not in init.headers
+        call = client.post(
+            "/mcp",
+            json={
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {"name": "whoami", "arguments": {}},
+            },
+            headers=headers,
+        )
+        assert call.status_code == 200
+        line = next(x for x in call.text.splitlines() if x.startswith("data: "))
+        assert "mockuser" in json.loads(line.removeprefix("data: "))["result"]["content"][0]["text"]
+    engine.dispose()

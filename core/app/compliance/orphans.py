@@ -43,6 +43,7 @@ from app.ingestion.models import IngestionJob
 from app.items.models import Item
 from app.mapicons.models import MapIcon
 from app.public_submit.models import Submission
+from app.raster.models import RasterAsset, RasterJob
 from app.terrain3d.models import Terrain3DJob
 from app.tileset3d.models import Tileset3DJob
 
@@ -127,6 +128,14 @@ def _alive_terrain3d_keys(session: Session, keys: set[str]) -> set[str]:
     return set(session.scalars(raw)) | set(session.scalars(cog))
 
 
+def _alive_raster_keys(session: Session, keys: set[str]) -> set[str]:
+    raw = select(RasterJob.source_key).where(
+        RasterJob.source_key.in_(keys), RasterJob.status != "done"
+    )  # le brut est purgé en fin de job
+    cog = select(RasterAsset.source_key).where(RasterAsset.source_key.in_(keys))
+    return set(session.scalars(raw)) | set(session.scalars(cog))
+
+
 def _sweep_bucket(
     session: Session,
     s3,
@@ -191,6 +200,7 @@ def sweep_orphan_job_objects(
     mapicons = os.environ.get("S3_MAPICONS_BUCKET", "geostudio-mapicons")
     tileset3d = os.environ.get("S3_TILESET3D_BUCKET", "geostudio-tileset3d")
     terrain3d = os.environ.get("S3_TERRAIN3D_BUCKET", "geostudio-terrain3d")
+    raster = os.environ.get("S3_RASTER_BUCKET", "geostudio-raster")
     n = 0
     for bucket, prefix, ident, alive, ref_model in (
         (exports, "renders/", lambda k: _job_id(k, "renders/"), _alive_by_id(ExportJob), None),
@@ -213,6 +223,7 @@ def sweep_orphan_job_objects(
         (mapicons, "", _whole_key, _alive_mapicon_keys, MapIcon),
         (tileset3d, "", _whole_key, _alive_tileset3d_keys, Tileset3DJob),
         (terrain3d, "", _whole_key, _alive_terrain3d_keys, Terrain3DJob),
+        (raster, "", _whole_key, _alive_raster_keys, RasterJob),
     ):
         n += _sweep_bucket(
             session, s3, bucket, prefix, ident, alive, ref_model, cutoff=cutoff, limit=limit - n

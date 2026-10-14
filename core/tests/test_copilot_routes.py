@@ -737,7 +737,9 @@ async def test_turn_exceeding_the_global_budget_returns_504_without_waiting_for_
             elapsed = time.monotonic() - started
 
     assert resp.status_code == 504
-    assert elapsed < budget + 1.0, (
+    # Seuil sous la latence LLM (3 s : le défaut visé rend le 504 après elle) mais large devant
+    # la contention d'un runner CI (1,75 s mesuré pour un budget de 0,2 s, piège n°7).
+    assert elapsed < llm_latency - 0.5, (
         f"504 rendu {elapsed:.2f}s après le début pour un budget de {budget}s : "
         "l'échéance n'interrompt pas l'appel LLM en cours"
     )
