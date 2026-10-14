@@ -43,6 +43,10 @@ from app.sql_ident import quote_ident_duckdb as _qi
 MAX_FEATURES = 20_000
 MAX_VERTICES = 1_000_000
 TIMEOUT_S = 60.0
+MAX_OUTPUT_ROWS = 1_000_000  # plafond de lignes produites par une op (amplification)
+MAX_CHOP_PIECES = 100_000  # morceaux par géométrie pour chop/maxLength
+MAX_AREA_FEATURES = 2_000  # polygones par groupe pour l'Intersector (faces en O(n²))
+RUBBER_CHUNK = 4_000_000  # sommets×contrôles par bloc (~100 Mo de temporaires)
 
 CONTRACTS: list[OperationContract] = []
 READERS: dict[str, Callable] = {}
@@ -63,6 +67,12 @@ class _Budget:
     def check(self) -> None:
         if time.monotonic() > self.deadline:
             raise PipelineRuntimeError(f"{self.op}: délai dépassé ({TIMEOUT_S:g} s)")
+
+    def out(self, n: int) -> None:
+        if n > MAX_OUTPUT_ROWS:
+            raise PipelineRuntimeError(
+                f"{self.op}: sortie trop volumineuse ({n} > {MAX_OUTPUT_ROWS} géométries)"
+            )
 
     def bound(self, geoms: list, *, topological: bool = True) -> None:
         if topological and len(geoms) > MAX_FEATURES:
@@ -98,27 +108,22 @@ def _parts(g) -> list:
     return [p for p in shapely.get_parts(g) if not p.is_empty]
 
 
-def _rowwise(conn, input_view, view_name, op, fn, *, extra_cols: dict | None = None) -> None:
+def _rowwise(conn, input_view, view_name, op, fn) -> None:
     """Applique `fn(geom) -> list[geom]` à chaque ligne : 0 sortie = ligne écartée, n sorties =
     n lignes aux attributs recopiés."""
     df = _read_geometry_rows(conn, input_view)
     b = _Budget(op)
-    b.bound(_loads(df) if not df.empty else [], topological=False)
+    geoms = _loads(df) if not df.empty else []
+    b.bound(geoms, topological=False)
     idx: list[int] = []
     out: list[bytes] = []
-    extras: dict[str, list] = {k: [] for k in (extra_cols or {})}
-    for i, g in enumerate(_loads(df) if not df.empty else []):
+    for i, g in enumerate(geoms):
         b.check()
-        res = fn(g)
-        for r in res:
-            geom, ex = r if isinstance(r, tuple) else (r, {})
+        for geom in fn(g):
             idx.append(i)
             out.append(_dump(geom))
-            for k in extras:
-                extras[k].append(ex.get(k))
+        b.out(len(idx))
     res_df = df.iloc[idx].reset_index(drop=True)
-    for k, v in extras.items():
-        res_df[k] = pd.Series(v, dtype=(extra_cols or {})[k])
     if idx:
         res_df["geometry"] = out
     _write_geometry_rows(conn, res_df, view_name=view_name)
@@ -155,6 +160,15 @@ def _exec_triangulate_polygon(conn, *, input_view, view_name, params) -> None:
 # --------------------------------------------------------------------------------------
 # VertexRemover / SpikeRemover — reconstruction par anneau/ligne
 # --------------------------------------------------------------------------------------
+
+
+def _valid_area(g):
+    """Résultat d'une reconstruction : un polygone devenu invalide est réparé (make_valid) et
+    réduit à sa partie surfacique (vide si elle disparaît)."""
+    if g.is_empty or g.is_valid or _fam(g) != "Polygon":
+        return g
+    ps = [q for q in _parts(shapely.make_valid(g)) if q.geom_type == "Polygon"]
+    return shapely.union_all(ps) if ps else Polygon()
 
 
 def _rebuild(g, f: Callable[[np.ndarray, bool], np.ndarray]):
@@ -206,7 +220,7 @@ def _exec_remove_vertices(conn, *, input_view, view_name, params) -> None:
         input_view,
         view_name,
         "transform.removeVertices",
-        lambda g: [_rebuild(g, f)],
+        lambda g: [_valid_area(_rebuild(g, f))],
     )
 
 
@@ -254,7 +268,9 @@ def _exec_remove_spikes(conn, *, input_view, view_name, params) -> None:
         input_view,
         view_name,
         "transform.removeSpikes",
-        lambda g: [_rebuild(g, lambda c, closed: _despike(c, closed, p.angleThreshold))],
+        lambda g: [
+            _valid_area(_rebuild(g, lambda c, closed: _despike(c, closed, p.angleThreshold)))
+        ],
     )
 
 
@@ -360,6 +376,7 @@ def _group_op(conn, input_view, view_name, op, group_by, build, families, topolo
         _require(op, geoms, families)
         b.bound(geoms, topological=topological)
         res = [g for g in build([g for g in geoms if not g.is_empty], b) if not g.is_empty]
+        b.out(len(res))
         return pd.DataFrame(
             {
                 **{c: [frame[c].iloc[0]] * len(res) for c in group_by},
@@ -502,6 +519,10 @@ def _chop_line(line: LineString, p: TransformChopParams) -> list:
     pieces = [line]
     if p.maxLength is not None and line.length > p.maxLength:
         n = math.ceil(line.length / p.maxLength)
+        if n > MAX_CHOP_PIECES:
+            raise PipelineRuntimeError(
+                f"transform.chop: maxLength produirait {n} morceaux (> {MAX_CHOP_PIECES})"
+            )
         step = line.length / n
         pieces = [shapely.ops.substring(line, i * step, (i + 1) * step) for i in range(n)]
     if p.maxVertices is not None:
@@ -653,6 +674,7 @@ def _node_lines(geoms: list, b: _Budget) -> list[list]:
     scale = max(1.0, max(abs(v) for g in geoms for v in g.bounds))
     tol = 1e-9 * scale
     res: list[list] = []
+    total = 0
     for i, g in enumerate(geoms):
         b.check()
         near = [geoms[j] for j in tree.query(g, predicate="intersects") if j != i]
@@ -666,17 +688,26 @@ def _node_lines(geoms: list, b: _Budget) -> list[list]:
                 <= tol
             ]
         )
+        total += len(res[-1])
+        b.out(total)
     return res
 
 
 def _node_areas(geoms: list, b: _Budget) -> list[list]:
+    if len(geoms) > MAX_AREA_FEATURES:
+        raise PipelineRuntimeError(
+            f"transform.intersector: trop de polygones par groupe ({len(geoms)} > "
+            f"{MAX_AREA_FEATURES}) — faces en O(n²)"
+        )
     faces = _parts(
         shapely.polygonize([shapely.union_all([shapely.boundary(g) for g in geoms])]),
     )
+    b.out(len(faces))
     if not faces:
         return [[] for _ in geoms]
     tree = STRtree(faces)
     res: list[list] = []
+    total = 0
     for g in geoms:
         b.check()
         res.append(
@@ -686,6 +717,8 @@ def _node_areas(geoms: list, b: _Budget) -> list[list]:
                 if g.contains(faces[k].representative_point())
             ]
         )
+        total += len(res[-1])
+        b.out(total)
     return res
 
 
@@ -866,7 +899,13 @@ def _exec_rubber_sheet(conn, *, input_view, view_name, params) -> None:
     src = np.array([v.source for v in p.controlVectors])
     disp = np.array([v.target for v in p.controlVectors]) - src
 
+    step = max(1, RUBBER_CHUNK // len(src))
+
     def move(xy: np.ndarray) -> np.ndarray:
+        # blocs de sommets : la mémoire reste bornée quel que soit sommets × contrôles
+        return np.vstack([_move_block(xy[i : i + step]) for i in range(0, len(xy), step)])
+
+    def _move_block(xy: np.ndarray) -> np.ndarray:
         d = np.linalg.norm(xy[:, None, :] - src[None, :, :], axis=2)
         exact = d < 1e-12
         with np.errstate(divide="ignore"):
@@ -894,13 +933,20 @@ class TransformConvertCrsDescriptionParams(_Strict):
     outputColumn: str = "crs_converted"
     targetFormat: Literal["epsg", "wkt", "projjson", "proj4", "name"] = "wkt"
 
+    @field_validator("outputColumn")
+    @classmethod
+    def _not_geometry(cls, v: str) -> str:
+        if not v or v.lower() == "geometry":
+            raise ValueError("outputColumn ne peut pas être vide ni 'geometry'")
+        return v
+
 
 def _convert_crs(text: str, fmt: str) -> str | None:
     from pyproj import CRS
     from pyproj.exceptions import CRSError
 
     s = text.strip()
-    if not s or len(s) > MAX_CRS_TEXT:
+    if not s or len(s) > MAX_CRS_TEXT or "+init=" in s.lower():  # +init= lit des fichiers PROJ
         return None
     try:
         crs = CRS.from_user_input(int(s) if s.isdigit() else s)
@@ -944,11 +990,13 @@ def _exec_convert_crs_description(conn, *, input_view, view_name, params) -> Non
     conn.register("_crs_map_tmp", mapping)
     out = _qi(p.outputColumn)
     star = f"i.* REPLACE (m.v AS {out})" if p.outputColumn in cols else f"i.*, m.v AS {out}"
-    conn.execute(
-        f"CREATE TEMP TABLE {_qi(view_name)} AS SELECT {star} FROM {_qi(input_view)} i "
-        f"LEFT JOIN _crs_map_tmp m ON CAST(i.{_qi(p.sourceColumn)} AS VARCHAR) = m.k"
-    )
-    conn.unregister("_crs_map_tmp")
+    try:
+        conn.execute(
+            f"CREATE TEMP TABLE {_qi(view_name)} AS SELECT {star} FROM {_qi(input_view)} i "
+            f"LEFT JOIN _crs_map_tmp m ON CAST(i.{_qi(p.sourceColumn)} AS VARCHAR) = m.k"
+        )
+    finally:
+        conn.unregister("_crs_map_tmp")
 
 
 # --------------------------------------------------------------------------------------

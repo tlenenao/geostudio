@@ -208,7 +208,7 @@ def test_remove_spikes(conn):
             ["LINESTRING (0 0, 5 0, 5 0, 10 0.01, 5 0.0001, 11 0)"],
         )
     )
-    assert len(out[0].coords) < 6
+    assert list(out[0].coords) == [(0, 0), (5, 0), (11, 0)]
     # un carré n'a pas de pic ; anneau inversé idem
     for w in (SQUARE, CW_SQUARE):
         assert geoms(run(conn, "transform.removeSpikes", {}, [w]))[0].equals(shapely.wkt.loads(w))
@@ -484,3 +484,70 @@ def test_params_are_strict():
         OPERATIONS["transform.removeVertices"].params_schema.model_validate(
             {"indices": [1], "x": 1}
         )
+
+
+# ---- revue : bornes de sortie, mémoire, validité, CRS ------------------------------
+
+
+def test_chop_max_length_piece_cap(conn):
+    with pytest.raises(PipelineRuntimeError, match="morceaux"):
+        run(conn, "transform.chop", {"maxLength": 1e-9}, ["LINESTRING (0 0, 1000 0)"])
+
+
+def test_rubber_sheet_is_chunked_and_identical(conn, monkeypatch):
+    ctl = [{"source": [0, 0], "target": [1, 2]}, {"source": [9, 9], "target": [9, 10]}]
+    w = ["LINESTRING (0 0, 3 4, 5 5, 9 9, 20 1)"]
+    ref = run(conn, "transform.rubberSheet", {"controlVectors": ctl}, w)
+    monkeypatch.setattr(geom2, "RUBBER_CHUNK", 2)  # 1 sommet par bloc
+    assert run(conn, "transform.rubberSheet", {"controlVectors": ctl}, w) == ref
+
+
+def test_output_cap_and_intersector_polygon_bound(conn, monkeypatch):
+    monkeypatch.setattr(geom2, "MAX_OUTPUT_ROWS", 3)
+    grid = [f"LINESTRING ({i} -1, {i} 10)" for i in range(4)] + [
+        f"LINESTRING (-1 {i}, 10 {i})" for i in range(4)
+    ]
+    with pytest.raises(PipelineRuntimeError, match="sortie trop volumineuse"):
+        run(conn, "transform.intersector", {}, grid)
+    monkeypatch.setattr(geom2, "MAX_OUTPUT_ROWS", 2)
+    with pytest.raises(PipelineRuntimeError, match="sortie trop volumineuse"):
+        run(conn, "transform.triangulatePolygon", {}, [CONCAVE])
+    monkeypatch.setattr(geom2, "MAX_OUTPUT_ROWS", 1_000_000)
+    monkeypatch.setattr(geom2, "MAX_AREA_FEATURES", 1)
+    with pytest.raises(PipelineRuntimeError, match="trop de polygones"):
+        run(conn, "transform.intersector", {}, [SQUARE, CONCAVE])
+
+
+def test_vertex_removal_repairs_invalid_polygon(conn):
+    # retirer le sommet 2 d'un hexagone en "papillon" : résultat valide exigé
+    w = "POLYGON ((0 0, 4 0, 4 4, 2 1, 0 4, 0 0))"
+    out = geoms(run(conn, "transform.removeVertices", {"indices": [1, 4]}, [w]))
+    assert out[0].is_valid
+    bow = "POLYGON ((0 0, 4 4, 4 0, 0 4, 0 0))"
+    out = geoms(run(conn, "transform.removeSpikes", {"angleThreshold": 1}, [bow]))
+    assert out[0].is_valid
+
+
+def test_convert_crs_rejects_geometry_column_and_init(conn):
+    from pydantic import ValidationError
+
+    schema = OPERATIONS["transform.convertCrsDescription"].params_schema
+    with pytest.raises(ValidationError):
+        schema.model_validate({"sourceColumn": "d", "outputColumn": "geometry"})
+    conn.execute("CREATE TABLE ci (d VARCHAR)")
+    conn.execute("INSERT INTO ci VALUES ('+init=epsg:4326'), ('EPSG:4326')")
+    OPERATIONS["transform.convertCrsDescription"].execute(
+        conn, input_view="ci", view_name="co", params={"sourceColumn": "d", "targetFormat": "epsg"}
+    )
+    assert conn.execute("SELECT crs_converted FROM co ORDER BY d").fetchall() == [
+        (None,),
+        ("EPSG:4326",),
+    ]
+    # la table temporaire de mapping est désenregistrée même en cas d'échec
+    with pytest.raises(duckdb.Error):
+        OPERATIONS["transform.convertCrsDescription"].execute(
+            conn, input_view="ci", view_name="co", params={"sourceColumn": "d"}
+        )
+    OPERATIONS["transform.convertCrsDescription"].execute(
+        conn, input_view="ci", view_name="co2", params={"sourceColumn": "d"}
+    )
