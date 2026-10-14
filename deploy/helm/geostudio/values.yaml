@@ -95,6 +95,9 @@ config:
   CORE_QUOTA_MAX_ITEMS_PER_TENANT: ""
   CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT: ""
   CORE_RATELIMIT_SHARE_LINK_PER_MIN: "60"
+  CORE_RASTER_CONVERSION_TIMEOUT_SECONDS: "900"
+  CORE_RASTER_ENABLED: "false"
+  CORE_RASTER_MAX_UPLOAD_BYTES: "2147483648"
   CORE_READ_ONLY_MODE: "false"
   CORE_SQL_EXECUTOR_TIMEOUT_S: "60"
   CORE_STALLED_JOB_MINUTES: "60"
@@ -118,6 +121,7 @@ config:
   S3_EXPORTS_BUCKET: "geostudio-exports"
   S3_MAPICONS_BUCKET: "geostudio-mapicons"
   S3_PUBLIC_ENDPOINT_URL: ""
+  S3_RASTER_BUCKET: "geostudio-raster"
   S3_TERRAIN3D_BUCKET: "geostudio-terrain3d"
   S3_THUMBNAILS_BUCKET: "geostudio-thumbnails"
   S3_TILESET3D_BUCKET: "geostudio-tileset3d"
@@ -136,7 +140,7 @@ core:
 worker:
   replicas: 1
   concurrency: 4                    # CORE_WORKER_CONCURRENCY du compose
-  queues: [ingestion, search, cdc, etl, tileset3d, terrain3d, appexport, harvest, dataexport]
+  queues: [ingestion, search, cdc, etl, tileset3d, terrain3d, raster, appexport, harvest, dataexport]
   scratchSizeLimit: 5Gi             # emptyDir /scratch (volume etl-scratch du compose)
   resources: {requests: {cpu: 250m, memory: 512Mi}, limits: {memory: 2Gi}}  # WORKER_MEM_LIMIT=2g
   podSecurityUid: 1001

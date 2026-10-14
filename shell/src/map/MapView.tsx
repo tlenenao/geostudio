@@ -21,7 +21,7 @@ import { useMapPopup } from "./useMapPopup";
 import { resolvePopupContent } from "./popupContent";
 import { clearViewport, publishViewport } from "./viewportTiles";
 import { t } from "../i18n";
-import { isHostedCollectionUrl, isHostedTerrainUrl } from "./hostedCoreUrl";
+import { isHostedCollectionUrl, isHostedRasterUrl, isHostedTerrainUrl } from "./hostedCoreUrl";
 import { aggregateDefaultColor, HIGHLIGHT_ID, highlightColor } from "./mapLayerBuild";
 import { onThemeChange } from "../lib/theme";
 import {
@@ -331,7 +331,11 @@ export const MapView = forwardRef<
       bearing: config.view.bearing ?? 0,
       transformRequest: (url: string) => {
         const coreUrl = getCoreUrlRef.current?.();
-        if (isHostedTerrainUrl(url, coreUrl) || isHostedCollectionUrl(url, coreUrl)) {
+        if (
+          isHostedTerrainUrl(url, coreUrl) ||
+          isHostedCollectionUrl(url, coreUrl) ||
+          isHostedRasterUrl(url, coreUrl)
+        ) {
           const token = getAuthTokenRef.current?.();
           if (token) return { url, headers: { Authorization: `Bearer ${token}` } };
           const shareToken = getShareLinkTokenRef.current?.();

@@ -31,6 +31,7 @@ from app.pipelines.ops import database as _database
 from app.pipelines.ops import execute as _execute
 from app.pipelines.ops import filtering as _filtering
 from app.pipelines.ops import geocode as _geocode
+from app.pipelines.ops import raster as _raster
 from app.pipelines.ops import wfs as _wfs
 from app.pipelines.ops.schemas import (
     ReaderCollectionParams,
@@ -640,6 +641,11 @@ OPERATIONS: dict[str, OperationContract] = {
         op="reader.wfs",
         kind="reader",
         params_schema=_wfs.ReaderWfsParams,
+    ),
+    "reader.raster": OperationContract(
+        op="reader.raster",
+        kind="reader",
+        params_schema=_raster.ReaderRasterParams,
     ),
     "transform.testFilter": OperationContract(
         op="transform.testFilter",

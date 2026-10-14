@@ -52,6 +52,8 @@ from app.pipelines import checkpoints
 from app.pipelines.models import PipelineRun
 from app.public_submit.models import Submission, SubmissionToken
 from app.quality.models import QualityReport
+from app.raster.models import RasterAsset, RasterJob
+from app.raster.routes import get_raster_bucket
 from app.relations.models import CollectionRelation
 from app.reports.models import ReportRun
 from app.roles.models import Role
@@ -198,6 +200,7 @@ def purge_tenant(
     #    été vidé à l'étape 1 (configs/alert_evaluations/export_jobs/
     #    app_export_jobs/pipeline_runs/report_runs/harvest_records).
     #    item_shares cascade automatiquement (ON DELETE CASCADE).
+    counts["raster_assets"] = _delete_all(session, RasterAsset, tenant_id)  # FK items
     counts["items"] = _delete_all(session, Item, tenant_id)
     session.flush()
 
@@ -211,6 +214,7 @@ def purge_tenant(
         get_uploads_bucket,
         get_tileset3d_bucket,
         get_terrain3d_bucket,
+        get_raster_bucket,
         get_attachments_bucket,
     ):
         counts["s3_objects_deleted"] += _delete_tenant_prefixed_objects(
@@ -242,6 +246,7 @@ def purge_tenant(
     #    été traitées plus haut).
     counts["tileset3d_jobs"] = _delete_all(session, Tileset3DJob, tenant_id)
     counts["terrain3d_jobs"] = _delete_all(session, Terrain3DJob, tenant_id)
+    counts["raster_jobs"] = _delete_all(session, RasterJob, tenant_id)
     counts["ingestion_jobs"] = _delete_all(session, IngestionJob, tenant_id)
     counts["api_keys"] = _delete_all(session, ApiKey, tenant_id)
     counts["notifications"] = _delete_all(session, Notification, tenant_id)

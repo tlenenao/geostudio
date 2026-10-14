@@ -102,6 +102,7 @@ def test_operations_registry_has_exactly_the_known_ops():
         "transform.httpCall",
         "transform.geocode",
         "reader.wfs",
+        "reader.raster",
         "transform.testFilter",
         "transform.sampler",
         "transform.neighborFinder",
@@ -169,10 +170,10 @@ def test_ops_catalog_never_exposes_the_exchange_field():
         assert set(entry) == {"kind", "paramsSchema", "acceptsSecondaryInput"}, op
 
 
-def test_operations_registry_has_67_entries():
+def test_operations_registry_has_68_entries():
     from app.pipelines.ops.contracts import OPERATIONS
 
-    assert len(OPERATIONS) == 67
+    assert len(OPERATIONS) == 68
 
 
 def test_binary_ops_are_covered_by_the_parallel_tables():

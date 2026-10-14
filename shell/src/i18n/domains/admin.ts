@@ -40,6 +40,7 @@ export const admin = {
   "usageAction.harvestSourceRun": "Moissonnage",
   "usageAction.tileset3dJobCreate": "Traitement de jeu de tuiles 3D",
   "usageAction.terrain3dJobCreate": "Traitement de terrain 3D",
+  "usageAction.rasterJobCreate": "Import de raster",
   "usage.helpText":
     "Ce journal reflète les actions déclenchées (journal d'activité), pas un statut de job en temps réel.",
 

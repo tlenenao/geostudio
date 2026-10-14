@@ -393,6 +393,7 @@ services:
       S3_MAPICONS_BUCKET: geostudio-mapicons
       S3_ATTACHMENTS_BUCKET: geostudio-attachments
       S3_TERRAIN3D_BUCKET: geostudio-terrain3d
+      S3_RASTER_BUCKET: geostudio-raster
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: ${KC_PASSWORD}
       BACKUP_HOUR: ${BACKUP_HOUR:-3}

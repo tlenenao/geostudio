@@ -1618,8 +1618,29 @@ def test_dev_tooling_host_ports_bind_loopback_only():
     doivent pas être joignables depuis le réseau sur un poste de dev."""
     svc = services(BASE)
     for name in ("martin", "titiler", "otel-lgtm"):
-        for port in svc[name]["ports"]:
+        for port in svc[name].get("ports", []):
             assert str(port).startswith("127.0.0.1:"), f"{name}: port {port!r} exposé sur 0.0.0.0"
+
+
+def test_titiler_is_internal_only():
+    """ARC-33 (ADR 0024) : TiTiler ne publie AUCUN port hôte (ni base ni prod) et ne rejoint que
+    le réseau interne ; seule la passerelle admin-auth (/admin/titiler) y mène de l'extérieur."""
+    for path in (BASE, PROD):
+        svc = services(path)["titiler"]
+        assert not svc.get("ports"), f"{path.name}: titiler publie des ports {svc.get('ports')}"
+    assert services(BASE)["titiler"]["networks"] == ["gis-net"]
+
+
+def test_raster_capability_is_wired_by_value():
+    """Piège n°2 : CORE_RASTER_ENABLED (défaut false) et le bucket dans `core`, bucket + plafonds
+    + file `raster` dans `worker` — une variable documentée mais non câblée n'active rien."""
+    core_env = services(BASE)["core"]["environment"]
+    assert core_env["CORE_RASTER_ENABLED"] == "${CORE_RASTER_ENABLED:-false}"
+    assert core_env["S3_RASTER_BUCKET"] == "geostudio-raster"
+    worker = services(BASE)["worker"]
+    assert worker["environment"]["S3_RASTER_BUCKET"] == "geostudio-raster"
+    assert "CORE_RASTER_MAX_UPLOAD_BYTES" in worker["environment"]
+    assert "raster" in shlex.split(worker["command"])[2].split("-q ")[1].split()[0].split(",")
 
 
 def test_prod_traefik_api_entrypoint_is_loopback_only():

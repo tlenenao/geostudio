@@ -25,6 +25,7 @@ import { createPipelinesMethods } from "./domains/pipelines";
 import { createQuotaUsageMethods } from "./domains/quotaUsage";
 import { createReportsMethods } from "./domains/reports";
 import { createSecretsMethods } from "./domains/secrets";
+import { createRasterMethods } from "./domains/raster";
 import { createTiles3dMethods } from "./domains/tiles3d";
 import { createUsageMethods } from "./domains/usage";
 import { createGeocodingMethods } from "./domains/geocoding";
@@ -58,6 +59,7 @@ export function createItemClient(opts: {
     ...createFeaturesMethods(base),
     ...createExportsIngestionMethods(base),
     ...createTiles3dMethods(base),
+    ...createRasterMethods(base),
     ...createUsageMethods(base),
     ...createGeocodingMethods(base),
     ...createAnalysisMethods(base),

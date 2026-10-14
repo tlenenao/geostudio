@@ -167,6 +167,7 @@ def test_all_known_ops_are_registered():
         "transform.httpCall",
         "transform.geocode",
         "reader.wfs",
+        "reader.raster",
         "transform.testFilter",
         "transform.sampler",
         "transform.neighborFinder",

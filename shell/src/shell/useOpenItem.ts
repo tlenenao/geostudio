@@ -50,7 +50,7 @@ export function useOpenItem() {
       void navigate(`/reports/${pk}/edit`);
       return;
     }
-    if (type === "tileset3d" || type === "terrain3d") {
+    if (type === "tileset3d" || type === "terrain3d" || type === "raster") {
       // Un item de contenu hébergé (tileset 3D, DEM) n'a pas de layout :
       // le fallback générique `/apps/{pk}/edit` ouvrirait le builder d'app
       // sur une config vide. Sa fiche d'item est la bonne destination.

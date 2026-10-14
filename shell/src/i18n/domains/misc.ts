@@ -164,6 +164,7 @@ export const misc = {
   "resourceType.report": "Rapport",
   "resourceType.tileset3d": "Tuiles 3D",
   "resourceType.terrain3d": "Terrain 3D",
+  "resourceType.raster": "Raster",
   "resourceType.external": "Externe",
   "desktop.startupError": "Erreur de démarrage : {message}",
   "icon.unknown": "Icône Lucide inconnue : {name}",

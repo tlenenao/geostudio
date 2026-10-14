@@ -27,6 +27,7 @@ from app.auth.dependency import (
     is_copilot_enabled,
     is_etl_enabled,
     is_export_enabled,
+    is_raster_enabled,
     is_read_only_mode,
     is_terrain3d_enabled,
     is_tileset3d_enabled,
@@ -73,6 +74,7 @@ from app.public_submit import routes as public_submit_routes
 from app.quality import routes as quality_routes
 from app.quotas import routes as quotas_routes
 from app.quotas.service import QuotaExceededError
+from app.raster import routes as raster_routes
 from app.ratelimit.limiter import RateLimiter, caller_key, route_group
 from app.relations import routes as relations_routes
 from app.relations.service import RelationHooks
@@ -453,6 +455,8 @@ def create_app() -> FastAPI:
         v1_router.include_router(tileset3d_routes.router)
     if is_terrain3d_enabled():
         v1_router.include_router(terrain3d_routes.router)
+    if is_raster_enabled():  # ARC-33 : COG + proxy TiTiler authentifié (ADR 0024)
+        v1_router.include_router(raster_routes.router)
     if is_copilot_enabled():
         v1_router.include_router(copilot_routes.router)
     if is_admin_tools_enabled():
@@ -502,6 +506,8 @@ def create_app() -> FastAPI:
         app.dependency_overrides[tileset3d_routes.get_tileset3d_bucket] = lambda: (
             s3_tileset3d_bucket
         )
+        s3_raster_bucket = os.environ.get("S3_RASTER_BUCKET", "geostudio-raster")
+        app.dependency_overrides[raster_routes.get_raster_bucket] = lambda: s3_raster_bucket
         s3_terrain3d_bucket = os.environ.get("S3_TERRAIN3D_BUCKET", "geostudio-terrain3d")
         app.dependency_overrides[terrain3d_routes.get_terrain3d_bucket] = lambda: (
             s3_terrain3d_bucket
