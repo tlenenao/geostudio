@@ -626,6 +626,9 @@ services:
       CORE_ROUTING_URL: ${CORE_ROUTING_URL:-}
       # Budget routage (100 appels Valhalla/min/utilisateur) partagé avec `core` (ARC-32/34).
       CORE_RATELIMIT_BACKEND: ${CORE_RATELIMIT_BACKEND:-postgres}
+      # reader.raster / transform.zonalStats revérifient la capacité à l'exécution (ARC-33) :
+      # même valeur que le service `core`, sinon les pipelines raster échouent dans le worker.
+      CORE_RASTER_ENABLED: ${CORE_RASTER_ENABLED:-false}
       CORE_PIPELINES_HTTP_CALL_MAX_ROWS: ${CORE_PIPELINES_HTTP_CALL_MAX_ROWS:-10000}
       CORE_PIPELINES_HTTP_CALL_MAX_TOTAL_BYTES: ${CORE_PIPELINES_HTTP_CALL_MAX_TOTAL_BYTES:-268435456}
       CORE_PIPELINES_HTTP_CALL_MAX_RESPONSE_BYTES: ${CORE_PIPELINES_HTTP_CALL_MAX_RESPONSE_BYTES:-5242880}

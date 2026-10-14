@@ -31,6 +31,7 @@ def env(tmp_path, monkeypatch):
             yield ds
 
     monkeypatch.setattr(raster_op, "open_asset", opener)
+    monkeypatch.setenv("CORE_RASTER_ENABLED", "true")
     with make_session_factory(engine)() as s:
         t = get_or_create_default_tenant(s)
         mk = lambda n: get_or_create_user(  # noqa: E731
@@ -106,4 +107,11 @@ def test_reader_denies_user_without_read_access(env):
 def test_reader_refuses_geo_limited_caller_when_raster_is_unattached(env, monkeypatch):
     monkeypatch.setattr(raster_op, "resolve_geo_limits", lambda *a, **k: {"t": []})
     with pytest.raises(PipelineRuntimeError, match="geo-limited"):
+        _run(_conn(), env, {"itemId": env[2]}, env[3])
+
+
+def test_reader_refuses_when_raster_capability_is_off(env, monkeypatch):
+    """Un pipeline enregistré avant l'extinction ne lit pas de raster dans le worker."""
+    monkeypatch.setenv("CORE_RASTER_ENABLED", "false")
+    with pytest.raises(PipelineRuntimeError, match="CORE_RASTER_ENABLED"):
         _run(_conn(), env, {"itemId": env[2]}, env[3])

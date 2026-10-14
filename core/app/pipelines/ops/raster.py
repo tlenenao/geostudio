@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from rasterio.enums import Resampling
 
 from app.audit.writer import write_audit
+from app.auth.dependency import is_raster_enabled
 from app.items import repository as items_repo
 from app.pipelines.errors import PipelineRuntimeError
 from app.raster import repository as raster_repo
@@ -43,7 +44,11 @@ class ReaderRasterParams(BaseModel):
 
 def _authorized_asset(session, tenant_id: str, user, item_id: str, op: str) -> RasterAsset:
     """Porte commune aux ops raster : `can(read)` sur l'item (absent et interdit
-    indistinguables) puis refus fail-closed des limites géographiques (ADR 0024)."""
+    indistinguables) puis refus fail-closed des limites géographiques (ADR 0024). La capacité
+    est revérifiée à l'exécution (comme reader.file) : un pipeline enregistré avant
+    l'extinction ne doit pas lire de raster dans le worker."""
+    if not is_raster_enabled():
+        raise PipelineRuntimeError(f"{op} requires CORE_RASTER_ENABLED=true")
     facts = items_repo.get_access_facts(session, tenant_id=tenant_id, item_id=item_id)
     if (
         facts is None
