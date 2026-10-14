@@ -103,3 +103,10 @@ paths = [
 regexes = [
   '''kcpw-marker-123''',
 ]
+
+[[allowlists]]
+description = "Faux positifs triés le 2026-10-14 — jetons factices de fixtures de test (clé d'API de service gsk_…_SECRET) et jeton d'auth mock du script de rejeu HA (`Bearer ha-limiter-probe`, auth mock uniquement), jamais des identifiants réels."
+regexes = [
+  '''gsk_0123456789ab_SECRET''',
+  '''ha-limiter-probe''',
+]
