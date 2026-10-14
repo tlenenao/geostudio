@@ -18,6 +18,17 @@ import psycopg
 
 logger = logging.getLogger(__name__)
 
+# Partition réseau sans RST : sans keepalive, la sonde SELECT 1 du leader resterait bloquée alors
+# que le serveur a libéré le verrou. Détection ~ 5 + 2*3 s
+# (idle + interval*count ; tcp_user_timeout 10 s).
+_KEEPALIVE = {
+    "keepalives": 1,
+    "keepalives_idle": 5,
+    "keepalives_interval": 2,
+    "keepalives_count": 3,
+    "tcp_user_timeout": 10000,
+}
+
 # Clé bigint stable dérivée d'un nom (pas de collision avec les verrous procrastinate/Alembic).
 LOCK_KEY = int.from_bytes(hashlib.sha256(b"geostudio.cdc-worker.leader").digest()[:8], "big") >> 1
 
@@ -35,7 +46,7 @@ def acquire_leadership(
     while not should_stop():
         conn = None
         try:
-            conn = psycopg.connect(dsn, autocommit=True, connect_timeout=5)
+            conn = psycopg.connect(dsn, autocommit=True, connect_timeout=5, **_KEEPALIVE)
             if conn.execute("SELECT pg_try_advisory_lock(%s)", (key,)).fetchone()[0]:  # type: ignore[index]
                 logger.info("cdc-worker : leader élu")
                 return conn
