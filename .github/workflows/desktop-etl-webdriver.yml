@@ -9,6 +9,8 @@ on:
       - "shell/src/builder/pipeline/**"
       - "core/app/pipelines/**"
       - "core/scripts/pipeline_sidecar*.py"
+      - "core/scripts/pipeline_sidecar.pyinstaller-args.txt"
+      - "core/scripts/pyinstaller_hooks/**"
       - ".github/workflows/desktop-etl-webdriver.yml"
 
 jobs:
