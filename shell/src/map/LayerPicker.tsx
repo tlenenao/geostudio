@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useItemClient } from "../api/ItemClientProvider";
-import { useLayerSources } from "../api/hooks";
+import { useInstanceInfo, useLayerSources } from "../api/hooks";
 import type { LayerSource, MapLayer } from "../api/types";
 import { detectGeometryKind, renderAsFor } from "../builder/widgets/mapSymbology";
 import { fetchFeatureCollection } from "./geojsonIntrospect";
@@ -51,6 +51,8 @@ function toMapLayer(source: LayerSource): MapLayer {
 
 export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
   const [q, setQ] = useState("");
+  // ARC-33 : capacité éteinte = aucune UI vers des routes /raster/* non montées.
+  const rasterEnabled = useInstanceInfo().data?.rasterEnabled === true;
   const [tiles3dTitle, setTiles3dTitle] = useState("");
   const [tiles3dUrl, setTiles3dUrl] = useState("");
   const [featureTitle, setFeatureTitle] = useState("");
@@ -176,7 +178,7 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
           ))}
         </ul>
       )}
-      <RasterLayerForm onAdd={onAdd} />
+      {rasterEnabled && <RasterLayerForm onAdd={onAdd} />}
       <div className="border-t border-rule pt-2">
         <p className="mb-1 text-xs font-medium text-ink-2">
           {t("layerPicker.addTileset3dHeading")}

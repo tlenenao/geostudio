@@ -59,10 +59,12 @@ const sources: LayerSource[] = [
   },
 ];
 
-function renderPicker(onAdd: (l: MapLayer) => void) {
+function renderPicker(onAdd: (l: MapLayer) => void, rasterEnabled = false) {
   const client = {
     fetchUrl,
     listLayerSources: vi.fn().mockResolvedValue(sources),
+    getInstanceInfo: vi.fn().mockResolvedValue({ rasterEnabled }),
+    listHostedRasterSources: vi.fn().mockResolvedValue([]),
   } as unknown as ItemClient;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -73,6 +75,15 @@ function renderPicker(onAdd: (l: MapLayer) => void) {
     </QueryClientProvider>,
   );
 }
+
+test("ARC-33 : l'ajout de raster hébergé n'apparaît que si la capacité est active", async () => {
+  const { unmount } = renderPicker(vi.fn());
+  await screen.findByRole("button", { name: /Communes/ });
+  expect(screen.queryByText("Ajouter un raster hébergé")).toBeNull();
+  unmount();
+  renderPicker(vi.fn(), true);
+  expect(await screen.findByText("Ajouter un raster hébergé")).toBeInTheDocument();
+});
 
 test("lists sources and emits a vector MapLayer on click", async () => {
   const onAdd = vi.fn();

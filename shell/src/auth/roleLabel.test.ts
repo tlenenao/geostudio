@@ -24,6 +24,8 @@ function meWith(slug: string, name: string): Me {
       copilotEnabled: false,
       adminToolsEnabled: false,
       quotasEnabled: false,
+      rasterEnabled: false,
+      routingEnabled: false,
     },
   };
 }

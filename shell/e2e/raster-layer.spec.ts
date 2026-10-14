@@ -6,6 +6,10 @@ import { mockCore } from "./mocks";
 // cœur (proxy TiTiler sous can()) avec le jeton de session.
 async function mockRasterFlow(page: Page) {
   let jobPolls = 0;
+  // Capacité raster active (CORE_RASTER_ENABLED) : sinon le sélecteur de couches masque le raster.
+  await page.route("https://core.test/v1/instance", async (route) => {
+    await route.fulfill({ json: { readOnly: false, rasterEnabled: true } });
+  });
   await page.route("**/raster/uploads/presign", async (route) => {
     await route.fulfill({
       json: { uploadUrl: "https://minio.test/raster-raw", key: "t-mock/x/ortho.tif" },

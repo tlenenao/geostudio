@@ -266,6 +266,8 @@ export type InstanceInfo = {
   copilotEnabled: boolean;
   adminToolsEnabled: boolean;
   quotasEnabled: boolean;
+  rasterEnabled: boolean;
+  routingEnabled: boolean;
 };
 
 export type ProbeStatus = { ok: boolean; error?: string };

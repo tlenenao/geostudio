@@ -224,6 +224,8 @@ export function createDesktopItemClient(connection: {
         copilotEnabled: false,
         adminToolsEnabled: false,
         quotasEnabled: false,
+        rasterEnabled: false,
+        routingEnabled: false,
       };
     },
     async getQuotaUsage(..._args: unknown[]) {
