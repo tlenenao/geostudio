@@ -4,6 +4,8 @@ Plan : docs/superpowers/plans/2026-10-15-fme-fermeture-108-planned.md.
 
 - `writer.connector.postgres.update` / `.delete` (FME DatabaseUpdater/DatabaseDeleter) :
   écriture ligne à ligne vers un Postgres externe, via un secret `postgres_dsn` du coffre.
+  Écart au plan : pas de kind de secret dédié « écriture » — c'est à l'opérateur de n'y mettre
+  qu'un rôle distant autorisé en écriture sur les seules tables voulues (moindre privilège).
   Le WHERE est TOUJOURS borné aux `keyColumns` (min 1, jamais de clé NULL) : aucun UPDATE/
   DELETE sans clé n'est constructible. Valeurs et clés = paramètres liés (SQLAlchemy Core),
   identifiants quotés par le dialecte et vérifiés contre la table distante réfléchie ; une
@@ -22,6 +24,7 @@ from urllib.parse import quote
 
 import pandas as pd
 from pydantic import BaseModel, Field, model_validator
+from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
 from app.pipelines.errors import PipelineRuntimeError
@@ -108,6 +111,7 @@ def _external_write(
     user,
     model: type[_ExternalWriteParams],
     update: bool,
+    should_cancel: Callable[[], bool] | None = None,
     **_extra: Any,
 ):
     import sqlalchemy as sa
@@ -164,29 +168,35 @@ def _external_write(
             )
         else:
             stmt = sa.delete(remote).where(where)
-        # Audit commité AVANT l'écriture distante (patron routing) : l'effet est irréversible.
-        write_audit(
-            session,
-            tenant_id=tenant_id,
-            actor_id=user.id,
-            actor_kind="user",
-            action="pipeline.external_write",
-            object_type="connector_secret",
-            object_id=p.secretName,
-            payload={"op": op, "table": p.table, "rows": len(rows)},
-        )
-        session.commit()
+        # Audit AVANT l'écriture distante (l'effet est irréversible), dans une session courte
+        # SÉPARÉE : commiter `session` casserait la transaction du run (rollback F5).
+        with Session(session.get_bind()) as audit_session:
+            write_audit(
+                audit_session,
+                tenant_id=tenant_id,
+                actor_id=user.id,
+                actor_kind="user",
+                action="pipeline.external_write",
+                object_type="connector_secret",
+                object_id=p.secretName,
+                payload={"op": op, "table": p.table, "rows": len(rows)},
+            )
+            audit_session.commit()
         affected = 0
         # ponytail: une requête par ligne (rowcount fiable, une transaction) ; executemany
         # par lots si le débit devient limitant.
         with engine.begin() as db:
             for r in rows:
+                if should_cancel is not None and should_cancel():
+                    raise PipelineRuntimeError(f"{op}: cancelled")  # rollback distant
                 binds = {f"k_{i}": v for i, v in enumerate(r[:nk])}
                 binds |= {f"v_{i}": v for i, v in enumerate(r[nk:])}
                 affected += db.execute(stmt, binds).rowcount
     finally:
         engine.dispose()
-    return NodeStat(node.id, op, affected, {"unmatched": len(rows) - affected if update else 0})
+    return NodeStat(
+        node.id, op, affected, {"unmatched": max(len(rows) - affected, 0) if update else 0}
+    )
 
 
 def _write_update(session, conn, **kw):
@@ -301,7 +311,10 @@ def read_googlesheets(
         sess.close()
     import json
 
-    values = json.loads(body).get("values") or []
+    try:
+        values = json.loads(body).get("values") or []
+    except (ValueError, AttributeError) as exc:
+        raise PipelineRuntimeError(f"{op}: invalid JSON answer from Google Sheets") from exc
     if len(values) - 1 > _max_rows():
         raise PipelineRuntimeError(f"{op}: plafond de {_max_rows()} lignes dépassé")
     df = _sheet_frame(values)

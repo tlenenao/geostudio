@@ -367,3 +367,60 @@ def test_topojson_read_via_reader_file(tmp_path, conn, session, tenant, user, mo
     assert conn.execute("SELECT n, ST_AsText(geometry) FROM node_t").fetchall() == [
         ("a", "POINT (2 3)")
     ]
+
+
+# ------------------------------------------------------------------ correctifs de revue
+
+
+def test_idempotent_replay(remote, conn, session, tenant, user):
+    upd = ("writer.connector.postgres.update", {"table": "fme_b_t", "keyColumns": ["id"],
+           "updateColumns": ["name"]}, "SELECT 1 AS id, 'Z' AS name")  # fmt: skip
+    _run(upd[0], conn, session, tenant, user, upd[1], upd[2])
+    first = _table(remote)
+    _run(upd[0], conn, session, tenant, user, upd[1], upd[2])
+    assert _table(remote) == first
+    dele = ("writer.connector.postgres.delete", {"table": "fme_b_t", "keyColumns": ["id"]},
+            "SELECT 2 AS id")  # fmt: skip
+    assert _run(dele[0], conn, session, tenant, user, dele[1], dele[2]).rowCount == 1
+    assert _run(dele[0], conn, session, tenant, user, dele[1], dele[2]).rowCount == 0
+
+
+def test_audit_does_not_commit_run_transaction(remote, conn, session, tenant, user, monkeypatch):
+    """L'audit passe par une session séparée : l'état en attente du run n'est jamais commité
+    par le writer, un échec distant laisse le rollback du run intact."""
+    from app.audit.models import AuditLog
+
+    commits = []
+    real_commit = session.commit
+    monkeypatch.setattr(session, "commit", lambda: (commits.append(1), real_commit()))
+    session.add(AuditLog(tenant_id=tenant.id, actor_kind="user", action="run.pending",
+                         object_type="x", object_id="x", payload={}))  # fmt: skip
+    with session.no_autoflush, pytest.raises(sa.exc.DataError):
+        _run("writer.connector.postgres.update", conn, session, tenant, user,
+             {"table": "fme_b_t", "keyColumns": ["id"], "updateColumns": ["qty"]},
+             "SELECT * FROM (VALUES (1,'7'),(2,'pas un entier')) t(id,qty)")  # fmt: skip
+    assert commits == []
+    session.rollback()  # rollback du run (F5)
+    actions = {a.action for a in session.query(AuditLog)}
+    assert actions == {"pipeline.external_write"}  # audit conservé, état du run annulé
+
+
+def test_should_cancel_rolls_back(remote, conn, session, tenant, user):
+    conn.execute("CREATE TEMP TABLE inp AS SELECT * FROM (VALUES (1),(2)) t(id)")
+    params = {"secretName": "ext-pg", "table": "fme_b_t", "keyColumns": ["id"]}
+    node = PipelineNode(id="w", kind="writer", op="writer.connector.postgres.delete", params=params)
+    calls = iter([False, True])
+    with pytest.raises(PipelineRuntimeError, match="cancelled"):
+        dbio.WRITERS[node.op](
+            session, conn, node=node, view_by_node={"w": "inp"}, tenant_id=tenant.id,
+            user=user, should_cancel=lambda: next(calls),
+        )  # fmt: skip
+    assert len(_table(remote)) == 3
+
+
+def test_googlesheets_invalid_json(sheets, conn, session, tenant, user):
+    _secret(session, tenant, user, "gs", {"kind": "bearer_token", "token": "t",
+            "baseUrl": sheets.url_for("/v4/")})  # fmt: skip
+    sheets.expect_request(f"/v4/spreadsheets/{SHEET_ID}/values/A:ZZ").respond_with_data("<html>")
+    with pytest.raises(PipelineRuntimeError, match="invalid JSON"):
+        _read(conn, session, tenant, user)
