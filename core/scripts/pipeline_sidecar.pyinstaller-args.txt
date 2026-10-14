@@ -5,8 +5,9 @@
 #
 # Commande complète :
 #   cd core && uv run pyinstaller --onefile --name pipeline-sidecar \
-#     --paths . --collect-all dlt scripts/pipeline_sidecar.py
+#     --paths . --collect-all dlt --additional-hooks-dir scripts/pyinstaller_hooks scripts/pipeline_sidecar.py
 --collect-all dlt
+--additional-hooks-dir scripts/pyinstaller_hooks
 
 # Si le smoke test (pipeline_sidecar_freeze_smoke.py) échoue avec un
 # ModuleNotFoundError/ImportError mentionnant "procrastinate", ajouter une
