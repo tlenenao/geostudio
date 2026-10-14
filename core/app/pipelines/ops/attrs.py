@@ -24,7 +24,7 @@ import shapely.wkb
 from pydantic import BaseModel, Field, model_validator
 
 from app.pipelines.compiler import _output_srid_reconcile_join
-from app.pipelines.errors import PipelineRuntimeError
+from app.pipelines.errors import PipelineRuntimeError, PipelineTerminatedError
 from app.pipelines.expr_validation import validate_bounded_expr
 from app.pipelines.ops.operation_contract import OperationContract
 from app.sql_ident import quote_ident_duckdb as _qi
@@ -34,6 +34,7 @@ READERS: dict[str, Callable] = {}
 WRITERS: dict[str, Callable] = {}
 
 _DUCKDB = "MIT (DuckDB)"
+_RID = '"__gs_rid"'  # identifiant de ligne interne (jamais exposé)
 _MAX_CELL = 1_000_000  # octets/caractères lus par cellule pour les UDF texte/HTML
 
 
@@ -49,6 +50,14 @@ def _need_columns(op: str, have: list[str], *wanted: str) -> None:
     missing = [c for c in wanted if c not in have]
     if missing:
         raise PipelineRuntimeError(f"{op}: colonne(s) introuvable(s) : {missing}")
+
+
+def _no_clash(op: str, have: list[str], *names: str) -> None:
+    clash = [n for n in names if n in have]
+    if clash:
+        raise PipelineRuntimeError(
+            f"{op}: colonne(s) de sortie déjà présente(s) en entrée : {clash}"
+        )
 
 
 def _create_view(conn, view_name: str, sql: str) -> None:
@@ -165,7 +174,8 @@ class TransformMatcherParams(BaseModel):
     de lignes identiques (`matchCountColumn`), un identifiant de groupe (`groupIdColumn`) et un
     indicateur `isDuplicateColumn` (vrai pour toute ligne après la première du groupe). Deux
     lignes sont identiques quand les colonnes `keyColumns` sont égales et, si `matchGeometry`,
-    que leurs géométries sont strictement identiques (même WKB, pas d'égalité topologique)."""
+    que leurs géométries sont strictement identiques (même WKB, pas d'égalité topologique) ;
+    deux géométries nulles sont considérées identiques."""
 
     keyColumns: list[str] = Field(default_factory=list, max_length=20)
     matchGeometry: bool = False
@@ -181,17 +191,28 @@ class TransformMatcherParams(BaseModel):
 
 
 def compile_matcher(
-    params: dict, *, input_view: str, join_view: str | None = None, input_srid: int | None = None
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+    input_columns: list[str] | None = None,
+    join_columns: list[str] | None = None,
 ) -> str:
     p = TransformMatcherParams.model_validate(params)
+    have = input_columns or []
+    _need_columns("transform.matcher", have, *p.keyColumns)
+    _no_clash(
+        "transform.matcher", have, p.matchCountColumn, p.groupIdColumn, p.isDuplicateColumn, _RID
+    )
     keys = [_qi(c) for c in p.keyColumns] + (["ST_AsWKB(geometry)"] if p.matchGeometry else [])
     k = ", ".join(keys)
     return (
-        f'SELECT * EXCLUDE ("__i"), '
+        f"SELECT * EXCLUDE ({_RID}), "
         f"count(*) OVER (PARTITION BY {k}) AS {_qi(p.matchCountColumn)}, "
         f"dense_rank() OVER (ORDER BY {k}) AS {_qi(p.groupIdColumn)}, "
-        f'(row_number() OVER (PARTITION BY {k} ORDER BY "__i") > 1) AS {_qi(p.isDuplicateColumn)} '
-        f'FROM (SELECT *, row_number() OVER () AS "__i" FROM {_qi(input_view)})'
+        f"(row_number() OVER (PARTITION BY {k} ORDER BY {_RID}) > 1) AS {_qi(p.isDuplicateColumn)} "
+        f"FROM (SELECT *, row_number() OVER () AS {_RID} FROM {_qi(input_view)})"
     )
 
 
@@ -235,8 +256,8 @@ def compile_geometry_filter(
 
 
 class _Range(BaseModel):
-    min: float | None = None  # borne basse incluse
-    max: float | None = None  # borne haute exclue
+    min: float | None = Field(None, allow_inf_nan=False)  # borne basse incluse
+    max: float | None = Field(None, allow_inf_nan=False)  # borne haute exclue
 
     @model_validator(mode="after")
     def _ok(self) -> "_Range":
@@ -261,9 +282,17 @@ class TransformAttributeRangeFilterParams(BaseModel):
 
 
 def compile_attribute_range_filter(
-    params: dict, *, input_view: str, join_view: str | None = None, input_srid: int | None = None
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+    input_columns: list[str] | None = None,
+    join_columns: list[str] | None = None,
 ) -> str:
     p = TransformAttributeRangeFilterParams.model_validate(params)
+    if p.output == "annotate":
+        _no_clash("transform.attributeRangeFilter", input_columns or [], p.rangeColumn)
     v = f"TRY_CAST({_qi(p.column)} AS DOUBLE)"
     conds = []
     for r in p.ranges:
@@ -342,15 +371,25 @@ class TransformSpatialRelatorParams(BaseModel):
 
 
 def compile_spatial_relator(
-    params: dict, *, input_view: str, join_view: str | None = None, input_srid: int | None = None
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+    input_columns: list[str] | None = None,
+    join_columns: list[str] | None = None,
 ) -> str:
     p = TransformSpatialRelatorParams.model_validate(params)
     assert join_view is not None, "transform.spatialRelator requires join_view"
+    _no_clash("transform.spatialRelator", input_columns or [], p.countColumn, _RID.strip('"'))
     cnt = _qi(p.countColumn)
+    # Compte par identifiant de ligne : deux lignes d'entrée identiques restent deux lignes.
     inner = (
-        f"SELECT t.* EXCLUDE (geometry), t.geometry, COUNT(o.geometry) AS {cnt} "
-        f"FROM {_qi(input_view)} t LEFT JOIN {_qi(join_view)} o "
-        f"ON ST_{p.predicate.capitalize()}(t.geometry, o.geometry) GROUP BY ALL"
+        f"WITH b AS (SELECT *, row_number() OVER () AS {_RID} FROM {_qi(input_view)}), "
+        f"c AS (SELECT t.{_RID} AS rid, COUNT(o.geometry) AS n FROM b t "
+        f"LEFT JOIN {_qi(join_view)} o "
+        f"ON ST_{p.predicate.capitalize()}(t.geometry, o.geometry) GROUP BY t.{_RID}) "
+        f"SELECT b.* EXCLUDE ({_RID}), c.n AS {cnt} FROM b JOIN c ON c.rid = b.{_RID}"
     )
     if p.output == "all":
         return inner
@@ -524,7 +563,7 @@ def execute_text_encoder(conn, *, input_view: str, view_name: str, params: dict)
 
     def f(s: str):
         try:
-            return s[:_MAX_CELL].encode(enc, err)
+            return None if len(s) > _MAX_CELL else s.encode(enc, err)
         except (UnicodeError, LookupError):
             return None
 
@@ -543,7 +582,7 @@ def execute_text_decoder(conn, *, input_view: str, view_name: str, params: dict)
 
     def f(b: bytes):
         try:
-            return bytes(b)[:_MAX_CELL].decode(enc, err)
+            return None if len(b) > _MAX_CELL else bytes(b).decode(enc, err)
         except (UnicodeError, LookupError):
             return None
 
@@ -590,6 +629,8 @@ class TransformHtmlExtractorParams(BaseModel):
 
     @model_validator(mode="after")
     def _needs(self) -> "TransformHtmlExtractorParams":
+        if self.attribute:
+            self.attribute = self.attribute.lower()  # HTMLParser met les noms en minuscules
         if self.mode != "text" and not self.tag:
             raise ValueError("tag est requis pour elementText et attribute")
         if self.mode == "attribute" and not self.attribute:
@@ -597,11 +638,16 @@ class TransformHtmlExtractorParams(BaseModel):
         return self
 
 
+_MAX_DEPTH = 64  # éléments `tag` imbriqués suivis ; au-delà la cellule donne NULL
+_MAX_WORK = 16_000_000  # caractères accumulés au total (tous éléments ouverts confondus)
+
+
 class _Extractor(html.parser.HTMLParser):
     def __init__(self, p: TransformHtmlExtractorParams) -> None:
         super().__init__(convert_charrefs=True)
         self.p, self.out = p, []
         self.skip = 0  # profondeur script/style
+        self.work = 0
         self.open: list[list[str]] = []  # éléments `tag` ouverts : fragments de texte
 
     def handle_starttag(self, tag, attrs):
@@ -616,6 +662,8 @@ class _Extractor(html.parser.HTMLParser):
         elif tag not in _VOID and (
             not self.p.className or self.p.className in (a.get("class") or "").split()
         ):
+            if len(self.open) >= _MAX_DEPTH:
+                raise ValueError("imbrication excessive")  # -> NULL (voir _extract_html)
             self.open.append([])
 
     def handle_endtag(self, tag):
@@ -629,6 +677,9 @@ class _Extractor(html.parser.HTMLParser):
             return
         if self.p.mode == "text":
             self.out.append(data)
+        self.work += len(data) * max(len(self.open), 1)
+        if self.work > _MAX_WORK:
+            raise ValueError("contenu excessif")
         for frag in self.open:
             frag.append(data)
 
@@ -639,9 +690,11 @@ class _Extractor(html.parser.HTMLParser):
 
 
 def _extract_html(s: str, p: TransformHtmlExtractorParams):
+    if len(s) > _MAX_CELL:
+        return None
     x = _Extractor(p)
     try:
-        x.feed(s[:_MAX_CELL])
+        x.feed(s)
         x.close()
     except Exception:  # noqa: BLE001 — HTML pathologique -> NULL par ligne
         return None
@@ -680,7 +733,8 @@ def execute_terminator(conn, *, input_view: str, view_name: str, params: dict) -
         f"SELECT count(*) FROM {_qi(input_view)} WHERE coalesce(({p.condition}), false)"
     ).fetchone()[0]
     if n:
-        raise PipelineRuntimeError(f"{p.message} ({n} ligne(s) concernée(s))")
+        # Arrêt voulu : jamais rejoué par la politique `retry` (mêmes données, même résultat).
+        raise PipelineTerminatedError(f"{p.message} ({n} ligne(s) concernée(s))")
     _create_view(conn, view_name, f"SELECT * FROM {_qi(input_view)}")
 
 
@@ -702,11 +756,12 @@ CONTRACTS.extend(
     [
         _c("attributeManager", TransformAttributeManagerParams, execute=execute_attribute_manager),
         _c("aggregateFilter", TransformAggregateFilterParams, execute=execute_aggregate_filter),
-        _c("matcher", TransformMatcherParams, compile=compile_matcher),
+        _c("matcher", TransformMatcherParams, needs_columns=True, compile=compile_matcher),
         _c("geometryFilter", TransformGeometryFilterParams, compile=compile_geometry_filter),
         _c(
             "attributeRangeFilter",
             TransformAttributeRangeFilterParams,
+            needs_columns=True,
             compile=compile_attribute_range_filter,
         ),
         _c(
@@ -720,6 +775,7 @@ CONTRACTS.extend(
             "spatialRelator",
             TransformSpatialRelatorParams,
             accepts_secondary_input=True,
+            needs_columns=True,
             compile=compile_spatial_relator,
             output_srid=_output_srid_reconcile_join,
         ),

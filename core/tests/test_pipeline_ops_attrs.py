@@ -8,6 +8,8 @@ from app.analytics.sql_sandbox import SqlSandboxError
 from app.pipelines.errors import PipelineRuntimeError
 from app.pipelines.ops import attrs
 from app.pipelines.ops.contracts import OPERATIONS, ops_catalog
+from tests.test_pipeline_jobs import env  # noqa: F401  (fixture requise par `rig`)
+from tests.test_pipeline_run_retry import _exec, _new_run, _payload, rig  # noqa: F401
 
 OPS = {
     "transform.attributeManager", "transform.aggregateFilter", "transform.matcher",
@@ -42,7 +44,10 @@ def _run(conn, op, params, view="out", src="src", **kw):
             kw = {}
         c.execute(conn, input_view=src, view_name=view, params=params, **kw)
     else:
-        sql = c.compile(params, input_view=src, join_view="sup", input_srid=4326)
+        extra = {}
+        if c.needs_columns:
+            extra["input_columns"] = [d[0] for d in conn.execute(f"DESCRIBE {src}").fetchall()]
+        sql = c.compile(params, input_view=src, join_view="sup", input_srid=4326, **extra)
         conn.execute(f'CREATE TEMP VIEW "{view}" AS {sql}')
 
 
@@ -243,7 +248,6 @@ def test_terminator(conn):
     assert _ids(conn) == [1, 2, 3, 4, 5]
     with pytest.raises(PipelineRuntimeError, match=r"trop grand.*2 ligne"):
         _run(conn, "transform.terminator", {"condition": "val >= 30", "message": "trop grand"})
-    _run(conn, "transform.terminator", {"condition": "val IS NULL"}, "x") if False else None
     with pytest.raises(PipelineRuntimeError, match="1 ligne"):
         _run(conn, "transform.terminator", {"condition": "val IS NULL"})  # NULL détecté
 
@@ -252,3 +256,92 @@ def test_udf_ops_work_on_a_locked_connection(conn):
     conn.execute("SET enable_external_access=false; SET lock_configuration=true")
     _run(conn, "transform.latLongToMgrs", {})
     assert conn.execute("SELECT mgrs FROM out WHERE id=1").fetchone()[0].startswith("31U")
+
+
+def test_html_extractor_deep_nesting_is_bounded_and_fast():
+    import time
+
+    c = duckdb.connect()
+    c.execute("CREATE TABLE s AS SELECT 1 AS id, repeat('<div>a', 8000) AS h")
+    p = {"column": "h", "outputColumn": "o", "mode": "elementText", "tag": "div"}
+    t0 = time.perf_counter()
+    _run(c, "transform.htmlExtractor", p, "o", src="s")
+    assert c.execute("SELECT o FROM o").fetchone()[0] is None  # imbrication excessive -> NULL
+    assert time.perf_counter() - t0 < 1.0
+    # imbrication raisonnable : fonctionne toujours
+    c.execute("CREATE TABLE s2 AS SELECT 1 AS id, '<div>a<div>b</div></div>' AS h")
+    _run(c, "transform.htmlExtractor", {**p, "separator": "|"}, "o2", src="s2")
+    assert c.execute("SELECT o FROM o2").fetchone()[0] == "b|ab"
+
+
+def test_html_attribute_name_is_case_insensitive_and_oversized_cell_is_null():
+    c = duckdb.connect()
+    c.execute("CREATE TABLE s AS SELECT 1 AS id, '<a href=\"/x\">l</a>' AS h")
+    base = {"column": "h", "outputColumn": "o", "mode": "attribute", "tag": "a"}
+    _run(c, "transform.htmlExtractor", {**base, "attribute": "HREF"}, "o", src="s")
+    assert c.execute("SELECT o FROM o").fetchone()[0] == "/x"
+    c.execute(f"CREATE TABLE big AS SELECT 1 AS id, repeat('x', {attrs._MAX_CELL + 1}) AS h")
+    _run(c, "transform.htmlExtractor", {**base, "attribute": "href"}, "ob", src="big")
+    _run(
+        c,
+        "transform.textEncoder",
+        {"column": "h", "encoding": "utf-8", "outputColumn": "e"},
+        "eb",
+        src="big",
+    )
+    assert c.execute("SELECT o FROM ob").fetchone()[0] is None
+    assert c.execute("SELECT e FROM eb").fetchone()[0] is None  # plus de troncature silencieuse
+
+
+def test_spatial_relator_keeps_identical_input_rows(conn):
+    conn.execute("CREATE TABLE dup (k VARCHAR, geometry GEOMETRY)")
+    conn.execute("INSERT INTO dup VALUES ('x', ST_Point(0,0)), ('x', ST_Point(0,0))")
+    conn.execute("CREATE TABLE sup (geometry GEOMETRY)")
+    conn.execute("INSERT INTO sup VALUES (ST_GeomFromText('POLYGON((-1 -1,1 -1,1 1,-1 1,-1 -1))'))")
+    _run(conn, "transform.spatialRelator", {"predicate": "within"}, "o", src="dup")
+    assert conn.execute("SELECT k, match_count FROM o").fetchall() == [("x", 1), ("x", 1)]
+
+
+def test_output_column_collisions_and_inf_are_explicit_errors(conn):
+    with pytest.raises(PipelineRuntimeError, match="déjà présente"):
+        _run(conn, "transform.matcher", {"keyColumns": ["grp"], "matchCountColumn": "val"})
+    with pytest.raises(PipelineRuntimeError, match="déjà présente"):
+        _run(
+            conn,
+            "transform.attributeRangeFilter",
+            {"column": "val", "ranges": [{"min": 1}], "output": "annotate", "rangeColumn": "id"},
+        )
+    conn.execute("CREATE TABLE sup (geometry GEOMETRY)")
+    with pytest.raises(PipelineRuntimeError, match="déjà présente"):
+        _run(conn, "transform.spatialRelator", {"countColumn": "id"})
+    for bad in ("inf", "-inf", "nan"):
+        with pytest.raises(ValueError):
+            attrs.TransformAttributeRangeFilterParams(column="v", ranges=[{"min": float(bad)}])
+
+
+def test_terminator_raises_a_non_retryable_error(conn):
+    from app.pipelines.errors import PipelineTerminatedError
+
+    with pytest.raises(PipelineTerminatedError):
+        _run(conn, "transform.terminator", {"condition": "val IS NULL"})
+
+
+@pytest.mark.postgis
+def test_terminator_is_not_replayed_by_the_retry_policy(rig):  # noqa: F811
+    """Falsification : sans l'exclusion de PipelineTerminatedError dans jobs.py, le run
+    passe en `retrying` (attempt 2) et rejoue ; avec, il échoue définitivement."""
+    _app, Session, tenant, _user, item_id, state = rig
+    state["fail_t3"] = False
+    state["retry"] = {"max": 2, "backoff": "exponential", "delaySeconds": 5}
+
+    def payload(retry):
+        p = _payload(retry)
+        t3 = next(n for n in p.nodes if n.id == "t3")
+        t3.op, t3.params = "transform.terminator", {"condition": "pop >= 1", "message": "stop"}
+        return p
+
+    state["payload_fn"] = payload
+    run = _exec(Session, tenant, _new_run(Session, tenant, item_id))
+    assert (run.status, run.attempt) == ("failed", 1)
+    assert "stop" in run.error
+    assert state["reader_calls"] == 1

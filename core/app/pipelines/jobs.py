@@ -25,7 +25,7 @@ from app.jobs.common import notify_best_effort, resolve_owner_user
 from app.jobs.common import session_factory as _session_factory
 from app.pipelines import checkpoints
 from app.pipelines import repository as pipelines_repo
-from app.pipelines.errors import PipelineCancelledError
+from app.pipelines.errors import PipelineCancelledError, PipelineTerminatedError
 from app.pipelines.reader_state import ReaderState
 from app.pipelines.runtime import NodeStat, PipelineRuntimeError, access_facts, run_pipeline
 from app.quotas.service import QuotaExceededError
@@ -377,13 +377,17 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
     # REV-288a : un quota atteint est un refus métier (message destiné à
     # l'utilisateur), même traitement que l'ingestion (ingestion/tasks.py).
     except (PipelineRuntimeError, ValueError, QuotaExceededError) as exc:
-        if isinstance(exc, PipelineRuntimeError) and _schedule_retry(
-            factory,
-            run_id=run_id,
-            tenant_id=tenant_id,
-            policy=retry_policy,
-            attempt=attempt,
-            error=str(exc),
+        if (
+            isinstance(exc, PipelineRuntimeError)
+            and not isinstance(exc, PipelineTerminatedError)
+            and _schedule_retry(
+                factory,
+                run_id=run_id,
+                tenant_id=tenant_id,
+                policy=retry_policy,
+                attempt=attempt,
+                error=str(exc),
+            )
         ):
             return
         tracker.mark_failed(str(exc))
