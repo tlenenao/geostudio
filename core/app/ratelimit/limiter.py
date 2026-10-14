@@ -12,6 +12,7 @@ import hashlib
 import logging
 import os
 import re
+import threading
 import time
 from collections import defaultdict, deque
 
@@ -230,6 +231,9 @@ class PgRateLimiter(RateLimiter):
         self._timeout_ms = timeout_ms
         self._open_until = 0.0
         self._calls_since_purge = 0
+        # Le repli mémoire est appelé depuis le threadpool (run_in_threadpool) : RateLimiter n'est
+        # pas thread-safe (_sweep itère _hits).
+        self._local_lock = threading.Lock()
 
     @property
     def degraded(self) -> bool:
@@ -257,4 +261,5 @@ class PgRateLimiter(RateLimiter):
             except Exception:
                 logger.warning("ratelimit: Postgres indisponible, repli local", exc_info=True)
                 self._open_until = time.monotonic() + _BREAKER_SECONDS
-        return super().allow(key, group)
+        with self._local_lock:
+            return super().allow(key, group)

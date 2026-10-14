@@ -62,6 +62,37 @@ def test_circuit_breaker_skips_db_after_failure(monkeypatch):
     assert calls == []  # disjoncteur ouvert : pas de nouvel aller-retour pendant le délai
 
 
+def test_local_fallback_is_thread_safe_under_concurrent_requests():
+    """Le repli mémoire tourne dans le threadpool : sans verrou, _sweep itère _hits pendant
+    qu'un autre thread y insère (RuntimeError: dictionary changed size)."""
+    import sys
+    import threading
+
+    dead = create_engine("postgresql+psycopg://u:p@127.0.0.1:1/x")
+    lim = PgRateLimiter(dead)
+    lim.allow("warm", "sql")  # ouvre le disjoncteur : tout passe par le repli local
+    errors: list[BaseException] = []
+
+    def hammer(n: int) -> None:
+        try:
+            for i in range(3000):
+                lim.allow(f"k{n}-{i}", "sql")
+        except BaseException as exc:
+            errors.append(exc)
+
+    old = sys.getswitchinterval()
+    sys.setswitchinterval(1e-6)
+    try:
+        threads = [threading.Thread(target=hammer, args=(n,)) for n in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+    finally:
+        sys.setswitchinterval(old)
+    assert errors == []
+
+
 def test_mcp_server_is_stateless_for_multi_replica_core(monkeypatch):
     """ARC-32 : une session MCP en mémoire casserait la bascule entre réplicas."""
     from app.mcp.server import create_mcp_server
