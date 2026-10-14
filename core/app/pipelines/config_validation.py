@@ -34,7 +34,7 @@ _COLLECTION_PARAM_FIELD = {
     "transform.snapToLayer": "withCollectionId",
     "writer.collection": "collectionId",
     "writer.dataset": "collectionId",
-}
+} | {op: "withCollectionId" for op in BINARY_OPS}  # ops binaires des modules de voie FME
 _WRITE_OPS = {"writer.collection", "writer.dataset"}
 
 
