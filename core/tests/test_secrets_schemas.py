@@ -140,7 +140,11 @@ _BLOB_BODIES = {
         "awsSecretAccessKey": "x",
         "bucketUrl": "s3://b/p",
     },
-    "azure_blob_credentials": {"accountName": "a", "accountKey": "k", "bucketUrl": "az://c/p"},
+    "azure_blob_credentials": {
+        "accountName": "myaccount",
+        "accountKey": "k",
+        "bucketUrl": "az://c/p",
+    },
     "gcs_credentials": {"serviceAccountInfo": {"type": "service_account"}, "bucketUrl": "gs://b"},
 }
 

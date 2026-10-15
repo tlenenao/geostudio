@@ -402,7 +402,7 @@ class AzureBlobCredentialsPayload(BaseModel):
     `reader.connector.blob` doit en porter le préfixe (REV-197)."""
 
     kind: Literal["azure_blob_credentials"] = "azure_blob_credentials"
-    accountName: NonEmptyStr
+    accountName: Annotated[str, Field(pattern=r"^[a-z0-9]{3,24}$")]  # REV-341 : nom de compte Azure
     accountKey: NonEmptyStr
 
     bucketUrl: str | None = None  # bucket/préfixe auquel le secret est lié (REV-197)
@@ -411,6 +411,12 @@ class AzureBlobCredentialsPayload(BaseModel):
     @classmethod
     def _bucket_url(cls, v: str | None) -> str | None:
         return _check_bucket_url(v, "az")
+
+
+_GCS_TOKEN_URIS = (
+    "https://oauth2.googleapis.com/token",
+    "https://accounts.google.com/o/oauth2/token",
+)
 
 
 class GcsCredentialsPayload(BaseModel):
@@ -433,6 +439,14 @@ class GcsCredentialsPayload(BaseModel):
     serviceAccountInfo: dict[str, Any]
 
     bucketUrl: str | None = None  # bucket/préfixe auquel le secret est lié (REV-197)
+
+    @field_validator("serviceAccountInfo")
+    @classmethod
+    def _token_uri(cls, v: dict[str, Any]) -> dict[str, Any]:
+        # REV-341 : token_uri est un URL d'egress piloté par l'auteur du secret.
+        if v.get("token_uri") not in (None, *_GCS_TOKEN_URIS):
+            raise ValueError("serviceAccountInfo.token_uri must be Google's OAuth2 token endpoint")
+        return v
 
     @field_validator("bucketUrl")
     @classmethod
