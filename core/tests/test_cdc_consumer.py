@@ -88,3 +88,12 @@ def test_decode_message_with_multiple_changes():
 def test_decode_ignores_unknown_table():
     decoded = decode_wal2json_message(_UNKNOWN_TABLE_PAYLOAD, lsn=400, collection_meta=_META)
     assert decoded == []
+
+
+def test_decode_accepts_an_already_decoded_message():
+    # REV-364 h : le worker décode le JSON une fois et le passe tel quel.
+    import json
+
+    from_str = decode_wal2json_message(_INSERT_PAYLOAD, lsn=100, collection_meta=_META)
+    from_dict = decode_wal2json_message(json.loads(_INSERT_PAYLOAD), lsn=100, collection_meta=_META)
+    assert from_dict == from_str
