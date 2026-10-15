@@ -431,6 +431,14 @@ class FakeFtp:
         self.calls.append(("stor", cmd))
         FakeFtp.store[cmd.removeprefix("STOR ")] = fp.read()
 
+    def rename(self, a, b):
+        self.calls.append(("rename", a, b))
+        FakeFtp.store[b] = FakeFtp.store.pop(a)
+
+    def delete(self, a):
+        self.calls.append(("delete", a))
+        FakeFtp.store.pop(a, None)
+
     def close(self):
         self.calls.append(("close",))
 
@@ -457,7 +465,7 @@ def test_ftp_reader_uses_tls_pinned_ip_and_verified_cert(ftp, conn, session, ten
 
 
 def test_ftp_secret_host_binding_and_injection(ftp, conn, session, tenant, user):
-    with pytest.raises(PipelineRuntimeError, match="host must be"):
+    with pytest.raises(PipelineRuntimeError, match="host/port must be"):
         _read(cf.read_ftp, conn, session, tenant, user, host="evil.example.org", path="/in.csv",
               secretName="f")  # fmt: skip
     assert ftp.instances == []  # aucune connexion, donc aucun identifiant envoyé
@@ -535,3 +543,95 @@ def test_ftp_writer_guards(ftp, monkeypatch, conn, session, tenant, user):
     assert ftp.instances == [] and "/out.csv" not in ftp.store  # annulé avant toute connexion
     _write_empty = _write(conn, session, tenant, user, "SELECT 1 AS i WHERE false")
     assert _write_empty.rowCount == 0
+
+
+def test_ftp_writer_is_atomic_via_part_file_and_cleans_up(
+    ftp, monkeypatch, conn, session, tenant, user
+):
+    _write(conn, session, tenant, user, "SELECT 1 AS i")
+    calls = ftp.instances[-1].calls
+    assert ("stor", "STOR /out.csv.part") in calls and (
+        "rename",
+        "/out.csv.part",
+        "/out.csv",
+    ) in calls
+    assert not any(c == ("stor", "STOR /out.csv") for c in calls)
+
+    def boom(self, cmd, fp):
+        self.calls.append(("stor", cmd))
+        FakeFtp.store[cmd.removeprefix("STOR ")] = b"tron"
+        raise OSError("coupure")
+
+    old = ftp.store["/out.csv"]
+    monkeypatch.setattr(FakeFtp, "storbinary", boom)
+    with pytest.raises(PipelineRuntimeError, match="transfer failed"):
+        _write(conn, session, tenant, user, "SELECT 2 AS i")
+    assert ftp.store["/out.csv"] == old and "/out.csv.part" not in ftp.store
+
+
+def test_ftp_secret_port_binding(ftp, conn, session, tenant, user):
+    _secret(session, tenant, user, "f2", {"kind": "basic_auth", "username": "u", "password": "p",
+            "baseUrl": "https://ftp.example.org:2121"})  # fmt: skip
+    with pytest.raises(PipelineRuntimeError, match="host/port"):
+        _read(cf.read_ftp, conn, session, tenant, user, host="ftp.example.org", path="/in.csv",
+              secretName="f2")  # fmt: skip
+    _read(cf.read_ftp, conn, session, tenant, user, host="ftp.example.org", port=2121,
+          path="/in.csv", secretName="f2")  # fmt: skip
+
+
+def test_parquet_decompression_bomb(httpserver, monkeypatch, conn, session, tenant, user):
+    import pandas as pd
+
+    monkeypatch.setitem(cf._API, "box", httpserver.url_for(""))
+    _secret(session, tenant, user, "s", {"kind": "bearer_token", "token": "t",
+            "baseUrl": httpserver.url_for("/")})  # fmt: skip
+    buf = io.BytesIO()
+    pd.DataFrame({"a": ["x" * 10_000] * 2_000}).to_parquet(buf, compression="zstd")
+    assert len(buf.getvalue()) < 100_000  # minuscule, ~20 Mo décompressés
+    httpserver.expect_request("/2.0/files/1/content").respond_with_data(buf.getvalue())
+    monkeypatch.setattr(cf, "MAX_BYTES", 1_000_000)  # plafond décompressé = 4 Mo
+    with pytest.raises(PipelineRuntimeError, match="decompresses beyond"):
+        _read(cf.read_cloudfile, conn, session, tenant, user, provider="box", file="1",
+              secretName="s", format="parquet")  # fmt: skip
+    # métadonnées mensongères : le contrôle par row group réel rattrape
+    import pyarrow.parquet as pq
+
+    class Liar(pq.ParquetFile):
+        @property
+        def metadata(self):
+            real = super().metadata
+            rg = type("R", (), {"total_byte_size": 1})()
+            return type("M", (), {"num_rows": real.num_rows, "num_row_groups": real.num_row_groups,
+                                  "row_group": lambda self, i: rg})()  # fmt: skip
+
+    monkeypatch.setattr(pq, "ParquetFile", Liar)
+    with pytest.raises(PipelineRuntimeError, match="decompresses beyond"):
+        _read(cf.read_cloudfile, conn, session, tenant, user, provider="box", file="1",
+              secretName="s", format="parquet")  # fmt: skip
+
+
+def test_arcgis_page_limit_byte_budget_and_malformed(
+    httpserver, monkeypatch, conn, session, tenant, user
+):
+    url = httpserver.url_for("/L/FeatureServer/0")
+    ep = "/L/FeatureServer/0/query"
+    one = {"features": [{"properties": {"a": 1}, "geometry": None}], "exceededTransferLimit": True}
+    httpserver.expect_request(ep).respond_with_json(one)  # ignore resultOffset, ne finit jamais
+    monkeypatch.setattr(cf, "_ARCGIS_PAGE", 1)
+    monkeypatch.setenv("CORE_PIPELINES_CONNECTOR_MAX_PAGES", "3")
+    with pytest.raises(PipelineRuntimeError, match="page limit"):
+        _read(cf.read_arcgisonline, conn, session, tenant, user, layerUrl=url)
+    monkeypatch.delenv("CORE_PIPELINES_CONNECTOR_MAX_PAGES")
+    monkeypatch.setattr(cf, "MAX_BYTES", 150)  # budget cumulé : ~2 pages
+    with pytest.raises(PipelineRuntimeError, match="larger than"):
+        _read(cf.read_arcgisonline, conn, session, tenant, user, layerUrl=url)
+    monkeypatch.setattr(cf, "MAX_BYTES", 100 * 1024 * 1024)
+    monkeypatch.setattr(cf, "_ARCGIS_PAGE", 1000)
+    httpserver.clear()
+    httpserver.expect_request(ep).respond_with_json({"features": ["pas un dict"]})
+    with pytest.raises(PipelineRuntimeError, match="malformed feature"):
+        _read(cf.read_arcgisonline, conn, session, tenant, user, layerUrl=url)
+    httpserver.clear()
+    httpserver.expect_request(ep).respond_with_json({"features": [{"properties": 3}]})
+    with pytest.raises(PipelineRuntimeError, match="malformed feature"):
+        _read(cf.read_arcgisonline, conn, session, tenant, user, layerUrl=url)

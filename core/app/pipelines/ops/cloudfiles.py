@@ -59,6 +59,8 @@ _REQUIRE_TLS_FOR_SECRETS = True
 
 _FILE_FORMATS = ("csv", "jsonl", "parquet", "geojson")
 FileFormat = Literal["csv", "jsonl", "parquet", "geojson"]
+# Taille décompressée admise = facteur x MAX_BYTES (compression colonnaire légitime ~5-10x).
+MAX_UNCOMPRESSED_FACTOR = 4
 _SECRET_KINDS = ("bearer_token", "api_key", "basic_auth")
 
 
@@ -114,6 +116,7 @@ def _http_get(
     query: dict | None = None,
     method: str = "GET",
     max_bytes: int | None = None,
+    deadline: float | None = None,
     strict_scope: bool = True,
 ) -> bytes:
     """Requête gardée -> corps (borné). Un secret doit couvrir l'URL initiale (sinon erreur
@@ -129,7 +132,7 @@ def _http_get(
             f"{op}: secret baseUrl must cover '{url}' (set it on the secret)"
         )
     max_bytes = max_bytes or MAX_BYTES
-    deadline = time.monotonic() + DEADLINE_S
+    deadline = deadline or time.monotonic() + DEADLINE_S
     session = egress.build_guarded_session()
     try:
         cur, cur_query, cur_method = url, dict(query or {}), method
@@ -223,11 +226,29 @@ def _parse(body: bytes, fmt: str, op: str) -> pd.DataFrame:
         elif fmt == "jsonl":
             frame = pd.read_json(io.BytesIO(body), lines=True, nrows=cap + 1)
         elif fmt == "parquet":
+            import pyarrow as pa
             import pyarrow.parquet as pq
 
-            if pq.ParquetFile(io.BytesIO(body)).metadata.num_rows > cap:
+            pf = pq.ParquetFile(io.BytesIO(body))
+            meta = pf.metadata
+            if meta.num_rows > cap:
                 raise PipelineRuntimeError(f"{op}: plafond de {cap} lignes dépassé")
-            frame = pd.read_parquet(io.BytesIO(body))
+            # Bombe de décompression : un fichier de quelques Ko peut en valoir des centaines
+            # de Mo. Borne sur la taille décompressée DÉCLARÉE (métadonnées), puis sur la taille
+            # réelle de chaque row group lu (rattrape des métadonnées mensongères).
+            declared = sum(meta.row_group(i).total_byte_size for i in range(meta.num_row_groups))
+            if declared > MAX_UNCOMPRESSED_FACTOR * MAX_BYTES:
+                raise PipelineRuntimeError(f"{op}: parquet decompresses beyond the size limit")
+            tables, total = [], 0
+            for i in range(meta.num_row_groups):
+                t = pf.read_row_group(i)
+                total += t.nbytes
+                if total > MAX_UNCOMPRESSED_FACTOR * MAX_BYTES:
+                    raise PipelineRuntimeError(f"{op}: parquet decompresses beyond the size limit")
+                tables.append(t)
+            frame = (
+                pa.concat_tables(tables) if tables else pf.schema_arrow.empty_table()
+            ).to_pandas()
         else:
             doc = json.loads(body)
             feats = doc["features"]
@@ -404,13 +425,23 @@ def read_arcgisonline(
     p = ReaderArcgisOnlineParams.model_validate(params)
     payload = _resolve_secret(op, session, tenant_id, user, p.secretName)
     url = p.layerUrl.rstrip("/") + "/query"
+    from app.pipelines.connector_runtime import _max_pages
+
     features: list = []
-    while len(features) < p.maxFeatures:
-        page = min(_ARCGIS_PAGE, p.maxFeatures - len(features))
+    want = min(p.maxFeatures, _max_rows())
+    budget, pages = MAX_BYTES, 0
+    deadline = time.monotonic() + DEADLINE_S
+    while len(features) < want:
+        pages += 1
+        if pages > _max_pages():
+            raise PipelineRuntimeError(f"{op}: page limit exceeded")
+        page = min(_ARCGIS_PAGE, want - len(features))
         body = _http_get(
             op,
             url,
             payload=payload,
+            max_bytes=budget,
+            deadline=deadline,
             query={
                 "where": p.where,
                 "outFields": p.outFields,
@@ -421,22 +452,32 @@ def read_arcgisonline(
                 "resultRecordCount": str(page),
             },
         )
+        budget -= len(body)  # budget d'octets cumulé sur l'ensemble des pages
         try:
             doc = json.loads(body)
         except ValueError as exc:
             raise PipelineRuntimeError(f"{op}: answer is not JSON") from exc
         if isinstance(doc, dict) and "error" in doc:  # ArcGIS répond 200 + {"error": ...}
-            raise PipelineRuntimeError(f"{op}: service error {doc['error'].get('code', '?')}")
+            err = doc["error"]
+            code = err.get("code", "?") if isinstance(err, dict) else "?"
+            raise PipelineRuntimeError(f"{op}: service error {code}")
         batch = doc.get("features") if isinstance(doc, dict) else None
         if not isinstance(batch, list):
             raise PipelineRuntimeError(f"{op}: answer is not a GeoJSON FeatureCollection")
         features += batch
-        more = doc.get("exceededTransferLimit") or doc.get("properties", {}).get(
-            "exceededTransferLimit"
+        props = doc.get("properties")
+        more = doc.get("exceededTransferLimit") or (
+            isinstance(props, dict) and props.get("exceededTransferLimit")
         )
         if not batch or not more:
             break
-    _materialize(conn, _features_frame(features[: p.maxFeatures], op), view_name, op)
+    try:
+        frame = _features_frame(features[:want], op)
+    except PipelineRuntimeError:
+        raise
+    except Exception as exc:  # feature / properties qui ne sont pas des objets
+        raise PipelineRuntimeError(f"{op}: malformed feature ({type(exc).__name__})") from exc
+    _materialize(conn, frame, view_name, op)
     return 4326
 
 
@@ -567,8 +608,12 @@ def _ftps_connect(op: str, p: _FtpTarget, payload) -> ftplib.FTP_TLS:
     de contrôle, donc le canal de données reste épinglé lui aussi."""
     if payload.kind != "basic_auth":
         raise PipelineRuntimeError(f"{op}: secret has kind '{payload.kind}', expected basic_auth")
-    if not payload.baseUrl or (urlsplit(payload.baseUrl).hostname or "").lower() != p.host.lower():
-        raise PipelineRuntimeError(f"{op}: secret baseUrl host must be '{p.host}'")
+    bound = urlsplit(payload.baseUrl or "")
+    # Hôte ET port : un port explicite du baseUrl doit être celui du nœud (sinon 21 par défaut).
+    if (bound.hostname or "").lower() != p.host.lower() or (
+        bound.port is not None and bound.port != p.port
+    ):
+        raise PipelineRuntimeError(f"{op}: secret baseUrl host/port must be '{p.host}:{p.port}'")
     try:
         ip = egress.assert_egress_allowed(f"http://{p.host}")
     except egress.EgressBlockedError as exc:
@@ -594,6 +639,8 @@ def read_ftp(conn, *, session, tenant_id, node_id, params, view_name, user, base
     buf = bytearray()
     deadline = time.monotonic() + DEADLINE_S
 
+    # ponytail: échéance vérifiée entre blocs ; un serveur au goutte-à-goutte dépasse jusqu'au
+    # délai de lecture du socket (_FTP_TIMEOUT_S) par bloc.
     def sink(chunk: bytes) -> None:
         buf.extend(chunk)
         if len(buf) > MAX_BYTES:
@@ -667,7 +714,21 @@ def write_ftp(
         audit_session.commit()
     ftp = _ftps_connect(op, p, payload)
     try:
-        ftp.storbinary(f"STOR {p.path}", io.BytesIO(data))
+        # Fichier temporaire puis RNFR/RNTO : un transfert interrompu ne tronque pas l'ancien.
+        tmp = f"{p.path}.part"
+        try:
+            ftp.storbinary(f"STOR {tmp}", io.BytesIO(data))
+            try:
+                ftp.rename(tmp, p.path)
+            except ftplib.error_perm:  # destination existante refusée par certains serveurs
+                ftp.delete(p.path)
+                ftp.rename(tmp, p.path)
+        except (OSError, ftplib.Error):
+            try:
+                ftp.delete(tmp)
+            except (OSError, ftplib.Error):
+                pass
+            raise
     except (OSError, ftplib.Error) as exc:
         raise PipelineRuntimeError(f"{op}: transfer failed ({type(exc).__name__})") from exc
     finally:
