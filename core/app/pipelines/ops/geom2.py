@@ -37,7 +37,7 @@ from app.pipelines.ops.execute import (
     _read_geometry_rows,
     _write_geometry_rows,
 )
-from app.pipelines.ops.operation_contract import OperationContract
+from app.pipelines.ops.operation_contract import OperationContract, OutputColumn
 from app.sql_ident import quote_ident_duckdb as _qi
 
 MAX_FEATURES = 20_000
@@ -930,15 +930,8 @@ class TransformConvertCrsDescriptionParams(_Strict):
     `outputColumn` (remplacée si elle existe). Une description illisible donne NULL."""
 
     sourceColumn: str
-    outputColumn: str = "crs_converted"
+    outputColumn: OutputColumn = "crs_converted"
     targetFormat: Literal["epsg", "wkt", "projjson", "proj4", "name"] = "wkt"
-
-    @field_validator("outputColumn")
-    @classmethod
-    def _not_geometry(cls, v: str) -> str:
-        if not v or v.lower() == "geometry":
-            raise ValueError("outputColumn ne peut pas être vide ni 'geometry'")
-        return v
 
 
 def _convert_crs(text: str, fmt: str) -> str | None:

@@ -11,13 +11,25 @@ in-process (généralisation de la décision SP-15d)."""
 from collections.abc import Callable
 from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel
+from pydantic import AfterValidator, BaseModel
 
 # Vrai pendant `preview_pipeline` : les READERS n'ont pas de paramètre `preview` ; un reader à
 # effet de publication (reader.netcdf output=rasterItem, voie F2) le lit ici pour ne RIEN publier.
 IN_PREVIEW: ContextVar[bool] = ContextVar("pipeline_in_preview", default=False)
+
+
+def _not_geometry(v: str) -> str:
+    if not v or v.strip().lower() == "geometry":
+        raise ValueError("une colonne de sortie ne peut pas être vide ni 'geometry'")
+    return v
+
+
+# Paramètre nommant une colonne ÉCRITE par l'op : jamais `geometry` (DuckDB compare les noms
+# sans casse), sinon la géométrie est remplacée par une valeur scalaire et le SRID de sortie
+# hérité devient faux (revue finale FME, I4 ; test_no_lane_op_output_param_accepts_geometry).
+OutputColumn = Annotated[str, AfterValidator(_not_geometry)]
 
 
 @dataclass(frozen=True)

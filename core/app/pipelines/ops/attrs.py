@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field, model_validator
 from app.pipelines.compiler import _output_srid_reconcile_join
 from app.pipelines.errors import PipelineRuntimeError, PipelineTerminatedError
 from app.pipelines.expr_validation import validate_bounded_expr
-from app.pipelines.ops.operation_contract import OperationContract
+from app.pipelines.ops.operation_contract import OperationContract, OutputColumn
 from app.sql_ident import quote_ident_duckdb as _qi
 
 CONTRACTS: list[OperationContract] = []
@@ -179,9 +179,9 @@ class TransformMatcherParams(BaseModel):
 
     keyColumns: list[str] = Field(default_factory=list, max_length=20)
     matchGeometry: bool = False
-    matchCountColumn: str = "match_count"
-    groupIdColumn: str = "match_group"
-    isDuplicateColumn: str = "is_duplicate"
+    matchCountColumn: OutputColumn = "match_count"
+    groupIdColumn: OutputColumn = "match_group"
+    isDuplicateColumn: OutputColumn = "is_duplicate"
 
     @model_validator(mode="after")
     def _has_criterion(self) -> "TransformMatcherParams":
@@ -278,7 +278,7 @@ class TransformAttributeRangeFilterParams(BaseModel):
     column: str
     ranges: list[_Range] = Field(..., min_length=1, max_length=50)
     output: Literal["passed", "failed", "annotate"] = "passed"
-    rangeColumn: str = "range_index"
+    rangeColumn: OutputColumn = "range_index"
 
 
 def compile_attribute_range_filter(
@@ -367,7 +367,7 @@ class TransformSpatialRelatorParams(BaseModel):
         "intersects", "equals", "touches", "contains", "within", "crosses", "overlaps", "disjoint"
     ] = "intersects"
     output: Literal["all", "related", "unrelated"] = "all"
-    countColumn: str = "match_count"
+    countColumn: OutputColumn = "match_count"
 
 
 def compile_spatial_relator(
@@ -431,7 +431,7 @@ class TransformLatLongToMgrsParams(BaseModel):
     nulle ou hors du domaine MGRS (latitude invalide) donne NULL. `precision` : 5 = 1 m,
     4 = 10 m … 0 = 100 km."""
 
-    column: str = "mgrs"
+    column: OutputColumn = "mgrs"
     precision: int = _PREC
 
 
@@ -526,7 +526,7 @@ class TransformTextEncoderParams(BaseModel):
 
     column: str
     encoding: str
-    outputColumn: str
+    outputColumn: OutputColumn
     errors: Literal["strict", "replace"] = "strict"
 
     @model_validator(mode="after")
@@ -542,7 +542,7 @@ class TransformTextDecoderParams(BaseModel):
 
     column: str
     encoding: str
-    outputColumn: str
+    outputColumn: OutputColumn
     errors: Literal["strict", "replace"] = "strict"
 
     @model_validator(mode="after")
@@ -620,7 +620,7 @@ class TransformHtmlExtractorParams(BaseModel):
     la bibliothèque standard), sans sélecteurs CSS ni exécution de script."""
 
     column: str
-    outputColumn: str
+    outputColumn: OutputColumn
     mode: Literal["text", "elementText", "attribute"] = "text"
     tag: str | None = Field(None, pattern=r"^[A-Za-z][A-Za-z0-9]*$")
     attribute: str | None = Field(None, pattern=r"^[A-Za-z_:][-A-Za-z0-9_:.]*$")
