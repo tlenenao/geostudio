@@ -114,6 +114,9 @@ def test_create_collection_enqueues_an_embedding_job(session, tenant_and_user, m
         geometry_type=None,
         srid=None,
     )
+    # REV-346 : le defer part APRÈS le commit (jamais avant), pas à la création.
+    assert deferred == []
+    session.commit()
     assert deferred == [{"collection_id": col.id, "tenant_id": tenant.id}]
 
 
