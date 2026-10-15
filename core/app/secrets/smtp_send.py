@@ -20,6 +20,7 @@ def smtp_connection(
     `OSError` ; l'appelant a déjà vérifié `smtp_tls_violation(payload)` (refus explicite,
     jamais de bascule silencieuse)."""
     ctx = ssl.create_default_context()
+    server_cm: smtplib.SMTP
     if payload.useTls and payload.port == 465:
         server_cm = smtplib.SMTP_SSL(payload.host, payload.port, timeout=timeout, context=ctx)
     else:
