@@ -90,3 +90,20 @@ def test_open_local_connection_installs_and_loads_spatial_only(monkeypatch):
     assert "INSTALL spatial" in joined and "LOAD spatial" in joined
     assert "httpfs" not in joined
     assert "s3_" not in joined
+
+
+def test_every_opener_pins_the_duckdb_timezone_to_utc(monkeypatch):
+    # REV-280g : le fuseau ne dépend plus de l'hôte.
+    import duckdb
+
+    from app.analytics.duckdb_conn import open_local_connection, open_spatial_connection
+
+    for opener in (
+        lambda: open_connection(endpoint_url="http://minio:9000", access_key="a", secret_key="s"),
+        open_spatial_connection,
+        open_local_connection,
+    ):
+        recording = _RecordingConnection(duckdb.connect(":memory:"))
+        monkeypatch.setattr(duckdb, "connect", lambda *_a, _r=recording, **_kw: _r)
+        opener()
+        assert "SET TimeZone='UTC'" in recording.statements
