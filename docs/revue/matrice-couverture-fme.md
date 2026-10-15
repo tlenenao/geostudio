@@ -7,11 +7,11 @@
 | Statut | Nombre |
 |---|---|
 | `capability_removed` | 7 |
-| `implemented` | 178 |
+| `implemented` | 194 |
 | `license_blocked` | 10 |
 | `out_of_scope` | 45 |
 | `planned_duckdb` | 13 |
-| `planned_gdal` | 28 |
+| `planned_gdal` | 12 |
 | `planned_otb` | 3 |
 | `unknown` | 6 |
 
@@ -20,11 +20,11 @@
 | Moteur | Nombre |
 |---|---|
 | `duckdb` | 133 |
-| `gdal` | 32 |
+| `gdal` | 16 |
 | `n/a` | 63 |
 | `otb` | 3 |
 | `pdal` | 1 |
-| `python` | 44 |
+| `python` | 60 |
 | `shapely` | 14 |
 
 ## Détail par catégorie
@@ -83,9 +83,9 @@ Sommaire : [Attribute](#attribute) · [Coordinate System](#coordinate-system) ·
 | MGRSToLatLongConverter | transform.mgrsToLatLong | python | MIT (mgrs) | `implemented` | niche | Référence MGRS -> Point EPSG:4326 (coin sud-ouest de la cellule) ; NULL par ligne si invalide. |
 | PROJAttributeReprojector | transform.reprojectAttribute | duckdb |  | `implemented` | niche | Implémenté : transform.reprojectAttribute couvre ce besoin (reprojection de deux colonnes attribut x/y, pas la géométrie) — même opération que AttributeReprojector, moteur géodésique différent (PROJ) sans distinction côté GeoStudio. |
 | PROJReprojector | transform.reproject | duckdb |  | `implemented` | niche | Même besoin fonctionnel que Reprojector — PROJ est d'ailleurs la bibliothèque de reprojection sous-jacente typique de l'écosystème GDAL/PostGIS/DuckDB spatial, cohérent avec transform.reproject. |
-| RasterGCPExtractor |  | gdal | MIT/X (GDAL/OGR) | `planned_gdal` | niche | Opération inverse de RasterGCPSetter — même bucket moteur candidat (GDAL, métadonnées GCP raster). |
-| RasterGCPSetter |  | gdal | MIT/X (GDAL/OGR) | `planned_gdal` | niche | Géoréférencement raster par GCP (territoire classique gdal_translate -gcp/gdalwarp -tps) — aucun op pipeline GeoStudio actuel ne l'expose. |
-| RasterGeoreferencer |  | gdal | MIT/X (GDAL/OGR) | `planned_gdal` | niche | Géoréférencement raster par paramètres géométriques (territoire classique gdal_edit.py/gdal_translate -a_ullr) — aucun op pipeline GeoStudio actuel ne traite de raster brut non géoréférencé. |
+| RasterGCPExtractor | transform.rasterGcpExtract | python | BSD-3-Clause (rasterio) ; GDAL (MIT) | `implemented` | niche | Lit les GCP GDAL ou la balise GS_GCPS (posée par rasterGcpSet) ; un raster hébergé sans point ne produit aucune ligne. Écarts FME : voie F1 (2026-10-15). |
+| RasterGCPSetter | transform.rasterGcpSet | python | BSD-3-Clause (rasterio) ; GDAL (MIT) | `implemented` | niche | Un raster hébergé doit avoir une géotransformée : l'op AJUSTE une affine d'ordre 1 aux GCP (moindres carrés, RMSE en colonne) et publie le raster géoréférencé — pas de GCP en attente ni de polynôme d'ordre > 1/spline ; GCP conservés dans la balise GS_GCPS (≤ 100 points). Écarts FME : voie F1 (2026-10-15). |
+| RasterGeoreferencer | transform.rasterGeoreference | python | BSD-3-Clause (rasterio) ; GDAL (MIT) | `implemented` | niche | Remplace la géoréférence d'un raster hébergé (qui a toujours un CRS) par coins ou origine+cellule+rotation ; valeurs inchangées, sans rééchantillonnage ; pas de raster sans CRS en entrée (non hébergeable). Écarts FME : voie F1 (2026-10-15). |
 | ReframeReprojector | transform.reproject | duckdb |  | `implemented` | niche | Même besoin fonctionnel que Reprojector — la disponibilité effective des grilles de transformation Réframe (swisstopo) dans la distribution PROJ utilisée par GeoStudio n'a pas été vérifiée en session, nuance documentée plutôt que supposée réglée. |
 | Reprojector | transform.reproject | duckdb |  | `implemented` | courant | Correspondance directe avec transform.reproject (op pipeline générique de changement de CRS, `targetCrs`). |
 | VertexCounter | transform.countVertices | duckdb |  | `implemented` | niche | Implémenté : transform.countVertices écrit le nombre de sommets de la géométrie dans un attribut. |
@@ -226,7 +226,7 @@ Sommaire : [Attribute](#attribute) · [Coordinate System](#coordinate-system) ·
 | PointCloudThinner |  | n/a |  | `out_of_scope` | courant | décision Tanguy 2026-10-15 (D4) : pas de PDAL ni de sidecar nuage de points — voie G abandonnée ; aucune pile nuage de points dans le produit (pas de roue PyPI fiable pour libpdal, sidecar mono-arch exclu). |
 | PointCloudToPointCoercer |  | n/a |  | `out_of_scope` | courant | décision Tanguy 2026-10-15 (D4) : pas de PDAL ni de sidecar nuage de points — voie G abandonnée ; aucune pile nuage de points dans le produit (pas de roue PyPI fiable pour libpdal, sidecar mono-arch exclu). |
 | PointCloudTransformationApplier |  | n/a |  | `out_of_scope` | niche | décision Tanguy 2026-10-15 (D4) : pas de PDAL ni de sidecar nuage de points — voie G abandonnée ; aucune pile nuage de points dans le produit (pas de roue PyPI fiable pour libpdal, sidecar mono-arch exclu). |
-| SurfaceDraper |  | gdal | MIT/X (GDAL/OGR) | `planned_gdal` | niche | Opération composite (construction de surface + échantillonnage d'élévation sur des features tierces + calcul de pente/exposition dérivé) — pas un match qgis_frozen à un algorithme unique (la méthode de catégorisation exclut les compositions). L'implémentation ouverte la plus courante pour draper des features vectorielles sur un MNT est un échantillonnage ponctuel de raster (gdallocationinfo/rasterio) plutôt qu'un nuage de points PDAL, d'où planned_gdal malgré le classement FME sous « Point Clouds ». |
+| SurfaceDraper | transform.surfaceDrape | gdal | MIT/X (GDAL/OGR) | `planned_gdal` | niche | lookup z/pente sous points seulement; drapage de lignes/polygones et sortie 3D absents. Op partielle `transform.surfaceDrape` conservée dans le code (pas comptée implemented). |
 | SurfaceModeller | transform.triangulate | duckdb | MIT (DuckDB) + BSD-3-Clause (Shapely) | `implemented` | niche | Même op que TINGenerator dans ce même fichier (`transform.triangulate`, retrait QGIS Task 24, `groupBy` depuis REV-195) — FME expose les deux comme des transformers distincts mais le même algorithme sous-jacent (Delaunay) et la même limite s'appliquent : pas de support des lignes de rupture (breaklines) qui contraignent la triangulation. |
 
 ### Raster (22)
@@ -234,27 +234,27 @@ Sommaire : [Attribute](#attribute) · [Coordinate System](#coordinate-system) ·
 | Transformer FME | Équivalent GeoStudio | Moteur | Licence | Statut | Fréquence | Notes |
 |---|---|---|---|---|---|---|
 | GoogleVisionConnector |  | n/a |  | `out_of_scope` | niche | Intégration à un service SaaS propriétaire spécifique (Google Cloud Vision, facturation à l'usage) — pas une capacité géospatiale générique à implémenter en interne, même famille de décision que FMEFlowNotifier/FMEFlowJobSubmitter (intégration à un produit tiers précis). Des alternatives ouvertes existent pour la détection d'objets sur imagerie (OpenCV, OTB) mais ne remplacent pas cette intégration spécifique — non license_blocked : le blocage n'est pas une licence GPL, c'est un compte commercial tiers. |
-| ImageFetcher |  | gdal | MIT/X (GDAL/OGR) | `planned_gdal` | niche | GDAL sait lire directement une image distante via /vsicurl/ — proche en esprit de reader.connector.rest mais la sortie est une géométrie raster, pas une ligne tabulaire : rattaché au bucket raster générique plutôt qu'à un connecteur DuckDB. |
+| ImageFetcher | transform.imageFetch | python | BSD-3-Clause (rasterio) ; GDAL (MIT) | `implemented` | niche | PNG/JPEG/GeoTIFF (magic bytes) via garde d'egress SSRF (IP épinglée), ≤ 20 Mo/4 M pixels, ≤ 10 images ; sortie = raster hébergé (FME : feature raster en mémoire) ; image non géoréférencée => `bounds` obligatoire ; refusé en aperçu. Écarts FME : voie F1 (2026-10-15). |
 | RasterAspectCalculator |  | n/a | GPL-2.0-or-later (QGIS, retiré) | `capability_removed` | courant | Capacité techniquement atteignable via rasterio/GDAL embarqué (vérifié en design §7.5) mais abandonnée : aucun support raster dans le moteur de pipeline (blocage architectural, pas technique) ; l'algorithme QGIS native:aspect qui la couvrait a disparu avec le retrait du sidecar QGIS (GPL-2.0-or-later). |
-| RasterBandCombiner |  | gdal | MIT/X (GDAL/OGR) | `planned_gdal` | niche | Empilement de bandes (gdal_merge.py -separate / gdalbuildvrt -separate) — absent des 50 algorithmes QGIS gelés. |
-| RasterBandNodataSetter |  | gdal | MIT/X (GDAL/OGR) | `planned_gdal` | niche | gdal_edit.py -a_nodata / gdal_translate -a_nodata — absent des 50 algorithmes QGIS gelés. |
-| RasterBandRemover |  | gdal | MIT/X (GDAL/OGR) | `planned_gdal` | niche | gdal_translate -b avec liste de bandes à conserver — absent des 50 algorithmes QGIS gelés. |
-| RasterBandSeparator |  | gdal | MIT/X (GDAL/OGR) | `planned_gdal` | niche | Opération inverse de RasterBandCombiner (gdal_translate -b) — même bucket moteur candidat. |
-| RasterCellValueCalculator |  | gdal | MIT/X (GDAL/OGR) | `planned_gdal` | courant | Algèbre raster générique (type gdal_calc.py) — aucun des 50 algorithmes QGIS gelés ne l'expose (le plus proche, native:fieldcalculator, est vectoriel/attributaire, pas raster). |
-| RasterConvolver |  | gdal | MIT/X (GDAL/OGR) | `planned_gdal` | niche | Filtrage par noyau de convolution générique — hors des 50 algorithmes QGIS gelés (aucun filtre de convolution raster générique dans la liste). |
-| RasterExtractor |  | gdal | MIT/X (GDAL/OGR) | `planned_gdal` | niche | Équivalent conceptuel d'un writer.export raster vers un attribut binaire (gdal_translate vers une mémoire tampon MEM/PNG/TIFF) — aucun op pipeline GeoStudio actuel ne traite de raster brut. |
+| RasterBandCombiner | transform.rasterBandCombine | python | BSD-3-Clause (rasterio) ; GDAL (MIT) | `implemented` | niche | Rasters coïncidents (même grille) uniquement, ≤ 16 bandes, type le plus large. Écarts FME : voie F1 (2026-10-15). |
+| RasterBandNodataSetter | transform.rasterBandNodata | python | BSD-3-Clause (rasterio) ; GDAL (MIT) | `implemented` | niche | Le GeoTIFF n'a qu'un nodata pour tout le raster : valeur unique pour toutes les bandes (FME : par bande) ; valeur vérifiée contre le type. Écarts FME : voie F1 (2026-10-15). |
+| RasterBandRemover | transform.rasterBandRemove | python | BSD-3-Clause (rasterio) ; GDAL (MIT) | `implemented` | niche | Bandes à supprimer par numéro (pas de RasterSelector amont). Écarts FME : voie F1 (2026-10-15). |
+| RasterBandSeparator | transform.rasterBandSeparate | python | BSD-3-Clause (rasterio) ; GDAL (MIT) | `implemented` | niche | Une ligne de sortie par (raster, bande) ; pas de regroupement par combinaison bande/palette (rasters hébergés sans palette). Écarts FME : voie F1 (2026-10-15). |
+| RasterCellValueCalculator | transform.rasterCalc | python | BSD-3-Clause (rasterio) ; GDAL (MIT) | `implemented` | courant | Paire de rasters de même grille exigée (pas de rééchantillonnage) ; le second raster est un paramètre `otherItemId` (un seul opérande B par nœud) ; 7 opérations (add/subtract/multiply/divide/min/max/mean), sortie float32 nodata -9999. Raster = item hébergé (colonne `itemColumn`), publié en nouvel item (catalog.manage). Écarts FME : voie F1 (2026-10-15). |
+| RasterConvolver | transform.rasterConvolve | python | BSD-3-Clause (rasterio) ; GDAL (MIT) | `implemented` | niche | Noyau ≤ 7x7 impair, appliqué en corrélation (≡ convolution si symétrique), voisinage renormalisé sur les cellules valides ; sortie float32. Pas de noyaux nommés prédéfinis (FME) : le noyau est fourni. Écarts FME : voie F1 (2026-10-15). |
+| RasterExtractor | transform.rasterExtract | python | BSD-3-Clause (rasterio) ; GDAL (MIT) | `implemented` | niche | Colonne BLOB `raster_blob` PNG (8/16 bits, ≤ 4 bandes) ou GeoTIFF ; ≤ 1 M pixels et 16 Mo par raster. Écarts FME : voie F1 (2026-10-15). |
 | RasterHillshader |  | n/a | GPL-2.0-or-later (QGIS, retiré) | `capability_removed` | courant | Capacité techniquement atteignable via rasterio/GDAL embarqué (vérifié en design §7.5) mais abandonnée : aucun support raster dans le moteur de pipeline (blocage architectural, pas technique) ; l'algorithme QGIS native:hillshade qui la couvrait a disparu avec le retrait du sidecar QGIS (GPL-2.0-or-later). |
-| RasterMosaicker |  | gdal | MIT/X (GDAL/OGR) | `planned_gdal` | courant | Territoire classique gdal_merge.py/gdalbuildvrt — aucun équivalent dans les 50 algorithmes QGIS gelés (mosaïquage absent de la liste). |
+| RasterMosaicker | transform.rasterMosaic | python | BSD-3-Clause (rasterio) ; GDAL (MIT) | `implemented` | courant | Grilles identiques en CRS/taille de cellule et ALIGNÉES, nord en haut, pas de rééchantillonnage ni de fusion d'attributs ; recouvrement first/last ; ≤ 10 rasters, ≤ 16 M pixels en sortie. Écarts FME : voie F1 (2026-10-15). |
 | RasterObjectDetectionModelTrainer |  | otb | Apache-2.0 (Orfeo ToolBox) | `planned_otb` | niche | Même famille dépréciée (FME 2025.0) que RasterObjectDetector — même jugement de bucket et même réserve, cf. rapport. |
 | RasterObjectDetector |  | otb | Apache-2.0 (Orfeo ToolBox) | `planned_otb` | niche | Transformer déprécié par Safe Software depuis FME 2025.0 (vérifié sur la page de documentation officielle). Technique historique (cascades Haar/LBP OpenCV, licence BSD), pas strictement de la télédétection OTB classique — rapproché malgré tout de planned_otb comme bucket « classification/détection sur imagerie avancée », faute de bucket dédié à la vision par ordinateur classique dans la méthode de catégorisation ; jugement à valider (cf. rapport). |
-| RasterPyramider |  | gdal | MIT/X (GDAL/OGR) | `planned_gdal` | niche | Construction de pyramides/overviews (gdaladdo) — absent des 50 algorithmes QGIS gelés. |
+| RasterPyramider | transform.rasterPyramid | python | BSD-3-Clause (rasterio) ; GDAL (MIT) | `implemented` | niche | ≤ 4 niveaux (÷2), un item hébergé par niveau (average/nearest) ; la pyramide interne d'un COG hébergé existe déjà (overviews) — l'op publie des rasters distincts. Écarts FME : voie F1 (2026-10-15). |
 | RasterResampler |  | n/a | GPL-2.0-or-later (QGIS, retiré) | `capability_removed` | courant | Capacité techniquement atteignable via rasterio/GDAL embarqué (vérifié en design §7.5) mais abandonnée : aucun support raster dans le moteur de pipeline (blocage architectural, pas technique) ; l'algorithme QGIS gdal:warpreproject qui la couvrait a disparu avec le retrait du sidecar QGIS (GPL-2.0-or-later). |
 | RasterSegmenter |  | otb | Apache-2.0 (Orfeo ToolBox) | `planned_otb` | niche | Segmentation d'image (type Mean-Shift/watershed) — relève de la télédétection avancée, module Segmentation d'Orfeo ToolBox, pas des 50 algorithmes QGIS gelés (aucun algorithme de segmentation raster dans la liste). |
 | RasterSlopeCalculator |  | n/a | GPL-2.0-or-later (QGIS, retiré) | `capability_removed` | courant | Capacité techniquement atteignable via rasterio/GDAL embarqué (vérifié en design §7.5) mais abandonnée : aucun support raster dans le moteur de pipeline (blocage architectural, pas technique) ; l'algorithme QGIS native:slope qui la couvrait a disparu avec le retrait du sidecar QGIS (GPL-2.0-or-later). |
-| RasterStatisticsCalculator |  | gdal | MIT/X (GDAL/OGR) | `planned_gdal` | courant | Statistiques globales par bande (gdalinfo -stats) — à distinguer de native:rasterlayerzonalstats/native:zonalstatisticsfb (déjà dans l'allowlist QGIS), qui calculent des statistiques PAR ZONE vectorielle et non sur le raster entier : pas le même périmètre, donc pas de match qgis_frozen forcé. |
+| RasterStatisticsCalculator | transform.rasterStats | python | BSD-3-Clause (rasterio) ; GDAL (MIT) | `implemented` | courant | Colonnes raster_b<N>_{count,min,max,mean,std} par bande demandée (exact, par blocs, Chan) ; pas de médiane/histogramme. Écarts FME : voie F1 (2026-10-15). |
 | RasterToPolygonCoercer |  | n/a | GPL-2.0-or-later (QGIS, retiré) | `capability_removed` | courant | Capacité techniquement atteignable via rasterio/GDAL embarqué (vérifié en design §7.5) mais abandonnée : aucun support raster dans le moteur de pipeline (blocage architectural, pas technique) ; l'algorithme QGIS gdal:polygonize qui la couvrait a disparu avec le retrait du sidecar QGIS (GPL-2.0-or-later). |
-| VectorOnRasterOverlayer |  | gdal | MIT/X (GDAL/OGR) | `planned_gdal` | niche | Pas un match qgis_frozen : gdal:rasterize (QGIS) ne prend pas de raster existant en entrée (il crée toujours un nouveau raster de sortie depuis un WIDTH/HEIGHT/EXTENT) et ne gère pas les nuages de points — deux différences de comportement réelles, pas une simple divergence de nommage. gdal_rasterize en ligne de commande sait bien burn onto an existing raster (-a sur un fichier pré-existant), d'où planned_gdal plutôt qu'un abandon en unknown. |
-| WebMapTiler |  | gdal | MIT/X (GDAL/OGR) | `planned_gdal` | courant | Territoire classique gdal2tiles.py — absent des 50 algorithmes QGIS gelés. Distinct du service de tuiles vectorielles ST_AsMVT déjà servi par le cœur (SP-24) : ici il s'agit de produire des tuiles RASTER statiques depuis un fichier, pas de servir des tuiles vectorielles dynamiques depuis une collection. |
+| VectorOnRasterOverlayer | transform.vectorOnRaster | python | BSD-3-Clause (rasterio) ; GDAL (MIT) | `implemented` | niche | Vecteurs seuls (pas de nuage de points), valeur de brûlage constante ou colonne numérique (FME : fme_color RVB) sur la bande choisie ; l'original n'est jamais modifié (nouvel item) ; ≤ 10 000 géométries. Écarts FME : voie F1 (2026-10-15). |
+| WebMapTiler | transform.webMapTiler | python | BSD-3-Clause (rasterio) ; GDAL (MIT) | `implemented` | courant | Tuiles PNG 256 XYZ Web Mercator en LIGNES (z,x,y,tile BLOB), pas de fichiers ni de WMTS ; ≤ 256 tuiles par nœud, ≤ 64 Mo ; reprojection bilinéaire ; tuiles vides omises. Écarts FME : voie F1 (2026-10-15). |
 
 ### Readers/Writers (52)
 
