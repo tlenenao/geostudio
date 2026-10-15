@@ -320,7 +320,10 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
             # valeur échoue ici avec un message clair.
             payload = apply_params(payload, resolve_params(payload.parameters, run_params))
             user = _acting_user(session, tenant_id=tenant_id, item_id=item_id)
-            retry_policy = payload.retry
+            # Garde d'exécution (revue finale FME, I1) : une config stockée avant la garde de
+            # validation peut combiner retry.max > 0 et un writer non rejouable — jamais de
+            # retry automatique dans ce cas (la reprise manuelle est refusée par le service).
+            retry_policy = None if payload.append_writers() else payload.retry
             checkpoint = (
                 checkpoints.Checkpoint(
                     tenant_id,
@@ -330,7 +333,7 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
                         access_facts(session, payload, tenant_id=tenant_id, user=user),
                     ),
                 )
-                if retry_policy is not None
+                if payload.retry is not None
                 else None
             )
             reader_state = ReaderState(

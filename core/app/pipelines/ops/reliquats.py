@@ -268,7 +268,8 @@ def execute_database_join(
                 raise PipelineRuntimeError(f"{op}: colonne(s) absente(s) de '{p.table}': {missing}")
             out_names = [p.prefix + c for c in want]
             out_types = [_duck_type(remote.c[c]) for c in want]
-            if clash := [c for c in out_names if c in in_cols]:
+            have = {c.lower() for c in in_cols}  # DuckDB compare les noms sans casse
+            if clash := [c for c in out_names if c.lower() in have]:
                 raise PipelineRuntimeError(f"{op}: colonne(s) déjà présente(s) en entrée : {clash}")
             sel = [remote.c[k] for k in tkeys] + [remote.c[c] for c in want]
             key_expr = (

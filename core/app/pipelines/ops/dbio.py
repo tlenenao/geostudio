@@ -23,11 +23,12 @@ from typing import Any
 from urllib.parse import quote
 
 import pandas as pd
+import requests
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.pipelines.errors import PipelineRuntimeError
+from app.pipelines.errors import PipelineCancelledError, PipelineRuntimeError
 from app.pipelines.ops.operation_contract import OperationContract
 from app.sql_ident import quote_ident_duckdb as _qi
 
@@ -188,7 +189,7 @@ def _external_write(
         with engine.begin() as db:
             for r in rows:
                 if should_cancel is not None and should_cancel():
-                    raise PipelineRuntimeError(f"{op}: cancelled")  # rollback distant
+                    raise PipelineCancelledError(f"{op}: cancelled")  # rollback distant
                 binds = {f"k_{i}": v for i, v in enumerate(r[:nk])}
                 binds |= {f"v_{i}": v for i, v in enumerate(r[nk:])}
                 affected += db.execute(stmt, binds).rowcount
@@ -271,7 +272,7 @@ def read_googlesheets(
     conn, *, session, tenant_id, node_id, params, view_name, user, base_uri
 ) -> int:
     from app.pipelines.connector_runtime import PostgresSecretResolver, _max_rows, _url_within_scope
-    from app.pipelines.egress import build_guarded_session
+    from app.pipelines.egress import EgressBlockedError, build_guarded_session
 
     p = ReaderConnectorGoogleSheetsParams.model_validate(params)
     op = "reader.connector.googlesheets"
@@ -295,6 +296,10 @@ def read_googlesheets(
         headers["Authorization"] = f"Bearer {payload.token}"
     elif payload.location == "header":
         headers[payload.key] = payload.value
+    elif payload.key == "key":
+        # Revue finale FME, I3 : l'API Google accepte la clé en en-tête — jamais dans l'URL
+        # (une URL finit dans les messages d'exception, les logs et pipeline_runs.error).
+        headers["x-goog-api-key"] = payload.value
     else:
         query[payload.key] = payload.value
     sess = build_guarded_session()
@@ -307,6 +312,12 @@ def read_googlesheets(
                 body += chunk
                 if len(body) > _SHEETS_MAX_BYTES:
                     raise PipelineRuntimeError(f"{op}: response larger than the byte cap")
+    except EgressBlockedError:
+        raise PipelineRuntimeError(f"{op}: egress blocked") from None
+    except requests.RequestException as exc:
+        # Jumelle de cloudfiles._http : le message d'une erreur requests contient l'URL
+        # (donc une clé en query) — seul le type d'erreur remonte, jamais `from exc`.
+        raise PipelineRuntimeError(f"{op}: request failed: {type(exc).__name__}") from None
     finally:
         sess.close()
     import json

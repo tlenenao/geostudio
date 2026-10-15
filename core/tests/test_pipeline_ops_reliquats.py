@@ -142,7 +142,9 @@ def _fake_reader(conn, *, view_name, **_):
     return 2154
 
 
-@pytest.mark.parametrize("writer", ["writer.collection", "writer.dataset"])
+@pytest.mark.parametrize(
+    "writer", ["writer.collection", "writer.dataset", "writer.export", "writer.topojson"]
+)
 def test_collection_writers_refuse_srid_zero(monkeypatch, tmp_path, writer):
     monkeypatch.setitem(READERS, "reader.connector.rest", _fake_reader)
     called = []

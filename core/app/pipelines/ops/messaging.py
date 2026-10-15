@@ -50,7 +50,7 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.pipelines.errors import PipelineRuntimeError
+from app.pipelines.errors import PipelineCancelledError, PipelineRuntimeError
 from app.pipelines.ops.operation_contract import OperationContract
 from app.sql_ident import quote_ident_duckdb as _qi
 
@@ -193,7 +193,7 @@ def _run_writer(
         sent = 0
         for i, row in enumerate(rows):
             if should_cancel is not None and should_cancel():
-                raise PipelineRuntimeError(f"{op}: cancelled after {sent} message(s) sent")
+                raise PipelineCancelledError(f"{op}: cancelled after {sent} message(s) sent")
             try:
                 send(row, i)
             except (PipelineRuntimeError, OSError, smtplib.SMTPException, ValueError) as exc:

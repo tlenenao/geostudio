@@ -13,7 +13,7 @@ from pydantic import ValidationError
 from app.configs.schemas import PipelineNode
 from app.db import init_db, make_engine, make_session_factory
 from app.pipelines import egress as pipelines_egress
-from app.pipelines.errors import PipelineRuntimeError
+from app.pipelines.errors import PipelineCancelledError, PipelineRuntimeError
 from app.pipelines.ops import cloudfiles as cf
 from app.pipelines.ops.contracts import OPERATIONS, ops_catalog
 from app.secrets import repository as secrets_repo
@@ -567,6 +567,20 @@ def test_ftp_writer_is_atomic_via_part_file_and_cleans_up(
     with pytest.raises(PipelineRuntimeError, match="transfer failed"):
         _write(conn, session, tenant, user, "SELECT 2 AS i")
     assert ftp.store["/out.csv"] == old and "/out.csv.part" not in ftp.store
+
+
+def test_ftp_writer_cancel_is_a_cancellation_not_a_failure(ftp, conn, session, tenant, user):
+    """I1 : une annulation finit le run « cancelled » (PipelineCancelledError), jamais
+    « failed » donc reprenable ; rien n'est transféré."""
+    conn.execute("CREATE OR REPLACE TEMP TABLE inp AS SELECT 1 AS i")
+    node = PipelineNode(id="w", kind="writer", op="writer.ftp", params={
+        "host": "ftp.example.org", "path": "/cancel.csv", "secretName": "f"})  # fmt: skip
+    with pytest.raises(PipelineCancelledError, match="cancelled"):
+        cf.WRITERS["writer.ftp"](
+            session, conn, node=node, view_by_node={"w": "inp"}, tenant_id=tenant.id,
+            user=user, should_cancel=lambda: True,
+        )  # fmt: skip
+    assert "/cancel.csv" not in ftp.store
 
 
 def test_ftp_secret_port_binding(ftp, conn, session, tenant, user):

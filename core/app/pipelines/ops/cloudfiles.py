@@ -49,7 +49,7 @@ from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
 from app.pipelines import egress
-from app.pipelines.errors import PipelineRuntimeError
+from app.pipelines.errors import PipelineCancelledError, PipelineRuntimeError
 from app.pipelines.ops.operation_contract import OperationContract
 from app.sql_ident import quote_ident_duckdb as _qi
 
@@ -892,7 +892,7 @@ def write_ftp(
     if len(data) > MAX_BYTES:
         raise PipelineRuntimeError(f"{op}: output larger than {MAX_BYTES} bytes")
     if should_cancel is not None and should_cancel():
-        raise PipelineRuntimeError(f"{op}: cancelled")
+        raise PipelineCancelledError(f"{op}: cancelled")
     # Audit AVANT l'effet distant (irréversible), dans une session courte SÉPARÉE : commiter
     # `session` casserait la transaction du run.
     with Session(session.get_bind()) as audit_session:

@@ -551,3 +551,40 @@ def test_convert_crs_rejects_geometry_column_and_init(conn):
     OPERATIONS["transform.convertCrsDescription"].execute(
         conn, input_view="ci", view_name="co2", params={"sourceColumn": "d"}
     )
+
+
+# --- Revue finale FME, I5 : géométries 3D (voie S) face aux ops 2D ------------------------
+
+CUBE_Z = (
+    "MULTIPOLYGON Z (((0 0 0, 1 0 0, 1 1 0, 0 1 0, 0 0 0)), ((0 0 1, 1 0 1, 1 1 1, 0 1 1, 0 0 1)),"
+    " ((0 0 0, 1 0 0, 1 0 1, 0 0 1, 0 0 0)), ((1 0 0, 1 1 0, 1 1 1, 1 0 1, 1 0 0)),"
+    " ((1 1 0, 0 1 0, 0 1 1, 1 1 1, 1 1 0)), ((0 1 0, 0 0 0, 0 0 1, 0 1 1, 0 1 0)))"
+)
+
+
+@pytest.mark.parametrize(
+    "op, params",
+    [
+        ("transform.removeSpikes", {}),
+        ("transform.removeVertices", {"indices": [99]}),
+        ("transform.chop", {"maxVertices": 4}),
+        ("transform.cleanAreaGapsOverlaps", {"maxGapArea": 1}),
+        ("transform.amalgamateAreas", {}),
+    ],
+)
+def test_3d_solid_is_refused_never_silently_flattened(conn, op, params):
+    with pytest.raises(PipelineRuntimeError, match="3D"):
+        run(conn, op, params, [CUBE_Z])
+
+
+def test_remove_spikes_keeps_vertical_edges_of_a_3d_line(conn):
+    w = "LINESTRING Z (0 0 0, 0 0 5, 5 0 5, 10 0.01 5, 5 0.0001 5, 11 0 5)"
+    out = geoms(run(conn, "transform.removeSpikes", {"angleThreshold": 5}, [w]))[0]
+    assert out.has_z
+    assert list(out.coords) == [(0, 0, 0), (0, 0, 5), (5, 0, 5), (11, 0, 5)]
+
+
+def test_planar_3d_polygon_still_processed_with_z(conn):
+    w = "POLYGON Z ((0 0 7, 4 0 7, 4 4 7, 0 4 7, 0 0 7))"
+    out = geoms(run(conn, "transform.removeVertices", {"indices": [99]}, [w]))[0]
+    assert out.has_z and {c[2] for c in out.exterior.coords} == {7}

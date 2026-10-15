@@ -37,7 +37,7 @@ from app.pipelines.ops.execute import (
     _read_geometry_rows,
     _write_geometry_rows,
 )
-from app.pipelines.ops.operation_contract import OperationContract
+from app.pipelines.ops.operation_contract import OperationContract, OutputColumn
 from app.sql_ident import quote_ident_duckdb as _qi
 
 MAX_FEATURES = 20_000
@@ -162,11 +162,31 @@ def _exec_triangulate_polygon(conn, *, input_view, view_name, params) -> None:
 # --------------------------------------------------------------------------------------
 
 
-def _valid_area(g):
+def _reject_nonplanar_z(op: str, g) -> None:
+    """Revue finale FME, I5 : une surface Z invalide en 2D (faces verticales, solide
+    `reader.cityjson`) serait détruite par une réparation ou un filtre de surface planaire
+    (make_valid, `area > 0`) : refus explicite plutôt que perte silencieuse."""
+    if g.has_z and not g.is_empty and _fam(g) == "Polygon" and not g.is_valid:
+        raise PipelineRuntimeError(
+            f"{op}: surface 3D non planaire (faces verticales, solide) non prise en charge "
+            "par cette op 2D — séparez les faces ou retirez Z avant"
+        )
+
+
+def _reject_z(op: str, geoms: list) -> None:
+    """Op de couverture planaire (union/différence de surfaces) : aucune entrée Z acceptée."""
+    if any(g.has_z for g in geoms):
+        raise PipelineRuntimeError(
+            f"{op}: géométries 3D (Z) non prises en charge (op planaire) — retirez Z avant"
+        )
+
+
+def _valid_area(g, op: str):
     """Résultat d'une reconstruction : un polygone devenu invalide est réparé (make_valid) et
-    réduit à sa partie surfacique (vide si elle disparaît)."""
+    réduit à sa partie surfacique (vide si elle disparaît). Surface Z non planaire : refus."""
     if g.is_empty or g.is_valid or _fam(g) != "Polygon":
         return g
+    _reject_nonplanar_z(op, g)
     ps = [q for q in _parts(shapely.make_valid(g)) if q.geom_type == "Polygon"]
     return shapely.union_all(ps) if ps else Polygon()
 
@@ -220,7 +240,7 @@ def _exec_remove_vertices(conn, *, input_view, view_name, params) -> None:
         input_view,
         view_name,
         "transform.removeVertices",
-        lambda g: [_valid_area(_rebuild(g, f))],
+        lambda g: [_valid_area(_rebuild(g, f), "transform.removeVertices")],
     )
 
 
@@ -233,17 +253,17 @@ class TransformRemoveSpikesParams(_Strict):
 
 
 def _despike(c: np.ndarray, closed: bool, thr_deg: float) -> np.ndarray:
-    xy = c[:, :2]
+    # Toutes les dimensions (X, Y et Z si présent) : en XY seul, une arête verticale (même XY,
+    # Z différent) passait pour un doublon ou un pic d'angle nul (revue finale FME, I5).
     keep = np.ones(len(c), dtype=bool)
-    keep[1:] = np.any(np.diff(xy, axis=0) != 0, axis=1)  # doublons consécutifs
+    keep[1:] = np.any(np.diff(c, axis=0) != 0, axis=1)  # doublons consécutifs
     c = c[keep]
     for _ in range(50):
         n = len(c)
         if n < (4 if closed else 3):
             break
-        xy = c[:, :2]
-        prev = np.roll(xy, 1, axis=0) - xy
-        nxt = np.roll(xy, -1, axis=0) - xy
+        prev = np.roll(c, 1, axis=0) - c
+        nxt = np.roll(c, -1, axis=0) - c
         norm = np.linalg.norm(prev, axis=1) * np.linalg.norm(nxt, axis=1)
         with np.errstate(invalid="ignore", divide="ignore"):
             cos = np.where(norm > 0, (prev * nxt).sum(axis=1) / norm, 1.0)
@@ -269,7 +289,10 @@ def _exec_remove_spikes(conn, *, input_view, view_name, params) -> None:
         view_name,
         "transform.removeSpikes",
         lambda g: [
-            _valid_area(_rebuild(g, lambda c, closed: _despike(c, closed, p.angleThreshold)))
+            _valid_area(
+                _rebuild(g, lambda c, closed: _despike(c, closed, p.angleThreshold)),
+                "transform.removeSpikes",
+            )
         ],
     )
 
@@ -349,6 +372,7 @@ def _exec_clean_gaps_overlaps(conn, *, input_view, view_name, params) -> None:
     def one(frame: pd.DataFrame) -> pd.DataFrame:
         geoms = _loads(frame)
         _require(op, geoms, {"Polygon"})
+        _reject_z(op, geoms)
         b.bound(geoms)
         res = _clean_coverage(geoms, p, b)
         keep = [i for i, g in enumerate(res) if not g.is_empty]
@@ -404,6 +428,7 @@ def _exec_amalgamate_areas(conn, *, input_view, view_name, params) -> None:
     def build(geoms, b):
         if not geoms:
             return []
+        _reject_z("transform.amalgamateAreas", geoms)
         u = shapely.union_all([_polygonal(g) for g in geoms])
         if p.distance > 0:
             r = p.distance / 2
@@ -571,6 +596,7 @@ def _exec_chop(conn, *, input_view, view_name, params) -> None:
             return [pc for ln in _parts(g) for pc in _chop_line(ln, p)]
         if p.maxVertices is None:
             raise PipelineRuntimeError(f"{op}: maxLength ne s'applique pas aux polygones")
+        _reject_nonplanar_z(op, g)  # `_chop_area` écarterait les faces verticales (aire 0)
         return [pc for q in _parts(g) for pc in _chop_area(q, p.maxVertices)]
 
     _rowwise(conn, input_view, view_name, op, fn)
@@ -930,15 +956,8 @@ class TransformConvertCrsDescriptionParams(_Strict):
     `outputColumn` (remplacée si elle existe). Une description illisible donne NULL."""
 
     sourceColumn: str
-    outputColumn: str = "crs_converted"
+    outputColumn: OutputColumn = "crs_converted"
     targetFormat: Literal["epsg", "wkt", "projjson", "proj4", "name"] = "wkt"
-
-    @field_validator("outputColumn")
-    @classmethod
-    def _not_geometry(cls, v: str) -> str:
-        if not v or v.lower() == "geometry":
-            raise ValueError("outputColumn ne peut pas être vide ni 'geometry'")
-        return v
 
 
 def _convert_crs(text: str, fmt: str) -> str | None:

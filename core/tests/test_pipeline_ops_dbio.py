@@ -12,7 +12,7 @@ from pydantic import ValidationError
 from app.configs.schemas import PipelineNode
 from app.db import init_db, make_engine, make_session_factory
 from app.pipelines import egress as pipelines_egress
-from app.pipelines.errors import PipelineRuntimeError
+from app.pipelines.errors import PipelineCancelledError, PipelineRuntimeError
 from app.pipelines.ops import dbio
 from app.pipelines.ops.contracts import OPERATIONS, ops_catalog
 from app.secrets import repository as secrets_repo
@@ -298,14 +298,39 @@ def test_googlesheets_reads_range_with_bearer(sheets, conn, session, tenant, use
 
 
 def test_googlesheets_api_key_query(sheets, conn, session, tenant, user):
+    """I3 : une clé Google `key` en query est envoyée en en-tête x-goog-api-key (jamais
+    dans l'URL) ; un autre nom de paramètre reste en query."""
     _secret(session, tenant, user, "gs", {"kind": "api_key", "location": "query", "key": "key",
             "value": "K", "baseUrl": sheets.url_for("/v4/")})  # fmt: skip
     sheets.expect_request(
         f"/v4/spreadsheets/{SHEET_ID}/values/A:ZZ",
-        query_string="valueRenderOption=UNFORMATTED_VALUE&majorDimension=ROWS&key=K",
+        query_string="valueRenderOption=UNFORMATTED_VALUE&majorDimension=ROWS",
+        headers={"x-goog-api-key": "K"},
     ).respond_with_json({"values": [["x"], [1.5]]})
     _read(conn, session, tenant, user)
     assert conn.execute("SELECT x FROM node_g").fetchall() == [(1.5,)]
+    _secret(session, tenant, user, "gs2", {"kind": "api_key", "location": "query",
+            "key": "apikey", "value": "K2", "baseUrl": sheets.url_for("/v4/")})  # fmt: skip
+    sheets.expect_request(
+        f"/v4/spreadsheets/{SHEET_ID}/values/A:ZZ",
+        query_string="valueRenderOption=UNFORMATTED_VALUE&majorDimension=ROWS&apikey=K2",
+    ).respond_with_json({"values": [["y"], [2]]})
+    conn.execute("DROP TABLE node_g")
+    _read(conn, session, tenant, user, secretName="gs2")
+    assert conn.execute("SELECT y FROM node_g").fetchall() == [(2,)]
+
+
+def test_googlesheets_network_error_never_leaks_the_key(conn, session, tenant, user, monkeypatch):
+    """I3 : une erreur requests (connexion refusée, timeout) porte l'URL — donc une clé en
+    query — dans son message : seul le type d'erreur remonte, sans chaîne de cause."""
+    root = "http://127.0.0.1:1/v4/"  # port fermé : ConnectionError immédiate
+    monkeypatch.setattr(dbio, "_SHEETS_BASE", root + "spreadsheets")
+    _secret(session, tenant, user, "gs", {"kind": "api_key", "location": "query",
+            "key": "apikey", "value": "SECRETKEY123", "baseUrl": root})  # fmt: skip
+    with pytest.raises(PipelineRuntimeError, match="request failed: ConnectionError") as exc:
+        _read(conn, session, tenant, user)
+    assert "SECRETKEY123" not in str(exc.value)
+    assert exc.value.__suppress_context__ and exc.value.__cause__ is None
 
 
 def test_googlesheets_secret_scope_and_kind(sheets, conn, session, tenant, user):
@@ -410,7 +435,7 @@ def test_should_cancel_rolls_back(remote, conn, session, tenant, user):
     params = {"secretName": "ext-pg", "table": "fme_b_t", "keyColumns": ["id"]}
     node = PipelineNode(id="w", kind="writer", op="writer.connector.postgres.delete", params=params)
     calls = iter([False, True])
-    with pytest.raises(PipelineRuntimeError, match="cancelled"):
+    with pytest.raises(PipelineCancelledError, match="cancelled"):  # I1 : run « cancelled »
         dbio.WRITERS[node.op](
             session, conn, node=node, view_by_node={"w": "inp"}, tenant_id=tenant.id,
             user=user, should_cancel=lambda: next(calls),
