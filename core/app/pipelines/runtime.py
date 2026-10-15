@@ -1406,9 +1406,11 @@ def _write_file(conn, *, node: PipelineNode, view_by_node: dict, srid: int) -> N
     # "sqlite3_open ... unable to open database file".
     if parent := os.path.dirname(p.path):
         os.makedirs(parent, exist_ok=True)
+    # SRID 0 (« non défini », voie S FME) : fichier écrit sans système de coordonnées.
+    srs = f", SRS {_ql(f'EPSG:{srid}')}" if srid != 0 else ""
     conn.execute(
         f"COPY (SELECT {select_list} FROM {_qi(input_view)}) TO {_ql(p.path)} "
-        f"WITH (FORMAT GDAL, DRIVER {_ql(p.driver)}, SRS {_ql(f'EPSG:{srid}')})"
+        f"WITH (FORMAT GDAL, DRIVER {_ql(p.driver)}{srs})"
     )
     row_count = conn.execute(f"SELECT count(*) FROM {_qi(input_view)}").fetchone()[0]
     return NodeStat(node.id, node.op, row_count)
@@ -1475,6 +1477,13 @@ def run_pipeline(
             if pred_id is None:
                 raise PipelineRuntimeError(f"node '{node.id}' has no incoming edge")
             view_by_node[node.id] = view_by_node[pred_id]
+            if srid_by_node[pred_id] == 0 and node.op in ("writer.collection", "writer.dataset"):
+                # SRID 0 = « non défini » (transform.removeSrid, voie S FME) : la collection
+                # étiquetterait des coordonnées locales avec son propre SRID.
+                raise PipelineRuntimeError(
+                    f"{node.op}: SRID non défini (0) en entrée — réassignez un SRID "
+                    "(transform.setSrid ou transform.localCoordinateSystem) avant d'écrire"
+                )
             writer_fn = WRITERS.get(node.op)
             if writer_fn is None:
                 raise PipelineRuntimeError(f"unknown writer op '{node.op}'")

@@ -200,6 +200,12 @@ def _item_rows(
     return cols, [(rn, (v or "").strip() or None) for rn, v in rows]
 
 
+def _require_srid(op: str, input_srid: int | None) -> None:
+    """SRID 0 = « non défini » (transform.removeSrid) : jamais replié sur 4326 (`or 4326`)."""
+    if input_srid == 0:
+        raise PipelineRuntimeError(f"{op}: SRID non défini (0) en entrée — reprojection impossible")
+
+
 def _no_clash(op: str, cols: list[str], new: list[str]) -> None:
     clash = [c for c in new if c in cols]
     if clash:
@@ -1368,6 +1374,7 @@ def execute_vector_on_raster(
 ):
     p = TransformVectorOnRasterParams.model_validate(params)
     op = "transform.vectorOnRaster"
+    _require_srid(op, input_srid)
     cols = _columns(conn, input_view)
     if "geometry" not in cols:
         raise PipelineRuntimeError(f"{op}: input has no 'geometry' column")
@@ -1435,11 +1442,22 @@ class TransformSurfaceDrapeParams(BaseModel):
     degrés depuis le nord, sens horaire) calculées sur le voisinage 3x3 (méthode de Horn). Points
     hors raster, sur cellule invalide ou géométries non ponctuelles : NULL. La géométrie d'entrée
     est conservée (2D). Pas de triangulation de nuage de points ni de breaklines (contrairement
-    à FME). Au plus 20 000 points."""
+    à FME). Au plus 20 000 points.
+
+    `mode: geometry` : drape TOUTES les géométries (points, lignes, polygones, multi-parties) et
+    remplace `geometry` par sa version 3D (Z = valeur du raster sous chaque sommet, dans le CRS
+    d'entrée). `densify` insère des sommets au pas du pixel le long des lignes et des anneaux
+    (échantillonnage du relief entre deux sommets) ; sinon seuls les sommets existants sont
+    drapés. Un sommet hors raster ou sur cellule invalide prend `outsideZ` ; sans `outsideZ`, la
+    ligne garde sa géométrie d'origine et `drape_error` explique pourquoi. Au plus 10 000
+    géométries et 500 000 sommets drapés par nœud."""
 
     itemId: str = Field(..., min_length=1)
     band: int = Field(1, ge=1)
     slopeAspect: bool = True
+    mode: Literal["attributes", "geometry"] = "attributes"
+    densify: bool = True
+    outsideZ: float | None = None
 
 
 def _horn(win: np.ma.MaskedArray, dx: float, dy: float) -> tuple[float | None, float | None]:
@@ -1461,6 +1479,11 @@ def execute_drape(
 ):
     p = TransformSurfaceDrapeParams.model_validate(params)
     op = "transform.surfaceDrape"
+    _require_srid(op, input_srid)
+    if p.mode == "geometry":
+        return _drape_geometries(
+            conn, input_view, view_name, p, secret_resolver, preview, input_srid
+        )
     cols = _columns(conn, input_view)
     if "geometry" not in cols:
         raise PipelineRuntimeError(f"{op}: input has no 'geometry' column")
@@ -1509,6 +1532,96 @@ def execute_drape(
                 res["drape_slope"], res["drape_aspect"] = _horn(win, rx, ry)
             results[rn] = res
     _emit_join(conn, input_view, view_name, types, results)
+
+
+MAX_DRAPE_VERTICES = 500_000
+
+
+def _drape_geometries(conn, input_view, view_name, p, secret_resolver, preview, input_srid):
+    """mode=geometry : géométries 3D drapées (cf. TransformSurfaceDrapeParams)."""
+    import shapely
+
+    op = "transform.surfaceDrape"
+    cols = _columns(conn, input_view)
+    if "geometry" not in cols:
+        raise PipelineRuntimeError(f"{op}: input has no 'geometry' column")
+    _no_clash(op, cols, ["drape_error"])
+    rows = conn.execute(
+        f"SELECT row_number() OVER () AS rn, CASE WHEN geometry IS NOT NULL AND NOT "
+        f"ST_IsEmpty(geometry) THEN ST_AsWKB(geometry) END FROM {_qi(input_view)} "
+        f"LIMIT {MAX_GEOMS + 1}"
+    ).fetchall()
+    if len(rows) > MAX_GEOMS:
+        raise PipelineRuntimeError(f"{op}: more than {MAX_GEOMS} geometries")
+    results: dict[int, dict] = {}
+    with _Run(op, secret_resolver, preview) as run:
+        ds, _ = run.open(p.itemId)
+        if p.band > ds.count:
+            raise PipelineRuntimeError(f"{op}: bande {p.band} inexistante")
+        band = ds.read(p.band, masked=True)  # borné par MAX_PIXELS (run.open)
+        data, mask = np.ma.getdata(band).astype("float64"), np.ma.getmaskarray(band)
+        inv = ~ds.transform
+        src = f"EPSG:{input_srid or 4326}"
+        reproj = (input_srid or 4326) != ds.crs.to_epsg()
+        step = min(abs(ds.res[0]), abs(ds.res[1]))
+        total = 0
+
+        def to_raster(xy: np.ndarray) -> np.ndarray:
+            xs, ys = transform(src, ds.crs, xy[:, 0].tolist(), xy[:, 1].tolist())
+            return np.column_stack([xs, ys])
+
+        def sample(xs: np.ndarray, ys: np.ndarray) -> np.ndarray:
+            c, r = inv * (xs, ys)
+            c, r = np.floor(c).astype("int64"), np.floor(r).astype("int64")
+            ok = (c >= 0) & (c < ds.width) & (r >= 0) & (r < ds.height)
+            z = np.full(xs.shape, np.nan)
+            z[ok] = np.where(mask[r[ok], c[ok]], np.nan, data[r[ok], c[ok]])
+            return z
+
+        for rn, wkb in rows:
+            run.tick()
+            if wkb is None:
+                continue
+            g = shapely.force_2d(shapely.from_wkb(bytes(wkb)))
+            gr = shapely.transform(g, to_raster) if reproj else g
+            if p.densify and gr.geom_type not in ("Point", "MultiPoint"):
+                gr = shapely.segmentize(gr, step)
+            total += shapely.get_num_coordinates(gr)
+            if total > MAX_DRAPE_VERTICES:
+                raise PipelineRuntimeError(f"{op}: more than {MAX_DRAPE_VERTICES} vertices")
+            xy = shapely.get_coordinates(gr)
+            z = sample(xy[:, 0], xy[:, 1])
+            if np.isnan(z).any():
+                if p.outsideZ is None:
+                    results[rn] = {
+                        "drape_error": "sommet(s) hors du raster ou sur cellule invalide"
+                    }
+                    continue
+                z = np.where(np.isnan(z), p.outsideZ, z)
+            if reproj:
+                bx, by = transform(ds.crs, src, xy[:, 0].tolist(), xy[:, 1].tolist())
+                xy = np.column_stack([bx, by])
+            g3 = shapely.set_coordinates(shapely.force_3d(gr), np.column_stack([xy, z]))
+            if not all(np.isfinite(shapely.get_coordinates(g3, include_z=True)).ravel()):
+                results[rn] = {"drape_error": "reprojection hors domaine"}
+                continue
+            results[rn] = {"wkb": shapely.to_wkb(g3)}
+    frame = pd.DataFrame(
+        [{"rn": rn, "wkb": r.get("wkb"), "drape_error": r.get("drape_error")}
+         for rn, r in results.items()],
+        columns=["rn", "wkb", "drape_error"],
+    ).astype(object)  # fmt: skip
+    conn.register("_r2_drape", frame)
+    try:
+        conn.execute(
+            f"CREATE TEMP TABLE {_qi(view_name)} AS SELECT s.* EXCLUDE (_rn) REPLACE ("
+            "CASE WHEN r.wkb IS NOT NULL THEN ST_GeomFromWKB(CAST(r.wkb AS BLOB)) "
+            "ELSE s.geometry END AS geometry), CAST(r.drape_error AS VARCHAR) AS drape_error "
+            f"FROM (SELECT *, row_number() OVER () AS _rn FROM {_qi(input_view)}) s "
+            "LEFT JOIN _r2_drape r ON r.rn = s._rn ORDER BY s._rn"
+        )
+    finally:
+        conn.unregister("_r2_drape")
 
 
 # --------------------------------------------------------------------- ImageFetcher

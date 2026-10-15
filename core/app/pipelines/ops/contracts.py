@@ -33,6 +33,7 @@ from app.pipelines.ops import (
     messaging,
     raster2,
     readers2,
+    reliquats,
 )
 from app.pipelines.ops import database as _database
 from app.pipelines.ops import execute as _execute
@@ -683,6 +684,7 @@ LANE_MODULES: tuple[ModuleType, ...] = (
     messaging,
     raster2,
     readers2,
+    reliquats,
 )
 
 
