@@ -32,11 +32,18 @@ def open_connection(
     conn.execute("INSTALL h3 FROM community; LOAD h3;")
     host = endpoint_url.split("://", 1)[-1]
     use_ssl = endpoint_url.startswith("https://")
-    conn.execute(f"SET s3_endpoint = '{host}'")
-    conn.execute(f"SET s3_use_ssl = {str(use_ssl).lower()}")
-    conn.execute("SET s3_url_style = 'path'")
-    conn.execute(f"SET s3_access_key_id = '{access_key}'")
-    conn.execute(f"SET s3_secret_access_key = '{secret_key}'")
+
+    def q(v: str) -> str:
+        return "'" + v.replace("'", "''") + "'"
+
+    # REV-332 : CREATE SECRET et non SET s3_secret_access_key — current_setting()
+    # et duckdb_settings() rendraient la clé à du SQL d'analyste/de pipeline ;
+    # duckdb_secrets() la masque (redact=false est refusé).
+    conn.execute(
+        "CREATE OR REPLACE TEMPORARY SECRET lake (TYPE S3, "
+        f"KEY_ID {q(access_key)}, SECRET {q(secret_key)}, ENDPOINT {q(host)}, "
+        f"USE_SSL {str(use_ssl).lower()}, URL_STYLE 'path')"
+    )
     # P16.03 : mémoire et débordement disque bornés (valeurs d'environnement
     # serveur, pas d'entrée utilisateur).
     conn.execute(f"SET memory_limit = '{os.environ.get('CORE_DUCKDB_MEMORY_LIMIT') or '2GB'}'")

@@ -15,7 +15,6 @@ _MAP = {
 }
 
 
-@pytest.mark.xfail(strict=True, reason="REV-audit: secret S3 lisible via current_setting()")
 def test_s3_secret_not_readable_after_lock_down():
     from app.analytics.duckdb_conn import open_connection
     from app.analytics.sql_sandbox import _lock_down
@@ -103,3 +102,21 @@ import contextlib  # noqa: E402
 @contextlib.contextmanager
 def _fake_scope(_factory):
     yield object()
+
+
+def test_s3_secret_not_readable_via_settings_nor_secrets_view():
+    """REV-332 : ni duckdb_settings(), ni duckdb_secrets() (même redact=false)."""
+    from app.analytics.duckdb_conn import open_connection
+    from app.analytics.sql_sandbox import _lock_down
+
+    conn = open_connection(
+        endpoint_url="http://minio:9000", access_key="AKID", secret_key="SUPERSECRET"
+    )
+    _lock_down(conn)
+    rows = conn.execute(
+        "select name, value from duckdb_settings() where name like 's3_%'"
+    ).fetchall()
+    assert "SUPERSECRET" not in repr(rows)
+    assert "SUPERSECRET" not in repr(conn.execute("select * from duckdb_secrets()").fetchall())
+    with pytest.raises(duckdb.Error):
+        conn.execute("select * from duckdb_secrets(redact=false)")

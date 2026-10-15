@@ -41,11 +41,13 @@ def test_open_connection_configures_s3_settings_from_endpoint(monkeypatch):
     open_connection(endpoint_url="http://minio:9000", access_key="ak", secret_key="sk")
 
     joined = "\n".join(recording.statements)
-    assert "s3_endpoint = 'minio:9000'" in joined
-    assert "s3_use_ssl = false" in joined
-    assert "s3_url_style = 'path'" in joined
-    assert "s3_access_key_id = 'ak'" in joined
-    assert "s3_secret_access_key = 'sk'" in joined
+    # REV-332 : un CREATE SECRET (illisible via current_setting), plus de SET s3_*.
+    assert "CREATE OR REPLACE TEMPORARY SECRET" in joined
+    assert "ENDPOINT 'minio:9000'" in joined
+    assert "USE_SSL false" in joined
+    assert "URL_STYLE 'path'" in joined
+    assert "KEY_ID 'ak'" in joined and "SECRET 'sk'" in joined
+    assert "SET s3_secret_access_key" not in joined
 
 
 def test_open_connection_detects_https_endpoint(monkeypatch):
@@ -57,7 +59,7 @@ def test_open_connection_detects_https_endpoint(monkeypatch):
 
     open_connection(endpoint_url="https://minio.example.com", access_key="ak", secret_key="sk")
 
-    assert "s3_use_ssl = true" in "\n".join(recording.statements)
+    assert "USE_SSL true" in "\n".join(recording.statements)
 
 
 def test_open_connection_installs_and_loads_h3(monkeypatch):
