@@ -181,6 +181,7 @@ dependencies = [
                       # databricks-sql-connector (Apache-2.0), thrift (Apache-2.0),
                       # lz4 (BSD, wheel aarch64 présente), pybreaker (BSD) et épingle
                       # oauthlib<4 (3.3.1, BSD-3).
+    "pika>=1.4.4",  # voie E FME : writer/reader RabbitMQ (AMQP) — BSD-3-Clause.
 ]
 
 [dependency-groups]
