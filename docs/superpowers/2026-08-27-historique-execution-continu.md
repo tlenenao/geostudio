@@ -7992,3 +7992,16 @@ Plan `docs/superpowers/plans/2026-10-13-arc-vagues-4-6-iso-esri-et-etl.md`, 4 vo
 - **Piège** : avertissement SQLAlchemy `unnest` de `sqlalchemy_bigquery` promu en erreur → test `test_update_by_key` flaky ; `filterwarnings` ajouté. CLAUDE.md citait 65/67 op ; réel : 152 brutes, 121 exposées par défaut (141 avec `CORE_RASTER_ENABLED`).
 - **Reliquats (Minor non traités)** : 21 colonnes de sortie du socle acceptent encore `geometry` (`BASE_UNGUARDED`), autres overlays 2D de `geom2` non gardés contre Z, COG orphelin si le commit échoue après un run réussi, `tokenUrl` http refusé seulement à l'exécution (`cloudfiles.py`), trailers de commit mixtes Sonnet/Opus sur quelques commits R/S, rien rejoué sur stack réelle.
 - **À trancher par Tanguy** : HDFS, 10 lignes D1 différées, ARC-31/35.
+
+## Clôture lot 1 : secrets, egress, autorisation (2026-10-15)
+
+- **Exécution** : plan `plans/2026-10-15-cloture-toutes-rev-v0.2.0.md` lot 1, branche `sp-cloture-lot1`, 14 REV fermées (329, 331, 332, 334, 336 à 342, 360, 361, 366), TDD avec reproducteurs `xfail(strict)` retirés puis falsification. Aucune migration.
+- **Choix de conception** :
+  - groupe de rate limit `analytics` (120/min) pour aggregate/profile/export, plus large que `sql` (10/min) qui casserait les tableaux de bord (un aggregate par widget) ;
+  - garde de limites géographiques dupliquée route + outil MCP (`run_collection_profile` n'a pas accès aux limites) ;
+  - `app/configs/secret_usage.py` : registre fail-closed, `can_use_secret` vérifié à l'écriture (POST/PUT/rollback/MCP) pour les nœuds de pipeline et les canaux d'alerte ; un nom de secret inexistant reste accepté (brouillon) ;
+  - clés d'API : `GET/DELETE /v1/admin/api-keys` (`admin.users.manage`), révocation automatique à la rétrogradation de rôle ; pas d'écran shell ;
+  - sidecar desktop : `httpCall`, `mcpCall`, geocode, route, isochrone, imageFetch, databaseJoin retirées de `_SIDECAR_SAFE_OPS` ;
+  - secret S3 du lac via `CREATE TEMPORARY SECRET` (illisible par `current_setting`).
+- **Défauts trouvés** : un secret Azure/GCS déjà stocké hors du nouveau format devient illisible (à recréer) ; commit REV-366 ayant d'abord balayé des fichiers non liés (corrigé) ; 4 tests existants adaptés (SMTP, accountName).
+- **Reliquats** : SMTP sans épinglage IP (smtplib lie le nom) ; e2e `journeys/j08` et `t01b` adaptés au dialogue de confirmation mais non rejoués sur stack réelle ; `PipelineBuilderPage.test.tsx` flaky sous charge (passe en isolation).
