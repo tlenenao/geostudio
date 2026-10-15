@@ -157,6 +157,21 @@ def test_get_ops_excludes_session_dependent_ops(client):
         assert op not in catalog, f"{op} touche Session mais est exposé par le sidecar"
 
 
+def test_get_ops_excludes_network_egress_transforms(client):
+    """REV-329 : le sidecar desktop n'a ni garde d'egress ni modèle de menace réseau."""
+    catalog = client.get("/pipelines/ops").json()
+    for op in (
+        "transform.httpCall",
+        "transform.mcpCall",
+        "transform.geocode",
+        "transform.route",
+        "transform.isochrone",
+        "transform.imageFetch",
+        "transform.databaseJoin",
+    ):
+        assert op not in catalog, f"{op} fait de l'egress réseau mais est exposé par le sidecar"
+
+
 def test_get_ops_still_includes_transform_ops(client):
     catalog = client.get("/pipelines/ops").json()
     assert "transform.filter" in catalog

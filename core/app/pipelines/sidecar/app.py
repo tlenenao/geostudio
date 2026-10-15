@@ -35,10 +35,24 @@ _RUNS_MAX_LIMIT = 1000
 # touche Session dans runtime.py) — reader.collection/writer.collection/
 # writer.dataset/writer.export/reader.connector.* touchent Session et
 # lèveraient une AttributeError interne si exposées ici (revue finale, Fix 2).
+# REV-329 : les transform à egress réseau (appel HTTP/MCP, géocodage, routage, images,
+# jointure base distante) sont exclues tant que le modèle de menace desktop n'est pas écrit.
+_SIDECAR_EGRESS_OPS = frozenset(
+    {
+        "transform.httpCall",
+        "transform.mcpCall",
+        "transform.geocode",
+        "transform.route",
+        "transform.isochrone",
+        "transform.imageFetch",
+        "transform.databaseJoin",
+    }
+)
 _SIDECAR_SAFE_OPS = frozenset(
     op
     for op, kind in OP_KINDS.items()
-    if op in ("reader.file", "writer.file") or kind == "transform"
+    if (op in ("reader.file", "writer.file") or kind == "transform")
+    and op not in _SIDECAR_EGRESS_OPS
 )
 
 
