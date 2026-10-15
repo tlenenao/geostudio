@@ -236,6 +236,7 @@ export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
           reactsToExtent: resolved.reactsToExtent,
           crossFilterLinks: resolved.crossFilterLinks,
           sourcePipelineId: resolved.sourcePipelineId ?? null,
+          baseVersion: resolved.version,
         };
       }
       return {

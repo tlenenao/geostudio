@@ -12,6 +12,7 @@ import { ToastProvider } from "../ui/kit/ToastProvider";
 import { OWNER_PERMISSIONS, READ_ONLY_PERMISSIONS } from "../auth/permissions";
 import { ReportEditPage } from "./ReportEditPage";
 import { t } from "../i18n";
+import { formatDateTime } from "../lib/format";
 
 // ReportEditPage calls useAuth() for `username` on create — same mock as
 // PipelineBuilderPage.test.tsx, needed because the real hook calls
@@ -195,7 +196,7 @@ test("persisted mode: affiche le panneau d'historique et la fiche Catalogue", as
   });
   expect(await screen.findByText("Historique")).toBeInTheDocument();
   expect(await screen.findByText("Rapport")).toBeInTheDocument();
-  expect(screen.getByText("2026-08-31")).toBeInTheDocument();
+  expect(screen.getByText(formatDateTime("2026-08-31"))).toBeInTheDocument();
 });
 
 test("unsaved mode: no history panel before the first save (no report id yet)", async () => {

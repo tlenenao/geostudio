@@ -68,6 +68,9 @@ test("liste les jetons existants et permet la révocation", async () => {
 
   await waitFor(() => expect(screen.getByText(/t1/)).toBeInTheDocument());
   fireEvent.click(screen.getByLabelText("Révoquer t1"));
+  // REV-365 c : rien n'est révoqué avant confirmation.
+  expect(revokePipelineWebhookToken).not.toHaveBeenCalled();
+  fireEvent.click(await screen.findByRole("button", { name: "Révoquer" }));
   await waitFor(() => expect(revokePipelineWebhookToken).toHaveBeenCalledWith("p1", "t1"));
 });
 

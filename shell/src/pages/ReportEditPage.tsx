@@ -32,6 +32,7 @@ import { PageTitle } from "../ui/kit/PageTitle";
 import "../i18n/domains/admin";
 import "../i18n/domains/automation";
 import "../i18n/domains/misc";
+import { formatDateTime } from "../lib/format";
 
 function defaultPayload(bookmarkItemId: string): ReportSchedulePayload {
   return {
@@ -189,7 +190,7 @@ export function ReportEditPage({
                   <dt>{t("catalog.typeLabel")}</dt>
                   <dd>{RESOURCE_TYPE_LABELS[itemQuery.data.resourceType]}</dd>
                   <dt>{t("datasetEdit.modifiedLabel")}</dt>
-                  <dd>{itemQuery.data.updatedAt || "—"}</dd>
+                  <dd>{formatDateTime(itemQuery.data.updatedAt)}</dd>
                 </dl>
               )}
             </Panel>

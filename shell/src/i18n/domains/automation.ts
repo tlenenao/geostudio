@@ -245,6 +245,9 @@ export const automation = {
   "pipelineWebhook.createdOnTemplate": "… — créé le {createdAt}",
   "pipelineWebhook.revokeAria": "Révoquer {id}",
   "pipelineWebhook.revokeButton": "Révoquer",
+  "pipelineWebhook.revokeConfirmTitle": "Révoquer ce jeton ?",
+  "pipelineWebhook.revokeConfirmMessage":
+    "Les appels qui utilisent ce jeton seront refusés immédiatement. Cette action est irréversible.",
   "pipelineWebhook.generateButton": "Générer un jeton",
   "pipelineWebhook.tokenWarning": "Ce jeton ne sera plus jamais affiché — copiez-le maintenant.",
   "pipelineWebhook.triggerCommandTemplate":

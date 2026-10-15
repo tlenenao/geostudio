@@ -31,17 +31,41 @@ export function Splitter({
     dragStart.current = null;
   };
 
+  // REV-365 f : séparateur focalisable, pilotable aux flèches (pas de 16 px) et Début/Fin.
+  const STEP = 16;
+  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const next =
+      e.key === "ArrowLeft"
+        ? width - STEP
+        : e.key === "ArrowRight"
+          ? width + STEP
+          : e.key === "Home"
+            ? min
+            : e.key === "End"
+              ? max
+              : null;
+    if (next === null) return;
+    e.preventDefault();
+    setWidth(clamp(next));
+  };
+
   return (
     <div className="flex h-full w-full">
       <div style={{ width }} className="min-w-0 overflow-auto">
         {first}
       </div>
+      {/* Séparateur redimensionnable focalisable (patron WAI-ARIA « window splitter ») :
+          le linter ne le reconnaît pas comme widget interactif. */}
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
       <div
         role="separator"
         aria-orientation="vertical"
         aria-valuenow={width}
         aria-valuemin={min}
         aria-valuemax={max}
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+        tabIndex={0}
+        onKeyDown={onKeyDown}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}

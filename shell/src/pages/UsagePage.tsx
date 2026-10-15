@@ -15,6 +15,7 @@ import { LoadingState } from "../ui/kit/LoadingState";
 import { Banner } from "../ui/kit/Banner";
 import { PageTitle } from "../ui/kit/PageTitle";
 import "../i18n/domains/admin";
+import { formatDateTime } from "../lib/format";
 
 const PAGE_SIZE = 50;
 
@@ -171,7 +172,7 @@ export function UsagePage() {
                           key: "date",
                           label: t("usage.columnDate"),
                           render: (task: UsageTask) => (
-                            <span className="text-ink-2">{task.createdAt}</span>
+                            <span className="text-ink-2">{formatDateTime(task.createdAt)}</span>
                           ),
                         },
                       ]}

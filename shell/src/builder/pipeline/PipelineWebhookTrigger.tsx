@@ -9,6 +9,8 @@ import { useItemClient } from "../../api/hooks";
 import { t } from "../../i18n";
 import { Button } from "../../ui/kit/Button";
 import "../../i18n/domains/automation";
+import { ConfirmDialog } from "../../ui/kit/ConfirmDialog";
+import { formatDateTime } from "../../lib/format";
 
 // GAP-24, SP-53 : génération/liste/révocation des jetons de déclenchement.
 // Le jeton en clair n'existe qu'une fois, dans la réponse de création — ni
@@ -23,6 +25,7 @@ export function PipelineWebhookTrigger({ pipelineId }: { pipelineId: string }) {
   const tokensQuery = usePipelineWebhookTokens(pipelineId);
   const createToken = useCreatePipelineWebhookToken(pipelineId);
   const revokeToken = useRevokePipelineWebhookToken(pipelineId);
+  const [toRevoke, setToRevoke] = useState<string | null>(null);
   const [justCreated, setJustCreated] = useState<{ id: string; token: string } | null>(null);
 
   async function generateToken() {
@@ -37,18 +40,29 @@ export function PipelineWebhookTrigger({ pipelineId }: { pipelineId: string }) {
         <div key={token.id} className="flex items-center justify-between">
           <span>
             {token.id.slice(0, 8)}
-            {t("pipelineWebhook.createdOnTemplate", { createdAt: token.createdAt })}
+            {t("pipelineWebhook.createdOnTemplate", { createdAt: formatDateTime(token.createdAt) })}
           </span>
           <button
             type="button"
             className="text-ink-2 hover:underline"
             aria-label={t("pipelineWebhook.revokeAria", { id: token.id.slice(0, 8) })}
-            onClick={() => void revokeToken.mutateAsync(token.id)}
+            onClick={() => setToRevoke(token.id)}
           >
             {t("pipelineWebhook.revokeButton")}
           </button>
         </div>
       ))}
+      <ConfirmDialog
+        open={toRevoke !== null}
+        title={t("pipelineWebhook.revokeConfirmTitle")}
+        message={t("pipelineWebhook.revokeConfirmMessage")}
+        confirmLabel={t("pipelineWebhook.revokeButton")}
+        pending={revokeToken.isPending}
+        onCancel={() => setToRevoke(null)}
+        onConfirm={() => {
+          if (toRevoke) void revokeToken.mutateAsync(toRevoke).finally(() => setToRevoke(null));
+        }}
+      />
       <Button
         type="button"
         variant="outline"
