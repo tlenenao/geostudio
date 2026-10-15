@@ -36,7 +36,7 @@
 |---|---|---|
 | 0 Triage | les 55 | — (premier) |
 | 1 Secrets/egress/autorisation | 331 332 334 336 337 338 339 340 341 342 360 361 366 329 | 2 |
-| 2 Déploiement/exploitation | 343 344 345 346 347 348 354 355 358 281 267 | 1 |
+| 2 Déploiement/exploitation | 343 344 345 346 347 348 358 281 267 (354/355 déjà corrigées, cf. triage) | 1 |
 | 3 Import et données | 349 350 351 282 283 280 | 4 |
 | 4 Shell UX/a11y | 357 362 363 364 365 367 304 278 284 286(a,d,e) | 3 |
 | 5 Pipelines/fédération/alertes | 325 326 327 328 330 275 276 277 | — |
@@ -47,7 +47,9 @@
 
 ---
 
-## Lot 0 — Triage (0,5 j)
+## Lot 0 — Triage (0,5 j) — FAIT, voir `docs/revue/2026-10-15-triage-cloture-rev.md`
+
+Écarts : REV-354/355 déjà corrigées ; tête de migration 0068 (nouvelles migrations dès 0069) ; la Task 0.1 (script) est abandonnée.
 
 ### Task 0.1: Script de triage mécanique
 
