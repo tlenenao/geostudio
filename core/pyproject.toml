@@ -224,6 +224,11 @@ filterwarnings = [
     "ignore::starlette.exceptions.StarletteDeprecationWarning",
     "ignore::pytest.PytestUnraisableExceptionWarning",
     "ignore::DeprecationWarning:rdflib.plugins.parsers.jsonld",
+    # sqlalchemy-bigquery enregistre globalement un GenericFunction `unnest`
+    # sans `inherit_cache` dès qu'un test BigQuery a chargé le dialecte ; la
+    # réflexion PostgreSQL de `dbio` (sa.Table autoload) l'emprunte ensuite,
+    # selon l'ordre des tests (échec intermittent en suite complète seulement).
+    "ignore:Class unnest will not make use of SQL compilation caching:sqlalchemy.exc.SAWarning",
     # snowflake-connector-python (GAP-16) avertit sur la version de pyarrow
     # installée (25.0.0) au regard de sa contrainte pour l'extra "pandas" —
     # jamais utilisé ici (aucun DataFrame Snowflake, seulement du SQL brut
