@@ -5,7 +5,7 @@ Plan : docs/superpowers/plans/2026-10-15-fme-fermeture-108-planned.md.
 Writers (un message par ligne, plafonné) : `writer.email`, `writer.slack`, `writer.trello`,
 `writer.servicebus`, `writer.azurequeue`, `writer.sns`, `writer.kinesis`, `writer.rabbitmq`.
 Readers (lecture BORNÉE et NON DESTRUCTIVE d'un lot dans le run, pas un démon) :
-`reader.azurequeue`, `reader.kinesis`, `reader.rabbitmq`. Transform : `transform.mcpCall`.
+`reader.azurequeue`, `reader.kinesis`. Transform : `transform.mcpCall`.
 
 Règles communes (revues des voies A-D) :
 - Un writer a un effet de bord irréversible : jamais d'aperçu (`preview_pipeline` refuse un
@@ -217,6 +217,15 @@ def _apply_auth(op: str, payload, headers: dict, params: dict) -> None:
             params[payload.key] = payload.value
 
 
+def _redact(text: str, payload) -> str:
+    """Expurge les valeurs secrètes (jeton, clé d'API, mot de passe) d'un message d'erreur."""
+    for attr in ("token", "value", "password"):
+        v = getattr(payload, attr, None)
+        if v and len(v) >= 4:
+            text = text.replace(v, "***").replace(quote(v, safe=""), "***")
+    return text
+
+
 def _http(
     op: str,
     payload,
@@ -228,6 +237,7 @@ def _http(
     body: bytes | None = None,
     auth: bool = True,
     max_bytes: int = _MAX_RESPONSE_BYTES,
+    deadline_s: float = 60.0,
 ):
     """Appel REST sous la portée du secret, session gardée, sans redirection, réponse bornée.
     Retourne (statut, corps, en-têtes)."""
@@ -257,7 +267,10 @@ def _http(
         )
         try:
             buf = bytearray()
+            deadline = time.monotonic() + deadline_s
             for chunk in resp.iter_content(65536):
+                if time.monotonic() > deadline:
+                    raise PipelineRuntimeError(f"{op}: response not completed within {deadline_s}s")
                 buf += chunk
                 if len(buf) > max_bytes:
                     raise PipelineRuntimeError(f"{op}: response larger than the byte cap")
@@ -267,16 +280,21 @@ def _http(
     except PipelineRuntimeError:
         raise
     except Exception as exc:  # EgressBlockedError, requests.RequestException
-        raise PipelineRuntimeError(f"{op}: request failed: {type(exc).__name__}: {exc}") from exc
+        raise PipelineRuntimeError(
+            _redact(f"{op}: request failed: {type(exc).__name__}: {exc}", payload)
+        ) from None
     finally:
         sess.close()
 
 
-def _expect(op: str, status: int, body: bytes, ok: tuple[int, ...]) -> None:
+def _expect(op: str, status: int, body: bytes, ok: tuple[int, ...], payload=None) -> None:
     if status not in ok:
         # le corps d'erreur du fournisseur peut citer des données : tronqué, jamais les secrets
         raise PipelineRuntimeError(
-            f"{op}: provider answered HTTP {status}: {body[:200].decode(errors='replace')}"
+            _redact(
+                f"{op}: provider answered HTTP {status}: {body[:200].decode(errors='replace')}",
+                payload,
+            )
         )
 
 
@@ -353,6 +371,15 @@ def _open_email(p: WriterEmailParams, payload):
     if violation := smtp_tls_violation(payload):
         raise PipelineRuntimeError(f"writer.email: secret '{p.secretName}' : {violation}")
     domains = {d.lower() for d in (p.allowedRecipientDomains or [])}
+    from app.pipelines import egress
+    from app.secrets.schemas import SMTP_LOCAL_HOSTS
+
+    host = payload.host.lower()
+    if host not in SMTP_LOCAL_HOSTS:  # même exemption que smtp_tls_violation (relais de dev)
+        try:  # ponytail: pas d'épinglage IP (smtplib/STARTTLS lie le nom) ; résidu TOCTOU assumé
+            egress.assert_egress_allowed(f"http://[{host}]" if ":" in host else f"http://{host}")
+        except egress.EgressBlockedError as exc:
+            raise PipelineRuntimeError(f"writer.email: egress blocked: {exc}") from exc
 
     @contextmanager
     def cm() -> Iterator[Callable]:
@@ -439,7 +466,7 @@ def _open_slack(p: WriterSlackParams, payload):
             raise PipelineRuntimeError(
                 f"rate limited by Slack (Retry-After {headers.get('Retry-After', '?')}s)"
             )
-        _expect(op, status, resp, (200,))
+        _expect(op, status, resp, (200,), payload)
         try:
             ok = json.loads(resp).get("ok")
             err = json.loads(resp).get("error")
@@ -501,7 +528,7 @@ def _open_trello(p: WriterTrelloParams, payload):
             auth=False,
             max_bytes=1024 * 1024,
         )
-        _expect(op, status, resp, (200,))
+        _expect(op, status, resp, (200,), payload)
 
     return contextlib.nullcontext(send)
 
@@ -562,7 +589,7 @@ def _open_servicebus(p: WriterServiceBusParams, payload):
             body=_row_json(row, p.payloadColumns).encode(),
             max_bytes=1024 * 1024,
         )
-        _expect(op, status, resp, (201,))
+        _expect(op, status, resp, (201,), payload)
 
     return contextlib.nullcontext(send)
 
@@ -626,7 +653,7 @@ def _open_azurequeue_writer(p: WriterAzureQueueParams, payload):
             body=xml.encode(),
             max_bytes=1024 * 1024,
         )
-        _expect(op, status, resp, (201,))
+        _expect(op, status, resp, (201,), payload)
 
     return contextlib.nullcontext(send)
 
@@ -705,7 +732,7 @@ def read_azurequeue(conn, *, session, tenant_id, node_id, params, view_name, use
         headers={"x-ms-version": _AZQ_VERSION},
         params={"peekonly": "true", "numofmessages": str(p.maxMessages)},
     )
-    _expect(op, status, body, (200,))
+    _expect(op, status, body, (200,), payload)
     rows = _parse_queue_xml(body) if body.strip() else []
     cols = ["message_id", "insertion_time", "expiration_time", "dequeue_count", "message_text"]
     _materialize(conn, view_name, pd.DataFrame(rows, columns=cols))
@@ -825,7 +852,7 @@ def _open_sns(p: WriterSnsParams, payload):
             content_type="application/x-www-form-urlencoded; charset=utf-8",
             max_bytes=1024 * 1024,
         )
-        _expect(op, status, resp, (200,))
+        _expect(op, status, resp, (200,), payload)
 
     return contextlib.nullcontext(send)
 
@@ -854,7 +881,7 @@ def _kinesis(op: str, payload, region: str, endpoint: str, target: str, doc: dic
         content_type=_KINESIS_CT,
         extra={"X-Amz-Target": f"Kinesis_20131202.{target}"},
     )
-    _expect(op, status, resp, (200,))
+    _expect(op, status, resp, (200,), payload)
     try:
         return json.loads(resp or b"{}")
     except ValueError as exc:
@@ -1107,63 +1134,6 @@ _register_writer(
 )
 
 
-class ReaderRabbitMqParams(_AmqpBase):
-    """Lit jusqu'à `maxMessages` messages en attente d'une file RabbitMQ (`basic_get`) puis les
-    REMET en file (aucun acquittement : lecture non destructive, `redelivered` = vrai au
-    passage suivant) : colonnes message_id, routing_key, redelivered, body (UTF-8). Même secret
-    que `writer.rabbitmq`. Un aperçu relit simplement le même lot."""
-
-    secretName: str = Field(..., json_schema_extra={"format": "secret-name"})
-    queue: str = Field(..., min_length=1, max_length=255)
-    maxMessages: int = Field(100, ge=1, le=500)
-
-
-def read_rabbitmq(conn, *, session, tenant_id, node_id, params, view_name, user, base_uri) -> int:
-    op = "reader.rabbitmq"
-    p = ReaderRabbitMqParams.model_validate(params)
-    payload = _secret(session, tenant_id, user, op, p.secretName, ("basic_auth",))
-    mq = _amqp_connection(op, payload, host=p.host, port=p.port, vhost=p.vhost)
-    rows: list[dict] = []
-    try:
-        ch = mq.channel()
-        total = 0
-        while len(rows) < p.maxMessages:
-            method, props, body = ch.basic_get(p.queue, auto_ack=False)
-            if method is None:
-                break
-            total += len(body)
-            if total > _MAX_RESPONSE_BYTES:
-                raise PipelineRuntimeError(f"{op}: batch larger than the byte cap")
-            rows.append(
-                {
-                    "message_id": getattr(props, "message_id", None),
-                    "routing_key": method.routing_key,
-                    "redelivered": bool(method.redelivered),
-                    "body": body.decode("utf-8", "replace"),
-                }
-            )
-        with contextlib.suppress(Exception):
-            ch.basic_recover(requeue=True)  # remet en file tout ce qui n'a pas été acquitté
-    finally:
-        with contextlib.suppress(Exception):
-            mq.close()
-    cols = ["message_id", "routing_key", "redelivered", "body"]
-    _materialize(conn, view_name, pd.DataFrame(rows, columns=cols))
-    return 4326
-
-
-READERS["reader.rabbitmq"] = read_rabbitmq
-CONTRACTS.append(
-    OperationContract(
-        op="reader.rabbitmq",
-        kind="reader",
-        params_schema=ReaderRabbitMqParams,
-        engine="duckdb",
-        engine_license="MIT (DuckDB) + BSD-3-Clause (pika, client AMQP)",
-    )
-)
-
-
 # --------------------------------------------------------------------------- MCPCaller
 
 _MCP_PROTOCOL = "2025-03-26"
@@ -1230,12 +1200,14 @@ def _mcp_message(body: bytes, headers, want_id: int | None) -> dict | None:
     return msg if isinstance(msg, dict) else None
 
 
-def _mcp_rpc(payload, p: TransformMcpCallParams, sid: str | None, msg: dict):
+def _mcp_rpc(
+    payload, p: TransformMcpCallParams, sid: str | None, msg: dict, version: str = _MCP_PROTOCOL
+):
     op = "transform.mcpCall"
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json, text/event-stream",
-        "MCP-Protocol-Version": _MCP_PROTOCOL,
+        "MCP-Protocol-Version": version,
     }
     if sid:
         headers["Mcp-Session-Id"] = sid
@@ -1319,7 +1291,10 @@ def execute_mcp_call(
         )
         if init is None or "result" not in init:
             raise PipelineRuntimeError(f"{op}: MCP initialize failed")
-        _mcp_rpc(payload, p, sid, {"jsonrpc": "2.0", "method": "notifications/initialized"})
+        version = str((init["result"] or {}).get("protocolVersion") or _MCP_PROTOCOL)
+        _mcp_rpc(
+            payload, p, sid, {"jsonrpc": "2.0", "method": "notifications/initialized"}, version
+        )
         for n, r in enumerate(rows):
             args = dict(p.staticArguments)
             for arg, col in p.argumentColumns.items():
@@ -1336,11 +1311,14 @@ def execute_mcp_call(
                         "method": "tools/call",
                         "params": {"name": p.tool, "arguments": args},
                     },
+                    version,
                 )
                 if out is None:
                     res["mcp_error"] = "no answer"
                 elif "error" in out:
-                    res["mcp_error"] = str(out["error"].get("message", "error"))[:500]
+                    res["mcp_error"] = _redact(str(out["error"].get("message", "error")), payload)[
+                        :500
+                    ]
                 else:
                     result = out.get("result") or {}
                     parts = [

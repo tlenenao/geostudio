@@ -42,7 +42,7 @@ WRITERS = {
     "writer.kinesis",
     "writer.rabbitmq",
 }
-READERS = {"reader.azurequeue", "reader.kinesis", "reader.rabbitmq"}
+READERS = {"reader.azurequeue", "reader.kinesis"}
 LANE_OPS = WRITERS | READERS | {"transform.mcpCall"}
 
 
@@ -759,21 +759,6 @@ def test_rabbitmq_egress_blocked(monkeypatch, mq, conn, session, tenant, user):
     assert mq.params is None
 
 
-def test_rabbitmq_read_is_bounded_and_requeues(mq, conn, session, tenant, user):
-    _amqp_secret(session, tenant, user)
-    mq.inbox = [(b"m%d" % i, f"id{i}") for i in range(5)]
-    rows = _read(
-        "reader.rabbitmq",
-        conn,
-        session,
-        tenant,
-        user,
-        {"host": "mq.example.org", "queue": "q", "maxMessages": 3},
-    )
-    assert [r[3] for r in rows] == ["m0", "m1", "m2"] and len(mq.inbox) == 2
-    assert mq.recovered is True and mq.closed  # rien d'acquitté : remis en file
-
-
 # ------------------------------------------------------------------ MCPCaller
 
 
@@ -911,3 +896,111 @@ def test_run_session_is_never_committed_by_a_writer(monkeypatch, http, conn, ses
         "writer.slack", conn, session, tenant, user, {"channel": "#c", "textColumn": "txt"}, ROWS3
     )
     assert stat.rowCount == 3 and len(_audits(session, "writer.slack")) == 1
+
+
+def test_email_egress_guard_blocks_internal_and_metadata_hosts(
+    monkeypatch, conn, session, tenant, user
+):
+    from unittest.mock import patch
+
+    monkeypatch.setattr(pipelines_egress, "assert_egress_allowed", _REAL_EGRESS_GUARD)
+    for host in ("169.254.169.254", "10.0.0.5"):
+        _secret(
+            session,
+            tenant,
+            user,
+            f"s-{host}",
+            {
+                "kind": "smtp",
+                "host": host,
+                "port": 587,
+                "username": "u",
+                "password": "p",
+                "useTls": True,
+                "fromAddress": "a@x.org",
+            },
+        )
+        with patch("app.secrets.smtp_send.smtplib.SMTP") as smtp_cls:
+            with pytest.raises(PipelineRuntimeError, match="egress blocked"):
+                _write(
+                    "writer.email",
+                    conn,
+                    session,
+                    tenant,
+                    user,
+                    {"secretName": f"s-{host}", "toColumn": "mail", "subject": "S"},
+                    ROWS3,
+                )
+            smtp_cls.assert_not_called()
+
+
+def test_api_key_is_redacted_from_errors(http, conn, session, tenant, user):
+    _secret(
+        session,
+        tenant,
+        user,
+        "s",
+        {
+            "kind": "api_key",
+            "location": "query",
+            "key": "k",
+            "value": "SUPERSECRETKEY",
+            "baseUrl": "https://ns.servicebus.windows.net",
+        },
+    )
+    p = {"namespaceUrl": "https://ns.servicebus.windows.net", "entity": "q"}
+
+    def boom(m, u, kw):
+        raise OSError(f"connection to https://ns/?k={kw['params']['k']} failed")
+
+    http.handler = boom
+    with pytest.raises(PipelineRuntimeError) as e:
+        _write("writer.servicebus", conn, session, tenant, user, {}, ROWS3) if False else _write(
+            "writer.servicebus", conn, session, tenant, user, p, ROWS3
+        )
+    assert "SUPERSECRETKEY" not in str(e.value) and "***" in str(e.value)
+    http.handler = lambda m, u, kw: _Resp(400, b"bad key SUPERSECRETKEY")
+    with pytest.raises(PipelineRuntimeError) as e:
+        _write("writer.servicebus", conn, session, tenant, user, p, ROWS3)
+    assert "SUPERSECRETKEY" not in str(e.value)
+
+
+def test_mcp_uses_negotiated_protocol_version(http, conn, session, tenant, user):
+    _bearer(session, tenant, user, "https://mcp.example.org/")
+    seen: list = []
+    base = _mcp_server(seen)
+
+    def handler(method, url, kw):
+        msg = json.loads(kw["data"])
+        if msg["method"] == "initialize":
+            seen.append((msg, kw["headers"]))
+            return _Resp(
+                200,
+                json.dumps(
+                    {"jsonrpc": "2.0", "id": 1, "result": {"protocolVersion": "2024-11-05"}}
+                ).encode(),
+                {"Content-Type": "application/json"},
+            )
+        return base(method, url, kw)
+
+    http.handler = handler
+    _mcp(conn, session, tenant, user, "SELECT 1 AS id, 'x' AS txt")
+    versions = [h["MCP-Protocol-Version"] for m, h in seen]
+    assert versions[0] == "2025-03-26" and set(versions[1:]) == {"2024-11-05"}
+
+
+def test_response_deadline_is_enforced(monkeypatch, http, conn, session, tenant, user):
+    _bearer(session, tenant, user, "https://slack.com/api/")
+    ticks = iter(range(0, 1000, 100))
+    monkeypatch.setattr(messaging.time, "monotonic", lambda: next(ticks))
+    http.handler = lambda m, u, kw: _Resp(200, b"x" * 200000)
+    with pytest.raises(PipelineRuntimeError, match="not completed within"):
+        _write(
+            "writer.slack",
+            conn,
+            session,
+            tenant,
+            user,
+            {"channel": "#c", "textColumn": "txt"},
+            ROWS3,
+        )
