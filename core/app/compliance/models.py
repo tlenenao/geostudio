@@ -13,6 +13,7 @@ lignes supprimées par table, octets S3 libérés) — jamais de contenu."""
 
 from datetime import datetime
 
+import sqlalchemy as sa
 from sqlalchemy import DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
@@ -29,3 +30,9 @@ class PurgeReceipt(Base):
     requested_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     counts: Mapped[dict] = mapped_column(JSON, nullable=False)
+    # REV-344 : cycle de vie du reçu — créé `pending` par la route de déclenchement
+    # (verrou d'idempotence), `running` au démarrage du job, `done`/`failed` à la fin.
+    status: Mapped[str] = mapped_column(
+        String, nullable=False, default="done", server_default=sa.text("'done'")
+    )
+    error: Mapped[str | None] = mapped_column(String, nullable=True)

@@ -224,6 +224,8 @@ export const fr = {
   "compliance.purgeButton": "Purger définitivement ce tenant",
   "compliance.purgeInProgress": "Purge en cours…",
   "compliance.purgeCompleted": "Purge terminée à {completedAt}.",
+  "compliance.purgeFailed":
+    "La purge a échoué : {error}. Les données du tenant sont intactes ; vous pouvez relancer.",
   // SP-B5 : {seconds} interpolé depuis ApiError.retryAfter (429, Retry-After).
   "errors.retryAfter": "Réessayez dans {seconds} s.",
 

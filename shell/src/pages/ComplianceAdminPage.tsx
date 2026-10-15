@@ -113,7 +113,11 @@ function PurgeTenantSection() {
       <Button
         size="sm"
         variant="danger"
-        disabled={!slugMatches || requestPurge.isPending || purgeId !== null}
+        disabled={
+          !slugMatches ||
+          requestPurge.isPending ||
+          (purgeId !== null && statusQuery.data?.status !== "failed")
+        }
         onClick={() => void handlePurge()}
       >
         {t("compliance.purgeButton")}
@@ -128,7 +132,12 @@ function PurgeTenantSection() {
           {t("compliance.purgeInProgress")}
         </p>
       )}
-      {purgeId && statusQuery.data && (
+      {purgeId && statusQuery.data && statusQuery.data.status === "failed" && (
+        <p role="alert" className="text-sm text-danger">
+          {t("compliance.purgeFailed", { error: statusQuery.data.error ?? "" })}
+        </p>
+      )}
+      {purgeId && statusQuery.data && statusQuery.data.status !== "failed" && (
         <p role="status" className="text-sm text-ink-2">
           {t("compliance.purgeCompleted", { completedAt: statusQuery.data.completedAt })}
         </p>

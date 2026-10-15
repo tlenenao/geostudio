@@ -6,10 +6,12 @@ Tâche 7, documentée dans le message de commit)."""
 
 import uuid
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -27,6 +29,8 @@ from app.tenants.models import Tenant
 from app.users.models import User
 
 router = APIRouter(prefix="/compliance")
+
+_PURGE_STALE = timedelta(hours=24)
 
 
 @router.post("/users/{user_id}/erase", status_code=204)
@@ -72,6 +76,8 @@ class PurgeReceiptResponse(BaseModel):
     requestedAt: str
     completedAt: str
     counts: dict[str, Any]
+    status: str = "done"
+    error: str | None = None
 
 
 def get_purge_task_deferrer() -> Callable[[str, str, str], None]:  # overridden in tests
@@ -99,10 +105,32 @@ def request_tenant_purge(
     if tenant_id != user.tenant_id:
         raise HTTPException(status_code=403, detail="cross-tenant purge not supported")
     require_privilege(session, user, Privilege.COMPLIANCE_MANAGE.value)
-    tenant = session.get(Tenant, tenant_id)
+    # Verrou de ligne : deux demandes concurrentes se sérialisent (la 2e voit le reçu `pending`).
+    tenant = session.get(Tenant, tenant_id, with_for_update=True)
     if tenant is None or body.confirmSlug != tenant.slug:
         raise HTTPException(status_code=400, detail="confirmation slug mismatch")
+    # REV-344 a : une seule purge à la fois par tenant. Un reçu bloqué depuis plus de
+    # `_PURGE_STALE` (worker mort) ne verrouille plus.
+    in_progress = session.scalar(
+        select(PurgeReceipt.id).where(
+            PurgeReceipt.tenant_slug == tenant.slug,
+            PurgeReceipt.status.in_(("pending", "running")),
+            PurgeReceipt.requested_at > datetime.now(UTC).replace(tzinfo=None) - _PURGE_STALE,
+        )
+    )
+    if in_progress is not None:
+        raise HTTPException(status_code=409, detail="a purge is already in progress")
     purge_id = str(uuid.uuid4())
+    session.add(
+        PurgeReceipt(
+            id=purge_id,
+            tenant_slug=tenant.slug,
+            requested_by_user_id=user.id,
+            requested_at=datetime.now(UTC),
+            counts={},
+            status="pending",
+        )
+    )
     write_audit(
         session,
         tenant_id=tenant_id,
@@ -117,7 +145,16 @@ def request_tenant_purge(
     # Défère APRÈS le commit de l'audit (même patron que create_upload_job/
     # create_terrain3d_upload) : le job ne doit jamais démarrer avant que
     # la ligne d'audit qui le justifie soit visible.
-    defer_task(purge_id, tenant_id, user.id)
+    try:
+        defer_task(purge_id, tenant_id, user.id)
+    except Exception as exc:
+        # Reçu `pending` sans job : on le clôt en échec pour ne pas verrouiller la purge.
+        receipt = session.get(PurgeReceipt, purge_id)
+        if receipt is not None:
+            receipt.status = "failed"
+            receipt.error = "mise en file impossible"
+            session.commit()
+        raise HTTPException(status_code=503, detail="purge could not be queued") from exc
     return PurgeTriggeredResponse(jobId=purge_id)
 
 
@@ -138,6 +175,8 @@ def get_purge_status(
         # (patron GET /uploads/{job_id}, ici sans ligne de statut
         # intermédiaire propre à la purge).
         raise HTTPException(status_code=202, detail="purge still in progress or unknown")
+    if receipt.status in ("pending", "running"):
+        raise HTTPException(status_code=202, detail="purge still in progress or unknown")
     return PurgeReceiptResponse(
         id=receipt.id,
         tenantSlug=receipt.tenant_slug,
@@ -145,4 +184,6 @@ def get_purge_status(
         requestedAt=receipt.requested_at.isoformat(),
         completedAt=receipt.completed_at.isoformat() if receipt.completed_at else "",
         counts=receipt.counts,
+        status=receipt.status,
+        error=receipt.error,
     )
