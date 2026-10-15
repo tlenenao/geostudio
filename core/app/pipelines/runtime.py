@@ -1422,6 +1422,10 @@ def _write_file(conn, *, node: PipelineNode, view_by_node: dict, srid: int) -> N
     return NodeStat(node.id, node.op, row_count)
 
 
+# writer.file écrit sans SRS ; writer.ftp refuse toute colonne géométrie.
+_SRID_REQUIRED_WRITERS = ("writer.collection", "writer.dataset", "writer.export", "writer.topojson")
+
+
 def run_pipeline(
     session: Session,
     *,
@@ -1488,9 +1492,10 @@ def run_pipeline(
             if pred_id is None:
                 raise PipelineRuntimeError(f"node '{node.id}' has no incoming edge")
             view_by_node[node.id] = view_by_node[pred_id]
-            if srid_by_node[pred_id] == 0 and node.op in ("writer.collection", "writer.dataset"):
+            if srid_by_node[pred_id] == 0 and node.op in _SRID_REQUIRED_WRITERS:
                 # SRID 0 = « non défini » (transform.removeSrid, voie S FME) : la collection
-                # étiquetterait des coordonnées locales avec son propre SRID.
+                # étiquetterait des coordonnées locales avec son propre SRID ; un GeoJSON/
+                # TopoJSON (sans CRS, WGS84 implicite) les ferait passer pour des degrés.
                 raise PipelineRuntimeError(
                     f"{node.op}: SRID non défini (0) en entrée — réassignez un SRID "
                     "(transform.setSrid ou transform.localCoordinateSystem) avant d'écrire"
