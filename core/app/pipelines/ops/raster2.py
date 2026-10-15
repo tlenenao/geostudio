@@ -1450,7 +1450,8 @@ class TransformSurfaceDrapeParams(BaseModel):
     (échantillonnage du relief entre deux sommets) ; sinon seuls les sommets existants sont
     drapés. Un sommet hors raster ou sur cellule invalide prend `outsideZ` ; sans `outsideZ`, la
     ligne garde sa géométrie d'origine et `drape_error` explique pourquoi. Au plus 10 000
-    géométries et 500 000 sommets drapés par nœud."""
+    géométries et 500 000 sommets drapés par nœud (densification comprise, estimée avant
+    d'être calculée). Sortie 3D : l'écrire dans une collection typée 2D échoue à l'insertion."""
 
     itemId: str = Field(..., min_length=1)
     band: int = Field(1, ge=1)
@@ -1584,7 +1585,13 @@ def _drape_geometries(conn, input_view, view_name, p, secret_resolver, preview, 
                 continue
             g = shapely.force_2d(shapely.from_wkb(bytes(wkb)))
             gr = shapely.transform(g, to_raster) if reproj else g
-            if p.densify and gr.geom_type not in ("Point", "MultiPoint"):
+            dense = p.densify and gr.geom_type not in ("Point", "MultiPoint")
+            # Budget estimé AVANT segmentize : une ligne très longue densifiée au pas du pixel
+            # allouerait ses sommets avant tout contrôle (sommets existants + longueur / pas).
+            est = shapely.get_num_coordinates(gr) + (shapely.length(gr) / step if dense else 0)
+            if not math.isfinite(est) or total + est > MAX_DRAPE_VERTICES:
+                raise PipelineRuntimeError(f"{op}: more than {MAX_DRAPE_VERTICES} vertices")
+            if dense:
                 gr = shapely.segmentize(gr, step)
             total += shapely.get_num_coordinates(gr)
             if total > MAX_DRAPE_VERTICES:

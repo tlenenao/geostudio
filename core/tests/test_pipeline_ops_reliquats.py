@@ -113,6 +113,9 @@ def test_local_cs_validation_and_srid_zero_to_local(conn):
     with pytest.raises(PipelineRuntimeError, match="SRID défini"):
         _compile(conn, "transform.localCoordinateSystem",
                  {"originLon": 0, "originLat": 0, "direction": "toLocal"}, srid=0)  # fmt: skip
+    with pytest.raises(PipelineRuntimeError, match="sans SRID"):
+        _compile(conn, "transform.localCoordinateSystem",
+                 {"originLon": 0, "originLat": 0, "targetSrid": 4326}, srid=4326)  # fmt: skip
 
 
 def test_local_cs_degenerate_geometries(conn):
@@ -258,6 +261,10 @@ def test_topojson_guards(conn, tmp_path, monkeypatch):
             "SELECT ST_GeomFromText('LINESTRING(0 0,1 1,2 2,3 3)') AS geometry",
         )
     assert not os.path.exists(tmp_path / "t.json")  # rien d'écrit sur refus
+    with pytest.raises(PipelineRuntimeError, match="NaN"):
+        _write_topo(conn, tmp_path / "t.json",
+                    "SELECT 'NaN'::DOUBLE AS v, ST_Point(0, 0) AS geometry")  # fmt: skip
+    assert not os.path.exists(tmp_path / "t.json")
     monkeypatch.setenv("CORE_PIPELINE_FILE_IO_ENABLED", "false")
     with pytest.raises(PipelineRuntimeError, match="CORE_PIPELINE_FILE_IO_ENABLED"):
         _write_topo(conn, tmp_path / "t.json", "SELECT ST_Point(0, 0) AS geometry")
@@ -385,7 +392,10 @@ def test_database_join_errors_and_injection(remote, conn):
         _join(conn, remote, inputKeys=["code"], secretName="rest")
     with pytest.raises(PipelineRuntimeError, match="not found"):
         _join(conn, remote, inputKeys=["code"], secretName="absent")
-    for bad in ({"table": "t; DROP TABLE x"}, {"columns": ["a b"]}, {"tableKeys": ["a", "b"]}):
+    for bad in (
+        {"table": "t; DROP TABLE x"}, {"columns": ["a b"]}, {"tableKeys": ["a", "b"]},
+        {"columns": ["label", "label"]},
+    ):  # fmt: skip
         with pytest.raises(ValidationError):
             _join(conn, remote, inputKeys=["code"], **bad)
     # valeur de clé hostile : paramètre lié, jamais concaténée
@@ -394,6 +404,17 @@ def test_database_join_errors_and_injection(remote, conn):
     # entrée sans aucune clé non nulle : résultat vide typé (jointure gauche conservée)
     conn.execute("CREATE OR REPLACE TABLE src AS SELECT NULL::INTEGER AS code")
     assert _join(conn, remote, inputKeys=["code"], columns=["label"]) == [(None, None)]
+    # schéma de sortie stable, résultat vide ou non (types issus de la table distante)
+    types = {}
+    for code in ("NULL::INTEGER", "1"):
+        conn.execute(f"CREATE OR REPLACE TABLE src AS SELECT {code} AS code")
+        _join(conn, remote, inputKeys=["code"], columns=["label", "pop"])
+        types[code] = conn.execute(
+            "SELECT column_name, data_type FROM duckdb_columns() "
+            "WHERE table_name = 'out' ORDER BY column_index"
+        ).fetchall()
+    assert types["1"] == types["NULL::INTEGER"]
+    assert [t for _, t in types["1"]] == ["INTEGER", "VARCHAR", "DOUBLE"]
 
 
 @pytest.mark.postgis
@@ -465,6 +486,18 @@ def test_drape_geometry_reprojects_and_caps(renv, conn, monkeypatch):
     monkeypatch.setattr(raster2, "MAX_DRAPE_VERTICES", 3)
     with pytest.raises(PipelineRuntimeError, match="vertices"):
         _drape(renv, conn, srid=3857, itemId=a)
+    # ligne très longue (hors MNT) : refusée AVANT densification, sans allouer ses sommets
+    import shapely
+
+    monkeypatch.setattr(raster2, "MAX_DRAPE_VERTICES", 1000)
+    calls = []
+    real_seg = shapely.segmentize
+    monkeypatch.setattr(shapely, "segmentize", lambda *a, **k: calls.append(a) or real_seg(*a, **k))
+    conn.execute("CREATE OR REPLACE TABLE src AS SELECT 1 AS n, "
+                 "ST_GeomFromText('LINESTRING(2.0005 44.9995, 12 50)') AS geometry")  # fmt: skip
+    with pytest.raises(PipelineRuntimeError, match="vertices"):
+        _drape(renv, conn, itemId=a)
+    assert calls == []
     conn.execute(
         "CREATE OR REPLACE TABLE src AS SELECT 1 AS drape_error, ST_Point(0, 0) AS geometry"
     )

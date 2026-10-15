@@ -69,8 +69,10 @@ def _srid_zero(params: dict, *, op: str, input_srid: int, join_srid: int | None 
 class TransformLocalCoordinateSystemParams(BaseModel):
     """Système de coordonnées local (plan de chantier, DAO) défini par une origine géographique
     (longitude/latitude WGS84), une rotation et une échelle. `fromLocal` : les coordonnées
-    d'entrée sont lues comme locales et converties dans le SRID `targetSrid` ; `toLocal` : des
-    coordonnées géoréférencées sont exprimées dans le repère local (SRID 0 en sortie).
+    d'entrée (SRID 0 exigé : passer d'abord par transform.removeSrid, pour ne jamais lire comme
+    locales des coordonnées géoréférencées) sont converties dans le SRID `targetSrid` ;
+    `toLocal` : des coordonnées géoréférencées sont exprimées dans le repère local (SRID 0 en
+    sortie).
 
     Repère local : axe Y orienté selon l'azimut `rotation` (degrés depuis le nord, sens horaire),
     axe X à sa droite ; une unité locale vaut `scale` mètres. La projection intermédiaire est
@@ -103,6 +105,11 @@ def _compile_local_cs(params: dict, *, input_view: str, join_view=None, input_sr
     t, s = math.radians(p.rotation), p.scale
     c, n = math.cos(t), math.sin(t)
     if p.direction == "fromLocal":
+        if input_srid != UNDEFINED_SRID:
+            raise PipelineRuntimeError(
+                "transform.localCoordinateSystem: fromLocal exige une entrée sans SRID (0), reçu "
+                f"{input_srid} ; placez transform.removeSrid avant"
+            )
         # (x, y) locaux -> (E, N) mètres autour de l'origine -> SRID cible
         g = f"ST_Affine(geometry, {s * c!r}, {s * n!r}, {-s * n!r}, {s * c!r}, 0.0, 0.0)"
         g = f"ST_Transform({g}, '{_aeqd(p)}', 'EPSG:{p.targetSrid}', true)"
@@ -163,6 +170,8 @@ class TransformDatabaseJoinParams(BaseModel):
                 raise ValueError(f"identifiant invalide : {name!r}")
         if len(set(self.inputKeys)) != len(self.inputKeys) or len(set(keys)) != len(keys):
             raise ValueError("colonnes clés dupliquées")
+        if self.columns and len(set(self.columns)) != len(self.columns):
+            raise ValueError("columns : doublons")
         return self
 
 
@@ -177,6 +186,29 @@ def _plain(v):
     if isinstance(v, memoryview):
         return bytes(v)
     return v
+
+
+def _duck_type(col) -> str:
+    """Type DuckDB stable d'une colonne distante (même schéma de sortie, résultat vide ou non)."""
+    import datetime
+
+    try:
+        py = col.type.python_type
+    except NotImplementedError:
+        return "VARCHAR"
+    if py is bool:
+        return "BOOLEAN"
+    if py is int:
+        return "BIGINT"
+    if py in (float, decimal.Decimal):
+        return "DOUBLE"
+    if py is datetime.datetime:
+        return "TIMESTAMPTZ" if getattr(col.type, "timezone", False) else "TIMESTAMP"
+    if py is datetime.date:
+        return "DATE"
+    if py is bytes:
+        return "BLOB"
+    return "VARCHAR"
 
 
 def _remote_engine(op: str, dsn: str):
@@ -235,6 +267,7 @@ def execute_database_join(
             if missing := [c for c in [*tkeys, *want] if c not in remote.c]:
                 raise PipelineRuntimeError(f"{op}: colonne(s) absente(s) de '{p.table}': {missing}")
             out_names = [p.prefix + c for c in want]
+            out_types = [_duck_type(remote.c[c]) for c in want]
             if clash := [c for c in out_names if c in in_cols]:
                 raise PipelineRuntimeError(f"{op}: colonne(s) déjà présente(s) en entrée : {clash}")
             sel = [remote.c[k] for k in tkeys] + [remote.c[c] for c in want]
@@ -271,14 +304,21 @@ def execute_database_join(
     )
     conn.register("_gs_dbjoin", frame)
     try:
+        # Colonnes jointes typées depuis le schéma distant (stable d'un run à l'autre) ; résultat
+        # vide : types de clé alignés sur l'entrée (pas de jointure VARCHAR=INT).
+        vals = [
+            f"CAST({_qi(c)} AS {t}) AS {_qi(c)}" for c, t in zip(out_names, out_types, strict=True)
+        ]
         if fetched:
-            rsrc = "_gs_dbjoin"
-        else:  # aucun résultat : types de clé alignés sur l'entrée (pas de jointure VARCHAR=INT)
+            rsrc = f"(SELECT {', '.join([*map(_qi, rkeys), *vals])} FROM _gs_dbjoin)"
+        else:
             casts = [
                 f"CAST(NULL AS {in_cols[k]}) AS {_qi(rk)}"
                 for k, rk in zip(p.inputKeys, rkeys, strict=True)
             ]
-            casts += [f"CAST(NULL AS VARCHAR) AS {_qi(c)}" for c in out_names]
+            casts += [
+                f"CAST(NULL AS {t}) AS {_qi(c)}" for c, t in zip(out_names, out_types, strict=True)
+            ]
             rsrc = f"(SELECT {', '.join(casts)} WHERE false)"
         on = " AND ".join(
             f"i.{_qi(k)} = r.{_qi(rk)}" for k, rk in zip(p.inputKeys, rkeys, strict=True)
@@ -296,7 +336,7 @@ def execute_database_join(
 # --------------------------------------------------------------------------- TopoJSON writer
 
 MAX_TOPOJSON_FEATURES = 100_000
-MAX_TOPOJSON_VERTICES = 5_000_000
+MAX_TOPOJSON_VERTICES = 1_000_000
 
 
 class WriterTopojsonParams(BaseModel):
@@ -304,7 +344,7 @@ class WriterTopojsonParams(BaseModel):
     partagés entre géométries voisines, propriétés = colonnes non géométriques). Coordonnées
     écrites dans le système du pipeline (TopoJSON ne porte pas de CRS : reprojeter en
     EPSG:4326 avant pour un usage web). Fichier local, mêmes conditions que writer.file
-    (CORE_PIPELINE_FILE_IO_ENABLED) ; au plus 100 000 entités et 5 millions de sommets.
+    (CORE_PIPELINE_FILE_IO_ENABLED) ; au plus 100 000 entités et 1 million de sommets.
 
     Arcs : chaque segment de ligne/anneau est découpé aux sommets partagés par plusieurs
     géométries ; un arc identique (ou inversé) n'est stocké qu'une fois. Pas de quantification
@@ -451,8 +491,12 @@ def write_topojson(session, conn, *, node, view_by_node, tenant_id, user, **_ext
         os.makedirs(parent, exist_ok=True)
     tmp = f"{real}.tmp-{uuid.uuid4().hex}"
     try:
+        try:
+            text = json.dumps(doc, default=str, allow_nan=False)
+        except ValueError as exc:  # NaN/Inf dans une propriété ou une coordonnée
+            raise PipelineRuntimeError(f"{op}: valeur non finie (NaN/Inf) : {exc}") from exc
         with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(doc, f, default=str, allow_nan=False)
+            f.write(text)
         os.replace(tmp, real)
     finally:
         if os.path.exists(tmp):

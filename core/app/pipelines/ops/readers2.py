@@ -829,7 +829,8 @@ class ReaderCityjsonParams(BaseModel):
     """Lit un fichier CityJSON (modèle de ville 3D) en une ligne par objet (bâtiment, pont…) :
     id, type, lod, attributs (JSON), altitudes min/max et géométrie : empreinte 2D (union des
     faces projetées à plat, `geometry: footprint`) ou modèle 3D (`geometry: solid3d` : toutes
-    les faces en MULTIPOLYGON Z, coordonnées réelles X/Y/Z). `lod` filtre le niveau de détail
+    les faces en MULTIPOLYGON Z, coordonnées réelles X/Y/Z ; l'écrire dans une collection typée
+    2D échoue à l'insertion). `lod` filtre le niveau de détail
     (sinon le plus fin). Fichier local, mêmes conditions que reader.file."""
 
     path: str = Field(..., min_length=1)
