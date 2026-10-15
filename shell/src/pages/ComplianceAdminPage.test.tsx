@@ -89,8 +89,21 @@ test("le bouton de purge s'active une fois le slug exact tapé, et déclenche PO
         return HttpResponse.json({ jobId: "purge-123" }, { status: 202 });
       },
     ),
+    // REV-364 f : un reçu `pending` arrive en 202 avec son vrai corps (completedAt null).
     http.get("https://core.test/v1/compliance/purges/purge-123", () =>
-      HttpResponse.json({ status: 202, detail: "in progress" }, { status: 202 }),
+      HttpResponse.json(
+        {
+          id: "purge-123",
+          tenantSlug: "demo",
+          requestedByUserId: "u1",
+          requestedAt: "2026-10-15T10:00:00",
+          completedAt: null,
+          counts: {},
+          status: "pending",
+          error: null,
+        },
+        { status: 202 },
+      ),
     ),
   );
   render(<Harness />);

@@ -109,11 +109,12 @@ export function createIdentityMethods(base: ItemClientBase): IdentityMethods {
 
     async getPurgeStatus(purgeId: string): Promise<PurgeReceipt | null> {
       // 202 (encore en cours) et 200 (terminé) partagent le même chemin
-      // "réponse ok" côté fetch (Response.ok couvre tout 2xx) — seule la
-      // FORME du corps distingue les deux (cf. app/compliance/routes.py::
-      // get_purge_status) : un reçu réel porte "id", le corps 202 non.
+      // "réponse ok" côté fetch (Response.ok couvre tout 2xx) : un reçu réel
+      // porte "id" ; un reçu `pending`/`running` (202, REV-364 f) ou le corps
+      // d'un id inconnu valent « pas encore terminé » (null).
       const data = await request<Record<string, unknown>>("GET", `/compliance/purges/${purgeId}`);
-      return "id" in data ? (data as unknown as PurgeReceipt) : null;
+      if (!("id" in data) || data.status === "pending" || data.status === "running") return null;
+      return data as unknown as PurgeReceipt;
     },
   };
 }
