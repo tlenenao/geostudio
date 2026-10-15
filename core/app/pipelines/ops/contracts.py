@@ -29,6 +29,7 @@ from app.pipelines.ops import (
     attrs,
     cloudfiles,
     dbio,
+    dbio2,
     geom2,
     messaging,
     raster2,
@@ -683,6 +684,7 @@ LANE_MODULES: tuple[ModuleType, ...] = (
     messaging,
     raster2,
     readers2,
+    dbio2,
 )
 
 

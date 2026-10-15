@@ -17,13 +17,19 @@ suit jamais un saut hors portée : un en-tête `api_key` custom survivrait au ne
 - `reader.ftp` / `writer.ftp` : FTPS explicite (TLS + vérification du certificat) seulement.
 
 Écarts FME consignés dans la matrice : lecture d'UN fichier par nœud (pas de listing/suppression/
-renommage), pas d'OAuth2 client-credentials (le jeton Bearer vient du coffre), SFTP absent
+renommage), SFTP absent
 (paramiko = LGPL, interdit), écriture uniquement vers FTPS.
+
+OAuth2 (voie R) : un secret `oauth2_client` (client_credentials ou refresh_token) est échangé
+contre un jeton d'accès à l'exécution (`_oauth2_access_token`) — cache mémoire court, jamais
+persisté ; un refresh_token renouvelé par le fournisseur est réécrit dans le coffre sous verrou
+de ligne, dans une session courte SÉPARÉE (jamais la session du run).
 
 Ne jamais importer contracts/runtime/registries au niveau module (cycle d'import)."""
 
 import base64
 import ftplib
+import hashlib
 import io
 import json
 import re
@@ -38,6 +44,7 @@ import requests
 import shapely.geometry
 import shapely.wkb
 from pydantic import BaseModel, Field, model_validator
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -61,7 +68,13 @@ _FILE_FORMATS = ("csv", "jsonl", "parquet", "geojson")
 FileFormat = Literal["csv", "jsonl", "parquet", "geojson"]
 # Taille décompressée admise = facteur x MAX_BYTES (compression colonnaire légitime ~5-10x).
 MAX_UNCOMPRESSED_FACTOR = 4
-_SECRET_KINDS = ("bearer_token", "api_key", "basic_auth")
+_SECRET_KINDS = ("bearer_token", "api_key", "basic_auth", "oauth2_client")
+_TOKEN_MAX_BYTES = 64 * 1024
+_TOKEN_DEADLINE_S = 30.0
+_TOKEN_CACHE_TTL_S = 300.0
+_TOKEN_CACHE_MAX = 256
+# (tenant, secret, empreinte des identifiants) -> (jeton d'accès, échéance monotone)
+_TOKEN_CACHE: dict[tuple[str, str, str], tuple[str, float]] = {}
 
 
 def _max_rows() -> int:
@@ -86,7 +99,185 @@ def _resolve_secret(op: str, session, tenant_id, user, name: str | None):
         raise PipelineRuntimeError(
             f"{op}: secret has kind '{payload.kind}', expected one of {list(_SECRET_KINDS)}"
         )
+    if payload.kind == "oauth2_client":
+        from app.secrets.schemas import BearerTokenPayload
+
+        token = _oauth2_access_token(op, session, tenant_id, user, name, payload)
+        return BearerTokenPayload(token=token, baseUrl=payload.baseUrl)
     return payload
+
+
+def _token_request(op: str, payload, form: dict[str, str]) -> dict:
+    """POST au `tokenUrl` (egress gardé, AUCUNE redirection : le client_secret ne suit jamais
+    un saut) -> objet JSON de la réponse, non validé (cf. `_access_from_doc`). Les erreurs
+    ne citent jamais le corps de la réponse ni les identifiants."""
+    if _REQUIRE_TLS_FOR_SECRETS and urlsplit(payload.tokenUrl).scheme != "https":
+        raise PipelineRuntimeError(f"{op}: the OAuth2 tokenUrl must use https")
+    data = {**form, "client_id": payload.clientId, "client_secret": payload.clientSecret}
+    if payload.scope:
+        data["scope"] = payload.scope
+    body = _http_get(
+        f"{op} (OAuth2 token)",
+        payload.tokenUrl,
+        method="POST",
+        data=data,
+        headers={"Accept": "application/json"},
+        max_bytes=_TOKEN_MAX_BYTES,
+        deadline=time.monotonic() + _TOKEN_DEADLINE_S,
+        max_redirects=0,
+    )
+    try:
+        doc = json.loads(body)
+    except ValueError as exc:
+        raise PipelineRuntimeError(f"{op}: unexpected OAuth2 token answer") from exc
+    if not isinstance(doc, dict):
+        raise PipelineRuntimeError(f"{op}: unexpected OAuth2 token answer")
+    return doc
+
+
+def _access_from_doc(op: str, doc: dict) -> tuple[str, float]:
+    token = doc.get("access_token")
+    try:
+        ttl = float(doc.get("expires_in") or 3600)
+    except (TypeError, ValueError):
+        raise PipelineRuntimeError(f"{op}: unexpected OAuth2 token answer") from None
+    if not isinstance(token, str) or not token:
+        raise PipelineRuntimeError(f"{op}: unexpected OAuth2 token answer")
+    if str(doc.get("token_type") or "bearer").lower() != "bearer":
+        raise PipelineRuntimeError(f"{op}: OAuth2 token type is not 'bearer'")
+    return token, ttl
+
+
+def _cache_key(tenant_id, name: str, payload) -> tuple[str, str, str]:
+    """Empreinte de TOUT ce qui détermine le jeton (refreshToken et baseUrl inclus : un
+    secret remplacé ne ressert jamais l'ancien jeton)."""
+    parts = (payload.grantType, payload.tokenUrl, payload.clientId, payload.clientSecret,
+             payload.scope or "", payload.refreshToken or "", payload.baseUrl or "")  # fmt: skip
+    return str(tenant_id), name, hashlib.sha256("\x00".join(parts).encode()).hexdigest()
+
+
+def _cache_get(key) -> str | None:
+    hit = _TOKEN_CACHE.get(key)
+    return hit[0] if hit and hit[1] > time.monotonic() else None
+
+
+def _cache_put(key, token: str, ttl: float) -> None:
+    if len(_TOKEN_CACHE) >= _TOKEN_CACHE_MAX:
+        _TOKEN_CACHE.clear()  # ponytail: purge totale, LRU si le volume de secrets l'exige
+    ttl = min(ttl - 30.0, _TOKEN_CACHE_TTL_S)
+    if ttl > 0:
+        _TOKEN_CACHE[key] = (token, time.monotonic() + ttl)
+
+
+def _oauth2_access_token(op: str, session, tenant_id: str, user, name: str, payload) -> str:
+    from app.pipelines.ops.operation_contract import IN_PREVIEW
+
+    key = _cache_key(tenant_id, name, payload)
+    if (hit := _cache_get(key)) is not None:
+        return hit
+    if payload.grantType == "client_credentials":
+        doc = _token_request(op, payload, {"grant_type": "client_credentials"})
+        token, ttl = _access_from_doc(op, doc)
+        _cache_put(key, token, ttl)
+        return token
+    if IN_PREVIEW.get():
+        # Un fournisseur peut faire tourner le refresh_token : l'aperçu n'écrit jamais dans
+        # le coffre, il ne renouvelle donc pas (jeton déjà en cache seulement).
+        raise PipelineRuntimeError(
+            f"{op}: preview cannot renew an OAuth2 refresh_token (it may rotate and must be "
+            "saved to the vault) — run the pipeline once, then preview within 5 minutes"
+        )
+    return _refresh_and_rotate(op, session, tenant_id, user, name, payload)
+
+
+def _refresh_and_rotate(op: str, session, tenant_id: str, user, name: str, payload) -> str:
+    """Flux refresh_token sous verrou de la ligne du secret, dans une session courte SÉPARÉE
+    (commiter la session du run casserait sa transaction). Sous le verrou : relit la valeur
+    courante du coffre (un autre worker a pu la faire tourner) et le cache (il a pu obtenir
+    le jeton : un seul appel au fournisseur). Un refresh_token renouvelé est persisté DÈS que
+    la réponse JSON est lisible, avant toute autre validation : l'ancien est déjà révoqué."""
+    from app.secrets import crypto
+    from app.secrets.models import ConnectorSecret
+    from app.secrets.schemas import SECRET_PAYLOAD_ADAPTER
+
+    bind = session.get_bind()
+    with Session(bind) as locked:
+        row = locked.scalar(
+            select(ConnectorSecret)
+            .where(ConnectorSecret.tenant_id == tenant_id, ConnectorSecret.name == name)
+            .with_for_update()
+        )
+        current = payload
+        if row is not None:
+            raw = crypto.decrypt(row.ciphertext, row.nonce)
+            stored = SECRET_PAYLOAD_ADAPTER.validate_python(raw)
+            if stored.kind == "oauth2_client" and stored.clientId == payload.clientId:
+                current = stored
+        if (hit := _cache_get(_cache_key(tenant_id, name, current))) is not None:
+            return hit
+        doc = _token_request(
+            op, current, {"grant_type": "refresh_token", "refresh_token": current.refreshToken}
+        )
+        new_refresh = doc.get("refresh_token")
+        effective = current
+        if isinstance(new_refresh, str) and new_refresh and new_refresh != current.refreshToken:
+            effective = current.model_copy(update={"refreshToken": new_refresh})
+        try:
+            token, ttl = _access_from_doc(op, doc)
+        except PipelineRuntimeError as exc:
+            token, error = None, exc
+        else:
+            error = None
+            # avant le commit (qui libère le verrou) : le run concurrent trouvera le jeton
+            _cache_put(_cache_key(tenant_id, name, effective), token, ttl)
+        if effective is not current and row is not None:
+            _persist_refresh(op, bind, locked, row, effective, tenant_id, user, name)
+    if error is not None:
+        raise error
+    return token  # type: ignore[return-value]
+
+
+def _persist_refresh(op, bind, locked, row, effective, tenant_id, user, name) -> None:
+    """Réécrit le refresh_token renouvelé ; un échec de commit est rejoué une fois dans une
+    session neuve. Perdu malgré tout = compte à ré-autoriser (message explicite)."""
+    from app.secrets import crypto
+    from app.secrets.models import ConnectorSecret
+
+    def write(s, target) -> None:
+        target.ciphertext, target.nonce = crypto.encrypt(effective.model_dump())
+        write_audit(
+            s,
+            tenant_id=tenant_id,
+            actor_id=getattr(user, "id", None),
+            actor_kind="user" if user is not None else "system",
+            action="secret.oauth2_refresh_rotated",
+            object_type="secret",
+            object_id=target.id,
+            payload={"name": name},
+        )
+        s.commit()
+
+    try:
+        write(locked, row)
+        return
+    except Exception:
+        locked.rollback()
+    try:
+        with Session(bind) as retry:
+            target = retry.scalar(
+                select(ConnectorSecret).where(
+                    ConnectorSecret.tenant_id == tenant_id, ConnectorSecret.name == name
+                )
+            )
+            if target is not None:
+                write(retry, target)
+                return
+    except Exception:
+        pass
+    raise PipelineRuntimeError(
+        f"{op}: the provider renewed the OAuth2 refresh_token but it could not be saved — "
+        f"re-authorize the secret '{name}'"
+    )
 
 
 def _credentials(payload, url: str) -> tuple[dict[str, str], dict[str, str]]:
@@ -118,6 +309,8 @@ def _http_get(
     max_bytes: int | None = None,
     deadline: float | None = None,
     strict_scope: bool = True,
+    data: dict | None = None,
+    max_redirects: int = _MAX_REDIRECTS,
 ) -> bytes:
     """Requête gardée -> corps (borné). Un secret doit couvrir l'URL initiale (sinon erreur
     explicite) ; il n'est envoyé qu'aux sauts qui restent sous son `baseUrl`."""
@@ -136,7 +329,7 @@ def _http_get(
     session = egress.build_guarded_session()
     try:
         cur, cur_query, cur_method = url, dict(query or {}), method
-        for _hop in range(_MAX_REDIRECTS + 1):
+        for _hop in range(max_redirects + 1):
             cred_h, cred_q = _credentials(payload, cur)
             response = None
             try:
@@ -145,6 +338,7 @@ def _http_get(
                     cur,
                     headers={**(headers or {}), **cred_h},
                     params={**cur_query, **cred_q},
+                    data=data,
                     stream=True,
                     allow_redirects=False,
                 )
@@ -152,7 +346,7 @@ def _http_get(
                     loc = response.headers.get("Location")
                     if not loc:
                         raise PipelineRuntimeError(f"{op}: redirect without Location")
-                    cur, cur_query = urljoin(cur, loc), {}
+                    cur, cur_query, data = urljoin(cur, loc), {}, None
                     if response.status_code in (301, 302, 303):
                         cur_method = "GET"
                     continue
@@ -293,9 +487,10 @@ def _safe_path(path: str) -> str:
 class ReaderCloudFileParams(BaseModel):
     """Lit un fichier tabulaire (CSV, JSON Lines, Parquet ou GeoJSON) stocké chez un fournisseur
     de fichiers : Dropbox, Box, Google Drive, OneDrive, SharePoint Online, Azure Files ou HDFS
-    (WebHDFS). `secretName` référence un secret bearer_token, api_key ou basic_auth lié
-    (`baseUrl`) à l'API du fournisseur ; `file` = chemin (Dropbox, Azure Files, HDFS) ou
-    identifiant (Box, Drive, OneDrive, SharePoint)."""
+    (WebHDFS). `secretName` référence un secret oauth2_client (jeton renouvelé à chaque
+    exécution : Dropbox, Box, OneDrive, SharePoint, Azure AD pour Azure Files), bearer_token,
+    api_key ou basic_auth lié (`baseUrl`) à l'API du fournisseur ; `file` = chemin (Dropbox,
+    Azure Files, HDFS) ou identifiant (Box, Drive, OneDrive, SharePoint)."""
 
     provider: Provider
     secretName: str = Field(..., json_schema_extra={"format": "secret-name"})

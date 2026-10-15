@@ -383,3 +383,75 @@ test("un secret REST sans baseUrl est refusé avec une erreur de champ accessibl
   await waitFor(() => expect(onChange).toHaveBeenCalledWith("api"));
   expect(createSecret.mock.calls[0][0].payload.baseUrl).toBe("https://api.example.test/v1");
 });
+
+test("un secret oauth2_client refresh_token envoie le jeton de rafraîchissement et la portée (voie R)", async () => {
+  const createSecret = vi.fn().mockResolvedValue({
+    id: "s20",
+    name: "dropbox",
+    kind: "oauth2_client",
+    createdAt: "",
+    updatedAt: "",
+  });
+  const { onChange } = renderSelect({ kindFilter: "oauth2_client" }, { createSecret });
+  await userEvent.click(screen.getByText("Créer un secret"));
+  await userEvent.type(screen.getByLabelText("Nom"), "dropbox");
+  await userEvent.selectOptions(screen.getByLabelText("Type d'autorisation"), "refresh_token");
+  await userEvent.type(
+    screen.getByLabelText("URL du jeton"),
+    "https://api.dropbox.com/oauth2/token",
+  );
+  await userEvent.type(screen.getByLabelText("Client ID"), "cid");
+  await userEvent.type(screen.getByLabelText("Client Secret"), "cs");
+  await userEvent.type(screen.getByLabelText("Jeton de rafraîchissement"), "rt");
+  await userEvent.type(screen.getByLabelText(/Portée/), "files.content.read");
+  await userEvent.type(
+    screen.getByLabelText("URL de base de l'API"),
+    "https://content.dropboxapi.com",
+  );
+  await userEvent.click(screen.getByText("Créer"));
+
+  await waitFor(() => expect(onChange).toHaveBeenCalledWith("dropbox"));
+  expect(createSecret).toHaveBeenCalledWith({
+    name: "dropbox",
+    payload: {
+      kind: "oauth2_client",
+      grantType: "refresh_token",
+      tokenUrl: "https://api.dropbox.com/oauth2/token",
+      clientId: "cid",
+      clientSecret: "cs",
+      refreshToken: "rt",
+      scope: "files.content.read",
+      baseUrl: "https://content.dropboxapi.com",
+    },
+  });
+});
+
+test("un secret oauth2_client sans URL de base est refusé côté formulaire (REV-294)", async () => {
+  const createSecret = vi.fn();
+  renderSelect({ kindFilter: "oauth2_client" }, { createSecret });
+  await userEvent.click(screen.getByText("Créer un secret"));
+  await userEvent.type(screen.getByLabelText("Nom"), "x");
+  expect(screen.queryByLabelText("Jeton de rafraîchissement")).toBeNull(); // client_credentials
+  await userEvent.click(screen.getByText("Créer"));
+  expect(createSecret).not.toHaveBeenCalled();
+});
+
+test("un secret mongodb_uri créé est immédiatement sélectionné (voie R)", async () => {
+  const createSecret = vi.fn().mockResolvedValue({
+    id: "s21",
+    name: "mongo",
+    kind: "mongodb_uri",
+    createdAt: "",
+    updatedAt: "",
+  });
+  const { onChange } = renderSelect({ kindFilter: "mongodb_uri" }, { createSecret });
+  await userEvent.click(screen.getByText("Créer un secret"));
+  await userEvent.type(screen.getByLabelText("Nom"), "mongo");
+  await userEvent.type(screen.getByLabelText("URI de connexion"), "mongodb+srv://u:p@c.example/db");
+  await userEvent.click(screen.getByText("Créer"));
+  await waitFor(() => expect(onChange).toHaveBeenCalledWith("mongo"));
+  expect(createSecret).toHaveBeenCalledWith({
+    name: "mongo",
+    payload: { kind: "mongodb_uri", uri: "mongodb+srv://u:p@c.example/db" },
+  });
+});
