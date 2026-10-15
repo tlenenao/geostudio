@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router-dom";
@@ -36,7 +36,7 @@ function stubMM() {
 }
 
 // Anonymisation RGPD : un clic ne doit pas suffire (ComplianceAdminPage.tsx:57).
-it.fails("REV-audit: erase user demande une confirmation avant l'appel", async () => {
+it("REV-360 : erase user demande une confirmation avant l'appel", async () => {
   stubMM();
   server.use(
     http.get("https://core.test/v1/me", () =>
@@ -67,10 +67,14 @@ it.fails("REV-audit: erase user demande une confirmation avant l'appel", async (
   await userEvent.click(screen.getByRole("button", { name: /anonymiser ce compte/i }));
   await new Promise((r) => setTimeout(r, 100));
   expect(called).toBe(false);
+  // la confirmation (dialogue d'alerte) déclenche bien l'appel
+  const dialog = await screen.findByRole("alertdialog");
+  await userEvent.click(within(dialog).getByRole("button", { name: /anonymiser ce compte/i }));
+  await vi.waitFor(() => expect(called).toBe(true));
 });
 
 // Révocation de lien : doit afficher une erreur sur 500 (ShareForm.tsx:105).
-it.fails("REV-audit: revoke link affiche une erreur sur échec 500", async () => {
+it("REV-361 : revoke link affiche une erreur sur échec 500", async () => {
   const item: any = {
     pk: "7",
     resourceType: "app",

@@ -177,6 +177,11 @@ function ShareLinksPanel({ itemId }: { itemId: string }) {
           {t("shareForm.createLinkFailed")}
         </p>
       )}
+      {revokeLink.isError && (
+        <p role="alert" className="text-xs text-danger">
+          {t("shareForm.revokeLinkFailed")}
+        </p>
+      )}
       {lastCreatedUrl && (
         <p className="flex items-center gap-1 text-xs text-ink">
           {t("shareForm.linkCreatedPrefix")}

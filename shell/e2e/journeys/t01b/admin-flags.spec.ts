@@ -56,6 +56,10 @@ test.describe("t01b administration : conformité, infrastructure, usage", () => 
     await page.keyboard.press("Tab");
     expect(await focusDesc(page)).toContain("Anonymiser ce compte");
     await page.keyboard.press("Enter");
+    await page
+      .getByRole("alertdialog")
+      .getByRole("button", { name: "Anonymiser ce compte" })
+      .click();
     await expect(page.getByRole("alert")).toContainText(/Échec de l'anonymisation|introuvable/);
     await expect(
       page.getByRole("button", { name: "Purger définitivement ce tenant" }),

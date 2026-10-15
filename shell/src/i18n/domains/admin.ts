@@ -390,6 +390,7 @@ export const admin = {
   "shareForm.ttlUnitMany": "jours",
   "shareForm.createLinkButton": "Créer un lien",
   "shareForm.createLinkFailed": "Échec de la création du lien.",
+  "shareForm.revokeLinkFailed": "Échec de la révocation du lien.",
   "shareForm.linkCreatedPrefix": "Lien créé : ",
   "shareForm.embedTitle": "Intégrer",
   "shareForm.embedSnippetAria": "Extrait de code à intégrer (iframe)",

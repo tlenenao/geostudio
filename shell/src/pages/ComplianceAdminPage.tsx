@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useEraseUser, useMe, usePurgeStatus, useRequestTenantPurge } from "../api/hooks";
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
+import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
 import { Panel } from "../ui/kit/Panel";
 import { SettingsNav } from "../shell/chrome/SettingsNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
@@ -22,9 +23,11 @@ function EraseUserSection() {
   const [userId, setUserId] = useState("");
   const [result, setResult] = useState<"idle" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
+  const [confirming, setConfirming] = useState(false);
   const eraseUser = useEraseUser();
 
   async function handleErase() {
+    setConfirming(false);
     setResult("idle");
     try {
       await eraseUser.mutateAsync(userId.trim());
@@ -54,10 +57,19 @@ function EraseUserSection() {
         size="sm"
         variant="outline"
         disabled={!userId.trim() || eraseUser.isPending}
-        onClick={() => void handleErase()}
+        onClick={() => setConfirming(true)}
       >
         {t("compliance.eraseButton")}
       </Button>
+      <ConfirmDialog
+        open={confirming}
+        title={t("compliance.eraseConfirmTitle")}
+        message={t("compliance.eraseConfirmMessage", { userId: userId.trim() })}
+        confirmLabel={t("compliance.eraseButton")}
+        pending={eraseUser.isPending}
+        onCancel={() => setConfirming(false)}
+        onConfirm={() => void handleErase()}
+      />
       {result === "success" && (
         <p role="status" className="text-sm text-ink-2">
           {t("compliance.eraseSuccess")}

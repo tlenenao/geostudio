@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -9,6 +9,12 @@ import { server } from "../test/msw/server";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { ComplianceAdminPage } from "./ComplianceAdminPage";
+
+// REV-360 : l'anonymisation passe par un dialogue de confirmation.
+async function confirmErase() {
+  const dialog = await screen.findByRole("alertdialog");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Anonymiser ce compte" }));
+}
 
 function stubMatchMedia(matches: boolean) {
   vi.stubGlobal(
@@ -114,6 +120,7 @@ test("anonymiser un compte appelle POST /compliance/users/{id}/erase et affiche 
 
   await userEvent.type(screen.getByLabelText(/Identifiant de l'utilisateur/), "u42");
   await userEvent.click(screen.getByRole("button", { name: "Anonymiser ce compte" }));
+  await confirmErase();
 
   await waitFor(() => expect(erasedUserId).toBe("u42"));
   expect(await screen.findByText("Compte anonymisé.")).toBeInTheDocument();
@@ -157,5 +164,6 @@ test("l'échec d'anonymisation distingue « introuvable » (j08-006)", async () 
   await screen.findByText("Anonymiser un compte");
   await userEvent.type(screen.getByLabelText(/Identifiant de l'utilisateur/), "nope");
   await userEvent.click(screen.getByRole("button", { name: "Anonymiser ce compte" }));
+  await confirmErase();
   expect(await screen.findByText("Utilisateur introuvable dans ce tenant.")).toBeInTheDocument();
 });
