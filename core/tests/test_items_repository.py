@@ -657,6 +657,7 @@ def test_create_item_enqueues_an_embedding_job(session, tenant_and_user, monkeyp
     item = repo.create_item(
         session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="X"
     )
+    session.commit()  # REV-346 : le defer part après le commit
     assert deferred == [{"item_id": item.id, "tenant_id": tenant.id}]
 
 
@@ -665,6 +666,7 @@ def test_update_item_enqueues_an_embedding_job(session, tenant_and_user, monkeyp
     item = repo.create_item(
         session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="X"
     )
+    session.commit()
     deferred = []
     from app.items import jobs as item_jobs
 
@@ -682,6 +684,7 @@ def test_update_item_enqueues_an_embedding_job(session, tenant_and_user, monkeyp
         keywords=None,
         is_published=None,
     )
+    session.commit()
     assert deferred == [{"item_id": item.id, "tenant_id": tenant.id}]
 
 
@@ -881,6 +884,7 @@ def test_create_item_still_succeeds_when_the_embedding_enqueue_fails(
     item = repo.create_item(
         session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="X"
     )
+    session.commit()  # l'enqueue part après le commit (REV-346)
     assert item is not None
     assert item.title == "X"
 

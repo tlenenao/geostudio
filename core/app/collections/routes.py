@@ -934,7 +934,7 @@ def patch_collection(
         col.sensitive_fields = body.sensitiveFields
     session.flush()
     if text_changed:
-        repo.enqueue_embedding(col.id, user.tenant_id)
+        repo.enqueue_embedding(session, col.id, user.tenant_id)
     write_audit(
         session,
         tenant_id=user.tenant_id,

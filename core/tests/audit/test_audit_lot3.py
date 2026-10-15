@@ -60,9 +60,6 @@ def _import(env, filename, content):
 
 
 @pytest.mark.postgis
-@pytest.mark.xfail(
-    strict=True, reason="REV-audit: defer d'embedding avant commit (items/repository.py:231)"
-)
 def test_embedding_defer_happens_after_commit(env, pg_engine, monkeypatch):
     from app.items.jobs import embed_item_task
 
@@ -146,3 +143,19 @@ def test_geojson_3d_point_imports(env):
     }
     res = _import(env, "z.geojson", json.dumps(gj).encode())
     assert res.collection_id
+
+
+@pytest.mark.postgis
+def test_embedding_defer_is_dropped_on_rollback(env, monkeypatch):
+    from app.items.jobs import embed_item_task
+
+    Session, tenant, user = env
+    calls = []
+    monkeypatch.setattr(embed_item_task, "defer", lambda **kw: calls.append(kw))
+    with Session() as s:
+        items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=user.id, resource_type="map", title="x"
+        )
+        s.rollback()
+        s.commit()
+    assert calls == []

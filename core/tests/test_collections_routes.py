@@ -653,7 +653,7 @@ def test_patch_collection_enqueues_embedding_only_when_title_or_description_chan
     monkeypatch.setattr(
         repo,
         "enqueue_embedding",
-        lambda collection_id, tenant_id: deferred.append((collection_id, tenant_id)),
+        lambda _session, collection_id, tenant_id: deferred.append((collection_id, tenant_id)),
     )
 
     # Ni titre ni description : pas d'enqueue.
