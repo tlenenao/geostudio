@@ -272,8 +272,8 @@ class PipelineNode(BaseModel):
     id: str
     kind: Literal["reader", "transform", "writer"]
     op: str
-    x: int = 0
-    y: int = 0  # idiome LayoutItem, inutilisé tant qu'il n'y a pas de
+    x: float = 0
+    y: float = 0  # idiome LayoutItem, inutilisé tant qu'il n'y a pas de
     # canvas (SP-15b) — posé maintenant pour ne pas migrer
     # le schéma plus tard (design SP-15a §4.1)
     params: dict[str, Any] = Field(default_factory=dict)
@@ -297,10 +297,10 @@ class PipelineEdge(BaseModel):
 class PipelineCanvasNote(BaseModel):
     id: str
     label: str
-    x: int = 0
-    y: int = 0
-    width: int = 200
-    height: int = 120
+    x: float = 0
+    y: float = 0
+    width: float = 200
+    height: float = 120
 
 
 class PipelineRefreshPolicy(BaseModel):
