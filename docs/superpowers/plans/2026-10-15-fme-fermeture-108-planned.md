@@ -54,13 +54,13 @@ les 10 `license_blocked` (la licence ne change pas).
 ## 2. Définition de « fait » pour une op (gabarit de brief, par transformer)
 
 Chaque op, TDD (test rouge d'abord) :
-- [ ] `OperationContract` complet : schéma Pydantic strict, `engine`, **`engine_license`**, `execution_model`, règle de SRID de sortie, `is_copyleft` (⇒ sidecar obligatoire, vérifié à la construction).
-- [ ] **Masquage GAP-22** : une colonne masquée n'est jamais lue ni exposée par l'op ni son aperçu (jumelle déjà oubliée en P15).
-- [ ] **Réseau** : toute op qui sort du process passe par `egress.py` (garde SSRF + épinglage DNS) ; secrets **uniquement** via le coffre, URL bornée à la portée du secret (REV-294) ; plafonds de lignes/octets/durée.
-- [ ] Aperçu : comportement défini (lecture seule ⇒ OK ; effet de bord ⇒ aperçu **interdit** ou borné aux GET, cf. `httpCall`).
-- [ ] Étiquette i18n (détecteur de couverture en CI), entrée de palette du builder, doc d'op.
-- [ ] Ligne `matrice-couverture-fme.jsonl` : `coverage_status`, `geostudio_equivalent`, `engine_license`, notes.
-- [ ] 1 test d'**erreur par ligne / entrée dégénérée** (géométrie nulle/vide, colonne absente) — classe de défauts REV-195→199.
+- [x] `OperationContract` complet : schéma Pydantic strict, `engine`, **`engine_license`**, `execution_model`, règle de SRID de sortie, `is_copyleft` (⇒ sidecar obligatoire, vérifié à la construction).
+- [x] **Masquage GAP-22** : une colonne masquée n'est jamais lue ni exposée par l'op ni son aperçu (jumelle déjà oubliée en P15).
+- [x] **Réseau** : toute op qui sort du process passe par `egress.py` (garde SSRF + épinglage DNS) ; secrets **uniquement** via le coffre, URL bornée à la portée du secret (REV-294) ; plafonds de lignes/octets/durée.
+- [x] Aperçu : comportement défini (lecture seule ⇒ OK ; effet de bord ⇒ aperçu **interdit** ou borné aux GET, cf. `httpCall`).
+- [x] Étiquette i18n (détecteur de couverture en CI), entrée de palette du builder, doc d'op.
+- [x] Ligne `matrice-couverture-fme.jsonl` : `coverage_status`, `geostudio_equivalent`, `engine_license`, notes.
+- [x] 1 test d'**erreur par ligne / entrée dégénérée** (géométrie nulle/vide, colonne absente) — classe de défauts REV-195→199.
 
 Intégration de fin de voie (contrôleur) : OpenAPI + types TS (incantation `api-types-drift`, **piège n°1**), `inventaire-fonctionnalites.jsonl`,
 `lint-imports`, `ruff`, `mypy --strict` si le module est dans la liste, `test_deployability` pour toute nouvelle variable d'environnement **vérifiée par valeur** (piège n°2).
@@ -153,9 +153,11 @@ Après D1/D2/D5, le décompte attendu est **≈ 95-100 lignes `implemented`** et
 
 ## 6. Clôture (même geste, jamais différé)
 
-- [ ] Une ligne par vague dans `### Livré` de `CLAUDE.md` (garde-fou de taille) ; récit complet dans l'archive d'historique.
-- [ ] `docs/revue/2026-09-04-analyse-gaps.md` : `GAP-nn` concernés fermés ; `backlog.md` : REV ouvertes/fermées.
-- [ ] Matrice FME régénérée, plus **aucune** ligne `planned_*`/`unknown`.
-- [ ] `docs/revue/inventaire-fonctionnalites.jsonl` + `feature_health_cli.py --write` (la CI refuse une surface non inventoriée).
-- [ ] ADR : un par décision D1-D5 acceptée (numérotation à partir de 0028 ; 0023/0026 restent réservés à ARC-31/35).
-- [ ] `CHANGELOG.md` (ops ajoutées, ops reclassées).
+- [x] Une ligne par vague dans `### Livré` de `CLAUDE.md` (garde-fou de taille) ; récit complet dans l'archive d'historique.
+- [x] `docs/revue/2026-09-04-analyse-gaps.md` : `GAP-nn` concernés fermés ; `backlog.md` : REV ouvertes/fermées.
+- [x] Matrice FME régénérée, plus **aucune** ligne `planned_*`/`unknown`.
+- [x] `docs/revue/inventaire-fonctionnalites.jsonl` + `feature_health_cli.py --write` (la CI refuse une surface non inventoriée).
+- [x] ADR : un par décision D1-D5 acceptée (numérotation à partir de 0028 ; 0023/0026 restent réservés à ARC-31/35).
+- [x] `CHANGELOG.md` (ops ajoutées, ops reclassées).
+
+> **Statut final (2026-10-15)** : voies A→S exécutées et fusionnées sur `dev` (non poussé). D1 différée (OTB, voie I), HDFS en attente de décision. Voir ADR 0028 et l'archive d'exécution.

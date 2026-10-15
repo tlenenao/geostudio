@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **FME matrix closure** (2026-10-15): ~85 pipeline ops (attribute/text/MGRS, Shapely geometry,
+  raster, NetCDF/GRIB/OSM/CityJSON/WMS/Sentinel-2 readers, email/Slack/SNS/Kinesis/RabbitMQ/MCP
+  messaging, cloud-file connectors, `databaseJoin`, SRID 0, 3D draping), secret kinds `oauth2_client`
+  and `mongodb_uri`; external-effect writers are never auto-retried. New dependencies `pika`, `mgrs`,
+  `pymongo`, `dnspython`. PDAL/TCPIP/JMS reclassified out of scope (ADR 0028).
 - **ARC/FME wave 4** (2026-10-14): `writer.collection` `upsert`/`update`/`delete`
   modes and a `<target>__rejected` quarantine (new run status `succeeded_with_rejects`),
   run parameters (`{{param.x}}`, whitelisted keys), incremental dlt reads, automatic
