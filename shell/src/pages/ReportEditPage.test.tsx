@@ -75,7 +75,11 @@ const item: Item = {
 // déclaratif fait lever `useBlocker` à l'exécution (cf. Tâche 27). Route
 // wildcard "*" : ce fichier ne fait jamais varier le pathname vu par
 // ReportEditPage lui-même (seul le pk prop change).
-function renderPage(pk: string | null, overrides: Partial<ItemClient> = {}) {
+function renderPage(
+  pk: string | null,
+  overrides: Partial<ItemClient> = {},
+  initialBookmarkItemId: string | undefined = "bm-1",
+) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const client: Partial<ItemClient> = {
     getReportRuns: vi.fn().mockResolvedValue([]),
@@ -89,7 +93,7 @@ function renderPage(pk: string | null, overrides: Partial<ItemClient> = {}) {
           <QueryClientProvider client={qc}>
             <ItemClientProvider client={client as ItemClient}>
               <ToastProvider>
-                <ReportEditPage pk={pk} initialBookmarkItemId="bm-1" />
+                <ReportEditPage pk={pk} initialBookmarkItemId={initialBookmarkItemId} />
               </ToastProvider>
             </ItemClientProvider>
           </QueryClientProvider>
@@ -482,4 +486,25 @@ test("REV-271 : persisted mode — un 412 affiche le conflit ; « Recharger » r
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   await waitFor(() => expect(saveReportScheduleConfig).toHaveBeenCalledTimes(2));
   expect(saveReportScheduleConfig.mock.calls[1][1].baseVersion).toBe(7);
+});
+
+test("REV-362 : sans bookmark choisi, Enregistrer est désactivé ; le choix l'active et titre le rapport", async () => {
+  const createReportScheduleItem = vi.fn().mockResolvedValue({ pk: "r-new" });
+  const listItems = vi.fn().mockResolvedValue({
+    items: [{ ...item, pk: "bm-9", resourceType: "bookmark", title: "Vue Nord" }],
+    total: 1,
+    page: 1,
+    pageSize: 100,
+  });
+  renderPage(null, { createReportScheduleItem, listItems }, "");
+  const save = await screen.findByRole("button", { name: "Enregistrer" });
+  expect(save).toBeDisabled();
+  await userEvent.selectOptions(await screen.findByLabelText("Vue ciblée"), "bm-9");
+  expect(save).toBeEnabled();
+  await userEvent.click(save);
+  await waitFor(() => expect(createReportScheduleItem).toHaveBeenCalledTimes(1));
+  expect(createReportScheduleItem.mock.calls[0][0]).toMatchObject({
+    title: "Rapport — Vue Nord",
+    report: { bookmarkItemId: "bm-9" },
+  });
 });

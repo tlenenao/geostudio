@@ -22,8 +22,9 @@ const BASE: ReportSchedulePayload = {
 function renderEditor(
   value: ReportSchedulePayload,
   onChange: (next: ReportSchedulePayload) => void,
-  bookmarkLabel: string,
+  bookmarkTitle: string,
 ) {
+  const bookmarks = [{ pk: "bm-1", title: bookmarkTitle }];
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const client: Partial<ItemClient> = {
     getPipelineNextRun: vi.fn().mockResolvedValue({ nextRun: "2026-08-07T02:00:00.000Z" }),
@@ -34,27 +35,27 @@ function renderEditor(
     </QueryClientProvider>
   );
   const view = render(
-    wrap(<ReportScheduleEditor value={value} onChange={onChange} bookmarkLabel={bookmarkLabel} />),
+    wrap(<ReportScheduleEditor value={value} onChange={onChange} bookmarks={bookmarks} />),
   );
   return {
     ...view,
     rerenderEditor: (nextValue: ReportSchedulePayload, nextOnChange = onChange) =>
       view.rerender(
         wrap(
-          <ReportScheduleEditor
-            value={nextValue}
-            onChange={nextOnChange}
-            bookmarkLabel={bookmarkLabel}
-          />,
+          <ReportScheduleEditor value={nextValue} onChange={nextOnChange} bookmarks={bookmarks} />,
         ),
       ),
   };
 }
 
 describe("ReportScheduleEditor", () => {
-  test("shows the targeted view label", () => {
-    renderEditor(BASE, vi.fn(), "Weekly view");
-    expect(screen.getByText("Weekly view")).toBeInTheDocument();
+  test("REV-362 : le sélecteur de bookmark propose les bookmarks et remonte le choix", async () => {
+    const onChange = vi.fn();
+    renderEditor({ ...BASE, bookmarkItemId: "" }, onChange, "Weekly view");
+    const select = screen.getByLabelText("Vue ciblée");
+    expect(select).toBeRequired();
+    await userEvent.selectOptions(select, "bm-1");
+    expect(onChange.mock.calls.at(-1)![0]).toMatchObject({ bookmarkItemId: "bm-1" });
   });
 
   test("edits the webhook url when the channel is a webhook", async () => {

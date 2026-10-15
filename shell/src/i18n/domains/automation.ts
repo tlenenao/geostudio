@@ -382,7 +382,10 @@ export const automation = {
   "reportRun.loadMore": "Charger plus",
 
   // ReportScheduleEditor (builder/report)
-  "reportSchedule.targetedViewLabel": "Vue ciblée :",
+  "reportSchedule.targetedViewLabel": "Vue ciblée",
+  "reportSchedule.bookmarkPlaceholder": "Choisir un bookmark…",
+  "reportEdit.bookmarkRequired": "Choisissez un bookmark pour pouvoir enregistrer.",
+  "reportEdit.titleFromBookmark": "Rapport — {title}",
   "reportSchedule.channelLabel": "Canal",
   "reportSchedule.channelWebhook": "Webhook",
   "reportSchedule.channelEmail": "E-mail",
