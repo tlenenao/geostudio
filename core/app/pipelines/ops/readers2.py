@@ -20,6 +20,7 @@ Les rasters sortent en tabulaire (une ligne par cellule valide : x, y, value|ban
 comme `reader.raster`. Ne jamais importer contracts/runtime/registries au niveau module."""
 
 import json
+import math
 import multiprocessing
 import os
 import re
@@ -275,8 +276,12 @@ def _to_geotiff(path: str, driver: str, open_path: str | None, srid: int | None,
             return ds.width, ds.height, ds.count, epsg
 
 
-def _read_raster_item(op, conn, session, user, view_name, p, real, driver, open_path) -> int:
-    """output=rasterItem : publie via app.raster.publish (mêmes gardes que les ops F1)."""
+def _read_raster_item(
+    op, conn, session, user, view_name, p, real, driver, open_path, build=None, metadata=None
+) -> int:
+    """output=rasterItem : publie via app.raster.publish (mêmes gardes que les ops F1).
+    `build` = (fonction, args) exécutée dans le fils borné avec le chemin du GeoTIFF à produire
+    en dernier argument, retourne (w, h, bandes, srid) ; défaut : copie de `real`."""
     import tempfile
 
     from fastapi import HTTPException
@@ -293,7 +298,8 @@ def _read_raster_item(op, conn, session, user, view_name, p, real, driver, open_
         raise PipelineRuntimeError(f"{op}: privilege 'catalog.manage' required")
     with tempfile.TemporaryDirectory(prefix="gs-readers2-") as tmp:
         tif = os.path.join(tmp, "src.tif")
-        w, h, n, srid = _bounded(op, _to_geotiff, real, driver, open_path, p.srid, tif)
+        fn, args = build or (_to_geotiff, (real, driver, open_path, p.srid))
+        w, h, n, srid = _bounded(op, fn, *args, tif)
         item_id, keys = None, []  # type: ignore[var-annotated]
         if not IN_PREVIEW.get():  # aperçu : métadonnées seules, rien n'est publié
             try:
@@ -308,7 +314,7 @@ def _read_raster_item(op, conn, session, user, view_name, p, real, driver, open_
             except HTTPException as exc:  # quota d'items / de stockage
                 raise PipelineRuntimeError(f"{op}: {exc.detail}") from exc
         try:
-            _materialize_item(conn, view_name, item_id, w, h, n, srid)
+            _materialize_item(conn, view_name, item_id, w, h, n, srid, metadata)
         except BaseException:
             for k in keys:
                 publish.delete_key(k)
@@ -316,12 +322,13 @@ def _read_raster_item(op, conn, session, user, view_name, p, real, driver, open_
     return 4326
 
 
-def _materialize_item(conn, view_name, item_id, w, h, n, srid) -> None:
+def _materialize_item(conn, view_name, item_id, w, h, n, srid, metadata=None) -> None:
+    meta = "" if metadata is None else ", CAST(? AS VARCHAR) AS metadata"
     conn.execute(
         f"CREATE TEMP TABLE {_qi(view_name)} AS SELECT CAST(? AS VARCHAR) AS item_id, "
         "CAST(? AS INTEGER) AS width, CAST(? AS INTEGER) AS height, "
-        "CAST(? AS INTEGER) AS bands, CAST(? AS INTEGER) AS srid",
-        [item_id, w, h, n, srid],
+        f"CAST(? AS INTEGER) AS bands, CAST(? AS INTEGER) AS srid{meta}",
+        [item_id, w, h, n, srid, *([] if metadata is None else [json.dumps(metadata)])],
     )
 
 
@@ -376,27 +383,80 @@ class ReaderGribParams(_FileRasterParams):
     (x, y, value). Fichier local, mêmes conditions que reader.file."""
 
 
-class ReaderSentinel2Params(BaseModel):
-    """Lit une bande d'un produit Sentinel-2 SAFE déjà présent sur disque (dossier .SAFE) :
-    bande JP2 (B02, B03, B04, B08, …) en une ligne par cellule valide (x, y, value).
-    Aucun téléchargement catalogue ; résolution optionnelle pour les produits L2A."""
+_S2_BANDS = ("B01", "B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B09", "B10", "B11",
+             "B12")  # fmt: skip
+_S2_BAND = Literal[
+    "B01", "B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B09", "B10", "B11", "B12"
+]
+_L8_QA_BITS = {"fill": 0, "dilatedCloud": 1, "cirrus": 2, "cloud": 3, "cloudShadow": 4,
+               "snow": 5, "water": 7}  # fmt: skip
+
+
+class _ProductParams(BaseModel):
+    maxCells: int = Field(1_000_000, ge=1, le=MAX_CELLS)
+    srid: int | None = Field(None, ge=1)
+    reflectance: bool = False
+    includeQuality: bool = False
+    includeMetadata: bool = False
+    output: Literal["table", "rasterItem"] = "table"
+    title: str | None = Field(None, min_length=1, max_length=200)
+
+
+class ReaderSentinel2Params(_ProductParams):
+    """Lit un produit Sentinel-2 SAFE (L1C ou L2A) déjà présent sur disque (dossier .SAFE) :
+    une bande (`band`, colonne `value`) ou plusieurs (`bands`, une colonne par bande, grille
+    commune de la première bande), en une ligne par cellule valide ou en raster hébergé
+    (`output: rasterItem`, toutes les bandes demandées). Options : réflectance (DN convertis
+    avec la quantification et les décalages du MTD), masque de scène L2A (`maskScl` : classes
+    SCL écartées, ex. 3 ombre, 8-10 nuages/cirrus), bande `scl` et métadonnées (satellite, date,
+    couverture nuageuse) en sortie. Aucun téléchargement catalogue.
+
+    Les bandes de résolutions différentes sont rééchantillonnées (plus proche voisin) sur la
+    grille de la première ; `resolution` choisit le dossier R10m/R20m/R60m des L2A. DN 0 =
+    pas de donnée (convention ESA). Pas de lecture des masques L1C (MSK_CLASSI) : seul le SCL
+    L2A sert de masque qualité."""
 
     path: str = Field(..., min_length=1)
     band: str = Field("B04", pattern=r"^(B\d{2}A?|TCI|AOT|WVP|SCL)$")
+    bands: list[_S2_BAND] | None = Field(None, min_length=1, max_length=13)
     resolution: Literal[10, 20, 60] | None = None
-    maxCells: int = Field(1_000_000, ge=1, le=MAX_CELLS)
-    srid: int | None = Field(None, ge=1)
+    maskScl: list[int] = Field([], max_length=12)
+
+    @model_validator(mode="after")
+    def _check(self):
+        if any(not 0 <= c <= 11 for c in self.maskScl):
+            raise ValueError("maskScl : classes SCL 0 à 11")
+        if self.bands and len(set(self.bands)) != len(self.bands):
+            raise ValueError("bands : doublons")
+        return self
 
 
-class ReaderLandsat8Params(BaseModel):
-    """Lit une bande (1 à 11) d'un produit Landsat-8 déjà présent sur disque (dossier de
-    fichiers *_B<n>.TIF) en une ligne par cellule valide (x, y, value, valeurs brutes DN).
-    Aucun téléchargement catalogue."""
+class ReaderLandsat8Params(_ProductParams):
+    """Lit un produit Landsat-8/9 déjà présent sur disque (dossier de fichiers *_B<n>.TIF, MTL,
+    QA_PIXEL) : une bande (`band`, colonne `value`) ou plusieurs (`bands`, colonnes B1…B11), en
+    une ligne par cellule valide ou en raster hébergé (`output: rasterItem`). Options :
+    réflectance (coefficients du MTL ; niveau 1 : réflectance au sommet de l'atmosphère corrigée
+    de l'élévation solaire, niveau 2 SR_B* : réflectance de surface), masque qualité QA_PIXEL
+    (`maskQa` : fill, dilatedCloud, cirrus, cloud, cloudShadow, snow, water), bande `qa_pixel`
+    et métadonnées MTL en sortie. Aucun téléchargement catalogue.
+
+    DN 0 = remplissage. Collection 1 (BQA) non prise en charge pour le masque ; bandes
+    thermiques (10, 11) sans réflectance."""
 
     path: str = Field(..., min_length=1)
     band: int = Field(4, ge=1, le=11)
-    maxCells: int = Field(1_000_000, ge=1, le=MAX_CELLS)
-    srid: int | None = Field(None, ge=1)
+    bands: list[int] | None = Field(None, min_length=1, max_length=11)
+    maskQa: list[
+        Literal["fill", "dilatedCloud", "cirrus", "cloud", "cloudShadow", "snow", "water"]
+    ] = Field([], max_length=7)
+
+    @model_validator(mode="after")
+    def _check(self):
+        if self.bands and (
+            len(set(self.bands)) != len(self.bands) or any(not 1 <= b <= 11 for b in self.bands)
+        ):
+            raise ValueError("bands : entiers 1 à 11 sans doublon")
+        return self
 
 
 def _finish(conn, view_name: str, result: tuple[pd.DataFrame, int]) -> int:
@@ -436,26 +496,288 @@ read_jp2 = _simple("reader.jpeg2000", "JP2OpenJPEG", _magic_jp2)
 read_grib = _simple("reader.grib", "GRIB", _magic_grib)
 
 
+MAX_PRODUCT_LAYER_CELLS = 8_000_000  # cellules x couches (bandes + qualité) en sortie table
+MAX_META_BYTES = 5 * 1024 * 1024
+
+
+def _legacy(p: _ProductParams) -> bool:
+    """Ancien comportement (une bande brute, colonne `value`) : aucune option produit."""
+    return not (
+        p.bands or p.reflectance or p.includeQuality or p.includeMetadata
+        or p.output == "rasterItem" or getattr(p, "maskScl", None) or getattr(p, "maskQa", None)
+    )  # fmt: skip
+
+
+def _root_file(op: str, root: str, pattern: re.Pattern) -> str | None:
+    """Fichier de métadonnées à la racine du produit (pas de lien, taille bornée), ou None."""
+    real_root = _check_path(op, root)
+    for name in sorted(os.listdir(real_root)) if os.path.isdir(real_root) else []:
+        full = os.path.join(real_root, name)
+        if pattern.search(name) and os.path.isfile(full) and not os.path.islink(full):
+            if os.path.getsize(full) > MAX_META_BYTES:
+                raise PipelineRuntimeError(f"{op}: fichier de métadonnées trop volumineux")
+            return full
+    return None
+
+
+def _local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def _s2_metadata(op: str, root: str) -> dict:
+    """MTD_MSIL1C.xml / MTD_MSIL2A.xml : métadonnées utiles + quantification/décalages."""
+    from defusedxml import ElementTree
+
+    path = _root_file(op, root, re.compile(r"^MTD_MSIL(1C|2A)\.xml$"))
+    if path is None:
+        return {}
+    try:
+        tree = ElementTree.parse(path)
+    except Exception as exc:  # noqa: BLE001 — XML hostile ou mal formé (defusedxml)
+        raise PipelineRuntimeError(f"{op}: MTD illisible ({exc.__class__.__name__})") from exc
+    meta: dict = {"offsets": {}}
+    keys = {"PRODUCT_TYPE": "product_type", "SPACECRAFT_NAME": "spacecraft",
+            "PRODUCT_START_TIME": "sensing_time", "PROCESSING_BASELINE": "processing_baseline",
+            "Cloud_Coverage_Assessment": "cloud_cover"}  # fmt: skip
+    for el in tree.iter():
+        name, text = _local_name(el.tag), (el.text or "").strip()
+        if name in keys and text:
+            meta[keys[name]] = float(text) if name == "Cloud_Coverage_Assessment" else text
+        elif name in ("QUANTIFICATION_VALUE", "BOA_QUANTIFICATION_VALUE") and text:
+            meta["quantification"] = float(text)
+        elif name in ("RADIO_ADD_OFFSET", "BOA_ADD_OFFSET") and text:
+            meta["offsets"][int(el.get("band_id", "-1"))] = float(text)
+    return meta
+
+
+def _s2_scale(op: str, meta: dict, band: str) -> tuple[float, float]:
+    q = meta.get("quantification")
+    if not q:
+        raise PipelineRuntimeError(f"{op}: réflectance demandée mais MTD sans quantification")
+    off = meta["offsets"].get(_S2_BANDS.index(band), 0.0)
+    return 1.0 / q, off / q  # (DN + off) / q
+
+
+def _mtl(op: str, root: str) -> dict[str, dict[str, str]]:
+    """*_MTL.txt (ODL) : {groupe: {clé: valeur}}."""
+    path = _root_file(op, root, re.compile(r"_MTL\.txt$", re.IGNORECASE))
+    if path is None:
+        return {}
+    groups: dict[str, dict[str, str]] = {}
+    stack: list[str] = []
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            key, sep, value = line.partition("=")
+            if not sep:
+                continue
+            key, value = key.strip(), value.strip().strip('"')
+            if key == "GROUP":
+                stack.append(value)
+            elif key == "END_GROUP":
+                stack = stack[:-1]
+            else:
+                groups.setdefault(stack[-1] if stack else "", {})[key] = value
+    return groups
+
+
+def _mtl_value(groups: dict, key: str, prefer: tuple[str, ...] = ()) -> str | None:
+    for g in prefer:
+        if key in groups.get(g, {}):
+            return groups[g][key]
+    for values in groups.values():
+        if key in values:
+            return values[key]
+    return None
+
+
+def _l8_metadata(groups: dict) -> dict:
+    out = {}
+    for key, name in (("SPACECRAFT_ID", "spacecraft"), ("DATE_ACQUIRED", "date_acquired"),
+                      ("SCENE_CENTER_TIME", "scene_center_time"), ("CLOUD_COVER", "cloud_cover"),
+                      ("PROCESSING_LEVEL", "processing_level"),
+                      ("COLLECTION_NUMBER", "collection")):  # fmt: skip
+        if (v := _mtl_value(groups, key)) is not None:
+            out[name] = float(v) if key == "CLOUD_COVER" else v
+    return out
+
+
+def _l8_scale(op: str, groups: dict, band: int, surface: bool) -> tuple[float, float]:
+    if band in (10, 11):
+        raise PipelineRuntimeError(f"{op}: pas de réflectance pour la bande thermique {band}")
+    pref = ("LEVEL2_SURFACE_REFLECTANCE_PARAMETERS",) if surface else (
+        "LEVEL1_RADIOMETRIC_RESCALING", "RADIOMETRIC_RESCALING")  # fmt: skip
+    m = _mtl_value(groups, f"REFLECTANCE_MULT_BAND_{band}", pref)
+    a = _mtl_value(groups, f"REFLECTANCE_ADD_BAND_{band}", pref)
+    if m is None or a is None:
+        raise PipelineRuntimeError(f"{op}: réflectance demandée mais MTL sans coefficients")
+    mult, add = float(m), float(a)
+    if not surface:  # TOA : division par sin(élévation solaire)
+        sun = _mtl_value(groups, "SUN_ELEVATION")
+        if sun is None or not 0 < float(sun) <= 90:
+            raise PipelineRuntimeError(f"{op}: MTL sans élévation solaire valide")
+        k = math.sin(math.radians(float(sun)))
+        mult, add = mult / k, add / k
+    return mult, add
+
+
+def _layer_frame(layers, quality, mask_spec, max_cells):
+    """Corps du fils borné. `layers` = [(nom, chemin, pilote, (mult, add)|None)] ; la grille est
+    celle de la première couche (décimée sous max_cells). `quality` = (nom, chemin, pilote,
+    inclure) | None ; `mask_spec` = ("scl", [classes]) | ("bits", masque) | None."""
+    with rasterio.Env(GDAL_CACHEMAX=128, **LOCAL_ONLY_GDAL):
+        name0, path0, drv0, _ = layers[0]
+        with rasterio.open(path0, driver=drv0) as ref:
+            if ref.width * ref.height > MAX_SOURCE_PIXELS:
+                raise ValueError(f"source raster too large ({ref.width}x{ref.height} px)")
+            scale = max(1.0, (ref.width * ref.height / max_cells) ** 0.5)
+            h, w = max(1, int(ref.height / scale)), max(1, int(ref.width / scale))
+            transform = ref.transform * ref.transform.scale(ref.width / w, ref.height / h)
+            bounds, tol, crs = ref.bounds, max(abs(ref.res[0]), abs(ref.res[1])), ref.crs
+
+        def read(path, drv):
+            with rasterio.open(path, driver=drv) as ds:
+                if ds.width * ds.height > MAX_SOURCE_PIXELS:
+                    raise ValueError(f"source raster too large ({ds.width}x{ds.height} px)")
+                if any(abs(a - b) > tol for a, b in zip(ds.bounds, bounds, strict=True)):
+                    raise ValueError(f"emprise différente de la première bande : {path}")
+                arr = ds.read(1, out_shape=(h, w), masked=True, resampling=Resampling.nearest)
+                return np.ma.getdata(arr), np.ma.getmaskarray(arr)
+
+        valid = np.ones((h, w), dtype=bool)
+        cols: dict[str, np.ndarray] = {}
+        for name, path, drv, coef in layers:
+            data, mask = read(path, drv)
+            valid &= ~mask & (data != 0)  # DN 0 = pas de donnée / remplissage
+            cols[name] = data if coef is None else data.astype("float64") * coef[0] + coef[1]
+        if quality is not None:
+            qname, qpath, qdrv, include = quality
+            q, _ = read(qpath, qdrv)
+            if mask_spec is not None:
+                kind, val = mask_spec
+                valid &= ~(np.isin(q, val) if kind == "scl" else (q.astype("int64") & val) != 0)
+            if include:
+                cols[qname] = q
+        return valid, cols, transform, crs, (h, w)
+
+
+def _product_table(layers, quality, mask_spec, max_cells, srid):
+    valid, cols, transform, crs, _ = _layer_frame(layers, quality, mask_spec, max_cells)
+    rows, cs = np.nonzero(valid)
+    xs, ys = rasterio.transform.xy(transform, rows, cs)
+    frame = pd.DataFrame({"x": xs, "y": ys, **{n: a[rows, cs] for n, a in cols.items()}})
+    epsg = (crs.to_epsg() if crs else None) or srid
+    if epsg is None:
+        raise ValueError("le raster n'a pas de CRS EPSG ; renseignez `srid`")
+    return frame, epsg
+
+
+def _product_geotiff(layers, quality, mask_spec, srid, out):
+    """GeoTIFF pleine résolution de la première bande (<= MAX_ITEM_PIXELS) ; cellules masquées
+    à nodata (0 en DN, NaN en réflectance)."""
+    with rasterio.open(layers[0][1], driver=layers[0][2]) as ref:
+        n = ref.width * ref.height
+    if n > MAX_ITEM_PIXELS:
+        raise ValueError(
+            f"raster trop grand pour output=rasterItem ({n} > {MAX_ITEM_PIXELS} pixels) ; "
+            "utilisez output=table (décimé)"
+        )
+    valid, cols, transform, crs, (h, w) = _layer_frame(layers, quality, mask_spec, n)
+    if len(cols) > MAX_ITEM_BANDS:
+        raise ValueError(f"plus de {MAX_ITEM_BANDS} bandes")
+    epsg = (crs.to_epsg() if crs else None) or srid
+    if epsg is None:
+        raise ValueError("le raster n'a pas de CRS EPSG ; renseignez `srid`")
+    floating = any(a.dtype.kind == "f" for a in cols.values())
+    dtype, nodata = ("float32", float("nan")) if floating else ("uint16", 0)
+    profile = {"driver": "GTiff", "width": w, "height": h, "count": len(cols), "dtype": dtype,
+               "transform": transform, "nodata": nodata, "crs": f"EPSG:{epsg}"}  # fmt: skip
+    with rasterio.open(out, "w", **profile) as dst:
+        for i, arr in enumerate(cols.values(), 1):
+            dst.write(np.where(valid, arr, nodata).astype(dtype), i)
+            dst.set_band_description(i, list(cols)[i - 1])
+    return w, h, len(cols), epsg
+
+
+def _read_product(op, conn, session, user, view_name, p, layers, quality, mask_spec, meta) -> int:
+    if p.output == "rasterItem":
+        build = (_product_geotiff, (layers, quality, mask_spec, p.srid))
+        return _read_raster_item(op, conn, session, user, view_name, p, layers[0][1], None, None,
+                                 build=build, metadata=meta)  # fmt: skip
+    nb = len(layers) + (1 if quality is not None and quality[3] else 0)
+    cells = min(p.maxCells, MAX_PRODUCT_LAYER_CELLS // nb)
+    frame, srid = _bounded(op, _product_table, layers, quality, mask_spec, cells, p.srid)
+    if p.includeMetadata:
+        frame["metadata"] = json.dumps(meta)
+    _materialize(conn, frame, view_name, "xy")
+    return srid
+
+
 def read_sentinel2(conn, *, session, tenant_id, node_id, params, view_name, user, base_uri) -> int:
+    op = "reader.sentinel2"
     p = ReaderSentinel2Params.model_validate(params)
-    # La résolution entre dans le motif AVANT le tri (L2A : R10m/R20m/R60m, suffixe _<res>m).
-    suffix = rf"_{p.resolution}m" if p.resolution is not None else r"(_\d+m)?"
-    pat = re.compile(rf"IMG_DATA.*_{p.band}{suffix}\.jp2$", re.IGNORECASE)
-    real = _find_in_dir("reader.sentinel2", p.path, pat, _magic_jp2)
-    res = _bounded(
-        "reader.sentinel2", _read_raster_file, real, "JP2OpenJPEG", None, [1], p.maxCells, p.srid
-    )
-    return _finish(conn, view_name, res)
+
+    def find(band: str) -> str:
+        # La résolution entre dans le motif AVANT le tri (L2A : R10m/R20m/R60m, suffixe _<res>m).
+        suffix = rf"_{p.resolution}m" if p.resolution is not None else r"(_\d+m)?"
+        pat = re.compile(rf"IMG_DATA.*_{band}{suffix}\.jp2$", re.IGNORECASE)
+        return _find_in_dir(op, p.path, pat, _magic_jp2)
+
+    if _legacy(p):
+        real = find(p.band)
+        res = _bounded(op, _read_raster_file, real, "JP2OpenJPEG", None, [1], p.maxCells, p.srid)
+        return _finish(conn, view_name, res)
+    names = list(p.bands) if p.bands else [p.band]
+    if p.reflectance and any(n not in _S2_BANDS for n in names):
+        raise PipelineRuntimeError(f"{op}: réflectance réservée aux bandes B01…B12/B8A")
+    need_meta = p.reflectance or p.includeMetadata or p.output == "rasterItem"
+    meta = _s2_metadata(op, p.path) if need_meta else {"offsets": {}}
+    layers = [
+        (n if p.bands else "value", find(n), "JP2OpenJPEG",
+         _s2_scale(op, meta, n) if p.reflectance else None)
+        for n in names
+    ]  # fmt: skip
+    quality = None
+    if p.maskScl or p.includeQuality:
+        scl = _find_in_dir(op, p.path, re.compile(r"IMG_DATA.*_SCL(_[26]0m)?\.jp2$", re.I),
+                           _magic_jp2)  # fmt: skip
+        quality = ("scl", scl, "JP2OpenJPEG", p.includeQuality)
+    mask = ("scl", list(p.maskScl)) if p.maskScl else None
+    pub = {k: v for k, v in meta.items() if k not in ("offsets", "quantification")}
+    return _read_product(op, conn, session, user, view_name, p, layers, quality, mask, pub)
 
 
 def read_landsat8(conn, *, session, tenant_id, node_id, params, view_name, user, base_uri) -> int:
+    op = "reader.landsat8"
     p = ReaderLandsat8Params.model_validate(params)
-    pat = re.compile(rf"_B{p.band}\.tif$", re.IGNORECASE)
-    real = _find_in_dir("reader.landsat8", p.path, pat, _magic_tiff)
-    res = _bounded(
-        "reader.landsat8", _read_raster_file, real, "GTiff", None, [1], p.maxCells, p.srid
+
+    def find(band: int) -> str:
+        return _find_in_dir(op, p.path, re.compile(rf"_B{band}\.tif$", re.I), _magic_tiff)
+
+    if _legacy(p):
+        real = find(p.band)
+        res = _bounded(op, _read_raster_file, real, "GTiff", None, [1], p.maxCells, p.srid)
+        return _finish(conn, view_name, res)
+    need_meta = p.reflectance or p.includeMetadata or p.output == "rasterItem"
+    groups = _mtl(op, p.path) if need_meta else {}
+    names = list(p.bands) if p.bands else [p.band]
+    layers = []
+    for b in names:
+        path = find(b)
+        coef = None
+        if p.reflectance:
+            if not groups:
+                raise PipelineRuntimeError(f"{op}: réflectance demandée mais MTL absent")
+            coef = _l8_scale(op, groups, b, surface="_SR_B" in os.path.basename(path).upper())
+        layers.append((f"B{b}" if p.bands else "value", path, "GTiff", coef))
+    quality = None
+    if p.maskQa or p.includeQuality:
+        qa = _find_in_dir(op, p.path, re.compile(r"_QA_PIXEL\.tif$", re.I), _magic_tiff)
+        quality = ("qa_pixel", qa, "GTiff", p.includeQuality)
+    bits = sum(1 << _L8_QA_BITS[m] for m in set(p.maskQa))
+    mask = ("bits", bits) if bits else None
+    return _read_product(
+        op, conn, session, user, view_name, p, layers, quality, mask, _l8_metadata(groups)
     )
-    return _finish(conn, view_name, res)
 
 
 # --------------------------------------------------------------------------- OSM
@@ -505,12 +827,15 @@ MAX_CITYJSON_BYTES = 50 * 1024 * 1024
 
 class ReaderCityjsonParams(BaseModel):
     """Lit un fichier CityJSON (modèle de ville 3D) en une ligne par objet (bâtiment, pont…) :
-    id, type, lod, attributs (JSON), altitudes min/max et empreinte 2D (union des faces projetées
-    à plat ; la 3D n'est pas conservée). `lod` filtre le niveau de détail (sinon le plus fin).
-    Fichier local, mêmes conditions que reader.file."""
+    id, type, lod, attributs (JSON), altitudes min/max et géométrie : empreinte 2D (union des
+    faces projetées à plat, `geometry: footprint`) ou modèle 3D (`geometry: solid3d` : toutes
+    les faces en MULTIPOLYGON Z, coordonnées réelles X/Y/Z ; l'écrire dans une collection typée
+    2D échoue à l'insertion). `lod` filtre le niveau de détail
+    (sinon le plus fin). Fichier local, mêmes conditions que reader.file."""
 
     path: str = Field(..., min_length=1)
     lod: str | None = Field(None, max_length=8)
+    geometry: Literal["footprint", "solid3d"] = "footprint"
     maxObjects: int = Field(10_000, ge=1, le=100_000)
     srid: int | None = Field(None, ge=1)
 
@@ -529,7 +854,7 @@ def _surfaces(geom: dict) -> list:
 _CITY_COLS = ["id", "type", "lod", "attributes", "min_z", "max_z", "error", "geometry"]
 
 
-def _city_object(obj: dict, verts: np.ndarray, lod: str | None) -> dict:
+def _city_object(obj: dict, verts: np.ndarray, lod: str | None, solid3d: bool = False) -> dict:
     """Une ligne par objet ; toute entrée dégénérée devient une erreur DE LIGNE (`error`)."""
     geoms = obj.get("geometry") or []
     if lod is not None:
@@ -550,10 +875,18 @@ def _city_object(obj: dict, verts: np.ndarray, lod: str | None) -> dict:
                         raise ValueError("indice de sommet hors bornes")
                 rings = [verts[np.asarray(r, dtype=int)] for r in surf]
                 zs.append(rings[0][:, 2])
+                if solid3d:  # faces 3D telles quelles (verticales comprises)
+                    polys.append(shapely.geometry.Polygon(rings[0], rings[1:]))
+                    continue
                 poly = shapely.geometry.Polygon(rings[0][:, :2], [r[:, :2] for r in rings[1:]])
                 if poly.area > 0:  # faces verticales : projection dégénérée, ignorée
                     polys.append(poly if poly.is_valid else poly.buffer(0))
-        footprint = shapely.union_all(polys) if polys else None
+        if not polys:
+            footprint = None
+        elif solid3d:
+            footprint = shapely.geometry.MultiPolygon(polys)
+        else:
+            footprint = shapely.union_all(polys)
         error = None
     except (ValueError, TypeError, shapely.errors.GEOSException) as exc:
         footprint, zs, error = None, [], f"géométrie invalide : {exc}"
@@ -569,7 +902,9 @@ def _city_object(obj: dict, verts: np.ndarray, lod: str | None) -> dict:
     }
 
 
-def _cityjson_frame(real: str, lod: str | None, max_objects: int, srid: int | None):
+def _cityjson_frame(
+    real: str, lod: str | None, max_objects: int, srid: int | None, solid3d: bool = False
+):
     """Corps exécuté dans le process fils borné (json.load d'un fichier jusqu'à 50 Mo = jusqu'à
     ~1 Go d'objets Python : hors du worker)."""
     try:
@@ -594,7 +929,7 @@ def _cityjson_frame(real: str, lod: str | None, max_objects: int, srid: int | No
     rows = []
     for oid, obj in list(objects.items())[:max_objects]:
         try:
-            rows.append({"id": oid, **_city_object(obj, verts, lod)})
+            rows.append({"id": oid, **_city_object(obj, verts, lod, solid3d)})
         except (AttributeError, TypeError, ValueError) as exc:  # objet mal formé
             rows.append({"id": oid, "error": f"objet invalide : {exc}"})
     return pd.DataFrame(rows, columns=_CITY_COLS), srid
@@ -606,7 +941,8 @@ def read_cityjson(conn, *, session, tenant_id, node_id, params, view_name, user,
     real = _local_file(op, p.path, lambda h: b"CityJSON" in h or b"cityjson" in h.lower())
     if os.path.getsize(real) > MAX_CITYJSON_BYTES:
         raise PipelineRuntimeError(f"{op}: file too large (max {MAX_CITYJSON_BYTES} bytes)")
-    frame, srid = _bounded(op, _cityjson_frame, real, p.lod, p.maxObjects, p.srid)
+    solid3d = p.geometry == "solid3d"
+    frame, srid = _bounded(op, _cityjson_frame, real, p.lod, p.maxObjects, p.srid, solid3d)
     _materialize(conn, frame, view_name, "wkb")
     return srid
 
