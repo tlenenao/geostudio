@@ -1253,7 +1253,19 @@ export type SecretPayload =
       bucketUrl: string;
     }
   | { kind: "azure_blob_credentials"; accountName: string; accountKey: string; bucketUrl: string }
-  | { kind: "gcs_credentials"; serviceAccountInfo: Record<string, unknown>; bucketUrl: string };
+  | { kind: "gcs_credentials"; serviceAccountInfo: Record<string, unknown>; bucketUrl: string }
+  // Voie R FME : jeton OAuth2 obtenu/renouvelé à l'exécution (client_credentials ou refresh_token).
+  | {
+      kind: "oauth2_client";
+      grantType: "client_credentials" | "refresh_token";
+      tokenUrl: string;
+      clientId: string;
+      clientSecret: string;
+      refreshToken?: string;
+      scope?: string;
+      baseUrl?: string;
+    }
+  | { kind: "mongodb_uri"; uri: string };
 
 export type RenderMode = "edit" | "preview" | "runtime";
 
