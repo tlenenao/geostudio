@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.apikeys.service import revoke_all_for_user
 from app.audit.writer import write_audit
 from app.auth.dependency import (
     get_current_user,
@@ -223,6 +224,10 @@ def patch_user(
                 raise HTTPException(
                     status_code=409, detail="cannot leave the tenant without an admin"
                 )
+    # REV-366 : les clés d'API suivent le rôle courant de leur créateur ; si le nouveau rôle
+    # perd des privilèges, elles sont révoquées (le créateur en recrée sous son nouveau rôle).
+    if current_role is None or not set(current_role.privileges) <= set(new_role.privileges):
+        revoke_all_for_user(session, tenant_id=user.tenant_id, user_id=user_id)
     set_user_role(
         session,
         tenant_id=user.tenant_id,

@@ -70,24 +70,26 @@ def create_api_key(
     return key, token
 
 
-def list_api_keys(session: Session, *, user: User) -> list[ApiKey]:
+def list_api_keys(session: Session, *, user: User, created_by: str | None = None) -> list[ApiKey]:
+    """Clés de `user` ; `created_by` (appel admin, REV-366) vise les clés d'un autre compte
+    du même tenant — l'autorisation (`admin.users.manage`) est celle de la route."""
     return list(
         session.scalars(
             select(ApiKey)
-            .where(ApiKey.tenant_id == user.tenant_id, ApiKey.created_by == user.id)
+            .where(ApiKey.tenant_id == user.tenant_id, ApiKey.created_by == (created_by or user.id))
             .order_by(ApiKey.created_at.desc())
         )
     )
 
 
-def revoke_api_key(session: Session, *, user: User, key_id: str) -> ApiKey | None:
-    key = session.scalars(
-        select(ApiKey).where(
-            ApiKey.id == key_id,
-            ApiKey.tenant_id == user.tenant_id,
-            ApiKey.created_by == user.id,
-        )
-    ).first()
+def revoke_api_key(
+    session: Session, *, user: User, key_id: str, any_owner: bool = False
+) -> ApiKey | None:
+    """`any_owner=True` : révocation admin (REV-366) d'une clé d'un autre compte du tenant."""
+    query = select(ApiKey).where(ApiKey.id == key_id, ApiKey.tenant_id == user.tenant_id)
+    if not any_owner:
+        query = query.where(ApiKey.created_by == user.id)
+    key = session.scalars(query).first()
     if key is None:
         return None
     if key.revoked_at is None:
@@ -101,7 +103,7 @@ def revoke_api_key(session: Session, *, user: User, key_id: str) -> ApiKey | Non
             action="api_key.revoke",
             object_type="api_key",
             object_id=key.id,
-            payload={"prefix": key.key_prefix},
+            payload={"prefix": key.key_prefix, "createdBy": key.created_by},
         )
     return key
 

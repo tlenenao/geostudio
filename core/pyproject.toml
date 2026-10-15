@@ -490,6 +490,8 @@ ignore_imports = [
     # `hasAnyEditorRole` par `role`/`privileges` : `app.auth.routes`
     # n'importe plus rien d'`app.sharing`.
     "app.apikeys.routes -> app.auth.dependency",
+    "app.apikeys.routes -> app.roles.guards",  # REV-366 : routes admin sous admin.users.manage
+    "app.apikeys.routes -> app.roles.privileges",
     # ARC-24 (ADR 0022) : la synchro des groupes par claims s'exécute au login,
     # donc depuis app.auth.dependency (une seule arête, vers claim_sync).
     "app.auth.dependency -> app.sharing.claim_sync",
