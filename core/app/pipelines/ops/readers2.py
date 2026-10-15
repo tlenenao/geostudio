@@ -505,12 +505,14 @@ MAX_CITYJSON_BYTES = 50 * 1024 * 1024
 
 class ReaderCityjsonParams(BaseModel):
     """Lit un fichier CityJSON (modèle de ville 3D) en une ligne par objet (bâtiment, pont…) :
-    id, type, lod, attributs (JSON), altitudes min/max et empreinte 2D (union des faces projetées
-    à plat ; la 3D n'est pas conservée). `lod` filtre le niveau de détail (sinon le plus fin).
-    Fichier local, mêmes conditions que reader.file."""
+    id, type, lod, attributs (JSON), altitudes min/max et géométrie : empreinte 2D (union des
+    faces projetées à plat, `geometry: footprint`) ou modèle 3D (`geometry: solid3d` : toutes
+    les faces en MULTIPOLYGON Z, coordonnées réelles X/Y/Z). `lod` filtre le niveau de détail
+    (sinon le plus fin). Fichier local, mêmes conditions que reader.file."""
 
     path: str = Field(..., min_length=1)
     lod: str | None = Field(None, max_length=8)
+    geometry: Literal["footprint", "solid3d"] = "footprint"
     maxObjects: int = Field(10_000, ge=1, le=100_000)
     srid: int | None = Field(None, ge=1)
 
@@ -529,7 +531,7 @@ def _surfaces(geom: dict) -> list:
 _CITY_COLS = ["id", "type", "lod", "attributes", "min_z", "max_z", "error", "geometry"]
 
 
-def _city_object(obj: dict, verts: np.ndarray, lod: str | None) -> dict:
+def _city_object(obj: dict, verts: np.ndarray, lod: str | None, solid3d: bool = False) -> dict:
     """Une ligne par objet ; toute entrée dégénérée devient une erreur DE LIGNE (`error`)."""
     geoms = obj.get("geometry") or []
     if lod is not None:
@@ -550,10 +552,18 @@ def _city_object(obj: dict, verts: np.ndarray, lod: str | None) -> dict:
                         raise ValueError("indice de sommet hors bornes")
                 rings = [verts[np.asarray(r, dtype=int)] for r in surf]
                 zs.append(rings[0][:, 2])
+                if solid3d:  # faces 3D telles quelles (verticales comprises)
+                    polys.append(shapely.geometry.Polygon(rings[0], rings[1:]))
+                    continue
                 poly = shapely.geometry.Polygon(rings[0][:, :2], [r[:, :2] for r in rings[1:]])
                 if poly.area > 0:  # faces verticales : projection dégénérée, ignorée
                     polys.append(poly if poly.is_valid else poly.buffer(0))
-        footprint = shapely.union_all(polys) if polys else None
+        if not polys:
+            footprint = None
+        elif solid3d:
+            footprint = shapely.geometry.MultiPolygon(polys)
+        else:
+            footprint = shapely.union_all(polys)
         error = None
     except (ValueError, TypeError, shapely.errors.GEOSException) as exc:
         footprint, zs, error = None, [], f"géométrie invalide : {exc}"
@@ -569,7 +579,9 @@ def _city_object(obj: dict, verts: np.ndarray, lod: str | None) -> dict:
     }
 
 
-def _cityjson_frame(real: str, lod: str | None, max_objects: int, srid: int | None):
+def _cityjson_frame(
+    real: str, lod: str | None, max_objects: int, srid: int | None, solid3d: bool = False
+):
     """Corps exécuté dans le process fils borné (json.load d'un fichier jusqu'à 50 Mo = jusqu'à
     ~1 Go d'objets Python : hors du worker)."""
     try:
@@ -594,7 +606,7 @@ def _cityjson_frame(real: str, lod: str | None, max_objects: int, srid: int | No
     rows = []
     for oid, obj in list(objects.items())[:max_objects]:
         try:
-            rows.append({"id": oid, **_city_object(obj, verts, lod)})
+            rows.append({"id": oid, **_city_object(obj, verts, lod, solid3d)})
         except (AttributeError, TypeError, ValueError) as exc:  # objet mal formé
             rows.append({"id": oid, "error": f"objet invalide : {exc}"})
     return pd.DataFrame(rows, columns=_CITY_COLS), srid
@@ -606,7 +618,8 @@ def read_cityjson(conn, *, session, tenant_id, node_id, params, view_name, user,
     real = _local_file(op, p.path, lambda h: b"CityJSON" in h or b"cityjson" in h.lower())
     if os.path.getsize(real) > MAX_CITYJSON_BYTES:
         raise PipelineRuntimeError(f"{op}: file too large (max {MAX_CITYJSON_BYTES} bytes)")
-    frame, srid = _bounded(op, _cityjson_frame, real, p.lod, p.maxObjects, p.srid)
+    solid3d = p.geometry == "solid3d"
+    frame, srid = _bounded(op, _cityjson_frame, real, p.lod, p.maxObjects, p.srid, solid3d)
     _materialize(conn, frame, view_name, "wkb")
     return srid
 

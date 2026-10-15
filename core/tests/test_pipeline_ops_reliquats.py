@@ -470,3 +470,38 @@ def test_drape_geometry_reprojects_and_caps(renv, conn, monkeypatch):
     )
     with pytest.raises(PipelineRuntimeError, match="already has"):
         rrun(renv, "transform.surfaceDrape", {"mode": "geometry", "itemId": a}, conn=conn)
+
+
+# ------------------------------------------------------------------ CityJSON 3D
+
+
+def _read(fn, conn, **params):
+    return fn(
+        conn, session=None, tenant_id="t", node_id="n", view_name="v", user=None, base_uri="",
+        params=params,
+    )  # fmt: skip
+
+
+def test_cityjson_solid3d_keeps_z_lod_attributes(tmp_path, conn):
+    from app.pipelines.ops import readers2 as r2
+    from tests.test_pipeline_ops_readers2 import _city_doc, _cityjson
+
+    p = _cityjson(tmp_path / "c.city.json")
+    assert _read(r2.read_cityjson, conn, path=p, geometry="solid3d") == 2154
+    row = conn.execute(
+        "SELECT id, lod, attributes, ST_GeometryType(geometry), ST_HasZ(geometry), "
+        "ST_NumGeometries(geometry), ST_ZMin(geometry), ST_ZMax(geometry), "
+        "ST_XMin(geometry), ST_YMax(geometry) FROM v WHERE id = 'b1'"
+    ).fetchone()
+    # cube LoD2 : 6 faces (verticales comprises), Z réel 100..105, translate appliqué
+    assert row == ("b1", "2", '{"h": 5}', "MULTIPOLYGON", True, 6, 100.0, 105.0, 1000.0, 2010.0)
+    conn.execute("DROP TABLE v")
+    _read(r2.read_cityjson, conn, path=p, geometry="solid3d", lod="1")
+    assert conn.execute("SELECT ST_NumGeometries(geometry) FROM v WHERE id='b1'").fetchone() == (2,)
+    conn.execute("DROP TABLE v")
+    # entrée dégénérée : erreur de ligne, pas d'échec du nœud
+    _read(r2.read_cityjson, conn, geometry="solid3d",
+          path=_city_doc(tmp_path / "d.json", [[[0, 1]]]))  # fmt: skip
+    got = conn.execute("SELECT id, error, ST_AsText(geometry) FROM v ORDER BY id").fetchall()
+    assert "3 sommets" in got[0][1] and got[0][2] is None
+    assert got[1] == ("ok", None, "MULTIPOLYGON Z (((0 0 0, 1 0 0, 1 1 0, 0 1 0, 0 0 0)))")
