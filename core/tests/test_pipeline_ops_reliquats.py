@@ -505,3 +505,222 @@ def test_cityjson_solid3d_keeps_z_lod_attributes(tmp_path, conn):
     got = conn.execute("SELECT id, error, ST_AsText(geometry) FROM v ORDER BY id").fetchall()
     assert "3 sommets" in got[0][1] and got[0][2] is None
     assert got[1] == ("ok", None, "MULTIPOLYGON Z (((0 0 0, 1 0 0, 1 1 0, 0 1 0, 0 0 0)))")
+
+
+# ------------------------------------------------------------------ Sentinel-2 / Landsat-8 produit
+
+_MTD = """<?xml version="1.0"?>
+<n1:Level-2A_User_Product xmlns:n1="https://psd-14.sentinel2.eo.esa.int/PSD/User_Product_Level-2A.xsd">
+<n1:General_Info><Product_Info><PRODUCT_START_TIME>2024-06-01T10:30:00Z</PRODUCT_START_TIME>
+<PRODUCT_TYPE>S2MSI2A</PRODUCT_TYPE><PROCESSING_BASELINE>05.10</PROCESSING_BASELINE>
+<Datatake><SPACECRAFT_NAME>Sentinel-2A</SPACECRAFT_NAME></Datatake></Product_Info>
+<Product_Image_Characteristics><QUANTIFICATION_VALUES_LIST>
+<BOA_QUANTIFICATION_VALUE unit="none">10000</BOA_QUANTIFICATION_VALUE>
+</QUANTIFICATION_VALUES_LIST><BOA_ADD_OFFSET_VALUES_LIST>
+<BOA_ADD_OFFSET band_id="1">-1000</BOA_ADD_OFFSET><BOA_ADD_OFFSET band_id="3">-1000</BOA_ADD_OFFSET>
+<BOA_ADD_OFFSET band_id="8">-1000</BOA_ADD_OFFSET>
+</BOA_ADD_OFFSET_VALUES_LIST></Product_Image_Characteristics></n1:General_Info>
+<n1:Quality_Indicators_Info><Cloud_Coverage_Assessment>12.5</Cloud_Coverage_Assessment>
+</n1:Quality_Indicators_Info></n1:Level-2A_User_Product>"""
+
+
+def _write(path, arr, res, driver="JP2OpenJPEG"):
+    import numpy as np
+    import rasterio
+    from rasterio.transform import from_origin
+
+    arr = np.asarray(arr, dtype="uint16")
+    opts = {"REVERSIBLE": "YES", "QUALITY": "100"} if driver == "JP2OpenJPEG" else {}
+    with rasterio.open(
+        path, "w", driver=driver, width=arr.shape[1], height=arr.shape[0], count=1,
+        dtype="uint16", crs="EPSG:32631", transform=from_origin(500000, 4000040, res, res), **opts,
+    ) as d:  # fmt: skip
+        d.write(arr, 1)
+
+
+def _s2_product(tmp_path, mtd=True):
+    import numpy as np
+
+    root = tmp_path / "S2A_MSIL2A.SAFE"
+    g = root / "GRANULE" / "L2A_T31" / "IMG_DATA"
+    for r in ("R10m", "R20m"):
+        (g / r).mkdir(parents=True)
+    b04 = np.full((4, 4), 2000)
+    b04[0, 0] = 0  # pas de donnée
+    _write(g / "R10m" / "T31_B02_10m.jp2", np.full((4, 4), 1500), 10)
+    _write(g / "R10m" / "T31_B04_10m.jp2", b04, 10)
+    _write(g / "R20m" / "T31_B8A_20m.jp2", [[3000, 3000], [3000, 3000]], 20)
+    _write(g / "R20m" / "T31_SCL_20m.jp2", [[4, 9], [4, 4]], 20)  # 9 = nuage haute proba
+    if mtd:
+        (root / "MTD_MSIL2A.xml").write_text(_MTD)
+    return str(root)
+
+
+def test_sentinel2_multiband_reflectance_scl_mask_metadata(tmp_path, conn):
+    from app.pipelines.ops import readers2 as r2
+
+    root = _s2_product(tmp_path)
+    opts = {"reflectance": True, "maskScl": [9], "includeQuality": True, "includeMetadata": True}
+    srid = _read(r2.read_sentinel2, conn, path=root, bands=["B02", "B04", "B8A"], **opts)
+    assert srid == 32631
+    cols = [r[0] for r in conn.execute("DESCRIBE v").fetchall()]
+    assert cols == ["x", "y", "B02", "B04", "B8A", "scl", "metadata", "geometry"]
+    rows = conn.execute("SELECT B02, B04, B8A, scl, metadata FROM v").fetchall()
+    # 16 cellules - 1 DN 0 (B04) - 4 sous le pixel SCL nuageux (quart nord-est) = 11
+    assert len(rows) == 11 and {r[3] for r in rows} == {4}
+    # réflectance L2A = (DN + offset) / quantification ; B02 est band_id 1, B04 3, B8A 8
+    assert {tuple(round(v, 9) for v in r[:3]) for r in rows} == {(0.05, 0.1, 0.2)}
+    meta = json.loads(rows[0][4])
+    assert meta == {
+        "product_type": "S2MSI2A", "spacecraft": "Sentinel-2A", "processing_baseline": "05.10",
+        "sensing_time": "2024-06-01T10:30:00Z", "cloud_cover": 12.5,
+    }  # fmt: skip
+    conn.execute("DROP TABLE v")
+    # DN bruts sans option : colonnes nommées par bande, dtype entier conservé
+    _read(r2.read_sentinel2, conn, path=root, bands=["B04"])
+    assert conn.execute("SELECT count(*), min(B04), max(B04) FROM v").fetchone() == (15, 2000, 2000)
+    conn.execute("DROP TABLE v")
+    # ancien comportement (une bande, colonne value, DN 0 conservé) inchangé
+    _read(r2.read_sentinel2, conn, path=root, band="B04")
+    assert conn.execute("SELECT count(*) FROM v").fetchone()[0] == 16
+
+
+def test_sentinel2_degenerate_inputs(tmp_path, conn, monkeypatch):
+    from app.pipelines.ops import readers2 as r2
+
+    root = _s2_product(tmp_path, mtd=False)
+    with pytest.raises(PipelineRuntimeError, match="quantification"):
+        _read(r2.read_sentinel2, conn, path=root, bands=["B04"], reflectance=True)
+    with pytest.raises(PipelineRuntimeError, match="aucune bande"):
+        _read(r2.read_sentinel2, conn, path=root, bands=["B04", "B11"])
+    with pytest.raises(PipelineRuntimeError, match="réflectance réservée"):
+        _read(r2.read_sentinel2, conn, path=root, band="SCL", reflectance=True)
+    for bad in ({"maskScl": [12]}, {"bands": ["B04", "B04"]}, {"bands": ["TCI"]}):
+        with pytest.raises(ValidationError):
+            _read(r2.read_sentinel2, conn, path=root, **bad)
+    # emprise différente : bande décalée refusée (pas de rééchantillonnage silencieux)
+    g = os.path.join(root, "GRANULE", "L2A_T31", "IMG_DATA", "R20m")
+    import numpy as np
+    import rasterio
+    from rasterio.transform import from_origin
+
+    with rasterio.open(
+        os.path.join(g, "T31_B11_20m.jp2"), "w", driver="JP2OpenJPEG", width=2, height=2,
+        count=1, dtype="uint16", crs="EPSG:32631", transform=from_origin(600000, 4000040, 20, 20),
+    ) as d:  # fmt: skip
+        d.write(np.ones((2, 2), dtype="uint16"), 1)
+    with pytest.raises(PipelineRuntimeError, match="emprise"):
+        _read(r2.read_sentinel2, conn, path=root, bands=["B04", "B11"])
+    # MTD hostile (entité XML) : refusé par defusedxml, sans expansion
+    (tmp_path / "S2A_MSIL2A.SAFE" / "MTD_MSIL2A.xml").write_text(
+        '<?xml version="1.0"?><!DOCTYPE a [<!ENTITY e "x">]><a>&e;</a>'
+    )
+    with pytest.raises(PipelineRuntimeError, match="MTD illisible"):
+        _read(r2.read_sentinel2, conn, path=root, bands=["B04"], includeMetadata=True)
+    # plafond cellules x couches
+    monkeypatch.setattr(r2, "MAX_PRODUCT_LAYER_CELLS", 8)
+    _read(r2.read_sentinel2, conn, path=root, bands=["B02", "B04"])
+    assert conn.execute("SELECT count(*) FROM v").fetchone()[0] <= 4
+
+
+_MTL = """GROUP = LANDSAT_METADATA_FILE
+  GROUP = IMAGE_ATTRIBUTES
+    SPACECRAFT_ID = "LANDSAT_8"
+    DATE_ACQUIRED = 2024-06-01
+    SCENE_CENTER_TIME = "10:30:00.0Z"
+    CLOUD_COVER = 3.25
+    SUN_ELEVATION = 30.0
+  END_GROUP = IMAGE_ATTRIBUTES
+  GROUP = PRODUCT_CONTENTS
+    COLLECTION_NUMBER = 02
+    PROCESSING_LEVEL = "L1TP"
+  END_GROUP = PRODUCT_CONTENTS
+  GROUP = LEVEL1_RADIOMETRIC_RESCALING
+    REFLECTANCE_MULT_BAND_4 = 2.0000E-05
+    REFLECTANCE_ADD_BAND_4 = -0.100000
+    REFLECTANCE_MULT_BAND_5 = 2.0000E-05
+    REFLECTANCE_ADD_BAND_5 = -0.100000
+  END_GROUP = LEVEL1_RADIOMETRIC_RESCALING
+END_GROUP = LANDSAT_METADATA_FILE
+END
+"""
+
+
+def _l8_product(tmp_path, mtl=True):
+    d = tmp_path / "LC08_L1TP_199029"
+    d.mkdir()
+    _write(d / "LC08_L1TP_199029_B4.TIF", [[10000, 10000], [10000, 0]], 30, "GTiff")
+    _write(d / "LC08_L1TP_199029_B5.TIF", [[20000, 20000], [20000, 20000]], 30, "GTiff")
+    _write(d / "LC08_L1TP_199029_B10.TIF", [[300, 300], [300, 300]], 30, "GTiff")
+    # QA_PIXEL : bit 3 nuage sur la cellule (0, 1), bit 7 eau sur (1, 0)
+    _write(d / "LC08_L1TP_199029_QA_PIXEL.TIF", [[0, 1 << 3], [1 << 7, 0]], 30, "GTiff")
+    if mtl:
+        (d / "LC08_L1TP_199029_MTL.txt").write_text(_MTL)
+    return str(d)
+
+
+def test_landsat8_multiband_toa_reflectance_qa_mask(tmp_path, conn):
+    from app.pipelines.ops import readers2 as r2
+
+    root = _l8_product(tmp_path)
+    _read(r2.read_landsat8, conn, path=root, bands=[4, 5], reflectance=True, maskQa=["cloud"],
+          includeQuality=True, includeMetadata=True)  # fmt: skip
+    rows = conn.execute("SELECT B4, B5, qa_pixel, metadata FROM v ORDER BY y DESC, x").fetchall()
+    # TOA = (M * DN + A) / sin(30°) ; (1,1) DN 0 écarté, (0,1) nuage écarté, eau gardée
+    assert [(round(a, 6), round(b, 6), q) for a, b, q, _ in rows] == [
+        (0.2, 0.6, 0), (0.2, 0.6, 128)
+    ]  # fmt: skip
+    assert json.loads(rows[0][3]) == {
+        "spacecraft": "LANDSAT_8", "date_acquired": "2024-06-01", "cloud_cover": 3.25,
+        "scene_center_time": "10:30:00.0Z", "processing_level": "L1TP", "collection": "02",
+    }  # fmt: skip
+    conn.execute("DROP TABLE v")
+    _read(r2.read_landsat8, conn, path=root, bands=[4], maskQa=["cloud", "water"])
+    assert conn.execute("SELECT count(*) FROM v").fetchone()[0] == 1
+    with pytest.raises(PipelineRuntimeError, match="thermique"):
+        _read(r2.read_landsat8, conn, path=root, bands=[10], reflectance=True)
+    with pytest.raises(ValidationError):
+        _read(r2.read_landsat8, conn, path=root, maskQa=["bogus"])
+
+
+def test_landsat8_reflectance_without_mtl_and_qa_missing(tmp_path, conn):
+    from app.pipelines.ops import readers2 as r2
+
+    root = _l8_product(tmp_path, mtl=False)
+    with pytest.raises(PipelineRuntimeError, match="MTL absent"):
+        _read(r2.read_landsat8, conn, path=root, bands=[4], reflectance=True)
+    os.remove(os.path.join(root, "LC08_L1TP_199029_QA_PIXEL.TIF"))
+    with pytest.raises(PipelineRuntimeError, match="aucune bande"):
+        _read(r2.read_landsat8, conn, path=root, bands=[4], maskQa=["cloud"])
+
+
+def test_sentinel2_raster_item_multiband(renv, tmp_path):
+    import rasterio
+
+    from app.pipelines.ops import readers2 as r2
+    from app.raster.models import RasterAsset
+
+    root = _s2_product(tmp_path)
+    conn = duckdb.connect(":memory:")
+    conn.execute("INSTALL spatial; LOAD spatial;")
+    kw = {"session": renv.s, "tenant_id": renv.tid, "node_id": "n", "view_name": "v",
+          "base_uri": ""}  # fmt: skip
+    params = {"path": root, "bands": ["B02", "B04", "B8A"], "reflectance": True,
+              "maskScl": [9], "output": "rasterItem", "title": "S2"}  # fmt: skip
+    r2.read_sentinel2(conn, user=renv.alice, params=params, **kw)
+    item_id, w, h, n, srid, meta = conn.execute("SELECT * FROM v").fetchone()
+    assert (w, h, n, srid) == (4, 4, 3, 32631) and json.loads(meta)["cloud_cover"] == 12.5
+    asset = renv.s.get(RasterAsset, item_id)
+    assert asset is not None
+    with rasterio.open(renv.paths[asset.source_key]) as ds:
+        assert ds.count == 3 and ds.dtypes[0] == "float32"
+        b04 = ds.read(2)
+    assert b04[1, 0] == pytest.approx(0.1) and b04[0, 0] != b04[0, 0]  # NaN = nodata
+    assert b04[0, 3] != b04[0, 3]  # masqué par SCL
+    from app.users.repository import set_user_role
+
+    set_user_role(renv.s, tenant_id=renv.tid, user_id=renv.bob.id,
+                  role_id=renv.roles["reader"].id, role_slug="reader")  # fmt: skip
+    conn.execute("DROP TABLE v")
+    with pytest.raises(PipelineRuntimeError, match="catalog.manage"):
+        r2.read_sentinel2(conn, user=renv.bob, params=params, **kw)
