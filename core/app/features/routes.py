@@ -500,10 +500,13 @@ def profile_collection(
     introspect=Depends(get_introspector),
     conn_factory=Depends(get_duckdb_connection_factory),
     base_uri: str = Depends(get_analytics_base_uri),
+    geo_limits=Depends(get_request_geo_limits),
 ):
     """Résumé exploratoire (REV-117) : mêmes droits, même masquage de colonnes
     sensibles et mêmes bornes DuckDB que POST /aggregate."""
     col = get_collection_for_read(session, user, collection_id, guest=guest)
+    # REV-334 : le lac n'est pas soumis à la RLS — refus fail-closed (comme /aggregate).
+    refuse_if_geo_limited(geo_limits, col.table_name, path="profile")
     info = introspect(session, col.table_name)
     masked_fields = masked_fields_for(session, user, col)
     conn = conn_factory()

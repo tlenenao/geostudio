@@ -21,6 +21,9 @@ from sqlalchemy import Engine, create_engine, text
 logger = logging.getLogger(__name__)
 
 _SQL_RE = re.compile(r"^/v1/analytics/sql$")
+# REV-336 : /aggregate, /profile et /export (agrégat) lancent du DuckDB (coût réel) — groupe dédié,
+# budget plus large que "sql" car un tableau de bord émet un aggregate par widget.
+_ANALYTICS_RE = re.compile(r"^/v1/collections/[^/]+/(aggregate|profile|export)$")
 _LLM_RE = re.compile(r"^/mcp$|^/v1/copilot/turn$")
 # Ne couvre QUE les routes /harvest/* à coût réel (écriture, ou déclenchement
 # d'un job de moissonnage externe) — trouvé en revue finale SP-26 (I1) :
@@ -66,6 +69,7 @@ _GEOCODE_RE = re.compile(r"^/v1/geocode(/batch|/reverse)?$")
 # de app.main pour le groupe "jobs" plutôt que de le redéfinir ici.
 _BUDGETS = {
     "sql": 10,
+    "analytics": 120,
     # Un tour de copilote coûte >= 4 requêtes (le tour + initialize/initialized/
     # list_tools en loopback /mcp, même clé Authorization) : 20 plafonnait à 5
     # tours/min puis 429 -> 502 (vu par l'e2e-oidc, 28 tours). 120 = ~30 tours/min.
@@ -114,6 +118,8 @@ def route_group(
 ) -> str | None:
     if _SQL_RE.match(path):
         return "sql"
+    if _ANALYTICS_RE.match(path):
+        return "analytics"
     if _LLM_RE.match(path):
         return "llm"
     if export_path_re.match(path):

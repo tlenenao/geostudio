@@ -193,6 +193,7 @@ def register(server: FastMCP, session_factory) -> None:
                 raise ValueError("profile is only available for collection-sourced datasets")
             assert payload.collectionId is not None
             col = require_collection_read(session, user=user, collection_id=payload.collectionId)
+            refuse_geo_limited(session, user, col.table_name, path="profile")  # REV-334
             try:
                 info = introspect_table(session, col.table_name)
             except TableNotFound as exc:
