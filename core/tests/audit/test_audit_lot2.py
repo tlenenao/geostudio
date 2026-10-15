@@ -31,7 +31,6 @@ def test_s3_secret_not_readable_after_lock_down():
     assert leaked != "SUPERSECRET"
 
 
-@pytest.mark.xfail(strict=True, reason="REV-audit: rollback_config sans verrou de ligne")
 def test_rollback_config_locks_the_row(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
 
