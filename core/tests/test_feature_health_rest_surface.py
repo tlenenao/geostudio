@@ -151,9 +151,9 @@ def test_rest_surface_ids_feeds_the_reachability_facts():
     ids = rest_surface_ids(index_rest_routes(REPO))
     assert "GET /v1/items" in ids
     assert (
-        len(ids) == 238
+        len(ids) == 240
     )  # +16 vague 4 ARC (webhooks/déclencheurs 9, impact/lineage 4, retry + reader-state 3) ;
-    # +10 vague 5 ARC (raster 6, routage 4) ;
+    # +2 lot 1 (admin api-keys, REV-366) ; +10 vague 5 ARC (raster 6, routage 4) ;
     # +16 vagues 2-3 ARC ; +5 vague 0 ARC (api-keys x3, geocode batch/reverse), +18 vague 1 ARC
 
 
