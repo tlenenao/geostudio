@@ -574,13 +574,17 @@ def materialize_rest_connector(
     payload = _resolve_secret(secret_resolver, params.secretName)
     auth = _build_auth(payload)
     _assert_url_within_secret_scope(payload, params)
+    session = build_guarded_session()
+    # REV-339 : requests rejoue les en-têtes personnalisés (X-Api-Key…) vers l'hôte d'une
+    # redirection — hors portée du secret. Une redirection est donc une erreur.
+    session.max_redirects = 0
     client = RESTClient(
         base_url=params.baseUrl,
         headers=params.headers or None,
         auth=auth,
         paginator=_build_paginator(params.paginator, params.paginatorConfig),
         data_selector=params.recordsPath,
-        session=build_guarded_session(),
+        session=session,
     )
 
     @dlt.resource(name="records", write_disposition="replace")
