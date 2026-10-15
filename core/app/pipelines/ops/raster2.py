@@ -31,6 +31,7 @@ from typing import Any, Literal
 import numpy as np
 import pandas as pd
 import rasterio
+from fastapi import HTTPException
 from pydantic import BaseModel, Field, field_validator, model_validator
 from rasterio.enums import Resampling
 from rasterio.io import MemoryFile
@@ -46,6 +47,7 @@ from app.pipelines.ops.raster import _authorized_asset
 from app.raster import publish as _publish
 from app.raster.service import open_asset
 from app.sql_ident import quote_ident_duckdb as _qi
+from app.terrain3d.conversion import LOCAL_ONLY_GDAL
 
 MAX_PIXELS = 4_000_000  # par raster d'entrée
 MAX_OUT_PIXELS = 16_000_000  # mosaïque
@@ -88,13 +90,25 @@ class _Run:
         self.stack = ExitStack()
         self.tmp = self.stack.enter_context(tempfile.TemporaryDirectory(prefix="gs-raster2-"))
         self.published = 0
+        self.keys: list[str] = []
         self._n = 0
 
     def __enter__(self) -> "_Run":
         return self
 
-    def __exit__(self, *exc) -> None:
+    def __exit__(self, exc_type, exc, tb) -> None:
         self.stack.close()
+        if exc_type is not None:
+            # run en échec : l'item publié sera annulé avec la session, pas l'objet S3
+            for key in self.keys:
+                _publish.delete_key(key)
+            if isinstance(exc, _RowError):
+                raise PipelineRuntimeError(f"{self.op}: {exc}") from exc
+
+    def require_publish(self) -> None:
+        """Droit de publication vérifié AVANT tout travail coûteux (appel réseau)."""
+        if not _publish.can_publish(self.session, self.user):
+            raise PipelineRuntimeError(f"{self.op}: privilege 'catalog.manage' required")
 
     def tick(self) -> None:
         if time.monotonic() > self.deadline:
@@ -146,9 +160,13 @@ class _Run:
                 title=title,
                 limit_collection_id=next(iter(limits), None),
                 filename=filename,
+                timeout_seconds=max(1, int(self.deadline - time.monotonic())),
+                keys=self.keys,
             )
         except _publish.RasterPublishError as exc:
             raise PipelineRuntimeError(f"{self.op}: {exc}") from exc
+        except HTTPException as exc:  # QuotaExceededError (quota d'items/stockage)
+            raise PipelineRuntimeError(f"{self.op}: {exc.detail}") from exc
         return {
             "raster_item_id": p.item_id,
             "raster_width": p.width,
@@ -1521,14 +1539,22 @@ class TransformImageFetchParams(BaseModel):
 _MAGIC = {b"\x89PNG": "PNG", b"\xff\xd8\xff": "JPEG", b"II*\x00": "GTiff", b"MM\x00*": "GTiff"}
 
 
-def _fetch(url: str) -> bytes:
+def _fetch(url: str, run: _Run | None = None) -> bytes:
+    """Téléchargement borné en octets ET en durée : `run.tick()` à chaque bloc (un serveur
+    goutte-à-goutte ne contourne pas le délai du nœud)."""
     try:
         with build_guarded_session().get(url, stream=True, timeout=(10, 30)) as resp:
             resp.raise_for_status()
-            if int(resp.headers.get("Content-Length") or 0) > MAX_IMAGE_BYTES:
+            try:
+                declared = int(resp.headers.get("Content-Length") or 0)
+            except ValueError:
+                declared = 0
+            if declared > MAX_IMAGE_BYTES:
                 raise _RowError("image trop volumineuse")
             buf = bytearray()
             for chunk in resp.iter_content(_FETCH_CHUNK):
+                if run is not None:
+                    run.tick()
                 buf += chunk
                 if len(buf) > MAX_IMAGE_BYTES:
                     raise _RowError(f"image trop volumineuse (> {MAX_IMAGE_BYTES} octets)")
@@ -1536,7 +1562,7 @@ def _fetch(url: str) -> bytes:
     except EgressBlockedError as exc:
         raise PipelineRuntimeError(f"transform.imageFetch: egress refusé : {exc}") from exc
     except Exception as exc:
-        if isinstance(exc, _RowError):
+        if isinstance(exc, _RowError | PipelineRuntimeError):
             raise
         if type(exc).__module__.startswith(("requests", "urllib3")):
             raise _RowError(f"téléchargement impossible : {type(exc).__name__}") from exc
@@ -1554,18 +1580,19 @@ def execute_image_fetch(
     _no_clash(op, cols, list(_OUT_TYPES))
     results: dict[int, dict] = {}
     with _Run(op, secret_resolver, preview) as run:
+        run.require_publish()
         for rn, url in rows:
             run.tick()
             if url is None:
                 results[rn] = {"raster_error": "URL absente"}
                 continue
             try:
-                raw = _fetch(url)
+                raw = _fetch(url, run)
                 kind = next((v for k, v in _MAGIC.items() if raw.startswith(k)), None)
                 if kind is None:
                     raise _RowError("format d'image non pris en charge (PNG, JPEG, GeoTIFF)")
                 out = run.path()
-                with warnings.catch_warnings():
+                with warnings.catch_warnings(), rasterio.Env(**LOCAL_ONLY_GDAL):
                     warnings.simplefilter("ignore", rasterio.errors.NotGeoreferencedWarning)
                     mem_ctx = MemoryFile(raw)
                     with mem_ctx as mem, mem.open(driver=kind) as src:

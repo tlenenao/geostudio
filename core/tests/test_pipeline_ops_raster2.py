@@ -707,7 +707,9 @@ def test_image_fetch_egress_guard_is_real(env):
 
 def test_image_fetch_publishes_georeferenced_image_and_row_errors(env, monkeypatch):
     png = _png()
-    monkeypatch.setattr(r2, "_fetch", lambda url: png if url.endswith("ok.png") else b"<html>")
+    monkeypatch.setattr(
+        r2, "_fetch", lambda url, run=None: png if url.endswith("ok.png") else b"<html>"
+    )
     c = run(
         env,
         "transform.imageFetch",
@@ -770,3 +772,97 @@ def test_output_item_cap_and_limit_collection_inheritance(env, monkeypatch):
     monkeypatch.setattr(r2, "MAX_OUT_ITEMS", 2)
     with pytest.raises(PipelineRuntimeError, match="plus de 2 rasters"):
         run(env, "transform.rasterPyramid", {"levels": 3}, [env.add("p", np.ones((16, 16)))])
+
+
+def test_failed_run_deletes_published_s3_keys(env, monkeypatch):
+    deleted: list[str] = []
+    monkeypatch.setattr(publish, "delete_key", deleted.append)
+    monkeypatch.setattr(r2, "MAX_OUT_ITEMS", 2)
+    a = env.add("a", np.ones((16, 16)))
+    with pytest.raises(PipelineRuntimeError, match="plus de 2 rasters"):
+        run(env, "transform.rasterPyramid", {"levels": 3}, [a])
+    assert len(deleted) == 2 and all(k.endswith("/cog.tif") for k in deleted)
+
+
+def test_create_item_failure_deletes_uploaded_key(env, monkeypatch):
+    deleted: list[str] = []
+    monkeypatch.setattr(publish, "delete_key", deleted.append)
+
+    def boom(*a, **k):
+        raise RuntimeError("quota")
+
+    a = env.add("a", RAMP)
+    monkeypatch.setattr(publish.items_repo, "create_item", boom)
+    with pytest.raises(RuntimeError):
+        run(env, "transform.rasterBandNodata", {"nodata": 0}, [a])
+    assert len(deleted) == 1
+
+
+def test_quota_error_becomes_pipeline_error(env, monkeypatch):
+    from app.quotas.service import QuotaExceededError
+
+    a = env.add("a", RAMP)
+
+    def boom(*a_, **k):
+        raise QuotaExceededError("items", 1, 1, "quota d'items du tenant dépassé")
+
+    monkeypatch.setattr(publish.items_repo, "create_item", boom)
+    with pytest.raises(PipelineRuntimeError, match="quota"):
+        run(env, "transform.rasterBandNodata", {"nodata": 0}, [a])
+
+
+def test_image_fetch_drip_feed_is_bounded_by_node_deadline(env, monkeypatch):
+    import time
+
+    class Resp:
+        headers: dict = {}
+
+        def raise_for_status(self): ...
+
+        def iter_content(self, n):
+            for _ in range(100):
+                time.sleep(0.05)
+                yield b"x"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a): ...
+
+    monkeypatch.setattr(
+        r2, "build_guarded_session", lambda: SimpleNamespace(get=lambda *a, **k: Resp())
+    )
+    monkeypatch.setattr(r2, "MAX_SECONDS", 0.2)
+    with pytest.raises(PipelineRuntimeError, match="délai"):
+        run(env, "transform.imageFetch", {"bounds": [0, 0, 1, 1]}, ["http://x/slow"], col="url")
+
+
+def test_image_fetch_checks_publish_privilege_before_network(env, monkeypatch):
+    calls: list[str] = []
+    monkeypatch.setattr(r2, "_fetch", lambda url, run=None: calls.append(url) or b"")
+    set_user_role(
+        env.s,
+        tenant_id=env.tid,
+        user_id=env.alice.id,
+        role_id=env.roles["reader"].id,
+        role_slug="reader",
+    )
+    with pytest.raises(PipelineRuntimeError, match="catalog.manage"):
+        run(env, "transform.imageFetch", {"bounds": [0, 0, 1, 1]}, ["http://x/a.png"], col="url")
+    assert calls == []
+
+
+def test_row_error_outside_per_row_paths_becomes_pipeline_error(env):
+    a = env.add("a", RAMP)
+    with pytest.raises(PipelineRuntimeError, match="la même"):
+        r = env.add("b", np.ones((4, 4)))
+        run(env, "transform.rasterBandCombine", {}, [a, r])
+
+
+def test_masked_value_column_absent_from_input_is_refused(env):
+    """GAP-22 : un champ masqué n'est jamais chargé dans DuckDB par les lecteurs amont."""
+    a = env.add("a", np.zeros((8, 8)))
+    c = _conn()
+    c.execute("CREATE TABLE src (geometry GEOMETRY)")  # `secret` masqué : absent de la vue
+    with pytest.raises(PipelineRuntimeError, match="no 'secret' column"):
+        run(env, "transform.vectorOnRaster", {"itemId": a, "valueColumn": "secret"}, conn=c)

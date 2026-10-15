@@ -7,6 +7,7 @@ bucket raster -> item `raster` + `raster_assets`. Même chaîne que l'ingestion 
 assumée, même compromis que `transform.zonalStats`). Droit requis : `catalog.manage`, comme
 l'upload REST d'un raster."""
 
+import logging
 import os
 import uuid
 from dataclasses import dataclass
@@ -50,6 +51,23 @@ def _upload(session: Session, tenant_id: str, key: str, path: str) -> None:
     enforce_storage_quota(session, s3, tenant_id=tenant_id, bucket=bucket, key=key)
 
 
+def delete_key(key: str) -> None:
+    """Couture de test : suppression best-effort d'un COG publié (annulation d'un run)."""
+    try:
+        s3 = make_s3_client(
+            endpoint_url=os.environ["S3_ENDPOINT_URL"],
+            access_key=os.environ["S3_ACCESS_KEY"],
+            secret_key=os.environ["S3_SECRET_KEY"],
+        )
+        s3.delete_object(Bucket=raster_bucket(), Key=key)
+    except Exception:
+        logging.getLogger(__name__).warning("raster publish: objet %s non supprimé", key)
+
+
+def can_publish(session: Session, user) -> bool:
+    return has_privilege(session, user, Privilege.CATALOG_MANAGE.value)
+
+
 def publish_raster(
     session: Session,
     user,
@@ -60,8 +78,9 @@ def publish_raster(
     limit_collection_id: str | None,
     filename: str,
     timeout_seconds: int = 300,
+    keys: list[str] | None = None,
 ) -> Published:
-    if not has_privilege(session, user, Privilege.CATALOG_MANAGE.value):
+    if not can_publish(session, user):
         raise RasterPublishError("privilege 'catalog.manage' required to publish a raster")
     try:
         ingest.to_cog(tif_path, cog_path, timeout_seconds=timeout_seconds)
@@ -70,6 +89,16 @@ def publish_raster(
         raise RasterPublishError(str(exc)) from exc
     key = f"{user.tenant_id}/{uuid.uuid4().hex}/cog.tif"
     _upload(session, user.tenant_id, key, cog_path)
+    try:
+        return _record(
+            session, user, key, cog_path, meta, title, limit_collection_id, filename, keys
+        )
+    except BaseException:
+        delete_key(key)  # l'objet est compté au quota de stockage : pas d'orphelin
+        raise
+
+
+def _record(session, user, key, cog_path, meta, title, limit_collection_id, filename, keys):
     item = items_repo.create_item(
         session, tenant_id=user.tenant_id, owner_id=user.id, resource_type="raster", title=title
     )
@@ -100,4 +129,6 @@ def publish_raster(
         payload={"title": title, "filename": filename, "op": "pipeline"},
     )
     session.flush()
+    if keys is not None:
+        keys.append(key)
     return Published(item.id, meta.width, meta.height, len(meta.bands))
