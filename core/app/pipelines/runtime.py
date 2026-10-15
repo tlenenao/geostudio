@@ -1117,6 +1117,12 @@ def _write_collection(
         raise PipelineRuntimeError(
             f"writer.collection: mode {mode} refused on a geo-limited collection"
         )
+    if mode == "replace" and masked:
+        # REV-337 (GAP-22) : replace purge puis réécrit sans les colonnes sensibles masquées
+        # pour cet utilisateur — elles seraient remises à NULL pour toutes les lignes.
+        raise PipelineRuntimeError(
+            "writer.collection: mode replace refused: sensitive fields are masked for this user"
+        )
     if mode in ("replace", "delete") and (blocking := restricting_relation(session, collection)):
         # ARC-21 : l'écriture en masse contourne la politique de suppression des relations.
         raise PipelineRuntimeError(

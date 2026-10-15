@@ -139,9 +139,6 @@ def test_analytic_routes_have_a_rate_limit_group(method, path):
 
 
 @_pg
-@pytest.mark.xfail(
-    strict=True, reason="REV-audit: writer.collection replace efface les champs GAP-22"
-)
 def test_writer_replace_does_not_null_sensitive_columns(pg_engine, monkeypatch, tmp_path):
     Base.metadata.create_all(pg_engine)
     Session = make_session_factory(pg_engine)
