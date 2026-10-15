@@ -73,7 +73,9 @@ class HarvestRecord(Base):
     item_id: Mapped[str | None] = mapped_column(
         ForeignKey("items.id", ondelete="SET NULL"), nullable=True
     )
-    collection_id: Mapped[str | None] = mapped_column(ForeignKey("collections.id"), nullable=True)
+    collection_id: Mapped[str | None] = mapped_column(
+        ForeignKey("collections.id", ondelete="SET NULL"), nullable=True
+    )
     content_hash: Mapped[str | None] = mapped_column(String, nullable=True)
     harvested_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     is_stale: Mapped[bool] = mapped_column(

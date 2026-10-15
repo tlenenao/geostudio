@@ -88,19 +88,11 @@ def test_embedding_defer_happens_after_commit(env, pg_engine, monkeypatch):
     assert seen["visible"] is True
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="REV-audit: harvest_records.collection_id sans ON DELETE (harvest/models.py:76)",
-)
 def test_harvest_record_collection_fk_has_ondelete():
     fk = next(iter(HarvestRecord.__table__.c.collection_id.foreign_keys))
     assert fk.ondelete in ("SET NULL", "CASCADE")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="REV-audit: ivfflat créé sur table vide, jamais reconstruit (migration 0012:43)",
-)
 def test_vector_index_is_not_ivfflat_built_on_empty_table():
     versions = [
         p for p in (ROOT / "alembic" / "versions").glob("*.py") if not p.name.startswith("0012_")
