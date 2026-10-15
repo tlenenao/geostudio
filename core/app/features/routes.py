@@ -5,7 +5,6 @@ un fake et un scope nul ; le vrai chemin est PostGIS-only."""
 
 import functools
 import json
-import math
 import os
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -42,6 +41,7 @@ from app.attachments import repository as attachments_repo
 from app.attachments.routes import get_attachments_bucket, get_s3_client
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user, get_current_user_optional
+from app.bbox import parse_bbox_floats
 from app.collections.domains import with_attribute_rules
 from app.collections.introspection import TableNotFound, hide_sensitive_columns
 from app.collections.repository import get_access_facts, list_visible_collections
@@ -104,7 +104,8 @@ MAX_LIMIT = 1000
 
 CONFORMANCE_CLASSES = [
     "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/core",
-    "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/oas30",
+    # Pas de `conf/oas30` (REV-364 b) : le document de définition est servi en
+    # OpenAPI 3.1.0, et Features Part 1 ne définit pas de classe oas31.
     "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/geojson",
     "http://www.opengis.net/spec/ogcapi-features-2/1.0/conf/crs",
     "http://www.opengis.net/spec/ogcapi-features-4/1.0/conf/create-replace-delete",
@@ -207,20 +208,8 @@ def _validation_error(errors: list[dict], status: int = 400):
 def parse_bbox(raw: str | None, *, check_bounds: bool = True):
     """`minx,miny,maxx,maxy` ; fini ; bornes EPSG:4326 sauf `check_bounds=False`
     (bbox-crs projeté). REV-353 : sinon l'erreur SQL de ST_MakeEnvelope = 500."""
-    if raw is None:
-        return None
-    parts = raw.split(",")
     try:
-        if len(parts) != 4:
-            raise ValueError(raw)
-        vals = tuple(float(p) for p in parts)
-        if not all(math.isfinite(v) for v in vals):
-            raise ValueError(raw)
-        if check_bounds and (
-            max(abs(vals[0]), abs(vals[2])) > 180 or max(abs(vals[1]), abs(vals[3])) > 90
-        ):
-            raise ValueError(raw)
-        return vals
+        return parse_bbox_floats(raw, check_bounds=check_bounds)
     except ValueError:
         raise _validation_error(
             [

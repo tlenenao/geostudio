@@ -224,9 +224,15 @@ def _where(
         if info.geometry_column is None:
             raise FilterError("bbox", "collection has no geometry")
         g = quote_ident(session, info.geometry_column)
-        clauses.append(
-            f"{g} && ST_Transform(ST_MakeEnvelope(:bx0, :by0, :bx1, :by1, :bcrs), :bsrid)"
-        )
+        envelope = "ST_Transform(ST_MakeEnvelope(:bx0, :by0, :bx1, :by1, :bcrs), :bsrid)"
+        if bbox_srid == 4326 and bbox[0] > bbox[2]:
+            # REV-364 a : ouest > est = rectangle à cheval sur l'antiméridien,
+            # deux enveloppes [ouest, 180] et [-180, est] (sinon enveloppe vide).
+            envelope_w = "ST_Transform(ST_MakeEnvelope(:bx0, :by0, 180, :by1, :bcrs), :bsrid)"
+            envelope_e = "ST_Transform(ST_MakeEnvelope(-180, :by0, :bx1, :by1, :bcrs), :bsrid)"
+            clauses.append(f"({g} && {envelope_w} OR {g} && {envelope_e})")
+        else:
+            clauses.append(f"{g} && {envelope}")
         params.update(
             {
                 "bx0": bbox[0],

@@ -1371,3 +1371,60 @@ def test_list_items_composes_q_sort_keyword_and_bbox_together(
         bbox=(0.0, 0.0, 3.0, 3.0),
     )
     assert [i.title for i in page.items] == ["A incidents", "Z incidents"]
+
+
+@pytest.mark.postgis
+def test_update_item_if_match_is_checked_under_a_row_lock(
+    pg_engine, pg_session, pg_tenant_and_user
+):
+    # REV-364 c : B lit l'item pendant que A a une écriture non commitée. Sans
+    # verrou, B passe la garde sur l'ancienne version puis écrase A ; avec
+    # FOR UPDATE, B attend le commit de A et voit alors une version périmée.
+    import threading
+    import time
+
+    tenant, user = pg_tenant_and_user
+    item = repo.create_item(
+        pg_session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="v0"
+    )
+    pg_session.commit()
+    old_version = item.updated_at.isoformat()
+    item_id, tenant_id = item.id, tenant.id
+
+    Session = make_session_factory(pg_engine)
+    result: dict = {}
+
+    def writer_b() -> None:
+        with Session() as b:
+            try:
+                repo.update_item(
+                    b,
+                    tenant_id=tenant_id,
+                    item_id=item_id,
+                    title="B",
+                    abstract=None,
+                    keywords=None,
+                    is_published=None,
+                    expected_updated_at=old_version,
+                )
+                b.commit()
+                result["outcome"] = "overwrote"
+            except repo.StaleItemVersion:
+                result["outcome"] = "stale"
+
+    repo.update_item(
+        pg_session,
+        tenant_id=tenant_id,
+        item_id=item_id,
+        title="A",
+        abstract=None,
+        keywords=None,
+        is_published=None,
+        expected_updated_at=old_version,
+    )
+    thread = threading.Thread(target=writer_b)
+    thread.start()
+    time.sleep(0.7)
+    pg_session.commit()
+    thread.join(timeout=10)
+    assert result["outcome"] == "stale"

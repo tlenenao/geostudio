@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
+from app.bbox import parse_bbox_floats
 from app.db import get_session
 from app.items import repository as repo
 from app.items.schemas import ContentStatus, ItemFacets, ItemPage, ItemRead, ItemUpdatePatch
@@ -69,13 +70,8 @@ def _parse_bbox(raw: str | None) -> tuple[float, float, float, float] | None:
     # HTTPException brute partout ailleurs (voir list_items/update_item/
     # upload_thumbnail ci-dessous) ; réutiliser sa forme de retour, pas son
     # canal d'erreur.
-    if raw is None:
-        return None
-    parts = raw.split(",")
-    if len(parts) != 4:
-        raise HTTPException(status_code=422, detail="bbox must be minX,minY,maxX,maxY")
     try:
-        return (float(parts[0]), float(parts[1]), float(parts[2]), float(parts[3]))
+        return parse_bbox_floats(raw)
     except ValueError:
         raise HTTPException(status_code=422, detail="bbox must be minX,minY,maxX,maxY") from None
 

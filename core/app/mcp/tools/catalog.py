@@ -13,6 +13,7 @@ from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.fastmcp import Context, FastMCP
 from pydantic import BaseModel, Field
 
+from app.bbox import parse_bbox_floats
 from app.collections import repository as collections_repo
 from app.collections.introspection import (
     TableNotFound,
@@ -53,13 +54,12 @@ class CollectionSearchResult(BaseModel):
 
 
 def _parse_bbox_tuple(raw: str) -> tuple[float, float, float, float]:
-    parts = raw.split(",")
-    if len(parts) != 4:
-        raise ValueError("bbox must be minx,miny,maxx,maxy")
     try:
-        return tuple(float(p) for p in parts)  # type: ignore[return-value]
+        parsed = parse_bbox_floats(raw)
     except ValueError:
         raise ValueError("bbox must be minx,miny,maxx,maxy") from None
+    assert parsed is not None
+    return parsed
 
 
 def register(server: FastMCP, session_factory) -> None:

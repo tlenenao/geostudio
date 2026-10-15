@@ -29,6 +29,7 @@ from app.analytics.aggregate import (
 from app.analytics.duckdb_conn import open_local_connection
 from app.appexport.manifest import read_manifest
 from app.appexport.miniserver.items import MissingGeometryColumn, get_feature, select_features
+from app.bbox import parse_bbox_floats
 
 DATA_DIR = Path(os.environ.get("APPEXPORT_STANDALONE_DATA_DIR", "/data"))
 RUNTIME_DIR = Path(os.environ.get("APPEXPORT_STANDALONE_RUNTIME_DIR", "/runtime"))
@@ -53,10 +54,10 @@ def _get_entry(collection_id: str):
 
 
 def _parse_bbox(raw: str | None):
-    if raw is None:
+    try:
+        return parse_bbox_floats(raw)
+    except ValueError:
         return None
-    parts = raw.split(",")
-    return tuple(float(p) for p in parts) if len(parts) == 4 else None
 
 
 @app.get("/geostudio-connection.json")

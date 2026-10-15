@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 import procrastinate
 from opentelemetry import metrics
-from sqlalchemy import case, cast, func, or_, select
+from sqlalchemy import and_, case, cast, func, or_, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session, defer
 
@@ -461,10 +461,16 @@ def list_items(
         # (jamais calculée, ou non géographique) n'apparaît jamais sous un
         # filtre bbox posé : Item.bbox_min_x.isnot(None) l'exclut d'office.
         minx, miny, maxx, maxy = bbox
+        # REV-364 a : ouest > est = rectangle à cheval sur l'antiméridien,
+        # l'item doit toucher [ouest, 180] OU [-180, est].
+        in_x = (
+            or_(Item.bbox_max_x >= minx, Item.bbox_min_x <= maxx)
+            if minx > maxx
+            else and_(Item.bbox_max_x >= minx, Item.bbox_min_x <= maxx)
+        )
         query = query.where(
             Item.bbox_min_x.isnot(None),
-            Item.bbox_max_x >= minx,
-            Item.bbox_min_x <= maxx,
+            in_x,
             Item.bbox_max_y >= miny,
             Item.bbox_min_y <= maxy,
         )
@@ -749,8 +755,10 @@ def update_item(
     content_status: str | None = None,
     categories: list[str] | None = None,
 ) -> ItemRead | None:
+    # FOR UPDATE (REV-364 c) : la comparaison If-Match et l'écriture doivent voir la
+    # même ligne ; sans verrou, deux PATCH concurrents passent tous deux la garde.
     item = session.execute(
-        select(Item).where(Item.id == item_id, Item.tenant_id == tenant_id)
+        select(Item).where(Item.id == item_id, Item.tenant_id == tenant_id).with_for_update()
     ).scalar_one_or_none()
     if item is None:
         return None

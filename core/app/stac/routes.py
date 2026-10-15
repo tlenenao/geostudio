@@ -17,6 +17,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.auth.dependency import get_current_user_optional
+from app.bbox import parse_bbox_floats
 from app.collections.introspection import TableNotFound, UnsupportedTable, hide_sensitive_columns
 from app.collections.repository import list_visible_collections
 from app.collections.routes import get_introspector, get_readable_collection
@@ -200,13 +201,8 @@ def get_collection(
 
 
 def _parse_bbox(raw: str | None):
-    if raw is None:
-        return None
-    parts = raw.split(",")
-    if len(parts) != 4:
-        raise HTTPException(status_code=400, detail="bbox must be minx,miny,maxx,maxy")
     try:
-        return tuple(float(p) for p in parts)
+        return parse_bbox_floats(raw)
     except ValueError:
         raise HTTPException(status_code=400, detail="bbox must be minx,miny,maxx,maxy") from None
 
