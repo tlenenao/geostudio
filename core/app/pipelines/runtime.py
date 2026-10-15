@@ -958,7 +958,13 @@ def _execute_transform_chain(
 
 def _checkpoint_save(checkpoint, conn, node_id, view_name, srid, cursors) -> None:
     """Best-effort : un disque plein ou une erreur d'écriture coûte la reprise
-    de ce nœud, jamais le run."""
+    de ce nœud, jamais le run. Aucun point de reprise après une publication de raster
+    dans ce run (revue finale FME, I2) : l'item est annulé avec la transaction du run en
+    cas d'échec, une reprise rechargerait un `raster_item_id` fantôme."""
+    from app.raster.publish import RUN_PUBLISHED_KEYS
+
+    if RUN_PUBLISHED_KEYS.get():
+        return
     try:
         checkpoint.save(conn, node_id, view_name, srid, cursors)
     except Exception:  # noqa: BLE001
@@ -1441,8 +1447,11 @@ def run_pipeline(
     # avec app.pipelines.registries (qui importe app.pipelines.runtime, lui,
     # à son niveau module).
     from app.pipelines.registries import WRITERS
+    from app.raster import publish as raster_publish
 
+    published: list[str] = []
     conn = open_connection(endpoint_url=endpoint_url, access_key=access_key, secret_key=secret_key)
+    published_token = raster_publish.RUN_PUBLISHED_KEYS.set(published)
     try:
         ordered, view_by_node, srid_by_node, join_srid_by_node = _prepare(
             conn,
@@ -1470,9 +1479,11 @@ def run_pipeline(
             if node.kind != "writer":
                 continue
             # F5 : une reprise REJOUE toujours les writers (jamais sautés sur la foi de
-            # node_stats) : leurs écritures vivent dans la transaction du run, annulée à
-            # l'échec, alors que node_stats est commité à part (revue finale vague 4, C1).
-            # Rejeu sûr : `append_writers()` refuse la reprise des modes non idempotents.
+            # node_stats, commité à part — revue finale vague 4, C1). Seuls collection/dataset
+            # écrivent dans la transaction du run (annulée à l'échec) ; les writers externes
+            # (postgres distant, ftp, messagerie…) ont déjà produit leur effet. Rejeu sûr :
+            # `append_writers()` refuse retry/reprise des modes append ET des writers externes
+            # non idempotents (EXTERNAL_EFFECT_WRITER_OPS) ; les autres sont idempotents.
             pred_id = compiler.predecessor_id(node.id, payload.edges)
             if pred_id is None:
                 raise PipelineRuntimeError(f"node '{node.id}' has no incoming edge")
@@ -1526,5 +1537,13 @@ def run_pipeline(
             if on_node_complete is not None:
                 on_node_complete(stat)
         return stats
+    except BaseException:
+        # Échec/annulation : la transaction du run (items raster compris) sera annulée par
+        # l'appelant — les COG publiés par le run ne doivent pas rester orphelins au quota.
+        # ponytail: un échec du commit APRÈS un run réussi laisse encore l'orphelin (rare).
+        for key in published:
+            raster_publish.delete_key(key)
+        raise
     finally:
+        raster_publish.RUN_PUBLISHED_KEYS.reset(published_token)
         conn.close()

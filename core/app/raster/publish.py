@@ -3,13 +3,16 @@
 bucket raster -> item `raster` + `raster_assets`. Même chaîne que l'ingestion de
 `app.raster.jobs` (validation/conversion COG, quota de stockage, quota d'items porté par
 `create_item`, audit `item.create`), mais synchrone dans la session du run : `flush`, jamais
-`commit` (un échec ultérieur du run annule l'item ; l'objet S3 resterait orphelin — limite
-assumée, même compromis que `transform.zonalStats`). Droit requis : `catalog.manage`, comme
+`commit` : un échec ultérieur du run annule l'item, et `run_pipeline` supprime alors les COG
+publiés par le run (`RUN_PUBLISHED_KEYS`, sinon orphelins comptés au quota de stockage) et
+n'écrit plus aucun point de reprise après une publication (une reprise rechargerait un
+`raster_item_id` annulé — revue finale FME, I2). Droit requis : `catalog.manage`, comme
 l'upload REST d'un raster."""
 
 import logging
 import os
 import uuid
+from contextvars import ContextVar
 from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
@@ -24,6 +27,9 @@ from app.raster.service import raster_bucket
 from app.roles.guards import has_privilege
 from app.roles.privileges import Privilege
 from app.terrain3d.storage import upload_file
+
+# Clés S3 des COG publiés pendant le run courant (posé par `run_pipeline`) ; None hors run.
+RUN_PUBLISHED_KEYS: ContextVar[list[str] | None] = ContextVar("run_published_keys", default=None)
 
 
 class RasterPublishError(ValueError):
@@ -131,4 +137,6 @@ def _record(session, user, key, cog_path, meta, title, limit_collection_id, file
     session.flush()
     if keys is not None:
         keys.append(key)
+    if (run_keys := RUN_PUBLISHED_KEYS.get()) is not None:
+        run_keys.append(key)
     return Published(item.id, meta.width, meta.height, len(meta.bands))

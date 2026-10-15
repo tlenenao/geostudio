@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.pipelines.errors import PipelineRuntimeError
+from app.pipelines.errors import PipelineCancelledError, PipelineRuntimeError
 from app.pipelines.ops.operation_contract import OperationContract
 from app.sql_ident import quote_ident_duckdb as _qi
 
@@ -188,7 +188,7 @@ def _external_write(
         with engine.begin() as db:
             for r in rows:
                 if should_cancel is not None and should_cancel():
-                    raise PipelineRuntimeError(f"{op}: cancelled")  # rollback distant
+                    raise PipelineCancelledError(f"{op}: cancelled")  # rollback distant
                 binds = {f"k_{i}": v for i, v in enumerate(r[:nk])}
                 binds |= {f"v_{i}": v for i, v in enumerate(r[nk:])}
                 affected += db.execute(stmt, binds).rowcount

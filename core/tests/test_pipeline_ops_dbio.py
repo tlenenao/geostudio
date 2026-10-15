@@ -12,7 +12,7 @@ from pydantic import ValidationError
 from app.configs.schemas import PipelineNode
 from app.db import init_db, make_engine, make_session_factory
 from app.pipelines import egress as pipelines_egress
-from app.pipelines.errors import PipelineRuntimeError
+from app.pipelines.errors import PipelineCancelledError, PipelineRuntimeError
 from app.pipelines.ops import dbio
 from app.pipelines.ops.contracts import OPERATIONS, ops_catalog
 from app.secrets import repository as secrets_repo
@@ -410,7 +410,7 @@ def test_should_cancel_rolls_back(remote, conn, session, tenant, user):
     params = {"secretName": "ext-pg", "table": "fme_b_t", "keyColumns": ["id"]}
     node = PipelineNode(id="w", kind="writer", op="writer.connector.postgres.delete", params=params)
     calls = iter([False, True])
-    with pytest.raises(PipelineRuntimeError, match="cancelled"):
+    with pytest.raises(PipelineCancelledError, match="cancelled"):  # I1 : run « cancelled »
         dbio.WRITERS[node.op](
             session, conn, node=node, view_by_node={"w": "inp"}, tenant_id=tenant.id,
             user=user, should_cancel=lambda: next(calls),

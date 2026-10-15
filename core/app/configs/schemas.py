@@ -341,6 +341,25 @@ class PipelineParameter(BaseModel):
         return self
 
 
+# Writers à effet de bord EXTERNE et non idempotent (un message par ligne, hors transaction
+# du run, irréversible) : un retry/une reprise les rejouerait depuis la ligne 1 (revue finale
+# FME, I1). Les autres writers externes sont rejouables car idempotents : postgres
+# update/delete (WHERE borné aux clés), ftp/topojson/file/export (écrasement du même chemin).
+# Tout nouveau writer doit être classé : test_every_writer_is_classified_for_replay.
+EXTERNAL_EFFECT_WRITER_OPS = frozenset(
+    {
+        "writer.email",
+        "writer.slack",
+        "writer.trello",
+        "writer.servicebus",
+        "writer.azurequeue",
+        "writer.sns",
+        "writer.kinesis",
+        "writer.rabbitmq",
+    }
+)
+
+
 class PipelineRetryPolicy(BaseModel):
     """Politique de reprise (ARC-K2/F5) : `max` reprises automatiques après un
     échec (0 = aucune, mais les points de reprise restent écrits pour une
@@ -393,21 +412,28 @@ class PipelinePayload(BaseModel):
             raise ValueError(f"unknown parameter reference(s): {', '.join(sorted(unknown))}")
         if self.retry is not None and self.retry.max > 0 and self.append_writers():
             raise ValueError(
-                "reprise automatique (retry.max > 0) impossible avec un writer en mode "
-                f"'append' ({', '.join(self.append_writers())}) : un rejeu dupliquerait "
-                "des lignes ; utilisez le mode 'upsert' (writer.collection) ou 'replace'"
+                "reprise automatique (retry.max > 0) impossible avec un writer non idempotent "
+                f"({', '.join(self.append_writers())}) : un rejeu dupliquerait des lignes "
+                "(mode 'append' : utilisez 'upsert' ou 'replace') ou renverrait des messages "
+                "externes déjà partis"
             )
         return self
 
     def append_writers(self) -> list[str]:
-        """Ids des writers collection/dataset en mode `append` (défaut) ou `insert` (alias
-        d'append, F1) : non idempotents, donc incompatibles avec un rejeu/une reprise."""
+        """Ids des writers NON REJOUABLES, donc incompatibles avec un retry/une reprise :
+        writers collection/dataset en mode `append` (défaut) ou `insert` (alias d'append, F1),
+        et writers à effet externe irréversible (`EXTERNAL_EFFECT_WRITER_OPS`)."""
         return [
             n.id
             for n in self.nodes
             if n.kind == "writer"
-            and n.op in {"writer.collection", "writer.dataset"}
-            and (n.params or {}).get("mode", "append") in ("append", "insert")
+            and (
+                n.op in EXTERNAL_EFFECT_WRITER_OPS
+                or (
+                    n.op in {"writer.collection", "writer.dataset"}
+                    and (n.params or {}).get("mode", "append") in ("append", "insert")
+                )
+            )
         ]
 
 

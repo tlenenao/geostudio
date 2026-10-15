@@ -20,7 +20,7 @@ from app.configs.schemas import PipelineNode
 from app.db import init_db, make_engine, make_session_factory
 from app.pipelines import egress as pipelines_egress
 from app.pipelines.connector_runtime import PostgresSecretResolver
-from app.pipelines.errors import PipelineRuntimeError
+from app.pipelines.errors import PipelineCancelledError, PipelineRuntimeError
 from app.pipelines.ops import messaging
 from app.pipelines.ops.contracts import OPERATIONS, ops_catalog
 from app.secrets import repository as secrets_repo
@@ -258,7 +258,7 @@ def test_cap_cancel_and_audit_before_effect(http, conn, session, tenant, user):
         n["c"] += 1
         return n["c"] > 1  # annule avant le 2e message
 
-    with pytest.raises(PipelineRuntimeError, match="cancelled after 1"):
+    with pytest.raises(PipelineCancelledError, match="cancelled after 1"):  # I1 : pas « failed »
         _write("writer.slack", conn, session, tenant, user, p, ROWS3, cancel=cancel)
     assert len(http.calls) == 1
     audits = _audits(session, "writer.slack")
