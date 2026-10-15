@@ -11,6 +11,7 @@ de réutiliser une file déjà dans cette liste."""
 import logging
 import os
 
+from app.compliance.models import PurgeReceipt
 from app.compliance.orphans import sweep_orphan_job_objects
 from app.compliance.purge import purge_tenant
 from app.db import request_scoped_session
@@ -28,19 +29,37 @@ def s3_client_from_env():
     )
 
 
+def _set_receipt_status(factory, purge_id: str, status: str, *, error: str | None = None) -> None:
+    """Session dédiée, committée à part : survit à l'annulation de la transaction de purge."""
+    with request_scoped_session(factory) as session:
+        receipt = session.get(PurgeReceipt, purge_id)
+        if receipt is not None:
+            receipt.status = status
+            receipt.error = error
+            session.commit()
+
+
 @app.task(queue="etl")
 def purge_tenant_task(*, purge_id: str, tenant_id: str, requested_by_user_id: str) -> None:
     factory = _session_factory()
-    s3 = s3_client_from_env()
-    with request_scoped_session(factory) as session:
-        purge_tenant(
-            session,
-            s3,
-            tenant_id=tenant_id,
-            requested_by_user_id=requested_by_user_id,
-            receipt_id=purge_id,
-        )
-        session.commit()
+    _set_receipt_status(factory, purge_id, "running")
+    try:
+        s3 = s3_client_from_env()
+        with request_scoped_session(factory) as session:
+            purge_tenant(
+                session,
+                s3,
+                tenant_id=tenant_id,
+                requested_by_user_id=requested_by_user_id,
+                receipt_id=purge_id,
+            )
+            session.commit()
+    except Exception as exc:
+        # REV-344 b : l'échec est consigné sur le reçu (GET /purges/{id} le rend visible,
+        # une nouvelle demande redevient possible) au lieu de laisser un 202 éternel. La
+        # transaction de purge est annulée : la base est intacte, S3 n'a pas été touché.
+        logging.getLogger(__name__).exception("purge du tenant %s échouée", tenant_id)
+        _set_receipt_status(factory, purge_id, "failed", error=f"{type(exc).__name__}: {exc}")
 
 
 @app.periodic(cron="23 3 * * *")

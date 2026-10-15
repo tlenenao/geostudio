@@ -170,3 +170,20 @@ def test_read_only_mode_does_not_block_export_endpoints(env, monkeypatch):
 
     resp = env.post("/v1/datasets/does-not-exist/arcgis/export?format=csv", json={"groupBy": "x"})
     assert resp.status_code == 404
+
+
+@pytest.mark.parametrize(
+    ("path", "body"),
+    [
+        ("/v1/export", {"itemId": "x", "format": "pdf"}),
+        ("/v1/app-exports", {"itemId": "x", "mode": "static"}),
+        ("/v1/collections/c1/export/jobs/j1/cancel", {}),
+    ],
+)
+def test_read_only_mode_blocks_export_job_creation(env, monkeypatch, path, body):
+    """REV-358 : seuls les exports d'agrégat synchrones (lecture) sont exemptés ; tout POST
+    qui crée (ou annule) un job d'export écrit en base et reste refusé en démo publique."""
+    monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
+    resp = env.post(path, json=body)
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == READ_ONLY_MESSAGE

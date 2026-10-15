@@ -309,7 +309,7 @@ def list_revisions(session: Session, config_id: str) -> list[RevisionInfo]:
 def rollback_config(
     session: Session, config_id: str, version: int, *, tenant_id: str
 ) -> ConfigRead | None:
-    record = session.get(Config, config_id)
+    record = session.get(Config, config_id, with_for_update=True)
     if record is None:
         return None
     source = session.scalar(

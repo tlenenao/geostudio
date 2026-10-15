@@ -224,7 +224,8 @@ def _flatten_diff(diff_list: list) -> list:
 # Index fonctionnels/d'accès spécial créés par 0012_pgvector_embeddings.py
 # via op.execute() brut (jamais op.create_index()) : GIN trigram sur une
 # EXPRESSION ("(title || ' ' || abstract) gin_trgm_ops", pas une colonne),
-# et ivfflat (vector_cosine_ops, WITH (lists = 100)) sur `embedding`. Les
+# et ivfflat (vector_cosine_ops, WITH (lists = 100)) sur `embedding` — passés
+# en HNSW (vector_cosine_ops, mêmes noms) par 0071 (REV-348). Les
 # représenter fidèlement en Base.metadata exigerait un Index(text(...),
 # postgresql_using="gin"/"ivfflat", postgresql_ops={...}, postgresql_with=
 # {...}) jamais éprouvé ici ni ailleurs dans le dépôt — matérialiser ces 4

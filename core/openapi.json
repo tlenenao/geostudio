@@ -6381,6 +6381,17 @@
             "title": "Counts",
             "type": "object"
           },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -6391,6 +6402,11 @@
           },
           "requestedByUserId": {
             "title": "Requestedbyuserid",
+            "type": "string"
+          },
+          "status": {
+            "default": "done",
+            "title": "Status",
             "type": "string"
           },
           "tenantSlug": {

@@ -157,6 +157,8 @@ export type PurgeReceipt = {
   requestedAt: string;
   completedAt: string;
   counts: Record<string, number>;
+  status?: "pending" | "running" | "done" | "failed";
+  error?: string | null;
 };
 
 export type NotificationSummary = {

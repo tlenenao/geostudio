@@ -5051,12 +5051,19 @@ export interface components {
             counts: {
                 [key: string]: unknown;
             };
+            /** Error */
+            error?: string | null;
             /** Id */
             id: string;
             /** Requestedat */
             requestedAt: string;
             /** Requestedbyuserid */
             requestedByUserId: string;
+            /**
+             * Status
+             * @default done
+             */
+            status: string;
             /** Tenantslug */
             tenantSlug: string;
         };

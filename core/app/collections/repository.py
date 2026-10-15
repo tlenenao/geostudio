@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.collections.models import Collection
 from app.collections.schemas import CollectionPermissions
+from app.jobs.after_commit import run_after_commit
 from app.quotas.service import check_quota_or_raise
 from app.search.providers import get_embedding_provider
 from app.search.ranking import hybrid_search_ids
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 _RRF_CANDIDATE_LIMIT = 200
 
 
-def enqueue_embedding(collection_id: str, tenant_id: str) -> None:
+def enqueue_embedding(session: Session, collection_id: str, tenant_id: str) -> None:
     # Best-effort, même contrat que app.items.repository._enqueue_embedding
     # (Task 5) : le calcul d'embedding est déjà fail-open (app.collections.
     # jobs.embed_collection_task ne bloque jamais l'écriture sur un
@@ -38,14 +39,17 @@ def enqueue_embedding(collection_id: str, tenant_id: str) -> None:
     # repository pour la porter, contrairement à items).
     from app.collections.jobs import embed_collection_task
 
-    try:
-        embed_collection_task.defer(collection_id=collection_id, tenant_id=tenant_id)
-    except procrastinate.exceptions.ProcrastinateException:
-        logger.exception(
-            "échec de l'enqueue du job d'embedding pour la collection %s (l'écriture "
-            "n'est pas affectée ; l'embedding restera NULL jusqu'au prochain write)",
-            collection_id,
-        )
+    def _defer() -> None:
+        try:
+            embed_collection_task.defer(collection_id=collection_id, tenant_id=tenant_id)
+        except procrastinate.exceptions.ProcrastinateException:
+            logger.exception(
+                "échec de l'enqueue du job d'embedding pour la collection %s (l'écriture "
+                "n'est pas affectée ; sweep_missing_collection_embeddings_task le reprendra)",
+                collection_id,
+            )
+
+    run_after_commit(session, _defer)
 
 
 def get_access_facts(col: Collection) -> AccessFacts:
@@ -113,7 +117,7 @@ def create_collection(
     )
     session.add(col)
     session.flush()
-    enqueue_embedding(col.id, tenant_id)
+    enqueue_embedding(session, col.id, tenant_id)
     return col
 
 

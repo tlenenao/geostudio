@@ -21,6 +21,7 @@ from app.items.schemas import (
     StatusFacet,
 )
 from app.items.slug import InvalidSlugError, SlugCollisionError, is_valid_slug, slugify
+from app.jobs.after_commit import run_after_commit
 from app.outbox.emit import emit
 from app.quotas.service import check_quota_or_raise
 from app.roles.kind_registry import privilege_for_kind
@@ -55,7 +56,8 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-def _enqueue_embedding(item_id: str, tenant_id: str) -> None:
+def _enqueue_embedding(session: Session, item_id: str, tenant_id: str) -> None:
+    # Déféré APRÈS le commit de `session` (REV-346).
     # Best-effort : le calcul d'embedding est déjà fail-open (app.items.jobs.
     # embed_item_task ne bloque jamais l'écriture sur un fournisseur lent ou
     # indisponible, spec §Pipeline d'embedding). L'ENQUEUE elle-même doit
@@ -67,14 +69,17 @@ def _enqueue_embedding(item_id: str, tenant_id: str) -> None:
     # app.db.core_table_names().
     from app.items.jobs import embed_item_task
 
-    try:
-        embed_item_task.defer(item_id=item_id, tenant_id=tenant_id)
-    except procrastinate.exceptions.ProcrastinateException:
-        logger.exception(
-            "échec de l'enqueue du job d'embedding pour l'item %s (l'écriture "
-            "n'est pas affectée ; l'embedding restera NULL jusqu'au prochain write)",
-            item_id,
-        )
+    def _defer() -> None:
+        try:
+            embed_item_task.defer(item_id=item_id, tenant_id=tenant_id)
+        except procrastinate.exceptions.ProcrastinateException:
+            logger.exception(
+                "échec de l'enqueue du job d'embedding pour l'item %s (l'écriture "
+                "n'est pas affectée ; sweep_missing_embeddings_task le reprendra)",
+                item_id,
+            )
+
+    run_after_commit(session, _defer)
 
 
 # Repli conservateur, servi partout où l'appelant ne fournit pas d'utilisateur :
@@ -242,7 +247,7 @@ def create_item(
         event_type="item.created",
         payload={"itemId": item.id, "resourceType": resource_type},
     )
-    _enqueue_embedding(item.id, tenant_id)
+    _enqueue_embedding(session, item.id, tenant_id)
     _items_created_counter.add(1)
     return item
 
@@ -785,7 +790,7 @@ def update_item(
         payload={"itemId": item.id, "resourceType": item.resource_type},
     )
     owner_username = session.scalar(select(User.username).where(User.id == item.owner_id)) or ""
-    _enqueue_embedding(item.id, tenant_id)
+    _enqueue_embedding(session, item.id, tenant_id)
     if current_user_id is None:
         return _to_read(item, owner_username)
     permissions = _permissions_by_id(

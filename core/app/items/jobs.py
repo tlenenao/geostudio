@@ -6,6 +6,7 @@ l'écriture sur un fournisseur d'embeddings lent/indisponible). Échec
 (dégradation gracieuse, spec §Pipeline d'embedding)."""
 
 import logging
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
@@ -39,3 +40,27 @@ def embed_item_task(item_id: str, tenant_id: str) -> None:
             item.embedding = provider.embed(_embed_text(item))
     except Exception:
         logger.exception("embed_item_task: échec du calcul d'embedding pour l'item %s", item_id)
+
+
+_SWEEP_BATCH = 100
+_SWEEP_GRACE = timedelta(minutes=10)
+
+
+@app.periodic(cron="*/15 * * * *")
+@app.task(queue="search", queueing_lock="sweep_missing_embeddings_task")
+def sweep_missing_embeddings_task(timestamp: int) -> None:
+    """REV-346 : re-défère l'embedding des items restés sans vecteur (defer perdu, worker
+    tué, fournisseur en panne), au-delà d'un délai de grâce. Balayage borné, plus récents
+    d'abord.
+    # ponytail: un item en échec permanent (>100) peut affamer les plus anciens."""
+    factory = common_session_factory()
+    cutoff = datetime.now(UTC).replace(tzinfo=None) - _SWEEP_GRACE
+    with request_scoped_session(factory) as session:
+        rows = session.execute(
+            select(Item.id, Item.tenant_id)
+            .where(Item.embedding.is_(None), Item.updated_at < cutoff)
+            .order_by(Item.updated_at.desc())
+            .limit(_SWEEP_BATCH)
+        ).all()
+    for item_id, tenant_id in rows:
+        embed_item_task.defer(item_id=item_id, tenant_id=tenant_id)

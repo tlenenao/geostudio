@@ -30,7 +30,6 @@ def test_s3_secret_not_readable_after_lock_down():
     assert leaked != "SUPERSECRET"
 
 
-@pytest.mark.xfail(strict=True, reason="REV-audit: rollback_config sans verrou de ligne")
 def test_rollback_config_locks_the_row(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
 
@@ -59,7 +58,6 @@ def test_rollback_config_locks_the_row(monkeypatch, tmp_path):
         assert seen and seen[0], "rollback doit lire la config avec with_for_update"
 
 
-@pytest.mark.xfail(strict=True, reason="REV-audit: double purge de tenant acceptée")
 def test_second_purge_request_while_first_pending_is_rejected(env):  # noqa: F811
     _as_user_id(env["app"], env["Session"], env["admin_id"])
     url = f"/v1/compliance/tenants/{env['tenant_id']}/purge"
@@ -81,19 +79,42 @@ def test_tileset3d_has_periodic_reclaim():
     assert "periodic" in inspect.getsource(m)
 
 
-@pytest.mark.xfail(strict=True, reason="REV-audit: purge_tenant_task sans trace d'échec")
-def test_purge_task_failure_is_recorded_not_just_raised(monkeypatch):
+def test_purge_task_failure_is_recorded_not_just_raised(tmp_path, monkeypatch):
+    """REV-344 b : l'échec est consigné sur le reçu (`failed` + message), jamais un 202 éternel."""
+    from datetime import UTC, datetime
+
     import app.compliance.jobs as jobs
+    from app.compliance.models import PurgeReceipt
+    from app.db import init_db, make_engine, make_session_factory
+
+    engine = make_engine(f"sqlite+pysqlite:///{tmp_path / 'purge.db'}")
+    init_db(engine)
+    Session = make_session_factory(engine)
+    with Session() as s:
+        s.add(
+            PurgeReceipt(
+                id="p1",
+                tenant_slug="t",
+                requested_by_user_id="u1",
+                requested_at=datetime.now(UTC),
+                counts={},
+                status="pending",
+            )
+        )
+        s.commit()
 
     def boom(*a, **k):
         raise RuntimeError("s3 down")
 
     monkeypatch.setattr(jobs, "purge_tenant", boom)
     monkeypatch.setattr(jobs, "s3_client_from_env", lambda: object())
-    monkeypatch.setattr(jobs, "_session_factory", lambda: None)
-    monkeypatch.setattr(jobs, "request_scoped_session", _fake_scope)
-    # attendu : l'échec est capturé/tracé (statut, notification) au lieu de se propager nu
+    monkeypatch.setattr(jobs, "_session_factory", lambda: Session)
     jobs.purge_tenant_task(purge_id="p1", tenant_id="t1", requested_by_user_id="u1")
+
+    with Session() as s:
+        receipt = s.get(PurgeReceipt, "p1")
+        assert receipt.status == "failed"
+        assert "s3 down" in receipt.error
 
 
 import contextlib  # noqa: E402

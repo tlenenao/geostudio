@@ -168,16 +168,11 @@ def test_get_purge_status_returns_202_while_pending_and_200_once_receipt_exists(
     # Simule la fin du job (écrite normalement par purge_tenant_task — le
     # déferrement lui-même est stubé dans ce test, cf. fixture `env`).
     with env["Session"]() as s:
-        s.add(
-            PurgeReceipt(
-                id=purge_id,
-                tenant_slug=env["tenant_slug"],
-                requested_by_user_id=env["admin_id"],
-                requested_at=datetime.now(UTC),
-                completed_at=datetime.now(UTC),
-                counts={"items": 0},
-            )
-        )
+        receipt = s.get(PurgeReceipt, purge_id)
+        assert receipt.status == "pending"  # créé par la route (REV-344)
+        receipt.status = "done"
+        receipt.completed_at = datetime.now(UTC)
+        receipt.counts = {"items": 0}
         s.commit()
 
     done = env["client"].get(f"/v1/compliance/purges/{purge_id}")
@@ -194,3 +189,44 @@ def test_get_purge_status_returns_202_for_an_unknown_purge_id(env):
     _as_user_id(env["app"], env["Session"], env["admin_id"])
     resp = env["client"].get("/v1/compliance/purges/does-not-exist")
     assert resp.status_code == 202
+
+
+def test_get_purge_status_exposes_a_failed_purge_with_its_error(env):
+    _as_user_id(env["app"], env["Session"], env["admin_id"])
+    purge_id = (
+        env["client"]
+        .post(
+            f"/v1/compliance/tenants/{env['tenant_id']}/purge",
+            json={"confirmSlug": env["tenant_slug"]},
+        )
+        .json()["jobId"]
+    )
+    with env["Session"]() as s:
+        receipt = s.get(PurgeReceipt, purge_id)
+        receipt.status = "failed"
+        receipt.error = "boom"
+        s.commit()
+    resp = env["client"].get(f"/v1/compliance/purges/{purge_id}")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "failed"
+    assert resp.json()["error"] == "boom"
+    # un échec ne verrouille plus : une nouvelle demande est acceptée
+    again = env["client"].post(
+        f"/v1/compliance/tenants/{env['tenant_id']}/purge",
+        json={"confirmSlug": env["tenant_slug"]},
+    )
+    assert again.status_code == 202
+
+
+def test_purge_request_is_failed_not_locked_when_defer_raises(env):
+    def broken(*_a):
+        raise RuntimeError("queue down")
+
+    env["app"].dependency_overrides[compliance_routes.get_purge_task_deferrer] = lambda: broken
+    _as_user_id(env["app"], env["Session"], env["admin_id"])
+    url = f"/v1/compliance/tenants/{env['tenant_id']}/purge"
+    resp = env["client"].post(url, json={"confirmSlug": env["tenant_slug"]})
+    assert resp.status_code == 503
+    with env["Session"]() as s:
+        statuses = [r.status for r in s.query(PurgeReceipt).all()]
+    assert statuses == ["failed"]

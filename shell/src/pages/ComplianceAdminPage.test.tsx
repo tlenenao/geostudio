@@ -107,6 +107,34 @@ test("le bouton de purge s'active une fois le slug exact tapé, et déclenche PO
   expect(await screen.findByText("Purge en cours…")).toBeInTheDocument();
 });
 
+test("une purge en échec affiche l'erreur du reçu et permet de relancer (REV-344)", async () => {
+  server.use(
+    http.post("https://core.test/v1/compliance/tenants/:tenantId/purge", () =>
+      HttpResponse.json({ jobId: "purge-9" }, { status: 202 }),
+    ),
+    http.get("https://core.test/v1/compliance/purges/purge-9", () =>
+      HttpResponse.json({
+        id: "purge-9",
+        tenantSlug: "demo",
+        requestedByUserId: "u1",
+        requestedAt: "2026-10-15T10:00:00",
+        completedAt: "",
+        counts: {},
+        status: "failed",
+        error: "RuntimeError: s3 down",
+      }),
+    ),
+  );
+  render(<Harness />);
+  await screen.findByText("Purger toutes les données du tenant");
+  await userEvent.type(screen.getByLabelText(/Retapez le slug du tenant/), "demo");
+  const purgeButton = screen.getByRole("button", { name: "Purger définitivement ce tenant" });
+  await userEvent.click(purgeButton);
+
+  expect(await screen.findByText(/La purge a échoué : RuntimeError: s3 down/)).toBeInTheDocument();
+  await waitFor(() => expect(purgeButton).toBeEnabled());
+});
+
 test("anonymiser un compte appelle POST /compliance/users/{id}/erase et affiche une confirmation", async () => {
   let erasedUserId: string | null = null;
   server.use(
