@@ -133,12 +133,7 @@ def test_gcs_service_account_token_uri_is_validated():
         )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="REV-audit: confused deputy, secret d'un autre non contrôlé à l'écriture (alerts/notify.py:44)",  # noqa: E501
-)
-def test_alert_config_write_checks_secret_usage_by_editor():
-    pytest.xfail("non testable unitairement sans scénario HTTP complet")
+# REV-331/342 : reproducteur réel dans tests/test_secret_usage_on_write.py.
 
 
 def test_gpkg_import_rejects_vrt_disguised_file(tmp_path):
