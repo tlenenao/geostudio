@@ -5374,6 +5374,27 @@
         "title": "MetadataCatalog",
         "type": "object"
       },
+      "MongoDbUriPayload": {
+        "description": "URI de connexion MongoDB (`mongodb://` ou `mongodb+srv://`, identifiants inclus) pour\n`reader.mongodb`. Le runtime n'en retient que les h\u00f4tes, les identifiants, la base,\n`authSource` et `authMechanism` (SCRAM seulement) : toute autre option (proxy, TLS\nd\u00e9sactiv\u00e9, fichiers de certificat\u2026) est ignor\u00e9e ; TLS est toujours exig\u00e9.",
+        "properties": {
+          "kind": {
+            "const": "mongodb_uri",
+            "default": "mongodb_uri",
+            "title": "Kind",
+            "type": "string"
+          },
+          "uri": {
+            "minLength": 1,
+            "title": "Uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uri"
+        ],
+        "title": "MongoDbUriPayload",
+        "type": "object"
+      },
       "MssqlDsnPayload": {
         "description": "DSN SQLAlchemy complet vers Microsoft SQL Server, forme\n`mssql+pymssql://user:pass@host:port/dbname` (v\u00e9rifi\u00e9e directement\ncontre le module source r\u00e9el `sqlalchemy/dialects/mssql/pymssql.py` du\nd\u00e9p\u00f4t sqlalchemy/sqlalchemy, docstring `:connectstring:` +\nl'exemple `\"mssql+pymssql://user:pass@host/db\"` du docstring de\n`sqlalchemy/dialects/mssql/base.py`, pas seulement la doc publi\u00e9e \u2014\npi\u00e8ge CLAUDE.md n\u00b03). Driver retenu : `pymssql` (pur Python, s'appuie\nsur FreeTDS embarqu\u00e9 dans ses wheels officielles) plut\u00f4t que `pyodbc`\n(n\u00e9cessiterait `unixodbc` + un driver ODBC syst\u00e8me sur l'image du\nworker) \u2014 aucune limitation bloquante trouv\u00e9e qui imposerait pyodbc.\nComme postgres_dsn/snowflake_dsn/bigquery_dsn : le c\u0153ur ne parse ni ne\nvalide ce DSN, il le passe tel quel \u00e0 sa.create_engine() ; comme\npostgres_dsn/snowflake_dsn (et contrairement \u00e0 bigquery_dsn),\nsa.create_engine() reste paresseux pour ce dialecte \u2014 aucun appel\nr\u00e9seau avant .connect(), et le mot de passe est masqu\u00e9 par\n`str(engine.url)`.\n\nLimitation document\u00e9e \u00e0 conna\u00eetre avant d'\u00e9crire `query` (analogue \u00e0 la\nr\u00e9serve SAMPLE/TOP/MINUS de SnowflakeDsnPayload, mais dans l'autre sens) :\n`query` est valid\u00e9e SELECT-only en la parsant avec le dialecte SQL de\nDuckDB (app.pipelines.connector_runtime), pas le T-SQL r\u00e9el. `TOP n`\nn'est pas reconnu par le parseur DuckDB et est donc rejet\u00e9 ici, alors\nqu'il serait valide sur un vrai SQL Server \u2014 \u00e0 reformuler en\n`ORDER BY ... OFFSET n ROWS FETCH NEXT m ROWS ONLY`. Un identifiant entre\ncrochets `[col]` (syntaxe T-SQL propri\u00e9taire) passe la validation DuckDB\ntant qu'il ne contient ni espace ni caract\u00e8re sp\u00e9cial (`[id]` accept\u00e9,\n`[my column]` rejet\u00e9 \u2014 v\u00e9rifi\u00e9 empiriquement contre le vrai parseur, pas\nsuppos\u00e9) ; reformuler en guillemets doubles (`\"my column\"`) si besoin\nd'un identifiant \u00e0 espace. \u00c0 l'inverse, `LIMIT n` est accept\u00e9 ici (syntaxe DuckDB valide)\nmais n'est PAS du T-SQL valide \u2014 SQL Server ne conna\u00eet pas la clause\nLIMIT \u2014 et une requ\u00eate qui passe cette validation peut donc \u00e9chouer\nc\u00f4t\u00e9 serveur avec une erreur explicite au moment de l'ex\u00e9cution.",
         "properties": {
@@ -5629,6 +5650,81 @@
           "clientSecret"
         ],
         "title": "OAuth2ClientCredentialsPayload",
+        "type": "object"
+      },
+      "OAuth2ClientPayload": {
+        "description": "Client OAuth2 g\u00e9n\u00e9rique (voie R FME) : `client_credentials` (application seule) ou\n`refresh_token` (compte utilisateur d\u00e9l\u00e9gu\u00e9 : Dropbox, Box, OneDrive\u2026). Le runtime\n\u00e9change ces identifiants contre un jeton d'acc\u00e8s \u00e0 l'ex\u00e9cution (cache m\u00e9moire court,\njamais persist\u00e9) ; si le fournisseur renvoie un nouveau `refreshToken`, il est r\u00e9\u00e9crit\ndans le coffre. `tokenUrl` est fix\u00e9 par le cr\u00e9ateur du secret (jamais par le n\u0153ud) et\npasse par la garde d'egress ; le jeton obtenu n'est envoy\u00e9 que sous `baseUrl`.",
+        "properties": {
+          "baseUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseurl"
+          },
+          "clientId": {
+            "minLength": 1,
+            "title": "Clientid",
+            "type": "string"
+          },
+          "clientSecret": {
+            "minLength": 1,
+            "title": "Clientsecret",
+            "type": "string"
+          },
+          "grantType": {
+            "default": "client_credentials",
+            "enum": [
+              "client_credentials",
+              "refresh_token"
+            ],
+            "title": "Granttype",
+            "type": "string"
+          },
+          "kind": {
+            "const": "oauth2_client",
+            "default": "oauth2_client",
+            "title": "Kind",
+            "type": "string"
+          },
+          "refreshToken": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refreshtoken"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope"
+          },
+          "tokenUrl": {
+            "minLength": 1,
+            "title": "Tokenurl",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tokenUrl",
+          "clientId",
+          "clientSecret"
+        ],
+        "title": "OAuth2ClientPayload",
         "type": "object"
       },
       "OracleDsnPayload": {
@@ -7137,7 +7233,9 @@
                 "bigquery_dsn": "#/components/schemas/BigQueryDsnPayload",
                 "databricks_dsn": "#/components/schemas/DatabricksDsnPayload",
                 "gcs_credentials": "#/components/schemas/GcsCredentialsPayload",
+                "mongodb_uri": "#/components/schemas/MongoDbUriPayload",
                 "mssql_dsn": "#/components/schemas/MssqlDsnPayload",
+                "oauth2_client": "#/components/schemas/OAuth2ClientPayload",
                 "oauth2_client_credentials": "#/components/schemas/OAuth2ClientCredentialsPayload",
                 "oracle_dsn": "#/components/schemas/OracleDsnPayload",
                 "postgres_dsn": "#/components/schemas/PostgresDsnPayload",
@@ -7159,6 +7257,9 @@
               },
               {
                 "$ref": "#/components/schemas/OAuth2ClientCredentialsPayload"
+              },
+              {
+                "$ref": "#/components/schemas/OAuth2ClientPayload"
               },
               {
                 "$ref": "#/components/schemas/PostgresDsnPayload"
@@ -7189,6 +7290,9 @@
               },
               {
                 "$ref": "#/components/schemas/GcsCredentialsPayload"
+              },
+              {
+                "$ref": "#/components/schemas/MongoDbUriPayload"
               }
             ],
             "title": "Payload"
@@ -7213,7 +7317,9 @@
                 "bigquery_dsn": "#/components/schemas/BigQueryDsnPayload",
                 "databricks_dsn": "#/components/schemas/DatabricksDsnPayload",
                 "gcs_credentials": "#/components/schemas/GcsCredentialsPayload",
+                "mongodb_uri": "#/components/schemas/MongoDbUriPayload",
                 "mssql_dsn": "#/components/schemas/MssqlDsnPayload",
+                "oauth2_client": "#/components/schemas/OAuth2ClientPayload",
                 "oauth2_client_credentials": "#/components/schemas/OAuth2ClientCredentialsPayload",
                 "oracle_dsn": "#/components/schemas/OracleDsnPayload",
                 "postgres_dsn": "#/components/schemas/PostgresDsnPayload",
@@ -7235,6 +7341,9 @@
               },
               {
                 "$ref": "#/components/schemas/OAuth2ClientCredentialsPayload"
+              },
+              {
+                "$ref": "#/components/schemas/OAuth2ClientPayload"
               },
               {
                 "$ref": "#/components/schemas/PostgresDsnPayload"
@@ -7265,6 +7374,9 @@
               },
               {
                 "$ref": "#/components/schemas/GcsCredentialsPayload"
+              },
+              {
+                "$ref": "#/components/schemas/MongoDbUriPayload"
               }
             ],
             "title": "Payload"

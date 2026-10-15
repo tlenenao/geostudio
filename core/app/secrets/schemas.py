@@ -87,6 +87,51 @@ class OAuth2ClientCredentialsPayload(_RestScopedPayload):
     clientSecret: NonEmptyStr
 
 
+class OAuth2ClientPayload(_RestScopedPayload):
+    """Client OAuth2 générique (voie R FME) : `client_credentials` (application seule) ou
+    `refresh_token` (compte utilisateur délégué : Dropbox, Box, OneDrive…). Le runtime
+    échange ces identifiants contre un jeton d'accès à l'exécution (cache mémoire court,
+    jamais persisté) ; si le fournisseur renvoie un nouveau `refreshToken`, il est réécrit
+    dans le coffre. `tokenUrl` est fixé par le créateur du secret (jamais par le nœud) et
+    passe par la garde d'egress ; le jeton obtenu n'est envoyé que sous `baseUrl`."""
+
+    kind: Literal["oauth2_client"] = "oauth2_client"
+    grantType: Literal["client_credentials", "refresh_token"] = "client_credentials"
+    tokenUrl: NonEmptyStr
+    clientId: NonEmptyStr
+    clientSecret: NonEmptyStr
+    refreshToken: str | None = None
+    scope: str | None = None
+
+    @field_validator("tokenUrl")
+    @classmethod
+    def _token_url(cls, v: str) -> str:
+        return _check_base_url(v) or v
+
+    @model_validator(mode="after")
+    def _refresh_token_required(self) -> "OAuth2ClientPayload":
+        if self.grantType == "refresh_token" and not self.refreshToken:
+            raise ValueError("refreshToken is required when grantType is 'refresh_token'")
+        return self
+
+
+class MongoDbUriPayload(BaseModel):
+    """URI de connexion MongoDB (`mongodb://` ou `mongodb+srv://`, identifiants inclus) pour
+    `reader.mongodb`. Le runtime n'en retient que les hôtes, les identifiants, la base,
+    `authSource` et `authMechanism` (SCRAM seulement) : toute autre option (proxy, TLS
+    désactivé, fichiers de certificat…) est ignorée ; TLS est toujours exigé."""
+
+    kind: Literal["mongodb_uri"] = "mongodb_uri"
+    uri: NonEmptyStr
+
+    @field_validator("uri")
+    @classmethod
+    def _scheme(cls, v: str) -> str:
+        if not v.startswith(("mongodb://", "mongodb+srv://")):
+            raise ValueError("uri must start with 'mongodb://' or 'mongodb+srv://'")
+        return v
+
+
 class PostgresDsnPayload(BaseModel):
     kind: Literal["postgres_dsn"] = "postgres_dsn"
     dsn: NonEmptyStr
@@ -394,24 +439,7 @@ SecretPayload = Annotated[
     | BearerTokenPayload
     | BasicAuthPayload
     | OAuth2ClientCredentialsPayload
-    | PostgresDsnPayload
-    | SmtpCredentialsPayload
-    | SnowflakeDsnPayload
-    | BigQueryDsnPayload
-    | MssqlDsnPayload
-    | OracleDsnPayload
-    | DatabricksDsnPayload
-    | S3CredentialsPayload
-    | AzureBlobCredentialsPayload
-    | GcsCredentialsPayload,
-    Field(discriminator="kind"),
-]
-
-SECRET_PAYLOAD_ADAPTER: TypeAdapter[
-    ApiKeyPayload
-    | BearerTokenPayload
-    | BasicAuthPayload
-    | OAuth2ClientCredentialsPayload
+    | OAuth2ClientPayload
     | PostgresDsnPayload
     | SmtpCredentialsPayload
     | SnowflakeDsnPayload
@@ -422,6 +450,27 @@ SECRET_PAYLOAD_ADAPTER: TypeAdapter[
     | S3CredentialsPayload
     | AzureBlobCredentialsPayload
     | GcsCredentialsPayload
+    | MongoDbUriPayload,
+    Field(discriminator="kind"),
+]
+
+SECRET_PAYLOAD_ADAPTER: TypeAdapter[
+    ApiKeyPayload
+    | BearerTokenPayload
+    | BasicAuthPayload
+    | OAuth2ClientCredentialsPayload
+    | OAuth2ClientPayload
+    | PostgresDsnPayload
+    | SmtpCredentialsPayload
+    | SnowflakeDsnPayload
+    | BigQueryDsnPayload
+    | MssqlDsnPayload
+    | OracleDsnPayload
+    | DatabricksDsnPayload
+    | S3CredentialsPayload
+    | AzureBlobCredentialsPayload
+    | GcsCredentialsPayload
+    | MongoDbUriPayload
 ] = TypeAdapter(SecretPayload)
 
 
