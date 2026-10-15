@@ -106,7 +106,13 @@ class OAuth2ClientPayload(_RestScopedPayload):
     @field_validator("tokenUrl")
     @classmethod
     def _token_url(cls, v: str) -> str:
-        return _check_base_url(v) or v
+        try:
+            return _check_base_url(v) or v
+        except ValueError:
+            raise ValueError(
+                "tokenUrl must look like 'https://<host>/<path>' "
+                "(no credentials, query, fragment or '..' segment)"
+            ) from None
 
     @model_validator(mode="after")
     def _refresh_token_required(self) -> "OAuth2ClientPayload":

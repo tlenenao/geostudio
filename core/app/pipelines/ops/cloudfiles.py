@@ -107,9 +107,9 @@ def _resolve_secret(op: str, session, tenant_id, user, name: str | None):
     return payload
 
 
-def _token_request(op: str, payload, form: dict[str, str]) -> tuple[str, float, str | None]:
+def _token_request(op: str, payload, form: dict[str, str]) -> dict:
     """POST au `tokenUrl` (egress gardé, AUCUNE redirection : le client_secret ne suit jamais
-    un saut) -> (jeton d'accès, durée de vie s, refresh_token renvoyé ou None). Les erreurs
+    un saut) -> objet JSON de la réponse, non validé (cf. `_access_from_doc`). Les erreurs
     ne citent jamais le corps de la réponse ni les identifiants."""
     if _REQUIRE_TLS_FOR_SECRETS and urlsplit(payload.tokenUrl).scheme != "https":
         raise PipelineRuntimeError(f"{op}: the OAuth2 tokenUrl must use https")
@@ -128,52 +128,80 @@ def _token_request(op: str, payload, form: dict[str, str]) -> tuple[str, float, 
     )
     try:
         doc = json.loads(body)
-        token = doc["access_token"]
-        ttl = float(doc.get("expires_in") or 3600)
-    except (ValueError, KeyError, TypeError) as exc:
+    except ValueError as exc:
         raise PipelineRuntimeError(f"{op}: unexpected OAuth2 token answer") from exc
+    if not isinstance(doc, dict):
+        raise PipelineRuntimeError(f"{op}: unexpected OAuth2 token answer")
+    return doc
+
+
+def _access_from_doc(op: str, doc: dict) -> tuple[str, float]:
+    token = doc.get("access_token")
+    try:
+        ttl = float(doc.get("expires_in") or 3600)
+    except (TypeError, ValueError):
+        raise PipelineRuntimeError(f"{op}: unexpected OAuth2 token answer") from None
     if not isinstance(token, str) or not token:
         raise PipelineRuntimeError(f"{op}: unexpected OAuth2 token answer")
     if str(doc.get("token_type") or "bearer").lower() != "bearer":
         raise PipelineRuntimeError(f"{op}: OAuth2 token type is not 'bearer'")
-    refresh = doc.get("refresh_token")
-    return token, ttl, refresh if isinstance(refresh, str) and refresh else None
+    return token, ttl
 
 
-def _oauth2_access_token(op: str, session, tenant_id: str, user, name: str, payload) -> str:
-    fingerprint = hashlib.sha256(
-        "\x00".join(
-            (payload.grantType, payload.tokenUrl, payload.clientId, payload.clientSecret,
-             payload.scope or "")
-        ).encode()
-    ).hexdigest()  # fmt: skip
-    key = (str(tenant_id), name, fingerprint)
+def _cache_key(tenant_id, name: str, payload) -> tuple[str, str, str]:
+    """Empreinte de TOUT ce qui détermine le jeton (refreshToken et baseUrl inclus : un
+    secret remplacé ne ressert jamais l'ancien jeton)."""
+    parts = (payload.grantType, payload.tokenUrl, payload.clientId, payload.clientSecret,
+             payload.scope or "", payload.refreshToken or "", payload.baseUrl or "")  # fmt: skip
+    return str(tenant_id), name, hashlib.sha256("\x00".join(parts).encode()).hexdigest()
+
+
+def _cache_get(key) -> str | None:
     hit = _TOKEN_CACHE.get(key)
-    if hit and hit[1] > time.monotonic():
-        return hit[0]
-    if payload.grantType == "client_credentials":
-        token, ttl, _ = _token_request(op, payload, {"grant_type": "client_credentials"})
-    else:
-        token, ttl = _refresh_and_rotate(op, session, tenant_id, user, name, payload)
+    return hit[0] if hit and hit[1] > time.monotonic() else None
+
+
+def _cache_put(key, token: str, ttl: float) -> None:
     if len(_TOKEN_CACHE) >= _TOKEN_CACHE_MAX:
         _TOKEN_CACHE.clear()  # ponytail: purge totale, LRU si le volume de secrets l'exige
     ttl = min(ttl - 30.0, _TOKEN_CACHE_TTL_S)
     if ttl > 0:
         _TOKEN_CACHE[key] = (token, time.monotonic() + ttl)
-    return token
 
 
-def _refresh_and_rotate(op: str, session, tenant_id: str, user, name: str, payload):
-    """Flux refresh_token sous verrou de la ligne du secret (deux runs simultanés ne
-    consomment pas le même refresh_token à usage unique), dans une session courte SÉPARÉE :
-    commiter la session du run casserait sa transaction. Relit la valeur courante du coffre
-    (un autre worker a pu la faire tourner) ; réécrit le refresh_token si le fournisseur en
-    renvoie un nouveau."""
+def _oauth2_access_token(op: str, session, tenant_id: str, user, name: str, payload) -> str:
+    from app.pipelines.ops.operation_contract import IN_PREVIEW
+
+    key = _cache_key(tenant_id, name, payload)
+    if (hit := _cache_get(key)) is not None:
+        return hit
+    if payload.grantType == "client_credentials":
+        doc = _token_request(op, payload, {"grant_type": "client_credentials"})
+        token, ttl = _access_from_doc(op, doc)
+        _cache_put(key, token, ttl)
+        return token
+    if IN_PREVIEW.get():
+        # Un fournisseur peut faire tourner le refresh_token : l'aperçu n'écrit jamais dans
+        # le coffre, il ne renouvelle donc pas (jeton déjà en cache seulement).
+        raise PipelineRuntimeError(
+            f"{op}: preview cannot renew an OAuth2 refresh_token (it may rotate and must be "
+            "saved to the vault) — run the pipeline once, then preview within 5 minutes"
+        )
+    return _refresh_and_rotate(op, session, tenant_id, user, name, payload)
+
+
+def _refresh_and_rotate(op: str, session, tenant_id: str, user, name: str, payload) -> str:
+    """Flux refresh_token sous verrou de la ligne du secret, dans une session courte SÉPARÉE
+    (commiter la session du run casserait sa transaction). Sous le verrou : relit la valeur
+    courante du coffre (un autre worker a pu la faire tourner) et le cache (il a pu obtenir
+    le jeton : un seul appel au fournisseur). Un refresh_token renouvelé est persisté DÈS que
+    la réponse JSON est lisible, avant toute autre validation : l'ancien est déjà révoqué."""
     from app.secrets import crypto
     from app.secrets.models import ConnectorSecret
     from app.secrets.schemas import SECRET_PAYLOAD_ADAPTER
 
-    with Session(session.get_bind()) as locked:
+    bind = session.get_bind()
+    with Session(bind) as locked:
         row = locked.scalar(
             select(ConnectorSecret)
             .where(ConnectorSecret.tenant_id == tenant_id, ConnectorSecret.name == name)
@@ -185,24 +213,71 @@ def _refresh_and_rotate(op: str, session, tenant_id: str, user, name: str, paylo
             stored = SECRET_PAYLOAD_ADAPTER.validate_python(raw)
             if stored.kind == "oauth2_client" and stored.clientId == payload.clientId:
                 current = stored
-        token, ttl, new_refresh = _token_request(
+        if (hit := _cache_get(_cache_key(tenant_id, name, current))) is not None:
+            return hit
+        doc = _token_request(
             op, current, {"grant_type": "refresh_token", "refresh_token": current.refreshToken}
         )
-        if row is not None and new_refresh and new_refresh != current.refreshToken:
-            rotated = current.model_copy(update={"refreshToken": new_refresh})
-            row.ciphertext, row.nonce = crypto.encrypt(rotated.model_dump())
-            write_audit(
-                locked,
-                tenant_id=tenant_id,
-                actor_id=getattr(user, "id", None),
-                actor_kind="user" if user is not None else "system",
-                action="secret.oauth2_refresh_rotated",
-                object_type="secret",
-                object_id=row.id,
-                payload={"name": name},
+        new_refresh = doc.get("refresh_token")
+        effective = current
+        if isinstance(new_refresh, str) and new_refresh and new_refresh != current.refreshToken:
+            effective = current.model_copy(update={"refreshToken": new_refresh})
+        try:
+            token, ttl = _access_from_doc(op, doc)
+        except PipelineRuntimeError as exc:
+            token, error = None, exc
+        else:
+            error = None
+            # avant le commit (qui libère le verrou) : le run concurrent trouvera le jeton
+            _cache_put(_cache_key(tenant_id, name, effective), token, ttl)
+        if effective is not current and row is not None:
+            _persist_refresh(op, bind, locked, row, effective, tenant_id, user, name)
+    if error is not None:
+        raise error
+    return token  # type: ignore[return-value]
+
+
+def _persist_refresh(op, bind, locked, row, effective, tenant_id, user, name) -> None:
+    """Réécrit le refresh_token renouvelé ; un échec de commit est rejoué une fois dans une
+    session neuve. Perdu malgré tout = compte à ré-autoriser (message explicite)."""
+    from app.secrets import crypto
+    from app.secrets.models import ConnectorSecret
+
+    def write(s, target) -> None:
+        target.ciphertext, target.nonce = crypto.encrypt(effective.model_dump())
+        write_audit(
+            s,
+            tenant_id=tenant_id,
+            actor_id=getattr(user, "id", None),
+            actor_kind="user" if user is not None else "system",
+            action="secret.oauth2_refresh_rotated",
+            object_type="secret",
+            object_id=target.id,
+            payload={"name": name},
+        )
+        s.commit()
+
+    try:
+        write(locked, row)
+        return
+    except Exception:
+        locked.rollback()
+    try:
+        with Session(bind) as retry:
+            target = retry.scalar(
+                select(ConnectorSecret).where(
+                    ConnectorSecret.tenant_id == tenant_id, ConnectorSecret.name == name
+                )
             )
-        locked.commit()
-    return token, ttl
+            if target is not None:
+                write(retry, target)
+                return
+    except Exception:
+        pass
+    raise PipelineRuntimeError(
+        f"{op}: the provider renewed the OAuth2 refresh_token but it could not be saved — "
+        f"re-authorize the secret '{name}'"
+    )
 
 
 def _credentials(payload, url: str) -> tuple[dict[str, str], dict[str, str]]:

@@ -452,3 +452,233 @@ def test_refresh_uses_the_vault_value_not_a_stale_copy(httpserver, session, tena
     stale = SECRET_PAYLOAD_ADAPTER.validate_python({**payload, "refreshToken": "STALE"})
     assert cf._refresh_and_rotate("op", session, tenant.id, user, "s", stale)[0] == "A"
     assert dict(httpserver.log[0][0].form)["refresh_token"] == "FRESH"
+
+
+# ------------------------------------------------------------------ revue voie R (correctifs)
+
+
+def _refresh_secret(session, tenant, user, httpserver, name="s", refresh="R1"):
+    _secret(session, tenant, user, name, {
+        "kind": "oauth2_client", "grantType": "refresh_token",
+        "tokenUrl": httpserver.url_for("/oauth/token"), "clientId": "CID",
+        "clientSecret": "CSECRET", "refreshToken": refresh, "baseUrl": httpserver.url_for("/"),
+    })  # fmt: skip
+
+
+def _stored_refresh(session, tenant, name="s"):
+    session.expire_all()
+    row = secrets_repo.get_secret_by_name(session, tenant_id=tenant.id, name=name)
+    return decrypt(row.ciphertext, row.nonce)["refreshToken"]
+
+
+def test_rotated_refresh_token_saved_even_if_answer_is_otherwise_invalid(
+    httpserver, monkeypatch, conn, session, tenant, user
+):
+    """Le fournisseur a déjà révoqué R1 : R2 doit être persisté même si la suite de la
+    réponse est refusée (token_type), sinon le compte est perdu."""
+    httpserver.expect_request("/oauth/token").respond_with_json(
+        {"access_token": "A", "token_type": "mac", "refresh_token": "R2"}
+    )
+    _dropbox(httpserver, monkeypatch)
+    _refresh_secret(session, tenant, user, httpserver)
+    with pytest.raises(PipelineRuntimeError, match="not 'bearer'"):
+        _read(cf.read_cloudfile, conn, session, tenant, user, provider="dropbox",
+              file="/f.csv", secretName="s")  # fmt: skip
+    assert _stored_refresh(session, tenant) == "R2"
+
+
+def test_rotated_refresh_token_survives_a_failed_commit(
+    httpserver, monkeypatch, conn, session, tenant, user
+):
+    httpserver.expect_request("/oauth/token").respond_with_json(
+        {"access_token": "A", "refresh_token": "R2"}
+    )
+    _dropbox(httpserver, monkeypatch, expect_token="A")
+    _refresh_secret(session, tenant, user, httpserver)
+    real_commit = cf.Session.commit
+    calls = {"n": 0}
+
+    def flaky_commit(self):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("connexion perdue")
+        return real_commit(self)
+
+    monkeypatch.setattr(cf.Session, "commit", flaky_commit)
+    _read(cf.read_cloudfile, conn, session, tenant, user, provider="dropbox", file="/f.csv",
+          secretName="s")  # fmt: skip
+    monkeypatch.setattr(cf.Session, "commit", real_commit)
+    assert calls["n"] >= 2 and _stored_refresh(session, tenant) == "R2"
+
+
+def test_lost_refresh_token_asks_for_reauthorization(
+    httpserver, monkeypatch, session, tenant, user
+):
+    httpserver.expect_request("/oauth/token").respond_with_json(
+        {"access_token": "A", "refresh_token": "R2"}
+    )
+    _refresh_secret(session, tenant, user, httpserver)
+
+    def broken(self):
+        raise RuntimeError("base indisponible")
+
+    monkeypatch.setattr(cf.Session, "commit", broken)
+    stale = SECRET_PAYLOAD_ADAPTER.validate_python(
+        decrypt(*(lambda r: (r.ciphertext, r.nonce))(
+            secrets_repo.get_secret_by_name(session, tenant_id=tenant.id, name="s")))
+    )  # fmt: skip
+    with pytest.raises(PipelineRuntimeError, match="re-authorize the secret 's'") as exc:
+        cf._oauth2_access_token("op", session, tenant.id, user, "s", stale)
+    assert "R2" not in str(exc.value)
+
+
+def test_preview_never_renews_a_refresh_token(httpserver, monkeypatch, conn, session, tenant, user):
+    from app.pipelines.ops.operation_contract import IN_PREVIEW
+
+    httpserver.expect_request("/oauth/token").respond_with_json({"access_token": "ACCESS"})
+    _dropbox(httpserver, monkeypatch)
+    _refresh_secret(session, tenant, user, httpserver)
+    _secret(session, tenant, user, "cc", {
+        "kind": "oauth2_client", "tokenUrl": httpserver.url_for("/oauth/token"),
+        "clientId": "C2", "clientSecret": "S2", "baseUrl": httpserver.url_for("/"),
+    })  # fmt: skip
+    tok = IN_PREVIEW.set(True)
+    try:
+        with pytest.raises(PipelineRuntimeError, match="preview cannot renew"):
+            _read(cf.read_cloudfile, conn, session, tenant, user, provider="dropbox",
+                  file="/f.csv", secretName="s")  # fmt: skip
+        assert httpserver.log == []
+        # client_credentials : aucune écriture dans le coffre, l'aperçu est permis
+        _read(cf.read_cloudfile, conn, session, tenant, user, provider="dropbox",
+              file="/f.csv", secretName="cc")  # fmt: skip
+    finally:
+        IN_PREVIEW.reset(tok)
+
+
+def test_cache_does_not_survive_a_replaced_refresh_token(
+    httpserver, monkeypatch, conn, session, tenant, user
+):
+    httpserver.expect_request("/oauth/token").respond_with_json({"access_token": "ACCESS"})
+    _dropbox(httpserver, monkeypatch)
+    _refresh_secret(session, tenant, user, httpserver)
+    _read(cf.read_cloudfile, conn, session, tenant, user, provider="dropbox", file="/f.csv",
+          secretName="s")  # fmt: skip
+    row = secrets_repo.get_secret_by_name(session, tenant_id=tenant.id, name="s")
+    payload = decrypt(row.ciphertext, row.nonce)
+    row.ciphertext, row.nonce = encrypt({**payload, "refreshToken": "OTHER-ACCOUNT"})
+    session.commit()
+    conn.execute("DROP TABLE node_n")
+    _read(cf.read_cloudfile, conn, session, tenant, user, provider="dropbox", file="/f.csv",
+          secretName="s")  # fmt: skip
+    token_calls = [r for r, _ in httpserver.log if r.path == "/oauth/token"]
+    assert [dict(r.form)["refresh_token"] for r in token_calls] == ["R1", "OTHER-ACCOUNT"]
+
+
+def test_token_url_error_message():
+    with pytest.raises(ValidationError, match="tokenUrl must look like"):
+        SECRET_PAYLOAD_ADAPTER.validate_python({"kind": "oauth2_client",
+            "tokenUrl": "ftp://x", "clientId": "c", "clientSecret": "s"})  # fmt: skip
+
+
+def test_mongodb_review_minors(mongo, monkeypatch, conn, session, tenant, user):
+    deep: dict = {"a": 1}
+    for _ in range(3000):
+        deep = {"$and": [deep]}
+    for bad in ({"geometryField": "loc.geo"}, {"filter": deep}):
+        with pytest.raises(ValidationError):
+            dbio2.ReaderMongoDbParams(secretName="m", collection="c", **bad)
+    _secret(session, tenant, user, "m", {"kind": "mongodb_uri", "uri": "mongodb://db.example/d"})
+    # champ « Geometry » (casse différente) avec geometryField : erreur sur la ligne
+    mongo.docs = [{"Geometry": 1, "loc": {"type": "Point", "coordinates": [0, 0]}}]
+    _read(dbio2.read_mongodb, conn, session, tenant, user, secretName="m", collection="c",
+          geometryField="loc")  # fmt: skip
+    assert "reserved column" in conn.execute("SELECT _error FROM node_n").fetchone()[0]
+    # construction du client dans le try : message assaini
+    from pymongo.errors import ConfigurationError
+
+    def boom(**kw):
+        raise ConfigurationError("mongodb://u:SECRETPW@db.example détail brut")
+
+    monkeypatch.setattr(dbio2, "MongoClient", boom)
+    with pytest.raises(PipelineRuntimeError, match=r"MongoDB error \(ConfigurationError\)") as e:
+        _read(dbio2.read_mongodb, conn, session, tenant, user, secretName="m", collection="c")
+    assert "SECRETPW" not in str(e.value)
+
+
+# ------------------------------------------------------------------ postgis : verrou réel
+
+
+@pytest.mark.postgis
+def test_concurrent_refreshes_call_the_provider_once(httpserver, pg_engine, monkeypatch):
+    """FOR UPDATE réel : deux runs simultanés sur le même secret refresh_token → un seul
+    appel au fournisseur (le second trouve le jeton en cache sous le verrou), R2 conservé."""
+    import threading
+    import time as _time
+    import uuid
+
+    from werkzeug import Response
+
+    monkeypatch.setenv("CORE_SECRETS_MASTER_KEY", TEST_MASTER_KEY)
+    from app.db import Base, core_table_names
+
+    core_table_names()  # enregistre les modèles
+    Base.metadata.create_all(pg_engine)
+    factory = make_session_factory(pg_engine)
+    calls: list[str] = []
+
+    def handler(request):
+        calls.append(request.form.get("refresh_token"))
+        _time.sleep(0.5)  # les deux runs se chevauchent
+        if request.form.get("refresh_token") != "R1":
+            return Response('{"error": "invalid_grant"}', status=400)
+        return Response(
+            json.dumps({"access_token": "A1", "refresh_token": "R2", "expires_in": 3600}),
+            content_type="application/json",
+        )
+
+    httpserver.expect_request("/oauth/token").respond_with_handler(handler)
+    name = f"oauth-{uuid.uuid4().hex[:8]}"
+    payload = {
+        "kind": "oauth2_client", "grantType": "refresh_token",
+        "tokenUrl": httpserver.url_for("/oauth/token"), "clientId": "CID",
+        "clientSecret": "S", "refreshToken": "R1", "baseUrl": httpserver.url_for("/"),
+    }  # fmt: skip
+    with factory() as s:
+        tenant = get_or_create_default_tenant(s)
+        u = get_or_create_user(s, tenant_id=tenant.id, oidc_sub="voie-r", username="voie-r",
+                               email=None, first_name="", last_name="")  # fmt: skip
+        tenant_id, user_id = tenant.id, u.id
+        ct, nonce = encrypt(payload)
+        secrets_repo.create_secret(s, tenant_id=tenant_id, created_by=user_id, name=name,
+                                   kind="oauth2_client", ciphertext=ct, nonce=nonce)  # fmt: skip
+        s.commit()
+    stale = SECRET_PAYLOAD_ADAPTER.validate_python(payload)
+    results: list = []
+
+    class _U:
+        id = user_id
+
+    def run():
+        with factory() as s:
+            try:
+                results.append(cf._oauth2_access_token("op", s, tenant_id, _U(), name, stale))
+            except Exception as exc:  # pragma: no cover - affiché par l'assertion
+                results.append(exc)
+
+    threads = [threading.Thread(target=run) for _ in range(2)]
+    try:
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(30)
+        assert results == ["A1", "A1"], results
+        assert calls == ["R1"]
+        with factory() as s:
+            row = secrets_repo.get_secret_by_name(s, tenant_id=tenant_id, name=name)
+            assert decrypt(row.ciphertext, row.nonce)["refreshToken"] == "R2"
+    finally:
+        with factory() as s:
+            row = secrets_repo.get_secret_by_name(s, tenant_id=tenant_id, name=name)
+            if row is not None:
+                s.delete(row)
+                s.commit()

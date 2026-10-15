@@ -55,15 +55,20 @@ _FORBIDDEN_FILTER_OPS = {"$where", "$function", "$accumulator"}
 _FIELD = r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,200}$"
 
 
-def _check_filter(node: Any) -> None:
+_MAX_FILTER_DEPTH = 32
+
+
+def _check_filter(node: Any, depth: int = 0) -> None:
+    if depth > _MAX_FILTER_DEPTH:  # borne explicite : jamais de RecursionError (500)
+        raise ValueError(f"filter: nested deeper than {_MAX_FILTER_DEPTH} levels")
     if isinstance(node, dict):
         for k, v in node.items():
             if k in _FORBIDDEN_FILTER_OPS:
                 raise ValueError(f"filter: operator {k} (server-side JavaScript) is not allowed")
-            _check_filter(v)
+            _check_filter(v, depth + 1)
     elif isinstance(node, list):
         for v in node:
-            _check_filter(v)
+            _check_filter(v, depth + 1)
 
 
 class ReaderMongoDbParams(BaseModel):
@@ -80,7 +85,9 @@ class ReaderMongoDbParams(BaseModel):
     collection: str = Field(..., pattern=r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,119}$")
     filter: dict[str, Any] = Field(default_factory=dict, description="filtre find() en JSON")
     projection: list[str] | None = Field(None, max_length=200)
-    geometryField: str | None = Field(None, pattern=_FIELD)
+    geometryField: str | None = Field(
+        None, pattern=r"^[A-Za-z0-9_][A-Za-z0-9_-]{0,200}$", description="champ de 1er niveau"
+    )
     maxDocuments: int = Field(10_000, ge=1, le=1_000_000)
 
     @field_validator("collection")
@@ -201,7 +208,8 @@ def _row(doc: dict, geometry_field: str | None) -> dict:
     error = None
     try:
         _flatten(doc, row)
-        if "_error" in row or (geometry_field is not None and "geometry" in row):
+        reserved = {"_error", "geometry"} if geometry_field is not None else {"_error"}
+        if any(k.lower() in reserved for k in row):  # DuckDB : identifiants insensibles à la casse
             raise ValueError("a field collides with a reserved column (_error/geometry)")
     except ValueError as exc:
         row, error = {"_id": _scalar(doc.get("_id"))}, str(exc)
@@ -261,8 +269,9 @@ def read_mongodb(conn, *, session, tenant_id, node_id, params, view_name, user, 
     deadline = time.monotonic() + DEADLINE_S
     rows: list[dict] = []
     total = 0
-    client = MongoClient(document_class=RawBSONDocument, **kwargs)
+    client = None
     try:
+        client = MongoClient(document_class=RawBSONDocument, **kwargs)
         cursor = client[database][p.collection].find(
             p.filter,
             projection=dict.fromkeys(p.projection, 1) if p.projection else None,
@@ -284,7 +293,8 @@ def read_mongodb(conn, *, session, tenant_id, node_id, params, view_name, user, 
     except PyMongoError as exc:
         raise PipelineRuntimeError(f"{op}: MongoDB error ({type(exc).__name__})") from None
     finally:
-        client.close()
+        if client is not None:
+            client.close()
     from app.pipelines.ops.cloudfiles import _materialize
 
     _materialize(conn, _frame(rows, op, p.geometryField), view_name, op)
