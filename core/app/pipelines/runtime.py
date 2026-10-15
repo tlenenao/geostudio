@@ -67,6 +67,7 @@ from app.pipelines.errors import (  # noqa: F401 (réexportés pour compatibilit
 )
 from app.pipelines.expr_validation import validate_bounded_expr
 from app.pipelines.ops.contracts import BINARY_OPS, OP_PARAMS
+from app.pipelines.ops.operation_contract import IN_PREVIEW
 from app.pipelines.ops.schemas import (
     ReaderCollectionParams,
     ReaderConnectorBigQueryParams,
@@ -1019,6 +1020,7 @@ def preview_pipeline(
     timer = threading.Timer(_preview_timeout_s(), _on_timeout)
     timer.daemon = True
     timer.start()
+    preview_token = IN_PREVIEW.set(True)
     try:
         ordered, view_by_node, srid_by_node, join_srid_by_node = _prepare(
             conn,
@@ -1070,6 +1072,7 @@ def preview_pipeline(
             raise PipelineRuntimeError("aperçu interrompu : durée maximale dépassée") from exc
         raise
     finally:
+        IN_PREVIEW.reset(preview_token)
         timer.cancel()
         conn.close()
 

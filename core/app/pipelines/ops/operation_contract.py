@@ -9,10 +9,15 @@ copyleft (is_copyleft=True) exige un modèle d'exécution sidecar, jamais de bin
 in-process (généralisation de la décision SP-15d)."""
 
 from collections.abc import Callable
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Literal
 
 from pydantic import BaseModel
+
+# Vrai pendant `preview_pipeline` : les READERS n'ont pas de paramètre `preview` ; un reader à
+# effet de publication (reader.netcdf output=rasterItem, voie F2) le lit ici pour ne RIEN publier.
+IN_PREVIEW: ContextVar[bool] = ContextVar("pipeline_in_preview", default=False)
 
 
 @dataclass(frozen=True)

@@ -35,6 +35,7 @@ import rasterio
 import rasterio.transform
 import requests
 import shapely
+import shapely.errors
 import shapely.geometry
 from pydantic import BaseModel, Field, model_validator
 from rasterio.enums import Resampling
@@ -83,10 +84,20 @@ def _magic_tiff(head: bytes) -> bool:
     return head[:4] in (b"II*\x00", b"MM\x00*", b"II+\x00", b"MM\x00+")
 
 
+_OSM_XML = re.compile(rb"\A(\xef\xbb\xbf)?\s*(<\?xml[^>]*\?>\s*)?<osm[\s>]")
+_OSM_FORBIDDEN = (b"vrt", b"/vsi")  # pilotes à références externes (OGR VRT) / chemins virtuels
+
+
 def _magic_osm(head: bytes) -> bool:
-    return (b"<osm" in head and head.lstrip()[:5] in (b"<?xml", b"<osm ")) or b"OSMHeader" in head[
-        :64
-    ]
+    """Signature STRICTE : premier élément XML réel = <osm> (pas de commentaire, DOCTYPE ni autre
+    racine devant) ou en-tête PBF (longueur + BlobHeader 'OSMHeader') ; et aucune trace de VRT.
+    GDAL identifie le format par le contenu et pyogrio n'accepte pas de pilote forcé : un
+    polyglotte `<osm>`+`<OGRVRTDataSource>` est donc refusé ici ET, après ouverture, par le
+    contrôle du pilote réellement choisi (`_read_osm`)."""
+    low = head.lower()
+    if any(f in low for f in _OSM_FORBIDDEN):
+        return False
+    return bool(_OSM_XML.match(head)) or head[4:15] == b"\x0a\x09OSMHeader"
 
 
 def _check_path(op: str, path: str) -> str:
@@ -162,7 +173,11 @@ def _bounded(op: str, fn: Callable[..., Any], *args: Any) -> Any:
             send.close()
 
     proc = ctx.Process(target=child, daemon=True)
-    proc.start()
+    with warnings.catch_warnings():
+        # Python >= 3.12 avertit si fork() part d'un process multi-threadé (worker) ; le fils ne
+        # fait que du calcul puis sort (même choix que terrain3d/conversion.py).
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
+        proc.start()
     send.close()
     try:
         if not recv.poll(READ_TIMEOUT_S):
@@ -231,6 +246,85 @@ def _read_raster_file(path: str, driver: str, open_path: str | None, bands, max_
             return _raster_frame(ds, bands, max_cells), _srid_of(ds, srid)
 
 
+MAX_ITEM_PIXELS = 4_000_000  # = raster2.MAX_PIXELS (plafond des ops raster F1)
+MAX_ITEM_BANDS = 16
+
+
+def _to_geotiff(path: str, driver: str, open_path: str | None, srid: int | None, out: str):
+    """Process fils : copie le raster (toutes bandes, par bande) en GeoTIFF local."""
+    with rasterio.Env(GDAL_CACHEMAX=128, **LOCAL_ONLY_GDAL):
+        with rasterio.open(open_path or path, driver=driver) as ds:
+            if ds.subdatasets and open_path is None:
+                raise ValueError("plusieurs variables, précisez `variable`")
+            if ds.width * ds.height > MAX_ITEM_PIXELS:
+                raise ValueError(
+                    f"raster trop grand pour output=rasterItem ({ds.width}x{ds.height} > "
+                    f"{MAX_ITEM_PIXELS} pixels) ; utilisez output=table (décimé)"
+                )
+            if ds.count > MAX_ITEM_BANDS:
+                raise ValueError(f"plus de {MAX_ITEM_BANDS} bandes")
+            epsg = _srid_of(ds, srid)
+            profile = {
+                "driver": "GTiff", "width": ds.width, "height": ds.height, "count": ds.count,
+                "dtype": ds.dtypes[0], "transform": ds.transform, "nodata": ds.nodata,
+                "crs": f"EPSG:{epsg}",
+            }  # fmt: skip
+            with rasterio.open(out, "w", **profile) as dst:
+                for i in ds.indexes:
+                    dst.write(ds.read(i), i)
+            return ds.width, ds.height, ds.count, epsg
+
+
+def _read_raster_item(op, conn, session, user, view_name, p, real, driver, open_path) -> int:
+    """output=rasterItem : publie via app.raster.publish (mêmes gardes que les ops F1)."""
+    import tempfile
+
+    from fastapi import HTTPException
+
+    from app.auth.dependency import is_raster_enabled
+    from app.pipelines.ops.operation_contract import IN_PREVIEW
+    from app.raster import publish
+
+    if not is_raster_enabled():
+        raise PipelineRuntimeError(f"{op} requires CORE_RASTER_ENABLED=true")
+    if session is None or user is None:
+        raise PipelineRuntimeError(f"{op}: aucun acteur pour publier le raster")
+    if not publish.can_publish(session, user):
+        raise PipelineRuntimeError(f"{op}: privilege 'catalog.manage' required")
+    with tempfile.TemporaryDirectory(prefix="gs-readers2-") as tmp:
+        tif = os.path.join(tmp, "src.tif")
+        w, h, n, srid = _bounded(op, _to_geotiff, real, driver, open_path, p.srid, tif)
+        item_id, keys = None, []  # type: ignore[var-annotated]
+        if not IN_PREVIEW.get():  # aperçu : métadonnées seules, rien n'est publié
+            try:
+                pub = publish.publish_raster(
+                    session, user, tif_path=tif, cog_path=os.path.join(tmp, "cog.tif"),
+                    title=p.title or os.path.basename(real)[:200], limit_collection_id=None,
+                    filename=os.path.basename(real), keys=keys,
+                )  # fmt: skip
+                item_id = pub.item_id
+            except publish.RasterPublishError as exc:
+                raise PipelineRuntimeError(f"{op}: {exc}") from exc
+            except HTTPException as exc:  # quota d'items / de stockage
+                raise PipelineRuntimeError(f"{op}: {exc.detail}") from exc
+        try:
+            _materialize_item(conn, view_name, item_id, w, h, n, srid)
+        except BaseException:
+            for k in keys:
+                publish.delete_key(k)
+            raise
+    return 4326
+
+
+def _materialize_item(conn, view_name, item_id, w, h, n, srid) -> None:
+    conn.execute(
+        f"CREATE TEMP TABLE {_qi(view_name)} AS SELECT CAST(? AS VARCHAR) AS item_id, "
+        "CAST(? AS INTEGER) AS width, CAST(? AS INTEGER) AS height, "
+        "CAST(? AS INTEGER) AS bands, CAST(? AS INTEGER) AS srid",
+        [item_id, w, h, n, srid],
+    )
+
+
 def _materialize(conn, frame: pd.DataFrame, view_name: str, geom: Literal["xy", "wkb"]) -> None:
     conn.register("_readers2_tmp", frame)
     try:
@@ -251,6 +345,12 @@ class _FileRasterParams(BaseModel):
     band: int = Field(1, ge=1, le=256)
     maxCells: int = Field(1_000_000, ge=1, le=MAX_CELLS)
     srid: int | None = Field(None, ge=1)
+    # `table` : une ligne par cellule (décimée au-delà de maxCells). `rasterItem` : publie le
+    # raster entier (toutes les bandes, <= 4 M pixels, 16 bandes) comme item raster hébergé
+    # (droit catalog.manage, quotas, audit ; rien n'est publié en aperçu) et sort une ligne
+    # (item_id, width, height, bands, srid) pour les transformers raster (comme reader.rasterItems).
+    output: Literal["table", "rasterItem"] = "table"
+    title: str | None = Field(None, min_length=1, max_length=200)
 
 
 class ReaderNetcdfParams(_FileRasterParams):
@@ -309,6 +409,10 @@ def read_netcdf(conn, *, session, tenant_id, node_id, params, view_name, user, b
     p = ReaderNetcdfParams.model_validate(params)
     real = _local_file("reader.netcdf", p.path, _magic_netcdf)
     open_path = f'NETCDF:"{real}":{p.variable}' if p.variable else None
+    if p.output == "rasterItem":
+        return _read_raster_item(
+            "reader.netcdf", conn, session, user, view_name, p, real, "netCDF", open_path
+        )
     res = _bounded(
         "reader.netcdf", _read_raster_file, real, "netCDF", open_path, [p.band], p.maxCells, p.srid
     )
@@ -319,6 +423,8 @@ def _simple(op: str, driver: str, magic):
     def reader(conn, *, session, tenant_id, node_id, params, view_name, user, base_uri) -> int:
         p = _FileRasterParams.model_validate(params)
         real = _local_file(op, p.path, magic)
+        if p.output == "rasterItem":
+            return _read_raster_item(op, conn, session, user, view_name, p, real, driver, None)
         res = _bounded(op, _read_raster_file, real, driver, None, [p.band], p.maxCells, p.srid)
         return _finish(conn, view_name, res)
 
@@ -332,14 +438,10 @@ read_grib = _simple("reader.grib", "GRIB", _magic_grib)
 
 def read_sentinel2(conn, *, session, tenant_id, node_id, params, view_name, user, base_uri) -> int:
     p = ReaderSentinel2Params.model_validate(params)
-    pat = re.compile(rf"IMG_DATA.*_{p.band}(_\d+m)?\.jp2$", re.IGNORECASE)
+    # La résolution entre dans le motif AVANT le tri (L2A : R10m/R20m/R60m, suffixe _<res>m).
+    suffix = rf"_{p.resolution}m" if p.resolution is not None else r"(_\d+m)?"
+    pat = re.compile(rf"IMG_DATA.*_{p.band}{suffix}\.jp2$", re.IGNORECASE)
     real = _find_in_dir("reader.sentinel2", p.path, pat, _magic_jp2)
-    if (
-        p.resolution is not None
-        and f"R{p.resolution}m" not in real
-        and f"_{p.resolution}m" not in real
-    ):
-        raise PipelineRuntimeError("reader.sentinel2: aucune bande à cette résolution")
     res = _bounded(
         "reader.sentinel2", _read_raster_file, real, "JP2OpenJPEG", None, [1], p.maxCells, p.srid
     )
@@ -377,6 +479,9 @@ def _read_osm(real: str, layer: str, max_features: int) -> pd.DataFrame:
     import pyogrio
 
     pyogrio.set_gdal_config_options({"OSM_MAX_TMPFILE_SIZE": "100", **LOCAL_ONLY_GDAL})
+    driver = pyogrio.read_info(real, layer=layer).get("driver")
+    if driver != "OSM":  # ceinture et bretelles : le pilote choisi par GDAL doit être OSM
+        raise PipelineRuntimeError(f"pilote inattendu '{driver}'")
     gdf = pyogrio.read_dataframe(real, layer=layer, max_features=max_features)
     out = pd.DataFrame(gdf.drop(columns="geometry"))
     out["geometry"] = gdf.geometry.map(lambda g: None if g is None else shapely.to_wkb(g))
@@ -421,12 +526,52 @@ def _surfaces(geom: dict) -> list:
     return []
 
 
-def read_cityjson(conn, *, session, tenant_id, node_id, params, view_name, user, base_uri) -> int:
-    p = ReaderCityjsonParams.model_validate(params)
-    op = "reader.cityjson"
-    real = _local_file(op, p.path, lambda h: b"CityJSON" in h or b"cityjson" in h.lower())
-    if os.path.getsize(real) > MAX_CITYJSON_BYTES:
-        raise PipelineRuntimeError(f"{op}: file too large (max {MAX_CITYJSON_BYTES} bytes)")
+_CITY_COLS = ["id", "type", "lod", "attributes", "min_z", "max_z", "error", "geometry"]
+
+
+def _city_object(obj: dict, verts: np.ndarray, lod: str | None) -> dict:
+    """Une ligne par objet ; toute entrée dégénérée devient une erreur DE LIGNE (`error`)."""
+    geoms = obj.get("geometry") or []
+    if lod is not None:
+        geoms = [g for g in geoms if str(g.get("lod")) == lod]
+    elif geoms:  # niveau le plus fin
+        best = max(str(g.get("lod", "")) for g in geoms)
+        geoms = [g for g in geoms if str(g.get("lod", "")) == best]
+    polys, zs = [], []
+    try:
+        for g in geoms:
+            for surf in _surfaces(g):
+                if not surf:
+                    continue
+                for ring in surf:
+                    if len(ring) < 3:
+                        raise ValueError("anneau de moins de 3 sommets")
+                    if min(ring) < 0 or max(ring) >= len(verts):
+                        raise ValueError("indice de sommet hors bornes")
+                rings = [verts[np.asarray(r, dtype=int)] for r in surf]
+                zs.append(rings[0][:, 2])
+                poly = shapely.geometry.Polygon(rings[0][:, :2], [r[:, :2] for r in rings[1:]])
+                if poly.area > 0:  # faces verticales : projection dégénérée, ignorée
+                    polys.append(poly if poly.is_valid else poly.buffer(0))
+        footprint = shapely.union_all(polys) if polys else None
+        error = None
+    except (ValueError, TypeError, shapely.errors.GEOSException) as exc:
+        footprint, zs, error = None, [], f"géométrie invalide : {exc}"
+    zall = np.concatenate(zs) if zs else None
+    return {
+        "type": obj.get("type"),
+        "lod": str(geoms[0].get("lod")) if geoms else None,
+        "attributes": json.dumps(obj.get("attributes") or {}),
+        "min_z": float(zall.min()) if zall is not None else None,
+        "max_z": float(zall.max()) if zall is not None else None,
+        "error": error,
+        "geometry": shapely.to_wkb(footprint) if footprint is not None else None,
+    }
+
+
+def _cityjson_frame(real: str, lod: str | None, max_objects: int, srid: int | None):
+    """Corps exécuté dans le process fils borné (json.load d'un fichier jusqu'à 50 Mo = jusqu'à
+    ~1 Go d'objets Python : hors du worker)."""
     try:
         with open(real, encoding="utf-8") as f:
             doc = json.load(f)
@@ -435,57 +580,33 @@ def read_cityjson(conn, *, session, tenant_id, node_id, params, view_name, user,
         verts = np.asarray(doc["vertices"], dtype="float64").reshape(-1, 3)
         objects = doc.get("CityObjects") or {}
     except (ValueError, KeyError, TypeError, AttributeError) as exc:
-        raise PipelineRuntimeError(f"{op}: fichier CityJSON invalide ({exc})") from exc
+        raise ValueError(f"fichier CityJSON invalide ({exc})") from exc
     tr = doc.get("transform") or {}
     verts = verts * np.asarray(tr.get("scale", [1, 1, 1]), dtype="float64") + np.asarray(
         tr.get("translate", [0, 0, 0]), dtype="float64"
     )
-    srid = p.srid
     if srid is None:
-        m = re.search(
-            r"EPSG[/:]+(?:\d+[/:]+)?(\d+)$", str((doc.get("metadata") or {}).get("referenceSystem"))
-        )
+        crs = str((doc.get("metadata") or {}).get("referenceSystem"))
+        m = re.search(r"EPSG[/:]+(?:\d+[/:]+)?(\d+)$", crs)
         srid = int(m.group(1)) if m else None
     if srid is None:
-        raise PipelineRuntimeError(f"{op}: pas de CRS EPSG dans metadata ; renseignez `srid`")
-
+        raise ValueError("pas de CRS EPSG dans metadata ; renseignez `srid`")
     rows = []
-    for oid, obj in list(objects.items())[: p.maxObjects]:
-        geoms = obj.get("geometry") or []
-        if p.lod is not None:
-            geoms = [g for g in geoms if str(g.get("lod")) == p.lod]
-        elif geoms:  # niveau le plus fin
-            best = max(str(g.get("lod", "")) for g in geoms)
-            geoms = [g for g in geoms if str(g.get("lod", "")) == best]
-        polys, zs = [], []
-        for g in geoms:
-            for surf in _surfaces(g):
-                if not surf:
-                    continue
-                try:
-                    rings = [verts[np.asarray(r, dtype=int)] for r in surf]
-                except IndexError as exc:
-                    raise PipelineRuntimeError(f"{op}: indice de sommet hors bornes") from exc
-                zs.append(rings[0][:, 2])
-                poly = shapely.geometry.Polygon(rings[0][:, :2], [r[:, :2] for r in rings[1:]])
-                if poly.area > 0:  # faces verticales : projection dégénérée, ignorée
-                    polys.append(poly if poly.is_valid else poly.buffer(0))
-        footprint = shapely.union_all(polys) if polys else None
-        zall = np.concatenate(zs) if zs else None
-        rows.append(
-            {
-                "id": oid,
-                "type": obj.get("type"),
-                "lod": str(geoms[0].get("lod")) if geoms else None,
-                "attributes": json.dumps(obj.get("attributes") or {}),
-                "min_z": float(zall.min()) if zall is not None else None,
-                "max_z": float(zall.max()) if zall is not None else None,
-                "geometry": shapely.to_wkb(footprint) if footprint is not None else None,
-            }
-        )
-    frame = pd.DataFrame(
-        rows, columns=["id", "type", "lod", "attributes", "min_z", "max_z", "geometry"]
-    )
+    for oid, obj in list(objects.items())[:max_objects]:
+        try:
+            rows.append({"id": oid, **_city_object(obj, verts, lod)})
+        except (AttributeError, TypeError, ValueError) as exc:  # objet mal formé
+            rows.append({"id": oid, "error": f"objet invalide : {exc}"})
+    return pd.DataFrame(rows, columns=_CITY_COLS), srid
+
+
+def read_cityjson(conn, *, session, tenant_id, node_id, params, view_name, user, base_uri) -> int:
+    p = ReaderCityjsonParams.model_validate(params)
+    op = "reader.cityjson"
+    real = _local_file(op, p.path, lambda h: b"CityJSON" in h or b"cityjson" in h.lower())
+    if os.path.getsize(real) > MAX_CITYJSON_BYTES:
+        raise PipelineRuntimeError(f"{op}: file too large (max {MAX_CITYJSON_BYTES} bytes)")
+    frame, srid = _bounded(op, _cityjson_frame, real, p.lod, p.maxObjects, p.srid)
     _materialize(conn, frame, view_name, "wkb")
     return srid
 
@@ -542,11 +663,12 @@ def _image_frame_open(op, body, driver, bbox, srid, width, height):
     with MemoryFile(body) as mem, rasterio.Env(**LOCAL_ONLY_GDAL), mem.open(driver=driver) as ds:
         if ds.width * ds.height > MAX_WEB_PIXELS:
             raise PipelineRuntimeError(f"{op}: image too large")
+        size = (ds.width, ds.height)  # taille REÇUE (le serveur peut ignorer WIDTH/HEIGHT)
         frame = _raster_frame(ds, list(range(1, min(ds.count, 8) + 1)), MAX_WEB_PIXELS)
         if driver == "GTiff" and ds.crs is not None:
             return frame, ds.crs.to_epsg() or srid
     if driver != "GTiff":  # PNG/JPEG non géoréférencés : on applique l'emprise demandée
-        t = rasterio.transform.from_bounds(*bbox, width, height)
+        t = rasterio.transform.from_bounds(*bbox, size[0], size[1])
         cols = np.floor(frame["x"].to_numpy()).astype(int)
         rows = np.floor(frame["y"].to_numpy()).astype(int)
         frame["x"], frame["y"] = rasterio.transform.xy(t, rows, cols)

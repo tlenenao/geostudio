@@ -13,12 +13,18 @@ import numpy as np
 import pytest
 import rasterio
 import rasterio.shutil
+from pydantic import ValidationError
 from rasterio.transform import from_origin
 
+from app.configs.schemas import PipelinePayload
 from app.pipelines import egress as pipelines_egress
+from app.pipelines import runtime
 from app.pipelines.errors import PipelineRuntimeError
 from app.pipelines.ops import readers2 as r2
 from app.pipelines.ops.contracts import OPERATIONS, ops_catalog
+from tests.test_pipeline_ops_raster2 import env  # noqa: F401
+from tests.test_pipeline_ops_raster2 import rows as rrows
+from tests.test_pipeline_ops_raster2 import run as rrun
 
 LANE_OPS = {
     "reader.netcdf", "reader.erdasImagine", "reader.jpeg2000", "reader.grib",
@@ -88,7 +94,7 @@ def test_netcdf(tmp_path, conn):
 
 def test_netcdf_variable_rejects_injection(tmp_path, conn):
     rasterio.shutil.copy(_grid(tmp_path / "m.tif"), str(tmp_path / "a.nc"), driver="netCDF")
-    with pytest.raises(Exception, match="variable"):
+    with pytest.raises(ValidationError, match="variable"):
         _read(r2.read_netcdf, conn, path=str(tmp_path / "a.nc"), variable='x":/etc/passwd')
 
 
@@ -214,8 +220,25 @@ def test_sentinel2(tmp_path, conn):
     conn.execute("DROP TABLE v")
     with pytest.raises(PipelineRuntimeError, match="aucune bande"):
         _read(r2.read_sentinel2, conn, path=root, band="B08")
-    with pytest.raises(PipelineRuntimeError, match="résolution"):
+    with pytest.raises(PipelineRuntimeError, match="aucune bande"):
         _read(r2.read_sentinel2, conn, path=root, band="B04", resolution=60)
+
+
+def test_sentinel2_resolution_selected_before_sorting(tmp_path, conn):
+    for res in (10, 20, 60):
+        d = tmp_path / "S2.SAFE" / "IMG_DATA" / f"R{res}m"
+        d.mkdir(parents=True, exist_ok=True)
+        with rasterio.open(
+            d / f"T_B04_{res}m.jp2", "w", driver="JP2OpenJPEG", width=res // 10 * 4,
+            height=res // 10 * 4, count=1, dtype="uint16", crs="EPSG:4326",
+            transform=from_origin(0, 10, 1, 1),
+        ) as dst:  # fmt: skip
+            dst.write(np.ones((res // 10 * 4,) * 2, dtype="uint16"), 1)
+    root = str(tmp_path / "S2.SAFE")
+    for res, n in ((10, 16), (20, 64), (60, 576)):
+        _read(r2.read_sentinel2, conn, path=root, band="B04", resolution=res)
+        assert conn.execute("SELECT count(*) FROM v").fetchone()[0] == n
+        conn.execute("DROP TABLE v")
 
 
 def test_sentinel2_symlink_escape_ignored(tmp_path, conn):
@@ -300,6 +323,33 @@ def test_osm_xml(tmp_path, conn):
     )
 
 
+@pytest.mark.parametrize(
+    "content",
+    [
+        "<?xml version='1.0'?><!-- <osm --><OGRVRTDataSource><OGRVRTLayer name='x'>"
+        "<SrcDataSource>/etc/hostname</SrcDataSource></OGRVRTLayer></OGRVRTDataSource>",
+        "<osm><!-- <OGRVRTDataSource> --></osm>",
+        "<!DOCTYPE x><osm></osm>",
+        "<other><osm/></other>",
+    ],
+)
+def test_osm_polyglot_refused(tmp_path, conn, content):
+    p = tmp_path / "evil.osm"
+    p.write_text(content)
+    with pytest.raises(PipelineRuntimeError, match="format attendu"):
+        _read(r2.read_osm, conn, path=str(p))
+
+
+def test_osm_driver_is_checked_after_open(tmp_path, conn, monkeypatch):
+    p = tmp_path / "a.osm"
+    p.write_text(OSM_XML)
+    import pyogrio
+
+    monkeypatch.setattr(pyogrio, "read_info", lambda path, **kw: {"driver": "OGR_VRT"})
+    with pytest.raises(PipelineRuntimeError, match="pilote inattendu"):
+        _read(r2.read_osm, conn, path=str(p))
+
+
 def test_osm_max_features(tmp_path, conn):
     p = tmp_path / "a.osm"
     p.write_text(OSM_XML)
@@ -366,20 +416,60 @@ def test_cityjson(tmp_path, conn):
     assert conn.execute("SELECT lod FROM v WHERE id='b1'").fetchone() == ("1",)
 
 
-def test_cityjson_degenerate_and_invalid(tmp_path, conn):
+def _city_doc(path, boundaries, vertices=((0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0))):
+    doc = {
+        "type": "CityJSON", "version": "2.0",
+        "metadata": {"referenceSystem": "urn:ogc:def:crs:EPSG::2154"},
+        "vertices": [list(v) for v in vertices],
+        "CityObjects": {
+            "ok": {"type": "B", "geometry": [{"type": "MultiSurface", "lod": "1",
+                                             "boundaries": [[[0, 1, 2, 3]]]}]},
+            "bad": {"type": "B", "geometry": [{"type": "MultiSurface", "lod": "1",
+                                              "boundaries": boundaries}]},
+        },
+    }  # fmt: skip
+    path.write_text(json.dumps(doc))
+    return str(path)
+
+
+@pytest.mark.parametrize(
+    ("boundaries", "msg"),
+    [
+        ([[[0, 1]]], "moins de 3 sommets"),
+        ([[[0, 1, -1]]], "hors bornes"),
+        ([[[0, 1, 9]]], "hors bornes"),
+        ([[["a", 1, 2]]], "invalide"),
+    ],
+)
+def test_cityjson_degenerate_rings_are_row_errors(tmp_path, conn, boundaries, msg):
+    _read(r2.read_cityjson, conn, path=_city_doc(tmp_path / "c.json", boundaries))
+    got = dict(conn.execute("SELECT id, error FROM v").fetchall())
+    assert got["ok"] is None and msg in got["bad"]  # une ligne en erreur, les autres lues
+    assert conn.execute("SELECT geometry FROM v WHERE id='bad'").fetchone() == (None,)
+
+
+def test_cityjson_invalid_file_and_no_crs(tmp_path, conn):
     p = tmp_path / "bad.json"
-    p.write_text(
-        '{"type":"CityJSON","vertices":[[0,0,0]],"CityObjects":{"x":{"type":"B","geometry":'
-        '[{"type":"MultiSurface","lod":"1","boundaries":[[[0,5,9]]]}]}}}'
-    )
-    with pytest.raises(PipelineRuntimeError, match="hors bornes|srid"):
-        _read(r2.read_cityjson, conn, path=str(p), srid=2154)
     p.write_text('{"type":"Other CityJSON"}')
     with pytest.raises(PipelineRuntimeError, match="invalide"):
         _read(r2.read_cityjson, conn, path=str(p))
     nocrs = _cityjson(tmp_path / "n.json", crs="foo")
     with pytest.raises(PipelineRuntimeError, match="srid"):
         _read(r2.read_cityjson, conn, path=nocrs)
+
+
+def test_cityjson_parse_runs_in_bounded_child(tmp_path, conn, monkeypatch):
+    p = _cityjson(tmp_path / "c.json")
+    pids = tmp_path / "pids"
+    real_load = json.load
+
+    def spy(f):
+        pids.write_text(str(os.getpid()))
+        return real_load(f)
+
+    monkeypatch.setattr(r2.json, "load", spy)
+    _read(r2.read_cityjson, conn, path=p)
+    assert pids.read_text() != str(os.getpid())  # json.load s'exécute dans le fils, pas le worker
 
 
 # ------------------------------------------------------------------ WMS / WCS
@@ -424,6 +514,15 @@ def test_wms(httpserver, local_net, conn):
     assert len(rows) == 12 and rows[0] == (0.5, 42.5, 10, 30)
 
 
+def test_wms_georef_uses_received_size(httpserver, local_net, conn):
+    httpserver.expect_request("/wms").respond_with_data(_png(4, 3))  # serveur ignore 8x6
+    _read(
+        r2.read_wms, conn, url=httpserver.url_for("/wms"), layers="a", bbox=[0, 40, 4, 43],
+        width=8, height=6,
+    )  # fmt: skip
+    assert conn.execute("SELECT min(x), max(x), max(y) FROM v").fetchone() == (0.5, 3.5, 42.5)
+
+
 def test_wms_exception_not_image(httpserver, local_net, conn):
     httpserver.expect_request("/wms").respond_with_data(
         "<ServiceException/>", content_type="text/xml"
@@ -459,9 +558,12 @@ def test_web_caps(httpserver, local_net, conn, monkeypatch):
         _read(r2.read_wms, conn, url=httpserver.url_for("/wms"), layers="a", bbox=[0, 0, 1, 1])
     monkeypatch.setattr(r2, "MAX_WEB_BYTES", 10**7)
     monkeypatch.setattr(r2, "MAX_WEB_PIXELS", 4)
-    with pytest.raises(Exception, match="too large|width\\*height"):
-        _read(r2.read_wms, conn, url=httpserver.url_for("/wms"), layers="a", bbox=[0, 0, 1, 1])
-    with pytest.raises(Exception, match="width"):
+    with pytest.raises(PipelineRuntimeError, match="too large"):
+        _read(
+            r2.read_wms, conn, url=httpserver.url_for("/wms"), layers="a", bbox=[0, 0, 1, 1],
+            width=2, height=2,
+        )  # fmt: skip
+    with pytest.raises(ValidationError, match="width"):
         _read(
             r2.read_wms,
             conn,
@@ -484,5 +586,123 @@ def test_web_egress_guard_and_scheme(conn, monkeypatch):
 
 
 def test_web_bad_bbox(conn):
-    with pytest.raises(Exception, match="bbox"):
+    with pytest.raises(ValidationError, match="bbox"):
         _read(r2.read_wms, conn, url="http://x", layers="a", bbox=[1, 1, 0, 0])
+
+
+# ------------------------------------------------------------------ output=rasterItem (F1)
+
+
+@pytest.fixture()
+def renv(request):
+    return request.getfixturevalue("env")
+
+
+@pytest.mark.parametrize(
+    ("fn", "drv", "name", "dtype"),
+    [
+        (r2.read_erdas, "HFA", "a.img", "float32"),
+        (r2.read_grib, "GRIB", "a.grib2", "float32"),
+        (r2.read_jp2, "JP2OpenJPEG", "a.jp2", "uint16"),
+    ],
+)
+def test_raster_item_feeds_f1_stats(renv, tmp_path, fn, drv, name, dtype):
+    from app.raster.models import RasterAsset
+
+    src = _grid(tmp_path / name, drv, dtype)
+    conn = duckdb.connect(":memory:")
+    conn.execute("INSTALL spatial; LOAD spatial;")
+    # renv.paths mappe source_key -> fichier : le faux téléversement de F1 y copie le COG
+    fn(
+        conn, session=renv.s, tenant_id=renv.tid, node_id="n", view_name="v", user=renv.alice,
+        base_uri="", params={"path": src, "output": "rasterItem", "title": "T"},
+    )  # fmt: skip
+    (item_id, w, h, bands, srid) = conn.execute("SELECT * FROM v").fetchone()
+    assert (w, h, bands, srid) == (10, 10, 1, 4326) and renv.s.get(RasterAsset, item_id)
+    # E2E : la sortie alimente transform.rasterStats (colonne item_id, comme reader.rasterItems)
+    c = rrun(renv, "transform.rasterStats", {}, [item_id])
+    count, mx = rrows(c, "SELECT raster_b1_count, raster_b1_max FROM out")[0]
+    assert count == 100 and mx >= 90  # JP2 : compression avec perte
+
+
+def test_raster_item_netcdf_and_guards(renv, tmp_path, monkeypatch):
+    rasterio.shutil.copy(_grid(tmp_path / "m.tif"), str(tmp_path / "a.nc"), driver="netCDF")
+    conn = duckdb.connect(":memory:")
+    conn.execute("INSTALL spatial; LOAD spatial;")
+    kw = {
+        "session": renv.s,
+        "tenant_id": renv.tid,
+        "node_id": "n",
+        "view_name": "v",
+        "base_uri": "",
+    }
+    params = {"path": str(tmp_path / "a.nc"), "output": "rasterItem"}
+    r2.read_netcdf(conn, user=renv.alice, params=params, **kw)
+    assert conn.execute("SELECT count(*) FROM v").fetchone()[0] == 1
+    conn.execute("DROP TABLE v")
+    from app.users.repository import set_user_role
+
+    set_user_role(
+        renv.s, tenant_id=renv.tid, user_id=renv.bob.id, role_id=renv.roles["reader"].id,
+        role_slug="reader",
+    )  # fmt: skip
+    with pytest.raises(PipelineRuntimeError, match="catalog.manage"):
+        r2.read_netcdf(conn, user=renv.bob, params=params, **kw)
+    monkeypatch.setattr(r2, "MAX_ITEM_PIXELS", 50)
+    with pytest.raises(PipelineRuntimeError, match="trop grand"):
+        r2.read_netcdf(conn, user=renv.alice, params=params, **kw)
+    monkeypatch.setenv("CORE_RASTER_ENABLED", "false")
+    with pytest.raises(PipelineRuntimeError, match="CORE_RASTER_ENABLED"):
+        r2.read_netcdf(conn, user=renv.alice, params=params, **kw)
+
+
+def test_raster_item_not_published_in_preview(renv, tmp_path):
+    from app.raster.models import RasterAsset
+
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "r1", "kind": "reader", "op": "reader.erdasImagine",
+                    "params": {"path": _grid(tmp_path / "a.img", "HFA"), "output": "rasterItem"},
+                },
+                {"id": "w1", "kind": "writer", "op": "writer.export",
+                 "params": {"format": "csv", "key": "o.csv"}},
+            ],
+            "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+        }
+    )  # fmt: skip
+    n = renv.s.query(RasterAsset).count()
+    out = runtime.preview_pipeline(
+        session=renv.s, payload=payload, tenant_id=renv.tid, user=renv.alice, up_to="r1",
+        endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+        base_uri=str(tmp_path), limit=5,
+    )  # fmt: skip
+    assert renv.s.query(RasterAsset).count() == n
+    assert out == [{"item_id": None, "width": 10, "height": 10, "bands": 1, "srid": 4326}]
+
+
+def test_f2_node_preview_via_preview_pipeline(tmp_path):
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {"id": "r1", "kind": "reader", "op": "reader.erdasImagine",
+                 "params": {"path": _grid(tmp_path / "a.img", "HFA")}},
+                {"id": "t1", "kind": "transform", "op": "transform.filter",
+                 "params": {"expr": "value >= 95"}},
+                {"id": "w1", "kind": "writer", "op": "writer.export",
+                 "params": {"format": "csv", "key": "o.csv"}},
+            ],
+            "edges": [
+                {"id": "e1", "from": "r1", "to": "t1"},
+                {"id": "e2", "from": "t1", "to": "w1"},
+            ],
+        }
+    )  # fmt: skip
+    out = runtime.preview_pipeline(
+        session=None, payload=payload, tenant_id="t", user=None, up_to="t1",
+        endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+        base_uri=str(tmp_path), limit=50,
+    )  # fmt: skip
+    assert sorted(r["value"] for r in out) == [95, 96, 97, 98, 99]
+    assert out[0]["geometry"]["type"] == "Point"
