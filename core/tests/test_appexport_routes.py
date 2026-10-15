@@ -200,20 +200,16 @@ def test_get_app_export_job_404_for_a_job_owned_by_another_user(env):
     assert client.get(f"/v1/app-exports/jobs/{job_id}").status_code == 404
 
 
-def test_post_app_export_allowed_in_read_only_demo_mode(env, monkeypatch):
-    # Garde démo (core/app/main.py::read_only_guard) : déclencher un export
-    # d'app est une action de lecture (aucune écriture de donnée métier),
-    # doit rester utilisable en CORE_READ_ONLY_MODE=true — même raisonnement
-    # que POST /export, déjà exempté via _EXPORT_PATH_RE (SP-17a). Régression
-    # trouvée en revue de tâche SP-18a : /app-exports ne matchait pas le
-    # regex du garde et recevait un 403 avant même d'atteindre ce routeur.
+def test_post_app_export_refused_in_read_only_demo_mode(env, monkeypatch):
+    # REV-358 (lot 2) : POST /app-exports crée une ligne de job en base, ce n'est donc
+    # plus une lecture exemptée par read_only_guard (core/app/main.py) : 403 en lecture seule.
     make_client, owner, _stranger, item_id, _Session = env
     monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
     client, _calls = make_client()
     client.app.dependency_overrides[get_current_user] = lambda: owner
     client.app.dependency_overrides[get_current_user_optional] = lambda: owner
     response = client.post("/v1/app-exports", json={"itemId": item_id, "mode": "static"})
-    assert response.status_code == 202
+    assert response.status_code == 403
 
 
 def test_get_app_export_job_done_status_includes_result_url(env):
