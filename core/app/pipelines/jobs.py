@@ -25,7 +25,7 @@ from app.jobs.common import notify_best_effort, resolve_owner_user
 from app.jobs.common import session_factory as _session_factory
 from app.pipelines import checkpoints
 from app.pipelines import repository as pipelines_repo
-from app.pipelines.errors import PipelineCancelledError
+from app.pipelines.errors import PipelineCancelledError, PipelineTerminatedError
 from app.pipelines.reader_state import ReaderState
 from app.pipelines.runtime import NodeStat, PipelineRuntimeError, access_facts, run_pipeline
 from app.quotas.service import QuotaExceededError
@@ -320,7 +320,10 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
             # valeur échoue ici avec un message clair.
             payload = apply_params(payload, resolve_params(payload.parameters, run_params))
             user = _acting_user(session, tenant_id=tenant_id, item_id=item_id)
-            retry_policy = payload.retry
+            # Garde d'exécution (revue finale FME, I1) : une config stockée avant la garde de
+            # validation peut combiner retry.max > 0 et un writer non rejouable — jamais de
+            # retry automatique dans ce cas (la reprise manuelle est refusée par le service).
+            retry_policy = None if payload.append_writers() else payload.retry
             checkpoint = (
                 checkpoints.Checkpoint(
                     tenant_id,
@@ -330,7 +333,7 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
                         access_facts(session, payload, tenant_id=tenant_id, user=user),
                     ),
                 )
-                if retry_policy is not None
+                if payload.retry is not None
                 else None
             )
             reader_state = ReaderState(
@@ -377,13 +380,17 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
     # REV-288a : un quota atteint est un refus métier (message destiné à
     # l'utilisateur), même traitement que l'ingestion (ingestion/tasks.py).
     except (PipelineRuntimeError, ValueError, QuotaExceededError) as exc:
-        if isinstance(exc, PipelineRuntimeError) and _schedule_retry(
-            factory,
-            run_id=run_id,
-            tenant_id=tenant_id,
-            policy=retry_policy,
-            attempt=attempt,
-            error=str(exc),
+        if (
+            isinstance(exc, PipelineRuntimeError)
+            and not isinstance(exc, PipelineTerminatedError)
+            and _schedule_retry(
+                factory,
+                run_id=run_id,
+                tenant_id=tenant_id,
+                policy=retry_policy,
+                attempt=attempt,
+                error=str(exc),
+            )
         ):
             return
         tracker.mark_failed(str(exc))

@@ -155,9 +155,10 @@ def retry_pipeline_run_service(
         raise HTTPException(
             status_code=409,
             detail=(
-                f"Reprise/rejeu refusé : le writer {', '.join(appenders)} est en mode 'append' "
-                "et dupliquerait des lignes déjà écrites. Utilisez le mode 'upsert' "
-                "(writer.collection) ou 'replace', ou relancez une exécution complète."
+                f"Reprise/rejeu refusé : le writer {', '.join(appenders)} n'est pas idempotent "
+                "(mode 'append' : dupliquerait des lignes déjà écrites, utilisez 'upsert' ou "
+                "'replace' ; writer de messagerie : renverrait les messages déjà partis). "
+                "Relancez une exécution complète."
             ),
         )
     # Les writers sont toujours rejoués (C1) : leurs stats de l'échec ne sont pas reprises.

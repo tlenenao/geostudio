@@ -8,6 +8,7 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "sqlalchemy>=2.0",
     "pydantic>=2.7",
+    "pymongo>=4.10",  # Apache-2.0 (+ dnspython ISC) : reader.mongodb, voie R FME
     "httpx>=0.27",
     "anyio>=4.14.2,<4.15",  # transitif (httpx/mcp/starlette/sse-starlette/
                       # watchfiles) ; contrainte explicite car la 4.14.1 que
@@ -137,6 +138,7 @@ dependencies = [
     "python-multipart>=0.0.9",
     "mcp>=1.12,<2.0",
     "shapely>=2.0",
+    "mgrs>=1.5.4",  # MIT ; transformers MGRS (voie A FME)
     "procrastinate>=2.0",
     "pyogrio>=0.9",
     "pyproj>=3.6",
@@ -180,6 +182,7 @@ dependencies = [
                       # databricks-sql-connector (Apache-2.0), thrift (Apache-2.0),
                       # lz4 (BSD, wheel aarch64 présente), pybreaker (BSD) et épingle
                       # oauthlib<4 (3.3.1, BSD-3).
+    "pika>=1.4.4",  # voie E FME : writer/reader RabbitMQ (AMQP) — BSD-3-Clause.
 ]
 
 [dependency-groups]
@@ -222,6 +225,11 @@ filterwarnings = [
     "ignore::starlette.exceptions.StarletteDeprecationWarning",
     "ignore::pytest.PytestUnraisableExceptionWarning",
     "ignore::DeprecationWarning:rdflib.plugins.parsers.jsonld",
+    # sqlalchemy-bigquery enregistre globalement un GenericFunction `unnest`
+    # sans `inherit_cache` dès qu'un test BigQuery a chargé le dialecte ; la
+    # réflexion PostgreSQL de `dbio` (sa.Table autoload) l'emprunte ensuite,
+    # selon l'ordre des tests (échec intermittent en suite complète seulement).
+    "ignore:Class unnest will not make use of SQL compilation caching:sqlalchemy.exc.SAWarning",
     # snowflake-connector-python (GAP-16) avertit sur la version de pyarrow
     # installée (25.0.0) au regard de sa contrainte pour l'extra "pandas" —
     # jamais utilisé ici (aucun DataFrame Snowflake, seulement du SQL brut

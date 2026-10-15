@@ -10,7 +10,7 @@ from fastapi import HTTPException
 from sqlalchemy import text
 
 from app.configs import repository as configs_repo
-from app.configs.schemas import BuilderConfig, PipelinePayload
+from app.configs.schemas import BuilderConfig, PipelinePayload, PipelineRetryPolicy
 from app.pipelines import checkpoints, compiler, runtime
 from app.pipelines import jobs as pipeline_jobs
 from app.pipelines import repository as pipelines_repo
@@ -500,3 +500,155 @@ def test_resume_rechecks_reader_access_rights(rig, monkeypatch, change):
         assert r2.status == "failed" and "not found" in (r2.error or "")
     else:  # source relue sous le nouveau masquage (le point de reprise n'est pas réutilisé)
         assert state["reader_calls"] == 2
+
+
+# --- Revue finale de branche FME : I1 (writers externes) / I2 (rasters publiés) -----------
+
+
+def _email_then_failing_writer(retry):
+    """w1 = writer.email (effet externe irréversible) réussit, puis w2 échoue."""
+    p = _payload(None).model_dump(by_alias=True)
+    p["nodes"][-1] = {
+        "id": "w1",
+        "kind": "writer",
+        "op": "writer.email",
+        "params": {"secretName": "smtp", "to": "a@example.org"},
+    }
+    p["nodes"].append(
+        {
+            "id": "w2",
+            "kind": "writer",
+            "op": "writer.collection",
+            "params": {"collectionId": "villes_propres", "mode": "replace"},
+        }
+    )
+    p["edges"].append({"id": "e5", "from": "t3", "to": "w2"})
+    payload = PipelinePayload.model_validate(p)
+    # Config stockée AVANT la garde de validation : retry.max > 0 malgré writer.email.
+    payload.retry = None if retry is None else PipelineRetryPolicy.model_validate(retry)
+    return payload
+
+
+def test_automatic_retry_with_external_effect_writer_is_refused_at_validation():
+    p = _email_then_failing_writer(None).model_dump(by_alias=True)
+    p["retry"] = {"max": 2}
+    with pytest.raises(ValueError, match="non idempotent"):
+        PipelinePayload.model_validate(p)
+    p["retry"] = {"max": 0}  # sans reprise auto : accepté (reprise manuelle refusée)
+    assert PipelinePayload.model_validate(p).append_writers() == ["w1"]
+
+
+@pytest.mark.postgis
+def test_external_writer_is_never_replayed_by_retry_or_resume(rig, monkeypatch):
+    """I1 de bout en bout : w1 (email) envoie, w2 échoue. Même avec une politique retry.max=2
+    (config antérieure à la garde), le run finit `failed` sans retry automatique, et la reprise
+    manuelle est refusée : les messages ne repartent jamais."""
+    _app, Session, tenant, user, item_id, state = rig
+    sent: list[str] = []
+    state.update(
+        fail_t3=False,
+        retry={"max": 2, "backoff": "fixed", "delaySeconds": 1},
+        payload_fn=_email_then_failing_writer,
+    )
+
+    def fake_email(session, conn, *, node, **kw):
+        sent.append(node.id)
+        return NodeStat(node.id, node.op, 3, {"sent": 3})
+
+    def failing_collection(session, conn, *, node, **kw):
+        raise PipelineRuntimeError("boom w2")
+
+    monkeypatch.setitem(WRITERS, "writer.email", fake_email)
+    monkeypatch.setitem(WRITERS, "writer.collection", failing_collection)
+    r = _exec(Session, tenant, _new_run(Session, tenant, item_id))
+    assert r.status == "failed" and r.next_retry_at is None, (r.status, r.error)
+    assert sent == ["w1"]
+    with Session() as s:  # la config stockée porte le writer externe
+        configs_repo.update_config(
+            s,
+            configs_repo.get_config_by_item(s, item_id).id,
+            BuilderConfig.model_validate(
+                {
+                    "version": 1,
+                    "kind": "pipeline",
+                    "pipeline": _email_then_failing_writer(None).model_dump(by_alias=True),
+                }
+            ),
+            tenant_id=tenant.id,
+        )
+        s.commit()
+    with Session() as s, pytest.raises(HTTPException) as exc:
+        retry_pipeline_run_service(s, user=user, run_id=r.id, defer_task=lambda *a: None)
+    assert exc.value.status_code == 409 and "w1" in exc.value.detail
+    assert sent == ["w1"]
+
+
+def _publishing_reader(monkeypatch, state):
+    """r1 publie un raster (vraie chaîne publish_raster, S3/COG simulés) à chaque lecture."""
+    from types import SimpleNamespace
+
+    from app.raster import publish
+
+    state["deleted"], state["uploaded"], state["items"] = [], [], []
+    monkeypatch.setattr(publish, "can_publish", lambda session, user: True)
+    monkeypatch.setattr(
+        publish.ingest, "to_cog", lambda src, dst, **kw: open(dst, "wb").write(b"cog")
+    )
+    monkeypatch.setattr(
+        publish.ingest,
+        "read_metadata",
+        lambda path: SimpleNamespace(
+            srid=4326,
+            bounds=[0, 0, 1, 1],
+            width=1,
+            height=1,
+            dtype="uint8",
+            nodata=None,
+            bands=[],
+        ),  # fmt: skip
+    )
+    monkeypatch.setattr(publish, "_upload", lambda s, t, key, path: state["uploaded"].append(key))
+    monkeypatch.setattr(publish, "delete_key", lambda key: state["deleted"].append(key))
+
+    def reader(conn, *, node_id, view_name, session, user, **_):
+        state["reader_calls"] += 1
+        tmp = os.path.join(os.environ["CORE_PIPELINE_CHECKPOINT_DIR"], "..", "pub.tif")
+        pub = publish.publish_raster(
+            session, user, tif_path=tmp, cog_path=tmp + ".cog", title="r",
+            limit_collection_id=None, filename="r.tif",
+        )  # fmt: skip
+        state["items"].append(pub.item_id)
+        conn.execute(
+            f"CREATE TEMP TABLE {view_name} AS SELECT 'R' AS region, i AS pop, "
+            "ST_Point(1, 45) AS geometry FROM range(1, 4) t(i)"
+        )
+        return 4326
+
+    monkeypatch.setitem(READERS, "reader.connector.rest", reader)
+
+
+@pytest.mark.postgis
+def test_published_raster_is_never_resumed_from_a_checkpoint(rig, monkeypatch):
+    """I2 : r1 publie un raster (item créé par flush dans la transaction du run), t3 échoue.
+    Le rollback annule l'item : le COG du run est supprimé (quota de stockage cohérent) et
+    aucun point de reprise n'est écrit après la publication — le retry republie au lieu de
+    recharger un `raster_item_id` fantôme."""
+    from app.raster.models import RasterAsset
+
+    _app, Session, tenant, user, item_id, state = rig
+    state["retry"] = {"max": 1, "backoff": "fixed", "delaySeconds": 1}
+    _publishing_reader(monkeypatch, state)
+    run_id = _new_run(Session, tenant, item_id)
+    r = _exec(Session, tenant, run_id)
+    assert r.status == "retrying", r.error
+    assert state["deleted"] == state["uploaded"] and len(state["uploaded"]) == 1
+    with Session() as s:
+        assert s.get(RasterAsset, state["items"][0]) is None  # annulé avec la transaction
+
+    state["fail_t3"] = False
+    r = _exec(Session, tenant, run_id)
+    assert r.status == "succeeded", r.error
+    assert state["reader_calls"] == 2  # republié, jamais rechargé depuis un point de reprise
+    assert len(state["uploaded"]) == 2 and state["deleted"] == state["uploaded"][:1]
+    with Session() as s:
+        assert s.get(RasterAsset, state["items"][1]) is not None

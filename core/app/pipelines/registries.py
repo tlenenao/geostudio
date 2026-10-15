@@ -46,6 +46,7 @@ qu'attributs du module au moment où ce fichier-ci y accède ci-dessous."""
 from collections.abc import Callable
 
 from app.pipelines import runtime as _runtime
+from app.pipelines.ops.contracts import LANE_MODULES
 from app.pipelines.ops.raster import read_raster as _read_raster
 from app.pipelines.ops.wfs import read_wfs as _read_wfs
 
@@ -80,3 +81,13 @@ WRITERS: dict[str, Callable] = {
     "writer.dataset": _runtime._write_dataset,
     "writer.file": _runtime._write_file,
 }
+
+# Modules de voie FME (cf. app.pipelines.ops.contracts.LANE_MODULES) : un nouveau writer
+# reçoit la signature générique de run_pipeline (session, conn, node=, view_by_node=,
+# tenant_id=, user=, **extra) — writer.export/writer.file sont les seules exceptions.
+for _lane in LANE_MODULES:
+    for _registry, _entries in ((READERS, _lane.READERS), (WRITERS, _lane.WRITERS)):
+        for _op, _fn in _entries.items():
+            if _op in _registry:
+                raise ValueError(f"op '{_op}' enregistrée deux fois ({_lane.__name__})")
+            _registry[_op] = _fn

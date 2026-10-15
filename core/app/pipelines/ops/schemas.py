@@ -476,9 +476,9 @@ class TransformSetSridParams(BaseModel):
     lecture est faux.
 
     Pour reprojeter réellement les coordonnées, utiliser transform.reproject.
-    Ne couvre pas le retrait de SRID (CoordinateSystemRemover de la matrice
-    FME) : le SRID est un entier obligatoire dans ce runtime, jamais absent
-    (design vague 1 transformers DuckDB §0)."""
+    Le retrait de SRID (CoordinateSystemRemover de la matrice FME) est couvert
+    par transform.removeSrid (SRID 0 = inconnu) ; setSrid réassigne aussi un
+    SRID réel à une entrée sans SRID."""
 
     targetSrid: int = Field(..., gt=0)
 

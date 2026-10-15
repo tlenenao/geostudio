@@ -67,6 +67,7 @@ from app.pipelines.errors import (  # noqa: F401 (réexportés pour compatibilit
 )
 from app.pipelines.expr_validation import validate_bounded_expr
 from app.pipelines.ops.contracts import BINARY_OPS, OP_PARAMS
+from app.pipelines.ops.operation_contract import IN_PREVIEW
 from app.pipelines.ops.schemas import (
     ReaderCollectionParams,
     ReaderConnectorBigQueryParams,
@@ -957,7 +958,13 @@ def _execute_transform_chain(
 
 def _checkpoint_save(checkpoint, conn, node_id, view_name, srid, cursors) -> None:
     """Best-effort : un disque plein ou une erreur d'écriture coûte la reprise
-    de ce nœud, jamais le run."""
+    de ce nœud, jamais le run. Aucun point de reprise après une publication de raster
+    dans ce run (revue finale FME, I2) : l'item est annulé avec la transaction du run en
+    cas d'échec, une reprise rechargerait un `raster_item_id` fantôme."""
+    from app.raster.publish import RUN_PUBLISHED_KEYS
+
+    if RUN_PUBLISHED_KEYS.get():
+        return
     try:
         checkpoint.save(conn, node_id, view_name, srid, cursors)
     except Exception:  # noqa: BLE001
@@ -1019,6 +1026,7 @@ def preview_pipeline(
     timer = threading.Timer(_preview_timeout_s(), _on_timeout)
     timer.daemon = True
     timer.start()
+    preview_token = IN_PREVIEW.set(True)
     try:
         ordered, view_by_node, srid_by_node, join_srid_by_node = _prepare(
             conn,
@@ -1070,6 +1078,7 @@ def preview_pipeline(
             raise PipelineRuntimeError("aperçu interrompu : durée maximale dépassée") from exc
         raise
     finally:
+        IN_PREVIEW.reset(preview_token)
         timer.cancel()
         conn.close()
 
@@ -1403,12 +1412,18 @@ def _write_file(conn, *, node: PipelineNode, view_by_node: dict, srid: int) -> N
     # "sqlite3_open ... unable to open database file".
     if parent := os.path.dirname(p.path):
         os.makedirs(parent, exist_ok=True)
+    # SRID 0 (« non défini », voie S FME) : fichier écrit sans système de coordonnées.
+    srs = f", SRS {_ql(f'EPSG:{srid}')}" if srid != 0 else ""
     conn.execute(
         f"COPY (SELECT {select_list} FROM {_qi(input_view)}) TO {_ql(p.path)} "
-        f"WITH (FORMAT GDAL, DRIVER {_ql(p.driver)}, SRS {_ql(f'EPSG:{srid}')})"
+        f"WITH (FORMAT GDAL, DRIVER {_ql(p.driver)}{srs})"
     )
     row_count = conn.execute(f"SELECT count(*) FROM {_qi(input_view)}").fetchone()[0]
     return NodeStat(node.id, node.op, row_count)
+
+
+# writer.file écrit sans SRS ; writer.ftp refuse toute colonne géométrie.
+_SRID_REQUIRED_WRITERS = ("writer.collection", "writer.dataset", "writer.export", "writer.topojson")
 
 
 def run_pipeline(
@@ -1436,8 +1451,11 @@ def run_pipeline(
     # avec app.pipelines.registries (qui importe app.pipelines.runtime, lui,
     # à son niveau module).
     from app.pipelines.registries import WRITERS
+    from app.raster import publish as raster_publish
 
+    published: list[str] = []
     conn = open_connection(endpoint_url=endpoint_url, access_key=access_key, secret_key=secret_key)
+    published_token = raster_publish.RUN_PUBLISHED_KEYS.set(published)
     try:
         ordered, view_by_node, srid_by_node, join_srid_by_node = _prepare(
             conn,
@@ -1465,13 +1483,23 @@ def run_pipeline(
             if node.kind != "writer":
                 continue
             # F5 : une reprise REJOUE toujours les writers (jamais sautés sur la foi de
-            # node_stats) : leurs écritures vivent dans la transaction du run, annulée à
-            # l'échec, alors que node_stats est commité à part (revue finale vague 4, C1).
-            # Rejeu sûr : `append_writers()` refuse la reprise des modes non idempotents.
+            # node_stats, commité à part — revue finale vague 4, C1). Seuls collection/dataset
+            # écrivent dans la transaction du run (annulée à l'échec) ; les writers externes
+            # (postgres distant, ftp, messagerie…) ont déjà produit leur effet. Rejeu sûr :
+            # `append_writers()` refuse retry/reprise des modes append ET des writers externes
+            # non idempotents (EXTERNAL_EFFECT_WRITER_OPS) ; les autres sont idempotents.
             pred_id = compiler.predecessor_id(node.id, payload.edges)
             if pred_id is None:
                 raise PipelineRuntimeError(f"node '{node.id}' has no incoming edge")
             view_by_node[node.id] = view_by_node[pred_id]
+            if srid_by_node[pred_id] == 0 and node.op in _SRID_REQUIRED_WRITERS:
+                # SRID 0 = « non défini » (transform.removeSrid, voie S FME) : la collection
+                # étiquetterait des coordonnées locales avec son propre SRID ; un GeoJSON/
+                # TopoJSON (sans CRS, WGS84 implicite) les ferait passer pour des degrés.
+                raise PipelineRuntimeError(
+                    f"{node.op}: SRID non défini (0) en entrée — réassignez un SRID "
+                    "(transform.setSrid ou transform.localCoordinateSystem) avant d'écrire"
+                )
             writer_fn = WRITERS.get(node.op)
             if writer_fn is None:
                 raise PipelineRuntimeError(f"unknown writer op '{node.op}'")
@@ -1514,5 +1542,13 @@ def run_pipeline(
             if on_node_complete is not None:
                 on_node_complete(stat)
         return stats
+    except BaseException:
+        # Échec/annulation : la transaction du run (items raster compris) sera annulée par
+        # l'appelant — les COG publiés par le run ne doivent pas rester orphelins au quota.
+        # ponytail: un échec du commit APRÈS un run réussi laisse encore l'orphelin (rare).
+        for key in published:
+            raster_publish.delete_key(key)
+        raise
     finally:
+        raster_publish.RUN_PUBLISHED_KEYS.reset(published_token)
         conn.close()

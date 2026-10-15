@@ -4525,6 +4525,22 @@ export interface components {
             licenses: components["schemas"]["LicenseCatalogEntry"][];
         };
         /**
+         * MongoDbUriPayload
+         * @description URI de connexion MongoDB (`mongodb://` ou `mongodb+srv://`, identifiants inclus) pour
+         *     `reader.mongodb`. Le runtime n'en retient que les hôtes, les identifiants, la base,
+         *     `authSource` et `authMechanism` (SCRAM seulement) : toute autre option (proxy, TLS
+         *     désactivé, fichiers de certificat…) est ignorée ; TLS est toujours exigé.
+         */
+        MongoDbUriPayload: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "mongodb_uri";
+            /** Uri */
+            uri: string;
+        };
+        /**
          * MssqlDsnPayload
          * @description DSN SQLAlchemy complet vers Microsoft SQL Server, forme
          *     `mssql+pymssql://user:pass@host:port/dbname` (vérifiée directement
@@ -4652,6 +4668,40 @@ export interface components {
              * @enum {string}
              */
             kind: "oauth2_client_credentials";
+            /** Tokenurl */
+            tokenUrl: string;
+        };
+        /**
+         * OAuth2ClientPayload
+         * @description Client OAuth2 générique (voie R FME) : `client_credentials` (application seule) ou
+         *     `refresh_token` (compte utilisateur délégué : Dropbox, Box, OneDrive…). Le runtime
+         *     échange ces identifiants contre un jeton d'accès à l'exécution (cache mémoire court,
+         *     jamais persisté) ; si le fournisseur renvoie un nouveau `refreshToken`, il est réécrit
+         *     dans le coffre. `tokenUrl` est fixé par le créateur du secret (jamais par le nœud) et
+         *     passe par la garde d'egress ; le jeton obtenu n'est envoyé que sous `baseUrl`.
+         */
+        OAuth2ClientPayload: {
+            /** Baseurl */
+            baseUrl?: string | null;
+            /** Clientid */
+            clientId: string;
+            /** Clientsecret */
+            clientSecret: string;
+            /**
+             * Granttype
+             * @default client_credentials
+             * @enum {string}
+             */
+            grantType: "client_credentials" | "refresh_token";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "oauth2_client";
+            /** Refreshtoken */
+            refreshToken?: string | null;
+            /** Scope */
+            scope?: string | null;
             /** Tokenurl */
             tokenUrl: string;
         };
@@ -5251,12 +5301,12 @@ export interface components {
             /** Name */
             name: string;
             /** Payload */
-            payload: components["schemas"]["ApiKeyPayload"] | components["schemas"]["BearerTokenPayload"] | components["schemas"]["BasicAuthPayload"] | components["schemas"]["OAuth2ClientCredentialsPayload"] | components["schemas"]["PostgresDsnPayload"] | components["schemas"]["SmtpCredentialsPayload"] | components["schemas"]["SnowflakeDsnPayload"] | components["schemas"]["BigQueryDsnPayload"] | components["schemas"]["MssqlDsnPayload"] | components["schemas"]["OracleDsnPayload"] | components["schemas"]["DatabricksDsnPayload"] | components["schemas"]["S3CredentialsPayload"] | components["schemas"]["AzureBlobCredentialsPayload"] | components["schemas"]["GcsCredentialsPayload"];
+            payload: components["schemas"]["ApiKeyPayload"] | components["schemas"]["BearerTokenPayload"] | components["schemas"]["BasicAuthPayload"] | components["schemas"]["OAuth2ClientCredentialsPayload"] | components["schemas"]["OAuth2ClientPayload"] | components["schemas"]["PostgresDsnPayload"] | components["schemas"]["SmtpCredentialsPayload"] | components["schemas"]["SnowflakeDsnPayload"] | components["schemas"]["BigQueryDsnPayload"] | components["schemas"]["MssqlDsnPayload"] | components["schemas"]["OracleDsnPayload"] | components["schemas"]["DatabricksDsnPayload"] | components["schemas"]["S3CredentialsPayload"] | components["schemas"]["AzureBlobCredentialsPayload"] | components["schemas"]["GcsCredentialsPayload"] | components["schemas"]["MongoDbUriPayload"];
         };
         /** SecretUpdate */
         SecretUpdate: {
             /** Payload */
-            payload: components["schemas"]["ApiKeyPayload"] | components["schemas"]["BearerTokenPayload"] | components["schemas"]["BasicAuthPayload"] | components["schemas"]["OAuth2ClientCredentialsPayload"] | components["schemas"]["PostgresDsnPayload"] | components["schemas"]["SmtpCredentialsPayload"] | components["schemas"]["SnowflakeDsnPayload"] | components["schemas"]["BigQueryDsnPayload"] | components["schemas"]["MssqlDsnPayload"] | components["schemas"]["OracleDsnPayload"] | components["schemas"]["DatabricksDsnPayload"] | components["schemas"]["S3CredentialsPayload"] | components["schemas"]["AzureBlobCredentialsPayload"] | components["schemas"]["GcsCredentialsPayload"];
+            payload: components["schemas"]["ApiKeyPayload"] | components["schemas"]["BearerTokenPayload"] | components["schemas"]["BasicAuthPayload"] | components["schemas"]["OAuth2ClientCredentialsPayload"] | components["schemas"]["OAuth2ClientPayload"] | components["schemas"]["PostgresDsnPayload"] | components["schemas"]["SmtpCredentialsPayload"] | components["schemas"]["SnowflakeDsnPayload"] | components["schemas"]["BigQueryDsnPayload"] | components["schemas"]["MssqlDsnPayload"] | components["schemas"]["OracleDsnPayload"] | components["schemas"]["DatabricksDsnPayload"] | components["schemas"]["S3CredentialsPayload"] | components["schemas"]["AzureBlobCredentialsPayload"] | components["schemas"]["GcsCredentialsPayload"] | components["schemas"]["MongoDbUriPayload"];
         };
         /** ServiceAreaRequest */
         ServiceAreaRequest: {

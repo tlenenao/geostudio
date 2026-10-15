@@ -86,6 +86,8 @@ def _origins(
     limit = f" LIMIT {PREVIEW_ROWS}" if preview else f" LIMIT {MAX_ROWS + 1}"
     # Valhalla ne parle que WGS84 : une entrée projetée (Lambert-93…) est reprojetée d'abord.
     pt = "ST_Centroid(geometry)"
+    if input_srid == 0:
+        raise PipelineRuntimeError("transform: SRID non défini (0) — reprojection impossible")
     if input_srid and input_srid != 4326:
         pt = f"ST_Transform({pt}, 'EPSG:{int(input_srid)}', 'EPSG:4326', true)"
     rows = conn.execute(

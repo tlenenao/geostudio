@@ -80,8 +80,11 @@ def test_get_pipelines_ops_returns_all_exposed_ops(monkeypatch):
     # dédiée — décision tranchée en Task 27 (cf. CHANGELOG.md, section Removed).
     # (reader.file/writer.file restent hors catalogue tant que
     # CORE_PIPELINE_FILE_IO_ENABLED est éteint, reader.raster/transform.zonalStats tant que
-    # CORE_RASTER_ENABLED est éteint : registre brut à 71, route à 67).
-    assert set(body) == {
+    # CORE_RASTER_ENABLED est éteint : registre socle à 71, route à 67). Ops des modules
+    # de voie FME (LANE_OPS) : testées par voie, hors de cette liste figée.
+    from app.pipelines.ops.contracts import LANE_OPS
+
+    assert set(body) - LANE_OPS == {
         "reader.collection",
         "transform.filter",
         "transform.select",

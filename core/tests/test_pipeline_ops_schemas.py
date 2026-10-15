@@ -111,7 +111,9 @@ def test_non_collection_fields_carry_no_format_hint():
 
 
 def test_all_known_ops_are_registered():
-    assert set(OP_PARAMS) == {
+    from app.pipelines.ops.contracts import LANE_OPS
+
+    assert set(OP_PARAMS) - LANE_OPS == {
         "reader.collection",
         "transform.filter",
         "transform.select",
@@ -421,9 +423,9 @@ def test_non_binary_ops_do_not_accept_secondary_input_in_catalog():
 
 
 def test_binary_ops_set_matches_catalog_flag():
-    from app.pipelines.ops.contracts import BINARY_OPS
+    from app.pipelines.ops.contracts import BINARY_OPS, LANE_OPS
 
-    assert BINARY_OPS == {
+    assert BINARY_OPS - LANE_OPS == {
         "transform.join",
         "transform.intersection",
         "transform.countWithin",

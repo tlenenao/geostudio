@@ -20,3 +20,8 @@ class PipelineRuntimeError(Exception):
 class PipelineCancelledError(PipelineRuntimeError):
     """Annulation demandée par l'utilisateur (t03b-009) : le run finit
     « cancelled », pas « failed », et la transaction d'écriture est annulée."""
+
+
+class PipelineTerminatedError(PipelineRuntimeError):
+    """Arrêt volontaire déclaré par l'auteur (`transform.terminator`) : échec définitif du
+    run, jamais rejoué par la politique `retry` (déterministe sur les mêmes données)."""

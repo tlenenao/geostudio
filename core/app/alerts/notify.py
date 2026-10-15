@@ -21,7 +21,6 @@ import hashlib
 import hmac
 import json
 import smtplib
-import ssl
 from email.message import EmailMessage
 
 import requests
@@ -33,6 +32,7 @@ from app.configs.schemas import AlertChannelEmail, AlertChannelWebhook
 from app.items.models import Item
 from app.secrets import repository as secrets_repo
 from app.secrets.schemas import smtp_tls_violation
+from app.secrets.smtp_send import send_smtp_message
 from app.users.models import User
 
 
@@ -136,16 +136,7 @@ def send_email(
             "mettez à jour le secret (PUT /v1/secrets/{id}) avec useTls=true"
         )
 
-    ctx = ssl.create_default_context()
     try:
-        if payload.useTls and payload.port == 465:
-            server_cm = smtplib.SMTP_SSL(payload.host, payload.port, timeout=10, context=ctx)
-        else:
-            server_cm = smtplib.SMTP(payload.host, payload.port, timeout=10)
-        with server_cm as smtp:
-            if payload.useTls and payload.port != 465:
-                smtp.starttls(context=ctx)
-            smtp.login(payload.username, payload.password)
-            smtp.send_message(message)
+        send_smtp_message(payload, message)
     except (smtplib.SMTPException, OSError) as exc:
         raise NotifyError(f"email delivery failed: {exc}") from exc

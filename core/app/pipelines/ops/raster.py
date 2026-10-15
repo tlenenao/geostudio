@@ -133,6 +133,8 @@ def execute_zonal_stats(
     input_srid: int | None = None,
 ) -> None:
     p = TransformZonalStatsParams.model_validate(params)
+    if input_srid == 0:  # SRID « non défini » (voie S) : jamais replié sur 4326
+        raise PipelineRuntimeError("transform.zonalStats: SRID non défini (0) en entrée")
     stats = list(dict.fromkeys(p.stats))
     session = getattr(secret_resolver, "session", None)
     user = getattr(secret_resolver, "user", None)

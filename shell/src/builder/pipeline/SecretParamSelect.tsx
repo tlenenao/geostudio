@@ -167,6 +167,8 @@ const KIND_LABELS: Record<SecretPayload["kind"], string> = {
   s3_credentials: t("secretParamSelect.kindS3Credentials"),
   azure_blob_credentials: t("secretParamSelect.kindAzureBlobCredentials"),
   gcs_credentials: t("secretParamSelect.kindGcsCredentials"),
+  oauth2_client: t("secretParamSelect.kindOAuth2Client"),
+  mongodb_uri: t("secretParamSelect.kindMongodbUri"),
 };
 
 const BUCKET_PLACEHOLDER_KEYS = {
@@ -217,7 +219,8 @@ function SecretCreateForm({
     kind === "api_key" ||
     kind === "bearer_token" ||
     kind === "basic_auth" ||
-    kind === "oauth2_client_credentials";
+    kind === "oauth2_client_credentials" ||
+    kind === "oauth2_client";
 
   function buildPayload(): SecretPayload | null {
     switch (kind) {
@@ -246,6 +249,22 @@ function SecretCreateForm({
           clientSecret: field("clientSecret"),
           baseUrl: baseUrl(),
         };
+      case "oauth2_client": {
+        const grantType =
+          field("grantType") === "refresh_token" ? "refresh_token" : "client_credentials";
+        return {
+          kind,
+          grantType,
+          tokenUrl: field("tokenUrl"),
+          clientId: field("clientId"),
+          clientSecret: field("clientSecret"),
+          refreshToken: grantType === "refresh_token" ? field("refreshToken") : undefined,
+          scope: field("scope").trim() || undefined,
+          baseUrl: baseUrl(),
+        };
+      }
+      case "mongodb_uri":
+        return { kind, uri: field("uri") };
       case "postgres_dsn":
       case "snowflake_dsn":
       case "bigquery_dsn":
@@ -418,7 +437,22 @@ function SecretCreateForm({
           </label>
         </>
       )}
-      {kind === "oauth2_client_credentials" && (
+      {kind === "oauth2_client" && (
+        <label className="flex flex-col gap-1 text-xs">
+          {t("secretParamSelect.grantTypeLabel")}
+          <select
+            className="h-9 rounded border border-control bg-surface px-2 text-ink"
+            value={field("grantType") || "client_credentials"}
+            onChange={(e) => setFieldValue("grantType", e.target.value)}
+          >
+            <option value="client_credentials">
+              {t("secretParamSelect.grantClientCredentialsOption")}
+            </option>
+            <option value="refresh_token">{t("secretParamSelect.grantRefreshTokenOption")}</option>
+          </select>
+        </label>
+      )}
+      {(kind === "oauth2_client_credentials" || kind === "oauth2_client") && (
         <>
           <label className="flex flex-col gap-1 text-xs">
             {t("secretParamSelect.tokenUrlLabel")}
@@ -449,6 +483,43 @@ function SecretCreateForm({
             />
           </label>
         </>
+      )}
+      {kind === "oauth2_client" && (
+        <>
+          {field("grantType") === "refresh_token" && (
+            <label className="flex flex-col gap-1 text-xs">
+              {t("secretParamSelect.refreshTokenLabel")}
+              <input
+                type="password"
+                required
+                className="h-9 rounded border border-control bg-surface px-2 text-ink"
+                value={field("refreshToken")}
+                onChange={(e) => setFieldValue("refreshToken", e.target.value)}
+              />
+            </label>
+          )}
+          <label className="flex flex-col gap-1 text-xs">
+            {t("secretParamSelect.scopeLabel")}
+            <input
+              placeholder={t("secretParamSelect.scopePlaceholder")}
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
+              value={field("scope")}
+              onChange={(e) => setFieldValue("scope", e.target.value)}
+            />
+          </label>
+        </>
+      )}
+      {kind === "mongodb_uri" && (
+        <label className="flex flex-col gap-1 text-xs">
+          {t("secretParamSelect.mongodbUriLabel")}
+          <input
+            placeholder={t("secretParamSelect.mongodbUriPlaceholder")}
+            type="password"
+            className="h-9 rounded border border-control bg-surface px-2 text-ink"
+            value={field("uri")}
+            onChange={(e) => setFieldValue("uri", e.target.value)}
+          />
+        </label>
       )}
       {(kind === "postgres_dsn" ||
         kind === "snowflake_dsn" ||

@@ -44,9 +44,11 @@ def test_non_copyleft_engine_defaults_to_in_process_and_no_copyleft():
 
 
 def test_operations_registry_has_exactly_the_known_ops():
-    from app.pipelines.ops.contracts import OPERATIONS
+    # Liste socle figée : les ops des modules de voie (LANE_OPS) sont testées dans
+    # le fichier de test de leur voie (gabarit docs/superpowers/plans/_fme-lane-template.md).
+    from app.pipelines.ops.contracts import LANE_OPS, OPERATIONS
 
-    assert set(OPERATIONS) == {
+    assert set(OPERATIONS) - LANE_OPS == {
         "reader.collection",
         "transform.filter",
         "transform.select",
@@ -173,10 +175,34 @@ def test_ops_catalog_never_exposes_the_exchange_field():
         assert set(entry) == {"kind", "paramsSchema", "acceptsSecondaryInput"}, op
 
 
-def test_operations_registry_has_71_entries():
-    from app.pipelines.ops.contracts import OPERATIONS
+def test_operations_registry_has_71_base_entries_plus_lane_contracts():
+    from app.pipelines.ops.contracts import _BASE_OPERATIONS, LANE_MODULES, OPERATIONS
 
-    assert len(OPERATIONS) == 71
+    assert len(_BASE_OPERATIONS) == 71
+    assert len(OPERATIONS) == 71 + sum(len(lane.CONTRACTS) for lane in LANE_MODULES)
+
+
+def test_lane_aggregation_refuses_a_duplicate_op():
+    from types import SimpleNamespace
+
+    from app.pipelines.ops.contracts import _BASE_OPERATIONS, _aggregate
+
+    lane = SimpleNamespace(
+        __name__="fake_lane",
+        CONTRACTS=[_BASE_OPERATIONS["transform.filter"]],
+    )
+    with pytest.raises(ValueError, match="déclarée deux fois"):
+        _aggregate(_BASE_OPERATIONS, (lane,))  # type: ignore[arg-type]
+
+
+def test_every_reader_and_writer_op_has_a_runtime_registry_entry():
+    # Un reader/writer de module de voie sans entrée READERS/WRITERS serait au catalogue
+    # mais lèverait « unknown reader op » à l'exécution.
+    from app.pipelines.ops.contracts import OPERATIONS
+    from app.pipelines.registries import READERS, WRITERS
+
+    assert set(READERS) == {op for op, c in OPERATIONS.items() if c.kind == "reader"}
+    assert set(WRITERS) == {op for op, c in OPERATIONS.items() if c.kind == "writer"}
 
 
 def test_binary_ops_are_covered_by_the_parallel_tables():
@@ -218,30 +244,12 @@ def test_every_registered_transform_has_exactly_one_of_compile_or_execute():
 def test_python_executed_ops_declare_the_shapely_engine():
     from app.pipelines.ops.contracts import OPERATIONS
 
-    executed = {
-        op: c
-        for op, c in OPERATIONS.items()
-        if c.execute is not None
-        and op
-        not in {  # engine python/duckdb, pas shapely
-            "transform.httpCall",
-            "transform.geocode",
-            "transform.isochrone",
-            "transform.route",
-            "transform.zonalStats",
-            "transform.testFilter",
-            "transform.sqlExecutor",
-        }
-    }
-    assert set(executed) == {
-        "transform.triangulate",
-        "transform.densify",
-        "transform.minimumBoundingCircle",
-    }
-    for op, contract in executed.items():
-        assert contract.engine == "shapely", op
-        assert contract.engine_license == "BSD-3-Clause (Shapely)", op
-        assert contract.is_copyleft is False, op
+    for op in ("transform.triangulate", "transform.densify", "transform.minimumBoundingCircle"):
+        assert OPERATIONS[op].execute is not None and OPERATIONS[op].engine == "shapely", op
+    for op, contract in OPERATIONS.items():
+        if contract.engine == "shapely":
+            assert contract.engine_license == "BSD-3-Clause (Shapely)", op
+            assert contract.is_copyleft is False, op
 
 
 def test_http_call_declares_the_python_engine():

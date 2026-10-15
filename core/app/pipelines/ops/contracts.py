@@ -18,15 +18,24 @@ généralisation de la décision SP-15d déjà en vigueur pour QGIS — un moteu
 copyleft (is_copyleft=True) exige un modèle d'exécution sidecar, jamais de
 bindings in-process."""
 
-from collections.abc import Callable
-from dataclasses import dataclass
-from typing import Literal
+from types import ModuleType
 
 from pydantic import BaseModel
 
 from app.auth.dependency import is_pipeline_file_io_enabled, is_raster_enabled
 from app.pipelines import compiler as _compiler
 from app.pipelines import http_call_runtime as _http_call
+from app.pipelines.ops import (
+    attrs,
+    cloudfiles,
+    dbio,
+    dbio2,
+    geom2,
+    messaging,
+    raster2,
+    readers2,
+    reliquats,
+)
 from app.pipelines.ops import database as _database
 from app.pipelines.ops import execute as _execute
 from app.pipelines.ops import filtering as _filtering
@@ -34,6 +43,7 @@ from app.pipelines.ops import geocode as _geocode
 from app.pipelines.ops import raster as _raster
 from app.pipelines.ops import routing as _routing
 from app.pipelines.ops import wfs as _wfs
+from app.pipelines.ops.operation_contract import OperationContract
 from app.pipelines.ops.schemas import (
     ReaderCollectionParams,
     ReaderConnectorBigQueryParams,
@@ -98,70 +108,9 @@ from app.pipelines.ops.schemas import (
     WriterFileParams,
 )
 
-
-@dataclass(frozen=True)
-class OperationContract:
-    op: str
-    kind: Literal["reader", "transform", "writer"]
-    params_schema: type[BaseModel]
-    accepts_secondary_input: bool = False
-    engine: str | None = None
-    engine_license: str | None = None
-    is_copyleft: bool = False
-    execution_model: Literal["in_process", "sidecar"] = "in_process"
-    # Vague 2 (design docs/superpowers/specs/2026-09-20-vague2-transformers-duckdb-design.md
-    # §3.1) : quand True, compile_transform_sql résout input_columns/join_columns via un
-    # DESCRIBE (app.pipelines.runtime) avant d'appeler `compile` — extension chirurgicale,
-    # jamais de connexion DuckDB dans ce module lui-même.
-    needs_columns: bool = False
-    # Design docs/superpowers/specs/2026-09-20-vague2-transformers-duckdb-design.md §7.2 :
-    # mutuellement exclusif avec `compile` — un op "transform" a l'un ou l'autre, jamais les
-    # deux, jamais aucun des deux. Signature : (conn, *, input_view, view_name, params) -> None,
-    # matérialise `view_name` lui-même (contrairement à `compile`, qui retourne une simple
-    # chaîne SQL exécutée par l'appelant).
-    execute: Callable[..., None] | None = None
-    # transform.httpCall : quand True (et seulement avec `execute`), runtime.py passe en plus
-    # `secret_resolver=`, `preview=` et `input_srid=` à `execute`. Les autres op `execute`
-    # gardent leur signature (conn, *, input_view, view_name, params).
-    needs_runtime_context: bool = False
-    # Piège Python latent : un `def` nu donné ici en défaut (au lieu de `None`)
-    # deviendrait un attribut de classe et serait lié comme méthode (self/le
-    # contrat injecté en premier argument), pas un simple callable — inoffensif
-    # aujourd'hui (défauts `None`, chaque entrée du registre passe son
-    # callable en argument d'instance, jamais en défaut de classe), mais à
-    # garder à l'esprit pour tout futur mainteneur de ce champ.
-    compile: Callable[..., str] | None = None
-    output_srid: Callable[..., int] | None = None
-    # Design docs/superpowers/specs/2026-09-16-ipc-echange-duckdb-arrow-
-    # design.md §2 : canal d'échange DuckDB↔futur moteur natif. None pour
-    # les 19 op existantes (aucune ne l'utilise) — le champ existe pour
-    # qu'un futur chantier "premier moteur natif" l'utilise sans redevoir
-    # étendre ce dataclass. Jamais lu par runtime.py dans ce chantier (rien
-    # à brancher, aucun moteur ne le consomme encore) ; jamais exposé par
-    # ops_catalog() (même traitement que engine/engine_license/
-    # execution_model, déjà invisibles côté shell).
-    exchange: Literal["arrow_stream", "geoparquet_file"] | None = None
-    # Design docs/superpowers/specs/2026-09-17-desktop-etl-standalone-design.md
-    # §3 : capacité instance-wide optionnelle (même patron que
-    # is_etl_enabled) qui gate la VISIBILITÉ de l'op dans ops_catalog() —
-    # PAS le garde-fou de sécurité réel, qui vit au point d'exécution
-    # (app.pipelines.runtime, jamais ici) : ce champ ne remplace aucune
-    # vérification, il évite seulement de proposer une op inutilisable dans
-    # la palette de l'éditeur.
-    enabled_when: Callable[[], bool] | None = None
-
-    def __post_init__(self) -> None:
-        if self.is_copyleft and self.execution_model != "sidecar":
-            raise ValueError(
-                f"'{self.op}': moteur copyleft ({self.engine}) exige execution_model='sidecar'"
-            )
-        if self.compile is not None and self.execute is not None:
-            raise ValueError(f"'{self.op}': compile et execute sont mutuellement exclusifs")
-        if self.needs_runtime_context and self.execute is None:
-            raise ValueError(f"'{self.op}': needs_runtime_context exige execute")
-
-
-OPERATIONS: dict[str, OperationContract] = {
+# Registre « socle » (ops livrées avant la fermeture FME 2026-10-15) : figé, les nouvelles
+# ops vivent dans un module de voie (cf. LANE_MODULES ci-dessous), jamais ici.
+_BASE_OPERATIONS: dict[str, OperationContract] = {
     "reader.collection": OperationContract(
         op="reader.collection",
         kind="reader",
@@ -722,6 +671,41 @@ OPERATIONS: dict[str, OperationContract] = {
         needs_runtime_context=True,
     ),
 }
+
+# Couture anti-conflit (plan docs/superpowers/plans/2026-10-15-fme-fermeture-108-planned.md
+# §1.2) : chaque voie déclare ses ops dans son propre module (`CONTRACTS`, + `READERS`/
+# `WRITERS` agrégés par app.pipelines.registries) ; ce tuple est la seule ligne partagée.
+# Un module de voie n'importe JAMAIS ce module (ni runtime/registries) au niveau module :
+# cycle d'import — OperationContract vient de ops/operation_contract.py.
+LANE_MODULES: tuple[ModuleType, ...] = (
+    attrs,
+    dbio,
+    geom2,
+    cloudfiles,
+    messaging,
+    raster2,
+    readers2,
+    dbio2,
+    reliquats,
+)
+
+
+def _aggregate(
+    base: dict[str, OperationContract], lanes: tuple[ModuleType, ...]
+) -> dict[str, OperationContract]:
+    operations = dict(base)
+    for lane in lanes:
+        for contract in lane.CONTRACTS:
+            if contract.op in operations:
+                raise ValueError(f"op '{contract.op}' déclarée deux fois ({lane.__name__})")
+            operations[contract.op] = contract
+    return operations
+
+
+OPERATIONS: dict[str, OperationContract] = _aggregate(_BASE_OPERATIONS, LANE_MODULES)
+# Ops apportées par les modules de voie : les tests à liste figée comparent
+# `set(...) - LANE_OPS` à la liste socle, chaque voie teste ses ops dans son propre fichier.
+LANE_OPS: frozenset[str] = frozenset(OPERATIONS) - frozenset(_BASE_OPERATIONS)
 
 OP_KINDS: dict[str, str] = {op: c.kind for op, c in OPERATIONS.items()}
 OP_PARAMS: dict[str, type[BaseModel]] = {op: c.params_schema for op, c in OPERATIONS.items()}
