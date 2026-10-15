@@ -101,6 +101,9 @@ _EXPORT_PATH_RE = re.compile(
     r"^/v1/(collections/[^/]+|datasets/[^/]+/arcgis)/export(/items)?$"
     r"|^/v1/export$|^/v1/app-exports$"
 )
+# Mode démo (REV-358) : seuls les exports d'agrégat synchrones sont des lectures ; `/v1/export`
+# et `/v1/app-exports` créent un job (ligne en base) et restent refusés en lecture seule.
+_EXPORT_READ_PATH_RE = re.compile(r"^/v1/(collections/[^/]+|datasets/[^/]+/arcgis)/export$")
 # CORS narrow allowlist (SP-18b) : uniquement les endpoints déjà
 # anonymes-capables (get_current_user_optional) qu'un bundle d'export
 # Connecté appelle en direct depuis un domaine tiers arbitraire — jamais
@@ -290,7 +293,7 @@ def create_app() -> FastAPI:
             and request.url.path != "/mcp"
             and request.url.path != "/v1/analytics/sql"
             and not _AGGREGATE_PATH_RE.match(request.url.path)
-            and not _EXPORT_PATH_RE.match(request.url.path)
+            and not _EXPORT_READ_PATH_RE.match(request.url.path)
         ):
             return JSONResponse(
                 status_code=403,
