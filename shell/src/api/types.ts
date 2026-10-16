@@ -1703,6 +1703,8 @@ export type PipelineOpParamProperty = {
   enum?: string[];
   default?: unknown;
   items?: { type?: string };
+  // dict[str, X] : `true` = valeurs libres ; {type} / {anyOf} = valeurs typées (REV-325).
+  additionalProperties?: boolean | { type?: string; anyOf?: { type?: string }[] };
   description?: string;
 };
 

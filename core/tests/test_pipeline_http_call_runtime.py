@@ -782,3 +782,72 @@ def test_form_body_skips_null_values_and_lowercases_bools(conn, httpserver):
         ids=(3,),
     )
     assert seen["data"] == b"b=true"
+
+
+# --- REV-326/327/330 --------------------------------------------------------------------
+
+
+def test_multipart_user_content_type_is_dropped(conn, httpserver):
+    seen = _capture(httpserver)
+    run(
+        conn,
+        {
+            "urlExpr": f"'{httpserver.url_for('/c')}'",
+            "method": "POST",
+            "bodyType": "multipart",
+            "headersExpr": """'{"content-type": "text/plain"}'""",
+            "multipartFields": [{"name": "title", "valueExpr": "'x'"}],
+        },
+        ids=(1,),
+    )
+    assert seen["ctype"].startswith("multipart/form-data; boundary=")
+
+
+def test_multipart_all_null_is_a_row_error(conn, httpserver):
+    seen = _capture(httpserver)
+    rows = run(
+        conn,
+        {
+            "urlExpr": f"'{httpserver.url_for('/c')}'",
+            "method": "POST",
+            "bodyType": "multipart",
+            "multipartFields": [{"name": "title", "valueExpr": "CAST(NULL AS VARCHAR)"}],
+        },
+        ids=(1,),
+    )
+    assert rows[0][3] == "error" and "multipart vide" in rows[0][4]
+    assert "method" not in seen
+
+
+def test_paginated_retry_resumes_from_last_good_page(conn, httpserver):
+    hits: list[str] = []
+
+    def handler(request):
+        page = request.args.get("page", "1")
+        hits.append(page)
+        if page == "2" and hits.count("2") == 1:
+            return Response("boom", status=503)
+        body = {"1": [{"v": 1}], "2": [{"v": 2}], "3": []}[page]
+        return Response(_json.dumps(body), content_type="application/json")
+
+    httpserver.expect_request("/p").respond_with_handler(handler)
+    rows = run(
+        conn,
+        {
+            "urlExpr": f"'{httpserver.url_for('/p')}'",
+            "paginator": "page_number",
+            "maxRetries": 1,
+            "initialBackoffSeconds": 0.0,
+        },
+        ids=(1,),
+    )
+    assert _json.loads(rows[0][1]) == [{"v": 1}, {"v": 2}]
+    assert hits == ["1", "2", "2", "3"]  # la page 1 n'est pas rejouée
+
+
+def test_non_rest_secret_error_names_the_calling_op():
+    class _P:
+        kind = "postgres_dsn"
+
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="transform.httpCall"):
+        connector_runtime._build_auth(_P(), "transform.httpCall")

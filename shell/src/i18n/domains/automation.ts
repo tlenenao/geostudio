@@ -55,6 +55,8 @@ export const automation = {
   // PipelineNodeInspector
   "pipelineNodeInspector.requiredSection": "Paramètres requis",
   "pipelineNodeInspector.optionalSection": "Paramètres optionnels",
+  "pipelineNodeInspector.jsonNotArray": "JSON invalide : un tableau est attendu.",
+  "pipelineNodeInspector.jsonNotObject": "JSON invalide : un objet est attendu.",
 
   // ReportEditPage
   "reportEdit.defaultTitle": "Rapport planifié",

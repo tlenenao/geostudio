@@ -30,6 +30,12 @@ def _payload_dict(in_path: str, out_path: str) -> dict:
     }
 
 
+@pytest.fixture(autouse=True)
+def _file_io_enabled(monkeypatch):
+    # create_sidecar_app n'écrit plus os.environ (REV-328) : le process l'active à l'entrée.
+    monkeypatch.setenv("CORE_PIPELINE_FILE_IO_ENABLED", "true")
+
+
 @pytest.fixture
 def client(tmp_path):
     app = create_sidecar_app(base_uri=str(tmp_path))
@@ -311,3 +317,11 @@ def test_preflight_options_is_not_blocked_by_auth(authed_client):
     )
     assert res.status_code == 200
     assert res.headers.get("access-control-allow-origin") == "http://tauri.localhost"
+
+
+def test_create_sidecar_app_does_not_write_os_environ(tmp_path, monkeypatch):
+    monkeypatch.delenv("CORE_PIPELINE_FILE_IO_ENABLED", raising=False)
+    create_sidecar_app(base_uri=str(tmp_path))
+    import os
+
+    assert "CORE_PIPELINE_FILE_IO_ENABLED" not in os.environ
