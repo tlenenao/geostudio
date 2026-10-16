@@ -86,6 +86,10 @@ class _FakePage:
         # (mirrors a real playwright.sync_api.Page) — see the brief's note on
         # Step 4: adapt the fake rather than removing the real close call.
         self.context = _FakeContext()
+        self.incomplete = False
+
+    def evaluate(self, expression: str):
+        return "true" if self.incomplete else None
 
     def screenshot(self, *, full_page: bool) -> bytes:
         return b"PNGDATA"
@@ -202,6 +206,25 @@ def test_render_export_task_marks_error_when_export_disabled(db_session, monkeyp
     session.expire_all()
     refreshed = export_repo.get_job(session, tenant_id=tenant.id, job_id=job.id)
     assert refreshed.status == "error"
+
+
+def test_render_export_task_fails_when_shell_flags_export_incomplete(db_session, monkeypatch):
+    session, tenant, user, item = db_session
+    job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="pdf"
+    )
+    session.commit()
+    page = _FakePage()
+    page.incomplete = True
+    monkeypatch.setattr(export_jobs, "_launch_and_navigate", lambda url, **kw: page)
+
+    export_jobs.render_export_task(job_id=job.id, tenant_id=tenant.id)
+
+    session.expire_all()
+    refreshed = export_repo.get_job(session, tenant_id=tenant.id, job_id=job.id)
+    assert refreshed.status == "error"
+    assert refreshed.error == export_jobs.USER_EXPORT_INCOMPLETE
+    assert not hasattr(page, "pdf_kwargs")  # rien n'a été rendu
 
 
 def test_render_export_task_marks_error_never_zombie_on_navigation_failure(db_session, monkeypatch):

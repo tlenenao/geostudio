@@ -129,6 +129,11 @@ def s3_client_from_env():
     )
 
 
+USER_EXPORT_INCOMPLETE = (
+    "L'export est incomplet : certaines données n'ont pas fini de se charger "
+    "avant le délai maximal. Réessayez plus tard."
+)
+
 USER_EXPORT_UNAVAILABLE = (
     "L'export n'est pas disponible pour le moment (configuration du serveur). "
     "Contactez l'administrateur."
@@ -350,6 +355,10 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
             target_url, viewport=page_pixels(print_layout), core_bridge=core_bridge
         )
         try:
+            # Le shell lève `data-export-incomplete` quand le délai de chargement est dépassé :
+            # ne jamais livrer en silence un PDF/PNG partiel.
+            if browser_page.evaluate("document.body.dataset.exportIncomplete") == "true":
+                raise RuntimeError(USER_EXPORT_INCOMPLETE)
             content = render_export(browser_page, format=export_format, print_layout=print_layout)
         finally:
             # See the comment in _launch_and_navigate: closing the browser
