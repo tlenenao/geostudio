@@ -33,6 +33,16 @@ def resolve_dataset_sources(
                 "à une collection (dataset SQL/pipeline/ArcGIS non exportable)"
             )
             sources.append(source)
+        elif any(
+            isinstance(m, dict) and m.get("metric") for m in source.query.get("measures") or []
+        ):
+            # Le gel réécrit la source en `layer=collectionId` : les métriques nommées du
+            # dataset ne suivent pas (le shell exporté lèverait « unknown metric »).
+            reasons.append(
+                f"source '{source.id}' : l'export ne supporte pas les métriques nommées du "
+                "dataset — remplacez-les par des mesures explicites (champ + agrégat)"
+            )
+            sources.append(source)
         else:
             sources.append(
                 source.model_copy(update={"layer": payload.collectionId, "datasetId": None})

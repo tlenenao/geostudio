@@ -74,3 +74,14 @@ def test_unknown_or_other_tenant_dataset_is_refused():
         tenant, _ = _owner(s)
         _, reasons = resolve_dataset_sources(s, tenant_id=tenant.id, config=_app("nope"))
     assert len(reasons) == 1 and "introuvable" in reasons[0]
+
+
+def test_named_metric_measure_is_refused_with_explicit_reason():
+    with _env()() as s:
+        tenant, owner = _owner(s)
+        ds = _dataset(s, tenant, owner, {"source": "collection", "collectionId": "col-1"})
+        app = _app(ds)
+        app.dataSources[0].type = "statistics"
+        app.dataSources[0].query = {"measures": [{"metric": "total_pop"}]}
+        _, reasons = resolve_dataset_sources(s, tenant_id=tenant.id, config=app)
+    assert len(reasons) == 1 and "s1" in reasons[0] and "métriques nommées" in reasons[0]
