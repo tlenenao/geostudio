@@ -2980,9 +2980,15 @@ def test_preview_detect_changes_resolves_columns_after_upstream_rename(tmp_path,
     )
     status_by_id = {r["id"]: r["status"] for r in rows}
     assert status_by_id == {1: "unchanged", 2: "updated", 3: "deleted", 4: "inserted"}
-    # La colonne renommée ne doit apparaître nulle part dans la sortie —
-    # transform.detectChanges ne projette que les clés + le statut.
-    assert set(rows[0].keys()) == {"id", "status"}
+    by_id = {r["id"]: r for r in rows}
+    # Schéma « après » émis : attributs et géométrie présents (AUD-007).
+    assert {"id", "region", "pop", "geometry", "status"} <= set(rows[0].keys())
+    # inserted : valeurs « après »
+    assert by_id[4]["region"] == "X" and by_id[4]["geometry"] is not None
+    assert by_id[2]["region"] == "Ouest" and by_id[2]["pop"] == 99  # updated : valeurs « après »
+    # deleted : « avant » pour les colonnes communes, NULL sinon (region renommée en amont).
+    assert by_id[3]["pop"] == 20 and by_id[3]["region"] is None
+    assert by_id[3]["geometry"] is not None
 
 
 def test_execute_transform_chain_invokes_on_node_complete_per_node(tmp_path, monkeypatch):
@@ -3409,3 +3415,20 @@ def test_run_pipeline_writer_collection_enforces_attribute_domains(
                 "audit_log, users, tenants CASCADE"
             )
         )
+
+
+def test_compile_detect_changes_emits_data_and_uses_presence_sentinel():
+    from app.pipelines import compiler
+
+    sql = compiler._compile_detect_changes(
+        {"keyColumns": ["id"], "statusColumn": "st"},
+        input_view="a",
+        join_view="b",
+        input_columns=["id", "pop"],
+        join_columns=["id", "pop", "region"],
+    )
+    assert "__gs_present" in sql
+    assert 'AS "region"' in sql and 'AS "pop"' in sql and 'AS "st"' in sql
+    assert 't."id" IS NULL' not in sql  # plus de test sur la clé elle-même
+    # région absente côté « avant » : jamais t.region référencé
+    assert 't."region"' not in sql

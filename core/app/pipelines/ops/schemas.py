@@ -618,7 +618,8 @@ class TransformDetectChangesParams(BaseModel):
     """Compare l'entrée principale (état « avant ») à une collection ou un flux secondaire
     (état « après ») sur des colonnes clés, et écrit le statut de chaque ligne
     (inserted/deleted/updated/unchanged) — comparaison automatique de toutes les colonnes
-    communes, résolues à l'exécution."""
+    communes, résolues à l'exécution. La sortie reprend le schéma de l'état « après » (valeurs
+    « avant » pour les lignes deleted) plus la colonne de statut."""
 
     withCollectionId: str | None = Field(None, json_schema_extra={"format": "collection-id"})
     keyColumns: list[str]

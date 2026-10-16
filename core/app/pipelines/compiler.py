@@ -707,21 +707,32 @@ def _compile_detect_changes(
     assert input_columns is not None and join_columns is not None
     common_cols = [c for c in input_columns if c in join_columns and c not in p.keyColumns]
     key_join = " AND ".join(f"t.{_qi(k)} = o.{_qi(k)}" for k in p.keyColumns)
-    key_select = ", ".join(f"COALESCE(t.{_qi(k)}, o.{_qi(k)}) AS {_qi(k)}" for k in p.keyColumns)
     if common_cols:
         diff_expr = " OR ".join(f"t.{_qi(c)} IS DISTINCT FROM o.{_qi(c)}" for c in common_cols)
     else:
         diff_expr = "FALSE"
+    # Sentinelles de présence : tester la clé elle-même est faux (une clé NULL ne joint
+    # jamais ; seule la 1re clé d'un jeu composite était testée — D13-02).
     status_expr = (
-        f"CASE "
-        f"WHEN t.{_qi(p.keyColumns[0])} IS NULL THEN 'inserted' "
-        f"WHEN o.{_qi(p.keyColumns[0])} IS NULL THEN 'deleted' "
+        "CASE "
+        "WHEN t.__gs_present IS NULL THEN 'inserted' "
+        "WHEN o.__gs_present IS NULL THEN 'deleted' "
         f"WHEN {diff_expr} THEN 'updated' "
-        f"ELSE 'unchanged' END"
+        "ELSE 'unchanged' END"
+    )
+    # Schéma « après » : o.c si la ligne existe après, sinon t.c (deleted) quand la colonne
+    # existe avant, sinon NULL. Sans ces colonnes l'upsert de writer.collection écrivait
+    # des lignes vides (AUD-007).
+    data_select = ", ".join(
+        f"CASE WHEN o.__gs_present IS NULL THEN "
+        f"{'t.' + _qi(c) if c in input_columns else 'NULL'} "
+        f"ELSE o.{_qi(c)} END AS {_qi(c)}"
+        for c in join_columns
     )
     return (
-        f"SELECT {key_select}, ({status_expr}) AS {_qi(p.statusColumn)} "
-        f"FROM {_qi(input_view)} t FULL OUTER JOIN {_qi(join_view)} o ON {key_join}"
+        f"SELECT {data_select}, ({status_expr}) AS {_qi(p.statusColumn)} "
+        f"FROM (SELECT *, TRUE AS __gs_present FROM {_qi(input_view)}) t "
+        f"FULL OUTER JOIN (SELECT *, TRUE AS __gs_present FROM {_qi(join_view)}) o ON {key_join}"
     )
 
 

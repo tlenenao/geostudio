@@ -37,6 +37,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`transform.detectChanges`** (AUD-007): the output now carries the "after" schema (data and
+  geometry columns, "before" values for `deleted` rows) plus the status column, so
+  `detectChanges -> writer.collection` (`upsert`, `statusColumn`) writes real rows instead of
+  empty ones; presence is tested with a sentinel, so NULL or composite keys are no longer
+  misclassified. Pipelines that only read key + status now see extra columns.
 - **`transform.snapToLayer`** (AUD-006): the secondary input is now reduced to a single geometry
   (`ST_Union_Agg`), so output rows equal input rows instead of N x M; an empty reference keeps
   the original geometry, and `tolerance` must be strictly positive and finite. Datasets
