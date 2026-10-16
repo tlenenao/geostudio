@@ -190,6 +190,10 @@ PARITY: dict[str, tuple[str, object]] = {
     "health": ("excluded", "sonde d'infrastructure"),
     "instance": ("excluded", "configuration d'instance, lue par le shell"),
     "map-icons": ("excluded", "téléversement binaire : pas de canal MCP"),
+    "basemaps": (
+        "excluded",
+        "administration de fonds de carte par API ; lecture via le shell, pas de besoin agent",
+    ),
     "metadata-catalog": ("excluded", "listes de référence du shell"),
     "api-keys": ("excluded", "identifiants machine : gestion humaine seulement (ARC-06)"),
     "notifications": ("excluded", "boîte de réception personnelle, UI seulement"),
