@@ -16,6 +16,7 @@ brut nécessitant conversion, corrigé après coup par le spike)."""
 import json
 import math
 import re
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -37,6 +38,9 @@ class AggregateMeasure(BaseModel):
     # Obligatoire pour agg="percentile", refusé pour tout autre agg
     # (_validate_p ci-dessous). La division par 100 se fait dans _agg_expr.
     p: float | None = None
+    # REV-119 : référence à une métrique nommée du dataset (DatasetPayload.metrics).
+    # Résolue AVANT exécution par resolve_metrics ; jamais exécutable telle quelle.
+    metric: str | None = None
 
 
 class AggregateRequestBody(BaseModel):
@@ -158,6 +162,10 @@ def _validate_fields(
     # valident donc toujours, pas l'un ou l'autre.
     _validate_p(request.agg, request.p, "p")
     for i, m in enumerate(request.measures or []):
+        if m.metric is not None:
+            raise UnknownAggregateField(
+                f"measures[{i}].metric", "metric requires a dataset context"
+            )
         check(m.field, f"measures[{i}].field")
         _validate_p(m.agg, m.p, f"measures[{i}].p")
     for raw_name in request.filters:
@@ -225,6 +233,50 @@ def _agg_expr(agg: str, field: str | None, p: float | None = None) -> str:
         # "stddev" d'ArcGIS (cf. spec §3.1, parité affirmée non mesurée).
         return f"STDDEV_SAMP({col})"
     raise UnknownAggregateField("agg", f"unknown agg '{agg}'")
+
+
+# Agrégats acceptés par _agg_expr (source unique pour DatasetMetric.agg ;
+# test_dataset_metrics_schema vérifie qu'aucun n'est inconnu de _agg_expr).
+METRIC_AGGS = (
+    "count",
+    "countDistinct",
+    "sum",
+    "avg",
+    "min",
+    "max",
+    "median",
+    "percentile",
+    "stddev",
+)
+
+
+def resolve_metrics(
+    request: AggregateRequestBody, metrics: "Mapping[str, Any]"
+) -> AggregateRequestBody:
+    """REV-119 : remplace chaque mesure `{metric: nom}` par la mesure de la
+    métrique nommée du dataset (`metrics[nom]` : .field/.agg/.p). Le libellé de
+    ligne est la CLÉ de la métrique (stable), sauf libellé explicite. Duck-typé
+    (`metrics` vient de app.configs, plus haut dans le contrat de couches).
+    Métrique inconnue -> UnknownAggregateField, jamais un `count` silencieux."""
+    if not any(m.metric is not None for m in request.measures or []):
+        return request
+    resolved: list[AggregateMeasure] = []
+    for i, m in enumerate(request.measures or []):
+        if m.metric is None:
+            resolved.append(m)
+            continue
+        named = metrics.get(m.metric)
+        if named is None:
+            raise UnknownAggregateField(f"measures[{i}].metric", f"unknown metric '{m.metric}'")
+        resolved.append(
+            AggregateMeasure(
+                field=named.field,
+                agg=named.agg,
+                p=named.p,
+                label=m.label or m.metric,
+            )
+        )
+    return request.model_copy(update={"measures": resolved})
 
 
 def _measure_label(m: AggregateMeasure) -> str:

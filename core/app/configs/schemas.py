@@ -6,6 +6,7 @@ from pydantic import BaseModel as _PydanticBaseModel
 from pydantic import ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
 from app.analytics.aggregate import (
+    METRIC_AGGS,
     AggregateRequestBody,
     UnknownAggregateField,
     _validate_p,
@@ -190,6 +191,35 @@ class DatasetColumnMeta(BaseModel):
     # interprété côté widget consommateur
 
 
+_METRIC_KEY = re.compile(r"^[a-z][A-Za-z0-9_]{0,63}$")
+MAX_DATASET_METRICS = 50
+
+
+class DatasetMetric(BaseModel):
+    """REV-119 / GAP-25 : métrique nommée d'un dataset (field + agg, résolue en
+    `AggregateMeasure` avant exécution ; pas de CEL libre : un seul moteur)."""
+
+    field: str | None = None  # requis sauf agg == "count"
+    agg: str
+    p: float | None = None  # centile en %, uniquement agg == "percentile"
+    label: str | None = None
+    format: str | None = None  # libre, comme DatasetColumnMeta.format
+    unit: str | None = None
+    description: str | None = None
+
+    @model_validator(mode="after")
+    def _check(self) -> "DatasetMetric":
+        if self.agg not in METRIC_AGGS:
+            raise ValueError(f"unknown agg '{self.agg}'")
+        if self.agg != "count" and not self.field:
+            raise ValueError(f"agg '{self.agg}' requires a field")
+        try:
+            _validate_p(self.agg, self.p, "p")
+        except UnknownAggregateField as exc:
+            raise ValueError(exc.message) from exc
+        return self
+
+
 class DatasetCrossFilterLinkAttribute(BaseModel):
     mode: Literal["attribute"] = "attribute"
     targetDatasetId: str
@@ -218,11 +248,22 @@ class DatasetPayload(BaseModel):
     timeField: str | None = None  # colonne consommée par le contexte temporel (SP-14b)
     reactsToExtent: bool = False  # A29 : refetch auto sur déplacement carte (SP-14b)
     crossFilterLinks: list[DatasetCrossFilterLink] = Field(default_factory=list)  # SP-14n
+    metrics: dict[str, DatasetMetric] = Field(default_factory=dict)  # REV-119
     sourcePipelineId: str | None = None  # SP-14o : pipeline qui alimente ce
     # dataset via writer.dataset, si créé par l'assistant de requête
     # visuelle plutôt qu'à la main ; référence validée dans
     # app.configs.dataset_validation, pas ici (un model_validator Pydantic
     # n'a pas accès à la Session/l'utilisateur courant).
+
+    @field_validator("metrics")
+    @classmethod
+    def _check_metric_keys(cls, v: dict[str, DatasetMetric]) -> dict[str, DatasetMetric]:
+        if len(v) > MAX_DATASET_METRICS:
+            raise ValueError(f"at most {MAX_DATASET_METRICS} metrics")
+        for key in v:
+            if not _METRIC_KEY.match(key):
+                raise ValueError(f"invalid metric key '{key}'")
+        return v
 
     @model_validator(mode="after")
     def _require_source_id(self) -> "DatasetPayload":
