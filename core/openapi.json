@@ -3469,6 +3469,92 @@
         "title": "GeoLimitRead",
         "type": "object"
       },
+      "GeocodeJobOut": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "errors": {
+            "title": "Errors",
+            "type": "integer"
+          },
+          "found": {
+            "title": "Found",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "not_found": {
+            "title": "Not Found",
+            "type": "integer"
+          },
+          "processed": {
+            "title": "Processed",
+            "type": "integer"
+          },
+          "results": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/BatchRow"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Results"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "total",
+          "processed",
+          "found",
+          "not_found",
+          "errors"
+        ],
+        "title": "GeocodeJobOut",
+        "type": "object"
+      },
+      "GeocodeJobRequest": {
+        "properties": {
+          "addresses": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 5000,
+            "minItems": 1,
+            "title": "Addresses",
+            "type": "array"
+          }
+        },
+        "required": [
+          "addresses"
+        ],
+        "title": "GeocodeJobRequest",
+        "type": "object"
+      },
       "GeocodeResponse": {
         "properties": {
           "results": {
@@ -14395,6 +14481,112 @@
           }
         },
         "summary": "Geocode Many",
+        "tags": [
+          "geocoding"
+        ]
+      }
+    },
+    "/v1/geocode/jobs": {
+      "post": {
+        "description": "Lot asynchrone avec reprise (REV-367 j) : jusqu'\u00e0 5000 adresses, progression\npar GET /geocode/jobs/{id}. Le POST /batch synchrone reste pour <= 500.",
+        "operationId": "create_geocode_job_v1_geocode_jobs_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GeocodeJobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeocodeJobOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Geocode Job",
+        "tags": [
+          "geocoding"
+        ]
+      }
+    },
+    "/v1/geocode/jobs/{job_id}": {
+      "get": {
+        "operationId": "get_geocode_job_v1_geocode_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeocodeJobOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Geocode Job",
         "tags": [
           "geocoding"
         ]

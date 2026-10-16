@@ -1291,6 +1291,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/geocode/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Geocode Job
+         * @description Lot asynchrone avec reprise (REV-367 j) : jusqu'à 5000 adresses, progression
+         *     par GET /geocode/jobs/{id}. Le POST /batch synchrone reste pour <= 500.
+         */
+        post: operations["create_geocode_job_v1_geocode_jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/geocode/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Geocode Job */
+        get: operations["get_geocode_job_v1_geocode_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/geocode/reverse": {
         parameters: {
             query?: never;
@@ -3959,6 +3997,32 @@ export interface components {
             targetType: "role" | "group";
             /** Updatedat */
             updatedAt: string;
+        };
+        /** GeocodeJobOut */
+        GeocodeJobOut: {
+            /** Error */
+            error?: string | null;
+            /** Errors */
+            errors: number;
+            /** Found */
+            found: number;
+            /** Id */
+            id: string;
+            /** Not Found */
+            not_found: number;
+            /** Processed */
+            processed: number;
+            /** Results */
+            results?: components["schemas"]["BatchRow"][] | null;
+            /** Status */
+            status: string;
+            /** Total */
+            total: number;
+        };
+        /** GeocodeJobRequest */
+        GeocodeJobRequest: {
+            /** Addresses */
+            addresses: string[];
         };
         /** GeocodeResponse */
         GeocodeResponse: {
@@ -8968,6 +9032,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BatchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_geocode_job_v1_geocode_jobs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GeocodeJobRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeocodeJobOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_geocode_job_v1_geocode_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeocodeJobOut"];
                 };
             };
             /** @description Validation Error */

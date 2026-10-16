@@ -41,6 +41,7 @@ from app.configs.models import Config, ConfigRevision
 from app.dataexport.models import CollectionExportJob
 from app.export.models import ExportJob
 from app.extensions.models import Extension
+from app.geocoding.models import GeocodeJob
 from app.harvest.models import HarvestRecord, HarvestSource
 from app.history.models import EntityHistory
 from app.ingestion.models import IngestionJob
@@ -303,6 +304,7 @@ def purge_tenant(
     counts["harvest_sources"] = _delete_all(session, HarvestSource, tenant_id)
     counts["map_icons"] = _delete_all(session, MapIcon, tenant_id)
     counts["tenant_basemaps"] = _delete_all(session, TenantBasemap, tenant_id)
+    counts["geocode_jobs"] = _delete_all(session, GeocodeJob, tenant_id)
     counts["extensions"] = _delete_all(session, Extension, tenant_id)
     counts["group_members"] = _delete_all(session, GroupMember, tenant_id)
     counts["group_claim_mappings"] = _delete_all(session, GroupClaimMapping, tenant_id)
