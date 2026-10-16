@@ -1,6 +1,6 @@
 # 0013 — `script-src` : origines des extensions déclarées, calculées depuis la table `extensions`
 
-Statut: acceptée
+Statut: acceptée avec limite assumée (2026-10-16) — CSP globale = union des origines des extensions activées de tous les tenants ; isolation par tenant non faite, le SDK n'étant pas ouvert aux tiers
 Source : spec `docs/superpowers/specs/2026-10-04-cloture-backlog-38-rev-design.md` (arbitrage 166, QCM 2026-10-04) ; spec SP-48 §4 (blocage 3, Option A) ; REV-166, GAP-72.
 
 ## Contexte
