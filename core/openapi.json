@@ -43,6 +43,17 @@
             ],
             "title": "Label"
           },
+          "metric": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric"
+          },
           "p": {
             "anyOf": [
               {
@@ -2485,6 +2496,86 @@
         "title": "DatasetCrossFilterLinkSpatial",
         "type": "object"
       },
+      "DatasetMetric": {
+        "description": "REV-119 / GAP-25 : m\u00e9trique nomm\u00e9e d'un dataset (field + agg, r\u00e9solue en\n`AggregateMeasure` avant ex\u00e9cution ; pas de CEL libre : un seul moteur).",
+        "properties": {
+          "agg": {
+            "title": "Agg",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Format"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "p": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "agg"
+        ],
+        "title": "DatasetMetric",
+        "type": "object"
+      },
       "DatasetPayload": {
         "properties": {
           "arcgisItemId": {
@@ -2536,6 +2627,13 @@
             },
             "title": "Crossfilterlinks",
             "type": "array"
+          },
+          "metrics": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DatasetMetric"
+            },
+            "title": "Metrics",
+            "type": "object"
           },
           "reactsToExtent": {
             "default": false,
