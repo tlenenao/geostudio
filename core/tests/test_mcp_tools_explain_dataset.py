@@ -30,6 +30,7 @@ def test_explain_dataset_collection_source_returns_fields_and_metadata(app_clien
                 },
                 "timeField": None,
                 "reactsToExtent": True,
+                "metrics": {"nb": {"agg": "count", "label": "Nombre"}},
             },
         )
         result = call_tool(app_client, "explain_dataset", {"datasetId": create_result["pk"]})
@@ -38,6 +39,7 @@ def test_explain_dataset_collection_source_returns_fields_and_metadata(app_clien
     assert result["source"] == "collection"
     assert result["reactsToExtent"] is True
     assert result["columns"]["titre"]["label"] == "Titre de l'incident"
+    assert result["metrics"]["nb"]["label"] == "Nombre"
     field_names = {f["name"] for f in result["fields"]}
     assert "titre" in field_names
 

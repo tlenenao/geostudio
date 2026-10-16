@@ -1257,7 +1257,7 @@ def _write_dataset(
         assert current is not None
         # Reconstruit un DatasetPayload frais (pas model_copy sur lui-même) :
         # source/collectionId changent, tout le reste (columns, timeField,
-        # reactsToExtent, crossFilterLinks) est copié tel quel, jamais
+        # reactsToExtent, crossFilterLinks, metrics) est copié tel quel, jamais
         # régénéré par le run (design §4).
         updated_dataset = DatasetPayload(
             source="collection",
@@ -1266,6 +1266,7 @@ def _write_dataset(
             timeField=current.timeField,
             reactsToExtent=current.reactsToExtent,
             crossFilterLinks=current.crossFilterLinks,
+            metrics=current.metrics,  # REV-119 : jamais perdues par un run
             sourcePipelineId=current.sourcePipelineId,
         )
         # model_copy (pas de re-validation) est sûr ici : seul le champ

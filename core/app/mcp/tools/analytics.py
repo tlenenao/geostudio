@@ -255,6 +255,7 @@ def register(server: FastMCP, session_factory) -> None:
                 "timeField": payload.timeField,
                 "reactsToExtent": payload.reactsToExtent,
                 "columns": {k: v.model_dump() for k, v in payload.columns.items()},
+                "metrics": {k: v.model_dump() for k, v in payload.metrics.items()},
             }
 
             if payload.source == "collection":
