@@ -23,6 +23,8 @@ export type InstanceCapabilities = {
   terrain3dEnabled: boolean;
   copilotEnabled: boolean;
   quotasEnabled: boolean;
+  /** Lot 9 : op de pipeline expérimentales activées (le badge de palette lit le catalogue). */
+  experimentalOpsEnabled?: boolean;
 };
 
 export type Profile = {

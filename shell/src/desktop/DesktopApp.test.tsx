@@ -71,6 +71,7 @@ function makeClient(): ItemClient {
         quotasEnabled: false,
         rasterEnabled: false,
         routingEnabled: false,
+        experimentalOpsEnabled: false,
       }),
   };
   return client as ItemClient;

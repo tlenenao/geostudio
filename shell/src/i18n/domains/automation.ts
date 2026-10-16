@@ -185,6 +185,7 @@ export const automation = {
   "pipelinePalette.sectionTransforms": "Transforms",
   "pipelinePalette.sectionWriters": "Écritures",
   "pipelinePalette.sectionRecent": "Récemment utilisés",
+  "pipelinePalette.experimental": "Expérimental",
   "pipelinePalette.searchAria": "Rechercher une opération",
   "pipelinePalette.searchPlaceholder": "Rechercher…",
   "pipelinePalette.noResults": "Aucune opération ne correspond à cette recherche.",

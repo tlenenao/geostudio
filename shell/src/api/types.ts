@@ -270,6 +270,7 @@ export type InstanceInfo = {
   quotasEnabled: boolean;
   rasterEnabled: boolean;
   routingEnabled: boolean;
+  experimentalOpsEnabled: boolean;
 };
 
 export type ProbeStatus = { ok: boolean; error?: string };
@@ -1721,6 +1722,8 @@ export type PipelineOpEntry = {
     description?: string;
   };
   acceptsSecondaryInput?: boolean;
+  /** Lot 9 : op jamais rejouée sur service réel (présente seulement flag allumé). */
+  experimental?: boolean;
 };
 
 export type PipelineOpsCatalog = Record<string, PipelineOpEntry>;

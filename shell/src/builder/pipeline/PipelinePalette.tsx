@@ -3,6 +3,7 @@ import { useId, useRef, useState } from "react";
 import { Database, Save, Wand2 } from "lucide-react";
 import { usePipelineOps } from "../../api/hooks";
 import type { PipelineNodeKind } from "../../api/types";
+import { Badge } from "../../ui/kit/Badge";
 import { Input } from "../../ui/kit/Input";
 import { t } from "../../i18n";
 import { useRecentPipelineOps } from "./useRecentPipelineOps";
@@ -112,7 +113,14 @@ export function PipelinePalette({ onAdd }: { onAdd?: (op: string) => void }) {
         >
           <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-2" />
           <span className="flex flex-col">
-            <span>{op}</span>{" "}
+            <span>
+              {op}
+              {catalog[op]?.experimental && (
+                <Badge variant="warn" className="ml-2">
+                  {t("pipelinePalette.experimental")}
+                </Badge>
+              )}
+            </span>{" "}
             {description && (
               <span id={descId} className="text-xs text-ink-2">
                 {description}
