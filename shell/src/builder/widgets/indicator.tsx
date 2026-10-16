@@ -399,7 +399,7 @@ export function registerIndicatorWidget(): void {
           </div>
           <span className="text-xs text-[var(--gs-color-muted)]">{String(props.label ?? "")}</span>
           {badge && <span className="text-xs text-[var(--gs-color-muted)]">{badge}</span>}
-          <SampleBadge data={data} />
+          {agg !== "count" && <SampleBadge data={data} />}
           {sparklineEnabled && comparison.active && comparison.sparklinePoints.length > 0 && (
             <div className="h-8 w-full">
               <Suspense fallback={null}>

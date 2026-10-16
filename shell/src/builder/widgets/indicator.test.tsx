@@ -561,6 +561,14 @@ test("count sur source features tronquée : affiche numberMatched, pas 100", () 
   expect(screen.getByText(/^5\s000$/)).toBeInTheDocument();
 });
 
+test("count sur source tronquée : pas de badge échantillon (valeur exacte)", () => {
+  renderIndicator(
+    { agg: "count", dataSourceId: "s" },
+    { data: state({ records: hundred, total: 5000, resolvedSource: featSrc }) },
+  );
+  expect(screen.queryByRole("status")).toBeNull();
+});
+
 test("sum sur source features tronquée : badge échantillon visible", () => {
   renderIndicator(
     { agg: "sum", field: "v", dataSourceId: "s" },
