@@ -24,7 +24,6 @@ import math
 import multiprocessing
 import os
 import re
-import resource
 import time
 import warnings
 from collections.abc import Callable
@@ -163,6 +162,8 @@ def _bounded(op: str, fn: Callable[..., Any], *args: Any) -> Any:
     recv, send = ctx.Pipe(duplex=False)
 
     def child() -> None:
+        import resource  # POSIX seulement (fork) : absent sur Windows, import paresseux
+
         try:
             with open("/proc/self/statm") as f:
                 used = int(f.read().split()[0]) * resource.getpagesize()
