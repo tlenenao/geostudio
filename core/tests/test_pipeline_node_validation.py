@@ -200,6 +200,19 @@ def _pipeline_body_op(op: str, params: dict) -> dict:
     }
 
 
+def test_experimental_op_refused_on_write_when_flag_off(env, monkeypatch):
+    # Lot 9 : un nœud expérimental est refusé à l'écriture, message français RFC 7807.
+    monkeypatch.setenv("CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED", "false")
+    body = _pipeline_body_op("transform.geocode", {})
+    response = env.post("/v1/configs", json=body)
+    assert response.status_code == 422
+    assert "Opération expérimentale désactivée : transform.geocode" in response.json()["detail"]
+    # Flag allumé : l'op passe la garde expérimentale (puis la validation de ses params).
+    monkeypatch.setenv("CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED", "true")
+    detail = env.post("/v1/configs", json=body).json().get("detail", "")
+    assert "expérimentale" not in str(detail)
+
+
 def test_transform_intersection_with_collection_missing_is_rejected(env):
     response = env.post(
         "/v1/configs",
