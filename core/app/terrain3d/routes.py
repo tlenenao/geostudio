@@ -8,6 +8,7 @@ l'appelant)."""
 
 import logging
 import os
+import re
 import uuid
 from collections.abc import Callable
 
@@ -102,8 +103,14 @@ def create_terrain3d_upload(
     # Même garde confused-deputy que app.ingestion.routes.create_upload_job :
     # la clé est censée venir du présigné ci-dessus, toujours préfixée par le
     # tenant de l'appelant.
-    if not body.key.startswith(f"{user.tenant_id}/"):
+    # Forme imposée `{tenant}/{uuid hex}/{nom}` (celle du presign). `dem-cog.tif` est le nom
+    # des COG convertis : sinon un appelant ferait copier puis supprimer le DEM d'un tiers
+    # (jobs.py purge la source dans tous les cas). Même patron que raster/routes.py.
+    key_ok = re.fullmatch(rf"{re.escape(user.tenant_id)}/[0-9a-f]{{32}}/([^/]+)", body.key)
+    if key_ok is None or key_ok.group(1) in ("dem-cog.tif", "..") or ".." in key_ok.group(1):
         raise HTTPException(status_code=400, detail="invalid upload key")
+    if repo.key_in_use(session, tenant_id=user.tenant_id, key=body.key):
+        raise HTTPException(status_code=409, detail="upload key already used")
     # SP-58 Tâche 5 (GAP-73/GAP-11) : cette route ne connaissait jusqu'ici
     # pas la taille de l'objet déjà téléversé (upload direct présigné, pas
     # de s3=Depends ici avant cette tâche) — head_object est le seul moyen
