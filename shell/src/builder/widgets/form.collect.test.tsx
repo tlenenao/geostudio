@@ -147,3 +147,51 @@ test("« mes saisies » vide affiche un état vide", async () => {
   renderCollect();
   expect(await screen.findByText("Aucune saisie pour le moment.")).toBeInTheDocument();
 });
+
+test("la photo sans type MIME est envoyée avec le Content-Type signé", async () => {
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+  vi.stubGlobal("fetch", fetchMock);
+  const presignAttachmentUpload = vi
+    .fn()
+    .mockResolvedValue({ uploadUrl: "https://s3.test/u", key: "k" });
+  const confirmAttachmentUpload = vi.fn().mockResolvedValue(undefined);
+  renderCollect({ presignAttachmentUpload, confirmAttachmentUpload });
+  const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+  // accept="image/*" écarterait un File.type vide : on le désactive pour simuler .heic Linux.
+  await userEvent
+    .setup({ applyAccept: false })
+    .upload(input, new File(["x"], "p.heic", { type: "" }));
+  expect(await screen.findByText("Photo prête : p.heic")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Envoyer" }));
+  await waitFor(() => expect(confirmAttachmentUpload).toHaveBeenCalled());
+  expect(fetchMock).toHaveBeenCalledWith(
+    "https://s3.test/u",
+    expect.objectContaining({ headers: { "Content-Type": "application/octet-stream" } }),
+  );
+});
+
+test("un PUT S3 refusé garde la saisie en édition, la photo en file et affiche l'erreur", async () => {
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce({ ok: false, status: 403 })
+    .mockResolvedValueOnce({ ok: true, status: 200 });
+  vi.stubGlobal("fetch", fetchMock);
+  const presignAttachmentUpload = vi
+    .fn()
+    .mockResolvedValue({ uploadUrl: "https://s3.test/u", key: "k" });
+  const confirmAttachmentUpload = vi.fn().mockResolvedValue(undefined);
+  const updateFeature = vi.fn().mockResolvedValue(undefined);
+  const c = renderCollect({ presignAttachmentUpload, confirmAttachmentUpload, updateFeature });
+  const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+  await userEvent.upload(input, new File(["x"], "p.jpg", { type: "image/jpeg" }));
+  expect(await screen.findByText("Photo prête : p.jpg")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Envoyer" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("l'envoi de la photo a échoué");
+  expect(confirmAttachmentUpload).not.toHaveBeenCalled();
+  expect(screen.getByText("Photo prête : p.jpg")).toBeInTheDocument();
+  // Réessayer : la saisie existe déjà (mise à jour, pas de doublon), la photo repart.
+  await userEvent.click(screen.getByRole("button", { name: "Envoyer" }));
+  await waitFor(() => expect(confirmAttachmentUpload).toHaveBeenCalledTimes(1));
+  expect(c.createFeature).toHaveBeenCalledTimes(1);
+  expect(updateFeature).toHaveBeenCalled();
+});

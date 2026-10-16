@@ -315,6 +315,8 @@ export const widgets = {
   "widgetForm.cancel": "Annuler",
   "widgetForm.reset": "Réinitialiser",
   "widgetForm.saveFailed": "Échec de l'enregistrement.",
+  "widgetForm.attachmentRetry":
+    "Saisie enregistrée, mais l'envoi de la photo a échoué. Cliquez sur Envoyer pour réessayer.",
   // Idem : valeur initiale du libellé de bouton (defaultProps/
   // configSchema.default/repli d'affichage), détectée par le vérificateur.
   "widgetForm.submitDefault": "Enregistrer",
