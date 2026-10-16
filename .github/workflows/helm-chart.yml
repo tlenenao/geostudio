@@ -35,7 +35,7 @@ jobs:
           helm template rel deploy/helm/geostudio --set secrets.existingSecret=s > /dev/null
           helm template rel deploy/helm/geostudio --set secrets.existingSecret=s \
             --set exportWorker.enabled=true --set observability.enabled=true > /dev/null
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - name: Équivalent de test_deployability pour le chart
         working-directory: core
         env:
