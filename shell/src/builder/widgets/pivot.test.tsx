@@ -196,3 +196,37 @@ test("shows an explorer menu when bound to a dataset and interactions are auto",
   );
   expect(await screen.findByLabelText("Explorer")).toBeInTheDocument();
 });
+
+const featSrc = { id: "s", type: "features" as const, service: "core", layer: "c", query: {} };
+const sampledPivot = (total: number) =>
+  state({
+    datasetId: "ds-1",
+    total,
+    resolvedSource: featSrc,
+    records: Array.from({ length: 100 }, (_, i) => ({
+      id: String(i),
+      properties: { region: `r${i % 5}`, quarter: `Q${i % 4}`, sum_amount: 1 },
+    })),
+  });
+
+test("échantillon features tronqué : badge visible", () => {
+  const Pivot = getWidget("pivot")!.Component;
+  render(
+    <Pivot
+      props={{ encodings: { rows: "region", columns: "quarter" } }}
+      ctx={{ mode: "runtime", data: sampledPivot(5000) } as WidgetContext}
+    />,
+  );
+  expect(screen.getByRole("status")).toHaveTextContent("Échantillon : 100 sur 5000");
+});
+
+test("source complète : pas de badge", () => {
+  const Pivot = getWidget("pivot")!.Component;
+  render(
+    <Pivot
+      props={{ encodings: { rows: "region", columns: "quarter" } }}
+      ctx={{ mode: "runtime", data: sampledPivot(100) } as WidgetContext}
+    />,
+  );
+  expect(screen.queryByRole("status")).toBeNull();
+});

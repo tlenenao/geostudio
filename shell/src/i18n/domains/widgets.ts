@@ -147,6 +147,7 @@ export const widgets = {
   "widgetData.addCalcColumn": "Ajouter une colonne calculée",
   "widgetData.previous": "Précédent",
   "widgetData.truncated": "Lignes affichées : {count} sur {total}",
+  "widgetData.sampled": "Échantillon : {count} sur {total}",
   "widgetData.next": "Suivant",
   "widgetData.pageOf": "Page {page} / {totalPages}",
   // Valeur initiale d'une colonne calculée nouvellement ajoutée — littéral de
