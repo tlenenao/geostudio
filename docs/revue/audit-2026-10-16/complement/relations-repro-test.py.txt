@@ -1,0 +1,73 @@
+import pytest
+from tests.test_relations_postgis import env, _relation, _seed, _related, _f, SQUARE
+pytestmark = pytest.mark.postgis
+from app.collections import routes as cr
+class _S3:
+    def delete_object(self, **k): pass
+    def delete_objects(self, **k): return {}
+    def list_objects_v2(self, **k): return {}
+@pytest.fixture(autouse=True)
+def _s3(env):
+    env[0].app.dependency_overrides[cr.get_s3_client] = lambda: _S3()
+
+
+def test_m2m_total_leak(env):
+    client, as_user, admin, reader, group_id, _S = env
+    rid = _relation(client, name="co", cardinality="many_to_many", childKey=None,
+        linkCollectionId="rel_liens", linkParentKey="parcelle_id", linkChildKey="proprio_id").json()["id"]
+    pid = client.post("/v1/collections/rel_parcelles/items", json=_f({"ref":"A"})).json()["id"]
+    for nom, x in (("in",5.0),("out",50.0),("out2",60.0)):
+        o = client.post("/v1/collections/rel_proprios/items", json=_f({"nom":nom},x=x,y=x)).json()["id"]
+        client.post("/v1/collections/rel_liens/items", json=_f({"parcelle_id":pid,"proprio_id":o}))
+    client.put("/v1/collections/rel_liens/sharing", json={"public": True, "groups": []})
+    client.put(f"/v1/collections/rel_proprios/geo-limits/group/{group_id}", json={"geometry":SQUARE})
+    as_user(reader)
+    rr = _related(client, pid, rid); print("M2M status", rr.status_code, rr.text[:300]); b = rr.json()
+    print("M2M", [f["properties"]["nom"] for f in b["features"]], b["numberReturned"], b["numberMatched"])
+
+def test_sensitive_after_relation(env):
+    client, as_user, admin, reader, *_ = env
+    rid = _relation(client).json()["id"]
+    pid, owners = _seed(client)
+    r = client.patch("/v1/collections/rel_proprios", json={"sensitiveFields": ["parcelle_id"]})
+    print("PATCH sens", r.status_code)
+    as_user(reader)
+    try:
+        r = _related(client, pid, rid); print("CHILDREN masked key", r.status_code, r.text[:400])
+    except Exception as e: print("CHILDREN masked key EXC", type(e).__name__, e)
+    r = client.get(f"/v1/collections/rel_proprios/items/{owners[0]}/related/{rid}")
+    print("PARENTS masked key", r.status_code, r.text[:300])
+    print("LIST rel", client.get("/v1/collections/rel_proprios/relations").json())
+    as_user(admin)
+    # écriture enfant avec clé sensible ensuite : check_write ?
+    r = client.post("/v1/collections/rel_proprios/items", json=_f({"parcelle_id": 9999}))
+    print("write bad fk after sens", r.status_code, r.text[:200])
+
+def test_parent_key_update_orphans(env):
+    client, as_user, admin, reader, *_ = env
+    rid = _relation(client, parentKey="ref").json()["id"]
+    pid = client.post("/v1/collections/rel_parcelles/items", json=_f({"ref":"7"})).json()["id"]
+    print("child", client.post("/v1/collections/rel_proprios/items", json=_f({"parcelle_id":7,"nom":"x"})).status_code)
+    r = client.put(f"/v1/collections/rel_parcelles/items/{pid}", json=_f({"ref":"8"}))
+    print("PATCH parent key", r.status_code)
+    b = _related(client, pid, rid).json()
+    print("after", b["numberMatched"])
+    r = client.delete(f"/v1/collections/rel_parcelles/items/{pid}"); print("delete parent", r.status_code)
+
+def test_collection_delete(env):
+    client, *_ = env
+    rid = _relation(client).json()["id"]
+    pid, _ = _seed(client)
+    r = client.delete("/v1/collections/rel_parcelles"); print("DEL collection", r.status_code, r.text[:200])
+    print("rel still?", client.get("/v1/collections/rel_proprios/relations").json())
+
+def test_oneone_oracle_and_restrict(env):
+    client, as_user, admin, reader, group_id, _S = env
+    _relation(client, cardinality="one_to_one")
+    pid = client.post("/v1/collections/rel_parcelles/items", json=_f({"ref":"A"})).json()["id"]
+    client.post("/v1/collections/rel_proprios/items", json=_f({"parcelle_id":pid},x=50,y=50))
+    client.put(f"/v1/collections/rel_proprios/geo-limits/group/{group_id}", json={"geometry":SQUARE})
+    client.put("/v1/collections/rel_proprios/sharing", json={"public": True, "groups":[{"groupId":group_id,"role":"editor"}]})
+    as_user(reader)
+    r = client.post("/v1/collections/rel_proprios/items", json=_f({"parcelle_id":pid}))
+    print("1-1 oracle", r.status_code, r.text[:200])
