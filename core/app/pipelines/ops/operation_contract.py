@@ -82,6 +82,10 @@ class OperationContract:
     # vérification, il évite seulement de proposer une op inutilisable dans
     # la palette de l'éditeur.
     enabled_when: Callable[[], bool] | None = None
+    # Lot 9 : op qui parle à un service tiers sans jamais avoir été rejouée contre le vrai
+    # service. Posé par contracts.EXPERIMENTAL_OPS ; masquée du catalogue, refusée à
+    # l'écriture et à l'exécution tant que CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED=false.
+    experimental: bool = False
 
     def __post_init__(self) -> None:
         if self.is_copyleft and self.execution_model != "sidecar":

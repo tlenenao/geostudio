@@ -67,6 +67,7 @@ def test_instance_reports_etl_disabled_by_default(env):
         "quotasEnabled": False,
         "rasterEnabled": False,
         "routingEnabled": False,
+        "experimentalOpsEnabled": True,  # conftest.py allume le flag pour la suite
     }
 
 
@@ -86,4 +87,5 @@ def test_instance_reports_etl_enabled(env, monkeypatch):
         "quotasEnabled": False,
         "rasterEnabled": False,
         "routingEnabled": False,
+        "experimentalOpsEnabled": True,  # conftest.py allume le flag pour la suite
     }

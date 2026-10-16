@@ -59,6 +59,16 @@ def is_pipeline_file_io_enabled() -> bool:
     return os.environ.get("CORE_PIPELINE_FILE_IO_ENABLED", "false").lower() == "true"
 
 
+def is_pipeline_experimental_ops_enabled() -> bool:
+    """CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED (lot 9, release v0.2.0) — capacité
+    instance-wide optionnelle, même convention que is_etl_enabled : lue à chaque
+    appel, sans cache. Défaut false : les op de pipeline qui parlent à un service
+    tiers sans jamais avoir été rejouées contre le vrai service (cf.
+    docs/revue/2026-10-16-ops-experimentales.md) sont masquées du catalogue et
+    refusées à l'écriture comme à l'exécution."""
+    return os.environ.get("CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED", "false").lower() == "true"
+
+
 def is_export_enabled() -> bool:
     """CORE_EXPORT_ENABLED (SP-17a) — capacité instance-wide optionnelle,
     même convention que is_etl_enabled : lue à chaque appel, sans cache.

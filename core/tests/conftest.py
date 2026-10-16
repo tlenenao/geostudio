@@ -25,6 +25,9 @@ os.environ.setdefault("CORE_SECRETS_MASTER_KEY", "AAECAwQFBgcICQoLDA0ODxAREhMUFR
 # qui monkeypatch.setenv("CORE_ENV", ...) explicitement reste maître de sa
 # propre valeur (ex. test_mock_mode_guard.py ci-dessus).
 os.environ.setdefault("CORE_ENV", "development")
+# Lot 9 : la suite exerce les op expérimentales ; les tests du flag éteint le
+# monkeypatchent explicitement (tests/test_pipeline_experimental_ops.py).
+os.environ.setdefault("CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED", "true")
 
 
 def shard_of(nodeid: str, total: int) -> int:

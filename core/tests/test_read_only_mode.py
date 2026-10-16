@@ -57,6 +57,7 @@ def test_instance_defaults_to_read_write(env):
         "quotasEnabled": False,
         "rasterEnabled": False,
         "routingEnabled": False,
+        "experimentalOpsEnabled": True,  # conftest.py allume le flag pour la suite
     }
 
 
@@ -76,6 +77,7 @@ def test_instance_reports_read_only_without_needing_auth(env, monkeypatch):
         "quotasEnabled": False,
         "rasterEnabled": False,
         "routingEnabled": False,
+        "experimentalOpsEnabled": True,  # conftest.py allume le flag pour la suite
     }
 
 

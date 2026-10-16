@@ -66,7 +66,12 @@ from app.pipelines.errors import (  # noqa: F401 (réexportés pour compatibilit
     PipelineRuntimeError,
 )
 from app.pipelines.expr_validation import validate_bounded_expr
-from app.pipelines.ops.contracts import BINARY_OPS, OP_PARAMS
+from app.pipelines.ops.contracts import (
+    BINARY_OPS,
+    OP_PARAMS,
+    blocked_experimental_ops,
+    experimental_refusal,
+)
 from app.pipelines.ops.operation_contract import IN_PREVIEW
 from app.pipelines.ops.schemas import (
     ReaderCollectionParams,
@@ -702,6 +707,11 @@ def _prepare(
     # déjà entièrement chargé (cf. registries.py pour le raisonnement
     # complet).
     from app.pipelines.registries import READERS
+
+    # Lot 9 : config enregistrée avant l'extinction du flag, planifiée ou déclenchée par
+    # webhook — échec lisible (PipelineRuntimeError), jamais une exécution partielle.
+    if blocked := blocked_experimental_ops(n.op for n in payload.nodes):
+        raise PipelineRuntimeError(experimental_refusal(blocked))
 
     ordered = compiler.topological_order(payload.nodes, payload.edges)
     view_by_node: dict[str, str] = {}

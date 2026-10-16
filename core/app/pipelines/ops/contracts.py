@@ -18,11 +18,17 @@ généralisation de la décision SP-15d déjà en vigueur pour QGIS — un moteu
 copyleft (is_copyleft=True) exige un modèle d'exécution sidecar, jamais de
 bindings in-process."""
 
+from collections.abc import Iterable
+from dataclasses import replace
 from types import ModuleType
 
 from pydantic import BaseModel
 
-from app.auth.dependency import is_pipeline_file_io_enabled, is_raster_enabled
+from app.auth.dependency import (
+    is_pipeline_experimental_ops_enabled,
+    is_pipeline_file_io_enabled,
+    is_raster_enabled,
+)
 from app.pipelines import compiler as _compiler
 from app.pipelines import http_call_runtime as _http_call
 from app.pipelines.ops import (
@@ -702,7 +708,66 @@ def _aggregate(
     return operations
 
 
-OPERATIONS: dict[str, OperationContract] = _aggregate(_BASE_OPERATIONS, LANE_MODULES)
+# Op « expérimentales » (lot 9, release v0.2.0) : parlent à un service tiers (messagerie,
+# cloud, bases externes, OGC, routage, géocodage…) et n'ont été testées que contre des
+# doubles, jamais contre le vrai service. Critère et preuve par op :
+# docs/revue/2026-10-16-ops-experimentales.md. Hors CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED
+# elles sont masquées du catalogue et refusées à l'écriture et à l'exécution.
+EXPERIMENTAL_OPS: frozenset[str] = frozenset(
+    {
+        # messagerie et notifications (doubles uniquement)
+        "writer.email",
+        "writer.slack",
+        "writer.trello",
+        "writer.servicebus",
+        "writer.azurequeue",
+        "reader.azurequeue",
+        "writer.sns",
+        "writer.kinesis",
+        "reader.kinesis",
+        "writer.rabbitmq",
+        "transform.mcpCall",
+        # fichiers cloud / portails / FTP
+        "reader.cloudfile",
+        "reader.ckan",
+        "reader.arcgisonline",
+        "reader.ftp",
+        "writer.ftp",
+        "reader.connector.googlesheets",
+        # entrepôts et bases externes
+        "reader.connector.snowflake",
+        "reader.connector.bigquery",
+        "reader.connector.mssql",
+        "reader.connector.oracle",
+        "reader.connector.databricks",
+        "reader.connector.blob",
+        "reader.mongodb",
+        # services géospatiaux tiers (OGC, STAC, tuiles, routage, géocodage)
+        "reader.wms",
+        "reader.wcs",
+        "reader.wfs",
+        "transform.imageFetch",
+        "transform.webMapTiler",
+        "transform.geocode",
+        "transform.isochrone",
+        "transform.route",
+    }
+)
+
+
+def _flag_experimental(operations: dict[str, OperationContract]) -> dict[str, OperationContract]:
+    unknown = EXPERIMENTAL_OPS - operations.keys()
+    if unknown:
+        raise ValueError(f"EXPERIMENTAL_OPS référence des op inconnues : {sorted(unknown)}")
+    return {
+        op: replace(c, experimental=True) if op in EXPERIMENTAL_OPS else c
+        for op, c in operations.items()
+    }
+
+
+OPERATIONS: dict[str, OperationContract] = _flag_experimental(
+    _aggregate(_BASE_OPERATIONS, LANE_MODULES)
+)
 # Ops apportées par les modules de voie : les tests à liste figée comparent
 # `set(...) - LANE_OPS` à la liste socle, chaque voie teste ses ops dans son propre fichier.
 LANE_OPS: frozenset[str] = frozenset(OPERATIONS) - frozenset(_BASE_OPERATIONS)
@@ -741,11 +806,28 @@ def _user_facing_description(description: str) -> str:
     return description.split("\n\n", 1)[0].strip()
 
 
+def blocked_experimental_ops(ops: Iterable[str]) -> list[str]:
+    """Op expérimentales parmi `ops`, triées, quand le flag est éteint (sinon [])."""
+    if is_pipeline_experimental_ops_enabled():
+        return []
+    return sorted({op for op in ops if op in EXPERIMENTAL_OPS})
+
+
+def experimental_refusal(blocked: list[str]) -> str:
+    return (
+        f"Opération expérimentale désactivée : {', '.join(blocked)}. Elle n'a jamais été "
+        "rejouée contre le service réel ; un administrateur peut l'activer avec "
+        "CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED=true."
+    )
+
+
 def ops_catalog() -> dict[str, dict]:
     catalog: dict[str, dict] = {}
     for op, model in OP_PARAMS.items():
         contract = OPERATIONS[op]
         if contract.enabled_when is not None and not contract.enabled_when():
+            continue
+        if contract.experimental and not is_pipeline_experimental_ops_enabled():
             continue
         schema = model.model_json_schema()
         if schema.get("description"):
@@ -754,5 +836,6 @@ def ops_catalog() -> dict[str, dict]:
             "kind": OP_KINDS[op],
             "paramsSchema": schema,
             "acceptsSecondaryInput": op in BINARY_OPS,
+            "experimental": contract.experimental,
         }
     return catalog

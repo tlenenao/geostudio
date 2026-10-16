@@ -35,6 +35,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   print atlas (migration 0061 `export_jobs.scope`), Helm chart.
   `CORE_ANALYSIS_MAX_FEATURES` caps analysis reads.
 
+### Experimental
+
+- **32 pipeline operations are experimental and off by default.** They call a third-party
+  service and have never been replayed against the real service (tests use doubles only):
+  `writer.email`, `writer.slack`, `writer.trello`, `writer.servicebus`, `writer.azurequeue`,
+  `reader.azurequeue`, `writer.sns`, `writer.kinesis`, `reader.kinesis`, `writer.rabbitmq`,
+  `transform.mcpCall`, `reader.cloudfile`, `reader.ckan`, `reader.arcgisonline`, `reader.ftp`,
+  `writer.ftp`, `reader.connector.googlesheets`, `reader.connector.snowflake`,
+  `reader.connector.bigquery`, `reader.connector.mssql`, `reader.connector.oracle`,
+  `reader.connector.databricks`, `reader.connector.blob`, `reader.mongodb`, `reader.wms`,
+  `reader.wcs`, `reader.wfs`, `transform.imageFetch`, `transform.webMapTiler`,
+  `transform.geocode`, `transform.isochrone`, `transform.route`. Criterion and per-op evidence:
+  `docs/revue/2026-10-16-ops-experimentales.md`.
+  With `CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED=false` (default) they are absent from
+  `GET /v1/pipelines/ops`, refused when a pipeline is saved (422) and refused at run time
+  (manual, scheduled, webhook: the run fails with a readable message). Set it to `true` on
+  `core` **and** `worker` to enable them: the catalogue then flags them `experimental: true` and
+  the builder palette shows an "Expérimental" badge. Replay each one against a test instance of
+  the service before relying on it (runbook `docs/runbooks/2026-10-16-ops-experimentales.md`).
+  `GET /v1/instance` and `GET /v1/me` gain `experimentalOpsEnabled`. **Existing pipelines that
+  use one of these ops stop running until the flag is enabled.**
+  The exposed catalogue is 91 operations with every capability flag off, 121 with only this
+  flag on (152 in the raw registry, reached with file I/O and raster also enabled).
+
 ### Changed
 
 - **BREAKING, blob secrets (REV-341)**: Azure `accountName` must match
@@ -429,6 +453,8 @@ Accepted and documented, not scheduled (also listed in `SECURITY.md`):
   resolved address, but `smtplib` resolves the name again when connecting, so
   a DNS rebinding window remains on alert e-mail (webhooks and the other
   egress paths are pinned).
+- **Experimental pipeline operations:** 32 operations that talk to third-party services are
+  never replayed against the real service and ship disabled (see *Experimental* above).
 - **Screen reader / touch device:** the accessibility tree and touch gestures
   are covered by automated Playwright specs (`a11y-screen-reader.spec.ts`,
   `touch-map.spec.ts`); no real screen reader (NVDA/JAWS/VoiceOver) nor real

@@ -5393,6 +5393,10 @@
             "title": "Etlenabled",
             "type": "boolean"
           },
+          "experimentalOpsEnabled": {
+            "title": "Experimentalopsenabled",
+            "type": "boolean"
+          },
           "exportEnabled": {
             "title": "Exportenabled",
             "type": "boolean"
@@ -5433,7 +5437,8 @@
           "adminToolsEnabled",
           "quotasEnabled",
           "rasterEnabled",
-          "routingEnabled"
+          "routingEnabled",
+          "experimentalOpsEnabled"
         ],
         "title": "MeCapabilities",
         "type": "object"

@@ -20,7 +20,12 @@ from app.collections import repository as collections_repo
 from app.configs.pipeline_validation import register_pipeline_node_validator
 from app.configs.schemas import PipelineNode
 from app.configs.secret_usage import assert_secrets_usable, register_secret_usage_checker
-from app.pipelines.ops.contracts import BINARY_OPS, OP_PARAMS
+from app.pipelines.ops.contracts import (
+    BINARY_OPS,
+    OP_PARAMS,
+    blocked_experimental_ops,
+    experimental_refusal,
+)
 from app.secrets import repository as secrets_repo
 from app.sharing.authorization import can
 from app.users.models import User
@@ -110,6 +115,8 @@ register_secret_usage_checker(_secret_usable)
 
 
 def _validate_node(session: Session, node: PipelineNode, edges: list, user: User) -> None:
+    if blocked := blocked_experimental_ops([node.op]):
+        raise HTTPException(status_code=422, detail=experimental_refusal(blocked))
     params = _validate_params(node)
     # REV-331 : l'exécution se fait sous l'identité du propriétaire — l'éditeur qui écrit
     # doit lui-même pouvoir utiliser le secret.

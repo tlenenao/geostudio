@@ -139,6 +139,7 @@ const DEFAULT_ME = {
     quotasEnabled: false,
     rasterEnabled: false,
     routingEnabled: false,
+    experimentalOpsEnabled: false,
   },
 };
 

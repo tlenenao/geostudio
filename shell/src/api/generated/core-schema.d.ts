@@ -4634,6 +4634,8 @@ export interface components {
             copilotEnabled: boolean;
             /** Etlenabled */
             etlEnabled: boolean;
+            /** Experimentalopsenabled */
+            experimentalOpsEnabled: boolean;
             /** Exportenabled */
             exportEnabled: boolean;
             /** Quotasenabled */
