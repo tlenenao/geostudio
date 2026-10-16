@@ -109,6 +109,8 @@ def test_collection_writer_snapshot_is_lonlat(pg_engine, pg_session_factory, tab
 
 
 def test_bulk_update_via_collection_writer_reprojects(pg_engine, pg_session_factory, table):
+    """Contrat de `_update_stmt` : GeoJSON 4326. Le flux natif est reprojeté en amont par
+    write_rows (test_pipeline_writer_native_srid.py)."""
     from app.pipelines.collection_writer import _update_stmt
 
     with pg_session_factory() as s:

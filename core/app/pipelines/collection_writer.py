@@ -358,12 +358,20 @@ def write_rows(
     on_progress: Callable[[int], None] | None,
     should_cancel: Callable[[], bool] | None,
     replace_purge: Callable[[], int | None],
+    srid: int = 4326,
 ) -> WriteResult:
     mode = "append" if p.mode == "insert" else p.mode
     res = WriteResult()
     in_cols = [d[0] for d in conn.execute(f"SELECT * FROM {_qi(input_view)} LIMIT 0").description]
     has_geom_in = "geometry" in in_cols
-    select_list = "* EXCLUDE (geometry), ST_AsGeoJSON(geometry) AS geometry" if has_geom_in else "*"
+    # Le contrat d'écriture (`_geometry_sql`) attend du GeoJSON lon/lat 4326 : un flux en SRID
+    # natif (reader.collection 2154…) est reprojeté ici, sinon double reprojection.
+    gj = (
+        "geometry"
+        if srid in (0, 4326)
+        else f"ST_Transform(geometry, 'EPSG:{int(srid)}', 'EPSG:4326', true)"
+    )
+    select_list = f"* EXCLUDE (geometry), ST_AsGeoJSON({gj}) AS geometry" if has_geom_in else "*"
     n_in = conn.execute(f"SELECT COUNT(*) FROM {_qi(input_view)}").fetchone()[0]
     sensitive = frozenset(collection.sensitive_fields or ())
     res.quality = quality_report(conn, input_view, info, n_in, sensitive)
