@@ -1328,6 +1328,17 @@ export type DatasetColumnMeta = {
   format?: string;
 };
 
+// REV-119 : métrique nommée d'un dataset (miroir de core DatasetMetric).
+export type DatasetMetric = {
+  field?: string | null;
+  agg: string;
+  p?: number | null;
+  label?: string | null;
+  format?: string | null;
+  unit?: string | null;
+  description?: string | null;
+};
+
 export type CrossFilterLink =
   | { targetDatasetId: string; mode: "attribute"; sourceField: string; targetField: string }
   | { targetDatasetId: string; mode: "spatial"; precision: "bbox" | "exact" };
@@ -1340,6 +1351,7 @@ export type DatasetConfig = (
       timeField?: string | null;
       reactsToExtent?: boolean;
       crossFilterLinks?: CrossFilterLink[];
+      metrics?: Record<string, DatasetMetric>;
       sourcePipelineId?: string | null;
     }
   | {
@@ -1349,6 +1361,7 @@ export type DatasetConfig = (
       timeField?: string | null;
       reactsToExtent?: boolean;
       crossFilterLinks?: CrossFilterLink[];
+      metrics?: Record<string, DatasetMetric>;
       sourcePipelineId?: string | null;
     }
 ) & {

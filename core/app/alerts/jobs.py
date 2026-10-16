@@ -20,6 +20,7 @@ from app.analytics.aggregate import (
     UnknownAggregateField,
     _measure_label,
     _measures_for,
+    resolve_metrics,
     run_collection_aggregate,
 )
 from app.analytics.duckdb_conn import open_connection
@@ -154,6 +155,12 @@ def _measure_value(session, *, user: User, payload: AlertRulePayload) -> float:
     dataset = dataset_config.config.dataset
     assert dataset is not None
 
+    # REV-119 : résout les mesures {metric} sur les métriques nommées du dataset.
+    try:
+        query = resolve_metrics(payload.query, dataset.metrics)
+    except UnknownAggregateField as exc:
+        raise AlertEvaluationError(f"métrique inconnue : {exc.message}") from exc
+
     if dataset.source != "collection":
         raise AlertEvaluationError(
             f"alert evaluation only supports collection-sourced datasets (got '{dataset.source}')"
@@ -201,7 +208,7 @@ def _measure_value(session, *, user: User, payload: AlertRulePayload) -> float:
                 tenant_id=col.tenant_id,
                 collection_id=col.id,
                 table_info=table_info,
-                request=payload.query,
+                request=query,
                 masked_fields=masked_fields,
             )
         except UnknownAggregateField as exc:
@@ -230,11 +237,11 @@ def _measure_value(session, *, user: User, payload: AlertRulePayload) -> float:
     # here) is what keeps the two in agreement regardless of which
     # schema-legal query shape (top-level agg/field vs. a one-element
     # measures list, labelled or not) was used.
-    label = _measure_label(_measures_for(payload.query)[0])
+    label = _measure_label(_measures_for(query)[0])
     row = rows[0]
     if label not in row:
         raise AlertEvaluationError(f"expected measure '{label}' not present in aggregate result")
-    if row[label] is None and _measures_for(payload.query)[0].agg in _ZERO_ON_EMPTY_AGGS:
+    if row[label] is None and _measures_for(query)[0].agg in _ZERO_ON_EMPTY_AGGS:
         # P25 : sans groupBy l'agrégat rend toujours UNE ligne, lac vide compris
         # (REV-277c) ; somme d'un ensemble vide = NULL -> 0.
         return 0.0

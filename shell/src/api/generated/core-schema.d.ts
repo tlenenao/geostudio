@@ -2810,6 +2810,8 @@ export interface components {
             field?: string | null;
             /** Label */
             label?: string | null;
+            /** Metric */
+            metric?: string | null;
             /** P */
             p?: number | null;
         };
@@ -3696,6 +3698,27 @@ export interface components {
             /** Targetdatasetid */
             targetDatasetId: string;
         };
+        /**
+         * DatasetMetric
+         * @description REV-119 / GAP-25 : métrique nommée d'un dataset (field + agg, résolue en
+         *     `AggregateMeasure` avant exécution ; pas de CEL libre : un seul moteur).
+         */
+        DatasetMetric: {
+            /** Agg */
+            agg: string;
+            /** Description */
+            description?: string | null;
+            /** Field */
+            field?: string | null;
+            /** Format */
+            format?: string | null;
+            /** Label */
+            label?: string | null;
+            /** P */
+            p?: number | null;
+            /** Unit */
+            unit?: string | null;
+        };
         /** DatasetPayload */
         DatasetPayload: {
             /** Arcgisitemid */
@@ -3708,6 +3731,10 @@ export interface components {
             };
             /** Crossfilterlinks */
             crossFilterLinks?: (components["schemas"]["DatasetCrossFilterLinkAttribute"] | components["schemas"]["DatasetCrossFilterLinkSpatial"])[];
+            /** Metrics */
+            metrics?: {
+                [key: string]: components["schemas"]["DatasetMetric"];
+            };
             /**
              * Reactstoextent
              * @default false

@@ -192,6 +192,35 @@ test("edits the time field and reacts-to-extent flag, and saves them with the co
   expect(savedConfig.reactsToExtent).toBe(true);
 });
 
+test("adds a named metric and saves it in the dataset payload (REV-119)", async () => {
+  const saveDatasetConfig = vi.fn().mockResolvedValue(undefined);
+  renderPage({
+    getItem: vi.fn().mockResolvedValue(item),
+    getDatasetConfig: vi.fn().mockResolvedValue(datasetConfig),
+    getCollectionSchema: vi.fn().mockResolvedValue(schema),
+    saveDatasetConfig,
+    updateItem: vi.fn().mockResolvedValue(item),
+  });
+
+  await screen.findByLabelText("Libellé de nom");
+  await userEvent.type(screen.getByLabelText("Clé de la nouvelle métrique"), "Bad-Key");
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter une métrique" }));
+  expect(screen.getByText(/Clé invalide/)).toBeInTheDocument();
+  await userEvent.clear(screen.getByLabelText("Clé de la nouvelle métrique"));
+  await userEvent.type(screen.getByLabelText("Clé de la nouvelle métrique"), "nb_noms");
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter une métrique" }));
+  await userEvent.selectOptions(
+    screen.getByLabelText("Agrégation de la métrique nb_noms"),
+    "countDistinct",
+  );
+  await userEvent.selectOptions(screen.getByLabelText("Champ de la métrique nb_noms"), "nom");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer les colonnes" }));
+
+  await waitFor(() => expect(saveDatasetConfig).toHaveBeenCalled());
+  const [, savedConfig] = saveDatasetConfig.mock.calls[0];
+  expect(savedConfig.metrics).toEqual({ nb_noms: { agg: "countDistinct", field: "nom", p: null } });
+});
+
 test("time field defaults to the empty option (no temporal context)", async () => {
   renderPage({
     getItem: vi.fn().mockResolvedValue(item),

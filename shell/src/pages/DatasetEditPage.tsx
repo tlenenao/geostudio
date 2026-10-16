@@ -20,6 +20,7 @@ import { Panel } from "../ui/kit/Panel";
 import { LoadingState } from "../ui/kit/LoadingState";
 import { QueryErrorState } from "../ui/kit/QueryErrorState";
 import { CrossFilterLinkEditor } from "../builder/CrossFilterLinkEditor";
+import { DatasetMetricsEditor } from "../builder/DatasetMetricsEditor";
 import { AlertRuleEditor } from "../builder/AlertRuleEditor";
 import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
 import { isConflictError } from "../api/ApiError";
@@ -334,6 +335,11 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                     {t("datasetEdit.addLink")}
                   </Button>
                 </div>
+                <DatasetMetricsEditor
+                  metrics={draft.metrics ?? {}}
+                  fieldNames={merged.map((f) => f.name)}
+                  onChange={(metrics) => updateDraft((d) => (d ? { ...d, metrics } : d))}
+                />
               </div>
             </div>
           ),

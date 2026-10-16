@@ -1010,3 +1010,42 @@ def test_in_app_notification_is_posted_once_per_episode(env, monkeypatch):
     assert len(sent) == 3
     with Session() as s:
         assert len(s.scalars(select(Notification).where(Notification.kind == "alert")).all()) == 1
+
+
+def test_alert_resolves_named_metric_of_its_dataset(env, monkeypatch):
+    """REV-119 : mesure {metric} résolue sur les métriques du dataset de la règle."""
+    _, Session, tenant, alert_item_id = env
+    monkeypatch.setattr(alert_jobs, "send_webhook", lambda *a, **k: None)
+    with Session() as s:
+        cfg = configs_repo.get_config_by_item(s, alert_item_id)
+        body = cfg.config.model_dump()
+        dataset_item_id = body["alert"]["datasetItemId"]
+        body["alert"]["query"] = {"measures": [{"metric": "nb"}]}
+        configs_repo.update_config(
+            s, cfg.id, BuilderConfig.model_validate(body), tenant_id=tenant.id
+        )
+        dcfg = configs_repo.get_config_by_item(s, dataset_item_id)
+        dbody = dcfg.config.model_dump()
+        dbody["dataset"]["metrics"] = {"nb": {"agg": "count"}}
+        configs_repo.update_config(
+            s, dcfg.id, BuilderConfig.model_validate(dbody), tenant_id=tenant.id
+        )
+        s.commit()
+    evaluation = _run_eval(env)
+    assert evaluation.state == "firing"  # count=3 > 2
+    assert evaluation.value == 3.0
+
+
+def test_alert_unknown_metric_is_an_error_state(env, monkeypatch):
+    _, Session, tenant, alert_item_id = env
+    monkeypatch.setattr(alert_jobs, "send_webhook", lambda *a, **k: None)
+    with Session() as s:
+        cfg = configs_repo.get_config_by_item(s, alert_item_id)
+        body = cfg.config.model_dump()
+        body["alert"]["query"] = {"measures": [{"metric": "absente"}]}
+        configs_repo.update_config(
+            s, cfg.id, BuilderConfig.model_validate(body), tenant_id=tenant.id
+        )
+        s.commit()
+    evaluation = _run_eval(env)
+    assert evaluation.state == "error"

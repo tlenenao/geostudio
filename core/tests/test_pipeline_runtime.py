@@ -1932,6 +1932,7 @@ def test_writer_dataset_update_preserves_source_pipeline_id(pg_engine, monkeypat
                     source="collection",
                     collectionId="villes_out_old",
                     sourcePipelineId=pipeline_item.id,
+                    metrics={"nb": {"agg": "count"}},
                 ),
             ),
             item_id=existing_item.id,
@@ -1970,6 +1971,7 @@ def test_writer_dataset_update_preserves_source_pipeline_id(pg_engine, monkeypat
 
         updated = configs_repo.get_config(s, existing_config.id)
         assert updated.config.dataset.sourcePipelineId == pipeline_item.id  # préservé, pas effacé
+        assert updated.config.dataset.metrics["nb"].agg == "count"  # REV-119 : préservées
 
     with pg_engine.begin() as conn:
         conn.execute(

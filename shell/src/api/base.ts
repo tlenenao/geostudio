@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import type {
   CrossFilterLink,
+  DatasetMetric,
   DataRecord,
   DatasetColumnMeta,
   FieldError,
@@ -231,6 +232,7 @@ export type ResolvedDataset = {
   timeField: string | null;
   reactsToExtent: boolean;
   crossFilterLinks: CrossFilterLink[];
+  metrics: Record<string, DatasetMetric>;
   sourcePipelineId: string | null;
   version?: number;
 };
@@ -474,6 +476,7 @@ export function createBase(opts: {
           timeField?: string | null;
           reactsToExtent?: boolean;
           crossFilterLinks?: CrossFilterLink[];
+          metrics?: Record<string, DatasetMetric>;
           sourcePipelineId?: string | null;
         } | null;
       };
@@ -488,6 +491,7 @@ export function createBase(opts: {
       timeField: dataset.timeField ?? null,
       reactsToExtent: dataset.reactsToExtent ?? false,
       crossFilterLinks: dataset.crossFilterLinks ?? [],
+      metrics: dataset.metrics ?? {},
       sourcePipelineId: dataset.sourcePipelineId ?? null,
       version: data.version,
     };
