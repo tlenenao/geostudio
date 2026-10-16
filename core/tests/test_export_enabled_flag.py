@@ -67,6 +67,7 @@ def test_instance_reports_export_disabled_by_default(env):
         "quotasEnabled": False,
         "rasterEnabled": False,
         "routingEnabled": False,
+        "experimentalOpsEnabled": True,  # conftest.py allume le flag pour la suite
     }
 
 
