@@ -135,11 +135,24 @@ G = "t_aud020_geolim"
 LIMIT = {"type": "Polygon", "coordinates": [[[0, 40], [10, 40], [10, 50], [0, 50], [0, 40]]]}
 
 
-def test_straddle_gate_tolerates_geojson_roundtrip_in_projected_crs(pg_engine, pg_session_factory):
-    """Entité à cheval en 2154 : la version découpée relue (GeoJSON 9 décimales) renvoyée
-    telle quelle doit être acceptée (tolérance en mètres, pas en degrés)."""
-    from app.sharing.geo_limits import GeoLimitStraddling
+def _blob_wkt(n: int = 60) -> str:
+    """Polygone à n sommets (coordonnées à 9+ décimales), à cheval sur la limite x = 10."""
+    import math
 
+    pts = [
+        (
+            10 + 4.123456789012 * math.cos(2 * math.pi * i / n),
+            45 + 3.987654321098 * math.sin(2 * math.pi * i / n),
+        )
+        for i in range(n)
+    ]
+    pts.append(pts[0])
+    return "POLYGON((" + ", ".join(f"{x!r} {y!r}" for x, y in pts) + "))"
+
+
+@pytest.fixture()
+def straddler(pg_engine, pg_session_factory):
+    """Entité à cheval stockée en 2154 ; fournit (session, info, fid, version découpée relue)."""
     with pg_engine.begin() as conn:
         conn.execute(text(f"DROP TABLE IF EXISTS {G}"))
         conn.execute(
@@ -149,10 +162,10 @@ def test_straddle_gate_tolerates_geojson_roundtrip_in_projected_crs(pg_engine, p
         )
         conn.execute(
             text(
-                f"INSERT INTO {G} (name, geom) VALUES ('s', ST_Transform(ST_GeomFromText("
-                "'POLYGON((5 45.123456789, 15 45.123456789, 15 48.987654321, 5 48.987654321, "
-                "5 45.123456789))', 4326), 2154))"
-            )
+                f"INSERT INTO {G} (name, geom) VALUES ('s', "
+                "ST_Transform(ST_GeomFromText(:w, 4326), 2154))"
+            ),
+            {"w": _blob_wkt()},
         )
     try:
         with pg_session_factory() as s:
@@ -160,16 +173,42 @@ def test_straddle_gate_tolerates_geojson_roundtrip_in_projected_crs(pg_engine, p
             s.commit()
             info = introspect_table(s, G)
             fid = str(s.execute(text(f"SELECT id FROM {G}")).scalar())
-            limits = {G: [LIMIT]}
-            with rls_scope(s, "default", geo_limits=limits):
+            with rls_scope(s, "default", geo_limits={G: [LIMIT]}):
                 clipped = repo.get_feature(s, info, fid=fid)["geometry"]
-                assert repo.replace_feature(
-                    s, info, fid=fid, properties={"name": "ok"}, geometry=clipped
-                )
-                other = {"type": "Point", "coordinates": [6.0, 46.0]}
-                with pytest.raises(GeoLimitStraddling):
-                    repo.replace_feature(s, info, fid=fid, properties={}, geometry=other)
+                yield s, info, fid, clipped
             s.rollback()
     finally:
         with pg_engine.begin() as conn:
             conn.execute(text(f"DROP TABLE IF EXISTS {G}"))
+
+
+def _shift_vertex(geom: dict, dlat: float) -> dict:
+    g = json.loads(json.dumps(geom))
+    g["coordinates"][0][3][1] += dlat
+    return g
+
+
+def test_straddle_gate_accepts_geojson_roundtrip_of_many_vertices(straddler):
+    """60 sommets : un aller-retour GeoJSON (9 décimales) ne doit pas être refusé à tort."""
+    s, info, fid, clipped = straddler
+    assert len(clipped["coordinates"][0]) > 30
+    assert repo.replace_feature(s, info, fid=fid, properties={"name": "ok"}, geometry=clipped)
+
+
+@pytest.mark.parametrize("dlat", [1e-5, 2.5e-7])  # ~1.1 m, et ~2.8 cm (> tolérance de 1 cm)
+def test_straddle_gate_refuses_a_really_different_geometry(straddler, dlat):
+    from app.sharing.geo_limits import GeoLimitStraddling
+
+    s, info, fid, clipped = straddler
+    with pytest.raises(GeoLimitStraddling):
+        repo.replace_feature(s, info, fid=fid, properties={}, geometry=_shift_vertex(clipped, dlat))
+
+
+def test_straddle_gate_refuses_another_geometry_type(straddler):
+    from app.sharing.geo_limits import GeoLimitStraddling
+
+    s, info, fid, _ = straddler
+    with pytest.raises(GeoLimitStraddling):
+        repo.replace_feature(
+            s, info, fid=fid, properties={}, geometry={"type": "Point", "coordinates": [6.0, 46.0]}
+        )
