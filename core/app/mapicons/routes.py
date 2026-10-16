@@ -254,10 +254,16 @@ def read_map_icon_file(
     icon = repo.get_icon(session, tenant_id=read_tenant_id(session, user, guest), icon_id=icon_id)
     # REV-359 : hors session authentifiée, l'icône n'est servie que si un item
     # lisible publiquement (ou le jeton invité) la référence — jamais par simple id.
+    # REV-367 b : un jeton invité ne lit que les icônes citées par les items
+    # qu'il couvre (`allowed_item_ids`), pas toute icône du tenant.
     if icon is None or (
         user is None
-        and guest is None
-        and not repo.is_used_by_public_item(session, tenant_id=icon.tenant_id, icon_id=icon_id)
+        and not repo.is_used_by_public_item(
+            session,
+            tenant_id=icon.tenant_id,
+            icon_id=icon_id,
+            only_item_ids=guest.allowed_item_ids if guest is not None else None,
+        )
     ):
         raise HTTPException(status_code=404, detail="icon not found")
     try:
