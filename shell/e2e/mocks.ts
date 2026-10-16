@@ -991,3 +991,64 @@ export async function mockCore(page: Page) {
     });
   });
 }
+
+// App publiée portant un widget Formulaire (page « formulaire »).
+export async function mockFormApp(page: Page) {
+  await mockCore(page);
+  await page.route("https://core.test/v1/items/form-1*", (route) =>
+    route.fulfill({
+      json: {
+        pk: "form-1",
+        resourceType: "app",
+        title: "Déclarer un incident",
+        abstract: "",
+        owner: "mockuser",
+        thumbnailUrl: null,
+        date: "2026-01-01",
+        configId: "cfg-form-1",
+        isPublished: true,
+        keywords: [],
+        permissions: { read: true, write: true, delete: false, share: false, publish: false },
+      },
+    }),
+  );
+  await page.route("https://core.test/v1/configs/by-item/form-1*", (route) =>
+    route.fulfill({
+      json: {
+        id: "cfg-form-1",
+        itemId: "form-1",
+        kind: "app",
+        version: 1,
+        config: {
+          version: 1,
+          kind: "app",
+          theme: {},
+          dataSources: [
+            { id: "s1", type: "features", service: "core", layer: "incidents", query: {} },
+          ],
+          messages: [],
+          layout: {
+            type: "grid",
+            breakpoints: {},
+            items: [
+              {
+                id: "fm",
+                widget: "form",
+                x: 0,
+                y: 0,
+                w: 6,
+                h: 8,
+                props: {
+                  dataSourceId: "s1",
+                  submitLabel: "Envoyer",
+                  geometryType: null,
+                  fields: [{ name: "titre", label: "Titre", type: "string", required: true }],
+                },
+              },
+            ],
+          },
+        },
+      },
+    }),
+  );
+}
