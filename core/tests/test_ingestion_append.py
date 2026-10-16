@@ -168,3 +168,52 @@ def test_append_to_collection_stored_in_2154_reprojects(env, pg_engine):
             )
         ).one()
     assert (round(x, 4), round(y, 4)) == (2.1, 48.1)
+
+
+def test_import_and_append_repair_invalid_polygon(env):
+    """AUD-129 : import ET ajout (même _load_rows) réparent un nœud papillon."""
+    import json
+
+    Session, tenant, user = env
+    bowtie = {
+        "type": "Polygon",
+        "coordinates": [[[0, 0], [2, 2], [2, 0], [0, 2], [0, 0]]],
+    }
+
+    def gj(name):
+        return json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [{"type": "Feature", "properties": {"nom": name}, "geometry": bowtie}],
+            }
+        ).encode()
+
+    with Session() as s:
+        res = run_import(
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            filename="p.geojson",
+            content=gj("seed"),
+            collection_title="Polys",
+            lat_field=None,
+            lon_field=None,
+        )
+        s.commit()
+        cid = res.collection_id
+    with Session() as s:
+        run_append(
+            s,
+            tenant_id=tenant.id,
+            user=user,
+            collection_id=cid,
+            filename="p2.geojson",
+            content=gj("more"),
+            lat_field=None,
+            lon_field=None,
+        )
+        s.commit()
+    with Session() as s, rls_scope(s, tenant.id):
+        rows = s.execute(text(f"SELECT ST_IsValid(geom), ST_Area(geom) FROM public.{cid}")).all()
+    assert len(rows) == 2
+    assert all(v and round(a, 6) == 2.0 for v, a in rows)

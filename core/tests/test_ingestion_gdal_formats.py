@@ -178,3 +178,11 @@ def test_gml_complex_multilayer_nested_and_list_attributes():
     assert props["nom"] == "Dupont"  # élément imbriqué aplati
     assert props["tags"] == '["x", "y"]'  # liste -> texte JSON insérable
     assert geom.geom_type == "Point"
+
+
+def test_gpkg_invalid_polygon_is_repaired(tmp_path):
+    bowtie = Polygon([(0, 0), (2, 2), (2, 0), (0, 2)])
+    path = tmp_path / "bad.gpkg"
+    gpd.GeoDataFrame({"n": [1]}, geometry=[bowtie], crs="EPSG:4326").to_file(path, driver="GPKG")
+    rows = list(parse_gpkg(path.read_bytes()))
+    assert len(rows) == 1 and rows[0][0].is_valid

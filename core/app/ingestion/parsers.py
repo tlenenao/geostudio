@@ -3,7 +3,8 @@
 (SP-6b, via pyogrio — wheels manylinux, GDAL/GEOS/PROJ embarqués, aucun
 paquet système requis). Chaque parseur produit un flux (géométrie shapely,
 propriétés) ; toute ligne/feature/entité invalide lève IngestionParseError
-immédiatement (fail-fast) — pas d'import partiel silencieux."""
+immédiatement (fail-fast) — pas d'import partiel silencieux. Les géométries
+invalides réparables sont réparées (make_valid, AUD-129)."""
 
 import csv
 import datetime
@@ -35,12 +36,40 @@ from shapely.errors import ShapelyError
 from shapely.geometry import Point, shape
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import transform as shapely_transform
+from shapely.ops import unary_union
 
 from app.cell_safety import unsanitize_cell
 
 
 class IngestionParseError(Exception):
     """Message affiché tel quel comme ingestion_jobs.error_message."""
+
+
+_DIM = {
+    "Point": 0,
+    "MultiPoint": 0,
+    "LineString": 1,
+    "MultiLineString": 1,
+    "Polygon": 2,
+    "MultiPolygon": 2,
+}
+
+
+def _repair_geometry(geom: BaseGeometry, where: str) -> BaseGeometry:
+    """AUD-129 : une géométrie invalide (nœud papillon, auto-intersection) est réparée
+    par make_valid au lieu de faire échouer tout le fichier. make_valid peut renvoyer une
+    GeometryCollection mêlant dimensions : on ne garde que les parties de la dimension
+    d'origine. Résultat vide/dégénéré -> rejet explicite (pas de perte silencieuse)."""
+    if geom.is_valid:
+        return geom
+    dim = _DIM.get(geom.geom_type, 0)
+    fixed = shapely.make_valid(geom)
+    if fixed.geom_type == "GeometryCollection":
+        parts = [p for p in shapely.get_parts(fixed) if _DIM.get(p.geom_type, 0) == dim]
+        fixed = unary_union(parts) if parts else fixed
+    if fixed.is_empty or _DIM.get(fixed.geom_type, 0) != dim or not fixed.is_valid:
+        raise IngestionParseError(f"{where} : géométrie invalide")
+    return fixed
 
 
 _LAT_NAMES = {"lat", "latitude", "y"}
@@ -179,8 +208,7 @@ def parse_geojson(content: bytes) -> Iterator[tuple[BaseGeometry, dict]]:
             geom = shape(geometry)
         except (ValueError, AttributeError, KeyError, TypeError, ShapelyError) as exc:
             raise IngestionParseError(f"feature {i} : géométrie invalide ({exc})") from exc
-        if not geom.is_valid:
-            raise IngestionParseError(f"feature {i} : géométrie invalide")
+        geom = _repair_geometry(geom, f"feature {i}")
         properties = feature.get("properties")
         if properties is not None and not isinstance(properties, dict):
             raise IngestionParseError(f"feature {i} : properties invalide")
@@ -487,8 +515,7 @@ def _read_features(
                 )
         if transform is not None:
             geom = shapely_transform(transform, geom)
-        if not geom.is_valid:
-            raise IngestionParseError(f"entité {i} : géométrie invalide")
+        geom = _repair_geometry(geom, f"entité {i}")
         properties = {field: _native_value(field_data[j][i]) for j, field in enumerate(fields)}
         yield geom, properties
 

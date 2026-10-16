@@ -1152,3 +1152,36 @@ def test_sniff_delimiter_ignores_separators_inside_quotes():
     assert sniff_delimiter('"a;b;c;d",e,f\n1,2,3') == ","
     assert sniff_delimiter('"Nom, Prénom";Age\r\nx;1') == ";"
     assert sniff_delimiter("seule\n1") == ","
+
+
+BOWTIE = [[[0, 0], [2, 2], [2, 0], [0, 2], [0, 0]]]  # nœud papillon, invalide
+
+
+def _fc(*geoms):
+    return json.dumps(
+        {
+            "type": "FeatureCollection",
+            "features": [
+                {"type": "Feature", "properties": {"n": i}, "geometry": g}
+                for i, g in enumerate(geoms)
+            ],
+        }
+    ).encode()
+
+
+def test_geojson_invalid_polygon_is_repaired_not_rejected():
+    ok = {"type": "Point", "coordinates": [1, 1]}
+    bad = {"type": "Polygon", "coordinates": BOWTIE}
+    rows = list(parse_geojson(_fc(ok, bad, ok)))
+    assert len(rows) == 3
+    geom = rows[1][0]
+    assert geom.is_valid
+    assert geom.geom_type in {"Polygon", "MultiPolygon"}
+    assert geom.area == pytest.approx(2.0)  # deux triangles d'aire 1
+
+
+def test_geojson_unrepairable_empty_still_rejected():
+    # polygone dégénéré (aire nulle) : la réparation ne donne plus de polygone
+    flat = {"type": "Polygon", "coordinates": [[[0, 0], [1, 1], [2, 2], [0, 0]]]}
+    with pytest.raises(IngestionParseError, match="feature 0 : géométrie invalide"):
+        list(parse_geojson(_fc(flat)))
