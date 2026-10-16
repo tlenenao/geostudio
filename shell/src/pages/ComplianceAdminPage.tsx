@@ -8,6 +8,7 @@ import { Panel } from "../ui/kit/Panel";
 import { SettingsNav } from "../shell/chrome/SettingsNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
+import { formatDateTime } from "../lib/format";
 import { eraseErrorMessage } from "./eraseErrorMessage";
 import { PageTitle } from "../ui/kit/PageTitle";
 
@@ -151,7 +152,9 @@ function PurgeTenantSection() {
       )}
       {purgeId && statusQuery.data && statusQuery.data.status !== "failed" && (
         <p role="status" className="text-sm text-ink-2">
-          {t("compliance.purgeCompleted", { completedAt: statusQuery.data.completedAt })}
+          {t("compliance.purgeCompleted", {
+            completedAt: formatDateTime(statusQuery.data.completedAt),
+          })}
         </p>
       )}
     </Panel>

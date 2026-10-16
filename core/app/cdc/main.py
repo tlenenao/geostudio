@@ -5,6 +5,7 @@ est donc appelé ici au niveau module, même patron et même raison que
 app/jobs.py (SP-10a) — quel que soit le process qui importe ce module EST le
 point d'entrée du worker."""
 
+import json
 import os
 import signal
 import threading
@@ -112,6 +113,9 @@ def _write_and_upload(
             os.remove(local_path)
 
 
+_UNMANAGED_RECHECK_SECONDS = 60.0
+
+
 def run() -> None:
     raw_dsn = os.environ["CDC_DATABASE_URL"]
     engine = make_engine(raw_dsn.replace("postgresql://", "postgresql+psycopg://"))
@@ -176,13 +180,20 @@ def run() -> None:
             _flush_table(table_name)
         return buffer.safe_ack_lsn(last_seen_lsn=state.last_seen_lsn)
 
+    def _meta_view() -> dict:
+        return {t: (pk, geom) for t, (_cid, _tid, geom, _srid, pk) in collection_meta.items()}
+
+    # Reconstruit seulement quand collection_meta change (REV-364 h), pas à chaque message.
+    meta_by_table = _meta_view()
+    # Tables publiées mais sans collection : relues au plus une fois par minute (et non à
+    # chaque message), tout en rattrapant une collection dont la ligne arrive après la table.
+    unmanaged_until: dict[str, float] = {}
+
     def _on_message(payload: str, lsn: int) -> None:
         state.last_seen_lsn = lsn
-        meta_by_table = {
-            t: (pk, geom) for t, (_cid, _tid, geom, _srid, pk) in collection_meta.items()
-        }
+        data = json.loads(payload)  # décodé une seule fois (REV-364 h)
         for decoded in consumer.decode_wal2json_message(
-            payload, lsn=lsn, collection_meta=meta_by_table
+            data, lsn=lsn, collection_meta=meta_by_table
         ):
             buffer.add(decoded.table_name, decoded.row)
 
@@ -190,12 +201,12 @@ def run() -> None:
         # après le dernier chargement — backfill paresseux au premier
         # changement vu (Task 8 §Décision de conception), avant de traiter
         # le message lui-même sur la prochaine itération.
-        import json
-
+        now = time.monotonic()
         unknown_tables = {
             change["table"]
-            for change in json.loads(payload).get("change", [])
+            for change in data.get("change", [])
             if change["table"] not in collection_meta
+            and unmanaged_until.get(change["table"], 0.0) <= now
         }
         for table_name in unknown_tables:
             with session_factory() as session:
@@ -203,6 +214,7 @@ def run() -> None:
                     select(Collection).where(Collection.table_name == table_name)
                 )
             if fresh is None:
+                unmanaged_until[table_name] = now + _UNMANAGED_RECHECK_SECONDS
                 continue
             collection_meta[table_name] = (
                 fresh.id,
@@ -211,6 +223,8 @@ def run() -> None:
                 fresh.srid,
                 fresh.pk_column,
             )
+            meta_by_table.clear()
+            meta_by_table.update(_meta_view())
             with session_factory() as session:
                 backfill_rows = backfill.backfill_table(
                     session,

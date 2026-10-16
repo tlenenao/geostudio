@@ -245,6 +245,9 @@ export const automation = {
   "pipelineWebhook.createdOnTemplate": "… — créé le {createdAt}",
   "pipelineWebhook.revokeAria": "Révoquer {id}",
   "pipelineWebhook.revokeButton": "Révoquer",
+  "pipelineWebhook.revokeConfirmTitle": "Révoquer ce jeton ?",
+  "pipelineWebhook.revokeConfirmMessage":
+    "Les appels qui utilisent ce jeton seront refusés immédiatement. Cette action est irréversible.",
   "pipelineWebhook.generateButton": "Générer un jeton",
   "pipelineWebhook.tokenWarning": "Ce jeton ne sera plus jamais affiché — copiez-le maintenant.",
   "pipelineWebhook.triggerCommandTemplate":
@@ -382,7 +385,10 @@ export const automation = {
   "reportRun.loadMore": "Charger plus",
 
   // ReportScheduleEditor (builder/report)
-  "reportSchedule.targetedViewLabel": "Vue ciblée :",
+  "reportSchedule.targetedViewLabel": "Vue ciblée",
+  "reportSchedule.bookmarkPlaceholder": "Choisir un bookmark…",
+  "reportEdit.bookmarkRequired": "Choisissez un bookmark pour pouvoir enregistrer.",
+  "reportEdit.titleFromBookmark": "Rapport — {title}",
   "reportSchedule.channelLabel": "Canal",
   "reportSchedule.channelWebhook": "Webhook",
   "reportSchedule.channelEmail": "E-mail",

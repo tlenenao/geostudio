@@ -5,8 +5,6 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router-dom";
 import { expect, it, vi } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { server } from "../test/msw/server";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
@@ -118,23 +116,4 @@ it("REV-361 : revoke link affiche une erreur sur échec 500", async () => {
   const confirm = screen.queryAllByRole("button", { name: /confirmer|révoquer/i }).pop();
   if (confirm && confirm !== btns[0]) await userEvent.click(confirm);
   expect(await screen.findByRole("alert", {}, { timeout: 800 })).toBeTruthy();
-});
-
-// Rapport depuis l'état vide : aucun sélecteur de bookmark (ReportScheduleEditor.tsx:33).
-it.fails("REV-audit: ReportScheduleEditor expose un sélecteur de bookmark", () => {
-  const src = readFileSync(
-    resolve(__dirname, "../builder/report/ReportScheduleEditor.tsx"),
-    "utf8",
-  );
-  // Le canal utilise déjà un NativeSelect ; un sélecteur de bookmark en ferait un second.
-  expect((src.match(/<NativeSelect/g) ?? []).length).toBeGreaterThanOrEqual(2);
-});
-
-// Mesure carte : alternative clavier absente (MapMeasureSketchToolbar.tsx:334).
-it.fails("REV-audit: MapMeasureSketchToolbar a une entrée clavier pour ajouter un point", () => {
-  const src = readFileSync(resolve(__dirname, "../map/MapMeasureSketchToolbar.tsx"), "utf8");
-  // Un ajout de point au clavier passe par un champ de coordonnées ou un handler keydown sur la carte.
-  expect(src).toMatch(
-    /map\.on\(\s*["']keydown["']|getCanvas\(\)\.addEventListener\(\s*["']keydown|coordonn/i,
-  );
 });

@@ -23,7 +23,7 @@ function makeMapStub() {
   const layers: { id: string }[] = [];
   // Un SEUL objet canvas, pour que les tests puissent lire le curseur posé par
   // l'effet de mode.
-  const canvas = { style: {} as Record<string, string> };
+  const canvas = document.createElement("canvas");
   return {
     canvas,
     on: vi.fn((event: string, handler: (e: unknown) => void) => {
@@ -35,6 +35,10 @@ function makeMapStub() {
     emit: (event: string, e: unknown) => [...(handlers[event] ?? [])].forEach((h) => h(e)),
     handlerCount: (event: string) => (handlers[event] ?? []).length,
     getCanvas: () => canvas,
+    center: { lng: 0, lat: 0 },
+    getCenter() {
+      return this.center;
+    },
     // Task 18 pose une couche `symbol` pour le texte de croquis, qui exige que
     // le style déclare des `glyphs` : le stub en déclare, et un test le retire
     // pour couvrir la branche de refus.
@@ -506,4 +510,29 @@ test("touchcancel annule le tracé libre en cours sans l'enregistrer", () => {
   // Un touchend tardif ne ressuscite pas le geste annulé.
   act(() => map.emit("touchend", {}));
   expect(screen.queryByText(/\d+ tracés?/)).not.toBeInTheDocument();
+});
+
+test("REV-363 : le bouton « point au centre » ajoute un point de mesure sans souris", () => {
+  const map = makeMapStub();
+  render(<MapMeasureSketchToolbar map={map as never} />);
+  // Hors mode actif : l'action n'est pas proposée.
+  expect(screen.queryByRole("button", { name: /point au centre/i })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Mesurer" }));
+  const add = screen.getByRole("button", { name: /point au centre/i });
+  fireEvent.click(add);
+  map.center = { lng: 1, lat: 0 };
+  fireEvent.click(add);
+  expect(screen.getByText("111,19 km")).toBeInTheDocument();
+});
+
+test("REV-363 : Entrée sur le canvas ajoute un point au centre ; sans effet au repos", () => {
+  const map = makeMapStub();
+  render(<MapMeasureSketchToolbar map={map as never} />);
+  // Au repos, Entrée ne fait rien.
+  fireEvent.keyDown(map.canvas, { key: "Enter" });
+  fireEvent.click(screen.getByRole("button", { name: "Mesurer" }));
+  fireEvent.keyDown(map.canvas, { key: "Enter" });
+  map.center = { lng: 1, lat: 0 };
+  fireEvent.keyDown(map.canvas, { key: "Enter" });
+  expect(screen.getByText("111,19 km")).toBeInTheDocument();
 });

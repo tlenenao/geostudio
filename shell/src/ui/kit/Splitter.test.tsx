@@ -61,3 +61,24 @@ test("le glissement est borné par max", () => {
   fireEvent.pointerUp(handle);
   expect(handle).toHaveAttribute("aria-valuenow", "400");
 });
+
+test("REV-365 f : le séparateur est focalisable et se règle aux flèches, borné par min/max", () => {
+  render(
+    <Splitter
+      first={<div>Gauche</div>}
+      second={<div>Droite</div>}
+      defaultFirstWidth={300}
+      min={290}
+      max={500}
+    />,
+  );
+  const handle = screen.getByRole("separator");
+  expect(handle).toHaveAttribute("tabindex", "0");
+  fireEvent.keyDown(handle, { key: "ArrowRight" });
+  expect(handle).toHaveAttribute("aria-valuenow", "316");
+  fireEvent.keyDown(handle, { key: "ArrowLeft" });
+  fireEvent.keyDown(handle, { key: "ArrowLeft" });
+  expect(handle).toHaveAttribute("aria-valuenow", "290");
+  fireEvent.keyDown(handle, { key: "End" });
+  expect(handle).toHaveAttribute("aria-valuenow", "500");
+});

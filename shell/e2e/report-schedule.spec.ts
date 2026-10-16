@@ -116,3 +116,43 @@ test("programmer un rapport sur un signet, voir son historique d'exécutions", a
     "https://s3.test/renders/run-1.pdf",
   );
 });
+
+// REV-362 : un rapport sans bookmark ne s'enregistre pas.
+test("l'éditeur de rapport exige un bookmark avant d'enregistrer", async ({ page }) => {
+  await mockCore(page);
+  await page.route("https://core.test/v1/instance", async (route) => {
+    await route.fulfill({ json: { readOnly: false, etlEnabled: false, exportEnabled: true } });
+  });
+  await page.route("**/items*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("type") !== "bookmark") return route.fallback();
+    await route.fulfill({
+      json: {
+        items: [
+          {
+            pk: "bookmark-1",
+            resourceType: "bookmark",
+            title: "Récents 2026",
+            abstract: "",
+            owner: "mockuser",
+            thumbnailUrl: null,
+            date: "2026-01-01",
+            configId: "cfg-bookmark",
+            isPublished: false,
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 100,
+      },
+    });
+  });
+
+  await page.goto("/reports/new");
+  await page.getByLabel("URL du webhook").fill("https://example.test/hook");
+  await expect(page.getByRole("button", { name: "Enregistrer" })).toBeDisabled();
+  await expect(page.getByText("Choisissez un bookmark pour pouvoir enregistrer.")).toBeVisible();
+
+  await page.getByLabel("Vue ciblée").selectOption("bookmark-1");
+  await expect(page.getByRole("button", { name: "Enregistrer" })).toBeEnabled();
+});

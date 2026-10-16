@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { registerWidget } from "../registry";
 import { DataSourceSelect } from "../DataSourceSelect";
@@ -106,7 +106,8 @@ function FieldOverrides({
     onChange(next.map((f, i) => ({ ...f, order: i })));
   }
 
-  let dragIndex: number | null = null;
+  // Une ref : une variable locale serait perdue à chaque re-rendu pendant le glisser (REV-365 g).
+  const dragIndex = useRef<number | null>(null);
 
   return (
     <ul className="flex flex-col gap-1">
@@ -115,14 +116,14 @@ function FieldOverrides({
           key={f.name}
           draggable
           onDragStart={(e) => {
-            dragIndex = i;
+            dragIndex.current = i;
             e.dataTransfer.setData("text/plain", String(i));
           }}
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => {
             e.preventDefault();
-            if (dragIndex !== null) reorder(dragIndex, i);
-            dragIndex = null;
+            if (dragIndex.current !== null) reorder(dragIndex.current, i);
+            dragIndex.current = null;
           }}
           className="flex cursor-move flex-col gap-1 rounded border border-rule p-1.5"
         >

@@ -164,6 +164,9 @@ def test_get_purge_status_returns_202_while_pending_and_200_once_receipt_exists(
 
     pending = env["client"].get(f"/v1/compliance/purges/{purge_id}")
     assert pending.status_code == 202
+    # REV-364 f : corps de reçu lisible (pas de problem+json), completedAt nul.
+    assert pending.json()["status"] == "pending"
+    assert pending.json()["completedAt"] is None
 
     # Simule la fin du job (écrite normalement par purge_tenant_task — le
     # déferrement lui-même est stubé dans ce test, cf. fixture `env`).

@@ -142,10 +142,13 @@ export function shapeToGeoJSONFeature(shape: SketchShape): SketchFeature {
   }
   if (shape.kind === "circle") {
     const radiusDeg = haversineDistanceMeters(shape.center, shape.edge) / METERS_PER_DEGREE_APPROX;
+    // Un degré de longitude vaut cos(lat) degrés de latitude : sans cette
+    // correction (REV-365 b) le cercle s'affiche en ovale hors équateur.
+    const lngScale = Math.max(Math.cos((shape.center.lat * Math.PI) / 180), 1e-6);
     const ring = Array.from({ length: CIRCLE_STEPS + 1 }, (_, i) => {
       const t = (i / CIRCLE_STEPS) * 2 * Math.PI;
       return [
-        shape.center.lng + radiusDeg * Math.cos(t),
+        shape.center.lng + (radiusDeg * Math.cos(t)) / lngScale,
         shape.center.lat + radiusDeg * Math.sin(t),
       ];
     });

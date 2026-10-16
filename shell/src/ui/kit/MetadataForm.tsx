@@ -92,18 +92,18 @@ export function MetadataForm({
         <Input value={keywords} onChange={(e) => setKeywords(e.target.value)} />
       </label>
       <label className="flex flex-col gap-1 text-sm text-ink">
-        Licence
+        {t("metadataForm.licenseLabel")}
         <Select
-          aria-label="Licence"
+          aria-label={t("metadataForm.licenseLabel")}
           value={license}
           onValueChange={setLicense}
           options={licenseOptions}
         />
       </label>
       <label className="flex flex-col gap-1 text-sm text-ink">
-        Langue
+        {t("metadataForm.languageLabel")}
         <Select
-          aria-label="Langue"
+          aria-label={t("metadataForm.languageLabel")}
           value={language}
           onValueChange={setLanguage}
           options={languageOptions}

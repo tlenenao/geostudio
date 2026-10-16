@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -74,7 +75,7 @@ class PurgeReceiptResponse(BaseModel):
     tenantSlug: str
     requestedByUserId: str
     requestedAt: str
-    completedAt: str
+    completedAt: str | None = None  # None tant que la purge n'est pas terminée
     counts: dict[str, Any]
     status: str = "done"
     error: str | None = None
@@ -158,12 +159,12 @@ def request_tenant_purge(
     return PurgeTriggeredResponse(jobId=purge_id)
 
 
-@router.get("/purges/{purge_id}")
+@router.get("/purges/{purge_id}", response_model=PurgeReceiptResponse)
 def get_purge_status(
     purge_id: str,
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session, scope="function"),
-) -> PurgeReceiptResponse:
+) -> Any:
     require_privilege(session, user, Privilege.COMPLIANCE_MANAGE.value)
     receipt = session.get(PurgeReceipt, purge_id)
     if receipt is None:
@@ -175,15 +176,18 @@ def get_purge_status(
         # (patron GET /uploads/{job_id}, ici sans ligne de statut
         # intermédiaire propre à la purge).
         raise HTTPException(status_code=202, detail="purge still in progress or unknown")
-    if receipt.status in ("pending", "running"):
-        raise HTTPException(status_code=202, detail="purge still in progress or unknown")
-    return PurgeReceiptResponse(
+    body = PurgeReceiptResponse(
         id=receipt.id,
         tenantSlug=receipt.tenant_slug,
         requestedByUserId=receipt.requested_by_user_id,
         requestedAt=receipt.requested_at.isoformat(),
-        completedAt=receipt.completed_at.isoformat() if receipt.completed_at else "",
+        completedAt=receipt.completed_at.isoformat() if receipt.completed_at else None,
         counts=receipt.counts,
         status=receipt.status,
         error=receipt.error,
     )
+    if receipt.status in ("pending", "running"):
+        # REV-364 f : un reçu existant mais non terminé = 202 avec son vrai corps
+        # (statut lisible), pas un problem+json ; completedAt reste null.
+        return JSONResponse(status_code=202, content=body.model_dump(mode="json"))
+    return body

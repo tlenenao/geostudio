@@ -171,6 +171,7 @@ export const map = {
   "styleTransfer.invalid": "Fichier de style illisible ou trop volumineux.",
 
   // MapMeasureSketchToolbar (map)
+  "mapMeasure.addCenterPointButton": "Ajouter un point au centre de la carte (Entrée)",
   "mapMeasure.shapeFreehandSingular": "tracé",
   "mapMeasure.shapeFreehandPlural": "tracés",
   "mapMeasure.shapeRectSingular": "rectangle",

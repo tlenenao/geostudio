@@ -155,7 +155,7 @@ export type PurgeReceipt = {
   tenantSlug: string;
   requestedByUserId: string;
   requestedAt: string;
-  completedAt: string;
+  completedAt?: string | null;
   counts: Record<string, number>;
   status?: "pending" | "running" | "done" | "failed";
   error?: string | null;

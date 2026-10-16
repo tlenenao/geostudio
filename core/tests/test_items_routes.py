@@ -243,6 +243,31 @@ def test_list_items_bbox_rejects_malformed_value(client):
     assert response.status_code == 422
 
 
+def test_list_items_bbox_rejects_non_finite_and_out_of_bounds(client):
+    # REV-367 f : NaN/inf ou bornes hors EPSG:4326 -> 422, jamais un 500.
+    for raw in ("nan,0,1,1", "0,0,inf,1", "0,0,500,1"):
+        assert client.get(f"/v1/items?bbox={raw}").status_code == 422
+
+
+def test_list_items_bbox_across_antimeridian(client):
+    with client.session_factory() as session:
+        for title, box in (
+            ("Fiji", (178.0, -18.0, 179.0, -17.0)),
+            ("Paris", (2.0, 48.0, 3.0, 49.0)),
+        ):
+            item = items_repo.create_item(
+                session,
+                tenant_id=client.tenant.id,
+                owner_id=client.user.id,
+                resource_type="map",
+                title=title,
+            )
+            item.bbox_min_x, item.bbox_min_y, item.bbox_max_x, item.bbox_max_y = box
+        session.commit()
+    response = client.get("/v1/items?bbox=170,-20,-170,-10")
+    assert [i["title"] for i in response.json()["items"]] == ["Fiji"]
+
+
 def test_get_item_facets_returns_owners_and_keywords(client):
     with client.session_factory() as session:
         item = items_repo.create_item(

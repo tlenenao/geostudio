@@ -139,6 +139,30 @@ def test_get_items_proxies_to_arcgis_and_reshapes_response(client):
     assert body["numberMatched"] == 1
 
 
+def test_get_items_omits_number_matched_when_transfer_limit_exceeded(client):
+    # REV-364 e : page tronquée par le service = total inconnu, pas `offset + len`.
+    dataset_item_id = _create_dataset(client, client.layer_item_id)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "type": "FeatureCollection",
+                "exceededTransferLimit": True,
+                "features": [
+                    {"type": "Feature", "id": 1, "properties": {"nom": "X"}, "geometry": None}
+                ],
+            },
+        )
+
+    client.app.dependency_overrides[harvest_routes.get_arcgis_http_client] = lambda: _mock_client(
+        handler
+    )
+    body = client.get(f"/v1/datasets/{dataset_item_id}/arcgis/items").json()
+    assert body["numberReturned"] == 1
+    assert "numberMatched" not in body
+
+
 def test_get_items_forwards_filters_and_bbox(client):
     dataset_item_id = _create_dataset(client, client.layer_item_id)
     seen = {}

@@ -5800,7 +5800,7 @@
           "height": {
             "default": 120,
             "title": "Height",
-            "type": "integer"
+            "type": "number"
           },
           "id": {
             "title": "Id",
@@ -5813,17 +5813,17 @@
           "width": {
             "default": 200,
             "title": "Width",
-            "type": "integer"
+            "type": "number"
           },
           "x": {
             "default": 0,
             "title": "X",
-            "type": "integer"
+            "type": "number"
           },
           "y": {
             "default": 0,
             "title": "Y",
-            "type": "integer"
+            "type": "number"
           }
         },
         "required": [
@@ -5920,12 +5920,12 @@
           "x": {
             "default": 0,
             "title": "X",
-            "type": "integer"
+            "type": "number"
           },
           "y": {
             "default": 0,
             "title": "Y",
-            "type": "integer"
+            "type": "number"
           }
         },
         "required": [
@@ -6373,8 +6373,15 @@
       "PurgeReceiptResponse": {
         "properties": {
           "completedAt": {
-            "title": "Completedat",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completedat"
           },
           "counts": {
             "additionalProperties": true,
@@ -6419,7 +6426,6 @@
           "tenantSlug",
           "requestedByUserId",
           "requestedAt",
-          "completedAt",
           "counts"
         ],
         "title": "PurgeReceiptResponse",

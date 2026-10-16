@@ -5046,7 +5046,7 @@ export interface components {
         /** PurgeReceiptResponse */
         PurgeReceiptResponse: {
             /** Completedat */
-            completedAt: string;
+            completedAt?: string | null;
             /** Counts */
             counts: {
                 [key: string]: unknown;

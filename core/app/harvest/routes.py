@@ -20,6 +20,7 @@ from app.analytics.export import (
 )
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
+from app.bbox import parse_bbox_floats
 from app.configs import repository as configs_repo
 from app.db import get_session
 from app.errors import ValidationHTTPException
@@ -48,13 +49,8 @@ def get_arcgis_http_client():  # overridé en test
 
 
 def _parse_bbox(raw: str | None) -> tuple[float, float, float, float] | None:
-    if raw is None:
-        return None
-    parts = raw.split(",")
-    if len(parts) != 4:
-        raise HTTPException(status_code=400, detail="bbox must be minx,miny,maxx,maxy")
     try:
-        return tuple(float(p) for p in parts)  # type: ignore[return-value]
+        return parse_bbox_floats(raw)
     except ValueError:
         raise HTTPException(status_code=400, detail="bbox must be minx,miny,maxx,maxy") from None
 
@@ -435,14 +431,19 @@ def get_dataset_arcgis_items(
     finally:
         client.close()
     features = raw.get("features", []) if isinstance(raw, dict) else []
-    return {
+    body: dict = {
         "type": "FeatureCollection",
         "features": features,
-        "numberMatched": offset + len(features),
         "numberReturned": len(features),
         "timeStamp": datetime.now(UTC).isoformat(),
         "links": [],
     }
+    # REV-364 e : `offset + len` n'est le total que sur la dernière page ; si le
+    # service signale `exceededTransferLimit`, le total est inconnu : on l'omet
+    # (OGC Features l'autorise ; le shell lit alors `total: null`).
+    if not (isinstance(raw, dict) and raw.get("exceededTransferLimit") is True):
+        body["numberMatched"] = offset + len(features)
+    return body
 
 
 @router.post("/datasets/{item_id}/arcgis/aggregate")

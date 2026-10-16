@@ -16,11 +16,11 @@ import "../../i18n/domains/automation";
 export function ReportScheduleEditor({
   value,
   onChange,
-  bookmarkLabel,
+  bookmarks,
 }: {
   value: ReportSchedulePayload;
   onChange: (next: ReportSchedulePayload) => void;
-  bookmarkLabel: string;
+  bookmarks: { pk: string; title: string }[];
 }) {
   function setChannel(channel: AlertChannel) {
     onChange({ ...value, channels: [channel] });
@@ -29,9 +29,25 @@ export function ReportScheduleEditor({
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-sm text-ink-2">
-        {t("reportSchedule.targetedViewLabel")} <span className="font-medium">{bookmarkLabel}</span>
-      </p>
+      <label className="flex flex-col gap-1 text-sm">
+        {t("reportSchedule.targetedViewLabel")}
+        <NativeSelect
+          required
+          value={value.bookmarkItemId}
+          onChange={(e) => onChange({ ...value, bookmarkItemId: e.target.value })}
+        >
+          <option value="">{t("reportSchedule.bookmarkPlaceholder")}</option>
+          {/* Un id hors liste (page tronquée, droit retiré) reste affiché plutôt que perdu. */}
+          {value.bookmarkItemId && !bookmarks.some((b) => b.pk === value.bookmarkItemId) && (
+            <option value={value.bookmarkItemId}>{value.bookmarkItemId}</option>
+          )}
+          {bookmarks.map((b) => (
+            <option key={b.pk} value={b.pk}>
+              {b.title}
+            </option>
+          ))}
+        </NativeSelect>
+      </label>
 
       <label className="flex flex-col gap-1 text-sm">
         {t("reportSchedule.channelLabel")}

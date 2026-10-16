@@ -60,7 +60,7 @@ from app.ingestion.storage import require_public_s3_endpoint
 from app.instance import routes as instance_routes
 from app.items import routes as items_routes
 from app.jobs import open_sync_defer
-from app.jobs.engine import jobs_backlog
+from app.jobs.engine import database_reachable, jobs_backlog
 from app.lineage import routes as lineage_routes
 from app.mapicons import routes as mapicons_routes
 from app.mcp.server import create_mcp_server
@@ -574,8 +574,15 @@ def create_app() -> FastAPI:
         now = time.monotonic()
         if now - health_cache["at"] > 5.0:
             health_cache["value"] = jobs_backlog()
+            health_cache["database"] = "ok" if database_reachable() else "unreachable"
             health_cache["at"] = now
-        return {"status": "ok", "jobsBacklog": health_cache["value"]}
+        # `status` reste « ok » (liveness : un redémarrage ne réparerait pas la base) ;
+        # `database` rend une base injoignable lisible (REV-364 g).
+        return {
+            "status": "ok",
+            "database": health_cache["database"],
+            "jobsBacklog": health_cache["value"],
+        }
 
     # Mounted last: streamable_http_app() already bakes in its own full
     # paths ("/mcp", "/.well-known/oauth-protected-resource/mcp") rather

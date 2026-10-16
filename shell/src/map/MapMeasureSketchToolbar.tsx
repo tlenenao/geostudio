@@ -54,6 +54,7 @@ export type MapMeasureSketchToolbarMap = Pick<
   | "on"
   | "off"
   | "getCanvas"
+  | "getCenter"
   | "getStyle"
   | "getSource"
   | "addSource"
@@ -298,9 +299,11 @@ export function MapMeasureSketchToolbar({
     onActiveChange?.(mode !== "idle");
   }, [mode, onActiveChange]);
 
+  // REV-363 : même chemin pour le clic souris et pour l'alternative clavier
+  // (point au centre de la carte) — l'effet ci-dessous y enregistre le handler.
+  const addPointRef = useRef<(lngLat: LngLat) => void>(() => {});
   useEffect(() => {
-    function onClick(e: unknown) {
-      const { lngLat } = e as { lngLat: LngLat };
+    function addPoint(lngLat: LngLat) {
       const current = modeRef.current;
       if (current === "measure-distance" || current === "measure-area") {
         setPoints((prev) => [...prev, lngLat]);
@@ -331,10 +334,36 @@ export function MapMeasureSketchToolbar({
       }
       if (tool === "polygon") setPolygonPoints((prev) => [...prev, lngLat]);
     }
+    addPointRef.current = addPoint;
+    function onClick(e: unknown) {
+      addPoint((e as { lngLat: LngLat }).lngLat);
+    }
     map.on("click", onClick as never);
     return () => {
       map.off("click", onClick as never);
     };
+  }, [map]);
+
+  // Le tracé libre est un geste continu : pas d'équivalent « un point ».
+  const keyboardPointAvailable =
+    mode !== "idle" && !(mode === "sketch" && sketchTool === "freehand");
+  function addPointAtCenter() {
+    if (!keyboardPointAvailable) return;
+    const { lng, lat } = map.getCenter();
+    addPointRef.current({ lng, lat });
+  }
+  const addPointAtCenterRef = useRef(addPointAtCenter);
+  addPointAtCenterRef.current = addPointAtCenter;
+  // Entrée sur la carte (canvas focalisable) = ajouter un point au centre.
+  useEffect(() => {
+    const canvas = map.getCanvas();
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      addPointAtCenterRef.current();
+    }
+    canvas.addEventListener?.("keydown", onKeyDown);
+    return () => canvas.removeEventListener?.("keydown", onKeyDown);
   }, [map]);
 
   // Un SECOND effet, car il enregistre trois autres écouteurs
@@ -492,6 +521,11 @@ export function MapMeasureSketchToolbar({
           {t("mapMeasure.clearAllButton")}
         </button>
       </div>
+      {keyboardPointAvailable && (
+        <button type="button" className={buttonCls} onClick={addPointAtCenter}>
+          {t("mapMeasure.addCenterPointButton")}
+        </button>
+      )}
       {distance !== null && <p>{formatDistance(distance)}</p>}
       {area !== null && <p>{formatArea(area)}</p>}
       <div className="flex flex-wrap gap-1">

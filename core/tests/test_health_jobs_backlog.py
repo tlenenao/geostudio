@@ -99,3 +99,13 @@ def test_health_backlog_is_null_when_queue_unreadable(monkeypatch):
     assert res.status_code == 200
     assert res.json()["status"] == "ok"
     assert res.json()["jobsBacklog"] is None
+
+
+def test_health_reports_unreachable_database_but_stays_alive(monkeypatch):
+    # REV-364 g : base morte = `database: "unreachable"`, la liveness reste 200.
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://x:y@127.0.0.1:1/none")
+    res = TestClient(create_app()).get("/health")
+    assert res.status_code == 200
+    assert res.json()["status"] == "ok"
+    assert res.json()["database"] == "unreachable"
+    assert res.json()["jobsBacklog"] is None
