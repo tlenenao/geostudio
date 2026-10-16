@@ -746,8 +746,6 @@ EXPERIMENTAL_OPS: frozenset[str] = frozenset(
         "reader.wms",
         "reader.wcs",
         "reader.wfs",
-        "reader.sentinel2",
-        "reader.landsat8",
         "transform.imageFetch",
         "transform.webMapTiler",
         "transform.geocode",
