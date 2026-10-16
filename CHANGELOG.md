@@ -35,6 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   print atlas (migration 0061 `export_jobs.scope`), Helm chart.
   `CORE_ANALYSIS_MAX_FEATURES` caps analysis reads.
 
+### Fixed
+
+- **`transform.buffer` `unit=meters`** (AUD-005): the radius is now real metres (local azimuthal
+  equidistant projection) instead of EPSG:3857 units (100 m gave ~66 m at 49°N). Buffers already
+  materialised were ~30 % too short at French latitudes; recompute them.
+
 ### Experimental
 
 - **32 pipeline operations are experimental and off by default.** They call a third-party

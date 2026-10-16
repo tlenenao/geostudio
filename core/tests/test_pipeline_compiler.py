@@ -202,6 +202,53 @@ def test_compile_buffer_meters_unit_uses_correct_axis_order(conn_spatial):
     assert far is False
 
 
+@pytest.mark.parametrize("lat", [46.0, 49.0, 60.0])
+def test_compile_buffer_meters_is_metric_at_any_latitude(conn_spatial, lat):
+    # AUD-005 : en EPSG:3857 le rayon réel valait d*cos(lat) (66 m pour 100 m à 49°N).
+    conn_spatial.execute(
+        f"CREATE TEMP TABLE pt AS SELECT 1 AS id, ST_Point(2.35, {lat}) AS geometry"
+    )
+    sql = compile_transform_sql(
+        "transform.buffer",
+        {"distance": 1000, "unit": "meters"},
+        input_view="pt",
+        input_srid=4326,
+    )
+    conn_spatial.execute(f"CREATE TEMP VIEW out_buf AS {sql}")
+    ymax, ymin, xmax = conn_spatial.execute(
+        "SELECT ST_YMax(geometry), ST_YMin(geometry), ST_XMax(geometry) FROM out_buf"
+    ).fetchone()
+    import math
+
+    north_m = (ymax - lat) * 111_195  # 1° de latitude ~ 111,195 km (sphère R=6 371 km)
+    east_m = (xmax - 2.35) * 111_195 * math.cos(math.radians(lat))
+    assert north_m == pytest.approx(1000, rel=0.01)
+    assert east_m == pytest.approx(1000, rel=0.01)
+    assert (lat - ymin) * 111_195 == pytest.approx(1000, rel=0.01)
+
+
+def test_compile_buffer_meters_projected_source_and_extra_columns(conn_spatial):
+    # Source projetée (Lambert-93) : 100 m doivent rester 100 m ; colonnes préservées,
+    # colonne interne absente de la sortie.
+    conn_spatial.execute(
+        "CREATE TEMP TABLE pl AS SELECT 7 AS id, 'a' AS name, ST_Point(652000, 6862000) AS geometry"
+    )
+    sql = compile_transform_sql(
+        "transform.buffer",
+        {"distance": 100, "unit": "meters"},
+        input_view="pl",
+        input_srid=2154,
+    )
+    conn_spatial.execute(f"CREATE TEMP VIEW out_pl AS {sql}")
+    cols = [r[0] for r in conn_spatial.execute("DESCRIBE out_pl").fetchall()]
+    assert sorted(cols) == ["geometry", "id", "name"]
+    xmax, xmin = conn_spatial.execute(
+        "SELECT ST_XMax(geometry), ST_XMin(geometry) FROM out_pl"
+    ).fetchone()
+    # Lambert-93 est quasi conforme : échelle locale ~1 à 1 % près en métropole.
+    assert xmax - xmin == pytest.approx(200, rel=0.01)
+
+
 def test_compile_reproject_uses_correct_axis_order(conn_spatial):
     sql = compile_transform_sql(
         "transform.reproject",
