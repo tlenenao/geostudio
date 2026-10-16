@@ -28,6 +28,7 @@ import { bboxFromFeatureCollection } from "../../lib/geometryBbox";
 import { t } from "../../i18n";
 import { LayersPanel } from "../../map/LayersPanel";
 import type { MapLayer } from "../../api/types";
+import { trackExportTask } from "../../shell/exportReady";
 import "../../i18n/domains/widgets";
 
 const MapView = lazy(() => import("../../map/MapView").then((m) => ({ default: m.MapView })));
@@ -247,6 +248,11 @@ export function registerMapWidget(): void {
       // `onReady` (MapView.tsx) est le seul signal fiable que `handle.current`
       // est non-null, y compris pendant que le chunk lazy de MapView charge.
       const [mapReady, setMapReady] = useState(false);
+      // AUD-001 : un export attend le `idle` de chaque carte d'app.
+      useEffect(() => {
+        if (mapReady) return;
+        return trackExportTask();
+      }, [mapReady]);
       const setExtent = useSetExtent();
       const analyticsCtx = useAnalyticsContext();
       const setCrossFilter = useSetCrossFilter();
