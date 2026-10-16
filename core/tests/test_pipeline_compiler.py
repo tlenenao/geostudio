@@ -1157,3 +1157,29 @@ def test_compile_resolve_overlaps_splits_into_disjoint_and_shared_parts(conn_spa
     conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
     count = conn_spatial.execute("SELECT count(*) FROM out").fetchone()[0]
     assert count == 3  # 2 parties disjointes + 1 partie commune
+
+
+def test_detect_changes_null_and_composite_keys(conn):
+    conn.execute("CREATE TABLE b2 (k1 INTEGER, k2 VARCHAR, v INTEGER)")
+    conn.execute("INSERT INTO b2 VALUES (1, 'a', 1), (1, 'b', 1), (NULL, 'z', 9), (2, NULL, 5)")
+    conn.execute("CREATE TABLE a2 (k1 INTEGER, k2 VARCHAR, v INTEGER)")
+    conn.execute("INSERT INTO a2 VALUES (1, 'a', 1), (1, 'b', 2), (3, 'c', 7)")
+    sql = compile_transform_sql(
+        "transform.detectChanges",
+        {"keyColumns": ["k1", "k2"], "statusColumn": "st"},
+        input_view="b2",
+        join_view="a2",
+        input_columns=["k1", "k2", "v"],
+        join_columns=["k1", "k2", "v"],
+    )
+    conn.execute(f"CREATE TEMP VIEW out2 AS {sql}")
+    got = {
+        (r[0], r[1], r[2]): r[3] for r in conn.execute("SELECT k1, k2, v, st FROM out2").fetchall()
+    }
+    assert got == {
+        (1, "a", 1): "unchanged",
+        (1, "b", 2): "updated",  # clé composite : (1,'b') != (1,'a')
+        (None, "z", 9): "deleted",  # « avant » à clé NULL : deleted, jamais inserted
+        (2, None, 5): "deleted",  # NULL sur la 2e clé d'un jeu composite
+        (3, "c", 7): "inserted",
+    }

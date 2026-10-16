@@ -39,8 +39,8 @@ INFO = TableInfo(
 _UPSERT = {"mode": "upsert", "keyColumns": ["code"]}
 
 
-def _write_src(base_dir, tenant_id, rows):
-    d = base_dir / f"tenant_id={tenant_id}" / "collection_id=k1_src" / "dt=2026-10-13"
+def _write_src(base_dir, tenant_id, rows, collection="k1_src"):
+    d = base_dir / f"tenant_id={tenant_id}" / f"collection_id={collection}" / "dt=2026-10-13"
     d.mkdir(parents=True, exist_ok=True)
     recs = [
         {
@@ -451,3 +451,28 @@ def test_deleted_counts_rows_actually_deleted(setup):
     _run(setup, [("a", "n", 1)], _UPSERT)
     st = _run(setup, [("a", "n", 1), ("zz", "n", 1)], {**_UPSERT, "mode": "delete"})
     assert st.extra["deleted"] == 1 and _count(s) == 0
+
+
+@pytest.mark.postgis
+def test_detect_changes_output_feeds_upsert_with_status_column(setup):
+    """AUD-007 : detectChanges -> writer.collection(upsert, statusColumn) écrit de vraies lignes."""
+    s, tenant, _, tmp_path = setup
+    _write_src(tmp_path, tenant.id, [("c1", "a", 1), ("c2", "b", 2), ("c3", "c", 3)])
+    _write_src(
+        tmp_path,
+        tenant.id,
+        [("c1", "a", 1), ("c2", "B", 22), ("c4", "d", 4)],
+        collection="k1_after",
+    )
+    mid = {
+        "op": "transform.detectChanges",
+        "params": {"withCollectionId": "k1_after", "keyColumns": ["code"], "statusColumn": "st"},
+    }
+    st = _run_prepared(setup, {**_UPSERT, "statusColumn": "st"}, mid=mid)
+    # inserted (c4) + updated (c2) écrits ; unchanged (c1) ignoré ; deleted (c3) ignoré en upsert.
+    assert (st.extra["rejected"], _count(s)) == (0, 2)
+    got = s.execute(
+        text("SELECT code, name, pop, geometry IS NOT NULL FROM k1_target ORDER BY code")
+    ).all()
+    assert got == [("c2", "B", 22, True), ("c4", "d", 4, True)]  # valeurs « après »
+    # statut jamais écrit comme propriété : sinon rejet `unknown_property` (rejected == 0 ci-dessus)

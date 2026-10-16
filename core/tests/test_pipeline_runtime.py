@@ -3429,6 +3429,6 @@ def test_compile_detect_changes_emits_data_and_uses_presence_sentinel():
     )
     assert "__gs_present" in sql
     assert 'AS "region"' in sql and 'AS "pop"' in sql and 'AS "st"' in sql
-    assert 't."id" IS NULL' not in sql  # plus de test sur la clé elle-même
+    assert "t.__gs_present IS NULL" in sql and "o.__gs_present IS NULL" in sql
     # région absente côté « avant » : jamais t.region référencé
     assert 't."region"' not in sql
