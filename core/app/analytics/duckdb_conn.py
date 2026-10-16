@@ -53,6 +53,10 @@ def open_connection(
     # P25.01 : threads bornés (comme sql_sandbox) pour qu'une requête HTTP
     # ne monopolise pas tous les coeurs.
     conn.execute(f"SET threads = {int(os.environ.get('CORE_DUCKDB_THREADS') or 4)}")
+    # REV-280g : fuseau fixé à la connexion (TIMESTAMPTZ, DATE_TRUNC, bornes
+    # « YYYY-MM-DD ») au lieu de dépendre du fuseau de l'hôte ; aggregate.py le
+    # repose par requête, par ceinture.
+    conn.execute("SET TimeZone='UTC'")
     return conn
 
 
@@ -93,6 +97,7 @@ def open_spatial_connection() -> duckdb.DuckDBPyConnection:
     variable d'environnement requise, aucun httpfs/h3 chargé."""
     conn = duckdb.connect(":memory:")
     conn.execute("INSTALL spatial; LOAD spatial;")
+    conn.execute("SET TimeZone='UTC'")  # REV-280g
     return conn
 
 
@@ -103,4 +108,5 @@ def open_local_connection() -> duckdb.DuckDBPyConnection:
     ST_GeomFromGeoJSON), aucune configuration s3_* requise."""
     conn = duckdb.connect(":memory:")
     conn.execute("INSTALL spatial; LOAD spatial;")
+    conn.execute("SET TimeZone='UTC'")  # REV-280g
     return conn

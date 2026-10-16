@@ -598,7 +598,9 @@ def export_collection_aggregate(
 
 EXPORT_FORMATS_ITEMS = {"csv", "xlsx", "geojson", "gpkg"}
 # P29.04 : plafond mémoire de l'export synchrone, réglable (CORE_EXPORT_ITEMS_MAX).
-# ponytail: export en mémoire, flux/job (file export) si on dépasse ~10^5 entités.
+# Export de collection : synchrone jusqu'à CORE_EXPORT_SYNC_MAX, puis job (écriture en
+# flux, analytics/export.py). Ce plafond-ci borne l'export en mémoire du moissonnage
+# (harvest/routes.py l'importe : un seul réglage, REV-283c).
 EXPORT_ITEMS_CAP = int(os.environ.get("CORE_EXPORT_ITEMS_MAX", "100000"))
 
 

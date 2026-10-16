@@ -99,18 +99,12 @@ def test_vector_index_is_not_ivfflat_built_on_empty_table():
 
 
 @pytest.mark.postgis
-@pytest.mark.xfail(
-    strict=True, reason="REV-audit: en-tête CSV avec espace -> bind param tronqué (importer.py:304)"
-)
 def test_csv_header_with_space_imports(env):
     res = _import(env, "c.csv", b"Code postal,lat,lon\n19000,45.1,1.5\n")
     assert res.collection_id
 
 
 @pytest.mark.postgis
-@pytest.mark.xfail(
-    strict=True, reason="REV-audit: propriété 'id' GeoJSON collisionne avec la PK (parsers.py:464)"
-)
 def test_geojson_property_id_imports(env):
     gj = {
         "type": "FeatureCollection",
@@ -127,9 +121,6 @@ def test_geojson_property_id_imports(env):
 
 
 @pytest.mark.postgis
-@pytest.mark.xfail(
-    strict=True, reason="REV-audit: géométrie Z rejetée par colonne 2D (importer.py:322)"
-)
 def test_geojson_3d_point_imports(env):
     gj = {
         "type": "FeatureCollection",
@@ -159,3 +150,16 @@ def test_embedding_defer_is_dropped_on_rollback(env, monkeypatch):
         s.rollback()
         s.commit()
     assert calls == []
+
+
+@pytest.mark.postgis
+@pytest.mark.parametrize(
+    "csv_text",
+    [
+        "id,lat,lon\n1,45.1,1.5\n",
+        "a-b,c.d,lat,lon\n1,2,45.1,1.5\n",
+        'Code postal,"x,y",lat,lon\n1,2,45.1,1.5\n',
+    ],
+)
+def test_csv_awkward_headers_import(env, csv_text):
+    assert _import(env, "c.csv", csv_text.encode()).collection_id

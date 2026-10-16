@@ -192,18 +192,16 @@ def test_get_export_job_unknown_id_is_404(env):
     assert response.status_code == 404
 
 
-def test_post_export_allowed_in_read_only_demo_mode(env, monkeypatch):
-    # Garde démo (core/app/main.py::read_only_guard) : l'export est une
-    # action de lecture (aucune écriture de donnée métier), doit rester
-    # utilisable en CORE_READ_ONLY_MODE=true — même raisonnement que les
-    # routes d'export SP-16a, déjà exemptées via _EXPORT_PATH_RE.
+def test_post_export_refused_in_read_only_demo_mode(env, monkeypatch):
+    # REV-358 (lot 2) : POST /export crée une ligne de job en base, donc n'est plus une
+    # lecture exemptée par read_only_guard (core/app/main.py) : 403 en lecture seule.
     make_client, owner, _stranger, item_id, _Session = env
     monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
     client, _calls = make_client()
     client.app.dependency_overrides[get_current_user] = lambda: owner
     client.app.dependency_overrides[get_current_user_optional] = lambda: owner
     response = client.post("/v1/export", json={"itemId": item_id, "format": "png"})
-    assert response.status_code == 202
+    assert response.status_code == 403
 
 
 def test_post_export_rejects_invalid_format(env):

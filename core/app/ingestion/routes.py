@@ -43,7 +43,7 @@ from app.ingestion.storage import (
 )
 from app.ingestion.tasks import run_ingestion_task
 from app.items.models import Item
-from app.quotas.service import enforce_storage_quota
+from app.quotas.service import check_quota_or_raise, enforce_storage_quota
 from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
 from app.sharing.authorization import can
@@ -187,6 +187,9 @@ def create_upload_job(
     # cette route crée réellement.
     if body.collectionId is None:
         require_privilege(session, user, Privilege.MAPS_MANAGE.value)
+        # REV-282d : échec rapide à la création du job (le worker les recontrôle).
+        check_quota_or_raise(session, tenant_id=user.tenant_id, kind="collections")
+        check_quota_or_raise(session, tenant_id=user.tenant_id, kind="items")
     else:
         # ARC-13 : un ajout n'écrit que des entités — droit d'écriture sur la collection
         # (404 si elle n'est pas lisible, 403 sinon), revérifié par le worker à l'exécution.

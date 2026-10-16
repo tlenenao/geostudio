@@ -437,6 +437,22 @@ def test_create_upload_job_allows_when_under_storage_quota(monkeypatch):
     assert resp.status_code == 201, resp.text
 
 
+def test_create_upload_job_rejects_when_collection_count_quota_is_reached(monkeypatch):
+    # REV-282d : échec rapide au POST /uploads, pas seulement au worker.
+    s3 = _FakeS3Client()
+    api, tenant = _make_ingestion_env(s3, monkeypatch)
+    monkeypatch.setenv("CORE_QUOTAS_ENABLED", "true")
+    monkeypatch.setenv("CORE_QUOTA_MAX_COLLECTIONS_PER_TENANT", "0")
+    key = f"{tenant.id}/abc-data.geojson"
+    s3.heads[key] = {"ContentLength": 10}
+
+    resp = api.post(
+        "/v1/uploads",
+        json={"key": key, "filename": "data.geojson", "collectionTitle": "Ma collection"},
+    )
+    assert resp.status_code == 409, resp.text
+
+
 def test_create_upload_job_quota_guard_disappears_when_capacity_disabled(monkeypatch):
     s3 = _FakeS3Client()
     api, tenant = _make_ingestion_env(s3, monkeypatch)
