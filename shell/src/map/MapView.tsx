@@ -12,6 +12,7 @@ import {
 } from "react";
 import * as maplibregl from "maplibre-gl";
 import type { FilterSpecification } from "maplibre-gl";
+import { resolveBasemapStyle } from "./basemaps";
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import type { DataRecord, MapConfig, ThemeColors } from "../api/types";
 import { MapLegend } from "./MapLegend";
@@ -317,7 +318,7 @@ export const MapView = forwardRef<
     if (!containerRef.current) return;
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: config.basemap.style,
+      style: resolveBasemapStyle(config.basemap.style),
       // P30.05 : libellés des contrôles MapLibre en français.
       locale: {
         "Map.Title": t("mapView.localeMapTitle"),

@@ -977,6 +977,51 @@
         "title": "BaseMap",
         "type": "object"
       },
+      "BasemapCreate": {
+        "properties": {
+          "label": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "style": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Style",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "style"
+        ],
+        "title": "BasemapCreate",
+        "type": "object"
+      },
+      "BasemapOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "style": {
+            "title": "Style",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "style"
+        ],
+        "title": "BasemapOut",
+        "type": "object"
+      },
       "BasicAuthPayload": {
         "description": "Couvre aussi un WFS/WMS/WMTS/CSW gat\u00e9 par HTTP Basic Auth, et le flux\nArcGIS Enterprise `generateToken` si un connecteur choisit de faire\nl'\u00e9change de jeton lui-m\u00eame \u2014 le coffre ne porte que le mat\u00e9riel brut.",
         "properties": {
@@ -8923,6 +8968,140 @@
         "summary": "Revoke Key"
       }
     },
+    "/v1/basemaps": {
+      "get": {
+        "operationId": "list_basemaps_v1_basemaps_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BasemapOut"
+                  },
+                  "title": "Response List Basemaps V1 Basemaps Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Basemaps"
+      },
+      "post": {
+        "operationId": "create_basemap_v1_basemaps_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BasemapCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BasemapOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Basemap"
+      }
+    },
+    "/v1/basemaps/{basemap_id}": {
+      "delete": {
+        "operationId": "delete_basemap_v1_basemaps__basemap_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "basemap_id",
+            "required": true,
+            "schema": {
+              "title": "Basemap Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Basemap"
+      }
+    },
     "/v1/collections": {
       "get": {
         "operationId": "list_collections_v1_collections_get",
@@ -10535,6 +10714,22 @@
             "schema": {
               "title": "Fid",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "crs",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Crs"
             }
           },
           {

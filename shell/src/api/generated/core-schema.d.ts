@@ -192,6 +192,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/basemaps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Basemaps */
+        get: operations["list_basemaps_v1_basemaps_get"];
+        put?: never;
+        /** Create Basemap */
+        post: operations["create_basemap_v1_basemaps_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/basemaps/{basemap_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Basemap */
+        delete: operations["delete_basemap_v1_basemaps__basemap_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/collections": {
         parameters: {
             query?: never;
@@ -3096,6 +3131,22 @@ export interface components {
         };
         /** BaseMap */
         BaseMap: {
+            /** Style */
+            style: string;
+        };
+        /** BasemapCreate */
+        BasemapCreate: {
+            /** Label */
+            label: string;
+            /** Style */
+            style: string;
+        };
+        /** BasemapOut */
+        BasemapOut: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
             /** Style */
             style: string;
         };
@@ -6075,6 +6126,103 @@ export interface operations {
             };
         };
     };
+    list_basemaps_v1_basemaps_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BasemapOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_basemap_v1_basemaps_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BasemapCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BasemapOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_basemap_v1_basemaps__basemap_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                basemap_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_collections_v1_collections_get: {
         parameters: {
             query?: {
@@ -6811,7 +6959,9 @@ export interface operations {
     };
     get_single_feature_v1_collections__collection_id__items__fid__get: {
         parameters: {
-            query?: never;
+            query?: {
+                crs?: string | null;
+            };
             header?: {
                 authorization?: string;
                 "X-Share-Link-Token"?: string | null;

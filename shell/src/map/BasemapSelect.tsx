@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { BASEMAPS } from "./basemaps";
+import { useBasemaps } from "./useBasemaps";
 import { t } from "../i18n";
 import "../i18n/domains/map";
 
@@ -10,6 +10,7 @@ export function BasemapSelect({
   value: string;
   onChange: (style: string) => void;
 }) {
+  const basemaps = useBasemaps();
   return (
     <label className="flex flex-col gap-1 text-sm">
       {t("basemapSelect.label")}
@@ -18,7 +19,7 @@ export function BasemapSelect({
         value={value}
         onChange={(e) => onChange(e.target.value)}
       >
-        {BASEMAPS.map((b) => (
+        {basemaps.map((b) => (
           <option key={b.id} value={b.style}>
             {b.label}
           </option>
