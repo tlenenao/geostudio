@@ -11,7 +11,7 @@ import type {
   Theme,
   Variable,
 } from "../types";
-import type { ItemClientBase } from "../base";
+import { toFrontLayer, type ItemClientBase, type RawMapLayer } from "../base";
 import { ifMatchHeader } from "../ifMatch";
 import { datasetPreviewConfig, mapRuntimeConfig } from "./publicSynth";
 
@@ -87,7 +87,12 @@ export function createAppsMethods(base: ItemClientBase): AppsMethods {
       }>("GET", `/public/configs/by-item/${encodeURIComponent(pk)}`);
       const c = data.config;
       // AUD-075 : map/dataset n'ont pas de layout, on en synthétise un (en mémoire).
-      if (c?.kind === "map" && c.map) return mapRuntimeConfig(c.map);
+      // Piège n°5 : mêmes couches que le chemin authentifié (toFrontLayer : défauts, champs nuls).
+      if (c?.kind === "map" && c.map)
+        return mapRuntimeConfig({
+          ...c.map,
+          layers: (c.map.layers ?? []).map((l) => toFrontLayer(l as unknown as RawMapLayer)),
+        });
       if (c?.kind === "dataset" && c.dataset?.source === "collection" && c.dataset.collectionId)
         return datasetPreviewConfig(c.dataset.collectionId);
       if (!c?.layout) throw new Error("getPublicAppConfig: config has no layout");

@@ -3228,6 +3228,32 @@ test("getPublicAppConfig reads the wrapped ConfigRead shape (config.layout, not 
   expect(cfg.layout.items[0]).toMatchObject({ id: "w1", widget: "text" });
 });
 
+test("getPublicAppConfig (map publique) passe les couches par toFrontLayer", async () => {
+  server.use(
+    http.get("https://core.test/v1/public/configs/by-item/m1", () =>
+      HttpResponse.json({
+        id: "cfg-1",
+        itemId: "m1",
+        kind: "map",
+        config: {
+          kind: "map",
+          map: {
+            basemap: { style: "https://x.test/s.json" },
+            view: { center: [0, 0], zoom: 2 },
+            layers: [
+              { id: "l1", title: "L", visible: true, kind: "feature", url: null, paint: null },
+            ],
+          },
+        },
+      }),
+    ),
+  );
+  const cfg = await makeClient().getPublicAppConfig("m1");
+  const layer = (cfg.layout.items[0].props as { layers: Record<string, unknown>[] }).layers[0];
+  expect(layer.url).toBe("");
+  expect("paint" in layer).toBe(false);
+});
+
 test("getPublicAppConfig throws when the config has no layout", async () => {
   server.use(
     http.get("https://core.test/v1/public/configs/by-item/s1", () =>
