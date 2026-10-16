@@ -218,13 +218,19 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
     .filter((item) => item.widget === "map")
     .flatMap((item) => (item.props.layers as MapLayer[] | undefined) ?? [])
     .filter((layer) => layer.visible);
+  const exportCtx =
+    currentAnalyticsContext.timeRange ||
+    currentAnalyticsContext.extent ||
+    Object.keys(currentAnalyticsContext.crossFilter).length > 0
+      ? encodeAnalyticsContext(currentAnalyticsContext)
+      : undefined;
   return (
     <main className="relative flex h-full w-full flex-col">
       {/* REV-284 : repère <main> + h1 pour les lecteurs d'écran (route hors AppLayout). */}
       <h1 className="sr-only">{itemQuery.data?.title}</h1>
       {showActionBar && (
         <div className="flex justify-end gap-2 border-b border-rule p-2">
-          {exportEnabled && <ExportPanel itemId={pk} />}
+          {exportEnabled && <ExportPanel itemId={pk} ctx={exportCtx} />}
           {exportEnabled && query.data.printLayout?.atlas && (
             <ExportPanel itemId={pk} atlas label={t("atlas.exportPdf")} />
           )}

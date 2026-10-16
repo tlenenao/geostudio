@@ -1126,7 +1126,7 @@ export interface ItemClient {
   createExport(
     itemId: string,
     format: ExportFormat,
-    scope?: { entityId?: string; atlas?: boolean },
+    scope?: { entityId?: string; atlas?: boolean; ctx?: string },
   ): Promise<{ jobId: string }>;
   getExportJob(jobId: string): Promise<ExportJob>;
   cancelExport(jobId: string): Promise<ExportJob>;

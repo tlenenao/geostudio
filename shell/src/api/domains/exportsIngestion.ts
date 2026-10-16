@@ -56,7 +56,7 @@ export function createExportsIngestionMethods(base: ItemClientBase): ExportsInge
     async createExport(
       itemId: string,
       format: ExportFormat,
-      scope?: { entityId?: string; atlas?: boolean },
+      scope?: { entityId?: string; atlas?: boolean; ctx?: string },
     ): Promise<{ jobId: string }> {
       return request<{ jobId: string }>("POST", `/export`, { itemId, format, ...scope });
     },

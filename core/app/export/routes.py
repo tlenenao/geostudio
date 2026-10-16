@@ -40,6 +40,10 @@ class CreateExportRequest(BaseModel):
     # ARC-26 / ARC-30 (PDF d'app seulement) : fiche d'une entité, ou atlas.
     entityId: str | None = Field(default=None, max_length=200)
     atlas: bool = False
+    # AUD-133 : contexte analytique courant (période, emprise, cross-filter) tel
+    # qu'encodé par le shell (`?ctx=`, base64url). Charset restreint : la valeur
+    # est recopiée dans l'URL que le worker ouvre.
+    ctx: str | None = Field(default=None, max_length=16000, pattern=r"^[A-Za-z0-9_-]+$")
 
 
 class CreateExportResponse(BaseModel):
@@ -96,6 +100,7 @@ def create_export_route(
         item_id=body.itemId,
         user_id=user.id,
         format=body.format,
+        ctx=body.ctx,
         scope=scope,
     )
     write_audit(
