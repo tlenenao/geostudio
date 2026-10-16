@@ -23,3 +23,19 @@ class MapIcon(Base):
     content_type: Mapped[str] = mapped_column(String, nullable=False)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, nullable=False)
+
+
+class TenantBasemap(Base):
+    """Fond de carte partagé du tenant (REV-367 i / ARC-09a). `style` = URL d'un
+    style MapLibre (http/https) ou `xyz:<gabarit de tuiles raster {z}/{x}/{y}>`
+    (cf. shell/src/map/basemaps.ts::resolveBasemapStyle)."""
+
+    __tablename__ = "tenant_basemaps"
+    __table_args__ = (Index("ix_tenant_basemaps_tenant_id", "tenant_id"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
+    label: Mapped[str] = mapped_column(String, nullable=False)
+    style: Mapped[str] = mapped_column(String, nullable=False)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, nullable=False)

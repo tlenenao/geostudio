@@ -46,13 +46,26 @@ def get_icon(session: Session, *, tenant_id: str, icon_id: str) -> MapIcon | Non
     )
 
 
-def is_used_by_public_item(session: Session, *, tenant_id: str, icon_id: str) -> bool:
+def is_used_by_public_item(
+    session: Session,
+    *,
+    tenant_id: str,
+    icon_id: str,
+    only_item_ids: frozenset[str] | None = None,
+) -> bool:
     """Une version courante de config d'un item public/publié cite l'id de l'icône.
+    Avec `only_item_ids` (jeton invité, REV-367 b) : seuls ces items comptent,
+    publics ou non — l'icône doit être liée à la ressource partagée.
     ponytail: recherche de sous-chaîne dans le JSON (id uuid, faux positif négligeable),
     balayage des configs publiques du tenant ; index/table d'usage si ça devient lent."""
     from app.configs.models import Config, ConfigRevision
     from app.items.models import Item
 
+    scope = (
+        Config.item_id.in_(only_item_ids)
+        if only_item_ids is not None
+        else (Item.is_public.is_(True)) | (Item.is_published.is_(True))
+    )
     return (
         session.scalar(
             select(Config.id)
@@ -64,7 +77,7 @@ def is_used_by_public_item(session: Session, *, tenant_id: str, icon_id: str) ->
             .join(Item, Item.id == Config.item_id)
             .where(
                 Config.tenant_id == tenant_id,
-                (Item.is_public.is_(True)) | (Item.is_published.is_(True)),
+                scope,
                 cast(ConfigRevision.data, Text).contains(icon_id),
             )
             .limit(1)

@@ -703,6 +703,10 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
   const [genericError, setGenericError] = useState(false);
   // ARC-04 : ETag de l'enregistrement en cours d'édition (If-Match) ; conflit = 412.
   const [etag, setEtag] = useState<string | null>(null);
+  // REV-367 d : lecture de l'ETag en cours (pas de soumission sans If-Match) et champs
+  // saisis par l'utilisateur (la lecture tardive ne les écrase pas).
+  const [etagLoading, setEtagLoading] = useState(false);
+  const editedRef = useRef<Set<string>>(new Set());
   const [conflict, setConflict] = useState(false);
   const [editingId, setEditingId] = useState<string | number | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -800,24 +804,36 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
   // `getFeature` ou lecture en échec : on garde ce qui est affiché, sans If-Match).
   async function syncFromServer(fid: string | number, applyValues: boolean) {
     if (!client.getFeature) return;
+    setEtagLoading(true);
     try {
       const f = await client.getFeature(collectionId, String(fid));
       setEtag(f.etag);
       if (applyValues) {
-        setValues({ ...f.properties });
-        setLoadedGeometry(f.geometry ?? null);
-        const g = f.geometry as { type?: string; coordinates?: number[] } | null;
-        if (geometryType === "Point" && g?.type === "Point" && Array.isArray(g.coordinates)) {
-          setLon(String(g.coordinates[0]));
-          setLat(String(g.coordinates[1]));
+        // Les champs déjà saisis par l'utilisateur priment sur la lecture serveur.
+        const edited = editedRef.current;
+        setValues((old) => {
+          const next = { ...f.properties };
+          for (const name of edited) if (name in old) next[name] = old[name];
+          return next;
+        });
+        if (!edited.has("__geom")) {
+          setLoadedGeometry(f.geometry ?? null);
+          const g = f.geometry as { type?: string; coordinates?: number[] } | null;
+          if (geometryType === "Point" && g?.type === "Point" && Array.isArray(g.coordinates)) {
+            setLon(String(g.coordinates[0]));
+            setLat(String(g.coordinates[1]));
+          }
         }
       }
     } catch {
       setEtag(null);
+    } finally {
+      setEtagLoading(false);
     }
   }
 
   function resetTo() {
+    editedRef.current = new Set();
     setEtag(null);
     setConflict(false);
     setValues({});
@@ -840,6 +856,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     if (!record) return;
     setEditingId(record.id);
     setConflict(false);
+    editedRef.current = new Set();
     setEtag(null);
     void syncFromServer(record.id, true);
     setValues({ ...record.properties });
@@ -869,6 +886,8 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // REV-367 d : jamais d'écriture sans If-Match tant que l'ETag est en cours de lecture.
+    if (etagLoading) return;
     const allTouched: Record<string, boolean> = {};
     fields.forEach((f) => {
       allTouched[f.name] = true;
@@ -909,6 +928,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
       if (err instanceof ApiError && err.status === 412 && editingId !== null) {
         // ARC-04 : modifié ailleurs depuis la lecture — message + rechargement des valeurs.
         setConflict(true);
+        editedRef.current = new Set();
         void syncFromServer(editingId, true);
         void queryClient.invalidateQueries({ queryKey: ["datasource"] });
       } else if (err instanceof FeatureValidationError) {
@@ -1011,6 +1031,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
               value={values[f.name]}
               onChange={(v) =>
                 setValues((old) => {
+                  editedRef.current.add(f.name);
                   const next = { ...old, [f.name]: v };
                   // ARC-13 : choisir un sous-type pré-remplit ses défauts sur les champs vides.
                   const sub = schemaQuery.data?.subtypes;
@@ -1061,7 +1082,10 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
               step="any"
               className={fieldInputCls}
               value={lon}
-              onChange={(e) => setLon(e.target.value)}
+              onChange={(e) => {
+                editedRef.current.add("__geom");
+                setLon(e.target.value);
+              }}
             />
           </label>
           <label className="flex flex-1 flex-col gap-1">
@@ -1071,7 +1095,10 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
               step="any"
               className={fieldInputCls}
               value={lat}
-              onChange={(e) => setLat(e.target.value)}
+              onChange={(e) => {
+                editedRef.current.add("__geom");
+                setLat(e.target.value);
+              }}
             />
           </label>
         </div>
@@ -1104,6 +1131,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
           fid={String(editingId)}
           canWrite={canWrite}
           onRestored={() => {
+            editedRef.current = new Set();
             void syncFromServer(editingId, true);
             void queryClient.invalidateQueries({ queryKey: ["datasource"] });
           }}
@@ -1127,7 +1155,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
           // convention que widgets/index.tsx (bouton) et tabs.tsx (onglet actif).
           <button
             type="submit"
-            disabled={write.isPending}
+            disabled={write.isPending || etagLoading}
             className="rounded-[var(--gs-radius)] bg-[var(--gs-color-primary)] px-3 py-1.5 text-sm text-white disabled:opacity-50" // gs-raw-color-ok: cf. commentaire ci-dessus
           >
             {String(props.submitLabel ?? t("widgetForm.submitDefault"))}

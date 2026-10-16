@@ -25,11 +25,11 @@ from app.items.service import (
     get_item_service,
     get_sharing_service,
     link_creator_can_still_share,
+    parse_if_match,
     require_kind_privilege,
-    require_publish_rights,
     set_sharing_service,
+    update_item_service,
 )
-from app.items.slug import InvalidSlugError, SlugCollisionError
 from app.items.storage import InMemoryThumbnailStore, ThumbnailStore
 from app.roles.guards import require_privilege
 from app.roles.privileges import Privilege
@@ -147,13 +147,6 @@ def get_item(
     return get_item_service(session, item_id=item_id, user=user)
 
 
-def _parse_if_match(value: str | None) -> str | None:
-    """`If-Match: "<updatedAt>"` (ou `W/"…"`) ; absent ou `*` = pas de garde."""
-    if value is None or value.strip() == "*":
-        return None
-    return value.strip().removeprefix("W/").strip('"')
-
-
 @router.patch("/items/{item_id}", response_model=ItemRead)
 def update_item(
     item_id: str,
@@ -162,64 +155,13 @@ def update_item(
     user: User = Depends(get_current_user),
     if_match: str | None = Header(default=None),
 ) -> ItemRead:
-    facts = repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
-    if facts is None or not can(session, user_id=user.id, action="read", item=facts):
-        raise HTTPException(status_code=404, detail="item not found")
-    if not can(session, user_id=user.id, action="write", item=facts):
-        raise HTTPException(status_code=403, detail="not allowed to modify this item")
-    require_kind_privilege(session, user, facts)
-    if patch.isPublished is not None and patch.isPublished != facts.is_published:
-        require_publish_rights(session, user, facts)
-    # ARC-05 : statut de contenu et catégories = gouvernance du catalogue.
-    if patch.contentStatus is not None or patch.categories is not None:
-        require_privilege(session, user, Privilege.CATALOG_MANAGE.value)
-
-    try:
-        result = repo.update_item(
-            session,
-            tenant_id=user.tenant_id,
-            item_id=item_id,
-            title=patch.title,
-            abstract=patch.abstract,
-            keywords=patch.keywords,
-            is_published=patch.isPublished,
-            slug=patch.slug,
-            license=patch.license,
-            language=patch.language,
-            content_status=patch.contentStatus,
-            categories=patch.categories,
-            current_user_id=user.id,
-            expected_updated_at=_parse_if_match(if_match),
-        )
-    except repo.StaleItemVersion as err:
-        raise HTTPException(
-            status_code=412,
-            detail=f"stale version: the item is now at {err.current}",
-        ) from None
-    except SlugCollisionError as err:
-        raise HTTPException(status_code=409, detail=str(err)) from err
-    except InvalidSlugError as err:
-        raise HTTPException(status_code=422, detail=str(err)) from err
-    if result is None:
-        raise HTTPException(status_code=404, detail="item not found")
-
-    if patch.isPublished is True:
-        action = "item.publish"
-    elif patch.isPublished is False:
-        action = "item.unpublish"
-    else:
-        action = "item.update"
-    write_audit(
+    return update_item_service(
         session,
-        tenant_id=user.tenant_id,
-        actor_id=user.id,
-        actor_kind="user",
-        action=action,
-        object_type="item",
-        object_id=item_id,
-        payload={},
+        item_id=item_id,
+        user=user,
+        patch=patch,
+        expected_updated_at=parse_if_match(if_match),
     )
-    return result
 
 
 @router.post("/items/{item_id}/thumbnail", status_code=status.HTTP_204_NO_CONTENT)

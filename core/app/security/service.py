@@ -11,7 +11,9 @@ from sqlalchemy.orm import Session
 from app.configs.models import Config, ConfigRevision
 from app.extensions.models import Extension
 from app.harvest.models import HarvestSource
+from app.mapicons.models import TenantBasemap
 from app.security.csp_hosts import (
+    extract_basemap_hosts,
     extract_config_external_hosts,
     extract_extension_hosts,
     extract_harvest_hosts,
@@ -56,6 +58,8 @@ def compute_csp_allowlist(session: Session) -> CspAllowlist:
     tile_hosts = extract_harvest_hosts(sources)
     for body in _latest_map_config_bodies(session):
         tile_hosts |= extract_config_external_hosts(body)
+    # REV-367 i : fonds de carte du tenant (style.json ou gabarit raster `xyz:`).
+    tile_hosts |= extract_basemap_hosts(list(session.scalars(select(TenantBasemap.style)).all()))
     return CspAllowlist(
         img_hosts=set(tile_hosts),
         connect_hosts=set(tile_hosts),

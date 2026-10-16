@@ -45,6 +45,7 @@ def env(monkeypatch, httpserver: HTTPServer):
     ids = {}
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
+        ids["tenant"] = tenant.id
         alice = get_or_create_user(
             s,
             tenant_id=tenant.id,
@@ -136,3 +137,27 @@ def test_anonymous_icon_used_by_public_item_is_served(env):
 def test_anonymous_icon_not_referenced_by_public_item_is_404(env):
     client, ids = env
     assert client.get(f"/v1/map-icons/{ids['unused']}/file").status_code == 404
+
+
+def _as_guest(client, ids, *allowed):
+    from app.configs.guest_access import GuestActor, get_share_link_actor
+
+    guest = GuestActor(
+        tenant_id=ids["tenant"],
+        item_id=allowed[0],
+        share_link_id="l",
+        created_by="u",
+        allowed_item_ids=frozenset(allowed),
+        allowed_collection_ids=frozenset(),
+    )
+    client.app.dependency_overrides[get_share_link_actor] = lambda: guest
+
+
+def test_guest_token_reads_only_icons_of_the_shared_resource(env):
+    # REV-367 b : le jeton invité ne lit pas « toute icône du tenant ».
+    client, ids = env
+    _as_guest(client, ids, ids["pub"])
+    assert client.get(f"/v1/map-icons/{ids['used']}/file").status_code == 200
+    assert client.get(f"/v1/map-icons/{ids['unused']}/file").status_code == 404
+    _as_guest(client, ids, ids["priv"])  # item partagé qui ne cite pas l'icône
+    assert client.get(f"/v1/map-icons/{ids['used']}/file").status_code == 404

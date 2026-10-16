@@ -36,6 +36,7 @@ from app.errors import ValidationHTTPException
 from app.ingestion.routes import get_s3_client
 from app.ingestion.storage import ensure_uploads_bucket
 from app.mapicons import repository as repo
+from app.mapicons.basemap_routes import router as basemap_router
 from app.mapicons.models import MapIcon
 from app.mapicons.schemas import (
     ALLOWED_CONTENT_TYPES,
@@ -45,11 +46,15 @@ from app.mapicons.schemas import (
     MapIconOut,
 )
 from app.mapicons.svg import SvgRejected, sanitize_svg, sniff_content_type
+from app.quotas.service import enforce_storage_quota
+from app.roles.guards import require_privilege
+from app.roles.privileges import Privilege
 from app.users.models import User
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+router.include_router(basemap_router)  # REV-367 i : fonds de carte du tenant
 
 _SAFE_FILENAME = re.compile(r"[^A-Za-z0-9._-]+")
 
@@ -108,6 +113,9 @@ def create_map_icon(
     session: Session = Depends(get_session, scope="function"),
     s3_client=Depends(get_s3_client),
 ) -> MapIconOut:
+    # REV-364 (d) : écrire dans la bibliothèque exige de pouvoir éditer des
+    # cartes (`maps.manage`, privilège du Créateur) ; le Lecteur est refusé.
+    require_privilege(session, user, Privilege.MAPS_MANAGE)
     # Bornes de longueur, précédent app/tileset3d/schemas.py:5-7. Les champs
     # arrivent en multipart, donc validés ici et non par un modèle pydantic.
     for name, value in (("title", title), ("category", category)):
@@ -161,6 +169,8 @@ def create_map_icon(
     bucket = get_mapicons_bucket()
     ensure_uploads_bucket(s3_client, bucket)
     s3_client.put_object(Bucket=bucket, Key=key, Body=body, ContentType=sniffed)
+    # Quota de stockage du tenant (413) ; l'objet fautif est supprimé au refus.
+    enforce_storage_quota(session, s3_client, tenant_id=user.tenant_id, bucket=bucket, key=key)
 
     icon = repo.create_icon(
         session,
@@ -246,10 +256,16 @@ def read_map_icon_file(
     icon = repo.get_icon(session, tenant_id=read_tenant_id(session, user, guest), icon_id=icon_id)
     # REV-359 : hors session authentifiée, l'icône n'est servie que si un item
     # lisible publiquement (ou le jeton invité) la référence — jamais par simple id.
+    # REV-367 b : un jeton invité ne lit que les icônes citées par les items
+    # qu'il couvre (`allowed_item_ids`), pas toute icône du tenant.
     if icon is None or (
         user is None
-        and guest is None
-        and not repo.is_used_by_public_item(session, tenant_id=icon.tenant_id, icon_id=icon_id)
+        and not repo.is_used_by_public_item(
+            session,
+            tenant_id=icon.tenant_id,
+            icon_id=icon_id,
+            only_item_ids=guest.allowed_item_ids if guest is not None else None,
+        )
     ):
         raise HTTPException(status_code=404, detail="icon not found")
     try:

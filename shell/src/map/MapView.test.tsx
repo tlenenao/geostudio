@@ -2571,6 +2571,20 @@ test("timeRange filters a vector layer with timeField through setFilter, without
   expect(JSON.stringify(filterOf())).not.toContain("date");
 });
 
+// REV-304 : les cellules `__agg` n'ont pas de champ temporel : masquées pendant la fenêtre,
+// rétablies (filtre d'origine) à sa levée.
+test("timeRange masks the precomputed aggregate cells and restores them afterwards", () => {
+  const cfg = tiled({ geometryKind: "point", timeField: "date" });
+  const { rerender } = render(<MapView config={cfg} />);
+  const map = mapInstances[0];
+  const aggFilter = () => (map.getLayer("communes__agg") as { filter?: unknown }).filter;
+  const original = aggFilter();
+  rerender(<MapView config={cfg} timeRange={{ from: "2024-01-01", to: "2024-01-07" }} />);
+  expect(aggFilter()).toEqual(["==", 1, 0]);
+  rerender(<MapView config={cfg} timeRange={null} />);
+  expect(aggFilter()).toEqual(original);
+});
+
 // REV-285 (e) : surbrillance et cellules agrégées suivent la bascule
 // clair/sombre par setPaintProperty, sans recréer carte, sources ni couches.
 test("theme switch repaints the highlight and aggregate layers in place", async () => {

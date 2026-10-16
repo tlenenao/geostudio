@@ -977,6 +977,51 @@
         "title": "BaseMap",
         "type": "object"
       },
+      "BasemapCreate": {
+        "properties": {
+          "label": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "style": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Style",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "style"
+        ],
+        "title": "BasemapCreate",
+        "type": "object"
+      },
+      "BasemapOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "style": {
+            "title": "Style",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "style"
+        ],
+        "title": "BasemapOut",
+        "type": "object"
+      },
       "BasicAuthPayload": {
         "description": "Couvre aussi un WFS/WMS/WMTS/CSW gat\u00e9 par HTTP Basic Auth, et le flux\nArcGIS Enterprise `generateToken` si un connecteur choisit de faire\nl'\u00e9change de jeton lui-m\u00eame \u2014 le coffre ne porte que le mat\u00e9riel brut.",
         "properties": {
@@ -3422,6 +3467,92 @@
           "updatedAt"
         ],
         "title": "GeoLimitRead",
+        "type": "object"
+      },
+      "GeocodeJobOut": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "errors": {
+            "title": "Errors",
+            "type": "integer"
+          },
+          "found": {
+            "title": "Found",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "not_found": {
+            "title": "Not Found",
+            "type": "integer"
+          },
+          "processed": {
+            "title": "Processed",
+            "type": "integer"
+          },
+          "results": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/BatchRow"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Results"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "total",
+          "processed",
+          "found",
+          "not_found",
+          "errors"
+        ],
+        "title": "GeocodeJobOut",
+        "type": "object"
+      },
+      "GeocodeJobRequest": {
+        "properties": {
+          "addresses": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 5000,
+            "minItems": 1,
+            "title": "Addresses",
+            "type": "array"
+          }
+        },
+        "required": [
+          "addresses"
+        ],
+        "title": "GeocodeJobRequest",
         "type": "object"
       },
       "GeocodeResponse": {
@@ -8923,6 +9054,140 @@
         "summary": "Revoke Key"
       }
     },
+    "/v1/basemaps": {
+      "get": {
+        "operationId": "list_basemaps_v1_basemaps_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BasemapOut"
+                  },
+                  "title": "Response List Basemaps V1 Basemaps Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Basemaps"
+      },
+      "post": {
+        "operationId": "create_basemap_v1_basemaps_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BasemapCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BasemapOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Basemap"
+      }
+    },
+    "/v1/basemaps/{basemap_id}": {
+      "delete": {
+        "operationId": "delete_basemap_v1_basemaps__basemap_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "basemap_id",
+            "required": true,
+            "schema": {
+              "title": "Basemap Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Basemap"
+      }
+    },
     "/v1/collections": {
       "get": {
         "operationId": "list_collections_v1_collections_get",
@@ -10535,6 +10800,22 @@
             "schema": {
               "title": "Fid",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "crs",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Crs"
             }
           },
           {
@@ -14200,6 +14481,112 @@
           }
         },
         "summary": "Geocode Many",
+        "tags": [
+          "geocoding"
+        ]
+      }
+    },
+    "/v1/geocode/jobs": {
+      "post": {
+        "description": "Lot asynchrone avec reprise (REV-367 j) : jusqu'\u00e0 5000 adresses, progression\npar GET /geocode/jobs/{id}. Le POST /batch synchrone reste pour <= 500.",
+        "operationId": "create_geocode_job_v1_geocode_jobs_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GeocodeJobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeocodeJobOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Geocode Job",
+        "tags": [
+          "geocoding"
+        ]
+      }
+    },
+    "/v1/geocode/jobs/{job_id}": {
+      "get": {
+        "operationId": "get_geocode_job_v1_geocode_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeocodeJobOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Geocode Job",
         "tags": [
           "geocoding"
         ]

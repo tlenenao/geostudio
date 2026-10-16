@@ -556,6 +556,7 @@ ignore_imports = [
     "app.db -> app.reports.models",
     "app.db -> app.appexport.models",
     "app.db -> app.mapicons.models",
+    "app.db -> app.geocoding.models",
     "app.db -> app.roles.models",
     "app.db -> app.attachments.models",
     "app.db -> app.compliance.models",

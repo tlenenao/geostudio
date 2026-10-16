@@ -715,6 +715,9 @@ export type MapIconOut = {
   createdAt: string;
 };
 
+/** Fond de carte partagé du tenant (`GET /v1/basemaps`, REV-367 i). */
+export type TenantBasemapOut = { id: string; label: string; style: string };
+
 // Pagination générique pour les endpoints déjà paginés côté serveur mais dont
 // les fonctions shell n'envoyaient jusqu'ici jamais `limit`/`offset` (SP-50,
 // constat non corrigé côté shell) : GET /collections, GET /reports/{id}/runs,
@@ -880,6 +883,8 @@ export interface ItemClient {
   // de séquence presign → PUT → POST à orchestrer côté client.
   uploadMapIcon(file: File, title: string, category: string): Promise<MapIconOut>;
   listMapIcons(): Promise<MapIconOut[]>;
+  /** Optionnel : absent des clients sans cœur (export statique, desktop). */
+  listTenantBasemaps?(): Promise<TenantBasemapOut[]>;
   deleteMapIcon(iconId: string): Promise<void>;
   // Blob, pas URL : la route est gardée par bearer token, qu'une balise
   // <img> ne porterait pas. Le jeton ne sort jamais d'itemClient.ts.

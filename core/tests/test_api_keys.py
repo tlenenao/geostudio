@@ -227,6 +227,19 @@ def test_usage_is_audited_and_throttled(env):
         assert s.scalars(select(AuditLog).where(AuditLog.action == "api_key.create")).first()
 
 
+def test_usage_audit_survives_a_rolled_back_request(env):
+    # REV-367 e : une requête en erreur (rollback) n'annule plus last_used_at ni l'audit.
+    _client, Session, (tenant_id, admin_id, _) = env
+    key_id, token = _mint(Session, admin_id)
+    with Session() as s:
+        assert service.authenticate(s, token=token, tenant_id=tenant_id) is not None
+        s.rollback()  # réponse en erreur : request_scoped_session annule la transaction
+    with Session() as s:
+        assert s.get(ApiKey, key_id).last_used_at is not None
+        uses = s.scalars(select(AuditLog).where(AuditLog.action == "api_key.use")).all()
+        assert [u.object_id for u in uses] == [key_id]
+
+
 def test_hash_comparison_is_constant_time(env, monkeypatch):
     client, Session, (_, admin_id, _) = env
     _, token = _mint(Session, admin_id)

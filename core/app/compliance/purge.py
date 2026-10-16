@@ -41,13 +41,14 @@ from app.configs.models import Config, ConfigRevision
 from app.dataexport.models import CollectionExportJob
 from app.export.models import ExportJob
 from app.extensions.models import Extension
+from app.geocoding.models import GeocodeJob
 from app.harvest.models import HarvestRecord, HarvestSource
 from app.history.models import EntityHistory
 from app.ingestion.models import IngestionJob
 from app.ingestion.routes import get_uploads_bucket
 from app.items.models import Item
 from app.jobs.after_commit import run_after_commit
-from app.mapicons.models import MapIcon
+from app.mapicons.models import MapIcon, TenantBasemap
 from app.notifications.models import Notification, NotificationPreference
 from app.outbox.models import FileTrigger, FileTriggerSeen, OutboundWebhook, OutboxEvent
 from app.pipelines import checkpoints
@@ -302,6 +303,8 @@ def purge_tenant(
     counts["connector_secrets"] = _delete_all(session, ConnectorSecret, tenant_id)
     counts["harvest_sources"] = _delete_all(session, HarvestSource, tenant_id)
     counts["map_icons"] = _delete_all(session, MapIcon, tenant_id)
+    counts["tenant_basemaps"] = _delete_all(session, TenantBasemap, tenant_id)
+    counts["geocode_jobs"] = _delete_all(session, GeocodeJob, tenant_id)
     counts["extensions"] = _delete_all(session, Extension, tenant_id)
     counts["group_members"] = _delete_all(session, GroupMember, tenant_id)
     counts["group_claim_mappings"] = _delete_all(session, GroupClaimMapping, tenant_id)

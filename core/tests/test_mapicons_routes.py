@@ -411,3 +411,42 @@ def test_map_icons_cannot_be_registered_as_a_business_collection(env):
     from app.db import core_table_names
 
     assert "map_icons" in core_table_names()
+
+
+def test_a_reader_without_maps_manage_cannot_upload_an_icon(env):
+    # REV-364 (d) : l'écriture dans la bibliothèque exige `maps.manage`.
+    from app.roles.repository import ensure_built_in_roles
+
+    app, client, Session, tenant, _alice, fake_s3 = env
+    with Session() as s:
+        roles = ensure_built_in_roles(s, tenant_id=tenant.id)
+        reader = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="r",
+            username="reader",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        reader.role_id = roles["reader"].id
+        s.commit()
+        s.refresh(reader)
+    _as(app, reader)
+    assert _upload(client).status_code == 403
+    assert fake_s3.objects == {}
+
+
+def test_upload_over_the_storage_quota_is_refused_and_the_object_removed(env, monkeypatch):
+    # REV-364 (d) : quota de stockage du tenant (413), objet fautif supprimé.
+    app, client, _Session, _tenant, alice, fake_s3 = env
+    monkeypatch.setenv("CORE_QUOTAS_ENABLED", "true")
+    monkeypatch.setenv("CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT", "10")
+    fake_s3.list_objects_v2 = lambda **kw: {
+        "Contents": [{"Key": k, "Size": len(v)} for k, v in fake_s3.objects.items()],
+        "IsTruncated": False,
+    }
+    _as(app, alice)
+    response = _upload(client)
+    assert response.status_code == 413, response.text
+    assert fake_s3.objects == {}

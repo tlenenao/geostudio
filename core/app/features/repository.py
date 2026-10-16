@@ -115,8 +115,7 @@ def _split_filter_key(raw_name: str) -> tuple[str, str | None]:
     return raw_name, None
 
 
-# ARC-02 : CRS de sortie / de bbox acceptés (EPSG). 4326 = lon/lat (CRS84) comme GeoJSON.
-SUPPORTED_EPSG = (4326, 3857, 2154)
+# ARC-02 : CRS de sortie / de bbox acceptés (EPSG), cf. app.ogc_crs.
 
 
 def _temporal_clause(
@@ -405,14 +404,16 @@ def _coerce_fid(info: TableInfo, fid: str):
     return fid
 
 
-def get_feature(session: Session, info: TableInfo, *, fid: str) -> dict | None:
+def get_feature(
+    session: Session, info: TableInfo, *, fid: str, out_srid: int | None = None
+) -> dict | None:
     value = _coerce_fid(info, fid)
     if value is None:
         return None
     with geo_source(session, info) as src:
         row = session.execute(
             text(
-                f"SELECT {_select_list(session, info)} FROM {src} "
+                f"SELECT {_select_list(session, info, out_srid)} FROM {src} "
                 f"WHERE {quote_ident(session, info.pk_column)} = :fid"
             ),
             {"fid": value},

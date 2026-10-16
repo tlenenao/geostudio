@@ -177,6 +177,35 @@ def test_crs_lambert93_matches_postgis_transform(client, pg_engine):
     assert client.get(URL, params={"crs": uri}).status_code == 200
 
 
+def test_single_feature_crs_and_content_crs_header(client, pg_engine):
+    # REV-367 a : `crs` aussi sur GET /items/{fid} ; l'ETag reste celui de la vue de stockage.
+    base = client.get(f"{URL}/1")
+    r = client.get(f"{URL}/1", params={"crs": "EPSG:2154"})
+    assert r.status_code == 200
+    assert r.headers["Content-Crs"] == "<http://www.opengis.net/def/crs/EPSG/0/2154>"
+    assert r.json()["geometry"]["coordinates"][0] > 1000
+    assert r.headers["ETag"] == base.headers["ETag"]
+    assert client.get(f"{URL}/1", params={"crs": "EPSG:9999"}).status_code == 400
+
+
+def test_crs84_is_advertised_and_epsg_4326_uri_refused(client):
+    # Part 2 : l'URI EPSG/0/4326 impose lat/lon (non servi) ; CRS84 = lon/lat.
+    crs84 = "http://www.opengis.net/def/crs/OGC/1.3/CRS84"
+    r = client.get(URL, params={"crs": crs84})
+    assert r.status_code == 200
+    assert r.headers["Content-Crs"] == f"<{crs84}>"
+    r = client.get(URL, params={"crs": "http://www.opengis.net/def/crs/EPSG/0/4326"})
+    assert r.status_code == 400
+    assert r.json()["errors"][0]["code"] == "invalid_crs"
+
+
+def test_collection_description_lists_storage_crs(client):
+    body = client.get("/v1/collections/demo_a2").json()
+    assert body["storageCrs"] == "http://www.opengis.net/def/crs/OGC/1.3/CRS84"
+    assert body["storageCrs"] in body["crs"]
+    assert "http://www.opengis.net/def/crs/EPSG/0/2154" in body["crs"]
+
+
 def test_crs_unsupported_is_400(client):
     for bad in ("EPSG:9999", "bidon", "EPSG:"):
         r = client.get(URL, params={"crs": bad})

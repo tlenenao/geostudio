@@ -292,6 +292,8 @@ export async function mockCore(page: Page) {
   // bannière de connectivité (suivi par requête, plus levée par le premier
   // succès venu) — le sondage de notifications du chrome est donc mocké ici,
   // en premier : toute route enregistrée ensuite par un spec le surcharge.
+  // REV-367 i : fonds de carte du tenant (aucun par défaut).
+  await page.route("https://core.test/v1/basemaps", (route) => route.fulfill({ json: [] }));
   await page.route("https://core.test/v1/notifications**", (route) => {
     const url = route.request().url();
     if (url.includes("/unread-count")) return route.fulfill({ json: { count: 0 } });

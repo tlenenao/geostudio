@@ -60,10 +60,11 @@ from app.configs.guest_access import GuestActor, get_share_link_actor
 from app.db import get_session
 from app.errors import ValidationHTTPException
 from app.features.etag import feature_etag, if_match_satisfied
-from app.features.repository import SUPPORTED_EPSG, CursorError, FilterError
+from app.features.repository import CursorError, FilterError
 from app.features.validation import validate_for_write
 from app.filter_values import fold_query_filters
 from app.history import service as history
+from app.ogc_crs import SUPPORTED_EPSG, crs_uri
 from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
 from app.sharing.authorization import can
@@ -228,6 +229,10 @@ def parse_crs(raw: str | None, field: str) -> int | None:
     if raw is None:
         return None
     tail = raw.strip().rstrip("/").rsplit("/", 1)[-1].rsplit(":", 1)[-1]
+    if tail == "4326" and "/EPSG/" in raw:
+        # Part 2 : l'URI EPSG/0/4326 impose l'ordre lat/lon, que nous ne servons
+        # pas ; CRS84 (ou le raccourci `EPSG:4326`) donne lon/lat.
+        tail = "0"
     code = 4326 if tail.upper() == "CRS84" else int(tail) if tail.isdigit() else None
     if code not in SUPPORTED_EPSG:
         raise _validation_error(
@@ -396,7 +401,7 @@ def list_features(
             [{"field": exc.field, "code": exc.code, "message": exc.message}]
         ) from exc
     if out_srid is not None:
-        response.headers["Content-Crs"] = f"<http://www.opengis.net/def/crs/EPSG/0/{out_srid}>"
+        response.headers["Content-Crs"] = f"<{crs_uri(out_srid)}>"
     body: dict = {"type": "FeatureCollection", "features": page.features}
     if page.number_matched is not None:
         body["numberMatched"] = page.number_matched
@@ -803,6 +808,7 @@ def get_single_feature(
     collection_id: str,
     fid: str,
     response: Response,
+    crs: str | None = None,
     user=Depends(get_current_user_optional),
     guest: GuestActor | None = Depends(get_share_link_actor),
     session: Session = Depends(get_session, scope="function"),
@@ -816,12 +822,21 @@ def get_single_feature(
     info = introspect(session, col.table_name)
     if masked:
         info = hide_sensitive_columns(info, col.sensitive_fields)
+    out_srid = parse_crs(crs, "crs")
     with rls(session, col.tenant_id, masked=masked):
         feature = repo.get_feature(session, info, fid=fid)
-    if feature is None:
+        projected = (
+            repo.get_feature(session, info, fid=fid, out_srid=out_srid)
+            if out_srid is not None and feature is not None
+            else feature
+        )
+    if feature is None or projected is None:
         raise HTTPException(status_code=404, detail="feature not found")
+    # ETag sur la vue de stockage : If-Match reste valable d'un CRS à l'autre.
     response.headers["ETag"] = feature_etag(feature)
-    return feature
+    if out_srid is not None:
+        response.headers["Content-Crs"] = f"<{crs_uri(out_srid)}>"
+    return projected
 
 
 def _enforce_if_match(session, repo, view_info, fid, if_match):

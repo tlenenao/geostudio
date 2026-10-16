@@ -1383,6 +1383,40 @@ test("editing sends If-Match with the ETag read at load time", async () => {
   );
 });
 
+test("REV-367 d : une lecture serveur tardive n'écrase pas la saisie et bloque l'envoi sans ETag", async () => {
+  const bus = editBus();
+  const updateFeature = vi.fn().mockResolvedValue(undefined);
+  let resolveRead: (v: unknown) => void = () => {};
+  const getFeature = vi.fn().mockReturnValue(
+    new Promise((res) => {
+      resolveRead = res;
+    }),
+  );
+  renderConnectedForm({ client: { updateFeature, getFeature }, bus });
+  bus.emit("table1", "itemSelected", { id: 7, properties: { titre: "Fuite existante" } });
+  const input = await screen.findByDisplayValue("Fuite existante");
+  // ETag pas encore lu : l'envoi est désactivé (pas de PUT sans If-Match).
+  expect(screen.getByRole("button", { name: "Enregistrer" })).toBeDisabled();
+  await userEvent.clear(input);
+  await userEvent.type(input, "Ma saisie");
+  resolveRead({
+    id: 7,
+    properties: { titre: "Valeur serveur", gravite: "moyenne" },
+    geometry: null,
+    etag: '"v1"',
+  });
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Enregistrer" })).not.toBeDisabled(),
+  );
+  expect(screen.getByDisplayValue("Ma saisie")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() =>
+    expect(updateFeature).toHaveBeenCalledWith("incidents", "7", expect.anything(), {
+      ifMatch: '"v1"',
+    }),
+  );
+});
+
 test("a 412 shows the conflict message and reloads the up-to-date values", async () => {
   const bus = editBus();
   const updateFeature = vi.fn().mockRejectedValue(new ApiError(412));
