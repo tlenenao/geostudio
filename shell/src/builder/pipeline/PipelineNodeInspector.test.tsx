@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 import type { CollectionAdmin, ItemClient, PipelineNode, PipelineOpEntry } from "../../api/types";
@@ -172,7 +172,7 @@ test("an array-of-string field renders a comma-separated input parsed to a strin
     paramsSchema: {
       properties: {
         groupBy: { type: "array", items: { type: "string" } },
-        metrics: { type: "object" },
+        metrics: { type: "object", additionalProperties: { type: "string" } },
       },
       required: [],
     },
@@ -196,7 +196,7 @@ test("an object field renders a key-value editor; adding a row updates the dict"
     paramsSchema: {
       properties: {
         groupBy: { type: "array", items: { type: "string" } },
-        metrics: { type: "object" },
+        metrics: { type: "object", additionalProperties: { type: "string" } },
       },
       required: [],
     },
@@ -414,4 +414,51 @@ test("an enum field without a stored value or default shows an empty option sele
   const select = screen.getByLabelText("format") as HTMLSelectElement;
   expect(select.value).toBe("");
   expect(Array.from(select.options).map((o) => o.value)).toEqual(["", "csv", "geojson"]);
+});
+
+// REV-325
+const jsonEntry: PipelineOpEntry = {
+  kind: "transform",
+  paramsSchema: {
+    properties: {
+      multipartFields: { type: "array", items: {} },
+      paginatorConfig: { type: "object", additionalProperties: true },
+    },
+    required: [],
+  },
+};
+const jsonNode: PipelineNode = {
+  id: "h1",
+  kind: "transform",
+  op: "transform.httpCall",
+  x: 0,
+  y: 0,
+  params: { multipartFields: [], paginatorConfig: {} },
+};
+
+test("multipartFields et paginatorConfig sont édités en JSON, entiers conservés", () => {
+  const { onChange } = renderInspector(jsonNode, jsonEntry);
+  const cfg = screen.getByLabelText("paginatorConfig");
+  fireEvent.change(cfg, { target: { value: '{"limit": 50}' } });
+  fireEvent.blur(cfg);
+  expect(onChange).toHaveBeenLastCalledWith({
+    multipartFields: [],
+    paginatorConfig: { limit: 50 },
+  });
+  const mp = screen.getByLabelText("multipartFields");
+  fireEvent.change(mp, { target: { value: '[{"name":"f","valueExpr":"id"}]' } });
+  fireEvent.blur(mp);
+  expect(onChange).toHaveBeenLastCalledWith({
+    multipartFields: [{ name: "f", valueExpr: "id" }],
+    paginatorConfig: { limit: 50 },
+  });
+});
+
+test("un JSON invalide ou de mauvaise forme affiche une erreur sans rien propager", () => {
+  const { onChange } = renderInspector(jsonNode, jsonEntry);
+  const mp = screen.getByLabelText("multipartFields");
+  fireEvent.change(mp, { target: { value: "{}" } });
+  fireEvent.blur(mp);
+  expect(screen.getByRole("alert")).toHaveTextContent("un tableau est attendu");
+  expect(onChange).not.toHaveBeenCalled();
 });
