@@ -1099,12 +1099,8 @@ def test_compile_snap_to_layer(conn_spatial):
     assert row == ("POINT (3.0005 45.0005)",)
 
 
-def test_compile_snap_to_layer_is_a_cross_join_with_every_reference_row(conn_spatial):
-    # M11 (REV-199) : fige le produit cartésien documenté en docstring seulement
-    # (`FROM input t, join o`) — N lignes d'entrée x M lignes de référence = N*M lignes de
-    # sortie. L'entrée secondaire doit être réduite à UNE ligne en amont (cf.
-    # TransformSnapToLayerParams) ; si le SQL change un jour, ce test doit être réécrit
-    # volontairement, pas contourné.
+def test_compile_snap_to_layer_preserves_input_cardinality(conn_spatial):
+    # AUD-006 : N lignes d'entrée x M références doit rendre N lignes, pas N*M.
     conn_spatial.execute("CREATE TABLE ref2 (id INTEGER, geometry GEOMETRY)")
     conn_spatial.execute(
         "INSERT INTO ref2 VALUES "
@@ -1115,13 +1111,30 @@ def test_compile_snap_to_layer_is_a_cross_join_with_every_reference_row(conn_spa
         "transform.snapToLayer", {"tolerance": 0.01}, input_view="base", join_view="ref2"
     )
     conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
-    assert conn_spatial.execute("SELECT count(*) FROM out").fetchone() == (4,)  # 2 x 2
-    assert conn_spatial.execute(
-        "SELECT id, count(*) FROM out GROUP BY id ORDER BY id"
-    ).fetchall() == [
-        (1, 2),
-        (2, 2),
-    ]
+    assert conn_spatial.execute("SELECT count(*) FROM out").fetchone() == (2,)
+    assert conn_spatial.execute("SELECT id FROM out ORDER BY id").fetchall() == [(1,), (2,)]
+
+
+def test_compile_snap_to_layer_empty_reference_keeps_geometry(conn_spatial):
+    conn_spatial.execute("CREATE TABLE ref_empty (id INTEGER, geometry GEOMETRY)")
+    sql = compile_transform_sql(
+        "transform.snapToLayer", {"tolerance": 0.01}, input_view="base", join_view="ref_empty"
+    )
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    assert conn_spatial.execute("SELECT count(*) FROM out").fetchone() == (2,)
+    assert conn_spatial.execute("SELECT count(*) FROM out WHERE geometry IS NULL").fetchone() == (
+        0,
+    )
+
+
+@pytest.mark.parametrize("bad", [0, -1, float("inf"), float("nan")])
+def test_snap_to_layer_tolerance_must_be_positive_and_finite(bad):
+    from pydantic import ValidationError
+
+    from app.pipelines.ops.schemas import TransformSnapToLayerParams
+
+    with pytest.raises(ValidationError):
+        TransformSnapToLayerParams(tolerance=bad)
 
 
 def test_compile_snap_to_layer_without_join_view_raises():

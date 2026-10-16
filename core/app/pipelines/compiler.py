@@ -779,10 +779,13 @@ def _compile_snap_to_layer(
 ) -> str:
     p = TransformSnapToLayerParams.model_validate(params)
     assert join_view is not None, "transform.snapToLayer requires join_view"
+    # AUD-006 : la référence est réduite à UNE géométrie (union) pour conserver la
+    # cardinalité de l'entrée ; référence vide -> NULL -> on garde la géométrie d'origine.
     return (
+        f"WITH ref AS (SELECT ST_Union_Agg(geometry) AS g FROM {_qi(join_view)}) "
         f"SELECT t.* EXCLUDE (geometry), "
-        f"ST_Snap(t.geometry, o.geometry, {p.tolerance}) AS geometry "
-        f"FROM {_qi(input_view)} t, {_qi(join_view)} o"
+        f"COALESCE(ST_Snap(t.geometry, ref.g, {p.tolerance}), t.geometry) AS geometry "
+        f"FROM {_qi(input_view)} t CROSS JOIN ref"
     )
 
 
