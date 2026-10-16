@@ -36,6 +36,7 @@ from app.errors import ValidationHTTPException
 from app.ingestion.routes import get_s3_client
 from app.ingestion.storage import ensure_uploads_bucket
 from app.mapicons import repository as repo
+from app.mapicons.basemap_routes import router as basemap_router
 from app.mapicons.models import MapIcon
 from app.mapicons.schemas import (
     ALLOWED_CONTENT_TYPES,
@@ -53,6 +54,7 @@ from app.users.models import User
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+router.include_router(basemap_router)  # REV-367 i : fonds de carte du tenant
 
 _SAFE_FILENAME = re.compile(r"[^A-Za-z0-9._-]+")
 

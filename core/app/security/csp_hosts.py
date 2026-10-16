@@ -66,6 +66,11 @@ def extract_config_external_hosts(body: dict) -> set[str]:
     return hosts
 
 
+def extract_basemap_hosts(styles: Sequence[str]) -> set[str]:
+    """Origines des fonds de carte du tenant : URL de style, ou gabarit raster `xyz:<url>`."""
+    return {o for s in styles if (o := _origin(s.removeprefix("xyz:")))}
+
+
 class _ExtensionLike(Protocol):
     module_url: str
 
