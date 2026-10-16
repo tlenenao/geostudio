@@ -6,9 +6,40 @@ import { t } from "../i18n";
 import { ANALYTICS_AGGREGATES, aggregateNeedsP, DEFAULT_PERCENTILE } from "./aggregates";
 import { PercentileInput } from "./PercentileInput";
 import { Button } from "../ui/kit/Button";
+import { useDatasetConfig } from "../api/hooks";
 import "../i18n/domains/widgets";
 
-type Measure = { field?: string; agg: string; label?: string; p?: number };
+type Measure = { field?: string; agg: string; label?: string; p?: number; metric?: string };
+
+// REV-119 : ajoute une mesure référençant une métrique nommée du dataset de la source.
+function MetricPicker({
+  sourceId,
+  datasetId,
+  onPick,
+}: {
+  sourceId: string;
+  datasetId: string;
+  onPick: (key: string) => void;
+}) {
+  const { data } = useDatasetConfig(datasetId);
+  const entries = Object.entries(data?.metrics ?? {});
+  if (entries.length === 0) return null;
+  return (
+    <select
+      aria-label={t("dataSourcePanel.addMetricAria", { id: sourceId })}
+      className="h-9 rounded border border-control bg-surface px-2 text-xs text-ink"
+      value=""
+      onChange={(e) => e.target.value && onPick(e.target.value)}
+    >
+      <option value="">{t("dataSourcePanel.addMetricOption")}</option>
+      {entries.map(([key, m]) => (
+        <option key={key} value={key}>
+          {m.label || key}
+        </option>
+      ))}
+    </select>
+  );
+}
 
 const BUCKET_OPTIONS: { value: BucketGranularity; label: string }[] = [
   { value: "hour", label: t("dataSourcePanel.bucketHourOption") },
@@ -271,66 +302,77 @@ export function DataSourcePanel({
                   <ul className="flex flex-col gap-1">
                     {measuresOf(s).map((m, mi) => (
                       <li key={mi} className="flex items-center gap-1">
-                        <select
-                          aria-label={t("dataSourcePanel.measureAggAria", { n: mi + 1, id: s.id })}
-                          className={selectCls}
-                          value={m.agg}
-                          onChange={(e) =>
-                            setMeasures(
-                              s,
-                              measuresOf(s).map((x, i) =>
-                                i === mi
-                                  ? {
-                                      ...x,
-                                      agg: e.target.value,
-                                      p: aggregateNeedsP(e.target.value)
-                                        ? DEFAULT_PERCENTILE
-                                        : undefined,
-                                    }
-                                  : x,
-                              ),
-                            )
-                          }
-                        >
-                          {ANALYTICS_AGGREGATES.map((a) => (
-                            <option key={a.value} value={a.value}>
-                              {a.label}
-                            </option>
-                          ))}
-                        </select>
-                        <input
-                          aria-label={t("dataSourcePanel.measureFieldAria", {
-                            n: mi + 1,
-                            id: s.id,
-                          })}
-                          placeholder={t("dataSourcePanel.fieldPlaceholder")}
-                          className={inputCls}
-                          value={String(m.field ?? "")}
-                          onChange={(e) =>
-                            setMeasures(
-                              s,
-                              measuresOf(s).map((x, i) =>
-                                i === mi ? { ...x, field: e.target.value } : x,
-                              ),
-                            )
-                          }
-                        />
-                        {aggregateNeedsP(m.agg) && (
-                          <PercentileInput
-                            label={t("dataSourcePanel.measurePercentileLabel", {
-                              n: mi + 1,
-                              id: s.id,
-                            })}
-                            value={Number(m.p ?? DEFAULT_PERCENTILE)}
-                            className={inputCls}
-                            placeholder={t("dataSourcePanel.measurePercentilePlaceholder")}
-                            onCommit={(p) =>
-                              setMeasures(
-                                s,
-                                measuresOf(s).map((x, i) => (i === mi ? { ...x, p } : x)),
-                              )
-                            }
-                          />
+                        {m.metric ? (
+                          <span className="text-xs">
+                            {t("dataSourcePanel.metricMeasure", { key: m.metric })}
+                          </span>
+                        ) : (
+                          <>
+                            <select
+                              aria-label={t("dataSourcePanel.measureAggAria", {
+                                n: mi + 1,
+                                id: s.id,
+                              })}
+                              className={selectCls}
+                              value={m.agg}
+                              onChange={(e) =>
+                                setMeasures(
+                                  s,
+                                  measuresOf(s).map((x, i) =>
+                                    i === mi
+                                      ? {
+                                          ...x,
+                                          agg: e.target.value,
+                                          p: aggregateNeedsP(e.target.value)
+                                            ? DEFAULT_PERCENTILE
+                                            : undefined,
+                                        }
+                                      : x,
+                                  ),
+                                )
+                              }
+                            >
+                              {ANALYTICS_AGGREGATES.map((a) => (
+                                <option key={a.value} value={a.value}>
+                                  {a.label}
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              aria-label={t("dataSourcePanel.measureFieldAria", {
+                                n: mi + 1,
+                                id: s.id,
+                              })}
+                              placeholder={t("dataSourcePanel.fieldPlaceholder")}
+                              className={inputCls}
+                              value={String(m.field ?? "")}
+                              onChange={(e) =>
+                                setMeasures(
+                                  s,
+                                  measuresOf(s).map((x, i) =>
+                                    i === mi ? { ...x, field: e.target.value } : x,
+                                  ),
+                                )
+                              }
+                            />
+                            {aggregateNeedsP(m.agg) && (
+                              <PercentileInput
+                                label={t("dataSourcePanel.measurePercentileLabel", {
+                                  n: mi + 1,
+                                  id: s.id,
+                                })}
+                                value={Number(m.p ?? DEFAULT_PERCENTILE)}
+                                className={inputCls}
+                                placeholder={t("dataSourcePanel.measurePercentilePlaceholder")}
+                                onCommit={(p) =>
+                                  setMeasures(
+                                    s,
+                                    measuresOf(s).map((x, i) => (i === mi ? { ...x, p } : x)),
+                                  )
+                                }
+                              />
+                            )}
+                          </>
                         )}
                         <button
                           type="button"
@@ -360,6 +402,15 @@ export function DataSourcePanel({
                 >
                   {t("dataSourcePanel.addMeasureButton")}
                 </button>
+                {s.datasetId && (
+                  <MetricPicker
+                    sourceId={s.id}
+                    datasetId={s.datasetId}
+                    onPick={(key) =>
+                      setMeasures(s, [...measuresOf(s), { agg: "count", metric: key }])
+                    }
+                  />
+                )}
               </div>
             )}
             {s.type === "static" && (
