@@ -42,9 +42,17 @@ jobs:
       - run: uv run alembic upgrade head
       - run: uv run alembic downgrade base
 
-  core:
+  # Suite cœur répartie en 4 shards (par fichier, hachage stable — voir
+  # core/tests/conftest.py, CORE_TEST_SHARD) : la suite monolithique frôlait
+  # puis dépassait les 75 min (49-68 min mesurés, annulée à 1h15 le
+  # 2026-10-13). Chaque shard a sa propre base postgis.
+  core-tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     defaults:
       run:
         working-directory: core
@@ -53,6 +61,8 @@ jobs:
       # P27.01 : base réelle obligatoire en CI — sans elle les tests postgis
       # échouent au lieu de skipper en vert (core/tests/conftest.py).
       CORE_REQUIRE_DB: "1"
+      CORE_TEST_SHARD: ${{ matrix.shard }}/4
+      COVERAGE_FILE: cov-shard-${{ matrix.shard }}.dat
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/docker-mirror
@@ -74,13 +84,47 @@ jobs:
           done
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
       - run: uv sync
+      - run: uv run pytest --cov=app --cov-report=
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: core-cov-shard-${{ matrix.shard }}
+          path: core/cov-shard-${{ matrix.shard }}.dat
+          include-hidden-files: true
+
+  # Job d'agrégation : garde le nom `core` (check requis par la protection de
+  # branche, runbook 2026-10-10-release-v0.1.1) et porte les portes qui ne
+  # dépendent pas de la base. `if: always()` + 1re étape : un shard
+  # échoué/annulé fait échouer `core` (jamais « skipped »), et les jobs en aval
+  # (`api-types-drift`, `feature-health`) ne sont plus sautés en silence.
+  core:
+    needs: core-tests
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: core
+    steps:
+      - name: Tous les shards de tests doivent être verts
+        run: |
+          echo "core-tests : ${{ needs.core-tests.result }}"
+          [ "${{ needs.core-tests.result }}" = "success" ]
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - run: uv sync
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy --strict app/auth app/secrets app/analytics app/copilot app/admin_tools app/roles app/net_pin.py
-      - run: uv run pytest --cov=app --cov-report=xml:coverage.xml
       # P27.09 : retention.py (rotation des sauvegardes) vit hors de
       # `testpaths = ["tests"]` — sans cette ligne, aucun job ne le garde.
       - run: uv run pytest --no-cov ../deploy/backup/test_retention.py
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: core-cov-shard-*
+          path: core
+          merge-multiple: true
+      - run: uv run coverage combine cov-shard-*.dat
+      - run: uv run coverage xml -o coverage.xml
       - run: uv run python scripts/check_coverage.py coverage.xml .coverage-threshold
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

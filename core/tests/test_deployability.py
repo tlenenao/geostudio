@@ -808,7 +808,7 @@ def test_release_gate_starts_postgres_like_ci():
     précède ces tests : la porte ne les avait jamais rencontrés. C'est la
     forme « chemin de release jamais exercé » de la classe de bug que ce
     fichier existe pour arrêter, un cran au-dessus du compose."""
-    ci_flags = _postgres_run_flags(CI, "core")
+    ci_flags = _postgres_run_flags(CI, "core-tests")
     release_flags = _postgres_run_flags(RELEASE, "test-gate")
     missing = ci_flags - release_flags
     assert not missing, (
@@ -875,7 +875,7 @@ def test_release_gate_arm64_starts_postgres_like_ci():
     porte arm64 doit démarrer Postgres avec au moins les réglages du job
     `core` de ci.yml, pour la même raison (sinon elle n'exécute pas les
     mêmes tests que la CI amd64)."""
-    ci_flags = _postgres_run_flags(CI, "core")
+    ci_flags = _postgres_run_flags(CI, "core-tests")
     release_flags = _postgres_run_flags(RELEASE, "test-gate-arm64")
     missing = ci_flags - release_flags
     assert not missing, (

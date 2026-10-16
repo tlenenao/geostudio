@@ -4,6 +4,7 @@
 et la clé de test fixe du coffre de secrets (SP-15e, ci-dessous)."""
 
 import os
+import zlib
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,26 @@ os.environ.setdefault("CORE_SECRETS_MASTER_KEY", "AAECAwQFBgcICQoLDA0ODxAREhMUFR
 # qui monkeypatch.setenv("CORE_ENV", ...) explicitement reste maître de sa
 # propre valeur (ex. test_mock_mode_guard.py ci-dessus).
 os.environ.setdefault("CORE_ENV", "development")
+
+
+def shard_of(nodeid: str, total: int) -> int:
+    """Index (0-based) du shard d'un test. Hachage stable du FICHIER (pas du
+    nodeid) : les fixtures de module et les tests couplés d'un même fichier
+    restent ensemble. ponytail: pas d'équilibrage par durée ; pytest-split si
+    un shard dérive."""
+    return zlib.crc32(nodeid.split("::")[0].encode()) % total
+
+
+def pytest_collection_modifyitems(config, items):
+    """CORE_TEST_SHARD=i/N (i de 1 à N) : ne garde que les tests du shard i.
+    Sert à répartir la suite sur N jobs CI (ci.yml, `core-tests`)."""
+    spec = os.environ.get("CORE_TEST_SHARD")
+    if not spec:
+        return
+    index, total = (int(x) for x in spec.split("/"))
+    kept = [i for i in items if shard_of(i.nodeid, total) == index - 1]
+    config.hook.pytest_deselected(items=[i for i in items if i not in kept])
+    items[:] = kept
 
 
 @pytest.fixture(scope="session")

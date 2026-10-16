@@ -217,6 +217,11 @@ dev = [
     # core (même statut que ruff/mypy ci-dessus).
 ]
 
+# `coverage xml` après `coverage combine` des shards CI (ci.yml) : mêmes fichiers
+# source que `--cov=app`, y compris ceux qu'aucun test n'importe.
+[tool.coverage.run]
+source = ["app"]
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
