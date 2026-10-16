@@ -7,7 +7,7 @@ import { useItemClient } from "../api/ItemClientProvider";
 import { AppRenderer } from "../builder/AppRenderer";
 import { registerBuiltinWidgets } from "../builder/widgets";
 import { DatasetDownloadButtons } from "../builder/DatasetDownloadButtons";
-import type { AppConfig } from "../api/types";
+import { datasetPreviewConfig } from "../api/domains/publicSynth";
 import { plural, t } from "../i18n";
 import { PublicNotFound } from "./PublicNotFound";
 import { useDocumentMeta } from "../shell/useDocumentMeta";
@@ -17,50 +17,6 @@ import "../i18n/domains/admin";
 import "../i18n/domains/misc";
 
 registerBuiltinWidgets();
-
-// Synthesized in memory, never persisted — the read-only preview reuses the
-// single AppRenderer(config, "runtime") runtime (A31), never a bespoke
-// map/table pairing.
-function previewConfig(collectionId: string, attachmentField: string | undefined): AppConfig {
-  const dataSourceId = "dataset-preview";
-  return {
-    kind: "app",
-    theme: {},
-    dataSources: [
-      { id: dataSourceId, type: "features", service: "core", layer: collectionId, query: {} },
-    ],
-    messages: [],
-    layout: {
-      type: "grid",
-      breakpoints: {},
-      items: [
-        {
-          id: "dataset-preview-map",
-          widget: "map",
-          ordinal: 1,
-          x: 0,
-          y: 0,
-          w: 6,
-          h: 6,
-          props: {
-            dataSourceId,
-            ...(attachmentField ? { popup: { attachmentField } } : {}),
-          },
-        },
-        {
-          id: "dataset-preview-table",
-          widget: "table",
-          ordinal: 1,
-          x: 6,
-          y: 0,
-          w: 6,
-          h: 6,
-          props: { dataSourceId, columns: [], pageSize: 10 },
-        },
-      ],
-    },
-  };
-}
 
 export function DatasetPage({ collectionId }: { collectionId: string }) {
   const client = useItemClient();
@@ -128,7 +84,7 @@ export function DatasetPage({ collectionId }: { collectionId: string }) {
         <CollectionProfilePanel collectionId={collectionId} id="dataset-profile-panel" />
       ) : null}
       <div className="h-[480px] w-full">
-        <AppRenderer config={previewConfig(collectionId, attachmentField)} mode="runtime" />
+        <AppRenderer config={datasetPreviewConfig(collectionId, attachmentField)} mode="runtime" />
       </div>
     </main>
   );

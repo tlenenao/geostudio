@@ -3242,6 +3242,75 @@ test("getPublicAppConfig throws when the config has no layout", async () => {
   await expect(makeClient().getPublicAppConfig("s1")).rejects.toThrow();
 });
 
+test("getPublicAppConfig (AUD-075) synthétise un AppConfig carte pour un item map publié", async () => {
+  server.use(
+    http.get("https://core.test/v1/public/configs/by-item/m1", () =>
+      HttpResponse.json({
+        id: "cfg-m",
+        itemId: "m1",
+        kind: "map",
+        version: 1,
+        config: {
+          kind: "map",
+          map: {
+            basemap: { style: "https://style.test/s.json" },
+            view: { center: [2.1, 48.8], zoom: 9 },
+            layers: [
+              {
+                id: "l1",
+                title: "Communes",
+                visible: true,
+                kind: "feature",
+                url: "https://core.test/v1/x",
+              },
+            ],
+          },
+        },
+      }),
+    ),
+  );
+  const cfg = await makeClient().getPublicAppConfig("m1");
+  const w = cfg.layout.items[0];
+  expect(w.widget).toBe("map");
+  expect(w.props).toMatchObject({
+    basemapStyle: "https://style.test/s.json",
+    center: [2.1, 48.8],
+    zoom: 9,
+  });
+  expect((w.props as { layers: unknown[] }).layers).toHaveLength(1);
+});
+
+test("getPublicAppConfig (AUD-075) synthétise carte+table pour un item dataset publié", async () => {
+  server.use(
+    http.get("https://core.test/v1/public/configs/by-item/d1", () =>
+      HttpResponse.json({
+        id: "cfg-d",
+        itemId: "d1",
+        kind: "dataset",
+        version: 1,
+        config: { kind: "dataset", dataset: { source: "collection", collectionId: "col-9" } },
+      }),
+    ),
+  );
+  const cfg = await makeClient().getPublicAppConfig("d1");
+  expect(cfg.dataSources[0]).toMatchObject({ type: "features", layer: "col-9" });
+  expect(cfg.layout.items.map((i) => i.widget)).toEqual(["map", "table"]);
+});
+
+test("getPublicAppConfig (AUD-075) refuse un dataset arcgis (pas de collection locale)", async () => {
+  server.use(
+    http.get("https://core.test/v1/public/configs/by-item/d2", () =>
+      HttpResponse.json({
+        id: "cfg-d2",
+        itemId: "d2",
+        kind: "dataset",
+        config: { kind: "dataset", dataset: { source: "arcgis", arcgisItemId: "x" } },
+      }),
+    ),
+  );
+  await expect(makeClient().getPublicAppConfig("d2")).rejects.toThrow();
+});
+
 test("createConfigItem transmits the slug in the POST body when given", async () => {
   let body: any;
   server.use(

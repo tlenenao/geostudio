@@ -2,9 +2,13 @@
 import type {
   ActionMessage,
   AppConfig,
+  BaseMap,
   CopilotTurnResult,
   DataSource,
   ItemClient,
+  MapLayer,
+  MapTerrainConfig,
+  MapViewport,
   Page,
   PrintLayoutConfig,
   Theme,
@@ -12,6 +16,7 @@ import type {
 } from "../types";
 import type { ItemClientBase } from "../base";
 import { ifMatchHeader } from "../ifMatch";
+import { datasetPreviewConfig, mapRuntimeConfig } from "./publicSynth";
 
 type AppsMethods = Pick<
   ItemClient,
@@ -70,7 +75,7 @@ export function createAppsMethods(base: ItemClientBase): AppsMethods {
     async getPublicAppConfig(pk: string): Promise<AppConfig> {
       const data = await request<{
         config?: {
-          kind?: "app" | "dashboard";
+          kind?: "app" | "dashboard" | "map" | "dataset";
           theme?: Theme;
           dataSources?: DataSource[];
           messages?: ActionMessage[];
@@ -79,12 +84,23 @@ export function createAppsMethods(base: ItemClientBase): AppsMethods {
           layout?: AppConfig["layout"] | null;
           navigationMode?: "tabs" | "story";
           interactions?: "auto" | "manual";
+          map?: {
+            basemap: BaseMap;
+            view: MapViewport;
+            layers: MapLayer[];
+            terrain?: MapTerrainConfig | null;
+          };
+          dataset?: { source?: string; collectionId?: string | null };
         };
       }>("GET", `/public/configs/by-item/${encodeURIComponent(pk)}`);
       const c = data.config;
+      // AUD-075 : map/dataset n'ont pas de layout, on en synthétise un (en mémoire).
+      if (c?.kind === "map" && c.map) return mapRuntimeConfig(c.map);
+      if (c?.kind === "dataset" && c.dataset?.source === "collection" && c.dataset.collectionId)
+        return datasetPreviewConfig(c.dataset.collectionId);
       if (!c?.layout) throw new Error("getPublicAppConfig: config has no layout");
       return {
-        kind: c.kind ?? "app",
+        kind: c.kind === "dashboard" ? "dashboard" : "app",
         theme: c.theme ?? {},
         dataSources: c.dataSources ?? [],
         messages: c.messages ?? [],

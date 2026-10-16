@@ -44,3 +44,46 @@ test("catalogue public : liste, filtre par type, ouverture d'un site par son slu
   await page.getByRole("button", { name: /Ouvrir/ }).click();
   await expect(page).toHaveURL(/\/sites\/portail-ouvert$/);
 });
+
+test("AUD-075 : une carte publiée s'ouvre sans connexion (plus d'« introuvable »)", async ({
+  page,
+}) => {
+  await mockCore(page);
+  const item = {
+    pk: "m1",
+    resourceType: "map",
+    title: "Carte ouverte",
+    abstract: "",
+    owner: "alice",
+    thumbnailUrl: null,
+    date: "",
+    configId: "cfg-m",
+    isPublished: true,
+    keywords: [],
+    license: "",
+    language: "fr",
+    permissions: { read: true, write: false, delete: false, share: false },
+  };
+  await page.route("https://core.test/v1/items/m1*", (r) => r.fulfill({ json: item }));
+  await page.route("https://core.test/v1/public/configs/by-item/m1", (r) =>
+    r.fulfill({
+      json: {
+        id: "cfg-m",
+        itemId: "m1",
+        kind: "map",
+        version: 1,
+        config: {
+          kind: "map",
+          map: {
+            basemap: { style: "https://core.test/style.json" },
+            view: { center: [2.4, 46.6], zoom: 5 },
+            layers: [],
+          },
+        },
+      },
+    }),
+  );
+  await page.goto("/public/items/m1");
+  await expect(page.getByRole("heading", { level: 1, name: "Carte ouverte" })).toBeAttached();
+  await expect(page.getByText(/introuvable/i)).toHaveCount(0);
+});
