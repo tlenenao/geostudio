@@ -942,6 +942,8 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
       if (editingId === null) {
         resetTo();
       } else {
+        // Reprise après échec d'envoi : photos parties, on vide la file (sinon doublon).
+        setPendingFiles({});
         void syncFromServer(editingId, false);
       }
     } catch (err) {

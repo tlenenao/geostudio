@@ -55,6 +55,18 @@ test("uploadToPresignedUrl envoie application/octet-stream quand File.type est v
   }
 });
 
+test("uploadToPresignedUrl lève quand S3 refuse le PUT", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 403 }));
+  try {
+    const client = createItemClient({ coreUrl: "https://core.test", getToken: () => "t" });
+    await expect(
+      client.uploadToPresignedUrl("https://s3.test/u", new File(["x"], "a.json")),
+    ).rejects.toThrow("Upload failed: 403");
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
 test("uploadToPresignedUrl conserve le type du fichier quand il est renseigné", async () => {
   const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
   vi.stubGlobal("fetch", fetchMock);

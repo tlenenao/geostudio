@@ -194,4 +194,11 @@ test("un PUT S3 refusé garde la saisie en édition, la photo en file et affiche
   await waitFor(() => expect(confirmAttachmentUpload).toHaveBeenCalledTimes(1));
   expect(c.createFeature).toHaveBeenCalledTimes(1);
   expect(updateFeature).toHaveBeenCalled();
+  // La file est vidée et l'erreur levée : un nouvel envoi ne renvoie pas la photo.
+  await waitFor(() => expect(screen.queryByText("Photo prête : p.jpg")).not.toBeInTheDocument());
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Envoyer" }));
+  await waitFor(() => expect(updateFeature).toHaveBeenCalledTimes(2));
+  expect(confirmAttachmentUpload).toHaveBeenCalledTimes(1);
+  expect(presignAttachmentUpload).toHaveBeenCalledTimes(2);
 });
