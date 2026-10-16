@@ -8042,3 +8042,14 @@ Plan `docs/superpowers/plans/2026-10-13-arc-vagues-4-6-iso-esri-et-etl.md`, 4 vo
 - **Partielles, reste nommé** : REV-275 (a)(b), REV-276 (a), REV-277 (a) — rejeu des parcours `j06b`/`j07`/`j09`/`j09b`/`j02` et bascule des specs `bug()` sur stack réelle (lot 6).
 - **Limites assumées** : verrou OAuth2 global (un par jeton si le débit d'échange le justifie) ; reprise de pagination exacte pour `page_number`/`offset`/`cursor`, rejeu complet pour tout autre paginateur.
 - **Aucune migration, route ni modèle d'API modifiés** (OpenAPI/types générés et inventaire de fonctionnalités inchangés). Compteur du backlog : 345 fermées / 14 partielles / 7 ouvertes / 1 observation.
+
+
+## 2026-10-16 — Lot 8 : métriques nommées sur le dataset (REV-119 / GAP-25)
+
+Décision de Tanguy : « spécifier et implémenter » (constat Cas 2 du 2026-10-11, option A). Spec `docs/superpowers/specs/2026-10-16-metriques-nommees-dataset-design.md`, plan homonyme dans `plans/`. Branche `sp-cloture-lot8`.
+
+- **Modèle** : `DatasetPayload.metrics: dict[str, DatasetMetric]` (`field`, `agg`, `p`, `label`, `format`, `unit`, `description`), clé `^[a-z][A-Za-z0-9_]{0,63}$`, ≤ 50 ; `agg` ∈ `METRIC_AGGS` (source unique dans `app/analytics/aggregate.py`, test de dérive contre `_agg_expr`). Pas de CEL libre (un seul moteur d'évaluation, évite le second dialecte du constat). Aucune migration : la config est du JSON, versionnement/rollback/`If-Match` gratuits.
+- **Résolution** : `AggregateMeasure.metric` + `resolve_metrics(request, metrics)` (pure, duck-typée pour respecter le contrat de couches) ; libellé de ligne = clé de la métrique. Une mesure `{metric}` non résolue est **refusée** (`_validate_fields`, 400) — jamais un `count` silencieux. Appelants : shell `queryPage` (collection et ArcGIS), MCP `run_analytics_query`, alertes (`_measure_value`, y compris le second site de libellé), routes ArcGIS aggregate/export (résolution serveur). Les garanties `can()`/GAP-22/limites géographiques/bornes DuckDB s'appliquent inchangées (la requête résolue est une requête ordinaire).
+- **Jumelles trouvées en cours de route (pièges n°5/14)** : `writer.dataset` reconstruisait un `DatasetPayload` et aurait perdu `metrics` à chaque run (corrigé + test) ; `saveDatasetConfig` met en cache un `ResolvedDataset` sans `metrics` si on l'oublie (corrigé) ; MCP `create_dataset`/`explain_dataset` étendus.
+- **UI** : `DatasetMetricsEditor` dans `DatasetEditPage`, sélecteur « + Métrique nommée… » dans `DataSourcePanel` (sources statistics d'un dataset), spec E2E `dataset-metrics.spec.ts`.
+- **Hors périmètre / résiduels** : requête visuelle (compile en nœuds pipeline aux `metrics` locales) non branchée ; partage de métriques entre datasets (REV-325 si besoin) ; mode Autoporté refuse `metric` (le shell exporté résout côté client). Aucune route ni outil MCP ajouté (compte REST inchangé) ; entrée d'inventaire `analytique-metriques-nommees-d-un-dataset` (priorité basse).
