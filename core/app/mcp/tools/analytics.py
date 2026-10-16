@@ -14,6 +14,7 @@ from app.analytics.aggregate import (
     UnknownAggregateField,
     _measure_label,
     lake_as_of,
+    resolve_metrics,
     run_collection_aggregate,
 )
 from app.analytics.profile import CollectionProfileResponse, run_collection_profile
@@ -100,6 +101,15 @@ def register(server: FastMCP, session_factory) -> None:
         with request_scoped_session(session_factory) as session:
             user = resolve_actor(session, access_token)
             payload = _resolve_dataset_payload(session, user=user, dataset_item_id=datasetId)
+            # REV-119 : mesures {metric} -> métriques nommées du dataset.
+            try:
+                query = resolve_metrics(query, payload.metrics)
+            except UnknownAggregateField as exc:
+                raise McpToolError(
+                    422,
+                    f"{exc.field}: {exc.message}",
+                    [{"field": exc.field, "code": "unknown_metric", "message": exc.message}],
+                ) from exc
 
             if payload.source == "collection":
                 assert payload.collectionId is not None
