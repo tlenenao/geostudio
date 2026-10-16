@@ -24,6 +24,8 @@ def create_mcp_server(base_url: str, session_factory) -> FastMCP:
             issuer_url=os.environ.get("CORE_OIDC_ISSUER", "http://localhost:8180/realms/geostudio"),
             required_scopes=[],
             resource_server_url=f"{base_url}/mcp",
+            # Le TokenVerifier valide déjà l'audience (CORE_MCP_AUDIENCE) : pas de 2e contrôle.
+            validate_token_resource=False,
         ),
     )
     register_tools(server, session_factory)

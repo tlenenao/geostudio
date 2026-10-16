@@ -106,6 +106,7 @@ jobs:
         working-directory: core
     steps:
       - name: Tous les shards de tests doivent être verts
+        working-directory: .
         run: |
           echo "core-tests : ${{ needs.core-tests.result }}"
           [ "${{ needs.core-tests.result }}" = "success" ]
