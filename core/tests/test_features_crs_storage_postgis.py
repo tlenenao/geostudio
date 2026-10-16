@@ -151,7 +151,7 @@ def _blob_wkt(n: int = 60) -> str:
 
 
 @pytest.fixture()
-def straddler(pg_engine, pg_session_factory):
+def straddler(pg_engine, pg_session_factory, request):
     """Entité à cheval stockée en 2154 ; fournit (session, info, fid, version découpée relue)."""
     with pg_engine.begin() as conn:
         conn.execute(text(f"DROP TABLE IF EXISTS {G}"))
@@ -165,7 +165,7 @@ def straddler(pg_engine, pg_session_factory):
                 f"INSERT INTO {G} (name, geom) VALUES ('s', "
                 "ST_Transform(ST_GeomFromText(:w, 4326), 2154))"
             ),
-            {"w": _blob_wkt()},
+            {"w": getattr(request, "param", None) or _blob_wkt()},
         )
     try:
         with pg_session_factory() as s:
@@ -205,10 +205,22 @@ def test_straddle_gate_refuses_a_really_different_geometry(straddler, dlat):
 
 
 def test_straddle_gate_refuses_another_geometry_type(straddler):
+    """Mêmes sommets (anneau en LineString) mais type différent : refusé par la clause de type
+    (Hausdorff seule vaudrait 0)."""
     from app.sharing.geo_limits import GeoLimitStraddling
 
-    s, info, fid, _ = straddler
+    s, info, fid, clipped = straddler
+    line = {"type": "LineString", "coordinates": clipped["coordinates"][0]}
     with pytest.raises(GeoLimitStraddling):
-        repo.replace_feature(
-            s, info, fid=fid, properties={}, geometry={"type": "Point", "coordinates": [6.0, 46.0]}
-        )
+        repo.replace_feature(s, info, fid=fid, properties={}, geometry=line)
+
+
+C_SHAPE = "POLYGON((8 44, 14 44, 14 50, 8 50, 8 48, 12 48, 12 46, 8 46, 8 44))"
+
+
+@pytest.mark.parametrize("straddler", [C_SHAPE], indirect=True)
+def test_straddle_gate_accepts_roundtrip_of_a_clip_split_in_two(straddler):
+    """Le clip d'un Polygon peut être un MultiPolygon : l'aller-retour inchangé reste accepté."""
+    s, info, fid, clipped = straddler
+    assert clipped["type"] == "MultiPolygon" and len(clipped["coordinates"]) == 2
+    assert repo.replace_feature(s, info, fid=fid, properties={"name": "ok"}, geometry=clipped)
