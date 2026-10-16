@@ -10,7 +10,6 @@ sous-processus lancé par Tauri — `None` (le défaut) reproduit exactement le
 comportement d'avant cette tâche, pour ne rien casser des tests Phase E."""
 
 import hmac
-import os
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import Response
@@ -57,9 +56,9 @@ _SIDECAR_SAFE_OPS = frozenset(
 
 
 def create_sidecar_app(*, base_uri: str, token: str | None = None) -> FastAPI:
-    # Actif par défaut côté sidecar desktop, jamais côté cœur (design §3) —
-    # posé ici, pas supposé déjà présent dans l'environnement appelant.
-    os.environ["CORE_PIPELINE_FILE_IO_ENABLED"] = "true"
+    # CORE_PIPELINE_FILE_IO_ENABLED est posé par le point d'entrée du process
+    # (scripts/pipeline_sidecar.py), plus ici : écrire os.environ à la construction
+    # fuyait entre tests et vers tout appelant du module (REV-328).
 
     app = FastAPI()
     store = PipelineStore()

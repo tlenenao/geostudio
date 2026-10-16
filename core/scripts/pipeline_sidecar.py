@@ -25,9 +25,16 @@ from pathlib import Path
 # d'invocation.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import uvicorn  # noqa: E402
+# Les imports du cœur configurent une journalisation JSON sur `sys.stdout` (app.observability) :
+# une ligne de log passerait avant "PORT=<n>" et casserait le handshake (REV-328). Le handler
+# capture l'objet `sys.stdout` du moment : on le pointe sur stderr le temps des imports.
+_real_stdout, sys.stdout = sys.stdout, sys.stderr
+try:
+    import uvicorn  # noqa: E402
 
-from app.pipelines.sidecar.app import create_sidecar_app  # noqa: E402
+    from app.pipelines.sidecar.app import create_sidecar_app  # noqa: E402
+finally:
+    sys.stdout = _real_stdout
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -36,6 +43,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     base_uri = args.base_uri or tempfile.mkdtemp(prefix="geostudio-sidecar-")
     token = os.environ.get("GEOSTUDIO_SIDECAR_TOKEN") or None
+    # Actif par défaut côté sidecar desktop, jamais côté cœur (design §3) ; posé au niveau du
+    # process, pas dans create_sidecar_app (REV-328).
+    os.environ["CORE_PIPELINE_FILE_IO_ENABLED"] = "true"
 
     app = create_sidecar_app(base_uri=base_uri, token=token)
 
