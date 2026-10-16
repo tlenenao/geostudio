@@ -3242,6 +3242,15 @@ test("getPublicAppConfig throws when the config has no layout", async () => {
   await expect(makeClient().getPublicAppConfig("s1")).rejects.toThrow();
 });
 
+test("getPublicItem (AUD-075) lit /public/items/{id} sans passer par /items", async () => {
+  server.use(
+    http.get("https://core.test/v1/public/items/p1", () =>
+      HttpResponse.json({ pk: "p1", title: "Publié" }),
+    ),
+  );
+  expect(await makeClient().getPublicItem("p1")).toMatchObject({ pk: "p1" });
+});
+
 test("getPublicAppConfig (AUD-075) synthétise un AppConfig carte pour un item map publié", async () => {
   server.use(
     http.get("https://core.test/v1/public/configs/by-item/m1", () =>

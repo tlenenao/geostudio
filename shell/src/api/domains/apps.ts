@@ -2,15 +2,12 @@
 import type {
   ActionMessage,
   AppConfig,
-  BaseMap,
   CopilotTurnResult,
   DataSource,
   ItemClient,
-  MapLayer,
-  MapTerrainConfig,
-  MapViewport,
   Page,
   PrintLayoutConfig,
+  PublicMapConfig,
   Theme,
   Variable,
 } from "../types";
@@ -84,12 +81,7 @@ export function createAppsMethods(base: ItemClientBase): AppsMethods {
           layout?: AppConfig["layout"] | null;
           navigationMode?: "tabs" | "story";
           interactions?: "auto" | "manual";
-          map?: {
-            basemap: BaseMap;
-            view: MapViewport;
-            layers: MapLayer[];
-            terrain?: MapTerrainConfig | null;
-          };
+          map?: PublicMapConfig;
           dataset?: { source?: string; collectionId?: string | null };
         };
       }>("GET", `/public/configs/by-item/${encodeURIComponent(pk)}`);

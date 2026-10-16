@@ -33,6 +33,7 @@ type ItemsMethods = Pick<
   | "getItemFacets"
   | "getItem"
   | "getItemBySlug"
+  | "getPublicItem"
   | "listPublicItems"
   | "getMetadataCatalog"
   | "getInstanceInfo"
@@ -104,6 +105,10 @@ export function createItemsMethods(base: ItemClientBase): ItemsMethods {
 
     async getMetadataCatalog(): Promise<MetadataCatalog> {
       return request<MetadataCatalog>("GET", "/metadata-catalog");
+    },
+
+    async getPublicItem(pk: string): Promise<Item> {
+      return request<Item>("GET", `/public/items/${encodeURIComponent(pk)}`);
     },
 
     async getItemBySlug(slug: string): Promise<Item> {

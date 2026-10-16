@@ -202,6 +202,9 @@ export function createDesktopItemClient(connection: {
       if (!item) throw new Error(`getItem: no local pipeline for ${pk}`);
       return item;
     },
+    async getPublicItem(..._args: unknown[]) {
+      return unsupported();
+    },
     async getItemBySlug(..._args: unknown[]) {
       return unsupported();
     },

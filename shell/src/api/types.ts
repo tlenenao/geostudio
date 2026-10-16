@@ -543,6 +543,8 @@ export type AtlasConfig = {
   maxPages: number;
 };
 
+export type PublicMapConfig = Pick<MapConfig, "basemap" | "view" | "layers" | "terrain">;
+
 export type MapConfig = {
   basemap: BaseMap;
   view: MapViewport;
@@ -772,6 +774,8 @@ export interface ItemClient {
   ): Promise<ItemFacets>;
   getItem(pk: string): Promise<Item>;
   getItemBySlug(slug: string): Promise<Item>;
+  // Lecture anonyme d'un item publié (GET /public/items/{id}, AUD-075).
+  getPublicItem(pk: string): Promise<Item>;
   listPublicItems(params?: {
     type?: ResourceType;
     tag?: string;

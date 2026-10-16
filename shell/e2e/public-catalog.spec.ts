@@ -64,7 +64,7 @@ test("AUD-075 : une carte publiée s'ouvre sans connexion (plus d'« introuvable
     language: "fr",
     permissions: { read: true, write: false, delete: false, share: false },
   };
-  await page.route("https://core.test/v1/items/m1*", (r) => r.fulfill({ json: item }));
+  await page.route("https://core.test/v1/public/items/m1", (r) => r.fulfill({ json: item }));
   await page.route("https://core.test/v1/public/configs/by-item/m1", (r) =>
     r.fulfill({
       json: {

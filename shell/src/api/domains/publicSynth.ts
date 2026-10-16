@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // AppConfig synthétisés en mémoire pour les items publiés sans `layout`
 // (map, dataset) — jamais persistés : un seul runtime AppRenderer (règle 3).
-import type { AppConfig, BaseMap, MapLayer, MapTerrainConfig, MapViewport } from "../types";
+import type { AppConfig, PublicMapConfig } from "../types";
 
 export function datasetPreviewConfig(collectionId: string, attachmentField?: string): AppConfig {
   const dataSourceId = "dataset-preview";
@@ -44,12 +44,7 @@ export function datasetPreviewConfig(collectionId: string, attachmentField?: str
   };
 }
 
-export function mapRuntimeConfig(map: {
-  basemap: BaseMap;
-  view: MapViewport;
-  layers: MapLayer[];
-  terrain?: MapTerrainConfig | null;
-}): AppConfig {
+export function mapRuntimeConfig(map: PublicMapConfig): AppConfig {
   return {
     kind: "app",
     theme: {},
