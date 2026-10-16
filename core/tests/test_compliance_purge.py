@@ -559,3 +559,38 @@ def test_purge_tenant_collection_teardown_is_idempotent_if_replayed(pg_engine):
         remove_table_from_publication(session, table_name)
         session.execute(text(f'DROP TABLE IF EXISTS public."{table_name}" CASCADE'))
         session.commit()
+
+
+def test_purge_tenant_touches_s3_only_after_commit_and_never_after_rollback(pg_engine, monkeypatch):
+    """REV-344 c : un échec avant le commit laisse base ET S3 intacts."""
+    from app.db import make_session_factory
+
+    Session = make_session_factory(pg_engine)
+    with Session() as session:
+        tenant_id = _create_tenant_with_one_row_in_every_model(session)
+    monkeypatch.setenv("S3_UPLOADS_BUCKET", "geostudio-uploads")
+    key = f"{tenant_id}/a.bin"
+    s3 = _PaginatingFakeS3Client({key: b"x"}, bucket="geostudio-uploads")
+
+    with Session() as session:
+        purge_tenant(
+            session, s3, tenant_id=tenant_id, requested_by_user_id="r", receipt_id="rcpt-1"
+        )
+        assert key in s3.objects  # pas encore committé : S3 intact
+        session.rollback()
+    assert key in s3.objects
+    with Session() as session:
+        assert session.get(Tenant, tenant_id) is not None
+
+    with Session() as session:
+        purge_tenant(
+            session, s3, tenant_id=tenant_id, requested_by_user_id="r", receipt_id="rcpt-1"
+        )
+        session.commit()
+    assert s3.objects == {}
+    with Session() as session:
+        from app.compliance.models import PurgeReceipt
+
+        receipt = session.get(PurgeReceipt, "rcpt-1")
+        assert receipt.status == "done"
+        assert receipt.counts["s3_objects_deleted"] >= 1  # comptage réel, écrit après commit

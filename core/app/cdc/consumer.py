@@ -153,7 +153,7 @@ class DecodedChange:
 
 
 def decode_wal2json_message(
-    payload: str,
+    payload: str | dict,
     *,
     lsn: int,
     collection_meta: dict,
@@ -163,7 +163,8 @@ def decode_wal2json_message(
     publiée mais absente de collection_meta (désenregistrée entre-temps, ou
     jamais backfillée par ce process) est ignorée — app.cdc.main la recharge
     et backfille au premier changement vu (Task 8/9)."""
-    data = json.loads(payload)
+    # REV-364 h : l'appelant qui a déjà décodé le message le passe tel quel.
+    data = payload if isinstance(payload, dict) else json.loads(payload)
     out = []
     for change in data.get("change", []):
         table_name = change["table"]

@@ -19,9 +19,6 @@ from app.pipelines.ops.schemas import ReaderConnectorRestParams
 from app.secrets.schemas import AzureBlobCredentialsPayload, SmtpCredentialsPayload
 
 
-@pytest.mark.xfail(
-    strict=True, reason="REV-audit: send_email sans assert_egress_allowed (notify.py:142)"
-)
 def test_smtp_secret_to_internal_host_is_blocked_before_connecting(monkeypatch):
     payload = SmtpCredentialsPayload(
         host="10.0.0.5", port=25, username="u", password="p", useTls=True, fromAddress="a@b.c"
@@ -68,10 +65,6 @@ class _H(http.server.BaseHTTPRequestHandler):
         pass
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="REV-audit: reader REST suit les redirections avec l'en-tête secret (connector_runtime.py:569)",  # noqa: E501
-)
 def test_rest_reader_does_not_forward_api_key_header_on_redirect(monkeypatch):
     import requests
 
@@ -102,10 +95,6 @@ def test_rest_reader_does_not_forward_api_key_header_on_redirect(monkeypatch):
     assert "SUPERSECRET" not in _H.seen
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="REV-audit: plafond moissonnage sur octets compressés (harvest/egress.py:97)",
-)
 def test_harvest_cap_applies_to_decoded_gzip_bytes(monkeypatch):
     monkeypatch.setenv("CORE_HARVEST_MAX_RESPONSE_BYTES", "10000")
     monkeypatch.setattr(harvest_egress, "assert_egress_allowed", lambda url: [])
@@ -120,9 +109,6 @@ def test_harvest_cap_applies_to_decoded_gzip_bytes(monkeypatch):
         client.get("https://example.test/x").content  # noqa: B018
 
 
-@pytest.mark.xfail(
-    strict=True, reason="REV-audit: accountName Azure non validé, hôte piloté (schemas.py:354)"
-)
 def test_azure_account_name_rejects_host_injection():
     with pytest.raises(ValidationError):
         AzureBlobCredentialsPayload(
@@ -132,10 +118,6 @@ def test_azure_account_name_rejects_host_injection():
         )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="REV-audit: token_uri du compte de service GCS non validé (connector_runtime.py:918)",
-)
 def test_gcs_service_account_token_uri_is_validated():
     from app.secrets.schemas import GcsCredentialsPayload
 
@@ -151,12 +133,7 @@ def test_gcs_service_account_token_uri_is_validated():
         )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="REV-audit: confused deputy, secret d'un autre non contrôlé à l'écriture (alerts/notify.py:44)",  # noqa: E501
-)
-def test_alert_config_write_checks_secret_usage_by_editor():
-    pytest.xfail("non testable unitairement sans scénario HTTP complet")
+# REV-331/342 : reproducteur réel dans tests/test_secret_usage_on_write.py.
 
 
 def test_gpkg_import_rejects_vrt_disguised_file(tmp_path):

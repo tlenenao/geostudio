@@ -580,3 +580,11 @@ def test_integer_filter_beyond_int8_is_a_filter_error_not_an_empty_page(info, pg
         for filters in ({"nb": big}, {"nb__gte": big}, {"nb__in": f"1,{big}"}):
             with pytest.raises(FilterError):
                 select_features(s, info, limit=5, offset=0, filters=filters)
+
+
+def test_bbox_across_antimeridian_uses_two_envelopes(info, pg_session_factory):
+    # REV-364 a : ouest (1.5) > est (0.5) = [1.5, 180] + [-180, 0.5] ; seul b (lon 2.0)
+    # y tombe. Sans le correctif l'enveloppe est normalisée en [0.5, 1.5] -> a.
+    with pg_session_factory() as session, rls_scope(session, "default"):
+        page = select_features(session, info, limit=10, offset=0, bbox=(1.5, 44.0, 0.5, 47.0))
+        assert [f["id"] for f in page.features] == [2]

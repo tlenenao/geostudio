@@ -166,13 +166,13 @@ def test_all_operations_default_exchange_to_none():
 def test_ops_catalog_never_exposes_the_exchange_field():
     # Garde de régression (design §2 : "exchange n'entre jamais dans
     # ops_catalog()") — passe déjà avant ce champ puisque ops_catalog()
-    # construit un dict à 3 clés fixes, mais documente et verrouille la
+    # construit un dict à clés fixes, mais documente et verrouille la
     # garantie plutôt que de la supposer.
     from app.pipelines.ops.contracts import ops_catalog
 
     catalog = ops_catalog()
     for op, entry in catalog.items():
-        assert set(entry) == {"kind", "paramsSchema", "acceptsSecondaryInput"}, op
+        assert set(entry) == {"kind", "paramsSchema", "acceptsSecondaryInput", "experimental"}, op
 
 
 def test_operations_registry_has_71_base_entries_plus_lane_contracts():

@@ -30,6 +30,12 @@ def _payload_dict(in_path: str, out_path: str) -> dict:
     }
 
 
+@pytest.fixture(autouse=True)
+def _file_io_enabled(monkeypatch):
+    # create_sidecar_app n'écrit plus os.environ (REV-328) : le process l'active à l'entrée.
+    monkeypatch.setenv("CORE_PIPELINE_FILE_IO_ENABLED", "true")
+
+
 @pytest.fixture
 def client(tmp_path):
     app = create_sidecar_app(base_uri=str(tmp_path))
@@ -155,6 +161,21 @@ def test_get_ops_excludes_session_dependent_ops(client):
         "reader.connector.snowflake",
     ):
         assert op not in catalog, f"{op} touche Session mais est exposé par le sidecar"
+
+
+def test_get_ops_excludes_network_egress_transforms(client):
+    """REV-329 : le sidecar desktop n'a ni garde d'egress ni modèle de menace réseau."""
+    catalog = client.get("/pipelines/ops").json()
+    for op in (
+        "transform.httpCall",
+        "transform.mcpCall",
+        "transform.geocode",
+        "transform.route",
+        "transform.isochrone",
+        "transform.imageFetch",
+        "transform.databaseJoin",
+    ):
+        assert op not in catalog, f"{op} fait de l'egress réseau mais est exposé par le sidecar"
 
 
 def test_get_ops_still_includes_transform_ops(client):
@@ -296,3 +317,11 @@ def test_preflight_options_is_not_blocked_by_auth(authed_client):
     )
     assert res.status_code == 200
     assert res.headers.get("access-control-allow-origin") == "http://tauri.localhost"
+
+
+def test_create_sidecar_app_does_not_write_os_environ(tmp_path, monkeypatch):
+    monkeypatch.delenv("CORE_PIPELINE_FILE_IO_ENABLED", raising=False)
+    create_sidecar_app(base_uri=str(tmp_path))
+    import os
+
+    assert "CORE_PIPELINE_FILE_IO_ENABLED" not in os.environ

@@ -278,3 +278,53 @@ def test_run_analytics_query_collection_unreadable_by_caller_errors(app_client, 
             },
         )
     assert "not found" in error_text
+
+
+def test_run_analytics_query_resolves_named_metric(app_client, _local_duckdb):  # noqa: F811
+    """REV-119 : {metric} résolu sur les métriques du dataset ; inconnue -> 422."""
+    from app.configs import repository as configs_repo
+    from app.configs.schemas import BuilderConfig
+
+    with app_client:
+        collection_id = _register_incidents_collection(app_client)
+        _write_partition(
+            _local_duckdb,
+            tenant_id=app_client.tenant.id,
+            collection_id=collection_id,
+            rows=[
+                {
+                    "id": i,
+                    "tenant_id": app_client.tenant.id,
+                    "titre": "A",
+                    "_op": "insert",
+                    "_lsn": 1,
+                    "_ts": 1.0,
+                    "geom": Point(2.3, 48.8),
+                }
+                for i in (1, 2, 3)
+            ],
+        )
+        dataset_item_id = _create_collection_dataset(app_client, collection_id)
+        with app_client.session_factory() as session:
+            cfg = configs_repo.get_config_by_item(session, dataset_item_id)
+            body = cfg.config.model_dump()
+            body["dataset"]["metrics"] = {"nb": {"agg": "count"}}
+            configs_repo.update_config(
+                session,
+                cfg.id,
+                BuilderConfig.model_validate(body),
+                tenant_id=app_client.tenant.id,
+            )
+            session.commit()
+        result = call_tool(
+            app_client,
+            "run_analytics_query",
+            {"datasetId": dataset_item_id, "query": {"measures": [{"metric": "nb"}]}},
+        )
+        assert result["rows"] == [{"group": "Total", "nb": 3}]
+        err = call_tool_expecting_error(
+            app_client,
+            "run_analytics_query",
+            {"datasetId": dataset_item_id, "query": {"measures": [{"metric": "zz"}]}},
+        )
+        assert "unknown metric" in str(err)

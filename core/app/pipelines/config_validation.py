@@ -19,7 +19,14 @@ from sqlalchemy.orm import Session
 from app.collections import repository as collections_repo
 from app.configs.pipeline_validation import register_pipeline_node_validator
 from app.configs.schemas import PipelineNode
-from app.pipelines.ops.contracts import BINARY_OPS, OP_PARAMS
+from app.configs.secret_usage import assert_secrets_usable, register_secret_usage_checker
+from app.pipelines.ops.contracts import (
+    BINARY_OPS,
+    OP_PARAMS,
+    blocked_experimental_ops,
+    experimental_refusal,
+)
+from app.secrets import repository as secrets_repo
 from app.sharing.authorization import can
 from app.users.models import User
 
@@ -89,8 +96,31 @@ def _require_writable_collection(session: Session, *, user: User, collection_id:
         raise HTTPException(status_code=422, detail=f"collection '{collection_id}' is not writable")
 
 
+def _secret_names(params: BaseModel) -> list[str | None]:
+    """Valeurs des champs de params marqués `format: secret-name` dans leur schéma."""
+    return [
+        getattr(params, name)
+        for name, f in type(params).model_fields.items()
+        if isinstance(f.json_schema_extra, dict)
+        and f.json_schema_extra.get("format") == "secret-name"
+    ]
+
+
+def _secret_usable(session: Session, user: User, name: str) -> bool:
+    secret = secrets_repo.get_secret_by_name(session, tenant_id=user.tenant_id, name=name)
+    return secret is None or secrets_repo.can_use_secret(session, user, secret)
+
+
+register_secret_usage_checker(_secret_usable)
+
+
 def _validate_node(session: Session, node: PipelineNode, edges: list, user: User) -> None:
+    if blocked := blocked_experimental_ops([node.op]):
+        raise HTTPException(status_code=422, detail=experimental_refusal(blocked))
     params = _validate_params(node)
+    # REV-331 : l'exécution se fait sous l'identité du propriétaire — l'éditeur qui écrit
+    # doit lui-même pouvoir utiliser le secret.
+    assert_secrets_usable(session, user, _secret_names(params))
     field = _COLLECTION_PARAM_FIELD.get(node.op)
     has_secondary_edge = any(e.to == node.id and e.role == "secondary" for e in edges)
 

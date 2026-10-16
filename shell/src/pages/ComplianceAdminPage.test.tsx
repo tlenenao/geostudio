@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -9,6 +9,12 @@ import { server } from "../test/msw/server";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { ComplianceAdminPage } from "./ComplianceAdminPage";
+
+// REV-360 : l'anonymisation passe par un dialogue de confirmation.
+async function confirmErase() {
+  const dialog = await screen.findByRole("alertdialog");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Anonymiser ce compte" }));
+}
 
 function stubMatchMedia(matches: boolean) {
   vi.stubGlobal(
@@ -83,8 +89,21 @@ test("le bouton de purge s'active une fois le slug exact tapé, et déclenche PO
         return HttpResponse.json({ jobId: "purge-123" }, { status: 202 });
       },
     ),
+    // REV-364 f : un reçu `pending` arrive en 202 avec son vrai corps (completedAt null).
     http.get("https://core.test/v1/compliance/purges/purge-123", () =>
-      HttpResponse.json({ status: 202, detail: "in progress" }, { status: 202 }),
+      HttpResponse.json(
+        {
+          id: "purge-123",
+          tenantSlug: "demo",
+          requestedByUserId: "u1",
+          requestedAt: "2026-10-15T10:00:00",
+          completedAt: null,
+          counts: {},
+          status: "pending",
+          error: null,
+        },
+        { status: 202 },
+      ),
     ),
   );
   render(<Harness />);
@@ -101,6 +120,34 @@ test("le bouton de purge s'active une fois le slug exact tapé, et déclenche PO
   expect(await screen.findByText("Purge en cours…")).toBeInTheDocument();
 });
 
+test("une purge en échec affiche l'erreur du reçu et permet de relancer (REV-344)", async () => {
+  server.use(
+    http.post("https://core.test/v1/compliance/tenants/:tenantId/purge", () =>
+      HttpResponse.json({ jobId: "purge-9" }, { status: 202 }),
+    ),
+    http.get("https://core.test/v1/compliance/purges/purge-9", () =>
+      HttpResponse.json({
+        id: "purge-9",
+        tenantSlug: "demo",
+        requestedByUserId: "u1",
+        requestedAt: "2026-10-15T10:00:00",
+        completedAt: "",
+        counts: {},
+        status: "failed",
+        error: "RuntimeError: s3 down",
+      }),
+    ),
+  );
+  render(<Harness />);
+  await screen.findByText("Purger toutes les données du tenant");
+  await userEvent.type(screen.getByLabelText(/Retapez le slug du tenant/), "demo");
+  const purgeButton = screen.getByRole("button", { name: "Purger définitivement ce tenant" });
+  await userEvent.click(purgeButton);
+
+  expect(await screen.findByText(/La purge a échoué : RuntimeError: s3 down/)).toBeInTheDocument();
+  await waitFor(() => expect(purgeButton).toBeEnabled());
+});
+
 test("anonymiser un compte appelle POST /compliance/users/{id}/erase et affiche une confirmation", async () => {
   let erasedUserId: string | null = null;
   server.use(
@@ -114,6 +161,7 @@ test("anonymiser un compte appelle POST /compliance/users/{id}/erase et affiche 
 
   await userEvent.type(screen.getByLabelText(/Identifiant de l'utilisateur/), "u42");
   await userEvent.click(screen.getByRole("button", { name: "Anonymiser ce compte" }));
+  await confirmErase();
 
   await waitFor(() => expect(erasedUserId).toBe("u42"));
   expect(await screen.findByText("Compte anonymisé.")).toBeInTheDocument();
@@ -157,5 +205,6 @@ test("l'échec d'anonymisation distingue « introuvable » (j08-006)", async () 
   await screen.findByText("Anonymiser un compte");
   await userEvent.type(screen.getByLabelText(/Identifiant de l'utilisateur/), "nope");
   await userEvent.click(screen.getByRole("button", { name: "Anonymiser ce compte" }));
+  await confirmErase();
   expect(await screen.findByText("Utilisateur introuvable dans ce tenant.")).toBeInTheDocument();
 });

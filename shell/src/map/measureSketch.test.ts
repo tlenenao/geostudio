@@ -132,3 +132,18 @@ test("shapeToGeoJSONFeature produit la géométrie attendue par type de forme", 
   expect(text.geometry).toEqual({ type: "Point", coordinates: [3, 4] });
   expect(text.properties).toEqual({ color, text: "Rendez-vous" });
 });
+
+test("REV-365 b : un cercle à haute latitude est un cercle (≈ mêmes mètres E-O et N-S)", () => {
+  const f = shapeToGeoJSONFeature({
+    kind: "circle",
+    center: { lng: 0, lat: 60 },
+    edge: { lng: 0, lat: 60.1 },
+    color: "#000",
+  });
+  const ring = (f.geometry as { coordinates: number[][][] }).coordinates[0];
+  const lngs = ring.map((c) => c[0]);
+  const lats = ring.map((c) => c[1]);
+  const eastWest = (Math.max(...lngs) - Math.min(...lngs)) * Math.cos((60 * Math.PI) / 180);
+  const northSouth = Math.max(...lats) - Math.min(...lats);
+  expect(eastWest / northSouth).toBeCloseTo(1, 1);
+});

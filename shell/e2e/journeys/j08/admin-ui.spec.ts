@@ -208,9 +208,17 @@ test.describe("j08 conformité — UI", () => {
     await expect(erase).toBeDisabled();
     await id.fill("identifiant-inconnu");
     await erase.click();
+    await page
+      .getByRole("alertdialog")
+      .getByRole("button", { name: "Anonymiser ce compte" })
+      .click();
     await expect(page.getByText("Utilisateur introuvable dans ce tenant.")).toBeVisible();
     await id.fill(victim.id);
     await erase.click();
+    await page
+      .getByRole("alertdialog")
+      .getByRole("button", { name: "Anonymiser ce compte" })
+      .click();
     await expect(page.getByText("Compte anonymisé.")).toBeVisible();
     expect(psql(`SELECT username FROM users WHERE id='${victim.id}'`).trim()).toMatch(
       /^utilisateur-efface-/,

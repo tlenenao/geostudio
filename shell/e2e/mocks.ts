@@ -139,6 +139,7 @@ const DEFAULT_ME = {
     quotasEnabled: false,
     rasterEnabled: false,
     routingEnabled: false,
+    experimentalOpsEnabled: false,
   },
 };
 
@@ -292,6 +293,8 @@ export async function mockCore(page: Page) {
   // bannière de connectivité (suivi par requête, plus levée par le premier
   // succès venu) — le sondage de notifications du chrome est donc mocké ici,
   // en premier : toute route enregistrée ensuite par un spec le surcharge.
+  // REV-367 i : fonds de carte du tenant (aucun par défaut).
+  await page.route("https://core.test/v1/basemaps", (route) => route.fulfill({ json: [] }));
   await page.route("https://core.test/v1/notifications**", (route) => {
     const url = route.request().url();
     if (url.includes("/unread-count")) return route.fulfill({ json: { count: 0 } });
@@ -990,4 +993,65 @@ export async function mockCore(page: Page) {
       json: { id: "cfg-8", itemId: "8", kind: "app", version: 1, config: GALLERY_ITEM_CONFIG },
     });
   });
+}
+
+// App publiée portant un widget Formulaire (page « formulaire »).
+export async function mockFormApp(page: Page) {
+  await mockCore(page);
+  await page.route("https://core.test/v1/items/form-1*", (route) =>
+    route.fulfill({
+      json: {
+        pk: "form-1",
+        resourceType: "app",
+        title: "Déclarer un incident",
+        abstract: "",
+        owner: "mockuser",
+        thumbnailUrl: null,
+        date: "2026-01-01",
+        configId: "cfg-form-1",
+        isPublished: true,
+        keywords: [],
+        permissions: { read: true, write: true, delete: false, share: false, publish: false },
+      },
+    }),
+  );
+  await page.route("https://core.test/v1/configs/by-item/form-1*", (route) =>
+    route.fulfill({
+      json: {
+        id: "cfg-form-1",
+        itemId: "form-1",
+        kind: "app",
+        version: 1,
+        config: {
+          version: 1,
+          kind: "app",
+          theme: {},
+          dataSources: [
+            { id: "s1", type: "features", service: "core", layer: "incidents", query: {} },
+          ],
+          messages: [],
+          layout: {
+            type: "grid",
+            breakpoints: {},
+            items: [
+              {
+                id: "fm",
+                widget: "form",
+                x: 0,
+                y: 0,
+                w: 6,
+                h: 8,
+                props: {
+                  dataSourceId: "s1",
+                  submitLabel: "Envoyer",
+                  geometryType: null,
+                  fields: [{ name: "titre", label: "Titre", type: "string", required: true }],
+                },
+              },
+            ],
+          },
+        },
+      },
+    }),
+  );
 }

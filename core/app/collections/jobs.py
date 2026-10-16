@@ -3,6 +3,7 @@
 app.items.jobs.embed_item_task."""
 
 import logging
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
@@ -42,3 +43,24 @@ def embed_collection_task(collection_id: str, tenant_id: str) -> None:
         logger.exception(
             "embed_collection_task: échec du calcul d'embedding pour %s", collection_id
         )
+
+
+_SWEEP_BATCH = 100
+_SWEEP_GRACE = timedelta(minutes=10)
+
+
+@app.periodic(cron="*/15 * * * *")
+@app.task(queue="search", queueing_lock="sweep_missing_collection_embeddings_task")
+def sweep_missing_collection_embeddings_task(timestamp: int) -> None:
+    """REV-346 : même balayage que `sweep_missing_embeddings_task` pour les collections."""
+    factory = common_session_factory()
+    cutoff = datetime.now(UTC).replace(tzinfo=None) - _SWEEP_GRACE
+    with request_scoped_session(factory) as session:
+        rows = session.execute(
+            select(Collection.id, Collection.tenant_id)
+            .where(Collection.embedding.is_(None), Collection.updated_at < cutoff)
+            .order_by(Collection.updated_at.desc())
+            .limit(_SWEEP_BATCH)
+        ).all()
+    for collection_id, tenant_id in rows:
+        embed_collection_task.defer(collection_id=collection_id, tenant_id=tenant_id)

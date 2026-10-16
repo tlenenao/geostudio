@@ -60,9 +60,6 @@ def _import(env, filename, content):
 
 
 @pytest.mark.postgis
-@pytest.mark.xfail(
-    strict=True, reason="REV-audit: defer d'embedding avant commit (items/repository.py:231)"
-)
 def test_embedding_defer_happens_after_commit(env, pg_engine, monkeypatch):
     from app.items.jobs import embed_item_task
 
@@ -88,19 +85,11 @@ def test_embedding_defer_happens_after_commit(env, pg_engine, monkeypatch):
     assert seen["visible"] is True
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="REV-audit: harvest_records.collection_id sans ON DELETE (harvest/models.py:76)",
-)
 def test_harvest_record_collection_fk_has_ondelete():
     fk = next(iter(HarvestRecord.__table__.c.collection_id.foreign_keys))
     assert fk.ondelete in ("SET NULL", "CASCADE")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="REV-audit: ivfflat créé sur table vide, jamais reconstruit (migration 0012:43)",
-)
 def test_vector_index_is_not_ivfflat_built_on_empty_table():
     versions = [
         p for p in (ROOT / "alembic" / "versions").glob("*.py") if not p.name.startswith("0012_")
@@ -110,18 +99,12 @@ def test_vector_index_is_not_ivfflat_built_on_empty_table():
 
 
 @pytest.mark.postgis
-@pytest.mark.xfail(
-    strict=True, reason="REV-audit: en-tête CSV avec espace -> bind param tronqué (importer.py:304)"
-)
 def test_csv_header_with_space_imports(env):
     res = _import(env, "c.csv", b"Code postal,lat,lon\n19000,45.1,1.5\n")
     assert res.collection_id
 
 
 @pytest.mark.postgis
-@pytest.mark.xfail(
-    strict=True, reason="REV-audit: propriété 'id' GeoJSON collisionne avec la PK (parsers.py:464)"
-)
 def test_geojson_property_id_imports(env):
     gj = {
         "type": "FeatureCollection",
@@ -138,9 +121,6 @@ def test_geojson_property_id_imports(env):
 
 
 @pytest.mark.postgis
-@pytest.mark.xfail(
-    strict=True, reason="REV-audit: géométrie Z rejetée par colonne 2D (importer.py:322)"
-)
 def test_geojson_3d_point_imports(env):
     gj = {
         "type": "FeatureCollection",
@@ -154,3 +134,32 @@ def test_geojson_3d_point_imports(env):
     }
     res = _import(env, "z.geojson", json.dumps(gj).encode())
     assert res.collection_id
+
+
+@pytest.mark.postgis
+def test_embedding_defer_is_dropped_on_rollback(env, monkeypatch):
+    from app.items.jobs import embed_item_task
+
+    Session, tenant, user = env
+    calls = []
+    monkeypatch.setattr(embed_item_task, "defer", lambda **kw: calls.append(kw))
+    with Session() as s:
+        items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=user.id, resource_type="map", title="x"
+        )
+        s.rollback()
+        s.commit()
+    assert calls == []
+
+
+@pytest.mark.postgis
+@pytest.mark.parametrize(
+    "csv_text",
+    [
+        "id,lat,lon\n1,45.1,1.5\n",
+        "a-b,c.d,lat,lon\n1,2,45.1,1.5\n",
+        'Code postal,"x,y",lat,lon\n1,2,45.1,1.5\n',
+    ],
+)
+def test_csv_awkward_headers_import(env, csv_text):
+    assert _import(env, "c.csv", csv_text.encode()).collection_id

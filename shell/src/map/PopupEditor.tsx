@@ -76,7 +76,7 @@ export function PopupEditor({
 
   return (
     <div className="flex flex-col gap-2 text-sm">
-      <label className="flex items-center gap-2">
+      <label className="flex min-h-6 items-center gap-2 pointer-coarse:min-h-11">
         <input
           type="checkbox"
           checked={value !== undefined}
@@ -113,6 +113,7 @@ export function PopupEditor({
                 <li key={f} className="flex items-center gap-2">
                   <input
                     type="checkbox"
+                    className="pointer-coarse:size-6"
                     aria-label={f}
                     checked={Boolean(entry)}
                     onChange={() => toggleField(f)}
@@ -142,6 +143,7 @@ export function PopupEditor({
                 <li key={f.name} className="flex items-center gap-2">
                   <input
                     type="checkbox"
+                    className="pointer-coarse:size-6"
                     aria-label={f.name}
                     checked
                     onChange={() => toggleField(f.name)}
@@ -197,7 +199,7 @@ export function PopupEditor({
       {value !== undefined && (
         <button
           type="button"
-          className="self-start text-xs text-accent underline"
+          className="min-h-6 self-start text-xs text-accent underline pointer-coarse:min-h-11"
           {...advancedPanel.triggerProps}
           onClick={() => setAdvanced((a) => !a)}
         >

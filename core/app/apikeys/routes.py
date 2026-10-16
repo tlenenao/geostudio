@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 from app.apikeys import service
@@ -9,6 +9,8 @@ from app.apikeys.models import ApiKey
 from app.apikeys.schemas import ApiKeyCreate, ApiKeyCreated, ApiKeyRead
 from app.auth.dependency import get_current_user
 from app.db import get_session
+from app.roles.guards import require_privilege
+from app.roles.privileges import Privilege
 from app.users.models import User
 
 router = APIRouter()
@@ -74,6 +76,35 @@ def revoke_key(
     session: Session = Depends(get_session, scope="function"),
 ) -> ApiKeyRead:
     key = service.revoke_api_key(session, user=user, key_id=key_id)
+    if key is None:
+        raise HTTPException(status_code=404, detail="api key not found")
+    return _read(key)
+
+
+# REV-366 : un admin liste/révoque les clés d'un autre compte (agent parti, compte compromis).
+# Réservé à une session interactive, comme la gestion de ses propres clés.
+@router.get(
+    "/admin/api-keys", response_model=list[ApiKeyRead], dependencies=[Depends(forbid_api_key)]
+)
+def admin_list_keys(
+    user_id: str = Query(alias="user", min_length=1),
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session, scope="function"),
+) -> list[ApiKeyRead]:
+    require_privilege(session, user, Privilege.ADMIN_USERS_MANAGE.value)
+    return [_read(k) for k in service.list_api_keys(session, user=user, created_by=user_id)]
+
+
+@router.delete(
+    "/admin/api-keys/{key_id}", response_model=ApiKeyRead, dependencies=[Depends(forbid_api_key)]
+)
+def admin_revoke_key(
+    key_id: str,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session, scope="function"),
+) -> ApiKeyRead:
+    require_privilege(session, user, Privilege.ADMIN_USERS_MANAGE.value)
+    key = service.revoke_api_key(session, user=user, key_id=key_id, any_owner=True)
     if key is None:
         raise HTTPException(status_code=404, detail="api key not found")
     return _read(key)

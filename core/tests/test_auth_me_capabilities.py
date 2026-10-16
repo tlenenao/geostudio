@@ -29,6 +29,7 @@ CAPABILITY_KEYS = {
     "quotasEnabled",
     "rasterEnabled",
     "routingEnabled",
+    "experimentalOpsEnabled",
 }
 
 

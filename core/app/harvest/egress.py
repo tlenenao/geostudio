@@ -95,7 +95,9 @@ class _GuardedTransport(httpx.BaseTransport):
         chunks: list[bytes] = []
         total = 0
         try:
-            for chunk in response.stream:
+            # REV-340 : octets DÉCODÉS (gzip/deflate) — le plafond sur le flux compressé
+            # laissait passer une bombe de décompression.
+            for chunk in response.iter_bytes():
                 total += len(chunk)
                 if total > cap:
                     raise ResponseTooLargeError(
@@ -104,9 +106,12 @@ class _GuardedTransport(httpx.BaseTransport):
                 chunks.append(chunk)
         finally:
             response.close()
+        headers = httpx.Headers(response.headers)
+        headers.pop("content-encoding", None)  # le corps est déjà décodé
+        headers.pop("content-length", None)
         return httpx.Response(
             status_code=response.status_code,
-            headers=response.headers,
+            headers=headers,
             content=b"".join(chunks),
             request=request,
         )

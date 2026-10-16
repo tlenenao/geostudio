@@ -14,6 +14,7 @@ from app.analytics.aggregate import (
     UnknownAggregateField,
     _measure_label,
     lake_as_of,
+    resolve_metrics,
     run_collection_aggregate,
 )
 from app.analytics.profile import CollectionProfileResponse, run_collection_profile
@@ -100,6 +101,15 @@ def register(server: FastMCP, session_factory) -> None:
         with request_scoped_session(session_factory) as session:
             user = resolve_actor(session, access_token)
             payload = _resolve_dataset_payload(session, user=user, dataset_item_id=datasetId)
+            # REV-119 : mesures {metric} -> métriques nommées du dataset.
+            try:
+                query = resolve_metrics(query, payload.metrics)
+            except UnknownAggregateField as exc:
+                raise McpToolError(
+                    422,
+                    f"{exc.field}: {exc.message}",
+                    [{"field": exc.field, "code": "unknown_metric", "message": exc.message}],
+                ) from exc
 
             if payload.source == "collection":
                 assert payload.collectionId is not None
@@ -193,6 +203,7 @@ def register(server: FastMCP, session_factory) -> None:
                 raise ValueError("profile is only available for collection-sourced datasets")
             assert payload.collectionId is not None
             col = require_collection_read(session, user=user, collection_id=payload.collectionId)
+            refuse_geo_limited(session, user, col.table_name, path="profile")  # REV-334
             try:
                 info = introspect_table(session, col.table_name)
             except TableNotFound as exc:
@@ -244,6 +255,7 @@ def register(server: FastMCP, session_factory) -> None:
                 "timeField": payload.timeField,
                 "reactsToExtent": payload.reactsToExtent,
                 "columns": {k: v.model_dump() for k, v in payload.columns.items()},
+                "metrics": {k: v.model_dump() for k, v in payload.metrics.items()},
             }
 
             if payload.source == "collection":

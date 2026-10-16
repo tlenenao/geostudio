@@ -181,7 +181,6 @@ def _build_request_parts(p, body_raw, mp_vals) -> tuple[dict, dict]:
         }
     if p.bodyType == "raw":
         return {}, {"data": b"" if body_raw is None else _as_bytes(body_raw)}
-    data: dict[str, str] = {}
     files: dict[str, tuple] = {}
     for field, val in zip(p.multipartFields, mp_vals, strict=True):
         if val is None:
@@ -193,8 +192,10 @@ def _build_request_parts(p, body_raw, mp_vals) -> tuple[dict, dict]:
                 field.contentType or "application/octet-stream",
             )
         else:
-            data[field.name] = str(val)
-    return {}, {"data": data, "files": files}
+            files[field.name] = (None, str(val))  # champ texte multipart (pas d'urlencoded)
+    if not files:  # `requests` n'enverrait aucun corps (REV-327)
+        raise _RowError("corps multipart vide (toutes les valeurs sont NULL)")
+    return {}, {"files": files}
 
 
 def _max_response_bytes() -> int:
@@ -230,24 +231,54 @@ def _send_direct(p, url, headers, kwargs, auth, budget, *, follows_redirects: bo
     return _classify(resp.status_code, text, resp.headers, follows_redirects=follows_redirects)
 
 
-def _send_paginated(p, url, headers, kwargs, auth, budget, *, follows_redirects: bool) -> _Outcome:
+def _resume_params(pag, state: dict) -> dict:
+    """REV-330 : paramètres de requête pour reprendre à la page échouée (état du paginateur
+    après la dernière page réussie). Vide = rejeu depuis la page 1 (paginateur inconnu)."""
+    from dlt.sources.helpers.rest_client.paginators import (
+        JSONResponseCursorPaginator,
+        RangePaginator,
+    )
+
+    if not state.get("pages"):
+        return {}
+    if isinstance(pag, RangePaginator) and getattr(pag, "param_name", None):
+        pag.initial_value = pag.current_value  # `init_request` remet sinon `current_value` à 0
+        return {pag.param_name: pag.current_value}
+    if isinstance(pag, JSONResponseCursorPaginator) and pag.cursor_param and pag._next_reference:
+        return {pag.cursor_param: pag._next_reference}
+    state["pages"] = 0
+    state["records"].clear()
+    return {}
+
+
+def _send_paginated(
+    p, url, headers, kwargs, auth, budget, *, follows_redirects: bool, state: dict | None = None
+) -> _Outcome:
     """Pages agrégées en une liste JSON. `RESTClient(base_url="")` accepte une URL absolue en
     `path` (dlt `join_url`). Une erreur HTTP lève `requests.HTTPError` (traité par
-    `_run_with_retry`, qui rejoue toute la pagination — ponytail : reprise depuis la page 1)."""
+    `_run_with_retry`) ; `state` (partagé entre tentatives d'une même ligne) permet de
+    reprendre depuis la dernière page réussie plutôt que depuis la page 1 (REV-330)."""
     from dlt.sources.helpers.rest_client import RESTClient
 
     from app.pipelines import connector_runtime as cr
     from app.pipelines.egress import build_guarded_session
 
+    if state is None:
+        state = {}
+    if "paginator" not in state:
+        state.update(
+            paginator=cr._build_paginator(p.paginator, p.paginatorConfig), records=[], pages=0
+        )
+    paginator, records = state["paginator"], state["records"]
+    resume = _resume_params(paginator, state)
     with build_guarded_session() as session:
         client = RESTClient(
             base_url="",
             auth=auth,
-            paginator=cr._build_paginator(p.paginator, p.paginatorConfig),
+            paginator=paginator,
             data_selector=p.recordsPath,
             session=session,
         )
-        records: list = []
         seen: list[
             int
         ] = []  # statut de chaque réponse (dlt décode le JSON avant de rendre la main)
@@ -260,18 +291,18 @@ def _send_paginated(p, url, headers, kwargs, auth, budget, *, follows_redirects:
 
         session.send = _recording_send  # dlt écrase les hooks de session : on enveloppe send()
         try:
-            for page_no, page in enumerate(
-                client.paginate(
-                    url,
-                    method=p.method,
-                    headers=headers or None,
-                    timeout=p.timeoutSeconds,
-                    allow_redirects=follows_redirects,
-                    **kwargs,
-                ),
-                1,
+            for page in client.paginate(
+                url,
+                method=p.method,
+                headers=headers or None,
+                timeout=p.timeoutSeconds,
+                allow_redirects=follows_redirects,
+                paginator=paginator,  # sinon dlt en deepcopie une (état de reprise perdu)
+                params=resume or None,
+                **kwargs,
             ):
-                if page_no > cr._max_pages():
+                state["pages"] += 1
+                if state["pages"] > cr._max_pages():
                     return _Outcome(error=f"plafond de {cr._max_pages()} pages dépassé")
                 records.extend(page)
                 if len(records) > cr._max_rows():
@@ -319,7 +350,7 @@ def _make_row_caller(
             "(aucun résolveur de secrets)"
         )
     payload = cr._resolve_secret(secret_resolver, p.secretName)
-    auth = cr._build_auth(payload)
+    auth = cr._build_auth(payload, "transform.httpCall")
     scope = payload.baseUrl if payload is not None else None
     if payload is not None and not scope:
         raise cr.ConnectorRuntimeError(
@@ -344,14 +375,27 @@ def _make_row_caller(
             if not in_scope:
                 return _Outcome(error="URL hors de la portée du secret")
 
+        page_state: dict = {}  # progression de pagination, partagée entre retries (REV-330)
+
         def attempt() -> _Outcome:
             # Une attente par tentative réseau (retries compris) ; jamais pour une ligne ignorée.
             # Chemin paginé : une attente par tentative de ligne, pas par page.
             limiter.wait()
             headers = {str(k): str(v) for k, v in _as_obj(headers_raw, "headersExpr").items()}
             extra_headers, kwargs = _build_request_parts(p, body_raw, mp_vals)
-            send = _send_direct if p.paginator == "none" else _send_paginated
-            return send(
+            if p.bodyType == "multipart":  # la frontière est posée par `requests` (REV-327)
+                headers = {k: v for k, v in headers.items() if k.lower() != "content-type"}
+            if p.paginator == "none":
+                return _send_direct(
+                    p,
+                    url,
+                    {**extra_headers, **headers},
+                    kwargs,
+                    auth,
+                    budget,
+                    follows_redirects=follows_redirects,
+                )
+            return _send_paginated(
                 p,
                 url,
                 {**extra_headers, **headers},
@@ -359,6 +403,7 @@ def _make_row_caller(
                 auth,
                 budget,
                 follows_redirects=follows_redirects,
+                state=page_state,
             )
 
         return _run_with_retry(p, attempt)

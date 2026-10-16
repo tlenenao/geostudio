@@ -35,8 +35,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   print atlas (migration 0061 `export_jobs.scope`), Helm chart.
   `CORE_ANALYSIS_MAX_FEATURES` caps analysis reads.
 
+### Experimental
+
+- **32 pipeline operations are experimental and off by default.** They call a third-party
+  service and have never been replayed against the real service (tests use doubles only):
+  `writer.email`, `writer.slack`, `writer.trello`, `writer.servicebus`, `writer.azurequeue`,
+  `reader.azurequeue`, `writer.sns`, `writer.kinesis`, `reader.kinesis`, `writer.rabbitmq`,
+  `transform.mcpCall`, `reader.cloudfile`, `reader.ckan`, `reader.arcgisonline`, `reader.ftp`,
+  `writer.ftp`, `reader.connector.googlesheets`, `reader.connector.snowflake`,
+  `reader.connector.bigquery`, `reader.connector.mssql`, `reader.connector.oracle`,
+  `reader.connector.databricks`, `reader.connector.blob`, `reader.mongodb`, `reader.wms`,
+  `reader.wcs`, `reader.wfs`, `transform.imageFetch`, `transform.webMapTiler`,
+  `transform.geocode`, `transform.isochrone`, `transform.route`. Criterion and per-op evidence:
+  `docs/revue/2026-10-16-ops-experimentales.md`.
+  With `CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED=false` (default) they are absent from
+  `GET /v1/pipelines/ops`, refused when a pipeline is saved (422) and refused at run time
+  (manual, scheduled, webhook: the run fails with a readable message). Set it to `true` on
+  `core` **and** `worker` to enable them: the catalogue then flags them `experimental: true` and
+  the builder palette shows an "Expérimental" badge. Replay each one against a test instance of
+  the service before relying on it (runbook `docs/runbooks/2026-10-16-ops-experimentales.md`).
+  `GET /v1/instance` and `GET /v1/me` gain `experimentalOpsEnabled`. **Existing pipelines that
+  use one of these ops stop running until the flag is enabled.**
+  The exposed catalogue is 91 operations with every capability flag off, 121 with only this
+  flag on (152 in the raw registry, reached with file I/O and raster also enabled).
+
 ### Changed
 
+- **BREAKING, blob secrets (REV-341)**: Azure `accountName` must match
+  `^[a-z0-9]{3,24}$` and a GCS service-account `token_uri` must be one of
+  Google's OAuth2 endpoints. A blob (Azure/GCS) secret stored outside the new
+  format becomes unreadable and **must be recreated**; there is no automatic
+  migration.
 - **`writer.collection` and sensitive fields (GAP-22)**: column masking now also applies
   to the `append`/`insert` modes. A pipeline whose append writes a sensitive field the
   running user cannot read now fails (or rejects the row, with `onInvalid: "reject"`)
@@ -405,6 +434,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `admin.collections.manage` now opens read access to a collection's items,
   aggregates, exports, tiles and attachments (REV-185); re-applying the DDL no
   longer reopens a sensitive column to `gis_rls_masked` (REV-186).
+
+### Known limitations
+
+Accepted and documented, not scheduled (also listed in `SECURITY.md`):
+
+- **Extension `script-src` is global (ADR 0013, accepted with a known limit):**
+  the CSP is one Traefik configuration for the whole instance, so it is the
+  union of the origins of the enabled extensions of **all** tenants. Per-tenant
+  isolation is not done because the widget SDK is not open to third parties. A
+  multi-tenant operator must not delegate `admin.extensions.manage` to a tenant
+  it does not control.
+- **GDPR erasure tombstone is conditional (ADR 0015):** the `erased:<sha256>`
+  pseudonym is kept as is, **pending a written opinion of the DPO**; no
+  tombstone variant is shipped without it. The only delivered full-erasure
+  route is `purge_tenant` (irreversible, whole tenant).
+- **SMTP egress guard does not pin the IP (REV-338):** the guard validates the
+  resolved address, but `smtplib` resolves the name again when connecting, so
+  a DNS rebinding window remains on alert e-mail (webhooks and the other
+  egress paths are pinned).
+- **Experimental pipeline operations:** 32 operations that talk to third-party services are
+  never replayed against the real service and ship disabled (see *Experimental* above).
+- **Screen reader / touch device:** the accessibility tree and touch gestures
+  are covered by automated Playwright specs (`a11y-screen-reader.spec.ts`,
+  `touch-map.spec.ts`); no real screen reader (NVDA/JAWS/VoiceOver) nor real
+  touch device is part of the test suite (REV-284 d, REV-286 c).
 
 ## [0.1.0] - 2026-07-16
 

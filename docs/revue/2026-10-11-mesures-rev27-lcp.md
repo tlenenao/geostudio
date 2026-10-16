@@ -62,3 +62,15 @@ Médiane LCP : 2807 -> **2402 ms (-405 ms)**, cible 2,5 s atteinte sur cette mé
 ### Vérifications
 
 Vitest `src/auth` + `builder/copilot` verts (129 tests), suite complète : 3055 passés, 1 échec préexistant sur `dev` (`hGuard.test.ts`, `CollectionProfilePanel.tsx` contient un `h-8`, sans lien). `npm run build` + `check-bundle-size` verts (569,5 Ko). E2E mock : 247 passés / 4 skipped / 2 échecs sous 4 workers (`extension-widget`, `pipeline-builder`), les deux verts rejoués isolément (`--workers=1`) avec `canvas-render`. Parcours OIDC réel contre Keycloak (`:8180`, shell servi sur `:8301` mappé en `:8300` par `--host-resolver-rules`) : `/public` anonyme ne requête ni `OidcAuthProvider` ni `react-oidc-context` ; une navigation client vers `/` charge le provider puis redirige vers Keycloak ; la connexion `alice` revient authentifiée sur le shell (appels cœur émis avec session) mais le cœur de cette stack refuse l'origine `:8300` en CORS (config de stack, identique sur l'ancien build) : la suite `e2e-oidc/` complète n'a pas pu être rejouée (le shell `:8300` de la stack n'est pas configuré en OIDC).
+
+## REV-267 — remesure de clôture (lot 2, 2026-10-15)
+
+Objectif fixé AVANT la mesure : LCP mobile `/public` < 2,5 s. Même méthode (Lighthouse CLI, mobile, throttling simulé par défaut, perf seule, Chromium Playwright 1234, build `dev` servi par nginx 1.27-alpine avec la `nginx.conf` du dépôt, cœur local mock sur `:8201`, 3 passages).
+
+| LCP (ms) | FCP (ms) | Score |
+|---|---|---|
+| 2651 / 2576 / 2624 | 2190 / 2158 / 2167 | 0,94 |
+
+Médiane **2624 ms : cible non atteinte** (2402 ms mesuré le 2026-10-11). La charge initiale est repassée de 569,5 à 615,2 Ko bruts (`index.js` 438 Ko) avec les vagues ARC/FME : `react-dom` 171 Ko, `react-router` 93 Ko, **`src/api/domains` 40 Ko** (client cœur monolithique), `shell/chrome` 10 Ko, Radix tooltip/popover/floating-ui ≈ 40 Ko.
+
+Décision : REV-267 fermée avec mesure et résiduel. Seuil `shell/.bundle-size-threshold` abaissé de 735 à 640 Ko (plancher actuel + ~4 %), pour qu'une nouvelle régression soit visible. Levier restant, non fait : sortir `api/domains` (chargement par domaine) et Radix tooltip/popover du chunk d'entrée (~-15 Ko gzip estimés, soit un palier de slow start). `/` reste non mesurable hors session (redirection Keycloak) ; non rejoué sur stack OIDC réelle.

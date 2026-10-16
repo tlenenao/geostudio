@@ -37,6 +37,33 @@ active maintainer. A best-effort acknowledgment and, if the report is
 confirmed, a fix and coordinated disclosure timeline, is the realistic
 expectation. There is no bug bounty program.
 
+## Known limitations
+
+Accepted and documented trade-offs, not vulnerabilities to report:
+
+- **Extension `script-src` is instance-wide (ADR 0013, accepted with a known
+  limit).** The CSP is a single Traefik configuration, so `script-src` is
+  `'self'` plus the origins of the enabled extensions of **all** tenants.
+  Per-tenant isolation is not implemented because the widget SDK is not open
+  to third parties. Do not delegate `admin.extensions.manage` to a tenant you
+  do not control. The allowlist protects against an undeclared origin, not
+  against a file swapped on a declared one.
+- **GDPR erasure tombstone is conditional (ADR 0015).** An erased account keeps
+  an `erased:` + SHA-256 pseudonym of its OIDC `sub` (unsalted, deterministic).
+  No tombstone change ships without a written opinion of the DPO; the full
+  `purge_tenant` erasure (irreversible, whole tenant) is the only delivered
+  route.
+- **SMTP egress guard does not pin the IP (REV-338).** The alert e-mail guard
+  validates the resolved address, but `smtplib` resolves the host itself when
+  connecting: a DNS-rebinding window remains on that one path (the other
+  egress paths are IP-pinned).
+- **Blob secrets (Azure/GCS) stored before the stricter format must be
+  recreated (REV-341).** They become unreadable instead of being migrated.
+- **No real screen reader or touch device in the test suite.** Accessibility
+  and touch behaviour are verified through automated Playwright specs
+  (accessibility tree, emulated touch events); NVDA/JAWS/VoiceOver and real
+  devices are not exercised.
+
 ## What this document does not change
 
 `secret_scanning` and `dependabot_security_updates` are currently disabled

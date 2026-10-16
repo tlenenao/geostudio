@@ -37,6 +37,7 @@ import "../i18n/domains/admin";
 import "../i18n/domains/automation";
 import "../i18n/domains/misc";
 import "../i18n/domains/widgets";
+import { formatDateTime } from "../lib/format";
 
 // Compare le schéma de sortie recompilé (déduit de l'état courant du
 // formulaire) au schéma réel de la collection de sortie déjà provisionnée,
@@ -455,7 +456,7 @@ export function VisualQueryWizardPage({
                   <dt>{t("catalog.typeLabel")}</dt>
                   <dd>{RESOURCE_TYPE_LABELS[existingDatasetItemQuery.data.resourceType]}</dd>
                   <dt>{t("datasetEdit.modifiedLabel")}</dt>
-                  <dd>{existingDatasetItemQuery.data.updatedAt || "—"}</dd>
+                  <dd>{formatDateTime(existingDatasetItemQuery.data.updatedAt)}</dd>
                 </dl>
               )}
             </Panel>

@@ -36,6 +36,17 @@ def session_factory() -> sessionmaker[Session]:
     )
 
 
+def database_reachable() -> bool:
+    """`SELECT 1` : /health distingue « base morte » de « file illisible » (REV-364 g)."""
+    try:
+        with session_factory()() as session:
+            session.execute(text("SELECT 1"))
+    except Exception:
+        logger.debug("base injoignable pour /health", exc_info=True)
+        return False
+    return True
+
+
 def jobs_backlog() -> dict | None:
     """Santé de la file procrastinate (t02-013/j09-014) : nombre de jobs `todo` et
     âge du plus ancien, au total et PAR FILE (`queues`) : un worker arrêté se voit à

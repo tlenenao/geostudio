@@ -706,3 +706,13 @@ def test_f2_node_preview_via_preview_pipeline(tmp_path):
     )  # fmt: skip
     assert sorted(r["value"] for r in out) == [95, 96, 97, 98, 99]
     assert out[0]["geometry"]["type"] == "Point"
+
+
+def test_pipelines_import_without_posix_resource_module():
+    """Windows (sidecar desktop-etl) n'a pas `resource` : le runtime de pipeline
+    doit s'importer quand même (régression CI desktop-etl du 2026-10-15)."""
+    import subprocess
+    import sys
+
+    code = "import sys; sys.modules['resource'] = None; import app.pipelines.runtime"
+    subprocess.run([sys.executable, "-c", code], check=True, cwd=".")

@@ -99,6 +99,8 @@ export const misc = {
 
   // ConfirmDialog
   "confirmDialog.cancel": "Annuler",
+  "metadataForm.licenseLabel": "Licence",
+  "metadataForm.languageLabel": "Langue",
 
   // Combobox
   "combobox.noResults": "Aucun résultat",

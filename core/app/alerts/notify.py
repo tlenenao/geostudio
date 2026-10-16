@@ -31,7 +31,7 @@ from app.alerts.egress import EgressBlockedError, assert_egress_allowed, build_g
 from app.configs.schemas import AlertChannelEmail, AlertChannelWebhook
 from app.items.models import Item
 from app.secrets import repository as secrets_repo
-from app.secrets.schemas import smtp_tls_violation
+from app.secrets.schemas import SMTP_LOCAL_HOSTS, smtp_tls_violation
 from app.secrets.smtp_send import send_smtp_message
 from app.users.models import User
 
@@ -135,6 +135,15 @@ def send_email(
             f"secret '{channel.smtpSecretName}' : {violation} — "
             "mettez à jour le secret (PUT /v1/secrets/{id}) avec useTls=true"
         )
+
+    # REV-338 : le secret smtp est écrit par un utilisateur, pas forcément un admin —
+    # même garde d'egress que writer.email (relais locaux de dev exemptés).
+    host = payload.host.lower()
+    if host not in SMTP_LOCAL_HOSTS:
+        try:
+            assert_egress_allowed(f"http://[{host}]" if ":" in host else f"http://{host}")
+        except EgressBlockedError as exc:
+            raise NotifyError(f"email egress blocked: {exc}") from exc
 
     try:
         send_smtp_message(payload, message)

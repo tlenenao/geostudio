@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { registerWidget } from "../registry";
 import { BASEMAPS } from "../../map/basemaps";
+import { useBasemaps } from "../../map/useBasemaps";
 import { t } from "../../i18n";
 import "../../i18n/domains/widgets";
 
@@ -29,13 +30,14 @@ export function registerBasemapGalleryWidget(): void {
       </label>
     ),
     Component: ({ props, ctx }) => {
+      const basemaps = useBasemaps();
       const [selected, setSelected] = useState(BASEMAPS[0].style);
       const title = String(props.title ?? "") || t("widgetBasemapGallery.defaultTitle");
       return (
         <div role="radiogroup" aria-label={title} className="flex h-full flex-col gap-2 p-2">
           <p className="text-sm font-medium text-ink">{title}</p>
           <div className="grid grid-cols-2 gap-2">
-            {BASEMAPS.map((b) => (
+            {basemaps.map((b) => (
               <button
                 key={b.id}
                 type="button"

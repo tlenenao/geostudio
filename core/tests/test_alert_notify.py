@@ -105,6 +105,8 @@ def test_guarded_session_used_by_send_webhook_blocks_before_connection():
 @pytest.fixture()
 def smtp_secret_session(monkeypatch):
     monkeypatch.setenv("CORE_SECRETS_MASTER_KEY", TEST_KEY_B64)
+    # REV-338 : l'hôte SMTP factice ne se résout pas ; la garde d'egress a ses propres tests.
+    monkeypatch.setattr("app.alerts.notify.assert_egress_allowed", lambda url: None)
     engine = make_engine("sqlite+pysqlite:///:memory:")
     init_db(engine)
     Session = make_session_factory(engine)
@@ -269,6 +271,7 @@ def smtp_variant_session(monkeypatch, request):
     """Comme smtp_secret_session mais host/port/useTls pilotés par request.param."""
     host, port, use_tls = request.param
     monkeypatch.setenv("CORE_SECRETS_MASTER_KEY", TEST_KEY_B64)
+    monkeypatch.setattr("app.alerts.notify.assert_egress_allowed", lambda url: None)  # REV-338
     engine = make_engine("sqlite+pysqlite:///:memory:")
     init_db(engine)
     Session = make_session_factory(engine)

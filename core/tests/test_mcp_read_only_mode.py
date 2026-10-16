@@ -153,6 +153,7 @@ def test_read_only_tools_constant_matches_the_eleven_write_tools(monkeypatch):
         "create_item",
         "create_form_app",
         "set_sharing",
+        "update_item",
         "create_dataset",
         "create_bookmark",
         "create_pipeline",

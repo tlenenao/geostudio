@@ -70,24 +70,26 @@ def create_api_key(
     return key, token
 
 
-def list_api_keys(session: Session, *, user: User) -> list[ApiKey]:
+def list_api_keys(session: Session, *, user: User, created_by: str | None = None) -> list[ApiKey]:
+    """Clés de `user` ; `created_by` (appel admin, REV-366) vise les clés d'un autre compte
+    du même tenant — l'autorisation (`admin.users.manage`) est celle de la route."""
     return list(
         session.scalars(
             select(ApiKey)
-            .where(ApiKey.tenant_id == user.tenant_id, ApiKey.created_by == user.id)
+            .where(ApiKey.tenant_id == user.tenant_id, ApiKey.created_by == (created_by or user.id))
             .order_by(ApiKey.created_at.desc())
         )
     )
 
 
-def revoke_api_key(session: Session, *, user: User, key_id: str) -> ApiKey | None:
-    key = session.scalars(
-        select(ApiKey).where(
-            ApiKey.id == key_id,
-            ApiKey.tenant_id == user.tenant_id,
-            ApiKey.created_by == user.id,
-        )
-    ).first()
+def revoke_api_key(
+    session: Session, *, user: User, key_id: str, any_owner: bool = False
+) -> ApiKey | None:
+    """`any_owner=True` : révocation admin (REV-366) d'une clé d'un autre compte du tenant."""
+    query = select(ApiKey).where(ApiKey.id == key_id, ApiKey.tenant_id == user.tenant_id)
+    if not any_owner:
+        query = query.where(ApiKey.created_by == user.id)
+    key = session.scalars(query).first()
     if key is None:
         return None
     if key.revoked_at is None:
@@ -101,7 +103,7 @@ def revoke_api_key(session: Session, *, user: User, key_id: str) -> ApiKey | Non
             action="api_key.revoke",
             object_type="api_key",
             object_id=key.id,
-            payload={"prefix": key.key_prefix},
+            payload={"prefix": key.key_prefix, "createdBy": key.created_by},
         )
     return key
 
@@ -138,16 +140,42 @@ def authenticate(session: Session, *, token: str, tenant_id: str) -> User | None
     if user is None or user.erased_at is not None:
         return None
     if key.last_used_at is None or now - key.last_used_at >= USE_AUDIT_INTERVAL:
-        key.last_used_at = now
-        session.flush()
-        write_audit(
+        _record_use(
             session,
+            key_id=key.id,
             tenant_id=key.tenant_id,
-            actor_id=user.id,
-            actor_kind="api_key",
-            action="api_key.use",
-            object_type="api_key",
-            object_id=key.id,
-            payload={"prefix": key.key_prefix},
+            prefix=key.key_prefix,
+            user_id=user.id,
+            now=now,
         )
     return user
+
+
+def _record_use(
+    session: Session, *, key_id: str, tenant_id: str, prefix: str, user_id: str, now: datetime
+) -> None:
+    """REV-367 e : `last_used_at` + audit `api_key.use` dans une transaction
+    SÉPARÉE et immédiatement validée : un rollback de la requête (réponse en
+    erreur) ne les annule plus, et le verrou de ligne n'est pas tenu pendant la
+    requête. UPDATE conditionnel : deux requêtes concurrentes n'auditent qu'une fois."""
+    with Session(bind=session.get_bind()) as own:
+        claimed = own.execute(
+            update(ApiKey)
+            .where(
+                ApiKey.id == key_id,
+                (ApiKey.last_used_at.is_(None)) | (ApiKey.last_used_at <= now - USE_AUDIT_INTERVAL),
+            )
+            .values(last_used_at=now)
+        )
+        if claimed.rowcount:
+            write_audit(
+                own,
+                tenant_id=tenant_id,
+                actor_id=user_id,
+                actor_kind="api_key",
+                action="api_key.use",
+                object_type="api_key",
+                object_id=key_id,
+                payload={"prefix": prefix},
+            )
+        own.commit()

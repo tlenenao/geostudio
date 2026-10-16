@@ -26,6 +26,7 @@ function meWith(slug: string, name: string): Me {
       quotasEnabled: false,
       rasterEnabled: false,
       routingEnabled: false,
+      experimentalOpsEnabled: false,
     },
   };
 }

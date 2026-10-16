@@ -433,3 +433,45 @@ test("un run avec lignes rejetées affiche la quarantaine et le rapport qualité
   await expect(page.getByText(/collection villes_propres__rejected/)).toBeVisible();
   await expect(page.getByText(/name : 14,0 % de valeurs nulles/)).toBeAttached();
 });
+
+test("un auteur édite paginatorConfig et multipartFields d'un httpCall en JSON (REV-325)", async ({
+  page,
+}) => {
+  await mockCore(page);
+  await mockPipelineFlow(page);
+  // Surcharge locale du catalogue (dernière route enregistrée = première résolue).
+  await page.route("https://core.test/v1/pipelines/ops", async (route) => {
+    await route.fulfill({
+      json: {
+        ...OPS_CATALOG,
+        "transform.httpCall": {
+          kind: "transform",
+          paramsSchema: {
+            properties: {
+              multipartFields: { type: "array", items: {} },
+              paginatorConfig: { type: "object", additionalProperties: true },
+            },
+            required: [],
+          },
+        },
+      },
+    });
+  });
+  await page.goto("/pipelines/new");
+
+  const canvas = page.locator(".react-flow__pane");
+  await page.getByText("transform.httpCall").dragTo(canvas, { targetPosition: { x: 100, y: 100 } });
+  const node = page.locator(".react-flow__node");
+  await expect(node).toHaveCount(1);
+
+  const cfg = page.getByRole("textbox", { name: /^paginatorConfig/ });
+  await node.dispatchEvent("click");
+  await expect(cfg).toBeVisible({ timeout: 10_000 });
+  await cfg.fill('{"limit": 50');
+  await cfg.blur();
+  await expect(page.getByRole("alert").filter({ hasText: "un objet est attendu" })).toBeVisible();
+  await cfg.fill('{"limit": 50}');
+  await cfg.blur();
+  await expect(page.getByRole("alert").filter({ hasText: "un objet est attendu" })).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: /^multipartFields/ })).toHaveValue("[]");
+});

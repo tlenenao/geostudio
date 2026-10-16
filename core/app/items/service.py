@@ -13,7 +13,8 @@ from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
 from app.items import repository as repo
-from app.items.schemas import ItemRead
+from app.items.schemas import ItemRead, ItemUpdatePatch
+from app.items.slug import InvalidSlugError, SlugCollisionError
 from app.roles.guards import require_privilege
 from app.roles.kind_registry import privilege_for_kind
 from app.roles.privileges import Privilege
@@ -81,6 +82,85 @@ def get_sharing_service(session: Session, *, item_id: str, user: User) -> Sharin
             GroupShare(groupId=s.group_id, role=s.role, name=names.get(s.group_id)) for s in shares
         ],
     )
+
+
+def parse_if_match(value: str | None) -> str | None:
+    """`If-Match: "<updatedAt>"` (ou `W/"…"`) ; absent ou `*` = pas de garde."""
+    if value is None or value.strip() == "*":
+        return None
+    return value.strip().removeprefix("W/").strip('"')
+
+
+def update_item_service(
+    session: Session,
+    *,
+    item_id: str,
+    user: User,
+    patch: ItemUpdatePatch,
+    expected_updated_at: str | None = None,
+    actor_kind: str = "user",
+) -> ItemRead:
+    """Extrait de PATCH /items/{id} : métadonnées, publication, statut de contenu
+    et catégories, avec garde de version optionnelle (`If-Match` REST /
+    `expectedUpdatedAt` MCP, REV-367 h) ; audite l'écriture."""
+    facts = repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
+    if facts is None or not can(session, user_id=user.id, action="read", item=facts):
+        raise HTTPException(status_code=404, detail="item not found")
+    if not can(session, user_id=user.id, action="write", item=facts):
+        raise HTTPException(status_code=403, detail="not allowed to modify this item")
+    require_kind_privilege(session, user, facts)
+    if patch.isPublished is not None and patch.isPublished != facts.is_published:
+        require_publish_rights(session, user, facts)
+    # ARC-05 : statut de contenu et catégories = gouvernance du catalogue.
+    if patch.contentStatus is not None or patch.categories is not None:
+        require_privilege(session, user, Privilege.CATALOG_MANAGE.value)
+
+    try:
+        result = repo.update_item(
+            session,
+            tenant_id=user.tenant_id,
+            item_id=item_id,
+            title=patch.title,
+            abstract=patch.abstract,
+            keywords=patch.keywords,
+            is_published=patch.isPublished,
+            slug=patch.slug,
+            license=patch.license,
+            language=patch.language,
+            content_status=patch.contentStatus,
+            categories=patch.categories,
+            current_user_id=user.id,
+            expected_updated_at=expected_updated_at,
+        )
+    except repo.StaleItemVersion as err:
+        raise HTTPException(
+            status_code=412,
+            detail=f"stale version: the item is now at {err.current}",
+        ) from None
+    except SlugCollisionError as err:
+        raise HTTPException(status_code=409, detail=str(err)) from err
+    except InvalidSlugError as err:
+        raise HTTPException(status_code=422, detail=str(err)) from err
+    if result is None:
+        raise HTTPException(status_code=404, detail="item not found")
+
+    if patch.isPublished is True:
+        action = "item.publish"
+    elif patch.isPublished is False:
+        action = "item.unpublish"
+    else:
+        action = "item.update"
+    write_audit(
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind=actor_kind,
+        action=action,
+        object_type="item",
+        object_id=item_id,
+        payload={},
+    )
+    return result
 
 
 def set_sharing_service(

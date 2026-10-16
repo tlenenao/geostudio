@@ -19,6 +19,7 @@ collection. Un tenant purgé sans cela laisserait ses données géospatiales
 brutes intactes en base, orphelines du catalogue mais toujours lisibles
 par quiconque connaît le nom de table — inacceptable pour une purge RGPD."""
 
+import logging
 import os
 import uuid
 from datetime import UTC, datetime
@@ -40,12 +41,14 @@ from app.configs.models import Config, ConfigRevision
 from app.dataexport.models import CollectionExportJob
 from app.export.models import ExportJob
 from app.extensions.models import Extension
+from app.geocoding.models import GeocodeJob
 from app.harvest.models import HarvestRecord, HarvestSource
 from app.history.models import EntityHistory
 from app.ingestion.models import IngestionJob
 from app.ingestion.routes import get_uploads_bucket
 from app.items.models import Item
-from app.mapicons.models import MapIcon
+from app.jobs.after_commit import run_after_commit
+from app.mapicons.models import MapIcon, TenantBasemap
 from app.notifications.models import Notification, NotificationPreference
 from app.outbox.models import FileTrigger, FileTriggerSeen, OutboundWebhook, OutboxEvent
 from app.pipelines import checkpoints
@@ -72,6 +75,8 @@ from app.terrain3d.routes import get_terrain3d_bucket
 from app.tileset3d.models import Tileset3DJob
 from app.tileset3d.routes import get_tileset3d_bucket
 from app.users.models import User
+
+logger = logging.getLogger(__name__)
 
 
 def _delete_all(session: Session, model, tenant_id: str) -> int:
@@ -104,6 +109,69 @@ def _delete_tenant_prefixed_objects(s3, bucket: str, tenant_id: str) -> int:
         else:
             break
     return total
+
+
+def _purge_tenant_s3(s3, tenant_id: str, export_result_keys, appexport_result_keys) -> int:
+    """Objets S3 des buckets tenant-préfixés (uploads/tileset3d/terrain3d/raster/
+    attachments), du lac CDC, et des 2 buckets de sortie de job (result_key connu,
+    pas de préfixe commun, cf. spec §1.4/§3.1). Retourne le nombre d'objets supprimés."""
+    # ARC-10 : pièces jointes de soumissions en attente (aucune ligne `attachments`).
+    total = 0
+    for bucket_getter in (
+        get_uploads_bucket,
+        get_tileset3d_bucket,
+        get_terrain3d_bucket,
+        get_raster_bucket,
+        get_attachments_bucket,
+    ):
+        total += _delete_tenant_prefixed_objects(s3, bucket_getter(), tenant_id)
+    # REV-322 : le lac CDC (bucket geostudio-cdc, préfixe cdc/tenant_id=<t>/ :
+    # partitions + snapshots de toutes les collections du tenant).
+    total += lake_purge.purge_prefix(
+        s3,
+        bucket=os.environ.get("S3_CDC_BUCKET", "geostudio-cdc"),
+        prefix=lake_purge.lake_prefix(tenant_id),
+    )
+    exports_bucket = os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports")
+    appexports_bucket = os.environ.get("S3_APPEXPORTS_BUCKET", "geostudio-appexports")
+    # REV-283e : exports de données sous `{tenant}/data-exports/` (préfixe tenant).
+    total += _delete_tenant_prefixed_objects(s3, exports_bucket, tenant_id)
+    for bucket, keys in (
+        (exports_bucket, export_result_keys),
+        (appexports_bucket, appexport_result_keys),
+    ):
+        if keys:
+            s3.delete_objects(Bucket=bucket, Delete={"Objects": [{"Key": k} for k in keys]})
+            total += len(keys)
+    return total
+
+
+def _make_s3_cleanup(
+    bind, s3, *, tenant_id: str, receipt_id: str, export_result_keys, appexport_result_keys
+):
+    def cleanup() -> None:
+        deleted, failed = 0, False
+        try:
+            deleted = _purge_tenant_s3(s3, tenant_id, export_result_keys, appexport_result_keys)
+        except Exception:
+            failed = True
+            logger.exception("purge du tenant %s : nettoyage S3 incomplet", tenant_id)
+        # Session dédiée : la transaction de la purge est déjà committée. Écrit le
+        # comptage réel sur le reçu (best-effort, la purge elle-même est acquise).
+        try:
+            with Session(bind=bind) as own:
+                receipt = own.get(PurgeReceipt, receipt_id)
+                if receipt is not None:
+                    receipt.counts = {
+                        **receipt.counts,
+                        "s3_objects_deleted": deleted,
+                        **({"s3_cleanup_failed": 1} if failed else {}),
+                    }
+                    own.commit()
+        except Exception:
+            logger.exception("purge du tenant %s : comptage S3 non enregistré", tenant_id)
+
+    return cleanup
 
 
 def purge_tenant(
@@ -204,42 +272,23 @@ def purge_tenant(
     counts["items"] = _delete_all(session, Item, tenant_id)
     session.flush()
 
-    # 4. Objets S3 des 4 buckets tenant-préfixés restants (uploads/
-    #    tileset3d/terrain3d — attachments déjà purgé par collection
-    #    ci-dessus) + les 2 buckets de sortie de job (result_key connu,
-    #    pas de préfixe commun, cf. spec §1.4/§3.1).
+    # 4. Objets S3 : supprimés APRÈS le commit de la purge (REV-344 c) — un échec
+    #    avant le commit laisserait sinon la base intacte et S3 vidé. Les clés
+    #    de résultat d'export/appexport sont capturées à l'étape 1 (les lignes
+    #    ont disparu). Le comptage réel est écrit sur le reçu par le callback.
     counts["s3_objects_deleted"] = 0
-    # ARC-10 : pièces jointes de soumissions en attente (aucune ligne `attachments`).
-    for bucket_getter in (
-        get_uploads_bucket,
-        get_tileset3d_bucket,
-        get_terrain3d_bucket,
-        get_raster_bucket,
-        get_attachments_bucket,
-    ):
-        counts["s3_objects_deleted"] += _delete_tenant_prefixed_objects(
-            s3, bucket_getter(), tenant_id
-        )
-    # REV-322 : le lac CDC (bucket geostudio-cdc, préfixe cdc/tenant_id=<t>/ :
-    # partitions + snapshots de toutes les collections du tenant).
-    counts["s3_objects_deleted"] += lake_purge.purge_prefix(
-        s3,
-        bucket=os.environ.get("S3_CDC_BUCKET", "geostudio-cdc"),
-        prefix=lake_purge.lake_prefix(tenant_id),
+    final_receipt_id = receipt_id if receipt_id is not None else str(uuid.uuid4())
+    run_after_commit(
+        session,
+        _make_s3_cleanup(
+            session.get_bind(),
+            s3,
+            tenant_id=tenant_id,
+            receipt_id=final_receipt_id,
+            export_result_keys=export_result_keys,
+            appexport_result_keys=appexport_result_keys,
+        ),
     )
-    # export_result_keys/appexport_result_keys capturés à l'étape 1, avant
-    # la suppression des lignes ExportJob/AppExportJob — sinon perdus.
-    exports_bucket = os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports")
-    appexports_bucket = os.environ.get("S3_APPEXPORTS_BUCKET", "geostudio-appexports")
-    # REV-283e : exports de données sous `{tenant}/data-exports/` (préfixe tenant).
-    counts["s3_objects_deleted"] += _delete_tenant_prefixed_objects(s3, exports_bucket, tenant_id)
-    for bucket, keys in (
-        (exports_bucket, export_result_keys),
-        (appexports_bucket, appexport_result_keys),
-    ):
-        if keys:
-            s3.delete_objects(Bucket=bucket, Delete={"Objects": [{"Key": k} for k in keys]})
-            counts["s3_objects_deleted"] += len(keys)
 
     # 5. Le reste des tables tenant-scoped indépendantes d'items/
     #    collections (ou déjà safe car leurs propres FK non-cascade ont
@@ -254,6 +303,8 @@ def purge_tenant(
     counts["connector_secrets"] = _delete_all(session, ConnectorSecret, tenant_id)
     counts["harvest_sources"] = _delete_all(session, HarvestSource, tenant_id)
     counts["map_icons"] = _delete_all(session, MapIcon, tenant_id)
+    counts["tenant_basemaps"] = _delete_all(session, TenantBasemap, tenant_id)
+    counts["geocode_jobs"] = _delete_all(session, GeocodeJob, tenant_id)
     counts["extensions"] = _delete_all(session, Extension, tenant_id)
     counts["group_members"] = _delete_all(session, GroupMember, tenant_id)
     counts["group_claim_mappings"] = _delete_all(session, GroupClaimMapping, tenant_id)
@@ -284,15 +335,20 @@ def purge_tenant(
     # 9. Preuve de purge — écrite AVANT la suppression du tenant (étape
     #    10) : sinon aucune trace de son tenant_slug ne survivrait.
     #    Volontairement sans FK vers tenants (cf. app/compliance/models.py).
-    receipt = PurgeReceipt(
-        id=receipt_id if receipt_id is not None else str(uuid.uuid4()),
-        tenant_slug=tenant_slug,
-        requested_by_user_id=requested_by_user_id,
-        requested_at=started_at,
-        completed_at=datetime.now(UTC),
-        counts=counts,
-    )
-    session.add(receipt)
+    receipt = session.get(PurgeReceipt, final_receipt_id)
+    if receipt is None:  # appel direct (tests, scripts) sans reçu créé par la route
+        receipt = PurgeReceipt(
+            id=final_receipt_id,
+            tenant_slug=tenant_slug,
+            requested_by_user_id=requested_by_user_id,
+            requested_at=started_at,
+            counts={},
+        )
+        session.add(receipt)
+    receipt.status = "done"
+    receipt.error = None
+    receipt.completed_at = datetime.now(UTC)
+    receipt.counts = counts
     session.flush()
 
     # 10. Tenant lui-même.

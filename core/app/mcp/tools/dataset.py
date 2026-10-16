@@ -11,7 +11,12 @@ from mcp.server.fastmcp import Context, FastMCP
 
 from app.audit.writer import write_audit
 from app.auth.dependency import is_read_only_mode
-from app.configs.schemas import BuilderConfig, DatasetColumnMeta, DatasetPayload
+from app.configs.schemas import (
+    BuilderConfig,
+    DatasetColumnMeta,
+    DatasetMetric,
+    DatasetPayload,
+)
 from app.configs.service import create_config_service
 from app.db import request_scoped_session
 from app.items import repository as items_repo
@@ -36,6 +41,7 @@ def register(server: FastMCP, session_factory) -> None:
         columns: dict[str, DatasetColumnMeta] | None = None,
         timeField: str | None = None,
         reactsToExtent: bool = False,
+        metrics: dict[str, DatasetMetric] | None = None,
     ) -> ItemRead:
         """Create a shared dataset (source collection or arcgis) — mirrors
         POST /configs with kind="dataset" (the path
@@ -52,6 +58,7 @@ def register(server: FastMCP, session_factory) -> None:
                 columns=columns or {},
                 timeField=timeField,
                 reactsToExtent=reactsToExtent,
+                metrics=metrics or {},
             )
             config = BuilderConfig(version=1, kind="dataset", dataset=payload)
             try:

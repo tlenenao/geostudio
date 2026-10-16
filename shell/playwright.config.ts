@@ -14,7 +14,7 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      testIgnore: [/map-touch\.spec\.ts/, /e2e\/journeys\//],
+      testIgnore: [/map-touch\.spec\.ts/, /touch-map\.spec\.ts/, /e2e\/journeys\//],
     },
     {
       name: "mobile-touch",
@@ -24,7 +24,14 @@ export default defineConfig({
       // émulation tactile/viewport mais on force chromium, seul navigateur
       // disponible.
       use: { ...devices["iPhone 13"], defaultBrowserType: "chromium", hasTouch: true },
-      testMatch: /e2e\/map-touch\.spec\.ts$/, // pas e2e/journeys/j12/map-touch.spec.ts (suite d'audit, config dédiée)
+      testMatch: /e2e\/(map-touch|touch-map)\.spec\.ts$/, // pas e2e/journeys/j12/map-touch.spec.ts (suite d'audit, config dédiée)
+    },
+    {
+      // REV-286 (c) : émulation tablette (810 px, mode « 2 volets » du
+      // triptyque) — mêmes réserves que ci-dessus sur le navigateur.
+      name: "tablet-touch",
+      use: { ...devices["iPad (gen 7)"], defaultBrowserType: "chromium", hasTouch: true },
+      testMatch: /e2e\/touch-map\.spec\.ts$/,
     },
   ],
   webServer: [

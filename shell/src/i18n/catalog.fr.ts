@@ -206,6 +206,9 @@ export const fr = {
     "Écrase le nom d'utilisateur, l'email et l'identité de connexion d'un compte. Les objets qu'il possède (cartes, collections, pièces jointes) restent intacts, attribués au compte anonymisé. Effet limité — le tenant continue de fonctionner normalement.",
   "compliance.userIdLabel": "Identifiant de l'utilisateur (ou « me » pour votre propre compte)",
   "compliance.eraseButton": "Anonymiser ce compte",
+  "compliance.eraseConfirmTitle": "Anonymiser ce compte ?",
+  "compliance.eraseConfirmMessage":
+    "Le compte « {userId} » sera anonymisé : nom, e-mail et identité de connexion écrasés. Cette action est définitive.",
   "compliance.eraseSuccess": "Compte anonymisé.",
   "compliance.eraseError": "Échec de l'anonymisation.",
   "compliance.eraseNotFound": "Utilisateur introuvable dans ce tenant.",
@@ -224,6 +227,8 @@ export const fr = {
   "compliance.purgeButton": "Purger définitivement ce tenant",
   "compliance.purgeInProgress": "Purge en cours…",
   "compliance.purgeCompleted": "Purge terminée à {completedAt}.",
+  "compliance.purgeFailed":
+    "La purge a échoué : {error}. Les données du tenant sont intactes ; vous pouvez relancer.",
   // SP-B5 : {seconds} interpolé depuis ApiError.retryAfter (429, Retry-After).
   "errors.retryAfter": "Réessayez dans {seconds} s.",
 

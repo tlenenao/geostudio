@@ -67,6 +67,73 @@ function KeyValueField({
   );
 }
 
+// dict[str, str] / dict[str, str | None] : seul cas rendu en lignes clé/valeur texte.
+function isStringMap(prop: PipelineOpParamProperty): boolean {
+  const ap = prop.additionalProperties;
+  if (typeof ap !== "object" || ap === null) return false;
+  if (ap.type === "string") return true;
+  return (ap.anyOf ?? []).every((a) => a.type === "string" || a.type === "null");
+}
+
+// REV-325 : tableaux d'objets / nombres et dictionnaires à valeurs libres (multipartFields,
+// paginatorConfig…) : éditeur JSON avancé, comme layer.paint (LayersPanel). Le brouillon texte
+// reste local tant que le JSON est invalide ; seul un parse réussi est propagé.
+function JsonField({
+  name,
+  value,
+  onChange,
+  readOnly,
+  expect,
+}: {
+  name: string;
+  value: unknown;
+  onChange: (next: unknown) => void;
+  readOnly?: boolean;
+  expect: "array" | "object";
+}) {
+  const [draft, setDraft] = useState(() =>
+    JSON.stringify(value ?? (expect === "array" ? [] : {}), null, 2),
+  );
+  const [error, setError] = useState<string | null>(null);
+  function commit() {
+    try {
+      const parsed: unknown = JSON.parse(draft);
+      const shapeOk =
+        expect === "array"
+          ? Array.isArray(parsed)
+          : typeof parsed === "object" && parsed !== null && !Array.isArray(parsed);
+      if (!shapeOk) throw new Error("shape");
+      setError(null);
+      onChange(parsed);
+    } catch {
+      setError(
+        t(
+          expect === "array"
+            ? "pipelineNodeInspector.jsonNotArray"
+            : "pipelineNodeInspector.jsonNotObject",
+        ),
+      );
+    }
+  }
+  return (
+    <label className="flex flex-col gap-1 text-xs">
+      {name}
+      <textarea
+        className="h-24 w-full rounded-md border border-control bg-surface p-2 font-mono text-xs text-ink"
+        value={draft}
+        disabled={readOnly}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+      />
+      {error && (
+        <span role="alert" className="text-danger">
+          {error}
+        </span>
+      )}
+    </label>
+  );
+}
+
 function StringListField({
   name,
   value,
@@ -205,6 +272,30 @@ export function PipelineNodeInspector({
           />
           {name}
         </label>
+      );
+    }
+    if (prop.type === "array" && prop.items?.type !== "string") {
+      return (
+        <JsonField
+          key={name}
+          name={name}
+          expect="array"
+          value={params[name]}
+          onChange={(v) => setField(name, v)}
+          readOnly={readOnly}
+        />
+      );
+    }
+    if (prop.type === "object" && !isStringMap(prop)) {
+      return (
+        <JsonField
+          key={name}
+          name={name}
+          expect="object"
+          value={params[name]}
+          onChange={(v) => setField(name, v)}
+          readOnly={readOnly}
+        />
       );
     }
     if (prop.type === "array") {

@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router-dom";
 import { expect, it, vi } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { server } from "../test/msw/server";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
@@ -36,7 +34,7 @@ function stubMM() {
 }
 
 // Anonymisation RGPD : un clic ne doit pas suffire (ComplianceAdminPage.tsx:57).
-it.fails("REV-audit: erase user demande une confirmation avant l'appel", async () => {
+it("REV-360 : erase user demande une confirmation avant l'appel", async () => {
   stubMM();
   server.use(
     http.get("https://core.test/v1/me", () =>
@@ -67,10 +65,14 @@ it.fails("REV-audit: erase user demande une confirmation avant l'appel", async (
   await userEvent.click(screen.getByRole("button", { name: /anonymiser ce compte/i }));
   await new Promise((r) => setTimeout(r, 100));
   expect(called).toBe(false);
+  // la confirmation (dialogue d'alerte) déclenche bien l'appel
+  const dialog = await screen.findByRole("alertdialog");
+  await userEvent.click(within(dialog).getByRole("button", { name: /anonymiser ce compte/i }));
+  await vi.waitFor(() => expect(called).toBe(true));
 });
 
 // Révocation de lien : doit afficher une erreur sur 500 (ShareForm.tsx:105).
-it.fails("REV-audit: revoke link affiche une erreur sur échec 500", async () => {
+it("REV-361 : revoke link affiche une erreur sur échec 500", async () => {
   const item: any = {
     pk: "7",
     resourceType: "app",
@@ -114,23 +116,4 @@ it.fails("REV-audit: revoke link affiche une erreur sur échec 500", async () =>
   const confirm = screen.queryAllByRole("button", { name: /confirmer|révoquer/i }).pop();
   if (confirm && confirm !== btns[0]) await userEvent.click(confirm);
   expect(await screen.findByRole("alert", {}, { timeout: 800 })).toBeTruthy();
-});
-
-// Rapport depuis l'état vide : aucun sélecteur de bookmark (ReportScheduleEditor.tsx:33).
-it.fails("REV-audit: ReportScheduleEditor expose un sélecteur de bookmark", () => {
-  const src = readFileSync(
-    resolve(__dirname, "../builder/report/ReportScheduleEditor.tsx"),
-    "utf8",
-  );
-  // Le canal utilise déjà un NativeSelect ; un sélecteur de bookmark en ferait un second.
-  expect((src.match(/<NativeSelect/g) ?? []).length).toBeGreaterThanOrEqual(2);
-});
-
-// Mesure carte : alternative clavier absente (MapMeasureSketchToolbar.tsx:334).
-it.fails("REV-audit: MapMeasureSketchToolbar a une entrée clavier pour ajouter un point", () => {
-  const src = readFileSync(resolve(__dirname, "../map/MapMeasureSketchToolbar.tsx"), "utf8");
-  // Un ajout de point au clavier passe par un champ de coordonnées ou un handler keydown sur la carte.
-  expect(src).toMatch(
-    /map\.on\(\s*["']keydown["']|getCanvas\(\)\.addEventListener\(\s*["']keydown|coordonn/i,
-  );
 });

@@ -139,6 +139,30 @@ def test_get_items_proxies_to_arcgis_and_reshapes_response(client):
     assert body["numberMatched"] == 1
 
 
+def test_get_items_omits_number_matched_when_transfer_limit_exceeded(client):
+    # REV-364 e : page tronquée par le service = total inconnu, pas `offset + len`.
+    dataset_item_id = _create_dataset(client, client.layer_item_id)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "type": "FeatureCollection",
+                "exceededTransferLimit": True,
+                "features": [
+                    {"type": "Feature", "id": 1, "properties": {"nom": "X"}, "geometry": None}
+                ],
+            },
+        )
+
+    client.app.dependency_overrides[harvest_routes.get_arcgis_http_client] = lambda: _mock_client(
+        handler
+    )
+    body = client.get(f"/v1/datasets/{dataset_item_id}/arcgis/items").json()
+    assert body["numberReturned"] == 1
+    assert "numberMatched" not in body
+
+
 def test_get_items_forwards_filters_and_bbox(client):
     dataset_item_id = _create_dataset(client, client.layer_item_id)
     seen = {}
@@ -337,3 +361,54 @@ def test_get_items_on_collection_dataset_404s(client):
     item_id = res.json()["itemId"]
     resp = client.get(f"/v1/datasets/{item_id}/arcgis/items")
     assert resp.status_code == 404
+
+
+def _create_dataset_with_metrics(client, arcgis_item_id: str) -> str:
+    res = client.post(
+        "/v1/configs",
+        json={
+            "title": "Bâtiments (métriques)",
+            "config": {
+                "version": 1,
+                "kind": "dataset",
+                "dataset": {
+                    "source": "arcgis",
+                    "arcgisItemId": arcgis_item_id,
+                    "columns": {},
+                    "metrics": {"surface_totale": {"field": "surface", "agg": "sum"}},
+                },
+            },
+        },
+    )
+    assert res.status_code == 201, res.text
+    return res.json()["itemId"]
+
+
+def test_post_aggregate_resolves_named_metric(client):
+    dataset_item_id = _create_dataset_with_metrics(client, client.layer_item_id)
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        return httpx.Response(200, json={"features": [{"attributes": {"m0": 42}}]})
+
+    client.app.dependency_overrides[harvest_routes.get_arcgis_http_client] = lambda: _mock_client(
+        handler
+    )
+    resp = client.post(
+        f"/v1/datasets/{dataset_item_id}/arcgis/aggregate",
+        json={"measures": [{"metric": "surface_totale"}]},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["rows"] == [{"group": "Total", "surface_totale": 42}]
+    assert "surface" in seen["url"] and "sum" in seen["url"]
+
+
+def test_post_aggregate_unknown_metric_400(client):
+    dataset_item_id = _create_dataset_with_metrics(client, client.layer_item_id)
+    resp = client.post(
+        f"/v1/datasets/{dataset_item_id}/arcgis/aggregate",
+        json={"measures": [{"metric": "inconnue"}]},
+    )
+    assert resp.status_code == 400
+    assert "unknown metric" in resp.text

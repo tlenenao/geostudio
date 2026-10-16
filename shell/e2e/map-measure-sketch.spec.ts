@@ -164,3 +164,19 @@ test("le croquis pose une forme comptabilisée dans la barre d'outils", async ({
   // GeoJSON par les tests unitaires de la tâche 18.
   expect(writes).toEqual([]);
 });
+
+// REV-363 : mesurer sans souris — le bouton « point au centre » pose un point
+// au centre de la carte ; deux points donnent une distance.
+test("on mesure au clavier en ajoutant des points au centre de la carte", async ({ page }) => {
+  await mockCore(page);
+  await page.route("**/map-icons", (route) => route.fulfill({ json: [] }));
+  await appWithAMapWidget(page);
+
+  await expect(page.locator("canvas.maplibregl-canvas").first()).toBeVisible();
+  await page.getByRole("button", { name: "Mesurer" }).click();
+
+  const addPoint = page.getByRole("button", { name: /Ajouter un point au centre/ });
+  await addPoint.click();
+  await addPoint.click();
+  await expect(page.getByText(/\d+([.,]\d+)?\s*(m|km)$/)).toBeVisible();
+});

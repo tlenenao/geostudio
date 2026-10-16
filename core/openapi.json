@@ -43,6 +43,17 @@
             ],
             "title": "Label"
           },
+          "metric": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric"
+          },
           "p": {
             "anyOf": [
               {
@@ -935,7 +946,7 @@
             "type": "string"
           },
           "accountName": {
-            "minLength": 1,
+            "pattern": "^[a-z0-9]{3,24}$",
             "title": "Accountname",
             "type": "string"
           },
@@ -975,6 +986,51 @@
           "style"
         ],
         "title": "BaseMap",
+        "type": "object"
+      },
+      "BasemapCreate": {
+        "properties": {
+          "label": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "style": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Style",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "style"
+        ],
+        "title": "BasemapCreate",
+        "type": "object"
+      },
+      "BasemapOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "style": {
+            "title": "Style",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "style"
+        ],
+        "title": "BasemapOut",
         "type": "object"
       },
       "BasicAuthPayload": {
@@ -2485,6 +2541,86 @@
         "title": "DatasetCrossFilterLinkSpatial",
         "type": "object"
       },
+      "DatasetMetric": {
+        "description": "REV-119 / GAP-25 : m\u00e9trique nomm\u00e9e d'un dataset (field + agg, r\u00e9solue en\n`AggregateMeasure` avant ex\u00e9cution ; pas de CEL libre : un seul moteur).",
+        "properties": {
+          "agg": {
+            "title": "Agg",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Format"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "p": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "agg"
+        ],
+        "title": "DatasetMetric",
+        "type": "object"
+      },
       "DatasetPayload": {
         "properties": {
           "arcgisItemId": {
@@ -2536,6 +2672,13 @@
             },
             "title": "Crossfilterlinks",
             "type": "array"
+          },
+          "metrics": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DatasetMetric"
+            },
+            "title": "Metrics",
+            "type": "object"
           },
           "reactsToExtent": {
             "default": false,
@@ -3422,6 +3565,92 @@
           "updatedAt"
         ],
         "title": "GeoLimitRead",
+        "type": "object"
+      },
+      "GeocodeJobOut": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "errors": {
+            "title": "Errors",
+            "type": "integer"
+          },
+          "found": {
+            "title": "Found",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "not_found": {
+            "title": "Not Found",
+            "type": "integer"
+          },
+          "processed": {
+            "title": "Processed",
+            "type": "integer"
+          },
+          "results": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/BatchRow"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Results"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "total",
+          "processed",
+          "found",
+          "not_found",
+          "errors"
+        ],
+        "title": "GeocodeJobOut",
+        "type": "object"
+      },
+      "GeocodeJobRequest": {
+        "properties": {
+          "addresses": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 5000,
+            "minItems": 1,
+            "title": "Addresses",
+            "type": "array"
+          }
+        },
+        "required": [
+          "addresses"
+        ],
+        "title": "GeocodeJobRequest",
         "type": "object"
       },
       "GeocodeResponse": {
@@ -5164,6 +5393,10 @@
             "title": "Etlenabled",
             "type": "boolean"
           },
+          "experimentalOpsEnabled": {
+            "title": "Experimentalopsenabled",
+            "type": "boolean"
+          },
           "exportEnabled": {
             "title": "Exportenabled",
             "type": "boolean"
@@ -5204,7 +5437,8 @@
           "adminToolsEnabled",
           "quotasEnabled",
           "rasterEnabled",
-          "routingEnabled"
+          "routingEnabled",
+          "experimentalOpsEnabled"
         ],
         "title": "MeCapabilities",
         "type": "object"
@@ -5800,7 +6034,7 @@
           "height": {
             "default": 120,
             "title": "Height",
-            "type": "integer"
+            "type": "number"
           },
           "id": {
             "title": "Id",
@@ -5813,17 +6047,17 @@
           "width": {
             "default": 200,
             "title": "Width",
-            "type": "integer"
+            "type": "number"
           },
           "x": {
             "default": 0,
             "title": "X",
-            "type": "integer"
+            "type": "number"
           },
           "y": {
             "default": 0,
             "title": "Y",
-            "type": "integer"
+            "type": "number"
           }
         },
         "required": [
@@ -5920,12 +6154,12 @@
           "x": {
             "default": 0,
             "title": "X",
-            "type": "integer"
+            "type": "number"
           },
           "y": {
             "default": 0,
             "title": "Y",
-            "type": "integer"
+            "type": "number"
           }
         },
         "required": [
@@ -6373,13 +6607,31 @@
       "PurgeReceiptResponse": {
         "properties": {
           "completedAt": {
-            "title": "Completedat",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completedat"
           },
           "counts": {
             "additionalProperties": true,
             "title": "Counts",
             "type": "object"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
           },
           "id": {
             "title": "Id",
@@ -6393,6 +6645,11 @@
             "title": "Requestedbyuserid",
             "type": "string"
           },
+          "status": {
+            "default": "done",
+            "title": "Status",
+            "type": "string"
+          },
           "tenantSlug": {
             "title": "Tenantslug",
             "type": "string"
@@ -6403,7 +6660,6 @@
           "tenantSlug",
           "requestedByUserId",
           "requestedAt",
-          "completedAt",
           "counts"
         ],
         "title": "PurgeReceiptResponse",
@@ -8387,6 +8643,109 @@
         "summary": "Landing Page"
       }
     },
+    "/v1/admin/api-keys": {
+      "get": {
+        "operationId": "admin_list_keys_v1_admin_api_keys_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "User",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ApiKeyRead"
+                  },
+                  "title": "Response Admin List Keys V1 Admin Api Keys Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin List Keys"
+      }
+    },
+    "/v1/admin/api-keys/{key_id}": {
+      "delete": {
+        "operationId": "admin_revoke_key_v1_admin_api_keys__key_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key_id",
+            "required": true,
+            "schema": {
+              "title": "Key Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin Revoke Key"
+      }
+    },
     "/v1/admin/usage": {
       "get": {
         "operationId": "get_usage_v1_admin_usage_get",
@@ -8796,6 +9155,140 @@
           }
         },
         "summary": "Revoke Key"
+      }
+    },
+    "/v1/basemaps": {
+      "get": {
+        "operationId": "list_basemaps_v1_basemaps_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BasemapOut"
+                  },
+                  "title": "Response List Basemaps V1 Basemaps Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Basemaps"
+      },
+      "post": {
+        "operationId": "create_basemap_v1_basemaps_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BasemapCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BasemapOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Basemap"
+      }
+    },
+    "/v1/basemaps/{basemap_id}": {
+      "delete": {
+        "operationId": "delete_basemap_v1_basemaps__basemap_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "basemap_id",
+            "required": true,
+            "schema": {
+              "title": "Basemap Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Basemap"
       }
     },
     "/v1/collections": {
@@ -10410,6 +10903,22 @@
             "schema": {
               "title": "Fid",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "crs",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Crs"
             }
           },
           {
@@ -14075,6 +14584,112 @@
           }
         },
         "summary": "Geocode Many",
+        "tags": [
+          "geocoding"
+        ]
+      }
+    },
+    "/v1/geocode/jobs": {
+      "post": {
+        "description": "Lot asynchrone avec reprise (REV-367 j) : jusqu'\u00e0 5000 adresses, progression\npar GET /geocode/jobs/{id}. Le POST /batch synchrone reste pour <= 500.",
+        "operationId": "create_geocode_job_v1_geocode_jobs_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GeocodeJobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeocodeJobOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Geocode Job",
+        "tags": [
+          "geocoding"
+        ]
+      }
+    },
+    "/v1/geocode/jobs/{job_id}": {
+      "get": {
+        "operationId": "get_geocode_job_v1_geocode_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeocodeJobOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Geocode Job",
         "tags": [
           "geocoding"
         ]

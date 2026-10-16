@@ -6,6 +6,7 @@ import { Link, useNavigate } from "react-router-dom";
 import {
   useCreateReportSchedule,
   useItem,
+  useItems,
   useReportScheduleConfig,
   useSaveReportSchedule,
 } from "../api/hooks";
@@ -31,6 +32,7 @@ import { PageTitle } from "../ui/kit/PageTitle";
 import "../i18n/domains/admin";
 import "../i18n/domains/automation";
 import "../i18n/domains/misc";
+import { formatDateTime } from "../lib/format";
 
 function defaultPayload(bookmarkItemId: string): ReportSchedulePayload {
   return {
@@ -57,6 +59,8 @@ export function ReportEditPage({
   const tabProps = useUrlTab("report");
   const itemQuery = useItem(pk ?? "", { enabled: pk !== null });
   const configQuery = useReportScheduleConfig(pk ?? "", { enabled: pk !== null });
+  // Bookmarks proposés dans le sélecteur (REV-362) : un rapport cible toujours une vue.
+  const bookmarks = useItems({ type: "bookmark", pageSize: 100 }).data?.items ?? [];
   const createReport = useCreateReportSchedule();
   const saveReport = useSaveReportSchedule(pk ?? "");
   // SP-42/F-shell-pages-04 : cf. commentaire jumeau sur DatasetEditPage.tsx —
@@ -116,12 +120,18 @@ export function ReportEditPage({
       />
     );
 
+  const noBookmark = !draft.bookmarkItemId;
+  const bookmarkTitle = bookmarks.find((b) => b.pk === draft.bookmarkItemId)?.title;
+
   async function onSave() {
+    if (noBookmark) return;
     setSaveError(null);
     try {
       if (pk === null) {
         const item = await createReport.mutateAsync({
-          title: t("reportEdit.defaultTitle"),
+          title: bookmarkTitle
+            ? t("reportEdit.titleFromBookmark", { title: bookmarkTitle })
+            : t("reportEdit.defaultTitle"),
           owner: username ?? "",
           report: draft,
         });
@@ -180,7 +190,7 @@ export function ReportEditPage({
                   <dt>{t("catalog.typeLabel")}</dt>
                   <dd>{RESOURCE_TYPE_LABELS[itemQuery.data.resourceType]}</dd>
                   <dt>{t("datasetEdit.modifiedLabel")}</dt>
-                  <dd>{itemQuery.data.updatedAt || "—"}</dd>
+                  <dd>{formatDateTime(itemQuery.data.updatedAt)}</dd>
                 </dl>
               )}
             </Panel>
@@ -194,11 +204,7 @@ export function ReportEditPage({
               <PageTitle>
                 {pk === null ? t("actions.scheduleReport") : t("reportEdit.editHeading")}
               </PageTitle>
-              <ReportScheduleEditor
-                value={draft}
-                onChange={updateDraft}
-                bookmarkLabel={draft.bookmarkItemId}
-              />
+              <ReportScheduleEditor value={draft} onChange={updateDraft} bookmarks={bookmarks} />
             </div>
           ),
         }}
@@ -224,11 +230,16 @@ export function ReportEditPage({
                   size="sm"
                   className="w-fit"
                   onClick={() => void onSave()}
-                  disabled={createReport.isPending || saveReport.isPending || readOnly}
+                  disabled={
+                    createReport.isPending || saveReport.isPending || readOnly || noBookmark
+                  }
                 >
                   {t("common.save")}
                 </Button>
                 {readOnly && <p className="text-xs text-ink-2">{t("locked.needWrite")}</p>}
+                {noBookmark && !readOnly && (
+                  <p className="text-xs text-ink-2">{t("reportEdit.bookmarkRequired")}</p>
+                )}
                 {saveError && (
                   <p role="alert" className="text-sm text-danger">
                     {saveError}

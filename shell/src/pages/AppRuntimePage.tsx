@@ -223,7 +223,9 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
     .flatMap((item) => (item.props.layers as MapLayer[] | undefined) ?? [])
     .filter((layer) => layer.visible);
   return (
-    <div className="relative flex h-full w-full flex-col">
+    <main className="relative flex h-full w-full flex-col">
+      {/* REV-284 : repère <main> + h1 pour les lecteurs d'écran (route hors AppLayout). */}
+      <h1 className="sr-only">{itemQuery.data?.title}</h1>
       {showActionBar && (
         <div className="flex justify-end gap-2 border-b border-rule p-2">
           {exportEnabled && <ExportPanel itemId={pk} />}
@@ -299,6 +301,6 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
           </div>
         </div>
       </Dialog>
-    </div>
+    </main>
   );
 }

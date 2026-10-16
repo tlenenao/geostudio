@@ -2,7 +2,9 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
-import type { DataSource } from "../api/types";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { DataSource, ItemClient } from "../api/types";
+import { ItemClientProvider } from "../api/ItemClientProvider";
 import { DataSourcePanel } from "./DataSourcePanel";
 import { expectTokenizedClasses } from "../ui/kit/testUtils";
 
@@ -458,4 +460,42 @@ test("shows a promoting label and disables the button while a promotion is in fl
   const button = screen.getByRole("button", { name: "Promouvoir en jeu de données partagé s1" });
   expect(button).toBeDisabled();
   expect(button).toHaveTextContent("Promotion…");
+});
+
+test("offers the dataset's named metrics and adds a {metric} measure (REV-119)", async () => {
+  const onChange = vi.fn();
+  const sources: DataSource[] = [
+    {
+      id: "d1",
+      type: "statistics",
+      service: "core",
+      layer: "",
+      datasetId: "ds-1",
+      query: { measures: [{ metric: "rec", agg: "count" }] },
+    },
+  ];
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = {
+    getDatasetConfig: vi.fn().mockResolvedValue({
+      source: "collection",
+      collectionId: "c",
+      columns: {},
+      metrics: { rec: { field: "montant", agg: "sum", label: "Recettes" } },
+    }),
+  } as unknown as ItemClient;
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <DataSourcePanel sources={sources} onChange={onChange} />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  expect(screen.getByText("Métrique : rec")).toBeInTheDocument();
+  const picker = await screen.findByLabelText("Ajouter une métrique nommée à d1");
+  await userEvent.selectOptions(picker, "rec");
+  expect(onChange).toHaveBeenCalledTimes(1);
+  expect(onChange.mock.calls[0][0][0].query.measures).toEqual([
+    { metric: "rec", agg: "count" },
+    { agg: "count", metric: "rec" },
+  ]);
 });

@@ -38,6 +38,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/api-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Admin List Keys */
+        get: operations["admin_list_keys_v1_admin_api_keys_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/api-keys/{key_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Admin Revoke Key */
+        delete: operations["admin_revoke_key_v1_admin_api_keys__key_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/usage": {
         parameters: {
             query?: never;
@@ -153,6 +187,41 @@ export interface paths {
         post?: never;
         /** Revoke Key */
         delete: operations["revoke_key_v1_api_keys__key_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/basemaps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Basemaps */
+        get: operations["list_basemaps_v1_basemaps_get"];
+        put?: never;
+        /** Create Basemap */
+        post: operations["create_basemap_v1_basemaps_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/basemaps/{basemap_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Basemap */
+        delete: operations["delete_basemap_v1_basemaps__basemap_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1216,6 +1285,44 @@ export interface paths {
         put?: never;
         /** Geocode Many */
         post: operations["geocode_many_v1_geocode_batch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/geocode/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Geocode Job
+         * @description Lot asynchrone avec reprise (REV-367 j) : jusqu'à 5000 adresses, progression
+         *     par GET /geocode/jobs/{id}. Le POST /batch synchrone reste pour <= 500.
+         */
+        post: operations["create_geocode_job_v1_geocode_jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/geocode/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Geocode Job */
+        get: operations["get_geocode_job_v1_geocode_jobs__job_id__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2703,6 +2810,8 @@ export interface components {
             field?: string | null;
             /** Label */
             label?: string | null;
+            /** Metric */
+            metric?: string | null;
             /** P */
             p?: number | null;
         };
@@ -3062,6 +3171,22 @@ export interface components {
         };
         /** BaseMap */
         BaseMap: {
+            /** Style */
+            style: string;
+        };
+        /** BasemapCreate */
+        BasemapCreate: {
+            /** Label */
+            label: string;
+            /** Style */
+            style: string;
+        };
+        /** BasemapOut */
+        BasemapOut: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
             /** Style */
             style: string;
         };
@@ -3573,6 +3698,27 @@ export interface components {
             /** Targetdatasetid */
             targetDatasetId: string;
         };
+        /**
+         * DatasetMetric
+         * @description REV-119 / GAP-25 : métrique nommée d'un dataset (field + agg, résolue en
+         *     `AggregateMeasure` avant exécution ; pas de CEL libre : un seul moteur).
+         */
+        DatasetMetric: {
+            /** Agg */
+            agg: string;
+            /** Description */
+            description?: string | null;
+            /** Field */
+            field?: string | null;
+            /** Format */
+            format?: string | null;
+            /** Label */
+            label?: string | null;
+            /** P */
+            p?: number | null;
+            /** Unit */
+            unit?: string | null;
+        };
         /** DatasetPayload */
         DatasetPayload: {
             /** Arcgisitemid */
@@ -3585,6 +3731,10 @@ export interface components {
             };
             /** Crossfilterlinks */
             crossFilterLinks?: (components["schemas"]["DatasetCrossFilterLinkAttribute"] | components["schemas"]["DatasetCrossFilterLinkSpatial"])[];
+            /** Metrics */
+            metrics?: {
+                [key: string]: components["schemas"]["DatasetMetric"];
+            };
             /**
              * Reactstoextent
              * @default false
@@ -3874,6 +4024,32 @@ export interface components {
             targetType: "role" | "group";
             /** Updatedat */
             updatedAt: string;
+        };
+        /** GeocodeJobOut */
+        GeocodeJobOut: {
+            /** Error */
+            error?: string | null;
+            /** Errors */
+            errors: number;
+            /** Found */
+            found: number;
+            /** Id */
+            id: string;
+            /** Not Found */
+            not_found: number;
+            /** Processed */
+            processed: number;
+            /** Results */
+            results?: components["schemas"]["BatchRow"][] | null;
+            /** Status */
+            status: string;
+            /** Total */
+            total: number;
+        };
+        /** GeocodeJobRequest */
+        GeocodeJobRequest: {
+            /** Addresses */
+            addresses: string[];
         };
         /** GeocodeResponse */
         GeocodeResponse: {
@@ -4458,6 +4634,8 @@ export interface components {
             copilotEnabled: boolean;
             /** Etlenabled */
             etlEnabled: boolean;
+            /** Experimentalopsenabled */
+            experimentalOpsEnabled: boolean;
             /** Exportenabled */
             exportEnabled: boolean;
             /** Quotasenabled */
@@ -5012,17 +5190,24 @@ export interface components {
         /** PurgeReceiptResponse */
         PurgeReceiptResponse: {
             /** Completedat */
-            completedAt: string;
+            completedAt?: string | null;
             /** Counts */
             counts: {
                 [key: string]: unknown;
             };
+            /** Error */
+            error?: string | null;
             /** Id */
             id: string;
             /** Requestedat */
             requestedAt: string;
             /** Requestedbyuserid */
             requestedByUserId: string;
+            /**
+             * Status
+             * @default done
+             */
+            status: string;
             /** Tenantslug */
             tenantSlug: string;
         };
@@ -5700,6 +5885,72 @@ export interface operations {
             };
         };
     };
+    admin_list_keys_v1_admin_api_keys_get: {
+        parameters: {
+            query: {
+                user: string;
+            };
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_revoke_key_v1_admin_api_keys__key_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                key_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_usage_v1_admin_usage_get: {
         parameters: {
             query?: never;
@@ -5956,6 +6207,103 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ApiKeyRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_basemaps_v1_basemaps_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BasemapOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_basemap_v1_basemaps_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BasemapCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BasemapOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_basemap_v1_basemaps__basemap_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                basemap_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -6704,7 +7052,9 @@ export interface operations {
     };
     get_single_feature_v1_collections__collection_id__items__fid__get: {
         parameters: {
-            query?: never;
+            query?: {
+                crs?: string | null;
+            };
             header?: {
                 authorization?: string;
                 "X-Share-Link-Token"?: string | null;
@@ -8711,6 +9061,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BatchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_geocode_job_v1_geocode_jobs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GeocodeJobRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeocodeJobOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_geocode_job_v1_geocode_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeocodeJobOut"];
                 };
             };
             /** @description Validation Error */

@@ -333,3 +333,14 @@ def test_aggregate_sensitive_field_is_readable_by_the_collection_owner_rev276(en
     _as(app, regular)
     response = client.post(f"/v1/collections/{col['id']}/aggregate", json={"groupBy": "pop"})
     assert response.status_code == 200
+
+
+def test_aggregate_unresolved_metric_is_refused_not_counted(env):
+    """REV-119 : sans contexte dataset, {metric} est un 400 (jamais un count silencieux)."""
+    app, client, admin, _r, tmp_path, tenant_id = env
+    col = _register(app, client, admin)
+    response = client.post(
+        f"/v1/collections/{col['id']}/aggregate", json={"measures": [{"metric": "nb"}]}
+    )
+    assert response.status_code == 400
+    assert "metric requires a dataset context" in response.text

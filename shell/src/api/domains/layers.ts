@@ -8,6 +8,7 @@ import type {
   MapIconOut,
   MapTimePlayerConfig,
   PrintLayoutConfig,
+  TenantBasemapOut,
 } from "../types";
 import type { ItemClientBase, RawMapLayer } from "../base";
 import { ensureOk, parseErrorResponse, toFrontLayer } from "../base";
@@ -26,6 +27,7 @@ type LayersMethods = Pick<
   | "sampleCollectionField"
   | "uploadMapIcon"
   | "listMapIcons"
+  | "listTenantBasemaps"
   | "deleteMapIcon"
   | "fetchMapIconBlob"
 >;
@@ -198,6 +200,10 @@ export function createLayersMethods(base: ItemClientBase): LayersMethods {
 
     async listMapIcons() {
       return request<MapIconOut[]>("GET", "/map-icons");
+    },
+
+    async listTenantBasemaps() {
+      return request<TenantBasemapOut[]>("GET", "/basemaps");
     },
 
     async deleteMapIcon(iconId: string) {

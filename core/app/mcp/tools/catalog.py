@@ -13,6 +13,8 @@ from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.fastmcp import Context, FastMCP
 from pydantic import BaseModel, Field
 
+from app.auth.dependency import is_read_only_mode
+from app.bbox import parse_bbox_floats
 from app.collections import repository as collections_repo
 from app.collections.introspection import (
     TableNotFound,
@@ -26,8 +28,8 @@ from app.features.repository import FilterError, select_features
 from app.features.rls import rls_scope
 from app.filter_values import normalize_filters
 from app.items import repository as items_repo
-from app.items.schemas import ContentStatus, ItemPage, ItemRead
-from app.items.service import get_item_service
+from app.items.schemas import ContentStatus, ItemPage, ItemRead, ItemUpdatePatch
+from app.items.service import get_item_service, parse_if_match, update_item_service
 from app.mcp.tools.identity import (
     http_exception_to_value_error,
     require_collection_read,
@@ -36,6 +38,7 @@ from app.mcp.tools.identity import (
     without_thumbnail_url,
     without_thumbnail_urls,
 )
+from app.mcp.tools.write_tools import write_tool
 from app.roles.guards import has_privilege
 from app.roles.privileges import Privilege
 
@@ -53,13 +56,12 @@ class CollectionSearchResult(BaseModel):
 
 
 def _parse_bbox_tuple(raw: str) -> tuple[float, float, float, float]:
-    parts = raw.split(",")
-    if len(parts) != 4:
-        raise ValueError("bbox must be minx,miny,maxx,maxy")
     try:
-        return tuple(float(p) for p in parts)  # type: ignore[return-value]
+        parsed = parse_bbox_floats(raw)
     except ValueError:
         raise ValueError("bbox must be minx,miny,maxx,maxy") from None
+    assert parsed is not None
+    return parsed
 
 
 def register(server: FastMCP, session_factory) -> None:
@@ -137,6 +139,53 @@ def register(server: FastMCP, session_factory) -> None:
                     status=status,
                 )
             )
+
+    @server.tool()
+    @write_tool
+    async def update_item(
+        ctx: Context,
+        itemId: str,
+        title: str | None = None,
+        abstract: str | None = None,
+        keywords: list[str] | None = None,
+        license: str | None = None,
+        language: str | None = None,
+        contentStatus: ContentStatus | None = None,
+        categories: list[str] | None = None,
+        expectedUpdatedAt: str | None = None,
+    ) -> ItemRead:
+        """Update an item's catalog metadata — mirrors PATCH /items/{id}
+        (same privilege guards: write access, kind privilege, and
+        catalog.manage for `contentStatus`/`categories`). Pass
+        `expectedUpdatedAt` (the item's `updatedAt` as last read) to refuse
+        the write if the item changed in between (same guard as the REST
+        If-Match header); omit it to overwrite. Publication and sharing stay
+        on `set_sharing`."""
+        if is_read_only_mode():
+            raise ValueError("Mode démo : lecture seule, écritures désactivées.")
+        access_token = get_access_token()
+        with request_scoped_session(session_factory) as session:
+            user = resolve_actor(session, access_token)
+            try:
+                result = update_item_service(
+                    session,
+                    item_id=itemId,
+                    user=user,
+                    patch=ItemUpdatePatch(
+                        title=title,
+                        abstract=abstract,
+                        keywords=keywords,
+                        license=license,
+                        language=language,
+                        contentStatus=contentStatus,
+                        categories=categories,
+                    ),
+                    expected_updated_at=parse_if_match(expectedUpdatedAt),
+                    actor_kind="agent",
+                )
+            except HTTPException as exc:
+                raise http_exception_to_value_error(exc) from exc
+            return without_thumbnail_url(result)
 
     @server.tool()
     async def search_collections(

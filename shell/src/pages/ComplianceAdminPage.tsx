@@ -3,10 +3,12 @@ import { useState } from "react";
 import { useEraseUser, useMe, usePurgeStatus, useRequestTenantPurge } from "../api/hooks";
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
+import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
 import { Panel } from "../ui/kit/Panel";
 import { SettingsNav } from "../shell/chrome/SettingsNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
+import { formatDateTime } from "../lib/format";
 import { eraseErrorMessage } from "./eraseErrorMessage";
 import { PageTitle } from "../ui/kit/PageTitle";
 
@@ -22,9 +24,11 @@ function EraseUserSection() {
   const [userId, setUserId] = useState("");
   const [result, setResult] = useState<"idle" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
+  const [confirming, setConfirming] = useState(false);
   const eraseUser = useEraseUser();
 
   async function handleErase() {
+    setConfirming(false);
     setResult("idle");
     try {
       await eraseUser.mutateAsync(userId.trim());
@@ -54,10 +58,19 @@ function EraseUserSection() {
         size="sm"
         variant="outline"
         disabled={!userId.trim() || eraseUser.isPending}
-        onClick={() => void handleErase()}
+        onClick={() => setConfirming(true)}
       >
         {t("compliance.eraseButton")}
       </Button>
+      <ConfirmDialog
+        open={confirming}
+        title={t("compliance.eraseConfirmTitle")}
+        message={t("compliance.eraseConfirmMessage", { userId: userId.trim() })}
+        confirmLabel={t("compliance.eraseButton")}
+        pending={eraseUser.isPending}
+        onCancel={() => setConfirming(false)}
+        onConfirm={() => void handleErase()}
+      />
       {result === "success" && (
         <p role="status" className="text-sm text-ink-2">
           {t("compliance.eraseSuccess")}
@@ -113,7 +126,11 @@ function PurgeTenantSection() {
       <Button
         size="sm"
         variant="danger"
-        disabled={!slugMatches || requestPurge.isPending || purgeId !== null}
+        disabled={
+          !slugMatches ||
+          requestPurge.isPending ||
+          (purgeId !== null && statusQuery.data?.status !== "failed")
+        }
         onClick={() => void handlePurge()}
       >
         {t("compliance.purgeButton")}
@@ -128,9 +145,16 @@ function PurgeTenantSection() {
           {t("compliance.purgeInProgress")}
         </p>
       )}
-      {purgeId && statusQuery.data && (
+      {purgeId && statusQuery.data && statusQuery.data.status === "failed" && (
+        <p role="alert" className="text-sm text-danger">
+          {t("compliance.purgeFailed", { error: statusQuery.data.error ?? "" })}
+        </p>
+      )}
+      {purgeId && statusQuery.data && statusQuery.data.status !== "failed" && (
         <p role="status" className="text-sm text-ink-2">
-          {t("compliance.purgeCompleted", { completedAt: statusQuery.data.completedAt })}
+          {t("compliance.purgeCompleted", {
+            completedAt: formatDateTime(statusQuery.data.completedAt),
+          })}
         </p>
       )}
     </Panel>

@@ -109,6 +109,7 @@ _TENANT_PREFIXED_BUCKET_ENV_VARS_AND_DEFAULTS = (
     ("S3_TILESET3D_BUCKET", "geostudio-tileset3d"),
     ("S3_TERRAIN3D_BUCKET", "geostudio-terrain3d"),
     ("S3_RASTER_BUCKET", "geostudio-raster"),
+    ("S3_MAPICONS_BUCKET", "geostudio-mapicons"),
 )
 
 

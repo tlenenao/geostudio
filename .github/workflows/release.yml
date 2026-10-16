@@ -55,7 +55,7 @@ jobs:
         run: docker build -t geostudio-postgis-ci:latest ./deploy/postgis
 
       - name: Start Postgres
-        # Les deux derniers flags doivent rester alignés sur le job `core` de
+        # Les deux derniers flags doivent rester alignés sur le job `core-tests` de
         # ci.yml : sans `wal_level=logical`, les tests `@pytest.mark.postgis`
         # du consommateur CDC (SP-11) échouent en
         # « logical decoding requires wal_level >= logical ». Cette porte de

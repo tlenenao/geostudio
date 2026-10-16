@@ -383,6 +383,9 @@ services:
       CORE_TERRAIN3D_ENABLED: ${CORE_TERRAIN3D_ENABLED:-false}
       # ARC-33 (ADR 0024) : rasters COG + proxy de tuiles TiTiler + zonal-stats.
       CORE_RASTER_ENABLED: ${CORE_RASTER_ENABLED:-false}
+      # Lot 9 : op de pipeline expérimentales (docs/revue/2026-10-16-ops-experimentales.md) —
+      # catalogue + validation d'écriture dans `core`, exécution dans `worker` (même valeur).
+      CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED: ${CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED:-false}
       S3_RASTER_BUCKET: geostudio-raster
       CORE_ADMIN_TOOLS_ENABLED: ${CORE_ADMIN_TOOLS_ENABLED:-false}
       # Secret HMAC du gate /admin/* (Martin/Titiler/Grafana) — signe le
@@ -588,6 +591,9 @@ services:
       CORE_EXPORT_ENABLED: ${CORE_EXPORT_ENABLED:-false}
       CORE_READ_ONLY_MODE: ${CORE_READ_ONLY_MODE:-false}
       CORE_PIPELINE_FILE_IO_ENABLED: ${CORE_PIPELINE_FILE_IO_ENABLED:-false}
+      # Lot 9 : l'exécution refuse les nœuds expérimentaux (config enregistrée avant,
+      # cron, webhook) — même valeur que `core`.
+      CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED: ${CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED:-false}
       # Miroir des défauts du service `core` ci-dessus (mêmes commentaires) :
       # `fake`/`text-embedding-3-small`, pas une substitution à défaut vide,
       # pour ne pas diverger d'un défaut applicatif qui marchait avant le

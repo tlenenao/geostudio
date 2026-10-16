@@ -20,6 +20,7 @@ import json
 import re
 import shutil
 import tempfile
+import threading
 import time
 import uuid
 from typing import Protocol
@@ -420,12 +421,24 @@ def _assert_url_within_secret_scope(payload: SecretPayload | None, params) -> No
         )
 
 
-def _build_auth(payload: SecretPayload | None):
+# ponytail : verrou global (REV-330), un par jeton si le débit d'échange le justifie un jour.
+_OAUTH2_REFRESH_LOCK = threading.Lock()
+
+
+class _LockedOAuth2ClientCredentials(OAuth2ClientCredentials):
+    """Sérialise le test d'expiration + l'échange de jeton entre threads du pool de lignes."""
+
+    def __call__(self, request):
+        with _OAUTH2_REFRESH_LOCK:
+            return super().__call__(request)
+
+
+def _build_auth(payload: SecretPayload | None, op: str = "reader.connector.rest"):
     if payload is None:
         return None
     if payload.kind not in _REST_SECRET_KINDS:
         raise ConnectorRuntimeError(
-            f"secret has kind '{payload.kind}', not usable by reader.connector.rest "
+            f"secret has kind '{payload.kind}', not usable by {op} "
             f"(expected one of {sorted(_REST_SECRET_KINDS)})"
         )
     if payload.kind == "bearer_token":
@@ -434,7 +447,7 @@ def _build_auth(payload: SecretPayload | None):
         return APIKeyAuth(name=payload.key, api_key=payload.value, location=payload.location)
     if payload.kind == "basic_auth":
         return HttpBasicAuth(payload.username, payload.password)
-    return OAuth2ClientCredentials(
+    return _LockedOAuth2ClientCredentials(
         access_token_url=payload.tokenUrl,
         client_id=payload.clientId,
         client_secret=payload.clientSecret,
@@ -574,13 +587,17 @@ def materialize_rest_connector(
     payload = _resolve_secret(secret_resolver, params.secretName)
     auth = _build_auth(payload)
     _assert_url_within_secret_scope(payload, params)
+    session = build_guarded_session()
+    # REV-339 : requests rejoue les en-têtes personnalisés (X-Api-Key…) vers l'hôte d'une
+    # redirection — hors portée du secret. Une redirection est donc une erreur.
+    session.max_redirects = 0
     client = RESTClient(
         base_url=params.baseUrl,
         headers=params.headers or None,
         auth=auth,
         paginator=_build_paginator(params.paginator, params.paginatorConfig),
         data_selector=params.recordsPath,
-        session=build_guarded_session(),
+        session=session,
     )
 
     @dlt.resource(name="records", write_disposition="replace")

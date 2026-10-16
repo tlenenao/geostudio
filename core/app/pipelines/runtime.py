@@ -66,7 +66,12 @@ from app.pipelines.errors import (  # noqa: F401 (réexportés pour compatibilit
     PipelineRuntimeError,
 )
 from app.pipelines.expr_validation import validate_bounded_expr
-from app.pipelines.ops.contracts import BINARY_OPS, OP_PARAMS
+from app.pipelines.ops.contracts import (
+    BINARY_OPS,
+    OP_PARAMS,
+    blocked_experimental_ops,
+    experimental_refusal,
+)
 from app.pipelines.ops.operation_contract import IN_PREVIEW
 from app.pipelines.ops.schemas import (
     ReaderCollectionParams,
@@ -703,6 +708,11 @@ def _prepare(
     # complet).
     from app.pipelines.registries import READERS
 
+    # Lot 9 : config enregistrée avant l'extinction du flag, planifiée ou déclenchée par
+    # webhook — échec lisible (PipelineRuntimeError), jamais une exécution partielle.
+    if blocked := blocked_experimental_ops(n.op for n in payload.nodes):
+        raise PipelineRuntimeError(experimental_refusal(blocked))
+
     ordered = compiler.topological_order(payload.nodes, payload.edges)
     view_by_node: dict[str, str] = {}
     srid_by_node: dict[str, int] = {}
@@ -1117,6 +1127,12 @@ def _write_collection(
         raise PipelineRuntimeError(
             f"writer.collection: mode {mode} refused on a geo-limited collection"
         )
+    if mode == "replace" and masked:
+        # REV-337 (GAP-22) : replace purge puis réécrit sans les colonnes sensibles masquées
+        # pour cet utilisateur — elles seraient remises à NULL pour toutes les lignes.
+        raise PipelineRuntimeError(
+            "writer.collection: mode replace refused: sensitive fields are masked for this user"
+        )
     if mode in ("replace", "delete") and (blocking := restricting_relation(session, collection)):
         # ARC-21 : l'écriture en masse contourne la politique de suppression des relations.
         raise PipelineRuntimeError(
@@ -1251,7 +1267,7 @@ def _write_dataset(
         assert current is not None
         # Reconstruit un DatasetPayload frais (pas model_copy sur lui-même) :
         # source/collectionId changent, tout le reste (columns, timeField,
-        # reactsToExtent, crossFilterLinks) est copié tel quel, jamais
+        # reactsToExtent, crossFilterLinks, metrics) est copié tel quel, jamais
         # régénéré par le run (design §4).
         updated_dataset = DatasetPayload(
             source="collection",
@@ -1260,6 +1276,7 @@ def _write_dataset(
             timeField=current.timeField,
             reactsToExtent=current.reactsToExtent,
             crossFilterLinks=current.crossFilterLinks,
+            metrics=current.metrics,  # REV-119 : jamais perdues par un run
             sourcePipelineId=current.sourcePipelineId,
         )
         # model_copy (pas de re-validation) est sûr ici : seul le champ

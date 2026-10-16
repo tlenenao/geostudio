@@ -42,6 +42,7 @@ from app.configs import repository as configs_repo
 from app.configs.geo_limits_dep import get_request_geo_limits
 from app.configs.guest_access import GuestActor, get_share_link_actor
 from app.db import core_table_names, get_session
+from app.ogc_crs import collection_crs_fields
 from app.roles.guards import has_privilege, privilege_required_error, require_privilege
 from app.roles.privileges import Privilege
 from app.sharing import repository as sharing_repo
@@ -684,6 +685,9 @@ def get_collection(
     try:
         info = introspect(session, col.table_name)
         bbox = extent_provider(session, info, col.tenant_id)
+        # REV-367 a : OGC Features Part 2, `crs` + `storageCrs` de la collection.
+        if info.geometry_column:
+            body.update(collection_crs_fields(info.srid))
     except (TableNotFound, UnsupportedTable, DBAPIError) as exc:
         # Table disparue/mutée ou erreur SQL : la description reste servie
         # sans extent ; un bug de code, lui, doit remonter (pas d'except large).
@@ -934,7 +938,7 @@ def patch_collection(
         col.sensitive_fields = body.sensitiveFields
     session.flush()
     if text_changed:
-        repo.enqueue_embedding(col.id, user.tenant_id)
+        repo.enqueue_embedding(session, col.id, user.tenant_id)
     write_audit(
         session,
         tenant_id=user.tenant_id,

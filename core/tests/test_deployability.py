@@ -808,7 +808,7 @@ def test_release_gate_starts_postgres_like_ci():
     précède ces tests : la porte ne les avait jamais rencontrés. C'est la
     forme « chemin de release jamais exercé » de la classe de bug que ce
     fichier existe pour arrêter, un cran au-dessus du compose."""
-    ci_flags = _postgres_run_flags(CI, "core")
+    ci_flags = _postgres_run_flags(CI, "core-tests")
     release_flags = _postgres_run_flags(RELEASE, "test-gate")
     missing = ci_flags - release_flags
     assert not missing, (
@@ -875,7 +875,7 @@ def test_release_gate_arm64_starts_postgres_like_ci():
     porte arm64 doit démarrer Postgres avec au moins les réglages du job
     `core` de ci.yml, pour la même raison (sinon elle n'exécute pas les
     mêmes tests que la CI amd64)."""
-    ci_flags = _postgres_run_flags(CI, "core")
+    ci_flags = _postgres_run_flags(CI, "core-tests")
     release_flags = _postgres_run_flags(RELEASE, "test-gate-arm64")
     missing = ci_flags - release_flags
     assert not missing, (
@@ -2146,6 +2146,7 @@ def test_worker_environment_mirrors_core_for_task_flags():
         "CORE_EXPORT_ENABLED",
         "CORE_READ_ONLY_MODE",
         "CORE_PIPELINE_FILE_IO_ENABLED",
+        "CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED",
     ):
         assert var in worker_env, f"`worker` ne reçoit pas {var}"
 
@@ -2415,3 +2416,15 @@ def test_routing_is_wired_by_value_and_valhalla_is_profile_gated_and_unpublished
     assert svc["valhalla"]["profiles"] == ["routing"]
     assert not svc["valhalla"].get("ports")
     assert "CORE_ROUTING_URL" in documented_env_vars()
+
+
+def test_experimental_ops_flag_is_wired_by_value_and_off_by_default():
+    """Piège n°2 (lot 9) : CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED dans `core` (catalogue,
+    écriture) ET `worker` (exécution), défaut éteint, documenté et présent dans le chart Helm."""
+    expected = "${CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED:-false}"
+    for name in ("core", "worker"):
+        env = services(BASE)[name]["environment"]
+        assert env["CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED"] == expected, name
+    assert "CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED=false" in (REPO / ".env.example").read_text()
+    values = (REPO / "deploy/helm/geostudio/values.yaml").read_text()
+    assert 'CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED: "false"' in values

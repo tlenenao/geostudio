@@ -59,9 +59,6 @@ def _duck():
 
 
 @_pg
-@pytest.mark.xfail(
-    strict=True, reason="REV-audit: GET /collections/{id}/profile sans refuse_if_geo_limited"
-)
 def test_profile_route_refuses_geo_limited_user(geo_env, tmp_path, monkeypatch):  # noqa: F811
     client, app, as_user, admin, regular, gid = geo_env
     _local_lake(app, tmp_path, monkeypatch)
@@ -74,9 +71,6 @@ def test_profile_route_refuses_geo_limited_user(geo_env, tmp_path, monkeypatch):
 
 
 @_pg
-@pytest.mark.xfail(
-    strict=True, reason="REV-audit: GET /collections/{id}/profile anonyme sur collection limitée"
-)
 def test_profile_route_refuses_anonymous_on_limited_public_collection(
     geo_env,
     tmp_path,
@@ -91,7 +85,6 @@ def test_profile_route_refuses_anonymous_on_limited_public_collection(
 
 
 @_pg
-@pytest.mark.xfail(strict=True, reason="REV-audit: MCP profile_dataset sans refuse_geo_limited")
 def test_mcp_profile_dataset_refuses_geo_limited_user(app_client, _local_duckdb):  # noqa: F811
     from app.sharing.models import CollectionGeoLimit, Group, GroupMember
 
@@ -133,7 +126,6 @@ def test_editor_cannot_publish_item_via_patch(items_env):  # noqa: F811
 # --- 5. Rate limiting absent sur aggregate/profile --------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="REV-audit: aggregate/profile hors de route_group")
 @pytest.mark.parametrize(
     "method,path",
     [("POST", "/v1/collections/c1/aggregate"), ("GET", "/v1/collections/c1/profile")],
@@ -147,9 +139,6 @@ def test_analytic_routes_have_a_rate_limit_group(method, path):
 
 
 @_pg
-@pytest.mark.xfail(
-    strict=True, reason="REV-audit: writer.collection replace efface les champs GAP-22"
-)
 def test_writer_replace_does_not_null_sensitive_columns(pg_engine, monkeypatch, tmp_path):
     Base.metadata.create_all(pg_engine)
     Session = make_session_factory(pg_engine)

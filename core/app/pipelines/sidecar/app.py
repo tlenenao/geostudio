@@ -10,7 +10,6 @@ sous-processus lancé par Tauri — `None` (le défaut) reproduit exactement le
 comportement d'avant cette tâche, pour ne rien casser des tests Phase E."""
 
 import hmac
-import os
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import Response
@@ -35,17 +34,31 @@ _RUNS_MAX_LIMIT = 1000
 # touche Session dans runtime.py) — reader.collection/writer.collection/
 # writer.dataset/writer.export/reader.connector.* touchent Session et
 # lèveraient une AttributeError interne si exposées ici (revue finale, Fix 2).
+# REV-329 : les transform à egress réseau (appel HTTP/MCP, géocodage, routage, images,
+# jointure base distante) sont exclues tant que le modèle de menace desktop n'est pas écrit.
+_SIDECAR_EGRESS_OPS = frozenset(
+    {
+        "transform.httpCall",
+        "transform.mcpCall",
+        "transform.geocode",
+        "transform.route",
+        "transform.isochrone",
+        "transform.imageFetch",
+        "transform.databaseJoin",
+    }
+)
 _SIDECAR_SAFE_OPS = frozenset(
     op
     for op, kind in OP_KINDS.items()
-    if op in ("reader.file", "writer.file") or kind == "transform"
+    if (op in ("reader.file", "writer.file") or kind == "transform")
+    and op not in _SIDECAR_EGRESS_OPS
 )
 
 
 def create_sidecar_app(*, base_uri: str, token: str | None = None) -> FastAPI:
-    # Actif par défaut côté sidecar desktop, jamais côté cœur (design §3) —
-    # posé ici, pas supposé déjà présent dans l'environnement appelant.
-    os.environ["CORE_PIPELINE_FILE_IO_ENABLED"] = "true"
+    # CORE_PIPELINE_FILE_IO_ENABLED est posé par le point d'entrée du process
+    # (scripts/pipeline_sidecar.py), plus ici : écrire os.environ à la construction
+    # fuyait entre tests et vers tout appelant du module (REV-328).
 
     app = FastAPI()
     store = PipelineStore()

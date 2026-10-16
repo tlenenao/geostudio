@@ -217,6 +217,11 @@ dev = [
     # core (même statut que ruff/mypy ci-dessus).
 ]
 
+# `coverage xml` après `coverage combine` des shards CI (ci.yml) : mêmes fichiers
+# source que `--cov=app`, y compris ceux qu'aucun test n'importe.
+[tool.coverage.run]
+source = ["app"]
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
@@ -490,6 +495,8 @@ ignore_imports = [
     # `hasAnyEditorRole` par `role`/`privileges` : `app.auth.routes`
     # n'importe plus rien d'`app.sharing`.
     "app.apikeys.routes -> app.auth.dependency",
+    "app.apikeys.routes -> app.roles.guards",  # REV-366 : routes admin sous admin.users.manage
+    "app.apikeys.routes -> app.roles.privileges",
     # ARC-24 (ADR 0022) : la synchro des groupes par claims s'exécute au login,
     # donc depuis app.auth.dependency (une seule arête, vers claim_sync).
     "app.auth.dependency -> app.sharing.claim_sync",
@@ -549,6 +556,7 @@ ignore_imports = [
     "app.db -> app.reports.models",
     "app.db -> app.appexport.models",
     "app.db -> app.mapicons.models",
+    "app.db -> app.geocoding.models",
     "app.db -> app.roles.models",
     "app.db -> app.attachments.models",
     "app.db -> app.compliance.models",

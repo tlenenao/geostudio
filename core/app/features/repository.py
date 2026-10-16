@@ -115,8 +115,7 @@ def _split_filter_key(raw_name: str) -> tuple[str, str | None]:
     return raw_name, None
 
 
-# ARC-02 : CRS de sortie / de bbox acceptés (EPSG). 4326 = lon/lat (CRS84) comme GeoJSON.
-SUPPORTED_EPSG = (4326, 3857, 2154)
+# ARC-02 : CRS de sortie / de bbox acceptés (EPSG), cf. app.ogc_crs.
 
 
 def _temporal_clause(
@@ -224,9 +223,15 @@ def _where(
         if info.geometry_column is None:
             raise FilterError("bbox", "collection has no geometry")
         g = quote_ident(session, info.geometry_column)
-        clauses.append(
-            f"{g} && ST_Transform(ST_MakeEnvelope(:bx0, :by0, :bx1, :by1, :bcrs), :bsrid)"
-        )
+        envelope = "ST_Transform(ST_MakeEnvelope(:bx0, :by0, :bx1, :by1, :bcrs), :bsrid)"
+        if bbox_srid == 4326 and bbox[0] > bbox[2]:
+            # REV-364 a : ouest > est = rectangle à cheval sur l'antiméridien,
+            # deux enveloppes [ouest, 180] et [-180, est] (sinon enveloppe vide).
+            envelope_w = "ST_Transform(ST_MakeEnvelope(:bx0, :by0, 180, :by1, :bcrs), :bsrid)"
+            envelope_e = "ST_Transform(ST_MakeEnvelope(-180, :by0, :bx1, :by1, :bcrs), :bsrid)"
+            clauses.append(f"({g} && {envelope_w} OR {g} && {envelope_e})")
+        else:
+            clauses.append(f"{g} && {envelope}")
         params.update(
             {
                 "bx0": bbox[0],
@@ -399,14 +404,16 @@ def _coerce_fid(info: TableInfo, fid: str):
     return fid
 
 
-def get_feature(session: Session, info: TableInfo, *, fid: str) -> dict | None:
+def get_feature(
+    session: Session, info: TableInfo, *, fid: str, out_srid: int | None = None
+) -> dict | None:
     value = _coerce_fid(info, fid)
     if value is None:
         return None
     with geo_source(session, info) as src:
         row = session.execute(
             text(
-                f"SELECT {_select_list(session, info)} FROM {src} "
+                f"SELECT {_select_list(session, info, out_srid)} FROM {src} "
                 f"WHERE {quote_ident(session, info.pk_column)} = :fid"
             ),
             {"fid": value},

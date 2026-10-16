@@ -12,6 +12,7 @@ import re
 import uuid
 from dataclasses import dataclass
 
+from shapely import force_2d
 from shapely.geometry import mapping
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -31,6 +32,7 @@ from app.ingestion.parsers import (
     GeometryMode,
     IngestionParseError,
     _is_geoparquet_from_bytes,
+    _rename_reserved_property_keys,
     parse_csv_latlon,
     parse_dgn,
     parse_dxf,
@@ -261,6 +263,14 @@ def _load_rows(
         raise IngestionParseError(f"format non supporté : {filename}")
     if not rows:
         raise IngestionParseError("le fichier ne contient aucune entité")
+    # REV-350 : id/tenant_id/geom entreraient en collision avec les colonnes fixes de
+    # la table ; un seul point pour tous les formats (idempotent pour ceux qui le font déjà).
+    # REV-351 : les colonnes créées sont 2D, une coordonnée Z ferait échouer l'INSERT
+    # (import comme ajout) ; le chemin OGR force déjà la 2D.
+    rows = [
+        (None if geom is None else force_2d(geom), _rename_reserved_property_keys(props, fmt))
+        for geom, props in rows
+    ]
     if fmt == "csv":
         # même détection que parse_csv_latlon (décodage déjà validé par lui)
         _infer_csv_types(rows, decimal_comma=sniff_delimiter(content.decode("utf-8-sig")) != ",")
@@ -346,7 +356,9 @@ def run_import(
         insert_cols_full = "tenant_id, " + (insert_cols + ", " if insert_cols else "") + "geom"
     else:
         insert_cols_full = "tenant_id" + (", " + insert_cols if insert_cols else "")
-    placeholders = ", ".join(f":{name}" for name in col_names)
+    # REV-349 : paramètres positionnels, indépendants du nom de colonne (un en-tête
+    # « Code postal » ou « a-b » n'est pas un identifiant de paramètre lié valide).
+    placeholders = ", ".join(f":p{i}" for i in range(len(col_names)))
     if has_geometry:
         values_clause = (
             ":tenant_id, "
@@ -358,7 +370,7 @@ def run_import(
     insert_sql = f"INSERT INTO public.{t} ({insert_cols_full}) VALUES ({values_clause})"
     params = []
     for geom, props in rows:
-        row_params = {name: props.get(name) for name in col_names}
+        row_params = {f"p{i}": props.get(name) for i, name in enumerate(col_names)}
         row_params["tenant_id"] = tenant_id
         if has_geometry:
             # has_geometry vrai => geom non-None sur toute ligne (mode

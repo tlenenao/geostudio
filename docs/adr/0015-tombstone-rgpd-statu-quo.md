@@ -1,6 +1,6 @@
 # 0015 — Tombstone d'effacement RGPD : statu quo, conditionnel à la validation du DPO
 
-Statut: acceptée (conditionnelle : validation du DPO attendue, hors code)
+Statut: conditionnelle (2026-10-16) — pas de tombstone sans avis écrit du DPO ; la purge complète `purge_tenant` est la seule voie livrée
 Source : spec `docs/superpowers/specs/2026-10-04-cloture-backlog-38-rev-design.md` (arbitrage 272 a, QCM 2026-10-04) ; REV-272 (a) ; SP-58 (RGPD Art. 17).
 
 ## Contexte

@@ -42,7 +42,7 @@ jobs:
         run: node desktop-etl/scripts/prepare-sidecar-binary.mjs core/dist/pipeline-sidecar.exe
       - name: install msedgedriver
         run: |
-          cargo install --git https://github.com/chippers/msedgedriver-tool --rev 8c4b34f51b45f5cf08013366d703de464ab871d1
+          cargo install --locked --git https://github.com/chippers/msedgedriver-tool --rev 8c4b34f51b45f5cf08013366d703de464ab871d1
           & "$HOME/.cargo/bin/msedgedriver-tool.exe"
           $PWD.Path >> $env:GITHUB_PATH
       - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable

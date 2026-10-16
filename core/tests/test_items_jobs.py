@@ -72,3 +72,29 @@ def test_embed_item_task_missing_item_is_a_noop_not_a_crash(env):
     app, Session, tenant, _user = env
     item_jobs.embed_item_task.defer(item_id="does-not-exist", tenant_id=tenant.id)
     app.run_worker(wait=False, queues=["search"])  # ne doit pas lever
+
+
+def test_sweep_missing_embeddings_redefers_only_old_items_without_vector(env, monkeypatch):
+    from datetime import UTC, datetime, timedelta
+
+    from app.items.models import Item
+
+    _app, Session, tenant, user = env
+    ids = {}
+    with Session() as s:
+        for key in ("old_missing", "old_done", "fresh_missing"):
+            item = items_repo.create_item(
+                s, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title=key
+            )
+            ids[key] = item.id
+        s.commit()
+        old = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=1)
+        for key in ("old_missing", "old_done"):
+            s.get(Item, ids[key]).updated_at = old
+        s.get(Item, ids["old_done"]).embedding = [0.1] * 1536
+        s.commit()
+
+    deferred = []
+    monkeypatch.setattr(item_jobs.embed_item_task, "defer", lambda **kw: deferred.append(kw))
+    item_jobs.sweep_missing_embeddings_task(timestamp=0)
+    assert deferred == [{"item_id": ids["old_missing"], "tenant_id": tenant.id}]

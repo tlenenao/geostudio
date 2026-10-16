@@ -155,8 +155,10 @@ export type PurgeReceipt = {
   tenantSlug: string;
   requestedByUserId: string;
   requestedAt: string;
-  completedAt: string;
+  completedAt?: string | null;
   counts: Record<string, number>;
+  status?: "pending" | "running" | "done" | "failed";
+  error?: string | null;
 };
 
 export type NotificationSummary = {
@@ -268,6 +270,7 @@ export type InstanceInfo = {
   quotasEnabled: boolean;
   rasterEnabled: boolean;
   routingEnabled: boolean;
+  experimentalOpsEnabled: boolean;
 };
 
 export type ProbeStatus = { ok: boolean; error?: string };
@@ -713,6 +716,9 @@ export type MapIconOut = {
   createdAt: string;
 };
 
+/** Fond de carte partagé du tenant (`GET /v1/basemaps`, REV-367 i). */
+export type TenantBasemapOut = { id: string; label: string; style: string };
+
 // Pagination générique pour les endpoints déjà paginés côté serveur mais dont
 // les fonctions shell n'envoyaient jusqu'ici jamais `limit`/`offset` (SP-50,
 // constat non corrigé côté shell) : GET /collections, GET /reports/{id}/runs,
@@ -878,6 +884,8 @@ export interface ItemClient {
   // de séquence presign → PUT → POST à orchestrer côté client.
   uploadMapIcon(file: File, title: string, category: string): Promise<MapIconOut>;
   listMapIcons(): Promise<MapIconOut[]>;
+  /** Optionnel : absent des clients sans cœur (export statique, desktop). */
+  listTenantBasemaps?(): Promise<TenantBasemapOut[]>;
   deleteMapIcon(iconId: string): Promise<void>;
   // Blob, pas URL : la route est gardée par bearer token, qu'une balise
   // <img> ne porterait pas. Le jeton ne sort jamais d'itemClient.ts.
@@ -1321,6 +1329,17 @@ export type DatasetColumnMeta = {
   format?: string;
 };
 
+// REV-119 : métrique nommée d'un dataset (miroir de core DatasetMetric).
+export type DatasetMetric = {
+  field?: string | null;
+  agg: string;
+  p?: number | null;
+  label?: string | null;
+  format?: string | null;
+  unit?: string | null;
+  description?: string | null;
+};
+
 export type CrossFilterLink =
   | { targetDatasetId: string; mode: "attribute"; sourceField: string; targetField: string }
   | { targetDatasetId: string; mode: "spatial"; precision: "bbox" | "exact" };
@@ -1333,6 +1352,7 @@ export type DatasetConfig = (
       timeField?: string | null;
       reactsToExtent?: boolean;
       crossFilterLinks?: CrossFilterLink[];
+      metrics?: Record<string, DatasetMetric>;
       sourcePipelineId?: string | null;
     }
   | {
@@ -1342,6 +1362,7 @@ export type DatasetConfig = (
       timeField?: string | null;
       reactsToExtent?: boolean;
       crossFilterLinks?: CrossFilterLink[];
+      metrics?: Record<string, DatasetMetric>;
       sourcePipelineId?: string | null;
     }
 ) & {
@@ -1701,6 +1722,8 @@ export type PipelineOpParamProperty = {
   enum?: string[];
   default?: unknown;
   items?: { type?: string };
+  // dict[str, X] : `true` = valeurs libres ; {type} / {anyOf} = valeurs typées (REV-325).
+  additionalProperties?: boolean | { type?: string; anyOf?: { type?: string }[] };
   description?: string;
 };
 
@@ -1712,6 +1735,8 @@ export type PipelineOpEntry = {
     description?: string;
   };
   acceptsSecondaryInput?: boolean;
+  /** Lot 9 : op jamais rejouée sur service réel (présente seulement flag allumé). */
+  experimental?: boolean;
 };
 
 export type PipelineOpsCatalog = Record<string, PipelineOpEntry>;

@@ -5,7 +5,6 @@ un fake et un scope nul ; le vrai chemin est PostGIS-only."""
 
 import functools
 import json
-import math
 import os
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -42,6 +41,7 @@ from app.attachments import repository as attachments_repo
 from app.attachments.routes import get_attachments_bucket, get_s3_client
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user, get_current_user_optional
+from app.bbox import parse_bbox_floats
 from app.collections.domains import with_attribute_rules
 from app.collections.introspection import TableNotFound, hide_sensitive_columns
 from app.collections.repository import get_access_facts, list_visible_collections
@@ -60,10 +60,11 @@ from app.configs.guest_access import GuestActor, get_share_link_actor
 from app.db import get_session
 from app.errors import ValidationHTTPException
 from app.features.etag import feature_etag, if_match_satisfied
-from app.features.repository import SUPPORTED_EPSG, CursorError, FilterError
+from app.features.repository import CursorError, FilterError
 from app.features.validation import validate_for_write
 from app.filter_values import fold_query_filters
 from app.history import service as history
+from app.ogc_crs import SUPPORTED_EPSG, crs_uri
 from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
 from app.sharing.authorization import can
@@ -104,7 +105,8 @@ MAX_LIMIT = 1000
 
 CONFORMANCE_CLASSES = [
     "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/core",
-    "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/oas30",
+    # Pas de `conf/oas30` (REV-364 b) : le document de définition est servi en
+    # OpenAPI 3.1.0, et Features Part 1 ne définit pas de classe oas31.
     "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/geojson",
     "http://www.opengis.net/spec/ogcapi-features-2/1.0/conf/crs",
     "http://www.opengis.net/spec/ogcapi-features-4/1.0/conf/create-replace-delete",
@@ -207,20 +209,8 @@ def _validation_error(errors: list[dict], status: int = 400):
 def parse_bbox(raw: str | None, *, check_bounds: bool = True):
     """`minx,miny,maxx,maxy` ; fini ; bornes EPSG:4326 sauf `check_bounds=False`
     (bbox-crs projeté). REV-353 : sinon l'erreur SQL de ST_MakeEnvelope = 500."""
-    if raw is None:
-        return None
-    parts = raw.split(",")
     try:
-        if len(parts) != 4:
-            raise ValueError(raw)
-        vals = tuple(float(p) for p in parts)
-        if not all(math.isfinite(v) for v in vals):
-            raise ValueError(raw)
-        if check_bounds and (
-            max(abs(vals[0]), abs(vals[2])) > 180 or max(abs(vals[1]), abs(vals[3])) > 90
-        ):
-            raise ValueError(raw)
-        return vals
+        return parse_bbox_floats(raw, check_bounds=check_bounds)
     except ValueError:
         raise _validation_error(
             [
@@ -239,6 +229,10 @@ def parse_crs(raw: str | None, field: str) -> int | None:
     if raw is None:
         return None
     tail = raw.strip().rstrip("/").rsplit("/", 1)[-1].rsplit(":", 1)[-1]
+    if tail == "4326" and "/EPSG/" in raw:
+        # Part 2 : l'URI EPSG/0/4326 impose l'ordre lat/lon, que nous ne servons
+        # pas ; CRS84 (ou le raccourci `EPSG:4326`) donne lon/lat.
+        tail = "0"
     code = 4326 if tail.upper() == "CRS84" else int(tail) if tail.isdigit() else None
     if code not in SUPPORTED_EPSG:
         raise _validation_error(
@@ -407,7 +401,7 @@ def list_features(
             [{"field": exc.field, "code": exc.code, "message": exc.message}]
         ) from exc
     if out_srid is not None:
-        response.headers["Content-Crs"] = f"<http://www.opengis.net/def/crs/EPSG/0/{out_srid}>"
+        response.headers["Content-Crs"] = f"<{crs_uri(out_srid)}>"
     body: dict = {"type": "FeatureCollection", "features": page.features}
     if page.number_matched is not None:
         body["numberMatched"] = page.number_matched
@@ -500,10 +494,13 @@ def profile_collection(
     introspect=Depends(get_introspector),
     conn_factory=Depends(get_duckdb_connection_factory),
     base_uri: str = Depends(get_analytics_base_uri),
+    geo_limits=Depends(get_request_geo_limits),
 ):
     """Résumé exploratoire (REV-117) : mêmes droits, même masquage de colonnes
     sensibles et mêmes bornes DuckDB que POST /aggregate."""
     col = get_collection_for_read(session, user, collection_id, guest=guest)
+    # REV-334 : le lac n'est pas soumis à la RLS — refus fail-closed (comme /aggregate).
+    refuse_if_geo_limited(geo_limits, col.table_name, path="profile")
     info = introspect(session, col.table_name)
     masked_fields = masked_fields_for(session, user, col)
     conn = conn_factory()
@@ -595,7 +592,9 @@ def export_collection_aggregate(
 
 EXPORT_FORMATS_ITEMS = {"csv", "xlsx", "geojson", "gpkg"}
 # P29.04 : plafond mémoire de l'export synchrone, réglable (CORE_EXPORT_ITEMS_MAX).
-# ponytail: export en mémoire, flux/job (file export) si on dépasse ~10^5 entités.
+# Export de collection : synchrone jusqu'à CORE_EXPORT_SYNC_MAX, puis job (écriture en
+# flux, analytics/export.py). Ce plafond-ci borne l'export en mémoire du moissonnage
+# (harvest/routes.py l'importe : un seul réglage, REV-283c).
 EXPORT_ITEMS_CAP = int(os.environ.get("CORE_EXPORT_ITEMS_MAX", "100000"))
 
 
@@ -809,6 +808,7 @@ def get_single_feature(
     collection_id: str,
     fid: str,
     response: Response,
+    crs: str | None = None,
     user=Depends(get_current_user_optional),
     guest: GuestActor | None = Depends(get_share_link_actor),
     session: Session = Depends(get_session, scope="function"),
@@ -822,12 +822,21 @@ def get_single_feature(
     info = introspect(session, col.table_name)
     if masked:
         info = hide_sensitive_columns(info, col.sensitive_fields)
+    out_srid = parse_crs(crs, "crs")
     with rls(session, col.tenant_id, masked=masked):
         feature = repo.get_feature(session, info, fid=fid)
-    if feature is None:
+        projected = (
+            repo.get_feature(session, info, fid=fid, out_srid=out_srid)
+            if out_srid is not None and feature is not None
+            else feature
+        )
+    if feature is None or projected is None:
         raise HTTPException(status_code=404, detail="feature not found")
+    # ETag sur la vue de stockage : If-Match reste valable d'un CRS à l'autre.
     response.headers["ETag"] = feature_etag(feature)
-    return feature
+    if out_srid is not None:
+        response.headers["Content-Crs"] = f"<{crs_uri(out_srid)}>"
+    return projected
 
 
 def _enforce_if_match(session, repo, view_info, fid, if_match):

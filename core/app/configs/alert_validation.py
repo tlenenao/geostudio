@@ -11,6 +11,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.configs.schemas import BuilderConfig
+from app.configs.secret_usage import assert_secrets_usable
 from app.items import repository as items_repo
 from app.sharing.authorization import can
 from app.users.models import User
@@ -29,6 +30,13 @@ def validate_alert_payload(session: Session, config: BuilderConfig, *, user: Use
             status_code=422,
             detail=f"cron must have exactly 5 fields: {payload.refreshPolicy.cron!r}",
         )
+
+    # REV-342 : la livraison agit sous l'identité du propriétaire de l'item (confused deputy).
+    assert_secrets_usable(
+        session,
+        user,
+        [c.smtpSecretName if c.kind == "email" else c.signingSecretName for c in payload.channels],
+    )
 
     facts = items_repo.get_access_facts(
         session, tenant_id=user.tenant_id, item_id=payload.datasetItemId

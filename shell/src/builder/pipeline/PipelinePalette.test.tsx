@@ -14,6 +14,11 @@ const CATALOG: PipelineOpsCatalog = {
     paramsSchema: { properties: {}, required: [], description: "Import data from a collection" },
   },
   "transform.filter": { kind: "transform", paramsSchema: { properties: {}, required: [] } },
+  "writer.slack": {
+    kind: "writer",
+    paramsSchema: { properties: {}, required: [] },
+    experimental: true,
+  },
   "writer.collection": { kind: "writer", paramsSchema: { properties: {}, required: [] } },
 };
 
@@ -35,6 +40,14 @@ test("groups ops into three sections by kind", async () => {
   expect(screen.getByRole("heading", { name: "Sources" })).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "Transforms" })).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "Écritures" })).toBeInTheDocument();
+});
+
+test("badge Expérimental uniquement sur les op expérimentales du catalogue", async () => {
+  renderPalette();
+  await waitFor(() => expect(screen.getByText("writer.slack")).toBeInTheDocument());
+  expect(screen.getAllByText("Expérimental")).toHaveLength(1);
+  expect(screen.getByText("writer.slack").textContent).toContain("Expérimental");
+  expect(screen.getByText("reader.collection").textContent).not.toContain("Expérimental");
 });
 
 test("each entry is draggable and sets the op id on dragstart", async () => {
