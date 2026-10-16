@@ -1,9 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 """AUD-020 : collection stockée en EPSG:2154, GeoJSON toujours en lon/lat (RFC 7946)."""
 
+import json
+
 import pytest
 from sqlalchemy import text
 
+from app.collections.ddl import apply_collection_ddl
 from app.collections.introspection_pg import introspect_table
 from app.features import repository as repo
 from app.features.rls import rls_scope
@@ -103,3 +106,70 @@ def test_collection_writer_snapshot_is_lonlat(pg_engine, pg_session_factory, tab
         snap = _snapshots(s, info, "default", [fid])
     lon, lat = snap[fid]["geometry"]["coordinates"]
     assert (round(lon, 4), round(lat, 4)) == (2.3522, 48.8566)
+
+
+def test_bulk_update_via_collection_writer_reprojects(pg_engine, pg_session_factory, table):
+    from app.pipelines.collection_writer import _update_stmt
+
+    with pg_session_factory() as s:
+        info = introspect_table(s, table)
+        with rls_scope(s, "default"):
+            fid = repo.insert_feature(s, info, properties={}, geometry=PARIS)
+            stmt = _update_stmt(s, info, [], True)
+            geom = {"type": "Point", "coordinates": [5.0, 45.0]}
+            s.execute(
+                stmt,
+                {"rows": json.dumps([{"__pk": fid, "__g": json.dumps(geom)}]), "__srid": 2154},
+            )
+        s.commit()
+    x, y = _stored_lonlat(pg_engine, fid)
+    assert (round(x, 4), round(y, 4)) == (5.0, 45.0)
+    with pg_engine.begin() as conn:
+        assert (
+            conn.execute(text(f"SELECT ST_X(geom) FROM {T} WHERE id = :i"), {"i": fid}).scalar()
+            > 600000
+        )
+
+
+G = "t_aud020_geolim"
+LIMIT = {"type": "Polygon", "coordinates": [[[0, 40], [10, 40], [10, 50], [0, 50], [0, 40]]]}
+
+
+def test_straddle_gate_tolerates_geojson_roundtrip_in_projected_crs(pg_engine, pg_session_factory):
+    """Entité à cheval en 2154 : la version découpée relue (GeoJSON 9 décimales) renvoyée
+    telle quelle doit être acceptée (tolérance en mètres, pas en degrés)."""
+    from app.sharing.geo_limits import GeoLimitStraddling
+
+    with pg_engine.begin() as conn:
+        conn.execute(text(f"DROP TABLE IF EXISTS {G}"))
+        conn.execute(
+            text(
+                f"CREATE TABLE {G} (id serial PRIMARY KEY, name text, geom geometry(Polygon, 2154))"
+            )
+        )
+        conn.execute(
+            text(
+                f"INSERT INTO {G} (name, geom) VALUES ('s', ST_Transform(ST_GeomFromText("
+                "'POLYGON((5 45.123456789, 15 45.123456789, 15 48.987654321, 5 48.987654321, "
+                "5 45.123456789))', 4326), 2154))"
+            )
+        )
+    try:
+        with pg_session_factory() as s:
+            apply_collection_ddl(s, G, tenant_id="default")
+            s.commit()
+            info = introspect_table(s, G)
+            fid = str(s.execute(text(f"SELECT id FROM {G}")).scalar())
+            limits = {G: [LIMIT]}
+            with rls_scope(s, "default", geo_limits=limits):
+                clipped = repo.get_feature(s, info, fid=fid)["geometry"]
+                assert repo.replace_feature(
+                    s, info, fid=fid, properties={"name": "ok"}, geometry=clipped
+                )
+                other = {"type": "Point", "coordinates": [6.0, 46.0]}
+                with pytest.raises(GeoLimitStraddling):
+                    repo.replace_feature(s, info, fid=fid, properties={}, geometry=other)
+            s.rollback()
+    finally:
+        with pg_engine.begin() as conn:
+            conn.execute(text(f"DROP TABLE IF EXISTS {G}"))

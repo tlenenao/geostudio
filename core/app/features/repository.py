@@ -517,18 +517,28 @@ def _straddle_gate(session: Session, info: TableInfo, value, geometry: dict | No
     la version découpée écraserait la partie cachée (fail-closed)."""
     g = quote_ident(session, info.geometry_column)
     lim = limit_sql(session, info.table_name, info.srid or 4326)
-    # ponytail: tolérance 1e-6 (aller-retour GeoJSON) ; faux refus possible, jamais d'écrasement
-    body = f"ST_SnapToGrid({_geom_from_geojson(info)}, 1e-6)"
+    # ponytail: tolérance de l'aller-retour GeoJSON (9 décimales de degré) : 1e-6 en degrés,
+    # 1e-3 m en CRS projeté (1e-9° ~ 1e-4 m) ; faux refus possible, jamais d'écrasement
+    geographic = session.execute(
+        text("SELECT proj4text LIKE '%longlat%' FROM spatial_ref_sys WHERE srid = :s"),
+        {"s": info.srid or 4326},
+    ).scalar()
+    tol = "CAST(:__tol AS float8)"
+    body = f"ST_SnapToGrid({_geom_from_geojson(info)}, {tol})"
     same = (
         "true"
         if geometry is None
-        else f"ST_Equals(ST_SnapToGrid({clip_sql(g, lim)}, 1e-6), {body})"
+        else f"ST_Equals(ST_SnapToGrid({clip_sql(g, lim)}, {tol}), {body})"
     )
     table = quote_ident(session, info.table_name)
     pk = quote_ident(session, info.pk_column)
     params: dict[str, Any] = {"__fid": value}
     if geometry is not None:
-        params.update(__geom=json.dumps(geometry), __srid=info.srid or 4326)
+        params.update(
+            __geom=json.dumps(geometry),
+            __srid=info.srid or 4326,
+            __tol=1e-6 if geographic is not False else 1e-3,
+        )
 
     def run(same_expr: str):
         sql = text(

@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import text
 
 from app.collections import repository as collections_repo
+from app.collections.ddl import alter_geometry_column
 from app.db import Base, make_session_factory
 from app.features.rls import rls_scope
 from app.ingestion.importer import run_append, run_import
@@ -144,21 +145,9 @@ def test_append_to_collection_stored_in_2154_reprojects(env, pg_engine):
         table = col.table_name
         col.srid = 2154
         s.commit()
-    with pg_engine.begin() as conn:
-        for pol in conn.execute(
-            text(
-                "SELECT policyname FROM pg_policies "
-                "WHERE tablename = :t AND policyname LIKE 'geo_limit%'"
-            ),
-            {"t": table},
-        ).scalars():  # les politiques de limite géographique référencent geom
-            conn.execute(text(f"DROP POLICY {pol} ON public.{table}"))
-        conn.execute(
-            text(
-                f"ALTER TABLE public.{table} ALTER COLUMN geom TYPE geometry(Point, 2154) "
-                "USING ST_Transform(geom, 2154)"
-            )
-        )
+    with Session() as s:  # recrée aussi les policies geo_limit_* (geo-limit + 2154)
+        alter_geometry_column(s, table, geometry_type="Point", srid=2154)
+        s.commit()
     with Session() as s:
         run_append(
             s,
