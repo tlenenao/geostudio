@@ -45,6 +45,9 @@ from app.mapicons.schemas import (
     MapIconOut,
 )
 from app.mapicons.svg import SvgRejected, sanitize_svg, sniff_content_type
+from app.quotas.service import enforce_storage_quota
+from app.roles.guards import require_privilege
+from app.roles.privileges import Privilege
 from app.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -108,6 +111,9 @@ def create_map_icon(
     session: Session = Depends(get_session, scope="function"),
     s3_client=Depends(get_s3_client),
 ) -> MapIconOut:
+    # REV-364 (d) : écrire dans la bibliothèque exige de pouvoir éditer des
+    # cartes (`maps.manage`, privilège du Créateur) ; le Lecteur est refusé.
+    require_privilege(session, user, Privilege.MAPS_MANAGE)
     # Bornes de longueur, précédent app/tileset3d/schemas.py:5-7. Les champs
     # arrivent en multipart, donc validés ici et non par un modèle pydantic.
     for name, value in (("title", title), ("category", category)):
@@ -161,6 +167,8 @@ def create_map_icon(
     bucket = get_mapicons_bucket()
     ensure_uploads_bucket(s3_client, bucket)
     s3_client.put_object(Bucket=bucket, Key=key, Body=body, ContentType=sniffed)
+    # Quota de stockage du tenant (413) ; l'objet fautif est supprimé au refus.
+    enforce_storage_quota(session, s3_client, tenant_id=user.tenant_id, bucket=bucket, key=key)
 
     icon = repo.create_icon(
         session,
