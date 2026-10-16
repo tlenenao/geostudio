@@ -244,7 +244,10 @@ export function AdvancedSymbologyEditor({
       <fieldset className="flex flex-col gap-1">
         <legend className="text-xs text-ink-3">{t("mapSymbology.effectsLegend")}</legend>
         {(["bloom", "shadow", "blend"] as const).map((k) => (
-          <label key={k} className="flex items-center gap-2 text-sm">
+          <label
+            key={k}
+            className="flex min-h-6 items-center gap-2 text-sm pointer-coarse:min-h-11"
+          >
             <input
               type="checkbox"
               checked={!!effects[k]}

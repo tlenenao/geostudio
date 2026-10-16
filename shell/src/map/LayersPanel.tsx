@@ -312,7 +312,7 @@ function LayerPaintAdvancedEditor({
       <button
         type="button"
         {...panel.triggerProps}
-        className="text-xs underline"
+        className="min-h-6 text-xs underline pointer-coarse:min-h-11"
         onClick={() => setOpen((o) => !o)}
       >
         {t("layersPanel.paintAdvancedButton")}

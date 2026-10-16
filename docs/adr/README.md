@@ -55,9 +55,9 @@ plus.
 | [0010](0010-client-ts-genere-openapi.md) | Client TS généré depuis l'OpenAPI du cœur | acceptée | A11 |
 | [0011](0011-sortie-geonode-superset-redis.md) | Sortie de GeoNode/Superset/Redis, jalon M1 | acceptée | CLAUDE.md « Décisions figées » |
 | [0012](0012-positionnement-connecteurs.md) | Positionnement des connecteurs : entrepôts/SQL/objet d'abord, le reste à la demande | acceptée | Q2 (2026-09-15), REV-123 |
-| [0013](0013-script-src-extensions-origines-declarees.md) | `script-src` : origines des extensions déclarées (table `extensions`) | acceptée | Spec clôture 38 REV, arbitrage 166 ; REV-166 |
+| [0013](0013-script-src-extensions-origines-declarees.md) | `script-src` : origines des extensions déclarées (table `extensions`) | acceptée avec limite assumée | Spec clôture 38 REV, arbitrage 166 ; REV-166 |
 | [0014](0014-supply-chain-cosign-digests.md) | Chaîne d'approvisionnement : cosign keyless, SBOM, digests (cible, non implémentée) | acceptée | Spec clôture 38 REV, arbitrage 281 b ; REV-281 |
-| [0015](0015-tombstone-rgpd-statu-quo.md) | Tombstone RGPD : statu quo (conditionnel DPO) | acceptée (conditionnelle) | Spec clôture 38 REV, arbitrage 272 a ; REV-272 |
+| [0015](0015-tombstone-rgpd-statu-quo.md) | Tombstone RGPD : statu quo (conditionnel DPO) | conditionnelle (avis écrit du DPO requis) | Spec clôture 38 REV, arbitrage 272 a ; REV-272 |
 | [0016](0016-cles-api-service.md) | Clés d'API de service : secret machine, identité du créateur, porte `can()` unique | acceptée | ARC-06 |
 | [0017](0017-soumission-publique-moderee.md) | Soumission publique anonyme : écriture `pending` seulement, derrière un jeton | acceptée | ARC-10 |
 | [0018](0018-ows-wfs-par-le-coeur.md) | OWS (WFS 2.0, OGC API Tiles) servis par le cœur, sans sidecar GPL | acceptée | ARC-11 |

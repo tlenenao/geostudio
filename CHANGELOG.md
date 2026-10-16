@@ -37,6 +37,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING, blob secrets (REV-341)**: Azure `accountName` must match
+  `^[a-z0-9]{3,24}$` and a GCS service-account `token_uri` must be one of
+  Google's OAuth2 endpoints. A blob (Azure/GCS) secret stored outside the new
+  format becomes unreadable and **must be recreated**; there is no automatic
+  migration.
 - **`writer.collection` and sensitive fields (GAP-22)**: column masking now also applies
   to the `append`/`insert` modes. A pipeline whose append writes a sensitive field the
   running user cannot read now fails (or rejects the row, with `onInvalid: "reject"`)
@@ -405,6 +410,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `admin.collections.manage` now opens read access to a collection's items,
   aggregates, exports, tiles and attachments (REV-185); re-applying the DDL no
   longer reopens a sensitive column to `gis_rls_masked` (REV-186).
+
+### Known limitations
+
+Accepted and documented, not scheduled (also listed in `SECURITY.md`):
+
+- **Extension `script-src` is global (ADR 0013, accepted with a known limit):**
+  the CSP is one Traefik configuration for the whole instance, so it is the
+  union of the origins of the enabled extensions of **all** tenants. Per-tenant
+  isolation is not done because the widget SDK is not open to third parties. A
+  multi-tenant operator must not delegate `admin.extensions.manage` to a tenant
+  it does not control.
+- **GDPR erasure tombstone is conditional (ADR 0015):** the `erased:<sha256>`
+  pseudonym is kept as is, **pending a written opinion of the DPO**; no
+  tombstone variant is shipped without it. The only delivered full-erasure
+  route is `purge_tenant` (irreversible, whole tenant).
+- **SMTP egress guard does not pin the IP (REV-338):** the guard validates the
+  resolved address, but `smtplib` resolves the name again when connecting, so
+  a DNS rebinding window remains on alert e-mail (webhooks and the other
+  egress paths are pinned).
+- **Screen reader / touch device:** the accessibility tree and touch gestures
+  are covered by automated Playwright specs (`a11y-screen-reader.spec.ts`,
+  `touch-map.spec.ts`); no real screen reader (NVDA/JAWS/VoiceOver) nor real
+  touch device is part of the test suite (REV-284 d, REV-286 c).
 
 ## [0.1.0] - 2026-07-16
 

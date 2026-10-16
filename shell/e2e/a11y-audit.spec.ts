@@ -12,9 +12,19 @@
 // REV-178) : ~17 pages sur >100 routes. Chaque violation critical/serious
 // non exclue explicitement ci-dessous doit être corrigée, jamais
 // silencieusement ignorée.
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { ADMIN_ME, ANALYST_ME, mockCollection, mockCore, mockItemDetail, mockMe } from "./mocks";
+import {
+  ADMIN_ME,
+  ANALYST_ME,
+  mockCollection,
+  mockCore,
+  mockFormApp,
+  mockItemDetail,
+  mockMe,
+} from "./mocks";
 
 // Violations `moderate`/`minor`, ou `critical`/`serious` dont la correction
 // dépasserait le budget de cette tâche (spec §3.3) — chaque entrée nomme la
@@ -708,6 +718,47 @@ test.describe("audit d'accessibilité (axe-core)", () => {
     await page.goto("/public/datasets/parcs");
     await expect(page.getByRole("heading", { name: "Parcs" })).toBeVisible();
     await runAxeAudit(page, "DatasetRoute");
+  });
+
+  // --- REV-284 (d) : états interactifs et pages jusqu'ici hors échantillon --
+
+  test("AppRuntimeRoute avec Formulaire (champ requis, erreur de validation affichée)", async ({
+    page,
+  }) => {
+    await mockFormApp(page);
+    await page.goto("/apps/form-1");
+    await page.getByRole("button", { name: "Envoyer" }).click();
+    await expect(page.getByRole("alert").first()).toBeVisible();
+    await runAxeAudit(page, "AppRuntimeRoute (formulaire en erreur)");
+  });
+
+  test("NewItemDialog (dialogue « Nouvel élément » ouvert)", async ({ page }) => {
+    await mockCore(page);
+    await page.goto("/");
+    await page.getByRole("button", { name: "Nouveau" }).click();
+    await expect(page.getByRole("dialog", { name: "Nouvel élément" })).toBeVisible();
+    await runAxeAudit(page, "NewItemDialog");
+  });
+
+  test("MapEditorPage avec popup d'entité ouvert", async ({ page }) => {
+    await mockCore(page);
+    await page.route("**/collections/communes/tiles/**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/vnd.mapbox-vector-tile",
+        body: readFileSync(fileURLToPath(new URL("./fixtures/world-tile.mvt", import.meta.url))),
+      });
+    });
+    await page.goto("/maps/map-1");
+    const canvas = page.locator("canvas.maplibregl-canvas").first();
+    await expect(canvas).toBeVisible();
+    const box = (await canvas.boundingBox())!;
+    const popup = page.getByRole("dialog", { name: "Attributs de l'entité" });
+    await expect(async () => {
+      await page.mouse.click(box.x + box.width / 4, box.y + box.height / 4);
+      await expect(popup).toBeVisible({ timeout: 300 });
+    }).toPass({ timeout: 10_000 });
+    await runAxeAudit(page, "MapEditorPage (popup)");
   });
 
   test("VisualQueryWizardEditPage (assistant Filtrer→Joindre→Résumer, mode édition)", async ({

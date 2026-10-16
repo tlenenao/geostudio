@@ -1,8 +1,13 @@
 # Procédures manuelles de rejeu (REV-284 d, REV-286 c) — 2026-10-04
 
-Ces deux lettres ne s'automatisent pas : elles exigent du matériel/logiciel réel.
+> **Mise à jour 2026-10-16 (lot 7) : ces procédures sont remplacées par des automatismes, REV-284 et REV-286 sont fermées.**
+> - Lecteur d'écran (§B) : `shell/e2e/a11y-screen-reader.spec.ts` (arbre d'accessibilité : repères, `h1` unique, ordre des titres, noms accessibles, états `aria-*`, annonces `status`/`alert`, focus visible et piégé dans les dialogues) + audit axe `shell/e2e/a11y-audit.spec.ts` ; tourne dans `npm run e2e` (projet `chromium`, job CI `shell-e2e`).
+> - Appareil tactile (§A) : `shell/e2e/touch-map.spec.ts` sous les projets d'émulation `mobile-touch` (iPhone 13) et `tablet-touch` (iPad) de `shell/playwright.config.ts` (gestes CDP, popup, mesure/croquis, `touchcancel`, 2 volets, cibles >= 24 px) ; même job CI.
+> - **Limite connue, acceptée et consignée** : aucun vrai lecteur d'écran (NVDA/JAWS/VoiceOver) ni vrai appareil tactile (inertie, pression, clavier virtuel, WebKit réel) n'est exercé. Les procédures ci-dessous restent valables comme vérification optionnelle, plus une condition de fermeture.
+
+Ces deux lettres s'automatisent au mieux ; la vérification sur matériel/logiciel réel reste manuelle et facultative.
 Exécutant : <nom> — date : <AAAA-MM-JJ> — build (SHA de dev) : <sha>.
-Non exécutées = les deux lettres restent `externe` sur leur REV (jamais fermées par défaut).
+Exécution facultative depuis le 2026-10-16 (REV-284/286 fermées, limite consignée) ; un KO éventuel s'ouvre en nouvelle REV.
 
 ## Prérequis communs
 
