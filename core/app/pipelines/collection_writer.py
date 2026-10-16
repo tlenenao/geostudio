@@ -28,7 +28,7 @@ from app.collections import repository as collections_repo
 from app.collections.ddl import apply_collection_ddl
 from app.collections.introspection import ColumnInfo, TableInfo
 from app.collections.introspection_pg import introspect_table
-from app.features.repository import _geometry_sql, insert_features
+from app.features.repository import _geojson_out, _geometry_sql, insert_features
 from app.features.rls import rls_scope
 from app.features.validation import validate_for_write
 from app.history import service as history
@@ -224,7 +224,7 @@ def _snapshots(session: Session, info: TableInfo, tenant_id: str, pks: list) -> 
     props = [p for p in props if p != info.geometry_column]
     sel = [quote_ident(session, info.pk_column)] + [quote_ident(session, p) for p in props]
     if info.geometry_column:
-        sel.append(f"ST_AsGeoJSON({quote_ident(session, info.geometry_column)}) AS __g")
+        sel.append(f"{_geojson_out(session, info)} AS __g")
     rows = session.execute(
         text(
             f"SELECT {', '.join(sel)} FROM public.{t} "

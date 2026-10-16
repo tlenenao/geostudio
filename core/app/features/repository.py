@@ -255,15 +255,21 @@ def _where(
     return (" WHERE " + " AND ".join(clauses)) if clauses else "", params
 
 
+def _geojson_out(session: Session, info: TableInfo, out_srid: int | None = None) -> str:
+    """`ST_AsGeoJSON` de la géométrie : lon/lat 4326 par défaut (RFC 7946) quel que soit le SRID
+    de stockage ; `out_srid` explicite (`?crs=`) = CRS demandé (Content-Crs posé par la route)."""
+    g = quote_ident(session, info.geometry_column)
+    target = out_srid if out_srid is not None else 4326
+    if target == (info.srid or 4326):  # chemin historique : aucune reprojection
+        return f"ST_AsGeoJSON({g})" if out_srid is None else f"ST_AsGeoJSON({g}, 9, 0)"
+    return f"ST_AsGeoJSON(ST_Transform({g}, {int(target)}), 9, 0)"
+
+
 def _select_list(session: Session, info: TableInfo, out_srid: int | None = None) -> str:
     cols = [quote_ident(session, info.pk_column)]
     cols += [quote_ident(session, c.name) for c in _property_columns(info)]
     if info.geometry_column:
-        g = quote_ident(session, info.geometry_column)
-        if out_srid is None:
-            cols.append(f"ST_AsGeoJSON({g}) AS __geo")
-        else:  # options=0 : pas de membre `crs` (annoncé par l'en-tête Content-Crs)
-            cols.append(f"ST_AsGeoJSON(ST_Transform({g}, {int(out_srid)}), 9, 0) AS __geo")
+        cols.append(f"{_geojson_out(session, info, out_srid)} AS __geo")
     return ", ".join(cols)
 
 
@@ -421,8 +427,16 @@ def get_feature(
     return _row_to_feature(info, row) if row else None
 
 
+def _geom_from_geojson(info: TableInfo) -> str:
+    """GeoJSON (lon/lat 4326 par contrat) -> SRID de stockage (`:__srid`). Les promotions
+    Multi/simple (REV-352) s'appliquent APRÈS reprojection."""
+    if (info.srid or 4326) == 4326:
+        return "ST_SetSRID(ST_GeomFromGeoJSON(:__geom), :__srid)"
+    return "ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(:__geom), 4326), :__srid)"
+
+
 def _geometry_sql(info: TableInfo) -> str:
-    base = "ST_SetSRID(ST_GeomFromGeoJSON(:__geom), :__srid)"
+    base = _geom_from_geojson(info)
     gt = info.geometry_type or ""
     if gt.startswith("Multi"):  # REV-352 : promotion X -> MultiX (idempotent sur Multi)
         return f"ST_Multi({base})"
@@ -504,7 +518,7 @@ def _straddle_gate(session: Session, info: TableInfo, value, geometry: dict | No
     g = quote_ident(session, info.geometry_column)
     lim = limit_sql(session, info.table_name, info.srid or 4326)
     # ponytail: tolérance 1e-6 (aller-retour GeoJSON) ; faux refus possible, jamais d'écrasement
-    body = "ST_SnapToGrid(ST_SetSRID(ST_GeomFromGeoJSON(:__geom), :__srid), 1e-6)"
+    body = f"ST_SnapToGrid({_geom_from_geojson(info)}, 1e-6)"
     same = (
         "true"
         if geometry is None

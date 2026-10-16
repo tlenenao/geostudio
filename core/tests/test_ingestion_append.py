@@ -133,3 +133,49 @@ def test_append_all_rows_visible_through_rls(env):
     with Session() as s, rls_scope(s, tenant.id):
         n = s.execute(text(f"SELECT count(*) FROM public.{cid}")).scalar()
     assert n == 3
+
+
+def test_append_to_collection_stored_in_2154_reprojects(env, pg_engine):
+    """AUD-020 : l'ajout sur une collection hors 4326 est accepté et reprojeté."""
+    Session, tenant, user = env
+    cid = _seed(Session, tenant, user)
+    with Session() as s:
+        col = collections_repo.get_collection(s, tenant_id=tenant.id, collection_id=cid)
+        table = col.table_name
+        col.srid = 2154
+        s.commit()
+    with pg_engine.begin() as conn:
+        for pol in conn.execute(
+            text(
+                "SELECT policyname FROM pg_policies "
+                "WHERE tablename = :t AND policyname LIKE 'geo_limit%'"
+            ),
+            {"t": table},
+        ).scalars():  # les politiques de limite géographique référencent geom
+            conn.execute(text(f"DROP POLICY {pol} ON public.{table}"))
+        conn.execute(
+            text(
+                f"ALTER TABLE public.{table} ALTER COLUMN geom TYPE geometry(Point, 2154) "
+                "USING ST_Transform(geom, 2154)"
+            )
+        )
+    with Session() as s:
+        run_append(
+            s,
+            tenant_id=tenant.id,
+            user=user,
+            collection_id=cid,
+            filename="more.csv",
+            content=b"nom,etat,largeur,lat,lon\nA,bon,3,48.1,2.1\n",
+            lat_field=None,
+            lon_field=None,
+        )
+        s.commit()
+    with Session() as s, rls_scope(s, tenant.id):
+        x, y = s.execute(
+            text(
+                f"SELECT ST_X(ST_Transform(geom, 4326)), ST_Y(ST_Transform(geom, 4326)) "
+                f"FROM public.{table} WHERE nom = 'A'"
+            )
+        ).one()
+    assert (round(x, 4), round(y, 4)) == (2.1, 48.1)

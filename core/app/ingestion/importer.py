@@ -555,9 +555,6 @@ def run_append(
         actor_is_admin=user.is_admin,
     ):
         raise IngestionParseError(f"collection '{collection_id}' non modifiable")
-    if col.srid not in (None, 4326):
-        # ponytail: les fichiers sont lus en WGS84 ; reprojection à ajouter si besoin réel
-        raise IngestionParseError("ajout supporté seulement sur une collection en EPSG:4326")
     info = with_attribute_rules(introspect_table(session, col.table_name), col)
     rows = _load_rows(
         filename,
