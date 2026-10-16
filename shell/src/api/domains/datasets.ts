@@ -13,10 +13,11 @@ import type {
 import type { ItemClientBase } from "../base";
 import { requestBlob, type ExportedFile, type ExportJobHandler } from "../base";
 import { OWNER_PERMISSIONS } from "../../auth/permissions";
+import { resolveMetricMeasures } from "../../lib/datasetMetrics";
 
 // Statistics config keys carried in DataSource.query; excluded from the fetch
 // URL (they configure aggregation, not the feature request).
-type StatMeasure = { field?: string; agg: string; label?: string; p?: number };
+type StatMeasure = { field?: string; agg: string; label?: string; p?: number; metric?: string };
 
 // Construit le corps JSON de POST /collections/{id}/aggregate depuis
 // DataSource.query (SP-11b) — même vocabulaire que l'agrégation client
@@ -150,7 +151,7 @@ export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
     const cachedDataset = source.datasetId ? await resolveDataset(source.datasetId) : null;
     if (cachedDataset?.source === "arcgis" && source.datasetId) {
       if (source.type === "statistics") {
-        const body = buildAggregateBody(source.query);
+        const body = buildAggregateBody(resolveMetricMeasures(source.query, cachedDataset.metrics));
         const data = await request<{
           categoryKey: string | string[];
           rows: Record<string, unknown>[];
@@ -173,7 +174,9 @@ export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
       return asPage((resolved.query.records as DataRecord[] | undefined) ?? []);
     }
     if (resolved.type === "statistics") {
-      const body = buildAggregateBody(resolved.query);
+      const body = buildAggregateBody(
+        resolveMetricMeasures(resolved.query, cachedDataset?.metrics),
+      );
       const data = await request<{
         categoryKey: string | string[];
         rows: Record<string, unknown>[];
@@ -206,6 +209,7 @@ export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
         timeField: null,
         reactsToExtent: false,
         crossFilterLinks: [],
+        metrics: {},
         sourcePipelineId: null,
       });
       return {
@@ -235,6 +239,7 @@ export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
           timeField: resolved.timeField,
           reactsToExtent: resolved.reactsToExtent,
           crossFilterLinks: resolved.crossFilterLinks,
+          metrics: resolved.metrics,
           sourcePipelineId: resolved.sourcePipelineId ?? null,
           baseVersion: resolved.version,
         };
@@ -246,6 +251,7 @@ export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
         timeField: resolved.timeField,
         reactsToExtent: resolved.reactsToExtent,
         crossFilterLinks: resolved.crossFilterLinks,
+        metrics: resolved.metrics,
         sourcePipelineId: resolved.sourcePipelineId ?? null,
         baseVersion: resolved.version,
       };
@@ -268,6 +274,7 @@ export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
         timeField: config.timeField ?? null,
         reactsToExtent: config.reactsToExtent ?? false,
         crossFilterLinks: config.crossFilterLinks ?? [],
+        metrics: config.metrics ?? {},
         sourcePipelineId: config.sourcePipelineId ?? null,
         version: saved?.version,
       });

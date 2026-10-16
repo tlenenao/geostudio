@@ -1221,6 +1221,7 @@ test("getDatasetConfig reads the dataset payload from the by-item config", async
     timeField: null,
     reactsToExtent: false,
     crossFilterLinks: [],
+    metrics: {},
     sourcePipelineId: null,
   });
 });
@@ -4917,4 +4918,46 @@ test("runPipeline envoie les paramètres et retryPipelineRun cible la route de r
   const r = await makeClient().retryPipelineRun?.("run-1", { fromStart: true });
   expect(retryBody).toEqual({ fromStart: true });
   expect(r).toEqual({ runId: "run-10" });
+});
+
+test("getDatasetConfig lit metrics et queryDataSource résout une mesure {metric} (REV-119)", async () => {
+  server.use(
+    http.get("https://core.test/v1/configs/by-item/ds-m", () =>
+      HttpResponse.json({
+        id: "cfg-m",
+        itemId: "ds-m",
+        kind: "dataset",
+        config: {
+          version: 1,
+          kind: "dataset",
+          dataset: {
+            source: "collection",
+            collectionId: "villes",
+            columns: {},
+            metrics: { rec: { field: "montant", agg: "sum", label: "Recettes" } },
+          },
+        },
+      }),
+    ),
+  );
+  const client = makeClient();
+  expect((await client.getDatasetConfig("ds-m")).metrics).toEqual({
+    rec: { field: "montant", agg: "sum", label: "Recettes" },
+  });
+  let posted: Record<string, unknown> | undefined;
+  server.use(
+    http.post("https://core.test/v1/collections/villes/aggregate", async ({ request }) => {
+      posted = (await request.json()) as Record<string, unknown>;
+      return HttpResponse.json({ categoryKey: "group", rows: [{ group: "Total", rec: 5 }] });
+    }),
+  );
+  await client.queryDataSource({
+    id: "s",
+    type: "statistics",
+    service: "core",
+    layer: "",
+    datasetId: "ds-m",
+    query: { measures: [{ metric: "rec" }] },
+  });
+  expect(posted!.measures).toEqual([{ field: "montant", agg: "sum", label: "rec" }]);
 });
