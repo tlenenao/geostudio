@@ -553,6 +553,20 @@ export function applyTimeFilters(
       layer.geometryKind === undefined
         ? MIXED_GEOMETRY_SUBLAYERS.map((s) => `${layer.id}__${s.suffix}`)
         : [layer.id];
+    // REV-304 : les cellules `__agg` sont précalculées par le cœur, sans champ
+    // temporel — leurs comptes seraient ceux de toute la période. Pendant qu'une
+    // fenêtre est active on les masque (un compte faux est pire qu'une absence) :
+    // la couche de détail, filtrée, réapparaît en zoomant.
+    const aggId = `${layer.id}__agg`;
+    if (map.getLayer(aggId)) {
+      if (!bases.has(aggId)) bases.set(aggId, map.getFilter(aggId) ?? undefined);
+      map.setFilter(
+        aggId,
+        (range
+          ? ["==", 1, 0]
+          : (bases.get(aggId) ?? null)) as maplibregl.FilterSpecification | null,
+      );
+    }
     for (const id of roots.flatMap((r) => [r, `${r}__icon`, `${r}__outline`])) {
       if (!map.getLayer(id)) continue;
       if (!bases.has(id)) bases.set(id, map.getFilter(id) ?? undefined);
