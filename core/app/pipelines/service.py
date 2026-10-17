@@ -198,9 +198,8 @@ def retry_pipeline_run_service(
         raise HTTPException(
             status_code=409,
             detail=(
-                f"Reprise/rejeu refusé : le writer {', '.join(appenders)} n'est pas idempotent "
-                "(mode 'append' : dupliquerait des lignes déjà écrites, utilisez 'upsert' ou "
-                "'replace' ; writer de messagerie : renverrait les messages déjà partis). "
+                f"Reprise/rejeu refusé : le writer {', '.join(appenders)} a un effet externe "
+                "non idempotent (renverrait les messages déjà partis). "
                 "Relancez une exécution complète."
             ),
         )

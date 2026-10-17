@@ -650,6 +650,9 @@ services:
       CORE_PIPELINES_BLOB_MAX_BYTES: ${CORE_PIPELINES_BLOB_MAX_BYTES:-1073741824}
       CORE_PIPELINES_BLOB_TIMEOUT_S: ${CORE_PIPELINES_BLOB_TIMEOUT_S:-600}
       CORE_PIPELINES_PREVIEW_TIMEOUT_S: ${CORE_PIPELINES_PREVIEW_TIMEOUT_S:-30}
+      # AUD-029 : durée maximale d'un run de pipeline (partie DuckDB interrompue, puis
+      # échec définitif sans retry).
+      CORE_PIPELINES_RUN_TIMEOUT_S: ${CORE_PIPELINES_RUN_TIMEOUT_S:-21600}
       CORE_SQL_EXECUTOR_TIMEOUT_S: ${CORE_SQL_EXECUTOR_TIMEOUT_S:-60}
       # transform.geocode (vague 4 ARC, voie M) s'exécute dans ce process : même fournisseur
       # et même garde d'egress que le géocodage du service `core`.

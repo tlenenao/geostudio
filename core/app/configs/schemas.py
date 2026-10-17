@@ -466,28 +466,19 @@ class PipelinePayload(BaseModel):
             raise ValueError(f"unknown parameter reference(s): {', '.join(sorted(unknown))}")
         if self.retry is not None and self.retry.max > 0 and self.append_writers():
             raise ValueError(
-                "reprise automatique (retry.max > 0) impossible avec un writer non idempotent "
-                f"({', '.join(self.append_writers())}) : un rejeu dupliquerait des lignes "
-                "(mode 'append' : utilisez 'upsert' ou 'replace') ou renverrait des messages "
-                "externes déjà partis"
+                "reprise automatique (retry.max > 0) impossible avec un writer à effet "
+                f"externe non idempotent ({', '.join(self.append_writers())}) : un rejeu "
+                "renverrait des messages déjà partis"
             )
         return self
 
     def append_writers(self) -> list[str]:
         """Ids des writers NON REJOUABLES, donc incompatibles avec un retry/une reprise :
-        writers collection/dataset en mode `append` (défaut) ou `insert` (alias d'append, F1),
-        et writers à effet externe irréversible (`EXTERNAL_EFFECT_WRITER_OPS`)."""
+        writers à effet externe irréversible (`EXTERNAL_EFFECT_WRITER_OPS`). Les writers
+        collection/dataset, même en `append`, écrivent dans la transaction du run, annulée
+        à l'échec : rejouables (AUD-083)."""
         return [
-            n.id
-            for n in self.nodes
-            if n.kind == "writer"
-            and (
-                n.op in EXTERNAL_EFFECT_WRITER_OPS
-                or (
-                    n.op in {"writer.collection", "writer.dataset"}
-                    and (n.params or {}).get("mode", "append") in ("append", "insert")
-                )
-            )
+            n.id for n in self.nodes if n.kind == "writer" and n.op in EXTERNAL_EFFECT_WRITER_OPS
         ]
 
 
