@@ -13,7 +13,7 @@ import os
 
 from app.compliance.models import PurgeReceipt
 from app.compliance.orphans import sweep_orphan_job_objects
-from app.compliance.purge import purge_tenant
+from app.compliance.purge import purge_tenant, retry_pending_s3_purges
 from app.db import request_scoped_session
 from app.history.service import purge_expired as purge_expired_history
 from app.ingestion.storage import make_s3_client
@@ -87,3 +87,50 @@ def purge_entity_history_task(timestamp: int) -> None:
         session.commit()
     if n:
         logging.getLogger(__name__).info("%d version(s) d'historique expirée(s) purgée(s)", n)
+
+
+@app.periodic(cron="17 * * * *")
+@app.task(queue="etl", queueing_lock="retry_pending_s3_purges_task")
+def retry_pending_s3_purges_task(timestamp: int) -> None:
+    """Reprend le nettoyage S3 d'une purge de tenant restée `done_with_s3_pending` (AUD-121)."""
+    if not os.environ.get("S3_ENDPOINT_URL"):
+        return
+    with request_scoped_session(_session_factory()) as session:
+        n = retry_pending_s3_purges(session, s3_client_from_env())
+        session.commit()
+    if n:
+        logging.getLogger(__name__).info("%d purge(s) de tenant : nettoyage S3 soldé", n)
+
+
+@app.periodic(cron="* * * * *")
+@app.task(queue="etl", queueing_lock="seal_audit_chain_task")
+def seal_audit_chain_task(timestamp: int) -> None:
+    """Scelle (chaîne de hachage) les lignes d'audit non scellées, par tenant (AUD-092)."""
+    from sqlalchemy import select
+
+    from app.audit.chain import seal
+    from app.audit.models import AuditLog
+
+    with request_scoped_session(_session_factory()) as session:
+        tenants = session.scalars(
+            select(AuditLog.tenant_id).where(AuditLog.hash.is_(None)).distinct().limit(50)
+        ).all()
+        for tenant_id in tenants:
+            seal(session, tenant_id)
+        session.commit()
+
+
+@app.periodic(cron="53 3 * * *")
+@app.task(queue="etl", queueing_lock="audit_retention_task")
+def audit_retention_task(timestamp: int) -> None:
+    """Archive sur S3 puis supprime l'audit plus vieux que `CORE_AUDIT_RETENTION_DAYS` (AUD-092).
+    Sans effet tant que la variable vaut 0 (défaut : conservation illimitée)."""
+    from app.audit.retention import apply_retention, retention_days
+
+    if retention_days() <= 0 or not os.environ.get("S3_ENDPOINT_URL"):
+        return
+    with request_scoped_session(_session_factory()) as session:
+        n = apply_retention(session, s3_client_from_env())
+        session.commit()
+    if n:
+        logging.getLogger(__name__).info("%d ligne(s) d'audit archivée(s) puis supprimée(s)", n)

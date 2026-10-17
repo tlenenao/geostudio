@@ -20,11 +20,14 @@ que ce garde-fou existant empêche déjà par ailleurs."""
 
 from datetime import UTC, datetime
 
-from sqlalchemy import delete, update
+from sqlalchemy import and_, delete, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.apikeys.service import revoke_all_for_user
+from app.audit.chain import audit_maintenance
+from app.audit.models import AuditLog
 from app.audit.writer import write_audit
+from app.compliance.journal import schedule_erasure_journal
 from app.history.service import erase_actor
 from app.notifications.models import Notification
 from app.outbox.models import FileTrigger, OutboundWebhook
@@ -39,6 +42,29 @@ from app.users.repository import erased_sub
 # importée de là (module de routes, pas une source de vérité partagée) ;
 # dupliquée sciemment, comme ce fichier le fait déjà pour lui-même.
 _ANTI_LOCKOUT_PRIVILEGES = ["admin.users.manage", "admin.roles.manage"]
+
+# AUD-092 : clés de payload d'audit portant du texte saisi (nom de fichier, de groupe, de
+# rôle…) — retirées des lignes de l'acteur effacé. Action, horodatage et pseudonyme (id)
+# restent : base légale = obligation de traçabilité/sécurité (SECURITY.md).
+_PII_PAYLOAD_KEYS = frozenset(
+    {"filename", "title", "name", "email", "username", "firstName", "lastName"}
+)
+
+
+def _scrub_audit_payloads(session: Session, *, tenant_id: str, user_id: str) -> None:
+    rows = session.scalars(
+        select(AuditLog).where(
+            AuditLog.tenant_id == tenant_id,
+            or_(
+                AuditLog.actor_id == user_id,
+                and_(AuditLog.object_type == "user", AuditLog.object_id == user_id),
+            ),
+        )
+    ).all()
+    with audit_maintenance(session):
+        for row in rows:
+            if _PII_PAYLOAD_KEYS & set(row.payload or {}):
+                row.payload = {k: v for k, v in row.payload.items() if k not in _PII_PAYLOAD_KEYS}
 
 
 class UserAlreadyErasedError(Exception):
@@ -115,6 +141,8 @@ def anonymize_user(
         .values(enabled=False, last_error="compte créateur effacé")
     )
     erase_actor(session, tenant_id=tenant_id, user_id=user_id)  # ARC-15 : journal d'entité
+    _scrub_audit_payloads(session, tenant_id=tenant_id, user_id=user_id)  # AUD-092
+    schedule_erasure_journal(session, kind="user", tenant_id=tenant_id, subject_id=user_id)
     session.flush()
 
     write_audit(

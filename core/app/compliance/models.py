@@ -36,3 +36,6 @@ class PurgeReceipt(Base):
         String, nullable=False, default="done", server_default=sa.text("'done'")
     )
     error: Mapped[str | None] = mapped_column(String, nullable=True)
+    # AUD-121 : id interne du tenant purgé (≠ slug en général) — sans FK, comme tenant_slug —
+    # pour que le rattrapage S3 retrouve les préfixes `{tenant_id}/` après la purge.
+    purged_tenant_id: Mapped[str | None] = mapped_column(String, nullable=True)
