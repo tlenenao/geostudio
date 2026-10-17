@@ -121,13 +121,12 @@ def test_write_geoparquet_mixed_backfill_and_live_numeric_batch_does_not_crash(t
     # (json.loads), pour la même colonne "score" de la même table.
     payload = json.dumps(
         {
-            "change": [
-                {
-                    "table": "points_interet",
-                    "kind": "update",
-                    "columnnames": ["id", "score"],
-                    "columnvalues": [1, 2.7],
-                }
+            "action": "U",
+            "schema": "public",
+            "table": "points_interet",
+            "columns": [
+                {"name": "id", "type": "integer", "value": 1},
+                {"name": "score", "type": "numeric", "value": 2.7},
             ],
         }
     )
@@ -186,13 +185,16 @@ def test_write_geoparquet_mixed_backfill_and_live_timestamptz_batch_does_not_cra
     # de app/cdc/backfill.py), pour la même colonne "vu_le".
     payload = json.dumps(
         {
-            "change": [
+            "action": "U",
+            "schema": "public",
+            "table": "points_interet",
+            "columns": [
+                {"name": "id", "type": "integer", "value": 1},
                 {
-                    "table": "points_interet",
-                    "kind": "update",
-                    "columnnames": ["id", "vu_le"],
-                    "columnvalues": [1, "2026-03-05 15:00:00+00"],
-                }
+                    "name": "vu_le",
+                    "type": "timestamp with time zone",
+                    "value": "2026-03-05 15:00:00+00",
+                },
             ],
         }
     )

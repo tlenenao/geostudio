@@ -4,6 +4,17 @@ wal2json et pilote le feedback (confirmed_flush_lsn), borné par
 CdcBufferManager.safe_ack_lsn côté appelant — jamais après un simple insert,
 seulement après un flush GeoParquet réussi (app.cdc.main, Task 9).
 
+AUD-012 : `format-version 2` — un message par LIGNE modifiée (plus par transaction).
+Une grosse transaction n'est plus assemblée en un seul JSON (v1 : limite ~1 Gio
+d'un StringInfo côté walsender, puis tout en mémoire ici). L'ack peut donc tomber au
+milieu d'une transaction : au redémarrage, Postgres renvoie la transaction entière
+(son commit est après confirmed_flush_lsn) ; les doublons sont absorbés par la
+réduction par PK (`_lsn`, puis `_seq` = ordre d'ajout) côté lecteur du lac.
+Rejeu réel vérifié (spike SP-L1b, slot dédié, vraie boucle stream_changes +
+safe_ack_lsn, coupure après le premier flush de 500 lignes d'une transaction de
+1 200 / 20 000 lignes) : ack < LSN de commit, transaction entière renvoyée au
+redémarrage, 0 ligne perdue, copies rejouées étiquetées des mêmes LSN.
+
 Boucle manuelle (read_message + select), pas consume_stream() : il faut
 pouvoir déclencher un flush sur seuil de TEMPS même en l'absence de nouveau
 message, ce que consume_stream() (bloquant, un seul callback par message
@@ -52,9 +63,9 @@ pour ce produit, pas un système haute fréquence) ; un message supplémentaire
 capté pendant ce settle est traité lui aussi, jamais perdu.
 
 INVARIANT INTER-MESSAGES (important pour Task 8, backfill/dedup — pas
-encore écrite) : quand le settle capte un message "extra" (une deuxième
-transaction, potentiellement indépendante, arrivée dans la fenêtre de
-~100ms), `msg` ET `extra` sont tous deux tagués avec la MÊME valeur de
+encore écrite) : quand le settle capte un message "extra" (un deuxième
+changement — en v2, de la même transaction ou d'une autre — arrivé dans la
+fenêtre de ~100ms), `msg` ET `extra` sont tous deux tagués avec la MÊME valeur de
 `lsn` (`cur.wal_end`, lue une seule fois — cf. `stream_changes` ci-dessous).
 Deux transactions réellement différentes peuvent donc porter un
 `ChangeRow.lsn` identique. L'ORDRE D'AJOUT est préservé (`msg` est toujours
@@ -152,59 +163,58 @@ class DecodedChange:
     row: ChangeRow
 
 
+_V2_OPS = {"I": "insert", "U": "update", "D": "delete"}
+
+
 def decode_wal2json_message(
     payload: str | dict,
     *,
     lsn: int,
     collection_meta: dict,
 ) -> list:
-    """collection_meta : {table_name: (pk_column, geometry_column)} — résolu
-    par app.cdc.main depuis app.collections.models.Collection. Une table
-    publiée mais absente de collection_meta (désenregistrée entre-temps, ou
-    jamais backfillée par ce process) est ignorée — app.cdc.main la recharge
-    et backfille au premier changement vu (Task 8/9)."""
+    """wal2json `format-version 2` (AUD-012) : UN message par changement — plus de
+    transaction entière assemblée en un seul JSON (v1 : échec au-delà d'~1 Gio, tout
+    en mémoire du walsender puis du worker). `B`/`C` (bornes de transaction, coupées
+    par `include-transaction=0`), `M` (message logique), `T` (truncate) : ignorés.
+    collection_meta : {table_name: (pk_column, geometry_column)} ; une table publiée
+    mais absente est ignorée (app.cdc.main la backfille au premier changement vu)."""
     # REV-364 h : l'appelant qui a déjà décodé le message le passe tel quel.
     data = payload if isinstance(payload, dict) else json.loads(payload)
-    out = []
-    for change in data.get("change", []):
-        table_name = change["table"]
-        meta = collection_meta.get(table_name)
-        if meta is None:
-            continue
-        pk_column, geometry_column = meta
-        kind = change["kind"]
-        if kind == "delete":
-            keynames = change.get("oldkeys", {}).get("keynames", [])
-            keyvalues = change.get("oldkeys", {}).get("keyvalues", [])
-            oldkeys = dict(zip(keynames, keyvalues, strict=True))
-            pk_value = oldkeys.get(pk_column)
-            row = ChangeRow(
-                op="delete",
-                lsn=lsn,
-                ts=0.0,
-                pk_column=pk_column,
-                pk_value=pk_value,
-                columns={pk_column: pk_value},
-                geometry_column=geometry_column,
-                geometry_wkb_hex=None,
-            )
-        else:
-            record = dict(
-                zip(change.get("columnnames", []), change.get("columnvalues", []), strict=True)
-            )
-            geom_hex = record.pop(geometry_column, None) if geometry_column else None
-            row = ChangeRow(
-                op=kind,
-                lsn=lsn,
-                ts=0.0,
-                pk_column=pk_column,
-                pk_value=record.get(pk_column),
-                columns=record,
-                geometry_column=geometry_column,
-                geometry_wkb_hex=geom_hex,
-            )
-        out.append(DecodedChange(table_name=table_name, row=row))
-    return out
+    op = _V2_OPS.get(data.get("action", ""))
+    if op is None:
+        return []
+    table_name = data["table"]
+    meta = collection_meta.get(table_name)
+    if meta is None:
+        return []
+    pk_column, geometry_column = meta
+    if op == "delete":
+        identity = {c["name"]: c["value"] for c in data.get("identity", [])}
+        pk_value = identity.get(pk_column)
+        row = ChangeRow(
+            op="delete",
+            lsn=lsn,
+            ts=0.0,
+            pk_column=pk_column,
+            pk_value=pk_value,
+            columns={pk_column: pk_value},
+            geometry_column=geometry_column,
+            geometry_wkb_hex=None,
+        )
+    else:
+        record = {c["name"]: c["value"] for c in data.get("columns", [])}
+        geom_hex = record.pop(geometry_column, None) if geometry_column else None
+        row = ChangeRow(
+            op=op,
+            lsn=lsn,
+            ts=0.0,
+            pk_column=pk_column,
+            pk_value=record.get(pk_column),
+            columns=record,
+            geometry_column=geometry_column,
+            geometry_wkb_hex=geom_hex,
+        )
+    return [DecodedChange(table_name=table_name, row=row)]
 
 
 def _start_replication_with_retry(raw_dsn: str):
@@ -219,7 +229,7 @@ def _start_replication_with_retry(raw_dsn: str):
         try:
             cur.start_replication(
                 slot_name=SLOT_NAME,
-                options={"pretty-print": "0", "include-pk": "1"},
+                options={"format-version": "2", "include-transaction": "0"},
             )
             return conn, cur
         except psycopg2.errors.ObjectInUse:

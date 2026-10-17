@@ -202,12 +202,14 @@ def run() -> None:
         # changement vu (Task 8 §Décision de conception), avant de traiter
         # le message lui-même sur la prochaine itération.
         now = time.monotonic()
-        unknown_tables = {
-            change["table"]
-            for change in data.get("change", [])
-            if change["table"] not in collection_meta
-            and unmanaged_until.get(change["table"], 0.0) <= now
-        }
+        table = data.get("table") if data.get("action") in ("I", "U", "D") else None
+        unknown_tables = (
+            {table}
+            if table is not None
+            and table not in collection_meta
+            and unmanaged_until.get(table, 0.0) <= now
+            else set()
+        )
         for table_name in unknown_tables:
             with session_factory() as session:
                 fresh = session.scalar(

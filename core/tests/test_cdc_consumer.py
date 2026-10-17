@@ -1,60 +1,29 @@
 # SPDX-License-Identifier: Apache-2.0
+"""Décodage wal2json format-version 2 (AUD-012) : un message = un changement."""
+
 import json
 
 from app.cdc.consumer import decode_wal2json_message
 
+
+def _cols(**values):
+    return [{"name": k, "type": "unknown", "value": v} for k, v in values.items()]
+
+
 _INSERT_PAYLOAD = json.dumps(
     {
-        "change": [
-            {
-                "kind": "insert",
-                "table": "t_rls",
-                "columnnames": ["id", "titre", "geom"],
-                "columnvalues": [1, "a", "0101000020E6100000..."],
-            }
-        ]
+        "action": "I",
+        "schema": "public",
+        "table": "t_rls",
+        "columns": _cols(id=1, titre="a", geom="0101000020E6100000..."),
     }
 )
-
+_UPDATE_PAYLOAD = json.dumps(
+    {"action": "U", "schema": "public", "table": "t_rls", "columns": _cols(id=2, titre="c")}
+)
 _DELETE_PAYLOAD = json.dumps(
-    {
-        "change": [
-            {
-                "kind": "delete",
-                "table": "t_rls",
-                "oldkeys": {"keynames": ["id"], "keyvalues": [1]},
-            }
-        ]
-    }
+    {"action": "D", "schema": "public", "table": "t_rls", "identity": _cols(id=1)}
 )
-
-_MULTI_CHANGE_PAYLOAD = json.dumps(
-    {
-        "change": [
-            {
-                "kind": "insert",
-                "table": "t_rls",
-                "columnnames": ["id", "titre"],
-                "columnvalues": [2, "b"],
-            },
-            {
-                "kind": "update",
-                "table": "t_rls",
-                "columnnames": ["id", "titre"],
-                "columnvalues": [2, "c"],
-            },
-        ]
-    }
-)
-
-_UNKNOWN_TABLE_PAYLOAD = json.dumps(
-    {
-        "change": [
-            {"kind": "insert", "table": "not_tracked", "columnnames": ["id"], "columnvalues": [1]}
-        ]
-    }
-)
-
 _META = {"t_rls": ("id", "geom")}
 
 
@@ -70,7 +39,12 @@ def test_decode_insert_extracts_geometry_and_columns():
     assert "geom" not in row.columns  # extraite dans geometry_wkb_hex, pas dupliquée
 
 
-def test_decode_delete_is_tombstone_from_oldkeys():
+def test_decode_update():
+    (decoded,) = decode_wal2json_message(_UPDATE_PAYLOAD, lsn=300, collection_meta=_META)
+    assert (decoded.row.op, decoded.row.columns) == ("update", {"id": 2, "titre": "c"})
+
+
+def test_decode_delete_is_tombstone_from_identity():
     decoded = decode_wal2json_message(_DELETE_PAYLOAD, lsn=200, collection_meta=_META)
     row = decoded[0].row
     assert row.op == "delete"
@@ -79,21 +53,19 @@ def test_decode_delete_is_tombstone_from_oldkeys():
     assert row.geometry_wkb_hex is None
 
 
-def test_decode_message_with_multiple_changes():
-    decoded = decode_wal2json_message(_MULTI_CHANGE_PAYLOAD, lsn=300, collection_meta=_META)
-    assert [d.row.op for d in decoded] == ["insert", "update"]
-    assert all(d.row.lsn == 300 for d in decoded)  # même LSN de message, suffisant pour max(_lsn)
+def test_decode_ignores_transaction_markers_messages_and_truncate():
+    for action in ("B", "C", "M", "T"):
+        payload = {"action": action, "schema": "public", "table": "t_rls"}
+        assert decode_wal2json_message(payload, lsn=1, collection_meta=_META) == []
 
 
 def test_decode_ignores_unknown_table():
-    decoded = decode_wal2json_message(_UNKNOWN_TABLE_PAYLOAD, lsn=400, collection_meta=_META)
-    assert decoded == []
+    payload = {"action": "I", "schema": "public", "table": "not_tracked", "columns": _cols(id=1)}
+    assert decode_wal2json_message(payload, lsn=400, collection_meta=_META) == []
 
 
 def test_decode_accepts_an_already_decoded_message():
     # REV-364 h : le worker décode le JSON une fois et le passe tel quel.
-    import json
-
     from_str = decode_wal2json_message(_INSERT_PAYLOAD, lsn=100, collection_meta=_META)
     from_dict = decode_wal2json_message(json.loads(_INSERT_PAYLOAD), lsn=100, collection_meta=_META)
     assert from_dict == from_str

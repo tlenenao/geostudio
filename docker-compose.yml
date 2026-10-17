@@ -839,11 +839,9 @@ services:
   # pas un outil d'exploitation optionnel — pas de profil, comme core/worker.
   cdc-worker:
     build: ./core
-    # Pas de borne par défaut (0 = illimité) : wal2json v1 livre une transaction
-    # ENTIÈRE en un seul message, décodé d'un bloc (~2,5 Ko de mémoire Python par
-    # ligne, mesuré) — un import de 10^6 lignes dépasse 2 Go. Une borne trop basse
-    # tuerait le worker en boucle sur la même transaction, slot jamais acquitté, WAL
-    # retenu jusqu'à saturer le disque. À poser seulement après dimensionnement.
+    # wal2json format-version 2 (AUD-012) : un message par ligne, plus de transaction
+    # entière en mémoire. Le backfill de démarrage charge encore une table entière
+    # (AUD-099, lot L7) : défaut 0 (= sans limite) conservé tant qu'il n'est pas borné.
     mem_limit: ${CDC_WORKER_MEM_LIMIT:-0}
     command: python -m app.cdc.main
     environment:

@@ -167,8 +167,8 @@ cdcWorker:
   # Mono-writer garanti par élection (verrou consultatif Postgres, ARC-32) : N pods, 1 leader, les
   # autres attendent et reprennent < 30 s si le leader tombe.
   replicas: 2
-  # wal2json v1 livre une transaction entière en un message (~2,5 Ko/ligne décodée) : la limite
-  # doit couvrir la plus grosse transaction (import, purge), sinon OOMKilled en boucle et WAL retenu.
+  # wal2json v2 : une ligne par message (AUD-012) ; le backfill de démarrage charge encore une
+  # table entière (AUD-099) : la limite doit couvrir la plus grosse collection, sinon OOMKilled en boucle.
   resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {memory: 4Gi}}
   podSecurityUid: 1001
 
