@@ -141,7 +141,7 @@ def _failing(url, body, headers):
     raise DeliveryError("boom")
 
 
-def test_failures_back_off_then_disable_after_five_and_notify(db):
+def test_failures_back_off_and_only_a_day_long_outage_disables_and_notifies(db):
     tenant_id, user_id = _seed(db)
     with db() as s:
         ev = _event(s, tenant_id)
@@ -152,21 +152,25 @@ def test_failures_back_off_then_disable_after_five_and_notify(db):
             s.commit()
             assert deliver_due(s, post=_failing) == 0
             assert ev.attempts == attempt
-            if attempt < 5:
-                assert hook.enabled and ev.status == "pending"
-                delay = ev.next_attempt_at - datetime.now(UTC).replace(tzinfo=None)
-                assert previous is None or delay > previous  # backoff exponentiel
-                previous = delay
-        assert hook.enabled is False and hook.consecutive_failures == 5
-        assert ev.status == "failed"
+            delay = ev.next_attempt_at - datetime.now(UTC).replace(tzinfo=None)
+            assert previous is None or delay > previous  # backoff exponentiel
+            previous = delay
+        # AUD-085 : 5 échecs rapprochés ne désactivent plus rien
+        assert hook.enabled and ev.status == "pending" and hook.consecutive_failures == 5
+        assert s.scalars(select(Notification)).all() == []
+        # panne qui dure : l'événement a 24 h -> abandonné, destination désactivée + notifiée
+        ev.created_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=25)
+        ev.next_attempt_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=1)
+        s.commit()
+        assert deliver_due(s, post=_failing) == 0
+        assert hook.enabled is False and ev.status == "failed"
         notif = s.scalars(select(Notification)).one()
         assert (notif.kind, notif.recipient_user_id, notif.status) == (
             "webhook_disabled",
             user_id,
             "failure",
         )
-        # plus de livraison tant que la destination est désactivée
-        assert deliver_due(s, post=_failing) == 0
+        assert deliver_due(s, post=_failing) == 0  # plus de livraison tant que désactivée
 
 
 def test_a_success_resets_the_failure_counter(db):
