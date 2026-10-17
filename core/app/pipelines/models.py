@@ -37,6 +37,8 @@ class PipelineRun(Base):
     )
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # AUD-026 : battement de cœur du worker, ancre du balayage des runs vivants.
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     error: Mapped[str | None] = mapped_column(String, nullable=True)
     # server_default="{}" en chaîne nue (comme la migration 0018) : cf.
     # collections/models.py sur attachment_fields — le contournement du

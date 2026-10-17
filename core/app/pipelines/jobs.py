@@ -8,7 +8,9 @@ raison de import_paths)."""
 
 import logging
 import os
-from collections.abc import Callable
+import threading
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from typing import Protocol
 
 from sqlalchemy.orm import Session, sessionmaker
@@ -188,6 +190,30 @@ def _analytics_base_uri() -> str:
     return f"s3://{bucket}/cdc"
 
 
+_HEARTBEAT_SECONDS = 60
+
+
+@contextmanager
+def _heartbeat(session_factory, run_id: str) -> Iterator[None]:
+    """AUD-026 : thread de battement de cœur pendant l'exécution du run. Un
+    battement échoué est seulement journalisé (pire cas : ancien comportement)."""
+    stop = threading.Event()
+
+    def _beat() -> None:
+        while not stop.wait(_HEARTBEAT_SECONDS):
+            try:
+                with request_scoped_session(session_factory) as s:
+                    pipelines_repo.touch_heartbeat(s, run_id=run_id)
+            except Exception:
+                logger.warning("heartbeat run %s échoué", run_id, exc_info=True)
+
+    threading.Thread(target=_beat, daemon=True, name=f"hb-{run_id}").start()
+    try:
+        yield
+    finally:
+        stop.set()
+
+
 def _make_progress_callback(
     session_factory,
     *,
@@ -341,26 +367,29 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
                     session, tenant_id=tenant_id, pipeline_item_id=item_id
                 )
             )
-            stats = run_pipeline(
-                session,
-                payload=payload,
-                tenant_id=tenant_id,
-                user=user,
-                endpoint_url=os.environ["S3_ENDPOINT_URL"],
-                access_key=os.environ["S3_ACCESS_KEY"],
-                secret_key=os.environ["S3_SECRET_KEY"],
-                base_uri=_analytics_base_uri(),
-                s3_client=_s3_client_from_env(),
-                exports_bucket=os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports"),
-                on_node_complete=_make_progress_callback(
-                    factory, run_id=run_id, tenant_id=tenant_id
-                ),
-                on_progress=_make_progress_callback(factory, run_id=run_id, tenant_id=tenant_id),
-                should_cancel=tracker.is_cancel_requested,
-                run_id=run_id,
-                reader_state=reader_state,
-                checkpoint=checkpoint,
-            )
+            with _heartbeat(factory, run_id):
+                stats = run_pipeline(
+                    session,
+                    payload=payload,
+                    tenant_id=tenant_id,
+                    user=user,
+                    endpoint_url=os.environ["S3_ENDPOINT_URL"],
+                    access_key=os.environ["S3_ACCESS_KEY"],
+                    secret_key=os.environ["S3_SECRET_KEY"],
+                    base_uri=_analytics_base_uri(),
+                    s3_client=_s3_client_from_env(),
+                    exports_bucket=os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports"),
+                    on_node_complete=_make_progress_callback(
+                        factory, run_id=run_id, tenant_id=tenant_id
+                    ),
+                    on_progress=_make_progress_callback(
+                        factory, run_id=run_id, tenant_id=tenant_id
+                    ),
+                    should_cancel=tracker.is_cancel_requested,
+                    run_id=run_id,
+                    reader_state=reader_state,
+                    checkpoint=checkpoint,
+                )
             # F4 : le curseur n'avance qu'ici, run réussi (jamais sur échec).
             if reader_state.pending:
                 pipelines_repo.upsert_reader_states(

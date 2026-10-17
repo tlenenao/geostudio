@@ -55,7 +55,10 @@ def _run_anchor():
     `created_at` (même règle que reclaim_stuck_runs)."""
     return func.coalesce(
         case(
-            (PipelineRun.status.in_(("running", "cancel_requested")), PipelineRun.started_at),
+            (
+                PipelineRun.status.in_(("running", "cancel_requested")),
+                func.coalesce(PipelineRun.heartbeat_at, PipelineRun.started_at),
+            ),
             (PipelineRun.status == "retrying", PipelineRun.next_retry_at),
             else_=PipelineRun.created_at,
         ),
@@ -352,6 +355,14 @@ def requeue_overdue_retries(
     return [(r[0], r[1]) for r in rows]
 
 
+def touch_heartbeat(session: Session, *, run_id: str) -> None:
+    session.execute(
+        update(PipelineRun)
+        .where(PipelineRun.id == run_id, PipelineRun.status.in_(("running", "cancel_requested")))
+        .values(heartbeat_at=_now())
+    )
+
+
 def reclaim_stuck_runs(
     session: Session, *, older_than_minutes: int = _RUNNING_RECLAIM_MINUTES
 ) -> int:
@@ -360,12 +371,15 @@ def reclaim_stuck_runs(
     c02-005 : sans cela l'ancien run restait zombie à côté du nouveau) plus
     vieux que le seuil. Cross-tenant, appelée par le balayage cron. UPDATE
     conditionnel sur le statut : un run terminé entre-temps n'est pas touché.
-    # ponytail: pas de heartbeat — un run vivant de plus de
-    # _RUNNING_RECLAIM_MINUTES est aussi clos ; heartbeat si des pipelines
-    # légitimes dépassent ce délai."""
+    # AUD-026 : un run `running` est ancré sur son dernier battement de cœur
+    # (`heartbeat_at`, thread du worker) ; sans battement, sur `started_at`.
+    # ponytail: seuil = worker mort ; un worker gelé mais battant n'est pas clos."""
     threshold = _now() - timedelta(minutes=older_than_minutes)
     anchor = case(
-        (PipelineRun.status.in_(("running", "cancel_requested")), PipelineRun.started_at),
+        (
+            PipelineRun.status.in_(("running", "cancel_requested")),
+            func.coalesce(PipelineRun.heartbeat_at, PipelineRun.started_at),
+        ),
         (PipelineRun.status == "retrying", PipelineRun.next_retry_at),
         else_=PipelineRun.created_at,
     )
