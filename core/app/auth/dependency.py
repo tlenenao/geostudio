@@ -3,7 +3,7 @@ import os
 from functools import lru_cache
 
 import jwt
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app import observability
@@ -190,16 +190,22 @@ def _jwks_client() -> jwt.PyJWKClient:
     return jwt.PyJWKClient(jwks_url, lifespan=600)
 
 
+_READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
 def get_current_user(
+    request: Request = None,  # type: ignore[assignment]  # injecté par FastAPI
     authorization: str = Header(default=""),
     session: Session = Depends(get_session, scope="function"),
 ) -> User:
-    user = _resolve_current_user(authorization, session)
+    # Appel direct sans requête (tests) = lecture ; FastAPI injecte toujours la requête.
+    method = request.method if request is not None else "GET"
+    user = _resolve_current_user(authorization, session, method=method)
     observability.tag_current_span_with_user(user)  # AUD-040
     return user
 
 
-def _resolve_current_user(authorization: str, session: Session) -> User:
+def _resolve_current_user(authorization: str, session: Session, *, method: str) -> User:
     # REV-012 : la résolution du tenant (get_or_create_default_tenant peut
     # INSÉRER une ligne) ne doit se produire qu'après ce contrôle — sinon
     # toute requête non authentifiée sur une route protégée déclenche un
@@ -241,8 +247,11 @@ def _resolve_current_user(authorization: str, session: Session) -> User:
             raise HTTPException(status_code=401, detail="invalid export token") from exc
         if claims.tenant_id != tenant.id:
             raise HTTPException(status_code=401, detail="invalid export token")
+        # AUD-024 : un jeton d'export ne fait que lire, quelle que soit la route.
+        if method not in _READ_METHODS:
+            raise HTTPException(status_code=403, detail="export token is read-only")
         user = session.get(User, claims.user_id)
-        if user is None:
+        if user is None or user.erased_at is not None:  # AUD-094
             raise HTTPException(status_code=401, detail="invalid export token")
         return user
 
@@ -283,6 +292,7 @@ def _resolve_current_user(authorization: str, session: Session) -> User:
 
 
 def get_current_user_optional(
+    request: Request = None,  # type: ignore[assignment]  # injecté par FastAPI
     authorization: str = Header(default=""),
     session: Session = Depends(get_session, scope="function"),
 ) -> User | None:
@@ -290,4 +300,4 @@ def get_current_user_optional(
     aux collections publiques — URLs OGC stables, spec SP-3 §2)."""
     if not authorization.startswith("Bearer "):
         return None
-    return get_current_user(authorization=authorization, session=session)
+    return get_current_user(request, authorization=authorization, session=session)

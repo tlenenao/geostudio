@@ -280,7 +280,7 @@ def test_render_export_task_builds_url_with_page_id_and_ctx(db_session, monkeypa
     # (see render_export_task's `route = "maps" if config.kind == "map" ...`)
     # — not "apps" as in the brief's illustrative (app) example.
     assert len(captured_urls) == 1
-    assert f"/maps/{item.id}/page-2?exportToken=" in captured_urls[0]
+    assert f"/maps/{item.id}/page-2?exportRender=1" in captured_urls[0]
     assert captured_urls[0].endswith("&ctx=abc123")
 
     # Guards against a regression where the PDF render itself blows up after
@@ -310,7 +310,7 @@ def test_render_export_task_url_unchanged_when_page_id_and_ctx_absent(db_session
     export_jobs.render_export_task(job_id=job.id, tenant_id=tenant.id)
 
     assert len(captured_urls) == 1
-    assert f"/maps/{item.id}?exportToken=" in captured_urls[0]
+    assert f"/maps/{item.id}?exportRender=1" in captured_urls[0]
     assert "ctx=" not in captured_urls[0]
 
     # See the identical comment in
@@ -338,7 +338,7 @@ class _FakeLaunchedBrowser:
     def __init__(self) -> None:
         self.closed = False
 
-    def new_page(self):
+    def new_page(self, **kw):
         raise RuntimeError("boom: new_page a échoué après le lancement du navigateur")
 
     def close(self) -> None:
@@ -372,6 +372,75 @@ class _FakeSyncPlaywrightContextManager:
 
     def start(self):
         return self._driver
+
+
+class _Req:
+    def __init__(self, url):
+        self.url = url
+
+
+class _Route:
+    def __init__(self, url):
+        self.request = _Req(url)
+        self.outcome = None
+
+    def continue_(self):
+        self.outcome = "continue"
+
+    def abort(self, reason="failed"):
+        self.outcome = f"abort:{reason}"
+
+
+@pytest.mark.parametrize(
+    "url,expected",
+    [
+        ("http://shell.test/assets/app.js", "continue"),
+        ("https://geo.example/api/v1/items", "continue"),
+        ("data:image/png;base64,AAAA", "continue"),
+        ("http://169.254.169.254/opc/v2/instance/", "abort:blockedbyclient"),
+        ("http://minio:9000/bucket/x", "abort:blockedbyclient"),
+        ("http://[64:ff9b::a9fe:a9fe]/", "abort:blockedbyclient"),
+        ("file:///etc/passwd", "abort:blockedbyclient"),
+        ("https://8.8.8.8/tiles/1/2/3.png", "continue"),
+    ],
+)
+def test_egress_route_handler_blocks_internal_targets(monkeypatch, url, expected):
+    real = socket.getaddrinfo
+    monkeypatch.delenv("CORE_EXPORT_EGRESS_ALLOWLIST", raising=False)
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda host, *a, **k: (
+            [(0, 0, 0, "", ("172.18.0.5", 0))] if host == "minio" else real(host, *a, **k)
+        ),
+    )
+    handler = export_jobs._egress_route_handler(
+        frozenset({"http://shell.test", "https://geo.example"})
+    )
+    route = _Route(url)
+    handler(route)
+    assert route.outcome == expected
+
+
+def test_render_url_no_longer_carries_the_token(db_session, monkeypatch):
+    session, tenant, user, item = db_session
+    urls, tokens = [], []
+    monkeypatch.setattr(
+        export_jobs,
+        "_launch_and_navigate",
+        lambda url, **kw: urls.append(url) or tokens.append(kw.get("export_token")) or _FakePage(),
+    )
+    monkeypatch.setattr(export_jobs, "s3_client_from_env", lambda: _FakeUploadS3Client())
+    job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="pdf"
+    )
+    session.commit()
+
+    export_jobs.render_export_task(job_id=job.id, tenant_id=tenant.id)
+
+    assert "exportToken" not in urls[0]
+    assert "exportRender=1" in urls[0]
+    assert tokens[0]
 
 
 def test_launch_and_navigate_cleans_up_driver_and_browser_on_mid_sequence_failure(monkeypatch):
@@ -718,7 +787,7 @@ def test_render_viewport_matches_the_sheet(db_session, monkeypatch):
     monkeypatch.setattr(
         export_jobs,
         "_launch_and_navigate",
-        lambda url, viewport=None, core_bridge=None: seen.update(viewport=viewport) or _FakePage(),
+        lambda url, viewport=None, **kw: seen.update(viewport=viewport) or _FakePage(),
     )
     monkeypatch.setattr(export_jobs, "s3_client_from_env", lambda: _FakeUploadS3Client())
     export_jobs.render_export_task(job_id=job.id, tenant_id=tenant.id)
@@ -740,9 +809,16 @@ def test_launch_and_navigate_shares_one_120s_budget(monkeypatch):
         def set_default_timeout(self, ms):
             calls["default"] = ms
 
+        def route(self, pattern, handler):
+            calls.setdefault("routes", []).append(pattern)
+
+        def add_init_script(self, script):
+            calls["init"] = script
+
     class _Browser:
         def new_page(self, **kw):
             calls["viewport"] = kw.get("viewport")
+            calls["page_kw"] = kw
             return _Page()
 
     class _Chromium:
@@ -757,8 +833,20 @@ def test_launch_and_navigate_shares_one_120s_budget(monkeypatch):
             return _Driver()
 
     monkeypatch.setattr("playwright.sync_api.sync_playwright", lambda: _CM())
-    export_jobs._launch_and_navigate("http://shell.test/maps/x", (1587, 1123))
+    monkeypatch.setattr(export_jobs, "_published_core_url", lambda _: None)
+    export_jobs._launch_and_navigate(
+        "http://shell.test/maps/x",
+        (1587, 1123),
+        core_bridge=("http://localhost:8200", "http://core:8200"),
+        export_token="tok",
+    )
     assert calls["viewport"] == {"width": 1587, "height": 1123}
+    # AUD-023 : garde réseau d'abord (le pont, enregistré après, reste prioritaire),
+    # service workers bloqués (ils contourneraient page.route).
+    assert calls["routes"] == ["**/*", "http://localhost:8200/**"]
+    assert calls["page_kw"]["service_workers"] == "block"
+    # AUD-024 : jeton posé dans sessionStorage de l'origine du shell, jamais l'URL.
+    assert '"http://shell.test"' in calls["init"] and '"tok"' in calls["init"]
     assert calls["goto"] <= 120_000 and calls["wait"] <= 120_000 and calls["default"] <= 120_000
     assert calls["goto"] >= calls["wait"] >= calls["default"] > 100_000
 
@@ -878,4 +966,4 @@ def test_ctx_is_url_quoted_in_target(db_session, monkeypatch):
     monkeypatch.setattr(export_jobs, "s3_client_from_env", lambda: _FakeUploadS3Client())
     export_jobs.render_export_task(job_id=job.id, tenant_id=tenant.id)
     assert seen and "&ctx=abc%26exportToken%3Devil" in seen[0]
-    assert seen[0].count("exportToken=") == 1
+    assert seen[0].count("exportToken=") == 0  # AUD-024 : plus jamais dans l'URL

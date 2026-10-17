@@ -5,18 +5,20 @@ via Chromium headless. Tourne dans le conteneur export-worker dédié (queue
 §Infrastructure). Toute erreur marque le job "error", jamais un job bloqué
 en "running" (même critère qu'app.pipelines.jobs.run_pipeline_task)."""
 
+import json
 import logging
 import os
 import re
 import time
 import urllib.error
 import urllib.request
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 from app.auth.dependency import is_export_enabled
 from app.auth.export_tokens import mint_export_token
 from app.configs import repository as configs_repo
 from app.db import request_scoped_session
+from app.egress_guard import check_url
 from app.export import repository as export_repo
 from app.export.models import ExportJob
 from app.export.rendering import RENDER_TIMEOUT_MS, RenderPage, page_pixels, render_export
@@ -220,10 +222,39 @@ def _core_bridge_handler(public: str, internal: str):
     return handler
 
 
+class _ExportEgressBlocked(Exception):
+    pass
+
+
+def _egress_route_handler(allowed_origins: frozenset[str]):
+    """AUD-023 : le navigateur du worker ne joint que le shell, le cœur publié et
+    des hôtes publics ; toute cible interne (métadonnées cloud, minio, core…)
+    est refusée. ponytail: Chromium résout le DNS lui-même après ce contrôle
+    (TOCTOU) ; une allowlist stricte via CORE_EXPORT_EGRESS_ALLOWLIST ferme ce reste."""
+
+    def handle(route) -> None:
+        url = route.request.url
+        parsed = urlparse(url)
+        origin = f"{parsed.scheme}://{parsed.netloc}"
+        if parsed.scheme in {"data", "blob"} or origin in allowed_origins:
+            route.continue_()
+            return
+        try:
+            check_url(url, allowlist_env="CORE_EXPORT_EGRESS_ALLOWLIST", error=_ExportEgressBlocked)
+        except _ExportEgressBlocked:
+            logger.warning("export : requête sortante bloquée vers %s", parsed.hostname)
+            route.abort("blockedbyclient")
+            return
+        route.continue_()
+
+    return handle
+
+
 def _launch_and_navigate(
     url: str,
     viewport: tuple[int, int] | None = None,
     core_bridge: tuple[str, str] | None = None,
+    export_token: str | None = None,
 ) -> RenderPage:
     # Seule fonction de ce module qui a besoin d'un vrai Chromium — isolée
     # pour être monkeypatchée en test (cf. tests/test_export_jobs.py). La
@@ -248,14 +279,30 @@ def _launch_and_navigate(
 
     try:
         browser = playwright.chromium.launch(headless=True)
-        page = (
-            browser.new_page(viewport={"width": viewport[0], "height": viewport[1]})
-            if viewport
-            else browser.new_page()
-        )
+        page_kw: dict = {"service_workers": "block"}  # un SW contournerait page.route
+        if viewport:
+            page_kw["viewport"] = {"width": viewport[0], "height": viewport[1]}
+        page = browser.new_page(**page_kw)
+        shell = urlparse(url)
+        shell_origin = f"{shell.scheme}://{shell.netloc}"
+        allowed = {shell_origin}
+        published = _published_core_url(shell_origin)
+        if published:
+            p = urlparse(published)
+            allowed.add(f"{p.scheme}://{p.netloc}")
+        # Garde d'abord : Playwright donne la main à la route enregistrée EN DERNIER,
+        # le pont (plus spécifique) reste donc prioritaire sur son motif.
+        page.route("**/*", _egress_route_handler(frozenset(allowed)))
         if core_bridge is not None:
             public, internal = core_bridge
             page.route(f"{public}/**", _core_bridge_handler(public, internal))
+        if export_token is not None:
+            # AUD-024 : jamais dans l'URL ; posé avant tout script de la page, sur
+            # l'origine du shell seulement (lu par shell/src/auth/exportAwareToken.ts).
+            page.add_init_script(
+                f"if (location.origin === {json.dumps(shell_origin)}) "
+                f"sessionStorage.setItem('gs_export_token', {json.dumps(export_token)});"
+            )
         page.goto(url, wait_until="load", timeout=remaining_ms())
         page.wait_for_selector(
             '[data-export-ready="true"]', timeout=remaining_ms(), state="attached"
@@ -326,12 +373,11 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
                 raise ValueError(f"export item '{item_id}' not found")
             print_layout = config.config.printLayout
 
-        token = mint_export_token(tenant_id=tenant_id, user_id=user_id, job_id=job_id)
         route = "maps" if config.kind == "map" else "apps"
         base = f"{os.environ['SHELL_BASE_URL']}/{route}/{item_id}"
         if page_id:
             base = f"{base}/{quote(page_id, safe='')}"
-        target_url = f"{base}?exportToken={token}&exportRender=1"
+        target_url = f"{base}?exportRender=1"
         if ctx:
             target_url = f"{target_url}&ctx={quote(ctx, safe='')}"
         if scope == "atlas":
@@ -351,8 +397,15 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
         if _cancelled(factory, job_id):
             return
 
+        # AUD-024 : émis au dernier moment, son TTL couvre tout le budget de rendu.
+        token = mint_export_token(
+            tenant_id=tenant_id, user_id=user_id, job_id=job_id, item_id=item_id
+        )
         browser_page = _launch_and_navigate(
-            target_url, viewport=page_pixels(print_layout), core_bridge=core_bridge
+            target_url,
+            viewport=page_pixels(print_layout),
+            core_bridge=core_bridge,
+            export_token=token,
         )
         try:
             # Le shell lève `data-export-incomplete` quand le délai de chargement est dépassé :
