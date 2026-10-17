@@ -9,6 +9,7 @@ stable, pas d'une identité vérifiée. Limite assumée : ne tient pas
 multi-process (pas de --workers aujourd'hui côté uvicorn, cf. C2/vague 0)."""
 
 import hashlib
+import ipaddress
 import logging
 import os
 import re
@@ -64,6 +65,9 @@ _SHARE_LINK_RE = re.compile(r"^/v1/share-links/[^/]+$")
 # (BAN, 50 req/s/IP côté amont) — budget propre, le shell n'appelle qu'à la
 # soumission du formulaire, jamais à la frappe.
 _GEOCODE_RE = re.compile(r"^/v1/geocode(/batch|/reverse)?$")
+# AUD-154 : soumission publique anonyme — budget propre, indexé sur l'IP (/64 en
+# IPv6) quel que soit l'en-tête Authorization présenté.
+_PUBLIC_SUBMIT_RE = re.compile(r"^/v1/public/submit/[^/]+$")
 
 # Budgets par groupe de coût réel (requêtes / 60s). Réutilise _EXPORT_PATH_RE
 # de app.main pour le groupe "jobs" plutôt que de le redéfinir ici.
@@ -80,11 +84,27 @@ _BUDGETS = {
     "webhook-trigger": 30,
     "share-link": 60,
     "geocode": 60,
+    "public-submit": 20,
     # ARC-34 : compté par appel amont Valhalla (REST, MCP, ops de pipeline), pas par route ;
     # route_group ne le renvoie jamais, seul app.routing.client le consomme.
     "routing": 100,
 }
 _WINDOW_SECONDS = 60.0
+
+
+def ip_bucket(host: str | None) -> str:
+    """AUD-154 : une IPv6 compte pour son /64 (un abonné en a des milliards)."""
+    if not host:
+        return "unknown"
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return host
+    if isinstance(ip, ipaddress.IPv6Address):
+        if ip.ipv4_mapped is not None:
+            return str(ip.ipv4_mapped)
+        return str(ipaddress.ip_network(f"{ip}/64", strict=False))
+    return str(ip)
 
 
 def caller_key(
@@ -101,13 +121,16 @@ def caller_key(
     est indexée sur IP + chemin (donc pipeline), jamais sur le jeton présenté —
     sinon varier le jeton à chaque essai contourne le budget (brute-force) ;
     idem pour share-link, indexée sur la seule IP."""
+    bucket = ip_bucket(client_host)
+    if group == "public-submit":
+        return f"submit:{bucket}"
     if group == "webhook-trigger":
-        return f"trigger:{client_host or 'unknown'}:{path}"
+        return f"trigger:{bucket}:{path}"
     if group == "share-link":
-        return f"share:{client_host or 'unknown'}"
+        return f"share:{bucket}"
     if auth_header:
         return auth_header
-    return f"anon:{client_host or 'unknown'}"
+    return f"anon:{bucket}"
 
 
 def route_group(
@@ -136,6 +159,8 @@ def route_group(
         return "share-link"
     if _GEOCODE_RE.match(path):
         return "geocode"
+    if method == "POST" and _PUBLIC_SUBMIT_RE.match(path):
+        return "public-submit"
     # REV-299 (c) : le jeton invité X-Share-Link-Token est aussi présenté en
     # en-tête sur les routes d'items/configs — même budget par IP que la route publique.
     # Les GET (tuiles MVT, items, configs, GeoJSON d'un embed) en sont exclus : une

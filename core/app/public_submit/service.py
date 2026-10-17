@@ -80,6 +80,10 @@ class HourlyLimiter:
 # 100 requêtes/h/IP : la 101e est refusée (429). Compte TOUTES les requêtes vers la
 # route publique (jeton invalide compris), sinon le brute-force du jeton serait gratuit.
 ip_limiter = HourlyLimiter(100)
+# AUD-154 : aussi par jeton (un formulaire ne reçoit pas plus de 100 dépôts/h,
+# quel que soit le nombre d'IP). ponytail: compteurs horaires par process ; le
+# budget par minute partagé entre répliques est celui de PgRateLimiter.
+token_limiter = HourlyLimiter(100)
 
 
 def _utcnow() -> datetime:

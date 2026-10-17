@@ -48,6 +48,7 @@ from app.ingestion.storage import ensure_uploads_bucket
 from app.public_submit import service
 from app.public_submit.models import Submission, SubmissionToken
 from app.quotas.service import enforce_storage_quota
+from app.ratelimit.limiter import ip_bucket
 from app.sharing.geo_limits import refuse_if_geo_limited
 
 router = APIRouter()
@@ -70,9 +71,13 @@ def submit(
     introspect=Depends(get_introspector),
     s3=Depends(get_s3_client),
 ):
-    ip = request.client.host if request.client else "unknown"
+    ip = ip_bucket(request.client.host if request.client else None)  # AUD-154 : /64 en IPv6
     if not service.ip_limiter.allow(ip):
         raise HTTPException(status_code=429, detail="too many submissions, retry later")
+    if not service.token_limiter.allow(token):
+        raise HTTPException(
+            status_code=429, detail="too many submissions for this form, retry later"
+        )
     row = service.find_token(session, token)
     if row is None:
         raise HTTPException(status_code=404, detail="submission link not found")

@@ -277,3 +277,18 @@ def test_forwarded_for_is_ignored_from_an_untrusted_peer(monkeypatch):
         client.get(f"/v1/share-links/bad-{i}", headers={"X-Forwarded-For": f"7.7.7.{i}"})
     forged = client.get("/v1/share-links/bad-z", headers={"X-Forwarded-For": "6.6.6.6"})
     assert forged.status_code == 429
+
+
+def test_public_submit_has_its_own_budget_and_ipv6_is_bucketed():
+    # AUD-154
+    from app.ratelimit.limiter import _BUDGETS, ip_bucket
+
+    assert route_group("/v1/public/submit/gss_x", "POST", _EXPORT_PATH_RE) == "public-submit"
+    assert route_group("/v1/public/submit/gss_x", "GET", _EXPORT_PATH_RE) is None
+    assert _BUDGETS["public-submit"] == 20
+    assert ip_bucket("2001:db8:1:2:aaaa::1") == ip_bucket("2001:db8:1:2:bbbb::9")
+    assert ip_bucket("2001:db8:1:2:aaaa::1") == "2001:db8:1:2::/64"
+    assert ip_bucket("::ffff:203.0.113.7") == ip_bucket("203.0.113.7") == "203.0.113.7"
+    assert ip_bucket(None) == "unknown"
+    # L'en-tête Authorization ne change pas la clé d'une soumission anonyme.
+    assert caller_key("Bearer x", "2001:db8:1:2::5", "public-submit") == "submit:2001:db8:1:2::/64"

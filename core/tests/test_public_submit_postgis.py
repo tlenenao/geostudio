@@ -85,9 +85,11 @@ def pg_app(pg_engine):
     app.dependency_overrides[db.get_session] = override_session
     app.dependency_overrides[attachments_routes.get_s3_client] = lambda: s3
     service.ip_limiter.reset()
+    service.token_limiter.reset()
     client = TestClient(app)
     yield client, app, admin, Session, s3
     service.ip_limiter.reset()
+    service.token_limiter.reset()
     with pg_engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS demo_sub"))
         conn.execute(
@@ -247,12 +249,34 @@ def test_token_quota_is_enforced(ready):
     assert [_submit(client, one["token"]).status_code for _ in range(3)] == [202, 202, 429]
 
 
-def test_101st_request_per_hour_per_ip_is_429(ready):
+def test_21st_request_per_minute_per_ip_is_429(ready):
+    # AUD-154 : budget par minute partagé (middleware), avant tout parsing multipart.
     client, app, _a, _S, _s3, tok = ready
     _anon(app)
-    codes = [_submit(client, "gss_" + "1" * 12 + "_bad").status_code for _ in range(100)]
+    codes = [_submit(client, "gss_" + "1" * 12 + "_bad").status_code for _ in range(20)]
     assert set(codes) == {404}
     assert _submit(client, tok["token"]).status_code == 429
+
+
+def test_101st_request_per_hour_per_ip_is_429(ready):
+    # Compteur horaire par IP (ADR 0017) ; le client de test se présente "testclient".
+    client, app, _a, _S, _s3, tok = ready
+    _anon(app)
+    for _ in range(100):
+        assert service.ip_limiter.allow("testclient")
+    r = _submit(client, tok["token"])
+    assert r.status_code == 429 and r.json()["detail"] == "too many submissions, retry later"
+
+
+def test_101st_request_per_hour_per_token_is_429_whatever_the_ip(ready):
+    # AUD-154 : 100 dépôts/h par jeton, même répartis sur 100 IP (simulées ici en
+    # consommant le compteur du jeton, l'IP du client de test étant fixe).
+    client, app, _a, _S, _s3, tok = ready
+    _anon(app)
+    for _ in range(100):
+        assert service.token_limiter.allow(tok["token"])
+    r = _submit(client, tok["token"])
+    assert r.status_code == 429 and "this form" in r.json()["detail"]
 
 
 def test_invalid_payload_is_rejected_without_consuming_quota(ready):
