@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
+from app.appexport.datasets import resolve_dataset_sources
 from app.collections import repository as collections_repo
 from app.configs.schemas import BuilderConfig
 
@@ -113,7 +114,7 @@ def check_export_guard(
     config: BuilderConfig,
     mode: str,
 ) -> ExportGuardResult:
-    reasons: list[str] = []
+    config, reasons = resolve_dataset_sources(session, tenant_id=tenant_id, config=config)
 
     if config.kind not in EXPORTABLE_KINDS:
         reasons.append(f"un item de kind '{config.kind}' n'est pas exportable (app/dashboard)")
@@ -135,6 +136,8 @@ def check_export_guard(
         # en direct au runtime, autoporté le fige dans l'instantané et le
         # sert depuis le mini-serveur ; aucun des deux n'a besoin de figer
         # un résultat au moment de l'export lui-même.
+        if source.datasetId:  # non résolue : raison déjà posée par resolve_dataset_sources
+            continue
         collection_id = source.layer
         col = collections_repo.get_collection(
             session, tenant_id=tenant_id, collection_id=collection_id

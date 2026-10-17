@@ -426,3 +426,68 @@ def test_sweep_leaves_recent_running_jobs_alone(monkeypatch, tmp_path):
     with Session() as s:
         job = appexport_repo.get_job(s, tenant_id=tenant_id, job_id=job_id)
     assert job.status == "running"
+
+
+def test_dataset_bound_source_is_resolved_before_building_the_zip(monkeypatch, tmp_path):
+    # AUD-003 : le gel/snapshot/bundle reçoivent la config résolue (layer = collection).
+    Session, tenant_id, job_id = _setup(monkeypatch, tmp_path)
+    monkeypatch.setattr("app.appexport.jobs._session_factory", lambda: Session)
+    monkeypatch.setattr("app.appexport.jobs.s3_client_from_env", _fake_s3)
+    seen = {}
+
+    def _fake_build(session, *, tenant_id, mode, config):
+        seen["sources"] = config.dataSources
+        return b"zip", []
+
+    monkeypatch.setattr("app.appexport.jobs._build_zip_bytes", _fake_build)
+    with Session() as s:
+        job = appexport_repo.get_job(s, tenant_id=tenant_id, job_id=job_id)
+        item_id, owner_id = job.item_id, job.user_id
+        col = create_collection(
+            s,
+            tenant_id=tenant_id,
+            owner_id=owner_id,
+            table_name="t_pub",
+            title="Pub",
+            description="",
+            is_public=True,
+            pk_column="id",
+            geometry_column="geom",
+            geometry_type="point",
+            srid=4326,
+        )
+        ds_item = create_item(
+            s, tenant_id=tenant_id, owner_id=owner_id, resource_type="dataset", title="D"
+        )
+        configs_repo.create_config(
+            s,
+            BuilderConfig.model_validate(
+                {"kind": "dataset", "dataset": {"source": "collection", "collectionId": col.id}}
+            ),
+            ds_item.id,
+            tenant_id=tenant_id,
+        )
+        current = configs_repo.get_config_by_item(s, item_id)
+        new_cfg = current.config.model_copy(
+            update={
+                "dataSources": [
+                    DataSource(
+                        id="s1",
+                        type="features",
+                        service="core",
+                        layer="",
+                        datasetId=ds_item.id,
+                        query={},
+                    )
+                ]
+            }
+        )
+        configs_repo.update_config(s, current.id, new_cfg, tenant_id=tenant_id)
+        s.commit()
+        col_id = col.id
+    build_app_export_task(job_id=job_id, tenant_id=tenant_id)
+    with Session() as s:
+        job = appexport_repo.get_job(s, tenant_id=tenant_id, job_id=job_id)
+    assert job.status == "done", job.error
+    assert seen["sources"][0].layer == col_id
+    assert seen["sources"][0].datasetId is None

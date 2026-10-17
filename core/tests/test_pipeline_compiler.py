@@ -202,6 +202,53 @@ def test_compile_buffer_meters_unit_uses_correct_axis_order(conn_spatial):
     assert far is False
 
 
+@pytest.mark.parametrize("lat", [46.0, 49.0, 60.0])
+def test_compile_buffer_meters_is_metric_at_any_latitude(conn_spatial, lat):
+    # AUD-005 : en EPSG:3857 le rayon réel valait d*cos(lat) (66 m pour 100 m à 49°N).
+    conn_spatial.execute(
+        f"CREATE TEMP TABLE pt AS SELECT 1 AS id, ST_Point(2.35, {lat}) AS geometry"
+    )
+    sql = compile_transform_sql(
+        "transform.buffer",
+        {"distance": 1000, "unit": "meters"},
+        input_view="pt",
+        input_srid=4326,
+    )
+    conn_spatial.execute(f"CREATE TEMP VIEW out_buf AS {sql}")
+    ymax, ymin, xmax = conn_spatial.execute(
+        "SELECT ST_YMax(geometry), ST_YMin(geometry), ST_XMax(geometry) FROM out_buf"
+    ).fetchone()
+    import math
+
+    north_m = (ymax - lat) * 111_195  # 1° de latitude ~ 111,195 km (sphère R=6 371 km)
+    east_m = (xmax - 2.35) * 111_195 * math.cos(math.radians(lat))
+    assert north_m == pytest.approx(1000, rel=0.01)
+    assert east_m == pytest.approx(1000, rel=0.01)
+    assert (lat - ymin) * 111_195 == pytest.approx(1000, rel=0.01)
+
+
+def test_compile_buffer_meters_projected_source_and_extra_columns(conn_spatial):
+    # Source projetée (Lambert-93) : 100 m doivent rester 100 m ; colonnes préservées,
+    # colonne interne absente de la sortie.
+    conn_spatial.execute(
+        "CREATE TEMP TABLE pl AS SELECT 7 AS id, 'a' AS name, ST_Point(652000, 6862000) AS geometry"
+    )
+    sql = compile_transform_sql(
+        "transform.buffer",
+        {"distance": 100, "unit": "meters"},
+        input_view="pl",
+        input_srid=2154,
+    )
+    conn_spatial.execute(f"CREATE TEMP VIEW out_pl AS {sql}")
+    cols = [r[0] for r in conn_spatial.execute("DESCRIBE out_pl").fetchall()]
+    assert sorted(cols) == ["geometry", "id", "name"]
+    xmax, xmin = conn_spatial.execute(
+        "SELECT ST_XMax(geometry), ST_XMin(geometry) FROM out_pl"
+    ).fetchone()
+    # Lambert-93 est quasi conforme : échelle locale ~1 à 1 % près en métropole.
+    assert xmax - xmin == pytest.approx(200, rel=0.01)
+
+
 def test_compile_reproject_uses_correct_axis_order(conn_spatial):
     sql = compile_transform_sql(
         "transform.reproject",
@@ -1052,12 +1099,8 @@ def test_compile_snap_to_layer(conn_spatial):
     assert row == ("POINT (3.0005 45.0005)",)
 
 
-def test_compile_snap_to_layer_is_a_cross_join_with_every_reference_row(conn_spatial):
-    # M11 (REV-199) : fige le produit cartésien documenté en docstring seulement
-    # (`FROM input t, join o`) — N lignes d'entrée x M lignes de référence = N*M lignes de
-    # sortie. L'entrée secondaire doit être réduite à UNE ligne en amont (cf.
-    # TransformSnapToLayerParams) ; si le SQL change un jour, ce test doit être réécrit
-    # volontairement, pas contourné.
+def test_compile_snap_to_layer_preserves_input_cardinality(conn_spatial):
+    # AUD-006 : N lignes d'entrée x M références doit rendre N lignes, pas N*M.
     conn_spatial.execute("CREATE TABLE ref2 (id INTEGER, geometry GEOMETRY)")
     conn_spatial.execute(
         "INSERT INTO ref2 VALUES "
@@ -1068,13 +1111,30 @@ def test_compile_snap_to_layer_is_a_cross_join_with_every_reference_row(conn_spa
         "transform.snapToLayer", {"tolerance": 0.01}, input_view="base", join_view="ref2"
     )
     conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
-    assert conn_spatial.execute("SELECT count(*) FROM out").fetchone() == (4,)  # 2 x 2
-    assert conn_spatial.execute(
-        "SELECT id, count(*) FROM out GROUP BY id ORDER BY id"
-    ).fetchall() == [
-        (1, 2),
-        (2, 2),
-    ]
+    assert conn_spatial.execute("SELECT count(*) FROM out").fetchone() == (2,)
+    assert conn_spatial.execute("SELECT id FROM out ORDER BY id").fetchall() == [(1,), (2,)]
+
+
+def test_compile_snap_to_layer_empty_reference_keeps_geometry(conn_spatial):
+    conn_spatial.execute("CREATE TABLE ref_empty (id INTEGER, geometry GEOMETRY)")
+    sql = compile_transform_sql(
+        "transform.snapToLayer", {"tolerance": 0.01}, input_view="base", join_view="ref_empty"
+    )
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    assert conn_spatial.execute("SELECT count(*) FROM out").fetchone() == (2,)
+    assert conn_spatial.execute("SELECT count(*) FROM out WHERE geometry IS NULL").fetchone() == (
+        0,
+    )
+
+
+@pytest.mark.parametrize("bad", [0, -1, float("inf"), float("nan")])
+def test_snap_to_layer_tolerance_must_be_positive_and_finite(bad):
+    from pydantic import ValidationError
+
+    from app.pipelines.ops.schemas import TransformSnapToLayerParams
+
+    with pytest.raises(ValidationError):
+        TransformSnapToLayerParams(tolerance=bad)
 
 
 def test_compile_snap_to_layer_without_join_view_raises():
@@ -1097,3 +1157,29 @@ def test_compile_resolve_overlaps_splits_into_disjoint_and_shared_parts(conn_spa
     conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
     count = conn_spatial.execute("SELECT count(*) FROM out").fetchone()[0]
     assert count == 3  # 2 parties disjointes + 1 partie commune
+
+
+def test_detect_changes_null_and_composite_keys(conn):
+    conn.execute("CREATE TABLE b2 (k1 INTEGER, k2 VARCHAR, v INTEGER)")
+    conn.execute("INSERT INTO b2 VALUES (1, 'a', 1), (1, 'b', 1), (NULL, 'z', 9), (2, NULL, 5)")
+    conn.execute("CREATE TABLE a2 (k1 INTEGER, k2 VARCHAR, v INTEGER)")
+    conn.execute("INSERT INTO a2 VALUES (1, 'a', 1), (1, 'b', 2), (3, 'c', 7)")
+    sql = compile_transform_sql(
+        "transform.detectChanges",
+        {"keyColumns": ["k1", "k2"], "statusColumn": "st"},
+        input_view="b2",
+        join_view="a2",
+        input_columns=["k1", "k2", "v"],
+        join_columns=["k1", "k2", "v"],
+    )
+    conn.execute(f"CREATE TEMP VIEW out2 AS {sql}")
+    got = {
+        (r[0], r[1], r[2]): r[3] for r in conn.execute("SELECT k1, k2, v, st FROM out2").fetchall()
+    }
+    assert got == {
+        (1, "a", 1): "unchanged",
+        (1, "b", 2): "updated",  # clé composite : (1,'b') != (1,'a')
+        (None, "z", 9): "deleted",  # « avant » à clé NULL : deleted, jamais inserted
+        (2, None, 5): "deleted",  # NULL sur la 2e clé d'un jeu composite
+        (3, "c", 7): "inserted",
+    }

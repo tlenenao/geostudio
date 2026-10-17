@@ -303,7 +303,12 @@ async function uploadAttachment(
     filename: file.name,
     contentType,
   });
-  await fetch(uploadUrl, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+  const res = await fetch(uploadUrl, {
+    method: "PUT",
+    body: file,
+    headers: { "Content-Type": contentType },
+  });
+  if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
   await client.confirmAttachmentUpload(collectionId, fid, {
     key,
     fieldKey,
@@ -406,7 +411,8 @@ function AttachmentFieldInput({
     URL.revokeObjectURL(url);
   }
 
-  if (fid === null && onQueue) {
+  // Photo en file d'attente (aussi après un envoi échoué, saisie déjà créée) : on garde le champ.
+  if (onQueue && (fid === null || queued)) {
     return (
       <div className="flex flex-col gap-1">
         <input
@@ -701,6 +707,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
   const [genericError, setGenericError] = useState(false);
+  const [attachmentFailed, setAttachmentFailed] = useState(false);
   // ARC-04 : ETag de l'enregistrement en cours d'édition (If-Match) ; conflit = 412.
   const [etag, setEtag] = useState<string | null>(null);
   // REV-367 d : lecture de l'ETag en cours (pas de soumission sans If-Match) et champs
@@ -757,24 +764,28 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
         properties: input.properties,
         geometry: input.geometry,
       };
+      let fid: string | number;
       if (editingId !== null) {
         const args = [collectionId, String(editingId), feature] as const;
         if (etag) await client.updateFeature(...args, { ifMatch: etag });
         else await client.updateFeature(...args);
+        fid = editingId;
       } else {
-        const created = await client.createFeature(collectionId, feature);
-        // Photos mises en file (mode mobile) : envoyées maintenant que la saisie a un identifiant.
-        // Un échec d'envoi ne fait pas échouer la saisie déjà enregistrée.
-        for (const [key, file] of Object.entries(pendingFiles)) {
-          if (!file) continue;
-          try {
-            await uploadAttachment(client, collectionId, String(created.id), key, file);
-          } catch {
-            setGeoError(false);
-            setGenericError(true);
-          }
+        fid = (await client.createFeature(collectionId, feature)).id;
+      }
+      // Photos mises en file : envoyées une fois la saisie identifiée (création ou reprise après
+      // échec). Un échec ne fait pas échouer la saisie déjà enregistrée ; il est remonté
+      // pour que le formulaire reste ouvert sur cette saisie avec les fichiers à renvoyer.
+      const failed: Record<string, File> = {};
+      for (const [key, file] of Object.entries(pendingFiles)) {
+        if (!file) continue;
+        try {
+          await uploadAttachment(client, collectionId, String(fid), key, file);
+        } catch {
+          failed[key] = file;
         }
       }
+      return { fid, failed };
     },
   });
 
@@ -840,6 +851,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     setTouched({});
     setServerErrors({});
     setGenericError(false);
+    setAttachmentFailed(false);
     setLon("");
     setLat("");
     setLoadedGeometry(null);
@@ -903,6 +915,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     }
     setServerErrors({});
     setGenericError(false);
+    setAttachmentFailed(false);
     const properties: Record<string, unknown> = {};
     allFields.forEach((f) => {
       if (values[f.name] !== undefined && !irrelevant.has(f.name))
@@ -915,13 +928,22 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
           : null
         : loadedGeometry;
     try {
-      await write.mutateAsync({ properties, geometry });
+      const { fid, failed } = await write.mutateAsync({ properties, geometry });
       void queryClient.invalidateQueries({ queryKey: ["datasource"] });
       void queryClient.invalidateQueries({ queryKey: ["my-entries", collectionId] });
       ctx.bus?.emit(ctx.widgetId ?? "", "submitted", { properties });
+      if (Object.keys(failed).length > 0) {
+        // Ne jamais vider le formulaire : saisie créée, photos à renvoyer par un nouvel envoi.
+        setEditingId(fid);
+        setPendingFiles(failed);
+        setAttachmentFailed(true);
+        return;
+      }
       if (editingId === null) {
         resetTo();
       } else {
+        // Reprise après échec d'envoi : photos parties, on vide la file (sinon doublon).
+        setPendingFiles({});
         void syncFromServer(editingId, false);
       }
     } catch (err) {
@@ -1180,6 +1202,11 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
       {genericError && (
         <p role="alert" className="text-xs text-danger">
           {t("widgetForm.saveFailed")}
+        </p>
+      )}
+      {attachmentFailed && (
+        <p role="alert" className="text-xs text-danger">
+          {t("widgetForm.attachmentRetry")}
         </p>
       )}
     </form>

@@ -6,6 +6,7 @@ import { buildPivotGrid } from "./pivotTable";
 import { ExplorerMenu } from "./ExplorerMenu";
 import { SourceMissing } from "./SourceMissing";
 import { t } from "../../i18n";
+import { SampleBadge } from "./SampleBadge";
 import { LoadingState } from "../../ui/kit/LoadingState";
 import "../../i18n/domains/widgets";
 
@@ -111,6 +112,7 @@ export function registerPivotWidget(): void {
             resolvedSource={data.resolvedSource}
             hasGeometry={data.hasGeometry}
           />
+          <SampleBadge data={data} />
           {props.title ? <p className="mb-1 font-medium">{String(props.title)}</p> : null}
           <table className="w-full text-left text-[var(--gs-color-text)]">
             <thead>

@@ -988,6 +988,11 @@ export async function mockCore(page: Page) {
     await route.fulfill({ json: { items: [GALLERY_ITEM], total: 1, page: 1, pageSize: 12 } });
   });
 
+  // AUD-075 : PublicItemPage lit l'item par la route anonyme /public/items/{id}.
+  await page.route("https://core.test/v1/public/items/8", async (route) => {
+    await route.fulfill({ json: GALLERY_ITEM });
+  });
+
   await page.route("https://core.test/v1/public/configs/by-item/8", async (route) => {
     await route.fulfill({
       json: { id: "cfg-8", itemId: "8", kind: "app", version: 1, config: GALLERY_ITEM_CONFIG },

@@ -10,6 +10,9 @@
 # rasterio (ARC-33) est importé au chargement par app.pipelines.ops.raster : sans lui,
 # « No module named 'rasterio.serde' » ; GDAL/PROJ embarqués par la roue.
 --collect-all rasterio
+# rio-cogeo (app.raster.ingest) charge les TileMatrixSets de morecantile depuis ses données :
+# sans elles, « InvalidIdentifier: WebMercatorQuad » à l'import du sidecar gelé.
+--collect-data morecantile
 --additional-hooks-dir scripts/pyinstaller_hooks
 
 # Si le smoke test (pipeline_sidecar_freeze_smoke.py) échoue avec un

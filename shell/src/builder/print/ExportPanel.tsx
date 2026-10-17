@@ -36,6 +36,7 @@ export function ExportPanel({
   entityId,
   atlas,
   label,
+  ctx,
 }: {
   itemId: string;
   // ARC-26 : fiche d'une seule entité / ARC-30 : atlas (une page par entité).
@@ -43,6 +44,8 @@ export function ExportPanel({
   entityId?: string;
   atlas?: boolean;
   label?: string;
+  // AUD-133 : contexte analytique courant (base64url), transmis au worker.
+  ctx?: string;
 }) {
   const pdfOnly = entityId !== undefined || atlas === true;
   const client = useItemClient();
@@ -88,12 +91,15 @@ export function ExportPanel({
     setError(null);
     setJob(null);
     try {
-      const { jobId } = pdfOnly
-        ? await client.createExport(itemId, format, {
-            ...(entityId !== undefined ? { entityId } : {}),
-            ...(atlas ? { atlas } : {}),
-          })
-        : await client.createExport(itemId, format);
+      const scope = {
+        ...(entityId !== undefined ? { entityId } : {}),
+        ...(atlas ? { atlas } : {}),
+        ...(ctx ? { ctx } : {}),
+      };
+      const { jobId } =
+        Object.keys(scope).length > 0
+          ? await client.createExport(itemId, format, scope)
+          : await client.createExport(itemId, format);
       jobIdRef.current = jobId;
       await poll(jobId);
     } catch {

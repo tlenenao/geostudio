@@ -86,6 +86,10 @@ class _FakePage:
         # (mirrors a real playwright.sync_api.Page) — see the brief's note on
         # Step 4: adapt the fake rather than removing the real close call.
         self.context = _FakeContext()
+        self.incomplete = False
+
+    def evaluate(self, expression: str):
+        return "true" if self.incomplete else None
 
     def screenshot(self, *, full_page: bool) -> bytes:
         return b"PNGDATA"
@@ -202,6 +206,25 @@ def test_render_export_task_marks_error_when_export_disabled(db_session, monkeyp
     session.expire_all()
     refreshed = export_repo.get_job(session, tenant_id=tenant.id, job_id=job.id)
     assert refreshed.status == "error"
+
+
+def test_render_export_task_fails_when_shell_flags_export_incomplete(db_session, monkeypatch):
+    session, tenant, user, item = db_session
+    job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="pdf"
+    )
+    session.commit()
+    page = _FakePage()
+    page.incomplete = True
+    monkeypatch.setattr(export_jobs, "_launch_and_navigate", lambda url, **kw: page)
+
+    export_jobs.render_export_task(job_id=job.id, tenant_id=tenant.id)
+
+    session.expire_all()
+    refreshed = export_repo.get_job(session, tenant_id=tenant.id, job_id=job.id)
+    assert refreshed.status == "error"
+    assert refreshed.error == export_jobs.USER_EXPORT_INCOMPLETE
+    assert not hasattr(page, "pdf_kwargs")  # rien n'a été rendu
 
 
 def test_render_export_task_marks_error_never_zombie_on_navigation_failure(db_session, monkeypatch):
@@ -592,6 +615,7 @@ def test_render_export_task_fails_fast_when_core_unreachable(db_session, monkeyp
     session.commit()
     server, shell_url = _serve_env_config(tmp_path, f"http://127.0.0.1:{_free_port()}")
     monkeypatch.setenv("SHELL_BASE_URL", shell_url)
+    monkeypatch.delenv("EXPORT_CORE_INTERNAL_URL", raising=False)
 
     def _must_not_launch(url):
         raise AssertionError("Chromium ne doit pas être lancé")
@@ -605,7 +629,7 @@ def test_render_export_task_fails_fast_when_core_unreachable(db_session, monkeyp
     session.expire_all()
     refreshed = export_repo.get_job(session, tenant_id=tenant.id, job_id=job.id)
     assert refreshed.status == "error"
-    assert "pas joignable depuis export-worker" in refreshed.error
+    assert "administrateur" in refreshed.error
 
 
 # ARC-16 : annulation, viewport à la taille de la feuille, budget de 120 s.
@@ -694,7 +718,7 @@ def test_render_viewport_matches_the_sheet(db_session, monkeypatch):
     monkeypatch.setattr(
         export_jobs,
         "_launch_and_navigate",
-        lambda url, viewport=None: seen.update(viewport=viewport) or _FakePage(),
+        lambda url, viewport=None, core_bridge=None: seen.update(viewport=viewport) or _FakePage(),
     )
     monkeypatch.setattr(export_jobs, "s3_client_from_env", lambda: _FakeUploadS3Client())
     export_jobs.render_export_task(job_id=job.id, tenant_id=tenant.id)
@@ -755,3 +779,103 @@ def test_render_export_task_appends_atlas_scope(db_session, monkeypatch, scope, 
     session.commit()
     export_jobs.render_export_task(job_id=job.id, tenant_id=tenant.id)
     assert urls[0].endswith(suffix)
+
+
+class _FakeRoute:
+    def __init__(self, method: str, url: str, headers: dict | None = None):
+        self.request = type("R", (), {"method": method, "url": url, "headers": headers or {}})()
+        self.fulfilled: dict | None = None
+        self.fetched_url: str | None = None
+
+    def fetch(self, *, url):
+        self.fetched_url = url
+        return type("Resp", (), {"headers": {"content-type": "application/json"}})()
+
+    def fulfill(self, **kw):
+        self.fulfilled = kw
+
+
+def test_core_bridge_handler_answers_preflight_without_calling_core():
+    handler = export_jobs._core_bridge_handler("http://localhost:8200", "http://core:8200")
+    route = _FakeRoute("OPTIONS", "http://localhost:8200/v1/me", {"origin": "http://shell:8300"})
+    handler(route)
+    assert route.fetched_url is None
+    assert route.fulfilled["status"] == 204
+    h = route.fulfilled["headers"]
+    assert h["access-control-allow-origin"] == "http://shell:8300"
+    assert "authorization" in h["access-control-allow-headers"]
+
+
+def test_core_bridge_handler_forwards_to_internal_core_with_cors():
+    handler = export_jobs._core_bridge_handler("http://localhost:8200", "http://core:8200")
+    route = _FakeRoute("GET", "http://localhost:8200/v1/items?x=1", {"origin": "http://shell:8300"})
+    handler(route)
+    assert route.fetched_url == "http://core:8200/v1/items?x=1"
+    assert route.fulfilled["headers"]["access-control-allow-origin"] == "http://shell:8300"
+    assert route.fulfilled["headers"]["content-type"] == "application/json"
+
+
+def test_core_bridge_target_when_public_core_down_and_internal_up(tmp_path, monkeypatch):
+    internal, internal_url = _serve_env_config(tmp_path, "unused")  # 404 sur /health : joignable
+    public_url = f"http://127.0.0.1:{_free_port()}"
+    shell, shell_url = _serve_env_config(tmp_path, public_url)
+    monkeypatch.setenv("EXPORT_CORE_INTERNAL_URL", internal_url)
+    try:
+        assert export_jobs.core_bridge_target(shell_url) == (public_url, internal_url)
+    finally:
+        internal.shutdown()
+        shell.shutdown()
+
+
+def test_core_bridge_target_none_when_public_core_reachable(tmp_path, monkeypatch):
+    core, core_url = _serve_env_config(tmp_path, "unused")
+    shell, shell_url = _serve_env_config(tmp_path, core_url)
+    monkeypatch.setenv("EXPORT_CORE_INTERNAL_URL", f"http://127.0.0.1:{_free_port()}")
+    try:
+        assert export_jobs.core_bridge_target(shell_url) is None
+    finally:
+        core.shutdown()
+        shell.shutdown()
+
+
+def test_unreachable_core_gives_user_message_not_ops_detail(db_session, monkeypatch, tmp_path):
+    session, tenant, user, item = db_session
+    job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png"
+    )
+    session.commit()
+    server, shell_url = _serve_env_config(tmp_path, f"http://127.0.0.1:{_free_port()}")
+    monkeypatch.setenv("SHELL_BASE_URL", shell_url)
+    monkeypatch.delenv("EXPORT_CORE_INTERNAL_URL", raising=False)
+    try:
+        export_jobs.render_export_task(job_id=job.id, tenant_id=tenant.id)
+    finally:
+        server.shutdown()
+    session.expire_all()
+    error = export_repo.get_job(session, tenant_id=tenant.id, job_id=job.id).error
+    assert "VITE_CORE_URL" not in error and "export-worker" not in error
+    assert "administrateur" in error
+
+
+def test_ctx_is_url_quoted_in_target(db_session, monkeypatch):
+    session, tenant, user, item = db_session
+    job = export_repo.create_job(
+        session,
+        tenant_id=tenant.id,
+        item_id=item.id,
+        user_id=user.id,
+        format="png",
+        ctx="abc&exportToken=evil",
+    )
+    session.commit()
+    monkeypatch.setenv("SHELL_BASE_URL", "http://shell.test")
+    monkeypatch.setattr(export_jobs, "core_unreachable_error", lambda *_: None)
+    monkeypatch.setattr(export_jobs, "core_bridge_target", lambda *_: None)
+    seen = []
+    monkeypatch.setattr(
+        export_jobs, "_launch_and_navigate", lambda url, **kw: seen.append(url) or _FakePage()
+    )
+    monkeypatch.setattr(export_jobs, "s3_client_from_env", lambda: _FakeUploadS3Client())
+    export_jobs.render_export_task(job_id=job.id, tenant_id=tenant.id)
+    assert seen and "&ctx=abc%26exportToken%3Devil" in seen[0]
+    assert seen[0].count("exportToken=") == 1

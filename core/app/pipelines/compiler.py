@@ -181,15 +181,27 @@ def _compile_buffer(
             f"FROM {_qi(input_view)}"
         )
     assert input_srid is not None, "transform.buffer(unit='meters') requires input_srid"
-    # always_xy=true est obligatoire ici : cf. plan Global Constraints
-    # (sans lui, ST_Transform applique l'ordre d'axe EPSG (lat,lng) pour
-    # EPSG:4326 et intervertit x/y silencieusement — vérifié contre un
-    # DuckDB réel).
     src = f"'EPSG:{input_srid}'"
+    # Tampon en mètres RÉELS (AUD-005) : EPSG:3857 dilate les distances de 1/cos(lat)
+    # (100 m -> 66 m à 49°N). On projette chaque ligne en azimutal équidistant centré sur
+    # le centroïde de sa géométrie (PROJ dynamique par ligne, exact au centre), on bufferise,
+    # puis on revient au CRS source. always_xy=true : cf. plan Global Constraints.
+    # Centre arrondi au degré : DuckDB reconstruit l'objet PROJ pour chaque CRS distinct
+    # (centre exact par ligne : 10 000 points en 20 s au lieu de 4 s) ; décentrage <= ~80 km
+    # -> erreur d'échelle aeqd ~ (d/R)^2/6 < 3e-5 (3 cm pour 1 000 m).
+    # ponytail: précision dégradée pour une géométrie de plusieurs centaines de km
+    # d'étendue ; passer à un tampon géodésique par sommet si le besoin apparaît.
+    aeqd = (
+        "printf('+proj=aeqd +lat_0=%d +lon_0=%d +x_0=0 +y_0=0 +datum=WGS84 +units=m "
+        "+no_defs', round(ST_Y(__gs_c))::INT, round(ST_X(__gs_c))::INT)"
+    )
     return (
-        f"SELECT * EXCLUDE (geometry), "
-        f"ST_Transform(ST_Buffer(ST_Transform(geometry, {src}, 'EPSG:3857', true), "
-        f"{p.distance}), 'EPSG:3857', {src}, true) AS geometry FROM {_qi(input_view)}"
+        f"SELECT * EXCLUDE (geometry, __gs_aeqd), "
+        f"ST_Transform(ST_Buffer(ST_Transform(geometry, {src}, __gs_aeqd, true), "
+        f"{p.distance}), __gs_aeqd, {src}, true) AS geometry "
+        f"FROM (SELECT * EXCLUDE (__gs_c), {aeqd} AS __gs_aeqd FROM ("
+        f"SELECT *, ST_Centroid(ST_Transform(geometry, {src}, 'EPSG:4326', true)) AS __gs_c "
+        f"FROM {_qi(input_view)}))"
     )
 
 
@@ -695,21 +707,32 @@ def _compile_detect_changes(
     assert input_columns is not None and join_columns is not None
     common_cols = [c for c in input_columns if c in join_columns and c not in p.keyColumns]
     key_join = " AND ".join(f"t.{_qi(k)} = o.{_qi(k)}" for k in p.keyColumns)
-    key_select = ", ".join(f"COALESCE(t.{_qi(k)}, o.{_qi(k)}) AS {_qi(k)}" for k in p.keyColumns)
     if common_cols:
         diff_expr = " OR ".join(f"t.{_qi(c)} IS DISTINCT FROM o.{_qi(c)}" for c in common_cols)
     else:
         diff_expr = "FALSE"
+    # Sentinelles de présence : tester la clé elle-même est faux (une clé NULL ne joint
+    # jamais ; seule la 1re clé d'un jeu composite était testée — D13-02).
     status_expr = (
-        f"CASE "
-        f"WHEN t.{_qi(p.keyColumns[0])} IS NULL THEN 'inserted' "
-        f"WHEN o.{_qi(p.keyColumns[0])} IS NULL THEN 'deleted' "
+        "CASE "
+        "WHEN t.__gs_present IS NULL THEN 'inserted' "
+        "WHEN o.__gs_present IS NULL THEN 'deleted' "
         f"WHEN {diff_expr} THEN 'updated' "
-        f"ELSE 'unchanged' END"
+        "ELSE 'unchanged' END"
+    )
+    # Schéma « après » : o.c si la ligne existe après, sinon t.c (deleted) quand la colonne
+    # existe avant, sinon NULL. Sans ces colonnes l'upsert de writer.collection écrivait
+    # des lignes vides (AUD-007).
+    data_select = ", ".join(
+        f"CASE WHEN o.__gs_present IS NULL THEN "
+        f"{'t.' + _qi(c) if c in input_columns else 'NULL'} "
+        f"ELSE o.{_qi(c)} END AS {_qi(c)}"
+        for c in join_columns
     )
     return (
-        f"SELECT {key_select}, ({status_expr}) AS {_qi(p.statusColumn)} "
-        f"FROM {_qi(input_view)} t FULL OUTER JOIN {_qi(join_view)} o ON {key_join}"
+        f"SELECT {data_select}, ({status_expr}) AS {_qi(p.statusColumn)} "
+        f"FROM (SELECT *, TRUE AS __gs_present FROM {_qi(input_view)}) t "
+        f"FULL OUTER JOIN (SELECT *, TRUE AS __gs_present FROM {_qi(join_view)}) o ON {key_join}"
     )
 
 
@@ -767,10 +790,13 @@ def _compile_snap_to_layer(
 ) -> str:
     p = TransformSnapToLayerParams.model_validate(params)
     assert join_view is not None, "transform.snapToLayer requires join_view"
+    # AUD-006 : la référence est réduite à UNE géométrie (union) pour conserver la
+    # cardinalité de l'entrée ; référence vide -> NULL -> on garde la géométrie d'origine.
     return (
+        f"WITH ref AS (SELECT ST_Union_Agg(geometry) AS g FROM {_qi(join_view)}) "
         f"SELECT t.* EXCLUDE (geometry), "
-        f"ST_Snap(t.geometry, o.geometry, {p.tolerance}) AS geometry "
-        f"FROM {_qi(input_view)} t, {_qi(join_view)} o"
+        f"COALESCE(ST_Snap(t.geometry, ref.g, {p.tolerance}), t.geometry) AS geometry "
+        f"FROM {_qi(input_view)} t CROSS JOIN ref"
     )
 
 

@@ -124,7 +124,7 @@ def test_get_upload_job_404_for_a_job_owned_by_another_user(env):
         s.commit()
     job_id = client.post(
         "/v1/terrain3d/uploads",
-        json={"key": f"{tenant.id}/abc/dem.tif", "filename": "dem.tif", "title": "DEM"},
+        json={"key": f"{tenant.id}/{'c' * 32}/dem.tif", "filename": "dem.tif", "title": "DEM"},
     ).json()["jobId"]
     assert client.get(f"/v1/terrain3d/uploads/{job_id}").status_code == 200
     client.app.dependency_overrides[get_current_user] = lambda: bob
@@ -217,3 +217,55 @@ def test_get_upload_job_404_for_unknown_job(env):
     client, *_ = env
     r = client.get("/v1/terrain3d/uploads/does-not-exist")
     assert r.status_code == 404
+
+
+def test_create_upload_rejects_converted_cog_key_of_another_job(env):
+    client, _, tenant, *_ = env
+    key = f"{tenant.id}/{'a' * 32}/dem-cog.tif"
+    r = client.post("/v1/terrain3d/uploads", json={"key": key, "filename": "dem.tif", "title": "T"})
+    assert r.status_code == 400
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    ["x/y.tif", "../../x/y.tif", "nouuid/dem.tif", f"{'a' * 32}/../dem.tif", f"{'a' * 32}/a/b.tif"],
+)
+def test_create_upload_rejects_malformed_key_shape(env, suffix):
+    client, _, tenant, *_ = env
+    r = client.post(
+        "/v1/terrain3d/uploads",
+        json={"key": f"{tenant.id}/{suffix}", "filename": "dem.tif", "title": "T"},
+    )
+    assert r.status_code == 400
+
+
+def test_create_upload_refuses_a_key_already_used_by_a_job(env):
+    client, *_ = env
+    presigned = client.post("/v1/terrain3d/uploads/presign", json={"filename": "dem.tif"}).json()
+    body = {"key": presigned["key"], "filename": "dem.tif", "title": "T"}
+    assert client.post("/v1/terrain3d/uploads", json=body).status_code == 201
+    assert client.post("/v1/terrain3d/uploads", json=body).status_code == 409
+
+
+def test_create_upload_refuses_the_converted_key_of_an_existing_job(env):
+    client, Session, tenant, _alice, *_ = env
+    from app.terrain3d import repository as repo
+
+    presigned = client.post("/v1/terrain3d/uploads/presign", json={"filename": "dem.tif"}).json()
+    job_id = client.post(
+        "/v1/terrain3d/uploads",
+        json={"key": presigned["key"], "filename": "dem.tif", "title": "T"},
+    ).json()["jobId"]
+    converted = f"{tenant.id}/{job_id}/dem-cog.tif"
+    with Session() as s:
+        s.get(repo.Terrain3DJob, job_id).converted_key = converted
+        s.commit()
+        assert repo.key_in_use(s, tenant_id=tenant.id, key=converted) is True
+        assert repo.key_in_use(s, tenant_id=tenant.id, key=f"{tenant.id}/{'b' * 32}/x.tif") is False
+
+
+@pytest.mark.parametrize("name", ["../../x/y.tif", "a/b.tif", "a\\b.tif", "x..y.tif", "a\x00.tif"])
+def test_presign_rejects_unsafe_filename(env, name):
+    client, *_ = env
+    r = client.post("/v1/terrain3d/uploads/presign", json={"filename": name})
+    assert r.status_code == 422

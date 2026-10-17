@@ -618,7 +618,8 @@ class TransformDetectChangesParams(BaseModel):
     """Compare l'entrée principale (état « avant ») à une collection ou un flux secondaire
     (état « après ») sur des colonnes clés, et écrit le statut de chaque ligne
     (inserted/deleted/updated/unchanged) — comparaison automatique de toutes les colonnes
-    communes, résolues à l'exécution."""
+    communes, résolues à l'exécution. La sortie reprend le schéma de l'état « après » (valeurs
+    « avant » pour les lignes deleted) plus la colonne de statut."""
 
     withCollectionId: str | None = Field(None, json_schema_extra={"format": "collection-id"})
     keyColumns: list[str]
@@ -672,14 +673,13 @@ class TransformBoundingGeometryParams(BaseModel):
 
 
 class TransformSnapToLayerParams(BaseModel):
-    """Ajuste (« snap ») la géométrie sur la géométrie de référence de l'entrée secondaire
-    dans une tolérance donnée. `ST_Snap` de DuckDB Spatial prend une géométrie de
-    référence unique (pas une agrégation) : l'entrée secondaire doit être réduite à une
-    seule ligne en amont (ex. via `transform.aggregate` + `ST_Union_Agg`), sans quoi la
-    jointure croisée avec plusieurs lignes de référence produit un résultat incorrect."""
+    """Ajuste (« snap ») la géométrie sur l'union des géométries de l'entrée secondaire
+    dans une tolérance donnée. L'entrée secondaire est réduite à une seule géométrie
+    (`ST_Union_Agg`) : le nombre de lignes de sortie égale celui de l'entrée. Une entrée
+    secondaire vide laisse les géométries inchangées."""
 
     withCollectionId: str | None = Field(None, json_schema_extra={"format": "collection-id"})
-    tolerance: float
+    tolerance: float = Field(gt=0, allow_inf_nan=False)
 
 
 class TransformResolveOverlapsParams(BaseModel):

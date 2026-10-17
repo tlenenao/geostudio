@@ -56,7 +56,7 @@ export function createExportsIngestionMethods(base: ItemClientBase): ExportsInge
     async createExport(
       itemId: string,
       format: ExportFormat,
-      scope?: { entityId?: string; atlas?: boolean },
+      scope?: { entityId?: string; atlas?: boolean; ctx?: string },
     ): Promise<{ jobId: string }> {
       return request<{ jobId: string }>("POST", `/export`, { itemId, format, ...scope });
     },
@@ -86,7 +86,13 @@ export function createExportsIngestionMethods(base: ItemClientBase): ExportsInge
     },
 
     async uploadToPresignedUrl(url: string, file: File) {
-      const res = await fetch(url, { method: "PUT", body: file });
+      // Doit égaler le ContentType signé par le cœur (présignage : file.type || octet-stream) ;
+      // sans en-tête explicite, un File.type vide n'envoie rien → 403 SignatureDoesNotMatch.
+      const res = await fetch(url, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+      });
       if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
     },
 

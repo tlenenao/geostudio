@@ -1104,6 +1104,7 @@ def _write_collection(
     on_progress: Callable[["NodeStat"], None] | None = None,
     should_cancel: Callable[[], bool] | None = None,
     run_id: str | None = None,
+    srid: int = 4326,
 ) -> NodeStat:
     p = WriterCollectionParams.model_validate(node.params)
     collection = _require_writable_collection(
@@ -1156,6 +1157,7 @@ def _write_collection(
         else None,
         should_cancel=should_cancel,
         replace_purge=lambda: delete_all_features(session, info),
+        srid=srid,
     )
     count = res.written
     deleted = res.replace_purged
@@ -1220,6 +1222,7 @@ def _write_dataset(
     on_progress: Callable[["NodeStat"], None] | None = None,
     should_cancel: Callable[[], bool] | None = None,
     run_id: str | None = None,
+    srid: int = 4326,
 ) -> NodeStat:
     # SP-42, revue de la dernière passe de correctifs (point 1, Critical) :
     # POST /pipelines/{id}/run (app.pipelines.routes) et le tool MCP
@@ -1254,6 +1257,7 @@ def _write_dataset(
         on_progress=on_progress,
         should_cancel=should_cancel,
         run_id=run_id,
+        srid=srid,
     )
 
     if p.datasetId is not None:
@@ -1546,6 +1550,8 @@ def run_pipeline(
                     if on_progress is not None or should_cancel is not None
                     else {}
                 ) | ({"run_id": run_id} if run_id is not None and node.kind == "writer" else {})
+                if node.op in ("writer.collection", "writer.dataset"):
+                    extra["srid"] = srid_by_node[pred_id]  # SRID natif du flux (≠ 4326 possible)
                 stat = writer_fn(
                     session,
                     conn,

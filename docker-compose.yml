@@ -766,6 +766,10 @@ services:
       CORE_EXPORT_ENABLED: ${CORE_EXPORT_ENABLED:-false}
       CORE_EXPORT_TOKEN_SECRET: ${CORE_EXPORT_TOKEN_SECRET}
       SHELL_BASE_URL: ${SHELL_BASE_URL:-http://shell:8300}
+      # AUD-133 : cœur joignable DEPUIS ce conteneur. Si VITE_CORE_URL (publié par
+      # le shell) ne l'est pas — défaut local http://localhost:8200 —, le Chromium
+      # d'export relaie ses appels vers cette URL (core_bridge_target).
+      EXPORT_CORE_INTERNAL_URL: ${EXPORT_CORE_INTERNAL_URL:-http://core:8200}
       # scripts.healthcheck_worker_stalled : filtre sur la seule file que ce
       # service consomme (GAP-76, SP-49) — contrairement à `worker`, ce
       # service n'avait AUCUNE sonde du tout avant ce correctif (pas même

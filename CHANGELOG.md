@@ -35,6 +35,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   print atlas (migration 0061 `export_jobs.scope`), Helm chart.
   `CORE_ANALYSIS_MAX_FEATURES` caps analysis reads.
 
+### Fixed
+
+- **`transform.detectChanges`** (AUD-007): the output now carries the "after" schema (data and
+  geometry columns, "before" values for `deleted` rows) plus the status column, so
+  `detectChanges -> writer.collection` (`upsert`, `statusColumn`) writes real rows instead of
+  empty ones; presence is tested with a sentinel, so NULL or composite keys are no longer
+  misclassified. Pipelines that only read key + status now see extra columns.
+- **`transform.snapToLayer`** (AUD-006): the secondary input is now reduced to a single geometry
+  (`ST_Union_Agg`), so output rows equal input rows instead of N x M; an empty reference keeps
+  the original geometry, and `tolerance` must be strictly positive and finite. Datasets
+  previously produced by this op were inflated N x M; recompute them.
+- **`transform.buffer` `unit=meters`** (AUD-005): the radius is now real metres (local azimuthal
+  equidistant projection) instead of EPSG:3857 units (100 m gave ~66 m at 49°N). Buffers already
+  materialised were ~30 % too short at French latitudes; recompute them.
+
 ### Experimental
 
 - **32 pipeline operations are experimental and off by default.** They call a third-party

@@ -76,7 +76,7 @@ class BufferArgs(BaseModel):
     distance: float = Field(..., gt=0, le=1_000_000, description="Rayon du tampon.")
     unit: Literal["meters", "native"] = Field(
         "meters",
-        description="meters = en mètres (reprojection EPSG:3857 interne) ; native = unité du CRS.",
+        description="meters = en mètres réels (projection azimutale locale par entité) ; native = unité du CRS.",
     )
 
 

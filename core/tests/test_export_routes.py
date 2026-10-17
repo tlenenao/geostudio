@@ -332,3 +332,26 @@ def test_post_export_atlas_rejected_without_atlas_config_or_non_pdf(env):
     ):
         assert client.post("/v1/export", json=body).status_code == 422
     assert calls == []
+
+
+def test_post_export_stores_ctx_for_the_page(env):
+    make_client, owner, _stranger, item_id, Session = env
+    client, _calls = make_client()
+    client.app.dependency_overrides[get_current_user] = lambda: owner
+    client.app.dependency_overrides[get_current_user_optional] = lambda: owner
+    r = client.post("/v1/export", json={"itemId": item_id, "format": "pdf", "ctx": "eyJhIjoxfQ"})
+    assert r.status_code == 202
+    with Session() as s:
+        job = export_repo.get_job(s, tenant_id=owner.tenant_id, job_id=r.json()["jobId"])
+        assert job.ctx == "eyJhIjoxfQ"
+
+
+@pytest.mark.parametrize("bad", ["a&b=c", "a b", "é", "x" * 16001])
+def test_post_export_rejects_malformed_ctx(env, bad):
+    make_client, owner, _stranger, item_id, _Session = env
+    client, calls = make_client()
+    client.app.dependency_overrides[get_current_user] = lambda: owner
+    client.app.dependency_overrides[get_current_user_optional] = lambda: owner
+    r = client.post("/v1/export", json={"itemId": item_id, "format": "png", "ctx": bad})
+    assert r.status_code == 422
+    assert calls == []

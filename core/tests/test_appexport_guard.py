@@ -394,3 +394,49 @@ def test_address_search_is_blocked_in_connected_mode():
         result = check_export_guard(s, tenant_id="t1", config=config, mode="connected")
     assert result.allowed is False
     assert any("addressSearch" in r for r in result.reasons)
+
+
+def test_dataset_bound_source_on_public_collection_is_allowed_in_every_mode():
+    from app.configs import repository as configs_repo
+    from app.items import repository as items_repo
+
+    Session = _session()
+    with Session() as s:
+        tenant_id, col = _public_collection(s)
+        owner = get_or_create_user(
+            s,
+            tenant_id=tenant_id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=False,
+        )
+        item = items_repo.create_item(
+            s, tenant_id=tenant_id, owner_id=owner.id, resource_type="dataset", title="D"
+        )
+        configs_repo.create_config(
+            s,
+            BuilderConfig.model_validate(
+                {"kind": "dataset", "dataset": {"source": "collection", "collectionId": col.id}}
+            ),
+            item.id,
+            tenant_id=tenant_id,
+        )
+        s.commit()
+        config = _app_config(
+            data_sources=[
+                DataSource(
+                    id="s1",
+                    type="features",
+                    service="core",
+                    layer="",
+                    datasetId=item.id,
+                    query={},
+                )
+            ]
+        )
+        for mode in ("static", "connected", "standalone"):
+            result = check_export_guard(s, tenant_id=tenant_id, config=config, mode=mode)
+            assert result.allowed is True, (mode, result.reasons)

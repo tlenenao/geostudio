@@ -136,6 +136,7 @@ config:
   PUBLIC_BASE_URL: "http://localhost:8300"
   CORE_ADMIN_TOOLS_GATEWAY_URL: ""
   SHELL_BASE_URL: ""
+  EXPORT_CORE_INTERNAL_URL: ""   # vide = service core du release (AUD-133, pont du Chromium d'export)
 
 core:
   replicas: 2                       # HA (ARC-32) : limiteur partagé Postgres, `core` sans état

@@ -81,6 +81,9 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async getItem(..._args: unknown[]) {
       return unsupported();
     },
+    async getPublicItem(..._args: unknown[]) {
+      return unsupported();
+    },
     async getItemBySlug(..._args: unknown[]) {
       return unsupported();
     },
