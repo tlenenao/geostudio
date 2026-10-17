@@ -22,8 +22,9 @@ from app.roles.guards import has_privilege
 from app.roles.privileges import Privilege
 from app.tenants.repository import DEFAULT_TENANT_SLUG
 
-router = APIRouter(prefix="/records", tags=["records"])
-metadata_router = APIRouter(tags=["records"])
+# Un seul routeur nommé `router`, sans préfixe : l'index AST du bilan de fonctionnalités
+# (scripts/feature_health/rest_surface.py) ne voit que les décorateurs `@router.*`.
+router = APIRouter(tags=["records"])
 GEOJSON = "application/geo+json"
 
 
@@ -36,7 +37,7 @@ def _check_catalog(catalog_id: str) -> None:
         raise HTTPException(status_code=404, detail="unknown catalog")
 
 
-@router.get("")
+@router.get("/records")
 def landing(request: Request):
     b = _base(request)
     return {
@@ -49,12 +50,12 @@ def landing(request: Request):
     }
 
 
-@router.get("/conformance")
+@router.get("/records/conformance")
 def conformance():
     return {"conformsTo": serializers.CONFORMANCE}
 
 
-@router.get("/collections")
+@router.get("/records/collections")
 def collections(request: Request):
     b = _base(request)
     return {
@@ -63,7 +64,7 @@ def collections(request: Request):
     }
 
 
-@router.get("/collections/{catalog_id}")
+@router.get("/records/collections/{catalog_id}")
 def get_catalog(catalog_id: str, request: Request):
     _check_catalog(catalog_id)
     return JSONResponse(
@@ -71,7 +72,7 @@ def get_catalog(catalog_id: str, request: Request):
     )
 
 
-@router.get("/collections/{catalog_id}/items")
+@router.get("/records/collections/{catalog_id}/items")
 def list_records(
     catalog_id: str,
     request: Request,
@@ -130,7 +131,7 @@ def list_records(
     return JSONResponse(body, media_type=GEOJSON)
 
 
-@router.get("/collections/{catalog_id}/items/{record_id}")
+@router.get("/records/collections/{catalog_id}/items/{record_id}")
 def get_record(
     catalog_id: str,
     record_id: str,
@@ -150,7 +151,7 @@ def get_record(
     return JSONResponse(serializers.record(base=_base(request), item=item), media_type=GEOJSON)
 
 
-@metadata_router.get("/collections/{collection_id}/metadata")
+@router.get("/collections/{collection_id}/metadata")
 def get_iso_metadata(
     collection_id: str,
     request: Request,

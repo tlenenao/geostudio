@@ -583,7 +583,6 @@ def create_app() -> FastAPI:
     v1_router.include_router(stac_routes.router)
     v1_router.include_router(dcat_routes.router)
     v1_router.include_router(records_routes.router)
-    v1_router.include_router(records_routes.metadata_router)
     v1_router.include_router(harvest_routes.router)
     v1_router.include_router(alerts_routes.router)
     v1_router.include_router(webhooks_routes.router)  # ARC4-F6
