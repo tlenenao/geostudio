@@ -7,7 +7,12 @@ des dépendances de test uniquement."""
 
 import json
 
-from app.catalog.metadata import resolve_frequency, resolve_language, resolve_license
+from app.catalog.metadata import (
+    resolve_frequency,
+    resolve_inspire_theme,
+    resolve_language,
+    resolve_license,
+)
 
 CONTEXT = {
     "dcat": "http://www.w3.org/ns/dcat#",
@@ -17,6 +22,7 @@ CONTEXT = {
     "xsd": "http://www.w3.org/2001/XMLSchema#",
     "vcard": "http://www.w3.org/2006/vcard/ns#",
     "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+    "hydra": "http://www.w3.org/ns/hydra/core#",
 }
 
 LICENSE_OTHER = "http://publications.europa.eu/resource/authority/licence/OTHER"
@@ -50,7 +56,12 @@ def _bbox_polygon(bbox: list[float] | None) -> dict:
 
 
 def distribution(
-    *, title: str, access_url: str, media_type: str | None = None, format_uri: str | None = None
+    *,
+    title: str,
+    access_url: str,
+    media_type: str | None = None,
+    format_uri: str | None = None,
+    conforms_to: str | None = None,
 ) -> dict:
     doc = {
         "@type": "dcat:Distribution",
@@ -61,6 +72,8 @@ def distribution(
         doc["dcat:mediaType"] = {"@id": media_type}
     if format_uri:
         doc["dct:format"] = {"@id": format_uri}
+    if conforms_to:
+        doc["dct:conformsTo"] = {"@id": conforms_to}
     return doc
 
 
@@ -91,6 +104,8 @@ def dataset(
     temporal_start: str | None = None,
     temporal_end: str | None = None,
     producer_declared: bool = False,
+    keywords: list[str] | None = None,
+    inspire_theme: str = "",
 ) -> dict:
     license_entry = resolve_license(license) if license else None
     if license_entry is not None and license_entry.dcat_uri:
@@ -145,6 +160,7 @@ def dataset(
                 access_url=f"{base}/collections/{collection_id}/items",
                 media_type="https://www.iana.org/assignments/media-types/application/geo+json",
                 format_uri="http://publications.europa.eu/resource/authority/file-type/GEOJSON",
+                conforms_to="http://www.opengis.net/doc/IS/ogcapi-features-1/1.0",
             ),
             distribution(
                 title="STAC item-search",
@@ -163,6 +179,11 @@ def dataset(
         doc["dcat:contactPoint"] = _contact_point(contact)
     if version:
         doc["dct:hasVersion"] = version
+    if keywords:
+        doc["dcat:keyword"] = list(keywords)
+    theme = resolve_inspire_theme(inspire_theme) if inspire_theme else None
+    if theme is not None:
+        doc["dcat:theme"] = {"@id": theme.uri}
     return doc
 
 

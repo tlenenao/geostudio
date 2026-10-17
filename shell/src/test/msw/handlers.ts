@@ -85,6 +85,7 @@ export const handlers = [
         { id: "fr", label: "Français" },
         { id: "en", label: "Anglais" },
       ],
+      inspireThemes: [],
     }),
   ),
   http.post(`${CORE}/configs`, async ({ request }) => {

@@ -117,6 +117,7 @@ export type MetadataCatalog = {
   licenses: LicenseCatalogEntry[];
   frequencies: FrequencyCatalogEntry[];
   languages: LanguageCatalogEntry[];
+  inspireThemes?: { id: string; label: string; uri: string }[];
 };
 
 export type RoleSummary = {
@@ -1498,6 +1499,8 @@ export type CollectionAdmin = {
   version: string;
   temporalStart: string | null;
   temporalEnd: string | null;
+  keywords?: string[];
+  inspireTheme?: string;
 };
 
 export type CandidateTable =
@@ -1534,6 +1537,8 @@ export type CollectionPatchInput = {
   version?: string;
   temporalStart?: string | null;
   temporalEnd?: string | null;
+  keywords?: string[];
+  inspireTheme?: string;
 };
 
 export type HarvestSourceType =

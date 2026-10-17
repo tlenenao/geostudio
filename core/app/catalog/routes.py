@@ -5,6 +5,7 @@ from app.auth.dependency import get_current_user
 from app.catalog import metadata
 from app.catalog.schemas import (
     FrequencyCatalogEntry,
+    InspireThemeCatalogEntry,
     LanguageCatalogEntry,
     LicenseCatalogEntry,
     MetadataCatalog,
@@ -23,4 +24,8 @@ def get_metadata_catalog(user: User = Depends(get_current_user)) -> MetadataCata
         ],
         frequencies=[FrequencyCatalogEntry(id=e.id, label=e.label) for e in metadata.FREQUENCIES],
         languages=[LanguageCatalogEntry(id=e.id, label=e.label) for e in metadata.LANGUAGES],
+        inspireThemes=[
+            InspireThemeCatalogEntry(id=e.id, label=e.label, uri=e.uri)
+            for e in metadata.INSPIRE_THEMES
+        ],
     )

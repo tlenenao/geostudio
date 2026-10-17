@@ -1949,6 +1949,17 @@
             ],
             "title": "Fielddomains"
           },
+          "inspireTheme": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inspiretheme"
+          },
           "isPublic": {
             "anyOf": [
               {
@@ -1959,6 +1970,21 @@
               }
             ],
             "title": "Ispublic"
+          },
+          "keywords": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keywords"
           },
           "language": {
             "anyOf": [
@@ -4337,6 +4363,29 @@
         "title": "InspectResponse",
         "type": "object"
       },
+      "InspireThemeCatalogEntry": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "uri": {
+            "title": "Uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "uri"
+        ],
+        "title": "InspireThemeCatalogEntry",
+        "type": "object"
+      },
       "IsochroneRequest": {
         "properties": {
           "costing": {
@@ -5662,6 +5711,14 @@
               "$ref": "#/components/schemas/FrequencyCatalogEntry"
             },
             "title": "Frequencies",
+            "type": "array"
+          },
+          "inspireThemes": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/InspireThemeCatalogEntry"
+            },
+            "title": "Inspirethemes",
             "type": "array"
           },
           "languages": {

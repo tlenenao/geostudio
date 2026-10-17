@@ -326,6 +326,8 @@ def _collection_json(
         "version": col.version,
         "temporalStart": col.temporal_start.isoformat() if col.temporal_start else None,
         "temporalEnd": col.temporal_end.isoformat() if col.temporal_end else None,
+        "keywords": list(col.keywords or []),
+        "inspireTheme": col.inspire_theme,
     }
 
 
@@ -942,6 +944,7 @@ def patch_collection(
         ("lineage", body.lineage),
         ("language", body.language),
         ("version", body.version),
+        ("inspire_theme", body.inspireTheme),
     ):
         if value is not None:
             setattr(col, attr, value)
@@ -956,6 +959,8 @@ def patch_collection(
         col.temporal_start = body.temporalStart
     if "temporalEnd" in body.model_fields_set:
         col.temporal_end = body.temporalEnd
+    if body.keywords is not None:
+        col.keywords = body.keywords
     if body.attachmentFields is not None:
         col.attachment_fields = [f.model_dump() for f in body.attachmentFields]
     if new_domains is not None:

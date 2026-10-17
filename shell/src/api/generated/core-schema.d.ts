@@ -3534,8 +3534,12 @@ export interface components {
             fieldDomains?: {
                 [key: string]: components["schemas"]["FieldDomain"];
             } | null;
+            /** Inspiretheme */
+            inspireTheme?: string | null;
             /** Ispublic */
             isPublic?: boolean | null;
+            /** Keywords */
+            keywords?: string[] | null;
             /** Language */
             language?: string | null;
             /** License */
@@ -4284,6 +4288,15 @@ export interface components {
             /** Layers */
             layers?: components["schemas"]["LayerInfoOut"][];
         };
+        /** InspireThemeCatalogEntry */
+        InspireThemeCatalogEntry: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Uri */
+            uri: string;
+        };
         /** IsochroneRequest */
         IsochroneRequest: {
             /**
@@ -4751,6 +4764,11 @@ export interface components {
         MetadataCatalog: {
             /** Frequencies */
             frequencies: components["schemas"]["FrequencyCatalogEntry"][];
+            /**
+             * Inspirethemes
+             * @default []
+             */
+            inspireThemes: components["schemas"]["InspireThemeCatalogEntry"][];
             /** Languages */
             languages: components["schemas"]["LanguageCatalogEntry"][];
             /** Licenses */

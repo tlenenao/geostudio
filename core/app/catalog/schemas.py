@@ -19,7 +19,14 @@ class LanguageCatalogEntry(BaseModel):
     label: str
 
 
+class InspireThemeCatalogEntry(BaseModel):
+    id: str
+    label: str
+    uri: str
+
+
 class MetadataCatalog(BaseModel):
     licenses: list[LicenseCatalogEntry]
     frequencies: list[FrequencyCatalogEntry]
     languages: list[LanguageCatalogEntry]
+    inspireThemes: list[InspireThemeCatalogEntry] = []
