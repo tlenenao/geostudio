@@ -130,6 +130,7 @@ test("la photo choisie est envoyée après la création de la saisie", async () 
     fieldKey: "photo",
     filename: "p.jpg",
     contentType: "image/jpeg",
+    size: 1,
   });
 });
 

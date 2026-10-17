@@ -4252,9 +4252,9 @@ test("presignTerrain3DUpload posts to the terrain3d-specific presign route", asy
       return HttpResponse.json({ uploadUrl: "https://minio.test/put", key: "tenant/x/dem.tif" });
     }),
   );
-  const result = await makeClient("abc").presignTerrain3DUpload("dem.tif", "image/tiff");
+  const result = await makeClient("abc").presignTerrain3DUpload("dem.tif", "image/tiff", 1234);
   expect(result).toEqual({ uploadUrl: "https://minio.test/put", key: "tenant/x/dem.tif" });
-  expect(body).toEqual({ filename: "dem.tif", contentType: "image/tiff" });
+  expect(body).toEqual({ filename: "dem.tif", contentType: "image/tiff", size: 1234 });
 });
 
 test("createTerrain3DUpload posts key/filename/title and returns jobId", async () => {
@@ -4479,7 +4479,12 @@ test("presignAttachmentUpload appelle la route presign avec le bon corps", async
       "https://core.test/v1/collections/col1/items/f1/attachments/presign",
       async ({ request }) => {
         const body = await request.json();
-        expect(body).toEqual({ fieldKey: "photos", filename: "a.jpg", contentType: "image/jpeg" });
+        expect(body).toEqual({
+          fieldKey: "photos",
+          filename: "a.jpg",
+          contentType: "image/jpeg",
+          size: 7,
+        });
         return HttpResponse.json({ uploadUrl: "https://minio/x", key: "t/col1/f1/x-a.jpg" });
       },
     ),
@@ -4489,6 +4494,7 @@ test("presignAttachmentUpload appelle la route presign avec le bon corps", async
     fieldKey: "photos",
     filename: "a.jpg",
     contentType: "image/jpeg",
+    size: 7,
   });
   expect(res.key).toBe("t/col1/f1/x-a.jpg");
 });

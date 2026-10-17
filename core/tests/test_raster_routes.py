@@ -296,7 +296,7 @@ def test_zonal_stats_from_collection_polygons(env):
 
 def test_upload_flow_defers_job_and_audits(env):
     me = env.users["alice"]
-    p = env.client.post("/v1/raster/uploads/presign", json={"filename": "o.tif"})
+    p = env.client.post("/v1/raster/uploads/presign", json={"size": 10, "filename": "o.tif"})
     assert p.status_code == 200 and p.json()["key"].startswith(f"{env.ids.tenant}/")
     r = env.client.post(
         "/v1/raster/uploads",
@@ -326,7 +326,10 @@ def test_upload_refused_to_reader_without_privilege(env):
         env.who["user"] = s.get(type(env.users["bob"]), env.users["bob"].id)
         s.expunge(env.who["user"])
     assert (
-        env.client.post("/v1/raster/uploads/presign", json={"filename": "o.tif"}).status_code == 403
+        env.client.post(
+            "/v1/raster/uploads/presign", json={"size": 10, "filename": "o.tif"}
+        ).status_code
+        == 403
     )
     r = env.client.post(
         "/v1/raster/uploads",
@@ -357,3 +360,11 @@ def test_upload_refused_413_when_storage_quota_exceeded(env, monkeypatch):
 def test_routes_not_mounted_when_flag_off(monkeypatch):
     monkeypatch.delenv("CORE_RASTER_ENABLED", raising=False)
     assert TestClient(create_app()).get("/v1/raster/x").status_code == 404
+
+
+def test_presign_refuses_oversized_or_unsized_upload(env, monkeypatch):
+    # AUD-090
+    monkeypatch.setenv("CORE_RASTER_MAX_UPLOAD_BYTES", "100")
+    url = "/v1/raster/uploads/presign"
+    assert env.client.post(url, json={"filename": "o.tif", "size": 101}).status_code == 413
+    assert env.client.post(url, json={"filename": "o.tif"}).status_code == 422

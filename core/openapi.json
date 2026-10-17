@@ -870,12 +870,18 @@
           "filename": {
             "title": "Filename",
             "type": "string"
+          },
+          "size": {
+            "minimum": 1.0,
+            "title": "Size",
+            "type": "integer"
           }
         },
         "required": [
           "fieldKey",
           "filename",
-          "contentType"
+          "contentType",
+          "size"
         ],
         "title": "AttachmentPresignRequest",
         "type": "object"
@@ -6518,11 +6524,17 @@
             "minLength": 1,
             "title": "Filename",
             "type": "string"
+          },
+          "size": {
+            "minimum": 1.0,
+            "title": "Size",
+            "type": "integer"
           }
         },
         "required": [
           "filename",
-          "contentType"
+          "contentType",
+          "size"
         ],
         "title": "PresignRequest",
         "type": "object"

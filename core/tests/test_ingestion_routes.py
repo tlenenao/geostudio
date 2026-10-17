@@ -98,7 +98,7 @@ def test_presign_returns_upload_url_and_key(env):
     client, *_ = env
     r = client.post(
         "/v1/uploads/presign",
-        json={"filename": "villes.geojson", "contentType": "application/geo+json"},
+        json={"size": 10, "filename": "villes.geojson", "contentType": "application/geo+json"},
     )
     assert r.status_code == 200
     body = r.json()
@@ -823,3 +823,12 @@ def test_create_upload_job_append_to_unknown_collection_is_404(env):
     )
     assert r.status_code == 404
     assert deferred == []
+
+
+def test_presign_refuses_oversized_or_unsized_upload(env, monkeypatch):
+    # AUD-090 : la taille est annoncée, plafonnée, puis signée dans l'URL.
+    client, *_ = env
+    monkeypatch.setenv("CORE_UPLOAD_MAX_BYTES", "100")
+    body = {"filename": "a.csv", "contentType": "text/csv"}
+    assert client.post("/v1/uploads/presign", json={**body, "size": 101}).status_code == 413
+    assert client.post("/v1/uploads/presign", json=body).status_code == 422

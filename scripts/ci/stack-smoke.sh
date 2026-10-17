@@ -71,7 +71,7 @@ cat > "$WORK/pts.geojson" <<'J'
 {"type":"Feature","properties":{"nom":"b","n":2},"geometry":{"type":"Point","coordinates":[4.83,45.76]}},
 {"type":"Feature","properties":{"nom":"c","n":3},"geometry":{"type":"Point","coordinates":[-0.57,44.84]}}]}
 J
-pre="$(api POST /uploads/presign '{"filename":"pts.geojson","contentType":"application/geo+json"}')"
+pre="$(api POST /uploads/presign "{\"filename\":\"pts.geojson\",\"contentType\":\"application/geo+json\",\"size\":$(wc -c <"$WORK/pts.geojson")}")"
 curl -sf -X PUT -H 'Content-Type: application/geo+json' --data-binary @"$WORK/pts.geojson" "$(pj 'd["uploadUrl"]' <<<"$pre")" \
   || fail "PUT présigné vers S3"
 KEY="$(pj 'd["key"]' <<<"$pre")"

@@ -88,8 +88,12 @@ def presign_upload(
 ) -> PresignResponse:
     require_privilege(session, user, Privilege.DATA_MANAGE.value)
     ensure_uploads_bucket(s3, bucket, expire_days=7)
+    if body.size > max_upload_bytes():
+        raise HTTPException(status_code=413, detail="file too large")
     key = f"{user.tenant_id}/{uuid.uuid4().hex}-{body.filename}"
-    url = generate_presigned_put_url(s3, bucket=bucket, key=key, content_type=body.contentType)
+    url = generate_presigned_put_url(
+        s3, bucket=bucket, key=key, content_type=body.contentType, content_length=body.size
+    )
     return PresignResponse(uploadUrl=url, key=key)
 
 

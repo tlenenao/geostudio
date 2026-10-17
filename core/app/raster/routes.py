@@ -109,8 +109,14 @@ def presign_raster_upload(
 ) -> RasterPresignResponse:
     require_privilege(session, user, Privilege.CATALOG_MANAGE.value)
     ensure_uploads_bucket(s3, bucket)
+    from app.raster.jobs import _max_upload_bytes  # import paresseux, comme la tâche
+
+    if body.size > _max_upload_bytes():
+        raise HTTPException(status_code=413, detail="file too large")
     key = f"{user.tenant_id}/{uuid.uuid4().hex}/{body.filename}"
-    url = generate_presigned_put_url(s3, bucket=bucket, key=key, content_type=body.contentType)
+    url = generate_presigned_put_url(
+        s3, bucket=bucket, key=key, content_type=body.contentType, content_length=body.size
+    )
     return RasterPresignResponse(uploadUrl=url, key=key)
 
 

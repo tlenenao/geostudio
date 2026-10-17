@@ -3110,6 +3110,8 @@ export interface components {
             fieldKey: string;
             /** Filename */
             filename: string;
+            /** Size */
+            size: number;
         };
         /** AttachmentPresignResponse */
         AttachmentPresignResponse: {
@@ -5152,6 +5154,8 @@ export interface components {
             contentType: string;
             /** Filename */
             filename: string;
+            /** Size */
+            size: number;
         };
         /** PresignResponse */
         PresignResponse: {

@@ -129,7 +129,7 @@ test("presigns on the terrain3d route with the file's real content type", async 
   await userEvent.click(screen.getByRole("button", { name: /importer/i }));
 
   await waitFor(() => expect(onUploaded).toHaveBeenCalledWith("t-1"));
-  expect(presignBody).toEqual({ filename: "dem.tif", contentType: "image/tiff" });
+  expect(presignBody).toEqual({ filename: "dem.tif", contentType: "image/tiff", size: 16 });
 });
 
 test('le déclencheur "Nouveau DEM" ne masque pas un envoi/une conversion en cours (submit()/poll() tourneraient en arrière-plan sans rien pour le refléter)', async () => {

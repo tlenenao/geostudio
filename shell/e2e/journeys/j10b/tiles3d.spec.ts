@@ -75,6 +75,7 @@ test.describe("j10b tileset3d / terrain3d (capacités allumées)", () => {
     const tr = await reader.send("POST", "/v1/terrain3d/uploads/presign", {
       filename: "m.tif",
       contentType: "image/tiff",
+      size: 10,
     });
     expect(tr.status).toBe(403);
   });

@@ -44,10 +44,11 @@ export function createTiles3dMethods(base: ItemClientBase): Tiles3dMethods {
       return fetchHostedTerrain3dSources(q);
     },
 
-    async presignTerrain3DUpload(filename: string, contentType: string) {
+    async presignTerrain3DUpload(filename: string, contentType: string, size: number) {
       return request<{ uploadUrl: string; key: string }>("POST", "/terrain3d/uploads/presign", {
         filename,
         contentType,
+        size,
       });
     },
 

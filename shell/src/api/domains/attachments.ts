@@ -19,7 +19,7 @@ export function createAttachmentsMethods(base: ItemClientBase): AttachmentsMetho
     async presignAttachmentUpload(
       collectionId: string,
       fid: string,
-      input: { fieldKey: string; filename: string; contentType: string },
+      input: { fieldKey: string; filename: string; contentType: string; size: number },
     ): Promise<{ uploadUrl: string; key: string }> {
       return request<{ uploadUrl: string; key: string }>(
         "POST",

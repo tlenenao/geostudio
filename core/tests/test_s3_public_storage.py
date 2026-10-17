@@ -52,7 +52,9 @@ def test_presigned_urls_use_public_endpoint_when_set(monkeypatch):
     assert generate_presigned_get_url(internal, bucket="b", key="k").startswith(
         "https://files.example.org/b/k?"
     )
-    put = generate_presigned_put_url(internal, bucket="b", key="k", content_type="text/csv")
+    put = generate_presigned_put_url(
+        internal, bucket="b", key="k", content_type="text/csv", content_length=1
+    )
     assert put.startswith("https://files.example.org/b/k?")
     assert internal.presigned == 0
 
@@ -86,7 +88,7 @@ def test_real_minio_cors_bucket_and_presign_roundtrip(monkeypatch):
     ensure_uploads_bucket(s3, "p03-test")
     ensure_uploads_bucket(s3, "p03-test")  # idempotent
     put = generate_presigned_put_url(
-        s3, bucket="p03-test", key="t/a.txt", content_type="text/plain"
+        s3, bucket="p03-test", key="t/a.txt", content_type="text/plain", content_length=5
     )
     headers = {"Content-Type": "text/plain", "Origin": "http://x.test"}
     req = urllib.request.Request(put, data=b"hello", method="PUT", headers=headers)
