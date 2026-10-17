@@ -43,7 +43,7 @@ def writable_collection(session: Session, user, collection_id: str) -> Collectio
         action="write",
         item=collections_repo.get_access_facts(col),
         kind="collection",
-        actor_is_admin=user.is_admin,
+        actor_is_admin=user.acts_as_admin(),
     ):
         raise HTTPException(status_code=403, detail="write access required")
     return col

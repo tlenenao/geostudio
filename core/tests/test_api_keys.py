@@ -380,6 +380,66 @@ def test_read_only_key_can_post_marked_reads_but_not_write(env):
     _assert_read_posts_pass_and_writes_refused(_real_client(Session), token)
 
 
+def test_scoped_admin_key_loses_the_collection_admin_bypass(env):
+    # I1 revue SP-L2 : actor_is_admin=user.is_admin contournait la portée de la
+    # clé. Clé d'un admin sans admin.collections.manage : plus d'écriture sur
+    # la collection d'autrui, ni par OGC Features ni par import (ajout).
+    from app.collections import repository as collections_repo
+
+    _client, Session, (tenant_id, admin_id, reader_id) = env
+    with Session() as s:
+        collections_repo.create_collection(
+            s,
+            tenant_id=tenant_id,
+            owner_id=reader_id,
+            table_name="incidents",
+            title="Incidents",
+            description="",
+            is_public=True,
+            pk_column="id",
+            geometry_column="geom",
+            geometry_type="POINT",
+            srid=4326,
+        )
+        s.commit()
+    from app.ingestion import routes as ingestion_routes
+
+    client = _real_client(Session)
+    client.app.dependency_overrides[ingestion_routes.get_s3_client] = lambda: object()
+
+    def attempts(token):
+        from fastapi import HTTPException
+
+        from app.features.routes import _get_writable
+
+        headers = {"Authorization": f"Bearer {token}"}
+        # écriture OGC : même garde que POST/PUT/PATCH/DELETE .../items (l'introspection
+        # PostGIS qui la suit n'existe pas sous SQLite) ; la clé est résolue comme en HTTP.
+        with Session() as s:
+            user = service.authenticate(s, token=token, tenant_id=tenant_id)
+            try:
+                _get_writable(s, user, "incidents")
+                feature_detail = None
+            except HTTPException as exc:
+                feature_detail = exc.detail
+        upload = client.post(
+            "/v1/uploads",
+            json={
+                "key": f"uploads/{tenant_id}/x.geojson",
+                "filename": "x.geojson",
+                "collectionTitle": "x",
+                "collectionId": "incidents",
+            },
+            headers=headers,
+        )
+        return [feature_detail, upload.json().get("detail")]
+
+    _, scoped = _mint(Session, admin_id, scopes=["data.view", "data.manage"])
+    assert attempts(scoped) == ["write access required", "write access required"]
+    _, full = _mint(Session, admin_id)
+    assert "write access required" not in attempts(full)
+
+
 def test_export_token_can_post_marked_reads_but_not_write(env, monkeypatch):
     # C1 revue SP-L2 : le rendu PDF des widgets lit ses agrégats en POST.
     from app.auth.export_tokens import mint_export_token

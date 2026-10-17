@@ -408,7 +408,7 @@ def get_readable_collection(
         action="read",
         item=repo.get_access_facts(col),
         kind="collection",
-        actor_is_admin=bool(user and user.is_admin),
+        actor_is_admin=bool(user and user.acts_as_admin()),
     )
     if not readable:
         raise HTTPException(status_code=404, detail="collection not found")
@@ -498,7 +498,7 @@ def register_collection(
         session,
         tenant_id=user.tenant_id,
         current_user_id=user.id,
-        actor_is_admin=user.is_admin,
+        actor_is_admin=user.acts_as_admin(),
         can_manage_collections=can_manage_collections,
         collections=[col],
     )[col.id]
@@ -536,7 +536,7 @@ def create_empty_collection_route(
         session,
         tenant_id=user.tenant_id,
         current_user_id=user.id,
-        actor_is_admin=user.is_admin,
+        actor_is_admin=user.acts_as_admin(),
         can_manage_collections=can_manage_collections,
         collections=[col],
     )[col.id]
@@ -579,7 +579,7 @@ def list_collections(
         session,
         tenant_id=tenant_id,
         current_user_id=user.id if user else None,
-        actor_is_admin=bool(user and user.is_admin),
+        actor_is_admin=bool(user and user.acts_as_admin()),
         can_manage_collections=can_manage_collections,
         collections=cols_page,
     )
@@ -660,7 +660,7 @@ def get_collection(
         session,
         tenant_id=col.tenant_id,
         current_user_id=user.id if user else None,
-        actor_is_admin=bool(user and user.is_admin),
+        actor_is_admin=bool(user and user.acts_as_admin()),
         can_manage_collections=can_manage_collections,
         collections=[col],
     )[col.id]
@@ -834,7 +834,7 @@ def patch_collection(
         action="write",
         item=repo.get_access_facts(col),
         kind="collection",
-        actor_is_admin=user.is_admin,
+        actor_is_admin=user.acts_as_admin(),
     ):
         raise HTTPException(status_code=403, detail="write access required")
     if body.isPublic is not None and body.isPublic != col.is_public:
@@ -953,7 +953,7 @@ def patch_collection(
         session,
         tenant_id=user.tenant_id,
         current_user_id=user.id,
-        actor_is_admin=user.is_admin,
+        actor_is_admin=user.acts_as_admin(),
         can_manage_collections=can_manage_collections,
         collections=[col],
     )[col.id]
@@ -1037,7 +1037,7 @@ def _require_share(session, user, col) -> None:
         action="share",
         item=repo.get_access_facts(col),
         kind="collection",
-        actor_is_admin=user.is_admin,
+        actor_is_admin=user.acts_as_admin(),
     ):
         raise HTTPException(status_code=403, detail="share access required")
 

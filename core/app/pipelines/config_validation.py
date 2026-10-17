@@ -69,7 +69,7 @@ def _require_readable_collection(session: Session, *, user: User, collection_id:
         action="read",
         item=collections_repo.get_access_facts(collection),
         kind="collection",
-        actor_is_admin=user.is_admin,
+        actor_is_admin=user.acts_as_admin(),
     )
     if not readable:
         # Same message as not-found: don't leak collection existence.
@@ -90,7 +90,7 @@ def _require_writable_collection(session: Session, *, user: User, collection_id:
         action="write",
         item=collections_repo.get_access_facts(collection),
         kind="collection",
-        actor_is_admin=user.is_admin,
+        actor_is_admin=user.acts_as_admin(),
     )
     if not writable or not collection.editable:
         raise HTTPException(status_code=422, detail=f"collection '{collection_id}' is not writable")

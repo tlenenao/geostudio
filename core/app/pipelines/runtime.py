@@ -165,7 +165,7 @@ def _require_readable_collection_id(
         action="read",
         item=collections_repo.get_access_facts(collection),
         kind="collection",
-        actor_is_admin=user.is_admin,
+        actor_is_admin=user.acts_as_admin(),
     ):
         raise PipelineRuntimeError(f"collection '{collection_id}' not found")
     # GAP-27 : le lac/DuckDB n'a pas de RLS — un lecteur ou une jointure sur une
@@ -252,7 +252,7 @@ def _require_writable_collection(
         action="write",
         item=collections_repo.get_access_facts(collection),
         kind="collection",
-        actor_is_admin=user.is_admin,
+        actor_is_admin=user.acts_as_admin(),
     ):
         raise PipelineRuntimeError(f"collection '{collection_id}' is not writable")
     if not collection.editable:

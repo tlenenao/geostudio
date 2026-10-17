@@ -109,7 +109,7 @@ def require_collection_read(session, *, user: User, collection_id: str):
         action="read",
         item=collections_repo.get_access_facts(col),
         kind="collection",
-        actor_is_admin=user.is_admin,
+        actor_is_admin=user.acts_as_admin(),
     )
     if not readable:
         raise ValueError("collection not found")

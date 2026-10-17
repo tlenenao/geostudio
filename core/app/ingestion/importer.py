@@ -552,7 +552,7 @@ def run_append(
         action="write",
         item=collections_repo.get_access_facts(col),
         kind="collection",
-        actor_is_admin=user.is_admin,
+        actor_is_admin=user.acts_as_admin(),
     ):
         raise IngestionParseError(f"collection '{collection_id}' non modifiable")
     info = with_attribute_rules(introspect_table(session, col.table_name), col)

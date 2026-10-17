@@ -205,7 +205,7 @@ def create_upload_job(
             action="write",
             item=get_access_facts(col),
             kind="collection",
-            actor_is_admin=user.is_admin,
+            actor_is_admin=user.acts_as_admin(),
         ):
             raise HTTPException(status_code=403, detail="write access required")
     # La clé est censée venir du présigné (/uploads/presign), qui la préfixe

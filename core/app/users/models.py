@@ -48,3 +48,11 @@ class User(Base):
     # par l'instance de la session de la requête et lu par has_privilege.
     api_key_scopes = cast("frozenset[str] | None", None)
     api_key_read_only = False
+
+    def acts_as_admin(self) -> bool:
+        """`is_admin` plafonné par la portée d'une clé d'API (revue SP-L2, I1) :
+        le court-circuit admin de can() sur les collections vaut le privilège
+        admin.collections.manage. Seule source pour `actor_is_admin=` ;
+        `is_admin` lui-même n'est jamais modifié."""
+        scopes = self.api_key_scopes
+        return self.is_admin and (scopes is None or "admin.collections.manage" in scopes)
