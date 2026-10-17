@@ -966,7 +966,11 @@ export interface ItemClient {
   getPipelineConfig(pk: string): Promise<PipelinePayload>;
   savePipelineConfig(pk: string, payload: PipelinePayload): Promise<number | undefined>;
   getPipelineOps(): Promise<PipelineOpsCatalog>;
-  getPipelineNextRun(cron: string, tz?: string): Promise<{ nextRun: string }>;
+  getPipelineNextRun(
+    cron: string,
+    tz?: string,
+    itemId?: string,
+  ): Promise<{ nextRun: string; scheduleSuspended?: boolean }>;
   runPipeline(pk: string, params?: Record<string, unknown>): Promise<{ runId: string }>;
   getPipelineRuns(pk: string, params?: PageParams): Promise<PipelineRun[]>;
   // t03b-009 : absent côté sidecar desktop / export statique (pas d'annulation).

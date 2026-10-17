@@ -88,6 +88,7 @@ export function PipelineScheduleEditor({
   value,
   onChange,
   readOnly = false,
+  itemId,
 }: {
   value: PipelineRefreshPolicy | null;
   onChange: (next: PipelineRefreshPolicy | null) => void;
@@ -97,12 +98,14 @@ export function PipelineScheduleEditor({
   // (seconde ligne de défense), mais les contrôles eux-mêmes doivent aussi
   // refléter l'état verrouillé.
   readOnly?: boolean;
+  /** Revue L5 I7 : pipeline enregistré — affiche la suspension par le coupe-circuit. */
+  itemId?: string;
 }) {
   const enabled = value?.enabled ?? false;
   const cron = value?.cron ?? "*/15 * * * *";
   const timezone = value?.timezone ?? "UTC";
   const [form, setForm] = useState<ScheduleForm>(() => parseCron(cron));
-  const nextRunQuery = usePipelineNextRun(cron, enabled, timezone);
+  const nextRunQuery = usePipelineNextRun(cron, enabled, timezone, itemId);
   const cronErrorId = useId();
 
   useEffect(() => {
@@ -173,6 +176,11 @@ export function PipelineScheduleEditor({
               ))}
             </select>
           </label>
+          {nextRunQuery.data?.scheduleSuspended && (
+            <p role="status" className="text-xs text-warn">
+              {t("pipelineSchedule.suspended")}
+            </p>
+          )}
           {enabled && nextRunQuery.data && (
             <p className="text-xs text-ink-2">
               {t("pipelineSchedule.nextRun", {
@@ -185,7 +193,7 @@ export function PipelineScheduleEditor({
               {t("pipelineSchedule.intervalLabel")}
               <input
                 type="number"
-                min={1}
+                min={5}
                 className="h-9 rounded border border-control bg-surface px-2 text-ink"
                 value={form.minutes}
                 onChange={(e) => handleSetForm({ mode: "interval", minutes: e.target.value })}

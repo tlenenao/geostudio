@@ -613,6 +613,7 @@ export function PipelineBuilderPage({
                     value={draft.refreshPolicy ?? null}
                     onChange={setRefreshPolicy}
                     readOnly={readOnly}
+                    itemId={pk}
                   />
                   <PipelineWebhookTrigger pipelineId={pk} />
                 </>

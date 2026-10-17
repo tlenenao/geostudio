@@ -94,11 +94,17 @@ export function createPipelinesMethods(base: ItemClientBase): PipelinesMethods {
       return request<PipelineOpsCatalog>("GET", "/pipelines/ops");
     },
 
-    async getPipelineNextRun(cron: string, tz?: string): Promise<{ nextRun: string }> {
+    async getPipelineNextRun(
+      cron: string,
+      tz?: string,
+      itemId?: string,
+    ): Promise<{ nextRun: string; scheduleSuspended?: boolean }> {
       const tzParam = tz ? `&tz=${encodeURIComponent(tz)}` : "";
-      return request<{ nextRun: string }>(
+      // Revue L5 I7 : avec l'item, le cœur dit si le coupe-circuit a suspendu la planification.
+      const itemParam = itemId ? `&itemId=${encodeURIComponent(itemId)}` : "";
+      return request<{ nextRun: string; scheduleSuspended?: boolean }>(
         "GET",
-        `/pipelines/next-run?cron=${encodeURIComponent(cron)}${tzParam}`,
+        `/pipelines/next-run?cron=${encodeURIComponent(cron)}${tzParam}${itemParam}`,
       );
     },
 

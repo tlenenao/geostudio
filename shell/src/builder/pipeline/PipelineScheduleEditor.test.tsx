@@ -16,13 +16,14 @@ function renderEditor(
   value: PipelineRefreshPolicy | null,
   onChange: (next: PipelineRefreshPolicy | null) => void,
   getPipelineNextRun = vi.fn().mockResolvedValue({ nextRun: "2026-08-07T02:00:00.000Z" }),
+  itemId?: string,
 ) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const client: Partial<ItemClient> = { getPipelineNextRun };
   render(
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={client as ItemClient}>
-        <PipelineScheduleEditor value={value} onChange={onChange} />
+        <PipelineScheduleEditor value={value} onChange={onChange} itemId={itemId} />
       </ItemClientProvider>
     </QueryClientProvider>,
   );
@@ -165,7 +166,7 @@ test("shows the next scheduled run time when scheduling is enabled", async () =>
       }),
     ).toBeInTheDocument(),
   );
-  expect(getPipelineNextRun).toHaveBeenCalledWith("0 2 * * *", "UTC");
+  expect(getPipelineNextRun).toHaveBeenCalledWith("0 2 * * *", "UTC", undefined);
 });
 
 test("does not show the next run hint when scheduling is disabled", () => {
@@ -181,7 +182,18 @@ test("choosing a timezone writes it and evaluates the next run in it (AUD-084)",
     onChange,
     getPipelineNextRun,
   );
-  await waitFor(() => expect(getPipelineNextRun).toHaveBeenCalledWith("0 2 * * *", "Europe/Paris"));
+  await waitFor(() =>
+    expect(getPipelineNextRun).toHaveBeenCalledWith("0 2 * * *", "Europe/Paris", undefined),
+  );
   fireEvent.change(screen.getByLabelText("Fuseau horaire"), { target: { value: "UTC" } });
   expect(onChange).toHaveBeenLastCalledWith({ enabled: true, cron: "0 2 * * *", timezone: "UTC" });
+});
+
+test("shows the suspended schedule banner when the circuit breaker is open (revue L5 I7)", async () => {
+  const getPipelineNextRun = vi
+    .fn()
+    .mockResolvedValue({ nextRun: "2026-08-07T02:00:00.000Z", scheduleSuspended: true });
+  renderEditor({ enabled: true, cron: "0 2 * * *" }, vi.fn(), getPipelineNextRun, "p1");
+  expect(await screen.findByText(/Planification suspendue/)).toBeInTheDocument();
+  expect(getPipelineNextRun).toHaveBeenCalledWith("0 2 * * *", "UTC", "p1");
 });

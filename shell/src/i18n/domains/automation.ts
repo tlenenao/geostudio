@@ -502,6 +502,8 @@ export const automation = {
     "{node} : requiert soit le paramètre withCollectionId, soit une arête secondaire.",
   "pipelineValidation.noSecondaryAllowed": "{node} n'accepte pas d'arête secondaire.",
   "copilot.mcpTokenError": "Impossible d'obtenir un jeton MCP (signinSilent a échoué).",
+  "pipelineSchedule.suspended":
+    "Planification suspendue après 3 échecs consécutifs : un run manuel réussi la rétablit.",
   "lineage.title": "Lignée",
   "lineage.loading": "Chargement de la lignée…",
   "lineage.upstream": "Sources",
