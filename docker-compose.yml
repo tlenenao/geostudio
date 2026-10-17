@@ -14,6 +14,7 @@ volumes:
   # — le seul moyen de pousser une CSP calculée dynamiquement à Traefik
   # sans redémarrer le conteneur à chaque changement d'allowlist.
   csp-dynamic-conf:
+  otel-lgtm-data:  # métriques/logs/traces + base Grafana (profil `observability`, AUD-038)
 
 services:
 
@@ -413,6 +414,10 @@ services:
       TITILER_URL: ${TITILER_URL:-http://titiler:8000}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_SERVICE_NAME: geostudio-core
+      # service.version des traces/métriques/logs (AUD-040) ; vide = "dev".
+      # Jamais de défaut non vide ici : le worker s'en sert aussi pour épingler
+      # l'image des bundles autoportés (vide = latest, app/appexport/bundler.py).
+      GEOSTUDIO_VERSION: ${GEOSTUDIO_VERSION:-}
       S3_ENDPOINT_URL: http://minio:9000
       # Hôte public du stockage pour les liens signés remis à un navigateur ou à un
       # destinataire externe (RC-13) ; vide = hôte interne (liens injoignables hors Docker).
@@ -668,6 +673,7 @@ services:
       CORE_BASE_URL: ${CORE_BASE_URL:-http://localhost:8200}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_SERVICE_NAME: geostudio-worker
+      GEOSTUDIO_VERSION: ${GEOSTUDIO_VERSION:-}
       CORE_APPEXPORT_ENABLED: ${CORE_APPEXPORT_ENABLED:-false}
       APPEXPORT_RUNTIME_DIR: /export-runtime
       S3_APPEXPORTS_BUCKET: geostudio-appexports
@@ -772,6 +778,10 @@ services:
       # `procrastinate healthchecks`), un manque plus sévère que « détecte
       # un process mort seulement ».
       HEALTHCHECK_QUEUE: export
+      # Sans ces deux variables, ce worker n'émettait aucune trace ni métrique (AUD-037).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_SERVICE_NAME: geostudio-export-worker
+      GEOSTUDIO_VERSION: ${GEOSTUDIO_VERSION:-}
     networks: [gis-net]
     depends_on:
       pgbouncer:
@@ -804,6 +814,7 @@ services:
       S3_CDC_BUCKET: geostudio-cdc
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_SERVICE_NAME: geostudio-cdc-worker
+      GEOSTUDIO_VERSION: ${GEOSTUDIO_VERSION:-}
     networks: [gis-net]
     depends_on:
       postgis:
@@ -900,6 +911,9 @@ services:
       - ./deploy/observability/grafana/provisioning/dashboards/geostudio-dashboards.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/geostudio-dashboards.yaml
       - ./deploy/observability/grafana/provisioning/dashboards/custom:/otel-lgtm/grafana/conf/provisioning/dashboards/custom
       - ./deploy/observability/grafana/provisioning/alerting:/otel-lgtm/grafana/conf/provisioning/alerting
+      # Prometheus/Loki/Tempo/Grafana écrivent tous sous /data (run-*.sh de
+      # l'image) : sans volume, un redéploiement efface l'historique (AUD-038).
+      - otel-lgtm-data:/data
     networks: [gis-net]
     labels:
       - traefik.enable=true

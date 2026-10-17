@@ -37,6 +37,7 @@ ALLOWED_DIFF = {
     "CORE_ADMIN_TOOLS_GATEWAY_URL": "passerelle admin = Traefik compose uniquement (https://${DOMAIN})",
     "SHELL_BASE_URL": "calculé : service shell du release",
     "VITE_AUTH_MODE": "idem CORE_AUTH_MODE",
+    "GEOSTUDIO_VERSION": "calculé : tag d'image du release (compose : variable d'opérateur)",
 }
 # compose service -> (workload suffixe, valeurs --set pour l'activer)
 WORKLOADS = {
@@ -206,6 +207,18 @@ def test_optional_workloads_render_only_when_enabled():
     assert "rel-geostudio-cdc-worker" not in names
     plain, _ = _rendered_env(full, "core")
     assert plain["OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://rel-geostudio-otel-lgtm:4318"
+
+
+def test_otel_lgtm_data_volume_and_version_wiring():
+    """AUD-038 : /data monté (PVC si existingClaim) ; AUD-040 : la version des
+    traces suit le tag d'image."""
+    spec = _deployment(render("observability.enabled=true"), "otel-lgtm")["spec"]["template"]
+    assert {"name": "data", "mountPath": "/data"} in spec["spec"]["containers"][0]["volumeMounts"]
+    assert spec["spec"]["volumes"] == [{"name": "data", "emptyDir": {}}]
+    claimed = render("observability.enabled=true", "observability.existingClaim=lgtm")
+    vol = _deployment(claimed, "otel-lgtm")["spec"]["template"]["spec"]["volumes"][0]
+    assert vol["persistentVolumeClaim"] == {"claimName": "lgtm"}
+    assert _rendered_env(render("image.tag=v7.7.7"), "worker")[0]["GEOSTUDIO_VERSION"] == "v7.7.7"
 
 
 def test_valhalla_renders_only_when_enabled_and_wires_core_url():

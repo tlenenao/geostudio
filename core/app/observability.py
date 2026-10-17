@@ -80,6 +80,33 @@ def _build_meter_provider(resource: Resource, endpoint: str | None) -> MeterProv
     return MeterProvider(resource=resource, metric_readers=metric_readers)
 
 
+def _build_resource() -> Resource:
+    """service.version (GEOSTUDIO_VERSION, tag d'image) et
+    deployment.environment (CORE_ENV, vide = production) : sans eux, une
+    trace ou un log ne dit pas quelle version l'a émis (AUD-040)."""
+    return Resource.create(
+        {
+            "service.name": os.environ.get("OTEL_SERVICE_NAME", "geostudio-core"),
+            "service.version": os.environ.get("GEOSTUDIO_VERSION") or "dev",
+            "deployment.environment": os.environ.get("CORE_ENV") or "production",
+        }
+    )
+
+
+def _build_logger_provider(resource: Resource, endpoint: str | None):
+    """Export OTLP des logs (→ Loki d'otel-lgtm), AUD-036 — None sans
+    endpoint : les logs restent alors seulement sur stdout (JSONFormatter)."""
+    if not endpoint:
+        return None
+    from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
+    from opentelemetry.sdk._logs import LoggerProvider
+    from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+
+    provider = LoggerProvider(resource=resource)
+    provider.add_log_record_processor(BatchLogRecordProcessor(OTLPLogExporter()))
+    return provider
+
+
 def setup() -> None:
     global _configured
     if _configured:
@@ -87,12 +114,12 @@ def setup() -> None:
     _configured = True
     logging.setLogRecordFactory(_record_factory_with_trace_context)
 
-    service_name = os.environ.get("OTEL_SERVICE_NAME", "geostudio-core")
-    resource = Resource.create({"service.name": service_name})
+    resource = _build_resource()
     endpoint = _otlp_endpoint()
 
     trace.set_tracer_provider(_build_tracer_provider(resource, endpoint))
     metrics.set_meter_provider(_build_meter_provider(resource, endpoint))
+    logger_provider = _build_logger_provider(resource, endpoint)
 
     from opentelemetry.instrumentation.botocore import BotocoreInstrumentor
     from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
@@ -105,6 +132,14 @@ def setup() -> None:
     root_logger = logging.getLogger()
     root_logger.addHandler(handler)
     root_logger.setLevel(logging.INFO)
+    if logger_provider is not None:
+        from opentelemetry.sdk._logs import LoggingHandler
+
+        otlp_handler = LoggingHandler(logger_provider=logger_provider)
+        # Un échec d'export OTLP se journalise lui-même : ne pas le réexporter
+        # (boucle tant que le collecteur est injoignable) — il reste sur stdout.
+        otlp_handler.addFilter(lambda r: not r.name.startswith("opentelemetry"))
+        root_logger.addHandler(otlp_handler)
 
 
 def instrument_app(app, *, tracer_provider=None) -> None:

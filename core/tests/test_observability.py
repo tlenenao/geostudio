@@ -21,6 +21,36 @@ def test_build_tracer_provider_with_endpoint_attaches_a_span_processor():
     assert len(provider._active_span_processor._span_processors) == 1
 
 
+def test_resource_carries_version_and_environment(monkeypatch):
+    """AUD-040 : sans service.version, impossible de savoir quelle version a
+    émis une trace après une montée de version."""
+    monkeypatch.setenv("OTEL_SERVICE_NAME", "geostudio-worker")
+    monkeypatch.setenv("GEOSTUDIO_VERSION", "v9.9.9")
+    monkeypatch.setenv("CORE_ENV", "development")
+    attrs = observability._build_resource().attributes
+    assert attrs["service.name"] == "geostudio-worker"
+    assert attrs["service.version"] == "v9.9.9"
+    assert attrs["deployment.environment"] == "development"
+
+
+def test_resource_defaults(monkeypatch):
+    for name in ("OTEL_SERVICE_NAME", "GEOSTUDIO_VERSION", "CORE_ENV"):
+        monkeypatch.delenv(name, raising=False)
+    attrs = observability._build_resource().attributes
+    assert attrs["service.name"] == "geostudio-core"
+    assert attrs["service.version"] == "dev"
+    assert attrs["deployment.environment"] == "production"
+
+
+def test_logs_exported_over_otlp_only_with_endpoint():
+    """AUD-036 : le pipeline logs du collecteur (→ Loki) ne recevait rien."""
+    resource = Resource.create({"service.name": "x"})
+    assert observability._build_logger_provider(resource, None) is None
+    provider = observability._build_logger_provider(resource, "http://localhost:4318")
+    assert provider is not None
+    provider.shutdown()
+
+
 def test_setup_only_builds_providers_once(monkeypatch):
     monkeypatch.setattr(observability, "_configured", False)
     calls = {"n": 0}

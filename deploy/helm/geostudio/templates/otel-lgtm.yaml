@@ -37,6 +37,16 @@ spec:
             failureThreshold: 3
             initialDelaySeconds: 120
           resources: {{ toYaml .Values.observability.resources | nindent 12 }}
+          # Prometheus/Loki/Tempo/Grafana écrivent sous /data (AUD-038).
+          volumeMounts:
+            - {name: data, mountPath: /data}
+      volumes:
+        - name: data
+          {{- if .Values.observability.existingClaim }}
+          persistentVolumeClaim: {claimName: {{ .Values.observability.existingClaim | quote }}}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
 ---
 apiVersion: v1
 kind: Service

@@ -745,6 +745,36 @@ def test_worker_has_a_resolved_memory_limit():
     assert "WORKER_MEM_LIMIT" in documented_env_vars(include_commented=False)
 
 
+OTEL_ENTRYPOINTS = ("app.main", "app.jobs", "app.cdc")
+
+
+def test_every_otel_process_exports_telemetry():
+    """AUD-037 : export-worker appelle observability.setup() (via app.jobs) mais
+    ne recevait ni endpoint ni nom de service — aucune trace, aucune métrique.
+    Tout service dont le process importe app.main/app.jobs/app.cdc doit porter
+    l'endpoint, un nom geostudio-<service> et la version (AUD-040)."""
+    checked = []
+    for name, svc in services(BASE).items():
+        cmd = svc.get("command")
+        cmd = " ".join(cmd) if isinstance(cmd, list) else str(cmd or "")
+        if not any(ep in cmd for ep in OTEL_ENTRYPOINTS):
+            continue
+        env = svc.get("environment") or {}
+        assert env.get("OTEL_EXPORTER_OTLP_ENDPOINT") == "${OTEL_EXPORTER_OTLP_ENDPOINT:-}", name
+        assert env.get("OTEL_SERVICE_NAME") == f"geostudio-{name}", name
+        assert env.get("GEOSTUDIO_VERSION") == "${GEOSTUDIO_VERSION:-}", name
+        checked.append(name)
+    assert {"core", "worker", "export-worker", "cdc-worker"} <= set(checked), checked
+
+
+def test_otel_lgtm_data_is_persisted():
+    """AUD-038 : Prometheus/Loki/Tempo/Grafana écrivent sous /data dans
+    l'image ; sans volume nommé, chaque redéploiement efface l'historique."""
+    base = load_yaml(BASE)
+    assert "otel-lgtm-data:/data" in base["services"]["otel-lgtm"]["volumes"]
+    assert "otel-lgtm-data" in base["volumes"]
+
+
 def test_sh_c_commands_have_no_orphan_option_line():
     """j05b-006 : `command: >` + `sh -c "… worker -c 4\\n -q file1,file2"` — la
     ligne plus indentée garde son saut de ligne (scalaire plié YAML) : le shell
