@@ -36,6 +36,7 @@ from fastapi import Depends, Header
 from sqlalchemy.orm import Session
 
 from app.configs import repository as configs_repo
+from app.configs.document_validation import widget_nodes
 from app.db import get_session
 from app.items import repository as items_repo
 from app.sharing import repository as sharing_repo
@@ -106,6 +107,12 @@ def resolve_guest_scope(
                 allowed_collection_ids.add(ds_config.config.dataset.collectionId)
         elif ds.layer:
             allowed_collection_ids.add(ds.layer)
+    # AUD-066 : couches additionnelles des widgets carte (imbriqués et pages
+    # compris) ; la lecture reste recoupée par can(created_by) côté collections.
+    for node in widget_nodes(root.config.model_dump(mode="json")):
+        for layer in (node.get("props") or {}).get("layers") or []:
+            if isinstance(layer, dict) and isinstance(layer.get("collectionId"), str):
+                allowed_collection_ids.add(layer["collectionId"])
 
     return GuestActor(
         tenant_id=claims.tenant_id,

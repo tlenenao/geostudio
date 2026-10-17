@@ -90,7 +90,7 @@ def session_factory():
     engine.dispose()
 
 
-def _create_app_item(session, *, tenant_id, owner_id, data_sources):
+def _create_app_item(session, *, tenant_id, owner_id, data_sources, layout_items=()):
     item = items_repo.create_item(
         session, tenant_id=tenant_id, owner_id=owner_id, resource_type="app", title="App"
     )
@@ -98,7 +98,7 @@ def _create_app_item(session, *, tenant_id, owner_id, data_sources):
         {
             "kind": "app",
             "dataSources": data_sources,
-            "layout": {"type": "grid", "items": []},
+            "layout": {"type": "grid", "items": list(layout_items)},
         }
     )
     configs_repo.create_config(session, config, item.id, tenant_id=tenant_id)
@@ -148,6 +148,59 @@ def test_resolve_guest_scope_collects_direct_layer_references(session_factory):
         assert guest is not None
         assert guest.allowed_item_ids == frozenset({app_item_id})
         assert guest.allowed_collection_ids == frozenset({"incidents"})
+
+
+def test_resolve_guest_scope_includes_map_widget_layers_nested_or_not(session_factory):
+    # AUD-066 : les couches additionnelles d'un widget carte (y compris dans une
+    # modale) sont lisibles par l'invité, comme les dataSources.
+    def map_widget(wid, collection_id):
+        return {
+            "id": wid,
+            "widget": "map",
+            "x": 0,
+            "y": 0,
+            "w": 2,
+            "h": 2,
+            "props": {
+                "layers": [
+                    {"id": "l", "title": "t", "kind": "vector", "collectionId": collection_id}
+                ]
+            },
+        }
+
+    modal = {
+        "id": "dlg",
+        "widget": "modal",
+        "x": 0,
+        "y": 0,
+        "w": 2,
+        "h": 1,
+        "props": {"title": "M", "items": [map_widget("inner", "col-y")]},
+    }
+    with session_factory() as session:
+        tenant = get_or_create_default_tenant(session)
+        owner = get_or_create_user(
+            session,
+            tenant_id=tenant.id,
+            oidc_sub="o",
+            username="owner",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        app_item_id = _create_app_item(
+            session,
+            tenant_id=tenant.id,
+            owner_id=owner.id,
+            data_sources=[],
+            layout_items=[map_widget("m", "col-x"), modal],
+        )
+        claims = ShareLinkTokenClaims(
+            share_link_id="link-1", tenant_id=tenant.id, item_id=app_item_id
+        )
+        guest = resolve_guest_scope(session, claims, created_by=owner.id)
+        assert guest is not None
+        assert guest.allowed_collection_ids >= {"col-x", "col-y"}
 
 
 def test_resolve_guest_scope_returns_none_for_unknown_item(session_factory):
