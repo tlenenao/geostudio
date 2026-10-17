@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.auth.dependency import is_external_basemaps_enabled
 from app.configs.models import Config, ConfigRevision
 from app.extensions.models import Extension
 from app.harvest.models import HarvestSource
@@ -17,6 +18,18 @@ from app.security.csp_hosts import (
     extract_config_external_hosts,
     extract_extension_hosts,
     extract_harvest_hosts,
+)
+
+# Revue L6 M8 : origines des fonds intégrés du shell (shell/src/map/basemaps.ts), y compris
+# celles que leurs style.json chargent (glyphes, sprites, TileJSON et tuiles Carto, vérifié
+# le 2026-10-17). Absentes quand l'instance coupe les fonds externes (AUD-122).
+BUILTIN_BASEMAP_ORIGINS = frozenset(
+    {
+        "https://demotiles.maplibre.org",
+        "https://basemaps.cartocdn.com",
+        "https://*.basemaps.cartocdn.com",
+        "https://data.geopf.fr",
+    }
 )
 
 
@@ -60,6 +73,8 @@ def compute_csp_allowlist(session: Session) -> CspAllowlist:
         tile_hosts |= extract_config_external_hosts(body)
     # REV-367 i : fonds de carte du tenant (style.json ou gabarit raster `xyz:`).
     tile_hosts |= extract_basemap_hosts(list(session.scalars(select(TenantBasemap.style)).all()))
+    if is_external_basemaps_enabled():
+        tile_hosts |= BUILTIN_BASEMAP_ORIGINS
     return CspAllowlist(
         img_hosts=set(tile_hosts),
         connect_hosts=set(tile_hosts),
