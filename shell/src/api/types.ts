@@ -196,6 +196,9 @@ export type ApiKeySummary = {
   expiresAt: string;
   revokedAt: string | null;
   lastUsedAt: string | null;
+  /** AUD-091 : null = privilèges du créateur. */
+  scopes?: string[] | null;
+  readOnly?: boolean;
 };
 /** Seule réponse qui porte le secret (`token`), affiché une seule fois. */
 export type ApiKeyCreated = ApiKeySummary & { token: string };
@@ -794,7 +797,7 @@ export interface ItemClient {
     q?: string;
   }): Promise<{ users: UserSummary[]; total: number }>;
   updateUserRole(id: string, roleId: string): Promise<UserSummary>;
-  eraseUser(userId: string): Promise<void>;
+  eraseUser(userId: string, confirmUsername: string): Promise<void>;
   requestTenantPurge(tenantId: string, confirmSlug: string): Promise<{ jobId: string }>;
   getPurgeStatus(purgeId: string): Promise<PurgeReceipt | null>;
   listNotifications(params: {
@@ -809,7 +812,11 @@ export interface ItemClient {
     value: NotificationPreferenceValue,
   ): Promise<NotificationPreferenceValue>;
   listApiKeys(): Promise<ApiKeySummary[]>;
-  createApiKey(params: { name: string; expiresInDays: number }): Promise<ApiKeyCreated>;
+  createApiKey(params: {
+    name: string;
+    expiresInDays: number;
+    readOnly?: boolean;
+  }): Promise<ApiKeyCreated>;
   revokeApiKey(id: string): Promise<ApiKeySummary>;
   listUsageTasks(params: {
     page: number;

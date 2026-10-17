@@ -59,6 +59,7 @@ test("anonymiser un compte est une action visuellement distincte de la purge", a
   await expect(page.getByRole("heading", { name: "Anonymiser un compte" })).toBeVisible();
 
   await page.getByLabel(/Identifiant de l'utilisateur/).fill("u42");
+  await page.getByLabel(/Nom d'utilisateur du compte/).fill("alice");
   await page.getByRole("button", { name: "Anonymiser ce compte" }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "Anonymiser ce compte" }).click();
   await expect(page.getByText("Compte anonymisé.", { exact: true })).toBeVisible();

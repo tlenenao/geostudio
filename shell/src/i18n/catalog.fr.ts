@@ -160,6 +160,7 @@ export const fr = {
     "Une clé d'API permet à un script ou à une intégration d'agir avec vos droits, ni plus ni moins. Elle expire au plus tard dans un an et se révoque à tout moment.",
   "settings.apiKeyName": "Nom de la clé",
   "settings.apiKeyExpiry": "Durée de validité (jours, 365 max)",
+  "settings.apiKeyReadOnly": "Lecture seule",
   "settings.apiKeyCreate": "Créer la clé",
   "settings.apiKeyCreateError": "Échec de la création de la clé.",
   "settings.apiKeyRevokeError": "Échec de la révocation de la clé.",
@@ -213,6 +214,9 @@ export const fr = {
   "compliance.eraseError": "Échec de l'anonymisation.",
   "compliance.eraseNotFound": "Utilisateur introuvable dans ce tenant.",
   "compliance.eraseAlreadyErased": "Ce compte est déjà anonymisé.",
+  "compliance.eraseConfirmMismatch":
+    "Le nom d'utilisateur saisi ne correspond pas au compte à anonymiser.",
+  "compliance.confirmUsernameLabel": "Nom d'utilisateur du compte (confirmation)",
   "compliance.eraseLastHolder":
     "Impossible : ce compte est le dernier titulaire d'un privilège de gestion des utilisateurs ou des rôles.",
   "compliance.eraseForbidden": "Droits insuffisants pour anonymiser ce compte.",

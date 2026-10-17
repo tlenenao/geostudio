@@ -2966,6 +2966,13 @@ export interface components {
             expiresInDays: number;
             /** Name */
             name: string;
+            /**
+             * Readonly
+             * @default false
+             */
+            readOnly: boolean;
+            /** Scopes */
+            scopes?: string[] | null;
         };
         /** ApiKeyCreated */
         ApiKeyCreated: {
@@ -2981,8 +2988,15 @@ export interface components {
             name: string;
             /** Prefix */
             prefix: string;
+            /**
+             * Readonly
+             * @default false
+             */
+            readOnly: boolean;
             /** Revokedat */
             revokedAt: string | null;
+            /** Scopes */
+            scopes?: string[] | null;
             /** Token */
             token: string;
         };
@@ -3024,8 +3038,15 @@ export interface components {
             name: string;
             /** Prefix */
             prefix: string;
+            /**
+             * Readonly
+             * @default false
+             */
+            readOnly: boolean;
             /** Revokedat */
             revokedAt: string | null;
+            /** Scopes */
+            scopes?: string[] | null;
         };
         /**
          * AtlasConfig
@@ -3812,6 +3833,11 @@ export interface components {
             srid?: number | null;
             /** Title */
             title: string;
+        };
+        /** EraseRequest */
+        EraseRequest: {
+            /** Confirmusername */
+            confirmUsername: string;
         };
         /** EvaluateAlertResponse */
         EvaluateAlertResponse: {
@@ -8169,7 +8195,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EraseRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             204: {

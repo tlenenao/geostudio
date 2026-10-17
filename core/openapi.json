@@ -500,6 +500,26 @@
             "minLength": 1,
             "title": "Name",
             "type": "string"
+          },
+          "readOnly": {
+            "default": false,
+            "title": "Readonly",
+            "type": "boolean"
+          },
+          "scopes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scopes"
           }
         },
         "required": [
@@ -541,6 +561,11 @@
             "title": "Prefix",
             "type": "string"
           },
+          "readOnly": {
+            "default": false,
+            "title": "Readonly",
+            "type": "boolean"
+          },
           "revokedAt": {
             "anyOf": [
               {
@@ -551,6 +576,20 @@
               }
             ],
             "title": "Revokedat"
+          },
+          "scopes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scopes"
           },
           "token": {
             "title": "Token",
@@ -650,6 +689,11 @@
             "title": "Prefix",
             "type": "string"
           },
+          "readOnly": {
+            "default": false,
+            "title": "Readonly",
+            "type": "boolean"
+          },
           "revokedAt": {
             "anyOf": [
               {
@@ -660,6 +704,20 @@
               }
             ],
             "title": "Revokedat"
+          },
+          "scopes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scopes"
           }
         },
         "required": [
@@ -2941,6 +2999,20 @@
           "title"
         ],
         "title": "EmptyCollectionCreate",
+        "type": "object"
+      },
+      "EraseRequest": {
+        "properties": {
+          "confirmUsername": {
+            "minLength": 1,
+            "title": "Confirmusername",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirmUsername"
+        ],
+        "title": "EraseRequest",
         "type": "object"
       },
       "EvaluateAlertResponse": {
@@ -13115,6 +13187,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EraseRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "204": {
             "description": "Successful Response"
