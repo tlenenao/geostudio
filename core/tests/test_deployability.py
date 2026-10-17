@@ -1792,7 +1792,13 @@ def test_shell_nginx_serves_mjs_cache_and_404_for_assets():
     assert 'Cache-Control "no-cache"' in conf
     # un add_header de location masque ceux du server : réinclure les en-têtes de sécurité
     snippet = "include /etc/nginx/snippets/security-headers.conf;"
-    assert conf.count(snippet) == conf.count("add_header Cache-Control") + 1
+    embed = "include /etc/nginx/snippets/security-headers-embed.conf;"
+    assert conf.count(snippet) + conf.count(embed) == conf.count("add_header Cache-Control") + 1
+    embed_block = conf.split("location /embed/ {")[1].split("}")[0]
+    assert embed in embed_block
+    # Repli terminal = redirection interne vers `location /` et ses en-têtes
+    # (X-Frame-Options DENY en Helm) : /index.html doit rester non terminal.
+    assert "try_files $uri /index.html =404;" in embed_block
     assert "rm -rf dist/.vite dist/fixtures" in (REPO / "shell/Dockerfile").read_text()
 
 

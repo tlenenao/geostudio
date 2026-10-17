@@ -170,10 +170,56 @@ def test_commands_match_the_compose(docs):
         == COMPOSE["export-worker"]["command"]
     )
     assert " ".join(_container(docs, "cdc-worker")["command"]) == COMPOSE["cdc-worker"]["command"]
-    assert (
-        _container(docs, "core")["command"][-1]
-        == "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8200"
+    # Compose : alembic puis uvicorn ; chart : uvicorn seul, alembic dans le Job hook (AUD-033).
+    assert COMPOSE["core"]["command"].endswith(
+        'alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8200"'
     )
+    core_cmd = _container(docs, "core")["command"]
+    assert core_cmd == ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8200"]
+
+
+def test_migrations_run_once_in_a_pre_upgrade_hook_with_secret_only_env(docs):
+    """AUD-033 : le hook passe avant le ConfigMap (pré-install) — aucune
+    référence à celui-ci, sinon le Job reste bloqué en CreateContainerConfigError."""
+    (job,) = [d for d in docs if d["kind"] == "Job"]
+    assert job["metadata"]["name"] == "rel-geostudio-migrations"
+    assert job["metadata"]["annotations"]["helm.sh/hook"] == "pre-install,pre-upgrade"
+    c = job["spec"]["template"]["spec"]["containers"][0]
+    assert c["command"] == ["alembic", "upgrade", "head"]
+    assert "envFrom" not in c
+    assert {e["name"] for e in c["env"]} == {"DATABASE_URL", "CORE_MIGRATION_DATABASE_URL"}
+    assert all(e["valueFrom"]["secretKeyRef"]["name"] == "gs-secrets" for e in c["env"])
+    assert c["securityContext"]["runAsNonRoot"] is True
+
+
+def test_shell_security_headers_follow_the_csp_mode():
+    """AUD-030 : sans Traefik, nginx pose HSTS, X-Frame-Options et la CSP ;
+    /embed/ reste encadrable (GAP-19)."""
+
+    def headers(*sets: str) -> dict:
+        docs = render(*sets)
+        (cm,) = [d for d in docs if d["metadata"]["name"] == "rel-geostudio-shell-headers"]
+        shell = _deployment(docs, "shell")["spec"]["template"]["spec"]
+        assert {
+            "name": "security-headers",
+            "mountPath": "/etc/nginx/snippets",
+            "readOnly": True,
+        } in (shell["containers"][0]["volumeMounts"])
+        return cm["data"]
+
+    data = headers()
+    main, embed = data["security-headers.conf"], data["security-headers-embed.conf"]
+    assert "Strict-Transport-Security" in main and "Strict-Transport-Security" in embed
+    assert "add_header X-Frame-Options DENY always;" in main
+    assert "add_header Content-Security-Policy-Report-Only " in main
+    assert "frame-ancestors 'none'" in main
+    assert "X-Frame-Options" not in embed and "frame-ancestors" not in embed
+    enforced = headers("config.CORE_CSP_MODE=enforce")["security-headers.conf"]
+    assert "add_header Content-Security-Policy " in enforced
+    # Les deux snippets nommés par shell/nginx.conf existent dans le ConfigMap.
+    nginx = (REPO / "shell/nginx.conf").read_text()
+    for name in set(re.findall(r"snippets/([\w-]+\.conf)", nginx)):
+        assert name in data, name
 
 
 def test_images_are_released_multiarch_images_pinned_to_the_env_version(docs):

@@ -8,7 +8,7 @@ amd64 **et** arm64 (release multi-arch). Garde-fou : `core/tests/test_helm_chart
 
 | Déployé | Externe (à fournir, via `config.*` et le Secret) |
 |---|---|
-| `core` (+ migrations `alembic upgrade head` au démarrage), `worker`, `cdc-worker`, `shell` | Postgres (PostGIS + pgvector, `wal_level=logical`), pgbouncer optionnel |
+| `core` (migrations : Job hook `pre-install,pre-upgrade` `<release>-migrations`, AUD-033), `worker`, `cdc-worker`, `shell` | Postgres (PostGIS + pgvector, `wal_level=logical`), pgbouncer optionnel |
 | `export-worker` (`exportWorker.enabled`) | S3 compatible (MinIO) et ses buckets, Keycloak/OIDC, titiler |
 | `otel-lgtm` (`observability.enabled`) | Martin, passerelle `/admin/*` (Traefik compose), `appexport-runtime-builder` |
 | Ingress (`ingress.enabled`, deux hôtes : shell et API) | Dashboards Grafana provisionnés (le chart lance `otel-lgtm` nu) |
@@ -41,7 +41,9 @@ Obligatoires : `DATABASE_URL`, `CORE_SECRETS_MASTER_KEY`, `S3_ACCESS_KEY`, `S3_S
 
 - `cdc-worker` : un seul réplica, stratégie `Recreate`, non configurable (slot de réplication logique).
 - `core.replicas > 1` : le limiteur de débit reste en mémoire par process (budget effectif `N x budget`) ;
-  démarrer les réplicas l'un après l'autre sur une migration lourde (pas de verrou de migration).
+  les migrations tournent une fois par release dans le Job hook, avant les nouveaux pods (`helm upgrade
+  --no-hooks` les saute : à proscrire). Le Job ne lit que le Secret (`DATABASE_URL`,
+  `CORE_MIGRATION_DATABASE_URL`) : il passe avant la création du ConfigMap.
 - Sondes = healthchecks du compose : `core` startup 180 s puis `/health` ; `worker`, `cdc-worker`,
   `export-worker` en `exec` (mêmes commandes) ; `shell` `GET /`.
 - Sécurité : `runAsNonRoot`, uid numériques (core/worker/cdc 1001, shell 101 nginx, export-worker 999),
@@ -51,7 +53,13 @@ Obligatoires : `DATABASE_URL`, `CORE_SECRETS_MASTER_KEY`, `S3_ACCESS_KEY`, `S3_S
   changement d'image de base.
 - Volumes : `/scratch` du worker = `emptyDir`. Le volume `csp-dynamic-conf` (CSP dynamique lue par
   Traefik, SP-48) et `appexport-runtime` n'existent pas dans le chart : la CSP dynamique et l'export d'app
-  autoporté restent propres au compose.
+  autoporté restent propres au compose (la tâche de CSP dynamique ne fait rien sans ce volume).
+- En-têtes de sécurité (AUD-030) : nginx du shell pose HSTS, `X-Frame-Options: DENY` (sauf `/embed/`) et une
+  CSP **statique** `shell.csp`, en `Report-Only` tant que `config.CORE_CSP_MODE` n'est pas `enforce`.
+  Avant d'enforcer, y ajouter l'origine du core et de Keycloak (`connect-src`) s'ils sont sur un autre
+  hôte que le shell, et les hôtes de fonds de carte (`img-src`). Pas de rate-limit au niveau Ingress
+  (dépend du contrôleur) : le limiteur applicatif du cœur reste le seul.
+- `otel-lgtm` : `observability.existingClaim` pour garder métriques, logs et traces au redémarrage.
 
 ## Ce qui est vérifié, et par quoi
 

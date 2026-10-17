@@ -37,9 +37,8 @@ spec:
         - name: core
           image: {{ include "geostudio.image" (dict "root" . "name" "core") }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          # alembic upgrade head à chaque démarrage, comme le compose ; démarrer les réplicas l'un après l'autre
-          # sur une migration lourde (runbook HA).
-          command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8200"]
+          # Migrations : Job hook pré-install/pré-upgrade (migrations-job.yaml, AUD-033), pas au démarrage.
+          command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8200"]
           ports:
             - {name: http, containerPort: 8200}
           envFrom:

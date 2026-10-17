@@ -98,6 +98,20 @@ def test_refresh_csp_dynamic_conf_task_writes_the_rendered_file(tmp_path, monkey
     assert "Content-Security-Policy" in target.read_text()
 
 
+def test_refresh_csp_dynamic_conf_task_is_a_noop_without_the_traefik_volume(tmp_path, monkeypatch):
+    """AUD-030 : en Helm il n'y a ni Traefik ni volume /csp-dynamic ; le
+    makedirs à la racine d'un conteneur non-root échouait toutes les 5 min,
+    soit un job en échec permanent (et l'alerte ops-jobs-failed)."""
+    Session = _make_session()
+    monkeypatch.setattr(security_jobs, "_session_factory", lambda: Session)
+    target = tmp_path / "absent" / "dynamic-conf.yml"
+    monkeypatch.setattr(security_jobs, "CSP_DYNAMIC_CONF_PATH", str(target))
+
+    security_jobs.refresh_csp_dynamic_conf_task(timestamp=0)
+
+    assert not target.parent.exists()
+
+
 def test_script_src_includes_computed_extension_hosts():
     """SP-48/GAP-72 blocage 3 (REV-166) : Tanguy a tranché Option A —
     script-src s'élargit à l'origine déclarée de chaque extension

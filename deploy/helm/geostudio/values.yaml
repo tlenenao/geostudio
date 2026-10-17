@@ -137,8 +137,11 @@ config:
   CORE_ADMIN_TOOLS_GATEWAY_URL: ""
   SHELL_BASE_URL: ""
 
+migrations:                         # Job hook pré-install/pré-upgrade `alembic upgrade head` (AUD-033)
+  activeDeadlineSeconds: 1800
+
 core:
-  replicas: 2                       # HA (ARC-32) : limiteur partagé Postgres, `core` sans état
+  replicas: 2                      # HA (ARC-32) : limiteur partagé Postgres, `core` sans état
   pdb: {minAvailable: 1}            # PodDisruptionBudget (rendu si replicas > 1)
   resources: {requests: {cpu: 250m, memory: 512Mi}, limits: {memory: 2Gi}}
   podSecurityUid: 1001
@@ -172,6 +175,10 @@ shell:
     VITE_AUTH_MODE: "oidc"
   resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {memory: 256Mi}}
   podSecurityUid: 101               # nginx
+  # CSP posée par nginx (pas de Traefik en Helm, AUD-030) ; en-tête Report-Only tant que
+  # config.CORE_CSP_MODE != "enforce". Ajouter à connect-src l'origine du core et de Keycloak
+  # s'ils ne sont pas servis sur l'origine du shell, et les hôtes de fonds de carte à img-src.
+  csp: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; worker-src 'self' blob:; object-src 'none'"
 
 observability:                      # profil compose « observability » (otel-lgtm ; dashboards non provisionnés par le chart)
   enabled: false
