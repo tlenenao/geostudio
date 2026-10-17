@@ -301,3 +301,12 @@ Le détail est dans [`complement/ADDENDUM.md`](complement/ADDENDUM.md) ; en cas 
 - **AUD-152** : injection de formule CSV via `writer.ftp` (`cloudfiles.py:859`), absente de cette synthèse. Les autres écritures CSV/XLSX sont neutralisées.
 - **Corrections 2 à 14 de l'addendum §3** (libellés AUD-041/029/037/039/025/027/031/184/033, statut CI 7/12, restore-drill premier cron le 2026-10-19, lignes périmées, CLAUDE.md non-root) : à appliquer avant de lotir ces AUD.
 - **Échantillon de 10 AUD revérifiés : 10/10 confirmés**, avec des réserves de détail sur 7.
+
+## 8. Décisions tranchées (Tanguy, 2026-10-17)
+
+D1 à D12 : **toutes tranchées conformément à la recommandation du §5** (horizontal + 3 verticales ; Apache-2.0 + services ; instance dédiée par client, pas de SaaS multi-tenant avant L4 ; SDK ouvert en préversion après L10 ; offline = SP restreint formulaires/sync/photos ; temps réel = rafraîchissement + SSE alertes ; i18n mécanisme + anglais ; vérification INPI/EUIPO avant communication ; OGC sans imiter FeatureServer ; OGC Records + ISO 19139 ; audit RGAA tiers, RGS/SecNumCloud à l'hébergeur).
+
+Décisions de lot :
+- **AUD-002** (avg/min/max sur source `features` échantillonnée) : **basculer sur la source `statistics`** (agrégat serveur exact), contre la recommandation (« — » non calculable). À traiter dans un SP dédié ; en attendant, le repli sur le total reste un défaut connu.
+- **Lot suivant** : L1a + L3 en parallèle, puis L2, L5, L1b, L6, L7.
+- **Rejeu réel de l'export** (AUD-133/001/003) : avant la fusion de la PR #185.
