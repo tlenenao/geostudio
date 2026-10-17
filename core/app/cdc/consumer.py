@@ -166,10 +166,11 @@ def _drop_slot(raw_dsn: str) -> None:
 
 
 def ensure_replication_slot(raw_dsn: str) -> bool:
-    """Idempotent. Retourne True si le slot vient d'être (re)créé : l'appelant doit alors
-    reconstruire le lac (AUD-012 — un slot perdu ou absent n'a pas vu les DELETE de
-    l'intervalle). Un slot `lost` (WAL retenu au-delà de `max_slot_wal_keep_size`) ne
-    peut plus être lu : il est supprimé puis recréé. Retry avec backoff sur ObjectInUse
+    """Idempotent. Retourne True si le slot vient d'être (re)créé. Le lac doit avoir été
+    reconstruit AVANT (AUD-012 — un slot perdu ou absent n'a pas vu les DELETE de
+    l'intervalle ; cf. app.cdc.main._rebuild_lake_if_slot_unusable). Un slot `lost` (WAL
+    retenu au-delà de `max_slot_wal_keep_size`) ne peut plus être lu : il est supprimé
+    puis recréé. Retry avec backoff sur ObjectInUse
     (cf. docstring module, déviation 2)."""
     status = slot_wal_status(raw_dsn)
     if status == "lost":

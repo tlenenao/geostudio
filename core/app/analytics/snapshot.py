@@ -29,6 +29,7 @@ from app.sql_ident import quote_ident_duckdb as _qi
 
 logger = logging.getLogger(__name__)
 _SNAP_RE = re.compile(r"snap-(\d+)-(\d+)\.parquet$")
+_REBUILD_RE = re.compile(r"/rebuild-(\d+)$")
 _HIVE_COLS = "tenant_id, collection_id, dt"
 
 
@@ -44,17 +45,28 @@ def raw_glob(base_uri: str, tenant_id: str, collection_id: str) -> str:
     return f"{base_uri}/tenant_id={tenant_id}/collection_id={collection_id}/dt=*/*.parquet"
 
 
+def rebuild_marker_name(lsn: int) -> str:
+    """Marqueur posé dans `snapshot/` après une purge du lac (slot CDC recréé, AUD-012) :
+    tout snapshot de `max_lsn < lsn` décrit l'état d'avant la purge et n'est plus jamais
+    lu ni repris comme base (revue finale L1b, I3 : un cycle en cours pendant la purge
+    publiait un état périmé, perpétué par les cycles suivants)."""
+    return f"rebuild-{lsn}"
+
+
 def list_snapshots(
     conn: duckdb.DuckDBPyConnection, base_uri: str, tenant_id: str, collection_id: str
 ) -> list[tuple[str, int, int]]:
-    """(uri, cut_ts_ms, max_lsn), du plus récent au plus ancien."""
-    glob = f"{snapshot_dir(base_uri, tenant_id, collection_id)}/snap-*.parquet"
+    """(uri, cut_ts_ms, max_lsn), du plus récent au plus ancien ; les snapshots antérieurs
+    au dernier marqueur de reconstruction sont exclus."""
+    glob = f"{snapshot_dir(base_uri, tenant_id, collection_id)}/*"
     found = []
+    floor = 0
     for (uri,) in conn.execute(f"SELECT file FROM glob({_lit(glob)})").fetchall():
-        m = _SNAP_RE.search(uri)
-        if m:
+        if m := _SNAP_RE.search(uri):
             found.append((uri, int(m.group(1)), int(m.group(2))))
-    return sorted(found, key=lambda s: s[1], reverse=True)
+        elif m := _REBUILD_RE.search(uri):
+            floor = max(floor, int(m.group(1)))
+    return sorted((s for s in found if s[2] >= floor), key=lambda s: s[1], reverse=True)
 
 
 def _readable(conn: duckdb.DuckDBPyConnection, uri: str) -> bool:

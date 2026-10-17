@@ -154,10 +154,10 @@ def run_snapshot_cycle(
 @app.task(queue="cdc", queueing_lock="run_snapshot_cycle_task", lock="run_snapshot_cycle")
 def run_snapshot_cycle_task(timestamp: int) -> None:
     """REV-280a : snapshot horaire d'état courant (flag CORE_LAKE_SNAPSHOT_ENABLED,
-    éteint par défaut). Tourne dans `worker` (accès base pour lister les
+    allumé par défaut depuis AUD-013). Tourne dans `worker` (accès base pour lister les
     collections, DuckDB borné par CORE_DUCKDB_*). Pas de notification : tâche
     d'entretien sans propriétaire ; l'échec est journalisé et rejoué au cycle suivant."""
-    if (os.environ.get("CORE_LAKE_SNAPSHOT_ENABLED") or "false").lower() not in ("1", "true"):
+    if (os.environ.get("CORE_LAKE_SNAPSHOT_ENABLED") or "true").lower() not in ("1", "true"):
         return
     bucket = os.environ.get("S3_CDC_BUCKET", "geostudio-cdc")
     endpoint, key, secret = (

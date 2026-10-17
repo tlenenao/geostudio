@@ -19,6 +19,7 @@ from app import observability
 observability.setup()
 
 from app.analytics import lake_purge  # noqa: E402
+from app.analytics.snapshot import rebuild_marker_name  # noqa: E402
 from app.cdc import (  # noqa: E402  (après setup(), même patron que app.jobs)
     backfill,
     consumer,
@@ -117,16 +118,33 @@ def _write_and_upload(
 _UNMANAGED_RECHECK_SECONDS = 60.0
 
 
-def _purge_lake(collection_meta: dict, *, s3_client, bucket: str) -> int:
-    """AUD-012 : slot recréé = changements de l'intervalle jamais vus (DELETE compris) ;
-    le lac de chaque collection est vidé, le backfill de démarrage le reconstruit.
-    ponytail: un cycle de snapshot (worker) en cours pendant la purge peut republier un
-    état antérieur ; fenêtre étroite (slot perdu + cycle horaire), rattrapée au
-    prochain slot perdu seulement — verrou partagé avec run_snapshot_cycle si observé."""
-    return sum(
-        lake_purge.purge_prefix(s3_client, bucket=bucket, prefix=lake_purge.lake_prefix(tid, cid))
-        for cid, tid, *_rest in collection_meta.values()
-    )
+def _purge_lake(collection_meta: dict, *, s3_client, bucket: str, marker_lsn: int) -> int:
+    """AUD-012 : slot absent ou perdu = changements de l'intervalle jamais vus (DELETE
+    compris) ; le lac de chaque collection est vidé, le backfill de démarrage le
+    reconstruit. Un marqueur `snapshot/rebuild-<marker_lsn>` (LSN lue AVANT la purge)
+    écarte tout snapshot d'avant la purge, y compris celui qu'un cycle en cours (worker)
+    publierait après elle (revue finale L1b, I3)."""
+    purged = 0
+    for cid, tid, *_rest in collection_meta.values():
+        prefix = lake_purge.lake_prefix(tid, cid)
+        purged += lake_purge.purge_prefix(s3_client, bucket=bucket, prefix=prefix)
+        storage.upload_bytes(
+            s3_client,
+            bucket=bucket,
+            key=f"{prefix}snapshot/{rebuild_marker_name(marker_lsn)}",
+            data=b"",
+        )
+    return purged
+
+
+def _rebuild_lake_if_slot_unusable(raw_dsn: str, session, collection_meta: dict, **s3) -> bool:
+    """Purge AVANT la (re)création du slot (revue finale L1b, I2) : un crash entre les deux
+    laisse le slot absent/perdu, la purge (idempotente) est refaite au redémarrage — alors
+    qu'un slot déjà recréé ne la redéclencherait plus jamais."""
+    if consumer.slot_wal_status(raw_dsn) not in (None, "lost"):
+        return False
+    _purge_lake(collection_meta, marker_lsn=backfill.current_wal_lsn(session), **s3)
+    return True
 
 
 def run() -> None:
@@ -152,13 +170,17 @@ def run() -> None:
         return
     election.watch_leadership(election_guard)
 
-    slot_recreated = consumer.ensure_replication_slot(raw_dsn)
+    with session_factory() as session:
+        collection_meta = _load_collection_meta(session)
+        _rebuild_lake_if_slot_unusable(
+            raw_dsn, session, collection_meta, s3_client=s3_client, bucket=s3_bucket
+        )
+    # Hors de toute transaction : la création d'un slot logique attend la fin des
+    # transactions en cours, la session ci-dessus comprise.
+    consumer.ensure_replication_slot(raw_dsn)
 
     buffer = CdcBufferManager()
     with session_factory() as session:
-        collection_meta = _load_collection_meta(session)
-        if slot_recreated:
-            _purge_lake(collection_meta, s3_client=s3_client, bucket=s3_bucket)
         boundary_lsn = backfill.current_wal_lsn(session)
         for table_name, (_cid, _tid, geometry_column, _srid, pk_column) in collection_meta.items():
             rows = backfill.backfill_table(
