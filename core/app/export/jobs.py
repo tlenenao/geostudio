@@ -21,7 +21,13 @@ from app.db import request_scoped_session
 from app.egress_guard import check_url
 from app.export import repository as export_repo
 from app.export.models import ExportJob
-from app.export.rendering import RENDER_TIMEOUT_MS, RenderPage, page_pixels, render_export
+from app.export.rendering import (
+    RENDER_TIMEOUT_MS,
+    RenderPage,
+    export_scale,
+    page_pixels,
+    render_export,
+)
 from app.ingestion.storage import ensure_uploads_bucket, make_s3_client
 from app.items import repository as items_repo
 from app.job_errors import public_error
@@ -275,6 +281,7 @@ def _launch_and_navigate(
     viewport: tuple[int, int] | None = None,
     core_bridge: tuple[str, str] | None = None,
     export_token: str | None = None,
+    scale: float = 1.0,
 ) -> RenderPage:
     # Seule fonction de ce module qui a besoin d'un vrai Chromium — isolée
     # pour être monkeypatchée en test (cf. tests/test_export_jobs.py). La
@@ -302,6 +309,8 @@ def _launch_and_navigate(
         page_kw: dict = {"service_workers": "block"}  # un SW contournerait page.route
         if viewport:
             page_kw["viewport"] = {"width": viewport[0], "height": viewport[1]}
+        if scale > 1:
+            page_kw["device_scale_factor"] = scale  # AUD-058 : dpi d'export
         page = browser.new_page(**page_kw)
         shell = urlparse(url)
         shell_origin = f"{shell.scheme}://{shell.netloc}"
@@ -420,6 +429,7 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
         browser_page = _launch_and_navigate(
             target_url,
             viewport=page_pixels(print_layout),
+            scale=export_scale(print_layout),
             core_bridge=core_bridge,
             export_token=token,
         )

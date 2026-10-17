@@ -226,7 +226,7 @@ def _trigger_due_reports(session_factory) -> None:
                     tenant_id=tenant_id,
                     item_id=bookmark.appId,
                     user_id=owner.id,
-                    format="pdf",
+                    format=payload.format,
                     page_id=bookmark.pageId,
                     ctx=ctx,
                 )
@@ -334,6 +334,12 @@ def _notify_pending_reports(session_factory) -> None:
             job = export_repo.get_job(session, tenant_id=run.tenant_id, job_id=run.export_job_id)
             if job is None or job.status not in ("done", "error"):
                 continue  # rendu encore en cours — on repassera au tick suivant
+            if job.status == "error" and reports_repo.retry_scheduled(session, run):
+                # AUD-058 : un essai de rattrapage est prévu (list_due_reports) ; la panne
+                # n'est notifiée qu'après le dernier essai.
+                reports_repo.mark_notified(session, run_id=run.id)
+                session.commit()
+                continue
 
             # Filet large, jumeau de celui d'app.alerts.jobs.evaluate_alert_task :
             # tout ce qui suit peut lever autre chose qu'une NotifyError

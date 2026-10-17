@@ -591,8 +591,19 @@ class AlertRulePayload(BaseModel):
         return self
 
 
+class ReportRetry(BaseModel):
+    """AUD-058 : un rendu en erreur est rejoué (nouveau run) avant le prochain cron, puis
+    la panne est notifiée une seule fois, après le dernier essai."""
+
+    maxAttempts: int = Field(default=2, ge=1, le=5)  # essais au total, premier compris
+    delayMinutes: int = Field(default=15, ge=1, le=1440)
+
+
 class ReportSchedulePayload(BaseModel):
     bookmarkItemId: str
+    # AUD-058 : le rapport n'était que PDF.
+    format: Literal["pdf", "png"] = "pdf"
+    retry: ReportRetry | None = None
     refreshPolicy: (
         PipelineRefreshPolicy  # réutilisé tel quel, même forme que la planification pipeline/alerte
     )
@@ -634,6 +645,8 @@ class AtlasConfig(BaseModel):
     titleTemplate: str | None = Field(default=None, max_length=500)
     fields: list[AtlasField] = Field(default_factory=list, max_length=50)
     maxPages: int = Field(default=50, ge=1, le=200)
+    # AUD-057 : tri reproductible (`champ` ou `-champ` pour décroissant) ; absent = ordre du cœur.
+    sortBy: str | None = Field(default=None, max_length=128, pattern=r"^-?[A-Za-z_][A-Za-z0-9_]*$")
 
 
 class PrintLayout(BaseModel):
@@ -647,6 +660,9 @@ class PrintLayout(BaseModel):
     # worker n'a alors aucune requête sortante à faire, donc pas de SSRF).
     scaleBar: bool = False
     northArrow: bool = False
+    # AUD-058 : résolution de rendu (la carte WebGL était figée à 96 dpi). Plafonnée côté
+    # worker (côté long <= 8192 px).
+    dpi: Literal[96, 150, 300, 600] = 150
     freeText: str | None = Field(default=None, max_length=2000)
     logo: str | None = Field(default=None, max_length=400_000)
     # ARC-30 : mise en page en série (atlas). Absent = export d'une seule page.
