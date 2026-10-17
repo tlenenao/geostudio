@@ -147,10 +147,44 @@ def make_worker_middleware(*, tracer_provider=None):
 otel_worker_middleware = make_worker_middleware()
 
 
+# Une ligne par file CONNUE (présente dans procrastinate_jobs), valeur 0
+# comprise : une file vide qui disparaîtrait de la série ferait sonner les
+# règles en `noDataState: Alerting` sur une instance au repos (SP-L3).
+# ponytail: GROUP BY sur toute la table à chaque tick d'export (aucune purge
+# de procrastinate_jobs aujourd'hui) ; index/purge si le tick ralentit.
+_JOBS_GAUGES_SQL = {
+    "geostudio.jobs.backlog": (
+        "SELECT queue_name, COUNT(*) FILTER (WHERE status IN ('todo', 'doing')) "
+        "FROM procrastinate_jobs GROUP BY queue_name",
+        "Jobs procrastinate en attente ou en cours, par file",
+        "",
+    ),
+    "geostudio.jobs.failed": (
+        "SELECT j.queue_name, COUNT(DISTINCT j.id) FILTER ("
+        "WHERE j.status = 'failed' AND e.at > now() - interval '24 hours') "
+        "FROM procrastinate_jobs j LEFT JOIN procrastinate_events e "
+        "ON e.job_id = j.id AND e.type = 'failed' GROUP BY j.queue_name",
+        "Jobs procrastinate passés en échec dans les dernières 24 heures, par file",
+        "",
+    ),
+    "geostudio.jobs.oldest_age_seconds": (
+        "SELECT j.queue_name, COALESCE(EXTRACT(EPOCH FROM now() "
+        "- MIN(COALESCE(j.scheduled_at, e.at)) FILTER (WHERE j.status = 'todo' "
+        "AND (j.scheduled_at IS NULL OR j.scheduled_at <= now()))), 0) "
+        "FROM procrastinate_jobs j LEFT JOIN procrastinate_events e "
+        "ON e.job_id = j.id AND e.type = 'deferred' GROUP BY j.queue_name",
+        "Âge du plus ancien job exigible en attente d'un worker, par file",
+        "s",
+    ),
+}
+
+
 def register_jobs_backlog_gauge(engine, *, meter=None) -> None:
-    """ObservableGauge geostudio.jobs.backlog, un point de données par file
-    (attribut `queue`) — compte les lignes procrastinate_jobs en statut
-    todo/doing. Callback appelé paresseusement à chaque tick d'export du
+    """ObservableGauges geostudio.jobs.{backlog,failed,oldest_age_seconds},
+    un point de données par file (attribut `queue`, cf. _JOBS_GAUGES_SQL) —
+    backlog compte les lignes procrastinate_jobs en statut todo/doing
+    (SP-10b) ; failed et oldest_age_seconds ajoutés par SP-L3 (AUD-035).
+    Callback appelé paresseusement à chaque tick d'export du
     PeriodicExportingMetricReader (déjà posé par setup(), SP-10a) — aucune
     nouvelle boucle de polling, aucun nouveau thread.
 
@@ -167,32 +201,28 @@ def register_jobs_backlog_gauge(engine, *, meter=None) -> None:
 
     meter = meter or metrics.get_meter(__name__)
 
-    def _callback(options):
-        try:
-            with engine.connect() as conn:
-                rows = conn.execute(
-                    text(
-                        "SELECT queue_name, COUNT(*) AS n FROM procrastinate_jobs "
-                        "WHERE status IN ('todo', 'doing') GROUP BY queue_name"
-                    )
-                )
-                return [Observation(count, {"queue": queue_name}) for queue_name, count in rows]
-        except ProgrammingError:
-            # procrastinate_jobs peut ne pas encore exister (worker pas
-            # encore démarré / `schema --apply` pas encore joué) — le
-            # endpoint OTLP étant désormais inconditionnel (SP-10b Task 1),
-            # ce callback tourne à chaque tick d'export dans tout
-            # déploiement, y compris avant que la table existe. On ne
-            # laisse pas cette exception remonter du callback ; le prochain
-            # tick réessaiera une fois la table créée.
-            return []
+    def _make_callback(sql: str):
+        def _callback(options):
+            try:
+                with engine.connect() as conn:
+                    rows = conn.execute(text(sql))
+                    return [Observation(float(v), {"queue": queue}) for queue, v in rows]
+            except ProgrammingError:
+                # procrastinate_jobs peut ne pas encore exister (worker pas
+                # encore démarré / `schema --apply` pas encore joué) — le
+                # endpoint OTLP étant désormais inconditionnel (SP-10b Task 1),
+                # ce callback tourne à chaque tick d'export dans tout
+                # déploiement, y compris avant que la table existe. On ne
+                # laisse pas cette exception remonter du callback ; le prochain
+                # tick réessaiera une fois la table créée.
+                return []
 
-    meter.create_observable_gauge(
-        "geostudio.jobs.backlog",
-        callbacks=[_callback],
-        unit="",
-        description="Jobs procrastinate en attente ou en cours, par file",
-    )
+        return _callback
+
+    for name, (sql, description, unit) in _JOBS_GAUGES_SQL.items():
+        meter.create_observable_gauge(
+            name, callbacks=[_make_callback(sql)], unit=unit, description=description
+        )
 
 
 def register_cdc_lag_gauge(get_lag_seconds, *, meter=None) -> None:
