@@ -189,12 +189,14 @@ def read_terrain3d_tile(
     if config is None or config.config.terrain3d is None:
         raise HTTPException(status_code=404, detail="terrain not found")
     source_key = config.config.terrain3d.sourceKey
+    # AUD-056 : connexion rendue avant l'appel sortant (cf. raster/routes.py).
+    session.commit()
 
     try:
         resp = httpx.get(
             f"{titiler_url.rstrip('/')}/cog/tiles/{z}/{x}/{y}.png",
             params={"url": f"s3://{bucket}/{source_key}", "algorithm": "terrarium"},
-            timeout=30.0,
+            timeout=10.0,
         )
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail="terrain tile service unavailable") from exc

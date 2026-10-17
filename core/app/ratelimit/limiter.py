@@ -73,6 +73,10 @@ _GEOCODE_RE = re.compile(r"^/v1/geocode(/batch|/reverse|/jobs)?$")
 # AUD-155 : lectures anonymes coûteuses (rendu PIL, count exact, proxy TiTiler).
 # ponytail: 600/min par appelant tolère un panoramique rapide ; à resserrer si la
 # saturation est mesurée. Les tuiles vecteur du cœur restent hors budget (exclues à dessein).
+# AUD-056 : tuiles vecteur du cœur, groupe propre au budget large (une carte en
+# émet des dizaines par vue) mais borné, anonymes sur collection publique compris.
+# ponytail: 3000/min par appelant ; à resserrer si la saturation est mesurée.
+_CORE_TILES_RE = re.compile(r"^/v1/collections/[^/]+/tiles/\d+/\d+/\d+\.mvt$")
 _OGC_READ_RE = re.compile(r"^/v1/ows/|^/v1/(raster|terrain3d)/[^/]+/tiles/")
 # AUD-157 : calcul zonal (lecture raster en mémoire).
 _ZONAL_RE = re.compile(r"^/v1/raster/[^/]+/zonal-stats$")
@@ -97,6 +101,7 @@ _BUDGETS = {
     "geocode": 60,
     "public-submit": 20,
     "ogc-read": 600,
+    "tiles": 3000,
     "zonal": 10,
     # ARC-34 : compté par appel amont Valhalla (REST, MCP, ops de pipeline), pas par route ;
     # route_group ne le renvoie jamais, seul app.routing.client le consomme.
@@ -178,6 +183,8 @@ def route_group(
         return "geocode"
     if method == "GET" and _OGC_READ_RE.match(path):
         return "ogc-read"
+    if method == "GET" and _CORE_TILES_RE.match(path):
+        return "tiles"
     if method == "POST" and _ZONAL_RE.match(path):
         return "zonal"
     if method == "POST" and _PUBLIC_SUBMIT_RE.match(path):
