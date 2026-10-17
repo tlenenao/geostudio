@@ -274,14 +274,19 @@ def create_app() -> FastAPI:
         import logging
 
         logging.getLogger("app.errors").exception("unhandled exception on %s", request.url.path)
+        # Rendu par ServerErrorMiddleware, hors de RequestIdMiddleware : l'en-tête
+        # est reposé ici, et l'identifiant donné dans le corps pour le support.
+        request_id = observability.current_request_id()
         return JSONResponse(
             status_code=500,
             media_type="application/problem+json",
+            headers={"X-Request-ID": request_id} if request_id else None,
             content={
                 "type": "about:blank",
                 "title": HTTPStatus.INTERNAL_SERVER_ERROR.phrase,
                 "status": 500,
                 "detail": "internal server error",
+                "requestId": request_id,
             },
         )
 
@@ -605,6 +610,9 @@ def create_app() -> FastAPI:
     # « * » le laissait forger par tout pair atteignant core:8000, donc
     # contourner les budgets par IP (/share-links, /embed, anonymes).
     app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=trusted_proxy_hosts())
+    # Ajouté en dernier = le plus externe : les 403/411/413/429 des middlewares
+    # ci-dessus portent aussi X-Request-ID (AUD-040).
+    app.add_middleware(observability.RequestIdMiddleware)
 
     return app
 

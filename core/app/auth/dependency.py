@@ -6,6 +6,7 @@ import jwt
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
+from app import observability
 from app.apikeys import service as api_key_service
 from app.auth.export_tokens import ExportTokenError, decode_export_token, is_export_token
 from app.db import get_session
@@ -193,6 +194,12 @@ def get_current_user(
     authorization: str = Header(default=""),
     session: Session = Depends(get_session, scope="function"),
 ) -> User:
+    user = _resolve_current_user(authorization, session)
+    observability.tag_current_span_with_user(user)  # AUD-040
+    return user
+
+
+def _resolve_current_user(authorization: str, session: Session) -> User:
     # REV-012 : la résolution du tenant (get_or_create_default_tenant peut
     # INSÉRER une ligne) ne doit se produire qu'après ce contrôle — sinon
     # toute requête non authentifiée sur une route protégée déclenche un

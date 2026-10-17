@@ -10,10 +10,14 @@ par défaut, toute la suite de tests), aucun exportateur n'est attaché :
 spans/métriques/logs sont créés mais jamais envoyés, coût négligeable, zéro
 appel réseau."""
 
+import contextvars
 import json
 import logging
 import os
+import re
 import sys
+import uuid
+from typing import Any
 
 from opentelemetry import metrics, trace
 from opentelemetry.sdk.metrics import MeterProvider
@@ -23,6 +27,54 @@ from opentelemetry.sdk.trace import TracerProvider
 _configured = False
 
 _original_record_factory = logging.getLogRecordFactory()
+
+# AUD-040 : identifiant de requête — repris de l'amont (Traefik, client) s'il
+# est sûr à recopier dans un en-tête/log, sinon généré.
+_request_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("request_id", default=None)
+_REQUEST_ID_RE = re.compile(r"[A-Za-z0-9._-]{1,128}")
+
+
+def current_request_id() -> str | None:
+    return _request_id.get()
+
+
+class RequestIdMiddleware:
+    """ASGI pur (pas BaseHTTPMiddleware) : pose X-Request-ID sur la réponse,
+    l'attribut `http.request_id` sur le span serveur et le contextvar lu par
+    les logs. Le contextvar n'est jamais réinitialisé : le gestionnaire de 500
+    (ServerErrorMiddleware, hors de cette pile) le relit après l'exception."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        incoming = dict(scope.get("headers") or []).get(b"x-request-id", b"")
+        try:
+            candidate = incoming.decode("ascii")
+        except UnicodeDecodeError:
+            candidate = ""
+        rid = candidate if _REQUEST_ID_RE.fullmatch(candidate) else uuid.uuid4().hex
+        _request_id.set(rid)
+        trace.get_current_span().set_attribute("http.request_id", rid)
+
+        async def send_with_id(message):
+            if message["type"] == "http.response.start":
+                headers = [(k, v) for k, v in message.get("headers", []) if k != b"x-request-id"]
+                headers.append((b"x-request-id", rid.encode("ascii")))
+                message = {**message, "headers": headers}
+            await send(message)
+
+        await self.app(scope, receive, send_with_id)
+
+
+def tag_current_span_with_user(user: Any) -> None:
+    """Tenant et utilisateur sur le span serveur (AUD-040) — identifiants
+    internes, jamais l'e-mail ni le nom."""
+    span = trace.get_current_span()
+    span.set_attribute("enduser.id", str(user.id))
+    span.set_attribute("geostudio.tenant_id", str(user.tenant_id))
 
 
 def _record_factory_with_trace_context(*args, **kwargs):
@@ -34,6 +86,7 @@ def _record_factory_with_trace_context(*args, **kwargs):
     span_context = trace.get_current_span().get_span_context()
     record.trace_id = format(span_context.trace_id, "032x") if span_context.is_valid else None
     record.span_id = format(span_context.span_id, "016x") if span_context.is_valid else None
+    record.request_id = _request_id.get()
     return record
 
 
@@ -50,6 +103,7 @@ class JSONFormatter(logging.Formatter):
             "message": record.getMessage(),
             "trace_id": getattr(record, "trace_id", None),
             "span_id": getattr(record, "span_id", None),
+            "request_id": getattr(record, "request_id", None),
         }
         if record.exc_info:
             payload["exception"] = self.formatException(record.exc_info)
