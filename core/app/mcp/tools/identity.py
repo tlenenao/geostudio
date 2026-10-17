@@ -21,6 +21,7 @@ from app.items.schemas import ItemPage, ItemRead
 from app.roles.guards import has_privilege
 from app.roles.privileges import Privilege
 from app.sharing.authorization import ItemAccessFacts, can
+from app.sharing.claim_sync import apply_from_token_claims
 from app.sharing.geo_limits import (
     GeoLimitRefused,
     GeoLimits,
@@ -64,7 +65,7 @@ def without_thumbnail_urls(page: ItemPage) -> ItemPage:
 def resolve_actor(session, access_token) -> User:
     claims = access_token.claims
     tenant = get_or_create_default_tenant(session)
-    return get_or_create_user(
+    user = get_or_create_user(
         session,
         tenant_id=tenant.id,
         oidc_sub=access_token.subject,
@@ -75,6 +76,9 @@ def resolve_actor(session, access_token) -> User:
         bootstrap_admin=access_token.subject in admin_subs(),
         bootstrap_analyst=access_token.subject in analyst_subs(),
     )
+    # AUD-096 : mêmes groupes OIDC que le chemin REST (ne lève jamais).
+    apply_from_token_claims(session, tenant_id=tenant.id, user_id=user.id, claims=claims)
+    return user
 
 
 def require_access(session, *, user: User, item_id: str, action: str) -> ItemAccessFacts:
