@@ -35,3 +35,26 @@ def test_schema_is_applied_reflects_real_state(pg_engine):
     # vérifie seulement la cohérence du prédicat, pas un état "avant/après"
     # isolé (la base de test est partagée, comme pour cette fixture sœur).
     assert schema_is_applied(conninfo) in (True, False)
+
+
+def _conninfo() -> str:
+    return os.environ["CORE_TEST_DATABASE_URL"].replace("postgresql+psycopg://", "postgresql://")
+
+
+@pytest.mark.postgis
+def test_ensure_schema_baselines_untracked_db_then_applies_missing(pg_engine):
+    """Base existante sans suivi : la 1re passe n'applique rien (tout est déjà
+    là, sondes OK) ; une migration oubliée du suivi est rejouée exactement une fois."""
+    from sqlalchemy import text
+
+    from scripts.ensure_procrastinate_schema import _migration_files, ensure_schema
+
+    ensure_schema(_conninfo())  # garantit le schéma
+    with pg_engine.begin() as c:
+        c.execute(text("DROP TABLE IF EXISTS gs_procrastinate_migrations"))
+    assert ensure_schema(_conninfo()) == []
+    last = _migration_files()[-1].name
+    with pg_engine.begin() as c:
+        c.execute(text("DELETE FROM gs_procrastinate_migrations WHERE name = :n"), {"n": last})
+    assert ensure_schema(_conninfo()) == [last]
+    assert ensure_schema(_conninfo()) == []
