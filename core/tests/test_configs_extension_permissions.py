@@ -219,3 +219,92 @@ def test_put_config_rejects_unknown_widget_type(client):
     assert r.status_code == 422
     assert r.headers["content-type"].startswith("application/problem+json")
     assert "hologram" in r.json()["detail"]
+
+
+def _ext_app(items: list[dict], data_sources: list[dict]) -> dict:
+    return {
+        "kind": "app",
+        "dataSources": data_sources,
+        "layout": {"type": "grid", "items": items},
+    }
+
+
+def _ds(id_: str, layer: str = "", type_: str = "features", **kw) -> dict:
+    return {"id": id_, "type": type_, "service": "core", "layer": layer, "query": {}, **kw}
+
+
+def _gauge(props: dict) -> dict:
+    return {"widget": "acme.gauge", "x": 0, "y": 0, "w": 2, "h": 2, "props": props}
+
+
+def test_extension_data_source_id_is_checked_without_a_declared_prop(client):
+    # AUD-108 (a) : WidgetHost lit dataSourceId quel que soit le manifeste.
+    body = _ext_app([_gauge({"dataSourceId": "ds_b"})], [_ds("ds_b", "incidents")])
+    r = client.post("/v1/configs", json={"title": "App", "config": body})
+    assert r.status_code == 400 and "dataSourceId" in r.json()["detail"]
+
+
+def test_nested_extension_widget_is_checked(client):
+    # AUD-108 (b) : widget d'extension imbriqué dans une modale.
+    modal = {
+        "widget": "modal",
+        "x": 0,
+        "y": 0,
+        "w": 2,
+        "h": 2,
+        "props": {"items": [_gauge({"source": "ds_b"})]},
+    }
+    body = _ext_app([modal], [_ds("ds_b", "incidents")])
+    r = client.post("/v1/configs", json={"title": "App", "config": body})
+    assert r.status_code == 400 and "acme.gauge" in r.json()["detail"]
+
+
+def test_dataset_source_resolves_to_its_collection(client):
+    # AUD-108 (c) : une source datasetId se juge sur la collection du dataset.
+    from app.configs import repository as configs_repo
+    from app.configs.schemas import BuilderConfig
+    from app.items import repository as items_repo
+
+    with client.session_factory() as s:
+        owner = get_or_create_user(
+            s,
+            tenant_id=client.tenant_id,
+            oidc_sub="sub-1",
+            username="alice",
+            email="alice@example.com",
+            first_name="Alice",
+            last_name="Doe",
+        )
+        item = items_repo.create_item(
+            s, tenant_id=client.tenant_id, owner_id=owner.id, resource_type="dataset", title="D"
+        )
+        configs_repo.create_config(
+            s,
+            BuilderConfig.model_validate(
+                {
+                    "kind": "dataset",
+                    "dataset": {"source": "collection", "collectionId": "incidents"},
+                }
+            ),
+            item.id,
+            tenant_id=client.tenant_id,
+        )
+        s.commit()
+        dataset_id = item.id
+    body = _ext_app([_gauge({"source": "ds_d"})], [_ds("ds_d", datasetId=dataset_id)])
+    r = client.post("/v1/configs", json={"title": "App", "config": body})
+    assert r.status_code == 400 and "incidents" in r.json()["detail"]
+
+
+def test_bound_expression_on_a_data_source_prop_is_refused(client):
+    # AUD-108 (d) : une expression n'est pas jugeable à l'écriture.
+    body = _ext_app([_gauge({"source": {"$expr": "vars.ds"}})], [_ds("ds1", "communes")])
+    r = client.post("/v1/configs", json={"title": "App", "config": body})
+    assert r.status_code == 400 and "<expression>" in r.json()["detail"]
+
+
+def test_static_source_is_accepted(client):
+    # AUD-108 (e) : une source statique ne lit aucune collection.
+    body = _ext_app([_gauge({"source": "s"})], [_ds("s", type_="static")])
+    r = client.post("/v1/configs", json={"title": "App", "config": body})
+    assert r.status_code == 201, r.text
