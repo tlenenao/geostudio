@@ -3,8 +3,10 @@ import contextlib
 import os
 import re
 import time
+import tomllib
 from collections.abc import Iterator
 from http import HTTPStatus
+from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
@@ -12,6 +14,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -194,6 +197,45 @@ class _ListedOriginsCORS:
         await target(scope, receive, send)
 
 
+def _core_version() -> str:
+    """Version unique = pyproject.toml (copié en /app dans l'image). importlib.metadata
+    ne marche pas : le projet n'est pas installé comme paquet (uv --no-emit-project)."""
+    try:
+        path = Path(__file__).resolve().parent.parent / "pyproject.toml"
+        return tomllib.loads(path.read_text())["project"]["version"]
+    except (OSError, KeyError, tomllib.TOMLDecodeError):
+        return "0.0.0"
+
+
+API_DESCRIPTION = """\
+API du cœur GeoStudio (Apache-2.0).
+
+## Authentification
+Jeton `Authorization: Bearer <jeton>` : un jeton OIDC émis par Keycloak, ou une clé
+d'API de service `gsk_…` (ADR 0016). Les routes de lecture publiques (catalogue public,
+OGC API, STAC, DCAT, Records) acceptent aussi un appel anonyme ; elles ne servent alors
+que le contenu public.
+
+## Conventions
+- Toutes les routes métier sont sous `/v1` ; `/health` et `/mcp` sont hors version.
+- Pagination : `limit`/`offset` (ou `page`/`pageSize` sur le catalogue), liens `next`/`prev`.
+- Erreurs au format RFC 7807 (`application/problem+json`).
+- Concurrence optimiste : `If-Match` sur les écritures de configuration et d'entités.
+
+## Standards ouverts
+OGC API Features (Parts 1-4) sous `/v1/collections`, OGC API Records sous `/v1/records`,
+STAC sous `/v1/stac`, DCAT-AP sous `/v1/dcat`, WFS/WMS/WMTS et OGC API Tiles sous `/v1/ows`
+quand l'instance les active.
+"""
+
+
+def _tag_for(path: str) -> str:
+    parts = [p for p in path.split("/") if p]
+    if parts and parts[0] == "v1":
+        parts = parts[1:]
+    return parts[0] if parts and not parts[0].startswith("{") else "racine"
+
+
 def create_app() -> FastAPI:
     observability.setup()
     secrets_crypto.load_master_key()  # échec rapide si absente/mal formée (design SP-15e §4/§8)
@@ -228,9 +270,41 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="GeoStudio Builder Service",
         version=version,
+        description=API_DESCRIPTION,
         lifespan=lifespan,
         docs_url=None,
     )
+
+    def _openapi() -> dict:
+        """AUD-046 : contrat versionné (tag déployé, sinon pyproject.toml — jamais « dev »),
+        schéma Bearer déclaré, un tag par opération."""
+        if app.openapi_schema:
+            return app.openapi_schema
+        schema = get_openapi(
+            title=app.title,
+            version=version if version != "dev" else _core_version(),
+            description=app.description,
+            routes=app.routes,
+            openapi_version=app.openapi_version,
+            tags=app.openapi_tags,
+            servers=app.servers,
+            webhooks=app.webhooks.routes,
+            separate_input_output_schemas=app.separate_input_output_schemas,
+        )
+        schema.setdefault("components", {}).setdefault("securitySchemes", {})["bearerAuth"] = {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT OIDC ou clé d'API gsk_",
+        }
+        schema["security"] = [{"bearerAuth": []}, {}]  # {} = appel anonyme admis (routes publiques)
+        for path, ops in schema.get("paths", {}).items():
+            for op in ops.values():
+                if isinstance(op, dict) and not op.get("tags"):
+                    op["tags"] = [_tag_for(path)]
+        app.openapi_schema = schema
+        return schema
+
+    app.openapi = _openapi  # type: ignore[method-assign]
 
     # AUD-135 : schéma chargé en relatif — derrière Traefik (`/api` retiré),
     # l'URL absolue `/openapi.json` tombait sur le shell.

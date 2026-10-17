@@ -8703,11 +8703,19 @@
         "title": "WebhookUpdate",
         "type": "object"
       }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "bearerFormat": "JWT OIDC ou cl\u00e9 d'API gsk_",
+        "scheme": "bearer",
+        "type": "http"
+      }
     }
   },
   "info": {
+    "description": "API du c\u0153ur GeoStudio (Apache-2.0).\n\n## Authentification\nJeton `Authorization: Bearer <jeton>` : un jeton OIDC \u00e9mis par Keycloak, ou une cl\u00e9\nd'API de service `gsk_\u2026` (ADR 0016). Les routes de lecture publiques (catalogue public,\nOGC API, STAC, DCAT, Records) acceptent aussi un appel anonyme ; elles ne servent alors\nque le contenu public.\n\n## Conventions\n- Toutes les routes m\u00e9tier sont sous `/v1` ; `/health` et `/mcp` sont hors version.\n- Pagination : `limit`/`offset` (ou `page`/`pageSize` sur le catalogue), liens `next`/`prev`.\n- Erreurs au format RFC 7807 (`application/problem+json`).\n- Concurrence optimiste : `If-Match` sur les \u00e9critures de configuration et d'entit\u00e9s.\n\n## Standards ouverts\nOGC API Features (Parts 1-4) sous `/v1/collections`, OGC API Records sous `/v1/records`,\nSTAC sous `/v1/stac`, DCAT-AP sous `/v1/dcat`, WFS/WMS/WMTS et OGC API Tiles sous `/v1/ows`\nquand l'instance les active.\n",
     "title": "GeoStudio Builder Service",
-    "version": "dev"
+    "version": "0.1.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -8728,7 +8736,10 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Health"
+        "summary": "Health",
+        "tags": [
+          "health"
+        ]
       }
     },
     "/v1/": {
@@ -8744,7 +8755,10 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Landing Page"
+        "summary": "Landing Page",
+        "tags": [
+          "racine"
+        ]
       }
     },
     "/v1/admin/api-keys": {
@@ -8798,7 +8812,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Admin List Keys"
+        "summary": "Admin List Keys",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/v1/admin/api-keys/{key_id}": {
@@ -8847,7 +8864,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Admin Revoke Key"
+        "summary": "Admin Revoke Key",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/v1/admin/usage": {
@@ -8887,7 +8907,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Usage"
+        "summary": "Get Usage",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/v1/alerts/{item_id}/evaluate": {
@@ -8936,7 +8959,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Evaluate Alert Now"
+        "summary": "Evaluate Alert Now",
+        "tags": [
+          "alerts"
+        ]
       }
     },
     "/v1/alerts/{item_id}/evaluations": {
@@ -9011,7 +9037,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Alert Evaluations"
+        "summary": "Get Alert Evaluations",
+        "tags": [
+          "alerts"
+        ]
       }
     },
     "/v1/analysis/tools": {
@@ -9053,7 +9082,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Analysis Tools"
+        "summary": "List Analysis Tools",
+        "tags": [
+          "analysis"
+        ]
       }
     },
     "/v1/analytics/sql": {
@@ -9117,7 +9149,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Analytics Sql"
+        "summary": "Analytics Sql",
+        "tags": [
+          "analytics"
+        ]
       }
     },
     "/v1/api-keys": {
@@ -9161,7 +9196,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Keys"
+        "summary": "List Keys",
+        "tags": [
+          "api-keys"
+        ]
       },
       "post": {
         "operationId": "create_key_v1_api_keys_post",
@@ -9209,7 +9247,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Create Key"
+        "summary": "Create Key",
+        "tags": [
+          "api-keys"
+        ]
       }
     },
     "/v1/api-keys/{key_id}": {
@@ -9258,7 +9299,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Revoke Key"
+        "summary": "Revoke Key",
+        "tags": [
+          "api-keys"
+        ]
       }
     },
     "/v1/basemaps": {
@@ -9302,7 +9346,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Basemaps"
+        "summary": "List Basemaps",
+        "tags": [
+          "basemaps"
+        ]
       },
       "post": {
         "operationId": "create_basemap_v1_basemaps_post",
@@ -9350,7 +9397,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Create Basemap"
+        "summary": "Create Basemap",
+        "tags": [
+          "basemaps"
+        ]
       }
     },
     "/v1/basemaps/{basemap_id}": {
@@ -9392,7 +9442,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Delete Basemap"
+        "summary": "Delete Basemap",
+        "tags": [
+          "basemaps"
+        ]
       }
     },
     "/v1/collections": {
@@ -9484,7 +9537,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Collections"
+        "summary": "List Collections",
+        "tags": [
+          "collections"
+        ]
       },
       "post": {
         "operationId": "register_collection_v1_collections_post",
@@ -9530,7 +9586,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Register Collection"
+        "summary": "Register Collection",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/candidates": {
@@ -9568,7 +9627,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Candidate Tables"
+        "summary": "List Candidate Tables",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/empty": {
@@ -9616,7 +9678,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Create Empty Collection Route"
+        "summary": "Create Empty Collection Route",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}": {
@@ -9658,7 +9723,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Unregister Collection"
+        "summary": "Unregister Collection",
+        "tags": [
+          "collections"
+        ]
       },
       "get": {
         "operationId": "get_collection_v1_collections__collection_id__get",
@@ -9719,7 +9787,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Collection"
+        "summary": "Get Collection",
+        "tags": [
+          "collections"
+        ]
       },
       "patch": {
         "operationId": "patch_collection_v1_collections__collection_id__patch",
@@ -9774,7 +9845,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Patch Collection"
+        "summary": "Patch Collection",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/aggregate": {
@@ -9849,7 +9923,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Aggregate Features"
+        "summary": "Aggregate Features",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/analysis": {
@@ -9926,7 +10003,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Run Collection Analysis"
+        "summary": "Run Collection Analysis",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/changes": {
@@ -10013,7 +10093,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Collection Changes"
+        "summary": "Collection Changes",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/export": {
@@ -10095,7 +10178,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Export Collection Aggregate"
+        "summary": "Export Collection Aggregate",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/export/items": {
@@ -10202,7 +10288,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Export Collection Items"
+        "summary": "Export Collection Items",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/export/jobs/{job_id}": {
@@ -10260,7 +10349,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Collection Export Job"
+        "summary": "Get Collection Export Job",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/export/jobs/{job_id}/cancel": {
@@ -10319,7 +10411,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Cancel Collection Export Job"
+        "summary": "Cancel Collection Export Job",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/geo-limits": {
@@ -10569,7 +10664,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Collection Impact"
+        "summary": "Collection Impact",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/items": {
@@ -10830,7 +10928,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Features"
+        "summary": "List Features",
+        "tags": [
+          "collections"
+        ]
       },
       "post": {
         "operationId": "create_feature_v1_collections__collection_id__items_post",
@@ -10903,7 +11004,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Create Feature"
+        "summary": "Create Feature",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/items/{fid}": {
@@ -10986,7 +11090,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Remove Feature"
+        "summary": "Remove Feature",
+        "tags": [
+          "collections"
+        ]
       },
       "get": {
         "operationId": "get_single_feature_v1_collections__collection_id__items__fid__get",
@@ -11072,7 +11179,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Single Feature"
+        "summary": "Get Single Feature",
+        "tags": [
+          "collections"
+        ]
       },
       "put": {
         "operationId": "put_feature_v1_collections__collection_id__items__fid__put",
@@ -11165,7 +11275,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Put Feature"
+        "summary": "Put Feature",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/items/{fid}/attachments": {
@@ -11255,7 +11368,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Attachments Route"
+        "summary": "List Attachments Route",
+        "tags": [
+          "collections"
+        ]
       },
       "post": {
         "operationId": "confirm_attachment_v1_collections__collection_id__items__fid__attachments_post",
@@ -11337,7 +11453,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Confirm Attachment"
+        "summary": "Confirm Attachment",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/items/{fid}/attachments/presign": {
@@ -11421,7 +11540,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Presign Attachment"
+        "summary": "Presign Attachment",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/items/{fid}/attachments/{attachment_id}": {
@@ -11497,7 +11619,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Delete Attachment Route"
+        "summary": "Delete Attachment Route",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/items/{fid}/attachments/{attachment_id}/file": {
@@ -11578,7 +11703,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Read Attachment File"
+        "summary": "Read Attachment File",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/items/{fid}/history": {
@@ -11650,7 +11778,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Entity History"
+        "summary": "Entity History",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/items/{fid}/history/{version_id}/restore": {
@@ -11727,7 +11858,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Restore Feature Version"
+        "summary": "Restore Feature Version",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/items/{fid}/related/{relation_id}": {
@@ -11850,7 +11984,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Related Records"
+        "summary": "Related Records",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/lineage": {
@@ -11899,7 +12036,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Collection Lineage"
+        "summary": "Collection Lineage",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/my-entries": {
@@ -11975,7 +12115,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "My Entries"
+        "summary": "My Entries",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/profile": {
@@ -12041,7 +12184,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Profile Collection"
+        "summary": "Profile Collection",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/quality-checks": {
@@ -12122,7 +12268,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Quality Checks"
+        "summary": "List Quality Checks",
+        "tags": [
+          "collections"
+        ]
       },
       "post": {
         "operationId": "start_quality_check_v1_collections__collection_id__quality_checks_post",
@@ -12185,7 +12334,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Start Quality Check"
+        "summary": "Start Quality Check",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/quality-checks/{report_id}": {
@@ -12259,7 +12411,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Quality Check"
+        "summary": "Get Quality Check",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/queryables": {
@@ -12323,7 +12478,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Queryables"
+        "summary": "Get Queryables",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/relations": {
@@ -12377,7 +12535,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Collection Relations"
+        "summary": "List Collection Relations",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/schema": {
@@ -12440,7 +12601,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Collection Schema"
+        "summary": "Get Collection Schema",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/sharing": {
@@ -12489,7 +12653,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Sharing"
+        "summary": "Get Sharing",
+        "tags": [
+          "collections"
+        ]
       },
       "put": {
         "operationId": "put_sharing_v1_collections__collection_id__sharing_put",
@@ -12546,7 +12713,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Put Sharing"
+        "summary": "Put Sharing",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/submission-tokens": {
@@ -12593,7 +12763,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Submission Tokens"
+        "summary": "List Submission Tokens",
+        "tags": [
+          "collections"
+        ]
       },
       "post": {
         "operationId": "create_submission_token_v1_collections__collection_id__submission_tokens_post",
@@ -12648,7 +12821,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Create Submission Token"
+        "summary": "Create Submission Token",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/submission-tokens/{token_id}": {
@@ -12699,7 +12875,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Revoke Submission Token"
+        "summary": "Revoke Submission Token",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/submissions": {
@@ -12772,7 +12951,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Submissions"
+        "summary": "List Submissions",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/submissions/{submission_id}/approve": {
@@ -12845,7 +13027,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Approve Submission"
+        "summary": "Approve Submission",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/submissions/{submission_id}/attachment": {
@@ -12917,7 +13102,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Read Submission Attachment"
+        "summary": "Read Submission Attachment",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/submissions/{submission_id}/reject": {
@@ -12994,7 +13182,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Reject Submission"
+        "summary": "Reject Submission",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/collections/{collection_id}/tiles/{z}/{x}/{y}.mvt": {
@@ -13148,7 +13339,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Collection Tile"
+        "summary": "Get Collection Tile",
+        "tags": [
+          "collections"
+        ]
       }
     },
     "/v1/compliance/purges/{purge_id}": {
@@ -13197,7 +13391,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Purge Status"
+        "summary": "Get Purge Status",
+        "tags": [
+          "compliance"
+        ]
       }
     },
     "/v1/compliance/tenants/{tenant_id}/purge": {
@@ -13256,7 +13453,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Request Tenant Purge"
+        "summary": "Request Tenant Purge",
+        "tags": [
+          "compliance"
+        ]
       }
     },
     "/v1/compliance/users/{user_id}/erase": {
@@ -13308,7 +13508,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Erase User"
+        "summary": "Erase User",
+        "tags": [
+          "compliance"
+        ]
       }
     },
     "/v1/configs": {
@@ -13358,7 +13561,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Create Config"
+        "summary": "Create Config",
+        "tags": [
+          "configs"
+        ]
       }
     },
     "/v1/configs/by-item/{item_id}": {
@@ -13400,7 +13606,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Delete Config By Item"
+        "summary": "Delete Config By Item",
+        "tags": [
+          "configs"
+        ]
       },
       "get": {
         "operationId": "get_config_by_item_v1_configs_by_item__item_id__get",
@@ -13479,7 +13688,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Config By Item"
+        "summary": "Get Config By Item",
+        "tags": [
+          "configs"
+        ]
       },
       "put": {
         "operationId": "update_config_by_item_v1_configs_by_item__item_id__put",
@@ -13552,7 +13764,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Update Config By Item"
+        "summary": "Update Config By Item",
+        "tags": [
+          "configs"
+        ]
       }
     },
     "/v1/configs/{config_id}": {
@@ -13594,7 +13809,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Delete Config"
+        "summary": "Delete Config",
+        "tags": [
+          "configs"
+        ]
       },
       "get": {
         "operationId": "get_config_v1_configs__config_id__get",
@@ -13641,7 +13859,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Config"
+        "summary": "Get Config",
+        "tags": [
+          "configs"
+        ]
       },
       "put": {
         "operationId": "update_config_v1_configs__config_id__put",
@@ -13714,7 +13935,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Update Config"
+        "summary": "Update Config",
+        "tags": [
+          "configs"
+        ]
       }
     },
     "/v1/configs/{config_id}/revisions": {
@@ -13767,7 +13991,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Revisions"
+        "summary": "List Revisions",
+        "tags": [
+          "configs"
+        ]
       }
     },
     "/v1/configs/{config_id}/rollback": {
@@ -13826,7 +14053,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Rollback Config"
+        "summary": "Rollback Config",
+        "tags": [
+          "configs"
+        ]
       }
     },
     "/v1/conformance": {
@@ -13842,7 +14072,10 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Conformance"
+        "summary": "Conformance",
+        "tags": [
+          "conformance"
+        ]
       }
     },
     "/v1/datasets/{item_id}/alerts": {
@@ -13895,7 +14128,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Alerts For Dataset"
+        "summary": "List Alerts For Dataset",
+        "tags": [
+          "datasets"
+        ]
       }
     },
     "/v1/datasets/{item_id}/arcgis/aggregate": {
@@ -13952,7 +14188,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Dataset Arcgis Aggregate"
+        "summary": "Get Dataset Arcgis Aggregate",
+        "tags": [
+          "datasets"
+        ]
       }
     },
     "/v1/datasets/{item_id}/arcgis/export": {
@@ -14018,7 +14257,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Export Dataset Arcgis Aggregate"
+        "summary": "Export Dataset Arcgis Aggregate",
+        "tags": [
+          "datasets"
+        ]
       }
     },
     "/v1/datasets/{item_id}/arcgis/export/items": {
@@ -14090,7 +14332,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Export Dataset Arcgis Items"
+        "summary": "Export Dataset Arcgis Items",
+        "tags": [
+          "datasets"
+        ]
       }
     },
     "/v1/datasets/{item_id}/arcgis/items": {
@@ -14175,7 +14420,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Dataset Arcgis Items"
+        "summary": "Get Dataset Arcgis Items",
+        "tags": [
+          "datasets"
+        ]
       }
     },
     "/v1/dcat/catalog": {
@@ -14368,7 +14616,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Extensions"
+        "summary": "List Extensions",
+        "tags": [
+          "extensions"
+        ]
       },
       "post": {
         "operationId": "register_extension_v1_extensions_post",
@@ -14414,7 +14665,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Register Extension"
+        "summary": "Register Extension",
+        "tags": [
+          "extensions"
+        ]
       }
     },
     "/v1/extensions/{extension_id}": {
@@ -14456,7 +14710,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Delete Extension"
+        "summary": "Delete Extension",
+        "tags": [
+          "extensions"
+        ]
       },
       "patch": {
         "operationId": "patch_extension_v1_extensions__extension_id__patch",
@@ -14511,7 +14768,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Patch Extension"
+        "summary": "Patch Extension",
+        "tags": [
+          "extensions"
+        ]
       }
     },
     "/v1/file-triggers": {
@@ -14555,7 +14815,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List File Triggers"
+        "summary": "List File Triggers",
+        "tags": [
+          "file-triggers"
+        ]
       },
       "post": {
         "operationId": "create_file_trigger_v1_file_triggers_post",
@@ -14603,7 +14866,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Create File Trigger"
+        "summary": "Create File Trigger",
+        "tags": [
+          "file-triggers"
+        ]
       }
     },
     "/v1/file-triggers/{trigger_id}": {
@@ -14645,7 +14911,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Delete File Trigger"
+        "summary": "Delete File Trigger",
+        "tags": [
+          "file-triggers"
+        ]
       }
     },
     "/v1/geocode": {
@@ -14997,7 +15266,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Groups"
+        "summary": "List Groups",
+        "tags": [
+          "groups"
+        ]
       },
       "post": {
         "operationId": "create_group_v1_groups_post",
@@ -15045,7 +15317,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Create Group"
+        "summary": "Create Group",
+        "tags": [
+          "groups"
+        ]
       }
     },
     "/v1/groups/claim-mappings": {
@@ -15089,7 +15364,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Claim Mappings"
+        "summary": "List Claim Mappings",
+        "tags": [
+          "groups"
+        ]
       },
       "post": {
         "operationId": "create_claim_mapping_v1_groups_claim_mappings_post",
@@ -15137,7 +15415,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Create Claim Mapping"
+        "summary": "Create Claim Mapping",
+        "tags": [
+          "groups"
+        ]
       }
     },
     "/v1/groups/claim-mappings/{mapping_id}": {
@@ -15179,7 +15460,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Delete Claim Mapping"
+        "summary": "Delete Claim Mapping",
+        "tags": [
+          "groups"
+        ]
       }
     },
     "/v1/groups/{group_id}": {
@@ -15221,7 +15505,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Delete Group"
+        "summary": "Delete Group",
+        "tags": [
+          "groups"
+        ]
       },
       "patch": {
         "operationId": "rename_group_v1_groups__group_id__patch",
@@ -15278,7 +15565,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Rename Group"
+        "summary": "Rename Group",
+        "tags": [
+          "groups"
+        ]
       }
     },
     "/v1/groups/{group_id}/members": {
@@ -15331,7 +15621,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Group Members"
+        "summary": "List Group Members",
+        "tags": [
+          "groups"
+        ]
       },
       "post": {
         "operationId": "add_member_v1_groups__group_id__members_post",
@@ -15381,7 +15674,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Add Member"
+        "summary": "Add Member",
+        "tags": [
+          "groups"
+        ]
       }
     },
     "/v1/groups/{group_id}/members/{member_id}": {
@@ -15432,7 +15728,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Remove Group Member"
+        "summary": "Remove Group Member",
+        "tags": [
+          "groups"
+        ]
       }
     },
     "/v1/harvest/feature-layers": {
@@ -15486,7 +15785,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Feature Layers"
+        "summary": "List Feature Layers",
+        "tags": [
+          "harvest"
+        ]
       }
     },
     "/v1/harvest/layers": {
@@ -15540,7 +15842,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Layers"
+        "summary": "List Layers",
+        "tags": [
+          "harvest"
+        ]
       }
     },
     "/v1/harvest/sources": {
@@ -15578,7 +15883,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Sources"
+        "summary": "List Sources",
+        "tags": [
+          "harvest"
+        ]
       },
       "post": {
         "operationId": "create_source_v1_harvest_sources_post",
@@ -15624,7 +15932,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Create Source"
+        "summary": "Create Source",
+        "tags": [
+          "harvest"
+        ]
       }
     },
     "/v1/harvest/sources/{source_id}": {
@@ -15666,7 +15977,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Delete Source"
+        "summary": "Delete Source",
+        "tags": [
+          "harvest"
+        ]
       },
       "get": {
         "operationId": "get_source_v1_harvest_sources__source_id__get",
@@ -15711,7 +16025,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Source"
+        "summary": "Get Source",
+        "tags": [
+          "harvest"
+        ]
       },
       "patch": {
         "operationId": "patch_source_v1_harvest_sources__source_id__patch",
@@ -15766,7 +16083,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Patch Source"
+        "summary": "Patch Source",
+        "tags": [
+          "harvest"
+        ]
       }
     },
     "/v1/harvest/sources/{source_id}/records": {
@@ -15835,7 +16155,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Source Records"
+        "summary": "List Source Records",
+        "tags": [
+          "harvest"
+        ]
       }
     },
     "/v1/harvest/sources/{source_id}/run": {
@@ -15882,7 +16205,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Run Source"
+        "summary": "Run Source",
+        "tags": [
+          "harvest"
+        ]
       }
     },
     "/v1/instance": {
@@ -15902,7 +16228,10 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Get Instance Info"
+        "summary": "Get Instance Info",
+        "tags": [
+          "instance"
+        ]
       }
     },
     "/v1/instance/status": {
@@ -15945,7 +16274,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Instance Status"
+        "summary": "Get Instance Status",
+        "tags": [
+          "instance"
+        ]
       }
     },
     "/v1/items": {
@@ -16143,7 +16475,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Items"
+        "summary": "List Items",
+        "tags": [
+          "items"
+        ]
       }
     },
     "/v1/items/facets": {
@@ -16268,7 +16603,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Item Facets"
+        "summary": "Get Item Facets",
+        "tags": [
+          "items"
+        ]
       }
     },
     "/v1/items/{item_id}": {
@@ -16310,7 +16648,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Delete Item"
+        "summary": "Delete Item",
+        "tags": [
+          "items"
+        ]
       },
       "get": {
         "operationId": "get_item_v1_items__item_id__get",
@@ -16357,7 +16698,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Item"
+        "summary": "Get Item",
+        "tags": [
+          "items"
+        ]
       },
       "patch": {
         "operationId": "update_item_v1_items__item_id__patch",
@@ -16430,7 +16774,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Update Item"
+        "summary": "Update Item",
+        "tags": [
+          "items"
+        ]
       }
     },
     "/v1/items/{item_id}/impact": {
@@ -16479,7 +16826,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Item Impact"
+        "summary": "Item Impact",
+        "tags": [
+          "items"
+        ]
       }
     },
     "/v1/items/{item_id}/lineage": {
@@ -16528,7 +16878,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Item Lineage"
+        "summary": "Item Lineage",
+        "tags": [
+          "items"
+        ]
       }
     },
     "/v1/items/{item_id}/share-links": {
@@ -16581,7 +16934,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Share Links Route"
+        "summary": "List Share Links Route",
+        "tags": [
+          "items"
+        ]
       },
       "post": {
         "operationId": "create_share_link_route_v1_items__item_id__share_links_post",
@@ -16638,7 +16994,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Create Share Link Route"
+        "summary": "Create Share Link Route",
+        "tags": [
+          "items"
+        ]
       }
     },
     "/v1/items/{item_id}/share-links/{link_id}": {
@@ -16689,7 +17048,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Revoke Share Link Route"
+        "summary": "Revoke Share Link Route",
+        "tags": [
+          "items"
+        ]
       }
     },
     "/v1/items/{item_id}/sharing": {
@@ -16738,7 +17100,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Sharing"
+        "summary": "Get Sharing",
+        "tags": [
+          "items"
+        ]
       },
       "put": {
         "operationId": "set_sharing_v1_items__item_id__sharing_put",
@@ -16788,7 +17153,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Set Sharing"
+        "summary": "Set Sharing",
+        "tags": [
+          "items"
+        ]
       }
     },
     "/v1/items/{item_id}/thumbnail": {
@@ -16835,7 +17203,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Read Thumbnail"
+        "summary": "Read Thumbnail",
+        "tags": [
+          "items"
+        ]
       },
       "post": {
         "operationId": "upload_thumbnail_v1_items__item_id__thumbnail_post",
@@ -16885,7 +17256,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Upload Thumbnail"
+        "summary": "Upload Thumbnail",
+        "tags": [
+          "items"
+        ]
       }
     },
     "/v1/map-icons": {
@@ -16929,7 +17303,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Map Icons"
+        "summary": "List Map Icons",
+        "tags": [
+          "map-icons"
+        ]
       },
       "post": {
         "operationId": "create_map_icon_v1_map_icons_post",
@@ -16977,7 +17354,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Create Map Icon"
+        "summary": "Create Map Icon",
+        "tags": [
+          "map-icons"
+        ]
       }
     },
     "/v1/map-icons/{icon_id}": {
@@ -17019,7 +17399,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Delete Map Icon"
+        "summary": "Delete Map Icon",
+        "tags": [
+          "map-icons"
+        ]
       }
     },
     "/v1/map-icons/{icon_id}/file": {
@@ -17082,7 +17465,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Read Map Icon File"
+        "summary": "Read Map Icon File",
+        "tags": [
+          "map-icons"
+        ]
       }
     },
     "/v1/me": {
@@ -17122,7 +17508,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Me"
+        "summary": "Get Me",
+        "tags": [
+          "me"
+        ]
       }
     },
     "/v1/metadata-catalog": {
@@ -17162,7 +17551,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Metadata Catalog"
+        "summary": "Get Metadata Catalog",
+        "tags": [
+          "metadata-catalog"
+        ]
       }
     },
     "/v1/notifications": {
@@ -17225,7 +17617,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Notifications"
+        "summary": "Get Notifications",
+        "tags": [
+          "notifications"
+        ]
       }
     },
     "/v1/notifications/preference": {
@@ -17265,7 +17660,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Preference"
+        "summary": "Get Preference",
+        "tags": [
+          "notifications"
+        ]
       },
       "patch": {
         "operationId": "patch_preference_v1_notifications_preference_patch",
@@ -17313,7 +17711,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Patch Preference"
+        "summary": "Patch Preference",
+        "tags": [
+          "notifications"
+        ]
       }
     },
     "/v1/notifications/read-all": {
@@ -17346,7 +17747,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Post Notifications Read All"
+        "summary": "Post Notifications Read All",
+        "tags": [
+          "notifications"
+        ]
       }
     },
     "/v1/notifications/unread-count": {
@@ -17386,7 +17790,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Unread Count"
+        "summary": "Get Unread Count",
+        "tags": [
+          "notifications"
+        ]
       }
     },
     "/v1/notifications/{notification_id}/read": {
@@ -17435,7 +17842,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Post Notification Read"
+        "summary": "Post Notification Read",
+        "tags": [
+          "notifications"
+        ]
       }
     },
     "/v1/public/configs/by-item/{item_id}": {
@@ -17474,7 +17884,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Public Config By Item"
+        "summary": "Get Public Config By Item",
+        "tags": [
+          "public"
+        ]
       }
     },
     "/v1/public/datasets/{collection_id}/social-preview": {
@@ -17506,7 +17919,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Public Dataset Social Preview"
+        "summary": "Public Dataset Social Preview",
+        "tags": [
+          "public"
+        ]
       }
     },
     "/v1/public/items": {
@@ -17591,7 +18007,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Public Items"
+        "summary": "List Public Items",
+        "tags": [
+          "public"
+        ]
       }
     },
     "/v1/public/items/{item_id}": {
@@ -17630,7 +18049,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Public Item"
+        "summary": "Get Public Item",
+        "tags": [
+          "public"
+        ]
       }
     },
     "/v1/public/items/{item_id}/social-preview": {
@@ -17662,7 +18084,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Public Item Social Preview"
+        "summary": "Public Item Social Preview",
+        "tags": [
+          "public"
+        ]
       }
     },
     "/v1/public/items/{item_id}/thumbnail": {
@@ -17699,7 +18124,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Public Item Thumbnail"
+        "summary": "Public Item Thumbnail",
+        "tags": [
+          "public"
+        ]
       }
     },
     "/v1/public/robots.txt": {
@@ -17710,7 +18138,10 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Public Robots"
+        "summary": "Public Robots",
+        "tags": [
+          "public"
+        ]
       }
     },
     "/v1/public/sitemap-{n}.xml": {
@@ -17742,7 +18173,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Public Sitemap Slice"
+        "summary": "Public Sitemap Slice",
+        "tags": [
+          "public"
+        ]
       }
     },
     "/v1/public/sitemap.xml": {
@@ -17753,7 +18187,10 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Public Sitemap"
+        "summary": "Public Sitemap",
+        "tags": [
+          "public"
+        ]
       }
     },
     "/v1/public/sites/{slug}": {
@@ -17792,7 +18229,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Public Site"
+        "summary": "Get Public Site",
+        "tags": [
+          "public"
+        ]
       }
     },
     "/v1/public/sites/{slug}/social-preview": {
@@ -17824,7 +18264,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Public Site Social Preview"
+        "summary": "Public Site Social Preview",
+        "tags": [
+          "public"
+        ]
       }
     },
     "/v1/public/submit/{token}": {
@@ -17871,7 +18314,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Submit"
+        "summary": "Submit",
+        "tags": [
+          "public"
+        ]
       }
     },
     "/v1/relations": {
@@ -17921,7 +18367,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Create Relation"
+        "summary": "Create Relation",
+        "tags": [
+          "relations"
+        ]
       }
     },
     "/v1/relations/{relation_id}": {
@@ -17963,7 +18412,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Delete Relation"
+        "summary": "Delete Relation",
+        "tags": [
+          "relations"
+        ]
       }
     },
     "/v1/reports/{item_id}/runs": {
@@ -18038,7 +18490,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Report Runs Route"
+        "summary": "Get Report Runs Route",
+        "tags": [
+          "reports"
+        ]
       }
     },
     "/v1/roles": {
@@ -18082,7 +18537,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Roles"
+        "summary": "Get Roles",
+        "tags": [
+          "roles"
+        ]
       },
       "post": {
         "operationId": "post_role_v1_roles_post",
@@ -18130,7 +18588,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Post Role"
+        "summary": "Post Role",
+        "tags": [
+          "roles"
+        ]
       }
     },
     "/v1/roles/catalog": {
@@ -18174,7 +18635,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Roles Catalog"
+        "summary": "Get Roles Catalog",
+        "tags": [
+          "roles"
+        ]
       }
     },
     "/v1/roles/{role_id}": {
@@ -18216,7 +18680,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Delete Role Route"
+        "summary": "Delete Role Route",
+        "tags": [
+          "roles"
+        ]
       },
       "patch": {
         "operationId": "patch_role_v1_roles__role_id__patch",
@@ -18273,7 +18740,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Patch Role"
+        "summary": "Patch Role",
+        "tags": [
+          "roles"
+        ]
       }
     },
     "/v1/routing/isochrone": {
@@ -18513,7 +18983,10 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Get App Config Schema"
+        "summary": "Get App Config Schema",
+        "tags": [
+          "schemas"
+        ]
       }
     },
     "/v1/secrets": {
@@ -18557,7 +19030,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Secrets Route"
+        "summary": "List Secrets Route",
+        "tags": [
+          "secrets"
+        ]
       },
       "post": {
         "operationId": "create_secret_route_v1_secrets_post",
@@ -18605,7 +19081,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Create Secret Route"
+        "summary": "Create Secret Route",
+        "tags": [
+          "secrets"
+        ]
       }
     },
     "/v1/secrets/{secret_id}": {
@@ -18647,7 +19126,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Delete Secret Route"
+        "summary": "Delete Secret Route",
+        "tags": [
+          "secrets"
+        ]
       },
       "put": {
         "description": "Remplace la valeur en place (P16.05) : nom et kind inchang\u00e9s, donc\nles configs qui citent le secret par son nom continuent de marcher.",
@@ -18705,7 +19187,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Update Secret Route"
+        "summary": "Update Secret Route",
+        "tags": [
+          "secrets"
+        ]
       }
     },
     "/v1/share-links/{token}": {
@@ -18745,7 +19230,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Resolve Share Link Route"
+        "summary": "Resolve Share Link Route",
+        "tags": [
+          "share-links"
+        ]
       }
     },
     "/v1/stac": {
@@ -19457,7 +19945,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Create Upload Job"
+        "summary": "Create Upload Job",
+        "tags": [
+          "uploads"
+        ]
       }
     },
     "/v1/uploads/inspect": {
@@ -19507,7 +19998,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Inspect Upload"
+        "summary": "Inspect Upload",
+        "tags": [
+          "uploads"
+        ]
       }
     },
     "/v1/uploads/presign": {
@@ -19557,7 +20051,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Presign Upload"
+        "summary": "Presign Upload",
+        "tags": [
+          "uploads"
+        ]
       }
     },
     "/v1/uploads/{job_id}": {
@@ -19606,7 +20103,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Upload Job"
+        "summary": "Get Upload Job",
+        "tags": [
+          "uploads"
+        ]
       }
     },
     "/v1/uploads/{job_id}/cancel": {
@@ -19656,7 +20156,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Cancel Upload Job"
+        "summary": "Cancel Upload Job",
+        "tags": [
+          "uploads"
+        ]
       }
     },
     "/v1/usage/summary": {
@@ -19742,7 +20245,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Usage Summary"
+        "summary": "Get Usage Summary",
+        "tags": [
+          "usage"
+        ]
       }
     },
     "/v1/usage/tasks": {
@@ -19821,7 +20327,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Usage Tasks"
+        "summary": "List Usage Tasks",
+        "tags": [
+          "usage"
+        ]
       }
     },
     "/v1/users": {
@@ -19943,7 +20452,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Users"
+        "summary": "Get Users",
+        "tags": [
+          "users"
+        ]
       }
     },
     "/v1/users/directory": {
@@ -20000,7 +20512,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Users Directory"
+        "summary": "Get Users Directory",
+        "tags": [
+          "users"
+        ]
       }
     },
     "/v1/users/{user_id}": {
@@ -20061,7 +20576,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Patch User"
+        "summary": "Patch User",
+        "tags": [
+          "users"
+        ]
       }
     },
     "/v1/webhooks": {
@@ -20105,7 +20623,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Webhooks"
+        "summary": "List Webhooks",
+        "tags": [
+          "webhooks"
+        ]
       },
       "post": {
         "operationId": "create_webhook_v1_webhooks_post",
@@ -20153,7 +20674,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Create Webhook"
+        "summary": "Create Webhook",
+        "tags": [
+          "webhooks"
+        ]
       }
     },
     "/v1/webhooks/{webhook_id}": {
@@ -20195,7 +20719,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Delete Webhook"
+        "summary": "Delete Webhook",
+        "tags": [
+          "webhooks"
+        ]
       },
       "patch": {
         "operationId": "update_webhook_v1_webhooks__webhook_id__patch",
@@ -20252,7 +20779,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Update Webhook"
+        "summary": "Update Webhook",
+        "tags": [
+          "webhooks"
+        ]
       }
     },
     "/v1/webhooks/{webhook_id}/deliveries": {
@@ -20315,7 +20845,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Deliveries"
+        "summary": "List Deliveries",
+        "tags": [
+          "webhooks"
+        ]
       }
     },
     "/v1/webhooks/{webhook_id}/deliveries/{event_id}/replay": {
@@ -20376,7 +20909,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Replay Delivery"
+        "summary": "Replay Delivery",
+        "tags": [
+          "webhooks"
+        ]
       }
     },
     "/v1/xlsform/import": {
@@ -20424,8 +20960,17 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Import Xlsform"
+        "summary": "Import Xlsform",
+        "tags": [
+          "xlsform"
+        ]
       }
     }
-  }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    },
+    {}
+  ]
 }
