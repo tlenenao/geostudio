@@ -113,7 +113,7 @@ test("AUD-122 : instance sans fond externe -> fond vierge, rectangle dessine con
   expect(map.opts.style).toBe("https://demotiles.maplibre.org/style.json");
   await vi.waitFor(() => expect(setStyle).toHaveBeenCalledTimes(1));
   const [style, { transformStyle }] = setStyle.mock.calls[0];
-  expect(style).toBe("/basemaps/blank.json");
+  expect(style).toMatchObject({ version: 8, sources: {} });
   const rect = { type: "geojson", data: {} };
   const prev = {
     sources: { "catalog-spatial-filter-rect": rect, other: {} },

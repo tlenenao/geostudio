@@ -42,3 +42,12 @@ test("un fond xyz: devient un style raster minimal", () => {
     layers: [{ type: "raster", source: "basemap" }],
   });
 });
+
+test("le fond vierge est rendu en ligne, sans URL (export statique, desktop)", () => {
+  const style = resolveBasemapStyle(BLANK_BASEMAP.style);
+  expect(typeof style).toBe("object");
+  if (typeof style === "object") {
+    expect(style.sources).toEqual({});
+    expect(style.layers.map((l) => l.type)).toEqual(["background"]);
+  }
+});

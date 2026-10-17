@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 import "../map/maplibreWorkerSetup";
-import { defaultBasemapStyle } from "../map/basemaps";
+import { defaultBasemapStyle, resolveBasemapStyle } from "../map/basemaps";
 import { useExternalBasemapsEnabled } from "../map/useBasemaps";
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
@@ -86,7 +86,7 @@ export function CatalogSpatialFilter({ onChange }: { onChange: (bbox: Bbox | nul
     if (!containerRef.current) return;
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: styleRef.current,
+      style: resolveBasemapStyle(styleRef.current),
       center: [2.35, 46.6],
       zoom: 4,
       // P33.18 : MapLibre pose sinon aria-label="Map" (anglais) sur son canevas.
@@ -200,7 +200,7 @@ export function CatalogSpatialFilter({ onChange }: { onChange: (bbox: Bbox | nul
     // setStyle remplacerait aussi la source et les couches du rectangle dessiné :
     // on les reporte telles quelles dans le nouveau style.
     const own = new Set([RECT_LAYER_ID, RECT_OUTLINE_LAYER_ID]);
-    map.setStyle(next, {
+    map.setStyle(resolveBasemapStyle(next), {
       transformStyle: (prev, style) => {
         const rect = prev?.sources[RECT_SOURCE_ID];
         if (!prev || !rect) return style;

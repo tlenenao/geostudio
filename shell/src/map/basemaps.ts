@@ -10,7 +10,9 @@ const IGN_WMTS =
   "https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&STYLE=normal" +
   "&TILEMATRIXSET=PM&TILEMATRIX={z}&TILECOL={x}&TILEROW={y}";
 
-/** Fond local sans aucune requête vers un tiers (servi par le shell : public/basemaps). */
+/** Fond local sans aucune requête réseau. `style` est un identifiant (aussi servi par le
+ * shell sous public/basemaps pour les clients tiers) : le rendu passe par
+ * resolveBasemapStyle, qui le remplace par le style en ligne ci-dessous. */
 export const BLANK_BASEMAP: Basemap = {
   id: "vierge",
   label: "Vierge",
@@ -63,9 +65,24 @@ export function allowedBasemaps(all: Basemap[], externalEnabled: boolean): Basem
 
 const XYZ_PREFIX = "xyz:";
 
+// Revue L6 I2 : style vierge en ligne — une URL "/basemaps/blank.json" sort du sous-chemin
+// d'un export statique (base "./") et devient file:///basemaps/… dans le desktop.
+const BLANK_STYLE: StyleSpecification = {
+  version: 8,
+  sources: {},
+  layers: [
+    {
+      id: "background",
+      type: "background",
+      paint: { "background-color": "#f2efe9" /* gs-raw-color-ok: fond cartographique neutre */ },
+    },
+  ],
+};
+
 /** REV-367 i : un fond `xyz:<gabarit {z}/{x}/{y}>` devient un style raster minimal ;
  * toute autre valeur (URL de style.json) est transmise telle quelle à MapLibre. */
 export function resolveBasemapStyle(style: string): string | StyleSpecification {
+  if (style === BLANK_BASEMAP.style) return BLANK_STYLE;
   if (!style.startsWith(XYZ_PREFIX)) return style;
   const tiles = style.slice(XYZ_PREFIX.length);
   // Licence ouverte Etalab 2.0 : l'attribution IGN est requise.
