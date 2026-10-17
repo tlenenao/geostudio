@@ -318,6 +318,7 @@ def test_scopes_cannot_exceed_creator_privileges(env):
         ("delete", "/v1/roles/r1"),
         ("patch", "/v1/users/u1"),
         ("post", "/v1/compliance/users/me/erase"),
+        ("post", "/v1/compliance/tenants/t1/purge"),
     ],
 )
 def test_sensitive_routes_refuse_an_api_key(env, method, path, monkeypatch):

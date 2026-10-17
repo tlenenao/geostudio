@@ -103,7 +103,9 @@ def get_purge_task_deferrer() -> Callable[[str, str, str], None]:  # overridden 
     return deferrer
 
 
-@router.post("/tenants/{tenant_id}/purge", status_code=202)
+@router.post(
+    "/tenants/{tenant_id}/purge", status_code=202, dependencies=[Depends(forbid_api_key)]
+)  # revue SP-L2 I2 : irréversible, session interactive seulement
 def request_tenant_purge(
     tenant_id: str,
     body: PurgeConfirmRequest,
