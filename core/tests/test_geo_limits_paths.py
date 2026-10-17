@@ -137,7 +137,8 @@ _RAW_TABLE_READS = {
     # ARC4-F1 (writer.collection upsert/update/delete) : instantané du journal d'entité, recherche
     # de clés et DELETE ... RETURNING pk, au rang propriétaire avec tenant explicite ; ces modes
     # sont refusés quand la cible est sous limite géographique (runtime._write_collection).
-    "pipelines/collection_writer.py": 3,
+    # + AUD-088 F14 : count(*) physique pour feature_count après `replace` (aucune ligne lue).
+    "pipelines/collection_writer.py": 4,
 }
 
 

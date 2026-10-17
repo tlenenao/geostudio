@@ -102,10 +102,11 @@ test.describe("j06b planification cron", () => {
     let onId: string;
     let yearlyId: string;
 
-    test("une politique activée « * * * * * » déclenche un run via le worker, une politique coupée non", async () => {
+    // AUD-084 : intervalle minimal de 5 min à l'enregistrement (« * * * * * » refusé en 422).
+    test("une politique activée « */5 * * * * » déclenche un run via le worker, une politique coupée non", async () => {
       test.setTimeout(400_000);
-      const on = await mk("cron-on", { refreshPolicy: { enabled: true, cron: "* * * * *" } });
-      const off = await mk("cron-off", { refreshPolicy: { enabled: false, cron: "* * * * *" } });
+      const on = await mk("cron-on", { refreshPolicy: { enabled: true, cron: "*/5 * * * *" } });
+      const off = await mk("cron-off", { refreshPolicy: { enabled: false, cron: "*/5 * * * *" } });
       const yearly = await mk("cron-yearly", {
         refreshPolicy: { enabled: true, cron: "0 3 1 1 *" },
       });
