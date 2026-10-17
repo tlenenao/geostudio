@@ -3309,6 +3309,8 @@ export interface components {
          *     `str(engine.url)`/`str(engine)` sur un engine bigquery (vérifié par
          *     grep, 2026-09-21) ; à ne jamais introduire pour ce DSN précis sans
          *     masquage explicite au préalable.
+         *     AUD-081 : aucune session en lecture seule n'est imposée côté pilote pour ce
+         *     dialecte ; utilisez un compte en lecture seule.
          */
         BigQueryDsnPayload: {
             /** Dsn */
@@ -3672,6 +3674,8 @@ export interface components {
          *     est un vrai nom DNS : garde d'egress SSRF appliquée comme pour Postgres.
          *     Comme les autres DSN, `query` n'est validée SELECT-only qu'avec le dialecte
          *     DuckDB (heuristique, cf. ReaderConnectorDatabricksParams).
+         *     AUD-081 : aucune session en lecture seule n'est imposée côté pilote pour ce
+         *     dialecte ; utilisez un compte en lecture seule.
          */
         DatabricksDsnPayload: {
             /** Dsn */
@@ -4780,6 +4784,8 @@ export interface components {
          *     mais n'est PAS du T-SQL valide — SQL Server ne connaît pas la clause
          *     LIMIT — et une requête qui passe cette validation peut donc échouer
          *     côté serveur avec une erreur explicite au moment de l'exécution.
+         *     AUD-081 : aucune session en lecture seule n'est imposée côté pilote pour ce
+         *     dialecte ; utilisez un compte en lecture seule.
          */
         MssqlDsnPayload: {
             /** Dsn */
@@ -5138,7 +5144,12 @@ export interface components {
             /** Name */
             name: string;
         };
-        /** PostgresDsnPayload */
+        /**
+         * PostgresDsnPayload
+         * @description DSN Postgres. AUD-081 : les lecteurs ouvrent une session en lecture seule,
+         *     sauf sur Redshift (paramètre `options` refusé) ; utilisez un compte en lecture
+         *     seule pour Redshift.
+         */
         PostgresDsnPayload: {
             /** Dsn */
             dsn: string;
@@ -5621,6 +5632,8 @@ export interface components {
          *     (vérifiée contre le README du dépôt snowflake-sqlalchemy, design §2.2).
          *     Comme postgres_dsn : le cœur ne parse ni ne valide ce DSN, il le passe
          *     tel quel à sa.create_engine().
+         *     AUD-081 : aucune session en lecture seule n'est imposée côté pilote pour ce
+         *     dialecte ; utilisez un compte en lecture seule.
          */
         SnowflakeDsnPayload: {
             /** Dsn */

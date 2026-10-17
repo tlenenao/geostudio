@@ -407,3 +407,30 @@ def test_geometry_cell_is_json_safe(tmp_path):
     finally:
         conn.close()
     assert rows == [["POINT (3 4)"]]
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT pg_terminate_backend(1)",
+        "SELECT pg_catalog.lo_export(1, 'x')",
+        "SELECT nextval('s')",
+        "SELECT set_config('a','b',false)",
+        "SELECT pg_read_file('/etc/passwd')",
+        'SELECT "PG_SLEEP"(10)',
+    ],
+)
+def test_side_effect_functions_are_refused(sql):
+    # AUD-081
+    from app.analytics.sql_sandbox import validate_external_select
+
+    with pytest.raises(SqlSandboxError):
+        validate_external_select(parse_ast(duckdb.connect(), sql))
+
+
+def test_plain_select_still_passes_the_external_check():
+    from app.analytics.sql_sandbox import validate_external_select
+
+    validate_external_select(
+        parse_ast(duckdb.connect(), "SELECT upper(nom), count(*) FROM t GROUP BY 1")
+    )
