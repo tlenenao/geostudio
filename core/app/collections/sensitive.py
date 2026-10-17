@@ -38,3 +38,12 @@ def masked_fields_for(session: Session, user: User | None, col) -> frozenset[str
     return (
         frozenset() if may_read_sensitive(session, user, col) else frozenset(col.sensitive_fields)
     )
+
+
+def masked_attachment_keys(session: Session, user: User | None, col) -> frozenset[str]:
+    """Clés de champs `attachment` déclarés `sensitive` que ce lecteur ne voit
+    pas (AUD-093) : même verdict que les colonnes sensibles, appliqué aux
+    pièces jointes (liste, lecture du fichier, suppression, MCP)."""
+    if may_read_sensitive(session, user, col):
+        return frozenset()
+    return frozenset(f["key"] for f in col.attachment_fields if f.get("sensitive"))
