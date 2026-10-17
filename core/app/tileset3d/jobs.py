@@ -117,7 +117,7 @@ def finalize_tileset3d_task(job_id: str, tenant_id: str) -> None:
                 kind="tileset3d",
                 tileset3d=Tileset3DPayload(
                     sourceKey=source_key,
-                    tilesetJsonPath="tileset.json",
+                    tilesetJsonPath=result.tileset_json_path,
                     totalBytes=result.total_bytes,
                     entryCount=result.entry_count,
                 ),

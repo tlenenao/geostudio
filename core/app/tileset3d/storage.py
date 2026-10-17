@@ -19,6 +19,9 @@ class Tileset3DValidationError(ValueError):
 class ValidationResult:
     entry_count: int
     total_bytes: int
+    # AUD-054 : chemin du tileset.json le moins profond (un zip à dossier racine
+    # — Cesium ion, Pix4D, Blender — est valide) ; "tileset.json" pour un zip plat.
+    tileset_json_path: str = "tileset.json"
 
 
 class S3RangeFile:
@@ -61,6 +64,11 @@ class S3RangeFile:
         return data
 
 
+# 3D Tiles 1.0 et 1.1 ; `tileset.json` lu avec un plafond (jamais 2 Gio en RAM).
+SUPPORTED_TILESET_VERSIONS = ("1.0", "1.1")
+MAX_TILESET_JSON_BYTES = 64 * 1024 * 1024
+
+
 def _is_unsafe_entry_name(name: str) -> bool:
     return name.startswith("/") or ".." in name.split("/")
 
@@ -71,6 +79,7 @@ def validate_tileset_zip(
     max_entries: int,
     max_total_bytes: int,
     max_entry_bytes: int,
+    max_tileset_json_bytes: int = MAX_TILESET_JSON_BYTES,
 ) -> ValidationResult:
     try:
         zf = zipfile.ZipFile(range_file)
@@ -99,17 +108,40 @@ def validate_tileset_zip(
             f"taille décompressée totale trop grande ({total_bytes} > {max_total_bytes})"
         )
 
-    if "tileset.json" not in zf.namelist():
-        raise Tileset3DValidationError("aucun tileset.json à la racine de l'archive")
+    candidates = sorted(
+        (i.filename for i in infos if i.filename.rsplit("/", 1)[-1] == "tileset.json"),
+        key=lambda n: (n.count("/"), n),
+    )
+    if not candidates:
+        raise Tileset3DValidationError("aucun tileset.json dans l'archive")
+    tileset_path = candidates[0]
 
-    raw = zf.read("tileset.json")
+    with zf.open(tileset_path) as entry:
+        raw = entry.read(max_tileset_json_bytes + 1)
+    if len(raw) > max_tileset_json_bytes:
+        raise Tileset3DValidationError(
+            f"tileset.json trop volumineux (> {max_tileset_json_bytes} octets)"
+        )
     try:
         parsed = json.loads(raw)
-    except json.JSONDecodeError as exc:
+    except (ValueError, RecursionError) as exc:
         raise Tileset3DValidationError(f"tileset.json n'est pas un JSON valide : {exc}") from exc
-    if not isinstance(parsed, dict) or "version" not in parsed.get("asset", {}):
+    asset = parsed.get("asset") if isinstance(parsed, dict) else None
+    if not isinstance(asset, dict) or "version" not in asset:
         raise Tileset3DValidationError(
             "tileset.json ne respecte pas le schéma 3D Tiles (asset.version manquant)"
         )
+    if str(asset["version"]) not in SUPPORTED_TILESET_VERSIONS:
+        raise Tileset3DValidationError(
+            f"version 3D Tiles non supportée : {asset['version']!r} "
+            f"(attendu {' ou '.join(SUPPORTED_TILESET_VERSIONS)})"
+        )
+    tile_root = parsed.get("root")
+    if not isinstance(tile_root, dict) or "boundingVolume" not in tile_root:
+        raise Tileset3DValidationError(
+            "tileset.json ne respecte pas le schéma 3D Tiles (root.boundingVolume manquant)"
+        )
 
-    return ValidationResult(entry_count=len(infos), total_bytes=total_bytes)
+    return ValidationResult(
+        entry_count=len(infos), total_bytes=total_bytes, tileset_json_path=tileset_path
+    )
