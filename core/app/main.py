@@ -99,6 +99,13 @@ from app.xlsform import routes as xlsform_routes
 
 MAX_CONFIG_BODY_BYTES = 5 * 1024 * 1024
 _CONFIG_WRITE_PATH_RE = re.compile(r"^/v1/configs(/[^/]+){0,2}$")
+_PUBLIC_SUBMIT_PATH_RE = re.compile(r"^/v1/public/submit/[^/]+$")
+# AUD-153 : pièce jointe (25 Mo) + charge GeoJSON (64 Ko) + enveloppe multipart.
+MAX_PUBLIC_SUBMIT_BODY_BYTES = 26 * 1024 * 1024
+_BODY_LIMITS: list[tuple[re.Pattern[str], int, str]] = [
+    (_CONFIG_WRITE_PATH_RE, MAX_CONFIG_BODY_BYTES, "config"),
+    (_PUBLIC_SUBMIT_PATH_RE, MAX_PUBLIC_SUBMIT_BODY_BYTES, "submission"),
+]
 _AGGREGATE_PATH_RE = re.compile(r"^/v1/collections/[^/]+/aggregate$")
 _EXPORT_PATH_RE = re.compile(
     r"^/v1/(collections/[^/]+|datasets/[^/]+/arcgis)/export(/items)?$"
@@ -362,20 +369,25 @@ def create_app() -> FastAPI:
         return await call_next(request)
 
     @app.middleware("http")
-    async def config_body_limit(request: Request, call_next):
+    async def body_limit(request: Request, call_next):
         # P09.07 (t02-001) : une config JSON n'a aucune raison de dépasser
         # quelques Mo ; sans plafond, un créateur sature la base (une révision
-        # par écriture), la mémoire d'uvicorn et l'historique. Rejet AVANT
+        # par écriture), la mémoire d'uvicorn et l'historique. AUD-153 : même
+        # garde sur la soumission publique anonyme (multipart). Rejet AVANT
         # lecture du corps, sur Content-Length (411 si absent : un corps
         # chunked contournerait le plafond).
-        if request.method in {"POST", "PUT"} and _CONFIG_WRITE_PATH_RE.match(request.url.path):
+        if request.method not in {"POST", "PUT"}:
+            return await call_next(request)
+        for pattern, max_bytes, label in _BODY_LIMITS:
+            if not pattern.match(request.url.path):
+                continue
             length = request.headers.get("content-length")
             if length is None or not length.isdigit():
                 status, detail = 411, "Content-Length required"
-            elif int(length) > MAX_CONFIG_BODY_BYTES:
-                status, detail = 413, f"config too large (max {MAX_CONFIG_BODY_BYTES} bytes)"
+            elif int(length) > max_bytes:
+                status, detail = 413, f"{label} too large (max {max_bytes} bytes)"
             else:
-                return await call_next(request)
+                break
             return JSONResponse(
                 status_code=status,
                 media_type="application/problem+json",
