@@ -14,7 +14,7 @@ groups:
             relativeTimeRange: {from: 300, to: 0}
             model:
               editorMode: code
-              expr: histogram_quantile(0.95, sum(rate(http_server_duration_milliseconds_bucket{http_route=~"/collections/.*/items.*"}[5m])) by (le))
+              expr: histogram_quantile(0.95, sum(rate(http_server_duration_milliseconds_bucket{http_target=~"/v1/collections/.*/items.*"}[5m])) by (le))
               instant: true
               refId: A
           - refId: B
@@ -82,7 +82,7 @@ groups:
                 - evaluator: {type: gt, params: [50]}
               refId: B
         for: 5m
-        noDataState: OK
+        noDataState: Alerting
         execErrState: Error
         labels: {severity: warning, slo: jobs-backlog}
         annotations: {summary: "Backlog de jobs procrastinate au-dessus du seuil depuis 5 minutes"}
@@ -97,7 +97,7 @@ groups:
             relativeTimeRange: {from: 300, to: 0}
             model:
               editorMode: code
-              expr: sum(rate(http_server_duration_milliseconds_count{http_status_code=~"5.."}[5m])) / sum(rate(http_server_duration_milliseconds_count[5m]))
+              expr: (sum(rate(http_server_duration_milliseconds_count{http_status_code=~"5.."}[5m])) or vector(0)) / sum(rate(http_server_duration_milliseconds_count[5m]))
               instant: true
               refId: A
           - refId: B
@@ -109,10 +109,127 @@ groups:
                 - evaluator: {type: gt, params: [0.01]}
               refId: B
         for: 5m
-        noDataState: OK
+        noDataState: Alerting
         execErrState: Error
         labels: {severity: critical, slo: api-5xx-rate}
         annotations: {summary: "Taux de réponses 5xx au-dessus de 1% depuis 5 minutes"}
+        isPaused: false
+
+      # ── Exploitation (AUD-035, SP-L3) ──────────────────────────────
+      # NoData = Alerting partout : la série disparaît précisément quand le
+      # processus qui l'émet (cdc-worker, core, postgres-exporter) est mort.
+      # PAS de règle sur geostudio_cdc_lag_seconds : cette jauge mesure le
+      # temps depuis le dernier flush d'une collection, qui croît sans fin
+      # sur une collection simplement inactive (app/cdc/main.py, flush sur
+      # changement seulement) — elle sonnerait sur toute instance au repos.
+      # Le vrai retard est le WAL non consommé du slot (ops-cdc-slot-wal) et
+      # l'absence de consommateur (ops-cdc-slot-inactive).
+      - uid: ops-cdc-slot-inactive
+        title: "Exploitation: slot CDC tenu par le cdc-worker"
+        condition: B
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: {from: 600, to: 0}
+            model:
+              editorMode: code
+              expr: min(pg_replication_slots_active{slot_name="geostudio_cdc_slot"})
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: "__expr__"
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: {type: lt, params: [1]}
+              refId: B
+        for: 10m
+        noDataState: Alerting
+        execErrState: Error
+        labels: {severity: critical, slo: ops-cdc-slot-inactive}
+        annotations: {summary: "Aucun consommateur ne tient le slot de réplication CDC depuis 10 minutes : cdc-worker arrêté ou en boucle de redémarrage, le WAL s'accumule"}
+        isPaused: false
+
+      - uid: ops-cdc-slot-wal
+        title: "Exploitation: WAL retenu par le slot CDC < 5 Gio"
+        condition: B
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: {from: 600, to: 0}
+            model:
+              editorMode: code
+              expr: max(pg_replication_slots_pg_wal_lsn_diff{slot_name="geostudio_cdc_slot"})
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: "__expr__"
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: {type: gt, params: [5368709120]}
+              refId: B
+        for: 10m
+        noDataState: Alerting
+        execErrState: Error
+        labels: {severity: critical, slo: ops-cdc-slot-wal}
+        annotations: {summary: "Le slot de réplication CDC retient plus de 5 Gio de WAL : pg_wal grossit jusqu'à saturer le disque de Postgres"}
+        isPaused: false
+
+      - uid: ops-jobs-failed
+        title: "Exploitation: aucun job en échec sur 24 h"
+        condition: B
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: {from: 600, to: 0}
+            model:
+              editorMode: code
+              expr: sum(geostudio_jobs_failed)
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: "__expr__"
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: {type: gt, params: [0]}
+              refId: B
+        for: 0s
+        noDataState: Alerting
+        execErrState: Error
+        labels: {severity: warning, slo: ops-jobs-failed}
+        annotations: {summary: "Au moins un job procrastinate est passé en échec dans les dernières 24 heures"}
+        isPaused: false
+
+      - uid: ops-jobs-oldest-age
+        title: "Exploitation: aucun job exigible en attente depuis plus de 30 min"
+        condition: B
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: {from: 600, to: 0}
+            model:
+              editorMode: code
+              expr: max(geostudio_jobs_oldest_age_seconds)
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: "__expr__"
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: {type: gt, params: [1800]}
+              refId: B
+        for: 5m
+        noDataState: Alerting
+        execErrState: Error
+        labels: {severity: warning, slo: ops-jobs-oldest-age}
+        annotations: {summary: "Un job exigible attend un worker depuis plus de 30 minutes : worker arrêté, file non consommée ou saturée"}
         isPaused: false
 
   # Dossier séparé, volontairement distinct de SLO : preuve reproductible

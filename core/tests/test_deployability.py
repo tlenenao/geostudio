@@ -1978,6 +1978,69 @@ def test_slo_rules_cover_the_four_documented_slos_and_are_active():
         assert params == [threshold], f"{uid}: seuil attendu {threshold}, trouvé {params}"
 
 
+OPENAPI = REPO / "core" / "openapi.json"
+DASHBOARDS = REPO / "deploy/observability/grafana/provisioning/dashboards/custom"
+
+
+def _alert_rules() -> dict:
+    doc = yaml.safe_load(SLO_RULES.read_text())
+    return {r["uid"]: r for g in doc["groups"] for r in g["rules"]}
+
+
+def _observability_exprs() -> list[str]:
+    exprs = [
+        d["model"]["expr"]
+        for r in _alert_rules().values()
+        for d in r["data"]
+        if "expr" in d.get("model", {})
+    ]
+    for f in DASHBOARDS.glob("*.json"):
+        for panel in json.loads(f.read_text())["panels"]:
+            exprs += [t["expr"] for t in panel.get("targets", []) if "expr" in t]
+    return exprs
+
+
+def test_http_label_filters_match_real_routes():
+    """AUD-017 : FastAPIInstrumentor (semconv « old ») pose `http.target` =
+    gabarit de route, jamais `http.route` (mesuré in-process, cf. plan
+    SP-L3) ; et toute route vit sous /v1 depuis SP-57b. Un matcher `=~`
+    Prometheus est ancré : une regex qui ne matche aucun chemin réel donne
+    une série vide, donc une alerte muette pour toujours."""
+    paths = list(json.loads(OPENAPI.read_text())["paths"])
+    exprs = _observability_exprs()
+    assert not any("http_route" in e for e in exprs), "libellé inexistant, utiliser http_target"
+    regexes = [rx for e in exprs for rx in re.findall(r'http_target=~"([^"]+)"', e)]
+    assert regexes, "au moins le SLO Features filtre sur http_target"
+    for rx in regexes:
+        assert any(re.fullmatch(rx, p) for p in paths), f"{rx} ne matche aucune route de l'OpenAPI"
+
+
+# Règles qui restent OK sans données, avec la raison : absence de trafic
+# légitime. Toute autre règle mesure une panne et doit sonner quand ses
+# séries disparaissent (core/worker/cdc-worker arrêtés, export OTLP cassé).
+NO_DATA_OK_RULES = {
+    "slo-api-features-latency-p95": "aucun trafic Features = rien à mesurer",
+    "slo-martin-tiles-latency-p95": "aucun trafic de tuiles = rien à mesurer",
+    "test-alert-always-firing": "règle de démonstration, en pause",
+}
+
+
+def test_outage_rules_alert_on_no_data():
+    """AUD-018 : 5 règles en `noDataState: OK` = core arrêté, aucune alerte."""
+    for uid, rule in _alert_rules().items():
+        expected = "OK" if uid in NO_DATA_OK_RULES else "Alerting"
+        assert rule["noDataState"] == expected, f"{uid}: noDataState={rule['noDataState']}"
+
+
+def test_ops_rules_cover_cdc_lag_slot_wal_and_jobs():
+    """AUD-035 : retard CDC, WAL retenu par le slot, échecs et âge des jobs."""
+    rules = _alert_rules()
+    for uid in ("ops-cdc-slot-inactive", "ops-cdc-slot-wal", "ops-jobs-failed", "ops-jobs-oldest-age"):
+        assert uid in rules, uid
+        assert rules[uid]["isPaused"] is False, uid
+        assert "slo" in rules[uid]["labels"], f"{uid} : routage policies.yaml sur le label slo"
+
+
 def test_publish_edge_triggers_only_on_merge_to_main():
     """Rebuild sur CHAQUE exécution de CI (chaque push, chaque PR) inonderait
     le registre d'images pour des commits jamais mergés — vérifié contre
