@@ -91,10 +91,14 @@ function JsonField({
   readOnly?: boolean;
   expect: "array" | "object";
 }) {
-  const [draft, setDraft] = useState(() =>
-    JSON.stringify(value ?? (expect === "array" ? [] : {}), null, 2),
-  );
+  const serialized = JSON.stringify(value ?? (expect === "array" ? [] : {}), null, 2);
+  const [draft, setDraft] = useState(serialized);
   const [error, setError] = useState<string | null>(null);
+  // AUD-087 : suit une valeur changée de l'extérieur (undo/redo).
+  useEffect(() => {
+    setDraft(serialized);
+    setError(null);
+  }, [serialized]);
   function commit() {
     try {
       const parsed: unknown = JSON.parse(draft);
@@ -134,6 +138,13 @@ function JsonField({
   );
 }
 
+function splitList(text: string): string[] {
+  return text
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 function StringListField({
   name,
   value,
@@ -145,21 +156,24 @@ function StringListField({
   onChange: (next: string[]) => void;
   readOnly?: boolean;
 }) {
+  // AUD-087 : texte local (pour taper « a, » sans perdre la virgule) mais resynchronisé
+  // quand la valeur change de l'extérieur (undo/redo) — `defaultValue` restait figé.
+  const joined = value.join(", ");
+  const [text, setText] = useState(joined);
+  useEffect(() => {
+    setText((cur) => (splitList(cur).join(", ") === joined ? cur : joined));
+  }, [joined]);
   return (
     <label className="flex flex-col gap-1 text-xs">
       {name}
       <input
         className="h-9 rounded border border-control bg-surface px-2 text-ink"
-        defaultValue={value.join(", ")}
+        value={text}
         disabled={readOnly}
-        onChange={(e) =>
-          onChange(
-            e.target.value
-              .split(",")
-              .map((s) => s.trim())
-              .filter(Boolean),
-          )
-        }
+        onChange={(e) => {
+          setText(e.target.value);
+          onChange(splitList(e.target.value));
+        }}
       />
     </label>
   );
@@ -192,6 +206,9 @@ export function PipelineNodeInspector({
   function setField(name: string, value: unknown) {
     if (readOnly) return;
     const newParams = { ...params, [name]: value };
+    // AUD-087 : un champ vidé disparaît des paramètres (le défaut de l'op s'applique)
+    // au lieu d'écrire 0.
+    if (value === undefined) delete newParams[name];
     setParams(newParams);
     onChange(newParams);
   }
@@ -331,7 +348,9 @@ export function PipelineNodeInspector({
             setField(
               name,
               prop.type === "number" || prop.type === "integer"
-                ? Number(e.target.value)
+                ? e.target.value === ""
+                  ? undefined
+                  : Number(e.target.value)
                 : e.target.value,
             )
           }

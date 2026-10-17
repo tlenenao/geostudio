@@ -161,3 +161,21 @@ test("topologicalOrder handles fan-out and fan-in deterministically (sorted ties
   ];
   expect(topologicalOrder(nodes, edges)).toEqual(["r1", "r2", "t1"]);
 });
+
+test("insertNodeOnEdge places the new node at the edge midpoint (AUD-087)", () => {
+  const nodes: PipelineNode[] = [
+    { id: "a", kind: "reader", op: "reader.collection", x: 0, y: 0, params: {} },
+    { id: "b", kind: "writer", op: "writer.export", x: 200, y: 100, params: {} },
+  ];
+  const edges: PipelineEdge[] = [{ id: "e", from: "a", to: "b" }];
+  const out = insertNodeOnEdge(nodes, edges, "e", {
+    id: "n",
+    kind: "transform",
+    op: "transform.filter",
+    x: 0,
+    y: 0,
+    params: {},
+  });
+  const n = out.nodes.find((x) => x.id === "n")!;
+  expect([n.x, n.y]).toEqual([100, 50]);
+});

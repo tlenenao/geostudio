@@ -51,11 +51,11 @@ export function usePipelineOps() {
   });
 }
 
-export function usePipelineNextRun(cron: string, enabled: boolean) {
+export function usePipelineNextRun(cron: string, enabled: boolean, tz?: string) {
   const client = useItemClientInternal();
   return useQuery({
-    queryKey: ["pipeline-next-run", cron],
-    queryFn: () => client.getPipelineNextRun(cron),
+    queryKey: ["pipeline-next-run", cron, tz],
+    queryFn: () => client.getPipelineNextRun(cron, tz),
     enabled,
   });
 }

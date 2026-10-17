@@ -34,11 +34,8 @@ import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
 import { useUndoableDraft } from "../builder/useUndoableDraft";
 import { PipelineCanvas } from "../builder/pipeline/PipelineCanvas";
 import { PipelineNodeInspector } from "../builder/pipeline/PipelineNodeInspector";
-import {
-  PipelinePalette,
-  PIPELINE_OP_DND_TYPE,
-  PIPELINE_PALETTE_SEARCH_ID,
-} from "../builder/pipeline/PipelinePalette";
+import { PipelinePalette, PIPELINE_PALETTE_SEARCH_ID } from "../builder/pipeline/PipelinePalette";
+import { apiErrorMessage } from "../api/apiErrorMessage";
 import { PipelinePreviewPanel } from "../builder/pipeline/PipelinePreviewPanel";
 import { PipelineRunPanel } from "../builder/pipeline/PipelineRunPanel";
 import { PipelineScheduleEditor } from "../builder/pipeline/PipelineScheduleEditor";
@@ -126,6 +123,7 @@ export function PipelineBuilderPage({
   const [selectedNodeId, setSelectedNodeId] = useUrlSyncedState<string>("node", null);
   const [latestRun, setLatestRun] = useState<PipelineRun | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [targetError, setTargetError] = useState<string | null>(null);
   const baseVersionRef = useRef<number | undefined>(undefined);
   const versionSeededRef = useRef(false);
   const [conflict, setConflict] = useState(false);
@@ -344,6 +342,22 @@ export function PipelineBuilderPage({
         : d,
     );
   }
+  // AUD-088 F2 : la collection cible d'un writer.collection se crée depuis l'éditeur, au
+  // schéma du flux qui l'alimente.
+  async function onCreateTargetCollection() {
+    if (readOnly || !selectedNode || !client.createPipelineTargetCollection) return;
+    setTargetError(null);
+    try {
+      const { collectionId } = await client.createPipelineTargetCollection({
+        title: `${initialTitle ?? t("pipelineBuilder.defaultTitle")} — sortie`,
+        pipeline: currentDraft,
+        writerNodeId: selectedNode.id,
+      });
+      updateSelectedNodeParams({ ...selectedNode.params, collectionId });
+    } catch (e) {
+      setTargetError(apiErrorMessage(e, t("pipelineBuilder.createTargetCollectionFailed")));
+    }
+  }
   function onInsertOnEdge(edgeId: string, op: string) {
     // Revue finale Vague C (point 2, D55) : `PipelineCanvas.tsx` (`InsertOnEdgeButton`)
     // désactive déjà l'affordance "+" sur une arête en lecture seule
@@ -440,15 +454,7 @@ export function PipelineBuilderPage({
   }
 
   return (
-    <div
-      className="-m-6 flex flex-1 flex-col overflow-hidden"
-      onDragOver={(e) => e.preventDefault()}
-      onDrop={(e) => {
-        const op = e.dataTransfer.getData(PIPELINE_OP_DND_TYPE);
-        if (!op) return;
-        onDropOnCanvas(op, { x: e.clientX, y: e.clientY });
-      }}
-    >
+    <div className="-m-6 flex flex-1 flex-col overflow-hidden">
       <TriptychLayout
         {...tabProps}
         browse={{
@@ -519,6 +525,7 @@ export function PipelineBuilderPage({
                   onNodesChange={setNodes}
                   onEdgesChange={setEdges}
                   onInsertOnEdge={onInsertOnEdge}
+                  onDropOp={onDropOnCanvas}
                   opsCatalog={catalog}
                   nodeStats={latestRun?.nodeStats}
                   runStatus={latestRun?.status}
@@ -549,6 +556,25 @@ export function PipelineBuilderPage({
                     onChange={updateSelectedNodeParams}
                     readOnly={readOnly}
                   />
+                  {selectedNode.op === "writer.collection" &&
+                    !readOnly &&
+                    !selectedNode.params.collectionId &&
+                    client.createPipelineTargetCollection && (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void onCreateTargetCollection()}
+                        >
+                          {t("pipelineBuilder.createTargetCollection")}
+                        </Button>
+                        {targetError && (
+                          <p role="alert" className="text-xs text-danger">
+                            {targetError}
+                          </p>
+                        )}
+                      </>
+                    )}
                   {!readOnly && (
                     <PipelinePreviewPanel
                       pipelineId={pk}
@@ -573,6 +599,7 @@ export function PipelineBuilderPage({
                     // jamais fausse après une sauvegarde (le refetch renvoie un
                     // nouvel objet) — revue finale Vague B, I4.
                     totalNodes={hasUnsavedChanges ? undefined : draft.nodes.length}
+                    hasUnsavedChanges={hasUnsavedChanges}
                   />
                 </>
               )}

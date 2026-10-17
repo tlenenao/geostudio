@@ -24,6 +24,7 @@ type PipelinesMethods = Pick<
   | "cancelPipelineRun"
   | "retryPipelineRun"
   | "previewPipeline"
+  | "createPipelineTargetCollection"
   | "listPipelineWebhookTokens"
   | "createPipelineWebhookToken"
   | "revokePipelineWebhookToken"
@@ -93,10 +94,11 @@ export function createPipelinesMethods(base: ItemClientBase): PipelinesMethods {
       return request<PipelineOpsCatalog>("GET", "/pipelines/ops");
     },
 
-    async getPipelineNextRun(cron: string): Promise<{ nextRun: string }> {
+    async getPipelineNextRun(cron: string, tz?: string): Promise<{ nextRun: string }> {
+      const tzParam = tz ? `&tz=${encodeURIComponent(tz)}` : "";
       return request<{ nextRun: string }>(
         "GET",
-        `/pipelines/next-run?cron=${encodeURIComponent(cron)}`,
+        `/pipelines/next-run?cron=${encodeURIComponent(cron)}${tzParam}`,
       );
     },
 
@@ -141,6 +143,17 @@ export function createPipelinesMethods(base: ItemClientBase): PipelinesMethods {
         `${path}?upTo=${encodeURIComponent(upToNodeId)}`,
         draft !== undefined ? { pipeline: withoutBaseVersion(draft) } : undefined,
       );
+    },
+
+    async createPipelineTargetCollection(input: {
+      title: string;
+      pipeline: PipelinePayload;
+      writerNodeId: string;
+    }): Promise<{ collectionId: string }> {
+      return request<{ collectionId: string }>("POST", "/pipelines/target-collection", {
+        ...input,
+        pipeline: withoutBaseVersion(input.pipeline),
+      });
     },
 
     async listPipelineWebhookTokens(pk: string): Promise<PipelineWebhookToken[]> {

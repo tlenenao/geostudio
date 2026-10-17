@@ -150,13 +150,25 @@ function RunRow({
 // Patron de poll identique à shell/src/shell/ImportFileButton.tsx (SP-6a) —
 // boucle récursive manuelle via le client, pas un refetchInterval react-query
 // (cf. plan Global Constraints).
+function isActive(status: string | undefined): boolean {
+  return (
+    status === "queued" ||
+    status === "running" ||
+    status === "cancel_requested" ||
+    status === "retrying"
+  );
+}
+
 export function PipelineRunPanel({
   pipelineId,
   onLatestRunChange,
   totalNodes,
   parameters,
+  hasUnsavedChanges,
 }: {
   pipelineId: string;
+  // AUD-087 : « Exécuter » lance la version enregistrée, pas le brouillon.
+  hasUnsavedChanges?: boolean;
   onLatestRunChange?: (run: PipelineRun | null) => void;
   // Nombre de nœuds de la définition courante du pipeline (cf. commentaire
   // sur RunRow) : optionnel, omis par les appelants qui ne l'ont pas sous la
@@ -173,6 +185,7 @@ export function PipelineRunPanel({
   const [runError, setRunError] = useState<string | null>(null);
   const [limit, setLimit] = useState(RUNS_PAGE_SIZE);
   const mountedRef = useRef(true);
+  const pollingRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Lu par poll() (lancé une seule fois par exécution) pour refléter la
   // limite la plus récente sans reconstruire toute la boucle de sondage à
@@ -197,6 +210,16 @@ export function PipelineRunPanel({
       if (!mountedRef.current) return;
       setRuns(latest);
       onLatestRunChange?.(latest[0] ?? null);
+      // AUD-087 : un run déjà actif à l'ouverture (ou après rechargement) n'était
+      // jamais suivi — l'écran restait figé sur « en cours ».
+      if (isActive(latest[0]?.status) && !pollingRef.current) {
+        setRunning(true);
+        void poll()
+          .catch(() => undefined)
+          .finally(() => {
+            if (mountedRef.current) setRunning(false);
+          });
+      }
     } catch {
       // Un chargement initial en échec restait silencieux (liste vide
       // indiscernable d'un « aucune exécution » légitime) — même défaut que
@@ -213,26 +236,25 @@ export function PipelineRunPanel({
   }, [pipelineId, limit]);
 
   async function poll() {
-    for (;;) {
-      if (!mountedRef.current) return;
-      const latest = await client.getPipelineRuns(pipelineId, { limit: limitRef.current });
-      if (!mountedRef.current) return;
-      setRuns(latest);
-      onLatestRunChange?.(latest[0] ?? null);
-      const status = latest[0]?.status;
-      if (
-        status !== "queued" &&
-        status !== "running" &&
-        status !== "cancel_requested" &&
-        status !== "retrying"
-      ) {
-        setRunning(false);
-        return;
+    pollingRef.current = true;
+    try {
+      for (;;) {
+        if (!mountedRef.current) return;
+        const latest = await client.getPipelineRuns(pipelineId, { limit: limitRef.current });
+        if (!mountedRef.current) return;
+        setRuns(latest);
+        onLatestRunChange?.(latest[0] ?? null);
+        if (!isActive(latest[0]?.status)) {
+          setRunning(false);
+          return;
+        }
+        await new Promise<void>((resolve) => {
+          timerRef.current = setTimeout(resolve, 1500);
+        });
+        if (!mountedRef.current) return;
       }
-      await new Promise<void>((resolve) => {
-        timerRef.current = setTimeout(resolve, 1500);
-      });
-      if (!mountedRef.current) return;
+    } finally {
+      pollingRef.current = false;
     }
   }
 
@@ -308,6 +330,7 @@ export function PipelineRunPanel({
           ))}
         </fieldset>
       )}
+      {hasUnsavedChanges && <p className="text-xs text-warn">{t("pipelineRun.unsavedWarning")}</p>}
       <Button size="sm" onClick={() => void onRun()} disabled={running}>
         {running ? t("pipelineRun.running") : t("pipelineRun.runButton")}
       </Button>

@@ -948,7 +948,7 @@ export interface ItemClient {
   getPipelineConfig(pk: string): Promise<PipelinePayload>;
   savePipelineConfig(pk: string, payload: PipelinePayload): Promise<number | undefined>;
   getPipelineOps(): Promise<PipelineOpsCatalog>;
-  getPipelineNextRun(cron: string): Promise<{ nextRun: string }>;
+  getPipelineNextRun(cron: string, tz?: string): Promise<{ nextRun: string }>;
   runPipeline(pk: string, params?: Record<string, unknown>): Promise<{ runId: string }>;
   getPipelineRuns(pk: string, params?: PageParams): Promise<PipelineRun[]>;
   // t03b-009 : absent côté sidecar desktop / export statique (pas d'annulation).
@@ -963,6 +963,12 @@ export interface ItemClient {
     upToNodeId: string,
     draft?: PipelinePayload,
   ): Promise<Record<string, unknown>[]>;
+  // AUD-088 F2 : collection vide au schéma du flux d'un writer.collection (cœur seulement).
+  createPipelineTargetCollection?(input: {
+    title: string;
+    pipeline: PipelinePayload;
+    writerNodeId: string;
+  }): Promise<{ collectionId: string }>;
   createAlertRuleItem(input: {
     title: string;
     owner: string;
@@ -1641,6 +1647,8 @@ export type PipelineEdge = {
 export type PipelineRefreshPolicy = {
   enabled: boolean;
   cron: string;
+  // AUD-084 : fuseau IANA dans lequel le cron est évalué (défaut serveur : UTC).
+  timezone?: string;
 };
 
 export type PipelineCanvasNote = {

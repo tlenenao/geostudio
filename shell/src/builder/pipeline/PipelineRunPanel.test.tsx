@@ -8,7 +8,7 @@ import type { ItemClient, PipelineRun } from "../../api/types";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
 import { PipelineRunPanel } from "./PipelineRunPanel";
 
-function renderPanel(overrides: Partial<ItemClient> = {}) {
+function renderPanel(overrides: Partial<ItemClient> = {}, hasUnsavedChanges = false) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const client: Partial<ItemClient> = {
     runPipeline: vi.fn().mockResolvedValue({ runId: "run-1" }),
@@ -18,12 +18,27 @@ function renderPanel(overrides: Partial<ItemClient> = {}) {
   render(
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={client as ItemClient}>
-        <PipelineRunPanel pipelineId="p-1" />
+        <PipelineRunPanel pipelineId="p-1" hasUnsavedChanges={hasUnsavedChanges} />
       </ItemClientProvider>
     </QueryClientProvider>,
   );
   return client;
 }
+
+test("warns that unsaved changes will not run (AUD-087)", () => {
+  renderPanel({}, true);
+  expect(screen.getByText(/version enregistrée/)).toBeInTheDocument();
+});
+
+test("keeps polling a run already active on mount (AUD-087)", async () => {
+  const getPipelineRuns = vi
+    .fn()
+    .mockResolvedValueOnce([{ id: "r", status: "running", nodeStats: {} }])
+    .mockResolvedValue([{ id: "r", status: "succeeded", nodeStats: {} }]);
+  renderPanel({ getPipelineRuns });
+  await waitFor(() => expect(getPipelineRuns.mock.calls.length).toBeGreaterThanOrEqual(2));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Exécuter" })).toBeEnabled());
+});
 
 test("shows the run history from getPipelineRuns on mount", async () => {
   renderPanel({

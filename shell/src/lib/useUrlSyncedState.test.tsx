@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { act, renderHook } from "@testing-library/react";
 import type { ReactElement } from "react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import { useUrlSyncedState } from "./useUrlSyncedState";
 
@@ -38,5 +38,21 @@ describe("useUrlSyncedState", () => {
     const { result } = renderHookWithRouter("page", null, "/?page=p2");
     act(() => result.current[1](null));
     expect(result.current[0]).toBeNull();
+  });
+
+  it("conserve location.state en mettant à jour le paramètre (AUD-088 : titre perdu)", () => {
+    const { result } = renderHook(
+      () => ({ s: useUrlSyncedState<string>("tab", null), loc: useLocation() }),
+      {
+        wrapper: ({ children }) => (
+          <MemoryRouter initialEntries={[{ pathname: "/p", state: { title: "Mon pipeline" } }]}>
+            {children}
+          </MemoryRouter>
+        ),
+      },
+    );
+    act(() => result.current.s[1]("run"));
+    expect(result.current.loc.search).toBe("?tab=run");
+    expect(result.current.loc.state).toEqual({ title: "Mon pipeline" });
   });
 });

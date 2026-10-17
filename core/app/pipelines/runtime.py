@@ -33,6 +33,8 @@ import re
 import tempfile
 import threading
 from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
 
 import duckdb
 from sqlalchemy.orm import Session
@@ -1061,7 +1063,80 @@ def _preview_timeout_s() -> float:
     return float(os.environ.get("CORE_PIPELINES_PREVIEW_TIMEOUT_S") or 30)
 
 
-def preview_pipeline(
+def preview_pipeline(*, limit: int = 50, **kwargs: Any) -> list[dict]:
+    """Échantillon de lignes du nœud `up_to` (mêmes arguments que `_on_preview_view`)."""
+
+    def consume(conn: Any, view_name: str, target: PipelineNode, srid: int | None) -> list[dict]:
+        # Même conversion que _write_collection : DuckDB renvoie "geometry" en
+        # WKB (bytes), que jsonable_encoder (route FastAPI) ne sait pas
+        # décoder — on convertit en GeoJSON ici, au point de sortie de la
+        # preview, plutôt que de porter du GeoJSON à travers toute la chaîne
+        # de transforms intermédiaire (Phase 1 n'a aucune op spatiale).
+        input_cols = {
+            d[0] for d in conn.execute(f"SELECT * FROM {_qi(view_name)} LIMIT 0").description
+        }
+        has_geometry = "geometry" in input_cols
+        select_list = (
+            "* EXCLUDE (geometry), ST_AsGeoJSON(geometry) AS geometry" if has_geometry else "*"
+        )
+        try:
+            rows = conn.execute(
+                f"SELECT {select_list} FROM {_qi(view_name)} LIMIT {int(limit)}"
+            ).fetchall()
+        except duckdb.InterruptException:
+            raise
+        except duckdb.Error as exc:
+            # AUD-078 : en aperçu les nœuds restent des VIEW non comptées — une erreur
+            # d'évaluation ne surgit qu'ici ; même message métier qu'en run (jamais un 500).
+            raise _node_error(target, exc) from exc
+        cols = [d[0] for d in conn.description]
+        result = [dict(zip(cols, r, strict=True)) for r in rows]
+        if has_geometry:
+            # La colonne contient une chaîne GeoJSON (ST_AsGeoJSON) : on la
+            # décode en objet pour que la réponse HTTP porte une géométrie
+            # GeoJSON réelle, pas une chaîne-dans-une-chaîne.
+            for row in result:
+                if row.get("geometry") is not None:
+                    row["geometry"] = json.loads(row["geometry"])
+        return result
+
+    return _on_preview_view(**kwargs, consume=consume)
+
+
+@dataclass(frozen=True)
+class OutputSchema:
+    columns: list[tuple[str, str]]  # (nom, type DuckDB)
+    srid: int | None
+    geometry_types: list[str]  # ST_GeometryType distincts, ex. ["POLYGON", "MULTIPOLYGON"]
+
+
+def describe_pipeline_output(**kwargs: Any) -> OutputSchema:
+    """Schéma de sortie du nœud `up_to` (mêmes arguments que preview_pipeline, sans
+    limit) : sert à créer une collection cible typée (AUD-088 F2). Même borne de durée
+    que l'aperçu."""
+
+    def consume(conn: Any, view_name: str, target: PipelineNode, srid: int | None) -> OutputSchema:
+        try:
+            cols = [(d[0], d[1]) for d in conn.execute(f"DESCRIBE {_qi(view_name)}").fetchall()]
+            types: list[str] = []
+            if any(c == "geometry" for c, _ in cols):
+                types = [
+                    r[0]
+                    for r in conn.execute(
+                        "SELECT DISTINCT ST_GeometryType(geometry)::VARCHAR "
+                        f"FROM {_qi(view_name)} WHERE geometry IS NOT NULL LIMIT 10"
+                    ).fetchall()
+                ]
+        except duckdb.InterruptException:
+            raise
+        except duckdb.Error as exc:
+            raise _node_error(target, exc) from exc
+        return OutputSchema(columns=cols, srid=srid, geometry_types=types)
+
+    return _on_preview_view(**kwargs, consume=consume)
+
+
+def _on_preview_view[T](
     *,
     session: Session | None,
     payload: PipelinePayload,
@@ -1072,9 +1147,9 @@ def preview_pipeline(
     access_key: str,
     secret_key: str,
     base_uri: str,
-    limit: int = 50,
     params: dict | None = None,
-) -> list[dict]:
+    consume: Callable[[Any, str, PipelineNode, int | None], T],
+) -> T:
     # `{{param.x}}` résolus comme pour un run (défauts + valeurs fournies) —
     # sinon l'aperçu filtre sur le littéral `{{param.x}}` (revue vague 4, I5).
     try:
@@ -1120,39 +1195,7 @@ def preview_pipeline(
             secret_resolver=_chain_resolver(session, tenant_id, user),
             preview=True,
         )
-        view_name = view_by_node[up_to]
-        # Même conversion que _write_collection : DuckDB renvoie "geometry" en
-        # WKB (bytes), que jsonable_encoder (route FastAPI) ne sait pas
-        # décoder — on convertit en GeoJSON ici, au point de sortie de la
-        # preview, plutôt que de porter du GeoJSON à travers toute la chaîne
-        # de transforms intermédiaire (Phase 1 n'a aucune op spatiale).
-        input_cols = {
-            d[0] for d in conn.execute(f"SELECT * FROM {_qi(view_name)} LIMIT 0").description
-        }
-        has_geometry = "geometry" in input_cols
-        select_list = (
-            "* EXCLUDE (geometry), ST_AsGeoJSON(geometry) AS geometry" if has_geometry else "*"
-        )
-        try:
-            rows = conn.execute(
-                f"SELECT {select_list} FROM {_qi(view_name)} LIMIT {int(limit)}"
-            ).fetchall()
-        except duckdb.InterruptException:
-            raise
-        except duckdb.Error as exc:
-            # AUD-078 : en aperçu les nœuds restent des VIEW non comptées — une erreur
-            # d'évaluation ne surgit qu'ici ; même message métier qu'en run (jamais un 500).
-            raise _node_error(target, exc) from exc
-        cols = [d[0] for d in conn.description]
-        result = [dict(zip(cols, r, strict=True)) for r in rows]
-        if has_geometry:
-            # La colonne contient une chaîne GeoJSON (ST_AsGeoJSON) : on la
-            # décode en objet pour que la réponse HTTP porte une géométrie
-            # GeoJSON réelle, pas une chaîne-dans-une-chaîne.
-            for row in result:
-                if row.get("geometry") is not None:
-                    row["geometry"] = json.loads(row["geometry"])
-        return result
+        return consume(conn, view_by_node[up_to], target, srid_by_node.get(up_to))
     except duckdb.InterruptException as exc:
         if timed_out.is_set():
             raise PipelineRuntimeError("aperçu interrompu : durée maximale dépassée") from exc

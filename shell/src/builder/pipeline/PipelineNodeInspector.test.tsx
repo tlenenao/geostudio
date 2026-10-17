@@ -462,3 +462,45 @@ test("un JSON invalide ou de mauvaise forme affiche une erreur sans rien propage
   expect(screen.getByRole("alert")).toHaveTextContent("un tableau est attendu");
   expect(onChange).not.toHaveBeenCalled();
 });
+
+const BUFFER_ENTRY: PipelineOpEntry = {
+  kind: "transform",
+  paramsSchema: {
+    properties: {
+      distance: { type: "number" },
+      keyColumns: { type: "array", items: { type: "string" } },
+    },
+  },
+};
+
+function bufferNode(params: Record<string, unknown>): PipelineNode {
+  return { id: "t1", kind: "transform", op: "transform.buffer", x: 0, y: 0, params };
+}
+
+test("clearing a numeric field removes the param instead of writing 0 (AUD-087)", () => {
+  const { onChange } = renderInspector(bufferNode({ distance: 10 }), BUFFER_ENTRY);
+  fireEvent.change(screen.getByLabelText("distance"), { target: { value: "" } });
+  const last = onChange.mock.lastCall![0] as Record<string, unknown>;
+  expect("distance" in last).toBe(false);
+});
+
+test("list fields follow params changed from outside (undo, AUD-087)", () => {
+  const qc = new QueryClient();
+  const client: Partial<ItemClient> = { listCollections: () => Promise.resolve(COLLECTIONS) };
+  const tree = (params: Record<string, unknown>) => (
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client as ItemClient}>
+        <PipelineNodeInspector
+          node={bufferNode(params)}
+          opEntry={BUFFER_ENTRY}
+          errors={[]}
+          onChange={vi.fn()}
+        />
+      </ItemClientProvider>
+    </QueryClientProvider>
+  );
+  const { rerender } = render(tree({ keyColumns: ["a"] }));
+  expect(screen.getByLabelText("keyColumns")).toHaveValue("a");
+  rerender(tree({ keyColumns: ["b", "c"] }));
+  expect(screen.getByLabelText("keyColumns")).toHaveValue("b, c");
+});
