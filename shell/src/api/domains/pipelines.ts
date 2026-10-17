@@ -130,13 +130,15 @@ export function createPipelinesMethods(base: ItemClientBase): PipelinesMethods {
     },
 
     async previewPipeline(
-      pk: string,
+      pk: string | null,
       upToNodeId: string,
       draft?: PipelinePayload,
     ): Promise<Record<string, unknown>[]> {
+      // AUD-009 : un brouillon jamais enregistré (pas d'item) a sa propre route.
+      const path = pk === null ? "/pipelines/preview" : `/pipelines/${pk}/preview`;
       return request<Record<string, unknown>[]>(
         "POST",
-        `/pipelines/${pk}/preview?upTo=${encodeURIComponent(upToNodeId)}`,
+        `${path}?upTo=${encodeURIComponent(upToNodeId)}`,
         draft !== undefined ? { pipeline: withoutBaseVersion(draft) } : undefined,
       );
     },

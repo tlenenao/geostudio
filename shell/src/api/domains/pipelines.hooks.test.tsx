@@ -8,6 +8,7 @@ import { ItemClientProvider } from "../ItemClientProvider";
 import { ToastProvider } from "../../ui/kit/ToastProvider";
 import { t } from "../../i18n";
 import {
+  previewDraftKey,
   useCreatePipeline,
   useSavePipeline,
   useCreatePipelineWebhookToken,
@@ -93,5 +94,40 @@ describe("useRevokePipelineWebhookToken", () => {
     });
 
     expect(await screen.findByText(t("toast.webhookTokenRevoked"))).toBeInTheDocument();
+  });
+});
+
+const BASE_DRAFT: PipelinePayload = {
+  nodes: [
+    {
+      id: "r1",
+      kind: "reader",
+      op: "reader.collection",
+      x: 0,
+      y: 0,
+      params: { collectionId: "a" },
+    },
+  ],
+  edges: [],
+};
+
+describe("previewDraftKey (AUD-008)", () => {
+  it("ignores node positions, titles and notes", () => {
+    const moved: PipelinePayload = {
+      ...BASE_DRAFT,
+      nodes: [{ ...BASE_DRAFT.nodes[0], x: 120, y: 40, title: "Lecture" }],
+      notes: [{ id: "n", x: 0, y: 0, width: 10, height: 10, label: "x" }],
+    };
+    expect(previewDraftKey(moved)).toBe(previewDraftKey(BASE_DRAFT));
+  });
+  it("changes when a param changes", () => {
+    const edited: PipelinePayload = {
+      ...BASE_DRAFT,
+      nodes: [{ ...BASE_DRAFT.nodes[0], params: { collectionId: "b" } }],
+    };
+    expect(previewDraftKey(edited)).not.toBe(previewDraftKey(BASE_DRAFT));
+  });
+  it("is empty without a draft", () => {
+    expect(previewDraftKey(undefined)).toBe("");
   });
 });

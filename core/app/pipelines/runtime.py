@@ -733,16 +733,20 @@ def _prepare(
         reader_fn = READERS.get(node.op)
         if reader_fn is None:
             raise PipelineRuntimeError(f"unknown reader op '{node.op}'")
-        srid_by_node[node.id] = reader_fn(
-            conn,
-            session=session,
-            tenant_id=tenant_id,
-            node_id=node.id,
-            params=node.params,
-            view_name=view_name,
-            user=user,
-            base_uri=base_uri,
-        )
+        try:
+            srid_by_node[node.id] = reader_fn(
+                conn,
+                session=session,
+                tenant_id=tenant_id,
+                node_id=node.id,
+                params=node.params,
+                view_name=view_name,
+                user=user,
+                base_uri=base_uri,
+            )
+        except PipelineRuntimeError as exc:  # AUD-087 : le nœud fautif reste connu
+            exc.node_id = exc.node_id or node.id
+            raise
         view_by_node[node.id] = view_name
         if node.op.startswith("reader.connector."):
             try:
@@ -777,30 +781,35 @@ def _prepare(
         p = model.model_validate(node.params)
         if p.withCollectionId is None:
             raise PipelineRuntimeError(
-                f"'{node.op}': requires either 'withCollectionId' or a secondary input edge"
+                f"'{node.op}': requires either 'withCollectionId' or a secondary input edge",
+                node_id=node.id,
             )
-        table_name = _require_readable_collection_id(
-            session,
-            tenant_id=tenant_id,
-            user=user,
-            collection_id=p.withCollectionId,
-        )
-        table_info = _readable_table_info(
-            session,
-            tenant_id=tenant_id,
-            user=user,
-            collection_id=p.withCollectionId,
-            table_name=table_name,
-        )
         join_view = f"node_{node.id}__join"
-        _materialize_reader(
-            conn,
-            view_name=join_view,
-            base_uri=base_uri,
-            tenant_id=tenant_id,
-            collection_id=p.withCollectionId,
-            table_info=table_info,
-        )
+        try:
+            table_name = _require_readable_collection_id(
+                session,
+                tenant_id=tenant_id,
+                user=user,
+                collection_id=p.withCollectionId,
+            )
+            table_info = _readable_table_info(
+                session,
+                tenant_id=tenant_id,
+                user=user,
+                collection_id=p.withCollectionId,
+                table_name=table_name,
+            )
+            _materialize_reader(
+                conn,
+                view_name=join_view,
+                base_uri=base_uri,
+                tenant_id=tenant_id,
+                collection_id=p.withCollectionId,
+                table_info=table_info,
+            )
+        except PipelineRuntimeError as exc:  # AUD-087 : le nœud fautif reste connu
+            exc.node_id = exc.node_id or node.id
+            raise
         join_srid_by_node[node.id] = table_info.srid or 4326
 
     # Élargissement de allowed_directories réservé au flag actif : sinon un
@@ -899,7 +908,15 @@ def _execute_transform_chain(
             else:
                 join_view = f"node_{node.id}__join"
                 join_srid = join_srid_by_node.get(node.id)
-        _validate_node_exprs(conn, node)
+        try:
+            _validate_node_exprs(conn, node)
+        except PipelineRuntimeError as exc:
+            exc.node_id = exc.node_id or node.id
+            raise
+        except Exception as exc:  # SqlSandboxError et voisins : refus métier, jamais un 500
+            raise PipelineRuntimeError(
+                f"nœud '{node.id}' ({node.op}) : {exc}", node_id=node.id
+            ) from exc
         try:
             output_srid = compiler.transform_output_srid(
                 node.op,
@@ -908,7 +925,7 @@ def _execute_transform_chain(
                 join_srid=join_srid,
             )
         except ValueError as exc:
-            raise PipelineRuntimeError(str(exc)) from exc
+            raise PipelineRuntimeError(str(exc), node_id=node.id) from exc
         view_name = f"node_{node.id}"
         from app.pipelines.ops.contracts import OPERATIONS
 
@@ -967,6 +984,9 @@ def _execute_transform_chain(
             stat = NodeStat(node.id, node.op, None if preview else _view_row_count(conn, view_name))
         except duckdb.Error as exc:
             raise _node_error(node, exc) from exc
+        except PipelineRuntimeError as exc:  # AUD-087 : le nœud fautif reste connu
+            exc.node_id = exc.node_id or node.id
+            raise
         view_by_node[node.id] = view_name
         srid_by_node[node.id] = output_srid
         if checkpoint is not None:
@@ -1000,7 +1020,9 @@ def _node_error(node: PipelineNode, exc: Exception) -> PipelineRuntimeError:
     logger.warning("pipeline node %s (%s) failed: %s", node.id, node.op, exc)
     cause = re.sub(r"^[\w ]+ Error:\s*", "", str(exc).splitlines()[0] if str(exc) else "")
     cause = re.sub(r"\bnode_\w+", "l'entrée du nœud", cause)
-    return PipelineRuntimeError(f"nœud '{node.id}' ({node.op}) : {cause or 'échec de l’opération'}")
+    return PipelineRuntimeError(
+        f"nœud '{node.id}' ({node.op}) : {cause or 'échec de l’opération'}", node_id=node.id
+    )
 
 
 def _view_row_count(conn, view_name: str) -> int:

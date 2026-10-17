@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, test, vi } from "vitest";
 import type { ItemClient, PipelinePayload } from "../../api/types";
+import { ApiError } from "../../api/ApiError";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
 import { mapInstances } from "../../test/MockMaplibreMap";
 import { PipelinePreviewPanel } from "./PipelinePreviewPanel";
@@ -21,7 +22,7 @@ const FORMATTED_1200 = (1200).toLocaleString("fr-FR");
 
 function renderPanel(
   previewPipeline = vi.fn().mockResolvedValue([{ id: 1, pop: 1200 }]),
-  extraProps: { draft?: PipelinePayload; isDraftStale?: boolean } = {},
+  extraProps: { draft?: PipelinePayload; isDraftStale?: boolean; pipelineId?: string | null } = {},
 ) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const client: Partial<ItemClient> = { previewPipeline };
@@ -34,6 +35,48 @@ function renderPanel(
   );
   return { previewPipeline };
 }
+
+const DRAFT: PipelinePayload = {
+  nodes: [
+    {
+      id: "r1",
+      kind: "reader",
+      op: "reader.collection",
+      x: 0,
+      y: 0,
+      params: { collectionId: "a" },
+    },
+  ],
+  edges: [],
+};
+
+test("shows the server error detail (AUD-087)", async () => {
+  renderPanel(
+    vi
+      .fn()
+      .mockRejectedValue(
+        new ApiError(400, { detail: "nœud 'f1' (transform.filter) : colonne inconnue « pop »" }),
+      ),
+  );
+  expect(await screen.findByRole("alert")).toHaveTextContent("colonne inconnue « pop »");
+});
+
+test("announces truncation when the row limit is reached", async () => {
+  const rows = Array.from({ length: 50 }, (_, i) => ({ id: i }));
+  renderPanel(vi.fn().mockResolvedValue(rows));
+  expect(await screen.findByText(/50 premières lignes/)).toBeInTheDocument();
+});
+
+test("renders object cells as JSON, not [object Object]", async () => {
+  renderPanel(vi.fn().mockResolvedValue([{ tags: { a: 1 } }]));
+  expect(await screen.findByText('{"a":1}')).toBeInTheDocument();
+});
+
+test("previews an unsaved pipeline (pipelineId null)", async () => {
+  const previewPipeline = vi.fn().mockResolvedValue([{ id: 1 }]);
+  renderPanel(previewPipeline, { pipelineId: null, draft: DRAFT });
+  await waitFor(() => expect(previewPipeline).toHaveBeenCalledWith(null, "r1", DRAFT));
+});
 
 test("fetches the preview for the given node and renders it as a table", async () => {
   const { previewPipeline } = renderPanel();

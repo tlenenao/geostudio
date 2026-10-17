@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useMemo, useState } from "react";
+import { apiErrorMessage } from "../../api/apiErrorMessage";
 import { usePipelinePreview } from "../../api/hooks";
 import type { PipelinePayload } from "../../api/types";
 import { t } from "../../i18n";
@@ -12,6 +13,8 @@ import { formatDateTime } from "../../lib/format";
 import "../../i18n/domains/automation";
 
 const PAGE_SIZE = 20;
+// = `limit` par défaut de l'aperçu côté serveur : atteint, le résultat est tronqué.
+const PREVIEW_LIMIT = 50;
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}/;
 
@@ -32,6 +35,7 @@ function formatCell(value: unknown): string {
     const parsed = new Date(value);
     if (!Number.isNaN(parsed.getTime())) return formatDateTime(parsed);
   }
+  if (value !== null && typeof value === "object") return JSON.stringify(value);
   return String(value);
 }
 
@@ -41,7 +45,7 @@ export function PipelinePreviewPanel({
   draft,
   isDraftStale,
 }: {
-  pipelineId: string;
+  pipelineId: string | null;
   nodeId: string | null;
   draft?: PipelinePayload;
   isDraftStale?: boolean;
@@ -76,7 +80,7 @@ export function PipelinePreviewPanel({
   if (previewQuery.isError)
     return (
       <p role="alert" className="text-sm text-danger">
-        {t("pipelinePreview.unavailable")}
+        {apiErrorMessage(previewQuery.error, t("pipelinePreview.unavailable"))}
       </p>
     );
 
@@ -129,6 +133,11 @@ export function PipelinePreviewPanel({
         <div role="status">
           <Badge variant="warn">{t("pipelinePreview.stale")}</Badge>
         </div>
+      )}
+      {rows.length >= PREVIEW_LIMIT && (
+        <p className="text-xs text-ink-2">
+          {t("pipelinePreview.truncated", { count: PREVIEW_LIMIT })}
+        </p>
       )}
       {hasGeometry && (
         <div className="flex gap-1 text-xs">

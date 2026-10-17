@@ -119,10 +119,14 @@ export function createDesktopItemClient(connection: {
     },
 
     async previewPipeline(
-      pk: string,
+      pk: string | null,
       upToNodeId: string,
       draft?: PipelinePayload,
     ): Promise<Record<string, unknown>[]> {
+      if (pk === null) {
+        // Le sidecar stocke les pipelines par item : pas d'aperçu avant enregistrement.
+        throw new Error("aperçu indisponible avant enregistrement en mode bureau");
+      }
       return sidecarFetch<Record<string, unknown>[]>(
         "POST",
         `/pipelines/${pk}/preview?upTo=${encodeURIComponent(upToNodeId)}`,

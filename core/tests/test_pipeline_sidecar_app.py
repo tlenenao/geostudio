@@ -107,6 +107,21 @@ def test_put_then_preview_returns_rows(client, tmp_path):
     assert {row["label"] for row in rows} == {"a", "b"}
 
 
+def test_sidecar_preview_uses_the_draft_body(client, tmp_path):
+    """AUD-162 : le brouillon envoyé prime sur la version stockée."""
+    stored_in = _write_geojson(tmp_path, "a.geojson")
+    client.put("/pipelines/p1", json=_payload_dict(stored_in, str(tmp_path / "o.gpkg")))
+    draft_in = tmp_path / "b.geojson"
+    draft_in.write_text(
+        '{"type":"FeatureCollection","features":['
+        '{"type":"Feature","properties":{"label":"z"},'
+        '"geometry":{"type":"Point","coordinates":[1,2]}}]}'
+    )
+    draft = _payload_dict(str(draft_in), str(tmp_path / "o.gpkg"))
+    r = client.post("/pipelines/p1/preview?upTo=r1", json={"pipeline": draft})
+    assert r.status_code == 200 and [row["label"] for row in r.json()] == ["z"]
+
+
 def _cyclic_payload_dict(in_path: str, out_path: str) -> dict:
     # r1 -> t1 -> t2 -> t1 (cycle) et t2 -> w1 : le PUT du sidecar ne
     # valide pas la forme du graphe (contrairement au cœur, cf. Fix 1) —

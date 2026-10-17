@@ -50,6 +50,8 @@ class PipelineRun(Base):
     # AUD-026 : battement de cœur du worker, ancre du balayage des runs vivants.
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     error: Mapped[str | None] = mapped_column(String, nullable=True)
+    # AUD-087 (0088) : nœud fautif d'un run en échec, quand il est connu.
+    failed_node_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # server_default="{}" en chaîne nue (comme la migration 0018) : cf.
     # collections/models.py sur attachment_fields — le contournement du
     # piège de comparaison PG pour un type json vit côté test

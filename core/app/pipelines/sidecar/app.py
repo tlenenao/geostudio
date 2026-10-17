@@ -13,6 +13,7 @@ import hmac
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import Response
+from pydantic import BaseModel
 from starlette.middleware.cors import CORSMiddleware
 
 from app.configs.schemas import PipelinePayload
@@ -21,6 +22,11 @@ from app.pipelines.errors import PipelineRuntimeError
 from app.pipelines.ops.contracts import OP_KINDS, ops_catalog
 from app.pipelines.sidecar.runner import PipelineStore, start_run
 from app.pipelines.sidecar.tracker import RunRegistry
+
+
+class _PreviewBody(BaseModel):
+    pipeline: PipelinePayload | None = None
+
 
 # Dupliqué de app.pipelines.routes._RUNS_MAX_LIMIT (pas importé : cet import
 # entraînerait tout le graphe de app.pipelines.routes — jobs/notifications/
@@ -133,8 +139,11 @@ def create_sidecar_app(*, base_uri: str, token: str | None = None) -> FastAPI:
         return registry.list(item_id, limit=limit, offset=offset)
 
     @app.post("/pipelines/{item_id}/preview")
-    def preview_pipeline_route(item_id: str, upTo: str = Query(...)) -> list[dict]:
-        payload = store.get(item_id)
+    def preview_pipeline_route(
+        item_id: str, upTo: str = Query(...), body: _PreviewBody | None = None
+    ) -> list[dict]:
+        # AUD-162 : le brouillon envoyé par l'éditeur prime sur la version stockée.
+        payload = body.pipeline if body and body.pipeline is not None else store.get(item_id)
         if payload is None:
             raise HTTPException(status_code=404, detail="no pipeline stored for this item")
         try:

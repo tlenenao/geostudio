@@ -257,7 +257,7 @@ class RunTracker(Protocol):
         ...
 
     def mark_succeeded(self, node_stats: dict) -> None: ...
-    def mark_failed(self, error: str) -> None: ...
+    def mark_failed(self, error: str, failed_node_id: str | None = None) -> None: ...
     def mark_cancelled(self) -> None: ...
     def is_cancel_requested(self) -> bool: ...
 
@@ -291,9 +291,11 @@ class PostgresRunTracker:
         with request_scoped_session(self._session_factory) as session:
             pipelines_repo.mark_succeeded(session, run_id=self._run_id, node_stats=node_stats)
 
-    def mark_failed(self, error: str) -> None:
+    def mark_failed(self, error: str, failed_node_id: str | None = None) -> None:
         with request_scoped_session(self._session_factory) as session:
-            pipelines_repo.mark_failed(session, run_id=self._run_id, error=error)
+            pipelines_repo.mark_failed(
+                session, run_id=self._run_id, error=error, failed_node_id=failed_node_id
+            )
 
     def mark_cancelled(self) -> None:
         with request_scoped_session(self._session_factory) as session:
@@ -436,7 +438,7 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
             )
         ):
             return
-        tracker.mark_failed(str(exc))
+        tracker.mark_failed(str(exc), getattr(exc, "node_id", None))
         _flag_resumable(factory, run_id, root_id, tenant_id)
         if item_id is not None:
             _notify(

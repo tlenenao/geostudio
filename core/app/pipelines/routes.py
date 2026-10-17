@@ -5,7 +5,7 @@ par requête : cf. design §3.2 et ce plan, Global Constraints)."""
 
 import os
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.analytics.sql_sandbox import SqlSandboxError
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
 from app.configs.schemas import PipelinePayload
@@ -31,9 +32,19 @@ from app.pipelines.service import (
     run_pipeline_service,
     trigger_pipeline_by_webhook_service,
 )
+from app.roles.guards import require_privilege
+from app.roles.kind_registry import privilege_for_kind
 from app.users.models import User
 
 router = APIRouter()
+
+
+def iso_utc(dt: datetime | None) -> str | None:
+    """AUD-088 F11 : les colonnes sont des DateTime naïfs en UTC ; sans suffixe, le
+    navigateur les lit en heure locale (décalage d'1-2 h affiché)."""
+    if dt is None:
+        return None
+    return (dt if dt.tzinfo else dt.replace(tzinfo=UTC)).isoformat()
 
 
 class RunResponse(BaseModel):
@@ -62,6 +73,8 @@ class RunStatus(BaseModel):
     resumeOf: str | None = None
     # Des points de reprise existent encore : « Reprendre » évite de rejouer les nœuds réussis.
     resumable: bool = False
+    # AUD-087 : nœud fautif d'un run en échec, quand il est connu.
+    failedNodeId: str | None = None
 
 
 class WebhookTokenCreated(BaseModel):
@@ -163,15 +176,16 @@ def _run_status(r) -> RunStatus:
     return RunStatus(
         id=r.id,
         status=r.status,
-        startedAt=r.started_at.isoformat() if r.started_at else None,
-        finishedAt=r.finished_at.isoformat() if r.finished_at else None,
+        startedAt=iso_utc(r.started_at),
+        finishedAt=iso_utc(r.finished_at),
         error=r.error,
         nodeStats=r.node_stats,
         params=r.params,
         attempt=r.attempt,
-        nextRetryAt=r.next_retry_at.isoformat() if r.next_retry_at else None,
+        nextRetryAt=iso_utc(r.next_retry_at),
         resumeOf=r.resume_of,
         resumable=r.status == "failed" and r.resumable,
+        failedNodeId=r.failed_node_id,
     )
 
 
@@ -274,6 +288,47 @@ def reset_reader_state_route(
     session.commit()
 
 
+def _run_preview(
+    session: Session, user: User, payload: PipelinePayload, up_to: str, params: dict | None
+) -> list[dict]:
+    try:
+        return preview_pipeline(
+            session=session,
+            payload=payload,
+            tenant_id=user.tenant_id,
+            user=user,
+            up_to=up_to,
+            endpoint_url=os.environ.get("S3_ENDPOINT_URL", ""),
+            access_key=os.environ.get("S3_ACCESS_KEY", ""),
+            secret_key=os.environ.get("S3_SECRET_KEY", ""),
+            base_uri=f"s3://{os.environ.get('S3_CDC_BUCKET', 'geostudio-cdc')}/cdc",
+            params=params,
+        )
+    # AUD-087 : une expression refusée par le bac à sable ou un paramètre invalide est un
+    # refus métier (400), jamais un 500.
+    except (PipelineRuntimeError, SqlSandboxError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+class PipelineDraftPreviewRequest(BaseModel):
+    pipeline: PipelinePayload
+    params: dict[str, Any] | None = None
+
+
+# Déclarée AVANT /pipelines/{item_id}/preview (sinon « preview » serait pris pour un item_id).
+@router.post("/pipelines/preview")
+def preview_unsaved_pipeline_route(
+    body: PipelineDraftPreviewRequest,
+    upTo: str = Query(...),
+    session: Session = Depends(get_session, scope="function"),
+    user: User = Depends(get_current_user),
+) -> list[dict]:
+    """AUD-009 : aperçu d'un pipeline jamais enregistré (pas encore d'item). Même porte que
+    la création d'un pipeline ; les lectures restent soumises à can() nœud par nœud."""
+    require_privilege(session, user, privilege_for_kind("pipeline"))
+    return _run_preview(session, user, body.pipeline, upTo, body.params)
+
+
 @router.post("/pipelines/{item_id}/preview")
 def preview_pipeline_route(
     item_id: str,
@@ -285,21 +340,8 @@ def preview_pipeline_route(
     require_pipeline_access(session, user=user, item_id=item_id, action="write")
     config = require_pipeline_config(session, item_id)
     payload = body.pipeline if body and body.pipeline is not None else config.config.pipeline
-    try:
-        return preview_pipeline(
-            session=session,
-            payload=payload,
-            tenant_id=user.tenant_id,
-            user=user,
-            up_to=upTo,
-            endpoint_url=os.environ.get("S3_ENDPOINT_URL", ""),
-            access_key=os.environ.get("S3_ACCESS_KEY", ""),
-            secret_key=os.environ.get("S3_SECRET_KEY", ""),
-            base_uri=f"s3://{os.environ.get('S3_CDC_BUCKET', 'geostudio-cdc')}/cdc",
-            params=body.params if body else None,
-        )
-    except PipelineRuntimeError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    assert payload is not None
+    return _run_preview(session, user, payload, upTo, body.params if body else None)
 
 
 @router.post(
@@ -311,7 +353,7 @@ def create_webhook_token_route(
     user: User = Depends(get_current_user),
 ) -> WebhookTokenCreated:
     token, raw = create_webhook_token_service(session, user=user, item_id=item_id)
-    return WebhookTokenCreated(id=token.id, token=raw, createdAt=token.created_at.isoformat())
+    return WebhookTokenCreated(id=token.id, token=raw, createdAt=iso_utc(token.created_at) or "")
 
 
 @router.get("/pipelines/{item_id}/webhook-tokens", response_model=list[WebhookTokenSummary])
@@ -327,8 +369,8 @@ def list_webhook_tokens_route(
     return [
         WebhookTokenSummary(
             id=r.id,
-            createdAt=r.created_at.isoformat(),
-            lastUsedAt=r.last_used_at.isoformat() if r.last_used_at else None,
+            createdAt=iso_utc(r.created_at) or "",
+            lastUsedAt=iso_utc(r.last_used_at),
         )
         for r in rows
     ]

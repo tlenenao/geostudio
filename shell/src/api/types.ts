@@ -959,7 +959,7 @@ export interface ItemClient {
   createPipelineWebhookToken(pk: string): Promise<{ id: string; token: string; createdAt: string }>;
   revokePipelineWebhookToken(pk: string, tokenId: string): Promise<void>;
   previewPipeline(
-    pk: string,
+    pk: string | null,
     upToNodeId: string,
     draft?: PipelinePayload,
   ): Promise<Record<string, unknown>[]>;
@@ -1807,6 +1807,8 @@ export type PipelineRun = {
   nextRetryAt?: string | null;
   resumeOf?: string | null;
   resumable?: boolean;
+  // AUD-087 : nœud fautif d'un run en échec, quand il est connu.
+  failedNodeId?: string | null;
 };
 
 export type PipelineParameter = {

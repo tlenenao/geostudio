@@ -193,6 +193,7 @@ export const automation = {
   // PipelinePreviewPanel (builder/pipeline)
   "pipelinePreview.loading": "Chargement de l'aperçu…",
   "pipelinePreview.unavailable": "Aperçu indisponible.",
+  "pipelinePreview.truncated": "Aperçu limité aux {count} premières lignes.",
   "pipelinePreview.tableView": "Tableau",
   "pipelinePreview.mapView": "Carte",
   "pipelinePreview.featureAttributes": "Attributs de la feature",

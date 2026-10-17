@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { useItemClient as useItemClientInternal } from "../ItemClientProvider";
 import { useToast } from "../../ui/kit/ToastProvider";
 import { t } from "../../i18n";
@@ -59,16 +60,34 @@ export function usePipelineNextRun(cron: string, enabled: boolean) {
   });
 }
 
+// AUD-008 : la clé d'aperçu ne dépend que de ce qui change le résultat — jamais des
+// positions (chaque frame de drag relançait l'aperçu côté serveur), titres ou notes.
+export function previewDraftKey(draft: PipelinePayload | undefined): string {
+  if (!draft) return "";
+  return JSON.stringify({
+    nodes: draft.nodes.map(({ id, kind, op, params }) => ({ id, kind, op, params })),
+    edges: draft.edges,
+    parameters: draft.parameters ?? null,
+  });
+}
+
 export function usePipelinePreview(
-  pipelineId: string,
+  pipelineId: string | null,
   nodeId: string | null,
   draft?: PipelinePayload,
 ) {
   const client = useItemClientInternal();
+  const key = previewDraftKey(draft);
+  const [debouncedKey, setDebouncedKey] = useState(key);
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedKey(key), 400);
+    return () => clearTimeout(id);
+  }, [key]);
   return useQuery({
-    queryKey: ["pipeline-preview", pipelineId, nodeId, draft],
+    queryKey: ["pipeline-preview", pipelineId, nodeId, debouncedKey],
     queryFn: () => client.previewPipeline(pipelineId, nodeId!, draft),
-    enabled: nodeId !== null,
+    enabled: nodeId !== null && (pipelineId !== null || draft !== undefined),
+    placeholderData: keepPreviousData,
   });
 }
 

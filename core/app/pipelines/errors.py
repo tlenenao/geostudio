@@ -14,7 +14,12 @@ PipelineRuntimeError`)."""
 
 class PipelineRuntimeError(Exception):
     """Erreur d'exécution : la tâche procrastinate (Task 9) l'attrape et
-    marque le run 'failed', jamais 'zombie'."""
+    marque le run 'failed', jamais 'zombie'. `node_id` : nœud fautif quand il
+    est connu (AUD-087)."""
+
+    def __init__(self, *args: object, node_id: str | None = None) -> None:
+        super().__init__(*args)
+        self.node_id = node_id
 
 
 class PipelineCancelledError(PipelineRuntimeError):

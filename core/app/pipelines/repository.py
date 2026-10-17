@@ -305,7 +305,9 @@ def mark_succeeded(session: Session, *, run_id: str, node_stats: dict) -> None:
     _emit_run_finished(session, run, previous=previous)
 
 
-def mark_failed(session: Session, *, run_id: str, error: str) -> None:
+def mark_failed(
+    session: Session, *, run_id: str, error: str, failed_node_id: str | None = None
+) -> None:
     run = session.get(PipelineRun, run_id)
     if run is None:
         return
@@ -313,6 +315,7 @@ def mark_failed(session: Session, *, run_id: str, error: str) -> None:
     run.status = "failed"
     run.finished_at = _now()
     run.error = error
+    run.failed_node_id = failed_node_id
     session.flush()
     _emit_run_finished(session, run, previous=previous)
 

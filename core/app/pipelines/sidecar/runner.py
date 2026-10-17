@@ -45,7 +45,7 @@ def _execute(
             base_uri=base_uri,
         )
     except (PipelineRuntimeError, ValueError) as exc:
-        tracker.mark_failed(str(exc))
+        tracker.mark_failed(str(exc), getattr(exc, "node_id", None))
         return
     except Exception as exc:  # noqa: BLE001 — même patron que jobs.py:run_pipeline_task
         tracker.mark_failed(f"erreur interne : {exc}")

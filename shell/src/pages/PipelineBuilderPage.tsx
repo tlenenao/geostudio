@@ -283,6 +283,15 @@ export function PipelineBuilderPage({
   const isDraftStale = configQuery.data !== undefined && configQuery.data !== draft;
   const validation = validatePipelineGraphLocally(draft.nodes, draft.edges, catalog);
   const valid = isPipelineValid(validation);
+  // AUD-087 : le nœud fautif du dernier run en échec porte son erreur sur le canevas.
+  // Calcul simple (pas de useMemo : on est après le retour anticipé `draft === null`).
+  const failedNodeId = latestRun?.status === "failed" ? latestRun.failedNodeId : null;
+  const nodeErrors = failedNodeId
+    ? {
+        ...validation.nodeErrors,
+        [failedNodeId]: [...(validation.nodeErrors[failedNodeId] ?? []), latestRun?.error ?? ""],
+      }
+    : validation.nodeErrors;
   const selectedNode = draft.nodes.find((n) => n.id === selectedNodeId) ?? null;
 
   function setNodes(nodes: PipelineNode[]) {
@@ -513,7 +522,7 @@ export function PipelineBuilderPage({
                   opsCatalog={catalog}
                   nodeStats={latestRun?.nodeStats}
                   runStatus={latestRun?.status}
-                  nodeErrors={validation.nodeErrors}
+                  nodeErrors={nodeErrors}
                   notes={draft.notes ?? []}
                   onNotesChange={setNotes}
                   readOnly={readOnly}
@@ -540,7 +549,7 @@ export function PipelineBuilderPage({
                     onChange={updateSelectedNodeParams}
                     readOnly={readOnly}
                   />
-                  {pk !== null && !readOnly && (
+                  {!readOnly && (
                     <PipelinePreviewPanel
                       pipelineId={pk}
                       nodeId={selectedNode.id}
