@@ -197,7 +197,24 @@ def _describe(q, session, user, guest, introspect, masked) -> Response:
 
 
 def _get_feature(request, q, session, user, guest, introspect, repo, rls, masked) -> Response:
-    names = _type_name(q)
+    # AUD-140 : RESOURCEID (WFS 2.0) / FEATUREID (1.x) = <type>.<id>, filtré en SQL.
+    rid = q.get("resourceid") or q.get("featureid")
+    ids: list[str] | None = None
+    if rid:
+        if q.get("bbox") or q.get("cql_filter"):
+            raise _bad("resourceId", "RESOURCEID is mutually exclusive with BBOX and CQL_FILTER")
+        parsed = [
+            r.strip().removeprefix("gs:").rpartition(".") for r in rid.split(",") if r.strip()
+        ]
+        types = {p[0] for p in parsed}
+        if len(types) != 1 or "" in types or any(not p[2] for p in parsed):
+            raise _bad("resourceId", "RESOURCEID must be <type>.<id> on a single feature type")
+        names = _type_name(q) if (q.get("typenames") or q.get("typename")) else list(types)
+        if names != list(types):
+            raise _bad("resourceId", "RESOURCEID type does not match typeNames")
+        ids = [p[2] for p in parsed]
+    else:
+        names = _type_name(q)
     if len(names) != 1:
         raise _bad("typeNames", "exactly one feature type per GetFeature is supported")
     col = _readable(session, user, guest, names[0], "typeNames")
@@ -213,6 +230,8 @@ def _get_feature(request, q, session, user, guest, introspect, repo, rls, masked
     start = _int(q, "startindex", 0, 0)
     srid = parse_crs(q.get("srsname"), "srsName") or 4326
     kwargs: dict = {}
+    if ids is not None:
+        kwargs["ids"] = ids
     if q.get("bbox"):
         kwargs["bbox"], bbox_srid = _bbox(q["bbox"])
         if bbox_srid != 4326:

@@ -5541,6 +5541,10 @@ export interface components {
             datetime?: string | null;
             /** Ids */
             ids?: string[] | null;
+            /** Intersects */
+            intersects?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Limit
              * @default 100
@@ -11992,6 +11996,7 @@ export interface operations {
                 datetime?: string | null;
                 collections?: string | null;
                 ids?: string | null;
+                intersects?: string | null;
                 limit?: number;
                 token?: string | null;
             };

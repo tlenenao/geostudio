@@ -7487,6 +7487,7 @@
         "type": "object"
       },
       "SearchBody": {
+        "additionalProperties": false,
         "properties": {
           "bbox": {
             "anyOf": [
@@ -7540,6 +7541,18 @@
               }
             ],
             "title": "Ids"
+          },
+          "intersects": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intersects"
           },
           "limit": {
             "default": 100,
@@ -19185,6 +19198,22 @@
                 }
               ],
               "title": "Ids"
+            }
+          },
+          {
+            "in": "query",
+            "name": "intersects",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Intersects"
             }
           },
           {

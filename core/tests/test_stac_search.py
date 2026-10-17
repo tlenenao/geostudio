@@ -52,9 +52,14 @@ def feat(fid):
 
 def make_repo():
     # Chaque collection a 2 features (ids 1,2). matched=2 par collection.
-    def select_features(session, info, *, limit, offset, bbox=None, filters=None):
-        rows = [feat(1), feat(2)][offset : offset + limit]
-        return FeaturePage(features=rows, number_matched=2, number_returned=len(rows))
+    def select_features(
+        session, info, *, limit, offset, bbox=None, filters=None, ids=None, geom_intersects=None
+    ):
+        rows = [feat(1), feat(2)]
+        if ids is not None:
+            rows = [f for f in rows if str(f["id"]) in ids]
+        page = rows[offset : offset + limit]
+        return FeaturePage(features=page, number_matched=len(rows), number_returned=len(page))
 
     def get_feature(session, info, *, fid):
         return None
@@ -241,3 +246,29 @@ def test_collection_patch_validates_dates_and_uris_on_write_only(env):
     )
     assert ok.status_code == 200
     assert client.patch("/v1/collections/roads", json={"licenseUri": ""}).status_code == 200
+
+
+def test_search_ids_filtered_before_pagination(env):
+    _app, client = env
+    body = client.get("/v1/stac/search?collections=roads&ids=2&limit=1").json()
+    assert [f["id"] for f in body["features"]] == ["2"]
+    assert not any(link["rel"] == "next" for link in body["links"])
+
+
+def test_search_rejects_unknown_parameters(env):
+    _app, client = env
+    assert client.get("/v1/stac/search?filter=x").status_code == 400
+    assert client.post("/v1/stac/search", json={"query": {}}).status_code in (400, 422)
+
+
+def test_search_intersects(env):
+    _app, client = env
+    geom = '{"type":"Point","coordinates":[1,44]}'
+    r = client.get("/v1/stac/search", params={"intersects": geom, "limit": 100})
+    assert r.status_code == 200 and len(r.json()["features"]) == 4
+    both = client.get("/v1/stac/search", params={"intersects": geom, "bbox": "0,0,1,1"})
+    assert both.status_code == 400
+    post = client.post(
+        "/v1/stac/search", json={"intersects": {"type": "Point", "coordinates": [1, 44]}}
+    )
+    assert post.status_code == 200

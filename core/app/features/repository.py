@@ -176,6 +176,7 @@ def _where(
     datetime_field: str | None = None,
     cql2: str | None = None,
     cql2_srid: int = 4326,
+    ids: list[str] | None = None,
 ):
     clauses, params = [], {}
     if cql2 is not None:
@@ -252,6 +253,18 @@ def _where(
             f"ST_Intersects({g}, ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(:gi), 4326), :gisrid))"
         )
         params.update({"gi": json.dumps(geom_intersects), "gisrid": info.srid or 4326})
+    if ids is not None:
+        # AUD-043 : filtre d'identifiants EN SQL (avant pagination/comptage) ; un id
+        # non convertible au type de la PK ne peut correspondre à aucune ligne.
+        values = [v for v in (_coerce_fid(info, i) for i in ids) if v is not None]
+        if not values:
+            clauses.append("FALSE")
+        else:
+            keys = []
+            for j, v in enumerate(values):
+                params[f"__id{j}"] = v
+                keys.append(f":__id{j}")
+            clauses.append(f"{quote_ident(session, info.pk_column)} IN ({', '.join(keys)})")
     return (" WHERE " + " AND ".join(clauses)) if clauses else "", params
 
 
@@ -326,6 +339,7 @@ def _select_features(
     bbox_srid: int = 4326,
     cql2: str | None = None,
     cql2_srid: int = 4326,
+    ids: list[str] | None = None,
     src: str,
 ) -> FeaturePage:
     if after is not None and offset > 0:
@@ -345,6 +359,7 @@ def _select_features(
         datetime_field=datetime_field,
         cql2=cql2,
         cql2_srid=cql2_srid,
+        ids=ids,
     )
     page_where, page_params = where, dict(params)
     if after is not None:

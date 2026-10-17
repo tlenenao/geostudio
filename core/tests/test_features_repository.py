@@ -588,3 +588,12 @@ def test_bbox_across_antimeridian_uses_two_envelopes(info, pg_session_factory):
     with pg_session_factory() as session, rls_scope(session, "default"):
         page = select_features(session, info, limit=10, offset=0, bbox=(1.5, 44.0, 0.5, 47.0))
         assert [f["id"] for f in page.features] == [2]
+
+
+def test_ids_filter_is_sql_and_paginates(info, pg_session_factory):
+    with pg_session_factory() as session, rls_scope(session, "default"):
+        page = select_features(session, info, limit=1, offset=0, ids=["2", "1", "x", "99"])
+        assert page.number_matched == 2  # "x" ignoré (pk entière), 99 absent
+        assert [f["id"] for f in page.features] == [1]
+        none = select_features(session, info, limit=10, offset=0, ids=["x"])
+        assert none.number_matched == 0 and none.features == []

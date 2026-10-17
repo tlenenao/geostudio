@@ -331,3 +331,18 @@ def test_get_feature_is_bounded_by_statement_timeout(env, monkeypatch):
     c.app.dependency_overrides[get_features_repo] = lambda: _SlowRepo()
     r = c.get(BASE, params=q)
     assert r.status_code == 503 and "query timed out" in r.text
+
+
+def test_getfeature_resourceid(env):
+    c, _login, _admin = env
+    _enable(c)
+    q = _kvp(request="GetFeature", resourceid="demo_ows.2", outputformat="application/json")
+    body = c.get(BASE, params=q).json()
+    assert [f["properties"]["nom"] for f in body["features"]] == ["bravo"]
+    q2 = _kvp(
+        request="GetFeature",
+        resourceid="gs:demo_ows.2",
+        bbox="0,0,1,1",
+        outputformat="application/json",
+    )
+    assert c.get(BASE, params=q2).status_code == 400
