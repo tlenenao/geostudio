@@ -36,6 +36,7 @@ ALLOWED_DIFF = {
     "CORE_AUTH_MODE": "core refuse mock hors CORE_ENV=development ; défaut oidc en cluster",
     "CORE_ADMIN_TOOLS_GATEWAY_URL": "passerelle admin = Traefik compose uniquement (https://${DOMAIN})",
     "SHELL_BASE_URL": "calculé : service shell du release",
+    "EXPORT_CORE_INTERNAL_URL": "calculé : service core du release",
     "VITE_AUTH_MODE": "idem CORE_AUTH_MODE",
 }
 # compose service -> (workload suffixe, valeurs --set pour l'activer)
