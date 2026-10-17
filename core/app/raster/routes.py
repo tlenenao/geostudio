@@ -156,7 +156,12 @@ def create_raster_upload(
     )
     # Commit avant de déférer ; un defer perdu est repris par sweep_raster_jobs_task.
     session.commit()
-    defer_task(job.id, user.tenant_id)
+    try:
+        defer_task(job.id, user.tenant_id)
+    except HTTPException:  # 503 : file indisponible, le job n'est pas laissé orphelin
+        repo.mark_enqueue_failed(session, job_id=job.id)
+        session.commit()
+        raise
     return RasterUploadCreated(jobId=job.id)
 
 

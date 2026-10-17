@@ -95,7 +95,12 @@ def create_app_export_route(
         payload={"itemId": body.itemId, "mode": body.mode},
     )
     session.commit()  # commit avant de déférer : même raison que export_routes/run_pipeline_route
-    defer_task(job.id, user.tenant_id)
+    try:
+        defer_task(job.id, user.tenant_id)
+    except HTTPException:  # 503 : file indisponible, le job n'est pas laissé orphelin
+        appexport_repo.mark_enqueue_failed(session, job_id=job.id)
+        session.commit()
+        raise
     return CreateAppExportResponse(jobId=job.id)
 
 

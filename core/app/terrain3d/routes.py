@@ -131,7 +131,12 @@ def create_terrain3d_upload(
     )
     # Commit avant de déférer : même raison que app.ingestion.routes.create_upload_job.
     session.commit()
-    defer_task(job.id, user.tenant_id)
+    try:
+        defer_task(job.id, user.tenant_id)
+    except HTTPException:  # 503 : file indisponible, le job n'est pas laissé orphelin
+        repo.mark_enqueue_failed(session, job_id=job.id)
+        session.commit()
+        raise
     return Terrain3DUploadCreated(jobId=job.id)
 
 

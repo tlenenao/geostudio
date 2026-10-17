@@ -111,7 +111,12 @@ def create_export_route(
     )
     # Commit avant de déférer : même raison que run_pipeline_route.
     session.commit()
-    defer_task(job.id, user.tenant_id)
+    try:
+        defer_task(job.id, user.tenant_id)
+    except HTTPException:  # 503 : file indisponible, le job n'est pas laissé orphelin
+        export_repo.mark_enqueue_failed(session, job_id=job.id)
+        session.commit()
+        raise
     return CreateExportResponse(jobId=job.id)
 
 

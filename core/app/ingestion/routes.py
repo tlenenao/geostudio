@@ -248,7 +248,12 @@ def create_upload_job(
     # d'acceptation SP-6a). Commit explicite ici pour que la ligne soit
     # visible avant que la tâche n'existe.
     session.commit()
-    defer_task(job.id, user.tenant_id)
+    try:
+        defer_task(job.id, user.tenant_id)
+    except HTTPException:  # 503 : file indisponible, le job n'est pas laissé orphelin
+        repo.mark_enqueue_failed(session, job_id=job.id)
+        session.commit()
+        raise
     return IngestionJobCreated(jobId=job.id)
 
 
