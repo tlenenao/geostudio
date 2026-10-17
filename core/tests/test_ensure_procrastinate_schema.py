@@ -58,3 +58,54 @@ def test_ensure_schema_baselines_untracked_db_then_applies_missing(pg_engine):
         c.execute(text("DELETE FROM gs_procrastinate_migrations WHERE name = :n"), {"n": last})
     assert ensure_schema(_conninfo()) == [last]
     assert ensure_schema(_conninfo()) == []
+
+
+def test_every_installed_migration_version_has_a_probe_or_an_exemption():
+    """M2 : une migration procrastinate future sans sonde serait rejouée sur une base
+    ancienne sans suivi ; il faut une sonde (ou une exemption motivée)."""
+    from scripts.ensure_procrastinate_schema import _PROBE_EXEMPT, _PROBES, _migration_files
+
+    versions = {f.name[:8] for f in _migration_files() if f.name[:8] >= "03.00.00"}
+    missing = versions - set(_PROBES) - set(_PROBE_EXEMPT)
+    assert not missing, missing
+
+
+def test_partial_baseline_stops_at_first_missing_artefact():
+    """M3 : base en 03.01 (workers présent, defer_jobs_v1 absent) -> 03.00/03.01 baselinés,
+    03.02 et suivants à appliquer."""
+    from scripts.ensure_procrastinate_schema import _PROBES, _baseline_names, _migration_files
+
+    present = {"03.00.00", "03.01.00"}
+
+    class FakeConn:
+        def execute(self, query):
+            version = next(v for v, q in _PROBES.items() if q == query)
+
+            class R:
+                def fetchone(self):
+                    return (version in present,)
+
+            return R()
+
+    names = _baseline_names(FakeConn(), _migration_files())
+    assert any(n.startswith("03.01.00") for n in names)
+    assert not any(n[:8] >= "03.02.00" for n in names)
+
+
+@pytest.mark.postgis
+def test_connection_disables_prepared_statements_for_pgbouncer(pg_engine, monkeypatch):
+    """C1 : derrière PgBouncer (mode transaction), `prepare_threshold=None` est obligatoire."""
+    import psycopg
+
+    from scripts.ensure_procrastinate_schema import ensure_schema
+
+    seen = {}
+    real = psycopg.connect
+
+    def spy(conninfo, **kwargs):
+        seen.update(kwargs)
+        return real(conninfo, **kwargs)
+
+    monkeypatch.setattr(psycopg, "connect", spy)
+    ensure_schema(_conninfo())
+    assert "prepare_threshold" in seen and seen["prepare_threshold"] is None

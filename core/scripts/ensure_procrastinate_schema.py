@@ -12,7 +12,6 @@ import os
 import sys
 from pathlib import Path
 
-import procrastinate
 import psycopg
 from procrastinate.schema import SchemaManager
 from sqlalchemy import create_engine
@@ -44,6 +43,10 @@ _PROBES = {
 }
 
 
+# Versions sans artefact propre vérifiable, exemptées de sonde (test M2).
+_PROBE_EXEMPT = {"03.03.00": "ne fait que recréer procrastinate_fetch_job_v2"}
+
+
 def _baseline_names(conn, files: list[Path]) -> list[str]:
     """Base ancienne sans suivi : tout ce qui précède la première migration
     sondée dont l'artefact manque est tenu pour appliqué."""
@@ -55,46 +58,40 @@ def _baseline_names(conn, files: list[Path]) -> list[str]:
 
 def ensure_schema(conninfo: str) -> list[str]:
     """Applique le schéma s'il manque, puis les migrations procrastinate pas
-    encore suivies. Idempotent. Retourne les noms de migrations appliquées."""
-    with psycopg.connect(conninfo, autocommit=True) as conn:
-        conn.execute("SELECT pg_advisory_lock(hashtext('gs_procrastinate_schema'))")
-        try:
+    encore suivies. Idempotent. Retourne les noms de migrations appliquées.
+
+    Une seule connexion, une seule transaction (verrou consultatif `xact`, schéma,
+    baseline, migrations et suivi atomiques) : seul usage sûr derrière PgBouncer en
+    mode transaction, où verrou de session et statements préparés se perdent."""
+    with psycopg.connect(conninfo, **CONNECTION_KWARGS) as conn, conn.transaction():
+        conn.execute("SELECT pg_advisory_xact_lock(hashtext('gs_procrastinate_schema'))")
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS gs_procrastinate_migrations "
+            "(name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())"
+        )
+        files = _migration_files()
+        seen = {r[0] for r in conn.execute("SELECT name FROM gs_procrastinate_migrations")}
+        if not conn.execute("SELECT to_regclass('procrastinate_jobs') IS NOT NULL").fetchone()[0]:
+            conn.execute(SchemaManager.get_schema())  # schéma courant = toutes les migrations
+            baseline = [f.name for f in files]
+        elif not seen:
+            baseline = _baseline_names(conn, files)
+        else:
+            baseline = []
+        for n in baseline:
             conn.execute(
-                "CREATE TABLE IF NOT EXISTS gs_procrastinate_migrations "
-                "(name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())"
+                "INSERT INTO gs_procrastinate_migrations(name) VALUES (%s) ON CONFLICT DO NOTHING",
+                (n,),
             )
-            files = _migration_files()
-            seen = {r[0] for r in conn.execute("SELECT name FROM gs_procrastinate_migrations")}
-            if not schema_is_applied(conninfo):
-                app = procrastinate.App(
-                    connector=procrastinate.PsycopgConnector(
-                        conninfo=conninfo, kwargs=dict(CONNECTION_KWARGS)
-                    )
-                )
-                with app.open():
-                    app.schema_manager.apply_schema()  # schéma courant = toutes les migrations
-                baseline = [f.name for f in files]
-            elif not seen:
-                baseline = _baseline_names(conn, files)
-            else:
-                baseline = []
-            for n in baseline:
-                conn.execute(
-                    "INSERT INTO gs_procrastinate_migrations(name) VALUES (%s) "
-                    "ON CONFLICT DO NOTHING",
-                    (n,),
-                )
-            seen |= set(baseline)
-            applied = []
-            for f in files:
-                if f.name in seen:
-                    continue
-                conn.execute(f.read_text())
-                conn.execute("INSERT INTO gs_procrastinate_migrations(name) VALUES (%s)", (f.name,))
-                applied.append(f.name)
-            return applied
-        finally:
-            conn.execute("SELECT pg_advisory_unlock(hashtext('gs_procrastinate_schema'))")
+        seen |= set(baseline)
+        applied = []
+        for f in files:
+            if f.name in seen:
+                continue
+            conn.execute(f.read_text())
+            conn.execute("INSERT INTO gs_procrastinate_migrations(name) VALUES (%s)", (f.name,))
+            applied.append(f.name)
+        return applied
 
 
 def main() -> None:
