@@ -12,6 +12,7 @@ Une lettre de REV se ferme dans l'un de ces trois cas, et seulement ceux-là : (
 - WSL2 avec ~12 Go de RAM : une seule session lourde à la fois (un second job concurrent fait tuer les conteneurs ou les tests).
 - `.env` bootstrappé (`scripts/bootstrap-env.sh`), `CORE_AUTH_MODE=oidc` pour les journeys et `oidc`, `mock` pour `smoke`.
 - Docker + Compose, `uv`, Node 22 (`cd shell && npm ci`).
+- Stack déjà démarrée sans `--build` (rejeu partiel, journeys seules) : vérifier d'abord que les images ne sont pas en retard sur `HEAD` — `python3 scripts/check_image_freshness.py` (sortie 1 + commande `build` à lancer sinon ; ajouter `-p geostudio` depuis un worktree). Une image périmée fait juger l'ancien code (AUD-136).
 - Ne pas poser `S3_PUBLIC_ENDPOINT_URL` vide : la CI le fixe (`http://localhost:9000`) ; sans lui les URL présignées pointent sur `minio:9000`, injoignable du navigateur.
 
 ## 3. Séquence
