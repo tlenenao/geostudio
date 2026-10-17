@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { test, expect } from "@playwright/test";
-import { mockCore } from "./mocks";
+import { bindTemplateSources, mockCore } from "./mocks";
 
 // Navigation : même patron qu'incident-form.spec.ts (widget Formulaire déjà
 // exercé en E2E) — gabarit "application-de-saisie", pré-câblé sur la
@@ -101,6 +101,7 @@ test("ajouter, lister et supprimer une pièce jointe depuis le widget Formulaire
   const dialog = page.getByRole("dialog", { name: "Nouvel élément" });
   await dialog.getByLabel("Type").selectOption("app");
   await dialog.getByLabel("Modèle").selectOption("application-de-saisie");
+  await bindTemplateSources(dialog);
   await dialog.getByLabel("Titre").fill("Pièces jointes");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);

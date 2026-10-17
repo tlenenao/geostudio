@@ -125,7 +125,7 @@ export function createDesktopItemClient(connection: {
     ): Promise<Record<string, unknown>[]> {
       if (pk === null) {
         // Le sidecar stocke les pipelines par item : pas d'aperçu avant enregistrement.
-        throw new Error("aperçu indisponible avant enregistrement en mode bureau");
+        return unsupported();
       }
       return sidecarFetch<Record<string, unknown>[]>(
         "POST",
