@@ -1439,6 +1439,8 @@ export type BookmarkCrossFilterEntry = {
   field: string;
   value: BookmarkCrossFilterValue;
   originSourceId: string;
+  // AUD-060 : géométrie GeoJSON du cross-filter spatial.
+  geometry?: unknown;
 };
 
 export type BookmarkPayload = {

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+import json
 import re
 from typing import Annotated, Any, Literal
 
@@ -285,6 +286,9 @@ class BookmarkTimeRange(BaseModel):
     to: str
 
 
+MAX_BOOKMARK_GEOMETRY_CHARS = 100_000
+
+
 class BookmarkCrossFilterEntry(BaseModel):
     field: str
     # The shell's CrossFilterValue mirror type (AnalyticsContext.tsx) also
@@ -293,6 +297,15 @@ class BookmarkCrossFilterEntry(BaseModel):
     # than inventing a second range type.
     value: str | list[str] | BookmarkTimeRange
     originSourceId: str
+    # AUD-060 : géométrie du cross-filter spatial (clic carte), jusque-là supprimée en silence.
+    geometry: dict[str, Any] | None = None
+
+    @field_validator("geometry")
+    @classmethod
+    def _bound_geometry(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
+        if v is not None and len(json.dumps(v)) > MAX_BOOKMARK_GEOMETRY_CHARS:
+            raise ValueError("bookmark geometry is too large")
+        return v
 
 
 class BookmarkPayload(BaseModel):
