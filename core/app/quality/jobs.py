@@ -11,6 +11,7 @@ from app.collections.domains import strip_hidden_rules, with_attribute_rules
 from app.collections.introspection import hide_sensitive_columns
 from app.collections.introspection_pg import introspect_table
 from app.db import request_scoped_session
+from app.job_errors import INTERNAL_ERROR_MESSAGE
 from app.jobs import app
 from app.jobs.common import session_factory
 from app.quality import repository as quality_repo
@@ -50,10 +51,10 @@ def run_quality_check_task(report_id: str, tenant_id: str) -> None:
             quality_repo.mark_done(
                 session, report_id, checked=checked, summary=summary, violations=violations
             )
-    except Exception as exc:  # jamais de rapport zombie
+    except Exception:  # jamais de rapport zombie
         logger.exception("rapport de qualité %s : échec", report_id)
         with request_scoped_session(factory) as session:
-            quality_repo.mark_failed(session, report_id, f"erreur interne : {exc}")
+            quality_repo.mark_failed(session, report_id, INTERNAL_ERROR_MESSAGE)
 
 
 @app.periodic(cron="*/5 * * * *")

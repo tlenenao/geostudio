@@ -31,6 +31,7 @@ from app.export.jobs import (
 from app.ingestion.storage import generate_presigned_get_url
 from app.items import repository as items_repo
 from app.items.models import Item
+from app.job_errors import INTERNAL_ERROR_MESSAGE
 from app.jobs import app
 from app.jobs.common import notify_best_effort, resolve_owner_user
 from app.jobs.common import session_factory as _session_factory
@@ -248,7 +249,7 @@ def _trigger_due_reports(session_factory) -> None:
                 session.commit()
                 try:
                     render_export_task.defer(job_id=job.id, tenant_id=tenant_id)
-                except Exception as exc:
+                except Exception:
                     # Le run et son export_jobs sont déjà committés (patron
                     # commit-avant-defer) : si la mise en file échoue, plus
                     # personne ne dépilera jamais ce job, il resterait
@@ -260,13 +261,13 @@ def _trigger_due_reports(session_factory) -> None:
                     export_repo.mark_error(
                         session,
                         job_id=job.id,
-                        error=f"mise en file impossible : {exc}",
+                        error="mise en file impossible",
                     )
                     _audit_trigger_failure(
                         session,
                         tenant_id=tenant_id,
                         item_id=item_id,
-                        error=f"mise en file impossible : {exc}",
+                        error="mise en file impossible",
                     )
                     session.commit()
             except ReportTriggerError as exc:
@@ -278,7 +279,7 @@ def _trigger_due_reports(session_factory) -> None:
                     error=str(exc),
                     session_factory=session_factory,
                 )
-            except Exception as exc:
+            except Exception:
                 # Jumeau du filet large d'app.alerts.jobs : tout ce qui est
                 # dans le `try` et n'est PAS une ReportTriggerError
                 # (render_export_task.defer contre un vrai Postgres, l'assert
@@ -292,7 +293,7 @@ def _trigger_due_reports(session_factory) -> None:
                     session,
                     tenant_id=tenant_id,
                     item_id=item_id,
-                    error=f"erreur interne : {exc}",
+                    error=INTERNAL_ERROR_MESSAGE,
                     session_factory=session_factory,
                 )
         reclaim_and_notify_stuck_exports(session, session_factory)
@@ -428,7 +429,7 @@ def _notify_pending_reports(session_factory) -> None:
                             "error": error_detail,
                         },
                     )
-            except Exception as exc:
+            except Exception:
                 logger.exception("notification du run de rapport %s : erreur inattendue", run.id)
                 try:
                     write_audit(
@@ -442,7 +443,7 @@ def _notify_pending_reports(session_factory) -> None:
                         payload={
                             "channel": None,
                             "success": False,
-                            "error": f"erreur interne : {exc}",
+                            "error": INTERNAL_ERROR_MESSAGE,
                         },
                     )
                 except (

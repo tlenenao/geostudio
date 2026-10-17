@@ -20,6 +20,7 @@ from app.db import request_scoped_session
 from app.geocoding.batch import BatchBusy, geocode_batch
 from app.geocoding.models import GeocodeJob, _now
 from app.geocoding.provider import get_geocoder
+from app.job_errors import INTERNAL_ERROR_MESSAGE
 from app.jobs import app
 from app.jobs.engine import session_factory
 
@@ -121,13 +122,13 @@ def run_geocode_job(job_id: str, tenant_id: str) -> None:
                     .where(GeocodeJob.id == job_id, GeocodeJob.status == "running")
                     .values(results=done, updated_at=_now())
                 )
-    except Exception as exc:
+    except Exception:
         logger.exception("geocode job %s : échec", job_id)
         with request_scoped_session(factory) as session:
             session.execute(
                 update(GeocodeJob)
                 .where(GeocodeJob.id == job_id, GeocodeJob.status == "running")
-                .values(status="failed", error=str(exc)[:500], updated_at=_now())
+                .values(status="failed", error=INTERNAL_ERROR_MESSAGE, updated_at=_now())
             )
         return
     with request_scoped_session(factory) as session:

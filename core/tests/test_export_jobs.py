@@ -12,6 +12,7 @@ from app.db import init_db, make_engine, make_session_factory
 from app.export import jobs as export_jobs
 from app.export import repository as export_repo
 from app.items.repository import create_item
+from app.job_errors import INTERNAL_ERROR_MESSAGE
 from app.notifications import repository as notifications_repo
 from app.notifications.models import Notification
 from app.tenants.repository import get_or_create_default_tenant
@@ -250,7 +251,7 @@ def test_render_export_task_marks_error_never_zombie_on_navigation_failure(db_se
     session.expire_all()
     refreshed = export_repo.get_job(session, tenant_id=tenant.id, job_id=job.id)
     assert refreshed.status == "error"
-    assert "navigation timeout" in refreshed.error
+    assert refreshed.error == INTERNAL_ERROR_MESSAGE
 
 
 def test_render_export_task_builds_url_with_page_id_and_ctx(db_session, monkeypatch):
@@ -541,7 +542,7 @@ def test_failure_writes_a_notification(db_session, monkeypatch):
     notification = session.scalar(select(Notification).where(Notification.tenant_id == tenant.id))
     assert notification is not None
     assert notification.status == "failure"
-    assert "navigation timeout" in notification.error_message
+    assert notification.error_message == INTERNAL_ERROR_MESSAGE
     # Revue finale SP-39 (I3) : resource_type vaut None dans la branche
     # d'échec (config non chargé), mais l'item existe toujours — la
     # notification doit rester cliquable (repli sur item.resourceType),
@@ -640,7 +641,7 @@ def test_render_export_task_handles_get_job_failure_gracefully(db_session, monke
     session.expire_all()
     fetched = export_repo.get_job(session, tenant_id=tenant.id, job_id=job.id)
     assert fetched.status == "error"
-    assert "db down" in fetched.error
+    assert fetched.error == INTERNAL_ERROR_MESSAGE
 
 
 def _serve_env_config(tmp_path, core_url: str):

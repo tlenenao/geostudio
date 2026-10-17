@@ -24,6 +24,7 @@ from app.export.models import ExportJob
 from app.export.rendering import RENDER_TIMEOUT_MS, RenderPage, page_pixels, render_export
 from app.ingestion.storage import ensure_uploads_bucket, make_s3_client
 from app.items import repository as items_repo
+from app.job_errors import public_error
 from app.jobs import app
 from app.jobs.common import notify_best_effort, session_factory
 
@@ -473,8 +474,10 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
         )
     except Exception as exc:  # toute erreur inattendue finit "error", jamais zombie
         logger.exception("export job %s : erreur inattendue", job_id)
+        user_msgs = (USER_EXPORT_UNAVAILABLE, USER_EXPORT_INCOMPLETE)
+        msg = str(exc) if str(exc) in user_msgs else public_error(exc, user_errors=(ValueError,))
         with request_scoped_session(factory) as session:
-            export_repo.mark_error(session, job_id=job_id, error=str(exc))
+            export_repo.mark_error(session, job_id=job_id, error=msg)
         _notify(
             factory,
             tenant_id=tenant_id,
@@ -483,5 +486,5 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
             page_id=page_id,
             resource_type=None,
             status="failure",
-            error=str(exc),
+            error=msg,
         )

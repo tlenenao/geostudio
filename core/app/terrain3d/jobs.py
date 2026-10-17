@@ -19,6 +19,7 @@ from app.configs.schemas import BuilderConfig, Terrain3DPayload
 from app.db import request_scoped_session
 from app.ingestion.storage import make_s3_client
 from app.items import repository as items_repo
+from app.job_errors import INTERNAL_ERROR_MESSAGE
 from app.jobs import app
 from app.jobs.common import notify_best_effort
 from app.jobs.engine import session_factory as common_session_factory
@@ -166,13 +167,11 @@ def convert_terrain3d_task(job_id: str, tenant_id: str) -> None:
                 job_id=job_id,
                 session_factory=session_factory,
             )
-    except Exception as exc:  # toute erreur inattendue finit "error", jamais zombie
+    except Exception:  # toute erreur inattendue finit "error", jamais zombie
         logger.exception("terrain3d job %s : erreur inattendue", job_id)
         with request_scoped_session(session_factory) as session:
-            terrain3d_repo.mark_error(
-                session, job_id=job_id, error_message=f"erreur interne : {exc}"
-            )
-        _notify_outcome("failure", None, f"erreur interne : {exc}")
+            terrain3d_repo.mark_error(session, job_id=job_id, error_message=INTERNAL_ERROR_MESSAGE)
+        _notify_outcome("failure", None, INTERNAL_ERROR_MESSAGE)
         if s3 is not None:
             _purge_raw_upload(
                 s3,
