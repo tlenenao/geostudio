@@ -40,6 +40,7 @@ from app.jobs.common import notify_best_effort, resolve_owner_user
 from app.jobs.common import session_factory as _session_factory
 from app.sharing.authorization import can
 from app.sharing.geo_limits import resolve_geo_limits
+from app.sharing.repository import share_recipient_ids
 from app.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -578,18 +579,36 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
                 and not retry
                 and (notify_status == "failed" or new_state == "firing")
             ):
-                notify_best_effort(
-                    _session_factory(),
-                    tenant_id=tenant_id,
-                    recipient_user_id=owner_id,
-                    kind="alert",
-                    status="failure",
-                    item_id=item_id,
-                    item_resource_type="alert",
-                    item_title=rule_name,
-                    error=notify_error
-                    or _render_message(payload, rule_name=rule_name, value=value, state=new_state),
+                message = notify_error or _render_message(
+                    payload, rule_name=rule_name, value=value, state=new_state
                 )
+                # AUD-130 : une alerte déclenchée notifie aussi les membres des groupes avec
+                # lesquels elle est partagée ; un échec de livraison reste l'affaire du
+                # propriétaire seul.
+                recipients = {owner_id}
+                if new_state == "firing":
+                    recipients |= _share_recipients(tenant_id=tenant_id, item_id=item_id)
+                for recipient in sorted(recipients):
+                    notify_best_effort(
+                        _session_factory(),
+                        tenant_id=tenant_id,
+                        recipient_user_id=recipient,
+                        kind="alert",
+                        status="failure",
+                        item_id=item_id,
+                        item_resource_type="alert",
+                        item_title=rule_name,
+                        error=message,
+                    )
+
+
+def _share_recipients(*, tenant_id: str, item_id: str) -> set[str]:
+    try:
+        with request_scoped_session(_session_factory()) as session:
+            return set(share_recipient_ids(session, tenant_id=tenant_id, item_id=item_id))
+    except Exception:  # best-effort, comme notify_best_effort
+        logger.exception("alerte : échec de la résolution des membres des groupes de partage")
+        return set()
 
 
 @app.periodic(cron="*/5 * * * *")

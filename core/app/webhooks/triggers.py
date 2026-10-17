@@ -16,6 +16,7 @@ from fastapi import HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.configs import repository as configs_repo
 from app.outbox.models import FileTrigger, FileTriggerSeen
 from app.pipelines.egress import assert_egress_allowed
 from app.pipelines.service import run_pipeline_service
@@ -105,6 +106,12 @@ def purge_seen(session: Session) -> int:
     return int(res.rowcount)  # type: ignore[attr-defined]
 
 
+def _declared_params(session: Session, item_id: str) -> set[str]:
+    cfg = configs_repo.get_config_by_item(session, item_id)
+    payload = cfg.config.pipeline if cfg is not None else None
+    return {p.name for p in (payload.parameters or [])} if payload is not None else set()
+
+
 def poll_trigger(
     session: Session,
     trigger: FileTrigger,
@@ -133,6 +140,7 @@ def poll_trigger(
         capped = len(listed) >= MAX_KEYS
         since = considered_since(trigger)
         objects = sorted((o for o in listed if o[2] > since), key=lambda o: o[2])
+        declared = _declared_params(session, trigger.pipeline_item_id)
         for key, etag, _ in objects:
             seen = session.scalar(
                 select(FileTriggerSeen.id).where(
@@ -160,6 +168,14 @@ def poll_trigger(
                     item_id=trigger.pipeline_item_id,
                     defer_task=defer_task,
                     actor_kind="file_trigger",
+                    # AUD-084 : l'objet déclencheur, seulement pour les paramètres déclarés
+                    # (resolve_params refuse tout paramètre inconnu).
+                    params={
+                        k: v
+                        for k, v in {"objectKey": key, "etag": etag, "bucket": bucket}.items()
+                        if k in declared and v is not None
+                    }
+                    or None,
                 )
             except HTTPException as exc:
                 session.rollback()

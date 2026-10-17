@@ -10,6 +10,7 @@ effect by app.main — the only layer allowed to know about both. Mirrors
 app.configs.dataset_validation exactly."""
 
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -96,6 +97,27 @@ def _check_acyclic(nodes: list[PipelineNode], edges: list[PipelineEdge]) -> None
         raise HTTPException(status_code=422, detail="pipeline graph must be acyclic")
 
 
+MIN_SCHEDULE_INTERVAL_MINUTES = 5
+
+
+def _check_min_interval(cron: str) -> None:
+    """AUD-084 : écriture seulement — une config déjà enregistrée reste lisible. 20 occurrences
+    échantillonnées : un cron irrégulier (`0,1 * * * *`) a un écart minimal sous son pas moyen."""
+    import croniter
+
+    it = croniter.croniter(cron, datetime(2026, 1, 5, tzinfo=UTC))
+    ticks = [it.get_next(datetime) for _ in range(20)]
+    gap = min(b - a for a, b in zip(ticks, ticks[1:], strict=False))
+    if gap < timedelta(minutes=MIN_SCHEDULE_INTERVAL_MINUTES):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"planification trop fréquente : intervalle minimal "
+                f"{MIN_SCHEDULE_INTERVAL_MINUTES} minutes (le balayage tourne toutes les 5 minutes)"
+            ),
+        )
+
+
 def validate_pipeline_payload(session: Session, config: BuilderConfig, *, user: User) -> None:
     if config.kind != "pipeline":
         return
@@ -109,6 +131,8 @@ def validate_pipeline_payload(session: Session, config: BuilderConfig, *, user: 
         raise HTTPException(
             status_code=422, detail=f"cron must have exactly 5 fields: {policy.cron!r}"
         )
+    if policy is not None:
+        _check_min_interval(policy.cron)
     _check_acyclic(payload.nodes, payload.edges)
     _check_topology(payload.nodes, payload.edges)
 

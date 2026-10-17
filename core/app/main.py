@@ -286,6 +286,8 @@ def create_app() -> FastAPI:
                 "status": exc.status_code,
                 "detail": exc.detail if isinstance(exc.detail, str) else "request failed",
             },
+            # AUD-084 : les en-têtes de l'exception (Retry-After, WWW-Authenticate…) survivent.
+            headers=getattr(exc, "headers", None),
         )
 
     @app.exception_handler(QuotaExceededError)

@@ -347,6 +347,19 @@ class PipelineCanvasNote(BaseModel):
 class PipelineRefreshPolicy(BaseModel):
     enabled: bool = False
     cron: str
+    # AUD-084 : fuseau IANA d'interprétation du cron (06:00 « heure de Paris »).
+    timezone: str = "UTC"
+
+    @field_validator("timezone")
+    @classmethod
+    def _valid_timezone(cls, v: str) -> str:
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        try:
+            ZoneInfo(v)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError(f"fuseau horaire inconnu : {v!r}") from exc
+        return v
 
     @model_validator(mode="after")
     def _require_valid_cron(self) -> "PipelineRefreshPolicy":

@@ -100,6 +100,7 @@ def run_pipeline_service(
     defer_task: Callable[[str, str], None],
     actor_kind: str = "user",
     params: dict | None = None,
+    idempotency_key: str | None = None,
 ) -> str:
     """Extrait de app/pipelines/routes.py::run_pipeline_route — même
     séquence de gardes, identique pour la route REST et pour le tool MCP
@@ -114,15 +115,27 @@ def run_pipeline_service(
         values = resolve_params(payload.parameters, params)
     except PipelineParamError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if idempotency_key is not None:
+        # AUD-084 : un événement rejoué (même clé) renvoie le run déjà créé, avant le garde 409.
+        existing = pipelines_repo.find_run_by_idempotency_key(
+            session, tenant_id=user.tenant_id, pipeline_item_id=item_id, key=idempotency_key
+        )
+        if existing is not None:
+            return existing
     try:
         run = pipelines_repo.create_run_unless_active(
-            session, tenant_id=user.tenant_id, pipeline_item_id=item_id, params=values
+            session,
+            tenant_id=user.tenant_id,
+            pipeline_item_id=item_id,
+            params=values,
+            idempotency_key=idempotency_key,
         )
     except pipelines_repo.PipelineRunActive:
         # REV-310 : REST, MCP (HTTPException -> ValueError) et webhook partagent ce garde.
         raise HTTPException(
             status_code=409,
             detail="Une exécution de ce pipeline est déjà en cours ou en file d'attente.",
+            headers={"Retry-After": "60"},
         ) from None
     write_audit(
         session,
@@ -279,6 +292,7 @@ def trigger_pipeline_by_webhook_service(
     raw_token: str,
     defer_task: Callable[[str, str], None],
     params: dict | None = None,
+    idempotency_key: str | None = None,
 ) -> str:
     """Seul point d'entrée du déclenchement webhook — réutilise
     run_pipeline_service tel quel (mêmes gardes que REST/MCP), seul
@@ -304,6 +318,7 @@ def trigger_pipeline_by_webhook_service(
         defer_task=defer_task,
         actor_kind="webhook",
         params=params,
+        idempotency_key=idempotency_key,
     )
     # Best-effort, hors du chemin critique : un échec ici ne doit jamais
     # faire échouer un déclenchement par ailleurs réussi.

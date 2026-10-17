@@ -75,6 +75,15 @@ def _owner_and_title(session, *, tenant_id: str, item_id: str) -> tuple[str, str
     return row.owner_id, row.title
 
 
+def _previous_run_failed(session_factory, *, item_id: str, run_id: str) -> bool:
+    try:
+        with request_scoped_session(session_factory) as session:
+            return pipelines_repo.previous_run_failed(session, item_id=item_id, run_id=run_id)
+    except Exception:  # best-effort, comme _notify
+        logger.exception("pipeline run : échec de la lecture du run précédent")
+        return False
+
+
 def _notify(
     session_factory,
     *,
@@ -405,7 +414,10 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
             _clear_resumable(factory, [root_id])
         tracker.mark_succeeded({s.nodeId: s.to_dict() for s in stats})
         assert item_id is not None  # affecté ci-dessus, jamais atteint sinon (cf. return/raise)
-        _notify(factory, tenant_id=tenant_id, item_id=item_id, status="success")
+        # AUD-084 : un pipeline planifié toutes les 5 min ne notifie plus chaque succès —
+        # seulement le rétablissement après un échec (les échecs restent tous notifiés).
+        if _previous_run_failed(factory, item_id=item_id, run_id=run_id):
+            _notify(factory, tenant_id=tenant_id, item_id=item_id, status="success")
     except PipelineCancelledError:
         tracker.mark_cancelled()
     # REV-288a : un quota atteint est un refus métier (message destiné à

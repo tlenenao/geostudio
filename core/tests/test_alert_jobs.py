@@ -958,6 +958,43 @@ def test_audits_carry_the_owner_and_firing_notifies_in_app(env, monkeypatch):
         assert notif.recipient_user_id == owner_id and notif.item_id == alert_item_id
 
 
+def test_firing_alert_also_notifies_members_of_shared_groups(env, monkeypatch):
+    """AUD-130 : une alerte partagée à un groupe notifie aussi ses membres actifs."""
+    from datetime import UTC, datetime
+
+    from app.notifications.models import Notification
+    from app.sharing.models import Group, GroupMember, ItemShare
+
+    _, Session, tenant, alert_item_id = env
+    monkeypatch.setattr(alert_jobs, "send_webhook", lambda *a, **k: None)
+    with Session() as s:
+        owner = s.execute(
+            text("SELECT owner_id FROM items WHERE id = :i"), {"i": alert_item_id}
+        ).scalar_one()
+        bob = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="bob", username="bob", email=None,
+            first_name="", last_name="",
+        )  # fmt: skip
+        gone = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="gone", username="gone", email=None,
+            first_name="", last_name="",
+        )  # fmt: skip
+        gone.erased_at = datetime.now(UTC).replace(tzinfo=None)
+        s.add(Group(id="g1", tenant_id=tenant.id, name="Équipe", created_by=owner))
+        s.flush()
+        for uid in (bob.id, gone.id):
+            s.add(GroupMember(group_id="g1", user_id=uid, tenant_id=tenant.id))
+        s.add(ItemShare(item_id=alert_item_id, group_id="g1", tenant_id=tenant.id, role="viewer"))
+        s.commit()
+        bob_id = bob.id
+    _run_eval(env)
+    with Session() as s:
+        recipients = set(
+            s.scalars(select(Notification.recipient_user_id).where(Notification.kind == "alert"))
+        )
+    assert recipients == {owner, bob_id}
+
+
 def _set_channels(env_tuple, channels):
     _, Session, tenant, alert_item_id = env_tuple
     with Session() as s:

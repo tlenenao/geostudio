@@ -5056,6 +5056,11 @@ export interface components {
              * @default false
              */
             enabled: boolean;
+            /**
+             * Timezone
+             * @default UTC
+             */
+            timezone: string;
         };
         /**
          * PipelineRetryPolicy

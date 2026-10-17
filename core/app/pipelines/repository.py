@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import uuid
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import croniter
 from sqlalchemy import case, delete, func, select, update
@@ -8,8 +9,13 @@ from sqlalchemy.orm import Session, aliased
 
 from app.configs import repository as configs_repo
 from app.configs.models import Config, ConfigRevision
+from app.items.models import Item
 from app.outbox.emit import emit
 from app.pipelines.models import PipelineReaderState, PipelineRun, PipelineWebhookToken
+from app.users.models import User
+
+# AUD-084 : N échecs consécutifs ouvrent le circuit (plus de run planifié).
+CIRCUIT_BREAKER_FAILURES = 3
 
 
 def _now() -> datetime:
@@ -27,6 +33,7 @@ def create_run(
     params: dict | None = None,
     resume_of: str | None = None,
     node_stats: dict | None = None,
+    idempotency_key: str | None = None,
 ) -> PipelineRun:
     run = PipelineRun(
         id=uuid.uuid4().hex,
@@ -36,6 +43,7 @@ def create_run(
         params=params or None,
         resume_of=resume_of,
         node_stats=node_stats or {},
+        idempotency_key=idempotency_key,
     )
     session.add(run)
     session.flush()
@@ -75,6 +83,7 @@ def create_run_unless_active(
     params: dict | None = None,
     resume_of: str | None = None,
     node_stats: dict | None = None,
+    idempotency_key: str | None = None,
 ) -> PipelineRun:
     """REV-310 : crée un run SAUF si un run actif non périmé existe (lève
     PipelineRunActive). Point unique REST / MCP / webhook / cron. Atomique :
@@ -107,6 +116,19 @@ def create_run_unless_active(
         params=params,
         resume_of=resume_of,
         node_stats=node_stats,
+        idempotency_key=idempotency_key,
+    )
+
+
+def find_run_by_idempotency_key(
+    session: Session, *, tenant_id: str, pipeline_item_id: str, key: str
+) -> str | None:
+    return session.scalar(
+        select(PipelineRun.id).where(
+            PipelineRun.tenant_id == tenant_id,
+            PipelineRun.pipeline_item_id == pipeline_item_id,
+            PipelineRun.idempotency_key == key,
+        )
     )
 
 
@@ -478,6 +500,17 @@ def list_due_pipelines(session: Session, *, now: datetime | None = None) -> list
         and config.pipeline.refreshPolicy is not None
         and config.pipeline.refreshPolicy.enabled
     ]
+    if candidates:
+        # AUD-084 : un propriétaire anonymisé (RGPD) ne fait plus tourner de run planifié.
+        erased = set(
+            session.scalars(
+                select(Item.id)
+                .join(User, User.id == Item.owner_id)
+                .where(Item.id.in_([c[0] for c in candidates]), User.erased_at.is_not(None))
+            )
+        )
+        candidates = [c for c in candidates if c[0] not in erased]
+    recent_by_item = _recent_terminal_statuses(session, [c[0] for c in candidates])
     latest_by_item = get_latest_runs_for_items(session, item_ids=[c[0] for c in candidates])
     # REV-312 : sans run antérieur, le curseur est la création/activation de la
     # config (révision courante) — un cron annuel n'est pas dû au 1er balayage.
@@ -485,13 +518,19 @@ def list_due_pipelines(session: Session, *, now: datetime | None = None) -> list
     for item_id, tenant_id, config in candidates:
         payload = config.pipeline
         policy = payload.refreshPolicy
+        tz = ZoneInfo(policy.timezone)
+        recent = recent_by_item.get(item_id, [])
+        if len(recent) == CIRCUIT_BREAKER_FAILURES and all(s == "failed" for s in recent):
+            # AUD-084 : circuit ouvert — plus de run planifié tant qu'un run manuel n'a pas
+            # réussi (le propriétaire est notifié à chaque échec, pas à chaque tick).
+            continue
         latest = latest_by_item.get(item_id)
         if latest is None:
             anchor = config_anchor.get(item_id)
             if anchor is not None:
                 if anchor.tzinfo is None:
                     anchor = anchor.replace(tzinfo=UTC)
-                if croniter.croniter(policy.cron, anchor).get_next(datetime) > now:
+                if croniter.croniter(policy.cron, anchor.astimezone(tz)).get_next(datetime) > now:
                     continue
             due.append((item_id, tenant_id))
             continue
@@ -516,10 +555,52 @@ def list_due_pipelines(session: Session, *, now: datetime | None = None) -> list
                 continue
             due.append((item_id, tenant_id))
             continue
-        next_tick = croniter.croniter(policy.cron, created_at).get_next(datetime)
+        next_tick = croniter.croniter(policy.cron, created_at.astimezone(tz)).get_next(datetime)
         if next_tick <= now:
             due.append((item_id, tenant_id))
     return due
+
+
+def previous_run_failed(session: Session, *, item_id: str, run_id: str) -> bool:
+    """Le dernier run terminé (succès ou échec) avant `run_id` a-t-il échoué ?"""
+    prev = session.scalar(
+        select(PipelineRun.status)
+        .where(
+            PipelineRun.pipeline_item_id == item_id,
+            PipelineRun.id != run_id,
+            PipelineRun.status.in_(("succeeded", "succeeded_with_rejects", "failed")),
+        )
+        .order_by(PipelineRun.created_at.desc())
+        .limit(1)
+    )
+    return prev == "failed"
+
+
+def _recent_terminal_statuses(session: Session, item_ids: list[str]) -> dict[str, list[str]]:
+    """Les CIRCUIT_BREAKER_FAILURES derniers statuts terminaux par pipeline (du plus récent)."""
+    if not item_ids:
+        return {}
+    rn = (
+        func.row_number()
+        .over(partition_by=PipelineRun.pipeline_item_id, order_by=PipelineRun.created_at.desc())
+        .label("rn")
+    )
+    sub = (
+        select(PipelineRun.pipeline_item_id, PipelineRun.status, rn)
+        .where(
+            PipelineRun.pipeline_item_id.in_(item_ids),
+            PipelineRun.status.in_(("succeeded", "succeeded_with_rejects", "failed", "cancelled")),
+        )
+        .subquery()
+    )
+    out: dict[str, list[str]] = {}
+    for item_id, status in session.execute(
+        select(sub.c.pipeline_item_id, sub.c.status)
+        .where(sub.c.rn <= CIRCUIT_BREAKER_FAILURES)
+        .order_by(sub.c.pipeline_item_id, sub.c.rn)
+    ):
+        out.setdefault(item_id, []).append(status)
+    return out
 
 
 # --- PipelineWebhookToken (GAP-24, SP-53) ---

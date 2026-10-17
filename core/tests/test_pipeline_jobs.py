@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
+from datetime import timedelta
+
 import geopandas as gpd
 import pytest
 from procrastinate import testing
@@ -206,9 +208,28 @@ def test_run_pipeline_task_marks_run_failed_never_zombie(env, monkeypatch):
         assert fetched.error is not None
 
 
-def test_success_writes_a_notification_for_the_item_owner(env):
+def test_success_without_previous_failure_is_not_notified(env):
+    """AUD-084 : un succès ordinaire (pas un rétablissement) ne notifie plus."""
     app, Session, tenant, user, item_id = env
     with Session() as s:
+        run = pipelines_repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_id)
+        s.commit()
+        run_id = run.id
+    pipeline_jobs.run_pipeline_task.defer(run_id=run_id, tenant_id=tenant.id)
+    app.run_worker(wait=False, queues=["etl"])
+    with Session() as s:
+        assert pipelines_repo.get_run(s, tenant_id=tenant.id, run_id=run_id).status == "succeeded"
+        assert s.scalar(select(Notification).where(Notification.tenant_id == tenant.id)) is None
+
+
+def test_success_writes_a_notification_for_the_item_owner(env):
+    """AUD-084 : le succès qui suit un échec (rétablissement) est notifié."""
+    app, Session, tenant, user, item_id = env
+    with Session() as s:
+        failed = pipelines_repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_id)
+        failed.status = "failed"
+        failed.created_at = failed.created_at - timedelta(hours=1)
+        s.commit()
         run = pipelines_repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_id)
         s.commit()
         run_id = run.id

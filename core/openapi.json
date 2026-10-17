@@ -6275,6 +6275,11 @@
             "default": false,
             "title": "Enabled",
             "type": "boolean"
+          },
+          "timezone": {
+            "default": "UTC",
+            "title": "Timezone",
+            "type": "string"
           }
         },
         "required": [

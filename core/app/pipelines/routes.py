@@ -5,8 +5,9 @@ par requête : cf. design §3.2 et ce plan, Global Constraints)."""
 
 import os
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import croniter
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
@@ -97,12 +98,17 @@ def get_pipeline_ops(user: User = Depends(get_current_user)) -> dict:
 @router.get("/pipelines/next-run", response_model=NextRunResponse)
 def get_pipeline_next_run(
     cron: str = Query(...),
+    tz: str = Query("UTC", max_length=64),
     user: User = Depends(get_current_user),
 ) -> NextRunResponse:
     if len(cron.split()) != 5 or not croniter.croniter.is_valid(cron):
         raise HTTPException(status_code=400, detail=f"invalid cron expression: {cron!r}")
     try:
-        next_tick = croniter.croniter(cron, datetime.now(UTC)).get_next(datetime)
+        zone = ZoneInfo(tz)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"fuseau horaire inconnu : {tz!r}") from exc
+    try:
+        next_tick = croniter.croniter(cron, datetime.now(zone)).get_next(datetime)
     except croniter.CroniterBadDateError as exc:
         raise HTTPException(
             status_code=400, detail=f"cron expression has no future occurrence: {cron!r}"
@@ -343,6 +349,7 @@ def trigger_pipeline_webhook_route(
     item_id: str,
     body: RunRequest | None = None,
     authorization: str | None = Header(default=None),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", max_length=128),
     session: Session = Depends(get_session, scope="function"),
     defer_task: Callable[[str, str], None] = Depends(get_task_deferrer),
 ) -> RunResponse:
@@ -359,5 +366,6 @@ def trigger_pipeline_webhook_route(
         raw_token=raw_token,
         defer_task=defer_task,
         params=body.params if body else None,
+        idempotency_key=idempotency_key,
     )
     return RunResponse(runId=run_id)
