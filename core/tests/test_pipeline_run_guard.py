@@ -136,3 +136,35 @@ def test_append_writer_failure_rolls_back_and_is_retried(rig, monkeypatch):  # n
     fail["on"] = False
     assert _exec(Session, tenant, run_id).status == "succeeded"
     assert _rows(Session) == 3
+
+
+@pytest.mark.postgis
+def test_append_rows_and_success_status_commit_together(rig, monkeypatch):  # noqa: F811
+    """Revue finale L1b, I1 : un échec à l'écriture du statut `succeeded` après le commit
+    des données faisait rejouer (retry auto ou reprise manuelle) un append déjà écrit."""
+    _app, Session, tenant, user, item_id, state = rig
+    state["fail_t3"] = False
+    state["retry"] = {"max": 1, "backoff": "fixed", "delaySeconds": 1}
+
+    def append_payload(retry):
+        p = _payload(None).model_dump(by_alias=True)
+        p["nodes"][-1]["params"].pop("mode")
+        p["retry"] = retry
+        return runtime.PipelinePayload.model_validate(p)
+
+    state["payload_fn"] = append_payload
+    real = pipelines_repo.mark_succeeded
+    calls = {"n": 0}
+
+    def flaky_mark_succeeded(*a, **kw):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("connexion perdue")
+        return real(*a, **kw)
+
+    monkeypatch.setattr(pipelines_repo, "mark_succeeded", flaky_mark_succeeded)
+    run_id = _new_run(Session, tenant, item_id)
+    assert _exec(Session, tenant, run_id).status == "retrying"
+    assert _rows(Session) == 0  # données et statut annulés ensemble
+    assert _exec(Session, tenant, run_id).status == "succeeded"
+    assert _rows(Session) == 3
