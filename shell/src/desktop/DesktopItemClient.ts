@@ -234,6 +234,7 @@ export function createDesktopItemClient(connection: {
         rasterEnabled: false,
         routingEnabled: false,
         experimentalOpsEnabled: false,
+        externalBasemapsEnabled: true,
       };
     },
     async getQuotaUsage(..._args: unknown[]) {

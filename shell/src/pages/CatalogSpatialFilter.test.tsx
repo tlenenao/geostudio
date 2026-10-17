@@ -3,6 +3,8 @@ import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, test, vi } from "vitest";
 import { mapInstances } from "../test/MockMaplibreMap";
+import { ItemClientProvider } from "../api/ItemClientProvider";
+import type { ItemClient } from "../api/types";
 
 vi.mock("maplibre-gl", async () => {
   const { MockMap } = await import("../test/MockMaplibreMap");
@@ -94,4 +96,38 @@ test("le rectangle suit la bascule d'ambiance (REV-285 e)", async () => {
     document.documentElement.style.removeProperty("--gs-accent");
     delete document.documentElement.dataset.theme;
   }
+});
+
+test("AUD-122 : instance sans fond externe -> fond vierge, rectangle dessine conserve", async () => {
+  const client = {
+    getInstanceInfo: () => Promise.resolve({ externalBasemapsEnabled: false }),
+  } as unknown as ItemClient;
+  const setStyle = vi.fn();
+  render(
+    <ItemClientProvider client={client}>
+      <CatalogSpatialFilter onChange={() => {}} />
+    </ItemClientProvider>,
+  );
+  const map = mapInstances[0] as unknown as { opts: { style: string }; setStyle: typeof setStyle };
+  map.setStyle = setStyle;
+  expect(map.opts.style).toBe("https://demotiles.maplibre.org/style.json");
+  await vi.waitFor(() => expect(setStyle).toHaveBeenCalledTimes(1));
+  const [style, { transformStyle }] = setStyle.mock.calls[0];
+  expect(style).toBe("/basemaps/blank.json");
+  const rect = { type: "geojson", data: {} };
+  const prev = {
+    sources: { "catalog-spatial-filter-rect": rect, other: {} },
+    layers: [
+      { id: "bg" },
+      { id: "catalog-spatial-filter-rect-fill" },
+      { id: "catalog-spatial-filter-rect-outline" },
+    ],
+  };
+  const next = transformStyle(prev, { version: 8, sources: {}, layers: [{ id: "background" }] });
+  expect(next.sources).toEqual({ "catalog-spatial-filter-rect": rect });
+  expect(next.layers.map((l: { id: string }) => l.id)).toEqual([
+    "background",
+    "catalog-spatial-filter-rect-fill",
+    "catalog-spatial-filter-rect-outline",
+  ]);
 });

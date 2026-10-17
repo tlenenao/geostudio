@@ -9,10 +9,11 @@ import type { DataRecord, DataSource, MapConfig } from "../api/types";
 import type { MapViewHandle } from "../map/MapView";
 import { t } from "../i18n";
 import { LoadingState } from "../ui/kit/LoadingState";
+import { defaultBasemapStyle } from "../map/basemaps";
+import { useExternalBasemapsEnabled } from "../map/useBasemaps";
 import "../i18n/domains/widgets";
 
 const MapView = lazy(() => import("../map/MapView").then((m) => ({ default: m.MapView })));
-const DEFAULT_STYLE = "https://demotiles.maplibre.org/style.json";
 const EXPLORER_LIMIT = 200;
 const PAGE_SIZE = 20;
 
@@ -25,6 +26,7 @@ export function ExplorerDrawer() {
   const close = useCloseExplorer();
   const analyticsCtx = useAnalyticsContext();
   const client = useItemClient();
+  const fallbackStyle = defaultBasemapStyle(useExternalBasemapsEnabled());
   const mapHandle = useRef<MapViewHandle>(null);
   const [page, setPage] = useState(0);
   const [selectedId, setSelectedId] = useState<string | number | null>(null);
@@ -81,7 +83,7 @@ export function ExplorerDrawer() {
   const shown = records.slice(current * PAGE_SIZE, current * PAGE_SIZE + PAGE_SIZE);
 
   const mapConfig: MapConfig = {
-    basemap: { style: DEFAULT_STYLE },
+    basemap: { style: fallbackStyle },
     view: { center: [2.4, 46.6], zoom: 5 },
     layers: merged
       ? [

@@ -27,6 +27,7 @@ function meWith(slug: string, name: string): Me {
       rasterEnabled: false,
       routingEnabled: false,
       experimentalOpsEnabled: false,
+      externalBasemapsEnabled: true,
     },
   };
 }

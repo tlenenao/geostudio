@@ -5529,6 +5529,10 @@
             "title": "Exportenabled",
             "type": "boolean"
           },
+          "externalBasemapsEnabled": {
+            "title": "Externalbasemapsenabled",
+            "type": "boolean"
+          },
           "quotasEnabled": {
             "title": "Quotasenabled",
             "type": "boolean"
@@ -5566,6 +5570,7 @@
           "quotasEnabled",
           "rasterEnabled",
           "routingEnabled",
+          "externalBasemapsEnabled",
           "experimentalOpsEnabled"
         ],
         "title": "MeCapabilities",

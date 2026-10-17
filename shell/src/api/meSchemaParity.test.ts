@@ -77,6 +77,7 @@ const INSTANCE_INFO_FIELDS = [
   "readOnly",
   "routingEnabled",
   "experimentalOpsEnabled",
+  "externalBasemapsEnabled",
   "terrain3dEnabled",
   "tileset3dEnabled",
 ].sort();

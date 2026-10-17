@@ -2,7 +2,8 @@
 import { useEffect, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 import "../map/maplibreWorkerSetup";
-import { DEFAULT_BASEMAP } from "../map/basemaps";
+import { defaultBasemapStyle } from "../map/basemaps";
+import { useExternalBasemapsEnabled } from "../map/useBasemaps";
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { t } from "../i18n";
@@ -76,12 +77,16 @@ export function CatalogSpatialFilter({ onChange }: { onChange: (bbox: Bbox | nul
   const [bbox, setBbox] = useState<Bbox | null>(null);
   const [fields, setFields] = useState<Fields>(EMPTY_FIELDS);
   const [invalid, setInvalid] = useState(false);
+  const external = useExternalBasemapsEnabled();
+  // Fond effectivement posé sur la carte (AUD-122) : l'effet plus bas ne rebascule
+  // le style que si la capacité de l'instance le change réellement.
+  const styleRef = useRef(defaultBasemapStyle(external));
 
   useEffect(() => {
     if (!containerRef.current) return;
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: DEFAULT_BASEMAP.style,
+      style: styleRef.current,
       center: [2.35, 46.6],
       zoom: 4,
       // P33.18 : MapLibre pose sinon aria-label="Map" (anglais) sur son canevas.
@@ -186,6 +191,27 @@ export function CatalogSpatialFilter({ onChange }: { onChange: (bbox: Bbox | nul
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onChange stable côté appelant (setState), pas de dépendance réelle
   }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    const next = defaultBasemapStyle(external);
+    if (!map || next === styleRef.current) return;
+    styleRef.current = next;
+    // setStyle remplacerait aussi la source et les couches du rectangle dessiné :
+    // on les reporte telles quelles dans le nouveau style.
+    const own = new Set([RECT_LAYER_ID, RECT_OUTLINE_LAYER_ID]);
+    map.setStyle(next, {
+      transformStyle: (prev, style) => {
+        const rect = prev?.sources[RECT_SOURCE_ID];
+        if (!prev || !rect) return style;
+        return {
+          ...style,
+          sources: { ...style.sources, [RECT_SOURCE_ID]: rect },
+          layers: [...style.layers, ...prev.layers.filter((l) => own.has(l.id))],
+        };
+      },
+    });
+  }, [external]);
 
   function setRect(next: Bbox | null) {
     const source = mapRef.current?.getSource(RECT_SOURCE_ID) as

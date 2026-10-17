@@ -289,6 +289,9 @@ export type InstanceInfo = {
   rasterEnabled: boolean;
   routingEnabled: boolean;
   experimentalOpsEnabled: boolean;
+  /** AUD-122 : fonds de carte tiers proposés. Requis (parité `MeCapabilities`), mais le
+   * shell lit `!== false` : un cœur antérieur qui ne l'envoie pas garde les fonds tiers. */
+  externalBasemapsEnabled: boolean;
 };
 
 export type ProbeStatus = { ok: boolean; error?: string };

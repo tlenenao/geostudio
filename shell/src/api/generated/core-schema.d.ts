@@ -4824,6 +4824,8 @@ export interface components {
             experimentalOpsEnabled: boolean;
             /** Exportenabled */
             exportEnabled: boolean;
+            /** Externalbasemapsenabled */
+            externalBasemapsEnabled: boolean;
             /** Quotasenabled */
             quotasEnabled: boolean;
             /** Rasterenabled */

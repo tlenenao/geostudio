@@ -119,6 +119,7 @@ function renderWizard(overrides: Partial<ItemClient> = {}) {
         rasterEnabled: false,
         routingEnabled: false,
         experimentalOpsEnabled: false,
+        externalBasemapsEnabled: true,
       }),
     createEmptyCollection: vi.fn().mockResolvedValue({ id: "query_out" }),
     createDatasetItem: vi.fn().mockResolvedValue({
@@ -216,6 +217,7 @@ function renderWizardEdit(overrides: Partial<ItemClient> = {}) {
         rasterEnabled: false,
         routingEnabled: false,
         experimentalOpsEnabled: false,
+        externalBasemapsEnabled: true,
       }),
     getPipelineConfig: vi.fn().mockResolvedValue(EXISTING_PIPELINE),
     // I2 (revue finale) : `getItem` sert désormais aussi la nouvelle
@@ -605,6 +607,7 @@ describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)
           rasterEnabled: false,
           routingEnabled: false,
           experimentalOpsEnabled: false,
+          externalBasemapsEnabled: true,
         }),
     });
     expect(
@@ -945,6 +948,7 @@ describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)
           rasterEnabled: false,
           routingEnabled: false,
           experimentalOpsEnabled: false,
+          externalBasemapsEnabled: true,
         }),
       copilotTurn,
       savePipelineConfig,

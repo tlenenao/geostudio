@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import type {
   FeatureLayerSource,
+  InstanceInfo,
   Item,
   ItemClient,
   LayerSource,
@@ -14,7 +15,7 @@ import type { ItemClientBase, RawMapLayer } from "../base";
 import { ensureOk, parseErrorResponse, toFrontLayer } from "../base";
 import { ifMatchHeader } from "../ifMatch";
 import { ApiError } from "../ApiError";
-import { DEFAULT_BASEMAP } from "../../map/basemaps";
+import { defaultBasemapStyle } from "../../map/basemaps";
 import { OWNER_PERMISSIONS } from "../../auth/permissions";
 
 type LayersMethods = Pick<
@@ -43,8 +44,10 @@ export function createLayersMethods(base: ItemClientBase): LayersMethods {
   } = base;
   return {
     async createMapItem(input: { title: string; owner: string }): Promise<Item> {
+      // AUD-122 : le fond par défaut suit la capacité de l'instance (fond vierge si coupée).
+      const info = await request<InstanceInfo>("GET", "/instance").catch(() => null);
       const map: MapConfig = {
-        basemap: { style: DEFAULT_BASEMAP.style },
+        basemap: { style: defaultBasemapStyle(info?.externalBasemapsEnabled !== false) },
         view: { center: [2.4, 46.6], zoom: 5 },
         layers: [],
       };

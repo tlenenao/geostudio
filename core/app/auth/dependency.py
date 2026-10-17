@@ -110,6 +110,13 @@ def is_routing_enabled() -> bool:
     return bool(os.environ.get("CORE_ROUTING_URL", "").strip())
 
 
+def is_external_basemaps_enabled() -> bool:
+    """AUD-122 : fonds de carte tiers (MapLibre démo, Carto, IGN Géoplateforme) proposés.
+    `false` = déploiement souverain/air-gapped : fond vierge local par défaut, fonds tiers
+    masqués dans le shell. Défaut `true` (comportement historique)."""
+    return os.environ.get("CORE_EXTERNAL_BASEMAPS_ENABLED", "true").strip().lower() != "false"
+
+
 def is_terrain3d_enabled() -> bool:
     """CORE_TERRAIN3D_ENABLED — capacité instance-wide optionnelle, même
     convention que is_tileset3d_enabled : lue à chaque appel, sans cache.

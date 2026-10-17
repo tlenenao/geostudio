@@ -395,6 +395,8 @@ services:
       CORE_TERRAIN3D_ENABLED: ${CORE_TERRAIN3D_ENABLED:-false}
       # ARC-33 (ADR 0024) : rasters COG + proxy de tuiles TiTiler + zonal-stats.
       CORE_RASTER_ENABLED: ${CORE_RASTER_ENABLED:-false}
+      # AUD-122 : false = aucun fond de carte tiers (déploiement souverain/air-gapped).
+      CORE_EXTERNAL_BASEMAPS_ENABLED: ${CORE_EXTERNAL_BASEMAPS_ENABLED:-true}
       # Lot 9 : op de pipeline expérimentales (docs/revue/2026-10-16-ops-experimentales.md) —
       # catalogue + validation d'écriture dans `core`, exécution dans `worker` (même valeur).
       CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED: ${CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED:-false}
@@ -664,6 +666,8 @@ services:
       # reader.raster / transform.zonalStats revérifient la capacité à l'exécution (ARC-33) :
       # même valeur que le service `core`, sinon les pipelines raster échouent dans le worker.
       CORE_RASTER_ENABLED: ${CORE_RASTER_ENABLED:-false}
+      # AUD-122 : false = aucun fond de carte tiers (déploiement souverain/air-gapped).
+      CORE_EXTERNAL_BASEMAPS_ENABLED: ${CORE_EXTERNAL_BASEMAPS_ENABLED:-true}
       CORE_PIPELINES_HTTP_CALL_MAX_ROWS: ${CORE_PIPELINES_HTTP_CALL_MAX_ROWS:-10000}
       CORE_PIPELINES_HTTP_CALL_MAX_TOTAL_BYTES: ${CORE_PIPELINES_HTTP_CALL_MAX_TOTAL_BYTES:-268435456}
       CORE_PIPELINES_HTTP_CALL_MAX_RESPONSE_BYTES: ${CORE_PIPELINES_HTTP_CALL_MAX_RESPONSE_BYTES:-5242880}
