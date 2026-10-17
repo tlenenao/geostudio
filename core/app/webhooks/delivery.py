@@ -259,9 +259,9 @@ def deliver_due(
 
 def purge_outbox(session: Session) -> int:
     """Rétention : supprime toute ligne de plus de OUTBOX_RETENTION_DAYS, `pending`
-    comprises (AUD-170 : seule une destination désactivée depuis plus longtemps en garde
-    encore — ses événements ne repartiraient de toute façon qu'abandonnés, cf.
-    MAX_EVENT_AGE)."""
+    comprises (AUD-170) : seule une destination désactivée depuis plus longtemps en garde
+    encore. Une destination réactivée avant ce délai reçoit ses événements gardés, même
+    vieux de plus de MAX_EVENT_AGE (l'âge n'abandonne qu'un événement en échec)."""
     res = session.execute(
         delete(OutboxEvent).where(
             OutboxEvent.created_at < _now() - timedelta(days=OUTBOX_RETENTION_DAYS),

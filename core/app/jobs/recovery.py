@@ -18,6 +18,10 @@ logger = logging.getLogger(__name__)
 # > stalled_worker_timeout de procrastinate (30 s) et < seuil de la sonde (300 s).
 # ponytail: un worker dont la boucle d'événements est bloquée plus de 120 s (tâche async
 # CPU) voit son job terminé alors qu'il tourne encore ; la sonde (300 s) le signale.
+# Un job sans worker (worker_id NULL, élagué au démarrage d'un autre worker après 30 s
+# sans battement) est repris sans délai : c'est le cas nominal du worker mort, mais
+# aussi celui d'une boucle gelée plus de 30 s pendant ce démarrage (revue finale L1b,
+# M1). Les tâches du dépôt sont synchrones (fil dédié) : le battement n'en dépend pas.
 STALLED_HEARTBEAT_S = 120
 
 
