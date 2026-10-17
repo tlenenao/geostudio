@@ -37,6 +37,7 @@ ALLOWED_DIFF = {
     "CORE_ADMIN_TOOLS_GATEWAY_URL": "passerelle admin = Traefik compose uniquement (https://${DOMAIN})",
     "SHELL_BASE_URL": "calculé : service shell du release",
     "VITE_AUTH_MODE": "idem CORE_AUTH_MODE",
+    "CORE_CORS_ALLOWED_ORIGINS": "compose : shell :8300 du démarrage rapide ; cluster : même hôte",
     "GEOSTUDIO_VERSION": "calculé : tag d'image du release (compose : variable d'opérateur)",
 }
 # compose service -> (workload suffixe, valeurs --set pour l'activer)
@@ -265,6 +266,19 @@ def test_otel_lgtm_data_volume_and_version_wiring():
     vol = _deployment(claimed, "otel-lgtm")["spec"]["template"]["spec"]["volumes"][0]
     assert vol["persistentVolumeClaim"] == {"claimName": "lgtm"}
     assert _rendered_env(render("image.tag=v7.7.7"), "worker")[0]["GEOSTUDIO_VERSION"] == "v7.7.7"
+
+
+def test_cors_allows_the_shell_host_when_core_has_its_own_api_host():
+    """AUD-132 : l'Ingress sert le shell (host) et le cœur (apiHost) sur deux
+    origines ; sans CORS, le navigateur bloque tout appel au cœur."""
+    ingress = ("ingress.enabled=true", "ingress.host=geo.example", "ingress.apiHost=api.example")
+    env = _rendered_env(render(*ingress, "ingress.tlsSecretName=tls"), "core")[0]
+    assert env["CORE_CORS_ALLOWED_ORIGINS"] == "https://geo.example"
+    assert (
+        _rendered_env(render(*ingress), "core")[0]["CORE_CORS_ALLOWED_ORIGINS"]
+        == "http://geo.example"
+    )
+    assert _rendered_env(render(), "core")[0]["CORE_CORS_ALLOWED_ORIGINS"] == ""
 
 
 def test_valhalla_renders_only_when_enabled_and_wires_core_url():

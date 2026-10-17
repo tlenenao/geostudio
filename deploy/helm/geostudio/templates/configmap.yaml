@@ -4,6 +4,8 @@
 {{- if and .Values.valhalla.enabled (not $cfg.CORE_ROUTING_URL) }}{{- $_ := set $cfg "CORE_ROUTING_URL" (printf "http://%s-valhalla:8002" $fn) }}{{- end }}
 {{- /* service.version des traces/logs (AUD-040) et tag des bundles autoportés = tag d'image du release */}}
 {{- $_ := set $cfg "GEOSTUDIO_VERSION" (.Values.image.tag | default .Chart.AppVersion | toString) }}
+{{- /* AUD-132 : shell (ingress.host) et cœur (ingress.apiHost) sont deux origines — sans CORS, le navigateur bloque tout appel au cœur */}}
+{{- if and .Values.ingress.enabled .Values.ingress.host (not $cfg.CORE_CORS_ALLOWED_ORIGINS) }}{{- $_ := set $cfg "CORE_CORS_ALLOWED_ORIGINS" (printf "%s://%s" (ternary "https" "http" (not (empty .Values.ingress.tlsSecretName))) .Values.ingress.host) }}{{- end }}
 {{- if and .Values.observability.enabled (not $cfg.OTEL_EXPORTER_OTLP_ENDPOINT) }}{{- $_ := set $cfg "OTEL_EXPORTER_OTLP_ENDPOINT" (printf "http://%s-otel-lgtm:4318" $fn) }}{{- end }}
 apiVersion: v1
 kind: ConfigMap

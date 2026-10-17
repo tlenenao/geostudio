@@ -133,6 +133,7 @@ config:
   S3_UPLOADS_BUCKET: "geostudio-uploads"
   TITILER_URL: "http://titiler:8000"
   CORE_BASE_URL: "http://localhost:8200"
+  CORE_CORS_ALLOWED_ORIGINS: ""     # origines navigateur cross-origin (CSV) ; vide si shell et cœur partagent l'hôte
   PUBLIC_BASE_URL: "http://localhost:8300"
   CORE_ADMIN_TOOLS_GATEWAY_URL: ""
   SHELL_BASE_URL: ""

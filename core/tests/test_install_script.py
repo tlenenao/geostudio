@@ -59,6 +59,10 @@ if [ "$1" = "compose" ]; then
               else
                 echo "[{\"id\":\"shell-client-fake-id\"}]"
               fi
+            elif printf '%s' "$*" | grep -q "username=alice"; then
+              echo "[{\"id\":\"alice-fake-id\"}]"
+            elif printf '%s' "$*" | grep -q "username=bob"; then
+              echo "[{\"id\":\"bob-fake-id\"}]"
             elif grep -q "kcadm.sh create users" "$FAKE_BIN_LOG" 2>/dev/null; then
               echo "[{\"id\":\"created-fake-id\"}]"
             elif [ -n "${FAKE_KC_EXISTING_USER_ID:-}" ]; then
@@ -307,6 +311,18 @@ def test_install_refreshes_the_shell_client_redirect_uris_every_run(install_work
         '-s redirectUris=["https://geostudio-test.example/",'
         '"https://geostudio-test.example/*"] -s webOrigins=["+"]'
     ) in log
+
+
+def test_install_disables_demo_accounts_and_the_password_grant(install_workdir, fake_bin_path):
+    """AUD-132 : le realm importé en production crée alice/bob (Demo1234!) et
+    laisse le flux mot de passe ouvert sur le client public du shell."""
+    result, log = _run_install(install_workdir, fake_bin_path)
+
+    assert result.returncode == 0, result.stderr
+    assert "-s directAccessGrantsEnabled=false" in log
+    for user in ("alice", "bob"):
+        assert f"get users -r geostudio -q username={user} -q exact=true" in log
+        assert f"update users/{user}-fake-id -r geostudio -s enabled=false" in log
 
 
 def test_install_refreshes_redirect_uris_even_when_admin_account_already_exists(

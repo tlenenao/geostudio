@@ -87,6 +87,12 @@ coffre de secrets du cœur) — sans elle, le cœur refuse de démarrer.
 | Keycloak | http://localhost:8180 |
 | MinIO console | http://localhost:9001 |
 
+Le shell (`:8300`) appelle le cœur (`:8200`) sur une autre origine : le cœur
+autorise cette origine précise (`CORE_CORS_ALLOWED_ORIGINS`, défaut
+`http://localhost:8300`). Pour ouvrir le shell sous un autre nom d'hôte
+(`127.0.0.1`, IP du poste), ajoutez cette origine à la variable dans `.env`.
+L'API se découvre sur http://localhost:8200/docs.
+
 Par défaut, le mode d'authentification est `mock` (`mockuser` promu
 administrateur dès la première requête, aucun accès réseau à Keycloak
 nécessaire). Pour peupler des données de démonstration (collections
@@ -103,7 +109,9 @@ l'installeur guidé (`scripts/install.sh`) et
 [`CONTRIBUTING.md`](CONTRIBUTING.md) pour la marche à suivre complète côté
 développement. Pour une instance Keycloak déjà déployée, voir
 [`deploy/keycloak/README.md`](deploy/keycloak/README.md) et les runbooks
-sous [`docs/runbooks/`](docs/runbooks/).
+sous [`docs/runbooks/`](docs/runbooks/) — dont la
+[montée de version](docs/runbooks/2026-10-17-montee-de-version.md)
+(sauvegarde, `GEOSTUDIO_VERSION`, vérification, retour arrière).
 
 ## Architecture en bref
 

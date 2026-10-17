@@ -166,3 +166,10 @@ test("REV-284(b) : un <h1> (sr-only) porte le titre résolu du lien de partage",
   renderWithClient("tok-app");
   expect(await screen.findByRole("heading", { level: 1, name: "Mon App" })).toBeInTheDocument();
 });
+
+test("tells a network failure apart from an expired link (AUD-135)", async () => {
+  server.use(http.get("https://core.test/v1/share-links/tok-net", () => HttpResponse.error()));
+  renderWithClient("tok-net");
+  expect(await screen.findByText(/injoignable/i)).toBeInTheDocument();
+  expect(screen.queryByText(/expiré ou révoqué/i)).not.toBeInTheDocument();
+});

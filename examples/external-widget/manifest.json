@@ -2,7 +2,7 @@
   "id": "example.external-counter",
   "tag": "external-example-widget",
   "label": "Compteur externe (exemple)",
-  "moduleUrl": "widget.js",
+  "moduleUrl": "https://widgets.example.com/external-counter/widget.js",
   "props": [
     { "name": "initial", "type": "number", "label": "Valeur initiale", "default": 0 }
   ],

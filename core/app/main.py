@@ -10,9 +10,12 @@ from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, Response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.types import ASGIApp, Receive, Scope, Send
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app import db, observability
@@ -74,7 +77,7 @@ from app.public import routes as public_routes
 from app.public_submit import routes as public_submit_routes
 from app.quality import routes as quality_routes
 from app.quotas import routes as quotas_routes
-from app.quotas.service import QuotaExceededError
+from app.quotas.service import QuotaExceededError, validate_quota_settings
 from app.raster import routes as raster_routes
 from app.ratelimit.limiter import PgRateLimiter, caller_key, make_rate_limiter, route_group
 from app.relations import routes as relations_routes
@@ -153,12 +156,44 @@ def trusted_proxy_hosts() -> str:
     )
 
 
+class _ListedOriginsCORS:
+    """CORS complet pour les seules origines listées ; toute autre requête
+    traverse intacte (CORSMiddleware répondrait 400 au préflight d'une app
+    exportée, servi par `appexport_cors` avec `*`)."""
+
+    def __init__(self, app: ASGIApp, origins: list[str]) -> None:
+        self.app = app
+        self.origins = {o.encode() for o in origins}
+        self.cors = CORSMiddleware(
+            app,
+            allow_origins=origins,
+            allow_methods=["*"],
+            allow_headers=["*"],
+            expose_headers=[
+                "ETag",
+                "Retry-After",
+                "Content-Disposition",
+                "X-Tile-Aggregated",
+                "X-Tile-Truncated",
+                "X-Request-ID",
+            ],
+        )
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        origin = (
+            dict(scope.get("headers") or []).get(b"origin") if scope["type"] == "http" else None
+        )
+        target = self.cors if origin in self.origins else self.app
+        await target(scope, receive, send)
+
+
 def create_app() -> FastAPI:
     observability.setup()
     secrets_crypto.load_master_key()  # échec rapide si absente/mal formée (design SP-15e §4/§8)
     reject_mock_outside_development()  # échec rapide si mock hors dev (design SP-26 §3.1)
     require_public_s3_endpoint()  # REV-315 : liens présignés injoignables sinon
     reject_admin_tools_without_secret()  # échec rapide si gate admin sans secret
+    validate_quota_settings()  # AUD-132 : « 10GB » = 500 à l'usage sinon
     database_url = os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:")
     engine = make_engine(database_url)
     observability.instrument_engine(engine)
@@ -181,7 +216,21 @@ def create_app() -> FastAPI:
             async with mcp_server.session_manager.run():
                 yield
 
-    app = FastAPI(title="GeoStudio Builder Service", version="0.1.0", lifespan=lifespan)
+    # AUD-132 : version réelle (tag déployé) dans /v1/me et le pied de page.
+    version = os.environ.get("GEOSTUDIO_VERSION", "").removeprefix("v") or "dev"
+    app = FastAPI(
+        title="GeoStudio Builder Service",
+        version=version,
+        lifespan=lifespan,
+        docs_url=None,
+    )
+
+    # AUD-135 : schéma chargé en relatif — derrière Traefik (`/api` retiré),
+    # l'URL absolue `/openapi.json` tombait sur le shell.
+    @app.get("/docs", include_in_schema=False)
+    def _swagger_ui() -> HTMLResponse:
+        return get_swagger_ui_html(openapi_url="openapi.json", title=app.title)
+
     observability.instrument_app(app)
 
     @app.exception_handler(ValidationHTTPException)
@@ -613,6 +662,13 @@ def create_app() -> FastAPI:
     # Ajouté en dernier = le plus externe : les 403/411/413/429 des middlewares
     # ci-dessus portent aussi X-Request-ID (AUD-040).
     app.add_middleware(observability.RequestIdMiddleware)
+    # AUD-132 : démarrage rapide (shell :8300 → cœur :8200 cross-origin).
+    # Le plus externe : les erreurs portent aussi les en-têtes CORS.
+    dev_origins = [
+        o.strip() for o in os.environ.get("CORE_CORS_ALLOWED_ORIGINS", "").split(",") if o.strip()
+    ]
+    if dev_origins:
+        app.add_middleware(_ListedOriginsCORS, origins=dev_origins)
 
     return app
 

@@ -172,6 +172,8 @@ services:
       CORE_OIDC_ISSUER: https://${GEOSTUDIO_PUBLIC_HOST}/auth/realms/geostudio
       CORE_OIDC_JWKS_URL: http://keycloak:8080/auth/realms/geostudio/protocol/openid-connect/certs
       CORE_BASE_URL: https://${GEOSTUDIO_PUBLIC_HOST}/api
+      # Même origine (shell et cœur sous le même hôte) : aucun CORS de dev.
+      CORE_CORS_ALLOWED_ORIGINS: ""
       CORE_ADMIN_TOOLS_GATEWAY_URL: https://${GEOSTUDIO_PUBLIC_HOST}
       CORE_MINIO_CONSOLE_PUBLISHED: "false"
       # Rappelé explicitement ici : c'est cet overlay qui donne à
@@ -190,6 +192,14 @@ services:
       - traefik.http.routers.core.entrypoints=web
       - traefik.http.routers.core.priority=10
       - traefik.http.routers.core.middlewares=security-headers@docker,rate-limit@docker,compress@docker,strip-api@docker,csp-dynamic@file
+      # AUD-135 : découverte OAuth du MCP (RFC 9728) — le SDK publie le document
+      # à la RACINE de l'hôte (/.well-known/oauth-protected-resource/api/mcp),
+      # hors /api : sans ce routeur, le shell répondait 405.
+      - traefik.http.routers.mcp-discovery.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && PathPrefix(`/.well-known/oauth-protected-resource`)
+      - traefik.http.routers.mcp-discovery.entrypoints=web
+      - traefik.http.routers.mcp-discovery.priority=10
+      - traefik.http.routers.mcp-discovery.service=core
+      - traefik.http.routers.mcp-discovery.middlewares=security-headers@docker,rate-limit@docker
       - traefik.http.services.core.loadbalancer.server.port=8200
       - traefik.http.middlewares.strip-api.stripprefix.prefixes=/api
       - traefik.http.middlewares.security-headers.headers.stsSeconds=31536000

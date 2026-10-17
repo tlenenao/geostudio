@@ -15,7 +15,7 @@ point de départ.
   "id": "example.external-counter",
   "tag": "external-example-widget",
   "label": "Compteur externe (exemple)",
-  "moduleUrl": "widget.js",
+  "moduleUrl": "https://widgets.example.com/external-counter/widget.js",
   "props": [
     { "name": "initial", "type": "number", "label": "Valeur initiale", "default": 0 }
   ],
@@ -112,8 +112,14 @@ extensions).
 
 ## Activation
 
+> Tester en local : le cœur n'accepte qu'une `moduleUrl` HTTPS. Servez
+> `widget.js` derrière un certificat de confiance (mkcert, tunnel HTTPS) ou
+> enregistrez-le sur une instance de test publiée ; le module doit aussi
+> autoriser l'origine du shell (CORS) puisqu'il est chargé par `import()`.
+
 Un administrateur enregistre votre extension via l'API du cœur
-(`POST /extensions`, payload = votre manifeste + `moduleUrl` absolue) puis
+(`POST /v1/extensions`, payload = votre manifeste ; `moduleUrl` absolue en
+**`https://`** obligatoirement — le cœur refuse toute autre URL en 422) puis
 l'active/désactive depuis `/admin/extensions` dans le shell. Une extension
 désactivée disparaît de la palette et affiche un placeholder propre dans les
 apps qui l'utilisaient déjà — pas de crash, pas de redéploiement du shell.

@@ -477,7 +477,21 @@ prompt_admin() {
   $COMPOSE exec -T keycloak "$kc" update "clients/${shell_client_id}" -r geostudio \
     -s "redirectUris=[\"https://${PUBLIC_HOST}/\",\"https://${PUBLIC_HOST}/*\"]" \
     -s "webOrigins=[\"+\"]" \
+    -s directAccessGrantsEnabled=false \
     >/dev/null
+  # AUD-132 : le realm livré porte deux comptes de démo au mot de passe public
+  # (alice/bob, Demo1234!) ; le flux mot de passe sur un client public permet
+  # de s'en servir sans navigateur. Désactivés à chaque lancement (idempotent ;
+  # requête -q username/exact vérifiée en lecture sur Keycloak 24.0.5).
+  local demo_user demo_id
+  for demo_user in alice bob; do
+    demo_id="$($COMPOSE exec -T keycloak "$kc" get users -r geostudio -q "username=${demo_user}" -q "exact=true" 2>/dev/null \
+      | jq -r '.[0].id // empty')"
+    if [ -n "$demo_id" ]; then
+      $COMPOSE exec -T keycloak "$kc" update "users/${demo_id}" -r geostudio -s enabled=false >/dev/null
+      echo "✓ Compte de démonstration « ${demo_user} » désactivé."
+    fi
+  done
   # post.logout.redirect.uris est un attribut imbriqué dont le nom contient
   # des points — `-s attributes.post\.logout\.redirect\.uris=...` et la
   # variante avec guillemets échouent SILENCIEUSEMENT (code 0, rien

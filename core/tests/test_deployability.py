@@ -2585,3 +2585,24 @@ def test_experimental_ops_flag_is_wired_by_value_and_off_by_default():
     assert "CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED=false" in (REPO / ".env.example").read_text()
     values = (REPO / "deploy/helm/geostudio/values.yaml").read_text()
     assert 'CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED: "false"' in values
+
+
+@pytest.mark.parametrize("compose", [BASE, PROD], ids=["base", "prod"])
+def test_mcp_oauth_discovery_is_routed_to_core_unstripped(compose):
+    """AUD-135 : le SDK MCP publie le document RFC 9728 à la racine de l'hôte
+    (/.well-known/oauth-protected-resource/api/mcp), hors /api — sans routeur
+    dédié, le catch-all du shell répondait 405 et aucun client MCP ne
+    découvrait Keycloak."""
+    labels = _traefik_labels(services(compose)["core"])
+    rule = labels.get("traefik.http.routers.mcp-discovery.rule", "")
+    assert "PathPrefix(`/.well-known/oauth-protected-resource`)" in rule
+    assert labels.get("traefik.http.routers.mcp-discovery.service") == "core"
+    assert int(labels["traefik.http.routers.mcp-discovery.priority"]) > 1  # > shell
+    assert "strip-api@docker" not in _router_middlewares(labels, "mcp-discovery")
+
+
+def test_dev_cors_origin_is_the_quickstart_shell_and_prod_clears_it():
+    """AUD-132 : README = shell :8300 + cœur :8200 (cross-origin)."""
+    raw = services(BASE)["core"]["environment"]["CORE_CORS_ALLOWED_ORIGINS"]
+    assert _resolve_effective_value(raw, "CORE_CORS_ALLOWED_ORIGINS") == "http://localhost:8300"
+    assert services(PROD)["core"]["environment"]["CORE_CORS_ALLOWED_ORIGINS"] == ""
