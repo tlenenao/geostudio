@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.auth.dependency import get_current_user_optional
@@ -32,7 +33,7 @@ from app.features.routes import (
     parse_bbox,
     parse_crs,
 )
-from app.features.tiles import get_collection_tile
+from app.features.tiles import apply_tile_statement_timeout, get_collection_tile
 from app.ows import wfs
 from app.roles.guards import has_privilege
 from app.roles.privileges import Privilege
@@ -41,6 +42,8 @@ router = APIRouter()
 TMS = "WebMercatorQuad"
 TMS_URI = "http://www.opengis.net/def/tilematrixset/OGC/1.0/WebMercatorQuad"
 XML = "text/xml; charset=utf-8"
+# AUD-155 : GetFeature anonyme (count exact de `hits`, filtre CQL) borné comme le rendu WMS.
+STATEMENT_TIMEOUT_MS = 5000
 
 
 def is_ows_enabled() -> bool:
@@ -220,14 +223,20 @@ def _get_feature(request, q, session, user, guest, introspect, repo, rls, masked
         kwargs["out_srid"] = srid
     hits = q.get("resulttype", "results").lower() == "hits"
     with rls(session, col.tenant_id, masked=masked):
-        page = repo.select_features(
-            session,
-            info,
-            limit=1 if hits else max(count, 1),
-            offset=0 if hits else start,
-            count_mode="exact" if hits else "capped",
-            **kwargs,
-        )
+        apply_tile_statement_timeout(session, STATEMENT_TIMEOUT_MS)
+        try:
+            page = repo.select_features(
+                session,
+                info,
+                limit=1 if hits else max(count, 1),
+                offset=0 if hits else start,
+                count_mode="exact" if hits else "capped",
+                **kwargs,
+            )
+        except DBAPIError as exc:
+            if getattr(exc.orig, "sqlstate", None) == "57014":  # query_canceled
+                raise _OwsError(503, "NoApplicableCode", None, "query timed out") from exc
+            raise
     features = [] if hits or count == 0 else page.features
     matched = "unknown" if page.number_matched_lower_bound else page.number_matched
     more = (page.next_cursor is not None or page.next_offset is not None) and not hits and count

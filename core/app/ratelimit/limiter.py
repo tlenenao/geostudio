@@ -64,7 +64,14 @@ _SHARE_LINK_RE = re.compile(r"^/v1/share-links/[^/]+$")
 # REV-102 : GET /v1/geocode déclenche un appel sortant vers la Géoplateforme
 # (BAN, 50 req/s/IP côté amont) — budget propre, le shell n'appelle qu'à la
 # soumission du formulaire, jamais à la frappe.
-_GEOCODE_RE = re.compile(r"^/v1/geocode(/batch|/reverse)?$")
+# AUD-156 : POST /v1/geocode/jobs (lot asynchrone) aussi ; le sondage GET /jobs/{id} non.
+_GEOCODE_RE = re.compile(r"^/v1/geocode(/batch|/reverse|/jobs)?$")
+# AUD-155 : lectures anonymes coûteuses (rendu PIL, count exact, proxy TiTiler).
+# ponytail: 600/min par appelant tolère un panoramique rapide ; à resserrer si la
+# saturation est mesurée. Les tuiles vecteur du cœur restent hors budget (exclues à dessein).
+_OGC_READ_RE = re.compile(r"^/v1/ows/|^/v1/(raster|terrain3d)/[^/]+/tiles/")
+# AUD-157 : calcul zonal (lecture raster en mémoire).
+_ZONAL_RE = re.compile(r"^/v1/raster/[^/]+/zonal-stats$")
 # AUD-154 : soumission publique anonyme — budget propre, indexé sur l'IP (/64 en
 # IPv6) quel que soit l'en-tête Authorization présenté.
 _PUBLIC_SUBMIT_RE = re.compile(r"^/v1/public/submit/[^/]+$")
@@ -85,6 +92,8 @@ _BUDGETS = {
     "share-link": 60,
     "geocode": 60,
     "public-submit": 20,
+    "ogc-read": 600,
+    "zonal": 10,
     # ARC-34 : compté par appel amont Valhalla (REST, MCP, ops de pipeline), pas par route ;
     # route_group ne le renvoie jamais, seul app.routing.client le consomme.
     "routing": 100,
@@ -157,8 +166,12 @@ def route_group(
         return "webhook-trigger"
     if _SHARE_LINK_RE.match(path) and method == "GET":
         return "share-link"
-    if _GEOCODE_RE.match(path):
+    if _GEOCODE_RE.match(path) and (method != "GET" or not path.endswith("/jobs")):
         return "geocode"
+    if method == "GET" and _OGC_READ_RE.match(path):
+        return "ogc-read"
+    if method == "POST" and _ZONAL_RE.match(path):
+        return "zonal"
     if method == "POST" and _PUBLIC_SUBMIT_RE.match(path):
         return "public-submit"
     # REV-299 (c) : le jeton invité X-Share-Link-Token est aussi présenté en

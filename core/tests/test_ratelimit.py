@@ -292,3 +292,20 @@ def test_public_submit_has_its_own_budget_and_ipv6_is_bucketed():
     assert ip_bucket(None) == "unknown"
     # L'en-tête Authorization ne change pas la clé d'une soumission anonyme.
     assert caller_key("Bearer x", "2001:db8:1:2::5", "public-submit") == "submit:2001:db8:1:2::/64"
+
+
+def test_costly_reads_and_jobs_have_budgets():
+    # AUD-155/156/157
+    from app.ratelimit.limiter import _BUDGETS
+
+    assert route_group("/v1/ows/wms", "GET", _EXPORT_PATH_RE) == "ogc-read"
+    assert route_group("/v1/ows/wfs", "GET", _EXPORT_PATH_RE) == "ogc-read"
+    assert route_group("/v1/raster/i/tiles/1/2/3", "GET", _EXPORT_PATH_RE) == "ogc-read"
+    assert route_group("/v1/terrain3d/i/tiles/1/2/3.png", "GET", _EXPORT_PATH_RE) == "ogc-read"
+    assert (
+        route_group("/v1/collections/c/tiles/WebMercatorQuad/1/2/3", "GET", _EXPORT_PATH_RE) is None
+    )
+    assert route_group("/v1/raster/i/zonal-stats", "POST", _EXPORT_PATH_RE) == "zonal"
+    assert route_group("/v1/geocode/jobs", "POST", _EXPORT_PATH_RE) == "geocode"
+    assert route_group("/v1/geocode/jobs/abc", "GET", _EXPORT_PATH_RE) is None
+    assert _BUDGETS["ogc-read"] == 600 and _BUDGETS["zonal"] == 10

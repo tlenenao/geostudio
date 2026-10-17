@@ -265,3 +265,35 @@ def test_ogc_tiles_same_bytes_and_rules_as_mvt_route(env):
     assert anon.status_code == 200 and b"secret" not in anon.content and b"nom" in anon.content
     tilesets = c.get("/v1/collections/demo_ows/tiles").json()
     assert tilesets["tilesets"][0]["tileMatrixSetURI"].endswith("WebMercatorQuad")
+
+
+def test_get_feature_is_bounded_by_statement_timeout(env, monkeypatch):
+    # AUD-155 : `hits` = count exact ; borné comme le rendu WMS, 57014 -> 503.
+    from sqlalchemy.exc import OperationalError
+
+    from app.features.routes import get_features_repo
+    from app.ows import routes as ows_routes
+
+    c, login, admin = env
+    _enable(c)
+    seen = []
+    real = ows_routes.apply_tile_statement_timeout
+    monkeypatch.setattr(
+        ows_routes,
+        "apply_tile_statement_timeout",
+        lambda s, ms: (seen.append(ms), real(s, ms)),
+    )
+    q = _kvp(request="GetFeature", typenames="demo_ows", resulttype="hits")
+    assert c.get(BASE, params=q).status_code == 200
+    assert seen == [5000]
+
+    class _Canceled:
+        sqlstate = "57014"
+
+    class _SlowRepo:
+        def select_features(self, *a, **k):
+            raise OperationalError("SELECT count(*)", {}, _Canceled())
+
+    c.app.dependency_overrides[get_features_repo] = lambda: _SlowRepo()
+    r = c.get(BASE, params=q)
+    assert r.status_code == 503 and "query timed out" in r.text
