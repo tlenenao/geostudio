@@ -43,6 +43,10 @@ _HARVEST_RE = re.compile(r"^/v1/harvest/")
 # data.manage (pas seulement Administrateur) — aucun groupe existant ne le
 # couvrait avant ce correctif.
 _COLLECTIONS_EMPTY_RE = re.compile(r"^/v1/collections/empty$")
+# Revue L5 I6 : POST /pipelines/target-collection fait le même CREATE TABLE (plus un aperçu
+# DuckDB) — même budget ; les deux aperçus de pipeline (DuckDB) rejoignent "analytics".
+_PIPELINE_TARGET_COLLECTION_RE = re.compile(r"^/v1/pipelines/target-collection$")
+_PIPELINE_PREVIEW_RE = re.compile(r"^/v1/pipelines/([^/]+/)?preview$")
 # GAP-61.b (SP-45) : les 2 routes de lecture ArcGIS live-query, seules
 # authentiquement échappées au rate limiter (analyse-gaps.md affirmait 4,
 # corrigé — 2 des 4 étaient déjà couvertes par _EXPORT_PATH_RE/"jobs").
@@ -124,8 +128,12 @@ def route_group(
         return "llm"
     if export_path_re.match(path):
         return "jobs"
-    if method == "POST" and _COLLECTIONS_EMPTY_RE.match(path):
+    if method == "POST" and (
+        _COLLECTIONS_EMPTY_RE.match(path) or _PIPELINE_TARGET_COLLECTION_RE.match(path)
+    ):
         return "collections_empty"
+    if method == "POST" and _PIPELINE_PREVIEW_RE.match(path):
+        return "analytics"
     if _ARCGIS_LIVE_QUERY_RE.match(path):
         return "harvest"
     if _HARVEST_RE.match(path) and method != "GET":

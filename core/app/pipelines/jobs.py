@@ -75,13 +75,24 @@ def _owner_and_title(session, *, tenant_id: str, item_id: str) -> tuple[str, str
     return row.owner_id, row.title
 
 
-def _previous_run_failed(session_factory, *, item_id: str, run_id: str) -> bool:
+def _schedule_enabled(session, item_id: str) -> bool:
+    cfg = configs_repo.get_config_by_item(session, item_id)
+    pipeline = cfg.config.pipeline if cfg is not None else None
+    policy = pipeline.refreshPolicy if pipeline is not None else None
+    return policy is not None and policy.enabled
+
+
+def _should_notify_success(session_factory, *, tenant_id: str, item_id: str, run_id: str) -> bool:
+    """AUD-084 : seuls les runs PLANIFIÉS taisent leurs succès (sauf rétablissement
+    après échec) ; un run manuel, webhook ou déclencheur reste toujours notifié."""
     try:
         with request_scoped_session(session_factory) as session:
+            if not pipelines_repo.is_scheduled_run(session, tenant_id=tenant_id, run_id=run_id):
+                return True
             return pipelines_repo.previous_run_failed(session, item_id=item_id, run_id=run_id)
-    except Exception:  # best-effort, comme _notify
+    except Exception:  # best-effort, comme _notify : dans le doute, notifier
         logger.exception("pipeline run : échec de la lecture du run précédent")
-        return False
+        return True
 
 
 def _notify(
@@ -109,6 +120,20 @@ def _notify(
     except Exception:
         logger.exception("pipeline run : échec de la résolution du destinataire de notification")
         return
+    # Revue L5 I7 : l'échec qui ouvre le coupe-circuit le dit, une seule fois.
+    if status == "failure":
+        try:
+            with request_scoped_session(session_factory) as session:
+                if _schedule_enabled(session, item_id) and pipelines_repo.circuit_just_opened(
+                    session, item_id=item_id
+                ):
+                    error = (
+                        f"{error} — planification suspendue après "
+                        f"{pipelines_repo.CIRCUIT_BREAKER_FAILURES} échecs consécutifs ; "
+                        "un run manuel réussi la rétablit"
+                    )
+        except Exception:  # best-effort : la notification d'échec part quand même
+            logger.exception("pipeline run : lecture du coupe-circuit échouée")
     notify_best_effort(
         session_factory,
         tenant_id=tenant_id,
@@ -418,7 +443,7 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
         assert item_id is not None  # affecté ci-dessus, jamais atteint sinon (cf. return/raise)
         # AUD-084 : un pipeline planifié toutes les 5 min ne notifie plus chaque succès —
         # seulement le rétablissement après un échec (les échecs restent tous notifiés).
-        if _previous_run_failed(factory, item_id=item_id, run_id=run_id):
+        if _should_notify_success(factory, tenant_id=tenant_id, item_id=item_id, run_id=run_id):
             _notify(factory, tenant_id=tenant_id, item_id=item_id, status="success")
     except PipelineCancelledError:
         tracker.mark_cancelled()

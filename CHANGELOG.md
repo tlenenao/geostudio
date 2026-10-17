@@ -76,6 +76,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Pipelines: correct ETL (SP-L5, breaking)**: `transform.join` names a colliding right-side
+  column with `rightPrefix` (default `right_x`) instead of DuckDB's `x_1`, and fails if the
+  prefixed name still collides; `reader.wfs` and the ArcGIS reader fail instead of silently
+  truncating at their page/feature cap; `transform.reproject`/`reprojectAttribute` accept only
+  `EPSG:n` target codes (lowercase is normalized); an enabled schedule's cron must be at least
+  5 minutes apart (checked at write time only, disabled schedules and existing configs stay
+  readable), evaluated in the policy `timezone`, and suspended after 3 consecutive failures until
+  a manual run succeeds (`GET /v1/pipelines/next-run?itemId=` exposes `scheduleSuspended`);
+  app templates whose data sources point at a collection now require binding each one to a real
+  collection at creation (`bindings`). Migrations 0087-0088.
 - **Memory bounds and Postgres tuning (AUD-031/184)**: compose services now carry a
   `mem_limit` (postgis 2g, core 1536m, export-worker 1g, keycloak 1536m, minio 512m,
   titiler 1g with 2 gunicorn workers and `GDAL_CACHEMAX=128`; cdc-worker unbounded by default,

@@ -13,6 +13,7 @@ import secrets as py_secrets
 from collections.abc import Callable
 
 from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -123,14 +124,27 @@ def run_pipeline_service(
         if existing is not None:
             return existing
     try:
-        run = pipelines_repo.create_run_unless_active(
-            session,
-            tenant_id=user.tenant_id,
-            pipeline_item_id=item_id,
-            params=values,
-            idempotency_key=idempotency_key,
-        )
-    except pipelines_repo.PipelineRunActive:
+        # Savepoint : une collision sur ux_pipeline_runs_idempotency (même clé livrée deux
+        # fois en concurrence) n'annule que l'insertion, pas la transaction de l'appelant.
+        with session.begin_nested():
+            run = pipelines_repo.create_run_unless_active(
+                session,
+                tenant_id=user.tenant_id,
+                pipeline_item_id=item_id,
+                params=values,
+                idempotency_key=idempotency_key,
+            )
+    except (pipelines_repo.PipelineRunActive, IntegrityError) as exc:
+        # Revue L5 : le doublon concurrent d'un événement rejoué renvoie le run déjà créé
+        # (la 1re requête a pu committer pendant que celle-ci attendait le verrou).
+        if idempotency_key is not None:
+            existing = pipelines_repo.find_run_by_idempotency_key(
+                session, tenant_id=user.tenant_id, pipeline_item_id=item_id, key=idempotency_key
+            )
+            if existing is not None:
+                return existing
+        if isinstance(exc, IntegrityError):
+            raise
         # REV-310 : REST, MCP (HTTPException -> ValueError) et webhook partagent ce garde.
         raise HTTPException(
             status_code=409,

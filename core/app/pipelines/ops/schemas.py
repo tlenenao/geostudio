@@ -17,9 +17,9 @@ syntaxiquement qu'à l'exécution (app.pipelines.expr_validation), jamais ici
 — ce module ne valide que la FORME des params, pas la sémantique des
 expressions."""
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, BeforeValidator, Field, field_validator, model_validator
 
 from app.pipelines.ops.operation_contract import OutputColumn
 
@@ -151,8 +151,16 @@ class TransformBufferParams(BaseModel):
     unit: Literal["meters", "native"] = "meters"
 
 
+# Revue L5 : « epsg:2154 » (accepté avant le resserrement à EPSG) est normalisé, pas refusé.
+EpsgCode = Annotated[
+    str,
+    BeforeValidator(lambda v: v.upper() if isinstance(v, str) else v),
+    Field(pattern=r"^EPSG:\d+$"),
+]
+
+
 class TransformReprojectParams(BaseModel):
-    targetCrs: str = Field(..., pattern=r"^EPSG:\d+$")
+    targetCrs: EpsgCode
 
 
 class TransformIntersectionParams(BaseModel):
@@ -513,7 +521,7 @@ class TransformReprojectAttributeParams(BaseModel):
     xColumn: str
     yColumn: str
     sourceCrs: str = Field(..., pattern=r"^[A-Za-z]+:\d+$")
-    targetCrs: str = Field(..., pattern=r"^EPSG:\d+$")
+    targetCrs: EpsgCode
 
 
 class TransformFormatCoordinatesParams(BaseModel):

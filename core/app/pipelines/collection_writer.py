@@ -404,8 +404,9 @@ def write_rows(
         reserved.add(p.statusColumn)
     # AUD-080 : pré-contrôle de schéma — une colonne inconnue de la cible donnait un rejet
     # `unknown_property` par ligne (ou un échec à la 1re ligne), jamais un message clair.
+    # En mode delete seules les clés comptent : les autres colonnes sont ignorées.
     unknown = sorted(set(cols) - set(by_name) - reserved - {"geometry"})
-    if unknown:
+    if unknown and mode != "delete":
         raise PipelineRuntimeError(
             f"writer.collection : colonne(s) absente(s) de la collection cible : {unknown} — "
             "les retirer (transform.select) ou les ajouter à la collection"

@@ -91,6 +91,10 @@ def test_merge_children_does_not_merge_identical_parents(conn):
 
 def test_reproject_accepts_only_epsg_codes():
     TransformReprojectParams.model_validate({"targetCrs": "EPSG:2154"})
+    # revue L5 : la casse d'un pipeline existant est normalisée, pas refusée
+    assert TransformReprojectParams.model_validate({"targetCrs": "epsg:2154"}).targetCrs == (
+        "EPSG:2154"
+    )
     with pytest.raises(ValueError):
         TransformReprojectParams.model_validate({"targetCrs": "ESRI:102110"})
 

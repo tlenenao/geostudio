@@ -86,6 +86,17 @@ def test_resolve_owner_user_raises_lookup_error_when_item_not_found(db_session):
         resolve_owner_user(session, tenant_id=tenant.id, item_id="does-not-exist")
 
 
+def test_resolve_owner_user_refuses_an_anonymized_owner(db_session):
+    """Revue L5 I5 : point unique pour webhook, S3, reprise, cron, rapports, alertes."""
+    from datetime import UTC, datetime
+
+    session, tenant, user, item = db_session
+    user.erased_at = datetime.now(UTC).replace(tzinfo=None)
+    session.commit()
+    with pytest.raises(LookupError, match="anonymized"):
+        resolve_owner_user(session, tenant_id=tenant.id, item_id=item.id)
+
+
 def test_notify_best_effort_writes_a_notification(db_session):
     session, tenant, user, item = db_session
     notify_best_effort(

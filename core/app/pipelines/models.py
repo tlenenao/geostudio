@@ -2,7 +2,7 @@
 from datetime import UTC, datetime
 
 import sqlalchemy as sa
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
 
@@ -51,7 +51,7 @@ class PipelineRun(Base):
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     error: Mapped[str | None] = mapped_column(String, nullable=True)
     # AUD-087 (0088) : nœud fautif d'un run en échec, quand il est connu.
-    failed_node_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    failed_node_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     # server_default="{}" en chaîne nue (comme la migration 0018) : cf.
     # collections/models.py sur attachment_fields — le contournement du
     # piège de comparaison PG pour un type json vit côté test

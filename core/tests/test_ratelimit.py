@@ -117,6 +117,15 @@ def test_route_group_covers_harvest_writes():
     assert route_group("/v1/harvest/sources/abc/run", "POST", _EXPORT_PATH_RE) == "harvest"
 
 
+def test_route_group_budgets_pipeline_ddl_and_previews():
+    """Revue L5 I6."""
+    rg = route_group
+    assert rg("/v1/pipelines/target-collection", "POST", _EXPORT_PATH_RE) == "collections_empty"
+    assert rg("/v1/pipelines/preview", "POST", _EXPORT_PATH_RE) == "analytics"
+    assert rg("/v1/pipelines/p1/preview", "POST", _EXPORT_PATH_RE) == "analytics"
+    assert rg("/v1/pipelines/p1/runs", "POST", _EXPORT_PATH_RE) is None
+
+
 def test_caller_key_uses_authorization_header_when_present():
     assert caller_key("Bearer abc", "1.2.3.4") == "Bearer abc"
 

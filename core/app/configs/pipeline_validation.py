@@ -131,7 +131,8 @@ def validate_pipeline_payload(session: Session, config: BuilderConfig, *, user: 
         raise HTTPException(
             status_code=422, detail=f"cron must have exactly 5 fields: {policy.cron!r}"
         )
-    if policy is not None:
+    if policy is not None and policy.enabled:
+        # revue L5 : une planification désactivée ne tourne pas, son cron reste enregistrable.
         _check_min_interval(policy.cron)
     _check_acyclic(payload.nodes, payload.edges)
     _check_topology(payload.nodes, payload.edges)

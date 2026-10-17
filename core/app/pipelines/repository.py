@@ -7,6 +7,7 @@ import croniter
 from sqlalchemy import case, delete, func, select, update
 from sqlalchemy.orm import Session, aliased
 
+from app.audit.models import AuditLog
 from app.configs import repository as configs_repo
 from app.configs.models import Config, ConfigRevision
 from app.items.models import Item
@@ -522,8 +523,7 @@ def list_due_pipelines(session: Session, *, now: datetime | None = None) -> list
         payload = config.pipeline
         policy = payload.refreshPolicy
         tz = ZoneInfo(policy.timezone)
-        recent = recent_by_item.get(item_id, [])
-        if len(recent) == CIRCUIT_BREAKER_FAILURES and all(s == "failed" for s in recent):
+        if _circuit_open(recent_by_item.get(item_id, [])):
             # AUD-084 : circuit ouvert — plus de run planifié tant qu'un run manuel n'a pas
             # réussi (le propriétaire est notifié à chaque échec, pas à chaque tick).
             continue
@@ -579,8 +579,54 @@ def previous_run_failed(session: Session, *, item_id: str, run_id: str) -> bool:
     return prev == "failed"
 
 
-def _recent_terminal_statuses(session: Session, item_ids: list[str]) -> dict[str, list[str]]:
-    """Les CIRCUIT_BREAKER_FAILURES derniers statuts terminaux par pipeline (du plus récent)."""
+def is_scheduled_run(session: Session, *, tenant_id: str, run_id: str) -> bool:
+    """Run créé par le balayage cron (trace `actor_kind="schedule"` écrite juste après
+    sa création, cf. jobs.sweep). Borné dans le temps pour rester sur l'index
+    (tenant_id, created_at) d'audit_log."""
+    run = session.get(PipelineRun, run_id)
+    if run is None:
+        return False
+    return (
+        session.scalar(
+            select(AuditLog.id)
+            .where(
+                AuditLog.tenant_id == tenant_id,
+                AuditLog.created_at >= run.created_at - timedelta(seconds=1),
+                AuditLog.object_type == "pipeline_run",
+                AuditLog.object_id == run_id,
+                AuditLog.actor_kind == "schedule",
+            )
+            .limit(1)
+        )
+        is not None
+    )
+
+
+def _circuit_open(recent: list[str]) -> bool:
+    return len(recent) == CIRCUIT_BREAKER_FAILURES and all(s == "failed" for s in recent)
+
+
+def schedule_suspended(session: Session, *, item_id: str) -> bool:
+    """AUD-084 (revue L5 I7) : planification suspendue par le coupe-circuit."""
+    return _circuit_open(_recent_terminal_statuses(session, [item_id]).get(item_id, []))
+
+
+def circuit_just_opened(session: Session, *, item_id: str) -> bool:
+    """Le dernier échec vient d'ouvrir le circuit (N échecs, le N+1e terminal n'en est pas
+    un) — pour notifier une seule fois, pas à chaque échec suivant."""
+    recent = _recent_terminal_statuses(session, [item_id], CIRCUIT_BREAKER_FAILURES + 1).get(
+        item_id, []
+    )
+    return _circuit_open(recent[:CIRCUIT_BREAKER_FAILURES]) and (
+        len(recent) == CIRCUIT_BREAKER_FAILURES or recent[-1] != "failed"
+    )
+
+
+def _recent_terminal_statuses(
+    session: Session, item_ids: list[str], n: int = CIRCUIT_BREAKER_FAILURES
+) -> dict[str, list[str]]:
+    """Les CIRCUIT_BREAKER_FAILURES derniers statuts terminaux par pipeline (du plus récent).
+    Un run annulé n'est ni un succès ni un échec : il ne remet pas le compteur à zéro."""
     if not item_ids:
         return {}
     rn = (
@@ -592,14 +638,14 @@ def _recent_terminal_statuses(session: Session, item_ids: list[str]) -> dict[str
         select(PipelineRun.pipeline_item_id, PipelineRun.status, rn)
         .where(
             PipelineRun.pipeline_item_id.in_(item_ids),
-            PipelineRun.status.in_(("succeeded", "succeeded_with_rejects", "failed", "cancelled")),
+            PipelineRun.status.in_(("succeeded", "succeeded_with_rejects", "failed")),
         )
         .subquery()
     )
     out: dict[str, list[str]] = {}
     for item_id, status in session.execute(
         select(sub.c.pipeline_item_id, sub.c.status)
-        .where(sub.c.rn <= CIRCUIT_BREAKER_FAILURES)
+        .where(sub.c.rn <= n)
         .order_by(sub.c.pipeline_item_id, sub.c.rn)
     ):
         out.setdefault(item_id, []).append(status)

@@ -507,6 +507,15 @@ def test_write_rows_refuses_unknown_input_columns_before_writing(setup):
 
 
 @pytest.mark.postgis
+def test_delete_mode_ignores_unknown_non_key_columns(setup):
+    s = setup[0]
+    _run(setup, [("c1", "n", 1), ("c2", "n", 2)], _UPSERT)
+    mid = {"op": "transform.derive", "params": {"column": "extra", "expr": "1"}}
+    st = _run(setup, [("c1", "n", 1)], {"mode": "delete", "keyColumns": ["code"]}, mid=mid)
+    assert (st.extra["deleted"], _count(s)) == (1, 1)
+
+
+@pytest.mark.postgis
 def test_detect_changes_null_key_is_quarantined_as_invalid_key(setup):
     s, tenant, _, tmp_path = setup
     _write_src(tmp_path, tenant.id, [("c1", "a", 1)])

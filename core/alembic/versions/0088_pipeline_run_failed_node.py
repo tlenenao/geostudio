@@ -17,7 +17,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("pipeline_runs", sa.Column("failed_node_id", sa.String(64), nullable=True))
+    op.add_column("pipeline_runs", sa.Column("failed_node_id", sa.Text(), nullable=True))
 
 
 def downgrade() -> None:

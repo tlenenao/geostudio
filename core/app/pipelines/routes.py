@@ -106,6 +106,8 @@ class PipelinePreviewRequest(BaseModel):
 
 class NextRunResponse(BaseModel):
     nextRun: str
+    # Revue L5 I7 : coupe-circuit ouvert (3 échecs consécutifs) — seulement si `itemId`.
+    scheduleSuspended: bool = False
 
 
 def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests
@@ -121,8 +123,14 @@ def get_pipeline_ops(user: User = Depends(get_current_user)) -> dict:
 def get_pipeline_next_run(
     cron: str = Query(...),
     tz: str = Query("UTC", max_length=64),
+    itemId: str | None = Query(None),
+    session: Session = Depends(get_session, scope="function"),
     user: User = Depends(get_current_user),
 ) -> NextRunResponse:
+    suspended = False
+    if itemId is not None:
+        require_pipeline_access(session, user=user, item_id=itemId, action="read")
+        suspended = pipelines_repo.schedule_suspended(session, item_id=itemId)
     if len(cron.split()) != 5 or not croniter.croniter.is_valid(cron):
         raise HTTPException(status_code=400, detail=f"invalid cron expression: {cron!r}")
     try:
@@ -135,7 +143,7 @@ def get_pipeline_next_run(
         raise HTTPException(
             status_code=400, detail=f"cron expression has no future occurrence: {cron!r}"
         ) from exc
-    return NextRunResponse(nextRun=next_tick.isoformat())
+    return NextRunResponse(nextRun=next_tick.isoformat(), scheduleSuspended=suspended)
 
 
 class RetryRequest(BaseModel):

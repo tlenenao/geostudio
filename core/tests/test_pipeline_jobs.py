@@ -7,6 +7,7 @@ from procrastinate import testing
 from shapely.geometry import Point
 from sqlalchemy import select, text
 
+from app.audit.writer import write_audit
 from app.collections.ddl import apply_collection_ddl
 from app.db import Base, make_session_factory
 from app.items import repository as items_repo  # noqa: F401 -- enregistre Item sur Base.metadata
@@ -208,8 +209,45 @@ def test_run_pipeline_task_marks_run_failed_never_zombie(env, monkeypatch):
         assert fetched.error is not None
 
 
-def test_success_without_previous_failure_is_not_notified(env):
-    """AUD-084 : un succès ordinaire (pas un rétablissement) ne notifie plus."""
+def test_scheduled_success_without_previous_failure_is_not_notified(env):
+    """AUD-084 : un succès PLANIFIÉ ordinaire (pas un rétablissement) ne notifie plus."""
+    app, Session, tenant, user, item_id = env
+    with Session() as s:
+        run = pipelines_repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_id)
+        write_audit(
+            s, tenant_id=tenant.id, actor_id=user.id, actor_kind="schedule",
+            action="pipeline.run", object_type="pipeline_run", object_id=run.id, payload={},
+        )  # fmt: skip
+        s.commit()
+        run_id = run.id
+    pipeline_jobs.run_pipeline_task.defer(run_id=run_id, tenant_id=tenant.id)
+    app.run_worker(wait=False, queues=["etl"])
+    with Session() as s:
+        assert pipelines_repo.get_run(s, tenant_id=tenant.id, run_id=run_id).status == "succeeded"
+        assert s.scalar(select(Notification).where(Notification.tenant_id == tenant.id)) is None
+
+
+def test_run_of_an_anonymized_owner_fails_whatever_the_trigger(env):
+    """Revue L5 I5 : le refus vit dans resolve_owner_user, pas seulement dans le cron."""
+    from datetime import UTC, datetime
+
+    from app.users.models import User
+
+    app, Session, tenant, user, item_id = env
+    with Session() as s:
+        s.get(User, user.id).erased_at = datetime.now(UTC).replace(tzinfo=None)
+        run = pipelines_repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_id)
+        s.commit()
+        run_id = run.id
+    pipeline_jobs.run_pipeline_task.defer(run_id=run_id, tenant_id=tenant.id)
+    app.run_worker(wait=False, queues=["etl"])
+    with Session() as s:
+        fetched = pipelines_repo.get_run(s, tenant_id=tenant.id, run_id=run_id)
+        assert fetched.status == "failed" and "anonymized" in fetched.error
+
+
+def test_manual_success_is_always_notified(env):
+    """Revue L5 I4 : la suppression ne touche que les runs planifiés."""
     app, Session, tenant, user, item_id = env
     with Session() as s:
         run = pipelines_repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_id)
@@ -218,8 +256,8 @@ def test_success_without_previous_failure_is_not_notified(env):
     pipeline_jobs.run_pipeline_task.defer(run_id=run_id, tenant_id=tenant.id)
     app.run_worker(wait=False, queues=["etl"])
     with Session() as s:
-        assert pipelines_repo.get_run(s, tenant_id=tenant.id, run_id=run_id).status == "succeeded"
-        assert s.scalar(select(Notification).where(Notification.tenant_id == tenant.id)) is None
+        n = s.scalar(select(Notification).where(Notification.tenant_id == tenant.id))
+        assert n is not None and n.status == "success"
 
 
 def test_success_writes_a_notification_for_the_item_owner(env):
