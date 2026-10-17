@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
+import pytest
+
 from app.security.csp_hosts import (
+    _origin,
     extract_config_external_hosts,
     extract_extension_hosts,
     extract_harvest_hosts,
@@ -96,3 +99,37 @@ def test_extract_extension_hosts():
         _FakeExtension("/extensions/local-widget.js"),  # même origine, ignoré
     ]
     assert extract_extension_hosts(extensions) == {"https://cdn.example.com"}
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        'https://a"b.example/x',
+        "https://x:abc/",
+        "https://x:99999/",
+        "https://a b.example/",
+        "https://a;b.example/",
+        "https://évil.example/",
+    ],
+)
+def test_malformed_hosts_are_dropped_not_raised(url):
+    # AUD-089 : un seul enregistrement piégé ne doit ni injecter de directive
+    # ni faire lever le calcul (qui figeait la CSP de toute l'instance).
+    assert _origin(url) is None
+
+
+def test_valid_origin_keeps_port():
+    assert (
+        _origin("https://tiles.example.org:8443/{z}/{x}/{y}.png")
+        == "https://tiles.example.org:8443"
+    )
+
+
+def test_one_bad_layer_does_not_hide_the_good_ones():
+    body = {
+        "layers": [
+            {"kind": "raster", "url": "https://x:abc/{z}"},
+            {"kind": "raster", "url": "https://ok.example/{z}"},
+        ]
+    }
+    assert extract_config_external_hosts(body) == {"https://ok.example"}

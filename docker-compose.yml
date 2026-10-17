@@ -1085,7 +1085,7 @@ services:
       - traefik.http.routers.shell-embed.tls.certresolver=letsencrypt
       - traefik.http.routers.shell-embed.priority=5
       - traefik.http.routers.shell-embed.service=shell
-      - traefik.http.routers.shell-embed.middlewares=security-headers-embed@docker,rate-limit@docker,csp-dynamic@file
+      - traefik.http.routers.shell-embed.middlewares=security-headers-embed@docker,rate-limit@docker,csp-dynamic-embed@file
       - traefik.http.middlewares.security-headers-embed.headers.stsSeconds=31536000
       - traefik.http.middlewares.security-headers-embed.headers.contentTypeNosniff=true
       - traefik.http.middlewares.security-headers-embed.headers.referrerPolicy=strict-origin-when-cross-origin

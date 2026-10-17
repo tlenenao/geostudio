@@ -1658,6 +1658,27 @@ def test_embed_router_is_exempted_from_frame_deny(compose):
     assert "/embed/" in rule, f"shell-embed ({compose.name}) doit border /embed/, a trouvé : {rule}"
 
 
+@pytest.mark.parametrize("compose", [BASE, PROD], ids=["base", "prod"])
+def test_only_the_embed_router_drops_frame_ancestors(compose):
+    """AUD-089 : la CSP dynamique porte `frame-ancestors 'self'` (middleware
+    csp-dynamic) sauf sur /embed/ (csp-dynamic-embed) ; aucun autre routeur
+    ne doit référencer la variante sans frame-ancestors."""
+    for name, service in services(compose).items():
+        labels = _traefik_labels(service)
+        routers = {
+            key.split(".")[3]
+            for key in labels
+            if key.startswith("traefik.http.routers.") and key.endswith(".middlewares")
+        }
+        for router in routers:
+            mws = _router_middlewares(labels, router)
+            if router == "shell-embed":
+                assert "csp-dynamic-embed@file" in mws, (compose.name, mws)
+                assert "csp-dynamic@file" not in mws, (compose.name, mws)
+            else:
+                assert "csp-dynamic-embed@file" not in mws, (compose.name, name, router)
+
+
 # ─── SP-48/GAP-72 : CSP calculée dynamiquement, poussée par Traefik via un
 # provider fichier additif au provider Docker existant ───────────────────
 
