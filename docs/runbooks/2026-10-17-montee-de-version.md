@@ -30,6 +30,14 @@ COMPOSE="docker compose -f docker-compose.yml -f docker-compose.prod.yml"
 
    Code de sortie 0 attendu (75 = archive locale écrite mais envoi hors-site
    en échec : acceptable pour une montée de version, à corriger ensuite).
+4. **Mémoire (première montée après SP-L3)** : les services sont désormais
+   bornés (`*_MEM_LIMIT`) et Postgres démarre avec `shared_buffers=512MB`
+   (2GB auparavant), `effective_cache_size=2GB`, `work_mem=16MB`. Sur un
+   hôte de plus de 8 Go, reporter dans `.env` `PG_MEM_LIMIT`,
+   `PG_SHARED_BUFFERS` (~25 % de la borne) et `PG_EFFECTIVE_CACHE_SIZE`
+   avant `up -d`, sinon le cache de Postgres est divisé par quatre.
+   `CDC_WORKER_MEM_LIMIT` reste à 0 (sans borne) tant que la plus grosse
+   transaction (import, purge) n'a pas été mesurée.
 
 ## 2. Monter
 

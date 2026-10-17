@@ -751,10 +751,10 @@ MEM_LIMITS = {
     "core": ("CORE_MEM_LIMIT", "1536m"),
     "worker": ("WORKER_MEM_LIMIT", "2g"),
     "export-worker": ("EXPORT_WORKER_MEM_LIMIT", "1g"),
-    "cdc-worker": ("CDC_WORKER_MEM_LIMIT", "512m"),
-    "keycloak": ("KEYCLOAK_MEM_LIMIT", "1g"),
+    "cdc-worker": ("CDC_WORKER_MEM_LIMIT", "0"),  # sans borne : cf. test dédié
+    "keycloak": ("KEYCLOAK_MEM_LIMIT", "1536m"),
     "minio": ("MINIO_MEM_LIMIT", "512m"),
-    "titiler": ("TITILER_MEM_LIMIT", "512m"),
+    "titiler": ("TITILER_MEM_LIMIT", "1g"),
 }
 
 
@@ -778,10 +778,54 @@ def test_postgis_memory_settings_are_tunable_and_fit_its_limit():
         ("shared_buffers", "PG_SHARED_BUFFERS"),
         ("effective_cache_size", "PG_EFFECTIVE_CACHE_SIZE"),
         ("max_connections", "PG_MAX_CONNECTIONS"),
+        ("work_mem", "PG_WORK_MEM"),
+        ("max_parallel_workers_per_gather", "PG_MAX_PARALLEL_WORKERS_PER_GATHER"),
     ):
         assert f"-c {flag}=${{{var}:-" in cmd, flag
         assert var in documented_env_vars(include_commented=False), var
     assert "${PG_SHARED_BUFFERS:-512MB}" in cmd
+    # Revue finale SP-L3 (I3) : 64MB × 4 parallèles sous une borne de 2g.
+    assert "${PG_WORK_MEM:-16MB}" in cmd
+    assert "${PG_MAX_PARALLEL_WORKERS_PER_GATHER:-2}" in cmd
+
+
+_UNITS = {"k": 2**10, "kb": 2**10, "m": 2**20, "mb": 2**20, "g": 2**30, "gb": 2**30}
+
+
+def _bytes(size: str) -> int:
+    m = re.fullmatch(r"(\d+)\s*([a-z]*)", size.strip().lower())
+    assert m, size
+    return int(m.group(1)) * _UNITS.get(m.group(2), 1)
+
+
+@pytest.mark.parametrize("service", ["core", "worker"])
+def test_duckdb_memory_limit_is_well_below_the_container_limit(service):
+    """Revue finale SP-L3 (I2) : DuckDB à 2GB par connexion sous un core borné à
+    1536m = OOM du conteneur avant que DuckDB ne déborde sur disque. Défaut
+    compose ET valeur de .env.example (copiée par bootstrap-env) ≤ moitié."""
+    svc = services(BASE)[service]
+    var, _ = MEM_LIMITS[service]
+    duck = _resolve_effective_value(
+        str(svc["environment"]["CORE_DUCKDB_MEMORY_LIMIT"]), "CORE_DUCKDB_MEMORY_LIMIT"
+    )
+    limit = _resolve_effective_value(str(svc["mem_limit"]), var)
+    assert _bytes(duck) * 2 <= _bytes(limit), (duck, limit)
+    env = dict(re.findall(r"^([A-Z0-9_]+)=(.*)$", ENV_EXAMPLE.read_text(), re.MULTILINE))
+    assert _bytes(env["CORE_DUCKDB_MEMORY_LIMIT"]) * 2 <= _bytes(env[var])
+
+
+def test_cdc_worker_is_unbounded_by_default_and_titiler_concurrency_is_pinned():
+    """Revue finale SP-L3 (C1/I1). cdc-worker : wal2json v1 livre une transaction
+    entière en un message — une borne fixe le tue en boucle sur un gros import.
+    titiler : gunicorn = 1 worker par cœur de l'hôte sans WEB_CONCURRENCY."""
+    assert _resolve_effective_value(
+        str(services(BASE)["cdc-worker"]["mem_limit"]), "CDC_WORKER_MEM_LIMIT"
+    ) == "0"
+    env = services(BASE)["titiler"]["environment"]
+    assert _resolve_effective_value(str(env["WEB_CONCURRENCY"]), "TITILER_WEB_CONCURRENCY") == "2"
+    assert "GDAL_CACHEMAX" in env
+    for var in ("TITILER_WEB_CONCURRENCY", "TITILER_GDAL_CACHEMAX"):
+        assert var in documented_env_vars(include_commented=False), var
 
 
 OTEL_ENTRYPOINTS = ("app.main", "app.jobs", "app.cdc")
@@ -801,7 +845,12 @@ def test_every_otel_process_exports_telemetry():
         env = svc.get("environment") or {}
         assert env.get("OTEL_EXPORTER_OTLP_ENDPOINT") == "${OTEL_EXPORTER_OTLP_ENDPOINT:-}", name
         assert env.get("OTEL_SERVICE_NAME") == f"geostudio-{name}", name
-        assert env.get("GEOSTUDIO_VERSION") == "${GEOSTUDIO_VERSION:-}", name
+        # Revue finale SP-L3 (M4) : le fichier de base construit depuis les sources ;
+        # le GEOSTUDIO_VERSION de .env (tag de release copié par bootstrap-env) y
+        # ferait annoncer v0.1.0 et épinglerait les bundles autoportés dessus.
+        assert "GEOSTUDIO_VERSION" not in env, name
+        prod_env = services(PROD)[name].get("environment") or {}
+        assert prod_env.get("GEOSTUDIO_VERSION") == "${GEOSTUDIO_VERSION:-latest}", name
         checked.append(name)
     assert {"core", "worker", "export-worker", "cdc-worker"} <= set(checked), checked
 

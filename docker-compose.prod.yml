@@ -168,6 +168,10 @@ services:
     build: !reset null
     ports: !reset []
     environment:
+      # AUD-040 : service.version et /docs suivent le tag d'image déployé. Posé
+      # ici seulement : le fichier de base construit depuis les sources (« dev »),
+      # le GEOSTUDIO_VERSION de .env n'y décrit aucune image.
+      GEOSTUDIO_VERSION: ${GEOSTUDIO_VERSION:-latest}
       CORE_AUTH_MODE: oidc
       CORE_OIDC_ISSUER: https://${GEOSTUDIO_PUBLIC_HOST}/auth/realms/geostudio
       CORE_OIDC_JWKS_URL: http://keycloak:8080/auth/realms/geostudio/protocol/openid-connect/certs
@@ -281,6 +285,11 @@ services:
   cdc-worker:
     image: ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}
     build: !reset null
+    environment:
+      # AUD-040 : service.version et /docs suivent le tag d'image déployé. Posé
+      # ici seulement : le fichier de base construit depuis les sources (« dev »),
+      # le GEOSTUDIO_VERSION de .env n'y décrit aucune image.
+      GEOSTUDIO_VERSION: ${GEOSTUDIO_VERSION:-latest}
 
   # SP-21 : ces deux services restaient en `build:` (fichier de base), donc
   # non déployables sans compiler sur l'hôte. Leurs `profiles:` restent ceux
@@ -288,6 +297,11 @@ services:
   export-worker:
     image: ghcr.io/tlenenao/geostudio-export-worker:${GEOSTUDIO_VERSION:-latest}
     build: !reset null
+    environment:
+      # AUD-040 : service.version et /docs suivent le tag d'image déployé. Posé
+      # ici seulement : le fichier de base construit depuis les sources (« dev »),
+      # le GEOSTUDIO_VERSION de .env n'y décrit aucune image.
+      GEOSTUDIO_VERSION: ${GEOSTUDIO_VERSION:-latest}
 
   appexport-runtime-builder:
     image: ghcr.io/tlenenao/geostudio-appexport-runtime-builder:${GEOSTUDIO_VERSION:-latest}

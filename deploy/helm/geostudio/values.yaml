@@ -37,7 +37,7 @@ config:
   CORE_CDC_COMPACTION_RECENT_DAYS: "7"
   CORE_CSP_MODE: "report-only"
   CORE_DUCKDB_MAX_TEMP_SIZE: "5GB"
-  CORE_DUCKDB_MEMORY_LIMIT: "2GB"
+  CORE_DUCKDB_MEMORY_LIMIT: "512MB"   # par connexion DuckDB : nettement sous core/worker.resources.limits.memory
   CORE_DUCKDB_STATEMENT_TIMEOUT_S: "30"
   CORE_DUCKDB_THREADS: "4"
   CORE_EMBEDDING_API_URL: ""
@@ -163,7 +163,9 @@ cdcWorker:
   # Mono-writer garanti par élection (verrou consultatif Postgres, ARC-32) : N pods, 1 leader, les
   # autres attendent et reprennent < 30 s si le leader tombe.
   replicas: 2
-  resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {memory: 1Gi}}
+  # wal2json v1 livre une transaction entière en un message (~2,5 Ko/ligne décodée) : la limite
+  # doit couvrir la plus grosse transaction (import, purge), sinon OOMKilled en boucle et WAL retenu.
+  resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {memory: 4Gi}}
   podSecurityUid: 1001
 
 exportWorker:                       # profil compose « export » ; requiert config.CORE_EXPORT_ENABLED="true"

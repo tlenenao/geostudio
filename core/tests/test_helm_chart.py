@@ -281,6 +281,22 @@ def test_cors_allows_the_shell_host_when_core_has_its_own_api_host():
     assert _rendered_env(render(), "core")[0]["CORE_CORS_ALLOWED_ORIGINS"] == ""
 
 
+def _bytes(size: str) -> int:
+    """'512MB', '2Gi', '2GB' -> octets (préfixes binaires dans les deux cas)."""
+    m = re.fullmatch(r"(\d+)\s*([A-Za-z]*)", size.strip())
+    assert m, size
+    return int(m.group(1)) * {"": 1, "k": 2**10, "m": 2**20, "g": 2**30}[m.group(2)[:1].lower()]
+
+
+@pytest.mark.parametrize("suffix", ["core", "worker"])
+def test_duckdb_memory_limit_is_well_below_the_pod_limit(docs, suffix):
+    """Revue finale SP-L3 (I2) : DuckDB à 2GB par connexion dans un pod borné à
+    2Gi = OOMKilled avant tout débordement sur disque."""
+    duck = _rendered_env(docs, suffix)[0]["CORE_DUCKDB_MEMORY_LIMIT"]
+    limit = _container(docs, suffix)["resources"]["limits"]["memory"]
+    assert _bytes(duck) * 2 <= _bytes(limit), (duck, limit)
+
+
 def test_valhalla_renders_only_when_enabled_and_wires_core_url():
     """ARC-34 : sous-chart optionnel ; CORE_ROUTING_URL pointe le service du release."""
     base = render()

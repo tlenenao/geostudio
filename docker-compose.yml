@@ -40,10 +40,10 @@ services:
       postgres
         -c shared_buffers=${PG_SHARED_BUFFERS:-512MB}
         -c effective_cache_size=${PG_EFFECTIVE_CACHE_SIZE:-2GB}
-        -c work_mem=64MB
+        -c work_mem=${PG_WORK_MEM:-16MB}
         -c max_connections=${PG_MAX_CONNECTIONS:-200}
         -c random_page_cost=1.1
-        -c max_parallel_workers_per_gather=4
+        -c max_parallel_workers_per_gather=${PG_MAX_PARALLEL_WORKERS_PER_GATHER:-2}
         -c wal_level=logical
         -c output_plugin_libraries=wal2json,pgoutput,test_decoding
 
@@ -171,8 +171,13 @@ services:
 
   titiler:
     build: ./deploy/titiler
-    mem_limit: ${TITILER_MEM_LIMIT:-512m}
+    mem_limit: ${TITILER_MEM_LIMIT:-1g}
     environment:
+      # gunicorn lance par défaut 1 worker par cœur (`gunicorn_conf.py` de l'image :
+      # WEB_CONCURRENCY, sinon WORKERS_PER_CORE × cpu_count) — ~90 Mo chacun plus le
+      # cache GDAL, calculé sur la RAM de l'HÔTE et non sur la borne. Les deux sont fixés.
+      WEB_CONCURRENCY: ${TITILER_WEB_CONCURRENCY:-2}
+      GDAL_CACHEMAX: ${TITILER_GDAL_CACHEMAX:-128}
       CPL_VSIL_CURL_ALLOWED_EXTENSIONS: .tif,.TIF,.tiff
       GDAL_HTTP_MERGE_CONSECUTIVE_RANGES: YES
       GDAL_DISABLE_READDIR_ON_OPEN: EMPTY_DIR
@@ -355,7 +360,7 @@ services:
       CORE_PIPELINES_HTTP_CALL_MAX_ROWS: ${CORE_PIPELINES_HTTP_CALL_MAX_ROWS:-10000}
       CORE_PIPELINES_HTTP_CALL_MAX_TOTAL_BYTES: ${CORE_PIPELINES_HTTP_CALL_MAX_TOTAL_BYTES:-268435456}
       CORE_PIPELINES_HTTP_CALL_MAX_RESPONSE_BYTES: ${CORE_PIPELINES_HTTP_CALL_MAX_RESPONSE_BYTES:-5242880}
-      CORE_DUCKDB_MEMORY_LIMIT: ${CORE_DUCKDB_MEMORY_LIMIT:-2GB}
+      CORE_DUCKDB_MEMORY_LIMIT: ${CORE_DUCKDB_MEMORY_LIMIT:-512MB}
       CORE_DUCKDB_MAX_TEMP_SIZE: ${CORE_DUCKDB_MAX_TEMP_SIZE:-5GB}
       CORE_DUCKDB_THREADS: ${CORE_DUCKDB_THREADS:-4}
       CORE_DUCKDB_STATEMENT_TIMEOUT_S: ${CORE_DUCKDB_STATEMENT_TIMEOUT_S:-30}
@@ -420,10 +425,6 @@ services:
       TITILER_URL: ${TITILER_URL:-http://titiler:8000}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_SERVICE_NAME: geostudio-core
-      # service.version des traces/métriques/logs (AUD-040) ; vide = "dev".
-      # Jamais de défaut non vide ici : le worker s'en sert aussi pour épingler
-      # l'image des bundles autoportés (vide = latest, app/appexport/bundler.py).
-      GEOSTUDIO_VERSION: ${GEOSTUDIO_VERSION:-}
       S3_ENDPOINT_URL: http://minio:9000
       # Hôte public du stockage pour les liens signés remis à un navigateur ou à un
       # destinataire externe (RC-13) ; vide = hôte interne (liens injoignables hors Docker).
@@ -666,7 +667,7 @@ services:
       # purgés après rétention.
       CORE_PIPELINE_CHECKPOINT_DIR: ${CORE_PIPELINE_CHECKPOINT_DIR:-/scratch/pipeline-checkpoints}
       CORE_PIPELINE_CHECKPOINT_RETENTION_HOURS: ${CORE_PIPELINE_CHECKPOINT_RETENTION_HOURS:-24}
-      CORE_DUCKDB_MEMORY_LIMIT: ${CORE_DUCKDB_MEMORY_LIMIT:-2GB}
+      CORE_DUCKDB_MEMORY_LIMIT: ${CORE_DUCKDB_MEMORY_LIMIT:-512MB}
       CORE_DUCKDB_MAX_TEMP_SIZE: ${CORE_DUCKDB_MAX_TEMP_SIZE:-5GB}
       CORE_DUCKDB_THREADS: ${CORE_DUCKDB_THREADS:-4}
       CORE_DUCKDB_STATEMENT_TIMEOUT_S: ${CORE_DUCKDB_STATEMENT_TIMEOUT_S:-30}
@@ -691,7 +692,6 @@ services:
       CORE_BASE_URL: ${CORE_BASE_URL:-http://localhost:8200}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_SERVICE_NAME: geostudio-worker
-      GEOSTUDIO_VERSION: ${GEOSTUDIO_VERSION:-}
       CORE_APPEXPORT_ENABLED: ${CORE_APPEXPORT_ENABLED:-false}
       APPEXPORT_RUNTIME_DIR: /export-runtime
       S3_APPEXPORTS_BUCKET: geostudio-appexports
@@ -806,7 +806,6 @@ services:
       # Sans ces deux variables, ce worker n'émettait aucune trace ni métrique (AUD-037).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_SERVICE_NAME: geostudio-export-worker
-      GEOSTUDIO_VERSION: ${GEOSTUDIO_VERSION:-}
     networks: [gis-net]
     depends_on:
       pgbouncer:
@@ -830,7 +829,12 @@ services:
   # pas un outil d'exploitation optionnel — pas de profil, comme core/worker.
   cdc-worker:
     build: ./core
-    mem_limit: ${CDC_WORKER_MEM_LIMIT:-512m}
+    # Pas de borne par défaut (0 = illimité) : wal2json v1 livre une transaction
+    # ENTIÈRE en un seul message, décodé d'un bloc (~2,5 Ko de mémoire Python par
+    # ligne, mesuré) — un import de 10^6 lignes dépasse 2 Go. Une borne trop basse
+    # tuerait le worker en boucle sur la même transaction, slot jamais acquitté, WAL
+    # retenu jusqu'à saturer le disque. À poser seulement après dimensionnement.
+    mem_limit: ${CDC_WORKER_MEM_LIMIT:-0}
     command: python -m app.cdc.main
     environment:
       CDC_DATABASE_URL: postgresql://gis:${PG_PASSWORD}@postgis:5432/gis
@@ -840,7 +844,6 @@ services:
       S3_CDC_BUCKET: geostudio-cdc
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_SERVICE_NAME: geostudio-cdc-worker
-      GEOSTUDIO_VERSION: ${GEOSTUDIO_VERSION:-}
     networks: [gis-net]
     depends_on:
       postgis:
@@ -989,7 +992,7 @@ services:
 
   keycloak:
     image: quay.io/keycloak/keycloak:24.0.5
-    mem_limit: ${KEYCLOAK_MEM_LIMIT:-1g}
+    mem_limit: ${KEYCLOAK_MEM_LIMIT:-1536m}
     environment:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: ${KC_PASSWORD}

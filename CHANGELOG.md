@@ -76,6 +76,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Memory bounds and Postgres tuning (AUD-031/184)**: compose services now carry a
+  `mem_limit` (postgis 2g, core 1536m, export-worker 1g, keycloak 1536m, minio 512m,
+  titiler 1g with 2 gunicorn workers and `GDAL_CACHEMAX=128`; cdc-worker unbounded by default,
+  see `.env.example`), each tunable through a `*_MEM_LIMIT` variable. Postgres settings are
+  now tunable with smaller defaults: **`shared_buffers` drops from 2GB to 512MB**,
+  `effective_cache_size` 6GB → 2GB, `work_mem` 64MB → 16MB, `max_parallel_workers_per_gather`
+  4 → 2. **Existing installs on a large host**: set `PG_MEM_LIMIT`, `PG_SHARED_BUFFERS`
+  (~25 % of the limit) and `PG_EFFECTIVE_CACHE_SIZE` in `.env` before upgrading, otherwise
+  Postgres restarts with a quarter of its previous buffer cache. `CORE_DUCKDB_MEMORY_LIMIT`
+  (per DuckDB connection) defaults to 512MB instead of 2GB, in compose and Helm.
+- The base `docker-compose.yml` (built from source) no longer forwards `GEOSTUDIO_VERSION`:
+  it reports `dev`; `docker-compose.prod.yml` forwards the deployed image tag.
 - **BREAKING, blob secrets (REV-341)**: Azure `accountName` must match
   `^[a-z0-9]{3,24}$` and a GCS service-account `token_uri` must be one of
   Google's OAuth2 endpoints. A blob (Azure/GCS) secret stored outside the new

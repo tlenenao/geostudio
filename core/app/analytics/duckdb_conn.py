@@ -46,7 +46,7 @@ def open_connection(
     )
     # P16.03 : mémoire et débordement disque bornés (valeurs d'environnement
     # serveur, pas d'entrée utilisateur).
-    conn.execute(f"SET memory_limit = '{os.environ.get('CORE_DUCKDB_MEMORY_LIMIT') or '2GB'}'")
+    conn.execute(f"SET memory_limit = '{os.environ.get('CORE_DUCKDB_MEMORY_LIMIT') or '512MB'}'")
     conn.execute(
         f"SET max_temp_directory_size = '{os.environ.get('CORE_DUCKDB_MAX_TEMP_SIZE') or '5GB'}'"
     )
