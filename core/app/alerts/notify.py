@@ -40,7 +40,8 @@ def _owner_user(session: Session, *, tenant_id: str, item_id: str) -> User | Non
     owner_id = session.scalar(
         select(Item.owner_id).where(Item.id == item_id, Item.tenant_id == tenant_id)
     )
-    return session.get(User, owner_id) if owner_id else None
+    user = session.get(User, owner_id) if owner_id else None
+    return user if user is not None and user.erased_at is None else None  # AUD-094
 
 
 def send_webhook(

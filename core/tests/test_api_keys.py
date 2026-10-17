@@ -306,3 +306,34 @@ def test_scopes_cannot_exceed_creator_privileges(env):
     )
     assert ok.status_code == 201
     assert ok.json()["scopes"] == ["maps.manage"] and ok.json()["readOnly"] is True
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("post", "/v1/items/i1/share-links"),
+        ("post", "/v1/pipelines/i1/webhook-tokens"),
+        ("post", "/v1/roles"),
+        ("patch", "/v1/roles/r1"),
+        ("delete", "/v1/roles/r1"),
+        ("patch", "/v1/users/u1"),
+        ("post", "/v1/compliance/users/me/erase"),
+    ],
+)
+def test_sensitive_routes_refuse_an_api_key(env, method, path, monkeypatch):
+    # AUD-094 : jumelles de forbid_api_key, même avec une clé admin valide.
+    _client, Session, (_, admin_id, _) = env
+    from app.main import create_app
+
+    monkeypatch.setenv("CORE_ETL_ENABLED", "true")  # monte le routeur pipelines
+    app = create_app()
+
+    def override_session():
+        with request_scoped_session(Session) as session:
+            yield session
+
+    app.dependency_overrides[db.get_session] = override_session
+    _, token = _mint(Session, admin_id)
+    resp = getattr(TestClient(app), method)(path, headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 403, resp.text
+    assert resp.json()["detail"] == "not allowed with an api key"

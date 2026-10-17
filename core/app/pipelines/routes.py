@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.auth.dependency import get_current_user
+from app.auth.dependency import forbid_api_key, get_current_user
 from app.configs.schemas import PipelinePayload
 from app.db import get_session
 from app.pipelines import repository as pipelines_repo
@@ -297,7 +297,10 @@ def preview_pipeline_route(
 
 
 @router.post(
-    "/pipelines/{item_id}/webhook-tokens", response_model=WebhookTokenCreated, status_code=201
+    "/pipelines/{item_id}/webhook-tokens",
+    response_model=WebhookTokenCreated,
+    status_code=201,
+    dependencies=[Depends(forbid_api_key)],  # AUD-094 : session interactive seulement
 )
 def create_webhook_token_route(
     item_id: str,

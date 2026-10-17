@@ -348,3 +348,45 @@ def test_erased_admin_does_not_count_as_holder_j08b_004(env):
         assert would_orphan_privilege_holders(
             s, tenant_id=tenant_id, privileges=privs, role_id=roles["admin"], new_privileges=[]
         )
+
+
+def test_anonymize_user_cuts_webhook_tokens_share_links_and_owner_actions(env):
+    # AUD-094 : rien ne doit continuer d'agir au nom d'un compte effacé.
+    from datetime import datetime, timedelta
+
+    from app.jobs.common import resolve_owner_user
+    from app.pipelines.models import PipelineWebhookToken
+    from app.sharing.models import ShareLink
+
+    Session, tenant_id, target_id, admin_id, _roles = env
+    with Session() as s:
+        s.add(
+            PipelineWebhookToken(
+                id="wt1",
+                tenant_id=tenant_id,
+                pipeline_item_id="item1",
+                token_hash="h1",
+                created_by=target_id,
+            )
+        )
+        for link_id, creator in (("sl1", target_id), ("sl2", admin_id)):
+            s.add(
+                ShareLink(
+                    id=link_id,
+                    tenant_id=tenant_id,
+                    item_id="item1",
+                    created_by=creator,
+                    expires_at=datetime.now() + timedelta(days=1),
+                )
+            )
+        s.commit()
+        assert resolve_owner_user(s, tenant_id=tenant_id, item_id="item1").id == target_id
+    with Session() as s:
+        anonymize_user(s, tenant_id=tenant_id, user_id=target_id)
+        s.commit()
+    with Session() as s:
+        assert s.get(PipelineWebhookToken, "wt1") is None
+        assert s.get(ShareLink, "sl1").revoked_at is not None
+        assert s.get(ShareLink, "sl2").revoked_at is None  # lien d'un autre compte intact
+        with pytest.raises(LookupError):
+            resolve_owner_user(s, tenant_id=tenant_id, item_id="item1")

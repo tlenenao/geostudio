@@ -20,15 +20,17 @@ que ce garde-fou existant empêche déjà par ailleurs."""
 
 from datetime import UTC, datetime
 
-from sqlalchemy import delete
+from sqlalchemy import delete, update
 from sqlalchemy.orm import Session
 
 from app.apikeys.service import revoke_all_for_user
 from app.audit.writer import write_audit
 from app.history.service import erase_actor
 from app.notifications.models import Notification
+from app.pipelines.models import PipelineWebhookToken
 from app.roles.repository import count_users_with_privileges, get_role
-from app.sharing.models import GroupMember
+from app.sharing.models import GroupMember, ShareLink
+from app.sharing.models import _now as _share_link_now
 from app.users.models import User
 from app.users.repository import erased_sub
 
@@ -84,6 +86,22 @@ def anonymize_user(
     revoke_all_for_user(session, tenant_id=tenant_id, user_id=user_id)
     session.execute(delete(Notification).where(Notification.recipient_user_id == user_id))
     session.execute(delete(GroupMember).where(GroupMember.user_id == user_id))
+    # AUD-094 : ni jeton webhook ni lien de partage ne survivent au compte.
+    session.execute(
+        delete(PipelineWebhookToken).where(
+            PipelineWebhookToken.tenant_id == tenant_id,
+            PipelineWebhookToken.created_by == user_id,
+        )
+    )
+    session.execute(
+        update(ShareLink)
+        .where(
+            ShareLink.tenant_id == tenant_id,
+            ShareLink.created_by == user_id,
+            ShareLink.revoked_at.is_(None),
+        )
+        .values(revoked_at=_share_link_now())
+    )
     erase_actor(session, tenant_id=tenant_id, user_id=user_id)  # ARC-15 : journal d'entité
     session.flush()
 
