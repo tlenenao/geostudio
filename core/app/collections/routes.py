@@ -555,6 +555,11 @@ def _ogc_links(base: str, cid: str) -> list[dict]:
             "type": "application/schema+json",
             "href": f"{base}/collections/{cid}/queryables",
         },
+        {
+            "rel": "describedby",
+            "type": "application/xml",
+            "href": f"{base}/collections/{cid}/metadata",
+        },
     ]
 
 

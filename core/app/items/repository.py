@@ -424,6 +424,18 @@ def _apply_status(query, *, scope: str, status: str | None):
 MAX_PAGE_SIZE = 200
 
 
+def _bbox_clause(bbox: tuple[float, float, float, float]):
+    """Intersection de rectangles sur les 4 colonnes persistées (spec §2.4, REV-364 a :
+    ouest > est = rectangle à cheval sur l'antiméridien). Un item sans bbox est exclu."""
+    minx, miny, maxx, maxy = bbox
+    in_x = (
+        or_(Item.bbox_max_x >= minx, Item.bbox_min_x <= maxx)
+        if minx > maxx
+        else and_(Item.bbox_max_x >= minx, Item.bbox_min_x <= maxx)
+    )
+    return and_(Item.bbox_min_x.isnot(None), in_x, Item.bbox_max_y >= miny, Item.bbox_min_y <= maxy)
+
+
 def list_items(
     session: Session,
     *,
@@ -456,24 +468,7 @@ def list_items(
     query = _apply_status(query, scope=scope, status=status)
 
     if bbox is not None:
-        # Intersection de rectangles sur les 4 colonnes persistées (spec
-        # §2.4) — pas de scan de géométrie. Un item sans bbox connue
-        # (jamais calculée, ou non géographique) n'apparaît jamais sous un
-        # filtre bbox posé : Item.bbox_min_x.isnot(None) l'exclut d'office.
-        minx, miny, maxx, maxy = bbox
-        # REV-364 a : ouest > est = rectangle à cheval sur l'antiméridien,
-        # l'item doit toucher [ouest, 180] OU [-180, est].
-        in_x = (
-            or_(Item.bbox_max_x >= minx, Item.bbox_min_x <= maxx)
-            if minx > maxx
-            else and_(Item.bbox_max_x >= minx, Item.bbox_min_x <= maxx)
-        )
-        query = query.where(
-            Item.bbox_min_x.isnot(None),
-            in_x,
-            Item.bbox_max_y >= miny,
-            Item.bbox_min_y <= maxy,
-        )
+        query = query.where(_bbox_clause(bbox))
 
     # À ce stade, `query` ne contient que des lignes visibles par
     # current_user_id — c'est la base sur laquelle la recherche (hybride ou
@@ -658,6 +653,8 @@ def list_published_items(
     tag: str | None = None,
     page: int = 1,
     page_size: int = 12,
+    q: str | None = None,
+    bbox: tuple[float, float, float, float] | None = None,
 ) -> ItemPage:
     # Published-only, tenant-scoped, anonymous-safe: deliberately NOT a
     # variant of list_items() (which is gated by current_user_id/scope) —
@@ -675,6 +672,13 @@ def list_published_items(
     )
     if resource_type:
         query = query.where(Item.resource_type == resource_type)
+    if q:
+        # Records (AUD-048) : plein texte simple, sans recherche vectorielle (route anonyme,
+        # pas d'appel au fournisseur d'embeddings sur une entrée non authentifiée).
+        like = f"%{q}%"
+        query = query.where(or_(Item.title.ilike(like), Item.abstract.ilike(like)))
+    if bbox is not None:
+        query = query.where(_bbox_clause(bbox))
 
     # id en départage : OFFSET SQL instable sinon sur created_at égaux (P24.05).
     order = (Item.created_at.desc(), Item.id)

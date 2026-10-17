@@ -83,6 +83,7 @@ from app.quotas import routes as quotas_routes
 from app.quotas.service import QuotaExceededError, validate_quota_settings
 from app.raster import routes as raster_routes
 from app.ratelimit.limiter import PgRateLimiter, caller_key, make_rate_limiter, route_group
+from app.records import routes as records_routes
 from app.relations import routes as relations_routes
 from app.relations.service import RelationHooks
 from app.reports import routes as reports_routes
@@ -581,6 +582,8 @@ def create_app() -> FastAPI:
     v1_router.include_router(ingestion_routes.router)
     v1_router.include_router(stac_routes.router)
     v1_router.include_router(dcat_routes.router)
+    v1_router.include_router(records_routes.router)
+    v1_router.include_router(records_routes.metadata_router)
     v1_router.include_router(harvest_routes.router)
     v1_router.include_router(alerts_routes.router)
     v1_router.include_router(webhooks_routes.router)  # ARC4-F6
