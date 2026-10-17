@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, R
 from fastapi.responses import JSONResponse
 from opentelemetry import metrics
 from pydantic import BaseModel
+from shapely.geometry import shape
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import Session
@@ -365,6 +366,22 @@ def _parse_geom_intersects(raw: str | None):
                     "field": "geom_intersects",
                     "code": "invalid_geom_intersects",
                     "message": "geom_intersects must be a GeoJSON geometry encoded as JSON",
+                }
+            ]
+        )
+    try:
+        # Revue L6 M5 : coordonnées vides/mal formées -> ST_GeomFromGeoJSON lèverait
+        # une DBAPIError (500) ; shapely refuse ou rend une géométrie vide.
+        empty = shape(parsed).is_empty
+    except Exception:  # noqa: BLE001 - toute entrée illisible est une erreur client
+        empty = True
+    if empty:
+        raise _validation_error(
+            [
+                {
+                    "field": "geom_intersects",
+                    "code": "invalid_geom_intersects",
+                    "message": "geom_intersects must be a valid, non-empty GeoJSON geometry",
                 }
             ]
         )

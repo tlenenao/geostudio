@@ -428,6 +428,10 @@ def _run_search(
             # j07-008 : une collection cassée ne fait pas échouer toute la recherche.
             logger.warning("stac search: collection %s ignorée: %s", col.id, exc)
             continue
+        if info.geometry_column is None and (bbox is not None or intersects is not None):
+            # Revue L6 I1 : une collection sans géométrie ne peut pas répondre à une
+            # recherche spatiale ; select_features lèverait FilterError (500 sinon).
+            continue
         col_masked = unmask_for_owner(masked, user, col)
         if col_masked:
             info = hide_sensitive_columns(info, col.sensitive_fields)

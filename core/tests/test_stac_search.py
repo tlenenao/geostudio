@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+import dataclasses
 from types import SimpleNamespace
 
 import pytest
@@ -10,7 +11,7 @@ from app.collections import routes as collections_routes
 from app.collections.introspection import ColumnInfo, TableInfo, TableNotFound
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.features import routes as features_routes
-from app.features.repository import FeaturePage
+from app.features.repository import FeaturePage, FilterError
 from app.main import create_app
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
@@ -55,6 +56,9 @@ def make_repo():
     def select_features(
         session, info, *, limit, offset, bbox=None, filters=None, ids=None, geom_intersects=None
     ):
+        if info.geometry_column is None and (bbox is not None or geom_intersects is not None):
+            # Miroir de features.repository._where (FilterError sans géométrie).
+            raise FilterError("bbox", "collection has no geometry")
         rows = [feat(1), feat(2)]
         if ids is not None:
             rows = [f for f in rows if str(f["id"]) in ids]
@@ -272,3 +276,23 @@ def test_search_intersects(env):
         "/v1/stac/search", json={"intersects": {"type": "Point", "coordinates": [1, 44]}}
     )
     assert post.status_code == 200
+
+
+def test_spatial_search_skips_collection_without_geometry(env, monkeypatch):
+    # Revue L6 I1 : un CSV sans coordonnées ne fait plus répondre 500 à toute la recherche.
+    app, client = env
+    monkeypatch.setitem(INFOS, "rivers", dataclasses.replace(INFOS["rivers"], geometry_column=None))
+    geom = '{"type":"Point","coordinates":[1,44]}'
+    for params in ({"intersects": geom}, {"bbox": "0,40,2,46"}):
+        r = client.get("/v1/stac/search", params={**params, "limit": 100})
+        assert r.status_code == 200, r.text
+        assert {f["collection"] for f in r.json()["features"]} == {"roads"}
+
+
+def test_invalid_intersects_geometry_is_400_not_500(env):
+    # Revue L6 M5 : géométrie syntaxiquement JSON mais vide/mal formée -> 400 (jumelle /items).
+    app, client = env
+    for bad in ('{"type":"Point","coordinates":[]}', '{"type":"Polygon","coordinates":[[[0,0]]]}'):
+        assert client.get("/v1/stac/search", params={"intersects": bad}).status_code == 400
+        r = client.get("/v1/collections/roads/items", params={"geom_intersects": bad})
+        assert r.status_code == 400, r.text
