@@ -251,6 +251,25 @@ def _egress_route_handler(allowed_origins: frozenset[str]):
     return handle
 
 
+def _origin(url: str) -> str | None:
+    parsed = urlparse(url.strip())
+    return f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else None
+
+
+def export_allowed_origins(shell_origin: str) -> frozenset[str]:
+    """Origines que le Chromium d'export joint sans contrôle d'IP (exemption évaluée
+    AVANT le blocage des adresses privées) : le shell, le cœur publié, le stockage
+    public (S3_PUBLIC_ENDPOINT_URL : images et tuiles d'un MinIO de LAN) et la liste
+    CORE_EXPORT_TRUSTED_ORIGINS (revue SP-L2 I5 : un déploiement de LAN sert ses
+    fonds de carte et services depuis des adresses privées)."""
+    allowed = {shell_origin}
+    candidates = [_published_core_url(shell_origin) or ""]
+    candidates.append(os.environ.get("S3_PUBLIC_ENDPOINT_URL", ""))
+    candidates += os.environ.get("CORE_EXPORT_TRUSTED_ORIGINS", "").split(",")
+    allowed.update(o for c in candidates if c.strip() and (o := _origin(c)))
+    return frozenset(allowed)
+
+
 def _launch_and_navigate(
     url: str,
     viewport: tuple[int, int] | None = None,
@@ -286,14 +305,10 @@ def _launch_and_navigate(
         page = browser.new_page(**page_kw)
         shell = urlparse(url)
         shell_origin = f"{shell.scheme}://{shell.netloc}"
-        allowed = {shell_origin}
-        published = _published_core_url(shell_origin)
-        if published:
-            p = urlparse(published)
-            allowed.add(f"{p.scheme}://{p.netloc}")
+        allowed = export_allowed_origins(shell_origin)
         # Garde d'abord : Playwright donne la main à la route enregistrée EN DERNIER,
         # le pont (plus spécifique) reste donc prioritaire sur son motif.
-        page.route("**/*", _egress_route_handler(frozenset(allowed)))
+        page.route("**/*", _egress_route_handler(allowed))
         if core_bridge is not None:
             public, internal = core_bridge
             page.route(f"{public}/**", _core_bridge_handler(public, internal))

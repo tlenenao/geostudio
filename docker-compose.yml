@@ -802,6 +802,11 @@ services:
       # le shell) ne l'est pas — défaut local http://localhost:8200 —, le Chromium
       # d'export relaie ses appels vers cette URL (core_bridge_target).
       EXPORT_CORE_INTERNAL_URL: ${EXPORT_CORE_INTERNAL_URL:-http://core:8200}
+      # AUD-023 / revue SP-L2 I5 : garde d'egress du Chromium d'export. Origines de
+      # confiance jointes même sur IP privée (fonds de carte de LAN…), liste
+      # séparée par des virgules ; allowlist stricte d'hôtes publics (vide = tous).
+      CORE_EXPORT_TRUSTED_ORIGINS: ${CORE_EXPORT_TRUSTED_ORIGINS:-}
+      CORE_EXPORT_EGRESS_ALLOWLIST: ${CORE_EXPORT_EGRESS_ALLOWLIST:-}
       # scripts.healthcheck_worker_stalled : filtre sur la seule file que ce
       # service consomme (GAP-76, SP-49) — contrairement à `worker`, ce
       # service n'avait AUCUNE sonde du tout avant ce correctif (pas même

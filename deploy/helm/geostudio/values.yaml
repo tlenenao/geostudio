@@ -46,11 +46,13 @@ config:
   CORE_EMBEDDING_PROVIDER: "fake"
   CORE_ENV: ""
   CORE_ETL_ENABLED: "false"
+  CORE_EXPORT_EGRESS_ALLOWLIST: ""    # hôtes publics joignables par le Chromium d'export (vide = tous)
   CORE_EXPORT_ENABLED: "false"
   CORE_EXPORT_ITEMS_MAX: "100000"
   CORE_EXPORT_JOB_MAX: ""
   CORE_EXPORT_RUNNING_TIMEOUT_MINUTES: "60"
   CORE_EXPORT_SYNC_MAX: "100000"
+  CORE_EXPORT_TRUSTED_ORIGINS: ""     # origines jointes même sur IP privée (fonds de carte de LAN)
   CORE_GEOCODING_EGRESS_ALLOWLIST: "data.geopf.fr"
   CORE_GEOCODING_PROVIDER: "ban"
   CORE_GEOCODING_URL: "https://data.geopf.fr/geocodage/search"

@@ -423,6 +423,26 @@ def test_egress_route_handler_blocks_internal_targets(monkeypatch, url, expected
     assert route.outcome == expected
 
 
+def test_lan_storage_and_trusted_origins_pass_the_egress_guard(monkeypatch):
+    # Revue SP-L2 I5 : un déploiement de LAN sert stockage et fonds de carte sur IP
+    # privée ; ces origines sont exemptées avant le blocage, toute autre reste bloquée.
+    monkeypatch.setattr(export_jobs, "_published_core_url", lambda _: None)
+    monkeypatch.setenv("S3_PUBLIC_ENDPOINT_URL", "http://192.168.1.20:9000")
+    monkeypatch.setenv("CORE_EXPORT_TRUSTED_ORIGINS", " http://10.0.0.7:8080 ,, ")
+    monkeypatch.delenv("CORE_EXPORT_EGRESS_ALLOWLIST", raising=False)
+    allowed = export_jobs.export_allowed_origins("http://shell.test")
+    assert allowed == {"http://shell.test", "http://192.168.1.20:9000", "http://10.0.0.7:8080"}
+    handler = export_jobs._egress_route_handler(allowed)
+    for url, expected in [
+        ("http://192.168.1.20:9000/geostudio-thumbnails/a.png", "continue"),
+        ("http://10.0.0.7:8080/tiles/1/2/3.png", "continue"),
+        ("http://10.0.0.8:8080/tiles/1/2/3.png", "abort:blockedbyclient"),
+    ]:
+        route = _Route(url)
+        handler(route)
+        assert route.outcome == expected, url
+
+
 def test_render_url_no_longer_carries_the_token(db_session, monkeypatch):
     session, tenant, user, item = db_session
     urls, tokens = [], []
