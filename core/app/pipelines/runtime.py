@@ -32,6 +32,7 @@ import os
 import re
 import tempfile
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -66,6 +67,7 @@ from app.pipelines.collection_writer import write_rows
 from app.pipelines.errors import (  # noqa: F401 (réexportés pour compatibilité)
     PipelineCancelledError,
     PipelineRuntimeError,
+    PipelineTerminatedError,
 )
 from app.pipelines.expr_validation import validate_bounded_expr
 from app.pipelines.ops.contracts import (
@@ -859,9 +861,12 @@ def _execute_transform_chain(
     preview: bool = False,
     checkpoint: Checkpoint | None = None,
     reader_state: ReaderState | None = None,
+    check: Callable[[], None] | None = None,
 ) -> list["NodeStat"]:
     stats: list[NodeStat] = []
     for node in ordered:
+        if check is not None:
+            check()
         if node.kind == "reader":
             if checkpoint is not None and not checkpoint.has(node.id):
                 _checkpoint_save(
@@ -1061,6 +1066,89 @@ def _decode_connector_geometry(conn, view_name: str, params: dict) -> int | None
 
 def _preview_timeout_s() -> float:
     return float(os.environ.get("CORE_PIPELINES_PREVIEW_TIMEOUT_S") or 30)
+
+
+_GUARD_POLL_S = 5.0
+
+
+def _run_timeout_s() -> float:
+    return float(os.environ.get("CORE_PIPELINES_RUN_TIMEOUT_S") or 21600)
+
+
+class _RunGuard:
+    """AUD-083/AUD-029 : annulation et durée maximale d'un run. Un fil surveille
+    `should_cancel` et l'échéance et interrompt la requête DuckDB en cours
+    (`conn.interrupt()`, même mécanisme que l'aperçu P16.03) — à chaque tour tant que
+    l'arrêt est demandé, pour qu'une requête lancée après la demande soit aussi coupée ;
+    `check()` est appelé entre deux nœuds et par les writers par lots (`should_stop`). Une
+    interruption DuckDB, même enveloppée par une op en PipelineRuntimeError, ressort en
+    erreur métier.
+    ponytail: un code Python bloquant hors DuckDB (GEOS, GDAL, boucle httpCall) n'est
+    arrêté qu'au nœud suivant ; l'arrêter net exigerait un sous-processus par run."""
+
+    def __init__(self, conn, should_cancel: Callable[[], bool] | None, timeout_s: float) -> None:
+        self._conn = conn
+        self._should_cancel = should_cancel
+        self._timeout_s = timeout_s
+        self._deadline = time.monotonic() + timeout_s
+        self.reason: str | None = None
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._watch, name="pipeline-run-guard", daemon=True)
+
+    def __enter__(self) -> "_RunGuard":
+        self._thread.start()
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        self._stop.set()
+        self._thread.join()
+        if (
+            exc is not None
+            and not isinstance(exc, (PipelineCancelledError, PipelineTerminatedError))
+            and self._interrupted(exc)
+        ):
+            self.check()
+        return False
+
+    @staticmethod
+    def _interrupted(exc: BaseException | None) -> bool:
+        while exc is not None:
+            if isinstance(exc, duckdb.InterruptException):
+                return True
+            exc = exc.__cause__ or exc.__context__
+        return False
+
+    def _poll(self) -> str | None:
+        if self.reason is None:
+            if time.monotonic() >= self._deadline:
+                self.reason = "timeout"
+            elif self._should_cancel is not None and self._should_cancel():
+                self.reason = "cancel"
+        return self.reason
+
+    def _watch(self) -> None:
+        while not self._stop.wait(_GUARD_POLL_S):
+            try:
+                reason = self._poll()
+            except Exception:  # noqa: BLE001 — sonde d'annulation en panne : l'échéance tient
+                logger.warning("garde de run : sonde d'annulation en échec", exc_info=True)
+                reason = None
+            if reason is not None:
+                self._conn.interrupt()
+
+    def check(self) -> None:
+        reason = self._poll()
+        if reason == "cancel":
+            raise PipelineCancelledError("run annulé")
+        if reason == "timeout":
+            raise PipelineTerminatedError(
+                f"durée maximale du run dépassée ({self._timeout_s:.0f} s)"
+            )
+
+    def should_stop(self) -> bool:
+        """`should_cancel` des writers par lots : lève l'erreur adaptée, sinon False."""
+        self.check()
+        return False
 
 
 def preview_pipeline(*, limit: int = 50, **kwargs: Any) -> list[dict]:
@@ -1591,93 +1679,96 @@ def run_pipeline(
     conn = open_connection(endpoint_url=endpoint_url, access_key=access_key, secret_key=secret_key)
     published_token = raster_publish.RUN_PUBLISHED_KEYS.set(published)
     try:
-        ordered, view_by_node, srid_by_node, join_srid_by_node = _prepare(
-            conn,
-            session,
-            payload,
-            tenant_id=tenant_id,
-            user=user,
-            base_uri=base_uri,
-            reader_state=reader_state,
-            checkpoint=checkpoint,
-        )
-        stats = _execute_transform_chain(
-            conn,
-            ordered,
-            payload.edges,
-            view_by_node,
-            srid_by_node,
-            join_srid_by_node,
-            on_node_complete=on_node_complete,
-            secret_resolver=_chain_resolver(session, tenant_id, user),
-            checkpoint=checkpoint,
-            reader_state=reader_state,
-        )
-        for node in ordered:
-            if node.kind != "writer":
-                continue
-            # F5 : une reprise REJOUE toujours les writers (jamais sautés sur la foi de
-            # node_stats, commité à part — revue finale vague 4, C1). Seuls collection/dataset
-            # écrivent dans la transaction du run (annulée à l'échec) ; les writers externes
-            # (postgres distant, ftp, messagerie…) ont déjà produit leur effet. Rejeu sûr :
-            # `append_writers()` refuse retry/reprise des modes append ET des writers externes
-            # non idempotents (EXTERNAL_EFFECT_WRITER_OPS) ; les autres sont idempotents.
-            pred_id = compiler.predecessor_id(node.id, payload.edges)
-            if pred_id is None:
-                raise PipelineRuntimeError(f"node '{node.id}' has no incoming edge")
-            view_by_node[node.id] = view_by_node[pred_id]
-            if srid_by_node[pred_id] == 0 and node.op in _SRID_REQUIRED_WRITERS:
-                # SRID 0 = « non défini » (transform.removeSrid, voie S FME) : la collection
-                # étiquetterait des coordonnées locales avec son propre SRID ; un GeoJSON/
-                # TopoJSON (sans CRS, WGS84 implicite) les ferait passer pour des degrés.
-                raise PipelineRuntimeError(
-                    f"{node.op}: SRID non défini (0) en entrée — réassignez un SRID "
-                    "(transform.setSrid ou transform.localCoordinateSystem) avant d'écrire"
-                )
-            writer_fn = WRITERS.get(node.op)
-            if writer_fn is None:
-                raise PipelineRuntimeError(f"unknown writer op '{node.op}'")
-            # writer.export a une signature hétérogène (pas de
-            # session/tenant_id/user, contrairement aux deux autres writers) :
-            # ce registre remplace seulement la SÉLECTION if/elif par un
-            # dict.get, jamais l'appel lui-même — chaque op continue de
-            # recevoir exactement les arguments qu'il recevait avant ce
-            # découpage.
-            if node.op == "writer.export":
-                assert s3_client is not None and exports_bucket is not None
-                stat = writer_fn(
-                    conn,
-                    s3_client,
-                    exports_bucket,
-                    node=node,
-                    view_by_node=view_by_node,
-                    tenant_id=tenant_id,
-                )
-            elif node.op == "writer.file":
-                stat = writer_fn(
-                    conn, node=node, view_by_node=view_by_node, srid=srid_by_node[pred_id]
-                )
-            else:
-                extra = (
-                    {"on_progress": on_progress, "should_cancel": should_cancel}
-                    if on_progress is not None or should_cancel is not None
-                    else {}
-                ) | ({"run_id": run_id} if run_id is not None and node.kind == "writer" else {})
-                if node.op in ("writer.collection", "writer.dataset"):
-                    extra["srid"] = srid_by_node[pred_id]  # SRID natif du flux (≠ 4326 possible)
-                stat = writer_fn(
-                    session,
-                    conn,
-                    node=node,
-                    view_by_node=view_by_node,
-                    tenant_id=tenant_id,
-                    user=user,
-                    **extra,
-                )
-            stats.append(stat)
-            if on_node_complete is not None:
-                on_node_complete(stat)
-        return stats
+        with _RunGuard(conn, should_cancel, _run_timeout_s()) as guard:
+            ordered, view_by_node, srid_by_node, join_srid_by_node = _prepare(
+                conn,
+                session,
+                payload,
+                tenant_id=tenant_id,
+                user=user,
+                base_uri=base_uri,
+                reader_state=reader_state,
+                checkpoint=checkpoint,
+            )
+            guard.check()
+            stats = _execute_transform_chain(
+                conn,
+                ordered,
+                payload.edges,
+                view_by_node,
+                srid_by_node,
+                join_srid_by_node,
+                on_node_complete=on_node_complete,
+                secret_resolver=_chain_resolver(session, tenant_id, user),
+                checkpoint=checkpoint,
+                reader_state=reader_state,
+                check=guard.check,
+            )
+            for node in ordered:
+                if node.kind != "writer":
+                    continue
+                guard.check()
+                # F5 : une reprise REJOUE toujours les writers (jamais sautés sur la foi de
+                # node_stats, commité à part — revue finale vague 4, C1). collection/dataset
+                # écrivent dans la transaction du run, annulée à l'échec : rejouables même en
+                # `append` (AUD-083). Seuls les writers à effet externe non idempotent
+                # (EXTERNAL_EFFECT_WRITER_OPS) sont exclus de retry/reprise (`append_writers()`).
+                pred_id = compiler.predecessor_id(node.id, payload.edges)
+                if pred_id is None:
+                    raise PipelineRuntimeError(f"node '{node.id}' has no incoming edge")
+                view_by_node[node.id] = view_by_node[pred_id]
+                if srid_by_node[pred_id] == 0 and node.op in _SRID_REQUIRED_WRITERS:
+                    # SRID 0 = « non défini » (transform.removeSrid, voie S FME) : la collection
+                    # étiquetterait des coordonnées locales avec son propre SRID ; un GeoJSON/
+                    # TopoJSON (sans CRS, WGS84 implicite) les ferait passer pour des degrés.
+                    raise PipelineRuntimeError(
+                        f"{node.op}: SRID non défini (0) en entrée — réassignez un SRID "
+                        "(transform.setSrid ou transform.localCoordinateSystem) avant d'écrire"
+                    )
+                writer_fn = WRITERS.get(node.op)
+                if writer_fn is None:
+                    raise PipelineRuntimeError(f"unknown writer op '{node.op}'")
+                # writer.export a une signature hétérogène (pas de
+                # session/tenant_id/user, contrairement aux deux autres writers) :
+                # ce registre remplace seulement la SÉLECTION if/elif par un
+                # dict.get, jamais l'appel lui-même — chaque op continue de
+                # recevoir exactement les arguments qu'il recevait avant ce
+                # découpage.
+                if node.op == "writer.export":
+                    assert s3_client is not None and exports_bucket is not None
+                    stat = writer_fn(
+                        conn,
+                        s3_client,
+                        exports_bucket,
+                        node=node,
+                        view_by_node=view_by_node,
+                        tenant_id=tenant_id,
+                    )
+                elif node.op == "writer.file":
+                    stat = writer_fn(
+                        conn, node=node, view_by_node=view_by_node, srid=srid_by_node[pred_id]
+                    )
+                else:
+                    extra = {"on_progress": on_progress, "should_cancel": guard.should_stop} | (
+                        {"run_id": run_id} if run_id is not None and node.kind == "writer" else {}
+                    )
+                    if node.op in ("writer.collection", "writer.dataset"):
+                        extra["srid"] = srid_by_node[
+                            pred_id
+                        ]  # SRID natif du flux (≠ 4326 possible)
+                    stat = writer_fn(
+                        session,
+                        conn,
+                        node=node,
+                        view_by_node=view_by_node,
+                        tenant_id=tenant_id,
+                        user=user,
+                        **extra,
+                    )
+                stats.append(stat)
+                if on_node_complete is not None:
+                    on_node_complete(stat)
+            return stats
     except BaseException:
         # Échec/annulation : la transaction du run (items raster compris) sera annulée par
         # l'appelant — les COG publiés par le run ne doivent pas rester orphelins au quota.

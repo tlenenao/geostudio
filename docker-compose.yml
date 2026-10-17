@@ -46,6 +46,7 @@ services:
         -c max_parallel_workers_per_gather=${PG_MAX_PARALLEL_WORKERS_PER_GATHER:-2}
         -c wal_level=logical
         -c output_plugin_libraries=wal2json,pgoutput,test_decoding
+        -c max_slot_wal_keep_size=${PG_MAX_SLOT_WAL_KEEP_SIZE:-10GB}
 
   pgbouncer:
     image: edoburu/pgbouncer:1.22.1-p0
@@ -587,8 +588,9 @@ services:
       CORE_CDC_COMPACTION_RECENT_DAYS: ${CORE_CDC_COMPACTION_RECENT_DAYS:-7}
       # Balayage mensuel de toutes les partitions CDC (REV-280e), éteint par défaut.
       CORE_CDC_COMPACTION_MONTHLY: ${CORE_CDC_COMPACTION_MONTHLY:-false}
-      # Snapshot horaire d'état courant du lac (REV-280a), éteint par défaut.
-      CORE_LAKE_SNAPSHOT_ENABLED: ${CORE_LAKE_SNAPSHOT_ENABLED:-false}
+      # Snapshot horaire d'état courant du lac (REV-280a), actif par défaut (AUD-013) :
+      # sans lui, chaque lecture du lac trie tout l'historique de la collection.
+      CORE_LAKE_SNAPSHOT_ENABLED: ${CORE_LAKE_SNAPSHOT_ENABLED:-true}
       CORE_LAKE_SNAPSHOT_MIN_DELTA_FILES: ${CORE_LAKE_SNAPSHOT_MIN_DELTA_FILES:-20}
       CORE_LAKE_SNAPSHOT_GRACE_S: ${CORE_LAKE_SNAPSHOT_GRACE_S:-300}
       CORE_LAKE_SNAPSHOT_MAX_AGE_HOURS: ${CORE_LAKE_SNAPSHOT_MAX_AGE_HOURS:-24}
@@ -648,6 +650,9 @@ services:
       CORE_PIPELINES_BLOB_MAX_BYTES: ${CORE_PIPELINES_BLOB_MAX_BYTES:-1073741824}
       CORE_PIPELINES_BLOB_TIMEOUT_S: ${CORE_PIPELINES_BLOB_TIMEOUT_S:-600}
       CORE_PIPELINES_PREVIEW_TIMEOUT_S: ${CORE_PIPELINES_PREVIEW_TIMEOUT_S:-30}
+      # AUD-029 : durée maximale d'un run de pipeline (partie DuckDB interrompue, puis
+      # échec définitif sans retry).
+      CORE_PIPELINES_RUN_TIMEOUT_S: ${CORE_PIPELINES_RUN_TIMEOUT_S:-21600}
       CORE_SQL_EXECUTOR_TIMEOUT_S: ${CORE_SQL_EXECUTOR_TIMEOUT_S:-60}
       # transform.geocode (vague 4 ARC, voie M) s'exécute dans ce process : même fournisseur
       # et même garde d'egress que le géocodage du service `core`.
@@ -729,13 +734,13 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
     # `procrastinate healthchecks` vérifie la connexion et le schéma de la
-    # file — ne détecte pas un worker occupé par une tâche qui ne rend
-    # jamais la main. scripts.healthcheck_worker_stalled comble ce manque
-    # (GAP-76, SP-49) : interroge JobManager.get_stalled_jobs (job resté en
-    # 'doing' plus d'HEALTHCHECK_STALLED_SECONDS, 1h par défaut — nettement
-    # au-delà de la durée p99 connue d'un import GPKG 50k lignes ou d'un run
-    # de pipeline). Docker Compose n'autorise qu'un seul `healthcheck.test`
-    # par service : les deux commandes sont chaînées dans le même
+    # file — ne détecte pas une boucle de worker bloquée.
+    # scripts.healthcheck_worker_stalled (GAP-76, SP-49 ; AUD-016) : interroge
+    # JobManager.get_stalled_jobs au BATTEMENT — job 'doing' tenu par un worker
+    # sans battement depuis HEALTHCHECK_STALLED_SECONDS (300 s par défaut),
+    # jamais la durée du job ; la reprise app.jobs.recovery (120 s) termine
+    # d'abord les jobs des workers morts. Docker Compose n'autorise qu'un seul
+    # `healthcheck.test` par service : les deux commandes sont chaînées dans le même
     # CMD-SHELL.
     healthcheck:
       test: [
@@ -839,11 +844,9 @@ services:
   # pas un outil d'exploitation optionnel — pas de profil, comme core/worker.
   cdc-worker:
     build: ./core
-    # Pas de borne par défaut (0 = illimité) : wal2json v1 livre une transaction
-    # ENTIÈRE en un seul message, décodé d'un bloc (~2,5 Ko de mémoire Python par
-    # ligne, mesuré) — un import de 10^6 lignes dépasse 2 Go. Une borne trop basse
-    # tuerait le worker en boucle sur la même transaction, slot jamais acquitté, WAL
-    # retenu jusqu'à saturer le disque. À poser seulement après dimensionnement.
+    # wal2json format-version 2 (AUD-012) : un message par ligne, plus de transaction
+    # entière en mémoire. Le backfill de démarrage charge encore une table entière
+    # (AUD-099, lot L7) : défaut 0 (= sans limite) conservé tant qu'il n'est pas borné.
     mem_limit: ${CDC_WORKER_MEM_LIMIT:-0}
     command: python -m app.cdc.main
     environment:

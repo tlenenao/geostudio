@@ -184,35 +184,102 @@ def extract_geometry(row: dict, mode: GeometryMode) -> tuple[BaseGeometry | None
     return geom, rest
 
 
+_JSON_WS = json.decoder.WHITESPACE  # type: ignore[attr-defined]
+
+
+def _iter_geojson_features(text: str) -> Iterator[object]:
+    """AUD-014 : parcourt la FeatureCollection sans construire l'arbre JSON entier. Les
+    valeurs de premier niveau autres que `features` sont décodées (petites : crs, name…),
+    puis chaque élément de `features` un à un (raw_decode). JSON invalide ->
+    json.JSONDecodeError ; objet qui n'est pas une FeatureCollection ->
+    IngestionParseError, au plus tard en fin de parcours (l'import analyse tout le
+    fichier avant d'écrire quoi que ce soit, cf. importer._open_rows)."""
+    dec = json.JSONDecoder()
+    not_fc = IngestionParseError("le GeoJSON doit être une FeatureCollection")
+
+    def ws(p: int) -> int:
+        return _JSON_WS.match(text, p).end()
+
+    def expect(p: int, ch: str) -> int:
+        p = ws(p)
+        if text[p : p + 1] != ch:
+            raise json.JSONDecodeError(f"'{ch}' attendu", text, p)
+        return p + 1
+
+    pos = ws(0)
+    if text[pos : pos + 1] != "{":
+        dec.raw_decode(text, pos)  # JSON invalide -> JSONDecodeError
+        raise not_fc
+    pos = ws(pos + 1)
+    kind = None
+    if text[pos : pos + 1] == "}":
+        raise not_fc
+    while True:
+        key, pos = dec.raw_decode(text, ws(pos))
+        if not isinstance(key, str):
+            raise json.JSONDecodeError("clé attendue", text, pos)
+        pos = ws(expect(pos, ":"))
+        if key == "features" and text[pos : pos + 1] == "[":
+            if kind not in (None, "FeatureCollection"):
+                raise not_fc
+            pos = ws(pos + 1)
+            if text[pos : pos + 1] == "]":
+                pos += 1
+            else:
+                while True:
+                    feature, pos = dec.raw_decode(text, pos)
+                    yield feature
+                    pos = ws(pos)
+                    if text[pos : pos + 1] == ",":
+                        pos = ws(pos + 1)
+                        continue
+                    pos = expect(pos, "]")
+                    break
+        else:
+            value, pos = dec.raw_decode(text, pos)
+            if key == "type":
+                kind = value
+            elif key == "features":  # présent mais pas une liste
+                raise not_fc
+        pos = ws(pos)
+        if text[pos : pos + 1] == ",":
+            pos += 1
+            continue
+        pos = expect(pos, "}")
+        break
+    if ws(pos) != len(text):
+        raise json.JSONDecodeError("données en trop", text, ws(pos))
+    if kind != "FeatureCollection":
+        raise not_fc
+
+
+def _geojson_feature(i: int, feature: object) -> tuple[BaseGeometry, dict]:
+    if not isinstance(feature, dict):
+        raise IngestionParseError(f"feature {i} : entrée invalide")
+    geometry = feature.get("geometry")
+    if geometry is None:
+        raise IngestionParseError(f"feature {i} : géométrie manquante")
+    try:
+        geom = shape(geometry)
+    except (ValueError, AttributeError, KeyError, TypeError, ShapelyError) as exc:
+        raise IngestionParseError(f"feature {i} : géométrie invalide ({exc})") from exc
+    geom = _repair_geometry(geom, f"feature {i}")
+    properties = feature.get("properties")
+    if properties is not None and not isinstance(properties, dict):
+        raise IngestionParseError(f"feature {i} : properties invalide")
+    return geom, dict(properties or {})
+
+
 def parse_geojson(content: bytes) -> Iterator[tuple[BaseGeometry, dict]]:
     try:
         text = content.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise IngestionParseError("encodage invalide, attendu UTF-8") from exc
     try:
-        data = json.loads(text)
+        for i, feature in enumerate(_iter_geojson_features(text)):
+            yield _geojson_feature(i, feature)
     except json.JSONDecodeError as exc:
         raise IngestionParseError(f"JSON invalide : {exc}") from exc
-    if not isinstance(data, dict) or data.get("type") != "FeatureCollection":
-        raise IngestionParseError("le GeoJSON doit être une FeatureCollection")
-    features = data.get("features", [])
-    if not isinstance(features, list):
-        raise IngestionParseError("le GeoJSON doit être une FeatureCollection")
-    for i, feature in enumerate(features):
-        if not isinstance(feature, dict):
-            raise IngestionParseError(f"feature {i} : entrée invalide")
-        geometry = feature.get("geometry")
-        if geometry is None:
-            raise IngestionParseError(f"feature {i} : géométrie manquante")
-        try:
-            geom = shape(geometry)
-        except (ValueError, AttributeError, KeyError, TypeError, ShapelyError) as exc:
-            raise IngestionParseError(f"feature {i} : géométrie invalide ({exc})") from exc
-        geom = _repair_geometry(geom, f"feature {i}")
-        properties = feature.get("properties")
-        if properties is not None and not isinstance(properties, dict):
-            raise IngestionParseError(f"feature {i} : properties invalide")
-        yield geom, dict(properties or {})
 
 
 def parse_csv_latlon(
@@ -760,21 +827,20 @@ def parse_parquet_tabular(
 ) -> Iterator[tuple[BaseGeometry | None, dict]]:
     with _temp_file(content, ".parquet") as path:
         try:
-            table = pyarrow.parquet.read_table(path)
+            pf = pyarrow.parquet.ParquetFile(path)
+            # Auto-détection lat/lon résolue une fois, contre le schéma (mêmes noms que
+            # read_parquet_header_fields), AVANT la boucle par ligne (revue finale GAP-29,
+            # C1) ; lecture par lots (AUD-014) au lieu de read_table().to_pylist().
+            effective_mode = _resolve_latlon_mode_from_fields(mode, list(pf.schema_arrow.names))
+            for batch in pf.iter_batches(batch_size=10_000):
+                for row in batch.to_pylist():
+                    row = {
+                        k: (json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else v)
+                        for k, v in row.items()
+                    }
+                    yield extract_geometry(row, effective_mode)
         except _PARQUET_ERRORS as exc:
             raise IngestionParseError(f"fichier Parquet illisible : {exc}") from exc
-        # Auto-détection lat/lon résolue une fois, contre le schéma de la
-        # table (mêmes noms que read_parquet_header_fields), AVANT la boucle
-        # par ligne — même correctif que parse_jsonlines/parse_xml_generic
-        # (revue finale GAP-29, C1) : mode.kind="latlon" sans lat_field/
-        # lon_field échouait sur toute ligne avant cette résolution.
-        effective_mode = _resolve_latlon_mode_from_fields(mode, list(table.schema.names))
-        for row in table.to_pylist():
-            row = {
-                k: (json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else v)
-                for k, v in row.items()
-            }
-            yield extract_geometry(row, effective_mode)
 
 
 def read_parquet_header_fields(content: bytes) -> list[str]:

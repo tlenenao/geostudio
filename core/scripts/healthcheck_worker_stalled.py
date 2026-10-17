@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """Sonde de vivacité pour worker/export-worker : détecte un job resté en
-'doing' plus longtemps qu'un seuil, contrairement à `procrastinate
+'doing' sur un worker sans battement depuis un seuil, contrairement à `procrastinate
 healthchecks` (connexion+schéma seulement) — même limite documentée que
 pour cdc-worker avant sa propre sonde dédiée (GAP-76, SP-49).
 
@@ -14,9 +14,11 @@ donc `app.open_async()`/`await` est la voie correcte ici, pas `app.open()`.
 
 Usage (healthcheck docker) : `python -m scripts.healthcheck_worker_stalled`
 Variables :
-  HEALTHCHECK_STALLED_SECONDS (def. 3600, aligné sur _RUNNING_RECLAIM_MINUTES/
-    _PENDING_RECLAIM_MINUTES déjà utilisés ailleurs dans ce dépôt pour la
-    même notion de « probablement planté »).
+  HEALTHCHECK_STALLED_SECONDS (def. 300) : secondes SANS BATTEMENT du worker qui
+    tient un job 'doing' (AUD-016 — plus la durée du job : un job sain de plus d'une
+    heure rendait la sonde rouge). La reprise app.jobs.recovery agit dès 120 s :
+    une sonde rouge signale une boucle d'événements bloquée, ou une reprise qui ne
+    tourne plus.
   HEALTHCHECK_QUEUE (optionnelle, filtre une seule file — utilisée par
     export-worker pour ne surveiller que la file `export`).
 Sortie 0 = sain, 1 = pas sain (ou sonde elle-même en échec)."""
@@ -31,12 +33,14 @@ from app.jobs import app
 async def _fetch_stalled(threshold_seconds: int, queue: str | None) -> list:
     async with app.open_async():
         return list(
-            await app.job_manager.get_stalled_jobs(nb_seconds=threshold_seconds, queue=queue)
+            await app.job_manager.get_stalled_jobs(
+                queue=queue, seconds_since_heartbeat=threshold_seconds
+            )
         )
 
 
 def main() -> int:
-    threshold = int(os.environ.get("HEALTHCHECK_STALLED_SECONDS", "3600"))
+    threshold = int(os.environ.get("HEALTHCHECK_STALLED_SECONDS", "300"))
     queue = os.environ.get("HEALTHCHECK_QUEUE") or None
     try:
         stalled = asyncio.run(_fetch_stalled(threshold, queue))
@@ -45,7 +49,8 @@ def main() -> int:
         return 1
     if stalled:
         print(
-            f"{len(stalled)} job(s) bloqué(s) en 'doing' depuis plus de {threshold}s",
+            f"{len(stalled)} job(s) en 'doing' sur un worker sans battement depuis plus "
+            f"de {threshold}s",
             file=sys.stderr,
         )
         return 1

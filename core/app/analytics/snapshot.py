@@ -29,6 +29,7 @@ from app.sql_ident import quote_ident_duckdb as _qi
 
 logger = logging.getLogger(__name__)
 _SNAP_RE = re.compile(r"snap-(\d+)-(\d+)\.parquet$")
+_REBUILD_RE = re.compile(r"/rebuild-(\d+)$")
 _HIVE_COLS = "tenant_id, collection_id, dt"
 
 
@@ -44,17 +45,28 @@ def raw_glob(base_uri: str, tenant_id: str, collection_id: str) -> str:
     return f"{base_uri}/tenant_id={tenant_id}/collection_id={collection_id}/dt=*/*.parquet"
 
 
+def rebuild_marker_name(lsn: int) -> str:
+    """Marqueur posé dans `snapshot/` après une purge du lac (slot CDC recréé, AUD-012) :
+    tout snapshot de `max_lsn < lsn` décrit l'état d'avant la purge et n'est plus jamais
+    lu ni repris comme base (revue finale L1b, I3 : un cycle en cours pendant la purge
+    publiait un état périmé, perpétué par les cycles suivants)."""
+    return f"rebuild-{lsn}"
+
+
 def list_snapshots(
     conn: duckdb.DuckDBPyConnection, base_uri: str, tenant_id: str, collection_id: str
 ) -> list[tuple[str, int, int]]:
-    """(uri, cut_ts_ms, max_lsn), du plus récent au plus ancien."""
-    glob = f"{snapshot_dir(base_uri, tenant_id, collection_id)}/snap-*.parquet"
+    """(uri, cut_ts_ms, max_lsn), du plus récent au plus ancien ; les snapshots antérieurs
+    au dernier marqueur de reconstruction sont exclus."""
+    glob = f"{snapshot_dir(base_uri, tenant_id, collection_id)}/*"
     found = []
+    floor = 0
     for (uri,) in conn.execute(f"SELECT file FROM glob({_lit(glob)})").fetchall():
-        m = _SNAP_RE.search(uri)
-        if m:
+        if m := _SNAP_RE.search(uri):
             found.append((uri, int(m.group(1)), int(m.group(2))))
-    return sorted(found, key=lambda s: s[1], reverse=True)
+        elif m := _REBUILD_RE.search(uri):
+            floor = max(floor, int(m.group(1)))
+    return sorted((s for s in found if s[2] >= floor), key=lambda s: s[1], reverse=True)
 
 
 def _readable(conn: duckdb.DuckDBPyConnection, uri: str) -> bool:
@@ -85,6 +97,22 @@ def cut_seconds(cut_ts_ms: int) -> float:
     """Seuil `_ts` partagé par l'écriture et la lecture (même flottant des deux
     côtés : la partition snapshot/delta est exacte)."""
     return cut_ts_ms / 1000.0
+
+
+def latest_per_key(base: str, delta: str, pk: str, order_by: str) -> str:
+    """AUD-013 : dernière version par PK de `base ∪ delta`, où `base` (snapshot) porte
+    déjà une seule ligne par PK. Les PK absentes du delta sortent de `base` par ANTI JOIN
+    (aucun tri) ; seules les PK touchées par le delta passent par row_number() — au lieu
+    d'une fenêtre sur tout l'historique (mesuré 34x plus lent à 40 M lignes). `pk` est un
+    identifiant déjà quoté."""
+    keys = f"(SELECT DISTINCT {pk} FROM ({delta}))"
+    return (
+        f"SELECT * FROM ({base}) ANTI JOIN {keys} AS k USING ({pk}) "
+        f"UNION ALL BY NAME "
+        f"SELECT * FROM (SELECT * FROM ({base}) SEMI JOIN {keys} AS k USING ({pk}) "
+        f"UNION ALL BY NAME {delta}) "
+        f"QUALIFY row_number() OVER (PARTITION BY {pk} ORDER BY {order_by}) = 1"
+    )
 
 
 def write_snapshot(
@@ -126,18 +154,19 @@ def write_snapshot(
         return None
     if not n:
         return None
-    src = delta
     max_lsn = int(delta_lsn)
+    base = None
+    src = delta
     if prev:
-        src = (
-            f"SELECT * FROM read_parquet({_lit(prev[0][0])}, hive_partitioning=false) "
-            f"UNION ALL BY NAME {delta}"
-        )
+        base = f"SELECT * FROM read_parquet({_lit(prev[0][0])}, hive_partitioning=false)"
+        src = f"{base} UNION ALL BY NAME {delta}"
         max_lsn = max(max_lsn, prev[0][2])
     cols = [c[0] for c in conn.execute(f"SELECT * FROM ({src}) LIMIT 0").description]
     order = "_lsn DESC, COALESCE(_seq, -1) DESC" if "_seq" in cols else "_lsn DESC"
     reduced = (
-        f"SELECT * FROM ({src}) QUALIFY row_number() OVER "
+        latest_per_key(base, delta, _qi(pk_column), order)
+        if base is not None
+        else f"SELECT * FROM ({src}) QUALIFY row_number() OVER "
         f"(PARTITION BY {_qi(pk_column)} ORDER BY {order}) = 1"
     )
     uri = f"{snapshot_dir(base_uri, tenant_id, collection_id)}/snap-{cut_ms}-{max_lsn}.parquet"

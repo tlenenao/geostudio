@@ -438,10 +438,18 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
                     pipeline_item_id=item_id,
                     cursors=reader_state.pending,
                 )
-        checkpoints.discard(tenant_id, root_id)  # run réussi : plus rien à reprendre
-        if checkpoint is not None:
-            _clear_resumable(factory, [root_id])
-        tracker.mark_succeeded({s.nodeId: s.to_dict() for s in stats})
+            # Revue finale L1b (I1) : statut `succeeded` dans la transaction des données —
+            # sinon un échec entre les deux commits rejouait (retry ou reprise) un `append`
+            # déjà écrit. Après ce commit, plus rien ne doit faire échouer le run.
+            pipelines_repo.mark_succeeded(
+                session, run_id=run_id, node_stats={s.nodeId: s.to_dict() for s in stats}
+            )
+        try:
+            checkpoints.discard(tenant_id, root_id)  # run réussi : plus rien à reprendre
+            if checkpoint is not None:
+                _clear_resumable(factory, [root_id])
+        except Exception:  # noqa: BLE001 — nettoyage best-effort (purge par rétention)
+            logger.warning("pipeline run %s : nettoyage des reprises impossible", run_id)
         assert item_id is not None  # affecté ci-dessus, jamais atteint sinon (cf. return/raise)
         # AUD-084 : un pipeline planifié toutes les 5 min ne notifie plus chaque succès —
         # seulement le rétablissement après un échec (les échecs restent tous notifiés).

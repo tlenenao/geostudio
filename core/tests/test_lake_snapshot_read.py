@@ -164,3 +164,10 @@ def test_failed_copy_leaves_no_snapshot(tmp_path, conn, monkeypatch):
     with pytest.raises(OSError):
         write_snapshot(conn, str(tmp_path), T, C, "id", now_ms=1_000_000)
     assert not list(tmp_path.rglob("snap-*"))
+
+
+def test_snapshot_read_does_not_window_the_whole_snapshot(tmp_path, conn):
+    """AUD-013 : les PK absentes du delta sortent du snapshot par ANTI JOIN, sans fenêtre."""
+    _seed(tmp_path, conn)
+    cte = _dedup_cte(conn, INFO, str(tmp_path), T, C)
+    assert "ANTI JOIN" in cte and "SEMI JOIN" in cte

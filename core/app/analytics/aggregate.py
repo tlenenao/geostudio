@@ -24,7 +24,7 @@ import duckdb
 from pydantic import BaseModel
 
 from app.analytics.duckdb_conn import StatementTimeout, statement_timeout
-from app.analytics.snapshot import cut_seconds, latest_snapshot
+from app.analytics.snapshot import cut_seconds, latest_per_key, latest_snapshot
 from app.collections.introspection import TableInfo
 from app.filter_values import split_in_values
 from app.sql_ident import quote_ident_duckdb as _qi
@@ -564,13 +564,18 @@ def _dedup_cte(
         star += ", " + ", ".join(f"NULL AS {_qi(c)}" for c in missing)
     raw_files = f"read_parquet({_sql_lit(glob)}, hive_partitioning=true, union_by_name=true)"
     if snap is not None:
-        # REV-280a : dernier snapshot d'état courant + lignes brutes plus
-        # récentes que sa coupure (`_ts`, jamais la LSN : cf. app.analytics.
-        # snapshot). Même réduction derrière ; sans snapshot, glob complet.
-        raw_files = (
-            f"(SELECT * FROM read_parquet({_sql_lit(snap[0])}, hive_partitioning=true, "
-            f"union_by_name=true) UNION ALL BY NAME "
-            f"SELECT * FROM {raw_files} WHERE _ts > {cut_seconds(snap[1])!r})"
+        # REV-280a : dernier snapshot d'état courant + lignes brutes plus récentes que sa
+        # coupure (`_ts`, jamais la LSN : cf. app.analytics.snapshot). AUD-013 : seules les
+        # PK touchées depuis la coupure passent par la fenêtre (latest_per_key).
+        base = (
+            f"SELECT * FROM read_parquet({_sql_lit(snap[0])}, hive_partitioning=true, "
+            f"union_by_name=true)"
+        )
+        delta = f"SELECT * FROM {raw_files} WHERE _ts > {cut_seconds(snap[1])!r}"
+        return (
+            f"WITH raw AS (SELECT {star} FROM ({latest_per_key(base, delta, pk, order_by)})), "
+            f"current AS (SELECT * FROM raw), "
+            f"live AS (SELECT * FROM current WHERE _op != 'delete')"
         )
     return (
         f"WITH raw AS (SELECT {star} FROM {raw_files}), "

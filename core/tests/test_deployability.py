@@ -734,6 +734,12 @@ def test_wms_flag_is_wired_to_core_and_off_by_default():
     assert _resolve_effective_value(raw, "CORE_OWS_WMS_ENABLED") == "false"
 
 
+def test_lake_snapshot_is_on_by_default():
+    """AUD-013 : sans snapshot, la lecture du lac retombe sur la fenêtre complète (lente)."""
+    raw = services(BASE)["worker"]["environment"]["CORE_LAKE_SNAPSHOT_ENABLED"]
+    assert _resolve_effective_value(raw, "CORE_LAKE_SNAPSHOT_ENABLED") == "true"
+
+
 def test_worker_has_a_resolved_memory_limit():
     """REV-275 (d) : borner la mémoire du PROCESS worker (t03b-008 ne borne que
     l'écrivain). Vérifie la valeur RÉSOLUE sans `.env` (piège n°2 : une
@@ -787,6 +793,16 @@ def test_postgis_memory_settings_are_tunable_and_fit_its_limit():
     # Revue finale SP-L3 (I3) : 64MB × 4 parallèles sous une borne de 2g.
     assert "${PG_WORK_MEM:-16MB}" in cmd
     assert "${PG_MAX_PARALLEL_WORKERS_PER_GATHER:-2}" in cmd
+
+
+def test_postgis_bounds_the_wal_a_replication_slot_can_retain():
+    """AUD-012 : sans max_slot_wal_keep_size, un cdc-worker arrêté retient le WAL sans
+    limite jusqu'à saturer pg-data. Valeur RÉSOLUE sans .env (piège n°2) + documentée."""
+    cmd = str(services(BASE)["postgis"]["command"])
+    match = re.search(r"-c max_slot_wal_keep_size=(\S+)", cmd)
+    assert match, "postgis sans max_slot_wal_keep_size"
+    assert _resolve_effective_value(match.group(1), "PG_MAX_SLOT_WAL_KEEP_SIZE") == "10GB"
+    assert "PG_MAX_SLOT_WAL_KEEP_SIZE" in documented_env_vars(include_commented=False)
 
 
 _UNITS = {"k": 2**10, "kb": 2**10, "m": 2**20, "mb": 2**20, "g": 2**30, "gb": 2**30}

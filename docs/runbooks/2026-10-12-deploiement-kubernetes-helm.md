@@ -8,7 +8,7 @@ amd64 **et** arm64 (release multi-arch). Garde-fou : `core/tests/test_helm_chart
 
 | Déployé | Externe (à fournir, via `config.*` et le Secret) |
 |---|---|
-| `core` (migrations : Job hook `pre-install,pre-upgrade` `<release>-migrations`, AUD-033), `worker`, `cdc-worker`, `shell` | Postgres (PostGIS + pgvector, `wal_level=logical`), pgbouncer optionnel |
+| `core` (migrations : Job hook `pre-install,pre-upgrade` `<release>-migrations`, AUD-033), `worker`, `cdc-worker`, `shell` | Postgres (PostGIS + pgvector, `wal_level=logical`, `max_slot_wal_keep_size` borné — 10GB recommandé, AUD-012), pgbouncer optionnel |
 | `export-worker` (`exportWorker.enabled`) | S3 compatible (MinIO) et ses buckets, Keycloak/OIDC, titiler |
 | `otel-lgtm` (`observability.enabled`) | Martin, passerelle `/admin/*` (Traefik compose), `appexport-runtime-builder` |
 | Ingress (`ingress.enabled`, deux hôtes : shell et API) | Dashboards Grafana provisionnés (le chart lance `otel-lgtm` nu) |

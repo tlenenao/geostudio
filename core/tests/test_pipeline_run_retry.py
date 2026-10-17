@@ -317,18 +317,16 @@ def test_purge_expired_clears_resumable(rig, monkeypatch):
         assert pipelines_repo.get_run(s, tenant_id=tenant.id, run_id=r1.id).resumable is False
 
 
-def test_automatic_retry_with_append_writer_is_refused_at_validation():
+def test_automatic_retry_with_append_writer_is_accepted():
+    """AUD-083 : l'append de writer.collection est dans la transaction du run."""
     payload = _payload(None).model_dump(by_alias=True)
     payload["nodes"][-1]["params"].pop("mode")  # défaut = append
     payload["retry"] = {"max": 2}
-    with pytest.raises(ValueError, match="upsert"):
-        PipelinePayload.model_validate(payload)
-    payload["retry"] = {"max": 0}  # sans reprise auto : accepté
-    PipelinePayload.model_validate(payload)
+    assert PipelinePayload.model_validate(payload).append_writers() == []
 
 
 @pytest.mark.postgis
-def test_retry_route_refuses_append_writer(rig):
+def test_retry_route_accepts_append_writer(rig):
     _app, Session, tenant, user, item_id, state = rig
     r1 = _exec(Session, tenant, _new_run(Session, tenant, item_id))
     append = _payload(None).model_dump(by_alias=True)
@@ -341,27 +339,26 @@ def test_retry_route_refuses_append_writer(rig):
             tenant_id=tenant.id,
         )
         s.commit()
-    with Session() as s, pytest.raises(HTTPException) as exc:
-        retry_pipeline_run_service(s, user=user, run_id=r1.id, defer_task=lambda *a: None)
-    assert exc.value.status_code == 409 and "upsert" in exc.value.detail
+    with Session() as s:
+        new_id = retry_pipeline_run_service(s, user=user, run_id=r1.id, defer_task=lambda *a: None)
+    assert isinstance(new_id, str)
 
 
 @pytest.mark.parametrize("mode", ["upsert", "update", "delete", "replace"])
 def test_automatic_retry_accepts_idempotent_writer_modes(mode):
-    """K1×K2 (intégration vague 4) : les modes idempotents de writer.collection (F1)
-    sont compatibles avec retry.max > 0 ; `insert` (alias d'append) ne l'est pas."""
+    """K1×K2 (intégration vague 4) : les modes de writer.collection (F1) sont compatibles
+    avec retry.max > 0 — `append`/`insert` compris depuis AUD-083."""
     payload = _payload(None).model_dump(by_alias=True)
     payload["nodes"][-1]["params"] = {"collectionId": "villes", "mode": mode, "keyColumns": ["id"]}
     payload["retry"] = {"max": 2}
     assert PipelinePayload.model_validate(payload).append_writers() == []
 
 
-def test_automatic_retry_refuses_insert_alias_of_append():
+def test_automatic_retry_accepts_insert_alias_of_append():
     payload = _payload(None).model_dump(by_alias=True)
     payload["nodes"][-1]["params"] = {"collectionId": "villes", "mode": "insert"}
     payload["retry"] = {"max": 2}
-    with pytest.raises(ValueError, match="upsert"):
-        PipelinePayload.model_validate(payload)
+    assert PipelinePayload.model_validate(payload).append_writers() == []
 
 
 # --- Revue finale de branche (vague 4) : C1 / I1 ----------------------------------------

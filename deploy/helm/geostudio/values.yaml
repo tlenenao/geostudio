@@ -60,7 +60,7 @@ config:
   CORE_HARVEST_EGRESS_ALLOWLIST: ""
   CORE_HARVEST_MAX_RESPONSE_BYTES: ""
   CORE_INTERNAL_BASE_URL: "http://localhost:8200"
-  CORE_LAKE_SNAPSHOT_ENABLED: "false"
+  CORE_LAKE_SNAPSHOT_ENABLED: "true"
   CORE_LAKE_SNAPSHOT_GRACE_S: "300"
   CORE_LAKE_SNAPSHOT_KEEP: "2"
   CORE_LAKE_SNAPSHOT_MAX_AGE_HOURS: "24"
@@ -88,6 +88,7 @@ config:
   CORE_PIPELINES_HTTP_CALL_MAX_ROWS: "10000"
   CORE_PIPELINES_HTTP_CALL_MAX_TOTAL_BYTES: "268435456"
   CORE_PIPELINES_PREVIEW_TIMEOUT_S: "30"
+  CORE_PIPELINES_RUN_TIMEOUT_S: "21600"
   CORE_PIPELINES_QUERY_TIMEOUT_S: "60"
   # points de reprise F5 : sous /scratch (emptyDir du worker, perdus au redémarrage du pod)
   CORE_PIPELINE_CHECKPOINT_DIR: "/scratch/pipeline-checkpoints"
@@ -167,8 +168,8 @@ cdcWorker:
   # Mono-writer garanti par élection (verrou consultatif Postgres, ARC-32) : N pods, 1 leader, les
   # autres attendent et reprennent < 30 s si le leader tombe.
   replicas: 2
-  # wal2json v1 livre une transaction entière en un message (~2,5 Ko/ligne décodée) : la limite
-  # doit couvrir la plus grosse transaction (import, purge), sinon OOMKilled en boucle et WAL retenu.
+  # wal2json v2 : une ligne par message (AUD-012) ; le backfill de démarrage charge encore une
+  # table entière (AUD-099) : la limite doit couvrir la plus grosse collection, sinon OOMKilled en boucle.
   resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {memory: 4Gi}}
   podSecurityUid: 1001
 

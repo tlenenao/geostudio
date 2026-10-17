@@ -101,6 +101,7 @@ app = procrastinate.App(
         "app.compliance.jobs",
         "app.quality.jobs",
         "app.webhooks.jobs",
+        "app.jobs.recovery",
     ],
     worker_defaults={"worker_middleware": [observability.otel_worker_middleware]},
 )
