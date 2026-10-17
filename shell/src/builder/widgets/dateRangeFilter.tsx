@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { registerWidget } from "../registry";
-import { useSetTimeRange } from "../AnalyticsContext";
+import { useAnalyticsContext, useSetTimeRange } from "../AnalyticsContext";
 import { t } from "../../i18n";
 import "../../i18n/domains/widgets";
 
@@ -31,13 +31,24 @@ export function registerDateRangeFilterWidget(): void {
     ),
     Component: ({ props }) => {
       const setTimeRange = useSetTimeRange();
-      const [from, setFrom] = useState("");
-      const [to, setTo] = useState("");
+      // AUD-059 : valeur dérivée du contexte (bookmark, ?ctx=) — jamais un état local qui
+      // s'afficherait vide alors que le filtre est actif ; une plage inversée est refusée.
+      const range = useAnalyticsContext().timeRange;
+      const from = range?.from ?? "";
+      const to = range?.to ?? "";
+      const [draft, setDraft] = useState<{ from: string; to: string } | null>(null);
+      const shownFrom = draft?.from ?? from;
+      const shownTo = draft?.to ?? to;
+
+      // Le contexte reprend la main quand il change (bookmark, ?ctx=, autre widget).
+      useEffect(() => setDraft(null), [from, to]);
 
       function update(nextFrom: string, nextTo: string) {
-        setFrom(nextFrom);
-        setTo(nextTo);
-        setTimeRange(nextFrom && nextTo ? { from: nextFrom, to: nextTo } : null);
+        if (nextFrom && nextTo && nextFrom > nextTo) return;
+        setDraft({ from: nextFrom, to: nextTo });
+        if (nextFrom && nextTo) setTimeRange({ from: nextFrom, to: nextTo });
+        else if (!nextFrom && !nextTo) setTimeRange(null);
+        // une seule borne saisie : la plage appliquée reste en place jusqu'à la saisie complète
       }
 
       return (
@@ -48,15 +59,15 @@ export function registerDateRangeFilterWidget(): void {
               type="date"
               aria-label={t("widgetDateRangeFilter.startDate")}
               className="h-9 rounded-md border border-[var(--gs-color-border)] px-2"
-              value={from}
-              onChange={(e) => update(e.target.value, to)}
+              value={shownFrom}
+              onChange={(e) => update(e.target.value, shownTo)}
             />
             <input
               type="date"
               aria-label={t("widgetDateRangeFilter.endDate")}
               className="h-9 rounded-md border border-[var(--gs-color-border)] px-2"
-              value={to}
-              onChange={(e) => update(from, e.target.value)}
+              value={shownTo}
+              onChange={(e) => update(shownFrom, e.target.value)}
             />
           </div>
         </div>

@@ -26,9 +26,9 @@ test("builds a grid with cells, row totals, column totals and a grand total", ()
   expect(grid!.grandTotal("sum_amount")).toBe(18);
 });
 
-test("a missing row×column combination reads as 0 in the cell", () => {
+test("a missing row×column combination is an empty cell, not a 0 (AUD-059)", () => {
   const grid = buildPivotGrid(oneMeasure, "region", "quarter")!;
-  expect(grid.cell("Sud", "Q2", "sum_amount")).toBe(0);
+  expect(grid.cell("Sud", "Q2", "sum_amount")).toBeNull();
 });
 
 test("supports multiple measures, preserving the first record's property order", () => {
@@ -39,7 +39,22 @@ test("supports multiple measures, preserving the first record's property order",
   const grid = buildPivotGrid(records, "region", "quarter")!;
   expect(grid.measures).toEqual(["sum_amount", "avg_amount"]);
   expect(grid.cell("Nord", "Q1", "avg_amount")).toBe(5);
-  expect(grid.rowTotal("Nord", "avg_amount")).toBe(5);
+  // AUD-059 : un total de moyennes n'est pas la somme des moyennes, il est masqué.
+  expect(grid.rowTotal("Nord", "avg_amount")).toBeNull();
+  expect(grid.grandTotal("avg_amount")).toBeNull();
+  expect(grid.rowTotal("Nord", "sum_amount")).not.toBeNull();
+});
+
+test("min and max totals are recomposed exactly, other non-additive aggregates are hidden", () => {
+  const rows = [
+    { id: 1, properties: { r: "A", c: "x", min_p: 4, max_p: 9, median_p: 5 } },
+    { id: 2, properties: { r: "A", c: "y", min_p: 2, max_p: 7, median_p: 6 } },
+  ];
+  const grid = buildPivotGrid(rows, "r", "c")!;
+  expect(grid.rowTotal("A", "min_p")).toBe(2);
+  expect(grid.rowTotal("A", "max_p")).toBe(9);
+  expect(grid.grandTotal("max_p")).toBe(9);
+  expect(grid.rowTotal("A", "median_p")).toBeNull();
 });
 
 test("returns null when rowsField or colsField is empty", () => {
