@@ -19,6 +19,14 @@ Toutes les règles ci-dessous sont en `noDataState: Alerting` sauf les deux
 règles de latence : une métrique qui disparaît (service arrêté, export OTLP
 coupé) sonne comme une panne, ce qu'elle est.
 
+**Attendu en développement** : sans `OTEL_EXPORTER_OTLP_ENDPOINT` dans `.env`
+(le défaut du compose de base), `core` et les workers n'exportent aucune
+métrique. Les quatre règles nourries par eux (`slo-jobs-backlog`,
+`slo-api-5xx-rate`, `ops-jobs-failed` et `ops-jobs-oldest-age`) passent alors
+en NoData, donc en alerte, dès que le profil `observability` tourne. Régler
+`OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-lgtm:4318` puis
+`docker compose up -d core worker cdc-worker` pour les faire taire.
+
 ## slo-api-features-latency-p95
 
 **Sens** : P95 des routes `/v1/collections/{cid}/items*` > 200 ms sur 5 min.
@@ -95,15 +103,16 @@ remplit ; à saturation, **toute la plateforme s'arrête**.
 
 ## ops-jobs-failed
 
-**Sens** : au moins un job a échoué dans les dernières 24 h (jauge
-`geostudio_jobs_failed`, par file).
+**Sens** : au moins un nouveau job a échoué dans la dernière heure
+(variation sur 1 h de la jauge `geostudio_jobs_failed`, qui compte les
+échecs des dernières 24 h par file).
 
 1. Repérer les jobs : `docker compose exec postgis psql -U gis -c "SELECT j.id, j.queue_name, j.task_name, e.at FROM procrastinate_jobs j JOIN procrastinate_events e ON e.job_id = j.id AND e.type = 'failed' WHERE e.at > now() - interval '24 hours' ORDER BY e.at DESC LIMIT 20"`.
 2. Logs du worker à l'heure de l'échec (`docker compose logs --since 24h worker`).
 3. La plupart des échecs sont aussi visibles par l'utilisateur concerné
    (import, export, pipeline en « échec » dans l'interface) : relancer
    depuis l'interface une fois la cause corrigée. L'alerte se résout seule
-   24 h après le dernier échec.
+   environ 1 h après le dernier échec.
 
 ## ops-jobs-oldest-age
 

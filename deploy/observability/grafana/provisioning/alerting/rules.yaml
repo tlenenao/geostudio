@@ -179,15 +179,20 @@ groups:
         isPaused: false
 
       - uid: ops-jobs-failed
-        title: "Exploitation: aucun job en échec sur 24 h"
+        title: "Exploitation: aucun nouveau job en échec sur 1 h"
         condition: B
         data:
           - refId: A
             datasourceUid: prometheus
-            relativeTimeRange: {from: 600, to: 0}
+            relativeTimeRange: {from: 3600, to: 0}
             model:
               editorMode: code
-              expr: sum(geostudio_jobs_failed)
+              # La jauge compte les échecs des dernières 24 h : sur sa valeur brute,
+              # un seul échec faisait sonner l'alerte 24 h sans pouvoir la résoudre.
+              # Sa variation sur 1 h ne retient que les échecs nouveaux.
+              # ponytail: un échec qui sort de la fenêtre de 24 h pendant qu'un
+              # autre y entre se compensent ; compteur cumulé si ça gêne.
+              expr: sum(delta(geostudio_jobs_failed[1h]))
               instant: true
               refId: A
           - refId: B
@@ -198,11 +203,11 @@ groups:
               conditions:
                 - evaluator: {type: gt, params: [0]}
               refId: B
-        for: 0s
+        for: 5m
         noDataState: Alerting
         execErrState: Error
         labels: {severity: warning, slo: ops-jobs-failed}
-        annotations: {summary: "Au moins un job procrastinate est passé en échec dans les dernières 24 heures", runbook_url: "https://github.com/tlenenao/geostudio/blob/main/docs/runbooks/2026-10-17-astreinte-alertes.md#ops-jobs-failed"}
+        annotations: {summary: "Au moins un nouveau job procrastinate est passé en échec dans la dernière heure", runbook_url: "https://github.com/tlenenao/geostudio/blob/main/docs/runbooks/2026-10-17-astreinte-alertes.md#ops-jobs-failed"}
         isPaused: false
 
       - uid: ops-jobs-oldest-age
