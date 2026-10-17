@@ -4,6 +4,8 @@ XML entrant n'est parsé (KVP uniquement) ; toute valeur sortante est échappée
 
 import math
 
+from app.ogc_crs import FRANCE_EPSG
+from app.ows.render import LEGEND_ROW, LEGEND_WIDTH
 from app.ows.wfs import NCNAME, _a, _t  # noqa: F401  (NCNAME ré-exporté)
 
 NS_WMS = "http://www.opengis.net/wms"
@@ -20,6 +22,7 @@ CRS_TABLE = {
     "EPSG:3857": (3857, False),
     "EPSG:2154": (2154, False),
 }
+CRS_TABLE.update({f"EPSG:{c}": (c, False) for c in FRANCE_EPSG})  # AUD-127
 GETMAP_FORMATS = ("image/png",)
 INFO_FORMATS = ("application/json", "text/plain")
 TMS = "WebMercatorQuad"
@@ -44,6 +47,17 @@ def _dcp(base: str) -> str:
     )
 
 
+def _legend_url(base: str, layer: str) -> str:
+    """LegendURL d'un style (AUD-045) ; `_a` échappe `&` (quoteattr)."""
+    href = (
+        f"{base}?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetLegendGraphic&LAYER={layer}&FORMAT=image/png"
+    )
+    return (
+        f'<LegendURL width="{LEGEND_WIDTH}" height="{LEGEND_ROW}"><Format>image/png</Format>'
+        f'<OnlineResource xlink:type="simple" xlink:href={_a(href)}/></LegendURL>'
+    )
+
+
 def wms_capabilities(base: str, title: str, collections: list) -> str:
     def op(name: str, formats: tuple[str, ...]) -> str:
         fmts = "".join(f"<Format>{_t(f)}</Format>" for f in formats)
@@ -58,7 +72,8 @@ def wms_capabilities(base: str, title: str, collections: list) -> str:
     layers = "".join(
         f'<Layer queryable="1" opaque="0"><Name>{_t(c.id)}</Name><Title>{_t(c.title)}</Title>'
         f"<Abstract>{_t(c.description or '')}</Abstract>{crs}{bbox}"
-        "<Style><Name>default</Name><Title>default</Title></Style></Layer>"
+        "<Style><Name>default</Name><Title>default</Title>"
+        f"{_legend_url(base, c.id)}</Style></Layer>"
         for c in collections
     )
     return (

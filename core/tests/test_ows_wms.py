@@ -233,7 +233,7 @@ def test_geographic_limit_applies_to_render_like_features_api(env, pg_engine):
         {"styles": "a,b"},
         {"bgcolor": "red", "transparent": "FALSE"},
         {"request": "Nope"},
-        {"version": "1.1.1"},
+        {"version": "1.0.0"},
     ],
 )
 def test_bad_getmap_is_service_exception(env, bad):
@@ -446,3 +446,40 @@ def test_render_slots_exhausted_is_503(env, monkeypatch):
         },
     )
     assert r.status_code == 503 and "server busy" in r.text
+
+
+def test_getmap_wms_111_srs_is_xy(env):
+    c, _login, _admin = env
+    _enable(c)
+    ref = _img(c.get(WMS, params=_map()))  # 1.3.0, EPSG:4326 lat,lon
+    p = _map(version="1.1.1", bbox="0,44,4,48")  # 1.1.1 : toujours x,y (lon,lat)
+    p.pop("crs")
+    p["srs"] = "EPSG:4326"
+    assert _img(c.get(WMS, params=p)).tobytes() == ref.tobytes()
+
+
+def test_get_legend_graphic(env):
+    c, _login, _admin = env
+    _enable(c)
+    r = c.get(WMS, params=_q(request="GetLegendGraphic", layer="demo_ows", format="image/png"))
+    img = _img(r)
+    assert img.getpixel((10, 10)) == FILL
+    caps = c.get(WMS, params=_q(request="GetCapabilities")).text
+    assert "<LegendURL" in caps and "GetLegendGraphic" in caps
+    _schema("wms/1.3.0/capabilities_1_3_0.xsd").validate(caps)
+    missing = c.get(WMS, params=_q(request="GetLegendGraphic"))
+    assert missing.status_code == 400
+
+
+@pytest.mark.parametrize("epsg", [3946, 2975])
+def test_getmap_france_crs(env, epsg):
+    c, _login, _admin = env
+    _enable(c)
+    tr = pyproj.Transformer.from_crs(4326, epsg, always_xy=True)
+    lon, lat = (3.0, 45.5) if epsg == 3946 else (55.5, -21.1)
+    x, y = tr.transform(lon, lat)
+    r = c.get(
+        WMS,
+        params=_map(crs=f"EPSG:{epsg}", bbox=f"{x - 1000},{y - 1000},{x + 1000},{y + 1000}"),
+    )
+    assert _img(r).size == (400, 400)
