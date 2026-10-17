@@ -276,6 +276,55 @@ test("creating from a template posts its layout", async () => {
   expect(body.config.layout.items[0].widget).toBe("text");
 });
 
+test("AUD-022 : un gabarit à source fictive exige une vraie collection et la lie", async () => {
+  let body: any = null;
+  server.use(
+    http.get("https://core.test/v1/collections", () =>
+      HttpResponse.json({
+        collections: [
+          {
+            id: "incidents-reels",
+            title: "Incidents réels",
+            description: "",
+            tableName: "incidents_reels",
+            isPublic: false,
+            editable: true,
+            geometryType: "Point",
+            srid: 4326,
+            pkColumn: "id",
+            canWrite: true,
+            featureCount: 3,
+            owner: "alice",
+          },
+        ],
+      }),
+    ),
+    http.post("https://core.test/v1/configs", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ id: "cfg-9", kind: "app", itemId: "9" }, { status: 201 });
+    }),
+  );
+  render(
+    <Harness>
+      <NewItemButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Nouveau" }));
+  await userEvent.selectOptions(screen.getByLabelText("Modèle"), "application-de-saisie");
+  await userEvent.type(screen.getByLabelText("Titre"), "Saisie");
+  expect(screen.getByRole("button", { name: "Créer" })).toBeDisabled();
+  await userEvent.selectOptions(
+    await screen.findByLabelText("Collection pour « incidents »"),
+    await screen.findByRole("option", { name: "Incidents réels" }),
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Créer" }));
+  await waitFor(() => expect(body).not.toBeNull());
+  const layers = body.config.dataSources
+    .filter((ds: any) => ds.type === "features")
+    .map((ds: any) => ds.layer);
+  expect(layers).toEqual(["incidents-reels"]);
+});
+
 test("does not show a Modèle select for the map type", async () => {
   render(
     <Harness>

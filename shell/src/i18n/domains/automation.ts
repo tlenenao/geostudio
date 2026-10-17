@@ -502,6 +502,13 @@ export const automation = {
     "{node} : requiert soit le paramètre withCollectionId, soit une arête secondaire.",
   "pipelineValidation.noSecondaryAllowed": "{node} n'accepte pas d'arête secondaire.",
   "copilot.mcpTokenError": "Impossible d'obtenir un jeton MCP (signinSilent a échoué).",
+  "lineage.title": "Lignée",
+  "lineage.loading": "Chargement de la lignée…",
+  "lineage.upstream": "Sources",
+  "lineage.downstream": "Utilisé par",
+  "lineage.none": "Aucun",
+  "lineage.hiddenOne": "{n} élément masqué (droits insuffisants)",
+  "lineage.hiddenMany": "{n} éléments masqués (droits insuffisants)",
 } as const;
 
 registerMessages(automation);

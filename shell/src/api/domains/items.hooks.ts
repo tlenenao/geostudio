@@ -71,6 +71,7 @@ export function useCreateItem() {
       owner: string;
       templateId?: string;
       slug?: string;
+      bindings?: Record<string, string>;
     }) => client.createConfigItem(input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["items"] });

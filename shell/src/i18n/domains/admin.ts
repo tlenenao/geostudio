@@ -520,6 +520,7 @@ export const admin = {
   "newItem.datasetVisualQueryOption": "Jeu de données par requête visuelle",
   "newItem.pipelineOption": "Pipeline",
   "newItem.templateLabel": "Modèle",
+  "newItem.bindSource": "Collection pour « {source} »",
   "newItem.emptyTemplateOption": "Vide",
   "newItem.datasetSourceTypeLabel": "Type de source",
   "newItem.sourceCollectionOption": "Collection",

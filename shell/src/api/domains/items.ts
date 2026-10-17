@@ -22,7 +22,7 @@ import type {
 } from "../types";
 import type { ItemClientBase } from "../base";
 import { ensureOk, parseErrorResponse } from "../base";
-import { getTemplate } from "../../builder/templates";
+import { bindDataSources, getTemplate } from "../../builder/templates";
 import { ApiError } from "../ApiError";
 import { OWNER_PERMISSIONS } from "../../auth/permissions";
 import { t } from "../../i18n";
@@ -136,6 +136,7 @@ export function createItemsMethods(base: ItemClientBase): ItemsMethods {
       owner: string;
       templateId?: string;
       slug?: string;
+      bindings?: Record<string, string>;
     }): Promise<Item> {
       const template = input.templateId ? getTemplate(input.templateId) : undefined;
       const firstPageLayout = template?.pages?.[0]?.layout;
@@ -143,7 +144,7 @@ export function createItemsMethods(base: ItemClientBase): ItemsMethods {
         version: 1,
         kind: input.kind,
         theme: template?.theme ?? {},
-        dataSources: template?.dataSources ?? [],
+        dataSources: bindDataSources(template?.dataSources ?? [], input.bindings ?? {}),
         layout: firstPageLayout ?? template?.layout ?? { type: "grid", breakpoints: {}, items: [] },
         messages: template?.messages ?? [],
         pages: template?.pages ?? [],

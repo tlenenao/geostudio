@@ -54,3 +54,26 @@ export const TEMPLATES: Template[] = (data as unknown as Omit<Template, "name">[
 export function getTemplate(id: string): Template | undefined {
   return TEMPLATES.find((tpl) => tpl.id === id);
 }
+
+// AUD-022 : miroir de core/app/configs/builder_templates.py — les sources `features` du
+// cœur d'un gabarit pointent sur des slugs fictifs (« incidents ») à lier à de vraies
+// collections à l'instanciation.
+function isCollectionSource(ds: DataSource): boolean {
+  return ds.type === "features" && ds.service === "core" && Boolean(ds.layer);
+}
+
+export function templateDataSources(templateId: string): string[] {
+  const slugs = (getTemplate(templateId)?.dataSources ?? [])
+    .filter(isCollectionSource)
+    .map((ds) => ds.layer);
+  return [...new Set(slugs)];
+}
+
+export function bindDataSources(
+  dataSources: DataSource[],
+  bindings: Record<string, string>,
+): DataSource[] {
+  return dataSources.map((ds) =>
+    isCollectionSource(ds) && bindings[ds.layer] ? { ...ds, layer: bindings[ds.layer] } : ds,
+  );
+}

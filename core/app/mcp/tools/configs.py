@@ -230,6 +230,7 @@ def register(server: FastMCP, session_factory) -> None:
         title: str,
         config: BuilderConfig | None = None,
         template: str | None = None,
+        bindings: dict[str, str] | None = None,
     ) -> ItemRead:
         """Create a new app or dashboard — mirrors POST /configs, including
         its privilege guard (apps.manage, app.roles.kind_registry::
@@ -239,17 +240,25 @@ def register(server: FastMCP, session_factory) -> None:
         `template` (id of a builder gallery template of the same kind, e.g.
         "tableau-de-bord-territorial" for a dashboard, "suivi-de-chantier" or
         "atlas-par-entite" for an app — the same document the builder creates
-        from that template; rebind its data sources afterwards)."""
+        from that template). With `template`, `bindings` maps each placeholder
+        data source of the template (e.g. {"incidents": "<collection id>"}) to a
+        real collection you can read."""
         if is_read_only_mode():
             raise ValueError("Mode démo : lecture seule, écritures désactivées.")
         if (config is None) == (template is None):
             raise ValueError("create_item: provide exactly one of 'config' or 'template'")
+        if bindings and template is None:
+            raise ValueError("create_item: 'bindings' only applies with 'template'")
         if template is not None:
-            config = build_config_from_template(template)
+            config = build_config_from_template(template, bindings)
         assert config is not None
         access_token = get_access_token()
         with request_scoped_session(session_factory) as session:
             user = resolve_actor(session, access_token)
+            # AUD-022 : un id de collection illisible (autre tenant, non partagée) ne doit
+            # jamais finir dans une config.
+            for collection_id in (bindings or {}).values():
+                require_collection_read(session, user=user, collection_id=collection_id)
             _require_create_item_kind_matches_config(kind, config.kind)
             try:
                 created = create_config_service(session, config, title=title, user=user)

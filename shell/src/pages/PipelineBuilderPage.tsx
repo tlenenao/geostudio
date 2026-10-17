@@ -38,6 +38,7 @@ import { PipelinePalette, PIPELINE_PALETTE_SEARCH_ID } from "../builder/pipeline
 import { apiErrorMessage } from "../api/apiErrorMessage";
 import { PipelinePreviewPanel } from "../builder/pipeline/PipelinePreviewPanel";
 import { PipelineRunPanel } from "../builder/pipeline/PipelineRunPanel";
+import { LineagePanel } from "../builder/pipeline/LineagePanel";
 import { PipelineScheduleEditor } from "../builder/pipeline/PipelineScheduleEditor";
 import { PipelineWebhookTrigger } from "../builder/pipeline/PipelineWebhookTrigger";
 import { genNodeId, genNoteId, insertNodeOnEdge } from "../builder/pipeline/graphOps";
@@ -629,6 +630,11 @@ export function PipelineBuilderPage({
                       baseVersionRef.current = restored.baseVersion;
                     }}
                   />
+                </div>
+              )}
+              {pk !== null && (
+                <div className="mt-3">
+                  <LineagePanel itemId={pk} />
                 </div>
               )}
               <div className="mt-3 flex flex-col gap-2 border-t border-rule pt-3">

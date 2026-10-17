@@ -53,6 +53,20 @@ export type Impact = {
   /** Dépendants que l'utilisateur ne peut pas lire : comptés, jamais nommés. */
   hiddenCount: number;
 };
+/** AUD-086 : miroir de `LineageRead` (core/app/lineage/routes.py). */
+export type LineageNode = {
+  type: "item" | "collection";
+  id: string;
+  title: string;
+  resourceType: string;
+  direction: "upstream" | "downstream";
+};
+export type Lineage = {
+  target: Impact["target"];
+  nodes: LineageNode[];
+  edges: { from: ImpactTarget; to: ImpactTarget }[];
+  hiddenCount: number;
+};
 
 export type Item = {
   pk: string;
@@ -849,6 +863,8 @@ export interface ItemClient {
     owner: string;
     templateId?: string;
     slug?: string;
+    /** AUD-022 : slug de source du gabarit → id de collection réelle. */
+    bindings?: Record<string, string>;
   }): Promise<Item>;
   updateItem(pk: string, patch: UpdatePatch): Promise<Item>;
   uploadThumbnail(pk: string, file: File): Promise<void>;
@@ -908,6 +924,8 @@ export interface ItemClient {
   deleteCollection(id: string): Promise<void>;
   /** ARC4-F15 : dépendants (visibles) d'un item/d'une collection + compte des masqués. */
   getImpact(target: ImpactTarget): Promise<Impact>;
+  /** AUD-086 : sources (amont) et consommateurs (aval) visibles d'un item. */
+  getLineage(itemId: string): Promise<Lineage>;
   listHarvestSources(): Promise<HarvestSource[]>;
   createHarvestSource(input: HarvestSourceCreateInput): Promise<HarvestSource>;
   updateHarvestSource(id: string, patch: HarvestSourcePatchInput): Promise<HarvestSource>;

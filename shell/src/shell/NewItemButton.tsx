@@ -15,7 +15,7 @@ import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { Drawer } from "../ui/kit/Drawer";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
-import { TEMPLATES } from "../builder/templates";
+import { TEMPLATES, templateDataSources } from "../builder/templates";
 import { isValidSlug, slugify } from "../lib/slug";
 import { t } from "../i18n";
 import { apiErrorMessage } from "../api/apiErrorMessage";
@@ -45,8 +45,14 @@ export function NewItemButton() {
   const createDataset = useCreateDataset();
   const instanceQuery = useInstanceInfo();
   const etlEnabled = instanceQuery.data?.etlEnabled === true;
+  // AUD-022 : sources `features` fictives du gabarit, à lier à de vraies collections.
+  const templateSources = templateId ? templateDataSources(templateId) : [];
+  const [bindings, setBindings] = useState<Record<string, string>>({});
+  const unboundSource = templateSources.some((s) => !bindings[s]);
   const collectionsQuery = useCollectionsAdmin({
-    enabled: open && kind === "dataset" && datasetSource === "collection",
+    enabled:
+      open &&
+      ((kind === "dataset" && datasetSource === "collection") || templateSources.length > 0),
   });
   const featureLayersQuery = useFeatureLayers({
     enabled: open && kind === "dataset" && datasetSource === "arcgis",
@@ -141,6 +147,7 @@ export function NewItemButton() {
     setTitle("");
     setKind("app");
     setTemplateId("");
+    setBindings({});
     setSlug("");
     setSlugTouched(false);
     setCollectionId("");
@@ -158,6 +165,7 @@ export function NewItemButton() {
     if (kind === "site" && !isValidSlug(slug)) return;
     if (kind === "dataset" && datasetSource === "collection" && !collectionId) return;
     if (kind === "dataset" && datasetSource === "arcgis" && !arcgisItemId) return;
+    if (unboundSource) return;
     if (kind === "pipeline") {
       close();
       void navigate("/pipelines/new", { state: { title: clean } });
@@ -184,6 +192,7 @@ export function NewItemButton() {
                 owner: username ?? "",
                 templateId: templateId || undefined,
                 slug: kind === "site" ? slug : undefined,
+                bindings: templateSources.length > 0 ? bindings : undefined,
               });
       close();
       void navigate(
@@ -258,7 +267,10 @@ export function NewItemButton() {
               <select
                 className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
                 value={templateId}
-                onChange={(e) => setTemplateId(e.target.value)}
+                onChange={(e) => {
+                  setTemplateId(e.target.value);
+                  setBindings({});
+                }}
               >
                 <option value="">{t("newItem.emptyTemplateOption")}</option>
                 {TEMPLATES.filter((tpl) => tpl.kind === kind).map((tpl) => (
@@ -269,6 +281,23 @@ export function NewItemButton() {
               </select>
             </label>
           )}
+          {templateSources.map((source) => (
+            <label key={source} className="flex flex-col gap-1 text-sm text-ink">
+              {t("newItem.bindSource", { source })}
+              <select
+                className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
+                value={bindings[source] ?? ""}
+                onChange={(e) => setBindings((b) => ({ ...b, [source]: e.target.value }))}
+              >
+                <option value="">{t("visualQuery.chooseOption")}</option>
+                {(collectionsQuery.data ?? []).map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
           {kind === "dataset" && (
             <label className="flex flex-col gap-1 text-sm text-ink">
               {t("newItem.datasetSourceTypeLabel")}
@@ -369,6 +398,7 @@ export function NewItemButton() {
               size="sm"
               disabled={
                 busy ||
+                unboundSource ||
                 (kind === "site" && !isValidSlug(slug)) ||
                 (kind === "dataset" && datasetSource === "collection" && !collectionId) ||
                 (kind === "dataset" && datasetSource === "arcgis" && !arcgisItemId)

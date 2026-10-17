@@ -15,6 +15,7 @@ import { MetadataForm } from "../ui/kit/MetadataForm";
 import { ThumbnailUpload } from "../ui/kit/ThumbnailUpload";
 import { ShareForm, copyToClipboard } from "../shell/ShareForm";
 import { ItemActions } from "../shell/ItemActions";
+import { LineagePanel } from "../builder/pipeline/LineagePanel";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { Gate } from "../auth/Gate";
 import { Locked } from "../auth/Locked";
@@ -299,6 +300,7 @@ function ItemFacts({
         )}
         {item.resourceType === "dataset" && <DatasetFacts pk={item.pk} />}
       </dl>
+      <LineagePanel itemId={item.pk} />
       {publicUrl && (
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span className="text-ink-2">{t("itemDetail.publicUrlLabel")}</span>
