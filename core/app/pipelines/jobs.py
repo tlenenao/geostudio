@@ -485,4 +485,14 @@ def run_pipeline_sweep_task(timestamp: int) -> None:
             # l'intérieur de la boucle car chaque run doit être visible avant
             # SON propre defer, pas seulement le dernier de la file.
             session.commit()
-            run_pipeline_task.defer(run_id=run.id, tenant_id=tenant_id)
+            try:
+                run_pipeline_task.defer(run_id=run.id, tenant_id=tenant_id)
+            except Exception:
+                # AUD-025 : run non orphelin (sinon `pending` + 409 jusqu'au balayage).
+                logger.exception("defer du run planifié %s échoué", run.id)
+                pipelines_repo.mark_failed(
+                    session,
+                    run_id=run.id,
+                    error="mise en file impossible : file de jobs indisponible",
+                )
+                session.commit()

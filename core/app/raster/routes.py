@@ -30,6 +30,7 @@ from app.db import get_session
 from app.features.routes import get_features_repo, get_masked_for_user, get_rls_scope
 from app.ingestion.routes import get_s3_client
 from app.ingestion.storage import ensure_uploads_bucket, generate_presigned_put_url
+from app.jobs.defer import defer_resilient
 from app.quotas.service import enforce_storage_quota
 from app.raster import repository as repo
 from app.raster import zonal
@@ -75,7 +76,7 @@ def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests
     def deferrer(job_id: str, tenant_id: str) -> None:
         from app.raster.jobs import ingest_raster_task
 
-        ingest_raster_task.defer(job_id=job_id, tenant_id=tenant_id)
+        defer_resilient(lambda: ingest_raster_task.defer(job_id=job_id, tenant_id=tenant_id))
 
     return deferrer
 

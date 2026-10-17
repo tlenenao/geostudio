@@ -21,6 +21,7 @@ from app.configs.pipeline_params import PipelineParamError, resolve_params
 from app.configs.repository import ConfigRead
 from app.items import repository as items_repo
 from app.jobs.common import resolve_owner_user
+from app.jobs.defer import defer_resilient
 from app.pipelines import repository as pipelines_repo
 from app.pipelines.jobs import run_pipeline_task
 from app.pipelines.models import PipelineWebhookToken
@@ -76,6 +77,21 @@ def default_task_deferrer() -> Callable[[str, str], None]:
     return deferrer
 
 
+def _defer_or_fail(
+    session: Session, run_id: str, tenant_id: str, defer_task: Callable[[str, str], None]
+) -> None:
+    """AUD-025 : un échec définitif de mise en file marque le run `failed` tout de
+    suite (sinon il resterait `pending` et bloquerait tout nouveau run en 409)."""
+    try:
+        defer_resilient(lambda: defer_task(run_id, tenant_id))
+    except HTTPException:
+        pipelines_repo.mark_failed(
+            session, run_id=run_id, error="mise en file impossible : file de jobs indisponible"
+        )
+        session.commit()
+        raise
+
+
 def run_pipeline_service(
     session: Session,
     *,
@@ -122,7 +138,7 @@ def run_pipeline_service(
     # (create_upload_job) — un worker pourrait ramasser la tâche avant que
     # la ligne pipeline_runs ne soit visible autrement.
     session.commit()
-    defer_task(run.id, user.tenant_id)
+    _defer_or_fail(session, run.id, user.tenant_id, defer_task)
     return run.id
 
 
@@ -191,7 +207,7 @@ def retry_pipeline_run_service(
         payload={"pipelineItemId": item_id, "retryOf": run.id, "fromStart": from_start},
     )
     session.commit()  # avant defer : le worker doit voir la ligne
-    defer_task(new_run.id, user.tenant_id)
+    _defer_or_fail(session, new_run.id, user.tenant_id, defer_task)
     return new_run.id
 
 

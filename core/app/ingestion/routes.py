@@ -43,6 +43,7 @@ from app.ingestion.storage import (
 )
 from app.ingestion.tasks import run_ingestion_task
 from app.items.models import Item
+from app.jobs.defer import defer_resilient
 from app.quotas.service import check_quota_or_raise, enforce_storage_quota
 from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
@@ -72,7 +73,7 @@ def get_uploads_bucket() -> str:
 # est un changement de comportement distinct, à traiter séparément.
 def get_task_deferrer() -> Callable[[str, str], None]:
     def deferrer(job_id: str, tenant_id: str) -> None:
-        run_ingestion_task.defer(job_id=job_id, tenant_id=tenant_id)
+        defer_resilient(lambda: run_ingestion_task.defer(job_id=job_id, tenant_id=tenant_id))
 
     return deferrer
 

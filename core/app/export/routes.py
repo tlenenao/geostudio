@@ -26,6 +26,7 @@ from app.export.jobs import render_export_task
 from app.ingestion.routes import get_s3_client
 from app.ingestion.storage import generate_presigned_get_url
 from app.items import repository as items_repo
+from app.jobs.defer import defer_resilient
 from app.roles.guards import has_privilege
 from app.roles.privileges import Privilege
 from app.sharing.authorization import can
@@ -65,7 +66,7 @@ def get_exports_bucket() -> str:
 
 def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests
     def deferrer(job_id: str, tenant_id: str) -> None:
-        render_export_task.defer(job_id=job_id, tenant_id=tenant_id)
+        defer_resilient(lambda: render_export_task.defer(job_id=job_id, tenant_id=tenant_id))
 
     return deferrer
 
