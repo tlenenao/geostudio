@@ -735,6 +735,9 @@ export const widgets = {
 
   // WidgetHost (builder)
   "widgetHost.crashedFallback": "Erreur du widget",
+  "widgetHost.lakePending":
+    "Réplication en cours : les agrégats de cette collection ne sont pas encore à jour.",
+  "widgetHost.lakeStale": "Agrégats à jour au {date} (réplication en retard).",
   "widgetHost.unknownWidget": "Widget inconnu : {widget}",
   "chartCompare.offsetLabel": "{unit} {n}",
   "chartCompare.unitHour": "Heure",

@@ -1047,7 +1047,7 @@ export interface ItemClient {
   // Optionnel : les clients sans cœur (export statique, desktop) ne l'ont pas.
   queryDataSourcePage?(
     source: DataSource,
-  ): Promise<{ records: DataRecord[]; total: number | null }>;
+  ): Promise<{ records: DataRecord[]; total: number | null; lake?: LakeFreshness }>;
   // Symétrique de sampleCollectionField, mais pour un hôte qui n'a qu'un
   // DataSource (pas déjà un collectionId résolu) : la couche `feature` du
   // widget carte de l'App Builder (Jenks, GAP-52 4/4). Résout collectionId
@@ -1612,12 +1612,17 @@ export type DataRecord = {
   geometry?: unknown;
 };
 
+// AUD-061 : fraîcheur du lac derrière un agrégat (`asOf` = dernier état répliqué,
+// `pending` = collection pas encore répliquée : l'agrégat est vide, pas nul).
+export type LakeFreshness = { asOf: string | null; pending: boolean };
+
 export type DataSourceState = {
   loading: boolean;
   error: boolean;
   records: DataRecord[];
   // Total réel côté cœur (numberMatched), null/absent si inconnu.
   total?: number | null;
+  lake?: LakeFreshness;
   layer?: string;
   url?: string;
   datasetId?: string;
