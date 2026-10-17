@@ -1109,7 +1109,13 @@ def get_sharing(
     return {
         "public": col.is_public,
         "groups": [
-            {"groupId": s.group_id, "role": s.role, "name": names.get(s.group_id)} for s in shares
+            {
+                "groupId": s.group_id,
+                "role": s.role,
+                "name": names.get(s.group_id),
+                "expiresAt": s.expires_at,
+            }
+            for s in shares
         ],
     }
 
@@ -1132,7 +1138,7 @@ def put_sharing(
         session,
         tenant_id=user.tenant_id,
         collection_id=col.id,
-        groups=[(g.groupId, g.role) for g in body.groups],
+        groups=[(g.groupId, g.role, sharing_repo.to_naive_utc(g.expiresAt)) for g in body.groups],
     )
     if not ok:
         # Même statut/détail que le chemin items (items/routes.py) : ne jamais

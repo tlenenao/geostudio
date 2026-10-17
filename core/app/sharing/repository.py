@@ -6,7 +6,14 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.sharing.models import CollectionShare, Group, GroupMember, ItemShare, ShareLink
+from app.sharing.models import (
+    CollectionShare,
+    Group,
+    GroupMember,
+    ItemShare,
+    ShareLink,
+    share_active,
+)
 from app.sharing.models import _now as _sharing_now
 from app.users.models import User
 
@@ -19,6 +26,13 @@ def _naive_utc_now() -> datetime:
     # aware à cette valeur naïve lève TypeError. Un utcnow() naïf est la
     # seule forme comparable directement à ce qui revient de la base.
     return datetime.now(UTC).replace(tzinfo=None)
+
+
+def to_naive_utc(value: datetime | None) -> datetime | None:
+    """Échéance reçue d'un client -> DateTime naïf en UTC (sans fuseau : lu comme UTC)."""
+    if value is None or value.tzinfo is None:
+        return value
+    return value.astimezone(UTC).replace(tzinfo=None)
 
 
 def roles_for_items(
@@ -43,6 +57,7 @@ def roles_for_items(
         .where(
             ItemShare.item_id.in_(list(item_ids)),
             ItemShare.tenant_id == tenant_id,
+            share_active(ItemShare),
             GroupMember.user_id == user_id,
             GroupMember.tenant_id == tenant_id,
         )
@@ -65,6 +80,7 @@ def roles_for_collections(
         .where(
             CollectionShare.collection_id.in_(list(collection_ids)),
             CollectionShare.tenant_id == tenant_id,
+            share_active(CollectionShare),
             GroupMember.user_id == user_id,
             GroupMember.tenant_id == tenant_id,
         )
@@ -213,12 +229,16 @@ def list_shares(session: Session, *, item_id: str) -> list[ItemShare]:
 
 
 def replace_shares(
-    session: Session, *, tenant_id: str, item_id: str, shares: list[tuple[str, str]]
+    session: Session,
+    *,
+    tenant_id: str,
+    item_id: str,
+    shares: list[tuple[str, str, datetime | None]],
 ) -> bool:
     """Replace all group shares for one item. Returns False (no changes made)
     if any group_id doesn't belong to tenant_id — the caller must treat this
     as a 404 (never leak cross-tenant group existence)."""
-    group_ids = [group_id for group_id, _role in shares]
+    group_ids = [group_id for group_id, _role, _exp in shares]
     if group_ids:
         matching = session.scalar(
             select(func.count())
@@ -229,8 +249,16 @@ def replace_shares(
             return False
 
     session.execute(delete(ItemShare).where(ItemShare.item_id == item_id))
-    for group_id, role in shares:
-        session.add(ItemShare(item_id=item_id, group_id=group_id, tenant_id=tenant_id, role=role))
+    for group_id, role, expires_at in shares:
+        session.add(
+            ItemShare(
+                item_id=item_id,
+                group_id=group_id,
+                tenant_id=tenant_id,
+                role=role,
+                expires_at=expires_at,
+            )
+        )
     session.flush()
     return True
 
@@ -303,6 +331,7 @@ def share_recipient_ids(session: Session, *, tenant_id: str, item_id: str) -> li
             .where(
                 ItemShare.item_id == item_id,
                 ItemShare.tenant_id == tenant_id,
+                share_active(ItemShare),
                 User.erased_at.is_(None),
             )
             .distinct()
