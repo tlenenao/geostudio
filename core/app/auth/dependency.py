@@ -193,6 +193,14 @@ def _jwks_client() -> jwt.PyJWKClient:
 _READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
 
+def forbid_api_key(authorization: str = Header(default="")) -> None:
+    """Route réservée à une session interactive : une clé ne gère ni clés (elle
+    survivrait à sa propre révocation), ni effacement, liens de partage, jetons
+    webhook ou rôles (AUD-094)."""
+    if api_key_service.is_api_key(authorization.removeprefix("Bearer ")):
+        raise HTTPException(status_code=403, detail="not allowed with an api key")
+
+
 def get_current_user(
     request: Request = None,  # type: ignore[assignment]  # injecté par FastAPI
     authorization: str = Header(default=""),
@@ -225,6 +233,8 @@ def _resolve_current_user(authorization: str, session: Session, *, method: str) 
         api_user = api_key_service.authenticate(session, token=token, tenant_id=tenant.id)
         if api_user is None:
             raise HTTPException(status_code=401, detail="invalid api key")
+        if api_user.api_key_read_only and method not in _READ_METHODS:  # AUD-091
+            raise HTTPException(status_code=403, detail="read-only api key")
         return api_user
 
     if _mock_mode():

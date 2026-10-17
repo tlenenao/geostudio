@@ -69,10 +69,10 @@ def env(monkeypatch):
     return TestClient(app), Session, ids
 
 
-def _mint(Session, user_id, days=30):
+def _mint(Session, user_id, days=30, **kw):
     with Session() as s:
         user = s.get(User, user_id)
-        key, token = service.create_api_key(s, user=user, name="ci", expires_in_days=days)
+        key, token = service.create_api_key(s, user=user, name="ci", expires_in_days=days, **kw)
         s.commit()
         return key.id, token
 
@@ -258,3 +258,51 @@ def test_stored_value_is_a_sha256_not_the_token(env):
         key = s.get(ApiKey, key_id)
         assert key.key_hash == service._hash(token) and len(key.key_hash) == 64
         assert token not in (key.key_hash, key.key_prefix)
+
+
+def test_scoped_key_is_capped_to_its_scopes(env):
+    # AUD-091 : /v1/users exige admin.users.manage, hors de la portée de la clé.
+    client, Session, (_, admin_id, _) = env
+    _, token = _mint(Session, admin_id, scopes=["maps.manage"])
+    assert _get(client, token).status_code == 403
+    _, full = _mint(Session, admin_id, scopes=["admin.users.manage"])
+    assert _get(client, full).status_code == 200
+
+
+def test_read_only_key_refuses_writes(env):
+    # AUD-091 : une clé en lecture seule ne fait que des GET/HEAD/OPTIONS.
+    client, Session, (_, admin_id, _) = env
+    from fastapi import Depends
+
+    from app.auth.dependency import get_current_user
+
+    @client.app.post("/v1/_probe")
+    def _probe(user: User = Depends(get_current_user)) -> dict:
+        return {"ok": True}
+
+    _, token = _mint(Session, admin_id, read_only=True)
+    assert _get(client, token).status_code == 200
+    headers = {"Authorization": f"Bearer {token}"}
+    resp = client.post("/v1/_probe", headers=headers)
+    assert resp.status_code == 403 and "read-only" in resp.json()["detail"]
+    _, writer = _mint(Session, admin_id)
+    assert client.post("/v1/_probe", headers={"Authorization": f"Bearer {writer}"}).json()["ok"]
+
+
+def test_scopes_cannot_exceed_creator_privileges(env):
+    # compliance.manage est exclu même du rôle Administrateur (SP-58).
+    client, _, _ = env
+    headers = {"Authorization": "Bearer mock"}
+    denied = client.post(
+        "/v1/api-keys", json={"name": "x", "scopes": ["compliance.manage"]}, headers=headers
+    )
+    assert denied.status_code == 403
+    unknown = client.post("/v1/api-keys", json={"name": "x", "scopes": ["nope"]}, headers=headers)
+    assert unknown.status_code == 422
+    ok = client.post(
+        "/v1/api-keys",
+        json={"name": "x", "scopes": ["maps.manage"], "readOnly": True},
+        headers=headers,
+    )
+    assert ok.status_code == 201
+    assert ok.json()["scopes"] == ["maps.manage"] and ok.json()["readOnly"] is True

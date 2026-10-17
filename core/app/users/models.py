@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 from datetime import UTC, datetime
+from typing import cast
 
 import sqlalchemy as sa
 from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint
@@ -41,3 +42,9 @@ class User(Base):
     # sur ce user_id est un échec explicite, pas une double écriture
     # silencieuse) et à l'affichage admin ("compte effacé le …").
     erased_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # AUD-091 : plafond posé par une clé d'API pour la requête en cours ; non
+    # persisté (attributs de classe non annotés, ignorés par le mapping), porté
+    # par l'instance de la session de la requête et lu par has_privilege.
+    api_key_scopes = cast("frozenset[str] | None", None)
+    api_key_read_only = False
