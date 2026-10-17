@@ -1185,3 +1185,49 @@ def test_geojson_unrepairable_empty_still_rejected():
     flat = {"type": "Polygon", "coordinates": [[[0, 0], [1, 1], [2, 2], [0, 0]]]}
     with pytest.raises(IngestionParseError, match="feature 0 : géométrie invalide"):
         list(parse_geojson(_fc(flat)))
+
+
+def test_parse_geojson_streams_features_whatever_the_key_order():
+    content = (
+        b'{"features":[{"type":"Feature","properties":{"a":1},'
+        b'"geometry":{"type":"Point","coordinates":[1.0,2.0]}}],'
+        b'"crs":{"type":"name","properties":{"name":"EPSG:4326"}},"type":"FeatureCollection"}'
+    )
+    rows = list(parse_geojson(content))
+    assert [props for _g, props in rows] == [{"a": 1}]
+
+
+def test_parse_geojson_rejects_trailing_garbage():
+    with pytest.raises(IngestionParseError, match="JSON invalide"):
+        list(parse_geojson(b'{"type":"FeatureCollection","features":[]} x'))
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        b"[]",
+        b"{}",
+        b'{"type":"Feature","features":[]}',
+        b'{"type":"FeatureCollection","features":{}}',
+        b'{"features":[],"type":"Feature"}',
+    ],
+)
+def test_parse_geojson_still_requires_a_feature_collection(content):
+    with pytest.raises(IngestionParseError, match="FeatureCollection"):
+        list(parse_geojson(content))
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        b"",
+        b"{",
+        b'{"type":"FeatureCollection","features":[{"type":"Feature","properties":{},'
+        b'"geometry":{"type":"Point","coordinates":[1,2]}}',
+        b'{"type" 1}',
+        b"{,}",
+    ],
+)
+def test_parse_geojson_rejects_truncated_or_malformed_json(content):
+    with pytest.raises(IngestionParseError, match="JSON invalide"):
+        list(parse_geojson(content))
