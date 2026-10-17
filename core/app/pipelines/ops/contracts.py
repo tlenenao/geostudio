@@ -660,6 +660,7 @@ _BASE_OPERATIONS: dict[str, OperationContract] = {
         engine="duckdb",
         engine_license="MIT (DuckDB)",
         compile=_filtering.compile_neighbor_finder,
+        pre_check=_filtering.pre_check_neighbor_finder,
     ),
     "transform.sqlExecutor": OperationContract(
         op="transform.sqlExecutor",

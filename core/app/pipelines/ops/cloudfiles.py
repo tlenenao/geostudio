@@ -626,6 +626,7 @@ def read_arcgisonline(
     want = min(p.maxFeatures, _max_rows())
     budget, pages = MAX_BYTES, 0
     deadline = time.monotonic() + DEADLINE_S
+    more = False
     while len(features) < want:
         pages += 1
         if pages > _max_pages():
@@ -666,8 +667,13 @@ def read_arcgisonline(
         )
         if not batch or not more:
             break
+    if len(features) > want or (len(features) >= want and more):
+        raise PipelineRuntimeError(
+            f"{op} : résultat tronqué à {want} entités — augmenter maxFeatures "
+            "ou filtrer à la source (where)"
+        )
     try:
-        frame = _features_frame(features[:want], op)
+        frame = _features_frame(features, op)
     except PipelineRuntimeError:
         raise
     except Exception as exc:  # feature / properties qui ne sont pas des objets

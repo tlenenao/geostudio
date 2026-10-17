@@ -46,6 +46,7 @@ INPUT_FIELDS = {
     "typeColumn",
     "destLatColumn",
     "destLonColumn",
+    "geometryColumn",  # AUD-082 : colonne source décodée des readers connecteurs
     ("transform.attributeRangeFilter", "column"),
     ("transform.mgrsToLatLong", "column"),  # écrit `geometry` par conception
     ("transform.textEncoder", "column"),
@@ -60,7 +61,6 @@ INPUT_FIELDS = {
 # géométrie) ; les autres restent une dette hors périmètre de la revue FME.
 BASE_UNGUARDED = {
     ("transform.derive", "column"),
-    ("transform.countWithin", "countColumn"),
     ("transform.concatCoordinates", "xColumn"),
     ("transform.concatCoordinates", "yColumn"),
     ("transform.extractCoordinates", "xColumn"),

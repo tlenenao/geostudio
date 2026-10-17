@@ -744,6 +744,13 @@ def _prepare(
             base_uri=base_uri,
         )
         view_by_node[node.id] = view_name
+        if node.op.startswith("reader.connector."):
+            try:
+                decoded_srid = _decode_connector_geometry(conn, view_name, node.params)
+            except duckdb.Error as exc:
+                raise _node_error(node, exc) from exc
+            if decoded_srid is not None:
+                srid_by_node[node.id] = decoded_srid
         # ARC-K2/F4 : lecture incrémentale des readers connecteurs (table
         # temporaire) — filtre aux lignes plus récentes que le curseur du dernier
         # run réussi ; le nouveau curseur reste « en attente » jusqu'au succès.
@@ -931,6 +938,8 @@ def _execute_transform_chain(
                     **extra,
                 )
             else:
+                if contract.pre_check is not None:
+                    contract.pre_check(conn, input_view=input_view, params=node.params)
                 input_columns = None
                 join_columns = None
                 if contract.needs_columns:
@@ -950,8 +959,12 @@ def _execute_transform_chain(
                     input_columns=input_columns,
                     join_columns=join_columns,
                 )
-                conn.execute(f"CREATE TEMP VIEW {_qi(view_name)} AS {sql}")
-            stat = NodeStat(node.id, node.op, _view_row_count(conn, view_name))
+                # AUD-078 : en run, matérialiser — une VIEW est ré-évaluée par chaque nœud
+                # aval (coût quadratique en profondeur) et par le comptage. En aperçu, la
+                # VIEW reste (LIMIT en bout de chaîne) et le comptage est sauté.
+                kind = "VIEW" if preview else "TABLE"
+                conn.execute(f"CREATE TEMP {kind} {_qi(view_name)} AS {sql}")
+            stat = NodeStat(node.id, node.op, None if preview else _view_row_count(conn, view_name))
         except duckdb.Error as exc:
             raise _node_error(node, exc) from exc
         view_by_node[node.id] = view_name
@@ -992,6 +1005,34 @@ def _node_error(node: PipelineNode, exc: Exception) -> PipelineRuntimeError:
 
 def _view_row_count(conn, view_name: str) -> int:
     return conn.execute(f"SELECT count(*) FROM {_qi(view_name)}").fetchone()[0]
+
+
+_GEOMETRY_DECODERS = {
+    "wkt": "ST_GeomFromText({c})",
+    "wkb_hex": "ST_GeomFromHEXEWKB({c})",
+    "geojson": "ST_GeomFromGeoJSON({c})",
+}
+
+
+def _decode_connector_geometry(conn, view_name: str, params: dict) -> int | None:
+    """AUD-082 : décode `geometryColumn` d'un reader connecteur en colonne `geometry`.
+    Retourne le SRID déclaré, ou None si aucune colonne géométrie n'est configurée."""
+    col = params.get("geometryColumn")
+    if not col:
+        return None
+    cols = [d[0] for d in conn.execute(f"DESCRIBE {_qi(view_name)}").fetchall()]
+    if col not in cols:
+        raise PipelineRuntimeError(f"colonne géométrie {col!r} absente (colonnes : {cols})")
+    expr = _GEOMETRY_DECODERS[params.get("geometryFormat", "wkt")].format(c=_qi(col))
+    raw = f"{view_name}__raw"
+    conn.execute(f"ALTER TABLE {_qi(view_name)} RENAME TO {_qi(raw)}")
+    exclude = f"{_qi(col)}, geometry" if "geometry" in cols and col != "geometry" else _qi(col)
+    conn.execute(
+        f"CREATE TEMP TABLE {_qi(view_name)} AS "
+        f"SELECT * EXCLUDE ({exclude}), {expr} AS geometry FROM {_qi(raw)}"
+    )
+    conn.execute(f"DROP TABLE {_qi(raw)}")
+    return int(params.get("geometrySrid", 4326))
 
 
 def _preview_timeout_s() -> float:
@@ -1070,9 +1111,16 @@ def preview_pipeline(
         select_list = (
             "* EXCLUDE (geometry), ST_AsGeoJSON(geometry) AS geometry" if has_geometry else "*"
         )
-        rows = conn.execute(
-            f"SELECT {select_list} FROM {_qi(view_name)} LIMIT {int(limit)}"
-        ).fetchall()
+        try:
+            rows = conn.execute(
+                f"SELECT {select_list} FROM {_qi(view_name)} LIMIT {int(limit)}"
+            ).fetchall()
+        except duckdb.InterruptException:
+            raise
+        except duckdb.Error as exc:
+            # AUD-078 : en aperçu les nœuds restent des VIEW non comptées — une erreur
+            # d'évaluation ne surgit qu'ici ; même message métier qu'en run (jamais un 500).
+            raise _node_error(target, exc) from exc
         cols = [d[0] for d in conn.description]
         result = [dict(zip(cols, r, strict=True)) for r in rows]
         if has_geometry:

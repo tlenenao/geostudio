@@ -92,10 +92,12 @@ def read_wfs(
         "outputFormat": "application/json",
         "srsName": f"EPSG:{p.srid}",
     }
+    # AUD-082 : une entité de plus que la limite — si elle arrive, le résultat est tronqué.
+    limit = p.maxFeatures
     if p.version == "2.0.0":
-        query.update(typeNames=p.typeName, count=p.maxFeatures)
+        query.update(typeNames=p.typeName, count=limit + 1)
     else:
-        query.update(typeName=p.typeName, maxFeatures=p.maxFeatures)
+        query.update(typeName=p.typeName, maxFeatures=limit + 1)
     body = _download(p.url, query)
     try:
         features = json.loads(body)["features"]
@@ -104,6 +106,11 @@ def read_wfs(
             "reader.wfs: response is not a GeoJSON FeatureCollection "
             "(does the service support outputFormat=application/json?)"
         ) from exc
+    if len(features) > limit:
+        raise PipelineRuntimeError(
+            f"reader.wfs : résultat tronqué à {limit} entités — augmenter maxFeatures "
+            "ou filtrer (bbox)"
+        )
 
     rows: list[dict] = []
     for f in features:

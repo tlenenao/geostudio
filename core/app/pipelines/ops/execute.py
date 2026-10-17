@@ -15,6 +15,11 @@ from shapely.geometry import GeometryCollection, MultiPoint
 from app.pipelines.errors import PipelineRuntimeError
 from app.sql_ident import quote_ident_duckdb as _qi
 
+# AUD-078 : plafond commun de toute op Python (shapely/pandas) — la lecture matérialise
+# tout en mémoire. Bornes larges (les ops topologiques gardent leur _Budget plus serré).
+MAX_GEOMETRY_ROWS = 1_000_000
+MAX_GEOMETRY_VERTICES = 20_000_000
+
 
 def _read_geometry_rows(conn, input_view: str) -> pd.DataFrame:
     """Lit toutes les colonnes de `input_view`, la géométrie sérialisée en WKB (bytearray,
@@ -24,6 +29,19 @@ def _read_geometry_rows(conn, input_view: str) -> pd.DataFrame:
     cols = [d[0] for d in conn.execute(f"SELECT * FROM {_qi(input_view)} LIMIT 0").description]
     if "geometry" not in cols:
         raise PipelineRuntimeError(f"input has no 'geometry' column (columns: {cols})")
+    n, vertices = conn.execute(
+        f"SELECT count(*), coalesce(sum(ST_NPoints(geometry)), 0) "
+        f"FROM {_qi(input_view)} WHERE geometry IS NOT NULL"
+    ).fetchone()
+    if n > MAX_GEOMETRY_ROWS:
+        raise PipelineRuntimeError(
+            f"entrée trop volumineuse pour cette opération : {n} lignes (max {MAX_GEOMETRY_ROWS})"
+        )
+    if vertices > MAX_GEOMETRY_VERTICES:
+        raise PipelineRuntimeError(
+            f"entrée trop volumineuse pour cette opération : {vertices} sommets "
+            f"(max {MAX_GEOMETRY_VERTICES})"
+        )
     select_list = ", ".join(
         f"ST_AsWKB({_qi(c)}) AS {_qi(c)}" if c == "geometry" else _qi(c) for c in cols
     )

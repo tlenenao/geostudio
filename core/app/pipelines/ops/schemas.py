@@ -35,6 +35,11 @@ class IncrementalSpec(BaseModel):
 
 class _IncrementalReader(BaseModel):
     incremental: IncrementalSpec | None = None
+    # AUD-082 : colonne source portant la géométrie (texte WKT, WKB hexadécimal ou GeoJSON),
+    # décodée en `geometry` après lecture ; sans elle la sortie n'a pas de géométrie.
+    geometryColumn: str | None = None
+    geometryFormat: Literal["wkt", "wkb_hex", "geojson"] = "wkt"
+    geometrySrid: int = Field(4326, ge=1)
 
 
 class ReaderCollectionParams(BaseModel):
