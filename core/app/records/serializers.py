@@ -34,6 +34,8 @@ def record(*, base: str, item: ItemRead) -> dict:
         "language": {"code": item.language},
         "created": item.date,
         "updated": item.updatedAt,
+        # Revue L6 M2 : un moissonneur authentifié doit voir qu'un item est déprécié.
+        "status": item.contentStatus,
     }
     lic = resolve_license(item.license) if item.license else None
     if lic is not None:

@@ -100,12 +100,14 @@ def list_records(
             page_size=limit,
         )
     else:
+        # Revue L6 M2 : même périmètre de kinds que l'anonyme (pas de pipeline/alerte/rapport).
+        kinds = items_repo.PUBLIC_KINDS
         result = items_repo.list_items(
             session,
             tenant_id=user.tenant_id,
             current_user_id=user.id,
             q=q,
-            resource_type=type,
+            resource_type=((type,) if type in kinds else ()) if type else kinds,
             scope="all",
             page=page,
             page_size=limit,
@@ -148,6 +150,8 @@ def get_record(
             raise HTTPException(status_code=404, detail="record not found")
     else:
         item = get_item_service(session, item_id=record_id, user=user)
+        if item.resourceType not in items_repo.PUBLIC_KINDS:
+            raise HTTPException(status_code=404, detail="record not found")
     return JSONResponse(serializers.record(base=_base(request), item=item), media_type=GEOJSON)
 
 
@@ -169,6 +173,9 @@ def get_iso_metadata(
             user and has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
         ),
     )  # 404 non-fuyant, même porte que DCAT
+    # Revue L6 M1 : avant l'introspection — une DBAPIError y avorte la transaction
+    # Postgres et toute requête suivante échouerait (même ordre que DCAT get_dataset).
+    publisher = _resolve_tenant(session, user).name
     try:
         srid = introspect(session, col.table_name).srid
     except (TableNotFound, UnsupportedTable, DBAPIError):
@@ -181,6 +188,6 @@ def get_iso_metadata(
         bbox=bbox,
         srid=srid,
         items_url=f"{_base(request)}/collections/{col.id}/items",
-        publisher=_resolve_tenant(session, user).name,
+        publisher=publisher,
     )
     return Response(xml, media_type="application/xml")

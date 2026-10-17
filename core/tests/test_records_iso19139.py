@@ -47,3 +47,40 @@ def test_iso19139_404_and_ogc_link(env):  # noqa: F811
     assert any(
         link["rel"] == "describedby" and link["href"].endswith("/metadata") for link in links
     )
+
+
+def test_iso19139_survives_aborted_transaction(env):  # noqa: F811
+    """Revue L6 M1 : une DBAPIError à l'introspection avorte la transaction Postgres ;
+    simulée ici en faisant échouer toute requête SQL suivante (SQLite ne le fait pas)."""
+    from sqlalchemy import event
+    from sqlalchemy.exc import DBAPIError
+
+    from app.collections import routes as collections_routes
+
+    app, client, admin, _regular, _repo = env
+    app.dependency_overrides[dcat_routes.get_bbox_provider] = lambda: (
+        lambda session, info: [1.0, 45.0, 2.0, 46.0]
+    )
+    _register(app, client, admin, public=True)
+    _as(app, None)  # anonyme : le tenant par défaut se résout par une requête SQL
+    listeners = []
+
+    def broken(session, table_name):
+        engine = session.get_bind()
+
+        def refuse(*_args, **_kw):
+            raise DBAPIError("SELECT", {}, Exception("current transaction is aborted"))
+
+        if not listeners:
+            event.listen(engine, "before_cursor_execute", refuse)
+            listeners.append((engine, refuse))
+        raise DBAPIError("SELECT", {}, Exception("boom"))
+
+    app.dependency_overrides[collections_routes.get_introspector] = lambda: broken
+    try:
+        r = client.get("/v1/collections/incidents/metadata")
+    finally:
+        for engine, fn in listeners:
+            event.remove(engine, "before_cursor_execute", fn)
+    assert r.status_code == 200, r.text
+    assert "westBoundLongitude" not in r.text  # fiche sans emprise, pas 500

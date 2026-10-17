@@ -106,3 +106,23 @@ def test_paging_links(client):
     assert body["numberMatched"] == 3 and body["numberReturned"] == 2
     nxt = next(link["href"] for link in body["links"] if link["rel"] == "next")
     assert "page=2" in nxt
+
+
+def test_records_expose_status_and_only_public_kinds(client):
+    # Revue L6 M2 : statut de contenu visible ; kinds non publics (bookmark, pipeline,
+    # alerte, rapport) hors de Records même pour un utilisateur qui peut les lire.
+    app_id = _create(client, "Carte")
+    r = client.post(
+        "/v1/configs",
+        json={
+            "title": "Signet",
+            "config": {"kind": "bookmark", "bookmark": {"appId": app_id, "pageId": "p1"}},
+        },
+    )
+    assert r.status_code == 201, r.text
+    bookmark = r.json()["itemId"]
+    feats = client.get(RECORDS).json()["features"]
+    assert [f["id"] for f in feats] == [app_id]
+    assert feats[0]["properties"]["status"] == "none"
+    assert client.get(RECORDS, params={"type": "bookmark"}).json()["features"] == []
+    assert client.get(f"{RECORDS}/{bookmark}").status_code == 404

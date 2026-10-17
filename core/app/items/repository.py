@@ -362,7 +362,11 @@ def _sort_rows(rows: list[tuple[Item, str]], sort: str) -> list[tuple[Item, str]
 
 
 def _visible_items_base_query(
-    *, tenant_id: str, current_user_id: str, scope: str, resource_type: str | None
+    *,
+    tenant_id: str,
+    current_user_id: str,
+    scope: str,
+    resource_type: str | tuple[str, ...] | None,
 ):
     """Requête de base (Item, owner_username) filtrée tenant+type+scope/can() —
     partagée par `list_items` et `get_facets` (spec §1.1 : mêmes filtres
@@ -375,7 +379,10 @@ def _visible_items_base_query(
         .where(Item.tenant_id == tenant_id)
         .options(defer(Item.embedding))  # jamais lu par _to_read (P24.05)
     )
-    if resource_type:
+    if isinstance(resource_type, tuple):
+        # Plusieurs kinds (Records, revue L6 M2) ; tuple vide = aucun item.
+        query = query.where(Item.resource_type.in_(resource_type))
+    elif resource_type:
         query = query.where(Item.resource_type == resource_type)
 
     shared_exists = (
@@ -442,7 +449,7 @@ def list_items(
     tenant_id: str,
     current_user_id: str,
     q: str | None,
-    resource_type: str | None,
+    resource_type: str | tuple[str, ...] | None,
     scope: str,
     page: int,
     page_size: int,
