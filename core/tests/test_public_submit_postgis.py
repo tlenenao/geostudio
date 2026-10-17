@@ -268,12 +268,13 @@ def test_101st_request_per_hour_per_ip_is_429(ready):
     assert r.status_code == 429 and r.json()["detail"] == "too many submissions, retry later"
 
 
-def test_101st_request_per_hour_per_token_is_429_whatever_the_ip(ready):
-    # AUD-154 : 100 dépôts/h par jeton, même répartis sur 100 IP (simulées ici en
+def test_request_over_the_hourly_token_budget_is_429_whatever_the_ip(ready):
+    # AUD-154 : budget horaire par jeton, même réparti sur plusieurs IP (simulées ici en
     # consommant le compteur du jeton, l'IP du client de test étant fixe).
     client, app, _a, _S, _s3, tok = ready
     _anon(app)
-    for _ in range(100):
+    assert service.token_limiter.limit == 1000  # revue SP-L2 I4 : défaut relevé
+    for _ in range(service.token_limiter.limit):
         assert service.token_limiter.allow(tok["token"])
     r = _submit(client, tok["token"])
     assert r.status_code == 429 and "this form" in r.json()["detail"]
@@ -291,6 +292,10 @@ def test_invalid_payload_is_rejected_without_consuming_quota(ready):
     assert r.status_code == 400
     with Session() as s:
         assert s.scalar(select(SubmissionToken.submission_count)) == 0
+    # revue SP-L2 I4 : le compteur horaire du jeton n'est pas consommé non plus
+    assert not service.token_limiter._hits.get(tok["token"])
+    assert _submit(client, tok["token"]).status_code == 202
+    assert len(service.token_limiter._hits[tok["token"]]) == 1
 
 
 def test_attachment_type_is_controlled_by_content_and_size_capped(ready):

@@ -74,7 +74,7 @@ def submit(
     ip = ip_bucket(request.client.host if request.client else None)  # AUD-154 : /64 en IPv6
     if not service.ip_limiter.allow(ip):
         raise HTTPException(status_code=429, detail="too many submissions, retry later")
-    if not service.token_limiter.allow(token):
+    if not service.token_limiter.has_room(token):
         raise HTTPException(
             status_code=429, detail="too many submissions for this form, retry later"
         )
@@ -123,6 +123,7 @@ def submit(
         attachment_key=attachment_key,
     )
     del sub
+    service.token_limiter.allow(token)  # revue SP-L2 I4 : seule une soumission acceptée compte
     service.notify_moderators(session, col)
     return _ACCEPTED
 

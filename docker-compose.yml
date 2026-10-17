@@ -441,6 +441,8 @@ services:
       CORE_MCP_STATELESS: ${CORE_MCP_STATELESS:-true}
       # Plafond de lecture d'un fichier importé (octets) ; vide = 512 Mio (P03.05).
       CORE_UPLOAD_MAX_BYTES: ${CORE_UPLOAD_MAX_BYTES:-}
+      # Soumissions publiques acceptées par formulaire et par heure ; vide = 1000.
+      CORE_PUBLIC_SUBMIT_TOKEN_HOURLY_LIMIT: ${CORE_PUBLIC_SUBMIT_TOKEN_HOURLY_LIMIT:-}
       S3_ACCESS_KEY: ${MINIO_USER}
       S3_SECRET_KEY: ${MINIO_PASSWORD}
       S3_THUMBNAILS_BUCKET: geostudio-thumbnails
