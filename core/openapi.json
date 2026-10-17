@@ -3965,7 +3965,8 @@
               "wmts",
               "csw",
               "ogc-records",
-              "ckan"
+              "ckan",
+              "udata"
             ],
             "title": "Type",
             "type": "string"

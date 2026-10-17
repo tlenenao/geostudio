@@ -120,6 +120,7 @@ export const automation = {
   "harvest.typeCsw": "CSW",
   "harvest.typeOgcRecords": "OGC API - Records",
   "harvest.typeCkan": "CKAN",
+  "harvest.typeUdata": "data.gouv.fr (udata)",
   "harvest.modeReference": "Référence",
   "harvest.modeCopy": "Copie",
   "harvest.intervalLabel": "Intervalle de rafraîchissement (minutes)",
