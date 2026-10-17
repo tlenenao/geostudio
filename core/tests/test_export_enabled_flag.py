@@ -57,6 +57,7 @@ def test_instance_reports_export_disabled_by_default(env):
     assert response.status_code == 200
     assert response.json() == {
         "readOnly": False,
+        "externalBasemapsEnabled": True,
         "etlEnabled": False,
         "exportEnabled": False,
         "appExportEnabled": False,
