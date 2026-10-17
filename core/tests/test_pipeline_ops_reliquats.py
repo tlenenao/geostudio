@@ -72,7 +72,7 @@ def test_remove_srid_keeps_coordinates_and_outputs_srid_zero(conn):
 
 def test_srid_zero_refuses_reprojection_and_meter_buffer(conn):
     conn.execute("CREATE TABLE src AS SELECT ST_Point(1, 2) AS geometry")
-    with pytest.raises(duckdb.Error, match="EPSG:0"):
+    with pytest.raises(PipelineRuntimeError, match="setSrid"):  # AUD-077 : refus explicite
         _compile(conn, "transform.reproject", {"targetCrs": "EPSG:4326"}, srid=0)
     with pytest.raises(duckdb.Error, match="EPSG:0"):
         _compile(conn, "transform.buffer", {"distance": 5, "unit": "meters"}, srid=0)

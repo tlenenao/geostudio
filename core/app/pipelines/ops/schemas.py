@@ -21,6 +21,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.pipelines.ops.operation_contract import OutputColumn
+
 
 class IncrementalSpec(BaseModel):
     """Lecture incrémentale d'un reader connecteur (ARC-K2/F4) : seules les
@@ -58,9 +60,15 @@ class TransformAggregateParams(BaseModel):
 
 
 class TransformJoinParams(BaseModel):
+    """Jointure attributaire sur `on` (même nom des deux côtés). La sortie garde toutes les
+    colonnes de l'entrée principale (dont sa géométrie) puis les colonnes de la seconde
+    entrée hors clé et hors géométrie ; une colonne déjà présente à gauche est préfixée par
+    `rightPrefix`."""
+
     withCollectionId: str | None = Field(None, json_schema_extra={"format": "collection-id"})
     on: str
     how: Literal["inner", "left"] = "inner"
+    rightPrefix: str = Field("right_", pattern=r"^[A-Za-z_][A-Za-z0-9_]{0,30}$")
 
 
 class WriterCollectionParams(BaseModel):
@@ -130,7 +138,7 @@ class TransformBufferParams(BaseModel):
 
 
 class TransformReprojectParams(BaseModel):
-    targetCrs: str = Field(..., pattern=r"^[A-Za-z]+:\d+$")
+    targetCrs: str = Field(..., pattern=r"^EPSG:\d+$")
 
 
 class TransformIntersectionParams(BaseModel):
@@ -141,7 +149,7 @@ class TransformIntersectionParams(BaseModel):
 
 class TransformCountWithinParams(BaseModel):
     withCollectionId: str | None = Field(None, json_schema_extra={"format": "collection-id"})
-    countColumn: str = "count"
+    countColumn: OutputColumn = "count"
     predicate: Literal["intersects", "contains"] = "intersects"
 
 
@@ -491,7 +499,7 @@ class TransformReprojectAttributeParams(BaseModel):
     xColumn: str
     yColumn: str
     sourceCrs: str = Field(..., pattern=r"^[A-Za-z]+:\d+$")
-    targetCrs: str = Field(..., pattern=r"^[A-Za-z]+:\d+$")
+    targetCrs: str = Field(..., pattern=r"^EPSG:\d+$")
 
 
 class TransformFormatCoordinatesParams(BaseModel):
@@ -631,7 +639,7 @@ class TransformMergeChildrenParams(BaseModel):
     l'entrée secondaire (enfants), regroupées en une colonne LIST de STRUCT — schéma des
     enfants résolu à l'exécution. `parentOn`/`childOn` peuvent désigner des colonnes de noms
     différents (ex. `id` côté parent, `parentId` côté enfant) : contrairement à
-    `transform.join` (clause SQL `USING`, qui impose un nom identique des deux côtés), cette
+    `transform.join` (clé `on`, qui impose un nom identique des deux côtés), cette
     jointure s'écrit `t.col = o.col` et n'a pas cette contrainte. Un parent sans enfant
     correspondant reçoit une liste vide (`[]`), jamais `[{...: NULL}]`."""
 

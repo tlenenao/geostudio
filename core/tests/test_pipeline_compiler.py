@@ -107,6 +107,8 @@ def test_compile_join(conn):
         {"withCollectionId": "x", "on": "id", "how": "inner"},
         input_view="base",
         join_view="other",
+        input_columns=["id", "region", "pop"],
+        join_columns=["id", "label"],
     )
     conn.execute(f"CREATE TEMP VIEW out AS {sql}")
     rows = conn.execute("SELECT id, label FROM out ORDER BY id").fetchall()

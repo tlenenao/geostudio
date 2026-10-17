@@ -162,6 +162,7 @@ _BASE_OPERATIONS: dict[str, OperationContract] = {
         engine="duckdb",
         engine_license="MIT (DuckDB)",
         compile=_compiler._compile_join,
+        needs_columns=True,
     ),
     "transform.buffer": OperationContract(
         op="transform.buffer",
@@ -198,6 +199,7 @@ _BASE_OPERATIONS: dict[str, OperationContract] = {
         engine="duckdb",
         engine_license="MIT (DuckDB)",
         compile=_compiler._compile_count_within,
+        needs_columns=True,
         output_srid=_compiler._output_srid_reconcile_join,
     ),
     "transform.h3Aggregate": OperationContract(

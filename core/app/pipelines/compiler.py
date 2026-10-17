@@ -9,6 +9,7 @@ module ne touche jamais une connexion DuckDB, il ne fait que construire des
 chaînes de caractères, testable en pur."""
 
 from app.configs.schemas import PipelineEdge, PipelineNode
+from app.pipelines.errors import PipelineRuntimeError
 from app.pipelines.ops.schemas import (
     TransformAggregateParams,
     TransformBoundingGeometryParams,
@@ -55,6 +56,8 @@ from app.pipelines.ops.schemas import (
     TransformValidateAttributesParams,
 )
 from app.sql_ident import quote_ident_duckdb as _qi
+
+_RID = '"__gs_rid"'
 
 
 def topological_order(nodes: list[PipelineNode], edges: list[PipelineEdge]) -> list[PipelineNode]:
@@ -160,11 +163,31 @@ def _compile_join(
     input_view: str,
     join_view: str | None = None,
     input_srid: int | None = None,
+    input_columns: list[str] | None = None,
+    join_columns: list[str] | None = None,
 ) -> str:
     p = TransformJoinParams.model_validate(params)
     assert join_view is not None, "transform.join requires join_view"
+    assert input_columns is not None and join_columns is not None
+    for side, cols in (("principale", input_columns), ("secondaire", join_columns)):
+        if p.on not in cols:
+            raise PipelineRuntimeError(
+                f"transform.join : clé {p.on!r} absente de l'entrée {side} (colonnes : {cols})"
+            )
+    right = [c for c in join_columns if c not in (p.on, "geometry")]
+    out_names = [f"{p.rightPrefix}{c}" if c in input_columns else c for c in right]
+    clash = [n for n in out_names if n in input_columns]
+    if clash:
+        raise PipelineRuntimeError(
+            f"transform.join : colonne(s) de sortie déjà présente(s) : {clash} "
+            "— changer rightPrefix"
+        )
     join_kw = "LEFT JOIN" if p.how == "left" else "JOIN"
-    return f"SELECT * FROM {_qi(input_view)} {join_kw} {_qi(join_view)} USING ({_qi(p.on)})"
+    right_sel = "".join(f", o.{_qi(c)} AS {_qi(n)}" for c, n in zip(right, out_names, strict=True))
+    return (
+        f"SELECT t.*{right_sel} FROM {_qi(input_view)} t {join_kw} {_qi(join_view)} o "
+        f"ON t.{_qi(p.on)} = o.{_qi(p.on)}"
+    )
 
 
 def _compile_buffer(
@@ -213,7 +236,11 @@ def _compile_reproject(
     input_srid: int | None = None,
 ) -> str:
     p = TransformReprojectParams.model_validate(params)
-    assert input_srid is not None, "transform.reproject requires input_srid"
+    if not input_srid:
+        raise PipelineRuntimeError(
+            "transform.reproject : SRID d'entrée inconnu — déclarer le SRID source avec "
+            "transform.setSrid avant de reprojeter"
+        )
     return (
         f"SELECT * EXCLUDE (geometry), "
         f"ST_Transform(geometry, 'EPSG:{input_srid}', '{p.targetCrs}', true) AS geometry "
@@ -247,17 +274,28 @@ def _compile_count_within(
     input_view: str,
     join_view: str | None = None,
     input_srid: int | None = None,
+    input_columns: list[str] | None = None,
+    join_columns: list[str] | None = None,
 ) -> str:
     p = TransformCountWithinParams.model_validate(params)
     assert join_view is not None, "transform.countWithin requires join_view"
+    clash = [n for n in (p.countColumn, "__gs_rid") if n in (input_columns or [])]
+    if clash:
+        raise PipelineRuntimeError(
+            f"transform.countWithin : colonne(s) de sortie déjà présente(s) en entrée : {clash}"
+        )
     if p.predicate == "intersects":
         predicate_expr = "ST_Intersects(t.geometry, o.geometry)"
     else:  # contains
         predicate_expr = "ST_Contains(o.geometry, t.geometry)"
+    # Regroupement par identifiant de ligne, jamais GROUP BY ALL : deux lignes d'entrée
+    # identiques restent deux lignes (AUD-077, patron de transform.spatialRelator).
     return (
-        f"SELECT t.* EXCLUDE (geometry), t.geometry, COUNT(o.geometry) AS {_qi(p.countColumn)} "
-        f"FROM {_qi(input_view)} t LEFT JOIN {_qi(join_view)} o "
-        f"ON {predicate_expr} GROUP BY ALL"
+        f"WITH __gs_b AS (SELECT *, row_number() OVER () AS {_RID} FROM {_qi(input_view)}), "
+        f"__gs_c AS (SELECT t.{_RID} AS rid, COUNT(o.geometry) AS n FROM __gs_b t "
+        f"LEFT JOIN {_qi(join_view)} o ON {predicate_expr} GROUP BY t.{_RID}) "
+        f"SELECT b.* EXCLUDE ({_RID}), c.n AS {_qi(p.countColumn)} "
+        f"FROM __gs_b b JOIN __gs_c c ON c.rid = b.{_RID}"
     )
 
 
@@ -748,19 +786,25 @@ def _compile_merge_children(
     p = TransformMergeChildrenParams.model_validate(params)
     assert join_view is not None, "transform.mergeChildren requires join_view"
     assert join_columns is not None
+    if p.childrenColumn in (input_columns or []):
+        raise PipelineRuntimeError(
+            f"transform.mergeChildren : colonne {p.childrenColumn!r} déjà présente en entrée"
+        )
     child_cols = [c for c in join_columns if c != p.childOn]
     struct_fields = ", ".join(f"{_qi(c)} := o.{_qi(c)}" for c in child_cols)
-    # FILTER + COALESCE(..., []) : sans ça, un LEFT JOIN sans correspondance produit une
-    # ligne o.* toute NULL que `list(struct_pack(...))` agrège en [{...: NULL}] au lieu
-    # d'une liste vide — vérifié empiriquement contre un DuckDB réel (v1.5.5).
+    # FILTER + COALESCE(..., []) : un parent sans enfant reçoit [] (pas [{...: NULL}]).
     children_expr = (
         f"COALESCE(list(struct_pack({struct_fields})) "
         f"FILTER (WHERE o.{_qi(p.childOn)} IS NOT NULL), [])"
     )
+    # Regroupement par identifiant de ligne (AUD-077) : deux parents identiques restent deux.
     return (
-        f"SELECT t.*, {children_expr} AS {_qi(p.childrenColumn)} "
-        f"FROM {_qi(input_view)} t LEFT JOIN {_qi(join_view)} o "
-        f"ON t.{_qi(p.parentOn)} = o.{_qi(p.childOn)} GROUP BY ALL"
+        f"WITH __gs_b AS (SELECT *, row_number() OVER () AS {_RID} FROM {_qi(input_view)}), "
+        f"__gs_c AS (SELECT t.{_RID} AS rid, {children_expr} AS kids FROM __gs_b t "
+        f"LEFT JOIN {_qi(join_view)} o ON t.{_qi(p.parentOn)} = o.{_qi(p.childOn)} "
+        f"GROUP BY t.{_RID}) "
+        f"SELECT b.* EXCLUDE ({_RID}), c.kids AS {_qi(p.childrenColumn)} "
+        f"FROM __gs_b b JOIN __gs_c c ON c.rid = b.{_RID}"
     )
 
 

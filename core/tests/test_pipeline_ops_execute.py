@@ -99,7 +99,6 @@ def test_empty_input_yields_empty_output(conn, fn_name, params):
 @pytest.mark.parametrize(
     ("fn_name", "params"),
     [
-        ("_execute_densify", {"maxSegmentLength": 2}),
         ("_execute_minimum_bounding_circle", {}),
         ("_execute_triangulate", {}),
     ],
@@ -243,3 +242,24 @@ def test_group_by_geometry_column_is_rejected(conn):
         _execute_triangulate(
             conn, input_view="base", view_name="out", params={"groupBy": ["geometry"]}
         )
+
+
+def test_densify_keeps_rows_with_null_geometry(conn):
+    """AUD-077 : densify est n→n, une géométrie NULL ne fait pas disparaître la ligne."""
+    from app.pipelines.ops.execute import _execute_densify
+
+    conn.execute(
+        "CREATE TABLE src AS SELECT 1 AS id, ST_GeomFromText('LINESTRING(0 0, 10 0)') AS geometry "
+        "UNION ALL SELECT 2, NULL::GEOMETRY"
+    )
+    _execute_densify(conn, input_view="src", view_name="out", params={"maxSegmentLength": 5})
+    rows = conn.execute("SELECT id, geometry IS NULL FROM out ORDER BY id").fetchall()
+    assert rows == [(1, False), (2, True)]
+
+
+def test_densify_keeps_rows_when_all_geometries_are_null(conn):
+    from app.pipelines.ops.execute import _execute_densify
+
+    conn.execute("CREATE TABLE src AS SELECT 1 AS id, NULL::GEOMETRY AS geometry")
+    _execute_densify(conn, input_view="src", view_name="out", params={"maxSegmentLength": 5})
+    assert conn.execute("SELECT count(*) FROM out").fetchone() == (1,)

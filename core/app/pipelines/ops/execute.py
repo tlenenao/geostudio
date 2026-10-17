@@ -44,6 +44,15 @@ def _write_geometry_rows(conn, df: pd.DataFrame, *, view_name: str) -> None:
     conn.unregister("_execute_tmp_df")
 
 
+def _reinsert_null_geometry(conn, *, input_view: str, view_name: str) -> None:
+    """Op n→n : réinsère les lignes à géométrie NULL écartées par `_read_geometry_rows`
+    (AUD-077) — perte silencieuse sinon."""
+    conn.execute(
+        f"INSERT INTO {_qi(view_name)} BY NAME "
+        f"SELECT * FROM {_qi(input_view)} WHERE geometry IS NULL"
+    )
+
+
 def _group_frames(df: pd.DataFrame, group_by: list[str]) -> list[pd.DataFrame]:
     """Découpe `df` en un sous-DataFrame par combinaison distincte des colonnes `group_by`
     (REV-195). `group_by` vide = un seul groupe (tout `df`) — le comportement global
@@ -112,6 +121,7 @@ def _execute_densify(conn, *, input_view: str, view_name: str, params: dict) -> 
             ]
         )
     _write_geometry_rows(conn, df, view_name=view_name)
+    _reinsert_null_geometry(conn, input_view=input_view, view_name=view_name)
 
 
 def _execute_minimum_bounding_circle(
