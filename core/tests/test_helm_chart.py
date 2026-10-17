@@ -277,3 +277,9 @@ def test_workers_render_a_termination_grace_period_above_the_graceful_timeout(do
     cmd = " ".join(spec["containers"][0]["command"])
     graceful = int(re.search(r"--shutdown-graceful-timeout (\d+)", cmd).group(1))
     assert graceful < grace
+
+
+def test_worker_sh_c_execs_procrastinate_so_sigterm_reaches_it(docs):
+    """AUD-027 : `sh -c "a && python -m procrastinate …"` laisse sh en PID 1 (SIGTERM ignoré)."""
+    cmd = _container(docs, "worker")["command"]
+    assert cmd[:2] == ["sh", "-c"] and "&& exec python -m procrastinate" in cmd[2]

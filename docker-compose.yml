@@ -545,7 +545,7 @@ services:
     # export-worker (j05b-006, test_sh_c_commands_have_no_orphan_option_line).
     command: >
       sh -c "python -m scripts.ensure_procrastinate_schema &&
-             python -m procrastinate --app app.jobs.app worker -c ${CORE_WORKER_CONCURRENCY:-4} --shutdown-graceful-timeout ${CORE_WORKER_GRACEFUL:-270} -q ingestion,search,cdc,etl,tileset3d,terrain3d,raster,appexport,harvest,dataexport"
+             exec python -m procrastinate --app app.jobs.app worker -c ${CORE_WORKER_CONCURRENCY:-4} --shutdown-graceful-timeout ${CORE_WORKER_GRACEFUL:-270} -q ingestion,search,cdc,etl,tileset3d,terrain3d,raster,appexport,harvest,dataexport"
     environment:
       DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
       S3_ENDPOINT_URL: http://minio:9000

@@ -29,7 +29,7 @@ spec:
           command:
             - sh
             - -c
-            - python -m scripts.ensure_procrastinate_schema && python -m procrastinate --app app.jobs.app worker -c {{ .Values.worker.concurrency }} --shutdown-graceful-timeout {{ .Values.worker.gracefulTimeoutSeconds }} -q {{ join "," .Values.worker.queues }}
+            - python -m scripts.ensure_procrastinate_schema && exec python -m procrastinate --app app.jobs.app worker -c {{ .Values.worker.concurrency }} --shutdown-graceful-timeout {{ .Values.worker.gracefulTimeoutSeconds }} -q {{ join "," .Values.worker.queues }}
           envFrom:
             - configMapRef: {name: {{ $fn }}-config}
           env:

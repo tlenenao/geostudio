@@ -2174,6 +2174,22 @@ def test_workers_get_a_long_stop_grace_period_and_a_shorter_graceful_timeout(nam
     assert {"CORE_WORKER_STOP_GRACE", "CORE_WORKER_GRACEFUL"} <= documented
 
 
+def test_sh_c_worker_commands_exec_procrastinate_so_sigterm_reaches_it():
+    """AUD-027 : sans `exec`, `sh` reste PID 1 et ignore SIGTERM -> l'arrêt gracieux
+    ne s'applique jamais (SIGKILL au bout du délai)."""
+    offenders = []
+    for compose in (BASE, PROD):
+        for name, svc in services(compose).items():
+            cmd = svc.get("command")
+            if not isinstance(cmd, str):
+                continue
+            argv = shlex.split(cmd)
+            if argv[:2] == ["sh", "-c"] and "python -m procrastinate" in argv[2]:
+                if "exec python -m procrastinate" not in argv[2]:
+                    offenders.append(f"{compose.name}:{name}")
+    assert not offenders, offenders
+
+
 def test_periodic_tasks_carry_a_queueing_lock():
     """c09-002 : sans `queueing_lock`, un tick en retard s'empile derrière
     le précédent (les ticks périodiques s'accumulent sous charge)."""
