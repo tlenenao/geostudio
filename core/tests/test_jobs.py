@@ -70,6 +70,7 @@ def test_import_paths_registers_all_domain_tasks():
     assert "app.security.jobs.refresh_csp_dynamic_conf_task" in task_names
     assert "app.compliance.jobs.sweep_orphan_job_objects_task" in task_names
     assert "app.dataexport.jobs.run_collection_export" in task_names
+    assert "app.jobs.recovery.recover_stalled_jobs_task" in task_names
 
 
 def test_procrastinate_connector_disables_psycopg_autoprepare():

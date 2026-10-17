@@ -731,13 +731,13 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
     # `procrastinate healthchecks` vérifie la connexion et le schéma de la
-    # file — ne détecte pas un worker occupé par une tâche qui ne rend
-    # jamais la main. scripts.healthcheck_worker_stalled comble ce manque
-    # (GAP-76, SP-49) : interroge JobManager.get_stalled_jobs (job resté en
-    # 'doing' plus d'HEALTHCHECK_STALLED_SECONDS, 1h par défaut — nettement
-    # au-delà de la durée p99 connue d'un import GPKG 50k lignes ou d'un run
-    # de pipeline). Docker Compose n'autorise qu'un seul `healthcheck.test`
-    # par service : les deux commandes sont chaînées dans le même
+    # file — ne détecte pas une boucle de worker bloquée.
+    # scripts.healthcheck_worker_stalled (GAP-76, SP-49 ; AUD-016) : interroge
+    # JobManager.get_stalled_jobs au BATTEMENT — job 'doing' tenu par un worker
+    # sans battement depuis HEALTHCHECK_STALLED_SECONDS (300 s par défaut),
+    # jamais la durée du job ; la reprise app.jobs.recovery (120 s) termine
+    # d'abord les jobs des workers morts. Docker Compose n'autorise qu'un seul
+    # `healthcheck.test` par service : les deux commandes sont chaînées dans le même
     # CMD-SHELL.
     healthcheck:
       test: [
