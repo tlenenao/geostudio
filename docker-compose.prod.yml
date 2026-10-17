@@ -15,6 +15,7 @@
 volumes:
   tailscale-state:
   backup-archives:
+  backup-work:
 
 services:
 
@@ -405,6 +406,9 @@ services:
       BACKUP_ALERT_WEBHOOK_URL: ${BACKUP_ALERT_WEBHOOK_URL:-}
     volumes:
       - backup-archives:/backup/archives
+      # AUD-031 : le dump et le miroir MinIO en clair vont sur un volume
+      # nommé (purgé à chaque run), plus dans la couche du conteneur.
+      - backup-work:/backup/work
     # P27.08 : fraîcheur — `.last_success` est touché par backup.sh après un
     # succès COMPLET (envoi hors-site compris s'il est configuré). Plus vieux
     # que 26 h (1560 min) = unhealthy. start_period couvre le premier cycle

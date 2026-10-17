@@ -28,21 +28,33 @@ if [ "$UPLOAD_ONLY" = 1 ]; then
   exit 75
 fi
 
+# Refus AVANT tout dump (AUD-034) : sans destinataire, l'ancien contrôle
+# n'intervenait qu'à l'étape 4, après des heures de dump et de miroir.
+if [ -z "${BACKUP_AGE_RECIPIENT:-}" ]; then
+  echo "[backup] ERREUR: BACKUP_AGE_RECIPIENT non défini — refus de stocker un backup en clair" >&2
+  exit 1
+fi
+
+# Hôtes réglables (Helm, base externe) ; défauts = services du compose.
+PG_HOST="${PG_HOST:-postgis}"
+PG_PORT="${PG_PORT:-5432}"
+MINIO_URL="${BACKUP_MINIO_URL:-http://minio:9000}"
+
 DATE="$(date -u +%Y%m%d-%H%M%S)"
 WORK_ROOT="${BACKUP_WORK_DIR:-/backup/work}"
 WORKDIR="${WORK_ROOT}/${DATE}"
+PARTIAL="${ARCHIVES_DIR}/${DATE}.tar.gz.age.partial"
 # Purge systématique du répertoire de travail en clair (dump Postgres, export
-# Keycloak, miroir MinIO) et de l'archive intermédiaire non chiffrée, quelle
-# que soit l'issue du script (succès, échec sous `set -e`, signal) — cf. plan
-# §4.1 : le contenu en clair ne doit jamais survivre au-delà de cette
-# exécution.
-trap 'rm -rf "$WORKDIR" "/tmp/${DATE}.tar.gz"' EXIT
+# Keycloak, miroir MinIO) et d'une archive chiffrée incomplète, quelle que soit
+# l'issue du script (succès, échec sous `set -e`, signal) — cf. plan §4.1 : le
+# contenu en clair ne doit jamais survivre au-delà de cette exécution.
+trap 'rm -rf "$WORKDIR" "$PARTIAL"' EXIT
 mkdir -p "$WORKDIR" "$ARCHIVES_DIR"
 
 echo "[backup] ${DATE} — début"
 
 # ── 1. Postgres (dump logique, format custom — compressé, portable) ──
-PGPASSWORD="$PG_PASSWORD" pg_dump -h postgis -p 5432 -U gis -d gis \
+PGPASSWORD="$PG_PASSWORD" pg_dump -h "$PG_HOST" -p "$PG_PORT" -U gis -d gis \
   --format=custom --file="${WORKDIR}/postgres.dump"
 echo "[backup] postgres.dump: $(du -h "${WORKDIR}/postgres.dump" | cut -f1)"
 
@@ -62,7 +74,7 @@ echo "[backup] postgres.dump: $(du -h "${WORKDIR}/postgres.dump" | cut -f1)"
 # régénérables (un PDF de rapport, un bundle d'app se re-demandent). Toute
 # exclusion nouvelle doit aussi être déclarée dans
 # core/tests/test_deployability.py::BACKUP_EXCLUDED_BUCKETS.
-mc alias set local http://minio:9000 "$MINIO_USER" "$MINIO_PASSWORD" >/dev/null
+mc alias set local "$MINIO_URL" "$MINIO_USER" "$MINIO_PASSWORD" >/dev/null
 mkdir -p "${WORKDIR}/minio"
 for bucket in "${S3_THUMBNAILS_BUCKET:-geostudio-thumbnails}" \
               "${S3_UPLOADS_BUCKET:-geostudio-uploads}" \
@@ -103,14 +115,20 @@ if ! jq -e '.realm == "geostudio"' "${WORKDIR}/keycloak-realm.json" >/dev/null 2
   exit 1
 fi
 
-# ── 4. Empaqueter + chiffrer (jamais de clair au-delà de cette étape) ──
-tar -czf "/tmp/${DATE}.tar.gz" -C "$WORK_ROOT" "${DATE}"
-if [ -n "${BACKUP_AGE_RECIPIENT:-}" ]; then
-  age -r "$BACKUP_AGE_RECIPIENT" -o "${ARCHIVES_DIR}/${DATE}.tar.gz.age" "/tmp/${DATE}.tar.gz"
-else
-  echo "[backup] ERREUR: BACKUP_AGE_RECIPIENT non défini — refus de stocker un backup en clair" >&2
+# ── 4. Empaqueter + chiffrer en flux (AUD-184 : plus d'archive en clair sur
+#    /tmp, qui doublait l'espace requis dans la couche du conteneur) ──
+# Borne haute de l'archive = taille du répertoire de travail (le tar.gz
+# compresse) : refuser plutôt que remplir le disque des archives à mi-chemin.
+need_kb="$(du -sk "$WORKDIR" | cut -f1)"
+avail_kb="$(df -Pk "$ARCHIVES_DIR" | awk 'NR==2 {print $4}')"
+if [ "$avail_kb" -lt $((need_kb + 1024)) ]; then  # + 1 Mio de marge (en-têtes age, métadonnées)
+  echo "[backup] ERREUR: espace insuffisant dans ${ARCHIVES_DIR} (${avail_kb} Kio libres, jusqu'à ${need_kb} Kio requis)" >&2
   exit 1
 fi
+# `.partial` puis renommage : une archive tronquée (pipeline en échec) n'est
+# jamais prise pour la dernière par --upload-only ni par la rotation.
+tar -czf - -C "$WORK_ROOT" "${DATE}" | age -r "$BACKUP_AGE_RECIPIENT" -o "$PARTIAL"
+mv "$PARTIAL" "${ARCHIVES_DIR}/${DATE}.tar.gz.age"
 echo "[backup] archive chiffrée: ${ARCHIVES_DIR}/${DATE}.tar.gz.age"
 
 # ── 5. Rotation locale (7 quotidiennes + 4 hebdomadaires) — AVANT l'envoi

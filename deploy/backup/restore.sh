@@ -25,6 +25,10 @@ TS="$1"
 # production reste /backup/restore (montage du runbook/de l'invocation
 # ci-dessus), inchangée par défaut.
 RESTORE_DIR="${RESTORE_DIR:-/backup/restore}"
+# Mêmes hôtes réglables que backup.sh (AUD-034) ; défauts = services du compose.
+PG_HOST="${PG_HOST:-postgis}"
+PG_PORT="${PG_PORT:-5432}"
+MINIO_URL="${BACKUP_MINIO_URL:-http://minio:9000}"
 
 echo "[restore] ${TS} — début"
 
@@ -33,10 +37,10 @@ echo "[restore] ${TS} — début"
 # (migrations 0008/0042) et du volume neuf d'un sinistre, ils font échouer
 # tous les GRANT du dump (REV-164). Recréés ici, comme le font les migrations.
 for role in gis_rls gis_rls_masked; do
-  PGPASSWORD="$PG_PASSWORD" psql -h postgis -U gis -d gis -v ON_ERROR_STOP=1 -q -c \
+  PGPASSWORD="$PG_PASSWORD" psql -h "$PG_HOST" -p "$PG_PORT" -U gis -d gis -v ON_ERROR_STOP=1 -q -c \
     "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${role}') THEN CREATE ROLE ${role} NOLOGIN; END IF; END \$\$; GRANT ${role} TO current_user"
 done
-PGPASSWORD="$PG_PASSWORD" pg_restore -h postgis -U gis -d gis \
+PGPASSWORD="$PG_PASSWORD" pg_restore -h "$PG_HOST" -p "$PG_PORT" -U gis -d gis \
   --clean --if-exists --no-owner "${RESTORE_DIR}/postgres.dump"
 echo "[restore] postgres.dump restauré."
 
@@ -45,7 +49,7 @@ echo "[restore] postgres.dump restauré."
 # recopiée à l'œil — c'est exactement la dérive silencieuse trouvée en
 # session (spec SP-59 §1.2b) que ce script et son test doivent rendre
 # impossible à reproduire. ---
-mc alias set local http://minio:9000 "$MINIO_USER" "$MINIO_PASSWORD" >/dev/null
+mc alias set local "$MINIO_URL" "$MINIO_USER" "$MINIO_PASSWORD" >/dev/null
 for bucket in "${S3_THUMBNAILS_BUCKET:-geostudio-thumbnails}" \
               "${S3_UPLOADS_BUCKET:-geostudio-uploads}" \
               "${S3_CDC_BUCKET:-geostudio-cdc}" \
@@ -76,7 +80,7 @@ MISSING_TOTAL=0
 check_refs() {
   bucket="$1"
   sql="$2"
-  PGPASSWORD="$PG_PASSWORD" psql -h postgis -U gis -d gis -v ON_ERROR_STOP=1 -At -c "$sql" \
+  PGPASSWORD="$PG_PASSWORD" psql -h "$PG_HOST" -p "$PG_PORT" -U gis -d gis -v ON_ERROR_STOP=1 -At -c "$sql" \
     | sort -u > "${CHECK_TMP}/refs"
   [ -s "${CHECK_TMP}/refs" ] || return 0
   mc find "local/${bucket}" | sed "s#^local/${bucket}/##" | sort -u > "${CHECK_TMP}/have"

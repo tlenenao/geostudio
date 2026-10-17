@@ -745,6 +745,45 @@ def test_worker_has_a_resolved_memory_limit():
     assert "WORKER_MEM_LIMIT" in documented_env_vars(include_commented=False)
 
 
+# AUD-031/184 : bornes par défaut taillées pour la VM de référence (8 Go).
+MEM_LIMITS = {
+    "postgis": ("PG_MEM_LIMIT", "2g"),
+    "core": ("CORE_MEM_LIMIT", "1536m"),
+    "worker": ("WORKER_MEM_LIMIT", "2g"),
+    "export-worker": ("EXPORT_WORKER_MEM_LIMIT", "1g"),
+    "cdc-worker": ("CDC_WORKER_MEM_LIMIT", "512m"),
+    "keycloak": ("KEYCLOAK_MEM_LIMIT", "1g"),
+    "minio": ("MINIO_MEM_LIMIT", "512m"),
+    "titiler": ("TITILER_MEM_LIMIT", "512m"),
+}
+
+
+@pytest.mark.parametrize("service", sorted(MEM_LIMITS))
+def test_long_running_services_have_a_resolved_documented_memory_limit(service):
+    """AUD-184 : seul `worker` était borné ; un OOM ailleurs (core sur un
+    zonal-stats, Keycloak, postgis) pouvait faire tuer n'importe quel process
+    de l'hôte. Valeur RÉSOLUE sans `.env` + nom documenté (piège n°2)."""
+    var, default = MEM_LIMITS[service]
+    raw = services(BASE)[service].get("mem_limit")
+    assert raw is not None, f"service `{service}` sans mem_limit"
+    assert _resolve_effective_value(str(raw), var) == default
+    assert var in documented_env_vars(include_commented=False)
+
+
+def test_postgis_memory_settings_are_tunable_and_fit_its_limit():
+    """AUD-031 : shared_buffers=2GB/effective_cache_size=6GB en dur sur une
+    VM de 8 Go partagée par toute la stack. Réglables, défauts sous la borne."""
+    cmd = str(services(BASE)["postgis"]["command"])
+    for flag, var in (
+        ("shared_buffers", "PG_SHARED_BUFFERS"),
+        ("effective_cache_size", "PG_EFFECTIVE_CACHE_SIZE"),
+        ("max_connections", "PG_MAX_CONNECTIONS"),
+    ):
+        assert f"-c {flag}=${{{var}:-" in cmd, flag
+        assert var in documented_env_vars(include_commented=False), var
+    assert "${PG_SHARED_BUFFERS:-512MB}" in cmd
+
+
 OTEL_ENTRYPOINTS = ("app.main", "app.jobs", "app.cdc")
 
 

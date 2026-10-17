@@ -22,6 +22,7 @@ services:
 
   postgis:
     build: ./deploy/postgis
+    mem_limit: ${PG_MEM_LIMIT:-2g}
     environment:
       POSTGRES_DB: gis
       POSTGRES_USER: gis
@@ -37,10 +38,10 @@ services:
       retries: 5
     command: >
       postgres
-        -c shared_buffers=2GB
-        -c effective_cache_size=6GB
+        -c shared_buffers=${PG_SHARED_BUFFERS:-512MB}
+        -c effective_cache_size=${PG_EFFECTIVE_CACHE_SIZE:-2GB}
         -c work_mem=64MB
-        -c max_connections=200
+        -c max_connections=${PG_MAX_CONNECTIONS:-200}
         -c random_page_cost=1.1
         -c max_parallel_workers_per_gather=4
         -c wal_level=logical
@@ -93,6 +94,7 @@ services:
     # sources AGPL-3.0 officielles (github.com/minio/minio) — voir
     # deploy/minio/Dockerfile.
     build: ./deploy/minio
+    mem_limit: ${MINIO_MEM_LIMIT:-512m}
     environment:
       MINIO_ROOT_USER: ${MINIO_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}
@@ -169,6 +171,7 @@ services:
 
   titiler:
     build: ./deploy/titiler
+    mem_limit: ${TITILER_MEM_LIMIT:-512m}
     environment:
       CPL_VSIL_CURL_ALLOWED_EXTENSIONS: .tif,.TIF,.tiff
       GDAL_HTTP_MERGE_CONSECUTIVE_RANGES: YES
@@ -229,6 +232,7 @@ services:
   # Cœur GeoStudio (ex builder-service, renommé — arbitrage A14 de la feuille de route).
   core:
     build: ./core
+    mem_limit: ${CORE_MEM_LIMIT:-1536m}
     # Applique les migrations Alembic à chaque démarrage du conteneur, avant
     # de servir — idempotent (Alembic ne réapplique jamais une révision déjà
     # appliquée), même patron que le `command:` du service `worker` plus bas
@@ -755,6 +759,7 @@ services:
       dockerfile: ../deploy/export-worker/Dockerfile
     profiles: ["export"]
     command: python -m procrastinate --app app.jobs.app worker -q export
+    mem_limit: ${EXPORT_WORKER_MEM_LIMIT:-1g}
     environment:
       DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
       S3_ENDPOINT_URL: http://minio:9000
@@ -805,6 +810,7 @@ services:
   # pas un outil d'exploitation optionnel — pas de profil, comme core/worker.
   cdc-worker:
     build: ./core
+    mem_limit: ${CDC_WORKER_MEM_LIMIT:-512m}
     command: python -m app.cdc.main
     environment:
       CDC_DATABASE_URL: postgresql://gis:${PG_PASSWORD}@postgis:5432/gis
@@ -963,6 +969,7 @@ services:
 
   keycloak:
     image: quay.io/keycloak/keycloak:24.0.5
+    mem_limit: ${KEYCLOAK_MEM_LIMIT:-1g}
     environment:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: ${KC_PASSWORD}
