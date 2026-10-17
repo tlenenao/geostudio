@@ -115,6 +115,7 @@ config:
   CORE_TILESET3D_MAX_PROXY_READ_BYTES: "134217728"
   CORE_TILESET3D_MAX_TOTAL_BYTES: "21474836480"
   CORE_TILE_AGG_MAX_ZOOM: "7"
+  # AUD-101 : en production, restreindre au sous-réseau du reverse-proxy ; toute machine de cette plage peut forger X-Forwarded-For.
   CORE_TRUSTED_PROXIES: "127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7"
   CORE_UPLOAD_MAX_BYTES: ""
   HEALTHCHECK_QUEUE: "export"

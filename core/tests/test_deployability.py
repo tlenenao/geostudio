@@ -1761,6 +1761,15 @@ def test_dev_tooling_host_ports_bind_loopback_only():
             assert str(port).startswith("127.0.0.1:"), f"{name}: port {port!r} exposé sur 0.0.0.0"
 
 
+def test_core_port_binds_loopback_in_dev_and_is_unpublished_in_prod():
+    """AUD-101 : le cœur fait confiance à X-Forwarded-For de toute la plage RFC 1918 ;
+    publié sur 0.0.0.0, n'importe quel poste du réseau local forgeait son IP."""
+    ports = services(BASE)["core"].get("ports", [])
+    assert ports and all(str(p).startswith("127.0.0.1:") for p in ports), ports
+    prod = services(PROD)["core"].get("ports")
+    assert prod is RESET or not prod, prod
+
+
 def test_titiler_is_internal_only():
     """ARC-33 (ADR 0024) : TiTiler ne publie AUCUN port hôte (ni base ni prod) et ne rejoint que
     le réseau interne ; seule la passerelle admin-auth (/admin/titiler) y mène de l'extérieur."""

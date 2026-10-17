@@ -668,7 +668,7 @@ def create_app() -> FastAPI:
     # de son utilité pour les appelants anonymes. REV-299a : X-Forwarded-For
     # n'est honoré QUE depuis les proxys de confiance (CORE_TRUSTED_PROXIES,
     # défaut : loopback + RFC 1918, soit le sous-réseau Docker de Traefik) —
-    # « * » le laissait forger par tout pair atteignant core:8000, donc
+    # « * » le laissait forger par tout pair atteignant core:8200, donc
     # contourner les budgets par IP (/share-links, /embed, anonymes).
     app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=trusted_proxy_hosts())
     # Ajouté en dernier = le plus externe : les 403/411/413/429 des middlewares

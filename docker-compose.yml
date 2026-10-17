@@ -430,6 +430,7 @@ services:
       # destinataire externe (RC-13) ; vide = hôte interne (liens injoignables hors Docker).
       S3_PUBLIC_ENDPOINT_URL: ${S3_PUBLIC_ENDPOINT_URL:-}
       # Pairs dont X-Forwarded-For est honoré (réseau Traefik) ; jamais `*` en production.
+      # AUD-101 : en production, restreindre au sous-réseau du reverse-proxy ; toute machine de cette plage peut forger X-Forwarded-For.
       CORE_TRUSTED_PROXIES: ${CORE_TRUSTED_PROXIES:-127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7}
       # Budget /min (par IP) des liens de partage : route publique + en-tête X-Share-Link-Token (REV-299).
       CORE_RATELIMIT_SHARE_LINK_PER_MIN: ${CORE_RATELIMIT_SHARE_LINK_PER_MIN:-60}
@@ -459,7 +460,9 @@ services:
       S3_APPEXPORTS_BUCKET: geostudio-appexports
       CORE_APPEXPORT_ENABLED: ${CORE_APPEXPORT_ENABLED:-false}
     ports:
-      - "8200:8200"
+      # AUD-101 : boucle locale seulement (le shell de dev appelle http://localhost:8200) ;
+      # jamais exposé au réseau local, où tout pair RFC 1918 est un « proxy de confiance ».
+      - "127.0.0.1:8200:8200"
     networks: [gis-net]
     depends_on: [pgbouncer, minio, titiler]
     restart: unless-stopped
