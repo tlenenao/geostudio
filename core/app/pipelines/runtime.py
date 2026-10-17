@@ -998,7 +998,7 @@ def _node_error(node: PipelineNode, exc: Exception) -> PipelineRuntimeError:
     """j06b-007 : message métier (nœud + cause) au lieu du texte brut DuckDB
     (SQL interne, noms de vues node_*, LINE 1) ; le détail reste dans les logs."""
     logger.warning("pipeline node %s (%s) failed: %s", node.id, node.op, exc)
-    cause = re.sub(r"^\w+ Error:\s*", "", str(exc).splitlines()[0] if str(exc) else "")
+    cause = re.sub(r"^[\w ]+ Error:\s*", "", str(exc).splitlines()[0] if str(exc) else "")
     cause = re.sub(r"\bnode_\w+", "l'entrée du nœud", cause)
     return PipelineRuntimeError(f"nœud '{node.id}' ({node.op}) : {cause or 'échec de l’opération'}")
 

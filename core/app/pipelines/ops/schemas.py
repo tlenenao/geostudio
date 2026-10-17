@@ -115,6 +115,15 @@ class WriterCollectionParams(BaseModel):
             "à `false` est rejetée (règle = nom de la colonne). Jamais écrites dans la cible."
         ),
     )
+    maxRejectRate: float | None = Field(
+        None,
+        ge=0,
+        le=1,
+        description=(
+            "Seuil de qualité : si la part de lignes rejetées dépasse cette valeur (0 à 1), "
+            "le run échoue et rien n'est écrit."
+        ),
+    )
 
     @model_validator(mode="after")
     def _keys_for_matching_modes(self) -> "WriterCollectionParams":
@@ -606,37 +615,42 @@ class TransformSortParams(BaseModel):
 
 
 class TransformValidateAttributesParams(BaseModel):
-    """Valide des attributs explicites (non-null et/ou unicité) et écrit le résultat booléen
-    dans une colonne dédiée par vérification demandée. Colonnes explicites uniquement — pas de
-    mode « toutes les colonnes automatiquement »."""
+    """Valide des attributs explicites et écrit un booléen par vérification demandée.
+    `nonNull` : toutes les colonnes non NULL. `notBlank` : non NULL et non vides après
+    suppression des espaces. `unique` : la combinaison est unique ; NULL si une partie de la
+    clé est NULL (indéterminé, jamais « unique »)."""
 
     nonNullColumns: list[str] = Field(default_factory=list)
-    nonNullResultColumn: str | None = None
+    nonNullResultColumn: OutputColumn | None = None
+    notBlankColumns: list[str] = Field(default_factory=list)
+    notBlankResultColumn: OutputColumn | None = None
     uniqueColumns: list[str] = Field(default_factory=list)
-    uniqueResultColumn: str | None = None
+    uniqueResultColumn: OutputColumn | None = None
 
     @model_validator(mode="after")
     def _at_least_one_check(self) -> "TransformValidateAttributesParams":
-        has_non_null = bool(self.nonNullColumns) and self.nonNullResultColumn is not None
-        has_unique = bool(self.uniqueColumns) and self.uniqueResultColumn is not None
-        if not has_non_null and not has_unique:
+        pairs = [
+            (self.nonNullColumns, self.nonNullResultColumn),
+            (self.notBlankColumns, self.notBlankResultColumn),
+            (self.uniqueColumns, self.uniqueResultColumn),
+        ]
+        if not any(cols and res is not None for cols, res in pairs):
             raise ValueError(
-                "transform.validateAttributes requires at least one check "
-                "(nonNullColumns+nonNullResultColumn or uniqueColumns+uniqueResultColumn)"
+                "transform.validateAttributes requires at least one check (colonnes + colonne "
+                "de résultat)"
             )
         return self
 
 
 class TransformDetectChangesParams(BaseModel):
-    """Compare l'entrée principale (état « avant ») à une collection ou un flux secondaire
-    (état « après ») sur des colonnes clés, et écrit le statut de chaque ligne
-    (inserted/deleted/updated/unchanged) — comparaison automatique de toutes les colonnes
-    communes, résolues à l'exécution. La sortie reprend le schéma de l'état « après » (valeurs
-    « avant » pour les lignes deleted) plus la colonne de statut."""
+    """Compare l'entrée principale (« avant ») à la seconde (« après ») sur `keyColumns`.
+    Statuts : inserted/deleted/updated/unchanged, et `invalid` pour une ligne dont une partie
+    de la clé est NULL (jamais rapprochable ; writer.collection la rejette en quarantaine).
+    Une clé dupliquée d'un côté fait échouer le nœud."""
 
     withCollectionId: str | None = Field(None, json_schema_extra={"format": "collection-id"})
-    keyColumns: list[str]
-    statusColumn: str
+    keyColumns: list[str] = Field(..., min_length=1)
+    statusColumn: OutputColumn
 
 
 class TransformMergeChildrenParams(BaseModel):

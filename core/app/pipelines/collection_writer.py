@@ -402,6 +402,23 @@ def write_rows(
     reserved = {info.pk_column, "tenant_id", *p.rejectWhenFalse}
     if p.statusColumn:
         reserved.add(p.statusColumn)
+    # AUD-080 : pré-contrôle de schéma — une colonne inconnue de la cible donnait un rejet
+    # `unknown_property` par ligne (ou un échec à la 1re ligne), jamais un message clair.
+    unknown = sorted(set(cols) - set(by_name) - reserved - {"geometry"})
+    if unknown:
+        raise PipelineRuntimeError(
+            f"writer.collection : colonne(s) absente(s) de la collection cible : {unknown} — "
+            "les retirer (transform.select) ou les ajouter à la collection"
+        )
+    missing = sorted(
+        c.name
+        for c in info.columns
+        if c.required and c.name not in cols and c.name not in (info.pk_column, "tenant_id")
+    )
+    if missing and mode not in ("delete", "update"):
+        raise PipelineRuntimeError(
+            f"writer.collection : colonne(s) obligatoire(s) absente(s) de l'entrée : {missing}"
+        )
 
     rejects: list[tuple] = []
     seen: set[tuple] = set()
@@ -437,6 +454,9 @@ def write_rows(
             failed = next((rc for rc in p.rejectWhenFalse if row.get(rc) is False), None)
             if failed:
                 reject(source, failed, f"règle de validation « {failed} » non satisfaite")
+                continue
+            if p.statusColumn and status == "invalid":  # detectChanges : clé NULL (AUD-080)
+                reject(source, "invalid_key", "clé de comparaison nulle (transform.detectChanges)")
                 continue
             for k in reserved:
                 row.pop(k, None)
@@ -495,14 +515,31 @@ def write_rows(
         if should_cancel is not None and should_cancel():
             raise PipelineCancelledError("run annulé")
 
+    max_rate = getattr(p, "maxRejectRate", None)
+    if max_rate is not None and n_in and res.rejected / n_in > max_rate:
+        raise PipelineRuntimeError(
+            f"writer.collection : taux de rejet {res.rejected / n_in:.0%} supérieur au seuil "
+            f"{max_rate:.0%} ({res.rejected}/{n_in}) — rien n'est écrit"
+        )
     if rejects:
         res.rejected_collection = _store_rejects(session, collection, rejects, run_id)
     else:
         qid = f"{collection.id}__rejected"[:63]
         if collections_repo.get_collection(session, tenant_id=tenant_id, collection_id=qid):
             _sync_quarantine_shares(session, collection, qid)
-    if res.inserted or res.deleted:
-        delta = res.inserted - res.deleted if mode in ("upsert", "update", "delete") else 0
+    if mode == "replace":
+        # AUD-088 F14 : le compteur du catalogue suivait upsert/update/delete seulement.
+        # Compte physique (la purge `replace` est bornée par la RLS du rédacteur).
+        t = quote_ident(session, info.table_name)
+        session.execute(
+            text(
+                f"UPDATE collections SET feature_count = (SELECT count(*) FROM public.{t}) "
+                "WHERE id = :i"
+            ),
+            {"i": collection.id},
+        )
+    elif res.inserted or res.deleted:
+        delta = res.inserted - res.deleted
         if delta:
             session.execute(
                 text(

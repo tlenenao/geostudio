@@ -690,16 +690,35 @@ def _compile_validate_attributes(
     input_view: str,
     join_view: str | None = None,
     input_srid: int | None = None,
+    input_columns: list[str] | None = None,
+    join_columns: list[str] | None = None,
 ) -> str:
     p = TransformValidateAttributesParams.model_validate(params)
+    outputs = [
+        r for r in (p.nonNullResultColumn, p.notBlankResultColumn, p.uniqueResultColumn) if r
+    ]
+    clash = [c for c in outputs if c in (input_columns or [])]
+    if clash or len(set(outputs)) != len(outputs):
+        raise PipelineRuntimeError(
+            f"transform.validateAttributes : colonne(s) de résultat en collision : "
+            f"{clash or outputs}"
+        )
     extra_cols = []
     if p.nonNullColumns and p.nonNullResultColumn:
         checks = " AND ".join(f"{_qi(c)} IS NOT NULL" for c in p.nonNullColumns)
         extra_cols.append(f"({checks}) AS {_qi(p.nonNullResultColumn)}")
+    if p.notBlankColumns and p.notBlankResultColumn:
+        checks = " AND ".join(
+            f"coalesce(trim(CAST({_qi(c)} AS VARCHAR)), '') <> ''" for c in p.notBlankColumns
+        )
+        extra_cols.append(f"({checks}) AS {_qi(p.notBlankResultColumn)}")
     if p.uniqueColumns and p.uniqueResultColumn:
         partition = ", ".join(_qi(c) for c in p.uniqueColumns)
+        any_null = " OR ".join(f"{_qi(c)} IS NULL" for c in p.uniqueColumns)
         extra_cols.append(
-            f"(COUNT(*) OVER (PARTITION BY {partition}) = 1) AS {_qi(p.uniqueResultColumn)}"
+            f"(CASE WHEN {any_null} THEN NULL "
+            f"ELSE COUNT(*) OVER (PARTITION BY {partition}) = 1 END) "
+            f"AS {_qi(p.uniqueResultColumn)}"
         )
     return f"SELECT *, {', '.join(extra_cols)} FROM {_qi(input_view)}"
 
@@ -743,6 +762,14 @@ def _compile_detect_changes(
     p = TransformDetectChangesParams.model_validate(params)
     assert join_view is not None, "transform.detectChanges requires join_view"
     assert input_columns is not None and join_columns is not None
+    if p.statusColumn in (*input_columns, *join_columns):
+        raise PipelineRuntimeError(
+            f"transform.detectChanges : colonne de statut {p.statusColumn!r} déjà présente"
+        )
+    keys = ", ".join(_qi(k) for k in p.keyColumns)
+    any_null = " OR ".join(f"{_qi(k)} IS NULL" for k in p.keyColumns)
+    null_t = " OR ".join(f"t.{_qi(k)} IS NULL" for k in p.keyColumns)
+    null_o = " OR ".join(f"o.{_qi(k)} IS NULL" for k in p.keyColumns)
     common_cols = [c for c in input_columns if c in join_columns and c not in p.keyColumns]
     key_join = " AND ".join(f"t.{_qi(k)} = o.{_qi(k)}" for k in p.keyColumns)
     if common_cols:
@@ -750,9 +777,13 @@ def _compile_detect_changes(
     else:
         diff_expr = "FALSE"
     # Sentinelles de présence : tester la clé elle-même est faux (une clé NULL ne joint
-    # jamais ; seule la 1re clé d'un jeu composite était testée — D13-02).
+    # jamais ; seule la 1re clé d'un jeu composite était testée — D13-02). Une clé NULL
+    # n'est jamais rapprochée : chaque côté sort seul en `invalid` (AUD-080), jamais
+    # `inserted` + `deleted`.
     status_expr = (
         "CASE "
+        f"WHEN (t.__gs_present AND ({null_t})) OR (o.__gs_present AND ({null_o})) "
+        "THEN 'invalid' "
         "WHEN t.__gs_present IS NULL THEN 'inserted' "
         "WHEN o.__gs_present IS NULL THEN 'deleted' "
         f"WHEN {diff_expr} THEN 'updated' "
@@ -767,10 +798,24 @@ def _compile_detect_changes(
         f"ELSE o.{_qi(c)} END AS {_qi(c)}"
         for c in join_columns
     )
+
+    def side(view: str) -> str:
+        # Clé dupliquée d'un côté : le FULL JOIN multiplierait les lignes en silence
+        # (AUD-080) — le nœud échoue. `__gs_dup` est référencé par le WHERE final pour
+        # que DuckDB ne l'élague pas.
+        return (
+            f"(SELECT *, TRUE AS __gs_present, "
+            f"CASE WHEN count(*) OVER (PARTITION BY {keys}) > 1 AND NOT ({any_null}) "
+            f"THEN error('transform.detectChanges : clé dupliquée') END AS __gs_dup "
+            f"FROM {_qi(view)})"
+        )
+
     return (
         f"SELECT {data_select}, ({status_expr}) AS {_qi(p.statusColumn)} "
-        f"FROM (SELECT *, TRUE AS __gs_present FROM {_qi(input_view)}) t "
-        f"FULL OUTER JOIN (SELECT *, TRUE AS __gs_present FROM {_qi(join_view)}) o ON {key_join}"
+        f"FROM {side(input_view)} t "
+        f"FULL OUTER JOIN {side(join_view)} o "
+        f"ON {key_join} AND NOT ({null_t}) AND NOT ({null_o}) "
+        f"WHERE coalesce(t.__gs_dup, o.__gs_dup) IS NULL"
     )
 
 

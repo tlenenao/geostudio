@@ -493,6 +493,7 @@ _BASE_OPERATIONS: dict[str, OperationContract] = {
         engine="duckdb",
         engine_license="MIT (DuckDB)",
         compile=_compiler._compile_validate_attributes,
+        needs_columns=True,
     ),
     "transform.sort": OperationContract(
         op="transform.sort",
