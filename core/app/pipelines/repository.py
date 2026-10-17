@@ -191,7 +191,12 @@ def mark_running(session: Session, *, run_id: str) -> bool:
         update(PipelineRun)
         .where(PipelineRun.id == run_id, PipelineRun.status.in_(("queued", "pending", "retrying")))
         .values(
-            status="running", started_at=_now(), finished_at=None, error=None, next_retry_at=None
+            status="running",
+            started_at=_now(),
+            heartbeat_at=None,  # AUD-026 : pas de battement périmé d'une tentative précédente
+            finished_at=None,
+            error=None,
+            next_retry_at=None,
         )
     )
     session.flush()
@@ -288,6 +293,24 @@ def mark_failed(session: Session, *, run_id: str, error: str) -> None:
     run.error = error
     session.flush()
     _emit_run_finished(session, run, previous=previous)
+
+
+def mark_failed_if_queued(session: Session, *, run_id: str, error: str) -> bool:
+    """Transition conditionnelle `queued|pending -> failed` (UPDATE ... WHERE statut) :
+    un run qu'un worker a déjà pris (`running`) n'est jamais écrasé (AUD-025)."""
+    result = session.execute(
+        update(PipelineRun)
+        .where(PipelineRun.id == run_id, PipelineRun.status.in_(("queued", "pending")))
+        .values(status="failed", finished_at=_now(), error=error)
+    )
+    session.flush()
+    if not result.rowcount:  # type: ignore[attr-defined]
+        return False
+    run = session.get(PipelineRun, run_id)
+    assert run is not None
+    session.refresh(run)
+    _emit_run_finished(session, run, previous="queued")
+    return True
 
 
 def mark_retrying(

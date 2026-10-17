@@ -200,12 +200,14 @@ def _heartbeat(session_factory, run_id: str) -> Iterator[None]:
     stop = threading.Event()
 
     def _beat() -> None:
-        while not stop.wait(_HEARTBEAT_SECONDS):
+        while True:  # premier battement dès le départ, puis un par période
             try:
                 with request_scoped_session(session_factory) as s:
                     pipelines_repo.touch_heartbeat(s, run_id=run_id)
             except Exception:
                 logger.warning("heartbeat run %s échoué", run_id, exc_info=True)
+            if stop.wait(_HEARTBEAT_SECONDS):
+                return
 
     threading.Thread(target=_beat, daemon=True, name=f"hb-{run_id}").start()
     try:
@@ -474,7 +476,12 @@ def run_pipeline_sweep_task(timestamp: int) -> None:
         overdue = pipelines_repo.requeue_overdue_retries(session)
         session.commit()
         for overdue_run_id, overdue_tenant_id in overdue:
-            run_pipeline_task.defer(run_id=overdue_run_id, tenant_id=overdue_tenant_id)
+            try:
+                run_pipeline_task.defer(run_id=overdue_run_id, tenant_id=overdue_tenant_id)
+            except Exception:  # le tick suivant reprendra la ligne (piège n°14)
+                logger.exception(
+                    "defer de reprise %s échoué, le balayage reprendra", overdue_run_id
+                )
         try:
             expired = checkpoints.purge_expired()
             if expired:  # plus de points de reprise : ne plus proposer « Reprendre »
@@ -519,7 +526,7 @@ def run_pipeline_sweep_task(timestamp: int) -> None:
             except Exception:
                 # AUD-025 : run non orphelin (sinon `pending` + 409 jusqu'au balayage).
                 logger.exception("defer du run planifié %s échoué", run.id)
-                pipelines_repo.mark_failed(
+                pipelines_repo.mark_failed_if_queued(
                     session,
                     run_id=run.id,
                     error="mise en file impossible : file de jobs indisponible",

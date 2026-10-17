@@ -342,3 +342,21 @@ def test_http_exception_from_run_service_is_not_swallowed_silently(db, monkeypat
         )
         assert n == 0 and t.last_error == "not allowed"
         assert s.scalars(select(FileTriggerSeen)).all() == []  # fichier repris au prochain passage
+
+
+def test_queue_unavailable_is_not_reported_as_a_trigger_config_error(db, monkeypatch):
+    """AUD-025 (M5) : un 503 de mise en file est transitoire, pas une config invalide."""
+    monkeypatch.setattr("app.jobs.defer.time.sleep", lambda _s: None)
+    tenant_id, user_id = _seed(db)
+    _pipeline(db, tenant_id, user_id)
+    now = datetime.now(UTC).replace(tzinfo=None)
+
+    def down(run_id, tn):
+        raise RuntimeError("down")
+
+    with db() as s:
+        t = s.get(FileTrigger, "t1")
+        n = triggers.poll_trigger(s, t, defer_task=down, lister=_lister([("in/a.csv", "e1", now)]))
+        assert n == 0
+        assert "mise en file impossible" in t.last_error
+        assert s.scalars(select(FileTriggerSeen)).all() == []  # repris au passage suivant

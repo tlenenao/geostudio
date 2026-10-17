@@ -85,7 +85,7 @@ def _defer_or_fail(
     try:
         defer_resilient(lambda: defer_task(run_id, tenant_id))
     except HTTPException:
-        pipelines_repo.mark_failed(
+        pipelines_repo.mark_failed_if_queued(
             session, run_id=run_id, error="mise en file impossible : file de jobs indisponible"
         )
         session.commit()
