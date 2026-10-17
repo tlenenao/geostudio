@@ -56,9 +56,21 @@ Obligatoires : `DATABASE_URL`, `CORE_SECRETS_MASTER_KEY`, `S3_ACCESS_KEY`, `S3_S
   autoporté restent propres au compose (la tâche de CSP dynamique ne fait rien sans ce volume).
 - En-têtes de sécurité (AUD-030) : nginx du shell pose HSTS, `X-Frame-Options: DENY` (sauf `/embed/`) et une
   CSP **statique** `shell.csp`, en `Report-Only` tant que `config.CORE_CSP_MODE` n'est pas `enforce`.
-  Avant d'enforcer, y ajouter l'origine du core et de Keycloak (`connect-src`) s'ils sont sur un autre
-  hôte que le shell, et les hôtes de fonds de carte (`img-src`). Pas de rate-limit au niveau Ingress
+  `connect-src` reçoit automatiquement les origines de `ingress.apiHost`, de `shell.env.VITE_CORE_URL` et
+  de l'autorité OIDC (`shell.env.VITE_OIDC_AUTHORITY`, sinon `config.CORE_OIDC_ISSUER`) ; avant
+  d'enforcer, ajouter les hôtes de fonds de carte (`img-src`). Pas de rate-limit au niveau Ingress
   (dépend du contrôleur) : le limiteur applicatif du cœur reste le seul.
+- Schéma des origines : sans `ingress.tlsSecretName`, le chart suppose que l'Ingress sert en **http**
+  (CORS `http://<host>`, `connect-src http://<apiHost>`). Si le TLS est terminé ailleurs (load balancer,
+  cert-manager hors chart), les origines dérivées sont fausses : fixer `config.CORE_CORS_ALLOWED_ORIGINS`
+  à `https://<host>` (et compléter `shell.csp` en conséquence).
+- Job de migration (`helm.sh/hook-delete-policy: before-hook-creation`) : le Job réussi reste dans le
+  namespace jusqu'à la montée de version suivante, qui le remplace ; `kubectl delete job
+  <release>-geostudio-migrations` est sans risque après succès. `helm uninstall` ne le supprime pas.
+- **Retour arrière** : `helm rollback` ne rejoue aucun hook et n'exécute **aucun** `alembic downgrade` ; le
+  schéma reste celui de la version la plus récente. Revenir à une image antérieure n'est sûr que si le
+  CHANGELOG ne signale pas de migration incompatible ; sinon restaurer la sauvegarde prise avant la
+  montée (même consigne que le runbook compose `2026-10-17-montee-de-version.md`).
 - `otel-lgtm` : `observability.existingClaim` pour garder métriques, logs et traces au redémarrage.
 
 ## Ce qui est vérifié, et par quoi

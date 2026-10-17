@@ -10,6 +10,13 @@ passer config.CORE_CSP_MODE à "enforce".
 {{- $mode := .Values.config.CORE_CSP_MODE | default "report-only" -}}
 {{- if not (has $mode (list "enforce" "report-only")) }}{{ fail "config.CORE_CSP_MODE : enforce ou report-only" }}{{ end -}}
 {{- $cspHeader := ternary "Content-Security-Policy" "Content-Security-Policy-Report-Only" (eq $mode "enforce") -}}
+{{- /* Le shell appelle le cœur (apiHost, VITE_CORE_URL) et l'autorité OIDC : origines distinctes de la sienne en Helm, ajoutées à connect-src. */ -}}
+{{- $origins := list -}}
+{{- if and .Values.ingress.enabled .Values.ingress.apiHost }}{{ $origins = append $origins (printf "%s://%s" (ternary "https" "http" (not (empty .Values.ingress.tlsSecretName))) .Values.ingress.apiHost) }}{{ end -}}
+{{- range $u := list (.Values.shell.env.VITE_CORE_URL | default "") (.Values.shell.env.VITE_OIDC_AUTHORITY | default .Values.config.CORE_OIDC_ISSUER | default "") }}
+{{- $p := urlParse $u }}{{ if and $p.scheme $p.host }}{{ $origins = append $origins (printf "%s://%s" $p.scheme $p.host) }}{{ end }}
+{{- end -}}
+{{- $csp := replace "connect-src 'self'" (join " " (prepend (uniq $origins) "connect-src 'self'")) .Values.shell.csp -}}
 {{- $common := printf "add_header X-Content-Type-Options nosniff always;\nadd_header Referrer-Policy strict-origin-when-cross-origin always;\nadd_header Permissions-Policy \"camera=(), microphone=(), payment=(), usb=()\" always;\nadd_header Strict-Transport-Security \"max-age=31536000\" always;\n" -}}
 apiVersion: v1
 kind: ConfigMap
@@ -21,8 +28,8 @@ data:
   security-headers.conf: |
     {{- $common | nindent 4 }}
     add_header X-Frame-Options DENY always;
-    add_header {{ $cspHeader }} "{{ .Values.shell.csp }}; frame-ancestors 'none'" always;
+    add_header {{ $cspHeader }} "{{ $csp }}; frame-ancestors 'none'" always;
   # /embed/ : chargé dans l'<iframe> d'un site tiers (GAP-19) — ni X-Frame-Options ni frame-ancestors.
   security-headers-embed.conf: |
     {{- $common | nindent 4 }}
-    add_header {{ $cspHeader }} "{{ .Values.shell.csp }}" always;
+    add_header {{ $cspHeader }} "{{ $csp }}" always;

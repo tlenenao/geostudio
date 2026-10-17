@@ -281,6 +281,22 @@ def test_cors_allows_the_shell_host_when_core_has_its_own_api_host():
     assert _rendered_env(render(), "core")[0]["CORE_CORS_ALLOWED_ORIGINS"] == ""
 
 
+def test_shell_csp_connect_src_allows_the_core_and_oidc_origins():
+    """Revue finale SP-L3 (M5) : `connect-src 'self'` seul bloquait, en mode
+    enforce, tout appel du shell au cœur (apiHost) et à Keycloak."""
+    docs = render(
+        "ingress.enabled=true",
+        "ingress.host=geo.example",
+        "ingress.apiHost=api.example",
+        "ingress.tlsSecretName=tls",
+        "config.CORE_OIDC_ISSUER=https://sso.example/realms/geostudio",
+    )
+    (cm,) = [d for d in docs if d["metadata"]["name"] == "rel-geostudio-shell-headers"]
+    for conf in cm["data"].values():
+        connect = re.search(r"connect-src ([^;]+);", conf).group(1).split()
+        assert {"'self'", "https://api.example", "https://sso.example"} <= set(connect), connect
+
+
 def _bytes(size: str) -> int:
     """'512MB', '2Gi', '2GB' -> octets (préfixes binaires dans les deux cas)."""
     m = re.fullmatch(r"(\d+)\s*([A-Za-z]*)", size.strip())
