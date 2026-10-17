@@ -10,9 +10,9 @@ File `dataexport` réutilisée (déjà câblée dans le worker : pas de nouvelle
 import logging
 import time
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.auth.dependency import is_read_only_mode
@@ -28,6 +28,10 @@ logger = logging.getLogger(__name__)
 MAX_JOB_ADDRESSES = 5000
 CHUNK = 100
 STALE_MINUTES = 5
+# AUD-156 : lots simultanés par utilisateur, et rétention des lots terminés
+# (les adresses sont une donnée personnelle potentielle).
+MAX_ACTIVE_JOBS_PER_USER = 3
+RETENTION_DAYS = 7
 
 
 def create_job(
@@ -44,6 +48,31 @@ def create_job(
     session.add(job)
     session.flush()
     return job
+
+
+def count_active_jobs(session: Session, *, tenant_id: str, user_id: str) -> int:
+    return (
+        session.scalar(
+            select(func.count())
+            .select_from(GeocodeJob)
+            .where(
+                GeocodeJob.tenant_id == tenant_id,
+                GeocodeJob.created_by == user_id,
+                GeocodeJob.status.in_(("pending", "running")),
+            )
+        )
+        or 0
+    )
+
+
+def purge_finished_jobs(session: Session, *, now: datetime) -> int:
+    result = session.execute(
+        delete(GeocodeJob).where(
+            GeocodeJob.status.in_(("succeeded", "failed")),
+            GeocodeJob.updated_at < now - timedelta(days=RETENTION_DAYS),
+        )
+    )
+    return result.rowcount or 0  # type: ignore[attr-defined]
 
 
 def get_job(session: Session, job_id: str, tenant_id: str) -> GeocodeJob | None:
@@ -84,6 +113,8 @@ def run_geocode_job(job_id: str, tenant_id: str) -> None:
             else:
                 raise RuntimeError("géocodeur occupé")
             done.extend(r.model_dump() for r in rows)
+            # ponytail: réécrit tout `results` à chaque tranche (O(n²) borné par
+            # MAX_JOB_ADDRESSES / CHUNK = 50 écritures) ; table de lignes si le plafond monte.
             with request_scoped_session(factory) as session:
                 session.execute(
                     update(GeocodeJob)
@@ -145,6 +176,9 @@ def sweep_geocode_jobs_task(timestamp: int) -> None:
         return
     with request_scoped_session(session_factory()) as session:
         stale = requeue_stale(session)
+        purged = purge_finished_jobs(session, now=_now())
+    if purged:
+        logger.info("geocode : %d lot(s) terminé(s) purgé(s)", purged)
     for job_id, tenant_id in stale:
         try:
             run_geocode_job.defer(job_id=job_id, tenant_id=tenant_id)
