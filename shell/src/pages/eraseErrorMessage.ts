@@ -8,6 +8,9 @@ export function eraseErrorMessage(error: unknown): string {
     if (error.status === 404) return t("compliance.eraseNotFound");
     if (error.status === 403) return t("compliance.eraseForbidden");
     if (error.status === 409) {
+      if (/confirmation username/i.test(error.detail ?? "")) {
+        return t("compliance.eraseConfirmMismatch");
+      }
       return /already erased/i.test(error.detail ?? "")
         ? t("compliance.eraseAlreadyErased")
         : t("compliance.eraseLastHolder");

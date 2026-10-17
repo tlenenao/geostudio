@@ -682,3 +682,18 @@ def test_concurrent_refreshes_call_the_provider_once(httpserver, pg_engine, monk
             if row is not None:
                 s.delete(row)
                 s.commit()
+
+
+def test_mongodb_filter_accepts_extended_json(mongo, conn, session, tenant, user):
+    # AUD-081 : {"$oid"} et {"$date"} deviennent des types BSON avant find().
+    _secret(session, tenant, user, "m", {"kind": "mongodb_uri",
+            "uri": "mongodb://u:pw@db.example:27018/shop"})  # fmt: skip
+    flt = {
+        "_id": {"$oid": "6500aaaaaaaaaaaaaaaaaaaa"},
+        "d": {"$gte": {"$date": "2024-01-01T00:00:00Z"}},
+    }
+    _read(dbio2.read_mongodb, conn, session, tenant, user, secretName="m",
+          collection="c", filter=flt)  # fmt: skip
+    got = mongo.instances[0].find_args[2]
+    assert got["_id"] == bson.ObjectId("6500aaaaaaaaaaaaaaaaaaaa")
+    assert isinstance(got["d"]["$gte"], dt.datetime)

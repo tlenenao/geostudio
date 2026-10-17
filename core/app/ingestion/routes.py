@@ -43,6 +43,7 @@ from app.ingestion.storage import (
 )
 from app.ingestion.tasks import run_ingestion_task
 from app.items.models import Item
+from app.jobs.defer import defer_resilient
 from app.quotas.service import check_quota_or_raise, enforce_storage_quota
 from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
@@ -72,7 +73,7 @@ def get_uploads_bucket() -> str:
 # est un changement de comportement distinct, à traiter séparément.
 def get_task_deferrer() -> Callable[[str, str], None]:
     def deferrer(job_id: str, tenant_id: str) -> None:
-        run_ingestion_task.defer(job_id=job_id, tenant_id=tenant_id)
+        defer_resilient(lambda: run_ingestion_task.defer(job_id=job_id, tenant_id=tenant_id))
 
     return deferrer
 
@@ -87,8 +88,12 @@ def presign_upload(
 ) -> PresignResponse:
     require_privilege(session, user, Privilege.DATA_MANAGE.value)
     ensure_uploads_bucket(s3, bucket, expire_days=7)
+    if body.size > max_upload_bytes():
+        raise HTTPException(status_code=413, detail="file too large")
     key = f"{user.tenant_id}/{uuid.uuid4().hex}-{body.filename}"
-    url = generate_presigned_put_url(s3, bucket=bucket, key=key, content_type=body.contentType)
+    url = generate_presigned_put_url(
+        s3, bucket=bucket, key=key, content_type=body.contentType, content_length=body.size
+    )
     return PresignResponse(uploadUrl=url, key=key)
 
 
@@ -200,7 +205,7 @@ def create_upload_job(
             action="write",
             item=get_access_facts(col),
             kind="collection",
-            actor_is_admin=user.is_admin,
+            actor_is_admin=user.acts_as_admin(),
         ):
             raise HTTPException(status_code=403, detail="write access required")
     # La clé est censée venir du présigné (/uploads/presign), qui la préfixe
@@ -247,7 +252,12 @@ def create_upload_job(
     # d'acceptation SP-6a). Commit explicite ici pour que la ligne soit
     # visible avant que la tâche n'existe.
     session.commit()
-    defer_task(job.id, user.tenant_id)
+    try:
+        defer_task(job.id, user.tenant_id)
+    except HTTPException:  # 503 : file indisponible, le job n'est pas laissé orphelin
+        repo.mark_enqueue_failed(session, job_id=job.id)
+        session.commit()
+        raise
     return IngestionJobCreated(jobId=job.id)
 
 

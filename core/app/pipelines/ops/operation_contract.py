@@ -57,6 +57,9 @@ class OperationContract:
     # `secret_resolver=`, `preview=` et `input_srid=` à `execute`. Les autres op `execute`
     # gardent leur signature (conn, *, input_view, view_name, params).
     needs_runtime_context: bool = False
+    # Contrôle borné exécuté par le runtime avant compilation (AUD-078) ; None = aucun.
+    # Signature : (conn, *, input_view, params) -> None, lève PipelineRuntimeError.
+    pre_check: Callable[..., None] | None = None
     # Piège Python latent : un `def` nu donné ici en défaut (au lieu de `None`)
     # deviendrait un attribut de classe et serait lié comme méthode (self/le
     # contrat injecté en premier argument), pas un simple callable — inoffensif

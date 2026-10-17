@@ -34,13 +34,11 @@ import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
 import { useUndoableDraft } from "../builder/useUndoableDraft";
 import { PipelineCanvas } from "../builder/pipeline/PipelineCanvas";
 import { PipelineNodeInspector } from "../builder/pipeline/PipelineNodeInspector";
-import {
-  PipelinePalette,
-  PIPELINE_OP_DND_TYPE,
-  PIPELINE_PALETTE_SEARCH_ID,
-} from "../builder/pipeline/PipelinePalette";
+import { PipelinePalette, PIPELINE_PALETTE_SEARCH_ID } from "../builder/pipeline/PipelinePalette";
+import { apiErrorMessage } from "../api/apiErrorMessage";
 import { PipelinePreviewPanel } from "../builder/pipeline/PipelinePreviewPanel";
 import { PipelineRunPanel } from "../builder/pipeline/PipelineRunPanel";
+import { LineagePanel } from "../builder/pipeline/LineagePanel";
 import { PipelineScheduleEditor } from "../builder/pipeline/PipelineScheduleEditor";
 import { PipelineWebhookTrigger } from "../builder/pipeline/PipelineWebhookTrigger";
 import { genNodeId, genNoteId, insertNodeOnEdge } from "../builder/pipeline/graphOps";
@@ -126,6 +124,7 @@ export function PipelineBuilderPage({
   const [selectedNodeId, setSelectedNodeId] = useUrlSyncedState<string>("node", null);
   const [latestRun, setLatestRun] = useState<PipelineRun | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [targetError, setTargetError] = useState<string | null>(null);
   const baseVersionRef = useRef<number | undefined>(undefined);
   const versionSeededRef = useRef(false);
   const [conflict, setConflict] = useState(false);
@@ -283,6 +282,15 @@ export function PipelineBuilderPage({
   const isDraftStale = configQuery.data !== undefined && configQuery.data !== draft;
   const validation = validatePipelineGraphLocally(draft.nodes, draft.edges, catalog);
   const valid = isPipelineValid(validation);
+  // AUD-087 : le nœud fautif du dernier run en échec porte son erreur sur le canevas.
+  // Calcul simple (pas de useMemo : on est après le retour anticipé `draft === null`).
+  const failedNodeId = latestRun?.status === "failed" ? latestRun.failedNodeId : null;
+  const nodeErrors = failedNodeId
+    ? {
+        ...validation.nodeErrors,
+        [failedNodeId]: [...(validation.nodeErrors[failedNodeId] ?? []), latestRun?.error ?? ""],
+      }
+    : validation.nodeErrors;
   const selectedNode = draft.nodes.find((n) => n.id === selectedNodeId) ?? null;
 
   function setNodes(nodes: PipelineNode[]) {
@@ -334,6 +342,22 @@ export function PipelineBuilderPage({
         ? { ...d, nodes: d.nodes.map((n) => (n.id === selectedNode.id ? { ...n, params } : n)) }
         : d,
     );
+  }
+  // AUD-088 F2 : la collection cible d'un writer.collection se crée depuis l'éditeur, au
+  // schéma du flux qui l'alimente.
+  async function onCreateTargetCollection() {
+    if (readOnly || !selectedNode || !client.createPipelineTargetCollection) return;
+    setTargetError(null);
+    try {
+      const { collectionId } = await client.createPipelineTargetCollection({
+        title: `${initialTitle ?? t("pipelineBuilder.defaultTitle")} — sortie`,
+        pipeline: currentDraft,
+        writerNodeId: selectedNode.id,
+      });
+      updateSelectedNodeParams({ ...selectedNode.params, collectionId });
+    } catch (e) {
+      setTargetError(apiErrorMessage(e, t("pipelineBuilder.createTargetCollectionFailed")));
+    }
   }
   function onInsertOnEdge(edgeId: string, op: string) {
     // Revue finale Vague C (point 2, D55) : `PipelineCanvas.tsx` (`InsertOnEdgeButton`)
@@ -431,15 +455,7 @@ export function PipelineBuilderPage({
   }
 
   return (
-    <div
-      className="-m-6 flex flex-1 flex-col overflow-hidden"
-      onDragOver={(e) => e.preventDefault()}
-      onDrop={(e) => {
-        const op = e.dataTransfer.getData(PIPELINE_OP_DND_TYPE);
-        if (!op) return;
-        onDropOnCanvas(op, { x: e.clientX, y: e.clientY });
-      }}
-    >
+    <div className="-m-6 flex flex-1 flex-col overflow-hidden">
       <TriptychLayout
         {...tabProps}
         browse={{
@@ -510,10 +526,11 @@ export function PipelineBuilderPage({
                   onNodesChange={setNodes}
                   onEdgesChange={setEdges}
                   onInsertOnEdge={onInsertOnEdge}
+                  onDropOp={onDropOnCanvas}
                   opsCatalog={catalog}
                   nodeStats={latestRun?.nodeStats}
                   runStatus={latestRun?.status}
-                  nodeErrors={validation.nodeErrors}
+                  nodeErrors={nodeErrors}
                   notes={draft.notes ?? []}
                   onNotesChange={setNotes}
                   readOnly={readOnly}
@@ -540,7 +557,26 @@ export function PipelineBuilderPage({
                     onChange={updateSelectedNodeParams}
                     readOnly={readOnly}
                   />
-                  {pk !== null && !readOnly && (
+                  {selectedNode.op === "writer.collection" &&
+                    !readOnly &&
+                    !selectedNode.params.collectionId &&
+                    client.createPipelineTargetCollection && (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void onCreateTargetCollection()}
+                        >
+                          {t("pipelineBuilder.createTargetCollection")}
+                        </Button>
+                        {targetError && (
+                          <p role="alert" className="text-xs text-danger">
+                            {targetError}
+                          </p>
+                        )}
+                      </>
+                    )}
+                  {!readOnly && (
                     <PipelinePreviewPanel
                       pipelineId={pk}
                       nodeId={selectedNode.id}
@@ -564,6 +600,7 @@ export function PipelineBuilderPage({
                     // jamais fausse après une sauvegarde (le refetch renvoie un
                     // nouvel objet) — revue finale Vague B, I4.
                     totalNodes={hasUnsavedChanges ? undefined : draft.nodes.length}
+                    hasUnsavedChanges={hasUnsavedChanges}
                   />
                 </>
               )}
@@ -576,6 +613,7 @@ export function PipelineBuilderPage({
                     value={draft.refreshPolicy ?? null}
                     onChange={setRefreshPolicy}
                     readOnly={readOnly}
+                    itemId={pk}
                   />
                   <PipelineWebhookTrigger pipelineId={pk} />
                 </>
@@ -593,6 +631,11 @@ export function PipelineBuilderPage({
                       baseVersionRef.current = restored.baseVersion;
                     }}
                   />
+                </div>
+              )}
+              {pk !== null && (
+                <div className="mt-3">
+                  <LineagePanel itemId={pk} />
                 </div>
               )}
               <div className="mt-3 flex flex-col gap-2 border-t border-rule pt-3">

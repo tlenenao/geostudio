@@ -3,16 +3,22 @@ import contextlib
 import os
 import re
 import time
+import tomllib
 from collections.abc import Iterator
 from http import HTTPStatus
+from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, Response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.openapi.utils import get_openapi
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.types import ASGIApp, Receive, Scope, Send
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app import db, observability
@@ -74,9 +80,10 @@ from app.public import routes as public_routes
 from app.public_submit import routes as public_submit_routes
 from app.quality import routes as quality_routes
 from app.quotas import routes as quotas_routes
-from app.quotas.service import QuotaExceededError
+from app.quotas.service import QuotaExceededError, validate_quota_settings
 from app.raster import routes as raster_routes
 from app.ratelimit.limiter import PgRateLimiter, caller_key, make_rate_limiter, route_group
+from app.records import routes as records_routes
 from app.relations import routes as relations_routes
 from app.relations.service import RelationHooks
 from app.reports import routes as reports_routes
@@ -96,6 +103,13 @@ from app.xlsform import routes as xlsform_routes
 
 MAX_CONFIG_BODY_BYTES = 5 * 1024 * 1024
 _CONFIG_WRITE_PATH_RE = re.compile(r"^/v1/configs(/[^/]+){0,2}$")
+_PUBLIC_SUBMIT_PATH_RE = re.compile(r"^/v1/public/submit/[^/]+$")
+# AUD-153 : pièce jointe (25 Mo) + charge GeoJSON (64 Ko) + enveloppe multipart.
+MAX_PUBLIC_SUBMIT_BODY_BYTES = 26 * 1024 * 1024
+_BODY_LIMITS: list[tuple[re.Pattern[str], int, str]] = [
+    (_CONFIG_WRITE_PATH_RE, MAX_CONFIG_BODY_BYTES, "config"),
+    (_PUBLIC_SUBMIT_PATH_RE, MAX_PUBLIC_SUBMIT_BODY_BYTES, "submission"),
+]
 _AGGREGATE_PATH_RE = re.compile(r"^/v1/collections/[^/]+/aggregate$")
 _EXPORT_PATH_RE = re.compile(
     r"^/v1/(collections/[^/]+|datasets/[^/]+/arcgis)/export(/items)?$"
@@ -153,12 +167,83 @@ def trusted_proxy_hosts() -> str:
     )
 
 
+class _ListedOriginsCORS:
+    """CORS complet pour les seules origines listées ; toute autre requête
+    traverse intacte (CORSMiddleware répondrait 400 au préflight d'une app
+    exportée, servi par `appexport_cors` avec `*`)."""
+
+    def __init__(self, app: ASGIApp, origins: list[str]) -> None:
+        self.app = app
+        self.origins = {o.encode() for o in origins}
+        self.cors = CORSMiddleware(
+            app,
+            allow_origins=origins,
+            allow_methods=["*"],
+            allow_headers=["*"],
+            expose_headers=[
+                "ETag",
+                "Retry-After",
+                "Content-Disposition",
+                "X-Tile-Aggregated",
+                "X-Tile-Truncated",
+                "X-Request-ID",
+            ],
+        )
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        origin = (
+            dict(scope.get("headers") or []).get(b"origin") if scope["type"] == "http" else None
+        )
+        target = self.cors if origin in self.origins else self.app
+        await target(scope, receive, send)
+
+
+def _core_version() -> str:
+    """Version unique = pyproject.toml (copié en /app dans l'image). importlib.metadata
+    ne marche pas : le projet n'est pas installé comme paquet (uv --no-emit-project)."""
+    try:
+        path = Path(__file__).resolve().parent.parent / "pyproject.toml"
+        return tomllib.loads(path.read_text())["project"]["version"]
+    except (OSError, KeyError, tomllib.TOMLDecodeError):
+        return "0.0.0"
+
+
+API_DESCRIPTION = """\
+API du cœur GeoStudio (Apache-2.0).
+
+## Authentification
+Jeton `Authorization: Bearer <jeton>` : un jeton OIDC émis par Keycloak, ou une clé
+d'API de service `gsk_…` (ADR 0016). Les routes de lecture publiques (catalogue public,
+OGC API, STAC, DCAT, Records) acceptent aussi un appel anonyme ; elles ne servent alors
+que le contenu public.
+
+## Conventions
+- Toutes les routes métier sont sous `/v1` ; `/health` et `/mcp` sont hors version.
+- Pagination : `limit`/`offset` (ou `page`/`pageSize` sur le catalogue), liens `next`/`prev`.
+- Erreurs au format RFC 7807 (`application/problem+json`).
+- Concurrence optimiste : `If-Match` sur les écritures de configuration et d'entités.
+
+## Standards ouverts
+OGC API Features (Parts 1-4) sous `/v1/collections`, OGC API Records sous `/v1/records`,
+STAC sous `/v1/stac`, DCAT-AP sous `/v1/dcat`, WFS/WMS/WMTS et OGC API Tiles sous `/v1/ows`
+quand l'instance les active.
+"""
+
+
+def _tag_for(path: str) -> str:
+    parts = [p for p in path.split("/") if p]
+    if parts and parts[0] == "v1":
+        parts = parts[1:]
+    return parts[0] if parts and not parts[0].startswith("{") else "racine"
+
+
 def create_app() -> FastAPI:
     observability.setup()
     secrets_crypto.load_master_key()  # échec rapide si absente/mal formée (design SP-15e §4/§8)
     reject_mock_outside_development()  # échec rapide si mock hors dev (design SP-26 §3.1)
     require_public_s3_endpoint()  # REV-315 : liens présignés injoignables sinon
     reject_admin_tools_without_secret()  # échec rapide si gate admin sans secret
+    validate_quota_settings()  # AUD-132 : « 10GB » = 500 à l'usage sinon
     database_url = os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:")
     engine = make_engine(database_url)
     observability.instrument_engine(engine)
@@ -181,7 +266,53 @@ def create_app() -> FastAPI:
             async with mcp_server.session_manager.run():
                 yield
 
-    app = FastAPI(title="GeoStudio Builder Service", version="0.1.0", lifespan=lifespan)
+    # AUD-132 : version réelle (tag déployé) dans /v1/me et le pied de page.
+    version = os.environ.get("GEOSTUDIO_VERSION", "").removeprefix("v") or "dev"
+    app = FastAPI(
+        title="GeoStudio Builder Service",
+        version=version,
+        description=API_DESCRIPTION,
+        lifespan=lifespan,
+        docs_url=None,
+    )
+
+    def _openapi() -> dict:
+        """AUD-046 : contrat versionné (tag déployé, sinon pyproject.toml — jamais « dev »),
+        schéma Bearer déclaré, un tag par opération."""
+        if app.openapi_schema:
+            return app.openapi_schema
+        schema = get_openapi(
+            title=app.title,
+            version=version if version != "dev" else _core_version(),
+            description=app.description,
+            routes=app.routes,
+            openapi_version=app.openapi_version,
+            tags=app.openapi_tags,
+            servers=app.servers,
+            webhooks=app.webhooks.routes,
+            separate_input_output_schemas=app.separate_input_output_schemas,
+        )
+        schema.setdefault("components", {}).setdefault("securitySchemes", {})["bearerAuth"] = {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT OIDC ou clé d'API gsk_",
+        }
+        schema["security"] = [{"bearerAuth": []}, {}]  # {} = appel anonyme admis (routes publiques)
+        for path, ops in schema.get("paths", {}).items():
+            for op in ops.values():
+                if isinstance(op, dict) and not op.get("tags"):
+                    op["tags"] = [_tag_for(path)]
+        app.openapi_schema = schema
+        return schema
+
+    app.openapi = _openapi  # type: ignore[method-assign]
+
+    # AUD-135 : schéma chargé en relatif — derrière Traefik (`/api` retiré),
+    # l'URL absolue `/openapi.json` tombait sur le shell.
+    @app.get("/docs", include_in_schema=False)
+    def _swagger_ui() -> HTMLResponse:
+        return get_swagger_ui_html(openapi_url="openapi.json", title=app.title)
+
     observability.instrument_app(app)
 
     @app.exception_handler(ValidationHTTPException)
@@ -237,6 +368,8 @@ def create_app() -> FastAPI:
                 "status": exc.status_code,
                 "detail": exc.detail if isinstance(exc.detail, str) else "request failed",
             },
+            # AUD-084 : les en-têtes de l'exception (Retry-After, WWW-Authenticate…) survivent.
+            headers=getattr(exc, "headers", None),
         )
 
     @app.exception_handler(QuotaExceededError)
@@ -274,14 +407,19 @@ def create_app() -> FastAPI:
         import logging
 
         logging.getLogger("app.errors").exception("unhandled exception on %s", request.url.path)
+        # Rendu par ServerErrorMiddleware, hors de RequestIdMiddleware : l'en-tête
+        # est reposé ici, et l'identifiant donné dans le corps pour le support.
+        request_id = observability.current_request_id()
         return JSONResponse(
             status_code=500,
             media_type="application/problem+json",
+            headers={"X-Request-ID": request_id} if request_id else None,
             content={
                 "type": "about:blank",
                 "title": HTTPStatus.INTERNAL_SERVER_ERROR.phrase,
                 "status": 500,
                 "detail": "internal server error",
+                "requestId": request_id,
             },
         )
 
@@ -308,20 +446,25 @@ def create_app() -> FastAPI:
         return await call_next(request)
 
     @app.middleware("http")
-    async def config_body_limit(request: Request, call_next):
+    async def body_limit(request: Request, call_next):
         # P09.07 (t02-001) : une config JSON n'a aucune raison de dépasser
         # quelques Mo ; sans plafond, un créateur sature la base (une révision
-        # par écriture), la mémoire d'uvicorn et l'historique. Rejet AVANT
+        # par écriture), la mémoire d'uvicorn et l'historique. AUD-153 : même
+        # garde sur la soumission publique anonyme (multipart). Rejet AVANT
         # lecture du corps, sur Content-Length (411 si absent : un corps
         # chunked contournerait le plafond).
-        if request.method in {"POST", "PUT"} and _CONFIG_WRITE_PATH_RE.match(request.url.path):
+        if request.method not in {"POST", "PUT"}:
+            return await call_next(request)
+        for pattern, max_bytes, label in _BODY_LIMITS:
+            if not pattern.match(request.url.path):
+                continue
             length = request.headers.get("content-length")
             if length is None or not length.isdigit():
                 status, detail = 411, "Content-Length required"
-            elif int(length) > MAX_CONFIG_BODY_BYTES:
-                status, detail = 413, f"config too large (max {MAX_CONFIG_BODY_BYTES} bytes)"
+            elif int(length) > max_bytes:
+                status, detail = 413, f"{label} too large (max {max_bytes} bytes)"
             else:
-                return await call_next(request)
+                break
             return JSONResponse(
                 status_code=status,
                 media_type="application/problem+json",
@@ -439,6 +582,7 @@ def create_app() -> FastAPI:
     v1_router.include_router(ingestion_routes.router)
     v1_router.include_router(stac_routes.router)
     v1_router.include_router(dcat_routes.router)
+    v1_router.include_router(records_routes.router)
     v1_router.include_router(harvest_routes.router)
     v1_router.include_router(alerts_routes.router)
     v1_router.include_router(webhooks_routes.router)  # ARC4-F6
@@ -460,6 +604,7 @@ def create_app() -> FastAPI:
         v1_router.include_router(export_routes.router)
     if is_appexport_enabled():
         v1_router.include_router(appexport_routes.router)
+    app.state.ogc_tiles_enabled = ows_routes.is_ows_enabled()  # AUD-042 : /conformance
     if ows_routes.is_ows_enabled():  # ARC-11 : WFS + OGC API Tiles (ADR 0018)
         v1_router.include_router(ows_routes.router)
     if wms_routes.is_wms_enabled():  # ARC-20 : WMS 1.3.0 + WMTS 1.0.0 rendus par le cœur (ADR 0020)
@@ -602,9 +747,19 @@ def create_app() -> FastAPI:
     # de son utilité pour les appelants anonymes. REV-299a : X-Forwarded-For
     # n'est honoré QUE depuis les proxys de confiance (CORE_TRUSTED_PROXIES,
     # défaut : loopback + RFC 1918, soit le sous-réseau Docker de Traefik) —
-    # « * » le laissait forger par tout pair atteignant core:8000, donc
+    # « * » le laissait forger par tout pair atteignant core:8200, donc
     # contourner les budgets par IP (/share-links, /embed, anonymes).
     app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=trusted_proxy_hosts())
+    # Ajouté en dernier = le plus externe : les 403/411/413/429 des middlewares
+    # ci-dessus portent aussi X-Request-ID (AUD-040).
+    app.add_middleware(observability.RequestIdMiddleware)
+    # AUD-132 : démarrage rapide (shell :8300 → cœur :8200 cross-origin).
+    # Le plus externe : les erreurs portent aussi les en-têtes CORS.
+    dev_origins = [
+        o.strip() for o in os.environ.get("CORE_CORS_ALLOWED_ORIGINS", "").split(",") if o.strip()
+    ]
+    if dev_origins:
+        app.add_middleware(_ListedOriginsCORS, origins=dev_origins)
 
     return app
 

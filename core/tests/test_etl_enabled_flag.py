@@ -57,6 +57,7 @@ def test_instance_reports_etl_disabled_by_default(env):
     assert response.status_code == 200
     assert response.json() == {
         "readOnly": False,
+        "externalBasemapsEnabled": True,
         "etlEnabled": False,
         "exportEnabled": False,
         "appExportEnabled": False,
@@ -77,6 +78,7 @@ def test_instance_reports_etl_enabled(env, monkeypatch):
     assert response.status_code == 200
     assert response.json() == {
         "readOnly": False,
+        "externalBasemapsEnabled": True,
         "etlEnabled": True,
         "exportEnabled": False,
         "appExportEnabled": False,

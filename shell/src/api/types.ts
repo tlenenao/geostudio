@@ -53,6 +53,20 @@ export type Impact = {
   /** Dépendants que l'utilisateur ne peut pas lire : comptés, jamais nommés. */
   hiddenCount: number;
 };
+/** AUD-086 : miroir de `LineageRead` (core/app/lineage/routes.py). */
+export type LineageNode = {
+  type: "item" | "collection";
+  id: string;
+  title: string;
+  resourceType: string;
+  direction: "upstream" | "downstream";
+};
+export type Lineage = {
+  target: Impact["target"];
+  nodes: LineageNode[];
+  edges: { from: ImpactTarget; to: ImpactTarget }[];
+  hiddenCount: number;
+};
 
 export type Item = {
   pk: string;
@@ -103,6 +117,7 @@ export type MetadataCatalog = {
   licenses: LicenseCatalogEntry[];
   frequencies: FrequencyCatalogEntry[];
   languages: LanguageCatalogEntry[];
+  inspireThemes?: { id: string; label: string; uri: string }[];
 };
 
 export type RoleSummary = {
@@ -196,6 +211,9 @@ export type ApiKeySummary = {
   expiresAt: string;
   revokedAt: string | null;
   lastUsedAt: string | null;
+  /** AUD-091 : null = privilèges du créateur. */
+  scopes?: string[] | null;
+  readOnly?: boolean;
 };
 /** Seule réponse qui porte le secret (`token`), affiché une seule fois. */
 export type ApiKeyCreated = ApiKeySummary & { token: string };
@@ -271,6 +289,9 @@ export type InstanceInfo = {
   rasterEnabled: boolean;
   routingEnabled: boolean;
   experimentalOpsEnabled: boolean;
+  /** AUD-122 : fonds de carte tiers proposés. Requis (parité `MeCapabilities`), mais le
+   * shell lit `!== false` : un cœur antérieur qui ne l'envoie pas garde les fonds tiers. */
+  externalBasemapsEnabled: boolean;
 };
 
 export type ProbeStatus = { ok: boolean; error?: string };
@@ -794,7 +815,7 @@ export interface ItemClient {
     q?: string;
   }): Promise<{ users: UserSummary[]; total: number }>;
   updateUserRole(id: string, roleId: string): Promise<UserSummary>;
-  eraseUser(userId: string): Promise<void>;
+  eraseUser(userId: string, confirmUsername: string): Promise<void>;
   requestTenantPurge(tenantId: string, confirmSlug: string): Promise<{ jobId: string }>;
   getPurgeStatus(purgeId: string): Promise<PurgeReceipt | null>;
   listNotifications(params: {
@@ -809,7 +830,11 @@ export interface ItemClient {
     value: NotificationPreferenceValue,
   ): Promise<NotificationPreferenceValue>;
   listApiKeys(): Promise<ApiKeySummary[]>;
-  createApiKey(params: { name: string; expiresInDays: number }): Promise<ApiKeyCreated>;
+  createApiKey(params: {
+    name: string;
+    expiresInDays: number;
+    readOnly?: boolean;
+  }): Promise<ApiKeyCreated>;
   revokeApiKey(id: string): Promise<ApiKeySummary>;
   listUsageTasks(params: {
     page: number;
@@ -849,6 +874,8 @@ export interface ItemClient {
     owner: string;
     templateId?: string;
     slug?: string;
+    /** AUD-022 : slug de source du gabarit → id de collection réelle. */
+    bindings?: Record<string, string>;
   }): Promise<Item>;
   updateItem(pk: string, patch: UpdatePatch): Promise<Item>;
   uploadThumbnail(pk: string, file: File): Promise<void>;
@@ -908,6 +935,8 @@ export interface ItemClient {
   deleteCollection(id: string): Promise<void>;
   /** ARC4-F15 : dépendants (visibles) d'un item/d'une collection + compte des masqués. */
   getImpact(target: ImpactTarget): Promise<Impact>;
+  /** AUD-086 : sources (amont) et consommateurs (aval) visibles d'un item. */
+  getLineage(itemId: string): Promise<Lineage>;
   listHarvestSources(): Promise<HarvestSource[]>;
   createHarvestSource(input: HarvestSourceCreateInput): Promise<HarvestSource>;
   updateHarvestSource(id: string, patch: HarvestSourcePatchInput): Promise<HarvestSource>;
@@ -948,7 +977,11 @@ export interface ItemClient {
   getPipelineConfig(pk: string): Promise<PipelinePayload>;
   savePipelineConfig(pk: string, payload: PipelinePayload): Promise<number | undefined>;
   getPipelineOps(): Promise<PipelineOpsCatalog>;
-  getPipelineNextRun(cron: string): Promise<{ nextRun: string }>;
+  getPipelineNextRun(
+    cron: string,
+    tz?: string,
+    itemId?: string,
+  ): Promise<{ nextRun: string; scheduleSuspended?: boolean }>;
   runPipeline(pk: string, params?: Record<string, unknown>): Promise<{ runId: string }>;
   getPipelineRuns(pk: string, params?: PageParams): Promise<PipelineRun[]>;
   // t03b-009 : absent côté sidecar desktop / export statique (pas d'annulation).
@@ -959,10 +992,16 @@ export interface ItemClient {
   createPipelineWebhookToken(pk: string): Promise<{ id: string; token: string; createdAt: string }>;
   revokePipelineWebhookToken(pk: string, tokenId: string): Promise<void>;
   previewPipeline(
-    pk: string,
+    pk: string | null,
     upToNodeId: string,
     draft?: PipelinePayload,
   ): Promise<Record<string, unknown>[]>;
+  // AUD-088 F2 : collection vide au schéma du flux d'un writer.collection (cœur seulement).
+  createPipelineTargetCollection?(input: {
+    title: string;
+    pipeline: PipelinePayload;
+    writerNodeId: string;
+  }): Promise<{ collectionId: string }>;
   createAlertRuleItem(input: {
     title: string;
     owner: string;
@@ -1028,7 +1067,8 @@ export interface ItemClient {
   presignAttachmentUpload(
     collectionId: string,
     fid: string,
-    input: { fieldKey: string; filename: string; contentType: string },
+    // AUD-090 : `size` (= file.size) est signé dans l'URL, S3 refuse toute autre taille.
+    input: { fieldKey: string; filename: string; contentType: string; size: number },
   ): Promise<{ uploadUrl: string; key: string }>;
   confirmAttachmentUpload(
     collectionId: string,
@@ -1098,7 +1138,11 @@ export interface ItemClient {
     geometry: unknown;
     etag: string | null;
   }>;
-  presignUpload(filename: string, contentType: string): Promise<{ uploadUrl: string; key: string }>;
+  presignUpload(
+    filename: string,
+    contentType: string,
+    size: number,
+  ): Promise<{ uploadUrl: string; key: string }>;
   uploadToPresignedUrl(url: string, file: File): Promise<void>;
   inspectUpload(input: { key: string; filename: string; layerName?: string }): Promise<{
     layers: { name: string; featureCount: number; geometryType: string }[];
@@ -1171,6 +1215,7 @@ export interface ItemClient {
   presignTerrain3DUpload(
     filename: string,
     contentType: string,
+    size: number,
   ): Promise<{ uploadUrl: string; key: string }>;
   createTerrain3DUpload(input: {
     key: string;
@@ -1187,6 +1232,7 @@ export interface ItemClient {
   presignRasterUpload(
     filename: string,
     contentType: string,
+    size: number,
   ): Promise<{ uploadUrl: string; key: string }>;
   createRasterUpload(input: {
     key: string;
@@ -1456,6 +1502,8 @@ export type CollectionAdmin = {
   version: string;
   temporalStart: string | null;
   temporalEnd: string | null;
+  keywords?: string[];
+  inspireTheme?: string;
 };
 
 export type CandidateTable =
@@ -1492,10 +1540,12 @@ export type CollectionPatchInput = {
   version?: string;
   temporalStart?: string | null;
   temporalEnd?: string | null;
+  keywords?: string[];
+  inspireTheme?: string;
 };
 
 export type HarvestSourceType =
-  "stac" | "arcgis" | "wms" | "wfs" | "wmts" | "csw" | "ogc-records" | "ckan";
+  "stac" | "arcgis" | "wms" | "wfs" | "wmts" | "csw" | "ogc-records" | "ckan" | "udata";
 export type HarvestSourceMode = "reference" | "copy";
 export type HarvestSourceStatus = "running" | "ok" | "error" | null;
 
@@ -1641,6 +1691,8 @@ export type PipelineEdge = {
 export type PipelineRefreshPolicy = {
   enabled: boolean;
   cron: string;
+  // AUD-084 : fuseau IANA dans lequel le cron est évalué (défaut serveur : UTC).
+  timezone?: string;
 };
 
 export type PipelineCanvasNote = {
@@ -1807,6 +1859,8 @@ export type PipelineRun = {
   nextRetryAt?: string | null;
   resumeOf?: string | null;
   resumable?: boolean;
+  // AUD-087 : nœud fautif d'un run en échec, quand il est connu.
+  failedNodeId?: string | null;
 };
 
 export type PipelineParameter = {

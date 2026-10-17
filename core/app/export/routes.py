@@ -26,6 +26,7 @@ from app.export.jobs import render_export_task
 from app.ingestion.routes import get_s3_client
 from app.ingestion.storage import generate_presigned_get_url
 from app.items import repository as items_repo
+from app.jobs.defer import defer_resilient
 from app.roles.guards import has_privilege
 from app.roles.privileges import Privilege
 from app.sharing.authorization import can
@@ -69,7 +70,7 @@ def get_exports_bucket() -> str:
 
 def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests
     def deferrer(job_id: str, tenant_id: str) -> None:
-        render_export_task.defer(job_id=job_id, tenant_id=tenant_id)
+        defer_resilient(lambda: render_export_task.defer(job_id=job_id, tenant_id=tenant_id))
 
     return deferrer
 
@@ -115,7 +116,12 @@ def create_export_route(
     )
     # Commit avant de déférer : même raison que run_pipeline_route.
     session.commit()
-    defer_task(job.id, user.tenant_id)
+    try:
+        defer_task(job.id, user.tenant_id)
+    except HTTPException:  # 503 : file indisponible, le job n'est pas laissé orphelin
+        export_repo.mark_enqueue_failed(session, job_id=job.id)
+        session.commit()
+        raise
     return CreateExportResponse(jobId=job.id)
 
 

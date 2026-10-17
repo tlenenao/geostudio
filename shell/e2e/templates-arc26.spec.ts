@@ -3,7 +3,7 @@
 // passe l'audit axe (critical/serious) ; Swipe et galerie de fonds sont pilotables.
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { mockCore } from "./mocks";
+import { bindTemplateSources, mockCore } from "./mocks";
 
 const TEMPLATES: Array<{ id: string; kind: "app" | "dashboard"; title: string }> = [
   { id: "tableau-de-bord-territorial", kind: "dashboard", title: "Tableau de bord territorial" },
@@ -22,6 +22,7 @@ async function createFromTemplate(page: Page, id: string, kind: string) {
   const dialog = page.getByRole("dialog", { name: "Nouvel élément" });
   await dialog.getByLabel("Type").selectOption(kind);
   await dialog.getByLabel("Modèle").selectOption(id);
+  await bindTemplateSources(dialog);
   await dialog.getByLabel("Titre").fill("Depuis gabarit");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);

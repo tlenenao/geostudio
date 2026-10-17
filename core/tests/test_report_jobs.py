@@ -18,6 +18,7 @@ from app.db import init_db, make_engine, make_session_factory
 from app.export import repository as export_repo
 from app.items import repository as items_repo
 from app.items.models import Item
+from app.job_errors import INTERNAL_ERROR_MESSAGE
 from app.notifications import repository as notifications_repo
 from app.notifications.models import Notification
 from app.reports import jobs as report_jobs
@@ -478,7 +479,7 @@ def test_trigger_audits_unexpected_error_raised_inside_the_loop_body(monkeypatch
         )
         assert len(rows) == 1
         assert rows[0].payload["success"] is False
-        assert rows[0].payload["error"] == "erreur interne : bookmark illisible"
+        assert rows[0].payload["error"] == INTERNAL_ERROR_MESSAGE
 
 
 def test_notify_sends_webhook_with_result_url_and_marks_notified(monkeypatch):
@@ -693,7 +694,7 @@ def test_notify_marks_notified_when_channel_raises_a_non_notify_error(monkeypatc
         assert len(audit_rows) == 1
         assert audit_rows[0].payload["success"] is False
         assert audit_rows[0].payload["channel"] is None
-        assert "clé maître de secrets absente" in audit_rows[0].payload["error"]
+        assert audit_rows[0].payload["error"] == INTERNAL_ERROR_MESSAGE
 
 
 def test_notify_marks_notified_when_presigned_url_raises(monkeypatch):

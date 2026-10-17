@@ -1,0 +1,43 @@
+{{- /*
+AUD-033 : migrations en hook pré-install/pré-upgrade, une seule fois par
+release, AVANT que les nouveaux pods ne démarrent — plus d'`alembic upgrade`
+concurrent dans chaque réplica de core pendant un rolling update. Le hook
+s'exécute avant la création du ConfigMap : env uniquement depuis le Secret
+(alembic/env.py ne lit que DATABASE_URL et CORE_MIGRATION_DATABASE_URL —
+rejoué ainsi, env vide hors ces variables, contre une base neuve).
+`helm upgrade --no-hooks` saute donc les migrations.
+*/ -}}
+{{- $fn := include "geostudio.fullname" . -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $fn }}-migrations
+  labels:
+    {{- include "geostudio.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: {{ .Values.migrations.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "geostudio.selector" (dict "root" . "component" "migrations") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: migrations
+          image: {{ include "geostudio.image" (dict "root" . "name" "core") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["alembic", "upgrade", "head"]
+          env:
+            {{- include "geostudio.secretEnv" (dict "root" . "optional" false "names" (list "DATABASE_URL")) | nindent 12 }}
+            {{- include "geostudio.secretEnv" (dict "root" . "optional" true "names" (list "CORE_MIGRATION_DATABASE_URL")) | nindent 12 }}
+          resources: {{ toYaml .Values.core.resources | nindent 12 }}
+          securityContext:
+            {{- include "geostudio.securityContext" (dict "uid" .Values.core.podSecurityUid) | nindent 12 }}

@@ -60,8 +60,9 @@ it("REV-360 : erase user demande une confirmation avant l'appel", async () => {
     }),
   );
   wrap(<ComplianceAdminPage />);
-  const input = (await screen.findAllByRole("textbox"))[0];
+  const [input, confirm] = await screen.findAllByRole("textbox");
   await userEvent.type(input, "u42");
+  await userEvent.type(confirm, "u42-name"); // AUD-094 : nom d'utilisateur de confirmation
   await userEvent.click(screen.getByRole("button", { name: /anonymiser ce compte/i }));
   await new Promise((r) => setTimeout(r, 100));
   expect(called).toBe(false);

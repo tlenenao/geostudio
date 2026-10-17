@@ -2,11 +2,16 @@
 """Jeton d'export éphémère (SP-17a) : permet au worker Playwright de
 naviguer la page runtime avec les droits réels de l'utilisateur qui a
 demandé l'export, sans compte de service à droits larges. Révocation par
-TTL court uniquement (~2 min) — pas de suivi « déjà consommé » : aucun
+TTL uniquement (budget de rendu + 60 s, AUD-024) — pas de suivi « déjà consommé » : aucun
 précédent de jeton à usage unique n'existe dans ce dépôt (les liens S3
 présignés, seul mécanisme comparable, sont eux aussi révoqués par TTL
 seul). Colocalisé dans app.auth (pas app.export) : voir la note de
-placement dans le plan d'implémentation, tâche 4."""
+placement dans le plan d'implémentation, tâche 4.
+
+AUD-024 : le jeton est lié à l'item exporté (`item_id`), `exp`/`iat` sont
+exigés au décodage, et `get_current_user` ne l'accepte que sur une méthode
+de lecture (GET/HEAD/OPTIONS). Il n'est jamais transmis dans une URL : le
+worker l'injecte dans le `sessionStorage` du shell."""
 
 import os
 import time
@@ -15,7 +20,12 @@ import jwt
 
 _ALGORITHM = "HS256"
 _TYP = "export"
-_REQUIRED_CLAIMS = ("tenant_id", "user_id", "job_id")
+_REQUIRED_CLAIMS = ("tenant_id", "user_id", "job_id", "item_id")
+# Miroir de app.export.rendering.RENDER_TIMEOUT_MS (app.auth est sous app.export
+# dans le contrat de couches : import interdit ; égalité vérifiée par un test).
+RENDER_TIMEOUT_MS = 120_000
+# AUD-024 : le jeton couvre tout le budget de rendu, plus une marge.
+EXPORT_TOKEN_TTL_S = RENDER_TIMEOUT_MS // 1000 + 60
 
 
 class ExportTokenError(Exception):
@@ -23,10 +33,11 @@ class ExportTokenError(Exception):
 
 
 class ExportTokenClaims:
-    def __init__(self, *, tenant_id: str, user_id: str, job_id: str) -> None:
+    def __init__(self, *, tenant_id: str, user_id: str, job_id: str, item_id: str) -> None:
         self.tenant_id = tenant_id
         self.user_id = user_id
         self.job_id = job_id
+        self.item_id = item_id
 
 
 def _secret() -> str:
@@ -36,13 +47,21 @@ def _secret() -> str:
     return secret
 
 
-def mint_export_token(*, tenant_id: str, user_id: str, job_id: str, ttl_seconds: int = 120) -> str:
+def mint_export_token(
+    *,
+    tenant_id: str,
+    user_id: str,
+    job_id: str,
+    item_id: str,
+    ttl_seconds: int = EXPORT_TOKEN_TTL_S,
+) -> str:
     now = int(time.time())
     claims = {
         "typ": _TYP,
         "tenant_id": tenant_id,
         "user_id": user_id,
         "job_id": job_id,
+        "item_id": item_id,
         "iat": now,
         "exp": now + ttl_seconds,
     }
@@ -59,7 +78,9 @@ def is_export_token(token: str) -> bool:
 
 def decode_export_token(token: str) -> ExportTokenClaims:
     try:
-        claims = jwt.decode(token, _secret(), algorithms=[_ALGORITHM])
+        claims = jwt.decode(
+            token, _secret(), algorithms=[_ALGORITHM], options={"require": ["exp", "iat"]}
+        )
     except (jwt.PyJWTError, KeyError) as exc:
         # KeyError couvre CORE_EXPORT_TOKEN_SECRET absente (_secret() ci-dessus) :
         # une instance qui n'a jamais déployé le worker d'export ne doit jamais
@@ -75,4 +96,5 @@ def decode_export_token(token: str) -> ExportTokenClaims:
         tenant_id=claims["tenant_id"],
         user_id=claims["user_id"],
         job_id=claims["job_id"],
+        item_id=claims["item_id"],
     )

@@ -94,6 +94,7 @@ export function RasterUploadButton({
       const { uploadUrl, key } = await client.presignRasterUpload(
         file.name,
         file.type || "application/octet-stream",
+        file.size,
       );
       await client.uploadToPresignedUrl(uploadUrl, file);
       setPhase("converting");

@@ -310,3 +310,7 @@ Décisions de lot :
 - **AUD-002** (avg/min/max sur source `features` échantillonnée) : **basculer sur la source `statistics`** (agrégat serveur exact), contre la recommandation (« — » non calculable). À traiter dans un SP dédié ; en attendant, le repli sur le total reste un défaut connu.
 - **Lot suivant** : L1a + L3 en parallèle, puis L2, L5, L1b, L6, L7.
 - **Rejeu réel de l'export** (AUD-133/001/003) : avant la fusion de la PR #185.
+
+## Avancement (2026-10-17)
+
+Lots exécutés et fusionnés dans `dev` : L1a, L3, L5, L2, L1b, L6. Détail des AUD fermés/partiels : `docs/superpowers/2026-08-27-historique-execution-continu.md` (section « Lots L1a/L3/L5/L2/L1b/L6 »). Restent : L4, L7, L8, L9, L10, L11, L12, L13.

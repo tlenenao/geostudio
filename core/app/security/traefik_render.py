@@ -4,11 +4,15 @@ fichier) portant la CSP calculée. Gabarit de chaîne plutôt que pyyaml : ce
 module tourne en production (worker), et pyyaml n'est aujourd'hui qu'une
 dépendance de développement (core/pyproject.toml, [dependency-groups]) —
 faire glisser une dépendance nouvelle vers la production pour ce seul
-usage n'a pas été jugé justifié (spec SP-48 §2.4). Les seuls éléments
-variables du gabarit sont des origines issues d'urlparse (schéma+hôte+port
-optionnel) : elles ne peuvent contenir ni guillemet ni retour à la ligne,
-donc aucun risque d'échappement YAML mal formé — vérifié par les tests de
-ce fichier via yaml.safe_load (import réservé aux tests)."""
+usage n'a pas été jugé justifié (spec SP-48 §2.4). Les origines sont
+filtrées par `csp_hosts._origin` (hôte `[a-z0-9.-]`, port valide, AUD-089) et
+chaque valeur est émise via `json.dumps` (une chaîne JSON est un scalaire
+YAML double-quoté valide) — vérifié par les tests via yaml.safe_load (import
+réservé aux tests). Deux middlewares : `csp-dynamic` (avec
+`frame-ancestors 'self'`) et `csp-dynamic-embed` (routeur `/embed/`, sans
+`frame-ancestors` : ces pages sont faites pour être intégrées)."""
+
+import json
 
 from app.security.service import CspAllowlist
 
@@ -18,7 +22,7 @@ _HEADER_NAMES = {
 }
 
 
-def _build_csp_value(allowlist: CspAllowlist) -> str:
+def _build_csp_value(allowlist: CspAllowlist, *, frame_ancestors: bool) -> str:
     img = " ".join(sorted({"'self'", "data:", "blob:", *allowlist.img_hosts}))
     connect = " ".join(sorted({"'self'", *allowlist.connect_hosts}))
     # Blocage 3 (spec SP-48 §4) tranché par Tanguy : Option A retenue —
@@ -46,20 +50,24 @@ def _build_csp_value(allowlist: CspAllowlist) -> str:
         f"connect-src {connect}; "
         f"img-src {img}; "
         "worker-src 'self' blob:; "
-        "object-src 'none'"
+        "base-uri 'self'; "
+        "form-action 'self'; "
+        + ("frame-ancestors 'self'; " if frame_ancestors else "")
+        + "object-src 'none'"
     )
 
 
 def render_dynamic_conf(allowlist: CspAllowlist, *, mode: str) -> str:
     if mode not in _HEADER_NAMES:
         raise ValueError(f"mode CSP inconnu : {mode!r} (attendu enforce|report-only)")
-    header_name = _HEADER_NAMES[mode]
-    csp_value = _build_csp_value(allowlist)
-    return (
-        "http:\n"
-        "  middlewares:\n"
-        "    csp-dynamic:\n"
-        "      headers:\n"
-        "        customResponseHeaders:\n"
-        f'          "{header_name}": "{csp_value}"\n'
-    )
+    header = json.dumps(_HEADER_NAMES[mode])
+    lines = ["http:", "  middlewares:"]
+    for name, frame in (("csp-dynamic", True), ("csp-dynamic-embed", False)):
+        value = json.dumps(_build_csp_value(allowlist, frame_ancestors=frame))
+        lines += [
+            f"    {name}:",
+            "      headers:",
+            "        customResponseHeaders:",
+            f"          {header}: {value}",
+        ]
+    return "\n".join(lines) + "\n"

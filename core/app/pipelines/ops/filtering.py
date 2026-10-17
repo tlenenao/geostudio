@@ -9,6 +9,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.pipelines.errors import PipelineRuntimeError
 from app.pipelines.expr_validation import validate_bounded_expr
 from app.sql_ident import quote_ident_duckdb as _qi
 
@@ -68,6 +69,22 @@ def compile_sampler(
         f'SELECT * EXCLUDE ("__i") FROM (SELECT *, row_number() OVER () AS "__i" FROM {src}) '
         f'WHERE ("__i" - 1) % {p.value} = 0'
     )
+
+
+# AUD-078 : sans maxDistance la requête est un produit cartésien — plafond explicite.
+NEIGHBOR_FINDER_MAX_ROWS_WITHOUT_DISTANCE = 5_000
+
+
+def pre_check_neighbor_finder(conn, *, input_view: str, params: dict) -> None:
+    p = TransformNeighborFinderParams.model_validate(params)
+    if p.maxDistance is not None:
+        return
+    (n,) = conn.execute(f"SELECT count(*) FROM {_qi(input_view)}").fetchone()
+    if n > NEIGHBOR_FINDER_MAX_ROWS_WITHOUT_DISTANCE:
+        raise PipelineRuntimeError(
+            f"transform.neighborFinder : {n} lignes sans maxDistance "
+            f"(max {NEIGHBOR_FINDER_MAX_ROWS_WITHOUT_DISTANCE}) — renseigner maxDistance"
+        )
 
 
 def compile_neighbor_finder(

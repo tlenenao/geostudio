@@ -265,3 +265,84 @@ def test_ogc_tiles_same_bytes_and_rules_as_mvt_route(env):
     assert anon.status_code == 200 and b"secret" not in anon.content and b"nom" in anon.content
     tilesets = c.get("/v1/collections/demo_ows/tiles").json()
     assert tilesets["tilesets"][0]["tileMatrixSetURI"].endswith("WebMercatorQuad")
+
+
+TILES_CORE = "http://www.opengis.net/spec/ogcapi-tiles-1/1.0/conf/core"
+
+
+def test_tiles_conformance_and_tms_discovery(env):
+    c, _login, _admin = env
+    _enable(c)
+    assert TILES_CORE in c.get("/v1/conformance").json()["conformsTo"]
+    assert c.get("/v1/tileMatrixSets").json()["tileMatrixSets"][0]["id"] == "WebMercatorQuad"
+    tms = c.get("/v1/tileMatrixSets/WebMercatorQuad").json()
+    assert tms["crs"] == "http://www.opengis.net/def/crs/EPSG/0/3857"
+    assert len(tms["tileMatrices"]) == 23
+    assert tms["tileMatrices"][1]["matrixWidth"] == 2
+    assert c.get("/v1/tileMatrixSets/Nope").status_code == 404
+    ts = c.get("/v1/collections/demo_ows/tiles/WebMercatorQuad").json()
+    item = next(link for link in ts["links"] if link["rel"] == "item")
+    assert item["href"].endswith("/WebMercatorQuad/{tileMatrix}/{tileRow}/{tileCol}")
+
+
+def test_ogc_tile_path_is_matrix_row_col(env):
+    c, _login, _admin = env
+    _enable(c)
+    # alpha (lon 1, lat 45) au zoom 1 : colonne 1 (est), ligne 0 (nord)
+    ogc = c.get("/v1/collections/demo_ows/tiles/WebMercatorQuad/1/0/1")
+    legacy = c.get("/v1/collections/demo_ows/tiles/1/1/0.mvt")
+    assert legacy.status_code == 200 and legacy.content
+    assert ogc.status_code == 200 and ogc.content == legacy.content
+
+
+def test_tiles_conformance_absent_when_ows_off(pg_engine, monkeypatch):
+    monkeypatch.delenv("CORE_OWS_ENABLED", raising=False)
+    c, _login, _admin = _build(pg_engine)
+    assert TILES_CORE not in c.get("/v1/conformance").json()["conformsTo"]
+
+
+def test_get_feature_is_bounded_by_statement_timeout(env, monkeypatch):
+    # AUD-155 : `hits` = count exact ; borné comme le rendu WMS, 57014 -> 503.
+    from sqlalchemy.exc import OperationalError
+
+    from app.features.routes import get_features_repo
+    from app.ows import routes as ows_routes
+
+    c, login, admin = env
+    _enable(c)
+    seen = []
+    real = ows_routes.apply_tile_statement_timeout
+    monkeypatch.setattr(
+        ows_routes,
+        "apply_tile_statement_timeout",
+        lambda s, ms: (seen.append(ms), real(s, ms)),
+    )
+    q = _kvp(request="GetFeature", typenames="demo_ows", resulttype="hits")
+    assert c.get(BASE, params=q).status_code == 200
+    assert seen == [5000]
+
+    class _Canceled:
+        sqlstate = "57014"
+
+    class _SlowRepo:
+        def select_features(self, *a, **k):
+            raise OperationalError("SELECT count(*)", {}, _Canceled())
+
+    c.app.dependency_overrides[get_features_repo] = lambda: _SlowRepo()
+    r = c.get(BASE, params=q)
+    assert r.status_code == 503 and "query timed out" in r.text
+
+
+def test_getfeature_resourceid(env):
+    c, _login, _admin = env
+    _enable(c)
+    q = _kvp(request="GetFeature", resourceid="demo_ows.2", outputformat="application/json")
+    body = c.get(BASE, params=q).json()
+    assert [f["properties"]["nom"] for f in body["features"]] == ["bravo"]
+    q2 = _kvp(
+        request="GetFeature",
+        resourceid="gs:demo_ows.2",
+        bbox="0,0,1,1",
+        outputformat="application/json",
+    )
+    assert c.get(BASE, params=q2).status_code == 400

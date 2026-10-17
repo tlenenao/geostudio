@@ -51,7 +51,7 @@ test("crée une clé, affiche le secret une seule fois puis le masque", async ()
   await userEvent.type(await screen.findByLabelText("Nom de la clé"), "CI");
   await userEvent.click(screen.getByRole("button", { name: "Créer la clé" }));
   expect(await screen.findByText("gsk_0123456789ab_SECRET")).toBeInTheDocument();
-  expect(body).toEqual({ name: "CI", expiresInDays: 90 });
+  expect(body).toEqual({ name: "CI", expiresInDays: 90, readOnly: false });
   await userEvent.click(screen.getByRole("button", { name: "J'ai copié la clé" }));
   expect(screen.queryByText("gsk_0123456789ab_SECRET")).not.toBeInTheDocument();
 });
@@ -82,4 +82,25 @@ test("révoque après confirmation", async () => {
   expect(revoked).toBe(false);
   await userEvent.click(screen.getByRole("button", { name: "Révoquer", hidden: false }));
   await waitFor(() => expect(revoked).toBe(true));
+});
+
+test("crée une clé en lecture seule et l'affiche comme telle (AUD-091)", async () => {
+  server.use(
+    http.get("https://core.test/v1/api-keys", () =>
+      HttpResponse.json([{ ...KEY, readOnly: true }]),
+    ),
+  );
+  let body: unknown = null;
+  server.use(
+    http.post("https://core.test/v1/api-keys", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ ...KEY, readOnly: true, token: "gsk_x" }, { status: 201 });
+    }),
+  );
+  renderSection();
+  expect(await screen.findByText("Lecture seule", { selector: "span,div" })).toBeInTheDocument();
+  await userEvent.type(screen.getByLabelText("Nom de la clé"), "CI");
+  await userEvent.click(screen.getByRole("checkbox", { name: "Lecture seule" }));
+  await userEvent.click(screen.getByRole("button", { name: "Créer la clé" }));
+  await waitFor(() => expect(body).toEqual({ name: "CI", expiresInDays: 90, readOnly: true }));
 });

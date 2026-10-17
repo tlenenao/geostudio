@@ -76,10 +76,19 @@ export function compileCron(form: ScheduleForm): string {
   }
 }
 
+// AUD-084 : UTC et Europe/Paris en tête, puis la liste IANA du navigateur ; le fuseau
+// courant reste toujours sélectionnable même s'il manque à cette liste.
+function timezoneOptions(current: string): string[] {
+  const all =
+    typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : [];
+  return [...new Set(["UTC", "Europe/Paris", current, ...all])];
+}
+
 export function PipelineScheduleEditor({
   value,
   onChange,
   readOnly = false,
+  itemId,
 }: {
   value: PipelineRefreshPolicy | null;
   onChange: (next: PipelineRefreshPolicy | null) => void;
@@ -89,11 +98,14 @@ export function PipelineScheduleEditor({
   // (seconde ligne de défense), mais les contrôles eux-mêmes doivent aussi
   // refléter l'état verrouillé.
   readOnly?: boolean;
+  /** Revue L5 I7 : pipeline enregistré — affiche la suspension par le coupe-circuit. */
+  itemId?: string;
 }) {
   const enabled = value?.enabled ?? false;
   const cron = value?.cron ?? "*/15 * * * *";
+  const timezone = value?.timezone ?? "UTC";
   const [form, setForm] = useState<ScheduleForm>(() => parseCron(cron));
-  const nextRunQuery = usePipelineNextRun(cron, enabled);
+  const nextRunQuery = usePipelineNextRun(cron, enabled, timezone, itemId);
   const cronErrorId = useId();
 
   useEffect(() => {
@@ -102,12 +114,16 @@ export function PipelineScheduleEditor({
 
   function setEnabled(next: boolean) {
     if (readOnly) return;
-    onChange({ enabled: next, cron });
+    onChange({ enabled: next, cron, timezone });
   }
   function handleSetForm(next: ScheduleForm) {
     if (readOnly) return;
     setForm(next);
-    onChange({ enabled, cron: compileCron(next) });
+    onChange({ enabled, cron: compileCron(next), timezone });
+  }
+  function setTimezone(next: string) {
+    if (readOnly) return;
+    onChange({ enabled, cron, timezone: next });
   }
 
   return (
@@ -145,6 +161,26 @@ export function PipelineScheduleEditor({
               <option value="advanced">{t("pipelineSchedule.modeAdvanced")}</option>
             </select>
           </label>
+          <label className="flex flex-col gap-1">
+            {t("pipelineSchedule.timezone")}
+            <select
+              className="h-9 rounded border border-control bg-surface px-2 text-ink"
+              value={timezone}
+              onChange={(e) => setTimezone(e.target.value)}
+              disabled={readOnly}
+            >
+              {timezoneOptions(timezone).map((tz) => (
+                <option key={tz} value={tz}>
+                  {tz}
+                </option>
+              ))}
+            </select>
+          </label>
+          {nextRunQuery.data?.scheduleSuspended && (
+            <p role="status" className="text-xs text-warn">
+              {t("pipelineSchedule.suspended")}
+            </p>
+          )}
           {enabled && nextRunQuery.data && (
             <p className="text-xs text-ink-2">
               {t("pipelineSchedule.nextRun", {
@@ -157,7 +193,7 @@ export function PipelineScheduleEditor({
               {t("pipelineSchedule.intervalLabel")}
               <input
                 type="number"
-                min={1}
+                min={5}
                 className="h-9 rounded border border-control bg-surface px-2 text-ink"
                 value={form.minutes}
                 onChange={(e) => handleSetForm({ mode: "interval", minutes: e.target.value })}

@@ -31,7 +31,7 @@ def _check_http_url(value: str | None) -> str | None:
 
 
 class HarvestSourceCreate(BaseModel):
-    type: Literal["stac", "arcgis", "wms", "wfs", "wmts", "csw", "ogc-records", "ckan"]
+    type: Literal["stac", "arcgis", "wms", "wfs", "wmts", "csw", "ogc-records", "ckan", "udata"]
     url: str = Field(min_length=1, max_length=2048)
     mode: Literal["reference", "copy"] = "reference"
     enabled: bool = True

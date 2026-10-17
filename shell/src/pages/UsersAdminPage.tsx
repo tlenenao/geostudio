@@ -81,7 +81,7 @@ export function UsersAdminPage() {
     const target = erasing;
     setRowError((prev) => (prev?.userId === target.id ? null : prev));
     try {
-      await eraseUser.mutateAsync(target.id);
+      await eraseUser.mutateAsync({ userId: target.id, confirmUsername: target.username });
     } catch (error) {
       setRowError({ userId: target.id, message: eraseErrorMessage(error) });
     } finally {

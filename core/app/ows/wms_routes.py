@@ -10,6 +10,7 @@ par collection via `Collection.ows_enabled` (comme WFS)."""
 import json
 import os
 import re
+import threading
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.exc import DBAPIError
@@ -46,6 +47,10 @@ EDGE_BUFFER_PX = 24  # lit un peu au-delà de l'image pour ne pas couper les sym
 XML = "text/xml; charset=utf-8"
 _COLOR = re.compile(r"^0[xX]([0-9a-fA-F]{6})$")
 _STYLE_REF = re.compile(r"^map:([A-Za-z0-9_-]{1,64}):([A-Za-z0-9_-]{1,64})$")
+# AUD-155 : rendu PIL (GetMap et tuiles WMTS) borné en concurrence.
+# ponytail: par process ; un sémaphore partagé entre répliques si la charge le justifie.
+_RENDER_SLOTS = threading.BoundedSemaphore(4)
+_RENDER_WAIT_S = 5.0
 
 
 def is_wms_enabled() -> bool:
@@ -104,7 +109,7 @@ def _query_bbox(bbox, srid: int, w: int, h: int, buffer_px: int):
     (ST_MakeEnvelope/ST_Transform lèveraient sinon une erreur SQL = 500)."""
     bx = (bbox[2] - bbox[0]) / w * buffer_px
     by = (bbox[3] - bbox[1]) / h * buffer_px
-    lim = {4326: (180.0, 90.0), 3857: (20037508.34, 20037508.34), 2154: (1e7, 1e7)}[srid]
+    lim = {4326: (180.0, 90.0), 3857: (20037508.34, 20037508.34)}.get(srid, (1e7, 1e7))
     return (
         max(bbox[0] - bx, -lim[0]),
         max(bbox[1] - by, -lim[1]),
@@ -190,6 +195,20 @@ def _render(
     session, rls, repo, introspect, masked_dep, user, guest, *, layers, styles, bbox, srid, size, bg
 ):
     """Rend `layers` (déjà validés en nombre) dans une image `size` couvrant `bbox`."""
+    if not _RENDER_SLOTS.acquire(timeout=_RENDER_WAIT_S):
+        raise _err("NoApplicableCode", "server busy", 503)
+    try:
+        return _render_locked(
+            session, rls, repo, introspect, masked_dep, user, guest,
+            layers=layers, styles=styles, bbox=bbox, srid=srid, size=size, bg=bg,
+        )  # fmt: skip
+    finally:
+        _RENDER_SLOTS.release()
+
+
+def _render_locked(
+    session, rls, repo, introspect, masked_dep, user, guest, *, layers, styles, bbox, srid, size, bg
+):
     w, h = size
     canvas = render.new_canvas(bbox, w, h)
     qbox = _query_bbox(bbox, srid, w, h, EDGE_BUFFER_PX)
@@ -247,15 +266,19 @@ def wms_endpoint(
                 wms.wms_capabilities(base, "GeoStudio WMS", _exposed(session, user)),
                 media_type="text/xml",
             )
-        if q.get("version", "1.3.0") != "1.3.0":
-            raise _err("InvalidParameterValue", "only WMS 1.3.0 is supported")
+        version = q.get("version", "1.3.0")
+        if version not in ("1.3.0", "1.1.1"):
+            raise _err("InvalidParameterValue", "supported WMS versions: 1.3.0, 1.1.1")
+        legacy = version == "1.1.1"
         if op == "getmap":
-            return _get_map(q, session, user, guest, introspect, repo, rls, masked)
+            return _get_map(q, session, user, guest, introspect, repo, rls, masked, legacy)
         if op == "getfeatureinfo":
-            return _get_feature_info(q, session, user, guest, introspect, repo, rls, masked)
+            return _get_feature_info(q, session, user, guest, introspect, repo, rls, masked, legacy)
+        if op == "getlegendgraphic":
+            return _get_legend(q, session, user, guest, introspect, masked)
         raise _err(
             "OperationNotSupported" if op else "MissingParameterValue",
-            "supported operations: GetCapabilities, GetMap, GetFeatureInfo",
+            "supported operations: GetCapabilities, GetMap, GetFeatureInfo, GetLegendGraphic",
         )
     except _OwsError as e:
         return Response(wms.service_exception(e.code, e.message), e.status, media_type=XML)
@@ -269,7 +292,7 @@ def wms_endpoint(
         return Response(wms.service_exception("InvalidParameterValue", str(e)), 400, media_type=XML)
 
 
-def _common(q: dict):
+def _common(q: dict, legacy: bool = False):
     names = _csv(q.get("layers"))
     if not names or not all(names):
         raise _err("MissingParameterValue", "LAYERS is required")
@@ -279,7 +302,11 @@ def _common(q: dict):
     if len(styles) not in (0, len(names)):
         raise _err("StyleNotDefined", "STYLES must be empty or match LAYERS one to one")
     styles = styles or [""] * len(names)
-    srid, latlon = _crs(q.get("crs"))
+    if legacy:  # WMS 1.1.1 : paramètre SRS, axes toujours x,y (lon,lat en EPSG:4326)
+        srid, _ = _crs(q.get("srs"))
+        latlon = False
+    else:
+        srid, latlon = _crs(q.get("crs"))
     bbox = _bbox(q.get("bbox"), latlon)
     w, h = _int(q, "width", 1, render.MAX_DIM), _int(q, "height", 1, render.MAX_DIM)
     if w * h > render.MAX_PIXELS:
@@ -287,8 +314,8 @@ def _common(q: dict):
     return names, styles, srid, bbox, (w, h)
 
 
-def _get_map(q, session, user, guest, introspect, repo, rls, masked) -> Response:
-    names, styles, srid, bbox, size = _common(q)
+def _get_map(q, session, user, guest, introspect, repo, rls, masked, legacy=False) -> Response:
+    names, styles, srid, bbox, size = _common(q, legacy)
     if q.get("format", "").lower() not in wms.GETMAP_FORMATS:
         raise _err("InvalidFormat", "FORMAT must be image/png")
     bg = None
@@ -305,8 +332,10 @@ def _get_map(q, session, user, guest, introspect, repo, rls, masked) -> Response
     return _png(body, truncated)
 
 
-def _get_feature_info(q, session, user, guest, introspect, repo, rls, masked_dep) -> Response:
-    names, _styles, srid, bbox, (w, h) = _common(q)
+def _get_feature_info(
+    q, session, user, guest, introspect, repo, rls, masked_dep, legacy=False
+) -> Response:
+    names, _styles, srid, bbox, (w, h) = _common(q, legacy)
     query_layers = _csv(q.get("query_layers"))
     if not query_layers or not all(query_layers):
         raise _err("MissingParameterValue", "QUERY_LAYERS is required")
@@ -355,6 +384,19 @@ def _get_feature_info(q, session, user, guest, introspect, repo, rls, masked_dep
         lines.append(f"{cid}.{f.get('id')}")
         lines += [f"  {k} = {v}" for k, v in (f.get("properties") or {}).items() if v is not None]
     return Response("\n".join(lines) + "\n", media_type="text/plain; charset=utf-8")
+
+
+def _get_legend(q, session, user, guest, introspect, masked_dep) -> Response:
+    """GetLegendGraphic (AUD-045) : même porte de lecture et même résolution de style
+    que GetMap ; aucune donnée lue (la légende ne dépend que du style)."""
+    name = (q.get("layer") or "").strip()
+    if not name:
+        raise _err("MissingParameterValue", "LAYER is required")
+    if q.get("format", "image/png").lower() not in wms.GETMAP_FORMATS:
+        raise _err("InvalidFormat", "FORMAT must be image/png")
+    col, _info, _masked = _layer_ctx(session, user, guest, introspect, masked_dep, name, "LAYER")
+    style = _resolve_style(session, user, col, q.get("style", ""))
+    return Response(render.legend_png(style), media_type="image/png")
 
 
 # --- WMTS --------------------------------------------------------------------

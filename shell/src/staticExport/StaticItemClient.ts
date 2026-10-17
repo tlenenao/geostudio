@@ -216,6 +216,9 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async getImpact(..._args: unknown[]) {
       return unsupported();
     },
+    async getLineage(..._args: unknown[]) {
+      return unsupported();
+    },
     async deleteCollection(..._args: unknown[]) {
       return unsupported();
     },

@@ -39,3 +39,31 @@ test("button uses the primary color and radius theme tokens", () => {
     "rounded-[var(--gs-radius)]",
   );
 });
+
+test("button with a javascript: href does not open a window (AUD-064)", async () => {
+  const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+  const Button = getWidget("button")!.Component;
+  render(
+    <Button
+      props={{ label: "Go", href: "javascript:alert(1)" }}
+      ctx={{ mode: "runtime", bus: new ActionBus(), widgetId: "b" } as WidgetContext}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Go" }));
+  expect(openSpy).not.toHaveBeenCalled();
+  openSpy.mockRestore();
+});
+
+test("button with a https href opens it (AUD-064)", async () => {
+  const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+  const Button = getWidget("button")!.Component;
+  render(
+    <Button
+      props={{ label: "Go", href: "https://example.com" }}
+      ctx={{ mode: "runtime", bus: new ActionBus(), widgetId: "b" } as WidgetContext}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Go" }));
+  expect(openSpy).toHaveBeenCalledWith("https://example.com", "_blank", "noopener");
+  openSpy.mockRestore();
+});

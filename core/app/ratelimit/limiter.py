@@ -9,6 +9,7 @@ stable, pas d'une identité vérifiée. Limite assumée : ne tient pas
 multi-process (pas de --workers aujourd'hui côté uvicorn, cf. C2/vague 0)."""
 
 import hashlib
+import ipaddress
 import logging
 import os
 import re
@@ -43,6 +44,10 @@ _HARVEST_RE = re.compile(r"^/v1/harvest/")
 # data.manage (pas seulement Administrateur) — aucun groupe existant ne le
 # couvrait avant ce correctif.
 _COLLECTIONS_EMPTY_RE = re.compile(r"^/v1/collections/empty$")
+# Revue L5 I6 : POST /pipelines/target-collection fait le même CREATE TABLE (plus un aperçu
+# DuckDB) — même budget ; les deux aperçus de pipeline (DuckDB) rejoignent "analytics".
+_PIPELINE_TARGET_COLLECTION_RE = re.compile(r"^/v1/pipelines/target-collection$")
+_PIPELINE_PREVIEW_RE = re.compile(r"^/v1/pipelines/([^/]+/)?preview$")
 # GAP-61.b (SP-45) : les 2 routes de lecture ArcGIS live-query, seules
 # authentiquement échappées au rate limiter (analyse-gaps.md affirmait 4,
 # corrigé — 2 des 4 étaient déjà couvertes par _EXPORT_PATH_RE/"jobs").
@@ -63,7 +68,17 @@ _SHARE_LINK_RE = re.compile(r"^/v1/share-links/[^/]+$")
 # REV-102 : GET /v1/geocode déclenche un appel sortant vers la Géoplateforme
 # (BAN, 50 req/s/IP côté amont) — budget propre, le shell n'appelle qu'à la
 # soumission du formulaire, jamais à la frappe.
-_GEOCODE_RE = re.compile(r"^/v1/geocode(/batch|/reverse)?$")
+# AUD-156 : POST /v1/geocode/jobs (lot asynchrone) aussi ; le sondage GET /jobs/{id} non.
+_GEOCODE_RE = re.compile(r"^/v1/geocode(/batch|/reverse|/jobs)?$")
+# AUD-155 : lectures anonymes coûteuses (rendu PIL, count exact, proxy TiTiler).
+# ponytail: 600/min par appelant tolère un panoramique rapide ; à resserrer si la
+# saturation est mesurée. Les tuiles vecteur du cœur restent hors budget (exclues à dessein).
+_OGC_READ_RE = re.compile(r"^/v1/ows/|^/v1/(raster|terrain3d)/[^/]+/tiles/")
+# AUD-157 : calcul zonal (lecture raster en mémoire).
+_ZONAL_RE = re.compile(r"^/v1/raster/[^/]+/zonal-stats$")
+# AUD-154 : soumission publique anonyme — budget propre, indexé sur l'IP (/64 en
+# IPv6) quel que soit l'en-tête Authorization présenté.
+_PUBLIC_SUBMIT_RE = re.compile(r"^/v1/public/submit/[^/]+$")
 
 # Budgets par groupe de coût réel (requêtes / 60s). Réutilise _EXPORT_PATH_RE
 # de app.main pour le groupe "jobs" plutôt que de le redéfinir ici.
@@ -80,11 +95,29 @@ _BUDGETS = {
     "webhook-trigger": 30,
     "share-link": 60,
     "geocode": 60,
+    "public-submit": 20,
+    "ogc-read": 600,
+    "zonal": 10,
     # ARC-34 : compté par appel amont Valhalla (REST, MCP, ops de pipeline), pas par route ;
     # route_group ne le renvoie jamais, seul app.routing.client le consomme.
     "routing": 100,
 }
 _WINDOW_SECONDS = 60.0
+
+
+def ip_bucket(host: str | None) -> str:
+    """AUD-154 : une IPv6 compte pour son /64 (un abonné en a des milliards)."""
+    if not host:
+        return "unknown"
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return host
+    if isinstance(ip, ipaddress.IPv6Address):
+        if ip.ipv4_mapped is not None:
+            return str(ip.ipv4_mapped)
+        return str(ipaddress.ip_network(f"{ip}/64", strict=False))
+    return str(ip)
 
 
 def caller_key(
@@ -101,13 +134,16 @@ def caller_key(
     est indexée sur IP + chemin (donc pipeline), jamais sur le jeton présenté —
     sinon varier le jeton à chaque essai contourne le budget (brute-force) ;
     idem pour share-link, indexée sur la seule IP."""
+    bucket = ip_bucket(client_host)
+    if group == "public-submit":
+        return f"submit:{bucket}"
     if group == "webhook-trigger":
-        return f"trigger:{client_host or 'unknown'}:{path}"
+        return f"trigger:{bucket}:{path}"
     if group == "share-link":
-        return f"share:{client_host or 'unknown'}"
+        return f"share:{bucket}"
     if auth_header:
         return auth_header
-    return f"anon:{client_host or 'unknown'}"
+    return f"anon:{bucket}"
 
 
 def route_group(
@@ -124,8 +160,12 @@ def route_group(
         return "llm"
     if export_path_re.match(path):
         return "jobs"
-    if method == "POST" and _COLLECTIONS_EMPTY_RE.match(path):
+    if method == "POST" and (
+        _COLLECTIONS_EMPTY_RE.match(path) or _PIPELINE_TARGET_COLLECTION_RE.match(path)
+    ):
         return "collections_empty"
+    if method == "POST" and _PIPELINE_PREVIEW_RE.match(path):
+        return "analytics"
     if _ARCGIS_LIVE_QUERY_RE.match(path):
         return "harvest"
     if _HARVEST_RE.match(path) and method != "GET":
@@ -134,8 +174,14 @@ def route_group(
         return "webhook-trigger"
     if _SHARE_LINK_RE.match(path) and method == "GET":
         return "share-link"
-    if _GEOCODE_RE.match(path):
+    if _GEOCODE_RE.match(path) and (method != "GET" or not path.endswith("/jobs")):
         return "geocode"
+    if method == "GET" and _OGC_READ_RE.match(path):
+        return "ogc-read"
+    if method == "POST" and _ZONAL_RE.match(path):
+        return "zonal"
+    if method == "POST" and _PUBLIC_SUBMIT_RE.match(path):
+        return "public-submit"
     # REV-299 (c) : le jeton invité X-Share-Link-Token est aussi présenté en
     # en-tête sur les routes d'items/configs — même budget par IP que la route publique.
     # Les GET (tuiles MVT, items, configs, GeoJSON d'un embed) en sont exclus : une

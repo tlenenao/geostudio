@@ -8,6 +8,7 @@ from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig, DataSource, Layout, LayoutItem, Page
 from app.db import init_db, make_engine, make_session_factory
 from app.items.repository import create_item
+from app.job_errors import INTERNAL_ERROR_MESSAGE
 from app.notifications import repository as notifications_repo
 from app.notifications.models import Notification
 from app.tenants.repository import get_or_create_default_tenant
@@ -310,7 +311,7 @@ def test_job_handles_get_job_failure_gracefully(monkeypatch, tmp_path):
     with Session() as s:
         job = appexport_repo.get_job(s, tenant_id=tenant_id, job_id=job_id)
     assert job.status == "error"
-    assert "db down" in job.error
+    assert job.error == INTERNAL_ERROR_MESSAGE
 
 
 def test_sweep_reclaims_a_stuck_job(monkeypatch, tmp_path):

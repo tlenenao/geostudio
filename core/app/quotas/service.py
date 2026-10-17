@@ -175,18 +175,36 @@ def max_items_per_tenant() -> int | None:
     """CORE_QUOTA_MAX_ITEMS_PER_TENANT — None = pas de limite configurée,
     même quand CORE_QUOTAS_ENABLED est actif (spec §3.1, décision : une
     seule limite instance-wide, appliquée identiquement à tout tenant)."""
-    raw = os.environ.get("CORE_QUOTA_MAX_ITEMS_PER_TENANT", "")
-    return int(raw) if raw else None
+    return _limit("CORE_QUOTA_MAX_ITEMS_PER_TENANT")
 
 
 def max_collections_per_tenant() -> int | None:
-    raw = os.environ.get("CORE_QUOTA_MAX_COLLECTIONS_PER_TENANT", "")
-    return int(raw) if raw else None
+    return _limit("CORE_QUOTA_MAX_COLLECTIONS_PER_TENANT")
 
 
 def max_storage_bytes_per_tenant() -> int | None:
-    raw = os.environ.get("CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT", "")
-    return int(raw) if raw else None
+    return _limit("CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT")
+
+
+def _limit(var: str) -> int | None:
+    raw = os.environ.get(var, "").strip()
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        # AUD-132 : « 10GB » donnait un 500 sur /v1/admin/usage, jamais au démarrage.
+        raise RuntimeError(
+            f"{var}={raw!r} : entier attendu (nombre d'éléments, ou octets pour le "
+            "stockage, ex. 10737418240 pour 10 Gio)"
+        ) from None
+
+
+def validate_quota_settings() -> None:
+    """Échec rapide au démarrage (create_app) sur une limite mal formée."""
+    max_items_per_tenant()
+    max_collections_per_tenant()
+    max_storage_bytes_per_tenant()
 
 
 class QuotaExceededError(HTTPException):

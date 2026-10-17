@@ -24,6 +24,7 @@ type PipelinesMethods = Pick<
   | "cancelPipelineRun"
   | "retryPipelineRun"
   | "previewPipeline"
+  | "createPipelineTargetCollection"
   | "listPipelineWebhookTokens"
   | "createPipelineWebhookToken"
   | "revokePipelineWebhookToken"
@@ -93,10 +94,17 @@ export function createPipelinesMethods(base: ItemClientBase): PipelinesMethods {
       return request<PipelineOpsCatalog>("GET", "/pipelines/ops");
     },
 
-    async getPipelineNextRun(cron: string): Promise<{ nextRun: string }> {
-      return request<{ nextRun: string }>(
+    async getPipelineNextRun(
+      cron: string,
+      tz?: string,
+      itemId?: string,
+    ): Promise<{ nextRun: string; scheduleSuspended?: boolean }> {
+      const tzParam = tz ? `&tz=${encodeURIComponent(tz)}` : "";
+      // Revue L5 I7 : avec l'item, le cœur dit si le coupe-circuit a suspendu la planification.
+      const itemParam = itemId ? `&itemId=${encodeURIComponent(itemId)}` : "";
+      return request<{ nextRun: string; scheduleSuspended?: boolean }>(
         "GET",
-        `/pipelines/next-run?cron=${encodeURIComponent(cron)}`,
+        `/pipelines/next-run?cron=${encodeURIComponent(cron)}${tzParam}${itemParam}`,
       );
     },
 
@@ -130,15 +138,28 @@ export function createPipelinesMethods(base: ItemClientBase): PipelinesMethods {
     },
 
     async previewPipeline(
-      pk: string,
+      pk: string | null,
       upToNodeId: string,
       draft?: PipelinePayload,
     ): Promise<Record<string, unknown>[]> {
+      // AUD-009 : un brouillon jamais enregistré (pas d'item) a sa propre route.
+      const path = pk === null ? "/pipelines/preview" : `/pipelines/${pk}/preview`;
       return request<Record<string, unknown>[]>(
         "POST",
-        `/pipelines/${pk}/preview?upTo=${encodeURIComponent(upToNodeId)}`,
+        `${path}?upTo=${encodeURIComponent(upToNodeId)}`,
         draft !== undefined ? { pipeline: withoutBaseVersion(draft) } : undefined,
       );
+    },
+
+    async createPipelineTargetCollection(input: {
+      title: string;
+      pipeline: PipelinePayload;
+      writerNodeId: string;
+    }): Promise<{ collectionId: string }> {
+      return request<{ collectionId: string }>("POST", "/pipelines/target-collection", {
+        ...input,
+        pipeline: withoutBaseVersion(input.pipeline),
+      });
     },
 
     async listPipelineWebhookTokens(pk: string): Promise<PipelineWebhookToken[]> {

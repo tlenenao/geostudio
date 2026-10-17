@@ -35,11 +35,13 @@ from app.configs.schemas import AlertChannelEmail, AlertChannelWebhook, AlertRul
 from app.db import request_scoped_session
 from app.items import repository as items_repo
 from app.items.models import Item
+from app.job_errors import INTERNAL_ERROR_MESSAGE
 from app.jobs import app
 from app.jobs.common import notify_best_effort, resolve_owner_user
 from app.jobs.common import session_factory as _session_factory
 from app.sharing.authorization import can
 from app.sharing.geo_limits import resolve_geo_limits
+from app.sharing.repository import share_recipient_ids
 from app.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -460,7 +462,7 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
                 payload={"error": str(exc)},
             )
             return
-        except Exception as exc:  # toute erreur inattendue finit "error", jamais un run zombie
+        except Exception:  # toute erreur inattendue finit "error", jamais un run zombie
             logger.exception("alert evaluation %s : erreur inattendue", evaluation_id)
             # Si l'exception vient d'une vraie erreur DB survenue plus haut
             # dans le chemin succès (ex. write_audit), la transaction
@@ -476,7 +478,7 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
             # rollback sur une session déjà saine (l'exception d'origine
             # n'a jamais touché la DB) est un no-op sans effet de bord.
             session.rollback()
-            error_detail = f"erreur interne : {exc}"
+            error_detail = INTERNAL_ERROR_MESSAGE
             alerts_repo.mark_evaluated(
                 session,
                 evaluation_id=evaluation_id,
@@ -535,7 +537,7 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
                     actor_id=owner_id,
                     skip=delivered,
                 )
-            except Exception as exc:
+            except Exception:
                 # _notify itself already catches NotifyError per-channel and
                 # audits per-channel; this is the backstop for anything else
                 # (e.g. _render_message's `.format()` on a malformed
@@ -546,7 +548,7 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
                 logger.exception(
                     "alert notification pipeline %s : erreur inattendue", evaluation_id
                 )
-                notify_status, notify_error = "failed", f"erreur interne : {exc}"
+                notify_status, notify_error = "failed", INTERNAL_ERROR_MESSAGE
                 notify_channels = None  # inconnu : la relance visera tous les canaux
                 write_audit(
                     session,
@@ -578,18 +580,36 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
                 and not retry
                 and (notify_status == "failed" or new_state == "firing")
             ):
-                notify_best_effort(
-                    _session_factory(),
-                    tenant_id=tenant_id,
-                    recipient_user_id=owner_id,
-                    kind="alert",
-                    status="failure",
-                    item_id=item_id,
-                    item_resource_type="alert",
-                    item_title=rule_name,
-                    error=notify_error
-                    or _render_message(payload, rule_name=rule_name, value=value, state=new_state),
+                message = notify_error or _render_message(
+                    payload, rule_name=rule_name, value=value, state=new_state
                 )
+                # AUD-130 : une alerte déclenchée notifie aussi les membres des groupes avec
+                # lesquels elle est partagée ; un échec de livraison reste l'affaire du
+                # propriétaire seul.
+                recipients = {owner_id}
+                if new_state == "firing":
+                    recipients |= _share_recipients(tenant_id=tenant_id, item_id=item_id)
+                for recipient in sorted(recipients):
+                    notify_best_effort(
+                        _session_factory(),
+                        tenant_id=tenant_id,
+                        recipient_user_id=recipient,
+                        kind="alert",
+                        status="failure",
+                        item_id=item_id,
+                        item_resource_type="alert",
+                        item_title=rule_name,
+                        error=message,
+                    )
+
+
+def _share_recipients(*, tenant_id: str, item_id: str) -> set[str]:
+    try:
+        with request_scoped_session(_session_factory()) as session:
+            return set(share_recipient_ids(session, tenant_id=tenant_id, item_id=item_id))
+    except Exception:  # best-effort, comme notify_best_effort
+        logger.exception("alerte : échec de la résolution des membres des groupes de partage")
+        return set()
 
 
 @app.periodic(cron="*/5 * * * *")

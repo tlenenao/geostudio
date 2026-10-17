@@ -9,6 +9,7 @@ module ne touche jamais une connexion DuckDB, il ne fait que construire des
 chaînes de caractères, testable en pur."""
 
 from app.configs.schemas import PipelineEdge, PipelineNode
+from app.pipelines.errors import PipelineRuntimeError
 from app.pipelines.ops.schemas import (
     TransformAggregateParams,
     TransformBoundingGeometryParams,
@@ -55,6 +56,8 @@ from app.pipelines.ops.schemas import (
     TransformValidateAttributesParams,
 )
 from app.sql_ident import quote_ident_duckdb as _qi
+
+_RID = '"__gs_rid"'
 
 
 def topological_order(nodes: list[PipelineNode], edges: list[PipelineEdge]) -> list[PipelineNode]:
@@ -160,11 +163,31 @@ def _compile_join(
     input_view: str,
     join_view: str | None = None,
     input_srid: int | None = None,
+    input_columns: list[str] | None = None,
+    join_columns: list[str] | None = None,
 ) -> str:
     p = TransformJoinParams.model_validate(params)
     assert join_view is not None, "transform.join requires join_view"
+    assert input_columns is not None and join_columns is not None
+    for side, cols in (("principale", input_columns), ("secondaire", join_columns)):
+        if p.on not in cols:
+            raise PipelineRuntimeError(
+                f"transform.join : clé {p.on!r} absente de l'entrée {side} (colonnes : {cols})"
+            )
+    right = [c for c in join_columns if c not in (p.on, "geometry")]
+    out_names = [f"{p.rightPrefix}{c}" if c in input_columns else c for c in right]
+    clash = [n for n in out_names if n in input_columns]
+    if clash:
+        raise PipelineRuntimeError(
+            f"transform.join : colonne(s) de sortie déjà présente(s) : {clash} "
+            "— changer rightPrefix"
+        )
     join_kw = "LEFT JOIN" if p.how == "left" else "JOIN"
-    return f"SELECT * FROM {_qi(input_view)} {join_kw} {_qi(join_view)} USING ({_qi(p.on)})"
+    right_sel = "".join(f", o.{_qi(c)} AS {_qi(n)}" for c, n in zip(right, out_names, strict=True))
+    return (
+        f"SELECT t.*{right_sel} FROM {_qi(input_view)} t {join_kw} {_qi(join_view)} o "
+        f"ON t.{_qi(p.on)} = o.{_qi(p.on)}"
+    )
 
 
 def _compile_buffer(
@@ -213,7 +236,11 @@ def _compile_reproject(
     input_srid: int | None = None,
 ) -> str:
     p = TransformReprojectParams.model_validate(params)
-    assert input_srid is not None, "transform.reproject requires input_srid"
+    if not input_srid:
+        raise PipelineRuntimeError(
+            "transform.reproject : SRID d'entrée inconnu — déclarer le SRID source avec "
+            "transform.setSrid avant de reprojeter"
+        )
     return (
         f"SELECT * EXCLUDE (geometry), "
         f"ST_Transform(geometry, 'EPSG:{input_srid}', '{p.targetCrs}', true) AS geometry "
@@ -247,17 +274,28 @@ def _compile_count_within(
     input_view: str,
     join_view: str | None = None,
     input_srid: int | None = None,
+    input_columns: list[str] | None = None,
+    join_columns: list[str] | None = None,
 ) -> str:
     p = TransformCountWithinParams.model_validate(params)
     assert join_view is not None, "transform.countWithin requires join_view"
+    clash = [n for n in (p.countColumn, "__gs_rid") if n in (input_columns or [])]
+    if clash:
+        raise PipelineRuntimeError(
+            f"transform.countWithin : colonne(s) de sortie déjà présente(s) en entrée : {clash}"
+        )
     if p.predicate == "intersects":
         predicate_expr = "ST_Intersects(t.geometry, o.geometry)"
     else:  # contains
         predicate_expr = "ST_Contains(o.geometry, t.geometry)"
+    # Regroupement par identifiant de ligne, jamais GROUP BY ALL : deux lignes d'entrée
+    # identiques restent deux lignes (AUD-077, patron de transform.spatialRelator).
     return (
-        f"SELECT t.* EXCLUDE (geometry), t.geometry, COUNT(o.geometry) AS {_qi(p.countColumn)} "
-        f"FROM {_qi(input_view)} t LEFT JOIN {_qi(join_view)} o "
-        f"ON {predicate_expr} GROUP BY ALL"
+        f"WITH __gs_b AS (SELECT *, row_number() OVER () AS {_RID} FROM {_qi(input_view)}), "
+        f"__gs_c AS (SELECT t.{_RID} AS rid, COUNT(o.geometry) AS n FROM __gs_b t "
+        f"LEFT JOIN {_qi(join_view)} o ON {predicate_expr} GROUP BY t.{_RID}) "
+        f"SELECT b.* EXCLUDE ({_RID}), c.n AS {_qi(p.countColumn)} "
+        f"FROM __gs_b b JOIN __gs_c c ON c.rid = b.{_RID}"
     )
 
 
@@ -652,16 +690,35 @@ def _compile_validate_attributes(
     input_view: str,
     join_view: str | None = None,
     input_srid: int | None = None,
+    input_columns: list[str] | None = None,
+    join_columns: list[str] | None = None,
 ) -> str:
     p = TransformValidateAttributesParams.model_validate(params)
+    outputs = [
+        r for r in (p.nonNullResultColumn, p.notBlankResultColumn, p.uniqueResultColumn) if r
+    ]
+    clash = [c for c in outputs if c in (input_columns or [])]
+    if clash or len(set(outputs)) != len(outputs):
+        raise PipelineRuntimeError(
+            f"transform.validateAttributes : colonne(s) de résultat en collision : "
+            f"{clash or outputs}"
+        )
     extra_cols = []
     if p.nonNullColumns and p.nonNullResultColumn:
         checks = " AND ".join(f"{_qi(c)} IS NOT NULL" for c in p.nonNullColumns)
         extra_cols.append(f"({checks}) AS {_qi(p.nonNullResultColumn)}")
+    if p.notBlankColumns and p.notBlankResultColumn:
+        checks = " AND ".join(
+            f"coalesce(trim(CAST({_qi(c)} AS VARCHAR)), '') <> ''" for c in p.notBlankColumns
+        )
+        extra_cols.append(f"({checks}) AS {_qi(p.notBlankResultColumn)}")
     if p.uniqueColumns and p.uniqueResultColumn:
         partition = ", ".join(_qi(c) for c in p.uniqueColumns)
+        any_null = " OR ".join(f"{_qi(c)} IS NULL" for c in p.uniqueColumns)
         extra_cols.append(
-            f"(COUNT(*) OVER (PARTITION BY {partition}) = 1) AS {_qi(p.uniqueResultColumn)}"
+            f"(CASE WHEN {any_null} THEN NULL "
+            f"ELSE COUNT(*) OVER (PARTITION BY {partition}) = 1 END) "
+            f"AS {_qi(p.uniqueResultColumn)}"
         )
     return f"SELECT *, {', '.join(extra_cols)} FROM {_qi(input_view)}"
 
@@ -705,6 +762,14 @@ def _compile_detect_changes(
     p = TransformDetectChangesParams.model_validate(params)
     assert join_view is not None, "transform.detectChanges requires join_view"
     assert input_columns is not None and join_columns is not None
+    if p.statusColumn in (*input_columns, *join_columns):
+        raise PipelineRuntimeError(
+            f"transform.detectChanges : colonne de statut {p.statusColumn!r} déjà présente"
+        )
+    keys = ", ".join(_qi(k) for k in p.keyColumns)
+    any_null = " OR ".join(f"{_qi(k)} IS NULL" for k in p.keyColumns)
+    null_t = " OR ".join(f"t.{_qi(k)} IS NULL" for k in p.keyColumns)
+    null_o = " OR ".join(f"o.{_qi(k)} IS NULL" for k in p.keyColumns)
     common_cols = [c for c in input_columns if c in join_columns and c not in p.keyColumns]
     key_join = " AND ".join(f"t.{_qi(k)} = o.{_qi(k)}" for k in p.keyColumns)
     if common_cols:
@@ -712,9 +777,13 @@ def _compile_detect_changes(
     else:
         diff_expr = "FALSE"
     # Sentinelles de présence : tester la clé elle-même est faux (une clé NULL ne joint
-    # jamais ; seule la 1re clé d'un jeu composite était testée — D13-02).
+    # jamais ; seule la 1re clé d'un jeu composite était testée — D13-02). Une clé NULL
+    # n'est jamais rapprochée : chaque côté sort seul en `invalid` (AUD-080), jamais
+    # `inserted` + `deleted`.
     status_expr = (
         "CASE "
+        f"WHEN (t.__gs_present AND ({null_t})) OR (o.__gs_present AND ({null_o})) "
+        "THEN 'invalid' "
         "WHEN t.__gs_present IS NULL THEN 'inserted' "
         "WHEN o.__gs_present IS NULL THEN 'deleted' "
         f"WHEN {diff_expr} THEN 'updated' "
@@ -729,10 +798,24 @@ def _compile_detect_changes(
         f"ELSE o.{_qi(c)} END AS {_qi(c)}"
         for c in join_columns
     )
+
+    def side(view: str) -> str:
+        # Clé dupliquée d'un côté : le FULL JOIN multiplierait les lignes en silence
+        # (AUD-080) — le nœud échoue. `__gs_dup` est référencé par le WHERE final pour
+        # que DuckDB ne l'élague pas.
+        return (
+            f"(SELECT *, TRUE AS __gs_present, "
+            f"CASE WHEN count(*) OVER (PARTITION BY {keys}) > 1 AND NOT ({any_null}) "
+            f"THEN error('transform.detectChanges : clé dupliquée') END AS __gs_dup "
+            f"FROM {_qi(view)})"
+        )
+
     return (
         f"SELECT {data_select}, ({status_expr}) AS {_qi(p.statusColumn)} "
-        f"FROM (SELECT *, TRUE AS __gs_present FROM {_qi(input_view)}) t "
-        f"FULL OUTER JOIN (SELECT *, TRUE AS __gs_present FROM {_qi(join_view)}) o ON {key_join}"
+        f"FROM {side(input_view)} t "
+        f"FULL OUTER JOIN {side(join_view)} o "
+        f"ON {key_join} AND NOT ({null_t}) AND NOT ({null_o}) "
+        f"WHERE coalesce(t.__gs_dup, o.__gs_dup) IS NULL"
     )
 
 
@@ -748,19 +831,25 @@ def _compile_merge_children(
     p = TransformMergeChildrenParams.model_validate(params)
     assert join_view is not None, "transform.mergeChildren requires join_view"
     assert join_columns is not None
+    if p.childrenColumn in (input_columns or []):
+        raise PipelineRuntimeError(
+            f"transform.mergeChildren : colonne {p.childrenColumn!r} déjà présente en entrée"
+        )
     child_cols = [c for c in join_columns if c != p.childOn]
     struct_fields = ", ".join(f"{_qi(c)} := o.{_qi(c)}" for c in child_cols)
-    # FILTER + COALESCE(..., []) : sans ça, un LEFT JOIN sans correspondance produit une
-    # ligne o.* toute NULL que `list(struct_pack(...))` agrège en [{...: NULL}] au lieu
-    # d'une liste vide — vérifié empiriquement contre un DuckDB réel (v1.5.5).
+    # FILTER + COALESCE(..., []) : un parent sans enfant reçoit [] (pas [{...: NULL}]).
     children_expr = (
         f"COALESCE(list(struct_pack({struct_fields})) "
         f"FILTER (WHERE o.{_qi(p.childOn)} IS NOT NULL), [])"
     )
+    # Regroupement par identifiant de ligne (AUD-077) : deux parents identiques restent deux.
     return (
-        f"SELECT t.*, {children_expr} AS {_qi(p.childrenColumn)} "
-        f"FROM {_qi(input_view)} t LEFT JOIN {_qi(join_view)} o "
-        f"ON t.{_qi(p.parentOn)} = o.{_qi(p.childOn)} GROUP BY ALL"
+        f"WITH __gs_b AS (SELECT *, row_number() OVER () AS {_RID} FROM {_qi(input_view)}), "
+        f"__gs_c AS (SELECT t.{_RID} AS rid, {children_expr} AS kids FROM __gs_b t "
+        f"LEFT JOIN {_qi(join_view)} o ON t.{_qi(p.parentOn)} = o.{_qi(p.childOn)} "
+        f"GROUP BY t.{_RID}) "
+        f"SELECT b.* EXCLUDE ({_RID}), c.kids AS {_qi(p.childrenColumn)} "
+        f"FROM __gs_b b JOIN __gs_c c ON c.rid = b.{_RID}"
     )
 
 

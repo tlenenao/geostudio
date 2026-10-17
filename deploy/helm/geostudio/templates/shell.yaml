@@ -15,6 +15,9 @@ spec:
     metadata:
       labels:
         {{- include "geostudio.selector" $sel | nindent 8 }}
+      annotations:
+        # nginx ne relit pas ses snippets : redéployer quand la CSP change.
+        checksum/security-headers: {{ include (print $.Template.BasePath "/shell-headers.yaml") . | sha256sum }}
     spec:
       {{- with .Values.image.pullSecrets }}
       imagePullSecrets: {{ toYaml . | nindent 8 }}
@@ -43,6 +46,12 @@ spec:
           resources: {{ toYaml .Values.shell.resources | nindent 12 }}
           securityContext:
             {{- include "geostudio.securityContext" (dict "uid" .Values.shell.podSecurityUid) | nindent 12 }}
+          # En-têtes de sécurité (AUD-030) : remplace les snippets de l'image.
+          volumeMounts:
+            - {name: security-headers, mountPath: /etc/nginx/snippets, readOnly: true}
+      volumes:
+        - name: security-headers
+          configMap: {name: {{ $fn }}-shell-headers}
 ---
 apiVersion: v1
 kind: Service

@@ -291,3 +291,20 @@ def get_active_share_link(session: Session, *, tenant_id: str, link_id: str) -> 
     if link.expires_at <= _naive_utc_now():
         return None
     return link
+
+
+def share_recipient_ids(session: Session, *, tenant_id: str, item_id: str) -> list[str]:
+    """Membres actifs (non anonymisés) des groupes avec lesquels l'item est partagé (AUD-130)."""
+    return list(
+        session.scalars(
+            select(GroupMember.user_id)
+            .join(ItemShare, ItemShare.group_id == GroupMember.group_id)
+            .join(User, User.id == GroupMember.user_id)
+            .where(
+                ItemShare.item_id == item_id,
+                ItemShare.tenant_id == tenant_id,
+                User.erased_at.is_(None),
+            )
+            .distinct()
+        )
+    )

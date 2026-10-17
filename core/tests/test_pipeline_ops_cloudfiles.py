@@ -343,8 +343,9 @@ def test_arcgis_max_features_and_service_error(httpserver, conn, session, tenant
         {"features": [{"properties": {"a": i}, "geometry": None} for i in range(10)],
          "exceededTransferLimit": True}
     )  # fmt: skip
-    _read(cf.read_arcgisonline, conn, session, tenant, user, layerUrl=url, maxFeatures=3)
-    assert conn.execute("SELECT count(*) FROM node_n").fetchone() == (3,)
+    # AUD-082 : la source signale encore des données -> refus explicite, plus de coupe muette
+    with pytest.raises(PipelineRuntimeError, match="tronqué"):
+        _read(cf.read_arcgisonline, conn, session, tenant, user, layerUrl=url, maxFeatures=3)
     httpserver.clear()
     httpserver.expect_request("/L/FeatureServer/0/query").respond_with_json(
         {"error": {"code": 498, "message": "Invalid token"}}
@@ -649,3 +650,33 @@ def test_arcgis_page_limit_byte_budget_and_malformed(
     httpserver.expect_request(ep).respond_with_json({"features": [{"properties": 3}]})
     with pytest.raises(PipelineRuntimeError, match="malformed feature"):
         _read(cf.read_arcgisonline, conn, session, tenant, user, layerUrl=url)
+
+
+def test_arcgis_refuses_a_truncated_answer(httpserver, monkeypatch, conn, session, tenant, user):
+    """AUD-082 : la source signale encore des données au-delà de maxFeatures -> refus."""
+    _secret(session, tenant, user, "s", {"kind": "api_key", "location": "query", "key": "token",
+            "value": "TK", "baseUrl": httpserver.url_for("/")})  # fmt: skip
+    feats = [
+        {"properties": {"oid": i}, "geometry": {"type": "Point", "coordinates": [i, 0]}}
+        for i in range(2)
+    ]
+    httpserver.expect_request("/arcgis/rest/services/S/FeatureServer/0/query").respond_with_json(
+        {"features": feats, "exceededTransferLimit": True}
+    )
+    with pytest.raises(PipelineRuntimeError, match="tronqué"):
+        _read(cf.read_arcgisonline, conn, session, tenant, user, secretName="s", maxFeatures=2,
+              layerUrl=httpserver.url_for("/arcgis/rest/services/S/FeatureServer/0"))  # fmt: skip
+
+
+def test_csv_serialization_neutralizes_formulas():
+    # AUD-152 : writer.ftp CSV neutralise comme les autres sorties CSV (cell_safety).
+    import pandas as pd
+
+    from app.pipelines.ops.cloudfiles import _serialize
+
+    frame = pd.DataFrame({"=cmd": ['=HYPERLINK("http://evil","x")', "ok"], "n": [-5, 1]})
+    lines = _serialize(frame, "csv").decode().splitlines()
+    assert lines[0] == "'=cmd,n"
+    assert lines[1].startswith("\"'=HYPERLINK(")
+    assert lines[1].endswith(",-5")  # un nombre typé négatif reste numérique
+    assert lines[2] == "ok,1"

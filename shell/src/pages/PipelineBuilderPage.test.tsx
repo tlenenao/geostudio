@@ -153,6 +153,7 @@ function renderPage(pk: string | null, overrides: Partial<ItemClient> = {}, rout
         rasterEnabled: false,
         routingEnabled: false,
         experimentalOpsEnabled: false,
+        externalBasemapsEnabled: true,
       }),
     ...overrides,
   };
@@ -210,6 +211,7 @@ function renderPageWithNavigation(
         rasterEnabled: false,
         routingEnabled: false,
         experimentalOpsEnabled: false,
+        externalBasemapsEnabled: true,
       }),
     ...overrides,
   };
@@ -265,6 +267,7 @@ function renderNewPipelineRoutes(overrides: Partial<ItemClient> = {}) {
         rasterEnabled: false,
         routingEnabled: false,
         experimentalOpsEnabled: false,
+        externalBasemapsEnabled: true,
       }),
     ...overrides,
   };
@@ -320,6 +323,7 @@ test("unsaved mode: affiche un message de désactivation au lieu du spinner infi
         rasterEnabled: false,
         routingEnabled: false,
         experimentalOpsEnabled: false,
+        externalBasemapsEnabled: true,
       }),
     // Simule des routes pipeline non montées côté cœur : jamais résolu,
     // pour prouver que la garde D09 n'attend pas opsQuery.
@@ -383,6 +387,7 @@ test("unsaved mode: n'affiche jamais le builder tant que /v1/instance n'a pas r�
       rasterEnabled: false,
       routingEnabled: false,
       experimentalOpsEnabled: false,
+      externalBasemapsEnabled: true,
     });
   });
   expect(
@@ -584,9 +589,54 @@ test("persisted mode: toggling planification then saving includes refreshPolicy 
   await waitFor(() =>
     expect(savePipelineConfig).toHaveBeenCalledWith("p-1", {
       ...payload,
-      refreshPolicy: { enabled: true, cron: "*/15 * * * *" },
+      refreshPolicy: { enabled: true, cron: "*/15 * * * *", timezone: "UTC" },
     }),
   );
+});
+
+test("a writer.collection without target can create it from the flow (AUD-088 F2)", async () => {
+  const payload: PipelinePayload = {
+    nodes: [
+      {
+        id: "r1",
+        kind: "reader",
+        op: "reader.collection",
+        x: 0,
+        y: 0,
+        params: { collectionId: "villes" },
+        title: "Villes",
+      },
+      {
+        id: "w1",
+        kind: "writer",
+        op: "writer.collection",
+        x: 300,
+        y: 0,
+        params: { collectionId: "" },
+        title: "Écriture",
+      },
+    ],
+    edges: [{ id: "e1", from: "r1", to: "w1" }],
+  };
+  const createPipelineTargetCollection = vi.fn().mockResolvedValue({ collectionId: "c9" });
+  const savePipelineConfig = vi.fn().mockResolvedValue(undefined);
+  renderPage("p-1", {
+    getPipelineConfig: () => Promise.resolve(payload),
+    createPipelineTargetCollection,
+    savePipelineConfig,
+  });
+  await waitFor(() => expect(screen.getByText("Écriture")).toBeInTheDocument());
+  fireEvent.click(screen.getByText("Écriture"));
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Créer une collection à partir de ce flux" }),
+  );
+  expect(createPipelineTargetCollection).toHaveBeenCalledWith(
+    expect.objectContaining({ writerNodeId: "w1" }),
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(savePipelineConfig).toHaveBeenCalled());
+  const saved = savePipelineConfig.mock.lastCall![1] as PipelinePayload;
+  expect(saved.nodes.find((n) => n.id === "w1")!.params.collectionId).toBe("c9");
 });
 
 test("persisted mode: loads an existing refreshPolicy pre-filled into the editor", async () => {

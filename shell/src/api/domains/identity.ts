@@ -97,8 +97,8 @@ export function createIdentityMethods(base: ItemClientBase): IdentityMethods {
       return request<UserSummary>("PATCH", `/users/${id}`, { roleId });
     },
 
-    async eraseUser(userId: string): Promise<void> {
-      await request<void>("POST", `/compliance/users/${userId}/erase`);
+    async eraseUser(userId: string, confirmUsername: string): Promise<void> {
+      await request<void>("POST", `/compliance/users/${userId}/erase`, { confirmUsername });
     },
 
     async requestTenantPurge(tenantId: string, confirmSlug: string): Promise<{ jobId: string }> {

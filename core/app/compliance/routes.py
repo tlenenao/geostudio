@@ -11,12 +11,12 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.auth.dependency import get_current_user
+from app.auth.dependency import forbid_api_key, get_current_user
 from app.compliance.models import PurgeReceipt
 from app.compliance.service import (
     AnonymizationLockoutError,
@@ -34,9 +34,15 @@ router = APIRouter(prefix="/compliance")
 _PURGE_STALE = timedelta(hours=24)
 
 
-@router.post("/users/{user_id}/erase", status_code=204)
+class EraseRequest(BaseModel):
+    # AUD-094 : confirmation explicite, nom d'utilisateur de la cible.
+    confirmUsername: str = Field(min_length=1)
+
+
+@router.post("/users/{user_id}/erase", status_code=204, dependencies=[Depends(forbid_api_key)])
 def erase_user(
     user_id: str,
+    body: EraseRequest,
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session, scope="function"),
 ) -> None:
@@ -46,6 +52,11 @@ def erase_user(
         # (déjà utilisé par UsersAdminPage, cf. CLAUDE.md SP-38) — pas de
         # nouveau privilège nécessaire pour ce cas (spec §3.2).
         require_privilege(session, user, Privilege.ADMIN_USERS_MANAGE.value)
+    target = session.get(User, target_id)
+    if target is None or target.tenant_id != user.tenant_id:
+        raise HTTPException(status_code=404, detail="user not found in this tenant")
+    if body.confirmUsername != target.username:
+        raise HTTPException(status_code=409, detail="confirmation username does not match")
     try:
         anonymize_user(session, tenant_id=user.tenant_id, user_id=target_id, actor_id=user.id)
         session.commit()
@@ -92,7 +103,9 @@ def get_purge_task_deferrer() -> Callable[[str, str, str], None]:  # overridden 
     return deferrer
 
 
-@router.post("/tenants/{tenant_id}/purge", status_code=202)
+@router.post(
+    "/tenants/{tenant_id}/purge", status_code=202, dependencies=[Depends(forbid_api_key)]
+)  # revue SP-L2 I2 : irréversible, session interactive seulement
 def request_tenant_purge(
     tenant_id: str,
     body: PurgeConfirmRequest,

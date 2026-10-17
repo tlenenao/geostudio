@@ -91,5 +91,10 @@ class Collection(Base):
     version: Mapped[str] = mapped_column(String, default="", server_default="", nullable=False)
     temporal_start: Mapped[date | None] = mapped_column(Date, nullable=True)
     temporal_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # AUD-047 : mots-clés libres + thème INSPIRE (code, cf. app.catalog.metadata.INSPIRE_THEMES).
+    keywords: Mapped[list] = mapped_column(JSON, default=list, nullable=False, server_default="[]")
+    inspire_theme: Mapped[str] = mapped_column(
+        String, default="", server_default="", nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)

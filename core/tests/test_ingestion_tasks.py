@@ -10,6 +10,7 @@ from sqlalchemy import select, text
 from app.db import Base, make_session_factory
 from app.ingestion import repository as ingestion_repo
 from app.ingestion import tasks as ingestion_tasks
+from app.job_errors import INTERNAL_ERROR_MESSAGE
 from app.notifications import repository as notifications_repo
 from app.notifications.models import Notification
 from app.tenants.repository import get_or_create_default_tenant
@@ -296,7 +297,8 @@ def test_early_failure_before_created_by_bound_does_not_crash(env, monkeypatch):
         fetched = ingestion_repo.get_job(s, tenant_id=tenant.id, job_id=job_id)
         assert fetched.status == "error"
         assert fetched.error_message is not None
-        assert "connectivité DB perdue" in fetched.error_message
+        assert fetched.error_message == INTERNAL_ERROR_MESSAGE
+        assert "connectivité" not in fetched.error_message
 
         # Pas de destinataire connu (created_by jamais lié) : aucune
         # notification de repli n'est écrite — le job est déjà marqué

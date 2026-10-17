@@ -2,7 +2,7 @@
 from datetime import UTC, datetime
 
 import sqlalchemy as sa
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
 
@@ -25,6 +25,15 @@ class PipelineRun(Base):
     # migration 0035 pour la mesure.
     __table_args__ = (
         Index("ix_pipeline_runs_pipeline", "pipeline_item_id", "tenant_id", "created_at"),
+        # AUD-084 (0087) : idempotence du déclencheur webhook.
+        Index(
+            "ux_pipeline_runs_idempotency",
+            "pipeline_item_id",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=sa.text("idempotency_key IS NOT NULL"),
+            sqlite_where=sa.text("idempotency_key IS NOT NULL"),
+        ),
     )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
@@ -35,9 +44,14 @@ class PipelineRun(Base):
     status: Mapped[str] = mapped_column(
         String, nullable=False, default="queued", server_default="queued"
     )
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # AUD-026 : battement de cœur du worker, ancre du balayage des runs vivants.
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     error: Mapped[str | None] = mapped_column(String, nullable=True)
+    # AUD-087 (0088) : nœud fautif d'un run en échec, quand il est connu.
+    failed_node_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     # server_default="{}" en chaîne nue (comme la migration 0018) : cf.
     # collections/models.py sur attachment_fields — le contournement du
     # piège de comparaison PG pour un type json vit côté test

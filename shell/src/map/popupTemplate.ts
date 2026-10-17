@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { evaluateExpression, type ExprContext } from "../builder/expr";
-import { sanitizeMarkdown } from "../builder/widgets/sanitizeMarkdown";
+import { renderMarkdownWithValues } from "../builder/widgets/sanitizeMarkdown";
 
 // Le gabarit de popup (SP-24 §3.5) est du markdown où chaque ${expression} est
 // évaluée en CEL. C'est la SECONDE syntaxe d'expression du dépôt, à côté du
@@ -11,9 +11,11 @@ import { sanitizeMarkdown } from "../builder/widgets/sanitizeMarkdown";
 // (structure circulaire, BigInt…) et pour un placeholder dont l'expression
 // contient elle-même un "}" entre guillemets :
 //  - un placeholder mal formé ou une expression invalide ne lève jamais ;
-//  - on interpole d'abord et on assainit ensuite (renderPopupTemplate), donc
-//    une valeur de propriété est traitée comme du markdown et DOMPurify est
-//    ce qui rend l'opération sûre.
+//  - une valeur de propriété n'est JAMAIS du markdown (AUD-050) :
+//    renderPopupTemplate interpole des jetons opaques, rend le markdown du
+//    seul gabarit d'auteur, puis remplace chaque jeton par la valeur échappée
+//    en HTML ; DOMPurify passe en dernier (un lien d'auteur
+//    [voir](${record.url}) reste fonctionnel, son schéma reste filtré).
 
 // Partagé avec popupContent.ts's `display()` : seule la sérialisation d'un
 // objet (branche à risque — structure circulaire, toJSON qui lève…) est
@@ -75,7 +77,13 @@ export function closingBrace(template: string, start: number): number {
   return -1;
 }
 
-export function interpolatePopupTemplate(template: string, ctx: ExprContext): string {
+// `wrap` (optionnel) transforme chaque valeur interpolée ; sans lui, comportement
+// texte brut historique (labelSource, EntityFiche).
+export function interpolatePopupTemplate(
+  template: string,
+  ctx: ExprContext,
+  wrap?: (value: string) => string,
+): string {
   let out = "";
   let i = 0;
   while (i < template.length) {
@@ -91,12 +99,18 @@ export function interpolatePopupTemplate(template: string, ctx: ExprContext): st
       break;
     }
     out += template.slice(i, open);
-    out += stringify(evaluateExpression(template.slice(open + 2, close).trim(), ctx));
+    const value = stringify(evaluateExpression(template.slice(open + 2, close).trim(), ctx));
+    out += wrap ? wrap(value) : value;
     i = close + 1;
   }
   return out;
 }
 
 export function renderPopupTemplate(template: string, ctx: ExprContext): string {
-  return sanitizeMarkdown(interpolatePopupTemplate(template, ctx));
+  const values: string[] = [];
+  const markdown = interpolatePopupTemplate(template, ctx, (v) => {
+    values.push(v);
+    return `gspv${values.length - 1}x`;
+  });
+  return renderMarkdownWithValues(markdown, values);
 }

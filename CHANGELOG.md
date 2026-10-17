@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Open standards and API (SP-L6)**: OGC API Records (`/v1/records`) over public item kinds
+  with content status, ISO 19139 metadata per collection
+  (`/v1/collections/{id}/metadata`), collection keywords and INSPIRE theme (migration 0095),
+  udata harvesting connector, WMS 1.1.1 alongside 1.3.0, NTF/Lambert II imports through the IGN
+  grid. **Sovereign basemap mode** (`CORE_EXTERNAL_BASEMAPS_ENABLED=false`, AUD-122): new
+  maps (creation, import) get a local blank basemap, third-party basemaps (MapLibre demo,
+  Carto, IGN Géoplateforme) disappear from pickers, and their origins leave the dynamic CSP.
+  It does **not** rewrite existing maps whose style already points to a third party, nor cover
+  the pipeline builder preview map, the "swipe" template or the Helm chart's static
+  `shell.csp`.
+
 - **FME matrix closure** (2026-10-15): ~85 pipeline ops (attribute/text/MGRS, Shapely geometry,
   raster, NetCDF/GRIB/OSM/CityJSON/WMS/Sentinel-2 readers, email/Slack/SNS/Kinesis/RabbitMQ/MCP
   messaging, cloud-file connectors, `databaseJoin`, SRID 0, 3D draping), secret kinds `oauth2_client`
@@ -76,6 +87,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **OGC API Tiles URL order (SP-L6, breaking)**: the advertised tile template changed from
+  `{z}/{x}/{y}` to the standard `{tileMatrix}/{tileRow}/{tileCol}`. Clients following the
+  advertised template are unaffected; a client that hard-coded the old order silently gets
+  row/column-swapped tiles (no 404).
+- **Strict STAC search (SP-L6, breaking)**: `/v1/stac/search` rejects unknown GET parameters
+  (400) and unknown POST body fields (422) instead of ignoring them — clients sending `fields`,
+  `sortby`, `filter` or `f=json` now fail. An empty or invalid `intersects` geometry is a 400
+  (also on OGC Features `geom_intersects`), and a spatial search skips collections without
+  geometry instead of failing.
+- **Pipelines: correct ETL (SP-L5, breaking)**: `transform.join` names a colliding right-side
+  column with `rightPrefix` (default `right_x`) instead of DuckDB's `x_1`, and fails if the
+  prefixed name still collides; `reader.wfs` and the ArcGIS reader fail instead of silently
+  truncating at their page/feature cap; `transform.reproject`/`reprojectAttribute` accept only
+  `EPSG:n` target codes (lowercase is normalized); an enabled schedule's cron must be at least
+  5 minutes apart (checked at write time only, disabled schedules and existing configs stay
+  readable), evaluated in the policy `timezone`, and suspended after 3 consecutive failures until
+  a manual run succeeds (`GET /v1/pipelines/next-run?itemId=` exposes `scheduleSuspended`);
+  app templates whose data sources point at a collection now require binding each one to a real
+  collection at creation (`bindings`). Migrations 0087-0088.
+- **Outbound security and tokens (SP-L2), breaking for `/v1` clients**:
+  `size` (bytes, >= 1) is now required on `POST /v1/uploads/presign`,
+  `/v1/raster/uploads/presign`, `/v1/terrain3d/uploads/presign` and the attachment presign
+  (413 above the cap); `partNumber` of a 3D tileset multipart upload must be 1-10000 (422);
+  zonal statistics refuse a window above 16 M pixels; failed jobs now expose a generic error
+  message (details stay in the logs, AUD-100), except readable business refusals such as
+  "géocodeur occupé". New settings: `CORE_PUBLIC_SUBMIT_TOKEN_HOURLY_LIMIT` (core, default
+  1000 accepted submissions per form token and hour), `CORE_EXPORT_TRUSTED_ORIGINS` and
+  `CORE_EXPORT_EGRESS_ALLOWLIST` (export-worker; the public S3 endpoint origin is always
+  allowed). Export tokens and read-only API keys can call read-only POST routes
+  (`aggregate`, STAC `search`).
+- **Memory bounds and Postgres tuning (AUD-031/184)**: compose services now carry a
+  `mem_limit` (postgis 2g, core 1536m, export-worker 1g, keycloak 1536m, minio 512m,
+  titiler 1g with 2 gunicorn workers and `GDAL_CACHEMAX=128`; cdc-worker unbounded by default,
+  see `.env.example`), each tunable through a `*_MEM_LIMIT` variable. Postgres settings are
+  now tunable with smaller defaults: **`shared_buffers` drops from 2GB to 512MB**,
+  `effective_cache_size` 6GB → 2GB, `work_mem` 64MB → 16MB, `max_parallel_workers_per_gather`
+  4 → 2. **Existing installs on a large host**: set `PG_MEM_LIMIT`, `PG_SHARED_BUFFERS`
+  (~25 % of the limit) and `PG_EFFECTIVE_CACHE_SIZE` in `.env` before upgrading, otherwise
+  Postgres restarts with a quarter of its previous buffer cache. `CORE_DUCKDB_MEMORY_LIMIT`
+  (per DuckDB connection) defaults to 512MB instead of 2GB, in compose and Helm.
+- The base `docker-compose.yml` (built from source) no longer forwards `GEOSTUDIO_VERSION`:
+  it reports `dev`; `docker-compose.prod.yml` forwards the deployed image tag.
 - **BREAKING, blob secrets (REV-341)**: Azure `accountName` must match
   `^[a-z0-9]{3,24}$` and a GCS service-account `token_uri` must be one of
   Google's OAuth2 endpoints. A blob (Azure/GCS) secret stored outside the new

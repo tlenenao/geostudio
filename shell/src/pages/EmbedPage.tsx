@@ -8,6 +8,7 @@ import { ItemClientProvider } from "../api/ItemClientProvider";
 import { AppRenderer } from "../builder/AppRenderer";
 import { registerBuiltinWidgets } from "../builder/widgets";
 import { registerExampleWidgets } from "../builder/examples";
+import { CoreUnreachableError } from "../api/CoreUnreachableError";
 import { resolveShareLink } from "./embed/resolveShareLink";
 import { t } from "../i18n";
 import { LoadingState } from "../ui/kit/LoadingState";
@@ -82,7 +83,9 @@ export function EmbedPage({ token }: { token: string }) {
   if (linkQuery.isError || !linkQuery.data) {
     return (
       <p role="alert" className="p-4 text-sm text-danger">
-        {t("embed.linkExpiredOrRevoked")}
+        {linkQuery.error instanceof CoreUnreachableError
+          ? t("errors.coreUnreachable")
+          : t("embed.linkExpiredOrRevoked")}
       </p>
     );
   }

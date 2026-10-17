@@ -13,6 +13,7 @@ from xml.sax.saxutils import escape, quoteattr
 
 from app.collections.introspection import ColumnInfo, TableInfo
 from app.features.repository import _property_columns
+from app.ogc_crs import SUPPORTED_EPSG
 
 NS_GS = "http://geostudio.local/ows"
 NS_WFS = "http://www.opengis.net/wfs/2.0"
@@ -40,6 +41,10 @@ _GEOM_PROP = {
     "MultiLineString": "gml:MultiCurvePropertyType",
     "MultiPolygon": "gml:MultiSurfacePropertyType",
 }
+
+_OTHER_CRS = "".join(
+    f"<wfs:OtherCRS>urn:ogc:def:crs:EPSG::{c}</wfs:OtherCRS>" for c in SUPPORTED_EPSG if c != 4326
+)
 
 
 def _t(value: str) -> str:
@@ -89,8 +94,7 @@ def capabilities(base_url: str, title: str, collections: list) -> str:
             f"<wfs:Title>{_t(col.title)}</wfs:Title>"
             f"<wfs:Abstract>{_t(col.description or '')}</wfs:Abstract>"
             "<wfs:DefaultCRS>urn:ogc:def:crs:EPSG::4326</wfs:DefaultCRS>"
-            "<wfs:OtherCRS>urn:ogc:def:crs:EPSG::3857</wfs:OtherCRS>"
-            "<wfs:OtherCRS>urn:ogc:def:crs:EPSG::2154</wfs:OtherCRS>"
+            f"{_OTHER_CRS}"
             "<wfs:OutputFormats>"
             f"<wfs:Format>{_t(GML_FORMAT)}</wfs:Format><wfs:Format>application/json</wfs:Format>"
             "</wfs:OutputFormats></wfs:FeatureType>"

@@ -18,9 +18,11 @@ STUBS = {
     "curl": 'out=""; while [ $# -gt 0 ]; do [ "$1" = -o ] && out="$2"; shift; done; '
     'if [ -n "$out" ]; then echo \'{"realm":"geostudio"}\' > "$out"; '
     'else echo \'{"access_token":"tok"}\'; fi',
-    "jq": '[ "$1" = -r ] && echo tok; exit 0',
-    # age -r R -o OUT IN : copie IN vers OUT
-    "age": 'cp "$5" "$4"',
+    # `curl … | jq -r` : lire l'entrée, sinon curl prend SIGPIPE et pipefail
+    # fait sortir le script en 141 (flake observé une fois sur deux).
+    "jq": '[ "$1" = -r ] && { cat >/dev/null; echo tok; }; exit 0',
+    # age -r R -o OUT : chiffre l'entrée standard (tar en flux, AUD-184)
+    "age": 'cat > "$4"',
     # retention.py : désigne l'ancienne archive à supprimer
     "python3": f"echo {OLD}",
 }

@@ -84,9 +84,14 @@ export function insertNodeOnEdge(
   const rest = edges.filter((e) => e.id !== edgeId);
   const downstream: PipelineEdge = { id: genEdgeId(), from: newNode.id, to: edge.to };
   if (edge.role) downstream.role = edge.role;
+  // AUD-087 : le nœud inséré se pose au milieu de l'arête, pas à l'origine.
+  const from = nodes.find((n) => n.id === edge.from);
+  const to = nodes.find((n) => n.id === edge.to);
+  const placed =
+    from && to ? { ...newNode, x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 } : newNode;
   return {
-    nodes: [...nodes, newNode],
-    edges: [...rest, { id: genEdgeId(), from: edge.from, to: newNode.id }, downstream],
+    nodes: [...nodes, placed],
+    edges: [...rest, { id: genEdgeId(), from: edge.from, to: placed.id }, downstream],
   };
 }
 

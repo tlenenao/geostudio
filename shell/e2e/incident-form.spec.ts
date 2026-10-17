@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { mockCollection, mockCore } from "./mocks";
+import { bindTemplateSources, mockCollection, mockCore } from "./mocks";
 
 test("déclarer un incident : créer sans code, créer/voir/modifier/supprimer une entité", async ({
   page,
@@ -12,6 +12,7 @@ test("déclarer un incident : créer sans code, créer/voir/modifier/supprimer u
   const dialog = page.getByRole("dialog", { name: "Nouvel élément" });
   await dialog.getByLabel("Type").selectOption("app");
   await dialog.getByLabel("Modèle").selectOption("application-de-saisie");
+  await bindTemplateSources(dialog);
   await dialog.getByLabel("Titre").fill("Déclarer un incident");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
@@ -85,6 +86,7 @@ test("un viewer ne voit pas les boutons d'écriture ; une écriture forcée est 
   const dialog = page.getByRole("dialog", { name: "Nouvel élément" });
   await dialog.getByLabel("Type").selectOption("app");
   await dialog.getByLabel("Modèle").selectOption("application-de-saisie");
+  await bindTemplateSources(dialog);
   await dialog.getByLabel("Titre").fill("Déclarer un incident (viewer)");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
@@ -118,6 +120,7 @@ test("REV-223 : un formulaire invalide affiche un résumé d'erreurs et focalise
   const dialog = page.getByRole("dialog", { name: "Nouvel élément" });
   await dialog.getByLabel("Type").selectOption("app");
   await dialog.getByLabel("Modèle").selectOption("application-de-saisie");
+  await bindTemplateSources(dialog);
   await dialog.getByLabel("Titre").fill("Déclarer un incident");
   await page.getByRole("button", { name: "Créer" }).click();
   await page.getByRole("button", { name: "Sélectionner Formulaire" }).click();

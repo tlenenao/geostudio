@@ -50,7 +50,7 @@ def test_upload_key_cannot_target_an_existing_cog_or_be_reused(env):
 
 @pytest.mark.parametrize("name", ["a/b.tif", "..", "x..y.tif", "a\\b.tif"])
 def test_presign_filename_rejects_paths(env, name):
-    r = env.client.post("/v1/raster/uploads/presign", json={"filename": name})
+    r = env.client.post("/v1/raster/uploads/presign", json={"size": 10, "filename": name})
     assert r.status_code == 422
 
 

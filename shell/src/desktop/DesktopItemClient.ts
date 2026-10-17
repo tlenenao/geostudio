@@ -119,10 +119,14 @@ export function createDesktopItemClient(connection: {
     },
 
     async previewPipeline(
-      pk: string,
+      pk: string | null,
       upToNodeId: string,
       draft?: PipelinePayload,
     ): Promise<Record<string, unknown>[]> {
+      if (pk === null) {
+        // Le sidecar stocke les pipelines par item : pas d'aperçu avant enregistrement.
+        return unsupported();
+      }
       return sidecarFetch<Record<string, unknown>[]>(
         "POST",
         `/pipelines/${pk}/preview?upTo=${encodeURIComponent(upToNodeId)}`,
@@ -230,6 +234,7 @@ export function createDesktopItemClient(connection: {
         rasterEnabled: false,
         routingEnabled: false,
         experimentalOpsEnabled: false,
+        externalBasemapsEnabled: true,
       };
     },
     async getQuotaUsage(..._args: unknown[]) {
@@ -350,6 +355,9 @@ export function createDesktopItemClient(connection: {
       return unsupported();
     },
     async getImpact(..._args: unknown[]) {
+      return unsupported();
+    },
+    async getLineage(..._args: unknown[]) {
       return unsupported();
     },
     async deleteCollection(..._args: unknown[]) {

@@ -95,20 +95,22 @@ def test_compute_csp_allowlist_aggregates_the_three_sources():
     assert "https://tiles.example.com" not in allowlist.script_hosts
 
 
-def test_compute_csp_allowlist_empty_instance_returns_empty_sets():
+def test_compute_csp_allowlist_empty_instance_returns_empty_sets(monkeypatch):
+    monkeypatch.setenv("CORE_EXTERNAL_BASEMAPS_ENABLED", "false")
     Session = _make_session()
     with Session() as s:
         allowlist = compute_csp_allowlist(s)
     assert allowlist == CspAllowlist()
 
 
-def test_compute_csp_allowlist_still_separates_script_hosts_from_tile_hosts():
+def test_compute_csp_allowlist_still_separates_script_hosts_from_tile_hosts(monkeypatch):
     """Même intention que test_script_src_never_widened_by_computed_extension_hosts
     (tests/test_security_jobs.py), à un niveau plus bas : si
     compute_csp_allowlist fusionnait un jour script_hosts dans
     img_hosts/connect_hosts (ou l'inverse), ce test le détecterait même si
     render_dynamic_conf n'était pas encore touché. Committé avec le même
     esprit de garde intentionnelle (SP-48/GAP-72 blocage 3, spec §4)."""
+    monkeypatch.setenv("CORE_EXTERNAL_BASEMAPS_ENABLED", "false")  # fonds intégrés hors sujet
     Session = _make_session()
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
@@ -181,3 +183,20 @@ def test_compute_csp_allowlist_ignores_disabled_extensions():
         s.commit()
         allowlist = compute_csp_allowlist(s)
     assert allowlist.script_hosts == {"https://on.example.com"}
+
+
+def test_builtin_basemap_hosts_follow_the_external_basemaps_flag(monkeypatch):
+    """Revue L6 M8 : les fonds intégrés (IGN, Carto, démo MapLibre) sont autorisés en
+    img/connect-src tant que l'instance les propose, retirés en mode souverain."""
+    from app.security.service import BUILTIN_BASEMAP_ORIGINS
+
+    Session = _make_session()
+    monkeypatch.delenv("CORE_EXTERNAL_BASEMAPS_ENABLED", raising=False)
+    with Session() as s:
+        allowlist = compute_csp_allowlist(s)
+    assert "https://data.geopf.fr" in allowlist.img_hosts
+    assert BUILTIN_BASEMAP_ORIGINS <= allowlist.connect_hosts
+    assert not BUILTIN_BASEMAP_ORIGINS & allowlist.script_hosts
+    monkeypatch.setenv("CORE_EXTERNAL_BASEMAPS_ENABLED", "false")
+    with Session() as s:
+        assert not BUILTIN_BASEMAP_ORIGINS & compute_csp_allowlist(s).img_hosts

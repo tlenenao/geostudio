@@ -38,6 +38,7 @@ from app.pipelines.ops import (
     dbio2,
     geom2,
     messaging,
+    quality,
     raster2,
     readers2,
     reliquats,
@@ -162,6 +163,7 @@ _BASE_OPERATIONS: dict[str, OperationContract] = {
         engine="duckdb",
         engine_license="MIT (DuckDB)",
         compile=_compiler._compile_join,
+        needs_columns=True,
     ),
     "transform.buffer": OperationContract(
         op="transform.buffer",
@@ -198,6 +200,7 @@ _BASE_OPERATIONS: dict[str, OperationContract] = {
         engine="duckdb",
         engine_license="MIT (DuckDB)",
         compile=_compiler._compile_count_within,
+        needs_columns=True,
         output_srid=_compiler._output_srid_reconcile_join,
     ),
     "transform.h3Aggregate": OperationContract(
@@ -490,6 +493,7 @@ _BASE_OPERATIONS: dict[str, OperationContract] = {
         engine="duckdb",
         engine_license="MIT (DuckDB)",
         compile=_compiler._compile_validate_attributes,
+        needs_columns=True,
     ),
     "transform.sort": OperationContract(
         op="transform.sort",
@@ -658,6 +662,7 @@ _BASE_OPERATIONS: dict[str, OperationContract] = {
         engine="duckdb",
         engine_license="MIT (DuckDB)",
         compile=_filtering.compile_neighbor_finder,
+        pre_check=_filtering.pre_check_neighbor_finder,
     ),
     "transform.sqlExecutor": OperationContract(
         op="transform.sqlExecutor",
@@ -693,6 +698,7 @@ LANE_MODULES: tuple[ModuleType, ...] = (
     readers2,
     dbio2,
     reliquats,
+    quality,
 )
 
 

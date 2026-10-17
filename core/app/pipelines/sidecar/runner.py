@@ -8,9 +8,11 @@ est câblé en dur à Postgres/S3/notifications (chargement de la config,
 utilisateur, tracker), rien de tout cela n'a de sens ici — seul l'appel au
 moteur (runtime.run_pipeline) est partagé."""
 
+import logging
 import threading
 
 from app.configs.schemas import PipelinePayload
+from app.job_errors import INTERNAL_ERROR_MESSAGE
 from app.pipelines import runtime
 from app.pipelines.errors import PipelineRuntimeError
 from app.pipelines.sidecar.tracker import RunRegistry
@@ -45,10 +47,11 @@ def _execute(
             base_uri=base_uri,
         )
     except (PipelineRuntimeError, ValueError) as exc:
-        tracker.mark_failed(str(exc))
+        tracker.mark_failed(str(exc), getattr(exc, "node_id", None))
         return
-    except Exception as exc:  # noqa: BLE001 — même patron que jobs.py:run_pipeline_task
-        tracker.mark_failed(f"erreur interne : {exc}")
+    except Exception:  # noqa: BLE001 — même patron que jobs.py:run_pipeline_task
+        logging.getLogger(__name__).exception("sidecar : erreur inattendue")
+        tracker.mark_failed(INTERNAL_ERROR_MESSAGE)
         return
     tracker.mark_succeeded({s.nodeId: s.to_dict() for s in stats})
 

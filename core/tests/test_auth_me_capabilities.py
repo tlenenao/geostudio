@@ -30,6 +30,7 @@ CAPABILITY_KEYS = {
     "rasterEnabled",
     "routingEnabled",
     "experimentalOpsEnabled",
+    "externalBasemapsEnabled",
 }
 
 

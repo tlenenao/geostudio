@@ -28,3 +28,9 @@ test("strips javascript: hrefs", () => {
   const html = sanitizeMarkdown("[lien](javascript:alert(3))");
   expect(html).not.toContain("javascript:");
 });
+
+test("rendered links open in a new tab without opener nor referrer (AUD-050)", () => {
+  const html = sanitizeMarkdown("[lien](https://example.com)");
+  expect(html).toContain('target="_blank"');
+  expect(html).toContain('rel="noopener noreferrer"');
+});

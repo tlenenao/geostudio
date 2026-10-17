@@ -32,7 +32,10 @@ import os
 import re
 import tempfile
 import threading
+import time
 from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
 
 import duckdb
 from sqlalchemy.orm import Session
@@ -64,6 +67,7 @@ from app.pipelines.collection_writer import write_rows
 from app.pipelines.errors import (  # noqa: F401 (réexportés pour compatibilité)
     PipelineCancelledError,
     PipelineRuntimeError,
+    PipelineTerminatedError,
 )
 from app.pipelines.expr_validation import validate_bounded_expr
 from app.pipelines.ops.contracts import (
@@ -165,7 +169,7 @@ def _require_readable_collection_id(
         action="read",
         item=collections_repo.get_access_facts(collection),
         kind="collection",
-        actor_is_admin=user.is_admin,
+        actor_is_admin=user.acts_as_admin(),
     ):
         raise PipelineRuntimeError(f"collection '{collection_id}' not found")
     # GAP-27 : le lac/DuckDB n'a pas de RLS — un lecteur ou une jointure sur une
@@ -252,7 +256,7 @@ def _require_writable_collection(
         action="write",
         item=collections_repo.get_access_facts(collection),
         kind="collection",
-        actor_is_admin=user.is_admin,
+        actor_is_admin=user.acts_as_admin(),
     ):
         raise PipelineRuntimeError(f"collection '{collection_id}' is not writable")
     if not collection.editable:
@@ -733,17 +737,28 @@ def _prepare(
         reader_fn = READERS.get(node.op)
         if reader_fn is None:
             raise PipelineRuntimeError(f"unknown reader op '{node.op}'")
-        srid_by_node[node.id] = reader_fn(
-            conn,
-            session=session,
-            tenant_id=tenant_id,
-            node_id=node.id,
-            params=node.params,
-            view_name=view_name,
-            user=user,
-            base_uri=base_uri,
-        )
+        try:
+            srid_by_node[node.id] = reader_fn(
+                conn,
+                session=session,
+                tenant_id=tenant_id,
+                node_id=node.id,
+                params=node.params,
+                view_name=view_name,
+                user=user,
+                base_uri=base_uri,
+            )
+        except PipelineRuntimeError as exc:  # AUD-087 : le nœud fautif reste connu
+            exc.node_id = exc.node_id or node.id
+            raise
         view_by_node[node.id] = view_name
+        if node.op.startswith("reader.connector."):
+            try:
+                decoded_srid = _decode_connector_geometry(conn, view_name, node.params)
+            except duckdb.Error as exc:
+                raise _node_error(node, exc) from exc
+            if decoded_srid is not None:
+                srid_by_node[node.id] = decoded_srid
         # ARC-K2/F4 : lecture incrémentale des readers connecteurs (table
         # temporaire) — filtre aux lignes plus récentes que le curseur du dernier
         # run réussi ; le nouveau curseur reste « en attente » jusqu'au succès.
@@ -770,30 +785,35 @@ def _prepare(
         p = model.model_validate(node.params)
         if p.withCollectionId is None:
             raise PipelineRuntimeError(
-                f"'{node.op}': requires either 'withCollectionId' or a secondary input edge"
+                f"'{node.op}': requires either 'withCollectionId' or a secondary input edge",
+                node_id=node.id,
             )
-        table_name = _require_readable_collection_id(
-            session,
-            tenant_id=tenant_id,
-            user=user,
-            collection_id=p.withCollectionId,
-        )
-        table_info = _readable_table_info(
-            session,
-            tenant_id=tenant_id,
-            user=user,
-            collection_id=p.withCollectionId,
-            table_name=table_name,
-        )
         join_view = f"node_{node.id}__join"
-        _materialize_reader(
-            conn,
-            view_name=join_view,
-            base_uri=base_uri,
-            tenant_id=tenant_id,
-            collection_id=p.withCollectionId,
-            table_info=table_info,
-        )
+        try:
+            table_name = _require_readable_collection_id(
+                session,
+                tenant_id=tenant_id,
+                user=user,
+                collection_id=p.withCollectionId,
+            )
+            table_info = _readable_table_info(
+                session,
+                tenant_id=tenant_id,
+                user=user,
+                collection_id=p.withCollectionId,
+                table_name=table_name,
+            )
+            _materialize_reader(
+                conn,
+                view_name=join_view,
+                base_uri=base_uri,
+                tenant_id=tenant_id,
+                collection_id=p.withCollectionId,
+                table_info=table_info,
+            )
+        except PipelineRuntimeError as exc:  # AUD-087 : le nœud fautif reste connu
+            exc.node_id = exc.node_id or node.id
+            raise
         join_srid_by_node[node.id] = table_info.srid or 4326
 
     # Élargissement de allowed_directories réservé au flag actif : sinon un
@@ -841,9 +861,12 @@ def _execute_transform_chain(
     preview: bool = False,
     checkpoint: Checkpoint | None = None,
     reader_state: ReaderState | None = None,
+    check: Callable[[], None] | None = None,
 ) -> list["NodeStat"]:
     stats: list[NodeStat] = []
     for node in ordered:
+        if check is not None:
+            check()
         if node.kind == "reader":
             if checkpoint is not None and not checkpoint.has(node.id):
                 _checkpoint_save(
@@ -892,7 +915,15 @@ def _execute_transform_chain(
             else:
                 join_view = f"node_{node.id}__join"
                 join_srid = join_srid_by_node.get(node.id)
-        _validate_node_exprs(conn, node)
+        try:
+            _validate_node_exprs(conn, node)
+        except PipelineRuntimeError as exc:
+            exc.node_id = exc.node_id or node.id
+            raise
+        except Exception as exc:  # SqlSandboxError et voisins : refus métier, jamais un 500
+            raise PipelineRuntimeError(
+                f"nœud '{node.id}' ({node.op}) : {exc}", node_id=node.id
+            ) from exc
         try:
             output_srid = compiler.transform_output_srid(
                 node.op,
@@ -901,7 +932,7 @@ def _execute_transform_chain(
                 join_srid=join_srid,
             )
         except ValueError as exc:
-            raise PipelineRuntimeError(str(exc)) from exc
+            raise PipelineRuntimeError(str(exc), node_id=node.id) from exc
         view_name = f"node_{node.id}"
         from app.pipelines.ops.contracts import OPERATIONS
 
@@ -931,6 +962,8 @@ def _execute_transform_chain(
                     **extra,
                 )
             else:
+                if contract.pre_check is not None:
+                    contract.pre_check(conn, input_view=input_view, params=node.params)
                 input_columns = None
                 join_columns = None
                 if contract.needs_columns:
@@ -950,10 +983,17 @@ def _execute_transform_chain(
                     input_columns=input_columns,
                     join_columns=join_columns,
                 )
-                conn.execute(f"CREATE TEMP VIEW {_qi(view_name)} AS {sql}")
-            stat = NodeStat(node.id, node.op, _view_row_count(conn, view_name))
+                # AUD-078 : en run, matérialiser — une VIEW est ré-évaluée par chaque nœud
+                # aval (coût quadratique en profondeur) et par le comptage. En aperçu, la
+                # VIEW reste (LIMIT en bout de chaîne) et le comptage est sauté.
+                kind = "VIEW" if preview else "TABLE"
+                conn.execute(f"CREATE TEMP {kind} {_qi(view_name)} AS {sql}")
+            stat = NodeStat(node.id, node.op, None if preview else _view_row_count(conn, view_name))
         except duckdb.Error as exc:
             raise _node_error(node, exc) from exc
+        except PipelineRuntimeError as exc:  # AUD-087 : le nœud fautif reste connu
+            exc.node_id = exc.node_id or node.id
+            raise
         view_by_node[node.id] = view_name
         srid_by_node[node.id] = output_srid
         if checkpoint is not None:
@@ -985,20 +1025,206 @@ def _node_error(node: PipelineNode, exc: Exception) -> PipelineRuntimeError:
     """j06b-007 : message métier (nœud + cause) au lieu du texte brut DuckDB
     (SQL interne, noms de vues node_*, LINE 1) ; le détail reste dans les logs."""
     logger.warning("pipeline node %s (%s) failed: %s", node.id, node.op, exc)
-    cause = re.sub(r"^\w+ Error:\s*", "", str(exc).splitlines()[0] if str(exc) else "")
+    cause = re.sub(r"^[\w ]+ Error:\s*", "", str(exc).splitlines()[0] if str(exc) else "")
     cause = re.sub(r"\bnode_\w+", "l'entrée du nœud", cause)
-    return PipelineRuntimeError(f"nœud '{node.id}' ({node.op}) : {cause or 'échec de l’opération'}")
+    return PipelineRuntimeError(
+        f"nœud '{node.id}' ({node.op}) : {cause or 'échec de l’opération'}", node_id=node.id
+    )
 
 
 def _view_row_count(conn, view_name: str) -> int:
     return conn.execute(f"SELECT count(*) FROM {_qi(view_name)}").fetchone()[0]
 
 
+_GEOMETRY_DECODERS = {
+    "wkt": "ST_GeomFromText({c})",
+    "wkb_hex": "ST_GeomFromHEXEWKB({c})",
+    "geojson": "ST_GeomFromGeoJSON({c})",
+}
+
+
+def _decode_connector_geometry(conn, view_name: str, params: dict) -> int | None:
+    """AUD-082 : décode `geometryColumn` d'un reader connecteur en colonne `geometry`.
+    Retourne le SRID déclaré, ou None si aucune colonne géométrie n'est configurée."""
+    col = params.get("geometryColumn")
+    if not col:
+        return None
+    cols = [d[0] for d in conn.execute(f"DESCRIBE {_qi(view_name)}").fetchall()]
+    if col not in cols:
+        raise PipelineRuntimeError(f"colonne géométrie {col!r} absente (colonnes : {cols})")
+    expr = _GEOMETRY_DECODERS[params.get("geometryFormat", "wkt")].format(c=_qi(col))
+    raw = f"{view_name}__raw"
+    conn.execute(f"ALTER TABLE {_qi(view_name)} RENAME TO {_qi(raw)}")
+    exclude = f"{_qi(col)}, geometry" if "geometry" in cols and col != "geometry" else _qi(col)
+    conn.execute(
+        f"CREATE TEMP TABLE {_qi(view_name)} AS "
+        f"SELECT * EXCLUDE ({exclude}), {expr} AS geometry FROM {_qi(raw)}"
+    )
+    conn.execute(f"DROP TABLE {_qi(raw)}")
+    return int(params.get("geometrySrid", 4326))
+
+
 def _preview_timeout_s() -> float:
     return float(os.environ.get("CORE_PIPELINES_PREVIEW_TIMEOUT_S") or 30)
 
 
-def preview_pipeline(
+_GUARD_POLL_S = 5.0
+
+
+def _run_timeout_s() -> float:
+    return float(os.environ.get("CORE_PIPELINES_RUN_TIMEOUT_S") or 21600)
+
+
+class _RunGuard:
+    """AUD-083/AUD-029 : annulation et durée maximale d'un run. Un fil surveille
+    `should_cancel` et l'échéance et interrompt la requête DuckDB en cours
+    (`conn.interrupt()`, même mécanisme que l'aperçu P16.03) — à chaque tour tant que
+    l'arrêt est demandé, pour qu'une requête lancée après la demande soit aussi coupée ;
+    `check()` est appelé entre deux nœuds et par les writers par lots (`should_stop`). Une
+    interruption DuckDB, même enveloppée par une op en PipelineRuntimeError, ressort en
+    erreur métier.
+    ponytail: un code Python bloquant hors DuckDB (GEOS, GDAL, boucle httpCall) n'est
+    arrêté qu'au nœud suivant ; l'arrêter net exigerait un sous-processus par run."""
+
+    def __init__(self, conn, should_cancel: Callable[[], bool] | None, timeout_s: float) -> None:
+        self._conn = conn
+        self._should_cancel = should_cancel
+        self._timeout_s = timeout_s
+        self._deadline = time.monotonic() + timeout_s
+        self.reason: str | None = None
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._watch, name="pipeline-run-guard", daemon=True)
+
+    def __enter__(self) -> "_RunGuard":
+        self._thread.start()
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        self._stop.set()
+        self._thread.join()
+        if (
+            exc is not None
+            and not isinstance(exc, (PipelineCancelledError, PipelineTerminatedError))
+            and self._interrupted(exc)
+        ):
+            self.check()
+        return False
+
+    @staticmethod
+    def _interrupted(exc: BaseException | None) -> bool:
+        while exc is not None:
+            if isinstance(exc, duckdb.InterruptException):
+                return True
+            exc = exc.__cause__ or exc.__context__
+        return False
+
+    def _poll(self) -> str | None:
+        if self.reason is None:
+            if time.monotonic() >= self._deadline:
+                self.reason = "timeout"
+            elif self._should_cancel is not None and self._should_cancel():
+                self.reason = "cancel"
+        return self.reason
+
+    def _watch(self) -> None:
+        while not self._stop.wait(_GUARD_POLL_S):
+            try:
+                reason = self._poll()
+            except Exception:  # noqa: BLE001 — sonde d'annulation en panne : l'échéance tient
+                logger.warning("garde de run : sonde d'annulation en échec", exc_info=True)
+                reason = None
+            if reason is not None:
+                self._conn.interrupt()
+
+    def check(self) -> None:
+        reason = self._poll()
+        if reason == "cancel":
+            raise PipelineCancelledError("run annulé")
+        if reason == "timeout":
+            raise PipelineTerminatedError(
+                f"durée maximale du run dépassée ({self._timeout_s:.0f} s)"
+            )
+
+    def should_stop(self) -> bool:
+        """`should_cancel` des writers par lots : lève l'erreur adaptée, sinon False."""
+        self.check()
+        return False
+
+
+def preview_pipeline(*, limit: int = 50, **kwargs: Any) -> list[dict]:
+    """Échantillon de lignes du nœud `up_to` (mêmes arguments que `_on_preview_view`)."""
+
+    def consume(conn: Any, view_name: str, target: PipelineNode, srid: int | None) -> list[dict]:
+        # Même conversion que _write_collection : DuckDB renvoie "geometry" en
+        # WKB (bytes), que jsonable_encoder (route FastAPI) ne sait pas
+        # décoder — on convertit en GeoJSON ici, au point de sortie de la
+        # preview, plutôt que de porter du GeoJSON à travers toute la chaîne
+        # de transforms intermédiaire (Phase 1 n'a aucune op spatiale).
+        input_cols = {
+            d[0] for d in conn.execute(f"SELECT * FROM {_qi(view_name)} LIMIT 0").description
+        }
+        has_geometry = "geometry" in input_cols
+        select_list = (
+            "* EXCLUDE (geometry), ST_AsGeoJSON(geometry) AS geometry" if has_geometry else "*"
+        )
+        try:
+            rows = conn.execute(
+                f"SELECT {select_list} FROM {_qi(view_name)} LIMIT {int(limit)}"
+            ).fetchall()
+        except duckdb.InterruptException:
+            raise
+        except duckdb.Error as exc:
+            # AUD-078 : en aperçu les nœuds restent des VIEW non comptées — une erreur
+            # d'évaluation ne surgit qu'ici ; même message métier qu'en run (jamais un 500).
+            raise _node_error(target, exc) from exc
+        cols = [d[0] for d in conn.description]
+        result = [dict(zip(cols, r, strict=True)) for r in rows]
+        if has_geometry:
+            # La colonne contient une chaîne GeoJSON (ST_AsGeoJSON) : on la
+            # décode en objet pour que la réponse HTTP porte une géométrie
+            # GeoJSON réelle, pas une chaîne-dans-une-chaîne.
+            for row in result:
+                if row.get("geometry") is not None:
+                    row["geometry"] = json.loads(row["geometry"])
+        return result
+
+    return _on_preview_view(**kwargs, consume=consume)
+
+
+@dataclass(frozen=True)
+class OutputSchema:
+    columns: list[tuple[str, str]]  # (nom, type DuckDB)
+    srid: int | None
+    geometry_types: list[str]  # ST_GeometryType distincts, ex. ["POLYGON", "MULTIPOLYGON"]
+
+
+def describe_pipeline_output(**kwargs: Any) -> OutputSchema:
+    """Schéma de sortie du nœud `up_to` (mêmes arguments que preview_pipeline, sans
+    limit) : sert à créer une collection cible typée (AUD-088 F2). Même borne de durée
+    que l'aperçu."""
+
+    def consume(conn: Any, view_name: str, target: PipelineNode, srid: int | None) -> OutputSchema:
+        try:
+            cols = [(d[0], d[1]) for d in conn.execute(f"DESCRIBE {_qi(view_name)}").fetchall()]
+            types: list[str] = []
+            if any(c == "geometry" for c, _ in cols):
+                types = [
+                    r[0]
+                    for r in conn.execute(
+                        "SELECT DISTINCT ST_GeometryType(geometry)::VARCHAR "
+                        f"FROM {_qi(view_name)} WHERE geometry IS NOT NULL LIMIT 10"
+                    ).fetchall()
+                ]
+        except duckdb.InterruptException:
+            raise
+        except duckdb.Error as exc:
+            raise _node_error(target, exc) from exc
+        return OutputSchema(columns=cols, srid=srid, geometry_types=types)
+
+    return _on_preview_view(**kwargs, consume=consume)
+
+
+def _on_preview_view[T](
     *,
     session: Session | None,
     payload: PipelinePayload,
@@ -1009,9 +1235,9 @@ def preview_pipeline(
     access_key: str,
     secret_key: str,
     base_uri: str,
-    limit: int = 50,
     params: dict | None = None,
-) -> list[dict]:
+    consume: Callable[[Any, str, PipelineNode, int | None], T],
+) -> T:
     # `{{param.x}}` résolus comme pour un run (défauts + valeurs fournies) —
     # sinon l'aperçu filtre sur le littéral `{{param.x}}` (revue vague 4, I5).
     try:
@@ -1057,32 +1283,7 @@ def preview_pipeline(
             secret_resolver=_chain_resolver(session, tenant_id, user),
             preview=True,
         )
-        view_name = view_by_node[up_to]
-        # Même conversion que _write_collection : DuckDB renvoie "geometry" en
-        # WKB (bytes), que jsonable_encoder (route FastAPI) ne sait pas
-        # décoder — on convertit en GeoJSON ici, au point de sortie de la
-        # preview, plutôt que de porter du GeoJSON à travers toute la chaîne
-        # de transforms intermédiaire (Phase 1 n'a aucune op spatiale).
-        input_cols = {
-            d[0] for d in conn.execute(f"SELECT * FROM {_qi(view_name)} LIMIT 0").description
-        }
-        has_geometry = "geometry" in input_cols
-        select_list = (
-            "* EXCLUDE (geometry), ST_AsGeoJSON(geometry) AS geometry" if has_geometry else "*"
-        )
-        rows = conn.execute(
-            f"SELECT {select_list} FROM {_qi(view_name)} LIMIT {int(limit)}"
-        ).fetchall()
-        cols = [d[0] for d in conn.description]
-        result = [dict(zip(cols, r, strict=True)) for r in rows]
-        if has_geometry:
-            # La colonne contient une chaîne GeoJSON (ST_AsGeoJSON) : on la
-            # décode en objet pour que la réponse HTTP porte une géométrie
-            # GeoJSON réelle, pas une chaîne-dans-une-chaîne.
-            for row in result:
-                if row.get("geometry") is not None:
-                    row["geometry"] = json.loads(row["geometry"])
-        return result
+        return consume(conn, view_by_node[up_to], target, srid_by_node.get(up_to))
     except duckdb.InterruptException as exc:
         if timed_out.is_set():
             raise PipelineRuntimeError("aperçu interrompu : durée maximale dépassée") from exc
@@ -1478,93 +1679,96 @@ def run_pipeline(
     conn = open_connection(endpoint_url=endpoint_url, access_key=access_key, secret_key=secret_key)
     published_token = raster_publish.RUN_PUBLISHED_KEYS.set(published)
     try:
-        ordered, view_by_node, srid_by_node, join_srid_by_node = _prepare(
-            conn,
-            session,
-            payload,
-            tenant_id=tenant_id,
-            user=user,
-            base_uri=base_uri,
-            reader_state=reader_state,
-            checkpoint=checkpoint,
-        )
-        stats = _execute_transform_chain(
-            conn,
-            ordered,
-            payload.edges,
-            view_by_node,
-            srid_by_node,
-            join_srid_by_node,
-            on_node_complete=on_node_complete,
-            secret_resolver=_chain_resolver(session, tenant_id, user),
-            checkpoint=checkpoint,
-            reader_state=reader_state,
-        )
-        for node in ordered:
-            if node.kind != "writer":
-                continue
-            # F5 : une reprise REJOUE toujours les writers (jamais sautés sur la foi de
-            # node_stats, commité à part — revue finale vague 4, C1). Seuls collection/dataset
-            # écrivent dans la transaction du run (annulée à l'échec) ; les writers externes
-            # (postgres distant, ftp, messagerie…) ont déjà produit leur effet. Rejeu sûr :
-            # `append_writers()` refuse retry/reprise des modes append ET des writers externes
-            # non idempotents (EXTERNAL_EFFECT_WRITER_OPS) ; les autres sont idempotents.
-            pred_id = compiler.predecessor_id(node.id, payload.edges)
-            if pred_id is None:
-                raise PipelineRuntimeError(f"node '{node.id}' has no incoming edge")
-            view_by_node[node.id] = view_by_node[pred_id]
-            if srid_by_node[pred_id] == 0 and node.op in _SRID_REQUIRED_WRITERS:
-                # SRID 0 = « non défini » (transform.removeSrid, voie S FME) : la collection
-                # étiquetterait des coordonnées locales avec son propre SRID ; un GeoJSON/
-                # TopoJSON (sans CRS, WGS84 implicite) les ferait passer pour des degrés.
-                raise PipelineRuntimeError(
-                    f"{node.op}: SRID non défini (0) en entrée — réassignez un SRID "
-                    "(transform.setSrid ou transform.localCoordinateSystem) avant d'écrire"
-                )
-            writer_fn = WRITERS.get(node.op)
-            if writer_fn is None:
-                raise PipelineRuntimeError(f"unknown writer op '{node.op}'")
-            # writer.export a une signature hétérogène (pas de
-            # session/tenant_id/user, contrairement aux deux autres writers) :
-            # ce registre remplace seulement la SÉLECTION if/elif par un
-            # dict.get, jamais l'appel lui-même — chaque op continue de
-            # recevoir exactement les arguments qu'il recevait avant ce
-            # découpage.
-            if node.op == "writer.export":
-                assert s3_client is not None and exports_bucket is not None
-                stat = writer_fn(
-                    conn,
-                    s3_client,
-                    exports_bucket,
-                    node=node,
-                    view_by_node=view_by_node,
-                    tenant_id=tenant_id,
-                )
-            elif node.op == "writer.file":
-                stat = writer_fn(
-                    conn, node=node, view_by_node=view_by_node, srid=srid_by_node[pred_id]
-                )
-            else:
-                extra = (
-                    {"on_progress": on_progress, "should_cancel": should_cancel}
-                    if on_progress is not None or should_cancel is not None
-                    else {}
-                ) | ({"run_id": run_id} if run_id is not None and node.kind == "writer" else {})
-                if node.op in ("writer.collection", "writer.dataset"):
-                    extra["srid"] = srid_by_node[pred_id]  # SRID natif du flux (≠ 4326 possible)
-                stat = writer_fn(
-                    session,
-                    conn,
-                    node=node,
-                    view_by_node=view_by_node,
-                    tenant_id=tenant_id,
-                    user=user,
-                    **extra,
-                )
-            stats.append(stat)
-            if on_node_complete is not None:
-                on_node_complete(stat)
-        return stats
+        with _RunGuard(conn, should_cancel, _run_timeout_s()) as guard:
+            ordered, view_by_node, srid_by_node, join_srid_by_node = _prepare(
+                conn,
+                session,
+                payload,
+                tenant_id=tenant_id,
+                user=user,
+                base_uri=base_uri,
+                reader_state=reader_state,
+                checkpoint=checkpoint,
+            )
+            guard.check()
+            stats = _execute_transform_chain(
+                conn,
+                ordered,
+                payload.edges,
+                view_by_node,
+                srid_by_node,
+                join_srid_by_node,
+                on_node_complete=on_node_complete,
+                secret_resolver=_chain_resolver(session, tenant_id, user),
+                checkpoint=checkpoint,
+                reader_state=reader_state,
+                check=guard.check,
+            )
+            for node in ordered:
+                if node.kind != "writer":
+                    continue
+                guard.check()
+                # F5 : une reprise REJOUE toujours les writers (jamais sautés sur la foi de
+                # node_stats, commité à part — revue finale vague 4, C1). collection/dataset
+                # écrivent dans la transaction du run, annulée à l'échec : rejouables même en
+                # `append` (AUD-083). Seuls les writers à effet externe non idempotent
+                # (EXTERNAL_EFFECT_WRITER_OPS) sont exclus de retry/reprise (`append_writers()`).
+                pred_id = compiler.predecessor_id(node.id, payload.edges)
+                if pred_id is None:
+                    raise PipelineRuntimeError(f"node '{node.id}' has no incoming edge")
+                view_by_node[node.id] = view_by_node[pred_id]
+                if srid_by_node[pred_id] == 0 and node.op in _SRID_REQUIRED_WRITERS:
+                    # SRID 0 = « non défini » (transform.removeSrid, voie S FME) : la collection
+                    # étiquetterait des coordonnées locales avec son propre SRID ; un GeoJSON/
+                    # TopoJSON (sans CRS, WGS84 implicite) les ferait passer pour des degrés.
+                    raise PipelineRuntimeError(
+                        f"{node.op}: SRID non défini (0) en entrée — réassignez un SRID "
+                        "(transform.setSrid ou transform.localCoordinateSystem) avant d'écrire"
+                    )
+                writer_fn = WRITERS.get(node.op)
+                if writer_fn is None:
+                    raise PipelineRuntimeError(f"unknown writer op '{node.op}'")
+                # writer.export a une signature hétérogène (pas de
+                # session/tenant_id/user, contrairement aux deux autres writers) :
+                # ce registre remplace seulement la SÉLECTION if/elif par un
+                # dict.get, jamais l'appel lui-même — chaque op continue de
+                # recevoir exactement les arguments qu'il recevait avant ce
+                # découpage.
+                if node.op == "writer.export":
+                    assert s3_client is not None and exports_bucket is not None
+                    stat = writer_fn(
+                        conn,
+                        s3_client,
+                        exports_bucket,
+                        node=node,
+                        view_by_node=view_by_node,
+                        tenant_id=tenant_id,
+                    )
+                elif node.op == "writer.file":
+                    stat = writer_fn(
+                        conn, node=node, view_by_node=view_by_node, srid=srid_by_node[pred_id]
+                    )
+                else:
+                    extra = {"on_progress": on_progress, "should_cancel": guard.should_stop} | (
+                        {"run_id": run_id} if run_id is not None and node.kind == "writer" else {}
+                    )
+                    if node.op in ("writer.collection", "writer.dataset"):
+                        extra["srid"] = srid_by_node[
+                            pred_id
+                        ]  # SRID natif du flux (≠ 4326 possible)
+                    stat = writer_fn(
+                        session,
+                        conn,
+                        node=node,
+                        view_by_node=view_by_node,
+                        tenant_id=tenant_id,
+                        user=user,
+                        **extra,
+                    )
+                stats.append(stat)
+                if on_node_complete is not None:
+                    on_node_complete(stat)
+            return stats
     except BaseException:
         # Échec/annulation : la transaction du run (items raster compris) sera annulée par
         # l'appelant — les COG publiés par le run ne doivent pas rester orphelins au quota.

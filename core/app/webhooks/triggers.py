@@ -16,6 +16,7 @@ from fastapi import HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.configs import repository as configs_repo
 from app.outbox.models import FileTrigger, FileTriggerSeen
 from app.pipelines.egress import assert_egress_allowed
 from app.pipelines.service import run_pipeline_service
@@ -34,6 +35,11 @@ Lister = Callable[[S3CredentialsPayload, str, str], list[tuple[str, str, datetim
 
 class TriggerConfigError(Exception):
     pass
+
+
+class TriggerQueueUnavailable(Exception):
+    """File de jobs indisponible (503 de `run_pipeline_service`) : transitoire, pas
+    une erreur de configuration du déclencheur (AUD-025)."""
 
 
 def split_prefix(prefix: str) -> tuple[str, str]:
@@ -100,6 +106,12 @@ def purge_seen(session: Session) -> int:
     return int(res.rowcount)  # type: ignore[attr-defined]
 
 
+def _declared_params(session: Session, item_id: str) -> set[str]:
+    cfg = configs_repo.get_config_by_item(session, item_id)
+    payload = cfg.config.pipeline if cfg is not None else None
+    return {p.name for p in (payload.parameters or [])} if payload is not None else set()
+
+
 def poll_trigger(
     session: Session,
     trigger: FileTrigger,
@@ -117,7 +129,7 @@ def poll_trigger(
             secrets_repo.get_secret_payload(
                 session, tenant_id=trigger.tenant_id, name=trigger.secret_name, user=owner
             )
-            if owner is not None
+            if owner is not None and owner.erased_at is None  # revue SP-L2 I3
             else None
         )
         if owner is None or secret is None:
@@ -128,6 +140,7 @@ def poll_trigger(
         capped = len(listed) >= MAX_KEYS
         since = considered_since(trigger)
         objects = sorted((o for o in listed if o[2] > since), key=lambda o: o[2])
+        declared = _declared_params(session, trigger.pipeline_item_id)
         for key, etag, _ in objects:
             seen = session.scalar(
                 select(FileTriggerSeen.id).where(
@@ -155,9 +168,23 @@ def poll_trigger(
                     item_id=trigger.pipeline_item_id,
                     defer_task=defer_task,
                     actor_kind="file_trigger",
+                    # AUD-084 : l'objet déclencheur, seulement pour les paramètres déclarés
+                    # (resolve_params refuse tout paramètre inconnu).
+                    params={
+                        k: v
+                        for k, v in {"objectKey": key, "etag": etag, "bucket": bucket}.items()
+                        if k in declared and v is not None
+                    }
+                    or None,
                 )
             except HTTPException as exc:
                 session.rollback()
+                if exc.status_code == 503:
+                    # le commit interne du service a persisté la clé d'idempotence : la
+                    # retirer, sinon le fichier ne serait jamais repris (run `failed`).
+                    session.delete(row)
+                    session.commit()
+                    raise TriggerQueueUnavailable(str(exc.detail)) from exc
                 if exc.status_code != 409:
                     raise TriggerConfigError(str(exc.detail)) from exc
                 break  # run actif : le fichier sera repris au passage suivant
@@ -172,6 +199,11 @@ def poll_trigger(
     except TriggerConfigError as exc:
         session.rollback()
         trigger.last_error = str(exc)[:500]
+    except TriggerQueueUnavailable as exc:
+        session.rollback()
+        trigger.last_error = f"mise en file impossible, nouvel essai au passage suivant : {exc}"[
+            :500
+        ]
     except Exception as exc:  # noqa: BLE001 — réseau/S3 : tracé, retenté au passage suivant
         session.rollback()
         logger.exception("déclencheur fichier %s : échec du sondage", trigger.id)

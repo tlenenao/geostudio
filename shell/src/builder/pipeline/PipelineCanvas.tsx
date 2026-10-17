@@ -11,6 +11,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   getBezierPath,
+  useReactFlow,
   type AriaLabelConfig,
   type Edge,
   type EdgeChange,
@@ -30,6 +31,7 @@ import type {
   PipelineRunStatus,
 } from "../../api/types";
 import { genEdgeId, hasIncomingEdge, topologicalOrder, wouldCreateCycle } from "./graphOps";
+import { PIPELINE_OP_DND_TYPE } from "./PipelinePalette";
 import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
 import { plural, t } from "../../i18n";
 import { jobStatusLabel } from "../../lib/jobStatusLabel";
@@ -312,6 +314,7 @@ function PipelineCanvasInner({
   onNodesChange,
   onEdgesChange,
   onInsertOnEdge,
+  onDropOp,
   opsCatalog,
   nodeStats,
   runStatus,
@@ -327,6 +330,7 @@ function PipelineCanvasInner({
   onNodesChange: (nodes: PipelineNode[]) => void;
   onEdgesChange: (edges: PipelineEdge[]) => void;
   onInsertOnEdge: (edgeId: string, op: string) => void;
+  onDropOp?: (op: string, position: { x: number; y: number }) => void;
   opsCatalog: PipelineOpsCatalog;
   nodeStats?: Record<string, PipelineNodeStat>;
   runStatus?: PipelineRunStatus;
@@ -335,15 +339,25 @@ function PipelineCanvasInner({
   onNotesChange: (notes: PipelineCanvasNote[]) => void;
   readOnly?: boolean;
 }) {
+  const { screenToFlowPosition } = useReactFlow();
+  // AUD-087 : une connexion refusée était silencieuse.
+  const [refusal, setRefusal] = useState<string | null>(null);
   const onConnect: OnConnect = useCallback(
     (connection) => {
       if (readOnly) return;
       if (!connection.source || !connection.target) return;
       const role: "primary" | "secondary" =
         connection.targetHandle === "secondary" ? "secondary" : "primary";
-      if (hasIncomingEdge(edges, connection.target, role)) return; // garde §3.4/§4.3 : ≤ 1 arête entrante par rôle
-      if (wouldCreateCycle(nodes, edges, { from: connection.source, to: connection.target }))
+      // garde §3.4/§4.3 : ≤ 1 arête entrante par rôle
+      if (hasIncomingEdge(edges, connection.target, role)) {
+        setRefusal(t("pipelineCanvas.connectRefusedIncoming"));
         return;
+      }
+      if (wouldCreateCycle(nodes, edges, { from: connection.source, to: connection.target })) {
+        setRefusal(t("pipelineCanvas.connectRefusedCycle"));
+        return;
+      }
+      setRefusal(null);
       const newEdge: PipelineEdge = {
         id: genEdgeId(),
         from: connection.source,
@@ -449,8 +463,15 @@ function PipelineCanvasInner({
       if (readOnly) return;
       if (!connectingFromId) return;
       setConnectingFromId(null);
-      if (hasIncomingEdge(edges, targetId)) return;
-      if (wouldCreateCycle(nodes, edges, { from: connectingFromId, to: targetId })) return;
+      if (hasIncomingEdge(edges, targetId)) {
+        setRefusal(t("pipelineCanvas.connectRefusedIncoming"));
+        return;
+      }
+      if (wouldCreateCycle(nodes, edges, { from: connectingFromId, to: targetId })) {
+        setRefusal(t("pipelineCanvas.connectRefusedCycle"));
+        return;
+      }
+      setRefusal(null);
       onEdgesChange([...edges, { id: genEdgeId(), from: connectingFromId, to: targetId }]);
     },
     [readOnly, connectingFromId, nodes, edges, onEdgesChange],
@@ -505,6 +526,9 @@ function PipelineCanvasInner({
       {/* REV-323 : le contenu porte la phrase complète (pas d'aria-label qui doublerait le texte annoncé). */}
       <p role="status" className="sr-only">
         {runStatus ? t("pipelineCanvas.runStatusAria", { status: jobStatusLabel(runStatus) }) : ""}
+      </p>
+      <p role="status" className="text-xs text-danger">
+        {refusal ?? ""}
       </p>
       <ReactFlow
         nodes={[
@@ -561,6 +585,16 @@ function PipelineCanvasInner({
             completeConnection(flowNode.id);
         }}
         onPaneClick={() => onSelectNode(null)}
+        onDragOver={(e) => {
+          if (e.dataTransfer.types.includes(PIPELINE_OP_DND_TYPE)) e.preventDefault();
+        }}
+        onDrop={(e) => {
+          const op = e.dataTransfer.getData(PIPELINE_OP_DND_TYPE);
+          if (!op || !onDropOp) return;
+          e.preventDefault();
+          // AUD-087 : coordonnées du flux (pan/zoom compris), pas de l'écran.
+          onDropOp(op, screenToFlowPosition({ x: e.clientX, y: e.clientY }));
+        }}
         deleteKeyCode={readOnly ? null : DELETE_KEYS}
         nodesDraggable={!readOnly}
         nodesConnectable={!readOnly}

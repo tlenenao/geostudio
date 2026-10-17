@@ -16,8 +16,8 @@ from app.pipelines.ops.contracts import OPERATIONS
 # Writers rejouables par retry/reprise, avec la raison (tout writer absent d'ici doit être
 # dans EXTERNAL_EFFECT_WRITER_OPS — un nouveau writer force donc une décision explicite).
 REPLAY_SAFE_WRITERS = {
-    "writer.collection": "transaction du run (mode append refusé par append_writers)",
-    "writer.dataset": "transaction du run (mode append refusé par append_writers)",
+    "writer.collection": "transaction du run, annulée à l'échec (append compris, AUD-083)",
+    "writer.dataset": "transaction du run, annulée à l'échec (append compris, AUD-083)",
     "writer.export": "objet d'export régénéré",
     "writer.file": "écrase le même fichier local",
     "writer.topojson": "écrase le même fichier local",
@@ -46,6 +46,7 @@ INPUT_FIELDS = {
     "typeColumn",
     "destLatColumn",
     "destLonColumn",
+    "geometryColumn",  # AUD-082 : colonne source décodée des readers connecteurs
     ("transform.attributeRangeFilter", "column"),
     ("transform.mgrsToLatLong", "column"),  # écrit `geometry` par conception
     ("transform.textEncoder", "column"),
@@ -60,7 +61,6 @@ INPUT_FIELDS = {
 # géométrie) ; les autres restent une dette hors périmètre de la revue FME.
 BASE_UNGUARDED = {
     ("transform.derive", "column"),
-    ("transform.countWithin", "countColumn"),
     ("transform.concatCoordinates", "xColumn"),
     ("transform.concatCoordinates", "yColumn"),
     ("transform.extractCoordinates", "xColumn"),

@@ -12,18 +12,23 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
-from app.auth.dependency import get_current_user_optional
+from app.auth.dependency import get_current_user_optional, read_post
 from app.bbox import parse_bbox_floats
 from app.collections.introspection import TableNotFound, UnsupportedTable, hide_sensitive_columns
 from app.collections.repository import list_visible_collections
 from app.collections.routes import get_introspector, get_readable_collection
 from app.collections.sensitive import unmask_for_owner
 from app.db import get_session
-from app.features.routes import get_features_repo, get_masked_for_user, get_rls_scope
+from app.features.routes import (
+    _parse_geom_intersects,
+    get_features_repo,
+    get_masked_for_user,
+    get_rls_scope,
+)
 from app.roles.guards import has_privilege
 from app.roles.privileges import Privilege
 from app.stac import serializers
@@ -300,12 +305,25 @@ def get_item(
 
 
 class SearchBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # AUD-140 : champ inconnu = 422, pas ignoré
+
     bbox: list[float] | None = None
+    intersects: dict | None = None
     datetime: str | None = None
     collections: list[str] | None = None
     ids: list[str] | None = None
     limit: int = Field(DEFAULT_LIMIT, ge=1)
     token: str | None = None
+
+
+_SEARCH_PARAMS = {"bbox", "intersects", "datetime", "collections", "ids", "limit", "token"}
+
+
+def _check_search(bbox, intersects, ids) -> None:
+    if bbox is not None and intersects is not None:
+        raise HTTPException(status_code=400, detail="bbox and intersects are mutually exclusive")
+    if ids is not None and len(ids) > MAX_LIMIT:
+        raise HTTPException(status_code=400, detail=f"at most {MAX_LIMIT} ids")
 
 
 def _encode_token(collection_id: str, offset: int) -> str:
@@ -371,6 +389,7 @@ def _run_search(
     user,
     *,
     bbox,
+    intersects=None,
     datetime_param,
     collections,
     ids,
@@ -409,18 +428,25 @@ def _run_search(
             # j07-008 : une collection cassée ne fait pas échouer toute la recherche.
             logger.warning("stac search: collection %s ignorée: %s", col.id, exc)
             continue
+        if info.geometry_column is None and (bbox is not None or intersects is not None):
+            # Revue L6 I1 : une collection sans géométrie ne peut pas répondre à une
+            # recherche spatiale ; select_features lèverait FilterError (500 sinon).
+            continue
         col_masked = unmask_for_owner(masked, user, col)
         if col_masked:
             info = hide_sensitive_columns(info, col.sensitive_fields)
         remaining = limit - len(results)
+        extra: dict = {}
+        if ids:
+            extra["ids"] = ids
+        if intersects is not None:
+            extra["geom_intersects"] = intersects
         with rls(session, col.tenant_id, masked=col_masked):
             page = repo.select_features(
-                session, info, limit=remaining, offset=offset, bbox=bbox, filters=None
+                session, info, limit=remaining, offset=offset, bbox=bbox, filters=None, **extra
             )
         dtv, dte = _item_datetimes(col)
         for f in page.features:
-            if ids and str(f["id"]) not in ids:
-                continue
             results.append(
                 serializers.item(
                     base=base, collection_id=col.id, feature=f, datetime_value=dtv, end_datetime=dte
@@ -445,6 +471,8 @@ def _run_search(
             params["datetime"] = datetime_param
         if ids:
             params["ids"] = ",".join(ids)
+        if intersects is not None:
+            params["intersects"] = json.dumps(intersects)
         href = f"{base}/stac/search?{urlencode(params)}"
         links.append({"rel": "next", "type": "application/geo+json", "href": href})
     return serializers.item_collection(items=results, links=links)
@@ -457,6 +485,7 @@ def search_get(
     datetime: str | None = None,
     collections: str | None = None,
     ids: str | None = None,
+    intersects: str | None = None,
     limit: int = Query(DEFAULT_LIMIT, ge=1),
     token: str | None = None,
     user=Depends(get_current_user_optional),
@@ -466,14 +495,23 @@ def search_get(
     rls=Depends(get_rls_scope),
     masked=Depends(get_masked_for_user),
 ):
+    unknown = set(request.query_params) - _SEARCH_PARAMS
+    if unknown:
+        raise HTTPException(
+            status_code=400, detail=f"unsupported parameter(s): {', '.join(sorted(unknown))}"
+        )
+    parsed_intersects = _parse_geom_intersects(intersects)
+    id_list = ids.split(",") if ids else None
+    _check_search(bbox, parsed_intersects, id_list)
     return _run_search(
         request,
         session,
         user,
         bbox=_parse_bbox(bbox),
+        intersects=parsed_intersects,
         datetime_param=datetime,
         collections=collections.split(",") if collections else None,
-        ids=ids.split(",") if ids else None,
+        ids=id_list,
         limit=limit,
         token=token,
         introspect=introspect,
@@ -484,6 +522,7 @@ def search_get(
 
 
 @router.post("/search", response_class=GeoJSONResponse)
+@read_post
 def search_post(
     request: Request,
     body: SearchBody,
@@ -496,11 +535,17 @@ def search_post(
 ):
     if body.bbox is not None and len(body.bbox) != 4:
         raise HTTPException(status_code=400, detail="bbox must be minx,miny,maxx,maxy")
+    # même validation GeoJSON que la forme GET (évite une erreur PostGIS en 500)
+    parsed_intersects = (
+        _parse_geom_intersects(json.dumps(body.intersects)) if body.intersects is not None else None
+    )
+    _check_search(body.bbox, parsed_intersects, body.ids)
     return _run_search(
         request,
         session,
         user,
         bbox=tuple(body.bbox) if body.bbox else None,
+        intersects=parsed_intersects,
         datetime_param=body.datetime,
         collections=body.collections,
         ids=body.ids,

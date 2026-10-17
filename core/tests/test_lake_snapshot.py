@@ -6,7 +6,12 @@ import geopandas as gpd
 import pytest
 from shapely.geometry import Point
 
-from app.analytics.snapshot import latest_snapshot, list_snapshots, write_snapshot
+from app.analytics.snapshot import (
+    latest_snapshot,
+    list_snapshots,
+    rebuild_marker_name,
+    write_snapshot,
+)
 
 T, C = "t1", "villes"
 
@@ -66,6 +71,24 @@ def test_second_snapshot_is_previous_plus_delta(tmp_path, conn):
     assert second and second != first
     assert _state(conn, second) == [(1, "a2", "update"), (2, "b", "insert"), (4, "d", "insert")]
     assert [s[1] for s in list_snapshots(conn, str(tmp_path), T, C)] == [1_200_000, 700_000]
+
+
+def test_a_snapshot_older_than_the_rebuild_marker_is_never_used(tmp_path, conn):
+    """Revue finale L1b, I3 : un cycle de snapshot en cours pendant la purge du lac (slot
+    CDC recréé) publie un état antérieur ; sans marqueur, chaque cycle suivant le reprend
+    comme base et les lignes supprimées pendant la perte du slot ressuscitent."""
+    _put(tmp_path, "2026-01-01", "a", [_r(1, "a", lsn=5), _r(2, "b", lsn=6)])
+    stale = write_snapshot(conn, str(tmp_path), T, C, "id", now_ms=1_000_000, grace_s=300)
+    assert stale is not None
+    # purge (fichiers bruts seulement : le snapshot périmé arrive après), marqueur, backfill
+    (tmp_path / f"tenant_id={T}" / f"collection_id={C}" / "dt=2026-01-01" / "a.parquet").unlink()
+    snap_dir = tmp_path / f"tenant_id={T}" / f"collection_id={C}" / "snapshot"
+    (snap_dir / rebuild_marker_name(100)).write_bytes(b"")
+    _put(tmp_path, "2026-01-03", "bf", [_r(1, "a", lsn=100, ts=900.0)])  # 2 supprimée
+    assert latest_snapshot(conn, str(tmp_path), T, C) is None
+    fresh = write_snapshot(conn, str(tmp_path), T, C, "id", now_ms=1_500_000, grace_s=300)
+    assert fresh is not None and _state(conn, fresh) == [(1, "a", "insert")]
+    assert latest_snapshot(conn, str(tmp_path), T, C) == (fresh, 1_200_000)
 
 
 def test_geoparquet_roundtrip_and_no_partition_column_collision(tmp_path, conn):

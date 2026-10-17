@@ -10,14 +10,17 @@ import math
 import os
 import re
 import uuid
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 
 from shapely import force_2d
 from shapely.geometry import mapping
+from shapely.geometry.base import BaseGeometry
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
+from app.auth.dependency import is_external_basemaps_enabled
 from app.collections import repository as collections_repo
 from app.collections.ddl import apply_collection_ddl
 from app.collections.domains import with_attribute_rules
@@ -55,8 +58,14 @@ from app.sharing.authorization import can
 from app.sharing.geo_limits import resolve_geo_limits
 from app.sql_ident import quote_ident
 
-# Doit rester synchronisé avec shell/src/map/basemaps.ts DEFAULT_BASEMAP.style.
-_DEFAULT_BASEMAP_STYLE = "https://demotiles.maplibre.org/style.json"
+# Doit rester synchronisé avec shell/src/map/basemaps.ts (DEFAULT_BASEMAP / BLANK_BASEMAP).
+_EXTERNAL_BASEMAP_STYLE = "https://demotiles.maplibre.org/style.json"
+BLANK_BASEMAP_STYLE = "/basemaps/blank.json"
+
+
+def default_basemap_style() -> str:
+    return _EXTERNAL_BASEMAP_STYLE if is_external_basemaps_enabled() else BLANK_BASEMAP_STYLE
+
 
 _GEOM_TYPE_MAP = {
     "Point": "Point",
@@ -140,42 +149,68 @@ def _convert_csv_value(value: str, kind: str):
     return datetime.date.fromisoformat(value)
 
 
-def _csv_column_kind(values: list[str], decimal_comma: bool = False) -> str | None:
-    if not values:
-        return None
-    if all(_INT_RE.match(v) for v in values):
-        return "int"
-    if all(
-        _INT_RE.match(v) or _FLOAT_RE.match(v) or (decimal_comma and _DECIMAL_COMMA_RE.match(v))
-        for v in values
-    ):
-        return "float"
+_CSV_SQL_TYPES = {"int": "bigint", "float": "double precision", "date": "date"}
+
+
+def _is_iso_date(value: str) -> bool:
+    if not _DATE_RE.match(value):
+        return False
     try:
-        if all(_DATE_RE.match(v) and datetime.date.fromisoformat(v) for v in values):
-            return "date"
+        datetime.date.fromisoformat(value)
     except ValueError:
-        pass
-    return None
+        return False
+    return True
 
 
-def _infer_csv_types(rows: list, decimal_comma: bool = False) -> None:
-    """P28.07 : un CSV ne livre que des chaînes ; une colonne dont toutes les
-    valeurs non vides sont entières / décimales / dates ISO est typée (rows
-    modifiées en place, vides -> None). Colonnes mixtes : texte inchangé."""
-    keys = {k for _g, props in rows for k in props}
-    for key in keys:
-        raw = [props.get(key) for _g, props in rows]
-        if not all(v is None or isinstance(v, str) for v in raw):
-            continue
-        values = [v.strip() for v in raw if v is not None and v.strip() != ""]
-        kind = _csv_column_kind(values, decimal_comma)
-        if kind is None:
-            continue
-        for _g, props in rows:
-            v = props.get(key)
-            props[key] = (
-                None if v is None or v.strip() == "" else _convert_csv_value(v.strip(), kind)
-            )
+class _CsvKinds:
+    """P28.07 en un passage (AUD-014) : une colonne CSV dont toutes les valeurs non vides
+    sont entières / décimales / dates ISO est typée. Les candidats sont éliminés valeur
+    par valeur au lieu de garder toutes les valeurs en mémoire. Colonnes mixtes : texte."""
+
+    def __init__(self, decimal_comma: bool = False) -> None:
+        self.decimal_comma = decimal_comma
+        self._candidates: dict[str, set[str]] = {}
+        self._seen: set[str] = set()
+        self._not_text: set[str] = set()
+
+    def add(self, props: dict) -> None:
+        for key, raw in props.items():
+            cand = self._candidates.setdefault(key, {"int", "float", "date"})
+            if raw is None:
+                continue
+            if not isinstance(raw, str):
+                self._not_text.add(key)
+                continue
+            value = raw.strip()
+            if not value:
+                continue
+            self._seen.add(key)
+            if not _INT_RE.match(value):
+                cand.discard("int")
+                if not (
+                    _FLOAT_RE.match(value)
+                    or (self.decimal_comma and _DECIMAL_COMMA_RE.match(value))
+                ):
+                    cand.discard("float")
+            if "date" in cand and not _is_iso_date(value):
+                cand.discard("date")
+
+    def kinds(self) -> dict[str, str]:
+        out = {}
+        for key, cand in self._candidates.items():
+            if key in self._not_text or key not in self._seen:
+                continue
+            kind = next((k for k in ("int", "float", "date") if k in cand), None)
+            if kind is not None:
+                out[key] = kind
+        return out
+
+
+def _csv_column_kind(values: list[str], decimal_comma: bool = False) -> str | None:
+    kinds = _CsvKinds(decimal_comma)
+    for value in values:
+        kinds.add({"v": value})
+    return kinds.kinds().get("v")
 
 
 def _sql_type_for(value: object) -> str:
@@ -213,7 +248,20 @@ def _zoom_for_extent(bbox: list[float]) -> float:
     return max(0.0, min(18.0, math.log2(360.0 / span)))
 
 
-def _load_rows(
+_INSERT_BATCH = 10_000  # AUD-014 : 50k entités = 5 INSERT (plafond de test_ingestion_importer_perf)
+
+
+@dataclass
+class _Scan:
+    """Premier passage (AUD-014) : tout ce qu'il faut savoir avant le CREATE TABLE."""
+
+    columns: dict[str, str]
+    geom_types: set[str]
+    has_geometry: bool
+    count: int
+
+
+def _open_rows(
     filename: str,
     content: bytes,
     *,
@@ -222,59 +270,100 @@ def _load_rows(
     layer_name: str | None,
     wkt_field: str | None,
     geometry_mode: str | None,
-) -> list:
-    """Parse le fichier en [(géométrie shapely | None, propriétés)] (types CSV déduits)."""
+) -> tuple[_Scan, Callable[[], Iterator[tuple[BaseGeometry | None, dict]]]]:
+    """AUD-014 : le fichier est parcouru deux fois EN FLUX (aucune liste complète) — un
+    passage d'analyse (colonnes, types CSV, géométries, compte), puis une fabrique de
+    second passage qui rend les lignes typées pour l'insertion par lots.
+    ponytail: le parse (et la réparation make_valid) est payé deux fois ; un seul passage
+    exigerait une table de transit retypée après coup."""
     mode = _resolve_geometry_mode(
         lat_field=lat_field, lon_field=lon_field, wkt_field=wkt_field, geometry_mode=geometry_mode
     )
     fmt = _pick_format(filename)
-    if fmt == "geojson":
-        rows = list(parse_geojson(content))
-    elif fmt == "csv":
-        rows = list(parse_csv_latlon(content, mode))
-    elif fmt == "xlsx":
-        rows = list(parse_xlsx_sheet(content, layer_name, mode))
-    elif fmt == "gpkg":
-        rows = list(parse_gpkg(content, layer_name))
-    elif fmt == "shapefile":
-        rows = list(parse_shapefile_zip(content, layer_name))
-    elif fmt == "filegdb":
-        rows = list(parse_filegdb_zip(content, layer_name))
-    elif fmt == "dxf":
-        rows = list(parse_dxf(content, layer_name))
-    elif fmt == "dgn":
-        rows = list(parse_dgn(content, layer_name))
-    elif fmt == "kml":
-        rows = list(parse_kml(content, layer_name))
-    elif fmt == "gml":
-        rows = list(parse_gml(content, layer_name))
-    elif fmt == "jsonlines":
-        rows = list(parse_jsonlines(content, mode))
-    elif fmt == "xml_generic":
-        rows = list(parse_xml_generic(content, mode))
-    elif fmt == "parquet":
-        is_geo = _is_geoparquet_from_bytes(content)
-        rows = (
-            list(parse_geoparquet(content))
-            if is_geo
-            else list(parse_parquet_tabular(content, mode))
-        )
-    else:  # pragma: no cover — jamais atteint, _pick_format lève avant
-        raise IngestionParseError(f"format non supporté : {filename}")
-    if not rows:
-        raise IngestionParseError("le fichier ne contient aucune entité")
-    # REV-350 : id/tenant_id/geom entreraient en collision avec les colonnes fixes de
-    # la table ; un seul point pour tous les formats (idempotent pour ceux qui le font déjà).
-    # REV-351 : les colonnes créées sont 2D, une coordonnée Z ferait échouer l'INSERT
-    # (import comme ajout) ; le chemin OGR force déjà la 2D.
-    rows = [
-        (None if geom is None else force_2d(geom), _rename_reserved_property_keys(props, fmt))
-        for geom, props in rows
-    ]
+    if fmt == "parquet":
+        if _is_geoparquet_from_bytes(content):
+            parse = lambda: parse_geoparquet(content)  # noqa: E731
+        else:
+            parse = lambda: parse_parquet_tabular(content, mode)  # noqa: E731
+    else:
+        parse = {
+            "geojson": lambda: parse_geojson(content),
+            "csv": lambda: parse_csv_latlon(content, mode),
+            "xlsx": lambda: parse_xlsx_sheet(content, layer_name, mode),
+            "gpkg": lambda: parse_gpkg(content, layer_name),
+            "shapefile": lambda: parse_shapefile_zip(content, layer_name),
+            "filegdb": lambda: parse_filegdb_zip(content, layer_name),
+            "dxf": lambda: parse_dxf(content, layer_name),
+            "dgn": lambda: parse_dgn(content, layer_name),
+            "kml": lambda: parse_kml(content, layer_name),
+            "gml": lambda: parse_gml(content, layer_name),
+            "jsonlines": lambda: parse_jsonlines(content, mode),
+            "xml_generic": lambda: parse_xml_generic(content, mode),
+        }[fmt]
+
+    def normalized() -> Iterator[tuple[BaseGeometry | None, dict]]:
+        # REV-350 : id/tenant_id/geom entreraient en collision avec les colonnes fixes de
+        # la table ; un seul point pour tous les formats. REV-351 : colonnes créées en 2D,
+        # une coordonnée Z ferait échouer l'INSERT (import comme ajout).
+        for geom, props in parse():
+            yield (
+                None if geom is None else force_2d(geom),
+                _rename_reserved_property_keys(props, fmt),
+            )
+
+    decimal_comma = False
     if fmt == "csv":
-        # même détection que parse_csv_latlon (décodage déjà validé par lui)
-        _infer_csv_types(rows, decimal_comma=sniff_delimiter(content.decode("utf-8-sig")) != ",")
-    return rows
+        try:
+            decimal_comma = sniff_delimiter(content.decode("utf-8-sig")) != ","
+        except UnicodeDecodeError:
+            pass  # parse_csv_latlon lève le message utilisateur au premier passage
+    csv_kinds = _CsvKinds(decimal_comma)
+    # Type d'une colonne = celui de sa première valeur non nulle, colonnes rangées dans
+    # l'ordre de cette première valeur ; toujours nulles : « text », en fin (même ordre
+    # qu'avant AUD-014). Colonne CSV typée : sa première valeur NON VIDE (le vide y
+    # devient NULL). Positions (ligne, rang) gardées pour les deux cas, choisies à la fin.
+    first_any: dict[str, tuple[tuple[int, int], str]] = {}
+    first_filled: dict[str, tuple[int, int]] = {}
+    keys: dict[str, None] = {}
+    geom_types: set[str] = set()
+    count = 0
+    for geom, props in normalized():
+        count += 1
+        if geom is not None:
+            geom_types.add(geom.geom_type)
+        if fmt == "csv":
+            csv_kinds.add(props)
+        for j, (key, value) in enumerate(props.items()):
+            keys.setdefault(key)
+            if value is None:
+                continue
+            if key not in first_any:
+                first_any[key] = ((count, j), _sql_type_for(value))
+            if key not in first_filled and not (isinstance(value, str) and not value.strip()):
+                first_filled[key] = (count, j)
+    if count == 0:
+        raise IngestionParseError("le fichier ne contient aucune entité")
+    kinds = csv_kinds.kinds()
+    placed = {
+        key: (first_filled[key], _CSV_SQL_TYPES[kinds[key]]) if key in kinds else first_any[key]
+        for key in first_any
+    }
+    columns = {
+        key: sql_type for key, (_pos, sql_type) in sorted(placed.items(), key=lambda kv: kv[1][0])
+    }
+    for key in keys:
+        columns.setdefault(key, "text")
+
+    def typed_rows() -> Iterator[tuple[BaseGeometry | None, dict]]:
+        for geom, props in normalized():
+            for key, kind in kinds.items():
+                v = props.get(key)
+                props[key] = (
+                    None if v is None or v.strip() == "" else _convert_csv_value(v.strip(), kind)
+                )
+            yield geom, props
+
+    return _Scan(columns, geom_types, bool(geom_types), count), typed_rows
 
 
 def run_import(
@@ -291,7 +380,7 @@ def run_import(
     wkt_field: str | None = None,
     geometry_mode: str | None = None,
 ) -> ImportResult:
-    rows = _load_rows(
+    scan, typed_rows = _open_rows(
         filename,
         content,
         lat_field=lat_field,
@@ -300,27 +389,11 @@ def run_import(
         wkt_field=wkt_field,
         geometry_mode=geometry_mode,
     )
-
-    # Colonnes : union des clés de propriétés rencontrées, type déduit de la
-    # première valeur non nulle vue pour chaque clé (repli "text" si toujours
-    # nulle). Propriétés nommées "id" ou "geom" entreraient en collision avec
-    # les colonnes fixes ci-dessous — cas non géré en v1 (hors périmètre SP-6a).
-    columns: dict[str, str] = {}
-    for _geom, props in rows:
-        for key, value in props.items():
-            if key in columns or value is None:
-                continue
-            columns[key] = _sql_type_for(value)
-    for _geom, props in rows:
-        for key in props:
-            columns.setdefault(key, "text")
-
-    # has_geometry : un seul mode de géométrie par import (jamais mixte, cf.
-    # _resolve_geometry_mode/extract_geometry) — soit toutes les lignes
-    # portent une géométrie, soit aucune (geometry_mode="none").
-    has_geometry = any(geom is not None for geom, _props in rows)
-
-    geom_types = {geom.geom_type for geom, _props in rows if geom is not None}
+    columns = scan.columns
+    # has_geometry : un seul mode de géométrie par import (jamais mixte) — soit toutes
+    # les lignes portent une géométrie, soit aucune (geometry_mode="none").
+    has_geometry = scan.has_geometry
+    geom_types = scan.geom_types
     single_type = next(iter(geom_types)) if len(geom_types) == 1 else None
     pg_geom_type = _GEOM_TYPE_MAP.get(single_type, "Geometry") if single_type else "Geometry"
 
@@ -368,17 +441,19 @@ def run_import(
     else:
         values_clause = ":tenant_id" + (", " + placeholders if placeholders else "")
     insert_sql = f"INSERT INTO public.{t} ({insert_cols_full}) VALUES ({values_clause})"
-    params = []
-    for geom, props in rows:
+    batch: list[dict] = []
+    for geom, props in typed_rows():
         row_params = {f"p{i}": props.get(name) for i, name in enumerate(col_names)}
         row_params["tenant_id"] = tenant_id
         if has_geometry:
-            # has_geometry vrai => geom non-None sur toute ligne (mode
-            # unique par import, cf. commentaire ci-dessus) : geom.wkt ne
-            # lève jamais AttributeError sur None dans cette branche.
+            # has_geometry vrai => geom non-None sur toute ligne (mode unique par import).
             row_params["geom_wkt"] = geom.wkt if geom is not None else None
-        params.append(row_params)
-    session.execute(text(insert_sql), params)
+        batch.append(row_params)
+        if len(batch) >= _INSERT_BATCH:
+            session.execute(text(insert_sql), batch)
+            batch = []
+    if batch:
+        session.execute(text(insert_sql), batch)
 
     info = introspect_table(session, table_name)
     apply_collection_ddl(session, table_name, tenant_id=tenant_id)
@@ -394,7 +469,7 @@ def run_import(
         geometry_column=info.geometry_column,
         geometry_type=info.geometry_type,
         srid=info.srid,
-        feature_count=len(rows),
+        feature_count=scan.count,
     )
     write_audit(
         session,
@@ -488,7 +563,7 @@ def run_import(
     config = BuilderConfig(
         kind="map",
         map=MapConfig(
-            basemap=BaseMap(style=_DEFAULT_BASEMAP_STYLE),
+            basemap=BaseMap(style=default_basemap_style()),
             view=MapView(center=center, zoom=zoom),
             layers=[
                 MapLayer(
@@ -552,11 +627,11 @@ def run_append(
         action="write",
         item=collections_repo.get_access_facts(col),
         kind="collection",
-        actor_is_admin=user.is_admin,
+        actor_is_admin=user.acts_as_admin(),
     ):
         raise IngestionParseError(f"collection '{collection_id}' non modifiable")
     info = with_attribute_rules(introspect_table(session, col.table_name), col)
-    rows = _load_rows(
+    _scan, typed_rows = _open_rows(
         filename,
         content,
         lat_field=lat_field,
@@ -585,7 +660,7 @@ def run_append(
             batch.clear()
 
     with rls_scope(session, tenant_id, geo_limits=geo_limits):
-        for number, (geom, props) in enumerate(rows, start=1):
+        for number, (geom, props) in enumerate(typed_rows(), start=1):
             clean = {}
             for key, value in props.items():
                 if key in writable:

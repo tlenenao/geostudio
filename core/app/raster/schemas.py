@@ -20,6 +20,8 @@ class RasterPresignRequest(BaseModel):
 
     _check_filename = field_validator("filename")(_safe_filename)
     contentType: str = Field(default="image/tiff", min_length=1, max_length=100)
+    # AUD-090 : taille annoncée, signée dans l'URL (S3 refuse tout autre Content-Length).
+    size: int = Field(ge=1)
 
 
 class RasterPresignResponse(BaseModel):

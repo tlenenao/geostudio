@@ -433,3 +433,23 @@ def test_wfs_reader_registered_in_readers():
     from app.pipelines.registries import READERS
 
     assert "reader.wfs" in READERS
+
+
+def test_wfs_reader_refuses_a_truncated_answer(monkeypatch):
+    """AUD-082 : une entité de plus que maxFeatures = résultat tronqué, refusé."""
+    from app.pipelines.errors import PipelineRuntimeError
+    from app.pipelines.ops import wfs
+
+    seen = {}
+
+    class S:
+        def get(self, url, params=None, **kw):
+            seen["params"] = params
+            return _Resp(_FC)  # 2 entités
+
+    monkeypatch.setattr(wfs, "build_guarded_session", lambda: S())
+    c = duckdb.connect(":memory:")
+    c.execute("INSTALL spatial; LOAD spatial;")
+    with pytest.raises(PipelineRuntimeError, match="tronqué"):
+        _read_wfs(c, {"url": "https://wfs.example.org/ows", "typeName": "x", "maxFeatures": 1})
+    assert str(seen["params"]["count"]) == "2"

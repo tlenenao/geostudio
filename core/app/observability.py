@@ -10,10 +10,14 @@ par défaut, toute la suite de tests), aucun exportateur n'est attaché :
 spans/métriques/logs sont créés mais jamais envoyés, coût négligeable, zéro
 appel réseau."""
 
+import contextvars
 import json
 import logging
 import os
+import re
 import sys
+import uuid
+from typing import Any
 
 from opentelemetry import metrics, trace
 from opentelemetry.sdk.metrics import MeterProvider
@@ -23,6 +27,54 @@ from opentelemetry.sdk.trace import TracerProvider
 _configured = False
 
 _original_record_factory = logging.getLogRecordFactory()
+
+# AUD-040 : identifiant de requête — repris de l'amont (Traefik, client) s'il
+# est sûr à recopier dans un en-tête/log, sinon généré.
+_request_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("request_id", default=None)
+_REQUEST_ID_RE = re.compile(r"[A-Za-z0-9._-]{1,128}")
+
+
+def current_request_id() -> str | None:
+    return _request_id.get()
+
+
+class RequestIdMiddleware:
+    """ASGI pur (pas BaseHTTPMiddleware) : pose X-Request-ID sur la réponse,
+    l'attribut `http.request_id` sur le span serveur et le contextvar lu par
+    les logs. Le contextvar n'est jamais réinitialisé : le gestionnaire de 500
+    (ServerErrorMiddleware, hors de cette pile) le relit après l'exception."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        incoming = dict(scope.get("headers") or []).get(b"x-request-id", b"")
+        try:
+            candidate = incoming.decode("ascii")
+        except UnicodeDecodeError:
+            candidate = ""
+        rid = candidate if _REQUEST_ID_RE.fullmatch(candidate) else uuid.uuid4().hex
+        _request_id.set(rid)
+        trace.get_current_span().set_attribute("http.request_id", rid)
+
+        async def send_with_id(message):
+            if message["type"] == "http.response.start":
+                headers = [(k, v) for k, v in message.get("headers", []) if k != b"x-request-id"]
+                headers.append((b"x-request-id", rid.encode("ascii")))
+                message = {**message, "headers": headers}
+            await send(message)
+
+        await self.app(scope, receive, send_with_id)
+
+
+def tag_current_span_with_user(user: Any) -> None:
+    """Tenant et utilisateur sur le span serveur (AUD-040) — identifiants
+    internes, jamais l'e-mail ni le nom."""
+    span = trace.get_current_span()
+    span.set_attribute("enduser.id", str(user.id))
+    span.set_attribute("geostudio.tenant_id", str(user.tenant_id))
 
 
 def _record_factory_with_trace_context(*args, **kwargs):
@@ -34,6 +86,7 @@ def _record_factory_with_trace_context(*args, **kwargs):
     span_context = trace.get_current_span().get_span_context()
     record.trace_id = format(span_context.trace_id, "032x") if span_context.is_valid else None
     record.span_id = format(span_context.span_id, "016x") if span_context.is_valid else None
+    record.request_id = _request_id.get()
     return record
 
 
@@ -50,6 +103,7 @@ class JSONFormatter(logging.Formatter):
             "message": record.getMessage(),
             "trace_id": getattr(record, "trace_id", None),
             "span_id": getattr(record, "span_id", None),
+            "request_id": getattr(record, "request_id", None),
         }
         if record.exc_info:
             payload["exception"] = self.formatException(record.exc_info)
@@ -80,6 +134,33 @@ def _build_meter_provider(resource: Resource, endpoint: str | None) -> MeterProv
     return MeterProvider(resource=resource, metric_readers=metric_readers)
 
 
+def _build_resource() -> Resource:
+    """service.version (GEOSTUDIO_VERSION, tag d'image) et
+    deployment.environment (CORE_ENV, vide = production) : sans eux, une
+    trace ou un log ne dit pas quelle version l'a émis (AUD-040)."""
+    return Resource.create(
+        {
+            "service.name": os.environ.get("OTEL_SERVICE_NAME", "geostudio-core"),
+            "service.version": os.environ.get("GEOSTUDIO_VERSION") or "dev",
+            "deployment.environment": os.environ.get("CORE_ENV") or "production",
+        }
+    )
+
+
+def _build_logger_provider(resource: Resource, endpoint: str | None):
+    """Export OTLP des logs (→ Loki d'otel-lgtm), AUD-036 — None sans
+    endpoint : les logs restent alors seulement sur stdout (JSONFormatter)."""
+    if not endpoint:
+        return None
+    from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
+    from opentelemetry.sdk._logs import LoggerProvider
+    from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+
+    provider = LoggerProvider(resource=resource)
+    provider.add_log_record_processor(BatchLogRecordProcessor(OTLPLogExporter()))
+    return provider
+
+
 def setup() -> None:
     global _configured
     if _configured:
@@ -87,12 +168,12 @@ def setup() -> None:
     _configured = True
     logging.setLogRecordFactory(_record_factory_with_trace_context)
 
-    service_name = os.environ.get("OTEL_SERVICE_NAME", "geostudio-core")
-    resource = Resource.create({"service.name": service_name})
+    resource = _build_resource()
     endpoint = _otlp_endpoint()
 
     trace.set_tracer_provider(_build_tracer_provider(resource, endpoint))
     metrics.set_meter_provider(_build_meter_provider(resource, endpoint))
+    logger_provider = _build_logger_provider(resource, endpoint)
 
     from opentelemetry.instrumentation.botocore import BotocoreInstrumentor
     from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
@@ -105,6 +186,14 @@ def setup() -> None:
     root_logger = logging.getLogger()
     root_logger.addHandler(handler)
     root_logger.setLevel(logging.INFO)
+    if logger_provider is not None:
+        from opentelemetry.sdk._logs import LoggingHandler
+
+        otlp_handler = LoggingHandler(logger_provider=logger_provider)
+        # Un échec d'export OTLP se journalise lui-même : ne pas le réexporter
+        # (boucle tant que le collecteur est injoignable) — il reste sur stdout.
+        otlp_handler.addFilter(lambda r: not r.name.startswith("opentelemetry"))
+        root_logger.addHandler(otlp_handler)
 
 
 def instrument_app(app, *, tracer_provider=None) -> None:
@@ -147,10 +236,44 @@ def make_worker_middleware(*, tracer_provider=None):
 otel_worker_middleware = make_worker_middleware()
 
 
+# Une ligne par file CONNUE (présente dans procrastinate_jobs), valeur 0
+# comprise : une file vide qui disparaîtrait de la série ferait sonner les
+# règles en `noDataState: Alerting` sur une instance au repos (SP-L3).
+# ponytail: GROUP BY sur toute la table à chaque tick d'export (aucune purge
+# de procrastinate_jobs aujourd'hui) ; index/purge si le tick ralentit.
+_JOBS_GAUGES_SQL = {
+    "geostudio.jobs.backlog": (
+        "SELECT queue_name, COUNT(*) FILTER (WHERE status IN ('todo', 'doing')) "
+        "FROM procrastinate_jobs GROUP BY queue_name",
+        "Jobs procrastinate en attente ou en cours, par file",
+        "",
+    ),
+    "geostudio.jobs.failed": (
+        "SELECT j.queue_name, COUNT(DISTINCT j.id) FILTER ("
+        "WHERE j.status = 'failed' AND e.at > now() - interval '24 hours') "
+        "FROM procrastinate_jobs j LEFT JOIN procrastinate_events e "
+        "ON e.job_id = j.id AND e.type = 'failed' GROUP BY j.queue_name",
+        "Jobs procrastinate passés en échec dans les dernières 24 heures, par file",
+        "",
+    ),
+    "geostudio.jobs.oldest_age_seconds": (
+        "SELECT j.queue_name, COALESCE(EXTRACT(EPOCH FROM now() "
+        "- MIN(COALESCE(j.scheduled_at, e.at)) FILTER (WHERE j.status = 'todo' "
+        "AND (j.scheduled_at IS NULL OR j.scheduled_at <= now()))), 0) "
+        "FROM procrastinate_jobs j LEFT JOIN procrastinate_events e "
+        "ON e.job_id = j.id AND e.type = 'deferred' GROUP BY j.queue_name",
+        "Âge du plus ancien job exigible en attente d'un worker, par file",
+        "s",
+    ),
+}
+
+
 def register_jobs_backlog_gauge(engine, *, meter=None) -> None:
-    """ObservableGauge geostudio.jobs.backlog, un point de données par file
-    (attribut `queue`) — compte les lignes procrastinate_jobs en statut
-    todo/doing. Callback appelé paresseusement à chaque tick d'export du
+    """ObservableGauges geostudio.jobs.{backlog,failed,oldest_age_seconds},
+    un point de données par file (attribut `queue`, cf. _JOBS_GAUGES_SQL) —
+    backlog compte les lignes procrastinate_jobs en statut todo/doing
+    (SP-10b) ; failed et oldest_age_seconds ajoutés par SP-L3 (AUD-035).
+    Callback appelé paresseusement à chaque tick d'export du
     PeriodicExportingMetricReader (déjà posé par setup(), SP-10a) — aucune
     nouvelle boucle de polling, aucun nouveau thread.
 
@@ -167,32 +290,28 @@ def register_jobs_backlog_gauge(engine, *, meter=None) -> None:
 
     meter = meter or metrics.get_meter(__name__)
 
-    def _callback(options):
-        try:
-            with engine.connect() as conn:
-                rows = conn.execute(
-                    text(
-                        "SELECT queue_name, COUNT(*) AS n FROM procrastinate_jobs "
-                        "WHERE status IN ('todo', 'doing') GROUP BY queue_name"
-                    )
-                )
-                return [Observation(count, {"queue": queue_name}) for queue_name, count in rows]
-        except ProgrammingError:
-            # procrastinate_jobs peut ne pas encore exister (worker pas
-            # encore démarré / `schema --apply` pas encore joué) — le
-            # endpoint OTLP étant désormais inconditionnel (SP-10b Task 1),
-            # ce callback tourne à chaque tick d'export dans tout
-            # déploiement, y compris avant que la table existe. On ne
-            # laisse pas cette exception remonter du callback ; le prochain
-            # tick réessaiera une fois la table créée.
-            return []
+    def _make_callback(sql: str):
+        def _callback(options):
+            try:
+                with engine.connect() as conn:
+                    rows = conn.execute(text(sql))
+                    return [Observation(float(v), {"queue": queue}) for queue, v in rows]
+            except ProgrammingError:
+                # procrastinate_jobs peut ne pas encore exister (worker pas
+                # encore démarré / `schema --apply` pas encore joué) — le
+                # endpoint OTLP étant désormais inconditionnel (SP-10b Task 1),
+                # ce callback tourne à chaque tick d'export dans tout
+                # déploiement, y compris avant que la table existe. On ne
+                # laisse pas cette exception remonter du callback ; le prochain
+                # tick réessaiera une fois la table créée.
+                return []
 
-    meter.create_observable_gauge(
-        "geostudio.jobs.backlog",
-        callbacks=[_callback],
-        unit="",
-        description="Jobs procrastinate en attente ou en cours, par file",
-    )
+        return _callback
+
+    for name, (sql, description, unit) in _JOBS_GAUGES_SQL.items():
+        meter.create_observable_gauge(
+            name, callbacks=[_make_callback(sql)], unit=unit, description=description
+        )
 
 
 def register_cdc_lag_gauge(get_lag_seconds, *, meter=None) -> None:

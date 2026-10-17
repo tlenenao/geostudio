@@ -32,6 +32,7 @@ from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 from pyogrio.errors import DataLayerError, DataSourceError
 from pyproj.exceptions import ProjError
+from pyproj.transformer import TransformerGroup
 from shapely.errors import ShapelyError
 from shapely.geometry import Point, shape
 from shapely.geometry.base import BaseGeometry
@@ -184,35 +185,102 @@ def extract_geometry(row: dict, mode: GeometryMode) -> tuple[BaseGeometry | None
     return geom, rest
 
 
+_JSON_WS = json.decoder.WHITESPACE  # type: ignore[attr-defined]
+
+
+def _iter_geojson_features(text: str) -> Iterator[object]:
+    """AUD-014 : parcourt la FeatureCollection sans construire l'arbre JSON entier. Les
+    valeurs de premier niveau autres que `features` sont décodées (petites : crs, name…),
+    puis chaque élément de `features` un à un (raw_decode). JSON invalide ->
+    json.JSONDecodeError ; objet qui n'est pas une FeatureCollection ->
+    IngestionParseError, au plus tard en fin de parcours (l'import analyse tout le
+    fichier avant d'écrire quoi que ce soit, cf. importer._open_rows)."""
+    dec = json.JSONDecoder()
+    not_fc = IngestionParseError("le GeoJSON doit être une FeatureCollection")
+
+    def ws(p: int) -> int:
+        return _JSON_WS.match(text, p).end()
+
+    def expect(p: int, ch: str) -> int:
+        p = ws(p)
+        if text[p : p + 1] != ch:
+            raise json.JSONDecodeError(f"'{ch}' attendu", text, p)
+        return p + 1
+
+    pos = ws(0)
+    if text[pos : pos + 1] != "{":
+        dec.raw_decode(text, pos)  # JSON invalide -> JSONDecodeError
+        raise not_fc
+    pos = ws(pos + 1)
+    kind = None
+    if text[pos : pos + 1] == "}":
+        raise not_fc
+    while True:
+        key, pos = dec.raw_decode(text, ws(pos))
+        if not isinstance(key, str):
+            raise json.JSONDecodeError("clé attendue", text, pos)
+        pos = ws(expect(pos, ":"))
+        if key == "features" and text[pos : pos + 1] == "[":
+            if kind not in (None, "FeatureCollection"):
+                raise not_fc
+            pos = ws(pos + 1)
+            if text[pos : pos + 1] == "]":
+                pos += 1
+            else:
+                while True:
+                    feature, pos = dec.raw_decode(text, pos)
+                    yield feature
+                    pos = ws(pos)
+                    if text[pos : pos + 1] == ",":
+                        pos = ws(pos + 1)
+                        continue
+                    pos = expect(pos, "]")
+                    break
+        else:
+            value, pos = dec.raw_decode(text, pos)
+            if key == "type":
+                kind = value
+            elif key == "features":  # présent mais pas une liste
+                raise not_fc
+        pos = ws(pos)
+        if text[pos : pos + 1] == ",":
+            pos += 1
+            continue
+        pos = expect(pos, "}")
+        break
+    if ws(pos) != len(text):
+        raise json.JSONDecodeError("données en trop", text, ws(pos))
+    if kind != "FeatureCollection":
+        raise not_fc
+
+
+def _geojson_feature(i: int, feature: object) -> tuple[BaseGeometry, dict]:
+    if not isinstance(feature, dict):
+        raise IngestionParseError(f"feature {i} : entrée invalide")
+    geometry = feature.get("geometry")
+    if geometry is None:
+        raise IngestionParseError(f"feature {i} : géométrie manquante")
+    try:
+        geom = shape(geometry)
+    except (ValueError, AttributeError, KeyError, TypeError, ShapelyError) as exc:
+        raise IngestionParseError(f"feature {i} : géométrie invalide ({exc})") from exc
+    geom = _repair_geometry(geom, f"feature {i}")
+    properties = feature.get("properties")
+    if properties is not None and not isinstance(properties, dict):
+        raise IngestionParseError(f"feature {i} : properties invalide")
+    return geom, dict(properties or {})
+
+
 def parse_geojson(content: bytes) -> Iterator[tuple[BaseGeometry, dict]]:
     try:
         text = content.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise IngestionParseError("encodage invalide, attendu UTF-8") from exc
     try:
-        data = json.loads(text)
+        for i, feature in enumerate(_iter_geojson_features(text)):
+            yield _geojson_feature(i, feature)
     except json.JSONDecodeError as exc:
         raise IngestionParseError(f"JSON invalide : {exc}") from exc
-    if not isinstance(data, dict) or data.get("type") != "FeatureCollection":
-        raise IngestionParseError("le GeoJSON doit être une FeatureCollection")
-    features = data.get("features", [])
-    if not isinstance(features, list):
-        raise IngestionParseError("le GeoJSON doit être une FeatureCollection")
-    for i, feature in enumerate(features):
-        if not isinstance(feature, dict):
-            raise IngestionParseError(f"feature {i} : entrée invalide")
-        geometry = feature.get("geometry")
-        if geometry is None:
-            raise IngestionParseError(f"feature {i} : géométrie manquante")
-        try:
-            geom = shape(geometry)
-        except (ValueError, AttributeError, KeyError, TypeError, ShapelyError) as exc:
-            raise IngestionParseError(f"feature {i} : géométrie invalide ({exc})") from exc
-        geom = _repair_geometry(geom, f"feature {i}")
-        properties = feature.get("properties")
-        if properties is not None and not isinstance(properties, dict):
-            raise IngestionParseError(f"feature {i} : properties invalide")
-        yield geom, dict(properties or {})
 
 
 def parse_csv_latlon(
@@ -429,6 +497,36 @@ def _temp_file(content: bytes, suffix: str) -> Iterator[str]:
         yield tmp.name
 
 
+_NTF_GEODETIC = {4275, 4807}  # NTF, NTF (Paris)
+
+
+def _is_ntf(crs: pyproj.CRS) -> bool:
+    geodetic = crs.geodetic_crs
+    return geodetic is not None and geodetic.to_epsg() in _NTF_GEODETIC
+
+
+def _ntf_transform(src: pyproj.CRS):
+    """AUD-127 : NTF -> RGF93 exige la grille IGN fr_ign_gr3df97a.tif. Sans elle, PROJ
+    retombe en silence sur un Helmert (~2 m vers 4326) ou un « ballpark » (vers 4171) :
+    on exige la grille vers RGF93 v1 (EPSG:4171), puis RGF93 -> WGS84."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")  # pyproj avertit quand une grille manque
+        group = TransformerGroup(src, 4171, always_xy=True)
+    if not group.best_available or not group.transformers:
+        raise IngestionParseError(
+            "Données en NTF : grille IGN fr_ign_gr3df97a.tif absente de l'installation PROJ, "
+            "transformation métrique impossible (python -m pyproj sync --file fr_ign_gr3df97a.tif)"
+        )
+    to_rgf93 = group.transformers[0]
+    to_wgs84 = pyproj.Transformer.from_crs(4171, _WGS84, always_xy=True)
+
+    def transform(x, y, z=None):
+        lon, lat = to_rgf93.transform(x, y)
+        return to_wgs84.transform(lon, lat)
+
+    return transform
+
+
 def _crs_transform(crs: str | None):
     try:
         src = pyproj.CRS.from_user_input(crs)
@@ -436,6 +534,8 @@ def _crs_transform(crs: str | None):
         raise IngestionParseError(f"CRS manquant ou non reconnu : {crs!r}") from exc
     if src == _WGS84:
         return None
+    if _is_ntf(src):
+        return _ntf_transform(src)
     try:
         transformer = pyproj.Transformer.from_crs(src, _WGS84, always_xy=True)
     except ProjError as exc:
@@ -715,8 +815,12 @@ def parse_geoparquet(content: bytes) -> Iterator[tuple[BaseGeometry, dict]]:
     # ce format ne passe jamais par list_layers()/l'étape d'inspection.
     with _temp_file(content, ".parquet") as path:
         gdf = gpd.read_parquet(path)
+        transform = None
         if gdf.crs is not None and gdf.crs.to_epsg() != 4326:
-            gdf = gdf.to_crs(epsg=4326)
+            if _is_ntf(gdf.crs):  # AUD-127 : même exigence de grille que _crs_transform
+                transform = _ntf_transform(gdf.crs)
+            else:
+                gdf = gdf.to_crs(epsg=4326)
         geom_col = gdf.geometry.name
         for i, row in gdf.iterrows():
             geom = row[geom_col]
@@ -725,6 +829,8 @@ def parse_geoparquet(content: bytes) -> Iterator[tuple[BaseGeometry, dict]]:
             # avec le pseudo-code de la spec SP-56 §3.1, corrigé ici).
             if geom is None or (isinstance(geom, float) and math.isnan(geom)):
                 raise IngestionParseError(f"entité {i} : géométrie manquante")
+            if transform is not None:
+                geom = shapely_transform(transform, geom)
             props = {k: _native_value(v) for k, v in row.items() if k != geom_col}
             yield geom, props
 
@@ -760,21 +866,20 @@ def parse_parquet_tabular(
 ) -> Iterator[tuple[BaseGeometry | None, dict]]:
     with _temp_file(content, ".parquet") as path:
         try:
-            table = pyarrow.parquet.read_table(path)
+            pf = pyarrow.parquet.ParquetFile(path)
+            # Auto-détection lat/lon résolue une fois, contre le schéma (mêmes noms que
+            # read_parquet_header_fields), AVANT la boucle par ligne (revue finale GAP-29,
+            # C1) ; lecture par lots (AUD-014) au lieu de read_table().to_pylist().
+            effective_mode = _resolve_latlon_mode_from_fields(mode, list(pf.schema_arrow.names))
+            for batch in pf.iter_batches(batch_size=10_000):
+                for row in batch.to_pylist():
+                    row = {
+                        k: (json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else v)
+                        for k, v in row.items()
+                    }
+                    yield extract_geometry(row, effective_mode)
         except _PARQUET_ERRORS as exc:
             raise IngestionParseError(f"fichier Parquet illisible : {exc}") from exc
-        # Auto-détection lat/lon résolue une fois, contre le schéma de la
-        # table (mêmes noms que read_parquet_header_fields), AVANT la boucle
-        # par ligne — même correctif que parse_jsonlines/parse_xml_generic
-        # (revue finale GAP-29, C1) : mode.kind="latlon" sans lat_field/
-        # lon_field échouait sur toute ligne avant cette résolution.
-        effective_mode = _resolve_latlon_mode_from_fields(mode, list(table.schema.names))
-        for row in table.to_pylist():
-            row = {
-                k: (json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else v)
-                for k, v in row.items()
-            }
-            yield extract_geometry(row, effective_mode)
 
 
 def read_parquet_header_fields(content: bytes) -> list[str]:

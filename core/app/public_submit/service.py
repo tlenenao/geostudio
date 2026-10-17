@@ -5,6 +5,7 @@ Datetimes naïfs UTC en base (convention du dépôt)."""
 import hashlib
 import hmac
 import logging
+import os
 import secrets
 import time
 import uuid
@@ -59,6 +60,12 @@ class HourlyLimiter:
         self._hits: dict[str, deque[float]] = defaultdict(deque)
         self._calls = 0
 
+    def has_room(self, key: str) -> bool:
+        """Sans décompter (revue SP-L2 I4) : une requête refusée ne consomme rien."""
+        now = time.monotonic()
+        bucket = self._hits.get(key)
+        return bucket is None or sum(now - t <= self.window for t in bucket) < self.limit
+
     def allow(self, key: str) -> bool:
         now = time.monotonic()
         bucket = self._hits[key]
@@ -80,6 +87,12 @@ class HourlyLimiter:
 # 100 requêtes/h/IP : la 101e est refusée (429). Compte TOUTES les requêtes vers la
 # route publique (jeton invalide compris), sinon le brute-force du jeton serait gratuit.
 ip_limiter = HourlyLimiter(100)
+# AUD-154 : aussi par jeton, quel que soit le nombre d'IP. Revue SP-L2 I4 : ne
+# décompte que les soumissions ACCEPTÉES (sinon des requêtes invalides épuisent le
+# formulaire d'autrui) ; seuil CORE_PUBLIC_SUBMIT_TOKEN_HOURLY_LIMIT (défaut 1000).
+# ponytail: compteurs horaires par process ; le budget par minute partagé entre
+# répliques est celui de PgRateLimiter.
+token_limiter = HourlyLimiter(int(os.environ.get("CORE_PUBLIC_SUBMIT_TOKEN_HOURLY_LIMIT") or 1000))
 
 
 def _utcnow() -> datetime:

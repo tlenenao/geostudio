@@ -60,7 +60,7 @@ def start_quality_check(
         action="write",
         item=get_access_facts(col),
         kind="collection",
-        actor_is_admin=user.is_admin,
+        actor_is_admin=user.acts_as_admin(),
     ):
         raise HTTPException(status_code=403, detail="write access required")
     refuse_if_geo_limited(geo_limits, col.table_name, path="quality check")

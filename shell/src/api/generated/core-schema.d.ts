@@ -653,6 +653,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/collections/{collection_id}/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Iso Metadata */
+        get: operations["get_iso_metadata_v1_collections__collection_id__metadata_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/collections/{collection_id}/my-entries": {
         parameters: {
             query?: never;
@@ -722,6 +739,28 @@ export interface paths {
         };
         /** Get Quality Check */
         get: operations["get_quality_check_v1_collections__collection_id__quality_checks__report_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/queryables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Queryables
+         * @description OGC API Features Part 3 (AUD-041) : propriétés filtrables (CQL2 / filtres simples),
+         *     même porte de lecture et même masquage que /items. Les colonnes list/unsupported
+         *     ne sont pas filtrables (_where les refuse) donc absentes.
+         */
+        get: operations["get_queryables_v1_collections__collection_id__queryables_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2129,6 +2168,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Landing */
+        get: operations["landing_v1_records_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/records/collections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Collections */
+        get: operations["collections_v1_records_collections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/records/collections/{catalog_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Catalog */
+        get: operations["get_catalog_v1_records_collections__catalog_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/records/collections/{catalog_id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Records */
+        get: operations["list_records_v1_records_collections__catalog_id__items_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/records/collections/{catalog_id}/items/{record_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Record */
+        get: operations["get_record_v1_records_collections__catalog_id__items__record_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/records/conformance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Conformance */
+        get: operations["conformance_v1_records_conformance_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/relations": {
         parameters: {
             query?: never;
@@ -2966,6 +3107,13 @@ export interface components {
             expiresInDays: number;
             /** Name */
             name: string;
+            /**
+             * Readonly
+             * @default false
+             */
+            readOnly: boolean;
+            /** Scopes */
+            scopes?: string[] | null;
         };
         /** ApiKeyCreated */
         ApiKeyCreated: {
@@ -2981,8 +3129,15 @@ export interface components {
             name: string;
             /** Prefix */
             prefix: string;
+            /**
+             * Readonly
+             * @default false
+             */
+            readOnly: boolean;
             /** Revokedat */
             revokedAt: string | null;
+            /** Scopes */
+            scopes?: string[] | null;
             /** Token */
             token: string;
         };
@@ -3024,8 +3179,15 @@ export interface components {
             name: string;
             /** Prefix */
             prefix: string;
+            /**
+             * Readonly
+             * @default false
+             */
+            readOnly: boolean;
             /** Revokedat */
             revokedAt: string | null;
+            /** Scopes */
+            scopes?: string[] | null;
         };
         /**
          * AtlasConfig
@@ -3089,6 +3251,8 @@ export interface components {
             fieldKey: string;
             /** Filename */
             filename: string;
+            /** Size */
+            size: number;
         };
         /** AttachmentPresignResponse */
         AttachmentPresignResponse: {
@@ -3286,6 +3450,8 @@ export interface components {
          *     `str(engine.url)`/`str(engine)` sur un engine bigquery (vérifié par
          *     grep, 2026-09-21) ; à ne jamais introduire pour ce DSN précis sans
          *     masquage explicite au préalable.
+         *     AUD-081 : aucune session en lecture seule n'est imposée côté pilote pour ce
+         *     dialecte ; utilisez un compte en lecture seule.
          */
         BigQueryDsnPayload: {
             /** Dsn */
@@ -3487,8 +3653,12 @@ export interface components {
             fieldDomains?: {
                 [key: string]: components["schemas"]["FieldDomain"];
             } | null;
+            /** Inspiretheme */
+            inspireTheme?: string | null;
             /** Ispublic */
             isPublic?: boolean | null;
+            /** Keywords */
+            keywords?: string[] | null;
             /** Language */
             language?: string | null;
             /** License */
@@ -3649,6 +3819,8 @@ export interface components {
          *     est un vrai nom DNS : garde d'egress SSRF appliquée comme pour Postgres.
          *     Comme les autres DSN, `query` n'est validée SELECT-only qu'avec le dialecte
          *     DuckDB (heuristique, cf. ReaderConnectorDatabricksParams).
+         *     AUD-081 : aucune session en lecture seule n'est imposée côté pilote pour ce
+         *     dialecte ; utilisez un compte en lecture seule.
          */
         DatabricksDsnPayload: {
             /** Dsn */
@@ -3812,6 +3984,11 @@ export interface components {
             srid?: number | null;
             /** Title */
             title: string;
+        };
+        /** EraseRequest */
+        EraseRequest: {
+            /** Confirmusername */
+            confirmUsername: string;
         };
         /** EvaluateAlertResponse */
         EvaluateAlertResponse: {
@@ -4137,7 +4314,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "stac" | "arcgis" | "wms" | "wfs" | "wmts" | "csw" | "ogc-records" | "ckan";
+            type: "stac" | "arcgis" | "wms" | "wfs" | "wmts" | "csw" | "ogc-records" | "ckan" | "udata";
             /** Url */
             url: string;
         };
@@ -4229,6 +4406,15 @@ export interface components {
             fields?: string[] | null;
             /** Layers */
             layers?: components["schemas"]["LayerInfoOut"][];
+        };
+        /** InspireThemeCatalogEntry */
+        InspireThemeCatalogEntry: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Uri */
+            uri: string;
         };
         /** IsochroneRequest */
         IsochroneRequest: {
@@ -4638,6 +4824,8 @@ export interface components {
             experimentalOpsEnabled: boolean;
             /** Exportenabled */
             exportEnabled: boolean;
+            /** Externalbasemapsenabled */
+            externalBasemapsEnabled: boolean;
             /** Quotasenabled */
             quotasEnabled: boolean;
             /** Rasterenabled */
@@ -4697,6 +4885,11 @@ export interface components {
         MetadataCatalog: {
             /** Frequencies */
             frequencies: components["schemas"]["FrequencyCatalogEntry"][];
+            /**
+             * Inspirethemes
+             * @default []
+             */
+            inspireThemes: components["schemas"]["InspireThemeCatalogEntry"][];
             /** Languages */
             languages: components["schemas"]["LanguageCatalogEntry"][];
             /** Licenses */
@@ -4752,6 +4945,8 @@ export interface components {
          *     mais n'est PAS du T-SQL valide — SQL Server ne connaît pas la clause
          *     LIMIT — et une requête qui passe cette validation peut donc échouer
          *     côté serveur avec une erreur explicite au moment de l'exécution.
+         *     AUD-081 : aucune session en lecture seule n'est imposée côté pilote pour ce
+         *     dialecte ; utilisez un compte en lecture seule.
          */
         MssqlDsnPayload: {
             /** Dsn */
@@ -5056,6 +5251,11 @@ export interface components {
              * @default false
              */
             enabled: boolean;
+            /**
+             * Timezone
+             * @default UTC
+             */
+            timezone: string;
         };
         /**
          * PipelineRetryPolicy
@@ -5110,7 +5310,12 @@ export interface components {
             /** Name */
             name: string;
         };
-        /** PostgresDsnPayload */
+        /**
+         * PostgresDsnPayload
+         * @description DSN Postgres. AUD-081 : les lecteurs ouvrent une session en lecture seule,
+         *     sauf sur Redshift (paramètre `options` refusé) ; utilisez un compte en lecture
+         *     seule pour Redshift.
+         */
         PostgresDsnPayload: {
             /** Dsn */
             dsn: string;
@@ -5126,6 +5331,8 @@ export interface components {
             contentType: string;
             /** Filename */
             filename: string;
+            /** Size */
+            size: number;
         };
         /** PresignResponse */
         PresignResponse: {
@@ -5473,6 +5680,10 @@ export interface components {
             datetime?: string | null;
             /** Ids */
             ids?: string[] | null;
+            /** Intersects */
+            intersects?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Limit
              * @default 100
@@ -5591,6 +5802,8 @@ export interface components {
          *     (vérifiée contre le README du dépôt snowflake-sqlalchemy, design §2.2).
          *     Comme postgres_dsn : le cœur ne parse ni ne valide ce DSN, il le passe
          *     tel quel à sa.create_engine().
+         *     AUD-081 : aucune session en lecture seule n'est imposée côté pilote pour ce
+         *     dialecte ; utilisez un compte en lecture seule.
          */
         SnowflakeDsnPayload: {
             /** Dsn */
@@ -7489,6 +7702,40 @@ export interface operations {
             };
         };
     };
+    get_iso_metadata_v1_collections__collection_id__metadata_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+                "X-Share-Link-Token"?: string | null;
+            };
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     my_entries_v1_collections__collection_id__my_entries_get: {
         parameters: {
             query?: {
@@ -7651,6 +7898,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QualityReportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_queryables_v1_collections__collection_id__queryables_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+                "X-Share-Link-Token"?: string | null;
+            };
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -8169,7 +8450,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EraseRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             204: {
@@ -11082,6 +11367,170 @@ export interface operations {
             };
         };
     };
+    landing_v1_records_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    collections_v1_records_collections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_catalog_v1_records_collections__catalog_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                catalog_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_records_v1_records_collections__catalog_id__items_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                bbox?: string | null;
+                type?: string | null;
+                limit?: number;
+                page?: number;
+            };
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                catalog_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_record_v1_records_collections__catalog_id__items__record_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                catalog_id: string;
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    conformance_v1_records_conformance_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
     create_relation_v1_relations_post: {
         parameters: {
             query?: never;
@@ -11884,6 +12333,7 @@ export interface operations {
                 datetime?: string | null;
                 collections?: string | null;
                 ids?: string | null;
+                intersects?: string | null;
                 limit?: number;
                 token?: string | null;
             };

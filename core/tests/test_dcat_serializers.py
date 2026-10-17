@@ -18,6 +18,7 @@ def test_context_has_expected_prefixes():
         "xsd": "http://www.w3.org/2001/XMLSchema#",
         "vcard": "http://www.w3.org/2006/vcard/ns#",
         "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+        "hydra": "http://www.w3.org/ns/hydra/core#",
     }
 
 
@@ -177,6 +178,29 @@ def test_dataset_is_shacl_valid_standalone(dcat_shacl_shapes):
     standalone = {**doc, "@context": s.CONTEXT}
     g = rdflib.Graph()
     g.parse(data=json.dumps(standalone), format="json-ld")
+    conforms, _, text = validate(g, shacl_graph=dcat_shacl_shapes)
+    assert conforms, text
+
+
+def test_dataset_with_keywords_and_inspire_theme_is_shacl_valid(dcat_shacl_shapes):
+    """AUD-047 : dcat:keyword / dcat:theme (INSPIRE) ne cassent pas la conformité DCAT-AP."""
+    doc = s.dataset(
+        base=BASE,
+        collection_id="roads",
+        title="Routes",
+        description="Réseau routier",
+        created_at="2026-07-01T00:00:00Z",
+        updated_at="2026-07-10T00:00:00Z",
+        is_public=True,
+        publisher_name="Default",
+        bbox=[1.0, 44.0, 2.0, 45.0],
+        keywords=["voirie"],
+        inspire_theme="tn",
+    )
+    assert doc["dcat:keyword"] == ["voirie"]
+    assert doc["dcat:theme"] == {"@id": "http://inspire.ec.europa.eu/theme/tn"}
+    g = rdflib.Graph()
+    g.parse(data=json.dumps({**doc, "@context": s.CONTEXT}), format="json-ld")
     conforms, _, text = validate(g, shacl_graph=dcat_shacl_shapes)
     assert conforms, text
 

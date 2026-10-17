@@ -53,7 +53,7 @@ def test_main_reads_threshold_and_queue_from_environment(monkeypatch):
     assert captured == {"threshold_seconds": 120, "queue": "export"}
 
 
-def test_main_defaults_threshold_to_one_hour_and_queue_to_none(monkeypatch):
+def test_main_defaults_heartbeat_threshold_to_five_minutes_and_queue_to_none(monkeypatch):
     captured = {}
 
     async def _fetch(threshold_seconds, queue):
@@ -65,4 +65,29 @@ def test_main_defaults_threshold_to_one_hour_and_queue_to_none(monkeypatch):
     monkeypatch.delenv("HEALTHCHECK_STALLED_SECONDS", raising=False)
     monkeypatch.delenv("HEALTHCHECK_QUEUE", raising=False)
     assert healthcheck.main() == 0
-    assert captured == {"threshold_seconds": 3600, "queue": None}
+    assert captured == {"threshold_seconds": 300, "queue": None}
+
+
+def test_fetch_uses_worker_heartbeats_not_job_start_time(monkeypatch):
+    """AUD-016 : `nb_seconds` (déprécié) compte depuis le démarrage du job — un job sain
+    de plus d'une heure rendait la sonde rouge (CrashLoop Helm)."""
+    import asyncio
+
+    seen = {}
+
+    class _JobManager:
+        async def get_stalled_jobs(self, **kwargs):
+            seen.update(kwargs)
+            return []
+
+    class _Opened:
+        async def __aenter__(self):
+            return None
+
+        async def __aexit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(healthcheck.app, "open_async", lambda: _Opened())
+    monkeypatch.setattr(healthcheck.app, "job_manager", _JobManager())
+    assert asyncio.run(healthcheck._fetch_stalled(300, "export")) == []
+    assert seen == {"queue": "export", "seconds_since_heartbeat": 300}

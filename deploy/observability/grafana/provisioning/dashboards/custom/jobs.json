@@ -4,19 +4,36 @@
   "schemaVersion": 39,
   "version": 1,
   "editable": true,
-  "tags": ["geostudio", "sp10b"],
-  "time": {"from": "now-1h", "to": "now"},
+  "tags": [
+    "geostudio",
+    "sp10b"
+  ],
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
   "panels": [
     {
       "id": 1,
       "title": "Backlog par file",
       "type": "timeseries",
-      "gridPos": {"x": 0, "y": 0, "w": 24, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "geostudio_jobs_backlog",
           "legendFormat": "{{queue}}"
         }
@@ -26,12 +43,23 @@
       "id": 2,
       "title": "Durée des jobs (traces)",
       "type": "traces",
-      "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
-      "datasource": {"type": "tempo", "uid": "tempo"},
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "tempo", "uid": "tempo"},
+          "datasource": {
+            "type": "tempo",
+            "uid": "tempo"
+          },
           "queryType": "traceqlSearch",
           "query": "{name=~\"procrastinate\\\\.job\\\\..*\"}"
         }
@@ -41,14 +69,129 @@
       "id": 3,
       "title": "Échecs de jobs (spans ERROR)",
       "type": "traces",
-      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
-      "datasource": {"type": "tempo", "uid": "tempo"},
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "tempo", "uid": "tempo"},
+          "datasource": {
+            "type": "tempo",
+            "uid": "tempo"
+          },
           "queryType": "traceqlSearch",
           "query": "{name=~\"procrastinate\\\\.job\\\\..*\" && status=error}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Jobs en échec (24 h) par file",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "geostudio_jobs_failed",
+          "legendFormat": "{{queue}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Âge du plus ancien job exigible (s)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "geostudio_jobs_oldest_age_seconds",
+          "legendFormat": "{{queue}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "WAL retenu par le slot CDC (octets)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "pg_replication_slots_pg_wal_lsn_diff{slot_name=\"geostudio_cdc_slot\"}",
+          "legendFormat": "{{slot_name}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Temps depuis le dernier flush CDC (s), par collection",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "geostudio_cdc_lag_seconds",
+          "legendFormat": "{{collection_id}}"
         }
       ]
     }

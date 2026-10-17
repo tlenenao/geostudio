@@ -50,7 +50,7 @@ from dlt.sources.helpers.rest_client.paginators import (
 )
 from sqlalchemy.orm import Session
 
-from app.analytics.sql_sandbox import SqlSandboxError, parse_ast, validate_select_only
+from app.analytics.sql_sandbox import SqlSandboxError, parse_ast, validate_external_select
 from app.pipelines.egress import (
     EgressBlockedError,
     PinnedAioResolver,
@@ -317,16 +317,24 @@ def _timeout_connect_args(backend: str, host: str | None = None) -> dict:
     }.get(backend, {})
 
 
-def _stream_sql(dsn: str, query: str):
+def _stream_sql(dsn: str, query: str, *, expected_backend: str):
     """Lecture SQL externe commune aux readers postgres/mssql/oracle/
     snowflake/bigquery : garde d'egress sur l'hôte du DSN (P16.02), délais
-    de connexion/requête et plafond de lignes (P16.03)."""
+    de connexion/requête et plafond de lignes (P16.03). AUD-081 : le kind du
+    secret fixe le dialecte, et la session est en lecture seule là où le
+    pilote le permet (Postgres hors Redshift, Oracle)."""
     backend = sa.engine.make_url(dsn).get_backend_name()
+    if backend != expected_backend:  # AUD-081 : sqlite:// & co. refusés
+        raise ConnectorRuntimeError(
+            f"DSN de dialecte '{backend}' refusé pour un secret {expected_backend}"
+        )
     if backend not in _NO_HOST_BACKENDS:
         assert_dsn_egress_allowed(dsn)
         dsn = pin_dsn_host(dsn)  # REV-273d : mssql/oracle visent l'IP validée
     host = sa.engine.make_url(dsn).host
     connect_args = {**_timeout_connect_args(backend, host), **dsn_pin_connect_args(dsn)}
+    if "options" in connect_args:  # Postgres hors Redshift (lecture seule ici, pas aux writers)
+        connect_args["options"] += " -c default_transaction_read_only=on"
     engine = sa.create_engine(dsn, connect_args=connect_args)
     if _is_redshift(backend, host):
         ms = int(_query_timeout_s() * 1000)
@@ -345,6 +353,10 @@ def _stream_sql(dsn: str, query: str):
             engine,
             "connect",
             lambda dbapi_conn, _rec: setattr(dbapi_conn, "call_timeout", _query_timeout_s() * 1000),
+        )
+        # AUD-081 : chaque transaction de lecture est déclarée en lecture seule.
+        sa.event.listen(
+            engine, "begin", lambda conn: conn.exec_driver_sql("SET TRANSACTION READ ONLY")
         )
     limit = _max_rows()
     try:
@@ -630,7 +642,7 @@ def materialize_postgres_connector(
     # à un texte SQL complet plutôt qu'à une expression bornée). Vérifié à
     # l'exécution uniquement, jamais à la sauvegarde du pipeline.
     try:
-        validate_select_only(parse_ast(conn, params.query))
+        validate_external_select(parse_ast(conn, params.query))
     except SqlSandboxError as exc:
         raise ConnectorRuntimeError(f"reader.connector.postgres query rejected: {exc}") from exc
 
@@ -643,7 +655,7 @@ def materialize_postgres_connector(
 
     @dlt.resource(name="records", write_disposition="replace")
     def _records():
-        yield from _stream_sql(payload.dsn, params.query)
+        yield from _stream_sql(payload.dsn, params.query, expected_backend="postgresql")
 
     _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
 
@@ -663,7 +675,7 @@ def materialize_mssql_connector(
     # SQL de DuckDB, pas le T-SQL réel (même limite documentée, dans
     # l'autre sens que Snowflake, cf. ReaderConnectorMssqlParams).
     try:
-        validate_select_only(parse_ast(conn, params.query))
+        validate_external_select(parse_ast(conn, params.query))
     except SqlSandboxError as exc:
         raise ConnectorRuntimeError(f"reader.connector.mssql query rejected: {exc}") from exc
 
@@ -687,7 +699,7 @@ def materialize_mssql_connector(
         # bigquery) : sa.create_engine() reste paresseux pour ce dialecte,
         # aucun appel réseau avant .connect() (vérifié empiriquement, cf.
         # MssqlDsnPayload).
-        yield from _stream_sql(payload.dsn, params.query)
+        yield from _stream_sql(payload.dsn, params.query, expected_backend="mssql")
 
     _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
 
@@ -705,7 +717,7 @@ def materialize_snowflake_connector(
     # `params.query` cible Snowflake mais est parsée avec le dialecte SQL de
     # DuckDB, pas SnowSQL (limites vérifiées empiriquement, design §5.3).
     try:
-        validate_select_only(parse_ast(conn, params.query))
+        validate_external_select(parse_ast(conn, params.query))
     except SqlSandboxError as exc:
         raise ConnectorRuntimeError(f"reader.connector.snowflake query rejected: {exc}") from exc
 
@@ -723,7 +735,7 @@ def materialize_snowflake_connector(
         # l'installation (vérifié empiriquement, design §3.3) — même
         # patron que le dialecte "postgresql" ci-dessus, jamais importé
         # explicitement non plus.
-        yield from _stream_sql(payload.dsn, params.query)
+        yield from _stream_sql(payload.dsn, params.query, expected_backend="snowflake")
 
     _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
 
@@ -742,7 +754,7 @@ def materialize_oracle_connector(
     # cible Oracle Database (PL/SQL) mais est parsée avec le dialecte SQL de
     # DuckDB, pas le vrai SQL Oracle (cf. ReaderConnectorOracleParams).
     try:
-        validate_select_only(parse_ast(conn, params.query))
+        validate_external_select(parse_ast(conn, params.query))
     except SqlSandboxError as exc:
         raise ConnectorRuntimeError(f"reader.connector.oracle query rejected: {exc}") from exc
 
@@ -766,7 +778,7 @@ def materialize_oracle_connector(
         # mssql (et contrairement à bigquery) : sa.create_engine() reste
         # paresseux pour ce dialecte, aucun appel réseau avant .connect()
         # (vérifié empiriquement).
-        yield from _stream_sql(payload.dsn, params.query)
+        yield from _stream_sql(payload.dsn, params.query, expected_backend="oracle")
 
     _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
 
@@ -783,7 +795,7 @@ def materialize_databricks_connector(
     # SELECT-only (dialecte DuckDB, pas Spark SQL), même garde d'egress par
     # l'hôte du workspace dans _stream_sql.
     try:
-        validate_select_only(parse_ast(conn, params.query))
+        validate_external_select(parse_ast(conn, params.query))
     except SqlSandboxError as exc:
         raise ConnectorRuntimeError(f"reader.connector.databricks query rejected: {exc}") from exc
 
@@ -798,7 +810,7 @@ def materialize_databricks_connector(
     def _records():
         # Dialecte "databricks" enregistré par entry point (databricks-sqlalchemy),
         # jamais importé explicitement ; create_engine reste paresseux.
-        yield from _stream_sql(payload.dsn, params.query)
+        yield from _stream_sql(payload.dsn, params.query, expected_backend="databricks")
 
     _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
 
@@ -817,7 +829,7 @@ def materialize_bigquery_connector(
     # est parsée avec le dialecte SQL de DuckDB, pas GoogleSQL (même limite
     # documentée que pour Snowflake, cf. ReaderConnectorBigQueryParams).
     try:
-        validate_select_only(parse_ast(conn, params.query))
+        validate_external_select(parse_ast(conn, params.query))
     except SqlSandboxError as exc:
         raise ConnectorRuntimeError(f"reader.connector.bigquery query rejected: {exc}") from exc
 
@@ -842,7 +854,7 @@ def materialize_bigquery_connector(
         # réseau tant que .connect()/l'exécution de la requête n'a pas lieu,
         # mais un JSON de compte de service malformé y échoue ici plutôt
         # qu'à l'exécution de la requête.
-        yield from _stream_sql(payload.dsn, params.query)
+        yield from _stream_sql(payload.dsn, params.query, expected_backend="bigquery")
 
     _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
 

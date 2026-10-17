@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { http, HttpResponse } from "msw";
 import { server } from "../../test/msw/server";
+import { CoreUnreachableError } from "../../api/CoreUnreachableError";
 import { resolveShareLink } from "./resolveShareLink";
 
 test("resolveShareLink returns the resolved metadata on success", async () => {
@@ -30,4 +31,11 @@ test("resolveShareLink throws on a 401 (invalid or expired token)", async () => 
     ),
   );
   await expect(resolveShareLink("https://core.test", "bad")).rejects.toThrow();
+});
+
+test("resolveShareLink raises CoreUnreachableError on a network failure (CORS, core down)", async () => {
+  server.use(http.get("https://core.test/v1/share-links/tok-net", () => HttpResponse.error()));
+  await expect(resolveShareLink("https://core.test", "tok-net")).rejects.toBeInstanceOf(
+    CoreUnreachableError,
+  );
 });

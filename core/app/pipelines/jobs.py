@@ -8,9 +8,12 @@ raison de import_paths)."""
 
 import logging
 import os
-from collections.abc import Callable
+import threading
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from typing import Protocol
 
+from fastapi import HTTPException
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.audit.writer import write_audit
@@ -20,6 +23,7 @@ from app.configs.pipeline_params import apply_params, resolve_params
 from app.configs.schemas import PipelinePayload, PipelineRetryPolicy
 from app.db import request_scoped_session
 from app.items.models import Item
+from app.job_errors import public_error
 from app.jobs import app
 from app.jobs.common import notify_best_effort, resolve_owner_user
 from app.jobs.common import session_factory as _session_factory
@@ -73,6 +77,26 @@ def _owner_and_title(session, *, tenant_id: str, item_id: str) -> tuple[str, str
     return row.owner_id, row.title
 
 
+def _schedule_enabled(session, item_id: str) -> bool:
+    cfg = configs_repo.get_config_by_item(session, item_id)
+    pipeline = cfg.config.pipeline if cfg is not None else None
+    policy = pipeline.refreshPolicy if pipeline is not None else None
+    return policy is not None and policy.enabled
+
+
+def _should_notify_success(session_factory, *, tenant_id: str, item_id: str, run_id: str) -> bool:
+    """AUD-084 : seuls les runs PLANIFIÉS taisent leurs succès (sauf rétablissement
+    après échec) ; un run manuel, webhook ou déclencheur reste toujours notifié."""
+    try:
+        with request_scoped_session(session_factory) as session:
+            if not pipelines_repo.is_scheduled_run(session, tenant_id=tenant_id, run_id=run_id):
+                return True
+            return pipelines_repo.previous_run_failed(session, item_id=item_id, run_id=run_id)
+    except Exception:  # best-effort, comme _notify : dans le doute, notifier
+        logger.exception("pipeline run : échec de la lecture du run précédent")
+        return True
+
+
 def _notify(
     session_factory,
     *,
@@ -98,6 +122,20 @@ def _notify(
     except Exception:
         logger.exception("pipeline run : échec de la résolution du destinataire de notification")
         return
+    # Revue L5 I7 : l'échec qui ouvre le coupe-circuit le dit, une seule fois.
+    if status == "failure":
+        try:
+            with request_scoped_session(session_factory) as session:
+                if _schedule_enabled(session, item_id) and pipelines_repo.circuit_just_opened(
+                    session, item_id=item_id
+                ):
+                    error = (
+                        f"{error} — planification suspendue après "
+                        f"{pipelines_repo.CIRCUIT_BREAKER_FAILURES} échecs consécutifs ; "
+                        "un run manuel réussi la rétablit"
+                    )
+        except Exception:  # best-effort : la notification d'échec part quand même
+            logger.exception("pipeline run : lecture du coupe-circuit échouée")
     notify_best_effort(
         session_factory,
         tenant_id=tenant_id,
@@ -188,6 +226,32 @@ def _analytics_base_uri() -> str:
     return f"s3://{bucket}/cdc"
 
 
+_HEARTBEAT_SECONDS = 60
+
+
+@contextmanager
+def _heartbeat(session_factory, run_id: str) -> Iterator[None]:
+    """AUD-026 : thread de battement de cœur pendant l'exécution du run. Un
+    battement échoué est seulement journalisé (pire cas : ancien comportement)."""
+    stop = threading.Event()
+
+    def _beat() -> None:
+        while True:  # premier battement dès le départ, puis un par période
+            try:
+                with request_scoped_session(session_factory) as s:
+                    pipelines_repo.touch_heartbeat(s, run_id=run_id)
+            except Exception:
+                logger.warning("heartbeat run %s échoué", run_id, exc_info=True)
+            if stop.wait(_HEARTBEAT_SECONDS):
+                return
+
+    threading.Thread(target=_beat, daemon=True, name=f"hb-{run_id}").start()
+    try:
+        yield
+    finally:
+        stop.set()
+
+
 def _make_progress_callback(
     session_factory,
     *,
@@ -220,7 +284,7 @@ class RunTracker(Protocol):
         ...
 
     def mark_succeeded(self, node_stats: dict) -> None: ...
-    def mark_failed(self, error: str) -> None: ...
+    def mark_failed(self, error: str, failed_node_id: str | None = None) -> None: ...
     def mark_cancelled(self) -> None: ...
     def is_cancel_requested(self) -> bool: ...
 
@@ -254,9 +318,11 @@ class PostgresRunTracker:
         with request_scoped_session(self._session_factory) as session:
             pipelines_repo.mark_succeeded(session, run_id=self._run_id, node_stats=node_stats)
 
-    def mark_failed(self, error: str) -> None:
+    def mark_failed(self, error: str, failed_node_id: str | None = None) -> None:
         with request_scoped_session(self._session_factory) as session:
-            pipelines_repo.mark_failed(session, run_id=self._run_id, error=error)
+            pipelines_repo.mark_failed(
+                session, run_id=self._run_id, error=error, failed_node_id=failed_node_id
+            )
 
     def mark_cancelled(self) -> None:
         with request_scoped_session(self._session_factory) as session:
@@ -341,26 +407,29 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
                     session, tenant_id=tenant_id, pipeline_item_id=item_id
                 )
             )
-            stats = run_pipeline(
-                session,
-                payload=payload,
-                tenant_id=tenant_id,
-                user=user,
-                endpoint_url=os.environ["S3_ENDPOINT_URL"],
-                access_key=os.environ["S3_ACCESS_KEY"],
-                secret_key=os.environ["S3_SECRET_KEY"],
-                base_uri=_analytics_base_uri(),
-                s3_client=_s3_client_from_env(),
-                exports_bucket=os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports"),
-                on_node_complete=_make_progress_callback(
-                    factory, run_id=run_id, tenant_id=tenant_id
-                ),
-                on_progress=_make_progress_callback(factory, run_id=run_id, tenant_id=tenant_id),
-                should_cancel=tracker.is_cancel_requested,
-                run_id=run_id,
-                reader_state=reader_state,
-                checkpoint=checkpoint,
-            )
+            with _heartbeat(factory, run_id):
+                stats = run_pipeline(
+                    session,
+                    payload=payload,
+                    tenant_id=tenant_id,
+                    user=user,
+                    endpoint_url=os.environ["S3_ENDPOINT_URL"],
+                    access_key=os.environ["S3_ACCESS_KEY"],
+                    secret_key=os.environ["S3_SECRET_KEY"],
+                    base_uri=_analytics_base_uri(),
+                    s3_client=_s3_client_from_env(),
+                    exports_bucket=os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports"),
+                    on_node_complete=_make_progress_callback(
+                        factory, run_id=run_id, tenant_id=tenant_id
+                    ),
+                    on_progress=_make_progress_callback(
+                        factory, run_id=run_id, tenant_id=tenant_id
+                    ),
+                    should_cancel=tracker.is_cancel_requested,
+                    run_id=run_id,
+                    reader_state=reader_state,
+                    checkpoint=checkpoint,
+                )
             # F4 : le curseur n'avance qu'ici, run réussi (jamais sur échec).
             if reader_state.pending:
                 pipelines_repo.upsert_reader_states(
@@ -369,12 +438,23 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
                     pipeline_item_id=item_id,
                     cursors=reader_state.pending,
                 )
-        checkpoints.discard(tenant_id, root_id)  # run réussi : plus rien à reprendre
-        if checkpoint is not None:
-            _clear_resumable(factory, [root_id])
-        tracker.mark_succeeded({s.nodeId: s.to_dict() for s in stats})
+            # Revue finale L1b (I1) : statut `succeeded` dans la transaction des données —
+            # sinon un échec entre les deux commits rejouait (retry ou reprise) un `append`
+            # déjà écrit. Après ce commit, plus rien ne doit faire échouer le run.
+            pipelines_repo.mark_succeeded(
+                session, run_id=run_id, node_stats={s.nodeId: s.to_dict() for s in stats}
+            )
+        try:
+            checkpoints.discard(tenant_id, root_id)  # run réussi : plus rien à reprendre
+            if checkpoint is not None:
+                _clear_resumable(factory, [root_id])
+        except Exception:  # noqa: BLE001 — nettoyage best-effort (purge par rétention)
+            logger.warning("pipeline run %s : nettoyage des reprises impossible", run_id)
         assert item_id is not None  # affecté ci-dessus, jamais atteint sinon (cf. return/raise)
-        _notify(factory, tenant_id=tenant_id, item_id=item_id, status="success")
+        # AUD-084 : un pipeline planifié toutes les 5 min ne notifie plus chaque succès —
+        # seulement le rétablissement après un échec (les échecs restent tous notifiés).
+        if _should_notify_success(factory, tenant_id=tenant_id, item_id=item_id, run_id=run_id):
+            _notify(factory, tenant_id=tenant_id, item_id=item_id, status="success")
     except PipelineCancelledError:
         tracker.mark_cancelled()
     # REV-288a : un quota atteint est un refus métier (message destiné à
@@ -393,7 +473,7 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
             )
         ):
             return
-        tracker.mark_failed(str(exc))
+        tracker.mark_failed(str(exc), getattr(exc, "node_id", None))
         _flag_resumable(factory, run_id, root_id, tenant_id)
         if item_id is not None:
             _notify(
@@ -407,16 +487,18 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
             logger.info("pipeline run %s : notification ignorée (item inconnu)", run_id)
     except Exception as exc:  # toute erreur inattendue finit "failed", jamais zombie
         logger.exception("pipeline run %s : erreur inattendue", run_id)
+        # refus de privilège (HTTPException, detail rédigé par le cœur) : lisible
+        msg = public_error(exc, user_errors=(HTTPException,))  # AUD-100
         if _schedule_retry(
             factory,
             run_id=run_id,
             tenant_id=tenant_id,
             policy=retry_policy,
             attempt=attempt,
-            error=f"erreur interne : {exc}",
+            error=msg,
         ):
             return
-        tracker.mark_failed(f"erreur interne : {exc}")
+        tracker.mark_failed(msg)
         _flag_resumable(factory, run_id, root_id, tenant_id)
         if item_id is not None:
             _notify(
@@ -424,7 +506,7 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
                 tenant_id=tenant_id,
                 item_id=item_id,
                 status="failure",
-                error=f"erreur interne : {exc}",
+                error=msg,
             )
         else:
             logger.info("pipeline run %s : notification ignorée (item inconnu)", run_id)
@@ -445,7 +527,12 @@ def run_pipeline_sweep_task(timestamp: int) -> None:
         overdue = pipelines_repo.requeue_overdue_retries(session)
         session.commit()
         for overdue_run_id, overdue_tenant_id in overdue:
-            run_pipeline_task.defer(run_id=overdue_run_id, tenant_id=overdue_tenant_id)
+            try:
+                run_pipeline_task.defer(run_id=overdue_run_id, tenant_id=overdue_tenant_id)
+            except Exception:  # le tick suivant reprendra la ligne (piège n°14)
+                logger.exception(
+                    "defer de reprise %s échoué, le balayage reprendra", overdue_run_id
+                )
         try:
             expired = checkpoints.purge_expired()
             if expired:  # plus de points de reprise : ne plus proposer « Reprendre »
@@ -485,4 +572,14 @@ def run_pipeline_sweep_task(timestamp: int) -> None:
             # l'intérieur de la boucle car chaque run doit être visible avant
             # SON propre defer, pas seulement le dernier de la file.
             session.commit()
-            run_pipeline_task.defer(run_id=run.id, tenant_id=tenant_id)
+            try:
+                run_pipeline_task.defer(run_id=run.id, tenant_id=tenant_id)
+            except Exception:
+                # AUD-025 : run non orphelin (sinon `pending` + 409 jusqu'au balayage).
+                logger.exception("defer du run planifié %s échoué", run.id)
+                pipelines_repo.mark_failed_if_queued(
+                    session,
+                    run_id=run.id,
+                    error="mise en file impossible : file de jobs indisponible",
+                )
+                session.commit()

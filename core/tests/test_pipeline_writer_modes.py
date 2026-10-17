@@ -304,8 +304,9 @@ def test_masked_field_is_not_writable(setup, monkeypatch):
     # le reader ne livre pas la colonne masquée, le writer la retire de sa cible : jamais écrite
     _run(setup, [("a", "secret", 1)], _UPSERT)
     assert setup[0].execute(text("SELECT name, pop FROM k1_target")).one() == (None, 1)
-    # une valeur masquée qui arriverait quand même au writer est rejetée comme propriété inconnue
-    with pytest.raises(PipelineRuntimeError, match="unknown_property"):
+    # une valeur masquée qui arriverait quand même au writer est refusée avant toute écriture
+    # (pré-contrôle de schéma, AUD-080 : la colonne n'existe pas dans la cible vue du rédacteur)
+    with pytest.raises(PipelineRuntimeError, match="absente"):
         _run(
             setup,
             [("a", "secret", 1)],
@@ -351,15 +352,12 @@ def test_rejected_source_row_never_leaks_sensitive_fields(setup, monkeypatch):
     s = setup[0]
     s.execute(text("UPDATE collections SET sensitive_fields = '[\"name\"]'::jsonb"))
     s.commit()
-    monkeypatch.setattr(runtime, "_masked_fields", lambda *a, **k: frozenset({"name"}))
-    _run(
-        setup,
-        [("a", "secret", 1)],
-        {**_UPSERT, "onInvalid": "reject"},
-        mid={"op": "transform.derive", "params": {"column": "name", "expr": "'LEAK-VALUE'"}},
-    )
+    # Une colonne masquée n'atteint plus la quarantaine (pré-contrôle de schéma, AUD-080) :
+    # le filtre de `source_row` reste vérifié sur un champ sensible lisible par le rédacteur,
+    # rejeté pour une autre raison (clé absente).
+    _run(setup, [(None, "LEAK-VALUE", 1)], {**_UPSERT, "onInvalid": "reject"})
     src = s.execute(text('SELECT source_row FROM "k1_target__rejected"')).scalar_one()
-    assert "LEAK-VALUE" not in src and "secret" not in src and '"pop"' in src
+    assert "LEAK-VALUE" not in src and '"pop"' in src
 
 
 @pytest.mark.postgis
@@ -476,3 +474,73 @@ def test_detect_changes_output_feeds_upsert_with_status_column(setup):
     ).all()
     assert got == [("c2", "B", 22, True), ("c4", "d", 4, True)]  # valeurs « après »
     # statut jamais écrit comme propriété : sinon rejet `unknown_property` (rejected == 0 ci-dessus)
+
+
+# --- SP-L5 Task 4 (AUD-080, AUD-088 F14) ------------------------------------------------
+
+
+@pytest.mark.postgis
+def test_write_rows_fails_when_reject_rate_exceeds_max(setup):
+    s = setup[0]
+    rows = [(f"c{i}", None if i < 2 else f"n{i}", i) for i in range(10)]  # 2 invalides / 10
+    mid = {
+        "op": "transform.validateAttributes",
+        "params": {"nonNullColumns": ["name"], "nonNullResultColumn": "name_ok"},
+    }
+    params = {"mode": "append", "rejectWhenFalse": ["name_ok"], "maxRejectRate": 0.1}
+    with pytest.raises(PipelineRuntimeError, match="taux de rejet 20"):
+        _run(setup, rows, params, mid=mid)
+    s.rollback()
+    assert _count(s) == 0
+    st = _run(setup, rows, {**params, "maxRejectRate": 0.2}, mid=mid)  # au seuil : passe
+    assert (_count(s), st.extra["rejected"]) == (8, 2)
+
+
+@pytest.mark.postgis
+def test_write_rows_refuses_unknown_input_columns_before_writing(setup):
+    s = setup[0]
+    mid = {"op": "transform.derive", "params": {"column": "extra", "expr": "1"}}
+    with pytest.raises(PipelineRuntimeError, match="extra"):
+        _run(setup, [("a", "n", 1)], {"mode": "append", "onInvalid": "reject"}, mid=mid)
+    s.rollback()
+    assert _count(s) == 0
+
+
+@pytest.mark.postgis
+def test_delete_mode_ignores_unknown_non_key_columns(setup):
+    s = setup[0]
+    _run(setup, [("c1", "n", 1), ("c2", "n", 2)], _UPSERT)
+    mid = {"op": "transform.derive", "params": {"column": "extra", "expr": "1"}}
+    st = _run(setup, [("c1", "n", 1)], {"mode": "delete", "keyColumns": ["code"]}, mid=mid)
+    assert (st.extra["deleted"], _count(s)) == (1, 1)
+
+
+@pytest.mark.postgis
+def test_detect_changes_null_key_is_quarantined_as_invalid_key(setup):
+    s, tenant, _, tmp_path = setup
+    _write_src(tmp_path, tenant.id, [("c1", "a", 1)])
+    _write_src(tmp_path, tenant.id, [("c1", "a", 1), (None, "x", 9)], collection="k1_after")
+    mid = {
+        "op": "transform.detectChanges",
+        "params": {"withCollectionId": "k1_after", "keyColumns": ["code"], "statusColumn": "st"},
+    }
+    st = _run_prepared(setup, {"mode": "append", "statusColumn": "st"}, mid=mid)
+    assert st.extra["rejectsByRule"] == {"invalid_key": 1}
+    assert _count(s) == 1
+
+
+@pytest.mark.postgis
+def test_append_and_replace_update_feature_count(setup):
+    s = setup[0]
+    s.execute(text("UPDATE collections SET feature_count = 5 WHERE id = 'k1_target'"))
+    s.commit()
+
+    def fc():
+        return s.execute(
+            text("SELECT feature_count FROM collections WHERE id='k1_target'")
+        ).scalar()
+
+    _run(setup, [(f"c{i}", "n", i) for i in range(3)], {"mode": "append"})
+    assert fc() == 8
+    _run(setup, [(f"c{i}", "n", i) for i in range(2)], {"mode": "replace"})
+    assert fc() == 2

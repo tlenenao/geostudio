@@ -141,7 +141,7 @@ def _failing(url, body, headers):
     raise DeliveryError("boom")
 
 
-def test_failures_back_off_then_disable_after_five_and_notify(db):
+def test_failures_back_off_and_only_a_day_long_outage_disables_and_notifies(db):
     tenant_id, user_id = _seed(db)
     with db() as s:
         ev = _event(s, tenant_id)
@@ -152,21 +152,25 @@ def test_failures_back_off_then_disable_after_five_and_notify(db):
             s.commit()
             assert deliver_due(s, post=_failing) == 0
             assert ev.attempts == attempt
-            if attempt < 5:
-                assert hook.enabled and ev.status == "pending"
-                delay = ev.next_attempt_at - datetime.now(UTC).replace(tzinfo=None)
-                assert previous is None or delay > previous  # backoff exponentiel
-                previous = delay
-        assert hook.enabled is False and hook.consecutive_failures == 5
-        assert ev.status == "failed"
+            delay = ev.next_attempt_at - datetime.now(UTC).replace(tzinfo=None)
+            assert previous is None or delay > previous  # backoff exponentiel
+            previous = delay
+        # AUD-085 : 5 échecs rapprochés ne désactivent plus rien
+        assert hook.enabled and ev.status == "pending" and hook.consecutive_failures == 5
+        assert s.scalars(select(Notification)).all() == []
+        # panne qui dure : l'événement a 24 h -> abandonné, destination désactivée + notifiée
+        ev.created_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=25)
+        ev.next_attempt_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=1)
+        s.commit()
+        assert deliver_due(s, post=_failing) == 0
+        assert hook.enabled is False and ev.status == "failed"
         notif = s.scalars(select(Notification)).one()
         assert (notif.kind, notif.recipient_user_id, notif.status) == (
             "webhook_disabled",
             user_id,
             "failure",
         )
-        # plus de livraison tant que la destination est désactivée
-        assert deliver_due(s, post=_failing) == 0
+        assert deliver_due(s, post=_failing) == 0  # plus de livraison tant que désactivée
 
 
 def test_a_success_resets_the_failure_counter(db):
@@ -342,3 +346,65 @@ def test_http_exception_from_run_service_is_not_swallowed_silently(db, monkeypat
         )
         assert n == 0 and t.last_error == "not allowed"
         assert s.scalars(select(FileTriggerSeen)).all() == []  # fichier repris au prochain passage
+
+
+def test_queue_unavailable_is_not_reported_as_a_trigger_config_error(db, monkeypatch):
+    """AUD-025 (M5) : un 503 de mise en file est transitoire, pas une config invalide."""
+    monkeypatch.setattr("app.jobs.defer.time.sleep", lambda _s: None)
+    tenant_id, user_id = _seed(db)
+    _pipeline(db, tenant_id, user_id)
+    now = datetime.now(UTC).replace(tzinfo=None)
+
+    def down(run_id, tn):
+        raise RuntimeError("down")
+
+    with db() as s:
+        t = s.get(FileTrigger, "t1")
+        n = triggers.poll_trigger(s, t, defer_task=down, lister=_lister([("in/a.csv", "e1", now)]))
+        assert n == 0
+        assert "mise en file impossible" in t.last_error
+        assert s.scalars(select(FileTriggerSeen)).all() == []  # repris au passage suivant
+
+
+def test_an_erased_creator_neither_signs_nor_triggers(db):
+    # Revue SP-L2 I3 : un compte effacé n'agit plus, même si sa destination ou son
+    # déclencheur a été réactivé (erased_at testé au point d'usage du secret).
+    from app.users.models import User
+
+    tenant_id, user_id = _seed(db)
+    _pipeline(db, tenant_id, user_id)
+    with db() as s:
+        s.get(User, user_id).erased_at = datetime.now(UTC).replace(tzinfo=None)
+        s.commit()
+        ev = _event(s, tenant_id)
+        sent = []
+        deliver_due(s, post=lambda url, body, headers: sent.append(url))
+        assert sent == [] and ev.status != "delivered"
+        t = s.get(FileTrigger, "t1")
+        files = [("in/a.csv", "e1", datetime.now(UTC).replace(tzinfo=None))]
+        assert (
+            triggers.poll_trigger(s, t, defer_task=lambda r, tn: None, lister=_lister(files)) == 0
+        )
+        assert s.scalars(select(PipelineRun)).all() == []
+
+
+def test_anonymize_disables_the_creator_webhooks_and_triggers(db):
+    from app.compliance.service import anonymize_user
+
+    tenant_id, user_id = _seed(db)
+    _pipeline(db, tenant_id, user_id)
+    with db() as s:
+        get_or_create_user(  # second admin : le garde anti-lockout laisse effacer le premier
+            s,
+            tenant_id=tenant_id,
+            oidc_sub="other-admin",
+            username="other",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=True,
+        )
+        anonymize_user(s, tenant_id=tenant_id, user_id=user_id)
+        s.commit()
+        assert s.get(OutboundWebhook, "h1").enabled is False
+        assert s.get(FileTrigger, "t1").enabled is False

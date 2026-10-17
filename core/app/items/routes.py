@@ -16,7 +16,7 @@ from fastapi import (
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.auth.dependency import get_current_user
+from app.auth.dependency import forbid_api_key, get_current_user
 from app.bbox import parse_bbox_floats
 from app.db import get_session
 from app.items import repository as repo
@@ -246,6 +246,7 @@ def _require_share_access(session: Session, *, item_id: str, user: User):
     "/items/{item_id}/share-links",
     response_model=ShareLinkCreated,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(forbid_api_key)],  # AUD-094 : session interactive seulement
 )
 def create_share_link_route(
     item_id: str,

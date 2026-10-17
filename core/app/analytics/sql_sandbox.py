@@ -14,6 +14,7 @@ de toutes les exceptions DuckDB est `duckdb.Error`, utilisée ci-dessous."""
 import json
 import math
 import threading
+from collections.abc import Iterator
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
@@ -64,6 +65,53 @@ def validate_select_only(ast: dict[str, Any]) -> None:
     node = statements[0].get("node", {})
     if node.get("type") not in _SELECT_NODE_TYPES:
         raise SqlSandboxError("only read-only SELECT queries are allowed")
+
+
+# AUD-081 : fonctions à effet de bord qu'une requête « SELECT » peut appeler sur
+# une base distante (le type du nœud racine ne suffit pas). Défense en profondeur :
+# le parseur est celui de DuckDB, pas le dialecte distant ; la vraie barrière est
+# la session en lecture seule (Postgres/Oracle) ou un compte en lecture seule.
+_FORBIDDEN_FUNCTIONS = frozenset(
+    {
+        "pg_terminate_backend",
+        "pg_cancel_backend",
+        "pg_reload_conf",
+        "pg_rotate_logfile",
+        "lo_import",
+        "lo_export",
+        "lo_unlink",
+        "pg_read_file",
+        "pg_read_binary_file",
+        "pg_ls_dir",
+        "pg_stat_file",
+        "set_config",
+        "nextval",
+        "setval",
+        "dblink",
+        "dblink_exec",
+        "pg_sleep",
+        "xp_cmdshell",
+    }
+)
+
+
+def _function_names(node: Any) -> Iterator[str]:
+    if isinstance(node, dict):
+        if node.get("class") == "FUNCTION" and isinstance(node.get("function_name"), str):
+            yield node["function_name"].lower()
+        for value in node.values():
+            yield from _function_names(value)
+    elif isinstance(node, list):
+        for value in node:
+            yield from _function_names(value)
+
+
+def validate_external_select(ast: dict[str, Any]) -> None:
+    """SELECT seul ET aucune fonction à effet de bord (lecteurs SQL externes)."""
+    validate_select_only(ast)
+    bad = sorted({n for n in _function_names(ast) if n in _FORBIDDEN_FUNCTIONS})
+    if bad:
+        raise SqlSandboxError(f"function not allowed in a connector query: {', '.join(bad)}")
 
 
 def collect_table_refs(ast: dict[str, Any]) -> set[str]:

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { test, expect } from "@playwright/test";
-import { mockCore } from "./mocks";
+import { bindTemplateSources, mockCore } from "./mocks";
 
 // ARC-15 : onglet Historique du widget Formulaire (patron incident-form.spec.ts).
 test("consulter l'historique d'une entité et restaurer une version", async ({ page }) => {
@@ -42,6 +42,7 @@ test("consulter l'historique d'une entité et restaurer une version", async ({ p
   const dialog = page.getByRole("dialog", { name: "Nouvel élément" });
   await dialog.getByLabel("Type").selectOption("app");
   await dialog.getByLabel("Modèle").selectOption("application-de-saisie");
+  await bindTemplateSources(dialog);
   await dialog.getByLabel("Titre").fill("Historique");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);

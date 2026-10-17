@@ -18,6 +18,7 @@ RUN npm run build && rm -rf dist/.vite dist/fixtures
 FROM nginx:1.27-alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY nginx-security-headers.conf /etc/nginx/snippets/security-headers.conf
+COPY nginx-security-headers.conf /etc/nginx/snippets/security-headers-embed.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY env-config.template.js /usr/share/nginx/html/env-config.template.js
 COPY docker-entrypoint.d/40-render-runtime-config.sh /docker-entrypoint.d/40-render-runtime-config.sh

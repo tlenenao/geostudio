@@ -15,6 +15,7 @@
 volumes:
   tailscale-state:
   backup-archives:
+  backup-work:
 
 services:
 
@@ -167,10 +168,16 @@ services:
     build: !reset null
     ports: !reset []
     environment:
+      # AUD-040 : service.version et /docs suivent le tag d'image déployé. Posé
+      # ici seulement : le fichier de base construit depuis les sources (« dev »),
+      # le GEOSTUDIO_VERSION de .env n'y décrit aucune image.
+      GEOSTUDIO_VERSION: ${GEOSTUDIO_VERSION:-latest}
       CORE_AUTH_MODE: oidc
       CORE_OIDC_ISSUER: https://${GEOSTUDIO_PUBLIC_HOST}/auth/realms/geostudio
       CORE_OIDC_JWKS_URL: http://keycloak:8080/auth/realms/geostudio/protocol/openid-connect/certs
       CORE_BASE_URL: https://${GEOSTUDIO_PUBLIC_HOST}/api
+      # Même origine (shell et cœur sous le même hôte) : aucun CORS de dev.
+      CORE_CORS_ALLOWED_ORIGINS: ""
       CORE_ADMIN_TOOLS_GATEWAY_URL: https://${GEOSTUDIO_PUBLIC_HOST}
       CORE_MINIO_CONSOLE_PUBLISHED: "false"
       # Rappelé explicitement ici : c'est cet overlay qui donne à
@@ -189,6 +196,14 @@ services:
       - traefik.http.routers.core.entrypoints=web
       - traefik.http.routers.core.priority=10
       - traefik.http.routers.core.middlewares=security-headers@docker,rate-limit@docker,compress@docker,strip-api@docker,csp-dynamic@file
+      # AUD-135 : découverte OAuth du MCP (RFC 9728) — le SDK publie le document
+      # à la RACINE de l'hôte (/.well-known/oauth-protected-resource/api/mcp),
+      # hors /api : sans ce routeur, le shell répondait 405.
+      - traefik.http.routers.mcp-discovery.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && PathPrefix(`/.well-known/oauth-protected-resource`)
+      - traefik.http.routers.mcp-discovery.entrypoints=web
+      - traefik.http.routers.mcp-discovery.priority=10
+      - traefik.http.routers.mcp-discovery.service=core
+      - traefik.http.routers.mcp-discovery.middlewares=security-headers@docker,rate-limit@docker
       - traefik.http.services.core.loadbalancer.server.port=8200
       - traefik.http.middlewares.strip-api.stripprefix.prefixes=/api
       - traefik.http.middlewares.security-headers.headers.stsSeconds=31536000
@@ -270,6 +285,11 @@ services:
   cdc-worker:
     image: ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}
     build: !reset null
+    environment:
+      # AUD-040 : service.version et /docs suivent le tag d'image déployé. Posé
+      # ici seulement : le fichier de base construit depuis les sources (« dev »),
+      # le GEOSTUDIO_VERSION de .env n'y décrit aucune image.
+      GEOSTUDIO_VERSION: ${GEOSTUDIO_VERSION:-latest}
 
   # SP-21 : ces deux services restaient en `build:` (fichier de base), donc
   # non déployables sans compiler sur l'hôte. Leurs `profiles:` restent ceux
@@ -277,6 +297,11 @@ services:
   export-worker:
     image: ghcr.io/tlenenao/geostudio-export-worker:${GEOSTUDIO_VERSION:-latest}
     build: !reset null
+    environment:
+      # AUD-040 : service.version et /docs suivent le tag d'image déployé. Posé
+      # ici seulement : le fichier de base construit depuis les sources (« dev »),
+      # le GEOSTUDIO_VERSION de .env n'y décrit aucune image.
+      GEOSTUDIO_VERSION: ${GEOSTUDIO_VERSION:-latest}
 
   appexport-runtime-builder:
     image: ghcr.io/tlenenao/geostudio-appexport-runtime-builder:${GEOSTUDIO_VERSION:-latest}
@@ -308,7 +333,7 @@ services:
       - traefik.http.routers.shell-embed.entrypoints=web
       - traefik.http.routers.shell-embed.priority=5
       - traefik.http.routers.shell-embed.service=shell
-      - traefik.http.routers.shell-embed.middlewares=security-headers-embed@docker,rate-limit@docker,compress@docker,csp-dynamic@file
+      - traefik.http.routers.shell-embed.middlewares=security-headers-embed@docker,rate-limit@docker,compress@docker,csp-dynamic-embed@file
       - traefik.http.middlewares.security-headers-embed.headers.stsSeconds=31536000
       - traefik.http.middlewares.security-headers-embed.headers.contentTypeNosniff=true
       - traefik.http.middlewares.security-headers-embed.headers.referrerPolicy=strict-origin-when-cross-origin
@@ -405,6 +430,9 @@ services:
       BACKUP_ALERT_WEBHOOK_URL: ${BACKUP_ALERT_WEBHOOK_URL:-}
     volumes:
       - backup-archives:/backup/archives
+      # AUD-031 : le dump et le miroir MinIO en clair vont sur un volume
+      # nommé (purgé à chaque run), plus dans la couche du conteneur.
+      - backup-work:/backup/work
     # P27.08 : fraîcheur — `.last_success` est touché par backup.sh après un
     # succès COMPLET (envoi hors-site compris s'il est configuré). Plus vieux
     # que 26 h (1560 min) = unhealthy. start_period couvre le premier cycle

@@ -204,3 +204,48 @@ def test_write_and_upload_removes_temp_file_on_success(tmp_path):
         fake_upload.assert_called_once()
 
     assert os.path.exists(local_path) is False
+
+
+def test_purge_lake_empties_every_collection_prefix(monkeypatch):
+    from app.analytics import lake_purge
+    from app.cdc import main
+
+    seen = []
+
+    def fake_purge(client, *, bucket, prefix):
+        seen.append((bucket, prefix))
+        return 2
+
+    monkeypatch.setattr(lake_purge, "purge_prefix", fake_purge)
+    monkeypatch.setattr(
+        main.storage,
+        "upload_bytes",
+        lambda client, *, bucket, key, data: seen.append((bucket, key)),
+    )
+    meta = {
+        "t_a": ("c1", "ten1", "geom", 4326, "id"),
+        "t_b": ("c2", "ten2", None, None, "id"),
+    }
+    assert main._purge_lake(meta, s3_client=object(), bucket="geostudio-cdc", marker_lsn=42) == 4
+    assert seen == [
+        ("geostudio-cdc", "cdc/tenant_id=ten1/collection_id=c1/"),
+        ("geostudio-cdc", "cdc/tenant_id=ten1/collection_id=c1/snapshot/rebuild-42"),
+        ("geostudio-cdc", "cdc/tenant_id=ten2/collection_id=c2/"),
+        ("geostudio-cdc", "cdc/tenant_id=ten2/collection_id=c2/snapshot/rebuild-42"),
+    ]
+
+
+@pytest.mark.parametrize(("status", "purged"), [(None, True), ("lost", True), ("reserved", False)])
+def test_lake_is_purged_before_the_slot_is_recreated(monkeypatch, status, purged):
+    """Revue finale L1b, I2 : purge décidée sur l'état du slot AVANT sa recréation — un
+    crash entre les deux laisse un slot absent/perdu, la purge est refaite au redémarrage."""
+    from app.cdc import main
+
+    calls = []
+    monkeypatch.setattr(main.consumer, "slot_wal_status", lambda dsn: status)
+    monkeypatch.setattr(main.backfill, "current_wal_lsn", lambda session: 7)
+    monkeypatch.setattr(main, "_purge_lake", lambda meta, **kw: calls.append(kw["marker_lsn"]))
+    assert (
+        main._rebuild_lake_if_slot_unusable("dsn", None, {}, s3_client=None, bucket="b") is purged
+    )
+    assert calls == ([7] if purged else [])

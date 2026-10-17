@@ -26,10 +26,11 @@ export function createRasterMethods(base: ItemClientBase): RasterMethods {
       return (data.items ?? []).map((item) => ({ id: item.pk, title: item.title }));
     },
 
-    async presignRasterUpload(filename: string, contentType: string) {
+    async presignRasterUpload(filename: string, contentType: string, size: number) {
       return request<{ uploadUrl: string; key: string }>("POST", "/raster/uploads/presign", {
         filename,
         contentType,
+        size,
       });
     },
 

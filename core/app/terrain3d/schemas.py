@@ -19,6 +19,8 @@ class Terrain3DPresignRequest(BaseModel):
     # .tif), S3 répond 403 SignatureDoesNotMatch. Défaut conservé pour ne pas
     # rendre le champ obligatoire à un appelant existant.
     contentType: str = Field(default="application/octet-stream", min_length=1, max_length=100)
+    # AUD-090 : taille annoncée, signée dans l'URL (S3 refuse tout autre Content-Length).
+    size: int = Field(ge=1)
 
 
 class Terrain3DPresignResponse(BaseModel):

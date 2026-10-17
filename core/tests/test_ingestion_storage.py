@@ -60,6 +60,7 @@ def test_generate_presigned_put_url_targets_put_object():
         bucket="geostudio-uploads",
         key="t/abc-file.geojson",
         content_type="application/geo+json",
+        content_length=42,
     )
     assert url == "https://minio.test/geostudio-uploads/t/abc-file.geojson?presigned=1"
     operation, params, expires = client.presign_calls[0]
@@ -67,6 +68,7 @@ def test_generate_presigned_put_url_targets_put_object():
     assert params["Bucket"] == "geostudio-uploads"
     assert params["Key"] == "t/abc-file.geojson"
     assert params["ContentType"] == "application/geo+json"
+    assert params["ContentLength"] == 42
     assert expires == 900
 
 

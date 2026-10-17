@@ -98,6 +98,20 @@ def test_refresh_csp_dynamic_conf_task_writes_the_rendered_file(tmp_path, monkey
     assert "Content-Security-Policy" in target.read_text()
 
 
+def test_refresh_csp_dynamic_conf_task_is_a_noop_without_the_traefik_volume(tmp_path, monkeypatch):
+    """AUD-030 : en Helm il n'y a ni Traefik ni volume /csp-dynamic ; le
+    makedirs à la racine d'un conteneur non-root échouait toutes les 5 min,
+    soit un job en échec permanent (et l'alerte ops-jobs-failed)."""
+    Session = _make_session()
+    monkeypatch.setattr(security_jobs, "_session_factory", lambda: Session)
+    target = tmp_path / "absent" / "dynamic-conf.yml"
+    monkeypatch.setattr(security_jobs, "CSP_DYNAMIC_CONF_PATH", str(target))
+
+    security_jobs.refresh_csp_dynamic_conf_task(timestamp=0)
+
+    assert not target.parent.exists()
+
+
 def test_script_src_includes_computed_extension_hosts():
     """SP-48/GAP-72 blocage 3 (REV-166) : Tanguy a tranché Option A —
     script-src s'élargit à l'origine déclarée de chaque extension
@@ -114,3 +128,33 @@ def test_script_src_includes_computed_extension_hosts():
     headers = parsed["http"]["middlewares"]["csp-dynamic"]["headers"]["customResponseHeaders"]
     directives = _csp_directives(headers["Content-Security-Policy"])
     assert directives["script-src"] == ["'self'", "https://cdn.example.com"]
+
+
+def test_rendered_conf_is_valid_yaml_with_two_middlewares_and_directives():
+    # AUD-089 : base-uri/form-action toujours ; frame-ancestors sauf pour /embed/.
+    allow = CspAllowlist(img_hosts={"https://t.example"}, connect_hosts={"https://t.example"})
+    doc = yaml.safe_load(render_dynamic_conf(allow, mode="enforce"))
+    mws = doc["http"]["middlewares"]
+    main = mws["csp-dynamic"]["headers"]["customResponseHeaders"]["Content-Security-Policy"]
+    embed = mws["csp-dynamic-embed"]["headers"]["customResponseHeaders"]["Content-Security-Policy"]
+    for directive in ("base-uri 'self'", "form-action 'self'"):
+        assert directive in main and directive in embed
+    assert "frame-ancestors 'self'" in main
+    assert "frame-ancestors" not in embed
+    assert "https://t.example" in embed
+
+
+def test_refresh_writes_atomically(tmp_path, monkeypatch):
+    # AUD-089 : Traefik ne doit jamais lire un fichier à moitié écrit.
+    Session = _make_session()
+    monkeypatch.setattr(security_jobs, "_session_factory", lambda: Session)
+    target = tmp_path / "dynamic-conf.yml"
+    monkeypatch.setattr(security_jobs, "CSP_DYNAMIC_CONF_PATH", str(target))
+    replaced = []
+    real_replace = security_jobs.os.replace
+    monkeypatch.setattr(
+        security_jobs.os, "replace", lambda a, b: replaced.append((a, b)) or real_replace(a, b)
+    )
+    security_jobs.refresh_csp_dynamic_conf_task(timestamp=0)
+    assert replaced == [(str(target) + ".tmp", str(target))]
+    assert "csp-dynamic-embed" in target.read_text()

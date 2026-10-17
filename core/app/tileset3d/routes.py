@@ -21,6 +21,7 @@ from app.configs.guest_access import GuestActor, can_read_item, get_share_link_a
 from app.db import get_session
 from app.ingestion.routes import get_s3_client
 from app.ingestion.storage import ensure_uploads_bucket, generate_presigned_part_url
+from app.jobs.defer import defer_resilient
 from app.quotas.service import enforce_storage_quota
 from app.roles.guards import has_privilege, require_privilege
 from app.roles.kind_registry import privilege_for_kind
@@ -83,7 +84,7 @@ def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests
     def deferrer(job_id: str, tenant_id: str) -> None:
         from app.tileset3d.jobs import finalize_tileset3d_task
 
-        finalize_tileset3d_task.defer(job_id=job_id, tenant_id=tenant_id)
+        defer_resilient(lambda: finalize_tileset3d_task.defer(job_id=job_id, tenant_id=tenant_id))
 
     return deferrer
 
@@ -147,8 +148,8 @@ def presign_tileset3d_part(
     s3=Depends(get_s3_client),
     bucket: str = Depends(get_tileset3d_bucket),
 ) -> Tileset3DPartPresignResponse:
-    if part_number < 1:
-        raise HTTPException(status_code=422, detail="partNumber must be >= 1")
+    if not 1 <= part_number <= 10_000:  # plafond S3 du multipart (revue SP-L2)
+        raise HTTPException(status_code=422, detail="partNumber must be between 1 and 10000")
     # REV-002 : cette route ne consultait jusqu'ici que get_current_user +
     # tenant — aucun privilège, aucune vérification que l'appelant est le
     # créateur du job — alors que create_tileset3d_upload/
@@ -216,7 +217,12 @@ def complete_tileset3d_upload(
     )
     # Commit avant de déférer : même raison que app.ingestion.routes.create_upload_job.
     session.commit()
-    defer_task(job.id, user.tenant_id)
+    try:
+        defer_task(job.id, user.tenant_id)
+    except HTTPException:  # 503 : file indisponible, le job n'est pas laissé orphelin
+        repo.mark_enqueue_failed(session, job_id=job.id)
+        session.commit()
+        raise
 
 
 @router.get("/tileset3d/uploads/{job_id}", response_model=Tileset3DJobStatus)

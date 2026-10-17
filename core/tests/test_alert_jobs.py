@@ -18,6 +18,7 @@ from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig
 from app.db import Base, make_session_factory
 from app.items import repository as items_repo  # noqa: F401 -- registers Item on Base.metadata
+from app.job_errors import INTERNAL_ERROR_MESSAGE
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
@@ -532,7 +533,7 @@ def test_evaluate_alert_task_writes_audit_log_on_unexpected_error(env, monkeypat
             s, tenant_id=tenant.id, alert_rule_item_id=alert_item_id
         )
         assert latest.state == "error"
-        assert "boom" in latest.error
+        assert latest.error == INTERNAL_ERROR_MESSAGE
 
         rows = s.scalars(
             select(AuditLog).where(
@@ -540,7 +541,7 @@ def test_evaluate_alert_task_writes_audit_log_on_unexpected_error(env, monkeypat
             )
         ).all()
         assert len(rows) == 1
-        assert "boom" in rows[0].payload["error"]
+        assert rows[0].payload["error"] == INTERNAL_ERROR_MESSAGE
 
 
 def test_evaluate_alert_task_reports_an_undefined_aggregate_instead_of_an_internal_error(
@@ -956,6 +957,43 @@ def test_audits_carry_the_owner_and_firing_notifies_in_app(env, monkeypatch):
         assert actors == {owner_id}
         notif = s.scalars(select(Notification).where(Notification.kind == "alert")).one()
         assert notif.recipient_user_id == owner_id and notif.item_id == alert_item_id
+
+
+def test_firing_alert_also_notifies_members_of_shared_groups(env, monkeypatch):
+    """AUD-130 : une alerte partagée à un groupe notifie aussi ses membres actifs."""
+    from datetime import UTC, datetime
+
+    from app.notifications.models import Notification
+    from app.sharing.models import Group, GroupMember, ItemShare
+
+    _, Session, tenant, alert_item_id = env
+    monkeypatch.setattr(alert_jobs, "send_webhook", lambda *a, **k: None)
+    with Session() as s:
+        owner = s.execute(
+            text("SELECT owner_id FROM items WHERE id = :i"), {"i": alert_item_id}
+        ).scalar_one()
+        bob = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="bob", username="bob", email=None,
+            first_name="", last_name="",
+        )  # fmt: skip
+        gone = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="gone", username="gone", email=None,
+            first_name="", last_name="",
+        )  # fmt: skip
+        gone.erased_at = datetime.now(UTC).replace(tzinfo=None)
+        s.add(Group(id="g1", tenant_id=tenant.id, name="Équipe", created_by=owner))
+        s.flush()
+        for uid in (bob.id, gone.id):
+            s.add(GroupMember(group_id="g1", user_id=uid, tenant_id=tenant.id))
+        s.add(ItemShare(item_id=alert_item_id, group_id="g1", tenant_id=tenant.id, role="viewer"))
+        s.commit()
+        bob_id = bob.id
+    _run_eval(env)
+    with Session() as s:
+        recipients = set(
+            s.scalars(select(Notification.recipient_user_id).where(Notification.kind == "alert"))
+        )
+    assert recipients == {owner, bob_id}
 
 
 def _set_channels(env_tuple, channels):

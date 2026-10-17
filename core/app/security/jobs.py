@@ -30,17 +30,25 @@ CSP_DYNAMIC_CONF_PATH = "/csp-dynamic/dynamic-conf.yml"
 @app.periodic(cron="*/5 * * * *")
 @app.task(queue="etl", queueing_lock="refresh_csp_dynamic_conf_task")
 def refresh_csp_dynamic_conf_task(timestamp: int) -> None:
+    # Pas de volume partagé avec Traefik (Helm : la CSP est statique, portée
+    # par le snippet nginx du shell) — rien à écrire, et surtout pas un job en
+    # échec toutes les 5 min (AUD-030). En compose, le volume crée le dossier.
+    if not os.path.isdir(os.path.dirname(CSP_DYNAMIC_CONF_PATH)):
+        return
     mode = os.environ.get("CORE_CSP_MODE", "report-only")
     factory = _session_factory()
     with request_scoped_session(factory) as session:
         allowlist = compute_csp_allowlist(session)
     rendered = render_dynamic_conf(allowlist, mode=mode)
-    os.makedirs(os.path.dirname(CSP_DYNAMIC_CONF_PATH), exist_ok=True)
-    with open(CSP_DYNAMIC_CONF_PATH, "w") as f:
+    # AUD-089 : écriture atomique — Traefik surveille le fichier et ne doit
+    # jamais lire un fragment à moitié écrit.
+    tmp = CSP_DYNAMIC_CONF_PATH + ".tmp"
+    with open(tmp, "w") as f:
         f.write(rendered)
+    os.replace(tmp, CSP_DYNAMIC_CONF_PATH)
     logger.info(
         "allowlist CSP recalculée (mode=%s) : %d hôte(s) img/connect, %d hôte(s) script "
-        "(img/connect enforcés si mode=enforce ; hôtes script calculés mais jamais enforcés)",
+        "(img/connect/script enforcés si mode=enforce)",
         mode,
         len(allowlist.img_hosts),
         len(allowlist.script_hosts),

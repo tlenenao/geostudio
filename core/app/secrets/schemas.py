@@ -139,6 +139,10 @@ class MongoDbUriPayload(BaseModel):
 
 
 class PostgresDsnPayload(BaseModel):
+    """DSN Postgres. AUD-081 : les lecteurs ouvrent une session en lecture seule,
+    sauf sur Redshift (paramètre `options` refusé) ; utilisez un compte en lecture
+    seule pour Redshift."""
+
     kind: Literal["postgres_dsn"] = "postgres_dsn"
     dsn: NonEmptyStr
 
@@ -182,7 +186,9 @@ class SnowflakeDsnPayload(BaseModel):
     `snowflake://user:password@account/database/schema?warehouse=...&role=...`
     (vérifiée contre le README du dépôt snowflake-sqlalchemy, design §2.2).
     Comme postgres_dsn : le cœur ne parse ni ne valide ce DSN, il le passe
-    tel quel à sa.create_engine()."""
+    tel quel à sa.create_engine().
+    AUD-081 : aucune session en lecture seule n'est imposée côté pilote pour ce
+    dialecte ; utilisez un compte en lecture seule."""
 
     kind: Literal["snowflake_dsn"] = "snowflake_dsn"
     dsn: NonEmptyStr
@@ -219,7 +225,9 @@ class BigQueryDsnPayload(BaseModel):
     JAMAIS masqué par cette méthode. Aucun code de ce dépôt n'appelle
     `str(engine.url)`/`str(engine)` sur un engine bigquery (vérifié par
     grep, 2026-09-21) ; à ne jamais introduire pour ce DSN précis sans
-    masquage explicite au préalable."""
+    masquage explicite au préalable.
+    AUD-081 : aucune session en lecture seule n'est imposée côté pilote pour ce
+    dialecte ; utilisez un compte en lecture seule."""
 
     kind: Literal["bigquery_dsn"] = "bigquery_dsn"
     dsn: NonEmptyStr
@@ -257,7 +265,9 @@ class MssqlDsnPayload(BaseModel):
     d'un identifiant à espace. À l'inverse, `LIMIT n` est accepté ici (syntaxe DuckDB valide)
     mais n'est PAS du T-SQL valide — SQL Server ne connaît pas la clause
     LIMIT — et une requête qui passe cette validation peut donc échouer
-    côté serveur avec une erreur explicite au moment de l'exécution."""
+    côté serveur avec une erreur explicite au moment de l'exécution.
+    AUD-081 : aucune session en lecture seule n'est imposée côté pilote pour ce
+    dialecte ; utilisez un compte en lecture seule."""
 
     kind: Literal["mssql_dsn"] = "mssql_dsn"
     dsn: NonEmptyStr
@@ -309,7 +319,9 @@ class DatabricksDsnPayload(BaseModel):
     obligatoire (le pilote échouerait sinon à la connexion) : refusé ici. L'hôte
     est un vrai nom DNS : garde d'egress SSRF appliquée comme pour Postgres.
     Comme les autres DSN, `query` n'est validée SELECT-only qu'avec le dialecte
-    DuckDB (heuristique, cf. ReaderConnectorDatabricksParams)."""
+    DuckDB (heuristique, cf. ReaderConnectorDatabricksParams).
+    AUD-081 : aucune session en lecture seule n'est imposée côté pilote pour ce
+    dialecte ; utilisez un compte en lecture seule."""
 
     kind: Literal["databricks_dsn"] = "databricks_dsn"
     dsn: NonEmptyStr

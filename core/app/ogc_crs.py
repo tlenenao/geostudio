@@ -4,7 +4,10 @@ par `app.features` (paramètre `crs`, en-tête `Content-Crs`) et `app.collection
 (`storageCrs`/`crs` de la description de collection)."""
 
 # 4326 = lon/lat (CRS84) comme GeoJSON.
-SUPPORTED_EPSG = (4326, 3857, 2154)
+# AUD-127 : Lambert-93 + coniques conformes CC42..CC50 + UTM outre-mer (Guyane RGFG95/UTM22N,
+# Réunion RGR92/UTM40S, Mayotte RGM04/UTM38S, Antilles RGAF09/UTM20N).
+FRANCE_EPSG = (2972, 2975, 4471, 5490, *range(3942, 3951))
+SUPPORTED_EPSG = (4326, 3857, 2154, *FRANCE_EPSG)
 CRS84_URI = "http://www.opengis.net/def/crs/OGC/1.3/CRS84"
 
 

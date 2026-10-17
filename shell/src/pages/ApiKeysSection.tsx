@@ -20,6 +20,7 @@ export function ApiKeysSection() {
   const revokeKey = useRevokeApiKey();
   const [name, setName] = useState("");
   const [days, setDays] = useState("90");
+  const [readOnly, setReadOnly] = useState(false);
   const [created, setCreated] = useState<ApiKeyCreated | null>(null);
   const [toRevoke, setToRevoke] = useState<ApiKeySummary | null>(null);
   const [error, setError] = useState<"create" | "revoke" | null>(null);
@@ -28,7 +29,9 @@ export function ApiKeysSection() {
     event.preventDefault();
     setError(null);
     try {
-      setCreated(await createKey.mutateAsync({ name: name.trim(), expiresInDays: Number(days) }));
+      setCreated(
+        await createKey.mutateAsync({ name: name.trim(), expiresInDays: Number(days), readOnly }),
+      );
       setName("");
     } catch {
       setError("create");
@@ -96,6 +99,14 @@ export function ApiKeysSection() {
             onChange={(e) => setDays(e.target.value)}
           />
         </Field>
+        <label className="flex h-9 items-center gap-2 text-sm text-ink">
+          <input
+            type="checkbox"
+            checked={readOnly}
+            onChange={(e) => setReadOnly(e.target.checked)}
+          />
+          {t("settings.apiKeyReadOnly")}
+        </label>
         <Button type="submit" disabled={!name.trim() || !daysValid || createKey.isPending}>
           {t("settings.apiKeyCreate")}
         </Button>
@@ -124,6 +135,7 @@ export function ApiKeysSection() {
             >
               <span className="font-medium text-ink">{key.name}</span>
               <code className="font-mono text-xs text-ink-2">{key.prefix}…</code>
+              {key.readOnly && <Badge>{t("settings.apiKeyReadOnly")}</Badge>}
               {key.revokedAt ? (
                 <Badge>{t("settings.apiKeyRevoked")}</Badge>
               ) : (

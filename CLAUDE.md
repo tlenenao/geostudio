@@ -91,7 +91,7 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
   `YYYY-MM-DD-spX…`.
 - **TDD systématique** ; chaque feature visible a sa spec E2E Playwright. La
   suite E2E complète est le filet de la migration : elle est **entièrement
-  verte** depuis le 2026-09-06 (166 passed / 4 skipped / **0 failed**,
+  verte** depuis le 2026-09-06 (166 passed / 4 skipped / **0 failed** à cette date ; depuis, `analytics-context.spec.ts` échoue sur la base du 2026-10-17 (voir l'archive),
   commit `a320c317`). L'échec longtemps réputé « préexistant, cause non
   investiguée » (`e2e/pipeline-builder.spec.ts`, timeout sur le bouton
   « Exécuter ») est diagnostiqué et corrigé : le test ne mockait jamais
@@ -680,6 +680,7 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
 - **Clôture REV, lot 4b (reliquats de code)** — REV-304/364/367 fermées : fonds de carte par tenant (`GET/POST/DELETE /v1/basemaps`, migration 0080), géocodage par lot asynchrone avec reprise (`/v1/geocode/jobs`, migration 0081, file `dataexport`), `crs`/`storageCrs` OGC Part 2, MCP `update_item` + `expectedUpdatedAt`, icônes sous `maps.manage` + quota, audit d'usage de clé d'API hors rollback, cellules `__agg` masquées pendant une fenêtre temporelle. Détail dans l'archive.
 - **Lot 9 « op expérimentales » (release v0.2.0)** — 32 op de pipeline parlant à un service tiers sans rejeu réel (messagerie, entrepôts/bases externes, cloud, OGC, routage, géocodage) : `experimental` sur `OperationContract`, derrière `CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED` (défaut `false`, `core` ET `worker`) — masquées du catalogue, refusées à l'écriture (422) et à l'exécution ; badge « Expérimental » dans la palette ; catalogue exposé 91 op (flags éteints) à 121 (flag allumé), brut 152. Liste et preuves : `docs/revue/2026-10-16-ops-experimentales.md`.
 - **SP-L0 chiffres justes** — 12 défauts AUD (151/005/006/007/020/129/002/001/003/133/069/075) : clé terrain3d, tampons aeqd, snap, detectChanges, CRS OGC, import MakeValid, badge d'échantillon, export attendu/dataset/filtres, collecte, item publié ; Step 6 (rejeu export réel) non exécuté, reliquats dans l'archive.
+- **Lots L1a/L3/L5/L2/L1b/L6 (audit 2026-10-16)** — socle d'exécution (`defer_resilient`, reprise des jobs morts, battement de run, sondes), observabilité/exploitation, ETL correct + éditeur, sécurité sortante (`egress_guard`, clés d'API scopées `read_post`/`acts_as_admin`, 0083), CDC wal2json v2 + bornes lac/import en flux + `_RunGuard` + outbox de webhooks, standards OGC/STAC/Records/ISO 19139/udata + mode sans fond externe (0095) ; migrations 0082-0095 ; revues finales : Important corrigés par lot. AUD partiels et reliquats dans l'archive et `docs/revue/audit-2026-10-16/`.
 
 ### Conventions tranchées (2026-09-01)
 

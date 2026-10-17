@@ -173,6 +173,7 @@ PARITY: dict[str, tuple[str, object]] = {
     "conformance": ("excluded", "découverte OGC, sans objet pour un agent MCP"),
     "dcat": ("excluded", "export de métadonnées publiques, lisible sans MCP"),
     "stac": ("excluded", "API de catalogue publique, lisible sans MCP"),
+    "records": ("excluded", "OGC API Records : catalogue public, lisible sans MCP"),
     "public": ("excluded", "routes anonymes (SEO, partage)"),
     "extensions": ("excluded", "chargement de code tiers : humain uniquement"),
     "geocode": (

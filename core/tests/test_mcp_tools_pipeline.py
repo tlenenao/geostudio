@@ -295,7 +295,7 @@ def test_explain_pipeline_includes_refresh_policy_when_set(app_client):
 
         result = call_tool(client, "explain_pipeline", {"pipelineId": created["pk"]})
 
-    assert result["refreshPolicy"] == {"enabled": True, "cron": "*/15 * * * *"}
+    assert result["refreshPolicy"] == {"enabled": True, "cron": "*/15 * * * *", "timezone": "UTC"}
 
 
 def test_explain_pipeline_refresh_policy_is_none_when_unset(app_client):

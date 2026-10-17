@@ -8,7 +8,7 @@ import { t } from "../i18n";
 import "../i18n/domains/automation";
 import "../i18n/domains/misc";
 
-const COPY_TYPES: HarvestSourceType[] = ["stac", "arcgis", "wfs", "ckan"];
+const COPY_TYPES: HarvestSourceType[] = ["stac", "arcgis", "wfs", "ckan", "udata"];
 
 export function CreateHarvestSourcePanel({ onClose }: { onClose: () => void }) {
   const createSource = useCreateHarvestSource();
@@ -60,6 +60,7 @@ export function CreateHarvestSourcePanel({ onClose }: { onClose: () => void }) {
             <option value="csw">{t("harvest.typeCsw")}</option>
             <option value="ogc-records">{t("harvest.typeOgcRecords")}</option>
             <option value="ckan">{t("harvest.typeCkan")}</option>
+            <option value="udata">{t("harvest.typeUdata")}</option>
           </select>
         </label>
         <label className="flex flex-col gap-1 text-sm text-ink">

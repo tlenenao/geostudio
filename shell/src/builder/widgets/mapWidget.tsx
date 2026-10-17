@@ -22,6 +22,8 @@ import { ExplorerMenu } from "./ExplorerMenu";
 import { PopupEditor } from "../../map/PopupEditor";
 import { MapSymbologyEditor } from "../../map/MapSymbologyEditor";
 import { BasemapSelect } from "../../map/BasemapSelect";
+import { defaultBasemapStyle } from "../../map/basemaps";
+import { useExternalBasemapsEnabled } from "../../map/useBasemaps";
 import { TerrainPanel } from "../../map/TerrainPanel";
 import { CameraControls } from "../../map/CameraControls";
 import { bboxFromFeatureCollection } from "../../lib/geometryBbox";
@@ -32,7 +34,6 @@ import { trackExportTask } from "../../shell/exportReady";
 import "../../i18n/domains/widgets";
 
 const MapView = lazy(() => import("../../map/MapView").then((m) => ({ default: m.MapView })));
-const DEFAULT_STYLE = "https://demotiles.maplibre.org/style.json";
 
 function centerFromPayload(p: unknown): [number, number] | null {
   const rec = p as
@@ -66,6 +67,7 @@ export function registerMapWidget(): void {
     actions: ["flyTo", "highlight", "setBasemap"],
     PropsPanel: ({ props, onChange, dataSources, theme }) => {
       const client = useItemClient();
+      const fallbackStyle = defaultBasemapStyle(useExternalBasemapsEnabled());
       const dataSourceId = String(props.dataSourceId ?? "");
       const dataSource = dataSources.find((d) => d.id === dataSourceId);
       const datasetId = dataSource?.datasetId;
@@ -96,7 +98,7 @@ export function registerMapWidget(): void {
             onChange={(id) => onChange({ ...props, dataSourceId: id })}
           />
           <BasemapSelect
-            value={String(props.basemapStyle ?? DEFAULT_STYLE)}
+            value={String(props.basemapStyle ?? fallbackStyle)}
             onChange={(style) => onChange({ ...props, basemapStyle: style })}
           />
           <TerrainPanel
@@ -235,6 +237,7 @@ export function registerMapWidget(): void {
     },
     Component: ({ props, ctx }) => {
       const handle = useRef<MapViewHandle>(null);
+      const fallbackStyle = defaultBasemapStyle(useExternalBasemapsEnabled());
       const client = useItemClient();
       // I1 (revue finale) : keyed sur l'id de source de données du widget,
       // pas sur l'URL brute — SP-A4 (auto-cadrage) et SP-A29 (contexte
@@ -331,7 +334,7 @@ export function registerMapWidget(): void {
       );
 
       const config: MapConfig = {
-        basemap: { style: basemapOverride ?? String(props.basemapStyle ?? DEFAULT_STYLE) },
+        basemap: { style: basemapOverride ?? String(props.basemapStyle ?? fallbackStyle) },
         terrain: (props.terrain as MapTerrainConfig | null) ?? null,
         view: {
           center: (props.center as [number, number] | undefined) ?? [2.4, 46.6],

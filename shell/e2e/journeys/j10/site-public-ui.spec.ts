@@ -172,6 +172,10 @@ test.describe("j10 sites : édition côté auteur", () => {
     await page.getByRole("button", { name: "Nouveau" }).first().click();
     await page.getByRole("dialog").getByLabel("Type").selectOption("site");
     await page.getByLabel("Modèle").selectOption({ label: "Portail de données" });
+    // AUD-022 : la source fictive « incidents » du gabarit se lie à une vraie collection.
+    const bind = page.getByLabel("Collection pour « incidents »");
+    await expect(bind.locator("option").nth(1)).toBeAttached();
+    await bind.selectOption({ index: 1 });
     await page.getByLabel("Titre", { exact: true }).fill(`${tag} Portail UI`);
     await expect(page.getByLabel("Slug")).toHaveValue(new RegExp(`^${tag}-portail-ui$`));
     await page.getByRole("button", { name: "Créer" }).click();

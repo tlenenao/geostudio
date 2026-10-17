@@ -81,13 +81,14 @@ class InMemoryRunTracker:
             nodeStats=node_stats,
         )
 
-    def mark_failed(self, error: str) -> None:
+    def mark_failed(self, error: str, failed_node_id: str | None = None) -> None:
         self._registry._update(
             self._item_id,
             self._run_id,
             status="failed",
             finishedAt=datetime.now(UTC).isoformat(),
             error=error,
+            failedNodeId=failed_node_id,
         )
 
     # Contrat RunTracker (t03b-009) : le sidecar n'expose pas d'annulation.

@@ -21,7 +21,7 @@ from app.analytics.export import (
     rows_to_format,
 )
 from app.audit.writer import write_audit
-from app.auth.dependency import get_current_user
+from app.auth.dependency import get_current_user, read_post
 from app.bbox import parse_bbox_floats
 from app.configs import repository as configs_repo
 from app.db import get_session
@@ -465,6 +465,7 @@ def get_dataset_arcgis_items(
 
 
 @router.post("/datasets/{item_id}/arcgis/aggregate")
+@read_post
 def get_dataset_arcgis_aggregate(
     item_id: str,
     body: AggregateRequestBody,

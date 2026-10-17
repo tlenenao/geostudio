@@ -39,11 +39,21 @@ def _hash(token: str) -> str:
 
 
 def create_api_key(
-    session: Session, *, user: User, name: str, expires_in_days: int
+    session: Session,
+    *,
+    user: User,
+    name: str,
+    expires_in_days: int,
+    scopes: list[str] | None = None,
+    read_only: bool = False,
 ) -> tuple[ApiKey, str]:
-    """Renvoie (ligne, jeton en clair) ; le jeton n'existe nulle part ailleurs."""
+    """Renvoie (ligne, jeton en clair) ; le jeton n'existe nulle part ailleurs.
+    `scopes` (AUD-091) est déjà validé par l'appelant (routes : privilèges connus
+    et détenus par le créateur — app.apikeys est sous app.roles)."""
     if not 1 <= expires_in_days <= MAX_LIFETIME_DAYS:
         raise ValueError(f"expires_in_days must be between 1 and {MAX_LIFETIME_DAYS}")
+    if scopes is not None:
+        scopes = sorted(set(scopes))
     prefix = TOKEN_PREFIX + secrets.token_hex(6)
     token = f"{prefix}_{secrets.token_urlsafe(32)}"
     key = ApiKey(
@@ -54,6 +64,8 @@ def create_api_key(
         key_prefix=prefix,
         key_hash=_hash(token),
         expires_at=_utcnow() + timedelta(days=expires_in_days),
+        scopes=scopes,
+        read_only=read_only,
     )
     session.add(key)
     session.flush()
@@ -65,7 +77,13 @@ def create_api_key(
         action="api_key.create",
         object_type="api_key",
         object_id=key.id,
-        payload={"prefix": prefix, "name": name, "expiresAt": key.expires_at.isoformat()},
+        payload={
+            "prefix": prefix,
+            "name": name,
+            "expiresAt": key.expires_at.isoformat(),
+            "scopes": scopes,
+            "readOnly": read_only,
+        },
     )
     return key, token
 
@@ -148,6 +166,8 @@ def authenticate(session: Session, *, token: str, tenant_id: str) -> User | None
             user_id=user.id,
             now=now,
         )
+    user.api_key_scopes = frozenset(key.scopes) if key.scopes is not None else None
+    user.api_key_read_only = key.read_only
     return user
 
 

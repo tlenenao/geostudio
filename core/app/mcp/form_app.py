@@ -21,7 +21,7 @@ def can_write_collection(session, *, user: User, col: Collection) -> bool:
         action="write",
         item=collections_repo.get_access_facts(col),
         kind="collection",
-        actor_is_admin=user.is_admin,
+        actor_is_admin=user.acts_as_admin(),
     )
 
 

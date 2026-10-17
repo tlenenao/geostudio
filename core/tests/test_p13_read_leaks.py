@@ -190,5 +190,7 @@ def test_presign_requires_data_manage(client):
     _make_reader(client)
     client.app_.dependency_overrides[ingestion_routes.get_s3_client] = lambda: object()
     client.app_.dependency_overrides[ingestion_routes.get_uploads_bucket] = lambda: "b"
-    r = client.post("/v1/uploads/presign", json={"filename": "a.csv", "contentType": "text/csv"})
+    r = client.post(
+        "/v1/uploads/presign", json={"size": 10, "filename": "a.csv", "contentType": "text/csv"}
+    )
     assert r.status_code == 403

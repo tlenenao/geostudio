@@ -17,9 +17,11 @@ syntaxiquement qu'à l'exécution (app.pipelines.expr_validation), jamais ici
 — ce module ne valide que la FORME des params, pas la sémantique des
 expressions."""
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, BeforeValidator, Field, field_validator, model_validator
+
+from app.pipelines.ops.operation_contract import OutputColumn
 
 
 class IncrementalSpec(BaseModel):
@@ -33,6 +35,11 @@ class IncrementalSpec(BaseModel):
 
 class _IncrementalReader(BaseModel):
     incremental: IncrementalSpec | None = None
+    # AUD-082 : colonne source portant la géométrie (texte WKT, WKB hexadécimal ou GeoJSON),
+    # décodée en `geometry` après lecture ; sans elle la sortie n'a pas de géométrie.
+    geometryColumn: str | None = None
+    geometryFormat: Literal["wkt", "wkb_hex", "geojson"] = "wkt"
+    geometrySrid: int = Field(4326, ge=1)
 
 
 class ReaderCollectionParams(BaseModel):
@@ -58,9 +65,15 @@ class TransformAggregateParams(BaseModel):
 
 
 class TransformJoinParams(BaseModel):
+    """Jointure attributaire sur `on` (même nom des deux côtés). La sortie garde toutes les
+    colonnes de l'entrée principale (dont sa géométrie) puis les colonnes de la seconde
+    entrée hors clé et hors géométrie ; une colonne déjà présente à gauche est préfixée par
+    `rightPrefix`."""
+
     withCollectionId: str | None = Field(None, json_schema_extra={"format": "collection-id"})
     on: str
     how: Literal["inner", "left"] = "inner"
+    rightPrefix: str = Field("right_", pattern=r"^[A-Za-z_][A-Za-z0-9_]{0,30}$")
 
 
 class WriterCollectionParams(BaseModel):
@@ -102,6 +115,15 @@ class WriterCollectionParams(BaseModel):
             "à `false` est rejetée (règle = nom de la colonne). Jamais écrites dans la cible."
         ),
     )
+    maxRejectRate: float | None = Field(
+        None,
+        ge=0,
+        le=1,
+        description=(
+            "Seuil de qualité : si la part de lignes rejetées dépasse cette valeur (0 à 1), "
+            "le run échoue et rien n'est écrit."
+        ),
+    )
 
     @model_validator(mode="after")
     def _keys_for_matching_modes(self) -> "WriterCollectionParams":
@@ -129,8 +151,16 @@ class TransformBufferParams(BaseModel):
     unit: Literal["meters", "native"] = "meters"
 
 
+# Revue L5 : « epsg:2154 » (accepté avant le resserrement à EPSG) est normalisé, pas refusé.
+EpsgCode = Annotated[
+    str,
+    BeforeValidator(lambda v: v.upper() if isinstance(v, str) else v),
+    Field(pattern=r"^EPSG:\d+$"),
+]
+
+
 class TransformReprojectParams(BaseModel):
-    targetCrs: str = Field(..., pattern=r"^[A-Za-z]+:\d+$")
+    targetCrs: EpsgCode
 
 
 class TransformIntersectionParams(BaseModel):
@@ -141,7 +171,7 @@ class TransformIntersectionParams(BaseModel):
 
 class TransformCountWithinParams(BaseModel):
     withCollectionId: str | None = Field(None, json_schema_extra={"format": "collection-id"})
-    countColumn: str = "count"
+    countColumn: OutputColumn = "count"
     predicate: Literal["intersects", "contains"] = "intersects"
 
 
@@ -491,7 +521,7 @@ class TransformReprojectAttributeParams(BaseModel):
     xColumn: str
     yColumn: str
     sourceCrs: str = Field(..., pattern=r"^[A-Za-z]+:\d+$")
-    targetCrs: str = Field(..., pattern=r"^[A-Za-z]+:\d+$")
+    targetCrs: EpsgCode
 
 
 class TransformFormatCoordinatesParams(BaseModel):
@@ -593,37 +623,42 @@ class TransformSortParams(BaseModel):
 
 
 class TransformValidateAttributesParams(BaseModel):
-    """Valide des attributs explicites (non-null et/ou unicité) et écrit le résultat booléen
-    dans une colonne dédiée par vérification demandée. Colonnes explicites uniquement — pas de
-    mode « toutes les colonnes automatiquement »."""
+    """Valide des attributs explicites et écrit un booléen par vérification demandée.
+    `nonNull` : toutes les colonnes non NULL. `notBlank` : non NULL et non vides après
+    suppression des espaces. `unique` : la combinaison est unique ; NULL si une partie de la
+    clé est NULL (indéterminé, jamais « unique »)."""
 
     nonNullColumns: list[str] = Field(default_factory=list)
-    nonNullResultColumn: str | None = None
+    nonNullResultColumn: OutputColumn | None = None
+    notBlankColumns: list[str] = Field(default_factory=list)
+    notBlankResultColumn: OutputColumn | None = None
     uniqueColumns: list[str] = Field(default_factory=list)
-    uniqueResultColumn: str | None = None
+    uniqueResultColumn: OutputColumn | None = None
 
     @model_validator(mode="after")
     def _at_least_one_check(self) -> "TransformValidateAttributesParams":
-        has_non_null = bool(self.nonNullColumns) and self.nonNullResultColumn is not None
-        has_unique = bool(self.uniqueColumns) and self.uniqueResultColumn is not None
-        if not has_non_null and not has_unique:
+        pairs = [
+            (self.nonNullColumns, self.nonNullResultColumn),
+            (self.notBlankColumns, self.notBlankResultColumn),
+            (self.uniqueColumns, self.uniqueResultColumn),
+        ]
+        if not any(cols and res is not None for cols, res in pairs):
             raise ValueError(
-                "transform.validateAttributes requires at least one check "
-                "(nonNullColumns+nonNullResultColumn or uniqueColumns+uniqueResultColumn)"
+                "transform.validateAttributes requires at least one check (colonnes + colonne "
+                "de résultat)"
             )
         return self
 
 
 class TransformDetectChangesParams(BaseModel):
-    """Compare l'entrée principale (état « avant ») à une collection ou un flux secondaire
-    (état « après ») sur des colonnes clés, et écrit le statut de chaque ligne
-    (inserted/deleted/updated/unchanged) — comparaison automatique de toutes les colonnes
-    communes, résolues à l'exécution. La sortie reprend le schéma de l'état « après » (valeurs
-    « avant » pour les lignes deleted) plus la colonne de statut."""
+    """Compare l'entrée principale (« avant ») à la seconde (« après ») sur `keyColumns`.
+    Statuts : inserted/deleted/updated/unchanged, et `invalid` pour une ligne dont une partie
+    de la clé est NULL (jamais rapprochable ; writer.collection la rejette en quarantaine).
+    Une clé dupliquée d'un côté fait échouer le nœud."""
 
     withCollectionId: str | None = Field(None, json_schema_extra={"format": "collection-id"})
-    keyColumns: list[str]
-    statusColumn: str
+    keyColumns: list[str] = Field(..., min_length=1)
+    statusColumn: OutputColumn
 
 
 class TransformMergeChildrenParams(BaseModel):
@@ -631,7 +666,7 @@ class TransformMergeChildrenParams(BaseModel):
     l'entrée secondaire (enfants), regroupées en une colonne LIST de STRUCT — schéma des
     enfants résolu à l'exécution. `parentOn`/`childOn` peuvent désigner des colonnes de noms
     différents (ex. `id` côté parent, `parentId` côté enfant) : contrairement à
-    `transform.join` (clause SQL `USING`, qui impose un nom identique des deux côtés), cette
+    `transform.join` (clé `on`, qui impose un nom identique des deux côtés), cette
     jointure s'écrit `t.col = o.col` et n'a pas cette contrainte. Un parent sans enfant
     correspondant reçoit une liste vide (`[]`), jamais `[{...: NULL}]`."""
 

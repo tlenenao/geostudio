@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { mockCore, mockMe } from "./mocks";
+import { bindTemplateSources, mockCore, mockMe } from "./mocks";
 
 test("mode démo lecture seule : bannière visible, Formulaire masqué, écriture forcée refusée (403)", async ({
   page,
@@ -39,6 +39,7 @@ test("mode démo lecture seule : bannière visible, Formulaire masqué, écritur
   const dialog = page.getByRole("dialog", { name: "Nouvel élément" });
   await dialog.getByLabel("Type").selectOption("app");
   await dialog.getByLabel("Modèle").selectOption("application-de-saisie");
+  await bindTemplateSources(dialog);
   await dialog.getByLabel("Titre").fill("Démo lecture seule");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);

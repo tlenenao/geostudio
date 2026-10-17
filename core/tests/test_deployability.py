@@ -734,6 +734,12 @@ def test_wms_flag_is_wired_to_core_and_off_by_default():
     assert _resolve_effective_value(raw, "CORE_OWS_WMS_ENABLED") == "false"
 
 
+def test_lake_snapshot_is_on_by_default():
+    """AUD-013 : sans snapshot, la lecture du lac retombe sur la fenêtre complète (lente)."""
+    raw = services(BASE)["worker"]["environment"]["CORE_LAKE_SNAPSHOT_ENABLED"]
+    assert _resolve_effective_value(raw, "CORE_LAKE_SNAPSHOT_ENABLED") == "true"
+
+
 def test_worker_has_a_resolved_memory_limit():
     """REV-275 (d) : borner la mémoire du PROCESS worker (t03b-008 ne borne que
     l'écrivain). Vérifie la valeur RÉSOLUE sans `.env` (piège n°2 : une
@@ -743,6 +749,134 @@ def test_worker_has_a_resolved_memory_limit():
     assert raw is not None, "service `worker` sans mem_limit"
     assert _resolve_effective_value(str(raw), "WORKER_MEM_LIMIT") == "2g"
     assert "WORKER_MEM_LIMIT" in documented_env_vars(include_commented=False)
+
+
+# AUD-031/184 : bornes par défaut taillées pour la VM de référence (8 Go).
+MEM_LIMITS = {
+    "postgis": ("PG_MEM_LIMIT", "2g"),
+    "core": ("CORE_MEM_LIMIT", "1536m"),
+    "worker": ("WORKER_MEM_LIMIT", "2g"),
+    "export-worker": ("EXPORT_WORKER_MEM_LIMIT", "1g"),
+    "cdc-worker": ("CDC_WORKER_MEM_LIMIT", "0"),  # sans borne : cf. test dédié
+    "keycloak": ("KEYCLOAK_MEM_LIMIT", "1536m"),
+    "minio": ("MINIO_MEM_LIMIT", "512m"),
+    "titiler": ("TITILER_MEM_LIMIT", "1g"),
+}
+
+
+@pytest.mark.parametrize("service", sorted(MEM_LIMITS))
+def test_long_running_services_have_a_resolved_documented_memory_limit(service):
+    """AUD-184 : seul `worker` était borné ; un OOM ailleurs (core sur un
+    zonal-stats, Keycloak, postgis) pouvait faire tuer n'importe quel process
+    de l'hôte. Valeur RÉSOLUE sans `.env` + nom documenté (piège n°2)."""
+    var, default = MEM_LIMITS[service]
+    raw = services(BASE)[service].get("mem_limit")
+    assert raw is not None, f"service `{service}` sans mem_limit"
+    assert _resolve_effective_value(str(raw), var) == default
+    assert var in documented_env_vars(include_commented=False)
+
+
+def test_postgis_memory_settings_are_tunable_and_fit_its_limit():
+    """AUD-031 : shared_buffers=2GB/effective_cache_size=6GB en dur sur une
+    VM de 8 Go partagée par toute la stack. Réglables, défauts sous la borne."""
+    cmd = str(services(BASE)["postgis"]["command"])
+    for flag, var in (
+        ("shared_buffers", "PG_SHARED_BUFFERS"),
+        ("effective_cache_size", "PG_EFFECTIVE_CACHE_SIZE"),
+        ("max_connections", "PG_MAX_CONNECTIONS"),
+        ("work_mem", "PG_WORK_MEM"),
+        ("max_parallel_workers_per_gather", "PG_MAX_PARALLEL_WORKERS_PER_GATHER"),
+    ):
+        assert f"-c {flag}=${{{var}:-" in cmd, flag
+        assert var in documented_env_vars(include_commented=False), var
+    assert "${PG_SHARED_BUFFERS:-512MB}" in cmd
+    # Revue finale SP-L3 (I3) : 64MB × 4 parallèles sous une borne de 2g.
+    assert "${PG_WORK_MEM:-16MB}" in cmd
+    assert "${PG_MAX_PARALLEL_WORKERS_PER_GATHER:-2}" in cmd
+
+
+def test_postgis_bounds_the_wal_a_replication_slot_can_retain():
+    """AUD-012 : sans max_slot_wal_keep_size, un cdc-worker arrêté retient le WAL sans
+    limite jusqu'à saturer pg-data. Valeur RÉSOLUE sans .env (piège n°2) + documentée."""
+    cmd = str(services(BASE)["postgis"]["command"])
+    match = re.search(r"-c max_slot_wal_keep_size=(\S+)", cmd)
+    assert match, "postgis sans max_slot_wal_keep_size"
+    assert _resolve_effective_value(match.group(1), "PG_MAX_SLOT_WAL_KEEP_SIZE") == "10GB"
+    assert "PG_MAX_SLOT_WAL_KEEP_SIZE" in documented_env_vars(include_commented=False)
+
+
+_UNITS = {"k": 2**10, "kb": 2**10, "m": 2**20, "mb": 2**20, "g": 2**30, "gb": 2**30}
+
+
+def _bytes(size: str) -> int:
+    m = re.fullmatch(r"(\d+)\s*([a-z]*)", size.strip().lower())
+    assert m, size
+    return int(m.group(1)) * _UNITS.get(m.group(2), 1)
+
+
+@pytest.mark.parametrize("service", ["core", "worker"])
+def test_duckdb_memory_limit_is_well_below_the_container_limit(service):
+    """Revue finale SP-L3 (I2) : DuckDB à 2GB par connexion sous un core borné à
+    1536m = OOM du conteneur avant que DuckDB ne déborde sur disque. Défaut
+    compose ET valeur de .env.example (copiée par bootstrap-env) ≤ moitié."""
+    svc = services(BASE)[service]
+    var, _ = MEM_LIMITS[service]
+    duck = _resolve_effective_value(
+        str(svc["environment"]["CORE_DUCKDB_MEMORY_LIMIT"]), "CORE_DUCKDB_MEMORY_LIMIT"
+    )
+    limit = _resolve_effective_value(str(svc["mem_limit"]), var)
+    assert _bytes(duck) * 2 <= _bytes(limit), (duck, limit)
+    env = dict(re.findall(r"^([A-Z0-9_]+)=(.*)$", ENV_EXAMPLE.read_text(), re.MULTILINE))
+    assert _bytes(env["CORE_DUCKDB_MEMORY_LIMIT"]) * 2 <= _bytes(env[var])
+
+
+def test_cdc_worker_is_unbounded_by_default_and_titiler_concurrency_is_pinned():
+    """Revue finale SP-L3 (C1/I1). cdc-worker : wal2json v1 livre une transaction
+    entière en un message — une borne fixe le tue en boucle sur un gros import.
+    titiler : gunicorn = 1 worker par cœur de l'hôte sans WEB_CONCURRENCY."""
+    assert _resolve_effective_value(
+        str(services(BASE)["cdc-worker"]["mem_limit"]), "CDC_WORKER_MEM_LIMIT"
+    ) == "0"
+    env = services(BASE)["titiler"]["environment"]
+    assert _resolve_effective_value(str(env["WEB_CONCURRENCY"]), "TITILER_WEB_CONCURRENCY") == "2"
+    assert "GDAL_CACHEMAX" in env
+    for var in ("TITILER_WEB_CONCURRENCY", "TITILER_GDAL_CACHEMAX"):
+        assert var in documented_env_vars(include_commented=False), var
+
+
+OTEL_ENTRYPOINTS = ("app.main", "app.jobs", "app.cdc")
+
+
+def test_every_otel_process_exports_telemetry():
+    """AUD-037 : export-worker appelle observability.setup() (via app.jobs) mais
+    ne recevait ni endpoint ni nom de service — aucune trace, aucune métrique.
+    Tout service dont le process importe app.main/app.jobs/app.cdc doit porter
+    l'endpoint, un nom geostudio-<service> et la version (AUD-040)."""
+    checked = []
+    for name, svc in services(BASE).items():
+        cmd = svc.get("command")
+        cmd = " ".join(cmd) if isinstance(cmd, list) else str(cmd or "")
+        if not any(ep in cmd for ep in OTEL_ENTRYPOINTS):
+            continue
+        env = svc.get("environment") or {}
+        assert env.get("OTEL_EXPORTER_OTLP_ENDPOINT") == "${OTEL_EXPORTER_OTLP_ENDPOINT:-}", name
+        assert env.get("OTEL_SERVICE_NAME") == f"geostudio-{name}", name
+        # Revue finale SP-L3 (M4) : le fichier de base construit depuis les sources ;
+        # le GEOSTUDIO_VERSION de .env (tag de release copié par bootstrap-env) y
+        # ferait annoncer v0.1.0 et épinglerait les bundles autoportés dessus.
+        assert "GEOSTUDIO_VERSION" not in env, name
+        prod_env = services(PROD)[name].get("environment") or {}
+        assert prod_env.get("GEOSTUDIO_VERSION") == "${GEOSTUDIO_VERSION:-latest}", name
+        checked.append(name)
+    assert {"core", "worker", "export-worker", "cdc-worker"} <= set(checked), checked
+
+
+def test_otel_lgtm_data_is_persisted():
+    """AUD-038 : Prometheus/Loki/Tempo/Grafana écrivent sous /data dans
+    l'image ; sans volume nommé, chaque redéploiement efface l'historique."""
+    base = load_yaml(BASE)
+    assert "otel-lgtm-data:/data" in base["services"]["otel-lgtm"]["volumes"]
+    assert "otel-lgtm-data" in base["volumes"]
 
 
 def test_sh_c_commands_have_no_orphan_option_line():
@@ -1540,6 +1674,27 @@ def test_embed_router_is_exempted_from_frame_deny(compose):
     assert "/embed/" in rule, f"shell-embed ({compose.name}) doit border /embed/, a trouvé : {rule}"
 
 
+@pytest.mark.parametrize("compose", [BASE, PROD], ids=["base", "prod"])
+def test_only_the_embed_router_drops_frame_ancestors(compose):
+    """AUD-089 : la CSP dynamique porte `frame-ancestors 'self'` (middleware
+    csp-dynamic) sauf sur /embed/ (csp-dynamic-embed) ; aucun autre routeur
+    ne doit référencer la variante sans frame-ancestors."""
+    for name, service in services(compose).items():
+        labels = _traefik_labels(service)
+        routers = {
+            key.split(".")[3]
+            for key in labels
+            if key.startswith("traefik.http.routers.") and key.endswith(".middlewares")
+        }
+        for router in routers:
+            mws = _router_middlewares(labels, router)
+            if router == "shell-embed":
+                assert "csp-dynamic-embed@file" in mws, (compose.name, mws)
+                assert "csp-dynamic@file" not in mws, (compose.name, mws)
+            else:
+                assert "csp-dynamic-embed@file" not in mws, (compose.name, name, router)
+
+
 # ─── SP-48/GAP-72 : CSP calculée dynamiquement, poussée par Traefik via un
 # provider fichier additif au provider Docker existant ───────────────────
 
@@ -1620,6 +1775,15 @@ def test_dev_tooling_host_ports_bind_loopback_only():
     for name in ("martin", "titiler", "otel-lgtm"):
         for port in svc[name].get("ports", []):
             assert str(port).startswith("127.0.0.1:"), f"{name}: port {port!r} exposé sur 0.0.0.0"
+
+
+def test_core_port_binds_loopback_in_dev_and_is_unpublished_in_prod():
+    """AUD-101 : le cœur fait confiance à X-Forwarded-For de toute la plage RFC 1918 ;
+    publié sur 0.0.0.0, n'importe quel poste du réseau local forgeait son IP."""
+    ports = services(BASE)["core"].get("ports", [])
+    assert ports and all(str(p).startswith("127.0.0.1:") for p in ports), ports
+    prod = services(PROD)["core"].get("ports")
+    assert prod is RESET or not prod, prod
 
 
 def test_titiler_is_internal_only():
@@ -1762,7 +1926,13 @@ def test_shell_nginx_serves_mjs_cache_and_404_for_assets():
     assert 'Cache-Control "no-cache"' in conf
     # un add_header de location masque ceux du server : réinclure les en-têtes de sécurité
     snippet = "include /etc/nginx/snippets/security-headers.conf;"
-    assert conf.count(snippet) == conf.count("add_header Cache-Control") + 1
+    embed = "include /etc/nginx/snippets/security-headers-embed.conf;"
+    assert conf.count(snippet) + conf.count(embed) == conf.count("add_header Cache-Control") + 1
+    embed_block = conf.split("location /embed/ {")[1].split("}")[0]
+    assert embed in embed_block
+    # Repli terminal = redirection interne vers `location /` et ses en-têtes
+    # (X-Frame-Options DENY en Helm) : /index.html doit rester non terminal.
+    assert "try_files $uri /index.html =404;" in embed_block
     assert "rm -rf dist/.vite dist/fixtures" in (REPO / "shell/Dockerfile").read_text()
 
 
@@ -1978,6 +2148,88 @@ def test_slo_rules_cover_the_four_documented_slos_and_are_active():
         assert params == [threshold], f"{uid}: seuil attendu {threshold}, trouvé {params}"
 
 
+OPENAPI = REPO / "core" / "openapi.json"
+DASHBOARDS = REPO / "deploy/observability/grafana/provisioning/dashboards/custom"
+
+
+def _alert_rules() -> dict:
+    doc = yaml.safe_load(SLO_RULES.read_text())
+    return {r["uid"]: r for g in doc["groups"] for r in g["rules"]}
+
+
+def _observability_exprs() -> list[str]:
+    exprs = [
+        d["model"]["expr"]
+        for r in _alert_rules().values()
+        for d in r["data"]
+        if "expr" in d.get("model", {})
+    ]
+    for f in DASHBOARDS.glob("*.json"):
+        for panel in json.loads(f.read_text())["panels"]:
+            exprs += [t["expr"] for t in panel.get("targets", []) if "expr" in t]
+    return exprs
+
+
+def test_http_label_filters_match_real_routes():
+    """AUD-017 : FastAPIInstrumentor (semconv « old ») pose `http.target` =
+    gabarit de route, jamais `http.route` (mesuré in-process, cf. plan
+    SP-L3) ; et toute route vit sous /v1 depuis SP-57b. Un matcher `=~`
+    Prometheus est ancré : une regex qui ne matche aucun chemin réel donne
+    une série vide, donc une alerte muette pour toujours."""
+    paths = list(json.loads(OPENAPI.read_text())["paths"])
+    exprs = _observability_exprs()
+    assert not any("http_route" in e for e in exprs), "libellé inexistant, utiliser http_target"
+    regexes = [rx for e in exprs for rx in re.findall(r'http_target=~"([^"]+)"', e)]
+    assert regexes, "au moins le SLO Features filtre sur http_target"
+    for rx in regexes:
+        assert any(re.fullmatch(rx, p) for p in paths), f"{rx} ne matche aucune route de l'OpenAPI"
+
+
+# Règles qui restent OK sans données, avec la raison : absence de trafic
+# légitime. Toute autre règle mesure une panne et doit sonner quand ses
+# séries disparaissent (core/worker/cdc-worker arrêtés, export OTLP cassé).
+NO_DATA_OK_RULES = {
+    "slo-api-features-latency-p95": "aucun trafic Features = rien à mesurer",
+    "slo-martin-tiles-latency-p95": "aucun trafic de tuiles = rien à mesurer",
+    "test-alert-always-firing": "règle de démonstration, en pause",
+}
+
+
+def test_outage_rules_alert_on_no_data():
+    """AUD-018 : 5 règles en `noDataState: OK` = core arrêté, aucune alerte."""
+    for uid, rule in _alert_rules().items():
+        expected = "OK" if uid in NO_DATA_OK_RULES else "Alerting"
+        assert rule["noDataState"] == expected, f"{uid}: noDataState={rule['noDataState']}"
+
+
+def test_ops_rules_cover_cdc_lag_slot_wal_and_jobs():
+    """AUD-035 : retard CDC, WAL retenu par le slot, échecs et âge des jobs."""
+    rules = _alert_rules()
+    for uid in ("ops-cdc-slot-inactive", "ops-cdc-slot-wal", "ops-jobs-failed", "ops-jobs-oldest-age"):
+        assert uid in rules, uid
+        assert rules[uid]["isPaused"] is False, uid
+        assert "slo" in rules[uid]["labels"], f"{uid} : routage policies.yaml sur le label slo"
+
+
+ASTREINTE_RUNBOOK = REPO / "docs/runbooks/2026-10-17-astreinte-alertes.md"
+
+
+def test_every_alert_rule_links_to_its_runbook_section():
+    """AUD-039 : une alerte sans consigne réveille quelqu'un qui ne sait pas
+    quoi faire. Chaque règle active pointe vers sa section du runbook, qui
+    existe."""
+    sections = set(re.findall(r"^## (\S+)$", ASTREINTE_RUNBOOK.read_text(), re.M))
+    prefix = (
+        "https://github.com/tlenenao/geostudio/blob/main/docs/runbooks/"
+        f"{ASTREINTE_RUNBOOK.name}#"
+    )
+    for uid, rule in _alert_rules().items():
+        if rule.get("isPaused"):
+            continue
+        assert rule["annotations"].get("runbook_url") == prefix + uid, uid
+        assert uid in sections, f"section « ## {uid} » absente du runbook"
+
+
 def test_publish_edge_triggers_only_on_merge_to_main():
     """Rebuild sur CHAQUE exécution de CI (chaque push, chaque PR) inonderait
     le registre d'images pour des commits jamais mergés — vérifié contre
@@ -2155,6 +2407,39 @@ def test_worker_runs_jobs_concurrently():
     """c09-001/t03b-002 : concurrence 1 = un run long bloque tous les jobs."""
     command = services(BASE)["worker"]["command"]
     assert re.search(r"worker\s+(-c|--concurrency)\s+\S+", command), "worker sans `-c`"
+
+
+@pytest.mark.parametrize("name", ["worker", "export-worker"])
+def test_workers_get_a_long_stop_grace_period_and_a_shorter_graceful_timeout(name):
+    """AUD-027 : le `stop_grace_period` par défaut de Compose (10 s) SIGKILL un
+    job long en plein SIGTERM. Valeur résolue (piège n°2), et le délai de
+    graceful de procrastinate reste sous la période de grâce du conteneur."""
+    svc = services(BASE)[name]
+    grace = re.sub(r"\$\{CORE_WORKER_STOP_GRACE:-(\d+)\}", r"\1", str(svc.get("stop_grace_period")))
+    assert grace.endswith("s") and int(grace[:-1]) >= 300, grace
+    cmd = svc["command"]
+    cmd = cmd if isinstance(cmd, str) else " ".join(cmd)
+    m = re.search(r"worker\s[^\n]*--shutdown-graceful-timeout\s+(\S+)", cmd)
+    assert m, f"{name}: worker sans --shutdown-graceful-timeout sur la ligne `worker`"
+    assert int(_resolve_effective_value(m.group(1), "CORE_WORKER_GRACEFUL")) < int(grace[:-1])
+    documented = documented_env_vars(include_commented=False)
+    assert {"CORE_WORKER_STOP_GRACE", "CORE_WORKER_GRACEFUL"} <= documented
+
+
+def test_sh_c_worker_commands_exec_procrastinate_so_sigterm_reaches_it():
+    """AUD-027 : sans `exec`, `sh` reste PID 1 et ignore SIGTERM -> l'arrêt gracieux
+    ne s'applique jamais (SIGKILL au bout du délai)."""
+    offenders = []
+    for compose in (BASE, PROD):
+        for name, svc in services(compose).items():
+            cmd = svc.get("command")
+            if not isinstance(cmd, str):
+                continue
+            argv = shlex.split(cmd)
+            if argv[:2] == ["sh", "-c"] and "python -m procrastinate" in argv[2]:
+                if "exec python -m procrastinate" not in argv[2]:
+                    offenders.append(f"{compose.name}:{name}")
+    assert not offenders, offenders
 
 
 def test_periodic_tasks_carry_a_queueing_lock():
@@ -2428,3 +2713,24 @@ def test_experimental_ops_flag_is_wired_by_value_and_off_by_default():
     assert "CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED=false" in (REPO / ".env.example").read_text()
     values = (REPO / "deploy/helm/geostudio/values.yaml").read_text()
     assert 'CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED: "false"' in values
+
+
+@pytest.mark.parametrize("compose", [BASE, PROD], ids=["base", "prod"])
+def test_mcp_oauth_discovery_is_routed_to_core_unstripped(compose):
+    """AUD-135 : le SDK MCP publie le document RFC 9728 à la racine de l'hôte
+    (/.well-known/oauth-protected-resource/api/mcp), hors /api — sans routeur
+    dédié, le catch-all du shell répondait 405 et aucun client MCP ne
+    découvrait Keycloak."""
+    labels = _traefik_labels(services(compose)["core"])
+    rule = labels.get("traefik.http.routers.mcp-discovery.rule", "")
+    assert "PathPrefix(`/.well-known/oauth-protected-resource`)" in rule
+    assert labels.get("traefik.http.routers.mcp-discovery.service") == "core"
+    assert int(labels["traefik.http.routers.mcp-discovery.priority"]) > 1  # > shell
+    assert "strip-api@docker" not in _router_middlewares(labels, "mcp-discovery")
+
+
+def test_dev_cors_origin_is_the_quickstart_shell_and_prod_clears_it():
+    """AUD-132 : README = shell :8300 + cœur :8200 (cross-origin)."""
+    raw = services(BASE)["core"]["environment"]["CORE_CORS_ALLOWED_ORIGINS"]
+    assert _resolve_effective_value(raw, "CORE_CORS_ALLOWED_ORIGINS") == "http://localhost:8300"
+    assert services(PROD)["core"]["environment"]["CORE_CORS_ALLOWED_ORIGINS"] == ""

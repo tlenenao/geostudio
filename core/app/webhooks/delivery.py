@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 """Livraison de l'outbox (ARC4-F6, ADR 0027) : signature HMAC-SHA256, egress gardé (la
-session et la garde SSRF d'`app.alerts.egress` — redirections et épinglage DNS
-compris), retries exponentiels, 5 échecs consécutifs d'une destination = désactivation
-+ notification de son créateur. Appelée par le balayage périodique (`app.webhooks.jobs`)."""
+session et la garde SSRF d'`app.alerts.egress`, épinglage DNS compris ; une
+redirection n'est jamais suivie et compte comme un échec, AUD-169), retries
+exponentiels ; événement abandonné après 24 h ou sur refus de son contenu ; destination
+désactivée (événements gardés) seulement après une panne d'au moins 24 h + notification de
+son créateur. Appelée par le balayage périodique (`app.webhooks.jobs`)."""
 
 import hashlib
 import hmac
@@ -34,6 +36,11 @@ BATCH_SIZE = 10
 LEASE_S = 300
 SWEEP_BUDGET_S = 45  # le balayage tourne chaque minute
 OUTBOX_RETENTION_DAYS = 30
+MAX_EVENT_AGE = timedelta(hours=24)
+# 4xx propres au CONTENU de l'événement (le rejouer ne changera rien) : l'événement échoue
+# seul, sans compter contre la destination (AUD-170). Les autres 4xx (401/403/404/410… :
+# configuration de la destination, corrigeable) suivent le chemin des retries.
+_EVENT_REJECTED_STATUSES = frozenset({400, 409, 413, 415, 422})
 
 Poster = Callable[[str, bytes, dict], None]
 
@@ -52,12 +59,22 @@ def sign(body: bytes, key: str) -> str:
 
 def _http_post(url: str, body: bytes, headers: dict) -> None:
     try:
-        resp = build_guarded_session().post(url, data=body, headers=headers, timeout=_TIMEOUT_S)
+        resp = build_guarded_session().post(
+            url, data=body, headers=headers, timeout=_TIMEOUT_S, allow_redirects=False
+        )
+        if 300 <= resp.status_code < 400:  # AUD-169 : jamais suivie, jamais « delivered »
+            raise requests.HTTPError(f"redirection refusée ({resp.status_code})", response=resp)
         resp.raise_for_status()
     except EgressBlockedError as exc:
         raise DeliveryError(f"egress bloqué : {exc}") from exc
     except requests.RequestException as exc:
         raise DeliveryError(f"livraison échouée : {exc}") from exc
+
+
+def _http_status(exc: BaseException) -> int | None:
+    """Code HTTP d'un échec de `_http_post`, porté par la requests.HTTPError d'origine."""
+    response = getattr(exc.__cause__, "response", None)
+    return getattr(response, "status_code", None)
 
 
 def deliver_one(
@@ -70,7 +87,7 @@ def deliver_one(
             secrets_repo.get_secret_payload(
                 session, tenant_id=hook.tenant_id, name=hook.secret_name, user=owner
             )
-            if owner is not None
+            if owner is not None and owner.erased_at is None  # revue SP-L2 I3
             else None
         )
         if secret is None or secret.kind != "bearer_token":
@@ -89,11 +106,20 @@ def deliver_one(
     except Exception as exc:  # noqa: BLE001 — DeliveryError ou imprévu (déchiffrement…) : l'échec reste sur CETTE destination
         if not isinstance(exc, DeliveryError):
             logger.exception("livraison %s : échec inattendu", event.id)
+        now = _now()
         event.attempts += 1
         event.last_error = str(exc)[:500]
-        event.next_attempt_at = _now() + timedelta(
+        event.next_attempt_at = now + timedelta(
             seconds=min(_BACKOFF_BASE_S * 2 ** (event.attempts - 1), _BACKOFF_CAP_S)
         )
+        if _http_status(exc) in _EVENT_REJECTED_STATUSES:
+            event.status = "failed"  # contenu refusé : le rejouer ne changera rien (AUD-170)
+            session.flush()
+            return False
+        expired = event.created_at is not None and now - event.created_at >= MAX_EVENT_AGE
+        if expired:  # AUD-170 : plus de retries indéfinis
+            event.status = "failed"
+            event.last_error = f"abandonné après 24 h d'échecs : {event.last_error}"[:500]
         # Verrou de ligne : deux balayages livrant la même destination ne perdent pas
         # d'incrément (lecture fraîche sous FOR UPDATE, relâché au commit de l'appelant).
         session.refresh(hook, with_for_update=True)
@@ -101,7 +127,9 @@ def deliver_one(
             session.flush()
             return False
         hook.consecutive_failures += 1
-        if hook.consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+        # AUD-085 : une panne courte (5 échecs en ~7 min) ne désactive plus la
+        # destination ; seule une panne qui dure (un événement en échec depuis 24 h).
+        if hook.consecutive_failures >= MAX_CONSECUTIVE_FAILURES and expired:
             _disable(session, hook, reason=str(exc)[:500])
         session.flush()
         return False
@@ -118,13 +146,7 @@ def deliver_one(
 def _disable(session: Session, hook: OutboundWebhook, *, reason: str) -> None:
     hook.enabled = False
     hook.disabled_reason = reason
-    for ev in session.scalars(
-        select(OutboxEvent).where(
-            OutboxEvent.webhook_id == hook.id, OutboxEvent.status == "pending"
-        )
-    ):
-        ev.status = "failed"
-        ev.last_error = "destination désactivée après échecs répétés"
+    # AUD-085 : les événements pending sont GARDÉS ; ils repartent à la réactivation.
     notifications_repo.create_notification(
         session,
         tenant_id=hook.tenant_id,
@@ -214,26 +236,34 @@ def deliver_due(
     while True:
         ids = _claim(session, limit)
         for event_id in ids:
-            event = session.get(OutboxEvent, event_id, populate_existing=True)
-            # Destination désactivée en cours de lot : ses événements sont déjà `failed`.
-            if event is None or event.status != "pending":
-                continue
-            hook = session.get(OutboundWebhook, event.webhook_id)
-            if hook is None or not hook.enabled:  # désactivée à la main : bail laissé expirer
-                continue
-            if deliver_one(session, event, hook, post=post):
-                delivered += 1
-            session.commit()
+            try:
+                event = session.get(OutboxEvent, event_id, populate_existing=True)
+                if event is None or event.status != "pending":
+                    continue
+                hook = session.get(OutboundWebhook, event.webhook_id)
+                if hook is None or not hook.enabled:  # désactivée : bail laissé expirer
+                    continue
+                ok = deliver_one(session, event, hook, post=post)
+                session.commit()
+                delivered += ok
+            except Exception:  # noqa: BLE001
+                # AUD-168 : destination supprimée pendant la livraison (ligne disparue) ou
+                # toute erreur de base sur CET événement : abandonné pour ce balayage (son
+                # bail expire, un balayage suivant le reprend) sans priver les autres
+                # événements du lot ni les purges du balayage.
+                session.rollback()
+                logger.exception("livraison %s : mise à jour de l'outbox impossible", event_id)
         if len(ids) < limit or time.monotonic() >= deadline:
             return delivered
 
 
 def purge_outbox(session: Session) -> int:
-    """Rétention : supprime les lignes livrées/abandonnées de plus de
-    OUTBOX_RETENTION_DAYS (les `pending` restent, quel que soit leur âge)."""
+    """Rétention : supprime toute ligne de plus de OUTBOX_RETENTION_DAYS, `pending`
+    comprises (AUD-170) : seule une destination désactivée depuis plus longtemps en garde
+    encore. Une destination réactivée avant ce délai reçoit ses événements gardés, même
+    vieux de plus de MAX_EVENT_AGE (l'âge n'abandonne qu'un événement en échec)."""
     res = session.execute(
         delete(OutboxEvent).where(
-            OutboxEvent.status.in_(("delivered", "failed")),
             OutboxEvent.created_at < _now() - timedelta(days=OUTBOX_RETENTION_DAYS),
         )
     )

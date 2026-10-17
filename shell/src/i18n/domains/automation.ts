@@ -120,6 +120,7 @@ export const automation = {
   "harvest.typeCsw": "CSW",
   "harvest.typeOgcRecords": "OGC API - Records",
   "harvest.typeCkan": "CKAN",
+  "harvest.typeUdata": "data.gouv.fr (udata)",
   "harvest.modeReference": "Référence",
   "harvest.modeCopy": "Copie",
   "harvest.intervalLabel": "Intervalle de rafraîchissement (minutes)",
@@ -193,6 +194,15 @@ export const automation = {
   // PipelinePreviewPanel (builder/pipeline)
   "pipelinePreview.loading": "Chargement de l'aperçu…",
   "pipelinePreview.unavailable": "Aperçu indisponible.",
+  "pipelinePreview.truncated": "Aperçu limité aux {count} premières lignes.",
+  "pipelineCanvas.connectRefusedIncoming":
+    "Connexion refusée : cette entrée du nœud est déjà reliée.",
+  "pipelineCanvas.connectRefusedCycle": "Connexion refusée : elle créerait une boucle.",
+  "pipelineRun.unsavedWarning":
+    "Modifications non enregistrées : « Exécuter » lance la version enregistrée.",
+  "pipelineBuilder.createTargetCollection": "Créer une collection à partir de ce flux",
+  "pipelineBuilder.createTargetCollectionFailed": "Création de la collection impossible.",
+  "pipelineSchedule.timezone": "Fuseau horaire",
   "pipelinePreview.tableView": "Tableau",
   "pipelinePreview.mapView": "Carte",
   "pipelinePreview.featureAttributes": "Attributs de la feature",
@@ -493,6 +503,15 @@ export const automation = {
     "{node} : requiert soit le paramètre withCollectionId, soit une arête secondaire.",
   "pipelineValidation.noSecondaryAllowed": "{node} n'accepte pas d'arête secondaire.",
   "copilot.mcpTokenError": "Impossible d'obtenir un jeton MCP (signinSilent a échoué).",
+  "pipelineSchedule.suspended":
+    "Planification suspendue après 3 échecs consécutifs : un run manuel réussi la rétablit.",
+  "lineage.title": "Lignée",
+  "lineage.loading": "Chargement de la lignée…",
+  "lineage.upstream": "Sources",
+  "lineage.downstream": "Utilisé par",
+  "lineage.none": "Aucun",
+  "lineage.hiddenOne": "{n} élément masqué (droits insuffisants)",
+  "lineage.hiddenMany": "{n} éléments masqués (droits insuffisants)",
 } as const;
 
 registerMessages(automation);

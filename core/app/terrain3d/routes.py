@@ -23,6 +23,7 @@ from app.configs.guest_access import GuestActor, can_read_item, get_share_link_a
 from app.db import get_session
 from app.ingestion.routes import get_s3_client
 from app.ingestion.storage import ensure_uploads_bucket, generate_presigned_put_url
+from app.jobs.defer import defer_resilient
 from app.quotas.service import enforce_storage_quota
 from app.roles.guards import has_privilege, require_privilege
 from app.roles.kind_registry import privilege_for_kind
@@ -50,7 +51,7 @@ def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests
     def deferrer(job_id: str, tenant_id: str) -> None:
         from app.terrain3d.jobs import convert_terrain3d_task
 
-        convert_terrain3d_task.defer(job_id=job_id, tenant_id=tenant_id)
+        defer_resilient(lambda: convert_terrain3d_task.defer(job_id=job_id, tenant_id=tenant_id))
 
     return deferrer
 
@@ -71,12 +72,17 @@ def presign_terrain3d_upload(
     # sans aucun privilège.
     require_privilege(session, user, privilege_for_kind("terrain3d"))
     ensure_uploads_bucket(s3, bucket)
+    from app.terrain3d.jobs import _max_upload_bytes  # import paresseux, comme la tâche
+
+    if body.size > _max_upload_bytes():
+        raise HTTPException(status_code=413, detail="file too large")
     key = f"{user.tenant_id}/{uuid.uuid4().hex}/{body.filename}"
     url = generate_presigned_put_url(
         s3,
         bucket=bucket,
         key=key,
         content_type=body.contentType or "application/octet-stream",
+        content_length=body.size,
     )
     return Terrain3DPresignResponse(uploadUrl=url, key=key)
 
@@ -137,7 +143,12 @@ def create_terrain3d_upload(
     )
     # Commit avant de déférer : même raison que app.ingestion.routes.create_upload_job.
     session.commit()
-    defer_task(job.id, user.tenant_id)
+    try:
+        defer_task(job.id, user.tenant_id)
+    except HTTPException:  # 503 : file indisponible, le job n'est pas laissé orphelin
+        repo.mark_enqueue_failed(session, job_id=job.id)
+        session.commit()
+        raise
     return Terrain3DUploadCreated(jobId=job.id)
 
 

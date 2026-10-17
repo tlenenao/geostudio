@@ -79,10 +79,13 @@ de son absence du compose dans une session future — ce n'est pas un oubli.
    `CORE_SECRETS_MASTER_KEY` dans `.env` par la nouvelle clé, retirer
    `CORE_SECRETS_MASTER_KEY_NEW` (il n'a plus d'usage).
 
-5. **Redémarrer `core`** :
+5. **Redémarrer `core` ET `worker`** — les deux déchiffrent des secrets
+   (le `worker` exécute les pipelines à connecteur, les alertes e-mail et
+   les rapports planifiés) ; oublier le `worker` fait échouer tout run
+   utilisant un secret jusqu'à son redémarrage :
 
    ```bash
-   docker compose up -d core
+   docker compose up -d core worker
    ```
 
 6. **Vérifier** : consommer réellement un secret existant — par exemple

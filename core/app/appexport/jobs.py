@@ -25,6 +25,7 @@ from app.configs.schemas import BuilderConfig
 from app.db import request_scoped_session
 from app.ingestion.storage import ensure_uploads_bucket, make_s3_client
 from app.items import repository as items_repo
+from app.job_errors import public_error
 from app.jobs import app
 from app.jobs.common import notify_best_effort
 from app.jobs.common import session_factory as _session_factory
@@ -186,15 +187,16 @@ def build_app_export_task(job_id: str, tenant_id: str) -> None:
         )
     except Exception as exc:  # toute erreur inattendue finit "error", jamais zombie
         logger.exception("app export job %s : erreur inattendue", job_id)
+        msg = public_error(exc, user_errors=(ValueError, LookupError))  # AUD-100
         with request_scoped_session(session_factory) as session:
-            appexport_repo.mark_error(session, job_id=job_id, error=str(exc))
+            appexport_repo.mark_error(session, job_id=job_id, error=msg)
         _notify(
             session_factory,
             tenant_id=tenant_id,
             item_id=item_id,
             user_id=user_id,
             status="failure",
-            error=str(exc),
+            error=msg,
         )
 
 

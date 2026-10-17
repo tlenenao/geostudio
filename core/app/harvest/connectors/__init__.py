@@ -5,6 +5,7 @@ from app.harvest.connectors.ckan import CkanConnector
 from app.harvest.connectors.csw import CswConnector
 from app.harvest.connectors.ogc_records import OgcRecordsConnector
 from app.harvest.connectors.stac import StacConnector
+from app.harvest.connectors.udata import UdataConnector
 from app.harvest.connectors.wfs import WfsConnector
 from app.harvest.connectors.wms import WmsConnector
 from app.harvest.connectors.wmts import WmtsConnector
@@ -18,6 +19,7 @@ _REGISTRY: dict[str, HarvestConnector] = {
     "csw": CswConnector(),
     "ogc-records": OgcRecordsConnector(),
     "ckan": CkanConnector(),
+    "udata": UdataConnector(),
 }
 
 

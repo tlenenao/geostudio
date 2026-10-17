@@ -14,6 +14,7 @@ from app.audit.writer import write_audit
 from app.db import request_scoped_session
 from app.ingestion.storage import make_s3_client
 from app.items import repository as items_repo
+from app.job_errors import INTERNAL_ERROR_MESSAGE
 from app.jobs import app
 from app.jobs.common import notify_best_effort
 from app.jobs.engine import session_factory as common_session_factory
@@ -160,9 +161,9 @@ def run_ingest(session_factory, s3, *, job_id: str, tenant_id: str) -> None:
         _notify("success", item_id)
     except ingest.RasterIngestError as exc:
         _fail(str(exc))
-    except Exception as exc:  # toute erreur inattendue finit "error", jamais zombie
+    except Exception:  # toute erreur inattendue finit "error", jamais zombie
         logger.exception("raster job %s : erreur inattendue", job_id)
-        _fail(f"erreur interne : {exc}")
+        _fail(INTERNAL_ERROR_MESSAGE)
     finally:
         if scratch_dir is not None:
             shutil.rmtree(scratch_dir, ignore_errors=True)

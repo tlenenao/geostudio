@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 const ALL = [
   {
@@ -140,6 +140,7 @@ const DEFAULT_ME = {
     rasterEnabled: false,
     routingEnabled: false,
     experimentalOpsEnabled: false,
+    externalBasemapsEnabled: true,
   },
 };
 
@@ -287,6 +288,24 @@ export const READER_ME = {
   role: { id: "role-reader", name: "Lecteur", slug: "reader" },
   privileges: [] as string[],
 };
+
+/**
+ * AUD-022 : un gabarit à sources `features` du cœur exige de lier chaque source à une
+ * vraie collection avant « Créer ». Lie chaque slug à la collection mockée de même id
+ * si elle existe, sinon à « communes ».
+ */
+export async function bindTemplateSources(dialog: Locator) {
+  for (const select of await dialog
+    .locator("label", { hasText: "Collection pour « " })
+    .locator("select")
+    .all()) {
+    const label = (await select.evaluate((el) => el.closest("label")?.textContent)) ?? "";
+    const slug = /« (.+) »/.exec(label)?.[1] ?? "";
+    await select.locator('option[value="communes"]').waitFor({ state: "attached" });
+    const exists = (await select.locator(`option[value="${slug}"]`).count()) > 0;
+    await select.selectOption(exists ? slug : "communes");
+  }
+}
 
 export async function mockCore(page: Page) {
   // P22 : une requête cœur non mockée échoue en CoreUnreachableError et lève la

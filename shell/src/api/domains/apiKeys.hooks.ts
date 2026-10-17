@@ -11,7 +11,8 @@ export function useCreateApiKey() {
   const client = useItemClientInternal();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (params: { name: string; expiresInDays: number }) => client.createApiKey(params),
+    mutationFn: (params: { name: string; expiresInDays: number; readOnly?: boolean }) =>
+      client.createApiKey(params),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["api-keys"] }),
   });
 }

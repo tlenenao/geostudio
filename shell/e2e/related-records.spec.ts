@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { test, expect } from "@playwright/test";
-import { mockCore } from "./mocks";
+import { bindTemplateSources, mockCore } from "./mocks";
 
 // ARC-21 : panneau « Enregistrements liés » du widget Formulaire (patron entity-history.spec.ts).
 test("consulter les enregistrements liés d'une entité", async ({ page }) => {
@@ -34,6 +34,7 @@ test("consulter les enregistrements liés d'une entité", async ({ page }) => {
   const dialog = page.getByRole("dialog", { name: "Nouvel élément" });
   await dialog.getByLabel("Type").selectOption("app");
   await dialog.getByLabel("Modèle").selectOption("application-de-saisie");
+  await bindTemplateSources(dialog);
   await dialog.getByLabel("Titre").fill("Liés");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);

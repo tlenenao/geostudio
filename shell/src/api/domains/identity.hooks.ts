@@ -86,7 +86,8 @@ export function useEraseUser() {
   const client = useItemClientInternal();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (userId: string) => client.eraseUser(userId),
+    mutationFn: ({ userId, confirmUsername }: { userId: string; confirmUsername: string }) =>
+      client.eraseUser(userId, confirmUsername),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["users"] });
     },

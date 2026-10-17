@@ -214,7 +214,9 @@ test("anonymiser un compte depuis sa ligne, après confirmation (j08-006)", asyn
   server.use(
     http.get("https://core.test/v1/roles", () => HttpResponse.json(ROLES)),
     http.get("https://core.test/v1/users", () => HttpResponse.json({ users: USERS, total: 2 })),
-    http.post("https://core.test/v1/compliance/users/u2/erase", () => {
+    http.post("https://core.test/v1/compliance/users/u2/erase", async ({ request }) => {
+      // AUD-094 : la ligne connaît le nom, la confirmation est envoyée d'office.
+      expect(await request.json()).toEqual({ confirmUsername: "bob" });
       erased = "u2";
       return new HttpResponse(null, { status: 204 });
     }),

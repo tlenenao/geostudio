@@ -8,7 +8,7 @@ amd64 **et** arm64 (release multi-arch). Garde-fou : `core/tests/test_helm_chart
 
 | Déployé | Externe (à fournir, via `config.*` et le Secret) |
 |---|---|
-| `core` (+ migrations `alembic upgrade head` au démarrage), `worker`, `cdc-worker`, `shell` | Postgres (PostGIS + pgvector, `wal_level=logical`), pgbouncer optionnel |
+| `core` (migrations : Job hook `pre-install,pre-upgrade` `<release>-migrations`, AUD-033), `worker`, `cdc-worker`, `shell` | Postgres (PostGIS + pgvector, `wal_level=logical`, `max_slot_wal_keep_size` borné — 10GB recommandé, AUD-012), pgbouncer optionnel |
 | `export-worker` (`exportWorker.enabled`) | S3 compatible (MinIO) et ses buckets, Keycloak/OIDC, titiler |
 | `otel-lgtm` (`observability.enabled`) | Martin, passerelle `/admin/*` (Traefik compose), `appexport-runtime-builder` |
 | Ingress (`ingress.enabled`, deux hôtes : shell et API) | Dashboards Grafana provisionnés (le chart lance `otel-lgtm` nu) |
@@ -41,7 +41,9 @@ Obligatoires : `DATABASE_URL`, `CORE_SECRETS_MASTER_KEY`, `S3_ACCESS_KEY`, `S3_S
 
 - `cdc-worker` : un seul réplica, stratégie `Recreate`, non configurable (slot de réplication logique).
 - `core.replicas > 1` : le limiteur de débit reste en mémoire par process (budget effectif `N x budget`) ;
-  démarrer les réplicas l'un après l'autre sur une migration lourde (pas de verrou de migration).
+  les migrations tournent une fois par release dans le Job hook, avant les nouveaux pods (`helm upgrade
+  --no-hooks` les saute : à proscrire). Le Job ne lit que le Secret (`DATABASE_URL`,
+  `CORE_MIGRATION_DATABASE_URL`) : il passe avant la création du ConfigMap.
 - Sondes = healthchecks du compose : `core` startup 180 s puis `/health` ; `worker`, `cdc-worker`,
   `export-worker` en `exec` (mêmes commandes) ; `shell` `GET /`.
 - Sécurité : `runAsNonRoot`, uid numériques (core/worker/cdc 1001, shell 101 nginx, export-worker 999),
@@ -51,7 +53,25 @@ Obligatoires : `DATABASE_URL`, `CORE_SECRETS_MASTER_KEY`, `S3_ACCESS_KEY`, `S3_S
   changement d'image de base.
 - Volumes : `/scratch` du worker = `emptyDir`. Le volume `csp-dynamic-conf` (CSP dynamique lue par
   Traefik, SP-48) et `appexport-runtime` n'existent pas dans le chart : la CSP dynamique et l'export d'app
-  autoporté restent propres au compose.
+  autoporté restent propres au compose (la tâche de CSP dynamique ne fait rien sans ce volume).
+- En-têtes de sécurité (AUD-030) : nginx du shell pose HSTS, `X-Frame-Options: DENY` (sauf `/embed/`) et une
+  CSP **statique** `shell.csp`, en `Report-Only` tant que `config.CORE_CSP_MODE` n'est pas `enforce`.
+  `connect-src` reçoit automatiquement les origines de `ingress.apiHost`, de `shell.env.VITE_CORE_URL` et
+  de l'autorité OIDC (`shell.env.VITE_OIDC_AUTHORITY`, sinon `config.CORE_OIDC_ISSUER`) ; avant
+  d'enforcer, ajouter les hôtes de fonds de carte (`img-src`). Pas de rate-limit au niveau Ingress
+  (dépend du contrôleur) : le limiteur applicatif du cœur reste le seul.
+- Schéma des origines : sans `ingress.tlsSecretName`, le chart suppose que l'Ingress sert en **http**
+  (CORS `http://<host>`, `connect-src http://<apiHost>`). Si le TLS est terminé ailleurs (load balancer,
+  cert-manager hors chart), les origines dérivées sont fausses : fixer `config.CORE_CORS_ALLOWED_ORIGINS`
+  à `https://<host>` (et compléter `shell.csp` en conséquence).
+- Job de migration (`helm.sh/hook-delete-policy: before-hook-creation`) : le Job réussi reste dans le
+  namespace jusqu'à la montée de version suivante, qui le remplace ; `kubectl delete job
+  <release>-geostudio-migrations` est sans risque après succès. `helm uninstall` ne le supprime pas.
+- **Retour arrière** : `helm rollback` ne rejoue aucun hook et n'exécute **aucun** `alembic downgrade` ; le
+  schéma reste celui de la version la plus récente. Revenir à une image antérieure n'est sûr que si le
+  CHANGELOG ne signale pas de migration incompatible ; sinon restaurer la sauvegarde prise avant la
+  montée (même consigne que le runbook compose `2026-10-17-montee-de-version.md`).
+- `otel-lgtm` : `observability.existingClaim` pour garder métriques, logs et traces au redémarrage.
 
 ## Ce qui est vérifié, et par quoi
 

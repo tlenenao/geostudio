@@ -45,11 +45,19 @@ def _run(conn, tmp_path, monkeypatch, **kw):
 
 
 def test_flag_off_does_nothing(monkeypatch):
-    monkeypatch.delenv("CORE_LAKE_SNAPSHOT_ENABLED", raising=False)
+    monkeypatch.setenv("CORE_LAKE_SNAPSHOT_ENABLED", "false")
     monkeypatch.setattr(
         jobs, "open_connection", lambda **_: pytest.fail("ne doit pas ouvrir DuckDB")
     )
     jobs.run_snapshot_cycle_task(timestamp=0)
+
+
+def test_flag_is_on_by_default(monkeypatch):
+    """AUD-013 : même défaut dans le code que dans compose/Helm (revue finale L1b, M2)."""
+    monkeypatch.delenv("CORE_LAKE_SNAPSHOT_ENABLED", raising=False)
+    monkeypatch.delenv("S3_ENDPOINT_URL", raising=False)
+    with pytest.raises(KeyError, match="S3_ENDPOINT_URL"):  # a dépassé le test du flag
+        jobs.run_snapshot_cycle_task(timestamp=0)
 
 
 def test_below_threshold_writes_nothing(tmp_path, conn, monkeypatch):

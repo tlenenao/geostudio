@@ -22,7 +22,9 @@ test.beforeAll(async () => {
 test.describe("j08 conformité — anonymisation", () => {
   test("un admin anonymise un autre utilisateur : identité écrasée, lignes liées supprimées", async () => {
     const u = await makeUser(`${tag}-erase`);
-    const r = await admin.send("POST", `/v1/compliance/users/${u.id}/erase`);
+    const r = await admin.send("POST", `/v1/compliance/users/${u.id}/erase`, {
+      confirmUsername: u.username,
+    });
     expect(r.status).toBe(204);
     const row = psql(
       `SELECT username||'|'||coalesce(email,'NULL')||'|'||first_name||'|'||last_name||'|'||(oidc_sub LIKE 'erased:%')||'|'||(erased_at IS NOT NULL) FROM users WHERE id='${u.id}'`,
@@ -36,19 +38,50 @@ test.describe("j08 conformité — anonymisation", () => {
 
   test("second effacement → 409 ; identifiant inconnu → 404", async () => {
     const u = await makeUser(`${tag}-twice`);
-    expect((await admin.send("POST", `/v1/compliance/users/${u.id}/erase`)).status).toBe(204);
-    expect((await admin.send("POST", `/v1/compliance/users/${u.id}/erase`)).status).toBe(409);
-    expect((await admin.send("POST", "/v1/compliance/users/inconnu/erase")).status).toBe(404);
+    expect(
+      (
+        await admin.send("POST", `/v1/compliance/users/${u.id}/erase`, {
+          confirmUsername: u.username,
+        })
+      ).status,
+    ).toBe(204);
+    expect(
+      (
+        await admin.send("POST", `/v1/compliance/users/${u.id}/erase`, {
+          confirmUsername: u.username,
+        })
+      ).status,
+    ).toBe(409);
+    expect(
+      (await admin.send("POST", "/v1/compliance/users/inconnu/erase", { confirmUsername: "x" }))
+        .status,
+    ).toBe(404);
   });
 
   test("droits : un créateur ne peut effacer qu'un autre compte → 403, mais 'me' est permis", async () => {
     const victim = await makeUser(`${tag}-victim`);
-    expect((await creator.send("POST", `/v1/compliance/users/${victim.id}/erase`)).status).toBe(
-      403,
-    );
-    expect((await reader.send("POST", `/v1/compliance/users/${victim.id}/erase`)).status).toBe(403);
+    expect(
+      (
+        await creator.send("POST", `/v1/compliance/users/${victim.id}/erase`, {
+          confirmUsername: victim.username,
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await reader.send("POST", `/v1/compliance/users/${victim.id}/erase`, {
+          confirmUsername: victim.username,
+        })
+      ).status,
+    ).toBe(403);
     const self = await makeUser(`${tag}-self`);
-    expect((await self.api.send("POST", "/v1/compliance/users/me/erase")).status).toBe(204);
+    expect(
+      (
+        await self.api.send("POST", "/v1/compliance/users/me/erase", {
+          confirmUsername: self.username,
+        })
+      ).status,
+    ).toBe(204);
     const row = psql(`SELECT username FROM users WHERE id='${self.id}'`).trim();
     expect(row).toBe(`utilisateur-efface-${self.id.slice(0, 8)}`);
   });
@@ -89,7 +122,13 @@ test.describe("j08 conformité — anonymisation", () => {
   // Finding j08-001 : l'anonymisation est annulée par la reconnexion Keycloak.
   test("j08-001 : après anonymisation, une reconnexion ne recrée pas un compte nominatif", async () => {
     const u = await makeUser(`${tag}-relogin`);
-    expect((await admin.send("POST", `/v1/compliance/users/${u.id}/erase`)).status).toBe(204);
+    expect(
+      (
+        await admin.send("POST", `/v1/compliance/users/${u.id}/erase`, {
+          confirmUsername: u.username,
+        })
+      ).status,
+    ).toBe(204);
     const again = await u.api.get("/v1/me");
     expect(again.status).toBeGreaterThanOrEqual(400);
     const n = psql(
@@ -101,7 +140,7 @@ test.describe("j08 conformité — anonymisation", () => {
   // Finding j08-013 : un compte anonymisé reste dans la liste, sans indicateur.
   test("j08-013 : la liste des utilisateurs distingue les comptes anonymisés", async () => {
     const u = await makeUser(`${tag}-flag`);
-    await admin.send("POST", `/v1/compliance/users/${u.id}/erase`);
+    await admin.send("POST", `/v1/compliance/users/${u.id}/erase`, { confirmUsername: u.username });
     const listed = await admin.get(`/v1/users?q=efface-${u.id.slice(0, 8)}`);
     expect(listed.body.users).toHaveLength(1);
     expect(listed.body.users[0].erasedAt).toBeTruthy();
@@ -174,7 +213,7 @@ test.describe("j08 quotas de stockage — API", () => {
     const before = (await admin.get("/v1/admin/usage")).body.userCount;
     const u = await makeUser(`${tag}-count`);
     expect((await admin.get("/v1/admin/usage")).body.userCount).toBe(before + 1);
-    await admin.send("POST", `/v1/compliance/users/${u.id}/erase`);
+    await admin.send("POST", `/v1/compliance/users/${u.id}/erase`, { confirmUsername: u.username });
     expect((await admin.get("/v1/admin/usage")).body.userCount).toBe(before);
   });
 });

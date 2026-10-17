@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+import dataclasses
 from types import SimpleNamespace
 
 import pytest
@@ -33,6 +34,7 @@ CONFORMANCE_CLASSES = [
     "http://www.opengis.net/spec/ogcapi-features-4/1.0/conf/create-replace-delete",
     "http://www.opengis.net/spec/ogcapi-features-3/1.0/conf/filter",
     "http://www.opengis.net/spec/ogcapi-features-3/1.0/conf/features-filter",
+    "http://www.opengis.net/spec/ogcapi-features-3/1.0/conf/queryables",
     "http://www.opengis.net/spec/cql2/1.0/conf/cql2-text",
     "http://www.opengis.net/spec/cql2/1.0/conf/basic-cql2",
     "http://www.opengis.net/spec/cql2/1.0/conf/advanced-comparison-operators",
@@ -172,3 +174,49 @@ def test_extent_code_bug_is_not_swallowed(env):
     # par défaut) : un bug de code doit remonter, pas être avalé en extent=None.
     with pytest.raises(TypeError):
         client.get("/v1/collections/incidents")
+
+
+def test_queryables_json_schema(env):
+    app, client, admin, _r, _repo = env
+    _register(app, client, admin, public=True)
+    r = client.get("/v1/collections/incidents/queryables")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("application/schema+json")
+    body = r.json()
+    assert body["$schema"] == "https://json-schema.org/draft/2020-12/schema"
+    assert body["type"] == "object"
+    assert body["properties"]["titre"] == {"title": "titre", "type": "string"}
+    assert body["properties"]["geometry"]["x-ogc-role"] == "primary-geometry"
+    assert body["$id"].endswith("/v1/collections/incidents/queryables")
+
+
+def test_queryables_404_for_unknown(env):
+    _app, client, *_ = env
+    assert client.get("/v1/collections/nope/queryables").status_code == 404
+
+
+def test_collections_list_is_ogc_and_paginated(env):
+    app, client, admin, _r, _repo = env
+    app.dependency_overrides[collections_routes.get_introspector] = lambda: (
+        lambda session, table: dataclasses.replace(INFO, table_name=table)
+    )
+    _as(app, admin)
+    for tn in ("incidents", "zones"):
+        assert (
+            client.post("/v1/collections", json={"tableName": tn, "isPublic": True}).status_code
+            == 201
+        )
+    body = client.get("/v1/collections?limit=1").json()
+    assert body["numberMatched"] == 2 and body["numberReturned"] == 1
+    rels = {link["rel"]: link["href"] for link in body["links"]}
+    assert "offset=1" in rels["next"] and "prev" not in rels
+    col = body["collections"][0]
+    assert col["itemType"] == "feature"
+    assert {link["rel"] for link in col["links"]} >= {
+        "self",
+        "items",
+        "http://www.opengis.net/def/rel/ogc/1.0/queryables",
+    }
+    second = client.get("/v1/collections?limit=1&offset=1").json()
+    rels2 = {link["rel"]: link["href"] for link in second["links"]}
+    assert "offset=0" in rels2["prev"] and "next" not in rels2

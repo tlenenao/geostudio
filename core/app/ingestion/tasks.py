@@ -21,6 +21,7 @@ from app.ingestion.storage import (
     make_s3_client,
     max_upload_bytes,
 )
+from app.job_errors import INTERNAL_ERROR_MESSAGE
 from app.jobs import app
 from app.jobs.common import notify_best_effort, session_factory
 from app.quotas.service import QuotaExceededError
@@ -220,12 +221,10 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
             collection_title=collection_title,
             error=str(exc),
         )
-    except Exception as exc:  # toute erreur inattendue finit "error", jamais zombie
+    except Exception:  # toute erreur inattendue finit "error", jamais zombie
         logger.exception("ingestion job %s : erreur inattendue", job_id)
         with request_scoped_session(factory) as session:
-            ingestion_repo.mark_error(
-                session, job_id=job_id, error_message=f"erreur interne : {exc}"
-            )
+            ingestion_repo.mark_error(session, job_id=job_id, error_message=INTERNAL_ERROR_MESSAGE)
         # created_by/collection_title restent None si l'échec a eu lieu avant
         # get_job/mark_running (cf. init en tête de fonction) : pas de
         # destinataire connu, donc pas de notification à écrire — le statut
@@ -238,7 +237,7 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
                 status="failure",
                 item_id=None,
                 collection_title=collection_title or "",
-                error=f"erreur interne : {exc}",
+                error=INTERNAL_ERROR_MESSAGE,
             )
         else:
             logger.info("ingestion job %s : notification ignorée (destinataire inconnu)", job_id)

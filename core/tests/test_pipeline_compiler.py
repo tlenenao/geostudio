@@ -107,6 +107,8 @@ def test_compile_join(conn):
         {"withCollectionId": "x", "on": "id", "how": "inner"},
         input_view="base",
         join_view="other",
+        input_columns=["id", "region", "pop"],
+        join_columns=["id", "label"],
     )
     conn.execute(f"CREATE TEMP VIEW out AS {sql}")
     rows = conn.execute("SELECT id, label FROM out ORDER BY id").fetchall()
@@ -1179,7 +1181,7 @@ def test_detect_changes_null_and_composite_keys(conn):
     assert got == {
         (1, "a", 1): "unchanged",
         (1, "b", 2): "updated",  # clé composite : (1,'b') != (1,'a')
-        (None, "z", 9): "deleted",  # « avant » à clé NULL : deleted, jamais inserted
-        (2, None, 5): "deleted",  # NULL sur la 2e clé d'un jeu composite
+        (None, "z", 9): "invalid",  # AUD-080 : clé NULL jamais rapprochée → invalid
+        (2, None, 5): "invalid",  # NULL sur la 2e clé d'un jeu composite
         (3, "c", 7): "inserted",
     }

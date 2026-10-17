@@ -16,13 +16,14 @@ function renderEditor(
   value: PipelineRefreshPolicy | null,
   onChange: (next: PipelineRefreshPolicy | null) => void,
   getPipelineNextRun = vi.fn().mockResolvedValue({ nextRun: "2026-08-07T02:00:00.000Z" }),
+  itemId?: string,
 ) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const client: Partial<ItemClient> = { getPipelineNextRun };
   render(
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={client as ItemClient}>
-        <PipelineScheduleEditor value={value} onChange={onChange} />
+        <PipelineScheduleEditor value={value} onChange={onChange} itemId={itemId} />
       </ItemClientProvider>
     </QueryClientProvider>,
   );
@@ -62,7 +63,7 @@ test("checking the toggle for the first time enables with a default cron", async
   const onChange = vi.fn();
   renderEditor(null, onChange);
   await userEvent.click(screen.getByLabelText("Planification automatique"));
-  expect(onChange).toHaveBeenCalledWith({ enabled: true, cron: "*/15 * * * *" });
+  expect(onChange).toHaveBeenCalledWith({ enabled: true, cron: "*/15 * * * *", timezone: "UTC" });
 });
 
 test("switching to daily mode and setting a time compiles the expected cron", async () => {
@@ -70,7 +71,7 @@ test("switching to daily mode and setting a time compiles the expected cron", as
   const value: PipelineRefreshPolicy = { enabled: true, cron: "*/15 * * * *" };
   renderEditor(value, onChange);
   await userEvent.selectOptions(screen.getByLabelText("Mode de planification"), "daily");
-  expect(onChange).toHaveBeenLastCalledWith({ enabled: true, cron: "0 2 * * *" });
+  expect(onChange).toHaveBeenLastCalledWith({ enabled: true, cron: "0 2 * * *", timezone: "UTC" });
 });
 
 test("existing daily cron opens pre-filled in daily mode", () => {
@@ -104,7 +105,7 @@ test("switching to weekly mode compiles a default weekly cron and lists all 7 da
   const value: PipelineRefreshPolicy = { enabled: true, cron: "*/15 * * * *" };
   renderEditor(value, onChange);
   await userEvent.selectOptions(screen.getByLabelText("Mode de planification"), "weekly");
-  expect(onChange).toHaveBeenLastCalledWith({ enabled: true, cron: "0 2 * * 1" });
+  expect(onChange).toHaveBeenLastCalledWith({ enabled: true, cron: "0 2 * * 1", timezone: "UTC" });
   expect(screen.getByRole("option", { name: "Dimanche" })).toBeInTheDocument();
   expect(screen.getByRole("option", { name: "Samedi" })).toBeInTheDocument();
 });
@@ -114,7 +115,7 @@ test("changing the weekly day recompiles the cron with the new day", async () =>
   const value: PipelineRefreshPolicy = { enabled: true, cron: "30 9 * * 1" };
   renderEditor(value, onChange);
   await userEvent.selectOptions(screen.getByLabelText(/Jour de la semaine/), "3");
-  expect(onChange).toHaveBeenLastCalledWith({ enabled: true, cron: "30 9 * * 3" });
+  expect(onChange).toHaveBeenLastCalledWith({ enabled: true, cron: "30 9 * * 3", timezone: "UTC" });
 });
 
 test("changing the weekly execution time recompiles the cron with the new time", async () => {
@@ -122,7 +123,11 @@ test("changing the weekly execution time recompiles the cron with the new time",
   const value: PipelineRefreshPolicy = { enabled: true, cron: "30 9 * * 1" };
   renderEditor(value, onChange);
   fireEvent.change(screen.getByLabelText("Heure d'exécution"), { target: { value: "14:45" } });
-  expect(onChange).toHaveBeenLastCalledWith({ enabled: true, cron: "45 14 * * 1" });
+  expect(onChange).toHaveBeenLastCalledWith({
+    enabled: true,
+    cron: "45 14 * * 1",
+    timezone: "UTC",
+  });
 });
 
 test("changing the interval minutes recompiles the cron", async () => {
@@ -130,7 +135,11 @@ test("changing the interval minutes recompiles the cron", async () => {
   const value: PipelineRefreshPolicy = { enabled: true, cron: "*/15 * * * *" };
   renderEditor(value, onChange);
   fireEvent.change(screen.getByLabelText(/Toutes les combien/), { target: { value: "5" } });
-  expect(onChange).toHaveBeenLastCalledWith({ enabled: true, cron: "*/5 * * * *" });
+  expect(onChange).toHaveBeenLastCalledWith({
+    enabled: true,
+    cron: "*/5 * * * *",
+    timezone: "UTC",
+  });
 });
 
 test("switching to advanced mode keeps the current cron as the raw value", async () => {
@@ -138,7 +147,11 @@ test("switching to advanced mode keeps the current cron as the raw value", async
   const value: PipelineRefreshPolicy = { enabled: true, cron: "*/15 * * * *" };
   renderEditor(value, onChange);
   await userEvent.selectOptions(screen.getByLabelText("Mode de planification"), "advanced");
-  expect(onChange).toHaveBeenLastCalledWith({ enabled: true, cron: "*/15 * * * *" });
+  expect(onChange).toHaveBeenLastCalledWith({
+    enabled: true,
+    cron: "*/15 * * * *",
+    timezone: "UTC",
+  });
   expect(screen.getByLabelText(/Expression cron/)).toHaveValue("*/15 * * * *");
 });
 
@@ -153,10 +166,34 @@ test("shows the next scheduled run time when scheduling is enabled", async () =>
       }),
     ).toBeInTheDocument(),
   );
-  expect(getPipelineNextRun).toHaveBeenCalledWith("0 2 * * *");
+  expect(getPipelineNextRun).toHaveBeenCalledWith("0 2 * * *", "UTC", undefined);
 });
 
 test("does not show the next run hint when scheduling is disabled", () => {
   renderEditor(null, vi.fn());
   expect(screen.queryByText(/Prochaine ex.cution/)).not.toBeInTheDocument();
+});
+
+test("choosing a timezone writes it and evaluates the next run in it (AUD-084)", async () => {
+  const onChange = vi.fn();
+  const getPipelineNextRun = vi.fn().mockResolvedValue({ nextRun: "2026-08-07T00:00:00.000Z" });
+  renderEditor(
+    { enabled: true, cron: "0 2 * * *", timezone: "Europe/Paris" },
+    onChange,
+    getPipelineNextRun,
+  );
+  await waitFor(() =>
+    expect(getPipelineNextRun).toHaveBeenCalledWith("0 2 * * *", "Europe/Paris", undefined),
+  );
+  fireEvent.change(screen.getByLabelText("Fuseau horaire"), { target: { value: "UTC" } });
+  expect(onChange).toHaveBeenLastCalledWith({ enabled: true, cron: "0 2 * * *", timezone: "UTC" });
+});
+
+test("shows the suspended schedule banner when the circuit breaker is open (revue L5 I7)", async () => {
+  const getPipelineNextRun = vi
+    .fn()
+    .mockResolvedValue({ nextRun: "2026-08-07T02:00:00.000Z", scheduleSuspended: true });
+  renderEditor({ enabled: true, cron: "0 2 * * *" }, vi.fn(), getPipelineNextRun, "p1");
+  expect(await screen.findByText(/Planification suspendue/)).toBeInTheDocument();
+  expect(getPipelineNextRun).toHaveBeenCalledWith("0 2 * * *", "UTC", "p1");
 });

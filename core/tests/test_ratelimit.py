@@ -117,6 +117,15 @@ def test_route_group_covers_harvest_writes():
     assert route_group("/v1/harvest/sources/abc/run", "POST", _EXPORT_PATH_RE) == "harvest"
 
 
+def test_route_group_budgets_pipeline_ddl_and_previews():
+    """Revue L5 I6."""
+    rg = route_group
+    assert rg("/v1/pipelines/target-collection", "POST", _EXPORT_PATH_RE) == "collections_empty"
+    assert rg("/v1/pipelines/preview", "POST", _EXPORT_PATH_RE) == "analytics"
+    assert rg("/v1/pipelines/p1/preview", "POST", _EXPORT_PATH_RE) == "analytics"
+    assert rg("/v1/pipelines/p1/runs", "POST", _EXPORT_PATH_RE) is None
+
+
 def test_caller_key_uses_authorization_header_when_present():
     assert caller_key("Bearer abc", "1.2.3.4") == "Bearer abc"
 
@@ -277,3 +286,35 @@ def test_forwarded_for_is_ignored_from_an_untrusted_peer(monkeypatch):
         client.get(f"/v1/share-links/bad-{i}", headers={"X-Forwarded-For": f"7.7.7.{i}"})
     forged = client.get("/v1/share-links/bad-z", headers={"X-Forwarded-For": "6.6.6.6"})
     assert forged.status_code == 429
+
+
+def test_public_submit_has_its_own_budget_and_ipv6_is_bucketed():
+    # AUD-154
+    from app.ratelimit.limiter import _BUDGETS, ip_bucket
+
+    assert route_group("/v1/public/submit/gss_x", "POST", _EXPORT_PATH_RE) == "public-submit"
+    assert route_group("/v1/public/submit/gss_x", "GET", _EXPORT_PATH_RE) is None
+    assert _BUDGETS["public-submit"] == 20
+    assert ip_bucket("2001:db8:1:2:aaaa::1") == ip_bucket("2001:db8:1:2:bbbb::9")
+    assert ip_bucket("2001:db8:1:2:aaaa::1") == "2001:db8:1:2::/64"
+    assert ip_bucket("::ffff:203.0.113.7") == ip_bucket("203.0.113.7") == "203.0.113.7"
+    assert ip_bucket(None) == "unknown"
+    # L'en-tête Authorization ne change pas la clé d'une soumission anonyme.
+    assert caller_key("Bearer x", "2001:db8:1:2::5", "public-submit") == "submit:2001:db8:1:2::/64"
+
+
+def test_costly_reads_and_jobs_have_budgets():
+    # AUD-155/156/157
+    from app.ratelimit.limiter import _BUDGETS
+
+    assert route_group("/v1/ows/wms", "GET", _EXPORT_PATH_RE) == "ogc-read"
+    assert route_group("/v1/ows/wfs", "GET", _EXPORT_PATH_RE) == "ogc-read"
+    assert route_group("/v1/raster/i/tiles/1/2/3", "GET", _EXPORT_PATH_RE) == "ogc-read"
+    assert route_group("/v1/terrain3d/i/tiles/1/2/3.png", "GET", _EXPORT_PATH_RE) == "ogc-read"
+    assert (
+        route_group("/v1/collections/c/tiles/WebMercatorQuad/1/2/3", "GET", _EXPORT_PATH_RE) is None
+    )
+    assert route_group("/v1/raster/i/zonal-stats", "POST", _EXPORT_PATH_RE) == "zonal"
+    assert route_group("/v1/geocode/jobs", "POST", _EXPORT_PATH_RE) == "geocode"
+    assert route_group("/v1/geocode/jobs/abc", "GET", _EXPORT_PATH_RE) is None
+    assert _BUDGETS["ogc-read"] == 600 and _BUDGETS["zonal"] == 10

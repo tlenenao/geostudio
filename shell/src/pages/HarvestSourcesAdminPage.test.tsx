@@ -530,6 +530,44 @@ test("garde le mode copie disponible pour CKAN", async () => {
   expect(copyOption.disabled).toBe(false);
 });
 
+test("déclare une source data.gouv.fr (udata) en mode copie", async () => {
+  let body: unknown = null;
+  server.use(
+    http.get("https://core.test/v1/harvest/sources", () => HttpResponse.json({ sources: [] })),
+    http.post("https://core.test/v1/harvest/sources", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json(
+        {
+          id: "src-u",
+          type: "udata",
+          url: "https://www.data.gouv.fr",
+          mode: "copy",
+          enabled: true,
+          intervalMinutes: null,
+          lastRunAt: null,
+          lastStatus: null,
+          lastError: null,
+        },
+        { status: 201 },
+      );
+    }),
+  );
+  render(<Harness />);
+  await userEvent.click(await screen.findByRole("button", { name: "Ajouter une source" }));
+  await userEvent.type(await screen.findByLabelText("URL"), "https://www.data.gouv.fr");
+  await userEvent.selectOptions(screen.getByLabelText("Type"), "udata");
+  await userEvent.selectOptions(screen.getByLabelText("Mode"), "copy");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() =>
+    expect(body).toEqual({
+      type: "udata",
+      url: "https://www.data.gouv.fr",
+      mode: "copy",
+      enabled: true,
+    }),
+  );
+});
+
 test("sous viewport étroit, affiche trois onglets Catalogue/Moissonnage/Détail avec Moissonnage actif par défaut", async () => {
   stubMatchMedia(true);
   server.use(

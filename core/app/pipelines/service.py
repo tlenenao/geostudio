@@ -13,6 +13,7 @@ import secrets as py_secrets
 from collections.abc import Callable
 
 from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -21,6 +22,7 @@ from app.configs.pipeline_params import PipelineParamError, resolve_params
 from app.configs.repository import ConfigRead
 from app.items import repository as items_repo
 from app.jobs.common import resolve_owner_user
+from app.jobs.defer import defer_resilient
 from app.pipelines import repository as pipelines_repo
 from app.pipelines.jobs import run_pipeline_task
 from app.pipelines.models import PipelineWebhookToken
@@ -76,6 +78,21 @@ def default_task_deferrer() -> Callable[[str, str], None]:
     return deferrer
 
 
+def _defer_or_fail(
+    session: Session, run_id: str, tenant_id: str, defer_task: Callable[[str, str], None]
+) -> None:
+    """AUD-025 : un échec définitif de mise en file marque le run `failed` tout de
+    suite (sinon il resterait `pending` et bloquerait tout nouveau run en 409)."""
+    try:
+        defer_resilient(lambda: defer_task(run_id, tenant_id))
+    except HTTPException:
+        pipelines_repo.mark_failed_if_queued(
+            session, run_id=run_id, error="mise en file impossible : file de jobs indisponible"
+        )
+        session.commit()
+        raise
+
+
 def run_pipeline_service(
     session: Session,
     *,
@@ -84,6 +101,7 @@ def run_pipeline_service(
     defer_task: Callable[[str, str], None],
     actor_kind: str = "user",
     params: dict | None = None,
+    idempotency_key: str | None = None,
 ) -> str:
     """Extrait de app/pipelines/routes.py::run_pipeline_route — même
     séquence de gardes, identique pour la route REST et pour le tool MCP
@@ -98,15 +116,40 @@ def run_pipeline_service(
         values = resolve_params(payload.parameters, params)
     except PipelineParamError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    try:
-        run = pipelines_repo.create_run_unless_active(
-            session, tenant_id=user.tenant_id, pipeline_item_id=item_id, params=values
+    if idempotency_key is not None:
+        # AUD-084 : un événement rejoué (même clé) renvoie le run déjà créé, avant le garde 409.
+        existing = pipelines_repo.find_run_by_idempotency_key(
+            session, tenant_id=user.tenant_id, pipeline_item_id=item_id, key=idempotency_key
         )
-    except pipelines_repo.PipelineRunActive:
+        if existing is not None:
+            return existing
+    try:
+        # Savepoint : une collision sur ux_pipeline_runs_idempotency (même clé livrée deux
+        # fois en concurrence) n'annule que l'insertion, pas la transaction de l'appelant.
+        with session.begin_nested():
+            run = pipelines_repo.create_run_unless_active(
+                session,
+                tenant_id=user.tenant_id,
+                pipeline_item_id=item_id,
+                params=values,
+                idempotency_key=idempotency_key,
+            )
+    except (pipelines_repo.PipelineRunActive, IntegrityError) as exc:
+        # Revue L5 : le doublon concurrent d'un événement rejoué renvoie le run déjà créé
+        # (la 1re requête a pu committer pendant que celle-ci attendait le verrou).
+        if idempotency_key is not None:
+            existing = pipelines_repo.find_run_by_idempotency_key(
+                session, tenant_id=user.tenant_id, pipeline_item_id=item_id, key=idempotency_key
+            )
+            if existing is not None:
+                return existing
+        if isinstance(exc, IntegrityError):
+            raise
         # REV-310 : REST, MCP (HTTPException -> ValueError) et webhook partagent ce garde.
         raise HTTPException(
             status_code=409,
             detail="Une exécution de ce pipeline est déjà en cours ou en file d'attente.",
+            headers={"Retry-After": "60"},
         ) from None
     write_audit(
         session,
@@ -122,7 +165,7 @@ def run_pipeline_service(
     # (create_upload_job) — un worker pourrait ramasser la tâche avant que
     # la ligne pipeline_runs ne soit visible autrement.
     session.commit()
-    defer_task(run.id, user.tenant_id)
+    _defer_or_fail(session, run.id, user.tenant_id, defer_task)
     return run.id
 
 
@@ -155,9 +198,8 @@ def retry_pipeline_run_service(
         raise HTTPException(
             status_code=409,
             detail=(
-                f"Reprise/rejeu refusé : le writer {', '.join(appenders)} n'est pas idempotent "
-                "(mode 'append' : dupliquerait des lignes déjà écrites, utilisez 'upsert' ou "
-                "'replace' ; writer de messagerie : renverrait les messages déjà partis). "
+                f"Reprise/rejeu refusé : le writer {', '.join(appenders)} a un effet externe "
+                "non idempotent (renverrait les messages déjà partis). "
                 "Relancez une exécution complète."
             ),
         )
@@ -191,7 +233,7 @@ def retry_pipeline_run_service(
         payload={"pipelineItemId": item_id, "retryOf": run.id, "fromStart": from_start},
     )
     session.commit()  # avant defer : le worker doit voir la ligne
-    defer_task(new_run.id, user.tenant_id)
+    _defer_or_fail(session, new_run.id, user.tenant_id, defer_task)
     return new_run.id
 
 
@@ -263,6 +305,7 @@ def trigger_pipeline_by_webhook_service(
     raw_token: str,
     defer_task: Callable[[str, str], None],
     params: dict | None = None,
+    idempotency_key: str | None = None,
 ) -> str:
     """Seul point d'entrée du déclenchement webhook — réutilise
     run_pipeline_service tel quel (mêmes gardes que REST/MCP), seul
@@ -288,6 +331,7 @@ def trigger_pipeline_by_webhook_service(
         defer_task=defer_task,
         actor_kind="webhook",
         params=params,
+        idempotency_key=idempotency_key,
     )
     # Best-effort, hors du chemin critique : un échec ici ne doit jamais
     # faire échouer un déclenchement par ailleurs réussi.

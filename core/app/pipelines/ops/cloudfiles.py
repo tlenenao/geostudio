@@ -48,6 +48,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
+from app.cell_safety import sanitize_cell
 from app.pipelines import egress
 from app.pipelines.errors import PipelineCancelledError, PipelineRuntimeError
 from app.pipelines.ops.operation_contract import OperationContract
@@ -626,6 +627,7 @@ def read_arcgisonline(
     want = min(p.maxFeatures, _max_rows())
     budget, pages = MAX_BYTES, 0
     deadline = time.monotonic() + DEADLINE_S
+    more = False
     while len(features) < want:
         pages += 1
         if pages > _max_pages():
@@ -666,8 +668,13 @@ def read_arcgisonline(
         )
         if not batch or not more:
             break
+    if len(features) > want or (len(features) >= want and more):
+        raise PipelineRuntimeError(
+            f"{op} : résultat tronqué à {want} entités — augmenter maxFeatures "
+            "ou filtrer à la source (where)"
+        )
     try:
-        frame = _features_frame(features[:want], op)
+        frame = _features_frame(features, op)
     except PipelineRuntimeError:
         raise
     except Exception as exc:  # feature / properties qui ne sont pas des objets
@@ -856,7 +863,9 @@ def read_ftp(conn, *, session, tenant_id, node_id, params, view_name, user, base
 def _serialize(frame: pd.DataFrame, fmt: str) -> bytes:
     out = io.BytesIO()
     if fmt == "csv":
-        out.write(frame.to_csv(index=False).encode())
+        # AUD-152 : même neutralisation que les autres sorties CSV (cell_safety).
+        safe = frame.rename(columns=sanitize_cell).map(sanitize_cell)
+        out.write(safe.to_csv(index=False).encode())
     elif fmt == "jsonl":
         out.write(frame.to_json(orient="records", lines=True, date_format="iso").encode())
     else:

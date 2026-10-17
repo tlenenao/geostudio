@@ -9,6 +9,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+import requests
 from sqlalchemy import select
 
 from app.audit.models import AuditLog
@@ -157,6 +158,7 @@ def test_auto_disable_is_audited(db):
     with db() as s:
         hook = s.scalars(select(OutboundWebhook).where(OutboundWebhook.tenant_id == tid)).one()
         hook.consecutive_failures = delivery.MAX_CONSECUTIVE_FAILURES - 1
+        s.get(OutboxEvent, eid).created_at = NOW - delivery.MAX_EVENT_AGE - timedelta(minutes=1)
         s.commit()
         delivery.deliver_due(s, post=failing)
         assert hook.enabled is False
@@ -164,7 +166,7 @@ def test_auto_disable_is_audited(db):
         assert (log.tenant_id, log.object_id, log.actor_kind) == (tid, hook.id, "system")
 
 
-def test_old_outbox_rows_are_purged_but_pending_ones_are_kept(db):
+def test_old_outbox_rows_are_purged_pending_included(db):
     _, (old_done, old_pending, recent_done) = _tenant_with_hook(db, events=3)
     with db() as s:
         long_ago = NOW - timedelta(days=delivery.OUTBOX_RETENTION_DAYS + 1)
@@ -176,8 +178,99 @@ def test_old_outbox_rows_are_purged_but_pending_ones_are_kept(db):
             ev = s.get(OutboxEvent, eid)
             ev.status, ev.created_at = status, created
         s.commit()
-        assert delivery.purge_outbox(s) == 1
-        assert {e.id for e in s.scalars(select(OutboxEvent))} == {old_pending, recent_done}
+        assert delivery.purge_outbox(s) == 2
+        assert {e.id for e in s.scalars(select(OutboxEvent))} == {recent_done}
+
+
+# AUD-085 / AUD-170 / AUD-168 --------------------------------------------------
+
+
+def _fail_with(status):
+    def post(*_a):
+        resp = requests.Response()
+        resp.status_code = status
+        try:
+            raise requests.HTTPError(f"{status}", response=resp)
+        except requests.HTTPError as exc:
+            raise delivery.DeliveryError(f"livraison échouée : {exc}") from exc
+
+    return post
+
+
+def _hook_of(s, tid):
+    return s.scalars(select(OutboundWebhook).where(OutboundWebhook.tenant_id == tid)).one()
+
+
+def test_a_short_outage_neither_disables_nor_drops_events(db):
+    """AUD-085 : 5 échecs en ~7 min désactivaient la destination et détruisaient l'outbox."""
+    tid, (eid,) = _tenant_with_hook(db, events=1)
+    with db() as s:
+        hook = _hook_of(s, tid)
+        hook.consecutive_failures = delivery.MAX_CONSECUTIVE_FAILURES - 1
+        s.commit()
+        delivery.deliver_due(s, post=_fail_with(503))
+        assert hook.enabled is True
+        assert hook.consecutive_failures == delivery.MAX_CONSECUTIVE_FAILURES
+        assert s.get(OutboxEvent, eid).status == "pending"
+
+
+def test_a_day_long_outage_disables_but_keeps_pending_events_for_reenable(db):
+    tid, (old, recent) = _tenant_with_hook(db, events=2)
+    with db() as s:
+        hook = _hook_of(s, tid)
+        hook.consecutive_failures = delivery.MAX_CONSECUTIVE_FAILURES - 1
+        s.get(OutboxEvent, old).created_at = NOW - delivery.MAX_EVENT_AGE - timedelta(minutes=1)
+        s.commit()
+        delivery.deliver_due(s, post=_fail_with(503))
+        assert hook.enabled is False
+        old_ev, recent_ev = s.get(OutboxEvent, old), s.get(OutboxEvent, recent)
+        assert old_ev.status == "failed" and "abandonné" in old_ev.last_error
+        assert recent_ev.status == "pending"
+        # réactivation (PATCH enabled=true) : l'événement gardé repart
+        hook.enabled, hook.consecutive_failures = True, 0
+        recent_ev.next_attempt_at = NOW - timedelta(seconds=1)
+        s.commit()
+        assert delivery.deliver_due(s, post=lambda *a: None) == 1
+        assert recent_ev.status == "delivered"
+
+
+def test_a_payload_rejection_fails_only_that_event(db):
+    """AUD-170 : un 4xx propre au contenu n'est plus rejoué indéfiniment ni compté contre
+    la destination."""
+    tid, (eid,) = _tenant_with_hook(db, events=1)
+    with db() as s:
+        delivery.deliver_due(s, post=_fail_with(422))
+        ev, hook = s.get(OutboxEvent, eid), _hook_of(s, tid)
+        assert ev.status == "failed"
+        assert (hook.enabled, hook.consecutive_failures) == (True, 0)
+
+
+def test_a_too_old_event_is_given_up(db):
+    tid, (eid,) = _tenant_with_hook(db, events=1)
+    with db() as s:
+        s.get(OutboxEvent, eid).created_at = NOW - delivery.MAX_EVENT_AGE - timedelta(minutes=1)
+        s.commit()
+        delivery.deliver_due(s, post=_fail_with(503))
+        assert s.get(OutboxEvent, eid).status == "failed"
+        assert _hook_of(s, tid).enabled is True  # 1 seul échec consécutif
+
+
+def test_a_database_error_on_one_event_does_not_abort_the_sweep(db, monkeypatch):
+    """AUD-168 : destination supprimée pendant la livraison -> StaleDataError propagée
+    jusqu'à la tâche (reste du lot en attente du bail, purges sautées)."""
+    tid, (first, second) = _tenant_with_hook(db, events=2)
+    real = delivery.deliver_one
+
+    def flaky(session, event, hook, *, post):
+        if event.id == first:
+            raise RuntimeError("ligne disparue")
+        return real(session, event, hook, post=post)
+
+    monkeypatch.setattr(delivery, "deliver_one", flaky)
+    with db() as s:
+        assert delivery.deliver_due(s, post=lambda *a: None) == 1
+        assert s.get(OutboxEvent, first).status == "pending"  # bail : repris plus tard
+        assert s.get(OutboxEvent, second).status == "delivered"
 
 
 def test_seen_keys_are_purged_and_older_objects_are_ignored(db):

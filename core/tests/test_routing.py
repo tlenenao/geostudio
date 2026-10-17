@@ -263,6 +263,14 @@ def test_egress_refuses_metadata_even_when_configured(monkeypatch):
         rc.assert_egress_allowed("http://169.254.169.254/route")
 
 
+@pytest.mark.parametrize("host", ["[64:ff9b::a9fe:a9fe]", "[::a9fe:a9fe]"])
+def test_egress_refuses_metadata_behind_nat64_or_compat(monkeypatch, host):
+    # AUD-124 : l'IPv4 embarquée est déballée avant le contrôle link-local.
+    monkeypatch.setenv("CORE_ROUTING_URL", f"http://{host}")
+    with pytest.raises(rc._EgressBlocked):
+        rc.assert_egress_allowed(f"http://{host}/route")
+
+
 def test_default_client_goes_through_the_guard(monkeypatch):
     monkeypatch.setenv("CORE_ROUTING_URL", "http://169.254.169.254")
 

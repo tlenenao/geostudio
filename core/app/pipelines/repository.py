@@ -1,15 +1,22 @@
 # SPDX-License-Identifier: Apache-2.0
 import uuid
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import croniter
 from sqlalchemy import case, delete, func, select, update
 from sqlalchemy.orm import Session, aliased
 
+from app.audit.models import AuditLog
 from app.configs import repository as configs_repo
 from app.configs.models import Config, ConfigRevision
+from app.items.models import Item
 from app.outbox.emit import emit
 from app.pipelines.models import PipelineReaderState, PipelineRun, PipelineWebhookToken
+from app.users.models import User
+
+# AUD-084 : N échecs consécutifs ouvrent le circuit (plus de run planifié).
+CIRCUIT_BREAKER_FAILURES = 3
 
 
 def _now() -> datetime:
@@ -27,6 +34,7 @@ def create_run(
     params: dict | None = None,
     resume_of: str | None = None,
     node_stats: dict | None = None,
+    idempotency_key: str | None = None,
 ) -> PipelineRun:
     run = PipelineRun(
         id=uuid.uuid4().hex,
@@ -36,6 +44,7 @@ def create_run(
         params=params or None,
         resume_of=resume_of,
         node_stats=node_stats or {},
+        idempotency_key=idempotency_key,
     )
     session.add(run)
     session.flush()
@@ -55,7 +64,10 @@ def _run_anchor():
     `created_at` (même règle que reclaim_stuck_runs)."""
     return func.coalesce(
         case(
-            (PipelineRun.status.in_(("running", "cancel_requested")), PipelineRun.started_at),
+            (
+                PipelineRun.status.in_(("running", "cancel_requested")),
+                func.coalesce(PipelineRun.heartbeat_at, PipelineRun.started_at),
+            ),
             (PipelineRun.status == "retrying", PipelineRun.next_retry_at),
             else_=PipelineRun.created_at,
         ),
@@ -72,6 +84,7 @@ def create_run_unless_active(
     params: dict | None = None,
     resume_of: str | None = None,
     node_stats: dict | None = None,
+    idempotency_key: str | None = None,
 ) -> PipelineRun:
     """REV-310 : crée un run SAUF si un run actif non périmé existe (lève
     PipelineRunActive). Point unique REST / MCP / webhook / cron. Atomique :
@@ -104,6 +117,19 @@ def create_run_unless_active(
         params=params,
         resume_of=resume_of,
         node_stats=node_stats,
+        idempotency_key=idempotency_key,
+    )
+
+
+def find_run_by_idempotency_key(
+    session: Session, *, tenant_id: str, pipeline_item_id: str, key: str
+) -> str | None:
+    return session.scalar(
+        select(PipelineRun.id).where(
+            PipelineRun.tenant_id == tenant_id,
+            PipelineRun.pipeline_item_id == pipeline_item_id,
+            PipelineRun.idempotency_key == key,
+        )
     )
 
 
@@ -188,7 +214,12 @@ def mark_running(session: Session, *, run_id: str) -> bool:
         update(PipelineRun)
         .where(PipelineRun.id == run_id, PipelineRun.status.in_(("queued", "pending", "retrying")))
         .values(
-            status="running", started_at=_now(), finished_at=None, error=None, next_retry_at=None
+            status="running",
+            started_at=_now(),
+            heartbeat_at=None,  # AUD-026 : pas de battement périmé d'une tentative précédente
+            finished_at=None,
+            error=None,
+            next_retry_at=None,
         )
     )
     session.flush()
@@ -275,7 +306,9 @@ def mark_succeeded(session: Session, *, run_id: str, node_stats: dict) -> None:
     _emit_run_finished(session, run, previous=previous)
 
 
-def mark_failed(session: Session, *, run_id: str, error: str) -> None:
+def mark_failed(
+    session: Session, *, run_id: str, error: str, failed_node_id: str | None = None
+) -> None:
     run = session.get(PipelineRun, run_id)
     if run is None:
         return
@@ -283,8 +316,27 @@ def mark_failed(session: Session, *, run_id: str, error: str) -> None:
     run.status = "failed"
     run.finished_at = _now()
     run.error = error
+    run.failed_node_id = failed_node_id
     session.flush()
     _emit_run_finished(session, run, previous=previous)
+
+
+def mark_failed_if_queued(session: Session, *, run_id: str, error: str) -> bool:
+    """Transition conditionnelle `queued|pending -> failed` (UPDATE ... WHERE statut) :
+    un run qu'un worker a déjà pris (`running`) n'est jamais écrasé (AUD-025)."""
+    result = session.execute(
+        update(PipelineRun)
+        .where(PipelineRun.id == run_id, PipelineRun.status.in_(("queued", "pending")))
+        .values(status="failed", finished_at=_now(), error=error)
+    )
+    session.flush()
+    if not result.rowcount:  # type: ignore[attr-defined]
+        return False
+    run = session.get(PipelineRun, run_id)
+    assert run is not None
+    session.refresh(run)
+    _emit_run_finished(session, run, previous="queued")
+    return True
 
 
 def mark_retrying(
@@ -352,6 +404,14 @@ def requeue_overdue_retries(
     return [(r[0], r[1]) for r in rows]
 
 
+def touch_heartbeat(session: Session, *, run_id: str) -> None:
+    session.execute(
+        update(PipelineRun)
+        .where(PipelineRun.id == run_id, PipelineRun.status.in_(("running", "cancel_requested")))
+        .values(heartbeat_at=_now())
+    )
+
+
 def reclaim_stuck_runs(
     session: Session, *, older_than_minutes: int = _RUNNING_RECLAIM_MINUTES
 ) -> int:
@@ -360,12 +420,15 @@ def reclaim_stuck_runs(
     c02-005 : sans cela l'ancien run restait zombie à côté du nouveau) plus
     vieux que le seuil. Cross-tenant, appelée par le balayage cron. UPDATE
     conditionnel sur le statut : un run terminé entre-temps n'est pas touché.
-    # ponytail: pas de heartbeat — un run vivant de plus de
-    # _RUNNING_RECLAIM_MINUTES est aussi clos ; heartbeat si des pipelines
-    # légitimes dépassent ce délai."""
+    # AUD-026 : un run `running` est ancré sur son dernier battement de cœur
+    # (`heartbeat_at`, thread du worker) ; sans battement, sur `started_at`.
+    # ponytail: seuil = worker mort ; un worker gelé mais battant n'est pas clos."""
     threshold = _now() - timedelta(minutes=older_than_minutes)
     anchor = case(
-        (PipelineRun.status.in_(("running", "cancel_requested")), PipelineRun.started_at),
+        (
+            PipelineRun.status.in_(("running", "cancel_requested")),
+            func.coalesce(PipelineRun.heartbeat_at, PipelineRun.started_at),
+        ),
         (PipelineRun.status == "retrying", PipelineRun.next_retry_at),
         else_=PipelineRun.created_at,
     )
@@ -441,6 +504,17 @@ def list_due_pipelines(session: Session, *, now: datetime | None = None) -> list
         and config.pipeline.refreshPolicy is not None
         and config.pipeline.refreshPolicy.enabled
     ]
+    if candidates:
+        # AUD-084 : un propriétaire anonymisé (RGPD) ne fait plus tourner de run planifié.
+        erased = set(
+            session.scalars(
+                select(Item.id)
+                .join(User, User.id == Item.owner_id)
+                .where(Item.id.in_([c[0] for c in candidates]), User.erased_at.is_not(None))
+            )
+        )
+        candidates = [c for c in candidates if c[0] not in erased]
+    recent_by_item = _recent_terminal_statuses(session, [c[0] for c in candidates])
     latest_by_item = get_latest_runs_for_items(session, item_ids=[c[0] for c in candidates])
     # REV-312 : sans run antérieur, le curseur est la création/activation de la
     # config (révision courante) — un cron annuel n'est pas dû au 1er balayage.
@@ -448,13 +522,18 @@ def list_due_pipelines(session: Session, *, now: datetime | None = None) -> list
     for item_id, tenant_id, config in candidates:
         payload = config.pipeline
         policy = payload.refreshPolicy
+        tz = ZoneInfo(policy.timezone)
+        if _circuit_open(recent_by_item.get(item_id, [])):
+            # AUD-084 : circuit ouvert — plus de run planifié tant qu'un run manuel n'a pas
+            # réussi (le propriétaire est notifié à chaque échec, pas à chaque tick).
+            continue
         latest = latest_by_item.get(item_id)
         if latest is None:
             anchor = config_anchor.get(item_id)
             if anchor is not None:
                 if anchor.tzinfo is None:
                     anchor = anchor.replace(tzinfo=UTC)
-                if croniter.croniter(policy.cron, anchor).get_next(datetime) > now:
+                if croniter.croniter(policy.cron, anchor.astimezone(tz)).get_next(datetime) > now:
                     continue
             due.append((item_id, tenant_id))
             continue
@@ -479,10 +558,98 @@ def list_due_pipelines(session: Session, *, now: datetime | None = None) -> list
                 continue
             due.append((item_id, tenant_id))
             continue
-        next_tick = croniter.croniter(policy.cron, created_at).get_next(datetime)
+        next_tick = croniter.croniter(policy.cron, created_at.astimezone(tz)).get_next(datetime)
         if next_tick <= now:
             due.append((item_id, tenant_id))
     return due
+
+
+def previous_run_failed(session: Session, *, item_id: str, run_id: str) -> bool:
+    """Le dernier run terminé (succès ou échec) avant `run_id` a-t-il échoué ?"""
+    prev = session.scalar(
+        select(PipelineRun.status)
+        .where(
+            PipelineRun.pipeline_item_id == item_id,
+            PipelineRun.id != run_id,
+            PipelineRun.status.in_(("succeeded", "succeeded_with_rejects", "failed")),
+        )
+        .order_by(PipelineRun.created_at.desc())
+        .limit(1)
+    )
+    return prev == "failed"
+
+
+def is_scheduled_run(session: Session, *, tenant_id: str, run_id: str) -> bool:
+    """Run créé par le balayage cron (trace `actor_kind="schedule"` écrite juste après
+    sa création, cf. jobs.sweep). Borné dans le temps pour rester sur l'index
+    (tenant_id, created_at) d'audit_log."""
+    run = session.get(PipelineRun, run_id)
+    if run is None:
+        return False
+    return (
+        session.scalar(
+            select(AuditLog.id)
+            .where(
+                AuditLog.tenant_id == tenant_id,
+                AuditLog.created_at >= run.created_at - timedelta(seconds=1),
+                AuditLog.object_type == "pipeline_run",
+                AuditLog.object_id == run_id,
+                AuditLog.actor_kind == "schedule",
+            )
+            .limit(1)
+        )
+        is not None
+    )
+
+
+def _circuit_open(recent: list[str]) -> bool:
+    return len(recent) == CIRCUIT_BREAKER_FAILURES and all(s == "failed" for s in recent)
+
+
+def schedule_suspended(session: Session, *, item_id: str) -> bool:
+    """AUD-084 (revue L5 I7) : planification suspendue par le coupe-circuit."""
+    return _circuit_open(_recent_terminal_statuses(session, [item_id]).get(item_id, []))
+
+
+def circuit_just_opened(session: Session, *, item_id: str) -> bool:
+    """Le dernier échec vient d'ouvrir le circuit (N échecs, le N+1e terminal n'en est pas
+    un) — pour notifier une seule fois, pas à chaque échec suivant."""
+    recent = _recent_terminal_statuses(session, [item_id], CIRCUIT_BREAKER_FAILURES + 1).get(
+        item_id, []
+    )
+    return _circuit_open(recent[:CIRCUIT_BREAKER_FAILURES]) and (
+        len(recent) == CIRCUIT_BREAKER_FAILURES or recent[-1] != "failed"
+    )
+
+
+def _recent_terminal_statuses(
+    session: Session, item_ids: list[str], n: int = CIRCUIT_BREAKER_FAILURES
+) -> dict[str, list[str]]:
+    """Les CIRCUIT_BREAKER_FAILURES derniers statuts terminaux par pipeline (du plus récent).
+    Un run annulé n'est ni un succès ni un échec : il ne remet pas le compteur à zéro."""
+    if not item_ids:
+        return {}
+    rn = (
+        func.row_number()
+        .over(partition_by=PipelineRun.pipeline_item_id, order_by=PipelineRun.created_at.desc())
+        .label("rn")
+    )
+    sub = (
+        select(PipelineRun.pipeline_item_id, PipelineRun.status, rn)
+        .where(
+            PipelineRun.pipeline_item_id.in_(item_ids),
+            PipelineRun.status.in_(("succeeded", "succeeded_with_rejects", "failed")),
+        )
+        .subquery()
+    )
+    out: dict[str, list[str]] = {}
+    for item_id, status in session.execute(
+        select(sub.c.pipeline_item_id, sub.c.status)
+        .where(sub.c.rn <= n)
+        .order_by(sub.c.pipeline_item_id, sub.c.rn)
+    ):
+        out.setdefault(item_id, []).append(status)
+    return out
 
 
 # --- PipelineWebhookToken (GAP-24, SP-53) ---

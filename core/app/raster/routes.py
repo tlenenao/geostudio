@@ -30,6 +30,7 @@ from app.db import get_session
 from app.features.routes import get_features_repo, get_masked_for_user, get_rls_scope
 from app.ingestion.routes import get_s3_client
 from app.ingestion.storage import ensure_uploads_bucket, generate_presigned_put_url
+from app.jobs.defer import defer_resilient
 from app.quotas.service import enforce_storage_quota
 from app.raster import repository as repo
 from app.raster import zonal
@@ -75,7 +76,7 @@ def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests
     def deferrer(job_id: str, tenant_id: str) -> None:
         from app.raster.jobs import ingest_raster_task
 
-        ingest_raster_task.defer(job_id=job_id, tenant_id=tenant_id)
+        defer_resilient(lambda: ingest_raster_task.defer(job_id=job_id, tenant_id=tenant_id))
 
     return deferrer
 
@@ -108,8 +109,14 @@ def presign_raster_upload(
 ) -> RasterPresignResponse:
     require_privilege(session, user, Privilege.CATALOG_MANAGE.value)
     ensure_uploads_bucket(s3, bucket)
+    from app.raster.jobs import _max_upload_bytes  # import paresseux, comme la tâche
+
+    if body.size > _max_upload_bytes():
+        raise HTTPException(status_code=413, detail="file too large")
     key = f"{user.tenant_id}/{uuid.uuid4().hex}/{body.filename}"
-    url = generate_presigned_put_url(s3, bucket=bucket, key=key, content_type=body.contentType)
+    url = generate_presigned_put_url(
+        s3, bucket=bucket, key=key, content_type=body.contentType, content_length=body.size
+    )
     return RasterPresignResponse(uploadUrl=url, key=key)
 
 
@@ -155,7 +162,12 @@ def create_raster_upload(
     )
     # Commit avant de déférer ; un defer perdu est repris par sweep_raster_jobs_task.
     session.commit()
-    defer_task(job.id, user.tenant_id)
+    try:
+        defer_task(job.id, user.tenant_id)
+    except HTTPException:  # 503 : file indisponible, le job n'est pas laissé orphelin
+        repo.mark_enqueue_failed(session, job_id=job.id)
+        session.commit()
+        raise
     return RasterUploadCreated(jobId=job.id)
 
 
@@ -297,6 +309,8 @@ def raster_zonal_stats(
     try:
         with opener(asset) as ds:
             stats = zonal.zonal_stats(ds, [g for _, g in polys], band=body.band, stats=body.stats)
+    except zonal.ZonalBusy as exc:  # AUD-157
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except zonal.ZonalError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     write_audit(

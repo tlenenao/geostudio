@@ -167,8 +167,29 @@ def _layout_errors(config: BuilderConfig) -> list[str]:
     return errs
 
 
+_SAFE_HREF_SCHEMES = {"", "http", "https", "mailto"}
+
+
+def _widget_href_errors(config_dict: dict) -> list[str]:
+    """AUD-064 : jumeau serveur d'isSafeHref (hero.tsx). Une expression liée
+    ($expr) est jugée au clic par isSafeHref, côté shell."""
+    errs: list[str] = []
+    for node in widget_nodes(config_dict):
+        props = node.get("props") or {}
+        for key in ("href", "ctaHref"):
+            value = props.get(key)
+            if isinstance(value, str) and value.strip():
+                if urlparse(value.strip()).scheme.lower() not in _SAFE_HREF_SCHEMES:
+                    errs.append(
+                        f"widget {node.get('id', '?')}.{key} must be an http(s), "
+                        "mailto or relative URL"
+                    )
+    return errs
+
+
 def document_warnings(config: BuilderConfig) -> list[str]:
     errs = _layout_errors(config)
+    errs += _widget_href_errors(config.model_dump(mode="json"))
     if config.map is not None:
         errs += _map_errors(config.map)
     return errs
