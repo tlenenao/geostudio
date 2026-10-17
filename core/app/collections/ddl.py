@@ -8,6 +8,8 @@ SQLAlchemy (le nom vient du registre, mais la défense vaut pour tout appelant).
 réexporté ici pour compatibilité avec les appelants existants
 (`from app.collections.ddl import quote_ident`)."""
 
+import re
+
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -17,6 +19,8 @@ from app.tenants.repository import DEFAULT_TENANT_SLUG
 
 __all__ = [
     "TenantColumnMismatch",
+    "drop_managed_table",
+    "is_managed_table",
     "quote_ident",
     "spatial_index_name",
     "apply_collection_ddl",
@@ -24,6 +28,27 @@ __all__ = [
     "ensure_geo_limit_policy",
     "alter_geometry_column",
 ]
+
+
+_MANAGED_TABLE = re.compile(r"^(ingest|query)_[0-9a-f]{12}$")
+
+
+def is_managed_table(table_name: str) -> bool:
+    """Table créée par GeoStudio (import, collection vide, requête matérialisée),
+    jamais une table préexistante enregistrée par un admin (AUD-011)."""
+    return bool(_MANAGED_TABLE.match(table_name))
+
+
+def drop_managed_table(session: Session, table_name: str) -> bool:
+    """DROP de la table dynamique (et de sa quarantaine `__rejected`) d'une
+    collection supprimée : sans lui les lignes survivent avec leur tenant_id
+    (fuite RGPD, quota aveugle, `/collections/candidates`). Ne touche jamais une
+    table préexistante enregistrée (AUD-011)."""
+    if not is_managed_table(table_name):
+        return False
+    for name in (table_name, f"{table_name}__rejected"):
+        session.execute(text(f"DROP TABLE IF EXISTS {quote_ident(session, name)} CASCADE"))
+    return True
 
 
 class TenantColumnMismatch(Exception):
