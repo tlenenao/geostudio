@@ -55,7 +55,10 @@ def _run_anchor():
     `created_at` (même règle que reclaim_stuck_runs)."""
     return func.coalesce(
         case(
-            (PipelineRun.status.in_(("running", "cancel_requested")), PipelineRun.started_at),
+            (
+                PipelineRun.status.in_(("running", "cancel_requested")),
+                func.coalesce(PipelineRun.heartbeat_at, PipelineRun.started_at),
+            ),
             (PipelineRun.status == "retrying", PipelineRun.next_retry_at),
             else_=PipelineRun.created_at,
         ),
@@ -188,7 +191,12 @@ def mark_running(session: Session, *, run_id: str) -> bool:
         update(PipelineRun)
         .where(PipelineRun.id == run_id, PipelineRun.status.in_(("queued", "pending", "retrying")))
         .values(
-            status="running", started_at=_now(), finished_at=None, error=None, next_retry_at=None
+            status="running",
+            started_at=_now(),
+            heartbeat_at=None,  # AUD-026 : pas de battement périmé d'une tentative précédente
+            finished_at=None,
+            error=None,
+            next_retry_at=None,
         )
     )
     session.flush()
@@ -287,6 +295,24 @@ def mark_failed(session: Session, *, run_id: str, error: str) -> None:
     _emit_run_finished(session, run, previous=previous)
 
 
+def mark_failed_if_queued(session: Session, *, run_id: str, error: str) -> bool:
+    """Transition conditionnelle `queued|pending -> failed` (UPDATE ... WHERE statut) :
+    un run qu'un worker a déjà pris (`running`) n'est jamais écrasé (AUD-025)."""
+    result = session.execute(
+        update(PipelineRun)
+        .where(PipelineRun.id == run_id, PipelineRun.status.in_(("queued", "pending")))
+        .values(status="failed", finished_at=_now(), error=error)
+    )
+    session.flush()
+    if not result.rowcount:  # type: ignore[attr-defined]
+        return False
+    run = session.get(PipelineRun, run_id)
+    assert run is not None
+    session.refresh(run)
+    _emit_run_finished(session, run, previous="queued")
+    return True
+
+
 def mark_retrying(
     session: Session, *, run_id: str, error: str, delay_seconds: int
 ) -> datetime | None:
@@ -352,6 +378,14 @@ def requeue_overdue_retries(
     return [(r[0], r[1]) for r in rows]
 
 
+def touch_heartbeat(session: Session, *, run_id: str) -> None:
+    session.execute(
+        update(PipelineRun)
+        .where(PipelineRun.id == run_id, PipelineRun.status.in_(("running", "cancel_requested")))
+        .values(heartbeat_at=_now())
+    )
+
+
 def reclaim_stuck_runs(
     session: Session, *, older_than_minutes: int = _RUNNING_RECLAIM_MINUTES
 ) -> int:
@@ -360,12 +394,15 @@ def reclaim_stuck_runs(
     c02-005 : sans cela l'ancien run restait zombie à côté du nouveau) plus
     vieux que le seuil. Cross-tenant, appelée par le balayage cron. UPDATE
     conditionnel sur le statut : un run terminé entre-temps n'est pas touché.
-    # ponytail: pas de heartbeat — un run vivant de plus de
-    # _RUNNING_RECLAIM_MINUTES est aussi clos ; heartbeat si des pipelines
-    # légitimes dépassent ce délai."""
+    # AUD-026 : un run `running` est ancré sur son dernier battement de cœur
+    # (`heartbeat_at`, thread du worker) ; sans battement, sur `started_at`.
+    # ponytail: seuil = worker mort ; un worker gelé mais battant n'est pas clos."""
     threshold = _now() - timedelta(minutes=older_than_minutes)
     anchor = case(
-        (PipelineRun.status.in_(("running", "cancel_requested")), PipelineRun.started_at),
+        (
+            PipelineRun.status.in_(("running", "cancel_requested")),
+            func.coalesce(PipelineRun.heartbeat_at, PipelineRun.started_at),
+        ),
         (PipelineRun.status == "retrying", PipelineRun.next_retry_at),
         else_=PipelineRun.created_at,
     )

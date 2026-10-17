@@ -18,6 +18,7 @@ from app.dataexport.jobs import exports_bucket, run_collection_export
 from app.db import get_session
 from app.ingestion.routes import get_s3_client  # même dépendance que export/routes.py
 from app.ingestion.storage import generate_presigned_get_url
+from app.jobs.defer import defer_resilient
 from app.roles.guards import has_privilege
 from app.roles.privileges import Privilege
 from app.users.models import User
@@ -27,7 +28,7 @@ router = APIRouter()
 
 
 def defer_export(job_id: str, tenant_id: str) -> None:
-    run_collection_export.defer(job_id=job_id, tenant_id=tenant_id)
+    defer_resilient(lambda: run_collection_export.defer(job_id=job_id, tenant_id=tenant_id))
 
 
 def start_export(

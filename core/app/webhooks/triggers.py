@@ -36,6 +36,11 @@ class TriggerConfigError(Exception):
     pass
 
 
+class TriggerQueueUnavailable(Exception):
+    """File de jobs indisponible (503 de `run_pipeline_service`) : transitoire, pas
+    une erreur de configuration du déclencheur (AUD-025)."""
+
+
 def split_prefix(prefix: str) -> tuple[str, str]:
     parsed = urlsplit(prefix)
     if parsed.scheme != "s3" or not parsed.netloc or ".." in parsed.path.split("/"):
@@ -158,6 +163,12 @@ def poll_trigger(
                 )
             except HTTPException as exc:
                 session.rollback()
+                if exc.status_code == 503:
+                    # le commit interne du service a persisté la clé d'idempotence : la
+                    # retirer, sinon le fichier ne serait jamais repris (run `failed`).
+                    session.delete(row)
+                    session.commit()
+                    raise TriggerQueueUnavailable(str(exc.detail)) from exc
                 if exc.status_code != 409:
                     raise TriggerConfigError(str(exc.detail)) from exc
                 break  # run actif : le fichier sera repris au passage suivant
@@ -172,6 +183,11 @@ def poll_trigger(
     except TriggerConfigError as exc:
         session.rollback()
         trigger.last_error = str(exc)[:500]
+    except TriggerQueueUnavailable as exc:
+        session.rollback()
+        trigger.last_error = f"mise en file impossible, nouvel essai au passage suivant : {exc}"[
+            :500
+        ]
     except Exception as exc:  # noqa: BLE001 — réseau/S3 : tracé, retenté au passage suivant
         session.rollback()
         logger.exception("déclencheur fichier %s : échec du sondage", trigger.id)

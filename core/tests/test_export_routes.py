@@ -355,3 +355,25 @@ def test_post_export_rejects_malformed_ctx(env, bad):
     r = client.post("/v1/export", json={"itemId": item_id, "format": "png", "ctx": bad})
     assert r.status_code == 422
     assert calls == []
+
+
+def test_post_export_503_marks_the_job_error_instead_of_leaving_it_pending(env):
+    """AUD-025 : file indisponible -> 503 et job `error` immédiat (pas d'orphelin `pending`)."""
+    from fastapi import HTTPException
+
+    from app.export.models import ExportJob
+
+    make_client, owner, _stranger, item_id, Session = env
+    client, _calls = make_client()
+    client.app.dependency_overrides[get_current_user] = lambda: owner
+    client.app.dependency_overrides[get_current_user_optional] = lambda: owner
+
+    def down(job_id, tenant_id):
+        raise HTTPException(status_code=503, detail="File de jobs indisponible, réessayez.")
+
+    client.app.dependency_overrides[export_routes.get_task_deferrer] = lambda: down
+    response = client.post("/v1/export", json={"itemId": item_id, "format": "png"})
+    assert response.status_code == 503
+    with Session() as s:
+        (job,) = s.query(ExportJob).all()
+        assert job.status == "error" and "mise en file" in job.error

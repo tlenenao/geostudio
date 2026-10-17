@@ -8,7 +8,9 @@ raison de import_paths)."""
 
 import logging
 import os
-from collections.abc import Callable
+import threading
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from typing import Protocol
 
 from sqlalchemy.orm import Session, sessionmaker
@@ -188,6 +190,32 @@ def _analytics_base_uri() -> str:
     return f"s3://{bucket}/cdc"
 
 
+_HEARTBEAT_SECONDS = 60
+
+
+@contextmanager
+def _heartbeat(session_factory, run_id: str) -> Iterator[None]:
+    """AUD-026 : thread de battement de cœur pendant l'exécution du run. Un
+    battement échoué est seulement journalisé (pire cas : ancien comportement)."""
+    stop = threading.Event()
+
+    def _beat() -> None:
+        while True:  # premier battement dès le départ, puis un par période
+            try:
+                with request_scoped_session(session_factory) as s:
+                    pipelines_repo.touch_heartbeat(s, run_id=run_id)
+            except Exception:
+                logger.warning("heartbeat run %s échoué", run_id, exc_info=True)
+            if stop.wait(_HEARTBEAT_SECONDS):
+                return
+
+    threading.Thread(target=_beat, daemon=True, name=f"hb-{run_id}").start()
+    try:
+        yield
+    finally:
+        stop.set()
+
+
 def _make_progress_callback(
     session_factory,
     *,
@@ -341,26 +369,29 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
                     session, tenant_id=tenant_id, pipeline_item_id=item_id
                 )
             )
-            stats = run_pipeline(
-                session,
-                payload=payload,
-                tenant_id=tenant_id,
-                user=user,
-                endpoint_url=os.environ["S3_ENDPOINT_URL"],
-                access_key=os.environ["S3_ACCESS_KEY"],
-                secret_key=os.environ["S3_SECRET_KEY"],
-                base_uri=_analytics_base_uri(),
-                s3_client=_s3_client_from_env(),
-                exports_bucket=os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports"),
-                on_node_complete=_make_progress_callback(
-                    factory, run_id=run_id, tenant_id=tenant_id
-                ),
-                on_progress=_make_progress_callback(factory, run_id=run_id, tenant_id=tenant_id),
-                should_cancel=tracker.is_cancel_requested,
-                run_id=run_id,
-                reader_state=reader_state,
-                checkpoint=checkpoint,
-            )
+            with _heartbeat(factory, run_id):
+                stats = run_pipeline(
+                    session,
+                    payload=payload,
+                    tenant_id=tenant_id,
+                    user=user,
+                    endpoint_url=os.environ["S3_ENDPOINT_URL"],
+                    access_key=os.environ["S3_ACCESS_KEY"],
+                    secret_key=os.environ["S3_SECRET_KEY"],
+                    base_uri=_analytics_base_uri(),
+                    s3_client=_s3_client_from_env(),
+                    exports_bucket=os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports"),
+                    on_node_complete=_make_progress_callback(
+                        factory, run_id=run_id, tenant_id=tenant_id
+                    ),
+                    on_progress=_make_progress_callback(
+                        factory, run_id=run_id, tenant_id=tenant_id
+                    ),
+                    should_cancel=tracker.is_cancel_requested,
+                    run_id=run_id,
+                    reader_state=reader_state,
+                    checkpoint=checkpoint,
+                )
             # F4 : le curseur n'avance qu'ici, run réussi (jamais sur échec).
             if reader_state.pending:
                 pipelines_repo.upsert_reader_states(
@@ -445,7 +476,12 @@ def run_pipeline_sweep_task(timestamp: int) -> None:
         overdue = pipelines_repo.requeue_overdue_retries(session)
         session.commit()
         for overdue_run_id, overdue_tenant_id in overdue:
-            run_pipeline_task.defer(run_id=overdue_run_id, tenant_id=overdue_tenant_id)
+            try:
+                run_pipeline_task.defer(run_id=overdue_run_id, tenant_id=overdue_tenant_id)
+            except Exception:  # le tick suivant reprendra la ligne (piège n°14)
+                logger.exception(
+                    "defer de reprise %s échoué, le balayage reprendra", overdue_run_id
+                )
         try:
             expired = checkpoints.purge_expired()
             if expired:  # plus de points de reprise : ne plus proposer « Reprendre »
@@ -485,4 +521,14 @@ def run_pipeline_sweep_task(timestamp: int) -> None:
             # l'intérieur de la boucle car chaque run doit être visible avant
             # SON propre defer, pas seulement le dernier de la file.
             session.commit()
-            run_pipeline_task.defer(run_id=run.id, tenant_id=tenant_id)
+            try:
+                run_pipeline_task.defer(run_id=run.id, tenant_id=tenant_id)
+            except Exception:
+                # AUD-025 : run non orphelin (sinon `pending` + 409 jusqu'au balayage).
+                logger.exception("defer du run planifié %s échoué", run.id)
+                pipelines_repo.mark_failed_if_queued(
+                    session,
+                    run_id=run.id,
+                    error="mise en file impossible : file de jobs indisponible",
+                )
+                session.commit()

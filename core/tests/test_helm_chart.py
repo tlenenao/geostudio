@@ -165,9 +165,8 @@ def test_commands_match_the_compose(docs):
     queues = re.search(r"-q ([a-z0-9,]+)", COMPOSE["worker"]["command"]).group(1)
     assert f"-q {queues}" in worker_cmd and "-c 4" in worker_cmd
     assert "scripts.ensure_procrastinate_schema" in worker_cmd
-    assert (
-        " ".join(_container(docs, "export-worker")["command"])
-        == COMPOSE["export-worker"]["command"]
+    assert " ".join(_container(docs, "export-worker")["command"]) == re.sub(
+        r"\$\{[A-Z_]+:-([^}]*)\}", r"\1", COMPOSE["export-worker"]["command"]
     )
     assert " ".join(_container(docs, "cdc-worker")["command"]) == COMPOSE["cdc-worker"]["command"]
     assert (
@@ -268,3 +267,20 @@ def test_ingress_requires_hosts():
         text=True,
     )
     assert bad.returncode != 0
+
+
+@pytest.mark.parametrize("suffix", ["worker", "export-worker"])
+def test_workers_render_a_termination_grace_period_above_the_graceful_timeout(docs, suffix):
+    """AUD-027 : arrêt gracieux (SIGTERM puis attente des jobs) avant SIGKILL."""
+    spec = _deployment(docs, suffix)["spec"]["template"]["spec"]
+    grace = spec["terminationGracePeriodSeconds"]
+    assert grace >= 300
+    cmd = " ".join(spec["containers"][0]["command"])
+    graceful = int(re.search(r"--shutdown-graceful-timeout (\d+)", cmd).group(1))
+    assert graceful < grace
+
+
+def test_worker_sh_c_execs_procrastinate_so_sigterm_reaches_it(docs):
+    """AUD-027 : `sh -c "a && python -m procrastinate …"` laisse sh en PID 1 (SIGTERM ignoré)."""
+    cmd = _container(docs, "worker")["command"]
+    assert cmd[:2] == ["sh", "-c"] and "&& exec python -m procrastinate" in cmd[2]
