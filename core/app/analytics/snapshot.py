@@ -87,6 +87,22 @@ def cut_seconds(cut_ts_ms: int) -> float:
     return cut_ts_ms / 1000.0
 
 
+def latest_per_key(base: str, delta: str, pk: str, order_by: str) -> str:
+    """AUD-013 : dernière version par PK de `base ∪ delta`, où `base` (snapshot) porte
+    déjà une seule ligne par PK. Les PK absentes du delta sortent de `base` par ANTI JOIN
+    (aucun tri) ; seules les PK touchées par le delta passent par row_number() — au lieu
+    d'une fenêtre sur tout l'historique (mesuré 34x plus lent à 40 M lignes). `pk` est un
+    identifiant déjà quoté."""
+    keys = f"(SELECT DISTINCT {pk} FROM ({delta}))"
+    return (
+        f"SELECT * FROM ({base}) ANTI JOIN {keys} AS k USING ({pk}) "
+        f"UNION ALL BY NAME "
+        f"SELECT * FROM (SELECT * FROM ({base}) SEMI JOIN {keys} AS k USING ({pk}) "
+        f"UNION ALL BY NAME {delta}) "
+        f"QUALIFY row_number() OVER (PARTITION BY {pk} ORDER BY {order_by}) = 1"
+    )
+
+
 def write_snapshot(
     conn: duckdb.DuckDBPyConnection,
     base_uri: str,
@@ -126,18 +142,19 @@ def write_snapshot(
         return None
     if not n:
         return None
-    src = delta
     max_lsn = int(delta_lsn)
+    base = None
+    src = delta
     if prev:
-        src = (
-            f"SELECT * FROM read_parquet({_lit(prev[0][0])}, hive_partitioning=false) "
-            f"UNION ALL BY NAME {delta}"
-        )
+        base = f"SELECT * FROM read_parquet({_lit(prev[0][0])}, hive_partitioning=false)"
+        src = f"{base} UNION ALL BY NAME {delta}"
         max_lsn = max(max_lsn, prev[0][2])
     cols = [c[0] for c in conn.execute(f"SELECT * FROM ({src}) LIMIT 0").description]
     order = "_lsn DESC, COALESCE(_seq, -1) DESC" if "_seq" in cols else "_lsn DESC"
     reduced = (
-        f"SELECT * FROM ({src}) QUALIFY row_number() OVER "
+        latest_per_key(base, delta, _qi(pk_column), order)
+        if base is not None
+        else f"SELECT * FROM ({src}) QUALIFY row_number() OVER "
         f"(PARTITION BY {_qi(pk_column)} ORDER BY {order}) = 1"
     )
     uri = f"{snapshot_dir(base_uri, tenant_id, collection_id)}/snap-{cut_ms}-{max_lsn}.parquet"

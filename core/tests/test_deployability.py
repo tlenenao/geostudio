@@ -734,6 +734,12 @@ def test_wms_flag_is_wired_to_core_and_off_by_default():
     assert _resolve_effective_value(raw, "CORE_OWS_WMS_ENABLED") == "false"
 
 
+def test_lake_snapshot_is_on_by_default():
+    """AUD-013 : sans snapshot, la lecture du lac retombe sur la fenêtre complète (lente)."""
+    raw = services(BASE)["worker"]["environment"]["CORE_LAKE_SNAPSHOT_ENABLED"]
+    assert _resolve_effective_value(raw, "CORE_LAKE_SNAPSHOT_ENABLED") == "true"
+
+
 def test_worker_has_a_resolved_memory_limit():
     """REV-275 (d) : borner la mémoire du PROCESS worker (t03b-008 ne borne que
     l'écrivain). Vérifie la valeur RÉSOLUE sans `.env` (piège n°2 : une

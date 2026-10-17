@@ -588,8 +588,9 @@ services:
       CORE_CDC_COMPACTION_RECENT_DAYS: ${CORE_CDC_COMPACTION_RECENT_DAYS:-7}
       # Balayage mensuel de toutes les partitions CDC (REV-280e), éteint par défaut.
       CORE_CDC_COMPACTION_MONTHLY: ${CORE_CDC_COMPACTION_MONTHLY:-false}
-      # Snapshot horaire d'état courant du lac (REV-280a), éteint par défaut.
-      CORE_LAKE_SNAPSHOT_ENABLED: ${CORE_LAKE_SNAPSHOT_ENABLED:-false}
+      # Snapshot horaire d'état courant du lac (REV-280a), actif par défaut (AUD-013) :
+      # sans lui, chaque lecture du lac trie tout l'historique de la collection.
+      CORE_LAKE_SNAPSHOT_ENABLED: ${CORE_LAKE_SNAPSHOT_ENABLED:-true}
       CORE_LAKE_SNAPSHOT_MIN_DELTA_FILES: ${CORE_LAKE_SNAPSHOT_MIN_DELTA_FILES:-20}
       CORE_LAKE_SNAPSHOT_GRACE_S: ${CORE_LAKE_SNAPSHOT_GRACE_S:-300}
       CORE_LAKE_SNAPSHOT_MAX_AGE_HOURS: ${CORE_LAKE_SNAPSHOT_MAX_AGE_HOURS:-24}
