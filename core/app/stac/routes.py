@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
-from app.auth.dependency import get_current_user_optional
+from app.auth.dependency import get_current_user_optional, read_post
 from app.bbox import parse_bbox_floats
 from app.collections.introspection import TableNotFound, UnsupportedTable, hide_sensitive_columns
 from app.collections.repository import list_visible_collections
@@ -484,6 +484,7 @@ def search_get(
 
 
 @router.post("/search", response_class=GeoJSONResponse)
+@read_post
 def search_post(
     request: Request,
     body: SearchBody,

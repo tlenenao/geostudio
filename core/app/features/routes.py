@@ -40,7 +40,7 @@ from app.analytics.sql_sandbox import SqlSandboxError, run_analyst_sql
 from app.attachments import repository as attachments_repo
 from app.attachments.routes import get_attachments_bucket, get_s3_client
 from app.audit.writer import write_audit
-from app.auth.dependency import get_current_user, get_current_user_optional
+from app.auth.dependency import get_current_user, get_current_user_optional, read_post
 from app.bbox import parse_bbox_floats
 from app.collections.domains import with_attribute_rules
 from app.collections.introspection import TableNotFound, hide_sensitive_columns
@@ -432,6 +432,7 @@ def get_analytics_base_uri():  # overridé en test (pointe un répertoire tmp_pa
 
 
 @router.post("/collections/{collection_id}/aggregate", response_model=AggregateResponse)
+@read_post
 def aggregate_features(
     collection_id: str,
     body: AggregateRequestBody,

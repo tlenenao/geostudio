@@ -337,3 +337,55 @@ def test_sensitive_routes_refuse_an_api_key(env, method, path, monkeypatch):
     resp = getattr(TestClient(app), method)(path, headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 403, resp.text
     assert resp.json()["detail"] == "not allowed with an api key"
+
+
+def _real_client(Session):
+    from app.main import create_app
+
+    app = create_app()
+
+    def override_session():
+        with request_scoped_session(Session) as session:
+            yield session
+
+    app.dependency_overrides[db.get_session] = override_session
+    return TestClient(app)
+
+
+_READ_POSTS = [
+    "/v1/collections/nope/aggregate",
+    "/v1/datasets/nope/arcgis/aggregate",
+]
+
+
+def _assert_read_posts_pass_and_writes_refused(client, token):
+    headers = {"Authorization": f"Bearer {token}"}
+    for path in _READ_POSTS:
+        resp = client.post(path, json={"measures": [{"op": "count"}]}, headers=headers)
+        # l'authentification passe : la route répond sur la ressource (inconnue ici)
+        assert resp.status_code not in (401, 403), (path, resp.text)
+        assert resp.json().get("detail") != "Not Found", path  # la route existe
+    write = client.post(
+        "/v1/collections/nope/items",
+        json={"type": "Feature", "geometry": None, "properties": {}},
+        headers=headers,
+    )
+    assert write.status_code == 403 and "read-only" in write.json()["detail"], write.text
+
+
+def test_read_only_key_can_post_marked_reads_but_not_write(env):
+    # C1 revue SP-L2 : agrégats en POST = lectures explicitement autorisées.
+    _client, Session, (_, admin_id, _) = env
+    _, token = _mint(Session, admin_id, read_only=True)
+    _assert_read_posts_pass_and_writes_refused(_real_client(Session), token)
+
+
+def test_export_token_can_post_marked_reads_but_not_write(env, monkeypatch):
+    # C1 revue SP-L2 : le rendu PDF des widgets lit ses agrégats en POST.
+    from app.auth.export_tokens import mint_export_token
+
+    _client, Session, (tenant_id, admin_id, _) = env
+    monkeypatch.setenv("CORE_EXPORT_TOKEN_SECRET", "test-export-secret-padding-01234")
+    monkeypatch.delenv("CORE_AUTH_MODE")  # la branche jeton d'export suit la branche mock
+    token = mint_export_token(tenant_id=tenant_id, user_id=admin_id, job_id="j", item_id="i")
+    _assert_read_posts_pass_and_writes_refused(_real_client(Session), token)
