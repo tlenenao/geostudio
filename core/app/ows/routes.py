@@ -34,7 +34,7 @@ from app.features.routes import (
     parse_crs,
 )
 from app.features.tiles import apply_tile_statement_timeout, get_collection_tile
-from app.ows import wfs
+from app.ows import wfs, wms
 from app.roles.guards import has_privilege
 from app.roles.privileges import Privilege
 
@@ -197,7 +197,24 @@ def _describe(q, session, user, guest, introspect, masked) -> Response:
 
 
 def _get_feature(request, q, session, user, guest, introspect, repo, rls, masked) -> Response:
-    names = _type_name(q)
+    # AUD-140 : RESOURCEID (WFS 2.0) / FEATUREID (1.x) = <type>.<id>, filtré en SQL.
+    rid = q.get("resourceid") or q.get("featureid")
+    ids: list[str] | None = None
+    if rid:
+        if q.get("bbox") or q.get("cql_filter"):
+            raise _bad("resourceId", "RESOURCEID is mutually exclusive with BBOX and CQL_FILTER")
+        parsed = [
+            r.strip().removeprefix("gs:").rpartition(".") for r in rid.split(",") if r.strip()
+        ]
+        types = {p[0] for p in parsed}
+        if len(types) != 1 or "" in types or any(not p[2] for p in parsed):
+            raise _bad("resourceId", "RESOURCEID must be <type>.<id> on a single feature type")
+        names = _type_name(q) if (q.get("typenames") or q.get("typename")) else list(types)
+        if names != list(types):
+            raise _bad("resourceId", "RESOURCEID type does not match typeNames")
+        ids = [p[2] for p in parsed]
+    else:
+        names = _type_name(q)
     if len(names) != 1:
         raise _bad("typeNames", "exactly one feature type per GetFeature is supported")
     col = _readable(session, user, guest, names[0], "typeNames")
@@ -213,6 +230,8 @@ def _get_feature(request, q, session, user, guest, introspect, repo, rls, masked
     start = _int(q, "startindex", 0, 0)
     srid = parse_crs(q.get("srsname"), "srsName") or 4326
     kwargs: dict = {}
+    if ids is not None:
+        kwargs["ids"] = ids
     if q.get("bbox"):
         kwargs["bbox"], bbox_srid = _bbox(q["bbox"])
         if bbox_srid != 4326:
@@ -269,6 +288,53 @@ def _get_feature(request, q, session, user, guest, introspect, repo, rls, masked
 # --- OGC API Tiles ---------------------------------------------------------
 
 
+def _tileset(request: Request, col) -> dict:
+    base = f"{str(request.base_url).rstrip('/')}/v1"
+    tiles = f"{base}/collections/{col.id}/tiles/{TMS}"
+    return {
+        "title": col.title,
+        "dataType": "vector",
+        "tileMatrixSetURI": TMS_URI,
+        "crs": "http://www.opengis.net/def/crs/EPSG/0/3857",
+        "links": [
+            {"rel": "self", "type": "application/json", "href": tiles},
+            {
+                "rel": "http://www.opengis.net/def/rel/ogc/1.0/tiling-scheme",
+                "type": "application/json",
+                "href": f"{base}/tileMatrixSets/{TMS}",
+            },
+            {
+                "rel": "item",
+                "type": "application/vnd.mapbox-vector-tile",
+                "templated": True,
+                "href": f"{tiles}/{{tileMatrix}}/{{tileRow}}/{{tileCol}}",
+            },
+        ],
+    }
+
+
+@router.get("/tileMatrixSets")
+def list_tile_matrix_sets(request: Request):
+    base = f"{str(request.base_url).rstrip('/')}/v1"
+    return {
+        "tileMatrixSets": [
+            {
+                "id": TMS,
+                "title": "Google Maps Compatible for the World",
+                "uri": TMS_URI,
+                "links": [{"rel": "self", "href": f"{base}/tileMatrixSets/{TMS}"}],
+            }
+        ]
+    }
+
+
+@router.get("/tileMatrixSets/{tms_id}")
+def get_tile_matrix_set(tms_id: str):
+    if tms_id != TMS:
+        raise HTTPException(status_code=404, detail="unknown tile matrix set")
+    return wms.tile_matrix_set_json()
+
+
 @router.get("/collections/{collection_id}/tiles")
 def list_tilesets(
     collection_id: str,
@@ -278,25 +344,22 @@ def list_tilesets(
     session: Session = Depends(get_session, scope="function"),
 ):
     col = _tiles_collection(session, user, guest, collection_id)
-    base = f"{str(request.base_url).rstrip('/')}/v1/collections/{col.id}/tiles"
-    return {
-        "tilesets": [
-            {
-                "title": col.title,
-                "dataType": "vector",
-                "tileMatrixSetURI": TMS_URI,
-                "crs": "http://www.opengis.net/def/crs/EPSG/0/3857",
-                "links": [
-                    {
-                        "rel": "item",
-                        "type": "application/vnd.mapbox-vector-tile",
-                        "templated": True,
-                        "href": f"{base}/{TMS}/{{tileMatrix}}/{{tileCol}}/{{tileRow}}",
-                    }
-                ],
-            }
-        ]
-    }
+    return {"tilesets": [_tileset(request, col)]}
+
+
+@router.get("/collections/{collection_id}/tiles/{tms}")
+def get_tileset(
+    collection_id: str,
+    tms: str,
+    request: Request,
+    user=Depends(get_current_user_optional),
+    guest: GuestActor | None = Depends(get_share_link_actor),
+    session: Session = Depends(get_session, scope="function"),
+):
+    col = _tiles_collection(session, user, guest, collection_id)
+    if tms != TMS:
+        raise HTTPException(status_code=404, detail="unknown tile matrix set")
+    return _tileset(request, col)
 
 
 def _tiles_collection(session, user, guest, collection_id: str):
@@ -306,13 +369,13 @@ def _tiles_collection(session, user, guest, collection_id: str):
         raise HTTPException(status_code=e.status, detail=e.message) from e
 
 
-@router.get("/collections/{collection_id}/tiles/{tms}/{z}/{x}/{y}")
+@router.get("/collections/{collection_id}/tiles/{tms}/{tile_matrix}/{tile_row}/{tile_col}")
 def get_ogc_tile(
     collection_id: str,
     tms: str,
-    z: int,
-    x: int,
-    y: int,
+    tile_matrix: int,
+    tile_row: int,
+    tile_col: int,
     request: Request,
     user=Depends(get_current_user_optional),
     guest: GuestActor | None = Depends(get_share_link_actor),
@@ -328,9 +391,9 @@ def get_ogc_tile(
         raise HTTPException(status_code=404, detail="unknown tile matrix set")
     return get_collection_tile(
         collection_id,
-        z,
-        x,
-        y,
+        tile_matrix,
+        tile_col,  # x
+        tile_row,  # y
         request,
         bin=None,  # le binning ARC-22 reste propre à la route `.mvt`
         stat="count",

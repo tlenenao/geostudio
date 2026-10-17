@@ -32,6 +32,7 @@ from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 from pyogrio.errors import DataLayerError, DataSourceError
 from pyproj.exceptions import ProjError
+from pyproj.transformer import TransformerGroup
 from shapely.errors import ShapelyError
 from shapely.geometry import Point, shape
 from shapely.geometry.base import BaseGeometry
@@ -496,6 +497,36 @@ def _temp_file(content: bytes, suffix: str) -> Iterator[str]:
         yield tmp.name
 
 
+_NTF_GEODETIC = {4275, 4807}  # NTF, NTF (Paris)
+
+
+def _is_ntf(crs: pyproj.CRS) -> bool:
+    geodetic = crs.geodetic_crs
+    return geodetic is not None and geodetic.to_epsg() in _NTF_GEODETIC
+
+
+def _ntf_transform(src: pyproj.CRS):
+    """AUD-127 : NTF -> RGF93 exige la grille IGN fr_ign_gr3df97a.tif. Sans elle, PROJ
+    retombe en silence sur un Helmert (~2 m vers 4326) ou un « ballpark » (vers 4171) :
+    on exige la grille vers RGF93 v1 (EPSG:4171), puis RGF93 -> WGS84."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")  # pyproj avertit quand une grille manque
+        group = TransformerGroup(src, 4171, always_xy=True)
+    if not group.best_available or not group.transformers:
+        raise IngestionParseError(
+            "Données en NTF : grille IGN fr_ign_gr3df97a.tif absente de l'installation PROJ, "
+            "transformation métrique impossible (python -m pyproj sync --file fr_ign_gr3df97a.tif)"
+        )
+    to_rgf93 = group.transformers[0]
+    to_wgs84 = pyproj.Transformer.from_crs(4171, _WGS84, always_xy=True)
+
+    def transform(x, y, z=None):
+        lon, lat = to_rgf93.transform(x, y)
+        return to_wgs84.transform(lon, lat)
+
+    return transform
+
+
 def _crs_transform(crs: str | None):
     try:
         src = pyproj.CRS.from_user_input(crs)
@@ -503,6 +534,8 @@ def _crs_transform(crs: str | None):
         raise IngestionParseError(f"CRS manquant ou non reconnu : {crs!r}") from exc
     if src == _WGS84:
         return None
+    if _is_ntf(src):
+        return _ntf_transform(src)
     try:
         transformer = pyproj.Transformer.from_crs(src, _WGS84, always_xy=True)
     except ProjError as exc:
@@ -782,8 +815,12 @@ def parse_geoparquet(content: bytes) -> Iterator[tuple[BaseGeometry, dict]]:
     # ce format ne passe jamais par list_layers()/l'étape d'inspection.
     with _temp_file(content, ".parquet") as path:
         gdf = gpd.read_parquet(path)
+        transform = None
         if gdf.crs is not None and gdf.crs.to_epsg() != 4326:
-            gdf = gdf.to_crs(epsg=4326)
+            if _is_ntf(gdf.crs):  # AUD-127 : même exigence de grille que _crs_transform
+                transform = _ntf_transform(gdf.crs)
+            else:
+                gdf = gdf.to_crs(epsg=4326)
         geom_col = gdf.geometry.name
         for i, row in gdf.iterrows():
             geom = row[geom_col]
@@ -792,6 +829,8 @@ def parse_geoparquet(content: bytes) -> Iterator[tuple[BaseGeometry, dict]]:
             # avec le pseudo-code de la spec SP-56 §3.1, corrigé ici).
             if geom is None or (isinstance(geom, float) and math.isnan(geom)):
                 raise IngestionParseError(f"entité {i} : géométrie manquante")
+            if transform is not None:
+                geom = shapely_transform(transform, geom)
             props = {k: _native_value(v) for k, v in row.items() if k != geom_col}
             yield geom, props
 

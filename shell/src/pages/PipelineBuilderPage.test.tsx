@@ -153,6 +153,7 @@ function renderPage(pk: string | null, overrides: Partial<ItemClient> = {}, rout
         rasterEnabled: false,
         routingEnabled: false,
         experimentalOpsEnabled: false,
+        externalBasemapsEnabled: true,
       }),
     ...overrides,
   };
@@ -210,6 +211,7 @@ function renderPageWithNavigation(
         rasterEnabled: false,
         routingEnabled: false,
         experimentalOpsEnabled: false,
+        externalBasemapsEnabled: true,
       }),
     ...overrides,
   };
@@ -265,6 +267,7 @@ function renderNewPipelineRoutes(overrides: Partial<ItemClient> = {}) {
         rasterEnabled: false,
         routingEnabled: false,
         experimentalOpsEnabled: false,
+        externalBasemapsEnabled: true,
       }),
     ...overrides,
   };
@@ -320,6 +323,7 @@ test("unsaved mode: affiche un message de désactivation au lieu du spinner infi
         rasterEnabled: false,
         routingEnabled: false,
         experimentalOpsEnabled: false,
+        externalBasemapsEnabled: true,
       }),
     // Simule des routes pipeline non montées côté cœur : jamais résolu,
     // pour prouver que la garde D09 n'attend pas opsQuery.
@@ -383,6 +387,7 @@ test("unsaved mode: n'affiche jamais le builder tant que /v1/instance n'a pas r�
       rasterEnabled: false,
       routingEnabled: false,
       experimentalOpsEnabled: false,
+      externalBasemapsEnabled: true,
     });
   });
   expect(

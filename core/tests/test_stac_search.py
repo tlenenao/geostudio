@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+import dataclasses
 from types import SimpleNamespace
 
 import pytest
@@ -10,7 +11,7 @@ from app.collections import routes as collections_routes
 from app.collections.introspection import ColumnInfo, TableInfo, TableNotFound
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.features import routes as features_routes
-from app.features.repository import FeaturePage
+from app.features.repository import FeaturePage, FilterError
 from app.main import create_app
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
@@ -52,9 +53,17 @@ def feat(fid):
 
 def make_repo():
     # Chaque collection a 2 features (ids 1,2). matched=2 par collection.
-    def select_features(session, info, *, limit, offset, bbox=None, filters=None):
-        rows = [feat(1), feat(2)][offset : offset + limit]
-        return FeaturePage(features=rows, number_matched=2, number_returned=len(rows))
+    def select_features(
+        session, info, *, limit, offset, bbox=None, filters=None, ids=None, geom_intersects=None
+    ):
+        if info.geometry_column is None and (bbox is not None or geom_intersects is not None):
+            # Miroir de features.repository._where (FilterError sans géométrie).
+            raise FilterError("bbox", "collection has no geometry")
+        rows = [feat(1), feat(2)]
+        if ids is not None:
+            rows = [f for f in rows if str(f["id"]) in ids]
+        page = rows[offset : offset + limit]
+        return FeaturePage(features=page, number_matched=len(rows), number_returned=len(page))
 
     def get_feature(session, info, *, fid):
         return None
@@ -241,3 +250,49 @@ def test_collection_patch_validates_dates_and_uris_on_write_only(env):
     )
     assert ok.status_code == 200
     assert client.patch("/v1/collections/roads", json={"licenseUri": ""}).status_code == 200
+
+
+def test_search_ids_filtered_before_pagination(env):
+    _app, client = env
+    body = client.get("/v1/stac/search?collections=roads&ids=2&limit=1").json()
+    assert [f["id"] for f in body["features"]] == ["2"]
+    assert not any(link["rel"] == "next" for link in body["links"])
+
+
+def test_search_rejects_unknown_parameters(env):
+    _app, client = env
+    assert client.get("/v1/stac/search?filter=x").status_code == 400
+    assert client.post("/v1/stac/search", json={"query": {}}).status_code in (400, 422)
+
+
+def test_search_intersects(env):
+    _app, client = env
+    geom = '{"type":"Point","coordinates":[1,44]}'
+    r = client.get("/v1/stac/search", params={"intersects": geom, "limit": 100})
+    assert r.status_code == 200 and len(r.json()["features"]) == 4
+    both = client.get("/v1/stac/search", params={"intersects": geom, "bbox": "0,0,1,1"})
+    assert both.status_code == 400
+    post = client.post(
+        "/v1/stac/search", json={"intersects": {"type": "Point", "coordinates": [1, 44]}}
+    )
+    assert post.status_code == 200
+
+
+def test_spatial_search_skips_collection_without_geometry(env, monkeypatch):
+    # Revue L6 I1 : un CSV sans coordonnées ne fait plus répondre 500 à toute la recherche.
+    app, client = env
+    monkeypatch.setitem(INFOS, "rivers", dataclasses.replace(INFOS["rivers"], geometry_column=None))
+    geom = '{"type":"Point","coordinates":[1,44]}'
+    for params in ({"intersects": geom}, {"bbox": "0,40,2,46"}):
+        r = client.get("/v1/stac/search", params={**params, "limit": 100})
+        assert r.status_code == 200, r.text
+        assert {f["collection"] for f in r.json()["features"]} == {"roads"}
+
+
+def test_invalid_intersects_geometry_is_400_not_500(env):
+    # Revue L6 M5 : géométrie syntaxiquement JSON mais vide/mal formée -> 400 (jumelle /items).
+    app, client = env
+    for bad in ('{"type":"Point","coordinates":[]}', '{"type":"Polygon","coordinates":[[[0,0]]]}'):
+        assert client.get("/v1/stac/search", params={"intersects": bad}).status_code == 400
+        r = client.get("/v1/collections/roads/items", params={"geom_intersects": bad})
+        assert r.status_code == 400, r.text

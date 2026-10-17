@@ -619,6 +619,21 @@ test("createMapItem posts a map skeleton and returns a map Item", async () => {
   expect(item).toMatchObject({ pk: "77", resourceType: "map", title: "Carte", configId: "cfg-1" });
 });
 
+test("createMapItem prend le fond vierge quand l'instance coupe les fonds externes", async () => {
+  let body: any;
+  server.use(
+    http.get("https://core.test/v1/instance", () =>
+      HttpResponse.json({ readOnly: false, externalBasemapsEnabled: false }),
+    ),
+    http.post("https://core.test/v1/configs", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ id: "cfg-1", kind: "map", itemId: "77" }, { status: 201 });
+    }),
+  );
+  await makeClient().createMapItem({ title: "Carte", owner: "alice" });
+  expect(body.config.map.basemap.style).toBe("/basemaps/blank.json");
+});
+
 test("getMapConfig reads and maps the builder map config", async () => {
   // ConfigRead nests the builder config under "config"; the map is config.map.
   server.use(

@@ -53,6 +53,7 @@ config:
   CORE_EXPORT_RUNNING_TIMEOUT_MINUTES: "60"
   CORE_EXPORT_SYNC_MAX: "100000"
   CORE_EXPORT_TRUSTED_ORIGINS: ""     # origines jointes même sur IP privée (fonds de carte de LAN)
+  CORE_EXTERNAL_BASEMAPS_ENABLED: "true"   # AUD-122 : "false" = pas de fond tiers sur les nouvelles cartes (shell.csp statique non dérivé)
   CORE_GEOCODING_EGRESS_ALLOWLIST: "data.geopf.fr"
   CORE_GEOCODING_PROVIDER: "ban"
   CORE_GEOCODING_URL: "https://data.geopf.fr/geocodage/search"

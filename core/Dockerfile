@@ -59,6 +59,11 @@ RUN uv export --frozen --no-dev --no-hashes --no-emit-project -o /tmp/requiremen
 # HOME, donc le même répertoire d'extensions (~/.duckdb/extensions).
 RUN python -c "import duckdb; c = duckdb.connect(); c.execute('INSTALL httpfs'); c.execute('INSTALL spatial'); c.execute('INSTALL h3 FROM community')"
 
+# AUD-127 : grille IGN NTF -> RGF93 (fr_ign_gr3df97a.tif, cdn.proj.org) dans le répertoire
+# utilisateur PROJ de HOME (=/opt/geostudio-home/.local/share/proj, lu par pyproj à
+# l'exécution) ; sans elle, l'ingestion d'un fichier NTF est refusée (parsers._ntf_transform).
+RUN python -m pyproj sync --file fr_ign_gr3df97a.tif
+
 COPY app ./app
 COPY alembic ./alembic
 COPY alembic.ini ./alembic.ini

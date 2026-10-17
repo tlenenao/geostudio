@@ -326,6 +326,8 @@ def _collection_json(
         "version": col.version,
         "temporalStart": col.temporal_start.isoformat() if col.temporal_start else None,
         "temporalEnd": col.temporal_end.isoformat() if col.temporal_end else None,
+        "keywords": list(col.keywords or []),
+        "inspireTheme": col.inspire_theme,
     }
 
 
@@ -543,8 +545,27 @@ def create_empty_collection_route(
     return _collection_json(col, permissions, reveal_sensitive=True)
 
 
+def _ogc_links(base: str, cid: str) -> list[dict]:
+    """Liens OGC d'une collection (AUD-044), partagés liste/détail."""
+    return [
+        {"rel": "self", "type": "application/json", "href": f"{base}/collections/{cid}"},
+        {"rel": "items", "type": "application/geo+json", "href": f"{base}/collections/{cid}/items"},
+        {
+            "rel": "http://www.opengis.net/def/rel/ogc/1.0/queryables",
+            "type": "application/schema+json",
+            "href": f"{base}/collections/{cid}/queryables",
+        },
+        {
+            "rel": "describedby",
+            "type": "application/xml",
+            "href": f"{base}/collections/{cid}/metadata",
+        },
+    ]
+
+
 @router.get("/collections")
 def list_collections(
+    request: Request,
     q: str | None = None,
     limit: int = Query(DEFAULT_LIMIT, ge=1),
     offset: int = Query(0, ge=0),
@@ -559,16 +580,16 @@ def list_collections(
     can_manage_collections = bool(
         user and has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
     )
-    cols = repo.list_visible_collections(
+    limit = min(limit, MAX_LIMIT)
+    cols_page, total = repo.page_visible_collections(
         session,
         tenant_id=tenant_id,
         user_id=user.id if user else None,
         can_see_all=can_manage_collections,
         q=q,
+        limit=limit,
+        offset=offset,
     )
-    limit = min(limit, MAX_LIMIT)
-    total = len(cols)
-    cols_page = cols[offset : offset + limit]
     owner_ids = {c.owner_id for c in cols_page}
     owners = (
         dict(session.execute(select(User.id, User.username).where(User.id.in_(owner_ids))).all())
@@ -583,18 +604,42 @@ def list_collections(
         can_manage_collections=can_manage_collections,
         collections=cols_page,
     )
+    base = str(request.base_url).rstrip("/") + "/v1"
+    links = [{"rel": "self", "type": "application/json", "href": str(request.url)}]
+    if offset + len(cols_page) < total:
+        links.append(
+            {
+                "rel": "next",
+                "type": "application/json",
+                "href": str(request.url.include_query_params(limit=limit, offset=offset + limit)),
+            }
+        )
+    if offset > 0:
+        links.append(
+            {
+                "rel": "prev",
+                "type": "application/json",
+                "href": str(
+                    request.url.include_query_params(limit=limit, offset=max(offset - limit, 0))
+                ),
+            }
+        )
     reveal_sensitive = _may_see_sensitive(session, user)
+    collections = []
+    for c in cols_page:
+        body = _collection_json(
+            c,
+            permissions_by_id[c.id],
+            owner=owners.get(c.owner_id),
+            reveal_sensitive=reveal_sensitive or is_owner(user, c),
+            geo_limited=c.table_name in geo_limits,
+        )
+        body["itemType"] = "feature"
+        body["links"] = _ogc_links(base, c.id)
+        collections.append(body)
     return {
-        "collections": [
-            _collection_json(
-                c,
-                permissions_by_id[c.id],
-                owner=owners.get(c.owner_id),
-                reveal_sensitive=reveal_sensitive or is_owner(user, c),
-                geo_limited=c.table_name in geo_limits,
-            )
-            for c in cols_page
-        ],
+        "collections": collections,
+        "links": links,
         "numberMatched": total,
         "numberReturned": len(cols_page),
     }
@@ -674,14 +719,7 @@ def get_collection(
     # request.base_url ne porte jamais /v1 (juste scheme://host/) — ce
     # routeur est nesté sous /v1 (SP-57b), l'ajouter explicitement ici.
     base = str(request.base_url).rstrip("/") + "/v1"
-    body["links"] = [
-        {"rel": "self", "type": "application/json", "href": f"{base}/collections/{col.id}"},
-        {
-            "rel": "items",
-            "type": "application/geo+json",
-            "href": f"{base}/collections/{col.id}/items",
-        },
-    ]
+    body["links"] = _ogc_links(base, col.id)
     try:
         info = introspect(session, col.table_name)
         bbox = extent_provider(session, info, col.tenant_id)
@@ -911,6 +949,7 @@ def patch_collection(
         ("lineage", body.lineage),
         ("language", body.language),
         ("version", body.version),
+        ("inspire_theme", body.inspireTheme),
     ):
         if value is not None:
             setattr(col, attr, value)
@@ -925,6 +964,8 @@ def patch_collection(
         col.temporal_start = body.temporalStart
     if "temporalEnd" in body.model_fields_set:
         col.temporal_end = body.temporalEnd
+    if body.keywords is not None:
+        col.keywords = body.keywords
     if body.attachmentFields is not None:
         col.attachment_fields = [f.model_dump() for f in body.attachmentFields]
     if new_domains is not None:

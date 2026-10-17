@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Open standards and API (SP-L6)**: OGC API Records (`/v1/records`) over public item kinds
+  with content status, ISO 19139 metadata per collection
+  (`/v1/collections/{id}/metadata`), collection keywords and INSPIRE theme (migration 0095),
+  udata harvesting connector, WMS 1.1.1 alongside 1.3.0, NTF/Lambert II imports through the IGN
+  grid. **Sovereign basemap mode** (`CORE_EXTERNAL_BASEMAPS_ENABLED=false`, AUD-122): new
+  maps (creation, import) get a local blank basemap, third-party basemaps (MapLibre demo,
+  Carto, IGN Géoplateforme) disappear from pickers, and their origins leave the dynamic CSP.
+  It does **not** rewrite existing maps whose style already points to a third party, nor cover
+  the pipeline builder preview map, the "swipe" template or the Helm chart's static
+  `shell.csp`.
+
 - **FME matrix closure** (2026-10-15): ~85 pipeline ops (attribute/text/MGRS, Shapely geometry,
   raster, NetCDF/GRIB/OSM/CityJSON/WMS/Sentinel-2 readers, email/Slack/SNS/Kinesis/RabbitMQ/MCP
   messaging, cloud-file connectors, `databaseJoin`, SRID 0, 3D draping), secret kinds `oauth2_client`
@@ -76,6 +87,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **OGC API Tiles URL order (SP-L6, breaking)**: the advertised tile template changed from
+  `{z}/{x}/{y}` to the standard `{tileMatrix}/{tileRow}/{tileCol}`. Clients following the
+  advertised template are unaffected; a client that hard-coded the old order silently gets
+  row/column-swapped tiles (no 404).
+- **Strict STAC search (SP-L6, breaking)**: `/v1/stac/search` rejects unknown GET parameters
+  (400) and unknown POST body fields (422) instead of ignoring them — clients sending `fields`,
+  `sortby`, `filter` or `f=json` now fail. An empty or invalid `intersects` geometry is a 400
+  (also on OGC Features `geom_intersects`), and a spatial search skips collections without
+  geometry instead of failing.
 - **Pipelines: correct ETL (SP-L5, breaking)**: `transform.join` names a colliding right-side
   column with `rightPrefix` (default `right_x`) instead of DuckDB's `x_1`, and fails if the
   prefixed name still collides; `reader.wfs` and the ArcGIS reader fail instead of silently

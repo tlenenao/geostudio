@@ -6,7 +6,12 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.catalog.metadata import validate_frequency_id, validate_language_id, validate_license_id
+from app.catalog.metadata import (
+    validate_frequency_id,
+    validate_inspire_theme_id,
+    validate_language_id,
+    validate_license_id,
+)
 
 _EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 
@@ -155,6 +160,23 @@ class CollectionPatch(BaseModel):
     version: str | None = None
     temporalStart: date | None = None
     temporalEnd: date | None = None
+    keywords: list[str] | None = Field(default=None, max_length=50)
+    inspireTheme: str | None = None
+
+    @field_validator("keywords")
+    @classmethod
+    def _validate_keywords(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return v
+        cleaned = [k.strip() for k in v]
+        if any(not k or len(k) > 100 for k in cleaned):
+            raise ValueError("keywords must be non-empty strings of at most 100 characters")
+        return list(dict.fromkeys(cleaned))  # dédoublonné, ordre conservé
+
+    @field_validator("inspireTheme")
+    @classmethod
+    def _validate_inspire_theme(cls, v: str | None) -> str | None:
+        return validate_inspire_theme_id(v)
 
     @field_validator("license")
     @classmethod

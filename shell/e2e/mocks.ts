@@ -140,6 +140,7 @@ const DEFAULT_ME = {
     rasterEnabled: false,
     routingEnabled: false,
     experimentalOpsEnabled: false,
+    externalBasemapsEnabled: true,
   },
 };
 

@@ -16,6 +16,7 @@ from app.auth.dependency import (
     is_copilot_enabled,
     is_etl_enabled,
     is_export_enabled,
+    is_external_basemaps_enabled,
     is_pipeline_experimental_ops_enabled,
     is_quotas_enabled,
     is_raster_enabled,
@@ -60,6 +61,7 @@ class MeCapabilities(BaseModel):
     quotasEnabled: bool
     rasterEnabled: bool
     routingEnabled: bool
+    externalBasemapsEnabled: bool
     experimentalOpsEnabled: bool
 
 
@@ -116,6 +118,7 @@ def get_me(
             quotasEnabled=is_quotas_enabled(),
             rasterEnabled=is_raster_enabled(),
             routingEnabled=is_routing_enabled(),
+            externalBasemapsEnabled=is_external_basemaps_enabled(),
             experimentalOpsEnabled=is_pipeline_experimental_ops_enabled(),
         ),
     )

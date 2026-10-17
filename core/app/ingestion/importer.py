@@ -20,6 +20,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
+from app.auth.dependency import is_external_basemaps_enabled
 from app.collections import repository as collections_repo
 from app.collections.ddl import apply_collection_ddl
 from app.collections.domains import with_attribute_rules
@@ -57,8 +58,14 @@ from app.sharing.authorization import can
 from app.sharing.geo_limits import resolve_geo_limits
 from app.sql_ident import quote_ident
 
-# Doit rester synchronisé avec shell/src/map/basemaps.ts DEFAULT_BASEMAP.style.
-_DEFAULT_BASEMAP_STYLE = "https://demotiles.maplibre.org/style.json"
+# Doit rester synchronisé avec shell/src/map/basemaps.ts (DEFAULT_BASEMAP / BLANK_BASEMAP).
+_EXTERNAL_BASEMAP_STYLE = "https://demotiles.maplibre.org/style.json"
+BLANK_BASEMAP_STYLE = "/basemaps/blank.json"
+
+
+def default_basemap_style() -> str:
+    return _EXTERNAL_BASEMAP_STYLE if is_external_basemaps_enabled() else BLANK_BASEMAP_STYLE
+
 
 _GEOM_TYPE_MAP = {
     "Point": "Point",
@@ -556,7 +563,7 @@ def run_import(
     config = BuilderConfig(
         kind="map",
         map=MapConfig(
-            basemap=BaseMap(style=_DEFAULT_BASEMAP_STYLE),
+            basemap=BaseMap(style=default_basemap_style()),
             view=MapView(center=center, zoom=zoom),
             layers=[
                 MapLayer(

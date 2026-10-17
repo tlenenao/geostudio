@@ -116,6 +116,8 @@ def _dataset_doc(*, base, col, bbox, publisher_name):
         temporal_start=col.temporal_start.isoformat() if col.temporal_start else None,
         temporal_end=col.temporal_end.isoformat() if col.temporal_end else None,
         producer_declared=bool(col.producer),
+        keywords=col.keywords,
+        inspire_theme=col.inspire_theme,
     )
 
 
@@ -148,13 +150,17 @@ def get_catalog(
         for col in cols_page
     ]
     doc = serializers.catalog(base=base, tenant_name=tenant.name, datasets=datasets)
+    view: dict = {"@id": str(request.url), "@type": "hydra:PartialCollectionView"}
     if offset + len(cols_page) < total:
-        doc["links"] = [
-            {
-                "rel": "next",
-                "href": str(request.url.include_query_params(limit=limit, offset=offset + limit)),
-            }
-        ]
+        next_href = str(request.url.include_query_params(limit=limit, offset=offset + limit))
+        view["hydra:next"] = next_href
+        doc["links"] = [{"rel": "next", "href": next_href}]
+    if offset > 0:
+        view["hydra:previous"] = str(
+            request.url.include_query_params(limit=limit, offset=max(offset - limit, 0))
+        )
+    doc["hydra:view"] = view
+    doc["hydra:totalItems"] = total
     return JSONResponse(content=doc, media_type=MEDIA_TYPE)
 
 

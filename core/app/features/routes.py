@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, R
 from fastapi.responses import JSONResponse
 from opentelemetry import metrics
 from pydantic import BaseModel
+from shapely.geometry import shape
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import Session
@@ -60,7 +61,7 @@ from app.configs.guest_access import GuestActor, get_share_link_actor
 from app.db import get_session
 from app.errors import ValidationHTTPException
 from app.features.etag import feature_etag, if_match_satisfied
-from app.features.repository import CursorError, FilterError
+from app.features.repository import CursorError, FilterError, _property_columns
 from app.features.validation import validate_for_write
 from app.filter_values import fold_query_filters
 from app.history import service as history
@@ -113,6 +114,7 @@ CONFORMANCE_CLASSES = [
     # ARC-12 : CQL2-text en sous-ensemble (cf. app/features/cql2.py)
     "http://www.opengis.net/spec/ogcapi-features-3/1.0/conf/filter",
     "http://www.opengis.net/spec/ogcapi-features-3/1.0/conf/features-filter",
+    "http://www.opengis.net/spec/ogcapi-features-3/1.0/conf/queryables",
     "http://www.opengis.net/spec/cql2/1.0/conf/cql2-text",
     "http://www.opengis.net/spec/cql2/1.0/conf/basic-cql2",
     "http://www.opengis.net/spec/cql2/1.0/conf/advanced-comparison-operators",
@@ -130,7 +132,7 @@ def landing_page(request: Request):
     # posé directement sur `app`, jamais sous un routeur inclus).
     base = str(request.base_url).rstrip("/")
     v1 = f"{base}/v1"
-    return {
+    body: dict = {
         "title": "GeoStudio OGC API Features",
         "description": "Collections éditables du cœur GeoStudio",
         "links": [
@@ -144,11 +146,35 @@ def landing_page(request: Request):
             },
         ],
     }
+    if getattr(request.app.state, "ogc_tiles_enabled", False):  # AUD-042
+        body["links"].append(
+            {
+                "rel": "http://www.opengis.net/def/rel/ogc/1.0/tiling-schemes",
+                "type": "application/json",
+                "href": f"{v1}/tileMatrixSets",
+            }
+        )
+    return body
+
+
+# AUD-042 : annoncées seulement quand les routes Tiles/TMS sont montées (CORE_OWS_ENABLED,
+# lu une fois par create_app -> app.state.ogc_tiles_enabled ; app.ows est au-dessus de
+# app.features dans le contrat de couches, d'où l'état plutôt qu'un import).
+TILES_CONFORMANCE_CLASSES = [
+    "http://www.opengis.net/spec/ogcapi-tiles-1/1.0/conf/core",
+    "http://www.opengis.net/spec/ogcapi-tiles-1/1.0/conf/tileset",
+    "http://www.opengis.net/spec/ogcapi-tiles-1/1.0/conf/tilesets-list",
+    "http://www.opengis.net/spec/ogcapi-tiles-1/1.0/conf/geodata-tilesets",
+    "http://www.opengis.net/spec/ogcapi-tiles-1/1.0/conf/mvt",
+    "http://www.opengis.net/spec/tms/2.0/conf/tilematrixset",
+    "http://www.opengis.net/spec/tms/2.0/conf/json-tilematrixset",
+]
 
 
 @router.get("/conformance")
-def conformance():
-    return {"conformsTo": CONFORMANCE_CLASSES}
+def conformance(request: Request):
+    tiles = getattr(request.app.state, "ogc_tiles_enabled", False)
+    return {"conformsTo": CONFORMANCE_CLASSES + (TILES_CONFORMANCE_CLASSES if tiles else [])}
 
 
 def get_features_repo():  # overridé en test SQLite
@@ -200,6 +226,60 @@ def get_masked_for_user(
     # Volet privilège seul ; l'exception propriétaire se règle par collection
     # (`unmask_for_owner`, appelée là où `col` est résolue).
     return not has_sensitive_privilege(session, user)
+
+
+_QUERYABLE_TYPES = {
+    "string": {"type": "string"},
+    "integer": {"type": "integer"},
+    "number": {"type": "number"},
+    "boolean": {"type": "boolean"},
+    "date": {"type": "string", "format": "date"},
+    "datetime": {"type": "string", "format": "date-time"},
+    "enum": {"type": "string"},
+}
+
+
+@router.get("/collections/{collection_id}/queryables")
+def get_queryables(
+    collection_id: str,
+    request: Request,
+    user=Depends(get_current_user_optional),
+    guest: GuestActor | None = Depends(get_share_link_actor),
+    session: Session = Depends(get_session, scope="function"),
+    introspect=Depends(get_introspector),
+    masked=Depends(get_masked_for_user),
+):
+    """OGC API Features Part 3 (AUD-041) : propriétés filtrables (CQL2 / filtres simples),
+    même porte de lecture et même masquage que /items. Les colonnes list/unsupported
+    ne sont pas filtrables (_where les refuse) donc absentes."""
+    col = get_collection_for_read(session, user, collection_id, guest=guest)
+    masked = unmask_for_owner(masked, user, col)
+    info = introspect(session, col.table_name)
+    if masked:
+        info = hide_sensitive_columns(info, col.sensitive_fields)
+    props: dict[str, dict] = {}
+    for c in _property_columns(info):
+        if c.type not in _QUERYABLE_TYPES:
+            continue
+        schema = {"title": c.name, **_QUERYABLE_TYPES[c.type]}
+        if c.type == "enum" and c.enum_values:
+            schema["enum"] = list(c.enum_values)
+        if c.max_length:
+            schema["maxLength"] = c.max_length
+        props[c.name] = schema
+    if info.geometry_column:
+        # alias « geometry » accepté par app/features/cql2.py pour la colonne géométrique
+        props["geometry"] = {"format": "geometry-any", "x-ogc-role": "primary-geometry"}
+    v1 = str(request.base_url).rstrip("/") + "/v1"
+    body = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": f"{v1}/collections/{col.id}/queryables",
+        "type": "object",
+        "title": col.title,
+        "properties": props,
+        "additionalProperties": False,
+    }
+    return JSONResponse(content=body, media_type="application/schema+json")
 
 
 def _validation_error(errors: list[dict], status: int = 400):
@@ -286,6 +366,22 @@ def _parse_geom_intersects(raw: str | None):
                     "field": "geom_intersects",
                     "code": "invalid_geom_intersects",
                     "message": "geom_intersects must be a GeoJSON geometry encoded as JSON",
+                }
+            ]
+        )
+    try:
+        # Revue L6 M5 : coordonnées vides/mal formées -> ST_GeomFromGeoJSON lèverait
+        # une DBAPIError (500) ; shapely refuse ou rend une géométrie vide.
+        empty = shape(parsed).is_empty
+    except Exception:  # noqa: BLE001 - toute entrée illisible est une erreur client
+        empty = True
+    if empty:
+        raise _validation_error(
+            [
+                {
+                    "field": "geom_intersects",
+                    "code": "invalid_geom_intersects",
+                    "message": "geom_intersects must be a valid, non-empty GeoJSON geometry",
                 }
             ]
         )

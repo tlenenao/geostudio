@@ -126,10 +126,16 @@ def test_dcat_catalog_is_paginated(env):
     assert len(body["dcat:dataset"]) == 2
     rels = {link["rel"]: link["href"] for link in body.get("links", [])}
     assert "offset=2" in rels["next"]
+    assert body["@context"]["hydra"] == "http://www.w3.org/ns/hydra/core#"
+    assert body["hydra:view"]["@type"] == "hydra:PartialCollectionView"
+    assert "offset=2" in body["hydra:view"]["hydra:next"]
+    assert body["hydra:totalItems"] == 3
 
     body2 = client.get("/v1/dcat/catalog?limit=2&offset=2").json()
     assert len(body2["dcat:dataset"]) == 1
     assert "next" not in {link["rel"] for link in body2.get("links", [])}
+    assert "hydra:next" not in body2["hydra:view"]
+    assert "offset=0" in body2["hydra:view"]["hydra:previous"]
 
 
 def test_broken_collection_degrades_instead_of_failing_whole_catalog(env, caplog):
@@ -205,6 +211,7 @@ def test_dataset_detail_is_self_contained_with_context(env):
         "xsd": "http://www.w3.org/2001/XMLSchema#",
         "vcard": "http://www.w3.org/2006/vcard/ns#",
         "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+        "hydra": "http://www.w3.org/ns/hydra/core#",
     }
     assert body["dct:identifier"] == "incidents"
 
@@ -380,4 +387,24 @@ def test_dcat_dataset_without_declared_metadata_omits_optional_fields(env):
     # PAS un défaut de non-régression.
     assert body["dct:language"] == {
         "@id": "http://publications.europa.eu/resource/authority/language/FRA"
+    }
+
+
+def test_dataset_carries_keywords_theme_and_conformance(env):
+    app, client, admin, _regular, _Session = env
+    _register(app, client, admin)
+    _as(app, admin)
+    r = client.patch(
+        "/v1/collections/incidents",
+        json={"keywords": ["voirie", "réseau", "voirie"], "inspireTheme": "tn"},
+    )
+    assert r.status_code == 200
+    assert (r.json()["keywords"], r.json()["inspireTheme"]) == (["voirie", "réseau"], "tn")
+    assert client.patch("/v1/collections/incidents", json={"inspireTheme": "zz"}).status_code == 422
+    doc = client.get("/v1/dcat/datasets/incidents").json()
+    assert doc["dcat:keyword"] == ["voirie", "réseau"]
+    assert doc["dcat:theme"] == {"@id": "http://inspire.ec.europa.eu/theme/tn"}
+    geojson = doc["dcat:distribution"][0]
+    assert geojson["dct:conformsTo"] == {
+        "@id": "http://www.opengis.net/doc/IS/ogcapi-features-1/1.0"
     }

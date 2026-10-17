@@ -125,3 +125,31 @@ def to_png(canvas: _Canvas, bgcolor: tuple[int, int, int] | None) -> bytes:
     buf = io.BytesIO()
     img.save(buf, format="PNG", compress_level=1)
     return buf.getvalue()
+
+
+LEGEND_ROW = 20
+LEGEND_WIDTH = 200
+LEGEND_MAX_ROWS = 100
+
+
+def legend_png(style: Style) -> bytes:
+    """Une ligne de 20 px par règle : pastille selon la géométrie + titre (AUD-045)."""
+    rules = style.rules[:LEGEND_MAX_ROWS]
+    img = Image.new("RGBA", (LEGEND_WIDTH, LEGEND_ROW * max(len(rules), 1)), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    for i, rule in enumerate(rules):
+        y = i * LEGEND_ROW
+        fill = _rgba(rule.fill, rule.fill_opacity)
+        if style.geometry_kind == "point":
+            draw.ellipse((4, y + 4, 16, y + 16), fill=fill)
+        elif style.geometry_kind == "line":
+            line = _rgba(rule.stroke or rule.fill, 1.0)
+            draw.line((2, y + 10, 18, y + 10), fill=line, width=max(int(rule.stroke_width), 1))
+        else:
+            draw.rectangle((2, y + 3, 18, y + 17), fill=fill)
+        # police bitmap par défaut de Pillow : latin-1 seulement
+        label = rule.title.encode("latin-1", "replace").decode("latin-1")
+        draw.text((24, y + 4), label, fill=(0, 0, 0, 255))
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    return buf.getvalue()

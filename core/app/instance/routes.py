@@ -13,6 +13,7 @@ from app.auth.dependency import (
     is_copilot_enabled,
     is_etl_enabled,
     is_export_enabled,
+    is_external_basemaps_enabled,
     is_pipeline_experimental_ops_enabled,
     is_quotas_enabled,
     is_raster_enabled,
@@ -58,6 +59,7 @@ def get_instance_info() -> dict:
         "rasterEnabled": is_raster_enabled(),
         "routingEnabled": is_routing_enabled(),
         "experimentalOpsEnabled": is_pipeline_experimental_ops_enabled(),
+        "externalBasemapsEnabled": is_external_basemaps_enabled(),
     }
 
 

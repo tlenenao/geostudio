@@ -387,6 +387,8 @@ layers = [
     "app.public_submit",
     "app.ingestion",
     "app.notifications",
+    # app.records (AUD-048) : OGC API Records + ISO 19139, au-dessus de dcat/items/catalog.
+    "app.records",
     "app.dcat",
     "app.stac",
     # app.ows (ARC-11, ADR 0018) : WFS 2.0 + OGC API Tiles, au-dessus de app.features

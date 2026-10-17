@@ -92,6 +92,9 @@ beforeEach(() => {
         { id: "fr", label: "Français" },
         { id: "en", label: "Anglais" },
       ],
+      inspireThemes: [
+        { id: "hy", label: "Hydrographie", uri: "http://inspire.ec.europa.eu/theme/hy" },
+      ],
     },
   });
   mockUseCollectionSchema.mockReturnValue({
@@ -352,6 +355,23 @@ describe("EditCollectionPanel — métadonnées ouvertes (SP-41)", () => {
     await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
     expect(mutateAsync).toHaveBeenCalledWith(
       expect.objectContaining({ temporalStart: null, temporalEnd: null }),
+    );
+  });
+
+  it("envoie les mots-clés et le thème INSPIRE", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue(undefined);
+    mockUseUpdateCollection.mockReturnValue({ mutateAsync, isPending: false, isError: false });
+    render(<EditCollectionPanel collection={baseCollection} onClose={vi.fn()} />);
+    await userEvent.click(screen.getByRole("tab", { name: "Métadonnées ouvertes" }));
+    await userEvent.type(
+      screen.getByLabelText("Mots-clés (séparés par des virgules)"),
+      "eau, rivière ,",
+    );
+    await userEvent.click(screen.getByRole("combobox", { name: "Thème INSPIRE" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Hydrographie" }));
+    await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+    expect(mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ keywords: ["eau", "rivière"], inspireTheme: "hy" }),
     );
   });
 

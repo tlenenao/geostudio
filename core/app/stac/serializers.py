@@ -14,7 +14,7 @@ CONFORMANCE_CLASSES = [
     "https://api.stacspec.org/v1.0.0/ogcapi-features",
     "https://api.stacspec.org/v1.0.0/item-search",
     "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/core",
-    "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/oas30",
+    # Pas de conf/oas30 : document OpenAPI 3.1 (REV-364 b, AUD-043).
     "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/geojson",
 ]
 

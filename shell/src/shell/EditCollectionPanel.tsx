@@ -51,6 +51,8 @@ export function EditCollectionPanel({
   const [lineage, setLineage] = useState(collection.lineage);
   const [language, setLanguage] = useState(collection.language);
   const [version, setVersion] = useState(collection.version);
+  const [keywords, setKeywords] = useState((collection.keywords ?? []).join(", "));
+  const [inspireTheme, setInspireTheme] = useState(collection.inspireTheme || UNSET);
   const [temporalStart, setTemporalStart] = useState(collection.temporalStart ?? "");
   const [temporalEnd, setTemporalEnd] = useState(collection.temporalEnd ?? "");
 
@@ -61,6 +63,10 @@ export function EditCollectionPanel({
   const frequencyOptions = [
     { value: UNSET, label: t("editCollection.noFrequencyOption") },
     ...(catalogQuery.data?.frequencies.map((f) => ({ value: f.id, label: f.label })) ?? []),
+  ];
+  const inspireOptions = [
+    { value: UNSET, label: t("editCollection.noInspireThemeOption") },
+    ...(catalogQuery.data?.inspireThemes?.map((th) => ({ value: th.id, label: th.label })) ?? []),
   ];
   const languageOptions =
     catalogQuery.data?.languages.map((l) => ({ value: l.id, label: l.label })) ?? [];
@@ -105,6 +111,11 @@ export function EditCollectionPanel({
         lineage,
         language,
         version,
+        keywords: keywords
+          .split(",")
+          .map((k) => k.trim())
+          .filter(Boolean),
+        inspireTheme: inspireTheme === UNSET ? "" : inspireTheme,
         temporalStart: temporalStart || null,
         temporalEnd: temporalEnd || null,
       });
@@ -231,6 +242,19 @@ export function EditCollectionPanel({
                   <label className="flex flex-col gap-1 text-sm text-ink">
                     {t("editCollection.versionLabel")}
                     <Input value={version} onChange={(e) => setVersion(e.target.value)} />
+                  </label>
+                  <label className="flex flex-col gap-1 text-sm text-ink">
+                    {t("editCollection.keywordsLabel")}
+                    <Input value={keywords} onChange={(e) => setKeywords(e.target.value)} />
+                  </label>
+                  <label className="flex flex-col gap-1 text-sm text-ink">
+                    {t("editCollection.inspireThemeLabel")}
+                    <Select
+                      aria-label={t("editCollection.inspireThemeLabel")}
+                      value={inspireTheme}
+                      onValueChange={setInspireTheme}
+                      options={inspireOptions}
+                    />
                   </label>
                   <div className="flex gap-2">
                     <label className="flex flex-1 flex-col gap-1 text-sm text-ink">

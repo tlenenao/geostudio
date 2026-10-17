@@ -2,6 +2,7 @@
 import pytest
 
 from app.catalog import metadata as m
+from app.catalog.metadata import INSPIRE_THEMES, resolve_inspire_theme, validate_inspire_theme_id
 
 
 def test_license_ids_match_the_curated_list():
@@ -79,3 +80,17 @@ def test_validate_language_id_rejects_empty_string():
     # valide : language a toujours une vraie valeur (défaut "fr").
     with pytest.raises(ValueError, match="unknown language id"):
         m.validate_language_id("")
+
+
+def test_inspire_themes_are_the_34_annex_themes():
+    assert len(INSPIRE_THEMES) == 34
+    assert len({t.id for t in INSPIRE_THEMES}) == 34
+    hy = resolve_inspire_theme("hy")
+    assert (hy.label, hy.iso_category, hy.uri) == (
+        "Hydrographie",
+        "inlandWaters",
+        "http://inspire.ec.europa.eu/theme/hy",
+    )
+    assert validate_inspire_theme_id("") == ""
+    with pytest.raises(ValueError):
+        validate_inspire_theme_id("zz")

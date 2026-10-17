@@ -161,3 +161,76 @@ def validate_language_id(value: str | None) -> str | None:
     if value is not None and value not in LANGUAGE_IDS:
         raise ValueError(f"unknown language id: {value!r}")
     return value
+
+
+@dataclass(frozen=True)
+class InspireTheme:
+    id: str
+    label: str
+    iso_category: str  # MD_TopicCategoryCode (ISO 19115) associé
+
+    @property
+    def uri(self) -> str:
+        return f"http://inspire.ec.europa.eu/theme/{self.id}"
+
+
+# Les 34 thèmes des annexes I-III de la directive INSPIRE (registre inspire.ec.europa.eu).
+INSPIRE_THEMES: list[InspireTheme] = [
+    InspireTheme("ad", "Adresses", "location"),
+    InspireTheme("au", "Unités administratives", "boundaries"),
+    InspireTheme("cp", "Parcelles cadastrales", "planningCadastre"),
+    InspireTheme("gg", "Systèmes de maillage géographique", "location"),
+    InspireTheme("gn", "Dénominations géographiques", "location"),
+    InspireTheme("hy", "Hydrographie", "inlandWaters"),
+    InspireTheme("ps", "Sites protégés", "environment"),
+    InspireTheme("rs", "Référentiels de coordonnées", "location"),
+    InspireTheme("tn", "Réseaux de transport", "transportation"),
+    InspireTheme("el", "Altitude", "elevation"),
+    InspireTheme("ge", "Géologie", "geoscientificInformation"),
+    InspireTheme("lc", "Occupation des terres", "imageryBaseMapsEarthCover"),
+    InspireTheme("oi", "Ortho-imagerie", "imageryBaseMapsEarthCover"),
+    InspireTheme("af", "Installations agricoles et aquacoles", "farming"),
+    InspireTheme(
+        "am",
+        "Zones de gestion, de restriction ou de réglementation et unités de déclaration",
+        "planningCadastre",
+    ),
+    InspireTheme("ac", "Conditions atmosphériques", "climatologyMeteorologyAtmosphere"),
+    InspireTheme("br", "Régions biogéographiques", "biota"),
+    InspireTheme("bu", "Bâtiments", "structure"),
+    InspireTheme("er", "Sources d'énergie", "economy"),
+    InspireTheme("ef", "Installations de suivi environnemental", "structure"),
+    InspireTheme("hb", "Habitats et biotopes", "biota"),
+    InspireTheme("hh", "Santé et sécurité des personnes", "health"),
+    InspireTheme("lu", "Usage des sols", "planningCadastre"),
+    InspireTheme(
+        "mf", "Caractéristiques géographiques météorologiques", "climatologyMeteorologyAtmosphere"
+    ),
+    InspireTheme("mr", "Ressources minérales", "economy"),
+    InspireTheme("nz", "Zones à risque naturel", "geoscientificInformation"),
+    InspireTheme("of", "Caractéristiques géographiques océanographiques", "oceans"),
+    InspireTheme("pd", "Répartition de la population — démographie", "society"),
+    InspireTheme("pf", "Lieux de production et sites industriels", "structure"),
+    InspireTheme("sr", "Régions maritimes", "oceans"),
+    InspireTheme("so", "Sols", "geoscientificInformation"),
+    InspireTheme("sd", "Répartition des espèces", "biota"),
+    InspireTheme("su", "Unités statistiques", "boundaries"),
+    InspireTheme("us", "Services d'utilité publique et services publics", "utilitiesCommunication"),
+]
+
+INSPIRE_THEME_IDS: frozenset[str] = frozenset(t.id for t in INSPIRE_THEMES)
+_INSPIRE_BY_ID: dict[str, InspireTheme] = {t.id: t for t in INSPIRE_THEMES}
+
+
+def resolve_inspire_theme(theme_id: str) -> InspireTheme | None:
+    return _INSPIRE_BY_ID.get(theme_id)
+
+
+def validate_inspire_theme_id(value: str | None) -> str | None:
+    if value is not None and value != "" and value not in INSPIRE_THEME_IDS:
+        raise ValueError(f"unknown INSPIRE theme id: {value!r}")
+    return value
+
+
+# ISO 639-2/B (gmd:LanguageCode des fiches ISO 19139 INSPIRE) — clés = LANGUAGE_IDS.
+ISO639_2B: dict[str, str] = {"fr": "fre", "en": "eng", "de": "ger", "es": "spa", "it": "ita"}

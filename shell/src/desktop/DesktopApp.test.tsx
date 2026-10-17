@@ -72,6 +72,7 @@ function makeClient(): ItemClient {
         rasterEnabled: false,
         routingEnabled: false,
         experimentalOpsEnabled: false,
+        externalBasemapsEnabled: true,
       }),
   };
   return client as ItemClient;

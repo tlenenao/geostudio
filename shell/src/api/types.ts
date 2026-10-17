@@ -117,6 +117,7 @@ export type MetadataCatalog = {
   licenses: LicenseCatalogEntry[];
   frequencies: FrequencyCatalogEntry[];
   languages: LanguageCatalogEntry[];
+  inspireThemes?: { id: string; label: string; uri: string }[];
 };
 
 export type RoleSummary = {
@@ -288,6 +289,9 @@ export type InstanceInfo = {
   rasterEnabled: boolean;
   routingEnabled: boolean;
   experimentalOpsEnabled: boolean;
+  /** AUD-122 : fonds de carte tiers proposés. Requis (parité `MeCapabilities`), mais le
+   * shell lit `!== false` : un cœur antérieur qui ne l'envoie pas garde les fonds tiers. */
+  externalBasemapsEnabled: boolean;
 };
 
 export type ProbeStatus = { ok: boolean; error?: string };
@@ -1498,6 +1502,8 @@ export type CollectionAdmin = {
   version: string;
   temporalStart: string | null;
   temporalEnd: string | null;
+  keywords?: string[];
+  inspireTheme?: string;
 };
 
 export type CandidateTable =
@@ -1534,10 +1540,12 @@ export type CollectionPatchInput = {
   version?: string;
   temporalStart?: string | null;
   temporalEnd?: string | null;
+  keywords?: string[];
+  inspireTheme?: string;
 };
 
 export type HarvestSourceType =
-  "stac" | "arcgis" | "wms" | "wfs" | "wmts" | "csw" | "ogc-records" | "ckan";
+  "stac" | "arcgis" | "wms" | "wfs" | "wmts" | "csw" | "ogc-records" | "ckan" | "udata";
 export type HarvestSourceMode = "reference" | "copy";
 export type HarvestSourceStatus = "running" | "ok" | "error" | null;
 
