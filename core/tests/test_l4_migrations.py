@@ -210,3 +210,45 @@ def test_orm_seal_scrub_and_retention_work_through_the_real_trigger(throwaway_ur
         ]
         assert chain.verify(s, "t1")["ok"] and len(s3.objects) == 1
     engine.dispose()
+
+
+def test_tenant_limits_migration_round_trips_on_a_non_empty_base(throwaway_url):
+    cfg = _cfg()
+    previous = os.environ.get("DATABASE_URL")
+    os.environ["DATABASE_URL"] = throwaway_url
+    try:
+        command.upgrade(cfg, "0121")
+        engine = sa.create_engine(throwaway_url)
+        with engine.begin() as conn:
+            conn.execute(
+                sa.text(
+                    "INSERT INTO tenants (id, slug, name, created_at) "
+                    "VALUES ('t1', 't1', 'T', now())"
+                )
+            )
+        command.upgrade(cfg, "head")
+        with engine.begin() as conn:
+            conn.execute(
+                sa.text("INSERT INTO tenant_limits (tenant_id, max_users) VALUES ('t1', 5)")
+            )
+            for table in ("item_shares", "collection_shares"):  # 0123 (AUD-097)
+                conn.execute(sa.text(f"SELECT expires_at FROM {table}"))
+            conn.execute(sa.text("DELETE FROM tenants WHERE id = 't1'"))  # CASCADE
+            assert conn.scalar(sa.text("SELECT count(*) FROM tenant_limits")) == 0
+            conn.execute(
+                sa.text(
+                    "INSERT INTO tenants (id, slug, name, created_at) "
+                    "VALUES ('t1', 't1', 'T', now())"
+                )
+            )
+        command.downgrade(cfg, "0121")
+        with engine.begin() as conn:
+            assert conn.scalar(sa.text("SELECT count(*) FROM tenants WHERE id = 't1'")) == 1
+            assert conn.scalar(sa.text("SELECT to_regclass('tenant_limits')")) is None
+        command.upgrade(cfg, "head")
+        engine.dispose()
+    finally:
+        if previous is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = previous

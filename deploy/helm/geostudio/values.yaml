@@ -101,6 +101,9 @@ config:
   CORE_QUOTA_MAX_COLLECTIONS_PER_TENANT: ""
   CORE_QUOTA_MAX_ITEMS_PER_TENANT: ""
   CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT: ""
+  CORE_QUOTA_MAX_USERS_PER_TENANT: ""
+  CORE_QUOTA_MAX_ACTIVE_RUNS_PER_TENANT: ""
+  CORE_AUDIT_RETENTION_DAYS: "0"   # 0 = audit conservé sans limite ; sinon archivé sur S3 puis purgé
   CORE_RATELIMIT_SHARE_LINK_PER_MIN: "60"
   CORE_RASTER_CONVERSION_TIMEOUT_SECONDS: "900"
   CORE_RASTER_ENABLED: "false"
@@ -128,6 +131,7 @@ config:
   S3_APPEXPORTS_BUCKET: "geostudio-appexports"
   S3_ATTACHMENTS_BUCKET: "geostudio-attachments"
   S3_CDC_BUCKET: "geostudio-cdc"
+  S3_COMPLIANCE_BUCKET: "geostudio-compliance"
   S3_ENDPOINT_URL: "http://minio:9000"
   S3_EXPORTS_BUCKET: "geostudio-exports"
   S3_MAPICONS_BUCKET: "geostudio-mapicons"

@@ -56,6 +56,7 @@ from app.pipelines import checkpoints
 from app.pipelines.models import PipelineRun
 from app.public_submit.models import Submission, SubmissionToken
 from app.quality.models import QualityReport
+from app.quotas.models import TenantLimits
 from app.raster.models import RasterAsset, RasterJob
 from app.raster.routes import get_raster_bucket
 from app.relations.models import CollectionRelation
@@ -323,6 +324,7 @@ def purge_tenant(
     counts["harvest_sources"] = _delete_all(session, HarvestSource, tenant_id)
     counts["map_icons"] = _delete_all(session, MapIcon, tenant_id)
     counts["tenant_basemaps"] = _delete_all(session, TenantBasemap, tenant_id)
+    counts["tenant_limits"] = _delete_all(session, TenantLimits, tenant_id)  # AUD-098
     counts["geocode_jobs"] = _delete_all(session, GeocodeJob, tenant_id)
     counts["extensions"] = _delete_all(session, Extension, tenant_id)
     counts["group_members"] = _delete_all(session, GroupMember, tenant_id)

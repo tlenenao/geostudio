@@ -13,6 +13,7 @@ from app.configs.models import Config, ConfigRevision
 from app.items.models import Item
 from app.outbox.emit import emit
 from app.pipelines.models import PipelineReaderState, PipelineRun, PipelineWebhookToken
+from app.quotas.service import max_active_runs_per_tenant, quotas_enabled
 from app.users.models import User
 
 # AUD-084 : N échecs consécutifs ouvrent le circuit (plus de run planifié).
@@ -110,6 +111,21 @@ def create_run_unless_active(
     ).first()
     if active is not None:
         raise PipelineRunActive(pipeline_item_id)
+    # AUD-098 : plafond de runs actifs par tenant (REST/MCP/webhook : 409 ; cron : reporté
+    # au balayage suivant, comme un run déjà actif).
+    cap = max_active_runs_per_tenant(session, tenant_id) if quotas_enabled() else None
+    if cap is not None:
+        running = session.scalar(
+            select(func.count())
+            .select_from(PipelineRun)
+            .where(
+                PipelineRun.tenant_id == tenant_id,
+                PipelineRun.status.in_(_ACTIVE_STATUSES),
+                _run_anchor() >= threshold,
+            )
+        )
+        if (running or 0) >= cap:
+            raise PipelineRunActive(f"tenant run cap {cap} reached")
     return create_run(
         session,
         tenant_id=tenant_id,

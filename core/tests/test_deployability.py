@@ -1042,6 +1042,10 @@ def test_release_gate_arm64_smoke_tests_minio_health():
 BACKUP_EXCLUDED_BUCKETS = {
     "S3_EXPORTS_BUCKET",
     "S3_APPEXPORTS_BUCKET",
+    # AUD-092/121 : journal d'effacement RGPD, volontairement HORS sauvegarde — restaurer une
+    # base ancienne ne doit pas rétrograder le journal qui sert à rejouer les effacements
+    # postérieurs à cette sauvegarde (cf. app/compliance/replay.py).
+    "S3_COMPLIANCE_BUCKET",
 }
 
 
@@ -2626,6 +2630,8 @@ def test_worker_gets_the_same_quota_env_as_core():
         "CORE_QUOTA_MAX_ITEMS_PER_TENANT",
         "CORE_QUOTA_MAX_COLLECTIONS_PER_TENANT",
         "CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT",
+        "CORE_QUOTA_MAX_USERS_PER_TENANT",
+        "CORE_QUOTA_MAX_ACTIVE_RUNS_PER_TENANT",
     ):
         for name in ("core", "worker"):
             assert var in (svc[name].get("environment") or {}), f"{var} absent de `{name}`"

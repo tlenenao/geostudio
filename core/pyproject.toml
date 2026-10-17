@@ -448,6 +448,8 @@ ignore_imports = [
     # P26.03 : le quota d'items est contrôlé au point unique de création
     # (items.repository.create_item) ; quotas.service n'importe que items.models.
     "app.items.repository -> app.quotas.service",
+    # AUD-098 : plafond d'utilisateurs contrôlé à la création JIT (users.repository).
+    "app.users.repository -> app.quotas.service",
     "app.quotas.service -> app.export.models",
     "app.quotas.service -> app.appexport.models",
     # `app.analytics` est placé au plus bas du contrat (ajouté par SP-22) : il
@@ -549,6 +551,7 @@ ignore_imports = [
     "app.db -> app.extensions.models",
     "app.db -> app.harvest.models",
     "app.db -> app.pipelines.models",
+    "app.db -> app.quotas.models",
     "app.db -> app.alerts.models",
     "app.db -> app.secrets.models",
     "app.db -> app.export.models",

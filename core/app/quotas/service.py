@@ -21,6 +21,7 @@ from app.appexport.models import AppExportJob
 from app.collections.models import Collection
 from app.export.models import ExportJob
 from app.items.models import Item
+from app.quotas.models import TenantLimits
 from app.users.models import User
 
 
@@ -171,19 +172,52 @@ def usage_for_tenant(session: Session, s3, tenant_id: str) -> UsageSnapshot:
     )
 
 
-def max_items_per_tenant() -> int | None:
-    """CORE_QUOTA_MAX_ITEMS_PER_TENANT — None = pas de limite configurée,
-    même quand CORE_QUOTAS_ENABLED est actif (spec §3.1, décision : une
-    seule limite instance-wide, appliquée identiquement à tout tenant)."""
-    return _limit("CORE_QUOTA_MAX_ITEMS_PER_TENANT")
+def _override(session: Session | None, tenant_id: str | None, column: str) -> int | None:
+    """AUD-098 : plafond propre au tenant (table tenant_limits), None = pas de surcharge."""
+    if session is None or tenant_id is None:
+        return None
+    return session.scalar(
+        select(getattr(TenantLimits, column)).where(TenantLimits.tenant_id == tenant_id)
+    )
 
 
-def max_collections_per_tenant() -> int | None:
-    return _limit("CORE_QUOTA_MAX_COLLECTIONS_PER_TENANT")
+def _resolve(session: Session | None, tenant_id: str | None, column: str, env: str) -> int | None:
+    over = _override(session, tenant_id, column)
+    return over if over is not None else _limit(env)
 
 
-def max_storage_bytes_per_tenant() -> int | None:
-    return _limit("CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT")
+def max_items_per_tenant(
+    session: Session | None = None, tenant_id: str | None = None
+) -> int | None:
+    """Surcharge `tenant_limits.max_items`, sinon CORE_QUOTA_MAX_ITEMS_PER_TENANT —
+    None = pas de limite configurée, même quand CORE_QUOTAS_ENABLED est actif."""
+    return _resolve(session, tenant_id, "max_items", "CORE_QUOTA_MAX_ITEMS_PER_TENANT")
+
+
+def max_collections_per_tenant(
+    session: Session | None = None, tenant_id: str | None = None
+) -> int | None:
+    return _resolve(session, tenant_id, "max_collections", "CORE_QUOTA_MAX_COLLECTIONS_PER_TENANT")
+
+
+def max_storage_bytes_per_tenant(
+    session: Session | None = None, tenant_id: str | None = None
+) -> int | None:
+    return _resolve(
+        session, tenant_id, "max_storage_bytes", "CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT"
+    )
+
+
+def max_users_per_tenant(
+    session: Session | None = None, tenant_id: str | None = None
+) -> int | None:
+    return _resolve(session, tenant_id, "max_users", "CORE_QUOTA_MAX_USERS_PER_TENANT")
+
+
+def max_active_runs_per_tenant(
+    session: Session | None = None, tenant_id: str | None = None
+) -> int | None:
+    return _resolve(session, tenant_id, "max_active_runs", "CORE_QUOTA_MAX_ACTIVE_RUNS_PER_TENANT")
 
 
 def _limit(var: str) -> int | None:
@@ -205,6 +239,8 @@ def validate_quota_settings() -> None:
     max_items_per_tenant()
     max_collections_per_tenant()
     max_storage_bytes_per_tenant()
+    max_users_per_tenant()
+    max_active_runs_per_tenant()
 
 
 class QuotaExceededError(HTTPException):
@@ -239,22 +275,32 @@ def _lock_tenant_kind(session: Session, tenant_id: str, kind: str) -> None:
 
 def check_quota_or_raise(session: Session, *, tenant_id: str, kind: str) -> None:
     """Lève QuotaExceededError si la limite instance-wide de comptage `kind`
-    ("items" ou "collections") serait dépassée par une création de plus.
+    ("items", "collections" ou "users") serait dépassée par une création de plus.
     Appelée au point unique de création (items.repository.create_item,
     collections.repository.create_collection) : REST, MCP, jobs, moissonnage.
     Sans effet quand CORE_QUOTAS_ENABLED est éteint."""
-    if kind not in ("items", "collections"):
+    if kind not in ("items", "collections", "users"):
         raise ValueError(f"unknown quota kind: {kind}")
     if not quotas_enabled():
         return
-    limit = max_items_per_tenant() if kind == "items" else max_collections_per_tenant()
+    limit = {
+        "items": max_items_per_tenant,
+        "collections": max_collections_per_tenant,
+        "users": max_users_per_tenant,
+    }[kind](session, tenant_id)
     if limit is None:
         return
     _lock_tenant_kind(session, tenant_id, kind)
-    count = count_items_for_tenant if kind == "items" else count_collections_for_tenant
+    count = {
+        "items": count_items_for_tenant,
+        "collections": count_collections_for_tenant,
+        "users": count_users_for_tenant,
+    }[kind]
     current = count(session, tenant_id)
     if current >= limit:
-        label = "d'items" if kind == "items" else "de collections"
+        label = {"items": "d'items", "collections": "de collections", "users": "d'utilisateurs"}[
+            kind
+        ]
         raise QuotaExceededError(
             kind, current, limit, f"quota {label} du tenant dépassé : {current}/{limit}"
         )
@@ -268,7 +314,7 @@ def enforce_storage_quota(
     refus seulement si l'usage réel dépasse la limite (limite+1 octet refusé,
     limite exacte acceptée). Au refus, l'objet fautif est supprimé (j08b-002)
     pour ne pas laisser d'orphelin compté."""
-    limit = max_storage_bytes_per_tenant()
+    limit = max_storage_bytes_per_tenant(session, tenant_id)
     if not quotas_enabled() or limit is None:
         return
     current = usage_for_tenant(session, s3, tenant_id).storage_bytes
