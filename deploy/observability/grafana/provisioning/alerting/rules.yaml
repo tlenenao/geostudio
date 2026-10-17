@@ -29,7 +29,7 @@ groups:
         noDataState: OK
         execErrState: Error
         labels: {severity: warning, slo: api-features-latency}
-        annotations: {summary: "Latence P95 des routes OGC API Features au-dessus de 200ms depuis 5 minutes"}
+        annotations: {summary: "Latence P95 des routes OGC API Features au-dessus de 200ms depuis 5 minutes", runbook_url: "https://github.com/tlenenao/geostudio/blob/main/docs/runbooks/2026-10-17-astreinte-alertes.md#slo-api-features-latency-p95"}
         isPaused: false
 
       - uid: slo-martin-tiles-latency-p95
@@ -56,7 +56,7 @@ groups:
         noDataState: OK
         execErrState: Error
         labels: {severity: warning, slo: martin-tiles-latency}
-        annotations: {summary: "Latence P95 des tuiles Martin au-dessus de 50ms depuis 5 minutes"}
+        annotations: {summary: "Latence P95 des tuiles Martin au-dessus de 50ms depuis 5 minutes", runbook_url: "https://github.com/tlenenao/geostudio/blob/main/docs/runbooks/2026-10-17-astreinte-alertes.md#slo-martin-tiles-latency-p95"}
         isPaused: false
 
       - uid: slo-jobs-backlog
@@ -85,7 +85,7 @@ groups:
         noDataState: Alerting
         execErrState: Error
         labels: {severity: warning, slo: jobs-backlog}
-        annotations: {summary: "Backlog de jobs procrastinate au-dessus du seuil depuis 5 minutes"}
+        annotations: {summary: "Backlog de jobs procrastinate au-dessus du seuil depuis 5 minutes", runbook_url: "https://github.com/tlenenao/geostudio/blob/main/docs/runbooks/2026-10-17-astreinte-alertes.md#slo-jobs-backlog"}
         isPaused: false
 
       - uid: slo-api-5xx-rate
@@ -112,7 +112,7 @@ groups:
         noDataState: Alerting
         execErrState: Error
         labels: {severity: critical, slo: api-5xx-rate}
-        annotations: {summary: "Taux de réponses 5xx au-dessus de 1% depuis 5 minutes"}
+        annotations: {summary: "Taux de réponses 5xx au-dessus de 1% depuis 5 minutes", runbook_url: "https://github.com/tlenenao/geostudio/blob/main/docs/runbooks/2026-10-17-astreinte-alertes.md#slo-api-5xx-rate"}
         isPaused: false
 
       # ── Exploitation (AUD-035, SP-L3) ──────────────────────────────
@@ -148,7 +148,7 @@ groups:
         noDataState: Alerting
         execErrState: Error
         labels: {severity: critical, slo: ops-cdc-slot-inactive}
-        annotations: {summary: "Aucun consommateur ne tient le slot de réplication CDC depuis 10 minutes : cdc-worker arrêté ou en boucle de redémarrage, le WAL s'accumule"}
+        annotations: {summary: "Aucun consommateur ne tient le slot de réplication CDC depuis 10 minutes : cdc-worker arrêté ou en boucle de redémarrage, le WAL s'accumule", runbook_url: "https://github.com/tlenenao/geostudio/blob/main/docs/runbooks/2026-10-17-astreinte-alertes.md#ops-cdc-slot-inactive"}
         isPaused: false
 
       - uid: ops-cdc-slot-wal
@@ -175,7 +175,7 @@ groups:
         noDataState: Alerting
         execErrState: Error
         labels: {severity: critical, slo: ops-cdc-slot-wal}
-        annotations: {summary: "Le slot de réplication CDC retient plus de 5 Gio de WAL : pg_wal grossit jusqu'à saturer le disque de Postgres"}
+        annotations: {summary: "Le slot de réplication CDC retient plus de 5 Gio de WAL : pg_wal grossit jusqu'à saturer le disque de Postgres", runbook_url: "https://github.com/tlenenao/geostudio/blob/main/docs/runbooks/2026-10-17-astreinte-alertes.md#ops-cdc-slot-wal"}
         isPaused: false
 
       - uid: ops-jobs-failed
@@ -202,7 +202,7 @@ groups:
         noDataState: Alerting
         execErrState: Error
         labels: {severity: warning, slo: ops-jobs-failed}
-        annotations: {summary: "Au moins un job procrastinate est passé en échec dans les dernières 24 heures"}
+        annotations: {summary: "Au moins un job procrastinate est passé en échec dans les dernières 24 heures", runbook_url: "https://github.com/tlenenao/geostudio/blob/main/docs/runbooks/2026-10-17-astreinte-alertes.md#ops-jobs-failed"}
         isPaused: false
 
       - uid: ops-jobs-oldest-age
@@ -229,7 +229,7 @@ groups:
         noDataState: Alerting
         execErrState: Error
         labels: {severity: warning, slo: ops-jobs-oldest-age}
-        annotations: {summary: "Un job exigible attend un worker depuis plus de 30 minutes : worker arrêté, file non consommée ou saturée"}
+        annotations: {summary: "Un job exigible attend un worker depuis plus de 30 minutes : worker arrêté, file non consommée ou saturée", runbook_url: "https://github.com/tlenenao/geostudio/blob/main/docs/runbooks/2026-10-17-astreinte-alertes.md#ops-jobs-oldest-age"}
         isPaused: false
 
   # Dossier séparé, volontairement distinct de SLO : preuve reproductible

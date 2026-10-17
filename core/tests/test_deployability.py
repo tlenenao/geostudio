@@ -2071,6 +2071,25 @@ def test_ops_rules_cover_cdc_lag_slot_wal_and_jobs():
         assert "slo" in rules[uid]["labels"], f"{uid} : routage policies.yaml sur le label slo"
 
 
+ASTREINTE_RUNBOOK = REPO / "docs/runbooks/2026-10-17-astreinte-alertes.md"
+
+
+def test_every_alert_rule_links_to_its_runbook_section():
+    """AUD-039 : une alerte sans consigne réveille quelqu'un qui ne sait pas
+    quoi faire. Chaque règle active pointe vers sa section du runbook, qui
+    existe."""
+    sections = set(re.findall(r"^## (\S+)$", ASTREINTE_RUNBOOK.read_text(), re.M))
+    prefix = (
+        "https://github.com/tlenenao/geostudio/blob/main/docs/runbooks/"
+        f"{ASTREINTE_RUNBOOK.name}#"
+    )
+    for uid, rule in _alert_rules().items():
+        if rule.get("isPaused"):
+            continue
+        assert rule["annotations"].get("runbook_url") == prefix + uid, uid
+        assert uid in sections, f"section « ## {uid} » absente du runbook"
+
+
 def test_publish_edge_triggers_only_on_merge_to_main():
     """Rebuild sur CHAQUE exécution de CI (chaque push, chaque PR) inonderait
     le registre d'images pour des commits jamais mergés — vérifié contre
