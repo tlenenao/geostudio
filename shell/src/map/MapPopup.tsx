@@ -10,7 +10,8 @@ import "../i18n/domains/map";
 // projetée. C'est ce qui le rend testable sans carte.
 //
 // dangerouslySetInnerHTML est ici le second usage légitime du dépôt : `html`
-// sort TOUJOURS de renderPopupTemplate, donc de sanitizeMarkdown() (DOMPurify).
+// sort TOUJOURS de renderPopupTemplate, donc de renderMarkdownWithValues()
+// (valeurs échappées, jamais du markdown — AUD-050 — puis DOMPurify).
 // Ce fichier est pour cette raison dans le bloc d'exception d'eslint.config.js.
 export function MapPopup({
   content,

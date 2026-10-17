@@ -2,6 +2,12 @@
 import { expect, test, vi } from "vitest";
 import { interpolatePopupTemplate, renderPopupTemplate } from "./popupTemplate";
 
+const dom = (html: string) => {
+  const div = document.createElement("div");
+  div.innerHTML = html;
+  return div;
+};
+
 const ctx = (record: Record<string, unknown>) => ({
   vars: {},
   user: { name: "t" },
@@ -89,13 +95,43 @@ test("renderPopupTemplate turns markdown into html", () => {
 });
 
 test("renderPopupTemplate neutralizes html injected through a property value", () => {
-  // La valeur vient de la donnée, potentiellement d'un tiers. On interpole
-  // d'abord, on assainit ensuite : DOMPurify est la garantie (spec §3.5).
+  // La valeur vient de la donnée, potentiellement d'un tiers : elle reste du
+  // texte échappé (AUD-050), DOMPurify passe en dernier.
   const html = renderPopupTemplate("${record.nom}", ctx({ nom: '<img src=x onerror="alert(1)">' }));
-  expect(html).not.toContain("onerror");
+  expect(dom(html).querySelector("img")).toBeNull();
+  expect(dom(html).textContent).toContain('<img src=x onerror="alert(1)">');
 });
 
 test("renderPopupTemplate strips a script tag injected through a property value", () => {
   const html = renderPopupTemplate("${record.nom}", ctx({ nom: "<script>alert(1)</script>" }));
   expect(html.toLowerCase()).not.toContain("<script");
+});
+
+test("a property value never becomes markdown: no injected link or image (AUD-050)", () => {
+  const html = renderPopupTemplate(
+    "Nom : ${record.nom}",
+    ctx({ nom: "[cliquez](https://evil.example) ![x](https://evil.example/p.png) **gras**" }),
+  );
+  expect(html).not.toContain("<a");
+  expect(html).not.toContain("<img");
+  expect(html).not.toContain("<strong");
+  expect(html).toContain("[cliquez](https://evil.example)");
+});
+
+test("an author link fed by a value still works, its scheme stays filtered (AUD-050)", () => {
+  const ok = renderPopupTemplate("[voir](${record.url})", ctx({ url: "https://ex.org/a?b=1&c=2" }));
+  expect(ok).toContain('href="https://ex.org/a?b=1&amp;c=2"');
+  expect(ok).toContain('rel="noopener noreferrer"');
+  const bad = renderPopupTemplate("[voir](${record.url})", ctx({ url: "javascript:alert(1)" }));
+  expect(bad).not.toContain("javascript:");
+});
+
+test("a quote in a value cannot break out of an attribute (AUD-050)", () => {
+  const html = renderPopupTemplate(
+    "[voir](${record.url})",
+    ctx({ url: 'https://ex.org/" onmouseover="alert(1)' }),
+  );
+  const a = dom(html).querySelector("a")!;
+  expect(a.hasAttribute("onmouseover")).toBe(false);
+  expect(a.getAttribute("href")).toBe('https://ex.org/" onmouseover="alert(1)');
 });
