@@ -489,6 +489,9 @@ export type MapLayer =
       kind: "vector";
       tilesUrl: string;
       sourceLayer: string;
+      // AUD-051 : plage d'échelle (zoom MapLibre) hors de laquelle la couche est masquée.
+      minZoom?: number;
+      maxZoom?: number;
       // REV-304 : champ temporel filtré par le contexte temps global (widget carte).
       timeField?: string;
       paint?: Record<string, unknown>;
@@ -512,6 +515,9 @@ export type MapLayer =
       visible: boolean;
       kind: "feature";
       url: string;
+      // AUD-051 : plage d'échelle (zoom MapLibre) hors de laquelle la couche est masquée.
+      minZoom?: number;
+      maxZoom?: number;
       paint?: Record<string, unknown>;
       renderAs?: "fill" | "circle" | "line";
       cluster?: ClusterConfig;

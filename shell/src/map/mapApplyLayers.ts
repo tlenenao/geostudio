@@ -28,6 +28,18 @@ import {
 } from "./mapLayerBuild";
 import "../i18n/domains/map";
 
+// AUD-051 : plage d'échelle par couche — posée sur le layer ET sur toutes ses sous-couches
+// (`<id>__outline`, `__icon`, étiquettes, clusters, effets...).
+function applyZoomRange(map: maplibregl.Map, layer: MapConfig["layers"][number]): void {
+  if (layer.kind !== "vector" && layer.kind !== "feature") return;
+  if (layer.minZoom == null && layer.maxZoom == null) return;
+  for (const styleLayer of map.getStyle()?.layers ?? []) {
+    if (styleLayer.id === layer.id || styleLayer.id.startsWith(`${layer.id}__`)) {
+      map.setLayerZoomRange(styleLayer.id, layer.minZoom ?? 0, layer.maxZoom ?? 24);
+    }
+  }
+}
+
 export function applyLayers(
   map: maplibregl.Map,
   layers: MapConfig["layers"],
@@ -345,6 +357,7 @@ export function applyLayers(
         map.on("click", layer.id, handler);
         clickHandlers.set(layer.id, handler);
       }
+      applyZoomRange(map, layer);
       applied.add(layer.id);
     } catch (err) {
       // Per spec §8: one bad layer must not break the whole map. Roll back any

@@ -144,6 +144,8 @@ export const map = {
   "layersPanel.geojsonNotLoadedError": "La couche GeoJSON n'est pas encore chargée",
   "layersPanel.clusterEnable": "Regrouper les points",
   "layersPanel.clusterRadius": "Rayon de regroupement (pixels)",
+  "layersPanel.minZoom": "Zoom min",
+  "layersPanel.maxZoom": "Zoom max",
   "layersPanel.clusterMaxZoom": "Zoom max du regroupement",
   "layersPanel.clusterLabel": "Afficher le nombre de points",
   "layersPanel.clusterHeatmapWarning":

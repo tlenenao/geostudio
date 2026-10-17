@@ -157,6 +157,15 @@ class MapLayer(BaseModel):
     # REV-304 : champ date filtré par le contexte temps (widget carte).
     timeField: str | None = None
     cluster: ClusterConfig | None = None
+    # AUD-051 : plage d'échelle (zoom MapLibre) de la couche.
+    minZoom: float | None = Field(default=None, ge=0, le=24)
+    maxZoom: float | None = Field(default=None, ge=0, le=24)
+
+    @model_validator(mode="after")
+    def _zoom_range_is_ordered(self) -> "MapLayer":
+        if self.minZoom is not None and self.maxZoom is not None and self.minZoom > self.maxZoom:
+            raise ValueError("minZoom must be <= maxZoom")
+        return self
 
 
 class MapTerrain(BaseModel):
