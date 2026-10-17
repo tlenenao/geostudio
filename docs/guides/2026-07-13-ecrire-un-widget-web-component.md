@@ -104,8 +104,11 @@ Il n'y a **pas de sandbox** en v1 : une extension activée s'exécute avec les
 mêmes droits que le reste de la page. C'est un compromis assumé — l'admin
 qui active votre widget vous fait confiance, exactement comme il ferait
 confiance à un widget interne. `permissions.collections` est un confort
-d'autorat et une vraie frontière serveur pour les props `dataSource`
-déclarées dans votre manifeste, pas une sandbox : votre code reste libre de
+d'autorat et une vraie frontière serveur sur les sources passées au widget
+(props `dataSource` déclarées dans votre manifeste **et** `dataSourceId`,
+widgets imbriqués compris, source `datasetId` jugée sur la collection du
+dataset ; une valeur liée par expression est refusée), pas une sandbox :
+votre code reste libre de
 faire ses propres requêtes réseau, dans la limite de ce que le token de
 l'utilisateur autorise déjà côté cœur (RLS/`can()`, inchangés par les
 extensions).

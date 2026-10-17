@@ -69,10 +69,10 @@ def env(monkeypatch):
     return TestClient(app), Session, ids
 
 
-def _mint(Session, user_id, days=30):
+def _mint(Session, user_id, days=30, **kw):
     with Session() as s:
         user = s.get(User, user_id)
-        key, token = service.create_api_key(s, user=user, name="ci", expires_in_days=days)
+        key, token = service.create_api_key(s, user=user, name="ci", expires_in_days=days, **kw)
         s.commit()
         return key.id, token
 
@@ -258,3 +258,195 @@ def test_stored_value_is_a_sha256_not_the_token(env):
         key = s.get(ApiKey, key_id)
         assert key.key_hash == service._hash(token) and len(key.key_hash) == 64
         assert token not in (key.key_hash, key.key_prefix)
+
+
+def test_scoped_key_is_capped_to_its_scopes(env):
+    # AUD-091 : /v1/users exige admin.users.manage, hors de la portée de la clé.
+    client, Session, (_, admin_id, _) = env
+    _, token = _mint(Session, admin_id, scopes=["maps.manage"])
+    assert _get(client, token).status_code == 403
+    _, full = _mint(Session, admin_id, scopes=["admin.users.manage"])
+    assert _get(client, full).status_code == 200
+
+
+def test_read_only_key_refuses_writes(env):
+    # AUD-091 : une clé en lecture seule ne fait que des GET/HEAD/OPTIONS.
+    client, Session, (_, admin_id, _) = env
+    from fastapi import Depends
+
+    from app.auth.dependency import get_current_user
+
+    @client.app.post("/v1/_probe")
+    def _probe(user: User = Depends(get_current_user)) -> dict:
+        return {"ok": True}
+
+    _, token = _mint(Session, admin_id, read_only=True)
+    assert _get(client, token).status_code == 200
+    headers = {"Authorization": f"Bearer {token}"}
+    resp = client.post("/v1/_probe", headers=headers)
+    assert resp.status_code == 403 and "read-only" in resp.json()["detail"]
+    _, writer = _mint(Session, admin_id)
+    assert client.post("/v1/_probe", headers={"Authorization": f"Bearer {writer}"}).json()["ok"]
+
+
+def test_scopes_cannot_exceed_creator_privileges(env):
+    # compliance.manage est exclu même du rôle Administrateur (SP-58).
+    client, _, _ = env
+    headers = {"Authorization": "Bearer mock"}
+    denied = client.post(
+        "/v1/api-keys", json={"name": "x", "scopes": ["compliance.manage"]}, headers=headers
+    )
+    assert denied.status_code == 403
+    unknown = client.post("/v1/api-keys", json={"name": "x", "scopes": ["nope"]}, headers=headers)
+    assert unknown.status_code == 422
+    ok = client.post(
+        "/v1/api-keys",
+        json={"name": "x", "scopes": ["maps.manage"], "readOnly": True},
+        headers=headers,
+    )
+    assert ok.status_code == 201
+    assert ok.json()["scopes"] == ["maps.manage"] and ok.json()["readOnly"] is True
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("post", "/v1/items/i1/share-links"),
+        ("post", "/v1/pipelines/i1/webhook-tokens"),
+        ("post", "/v1/roles"),
+        ("patch", "/v1/roles/r1"),
+        ("delete", "/v1/roles/r1"),
+        ("patch", "/v1/users/u1"),
+        ("post", "/v1/compliance/users/me/erase"),
+        ("post", "/v1/compliance/tenants/t1/purge"),
+    ],
+)
+def test_sensitive_routes_refuse_an_api_key(env, method, path, monkeypatch):
+    # AUD-094 : jumelles de forbid_api_key, même avec une clé admin valide.
+    _client, Session, (_, admin_id, _) = env
+    from app.main import create_app
+
+    monkeypatch.setenv("CORE_ETL_ENABLED", "true")  # monte le routeur pipelines
+    app = create_app()
+
+    def override_session():
+        with request_scoped_session(Session) as session:
+            yield session
+
+    app.dependency_overrides[db.get_session] = override_session
+    _, token = _mint(Session, admin_id)
+    resp = getattr(TestClient(app), method)(path, headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 403, resp.text
+    assert resp.json()["detail"] == "not allowed with an api key"
+
+
+def _real_client(Session):
+    from app.main import create_app
+
+    app = create_app()
+
+    def override_session():
+        with request_scoped_session(Session) as session:
+            yield session
+
+    app.dependency_overrides[db.get_session] = override_session
+    return TestClient(app)
+
+
+_READ_POSTS = [
+    "/v1/collections/nope/aggregate",
+    "/v1/datasets/nope/arcgis/aggregate",
+]
+
+
+def _assert_read_posts_pass_and_writes_refused(client, token):
+    headers = {"Authorization": f"Bearer {token}"}
+    for path in _READ_POSTS:
+        resp = client.post(path, json={"measures": [{"op": "count"}]}, headers=headers)
+        # l'authentification passe : la route répond sur la ressource (inconnue ici)
+        assert resp.status_code not in (401, 403), (path, resp.text)
+        assert resp.json().get("detail") != "Not Found", path  # la route existe
+    write = client.post(
+        "/v1/collections/nope/items",
+        json={"type": "Feature", "geometry": None, "properties": {}},
+        headers=headers,
+    )
+    assert write.status_code == 403 and "read-only" in write.json()["detail"], write.text
+
+
+def test_read_only_key_can_post_marked_reads_but_not_write(env):
+    # C1 revue SP-L2 : agrégats en POST = lectures explicitement autorisées.
+    _client, Session, (_, admin_id, _) = env
+    _, token = _mint(Session, admin_id, read_only=True)
+    _assert_read_posts_pass_and_writes_refused(_real_client(Session), token)
+
+
+def test_scoped_admin_key_loses_the_collection_admin_bypass(env):
+    # I1 revue SP-L2 : actor_is_admin=user.is_admin contournait la portée de la
+    # clé. Clé d'un admin sans admin.collections.manage : plus d'écriture sur
+    # la collection d'autrui, ni par OGC Features ni par import (ajout).
+    from app.collections import repository as collections_repo
+
+    _client, Session, (tenant_id, admin_id, reader_id) = env
+    with Session() as s:
+        collections_repo.create_collection(
+            s,
+            tenant_id=tenant_id,
+            owner_id=reader_id,
+            table_name="incidents",
+            title="Incidents",
+            description="",
+            is_public=True,
+            pk_column="id",
+            geometry_column="geom",
+            geometry_type="POINT",
+            srid=4326,
+        )
+        s.commit()
+    from app.ingestion import routes as ingestion_routes
+
+    client = _real_client(Session)
+    client.app.dependency_overrides[ingestion_routes.get_s3_client] = lambda: object()
+
+    def attempts(token):
+        from fastapi import HTTPException
+
+        from app.features.routes import _get_writable
+
+        headers = {"Authorization": f"Bearer {token}"}
+        # écriture OGC : même garde que POST/PUT/PATCH/DELETE .../items (l'introspection
+        # PostGIS qui la suit n'existe pas sous SQLite) ; la clé est résolue comme en HTTP.
+        with Session() as s:
+            user = service.authenticate(s, token=token, tenant_id=tenant_id)
+            try:
+                _get_writable(s, user, "incidents")
+                feature_detail = None
+            except HTTPException as exc:
+                feature_detail = exc.detail
+        upload = client.post(
+            "/v1/uploads",
+            json={
+                "key": f"uploads/{tenant_id}/x.geojson",
+                "filename": "x.geojson",
+                "collectionTitle": "x",
+                "collectionId": "incidents",
+            },
+            headers=headers,
+        )
+        return [feature_detail, upload.json().get("detail")]
+
+    _, scoped = _mint(Session, admin_id, scopes=["data.view", "data.manage"])
+    assert attempts(scoped) == ["write access required", "write access required"]
+    _, full = _mint(Session, admin_id)
+    assert "write access required" not in attempts(full)
+
+
+def test_export_token_can_post_marked_reads_but_not_write(env, monkeypatch):
+    # C1 revue SP-L2 : le rendu PDF des widgets lit ses agrégats en POST.
+    from app.auth.export_tokens import mint_export_token
+
+    _client, Session, (tenant_id, admin_id, _) = env
+    monkeypatch.setenv("CORE_EXPORT_TOKEN_SECRET", "test-export-secret-padding-01234")
+    monkeypatch.delenv("CORE_AUTH_MODE")  # la branche jeton d'export suit la branche mock
+    token = mint_export_token(tenant_id=tenant_id, user_id=admin_id, job_id="j", item_id="i")
+    _assert_read_posts_pass_and_writes_refused(_real_client(Session), token)

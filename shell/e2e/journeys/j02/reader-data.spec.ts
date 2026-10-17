@@ -51,6 +51,7 @@ test.describe("j02 lecteur — recherche, pièces jointes, écriture de données
         fieldKey: "photo",
         filename: "a.png",
         contentType: "image/png",
+        size: 10,
       },
     );
     expect(presign.status).toBe(403);
@@ -66,6 +67,7 @@ test.describe("j02 lecteur — recherche, pièces jointes, écriture de données
         fieldKey: "photo",
         filename: "a.png",
         contentType: "image/png",
+        size: 10,
       },
     );
     expect(presign.status).toBe(200);
@@ -73,6 +75,7 @@ test.describe("j02 lecteur — recherche, pièces jointes, écriture de données
     const up = await s.creator.send("POST", "/v1/uploads/presign", {
       filename: "aud.geojson",
       contentType: "application/geo+json",
+      size: 10,
     });
     expect(up.status).toBe(200);
   });

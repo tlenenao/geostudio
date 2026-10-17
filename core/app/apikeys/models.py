@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String
+import sqlalchemy as sa
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -28,3 +29,8 @@ class ApiKey(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    # AUD-091 : None = plafond du rôle du créateur (historique) ; sinon sous-ensemble.
+    scopes: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    read_only: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sa.false()
+    )

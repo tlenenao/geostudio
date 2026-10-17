@@ -360,3 +360,47 @@ def test_queue_unavailable_is_not_reported_as_a_trigger_config_error(db, monkeyp
         assert n == 0
         assert "mise en file impossible" in t.last_error
         assert s.scalars(select(FileTriggerSeen)).all() == []  # repris au passage suivant
+
+
+def test_an_erased_creator_neither_signs_nor_triggers(db):
+    # Revue SP-L2 I3 : un compte effacé n'agit plus, même si sa destination ou son
+    # déclencheur a été réactivé (erased_at testé au point d'usage du secret).
+    from app.users.models import User
+
+    tenant_id, user_id = _seed(db)
+    _pipeline(db, tenant_id, user_id)
+    with db() as s:
+        s.get(User, user_id).erased_at = datetime.now(UTC).replace(tzinfo=None)
+        s.commit()
+        ev = _event(s, tenant_id)
+        sent = []
+        deliver_due(s, post=lambda url, body, headers: sent.append(url))
+        assert sent == [] and ev.status != "delivered"
+        t = s.get(FileTrigger, "t1")
+        files = [("in/a.csv", "e1", datetime.now(UTC).replace(tzinfo=None))]
+        assert (
+            triggers.poll_trigger(s, t, defer_task=lambda r, tn: None, lister=_lister(files)) == 0
+        )
+        assert s.scalars(select(PipelineRun)).all() == []
+
+
+def test_anonymize_disables_the_creator_webhooks_and_triggers(db):
+    from app.compliance.service import anonymize_user
+
+    tenant_id, user_id = _seed(db)
+    _pipeline(db, tenant_id, user_id)
+    with db() as s:
+        get_or_create_user(  # second admin : le garde anti-lockout laisse effacer le premier
+            s,
+            tenant_id=tenant_id,
+            oidc_sub="other-admin",
+            username="other",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=True,
+        )
+        anonymize_user(s, tenant_id=tenant_id, user_id=user_id)
+        s.commit()
+        assert s.get(OutboundWebhook, "h1").enabled is False
+        assert s.get(FileTrigger, "t1").enabled is False

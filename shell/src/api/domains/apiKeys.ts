@@ -11,7 +11,11 @@ export function createApiKeysMethods(base: ItemClientBase): ApiKeysMethods {
       return request<ApiKeySummary[]>("GET", "/api-keys");
     },
 
-    async createApiKey(params: { name: string; expiresInDays: number }): Promise<ApiKeyCreated> {
+    async createApiKey(params: {
+      name: string;
+      expiresInDays: number;
+      readOnly?: boolean;
+    }): Promise<ApiKeyCreated> {
       return request<ApiKeyCreated>("POST", "/api-keys", params);
     },
 

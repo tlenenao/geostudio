@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.apikeys.service import revoke_all_for_user
 from app.audit.writer import write_audit
 from app.auth.dependency import (
+    forbid_api_key,
     get_current_user,
     is_admin_tools_enabled,
     is_appexport_enabled,
@@ -188,7 +189,10 @@ def get_users(
     return {"users": result, "total": total}
 
 
-@router.patch("/users/{user_id}")
+@router.patch(
+    "/users/{user_id}",
+    dependencies=[Depends(forbid_api_key)],  # AUD-094 : session interactive seulement
+)
 def patch_user(
     user_id: str,
     body: UserRolePatch,

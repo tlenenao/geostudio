@@ -5,23 +5,26 @@ via Chromium headless. Tourne dans le conteneur export-worker dédié (queue
 §Infrastructure). Toute erreur marque le job "error", jamais un job bloqué
 en "running" (même critère qu'app.pipelines.jobs.run_pipeline_task)."""
 
+import json
 import logging
 import os
 import re
 import time
 import urllib.error
 import urllib.request
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 from app.auth.dependency import is_export_enabled
 from app.auth.export_tokens import mint_export_token
 from app.configs import repository as configs_repo
 from app.db import request_scoped_session
+from app.egress_guard import check_url
 from app.export import repository as export_repo
 from app.export.models import ExportJob
 from app.export.rendering import RENDER_TIMEOUT_MS, RenderPage, page_pixels, render_export
 from app.ingestion.storage import ensure_uploads_bucket, make_s3_client
 from app.items import repository as items_repo
+from app.job_errors import public_error
 from app.jobs import app
 from app.jobs.common import notify_best_effort, session_factory
 
@@ -220,10 +223,58 @@ def _core_bridge_handler(public: str, internal: str):
     return handler
 
 
+class _ExportEgressBlocked(Exception):
+    pass
+
+
+def _egress_route_handler(allowed_origins: frozenset[str]):
+    """AUD-023 : le navigateur du worker ne joint que le shell, le cœur publié et
+    des hôtes publics ; toute cible interne (métadonnées cloud, minio, core…)
+    est refusée. ponytail: Chromium résout le DNS lui-même après ce contrôle
+    (TOCTOU) ; une allowlist stricte via CORE_EXPORT_EGRESS_ALLOWLIST ferme ce reste."""
+
+    def handle(route) -> None:
+        url = route.request.url
+        parsed = urlparse(url)
+        origin = f"{parsed.scheme}://{parsed.netloc}"
+        if parsed.scheme in {"data", "blob"} or origin in allowed_origins:
+            route.continue_()
+            return
+        try:
+            check_url(url, allowlist_env="CORE_EXPORT_EGRESS_ALLOWLIST", error=_ExportEgressBlocked)
+        except _ExportEgressBlocked:
+            logger.warning("export : requête sortante bloquée vers %s", parsed.hostname)
+            route.abort("blockedbyclient")
+            return
+        route.continue_()
+
+    return handle
+
+
+def _origin(url: str) -> str | None:
+    parsed = urlparse(url.strip())
+    return f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else None
+
+
+def export_allowed_origins(shell_origin: str) -> frozenset[str]:
+    """Origines que le Chromium d'export joint sans contrôle d'IP (exemption évaluée
+    AVANT le blocage des adresses privées) : le shell, le cœur publié, le stockage
+    public (S3_PUBLIC_ENDPOINT_URL : images et tuiles d'un MinIO de LAN) et la liste
+    CORE_EXPORT_TRUSTED_ORIGINS (revue SP-L2 I5 : un déploiement de LAN sert ses
+    fonds de carte et services depuis des adresses privées)."""
+    allowed = {shell_origin}
+    candidates = [_published_core_url(shell_origin) or ""]
+    candidates.append(os.environ.get("S3_PUBLIC_ENDPOINT_URL", ""))
+    candidates += os.environ.get("CORE_EXPORT_TRUSTED_ORIGINS", "").split(",")
+    allowed.update(o for c in candidates if c.strip() and (o := _origin(c)))
+    return frozenset(allowed)
+
+
 def _launch_and_navigate(
     url: str,
     viewport: tuple[int, int] | None = None,
     core_bridge: tuple[str, str] | None = None,
+    export_token: str | None = None,
 ) -> RenderPage:
     # Seule fonction de ce module qui a besoin d'un vrai Chromium — isolée
     # pour être monkeypatchée en test (cf. tests/test_export_jobs.py). La
@@ -248,14 +299,26 @@ def _launch_and_navigate(
 
     try:
         browser = playwright.chromium.launch(headless=True)
-        page = (
-            browser.new_page(viewport={"width": viewport[0], "height": viewport[1]})
-            if viewport
-            else browser.new_page()
-        )
+        page_kw: dict = {"service_workers": "block"}  # un SW contournerait page.route
+        if viewport:
+            page_kw["viewport"] = {"width": viewport[0], "height": viewport[1]}
+        page = browser.new_page(**page_kw)
+        shell = urlparse(url)
+        shell_origin = f"{shell.scheme}://{shell.netloc}"
+        allowed = export_allowed_origins(shell_origin)
+        # Garde d'abord : Playwright donne la main à la route enregistrée EN DERNIER,
+        # le pont (plus spécifique) reste donc prioritaire sur son motif.
+        page.route("**/*", _egress_route_handler(allowed))
         if core_bridge is not None:
             public, internal = core_bridge
             page.route(f"{public}/**", _core_bridge_handler(public, internal))
+        if export_token is not None:
+            # AUD-024 : jamais dans l'URL ; posé avant tout script de la page, sur
+            # l'origine du shell seulement (lu par shell/src/auth/exportAwareToken.ts).
+            page.add_init_script(
+                f"if (location.origin === {json.dumps(shell_origin)}) "
+                f"sessionStorage.setItem('gs_export_token', {json.dumps(export_token)});"
+            )
         page.goto(url, wait_until="load", timeout=remaining_ms())
         page.wait_for_selector(
             '[data-export-ready="true"]', timeout=remaining_ms(), state="attached"
@@ -326,12 +389,11 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
                 raise ValueError(f"export item '{item_id}' not found")
             print_layout = config.config.printLayout
 
-        token = mint_export_token(tenant_id=tenant_id, user_id=user_id, job_id=job_id)
         route = "maps" if config.kind == "map" else "apps"
         base = f"{os.environ['SHELL_BASE_URL']}/{route}/{item_id}"
         if page_id:
             base = f"{base}/{quote(page_id, safe='')}"
-        target_url = f"{base}?exportToken={token}&exportRender=1"
+        target_url = f"{base}?exportRender=1"
         if ctx:
             target_url = f"{target_url}&ctx={quote(ctx, safe='')}"
         if scope == "atlas":
@@ -351,8 +413,15 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
         if _cancelled(factory, job_id):
             return
 
+        # AUD-024 : émis au dernier moment, son TTL couvre tout le budget de rendu.
+        token = mint_export_token(
+            tenant_id=tenant_id, user_id=user_id, job_id=job_id, item_id=item_id
+        )
         browser_page = _launch_and_navigate(
-            target_url, viewport=page_pixels(print_layout), core_bridge=core_bridge
+            target_url,
+            viewport=page_pixels(print_layout),
+            core_bridge=core_bridge,
+            export_token=token,
         )
         try:
             # Le shell lève `data-export-incomplete` quand le délai de chargement est dépassé :
@@ -420,8 +489,10 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
         )
     except Exception as exc:  # toute erreur inattendue finit "error", jamais zombie
         logger.exception("export job %s : erreur inattendue", job_id)
+        user_msgs = (USER_EXPORT_UNAVAILABLE, USER_EXPORT_INCOMPLETE)
+        msg = str(exc) if str(exc) in user_msgs else public_error(exc, user_errors=(ValueError,))
         with request_scoped_session(factory) as session:
-            export_repo.mark_error(session, job_id=job_id, error=str(exc))
+            export_repo.mark_error(session, job_id=job_id, error=msg)
         _notify(
             factory,
             tenant_id=tenant_id,
@@ -430,5 +501,5 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
             page_id=page_id,
             resource_type=None,
             status="failure",
-            error=str(exc),
+            error=msg,
         )

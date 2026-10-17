@@ -10,7 +10,7 @@ import { registerChartWidget } from "./chart";
 import { registerPivotWidget } from "./pivot";
 import { registerNavigationWidget } from "./navigation";
 import { registerFormWidget } from "./form";
-import { registerHeroWidget } from "./hero";
+import { isSafeHref, registerHeroWidget } from "./hero";
 import { registerRichSectionWidget } from "./richSection";
 import { registerGalleryWidget } from "./gallery";
 import { registerDatasetCardWidget } from "./datasetCard";
@@ -188,7 +188,8 @@ export function registerBuiltinWidgets(): void {
         onClick={() => {
           ctx.bus?.emit(ctx.widgetId ?? "", "clicked", { widgetId: ctx.widgetId });
           const href = String(props.href ?? "");
-          if (href) window.open(href, "_blank", "noopener");
+          // AUD-064 : jamais javascript:/data: (même garde que le widget hero).
+          if (href && isSafeHref(href)) window.open(href, "_blank", "noopener");
         }}
       >
         {String(props.label ?? "Bouton")}

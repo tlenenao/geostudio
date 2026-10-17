@@ -35,6 +35,7 @@ from app.configs.schemas import AlertChannelEmail, AlertChannelWebhook, AlertRul
 from app.db import request_scoped_session
 from app.items import repository as items_repo
 from app.items.models import Item
+from app.job_errors import INTERNAL_ERROR_MESSAGE
 from app.jobs import app
 from app.jobs.common import notify_best_effort, resolve_owner_user
 from app.jobs.common import session_factory as _session_factory
@@ -461,7 +462,7 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
                 payload={"error": str(exc)},
             )
             return
-        except Exception as exc:  # toute erreur inattendue finit "error", jamais un run zombie
+        except Exception:  # toute erreur inattendue finit "error", jamais un run zombie
             logger.exception("alert evaluation %s : erreur inattendue", evaluation_id)
             # Si l'exception vient d'une vraie erreur DB survenue plus haut
             # dans le chemin succès (ex. write_audit), la transaction
@@ -477,7 +478,7 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
             # rollback sur une session déjà saine (l'exception d'origine
             # n'a jamais touché la DB) est un no-op sans effet de bord.
             session.rollback()
-            error_detail = f"erreur interne : {exc}"
+            error_detail = INTERNAL_ERROR_MESSAGE
             alerts_repo.mark_evaluated(
                 session,
                 evaluation_id=evaluation_id,
@@ -536,7 +537,7 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
                     actor_id=owner_id,
                     skip=delivered,
                 )
-            except Exception as exc:
+            except Exception:
                 # _notify itself already catches NotifyError per-channel and
                 # audits per-channel; this is the backstop for anything else
                 # (e.g. _render_message's `.format()` on a malformed
@@ -547,7 +548,7 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
                 logger.exception(
                     "alert notification pipeline %s : erreur inattendue", evaluation_id
                 )
-                notify_status, notify_error = "failed", f"erreur interne : {exc}"
+                notify_status, notify_error = "failed", INTERNAL_ERROR_MESSAGE
                 notify_channels = None  # inconnu : la relance visera tous les canaux
                 write_audit(
                     session,

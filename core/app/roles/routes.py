@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.auth.dependency import get_current_user
+from app.auth.dependency import forbid_api_key, get_current_user
 from app.db import get_session
 from app.roles.guards import require_privilege, require_privileges_within_ceiling
 from app.roles.models import Role
@@ -65,7 +65,12 @@ def get_roles(
     return [_role_json(r) for r in list_roles(session, tenant_id=user.tenant_id)]
 
 
-@router.post("/roles", response_model=RoleRead, status_code=201)
+@router.post(
+    "/roles",
+    response_model=RoleRead,
+    status_code=201,
+    dependencies=[Depends(forbid_api_key)],  # AUD-094 : session interactive seulement
+)
 def post_role(
     body: RoleCreate,
     user: User = Depends(get_current_user),
@@ -93,7 +98,11 @@ def post_role(
     return _role_json(role)
 
 
-@router.patch("/roles/{role_id}", response_model=RoleRead)
+@router.patch(
+    "/roles/{role_id}",
+    response_model=RoleRead,
+    dependencies=[Depends(forbid_api_key)],  # AUD-094 : session interactive seulement
+)
 def patch_role(
     role_id: str,
     body: RolePatch,
@@ -154,7 +163,11 @@ def patch_role(
     return _role_json(updated)
 
 
-@router.delete("/roles/{role_id}", status_code=204)
+@router.delete(
+    "/roles/{role_id}",
+    status_code=204,
+    dependencies=[Depends(forbid_api_key)],  # AUD-094 : session interactive seulement
+)
 def delete_role_route(
     role_id: str,
     user: User = Depends(get_current_user),

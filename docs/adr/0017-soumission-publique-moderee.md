@@ -13,7 +13,7 @@ L'écriture OGC exige un utilisateur authentifié. Une collectivité doit pouvoi
 - Route unique `POST /v1/public/submit/{token}`. Elle **ne peut qu'insérer** une ligne au statut `pending` ; jamais lire, modifier ni supprimer.
 - Une ligne `pending`/`rejected` est **invisible partout** tant qu'elle n'est pas `approved` : liste de features, tuiles MVT, STAC, DCAT, exports, MCP, DuckDB/lac, WFS. Le filtre est posé au plus bas niveau partagé (RLS/portée de lecture), pas route par route ; la liste des jumelles est vérifiée en revue finale (piège n°14).
 - Modération : file `pending → approved|rejected`, réservée aux détenteurs du droit d'écriture ; `audit_log` trace le modérateur ; notification in-app aux modérateurs.
-- Anti-abus **sans service tiers** : champ honeypot, rate limit dédié par IP et par jeton (101e requête/h = 429), quota global du jeton. Pièce jointe ≤ 25 Mo, type contrôlé par contenu.
+- Anti-abus **sans service tiers** : champ honeypot, rate limit dédié par IP (/64 en IPv6) et par jeton — compteur horaire par process (101e requête/h = 429) + budget par minute partagé entre répliques (21e/min = 429), corps plafonné à 26 Mo sur `Content-Length` avant tout parsing (AUD-153/154) —, quota global du jeton. Pièce jointe ≤ 25 Mo, type contrôlé par contenu.
 - Les données soumises respectent le schéma de la collection (validation d'écriture normale) ; aucune lecture anonyme n'est élargie (test d'invariant RLS obligatoire).
 - RGPD : les soumissions relèvent de `purge_tenant` et de l'anonymisation SP-58 comme toute donnée de collection.
 

@@ -94,6 +94,7 @@ export function Terrain3DUploadButton({
       const { uploadUrl, key } = await client.presignTerrain3DUpload(
         file.name,
         file.type || "application/octet-stream",
+        file.size,
       );
       await client.uploadToPresignedUrl(uploadUrl, file);
       setPhase("converting");

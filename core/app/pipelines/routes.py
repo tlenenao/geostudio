@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.analytics.sql_sandbox import SqlSandboxError
 from app.audit.writer import write_audit
-from app.auth.dependency import get_current_user
+from app.auth.dependency import forbid_api_key, get_current_user
 from app.collections.introspection import Introspector
 from app.collections.provisioning import create_empty_collection
 from app.collections.routes import get_ddl_applier, get_introspector
@@ -460,7 +460,10 @@ def preview_pipeline_route(
 
 
 @router.post(
-    "/pipelines/{item_id}/webhook-tokens", response_model=WebhookTokenCreated, status_code=201
+    "/pipelines/{item_id}/webhook-tokens",
+    response_model=WebhookTokenCreated,
+    status_code=201,
+    dependencies=[Depends(forbid_api_key)],  # AUD-094 : session interactive seulement
 )
 def create_webhook_token_route(
     item_id: str,

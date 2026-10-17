@@ -133,7 +133,7 @@ def test_get_upload_job_404_for_a_job_owned_by_another_user(env):
 
 def test_presign_returns_upload_url_and_tenant_scoped_key(env):
     client, _, tenant, *_ = env
-    r = client.post("/v1/terrain3d/uploads/presign", json={"filename": "dem.tif"})
+    r = client.post("/v1/terrain3d/uploads/presign", json={"size": 10, "filename": "dem.tif"})
     assert r.status_code == 200, r.text
     body = r.json()
     assert "uploadUrl" in body
@@ -162,7 +162,7 @@ def test_presign_refuses_a_reader_with_no_privilege(env):
         s.commit()
     alice.role_id = reader_role_id
 
-    r = client.post("/v1/terrain3d/uploads/presign", json={"filename": "dem.tif"})
+    r = client.post("/v1/terrain3d/uploads/presign", json={"size": 10, "filename": "dem.tif"})
     assert r.status_code == 403, r.text
 
 
@@ -175,7 +175,7 @@ def test_presign_signs_the_terrain3d_bucket_and_the_caller_content_type(env, mon
     client, _, _tenant, _alice, _deferred, fake_s3 = env
     r = client.post(
         "/v1/terrain3d/uploads/presign",
-        json={"filename": "dem.tif", "contentType": "image/tiff"},
+        json={"size": 10, "filename": "dem.tif", "contentType": "image/tiff"},
     )
     assert r.status_code == 200, r.text
     params = fake_s3.presign_params[-1]
@@ -185,14 +185,16 @@ def test_presign_signs_the_terrain3d_bucket_and_the_caller_content_type(env, mon
 
 def test_presign_falls_back_to_octet_stream_when_no_content_type_is_given(env):
     client, _, _tenant, _alice, _deferred, fake_s3 = env
-    r = client.post("/v1/terrain3d/uploads/presign", json={"filename": "dem.tif"})
+    r = client.post("/v1/terrain3d/uploads/presign", json={"size": 10, "filename": "dem.tif"})
     assert r.status_code == 200, r.text
     assert fake_s3.presign_params[-1]["ContentType"] == "application/octet-stream"
 
 
 def test_create_upload_job_defers_conversion_task(env):
     client, _, tenant, _, deferred, _fake_s3 = env
-    presigned = client.post("/v1/terrain3d/uploads/presign", json={"filename": "dem.tif"}).json()
+    presigned = client.post(
+        "/v1/terrain3d/uploads/presign", json={"size": 10, "filename": "dem.tif"}
+    ).json()
     r = client.post(
         "/v1/terrain3d/uploads",
         json={"key": presigned["key"], "filename": "dem.tif", "title": "Relief du massif"},
@@ -241,7 +243,9 @@ def test_create_upload_rejects_malformed_key_shape(env, suffix):
 
 def test_create_upload_refuses_a_key_already_used_by_a_job(env):
     client, *_ = env
-    presigned = client.post("/v1/terrain3d/uploads/presign", json={"filename": "dem.tif"}).json()
+    presigned = client.post(
+        "/v1/terrain3d/uploads/presign", json={"size": 10, "filename": "dem.tif"}
+    ).json()
     body = {"key": presigned["key"], "filename": "dem.tif", "title": "T"}
     assert client.post("/v1/terrain3d/uploads", json=body).status_code == 201
     assert client.post("/v1/terrain3d/uploads", json=body).status_code == 409
@@ -251,7 +255,9 @@ def test_create_upload_refuses_the_converted_key_of_an_existing_job(env):
     client, Session, tenant, _alice, *_ = env
     from app.terrain3d import repository as repo
 
-    presigned = client.post("/v1/terrain3d/uploads/presign", json={"filename": "dem.tif"}).json()
+    presigned = client.post(
+        "/v1/terrain3d/uploads/presign", json={"size": 10, "filename": "dem.tif"}
+    ).json()
     job_id = client.post(
         "/v1/terrain3d/uploads",
         json={"key": presigned["key"], "filename": "dem.tif", "title": "T"},
@@ -267,5 +273,14 @@ def test_create_upload_refuses_the_converted_key_of_an_existing_job(env):
 @pytest.mark.parametrize("name", ["../../x/y.tif", "a/b.tif", "a\\b.tif", "x..y.tif", "a\x00.tif"])
 def test_presign_rejects_unsafe_filename(env, name):
     client, *_ = env
-    r = client.post("/v1/terrain3d/uploads/presign", json={"filename": name})
+    r = client.post("/v1/terrain3d/uploads/presign", json={"size": 10, "filename": name})
     assert r.status_code == 422
+
+
+def test_presign_refuses_oversized_or_unsized_upload(env, monkeypatch):
+    # AUD-090
+    client, *_ = env
+    monkeypatch.setenv("CORE_TERRAIN3D_MAX_UPLOAD_BYTES", "100")
+    url = "/v1/terrain3d/uploads/presign"
+    assert client.post(url, json={"filename": "dem.tif", "size": 101}).status_code == 413
+    assert client.post(url, json={"filename": "dem.tif"}).status_code == 422

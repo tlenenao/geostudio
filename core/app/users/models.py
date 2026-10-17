@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 from datetime import UTC, datetime
+from typing import cast
 
 import sqlalchemy as sa
 from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint
@@ -41,3 +42,17 @@ class User(Base):
     # sur ce user_id est un échec explicite, pas une double écriture
     # silencieuse) et à l'affichage admin ("compte effacé le …").
     erased_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # AUD-091 : plafond posé par une clé d'API pour la requête en cours ; non
+    # persisté (attributs de classe non annotés, ignorés par le mapping), porté
+    # par l'instance de la session de la requête et lu par has_privilege.
+    api_key_scopes = cast("frozenset[str] | None", None)
+    api_key_read_only = False
+
+    def acts_as_admin(self) -> bool:
+        """`is_admin` plafonné par la portée d'une clé d'API (revue SP-L2, I1) :
+        le court-circuit admin de can() sur les collections vaut le privilège
+        admin.collections.manage. Seule source pour `actor_is_admin=` ;
+        `is_admin` lui-même n'est jamais modifié."""
+        scopes = self.api_key_scopes
+        return self.is_admin and (scopes is None or "admin.collections.manage" in scopes)

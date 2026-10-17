@@ -1,30 +1,27 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Garde d'egress SSRF pour reader.connector.rest (design SP-15f §5.1) —
-duplication délibérée de app.harvest.egress : app.pipelines est positionné
-SOUS app.harvest dans le contrat de couches import-linter
-(core/pyproject.toml [[tool.importlinter.contracts]]), donc ne peut pas
-l'importer. Point d'application différent de l'original : dlt.sources.rest_api
-utilise `requests`, pas `httpx` — copier le transport httpx de
-app.harvest.egress ne garderait rien en pratique."""
+"""Garde d'egress SSRF pour reader.connector.rest (design SP-15f §5.1). Le
+contrôle lui-même est commun (`app.egress_guard`, AUD-124) ; ce module porte
+l'allowlist du domaine et les points d'application propres aux pipelines :
+dlt.sources.rest_api utilise `requests`, pas `httpx` (adaptateur épinglé),
+plus les DSN et le résolveur aiohttp."""
 
 import asyncio
 import ipaddress
 import logging
 import os
 import socket
-from urllib.parse import urlparse
 
 import requests
 from aiohttp.abc import AbstractResolver, ResolveResult
 from sqlalchemy.engine import make_url
 
+from app.egress_guard import check_url
 from app.net_pin import ValidatedIp, candidate_ips, pinned_adapter
 
 logger = logging.getLogger(__name__)
 
 # Variable dédiée, distincte de CORE_HARVEST_EGRESS_ALLOWLIST (app.harvest) :
-# même logique de duplication que la garde elle-même, plutôt que de partager
-# un état de configuration à travers la frontière de couches.
+# chaque domaine a son périmètre de confiance (AUD-124 : seule la logique est commune).
 _ALLOWLIST_ENV = "CORE_PIPELINES_EGRESS_ALLOWLIST"
 
 
@@ -40,44 +37,9 @@ class EgressBlockedError(Exception):
     """Cible réseau interdite (plage interne ou hors allowlist)."""
 
 
-def _allowlist() -> set[str]:
-    raw = os.environ.get(_ALLOWLIST_ENV, "")
-    return {h.strip() for h in raw.split(",") if h.strip()}
-
-
-def _is_internal(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
-    # tout ce qui n'est pas globalement routable (CGNAT 100.64/10, TEST-NET, 6to4…)
-    # fec0::/10 (site-local déprécié) : is_global le laisse passer (j06-003)
-    return not ip.is_global or ip.is_multicast or getattr(ip, "is_site_local", False)
-
-
-def assert_egress_allowed(url: str) -> str:
-    parsed = urlparse(url)
-    if parsed.scheme.lower() not in {"http", "https"}:
-        raise EgressBlockedError(f"schéma d'egress interdit : {parsed.scheme!r}")
-    host = parsed.hostname
-    if not host:
-        raise EgressBlockedError(f"hôte d'egress absent dans l'URL : {url!r}")
-
-    try:
-        addresses = [ipaddress.ip_address(host)]
-    except ValueError:
-        try:
-            infos = socket.getaddrinfo(host, None)
-        except socket.gaierror as exc:
-            raise EgressBlockedError(f"hôte non résoluble : {host!r}") from exc
-        addresses = [ipaddress.ip_address(info[4][0]) for info in infos]
-
-    if not addresses:
-        raise EgressBlockedError(f"hôte non résoluble : {host!r}")
-    for ip in addresses:
-        if _is_internal(ip):
-            raise EgressBlockedError(f"cible réseau interne bloquée : {host!r}")
-
-    allowlist = _allowlist()
-    if allowlist and host not in allowlist:
-        raise EgressBlockedError(f"hôte hors allowlist d'egress : {host!r}")
-    return ValidatedIp(str(addresses[0]), [str(a) for a in addresses])  # REV-273d
+def assert_egress_allowed(url: str) -> ValidatedIp:
+    # AUD-124 : logique commune dans app.egress_guard ; seule l'allowlist est propre au domaine.
+    return check_url(url, allowlist_env=_ALLOWLIST_ENV, error=EgressBlockedError)
 
 
 def assert_dsn_egress_allowed(dsn: str) -> None:

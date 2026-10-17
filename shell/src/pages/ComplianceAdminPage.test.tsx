@@ -150,20 +150,29 @@ test("une purge en échec affiche l'erreur du reçu et permet de relancer (REV-3
 
 test("anonymiser un compte appelle POST /compliance/users/{id}/erase et affiche une confirmation", async () => {
   let erasedUserId: string | null = null;
+  let body: unknown = null;
   server.use(
-    http.post("https://core.test/v1/compliance/users/:userId/erase", ({ params }) => {
-      erasedUserId = String(params.userId);
-      return new HttpResponse(null, { status: 204 });
-    }),
+    http.post(
+      "https://core.test/v1/compliance/users/:userId/erase",
+      async ({ params, request }) => {
+        erasedUserId = String(params.userId);
+        body = await request.json();
+        return new HttpResponse(null, { status: 204 });
+      },
+    ),
   );
   render(<Harness />);
   await screen.findByText("Anonymiser un compte");
 
   await userEvent.type(screen.getByLabelText(/Identifiant de l'utilisateur/), "u42");
+  // AUD-094 : confirmation par le nom d'utilisateur, exigée par le cœur.
+  expect(screen.getByRole("button", { name: "Anonymiser ce compte" })).toBeDisabled();
+  await userEvent.type(screen.getByLabelText(/Nom d'utilisateur du compte/), "alice");
   await userEvent.click(screen.getByRole("button", { name: "Anonymiser ce compte" }));
   await confirmErase();
 
   await waitFor(() => expect(erasedUserId).toBe("u42"));
+  expect(body).toEqual({ confirmUsername: "alice" });
   expect(await screen.findByText("Compte anonymisé.")).toBeInTheDocument();
 });
 
@@ -204,6 +213,7 @@ test("l'échec d'anonymisation distingue « introuvable » (j08-006)", async () 
   render(<Harness />);
   await screen.findByText("Anonymiser un compte");
   await userEvent.type(screen.getByLabelText(/Identifiant de l'utilisateur/), "nope");
+  await userEvent.type(screen.getByLabelText(/Nom d'utilisateur du compte/), "nope");
   await userEvent.click(screen.getByRole("button", { name: "Anonymiser ce compte" }));
   await confirmErase();
   expect(await screen.findByText("Utilisateur introuvable dans ce tenant.")).toBeInTheDocument();

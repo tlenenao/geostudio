@@ -10,6 +10,7 @@ par collection via `Collection.ows_enabled` (comme WFS)."""
 import json
 import os
 import re
+import threading
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.exc import DBAPIError
@@ -46,6 +47,10 @@ EDGE_BUFFER_PX = 24  # lit un peu au-delà de l'image pour ne pas couper les sym
 XML = "text/xml; charset=utf-8"
 _COLOR = re.compile(r"^0[xX]([0-9a-fA-F]{6})$")
 _STYLE_REF = re.compile(r"^map:([A-Za-z0-9_-]{1,64}):([A-Za-z0-9_-]{1,64})$")
+# AUD-155 : rendu PIL (GetMap et tuiles WMTS) borné en concurrence.
+# ponytail: par process ; un sémaphore partagé entre répliques si la charge le justifie.
+_RENDER_SLOTS = threading.BoundedSemaphore(4)
+_RENDER_WAIT_S = 5.0
 
 
 def is_wms_enabled() -> bool:
@@ -190,6 +195,20 @@ def _render(
     session, rls, repo, introspect, masked_dep, user, guest, *, layers, styles, bbox, srid, size, bg
 ):
     """Rend `layers` (déjà validés en nombre) dans une image `size` couvrant `bbox`."""
+    if not _RENDER_SLOTS.acquire(timeout=_RENDER_WAIT_S):
+        raise _err("NoApplicableCode", "server busy", 503)
+    try:
+        return _render_locked(
+            session, rls, repo, introspect, masked_dep, user, guest,
+            layers=layers, styles=styles, bbox=bbox, srid=srid, size=size, bg=bg,
+        )  # fmt: skip
+    finally:
+        _RENDER_SLOTS.release()
+
+
+def _render_locked(
+    session, rls, repo, introspect, masked_dep, user, guest, *, layers, styles, bbox, srid, size, bg
+):
     w, h = size
     canvas = render.new_canvas(bbox, w, h)
     qbox = _query_bbox(bbox, srid, w, h, EDGE_BUFFER_PX)

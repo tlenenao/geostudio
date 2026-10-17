@@ -143,7 +143,7 @@ def _get_writable_collection(session: Session, user: User, collection_id: str):
         action="write",
         item=get_access_facts(col),
         kind="collection",
-        actor_is_admin=user.is_admin,
+        actor_is_admin=user.acts_as_admin(),
     ):
         raise HTTPException(status_code=403, detail="write access required")
     if not col.editable:
@@ -189,8 +189,12 @@ def presign_attachment(
     bucket = get_attachments_bucket()
     ensure_uploads_bucket(s3, bucket)
     safe_filename = _sanitize_filename(body.filename)
+    if body.size > MAX_ATTACHMENT_BYTES:
+        raise HTTPException(status_code=413, detail="attachment too large")
     key = f"{col.tenant_id}/{collection_id}/{fid}/{uuid.uuid4().hex}-{safe_filename}"
-    url = generate_presigned_put_url(s3, bucket=bucket, key=key, content_type=body.contentType)
+    url = generate_presigned_put_url(
+        s3, bucket=bucket, key=key, content_type=body.contentType, content_length=body.size
+    )
     return AttachmentPresignResponse(uploadUrl=url, key=key)
 
 

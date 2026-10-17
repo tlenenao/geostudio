@@ -75,3 +75,57 @@ def test_unknown_job_is_404_and_input_is_validated(env):
     client, _, _, _ = env
     assert client.get("/v1/geocode/jobs/nope").status_code == 404
     assert client.post("/v1/geocode/jobs", json={"addresses": ["a"]}).status_code == 422
+
+
+def test_fourth_active_job_of_a_user_is_429(env):
+    # AUD-156 : au plus 3 lots pending|running par utilisateur.
+    client, *_ = env
+    for _ in range(3):
+        assert client.post("/v1/geocode/jobs", json={"addresses": ["aaa"]}).status_code == 202
+    r = client.post("/v1/geocode/jobs", json={"addresses": ["aaa"]})
+    assert r.status_code == 429
+
+
+def test_purge_drops_only_old_finished_jobs(env):
+    # AUD-156 : rétention de 7 jours des lots terminés ; un lot en cours n'est jamais purgé.
+    client, _d, _g, factory = env
+    ids = [client.post("/v1/geocode/jobs", json={"addresses": ["aaa"]}).json()["id"] for _ in "abc"]
+    now = _now()
+    ages = {ids[0]: ("succeeded", 8), ids[1]: ("failed", 2), ids[2]: ("running", 30)}
+    with factory() as s:
+        for job_id, (status, days) in ages.items():
+            s.execute(
+                update(GeocodeJob)
+                .where(GeocodeJob.id == job_id)
+                .values(status=status, updated_at=now - timedelta(days=days))
+            )
+        s.commit()
+        assert jobs.purge_finished_jobs(s, now=now) == 1
+        s.commit()
+        assert {j.id for j in s.query(GeocodeJob)} == {ids[1], ids[2]}
+
+
+def test_busy_geocoder_failure_stays_readable_other_errors_do_not(env, monkeypatch):
+    # AUD-100 + revue SP-L2 : « géocodeur occupé » est un refus métier lisible ; tout
+    # autre échec reste générique (le détail est dans les journaux).
+    from app.job_errors import INTERNAL_ERROR_MESSAGE
+
+    client, deferred, _geocoder, _ = env
+    monkeypatch.setattr(jobs.time, "sleep", lambda s: None)
+
+    def busy(geocoder, chunk):
+        raise jobs.BatchBusy()
+
+    def boom(geocoder, chunk):
+        raise RuntimeError("SELECT secret FROM interne")
+
+    errors = []
+    for failure in (busy, boom):
+        monkeypatch.setattr(jobs, "geocode_batch", failure)
+        r = client.post("/v1/geocode/jobs", json={"addresses": ["aaa 1"]})
+        assert r.status_code == 202, r.text
+        job_id = r.json()["id"]
+        jobs.run_geocode_job(**deferred[-1])
+        errors.append(client.get(f"/v1/geocode/jobs/{job_id}").json()["error"])
+    assert "occupé" in errors[0]
+    assert errors[1] == INTERNAL_ERROR_MESSAGE

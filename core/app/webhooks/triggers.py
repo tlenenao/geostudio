@@ -129,7 +129,7 @@ def poll_trigger(
             secrets_repo.get_secret_payload(
                 session, tenant_id=trigger.tenant_id, name=trigger.secret_name, user=owner
             )
-            if owner is not None
+            if owner is not None and owner.erased_at is None  # revue SP-L2 I3
             else None
         )
         if owner is None or secret is None:

@@ -302,6 +302,7 @@ async function uploadAttachment(
     fieldKey,
     filename: file.name,
     contentType,
+    size: file.size,
   });
   const res = await fetch(uploadUrl, {
     method: "PUT",

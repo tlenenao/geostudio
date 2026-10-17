@@ -64,6 +64,20 @@ def test_matches_rasterio_reference_and_keeps_non_polygons(env, tmp_path):  # no
     assert rows[1] == ("point", None, None, None)
 
 
+def test_op_waits_for_a_zonal_slot_instead_of_failing(env, monkeypatch):  # noqa: F811
+    # Revue SP-L2 (AUD-157) : côté worker, un 3e calcul concurrent attend son tour ;
+    # seul REST/MCP échoue vite (503) quand les créneaux sont pris.
+    import threading
+
+    monkeypatch.setattr(zonal, "_ZONAL_SLOTS", threading.BoundedSemaphore(1))
+    monkeypatch.setattr(zonal, "_ZONAL_WAIT_S", 0.01)
+    zonal._ZONAL_SLOTS.acquire()
+    threading.Timer(0.3, zonal._ZONAL_SLOTS.release).start()
+    conn = _conn()
+    _src(conn, [("carre", SQUARE)])
+    assert _run(conn, env, env[3])[0][1] > 0
+
+
 def test_input_srid_is_honoured(env):  # noqa: F811
     conn = _conn()
     _src(conn, [("carre", SQUARE)])

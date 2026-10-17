@@ -78,10 +78,11 @@ export function createExportsIngestionMethods(base: ItemClientBase): ExportsInge
       return request<AppExportJobStatus>("GET", `/app-exports/jobs/${jobId}`);
     },
 
-    async presignUpload(filename: string, contentType: string) {
+    async presignUpload(filename: string, contentType: string, size: number) {
       return request<{ uploadUrl: string; key: string }>("POST", "/uploads/presign", {
         filename,
         contentType,
+        size,
       });
     },
 

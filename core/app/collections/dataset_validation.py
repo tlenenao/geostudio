@@ -31,7 +31,7 @@ def _validate_dataset_payload(session: Session, config: BuilderConfig, user: Use
         action="read",
         item=collections_repo.get_access_facts(collection),
         kind="collection",
-        actor_is_admin=user.is_admin,
+        actor_is_admin=user.acts_as_admin(),
     )
     if not readable:
         # Same message as the not-found branch: don't leak collection existence.

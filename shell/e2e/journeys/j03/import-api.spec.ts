@@ -36,6 +36,7 @@ test.describe("j03 import — défauts bloquants du chemin nominal", () => {
     const r = await creator.send("POST", "/v1/uploads/presign", {
       filename: "a.geojson",
       contentType: "application/geo+json",
+      size: 10,
     });
     expect(r.status).toBe(200);
     expect(r.body.uploadUrl).toMatch(/^http/);
@@ -212,6 +213,7 @@ test.describe("j03 import — droits", () => {
     const r = await reader.send("POST", "/v1/uploads/presign", {
       filename: "a.geojson",
       contentType: "application/geo+json",
+      size: 10,
     });
     expect(r.status).toBe(403);
   });

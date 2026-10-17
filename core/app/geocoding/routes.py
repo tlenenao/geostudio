@@ -129,6 +129,11 @@ def create_geocode_job(
     par GET /geocode/jobs/{id}. Le POST /batch synchrone reste pour <= 500."""
     if any(not 3 <= len(a) <= 200 for a in body.addresses):
         raise HTTPException(status_code=422, detail="Chaque adresse doit faire 3 à 200 caractères.")
+    active = geocode_jobs.count_active_jobs(session, tenant_id=user.tenant_id, user_id=user.id)
+    if active >= geocode_jobs.MAX_ACTIVE_JOBS_PER_USER:  # AUD-156
+        raise HTTPException(
+            status_code=429, detail="Trop de lots de géocodage en cours, réessayez plus tard."
+        )
     job = geocode_jobs.create_job(
         session, tenant_id=user.tenant_id, user_id=user.id, addresses=body.addresses
     )

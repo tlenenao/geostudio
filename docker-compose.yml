@@ -430,6 +430,7 @@ services:
       # destinataire externe (RC-13) ; vide = hôte interne (liens injoignables hors Docker).
       S3_PUBLIC_ENDPOINT_URL: ${S3_PUBLIC_ENDPOINT_URL:-}
       # Pairs dont X-Forwarded-For est honoré (réseau Traefik) ; jamais `*` en production.
+      # AUD-101 : en production, restreindre au sous-réseau du reverse-proxy ; toute machine de cette plage peut forger X-Forwarded-For.
       CORE_TRUSTED_PROXIES: ${CORE_TRUSTED_PROXIES:-127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7}
       # Budget /min (par IP) des liens de partage : route publique + en-tête X-Share-Link-Token (REV-299).
       CORE_RATELIMIT_SHARE_LINK_PER_MIN: ${CORE_RATELIMIT_SHARE_LINK_PER_MIN:-60}
@@ -440,6 +441,8 @@ services:
       CORE_MCP_STATELESS: ${CORE_MCP_STATELESS:-true}
       # Plafond de lecture d'un fichier importé (octets) ; vide = 512 Mio (P03.05).
       CORE_UPLOAD_MAX_BYTES: ${CORE_UPLOAD_MAX_BYTES:-}
+      # Soumissions publiques acceptées par formulaire et par heure ; vide = 1000.
+      CORE_PUBLIC_SUBMIT_TOKEN_HOURLY_LIMIT: ${CORE_PUBLIC_SUBMIT_TOKEN_HOURLY_LIMIT:-}
       S3_ACCESS_KEY: ${MINIO_USER}
       S3_SECRET_KEY: ${MINIO_PASSWORD}
       S3_THUMBNAILS_BUCKET: geostudio-thumbnails
@@ -459,7 +462,9 @@ services:
       S3_APPEXPORTS_BUCKET: geostudio-appexports
       CORE_APPEXPORT_ENABLED: ${CORE_APPEXPORT_ENABLED:-false}
     ports:
-      - "8200:8200"
+      # AUD-101 : boucle locale seulement (le shell de dev appelle http://localhost:8200) ;
+      # jamais exposé au réseau local, où tout pair RFC 1918 est un « proxy de confiance ».
+      - "127.0.0.1:8200:8200"
     networks: [gis-net]
     depends_on: [pgbouncer, minio, titiler]
     restart: unless-stopped
@@ -797,6 +802,11 @@ services:
       # le shell) ne l'est pas — défaut local http://localhost:8200 —, le Chromium
       # d'export relaie ses appels vers cette URL (core_bridge_target).
       EXPORT_CORE_INTERNAL_URL: ${EXPORT_CORE_INTERNAL_URL:-http://core:8200}
+      # AUD-023 / revue SP-L2 I5 : garde d'egress du Chromium d'export. Origines de
+      # confiance jointes même sur IP privée (fonds de carte de LAN…), liste
+      # séparée par des virgules ; allowlist stricte d'hôtes publics (vide = tous).
+      CORE_EXPORT_TRUSTED_ORIGINS: ${CORE_EXPORT_TRUSTED_ORIGINS:-}
+      CORE_EXPORT_EGRESS_ALLOWLIST: ${CORE_EXPORT_EGRESS_ALLOWLIST:-}
       # scripts.healthcheck_worker_stalled : filtre sur la seule file que ce
       # service consomme (GAP-76, SP-49) — contrairement à `worker`, ce
       # service n'avait AUCUNE sonde du tout avant ce correctif (pas même
@@ -1085,7 +1095,7 @@ services:
       - traefik.http.routers.shell-embed.tls.certresolver=letsencrypt
       - traefik.http.routers.shell-embed.priority=5
       - traefik.http.routers.shell-embed.service=shell
-      - traefik.http.routers.shell-embed.middlewares=security-headers-embed@docker,rate-limit@docker,csp-dynamic@file
+      - traefik.http.routers.shell-embed.middlewares=security-headers-embed@docker,rate-limit@docker,csp-dynamic-embed@file
       - traefik.http.middlewares.security-headers-embed.headers.stsSeconds=31536000
       - traefik.http.middlewares.security-headers-embed.headers.contentTypeNosniff=true
       - traefik.http.middlewares.security-headers-embed.headers.referrerPolicy=strict-origin-when-cross-origin

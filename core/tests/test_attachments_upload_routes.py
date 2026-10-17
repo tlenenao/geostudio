@@ -95,7 +95,7 @@ def test_presign_returns_an_upload_url_and_tenant_prefixed_key(client):
     api, _Session, tenant, _user, s3 = client
     res = api.post(
         "/v1/collections/col1/items/f1/attachments/presign",
-        json={"fieldKey": "photos", "filename": "a.jpg", "contentType": "image/jpeg"},
+        json={"size": 10, "fieldKey": "photos", "filename": "a.jpg", "contentType": "image/jpeg"},
     )
     assert res.status_code == 200
     body = res.json()
@@ -108,7 +108,12 @@ def test_presign_rejects_undeclared_field_key(client):
     api, *_ = client
     res = api.post(
         "/v1/collections/col1/items/f1/attachments/presign",
-        json={"fieldKey": "not-declared", "filename": "a.jpg", "contentType": "image/jpeg"},
+        json={
+            "size": 10,
+            "fieldKey": "not-declared",
+            "filename": "a.jpg",
+            "contentType": "image/jpeg",
+        },
     )
     assert res.status_code == 400
 
@@ -134,7 +139,7 @@ def test_presign_requires_write_access(client):
 
     res = api.post(
         "/v1/collections/col1/items/f1/attachments/presign",
-        json={"fieldKey": "photos", "filename": "a.jpg", "contentType": "image/jpeg"},
+        json={"size": 10, "fieldKey": "photos", "filename": "a.jpg", "contentType": "image/jpeg"},
     )
     assert res.status_code == 403
 
@@ -219,6 +224,7 @@ def test_presign_rejects_a_dangerous_extension(client):
     res = api.post(
         "/v1/collections/col1/items/f1/attachments/presign",
         json={
+            "size": 10,
             "fieldKey": "photos",
             "filename": "malware.exe",
             "contentType": "application/octet-stream",
@@ -264,7 +270,7 @@ def test_presign_rejects_an_invalid_content_type(client):
     api, *_ = client
     res = api.post(
         "/v1/collections/col1/items/f1/attachments/presign",
-        json={"fieldKey": "photos", "filename": "a.png", "contentType": "image/文件"},
+        json={"size": 10, "fieldKey": "photos", "filename": "a.png", "contentType": "image/文件"},
     )
     assert res.status_code == 400
 
@@ -294,7 +300,7 @@ def test_presign_rejects_a_content_type_with_a_trailing_newline(client):
     api, *_ = client
     res = api.post(
         "/v1/collections/col1/items/f1/attachments/presign",
-        json={"fieldKey": "photos", "filename": "a.png", "contentType": "image/png\n"},
+        json={"size": 10, "fieldKey": "photos", "filename": "a.png", "contentType": "image/png\n"},
     )
     assert res.status_code == 400
 
@@ -308,6 +314,7 @@ def test_presign_rejects_a_dangerous_extension_with_a_trailing_dot(client):
     res = api.post(
         "/v1/collections/col1/items/f1/attachments/presign",
         json={
+            "size": 10,
             "fieldKey": "photos",
             "filename": "malware.exe.",
             "contentType": "application/octet-stream",
@@ -323,7 +330,17 @@ def test_presign_sanitizes_the_s3_key_for_a_non_ascii_filename(client):
     api, *_ = client
     res = api.post(
         "/v1/collections/col1/items/f1/attachments/presign",
-        json={"fieldKey": "photos", "filename": "文件.png", "contentType": "image/png"},
+        json={"size": 10, "fieldKey": "photos", "filename": "文件.png", "contentType": "image/png"},
     )
     assert res.status_code == 200
     assert "文件" not in res.json()["key"]
+
+
+def test_presign_refuses_oversized_or_unsized_attachment(client):
+    # AUD-090 : plafond MAX_ATTACHMENT_BYTES vérifié avant de signer la taille.
+    api, *_ = client
+    url = "/v1/collections/col1/items/f1/attachments/presign"
+    body = {"fieldKey": "photos", "filename": "a.jpg", "contentType": "image/jpeg"}
+    too_big = 25 * 1024 * 1024 + 1
+    assert api.post(url, json={**body, "size": too_big}).status_code == 413
+    assert api.post(url, json=body).status_code == 422

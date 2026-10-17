@@ -59,11 +59,9 @@ def resolve_owner_user(session: Session, *, tenant_id: str, item_id: str) -> Use
     if owner_id is None:
         raise LookupError(f"item '{item_id}' not found")
     user = session.get(User, owner_id)
-    assert user is not None
-    # Revue L5 I5 (RGPD) : un propriétaire anonymisé n'agit plus — point unique pour
-    # run planifié, webhook, déclencheur S3, reprise, rapports et alertes.
-    if user.erased_at is not None:
-        raise LookupError(f"owner of item '{item_id}' has been anonymized")
+    if user is None or user.erased_at is not None:
+        # AUD-094 : un compte effacé n'agit plus (cron, alertes, rapports, webhook).
+        raise LookupError(f"owner of item '{item_id}' is unavailable")
     return user
 
 

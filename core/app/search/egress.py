@@ -7,8 +7,8 @@ SSRF — la seule des 4 surfaces sortantes du dépôt à en être dépourvue
 (moissonnage `app.harvest.egress`, connecteurs pipeline `app.pipelines.egress`,
 egress LLM du copilote `app.copilot.egress`, en ont chacune une).
 
-Ce module duplique la garde plutôt que d'importer `app.harvest.egress`
-(pattern source, le plus complet) : chaque domaine a sa propre variable
+Le contrôle est commun (`app.egress_guard`, AUD-124) ; ce module n'importe
+pas `app.harvest.egress` : chaque domaine a sa propre variable
 d'environnement d'allowlist — `CORE_EMBEDDING_EGRESS_ALLOWLIST` ici, distincte
 de `CORE_HARVEST_EGRESS_ALLOWLIST`/`CORE_PIPELINES_EGRESS_ALLOWLIST`/
 `CORE_LLM_EGRESS_ALLOWLIST`. Même raison que `app.copilot.egress` (cf. sa
@@ -31,14 +31,11 @@ réutilise sur chaque `embed()`.
 DNS-rebinding TOCTOU fermé par REV-273d (comme `app.harvest.egress`) : le
 transport connecte sur l'IP validée (`app.net_pin.send_pinned`)."""
 
-import ipaddress
 import logging
-import os
-import socket
-from urllib.parse import urlparse
 
 import httpx
 
+from app.egress_guard import check_url
 from app.net_pin import ValidatedIp, send_pinned
 
 logger = logging.getLogger(__name__)
@@ -51,44 +48,9 @@ class EgressBlockedError(Exception):
     """Cible réseau interdite (plage interne ou hors allowlist)."""
 
 
-def _allowlist() -> set[str]:
-    raw = os.environ.get(_ALLOWLIST_ENV, "")
-    return {h.strip() for h in raw.split(",") if h.strip()}
-
-
-def _is_internal(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
-    # tout ce qui n'est pas globalement routable (CGNAT 100.64/10, TEST-NET, 6to4…)
-    # fec0::/10 (site-local déprécié) : is_global le laisse passer (j06-003)
-    return not ip.is_global or ip.is_multicast or getattr(ip, "is_site_local", False)
-
-
-def assert_egress_allowed(url: str) -> str:
-    parsed = urlparse(url)
-    if parsed.scheme.lower() not in {"http", "https"}:
-        raise EgressBlockedError(f"schéma d'egress interdit : {parsed.scheme!r}")
-    host = parsed.hostname
-    if not host:
-        raise EgressBlockedError(f"hôte d'egress absent dans l'URL : {url!r}")
-
-    try:
-        addresses = [ipaddress.ip_address(host)]
-    except ValueError:
-        try:
-            infos = socket.getaddrinfo(host, None)
-        except socket.gaierror as exc:
-            raise EgressBlockedError(f"hôte non résoluble : {host!r}") from exc
-        addresses = [ipaddress.ip_address(info[4][0]) for info in infos]
-
-    if not addresses:
-        raise EgressBlockedError(f"hôte non résoluble : {host!r}")
-    for ip in addresses:
-        if _is_internal(ip):
-            raise EgressBlockedError(f"cible réseau interne bloquée : {host!r}")
-
-    allowlist = _allowlist()
-    if allowlist and host not in allowlist:
-        raise EgressBlockedError(f"hôte hors allowlist d'egress : {host!r}")
-    return ValidatedIp(str(addresses[0]), [str(a) for a in addresses])  # REV-273d
+def assert_egress_allowed(url: str) -> ValidatedIp:
+    # AUD-124 : logique commune dans app.egress_guard ; seule l'allowlist est propre au domaine.
+    return check_url(url, allowlist_env=_ALLOWLIST_ENV, error=EgressBlockedError)
 
 
 class _GuardedTransport(httpx.BaseTransport):

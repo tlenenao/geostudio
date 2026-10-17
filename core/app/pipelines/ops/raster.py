@@ -182,6 +182,7 @@ def execute_zonal_stats(
                 band=p.band,
                 stats=stats,
                 src_crs=f"EPSG:{input_srid or 4326}",
+                wait_s=zonal.WORKER_WAIT_S,
             )
     except zonal.ZonalError as exc:
         raise PipelineRuntimeError(f"transform.zonalStats: {exc}") from exc

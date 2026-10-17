@@ -92,43 +92,79 @@ def _as_user_id(app, Session, user_id: str):
 def test_regular_user_can_erase_their_own_account(env):
     app, client, _admin_id, regular_id, _outsider_id = env
     _as_user_id(app, client.session_factory, regular_id)
-    resp = client.post(f"/v1/compliance/users/{regular_id}/erase")
+    resp = client.post(
+        f"/v1/compliance/users/{regular_id}/erase", json={"confirmUsername": "regular"}
+    )
     assert resp.status_code == 204, resp.text
 
 
 def test_regular_user_cannot_erase_another_user_without_privilege(env):
     app, client, admin_id, regular_id, _outsider_id = env
     _as_user_id(app, client.session_factory, regular_id)
-    resp = client.post(f"/v1/compliance/users/{admin_id}/erase")
+    resp = client.post(f"/v1/compliance/users/{admin_id}/erase", json={"confirmUsername": "admin"})
     assert resp.status_code == 403, resp.text
 
 
 def test_admin_can_erase_another_user_with_privilege(env):
     app, client, admin_id, regular_id, _outsider_id = env
     _as_user_id(app, client.session_factory, admin_id)
-    resp = client.post(f"/v1/compliance/users/{regular_id}/erase")
+    resp = client.post(
+        f"/v1/compliance/users/{regular_id}/erase", json={"confirmUsername": "regular"}
+    )
     assert resp.status_code == 204, resp.text
 
 
 def test_cross_tenant_erasure_is_rejected_even_with_privilege(env):
     app, client, admin_id, _regular_id, outsider_id = env
     _as_user_id(app, client.session_factory, admin_id)
-    resp = client.post(f"/v1/compliance/users/{outsider_id}/erase")
+    resp = client.post(
+        f"/v1/compliance/users/{outsider_id}/erase", json={"confirmUsername": "outsider"}
+    )
     assert resp.status_code == 404, resp.text
 
 
 def test_erase_me_literal_targets_the_caller(env):
     app, client, _admin_id, regular_id, _outsider_id = env
     _as_user_id(app, client.session_factory, regular_id)
-    resp = client.post("/v1/compliance/users/me/erase")
+    resp = client.post("/v1/compliance/users/me/erase", json={"confirmUsername": "regular"})
     assert resp.status_code == 204, resp.text
 
 
 def test_erase_already_erased_user_returns_409(env):
     app, client, _admin_id, regular_id, _outsider_id = env
     _as_user_id(app, client.session_factory, regular_id)
-    first = client.post(f"/v1/compliance/users/{regular_id}/erase")
+    first = client.post(
+        f"/v1/compliance/users/{regular_id}/erase", json={"confirmUsername": "regular"}
+    )
     assert first.status_code == 204
     _as_user_id(app, client.session_factory, regular_id)
-    second = client.post(f"/v1/compliance/users/{regular_id}/erase")
+    second = client.post(
+        f"/v1/compliance/users/{regular_id}/erase", json={"confirmUsername": "regular"}
+    )
     assert second.status_code == 409, second.text
+
+
+def test_erase_requires_a_matching_confirmation(env):
+    # AUD-094 : sans corps → 422 ; mauvais nom → 409 ; rien n'est effacé.
+    app, client, _admin_id, regular_id, _outsider_id = env
+    _as_user_id(app, client.session_factory, regular_id)
+    url = f"/v1/compliance/users/{regular_id}/erase"
+    assert client.post(url).status_code == 422
+    wrong = client.post(url, json={"confirmUsername": "mauvais"})
+    assert wrong.status_code == 409, wrong.text
+    from app.users.models import User
+
+    with client.session_factory() as s:
+        assert s.get(User, regular_id).erased_at is None
+
+
+def test_erase_is_refused_with_an_api_key(env):
+    # AUD-094 : l'effacement est réservé à une session interactive.
+    app, client, admin_id, regular_id, _outsider_id = env
+    _as_user_id(app, client.session_factory, admin_id)
+    resp = client.post(
+        f"/v1/compliance/users/{regular_id}/erase",
+        json={"confirmUsername": "regular"},
+        headers={"Authorization": "Bearer gsk_000000000000_x"},
+    )
+    assert resp.status_code == 403, resp.text

@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 import os
+from collections.abc import Callable
 from functools import lru_cache
+from typing import Any
 
 import jwt
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app import observability
@@ -190,16 +192,48 @@ def _jwks_client() -> jwt.PyJWKClient:
     return jwt.PyJWKClient(jwks_url, lifespan=600)
 
 
+_READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+_READ_POST_MARK = "__gs_read_post__"
+
+
+def read_post[F: Callable[..., Any]](endpoint: F) -> F:
+    """Route POST qui ne fait que LIRE (corps de requête trop riche pour un GET :
+    agrégat, recherche). Autorisation explicite, route par route : le jeton
+    d'export (rendu PDF des widgets) et la clé d'API en lecture seule peuvent
+    l'appeler ; toute autre écriture leur reste refusée (C1 revue SP-L2)."""
+    setattr(endpoint, _READ_POST_MARK, True)
+    return endpoint
+
+
+def _is_read(request: Request | None) -> bool:
+    if request is None:  # appel direct sans requête (tests) = lecture
+        return True
+    if request.method in _READ_METHODS:
+        return True
+    endpoint = request.scope.get("endpoint")
+    return request.method == "POST" and bool(getattr(endpoint, _READ_POST_MARK, False))
+
+
+def forbid_api_key(authorization: str = Header(default="")) -> None:
+    """Route réservée à une session interactive : une clé ne gère ni clés (elle
+    survivrait à sa propre révocation), ni effacement, liens de partage, jetons
+    webhook ou rôles (AUD-094)."""
+    if api_key_service.is_api_key(authorization.removeprefix("Bearer ")):
+        raise HTTPException(status_code=403, detail="not allowed with an api key")
+
+
 def get_current_user(
+    request: Request = None,  # type: ignore[assignment]  # injecté par FastAPI
     authorization: str = Header(default=""),
     session: Session = Depends(get_session, scope="function"),
 ) -> User:
-    user = _resolve_current_user(authorization, session)
+    # Appel direct sans requête (tests) = lecture ; FastAPI injecte toujours la requête.
+    user = _resolve_current_user(authorization, session, is_read=_is_read(request))
     observability.tag_current_span_with_user(user)  # AUD-040
     return user
 
 
-def _resolve_current_user(authorization: str, session: Session) -> User:
+def _resolve_current_user(authorization: str, session: Session, *, is_read: bool) -> User:
     # REV-012 : la résolution du tenant (get_or_create_default_tenant peut
     # INSÉRER une ligne) ne doit se produire qu'après ce contrôle — sinon
     # toute requête non authentifiée sur une route protégée déclenche un
@@ -219,6 +253,8 @@ def _resolve_current_user(authorization: str, session: Session) -> User:
         api_user = api_key_service.authenticate(session, token=token, tenant_id=tenant.id)
         if api_user is None:
             raise HTTPException(status_code=401, detail="invalid api key")
+        if api_user.api_key_read_only and not is_read:  # AUD-091
+            raise HTTPException(status_code=403, detail="read-only api key")
         return api_user
 
     if _mock_mode():
@@ -241,8 +277,11 @@ def _resolve_current_user(authorization: str, session: Session) -> User:
             raise HTTPException(status_code=401, detail="invalid export token") from exc
         if claims.tenant_id != tenant.id:
             raise HTTPException(status_code=401, detail="invalid export token")
+        # AUD-024 : un jeton d'export ne fait que lire (GET, ou POST marqué @read_post).
+        if not is_read:
+            raise HTTPException(status_code=403, detail="export token is read-only")
         user = session.get(User, claims.user_id)
-        if user is None:
+        if user is None or user.erased_at is not None:  # AUD-094
             raise HTTPException(status_code=401, detail="invalid export token")
         return user
 
@@ -283,6 +322,7 @@ def _resolve_current_user(authorization: str, session: Session) -> User:
 
 
 def get_current_user_optional(
+    request: Request = None,  # type: ignore[assignment]  # injecté par FastAPI
     authorization: str = Header(default=""),
     session: Session = Depends(get_session, scope="function"),
 ) -> User | None:
@@ -290,4 +330,4 @@ def get_current_user_optional(
     aux collections publiques — URLs OGC stables, spec SP-3 §2)."""
     if not authorization.startswith("Bearer "):
         return None
-    return get_current_user(authorization=authorization, session=session)
+    return get_current_user(request, authorization=authorization, session=session)

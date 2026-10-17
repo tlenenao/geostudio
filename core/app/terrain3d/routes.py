@@ -72,12 +72,17 @@ def presign_terrain3d_upload(
     # sans aucun privilège.
     require_privilege(session, user, privilege_for_kind("terrain3d"))
     ensure_uploads_bucket(s3, bucket)
+    from app.terrain3d.jobs import _max_upload_bytes  # import paresseux, comme la tâche
+
+    if body.size > _max_upload_bytes():
+        raise HTTPException(status_code=413, detail="file too large")
     key = f"{user.tenant_id}/{uuid.uuid4().hex}/{body.filename}"
     url = generate_presigned_put_url(
         s3,
         bucket=bucket,
         key=key,
         content_type=body.contentType or "application/octet-stream",
+        content_length=body.size,
     )
     return Terrain3DPresignResponse(uploadUrl=url, key=key)
 

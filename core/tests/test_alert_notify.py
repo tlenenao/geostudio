@@ -57,18 +57,11 @@ def test_send_webhook_wraps_a_request_failure(monkeypatch):
             send_webhook(channel, payload={"state": "firing"})
 
 
-def test_send_webhook_rechecks_egress_on_redirect_hops(monkeypatch):
-    """Regression for the SSRF gap that a one-time assert_egress_allowed()
-    check on the original URL does not cover: `requests` follows redirects
-    by default, so a webhook URL that looks public but 302s to an internal
-    target (e.g. the cloud metadata endpoint) must still be blocked on the
-    redirect hop, not just on the original URL.
-
-    Only the actual network I/O (HTTPAdapter.send, the real base class that
-    would otherwise open a socket) is faked here — Session.send(),
-    resolve_redirects(), and our own _GuardedHTTPAdapter.send()'s egress
-    check all run for real, via the real build_guarded_session(). This
-    proves the guard is re-applied on the second hop, not just mocked away.
+def test_send_webhook_never_follows_a_redirect(monkeypatch):
+    """AUD-169 (supersedes the per-hop re-check): a webhook URL that looks
+    public but 302s to an internal target (e.g. the cloud metadata endpoint)
+    is never followed — the 3xx itself is a delivery failure. Only the actual
+    network I/O (HTTPAdapter.send) is faked; the real guarded session runs.
     """
     monkeypatch.setattr(socket, "getaddrinfo", _fake_getaddrinfo_public)
 
@@ -76,8 +69,10 @@ def test_send_webhook_rechecks_egress_on_redirect_hops(monkeypatch):
     redirect_response.status_code = 302
     redirect_response.headers = {"location": "http://169.254.169.254/latest/meta-data/"}
     redirect_response.raw = None
+    sent: list[str] = []
 
     def fake_adapter_send(self, request, **kwargs):
+        sent.append(request.url)
         redirect_response.request = request
         redirect_response.url = request.url
         return redirect_response
@@ -87,7 +82,8 @@ def test_send_webhook_rechecks_egress_on_redirect_hops(monkeypatch):
     channel = AlertChannelWebhook(url="https://public.example.test/hook")
     with pytest.raises(NotifyError) as exc_info:
         send_webhook(channel, payload={"state": "firing"})
-    assert isinstance(exc_info.value.__cause__, EgressBlockedError)
+    assert isinstance(exc_info.value.__cause__, requests.HTTPError)
+    assert sent == ["https://public.example.test/hook"]
 
 
 def test_guarded_session_used_by_send_webhook_blocks_before_connection():

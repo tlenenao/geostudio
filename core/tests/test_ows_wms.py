@@ -419,3 +419,30 @@ def test_tile_p95_under_300ms_on_nominal_layer(pg_engine, monkeypatch):
     finally:
         with pg_engine.begin() as conn:
             conn.execute(text("DROP TABLE IF EXISTS perf_ows"))
+
+
+def test_render_slots_exhausted_is_503(env, monkeypatch):
+    # AUD-155 : rendu PIL borné en concurrence (GetMap et WMTS partagent _render).
+    import threading
+
+    from app.ows import wms_routes
+
+    monkeypatch.setattr(wms_routes, "_RENDER_SLOTS", threading.BoundedSemaphore(1))
+    monkeypatch.setattr(wms_routes, "_RENDER_WAIT_S", 0.01)
+    wms_routes._RENDER_SLOTS.acquire()
+    c = env[0]
+    r = c.get(
+        "/v1/ows/wms",
+        params={
+            "service": "WMS",
+            "version": "1.3.0",
+            "request": "GetMap",
+            "layers": "x",
+            "crs": "EPSG:3857",
+            "bbox": "0,0,1,1",
+            "width": "10",
+            "height": "10",
+            "format": "image/png",
+        },
+    )
+    assert r.status_code == 503 and "server busy" in r.text

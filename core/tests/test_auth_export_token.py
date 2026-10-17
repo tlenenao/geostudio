@@ -43,14 +43,16 @@ def _session_with_user():
 
 def test_get_current_user_accepts_valid_export_token():
     session, tenant, user = _session_with_user()
-    token = mint_export_token(tenant_id=tenant.id, user_id=user.id, job_id="job-1")
+    token = mint_export_token(tenant_id=tenant.id, user_id=user.id, job_id="job-1", item_id="i1")
     resolved = get_current_user(authorization=f"Bearer {token}", session=session)
     assert resolved.id == user.id
 
 
 def test_get_current_user_rejects_expired_export_token():
     session, tenant, user = _session_with_user()
-    token = mint_export_token(tenant_id=tenant.id, user_id=user.id, job_id="job-1", ttl_seconds=-1)
+    token = mint_export_token(
+        tenant_id=tenant.id, user_id=user.id, job_id="job-1", item_id="i1", ttl_seconds=-1
+    )
     with pytest.raises(HTTPException) as exc_info:
         get_current_user(authorization=f"Bearer {token}", session=session)
     assert exc_info.value.status_code == 401
@@ -58,7 +60,9 @@ def test_get_current_user_rejects_expired_export_token():
 
 def test_get_current_user_rejects_export_token_for_wrong_tenant():
     session, tenant, user = _session_with_user()
-    token = mint_export_token(tenant_id="some-other-tenant", user_id=user.id, job_id="job-1")
+    token = mint_export_token(
+        tenant_id="some-other-tenant", user_id=user.id, job_id="job-1", item_id="i1"
+    )
     with pytest.raises(HTTPException) as exc_info:
         get_current_user(authorization=f"Bearer {token}", session=session)
     assert exc_info.value.status_code == 401
@@ -66,10 +70,64 @@ def test_get_current_user_rejects_export_token_for_wrong_tenant():
 
 def test_get_current_user_rejects_export_token_for_deleted_user():
     session, tenant, user = _session_with_user()
-    token = mint_export_token(tenant_id=tenant.id, user_id="never-existed", job_id="job-1")
+    token = mint_export_token(
+        tenant_id=tenant.id, user_id="never-existed", job_id="job-1", item_id="i1"
+    )
     with pytest.raises(HTTPException) as exc_info:
         get_current_user(authorization=f"Bearer {token}", session=session)
     assert exc_info.value.status_code == 401
+
+
+def _request(method: str):
+    from starlette.requests import Request
+
+    return Request({"type": "http", "method": method, "headers": []})
+
+
+@pytest.mark.parametrize("method", ["POST", "PUT", "PATCH", "DELETE"])
+def test_export_token_is_read_only(method):
+    # AUD-024 : un jeton d'export ne fait que lire, quelle que soit la route.
+    session, tenant, user = _session_with_user()
+    token = mint_export_token(tenant_id=tenant.id, user_id=user.id, job_id="job-1", item_id="i1")
+    with pytest.raises(HTTPException) as exc_info:
+        get_current_user(_request(method), authorization=f"Bearer {token}", session=session)
+    assert exc_info.value.status_code == 403
+    resolved = get_current_user(_request("GET"), authorization=f"Bearer {token}", session=session)
+    assert resolved.id == user.id
+
+
+def test_export_token_of_an_erased_user_is_refused():
+    from datetime import UTC, datetime
+
+    session, tenant, user = _session_with_user()
+    user.erased_at = datetime.now(UTC)
+    session.commit()
+    token = mint_export_token(tenant_id=tenant.id, user_id=user.id, job_id="job-1", item_id="i1")
+    with pytest.raises(HTTPException) as exc_info:
+        get_current_user(_request("GET"), authorization=f"Bearer {token}", session=session)
+    assert exc_info.value.status_code == 401
+
+
+def test_fastapi_injects_the_request_method():
+    # La garde de méthode n'a de valeur que si FastAPI injecte bien la requête.
+    from fastapi import Depends, FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.db import get_session
+
+    session, tenant, user = _session_with_user()
+    app = FastAPI()
+    app.dependency_overrides[get_session] = lambda: session
+
+    @app.api_route("/x", methods=["GET", "DELETE"])
+    def _x(u=Depends(get_current_user)):
+        return {"id": u.id}
+
+    token = mint_export_token(tenant_id=tenant.id, user_id=user.id, job_id="job-1", item_id="i1")
+    client = TestClient(app)
+    headers = {"Authorization": f"Bearer {token}"}
+    assert client.get("/x", headers=headers).status_code == 200
+    assert client.delete("/x", headers=headers).status_code == 403
 
 
 def test_get_current_user_rejects_missing_bearer():

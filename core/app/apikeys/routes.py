@@ -1,26 +1,19 @@
 # SPDX-License-Identifier: Apache-2.0
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 from app.apikeys import service
 from app.apikeys.models import ApiKey
 from app.apikeys.schemas import ApiKeyCreate, ApiKeyCreated, ApiKeyRead
-from app.auth.dependency import get_current_user
+from app.auth.dependency import forbid_api_key, get_current_user
 from app.db import get_session
-from app.roles.guards import require_privilege
+from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
 from app.users.models import User
 
 router = APIRouter()
-
-
-def forbid_api_key(authorization: str = Header(default="")) -> None:
-    """Gestion des clés réservée à une session interactive : une clé ne crée
-    ni ne révoque de clés (sinon elle survivrait à sa propre révocation)."""
-    if service.is_api_key(authorization.removeprefix("Bearer ")):
-        raise HTTPException(status_code=403, detail="api keys cannot manage api keys")
 
 
 def _iso(value: datetime | None) -> str | None:
@@ -37,6 +30,8 @@ def _read(key: ApiKey) -> ApiKeyRead:
         expiresAt=_iso(key.expires_at) or "",
         revokedAt=_iso(key.revoked_at),
         lastUsedAt=_iso(key.last_used_at),
+        scopes=key.scopes,
+        readOnly=key.read_only,
     )
 
 
@@ -60,8 +55,19 @@ def create_key(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session, scope="function"),
 ) -> ApiKeyCreated:
+    if body.scopes is not None:  # AUD-091 : jamais au-delà des privilèges du créateur
+        known = {p.value for p in Privilege}
+        if unknown := sorted(set(body.scopes) - known):
+            raise HTTPException(422, f"unknown privileges: {', '.join(unknown)}")
+        if missing := sorted(p for p in set(body.scopes) if not has_privilege(session, user, p)):
+            raise HTTPException(403, f"privileges not held: {', '.join(missing)}")
     key, token = service.create_api_key(
-        session, user=user, name=body.name, expires_in_days=body.expiresInDays
+        session,
+        user=user,
+        name=body.name,
+        expires_in_days=body.expiresInDays,
+        scopes=body.scopes,
+        read_only=body.readOnly,
     )
     response.headers["Cache-Control"] = "no-store"
     return ApiKeyCreated(**_read(key).model_dump(), token=token)

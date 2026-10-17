@@ -28,8 +28,10 @@ from app.dataexport import repository as repo
 from app.dataexport.models import CollectionExportJob
 from app.db import request_scoped_session
 from app.features import repository as features_repo
+from app.features.repository import FilterError
 from app.features.rls import rls_scope
 from app.ingestion.storage import ensure_uploads_bucket, make_s3_client
+from app.job_errors import public_error
 from app.jobs import app
 from app.jobs.common import notify_best_effort, session_factory
 from app.sharing.geo_limits import resolve_geo_limits
@@ -187,10 +189,11 @@ def run_collection_export(job_id: str, tenant_id: str) -> None:
                 return
     except Exception as exc:
         logger.exception("collection export job %s : échec", job_id)
+        msg = public_error(exc, user_errors=(ValueError, LookupError, FilterError))  # AUD-100/172
         with request_scoped_session(factory) as session:
-            failed = repo.mark_failed(session, job_id, str(exc))
+            failed = repo.mark_failed(session, job_id, msg)
         if failed:  # sinon annulé par le demandeur : pas de notification d'échec
-            _notify(factory, job, title=title, status="failure", error=str(exc))
+            _notify(factory, job, title=title, status="failure", error=msg)
         return
     _notify(factory, job, title=title, status="success")
 

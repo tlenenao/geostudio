@@ -1450,7 +1450,9 @@ def test_postgres_statement_timeout_against_a_slow_query(
     _pg_dsn_secret(session, tenant, user, _pg_dsn(pg_engine))
     t0 = time.monotonic()
     with pytest.raises(connector_runtime.ConnectorRuntimeError, match="extraction failed"):
-        _run_pg(conn, session, tenant, user, _pg_params("SELECT pg_sleep(8) AS x"))
+        # pg_sleep est refusé par validate_external_select (AUD-081) : requête lourde.
+        q = "SELECT count(*) AS x FROM generate_series(1, 10000000000)"
+        _run_pg(conn, session, tenant, user, _pg_params(q))
     assert time.monotonic() - t0 < 6
 
 
@@ -1822,7 +1824,11 @@ def test_stream_sql_passes_hostaddr_pin_to_the_driver(monkeypatch):
         connector_runtime, "dsn_pin_connect_args", lambda dsn: {"hostaddr": "93.184.216.34"}
     )
     with pytest.raises(RuntimeError, match="stop"):
-        list(connector_runtime._stream_sql("postgresql://u:p@db.example.com/d", "SELECT 1"))
+        list(
+            connector_runtime._stream_sql(
+                "postgresql://u:p@db.example.com/d", "SELECT 1", expected_backend="postgresql"
+            )
+        )
     assert seen["connect_args"]["hostaddr"] == "93.184.216.34"
     assert "connect_timeout" in seen["connect_args"]  # les délais P16.03 sont conservés
 
@@ -1849,7 +1855,11 @@ def test_stream_sql_connects_to_the_pinned_ip_for_mssql(monkeypatch):
 
     monkeypatch.setattr(connector_runtime.sa, "create_engine", fake_create_engine)
     with pytest.raises(RuntimeError, match="stop"):
-        list(connector_runtime._stream_sql("mssql+pymssql://u:p@db.example.com/app", "select 1"))
+        list(
+            connector_runtime._stream_sql(
+                "mssql+pymssql://u:p@db.example.com/app", "select 1", expected_backend="mssql"
+            )
+        )
     assert "93.184.216.34" in seen["dsn"] and "db.example.com" not in seen["dsn"]
 
 
@@ -1976,7 +1986,7 @@ def test_databricks_dialect_resolves_lazily_and_stream_applies_guard_and_timeout
         connector_runtime, "assert_dsn_egress_allowed", lambda d: seen["guarded"].append(d)
     )
     with pytest.raises(RuntimeError, match="stop"):
-        list(connector_runtime._stream_sql(_DBX_DSN, "SELECT 1"))
+        list(connector_runtime._stream_sql(_DBX_DSN, "SELECT 1", expected_backend="databricks"))
     assert seen["guarded"] == [_DBX_DSN]  # hôte du workspace : garde d'egress appliquée
     assert "_socket_timeout" in seen["connect_args"]
 
@@ -2017,7 +2027,7 @@ def test_stream_sql_sets_statement_timeout_by_listener_on_redshift(monkeypatch):
     monkeypatch.setattr(connector_runtime, "dsn_pin_connect_args", lambda dsn: {})
     monkeypatch.setenv("CORE_PIPELINES_QUERY_TIMEOUT_S", "7")
     with pytest.raises(RuntimeError, match="stop"):
-        list(connector_runtime._stream_sql(_RS, "SELECT 1"))
+        list(connector_runtime._stream_sql(_RS, "SELECT 1", expected_backend="postgresql"))
     assert "options" not in seen["connect_args"]
     event, fn = seen["listener"]
     assert event == "connect"
@@ -2044,7 +2054,9 @@ def test_redshift_real_cluster_round_trip():
     dsn = os.environ.get("CORE_TEST_REDSHIFT_DSN")
     if not dsn:
         pytest.skip("CORE_TEST_REDSHIFT_DSN non défini — test Redshift manuel (REV-110)")
-    assert list(connector_runtime._stream_sql(dsn, "SELECT 1 AS x")) == [{"x": 1}]
+    assert list(
+        connector_runtime._stream_sql(dsn, "SELECT 1 AS x", expected_backend="postgresql")
+    ) == [{"x": 1}]
 
 
 @pytest.mark.databricks_manual
@@ -2053,4 +2065,69 @@ def test_databricks_real_warehouse_round_trip():
     dsn = os.environ.get("CORE_TEST_DATABRICKS_DSN")
     if not dsn:
         pytest.skip("CORE_TEST_DATABRICKS_DSN non défini — test Databricks manuel (REV-110)")
-    assert list(connector_runtime._stream_sql(dsn, "SELECT 1 AS x")) == [{"x": 1}]
+    assert list(
+        connector_runtime._stream_sql(dsn, "SELECT 1 AS x", expected_backend="databricks")
+    ) == [{"x": 1}]
+
+
+# --- AUD-081 : lecteurs SQL externes durcis -------------------------------------
+
+
+def test_stream_sql_postgres_session_is_read_only(monkeypatch):
+    seen: dict = {}
+
+    def fake_create_engine(dsn, connect_args=None, **kw):
+        seen["connect_args"] = connect_args
+        raise RuntimeError("stop")
+
+    monkeypatch.setattr(connector_runtime.sa, "create_engine", fake_create_engine)
+    monkeypatch.setattr(connector_runtime, "assert_dsn_egress_allowed", lambda dsn: None)
+    monkeypatch.setattr(connector_runtime, "dsn_pin_connect_args", lambda dsn: {})
+    with pytest.raises(RuntimeError, match="stop"):
+        list(
+            connector_runtime._stream_sql(
+                "postgresql://u:p@h/db", "SELECT 1", expected_backend="postgresql"
+            )
+        )
+    assert "-c default_transaction_read_only=on" in seen["connect_args"]["options"]
+    # Les writers externes partagent _timeout_connect_args : jamais en lecture seule.
+    assert "read_only" not in connector_runtime._timeout_connect_args("postgresql")["options"]
+
+
+def test_stream_sql_refuses_a_dialect_foreign_to_the_secret(monkeypatch):
+    def boom(*a, **k):
+        raise AssertionError("create_engine ne doit pas être appelé")
+
+    monkeypatch.setattr(connector_runtime.sa, "create_engine", boom)
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="sqlite"):
+        list(
+            connector_runtime._stream_sql(
+                "sqlite:////tmp/x.db", "SELECT 1", expected_backend="postgresql"
+            )
+        )
+
+
+def test_materialize_postgres_connector_rejects_side_effect_functions(
+    conn, session, tenant, pg_secret
+):
+    params = ReaderConnectorPostgresParams(
+        secretName="warehouse-pg", query="SELECT pg_terminate_backend(1)"
+    )
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="query rejected"):
+        connector_runtime.materialize_postgres_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id, user),
+            node_id="p2",
+            params=params,
+            view_name="node_p2",
+        )
+
+
+def test_postgres_reader_session_is_read_only_on_a_real_server(
+    conn, session, tenant, user, pg_engine
+):
+    # AUD-081 : vérifié côté serveur, pas seulement dans connect_args.
+    _pg_dsn_secret(session, tenant, user, _pg_dsn(pg_engine))
+    q = "SELECT current_setting('transaction_read_only') AS ro"
+    _run_pg(conn, session, tenant, user, _pg_params(q))
+    assert conn.execute("SELECT ro FROM node_slow").fetchall() == [("on",)]

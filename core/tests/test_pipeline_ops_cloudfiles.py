@@ -666,3 +666,17 @@ def test_arcgis_refuses_a_truncated_answer(httpserver, monkeypatch, conn, sessio
     with pytest.raises(PipelineRuntimeError, match="tronqué"):
         _read(cf.read_arcgisonline, conn, session, tenant, user, secretName="s", maxFeatures=2,
               layerUrl=httpserver.url_for("/arcgis/rest/services/S/FeatureServer/0"))  # fmt: skip
+
+
+def test_csv_serialization_neutralizes_formulas():
+    # AUD-152 : writer.ftp CSV neutralise comme les autres sorties CSV (cell_safety).
+    import pandas as pd
+
+    from app.pipelines.ops.cloudfiles import _serialize
+
+    frame = pd.DataFrame({"=cmd": ['=HYPERLINK("http://evil","x")', "ok"], "n": [-5, 1]})
+    lines = _serialize(frame, "csv").decode().splitlines()
+    assert lines[0] == "'=cmd,n"
+    assert lines[1].startswith("\"'=HYPERLINK(")
+    assert lines[1].endswith(",-5")  # un nombre typé négatif reste numérique
+    assert lines[2] == "ok,1"

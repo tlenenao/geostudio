@@ -1658,6 +1658,27 @@ def test_embed_router_is_exempted_from_frame_deny(compose):
     assert "/embed/" in rule, f"shell-embed ({compose.name}) doit border /embed/, a trouvé : {rule}"
 
 
+@pytest.mark.parametrize("compose", [BASE, PROD], ids=["base", "prod"])
+def test_only_the_embed_router_drops_frame_ancestors(compose):
+    """AUD-089 : la CSP dynamique porte `frame-ancestors 'self'` (middleware
+    csp-dynamic) sauf sur /embed/ (csp-dynamic-embed) ; aucun autre routeur
+    ne doit référencer la variante sans frame-ancestors."""
+    for name, service in services(compose).items():
+        labels = _traefik_labels(service)
+        routers = {
+            key.split(".")[3]
+            for key in labels
+            if key.startswith("traefik.http.routers.") and key.endswith(".middlewares")
+        }
+        for router in routers:
+            mws = _router_middlewares(labels, router)
+            if router == "shell-embed":
+                assert "csp-dynamic-embed@file" in mws, (compose.name, mws)
+                assert "csp-dynamic@file" not in mws, (compose.name, mws)
+            else:
+                assert "csp-dynamic-embed@file" not in mws, (compose.name, name, router)
+
+
 # ─── SP-48/GAP-72 : CSP calculée dynamiquement, poussée par Traefik via un
 # provider fichier additif au provider Docker existant ───────────────────
 
@@ -1738,6 +1759,15 @@ def test_dev_tooling_host_ports_bind_loopback_only():
     for name in ("martin", "titiler", "otel-lgtm"):
         for port in svc[name].get("ports", []):
             assert str(port).startswith("127.0.0.1:"), f"{name}: port {port!r} exposé sur 0.0.0.0"
+
+
+def test_core_port_binds_loopback_in_dev_and_is_unpublished_in_prod():
+    """AUD-101 : le cœur fait confiance à X-Forwarded-For de toute la plage RFC 1918 ;
+    publié sur 0.0.0.0, n'importe quel poste du réseau local forgeait son IP."""
+    ports = services(BASE)["core"].get("ports", [])
+    assert ports and all(str(p).startswith("127.0.0.1:") for p in ports), ports
+    prod = services(PROD)["core"].get("ports")
+    assert prod is RESET or not prod, prod
 
 
 def test_titiler_is_internal_only():

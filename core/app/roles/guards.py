@@ -10,6 +10,9 @@ from app.users.models import User
 
 
 def has_privilege(session: Session, user: User, privilege: str) -> bool:
+    scopes = getattr(user, "api_key_scopes", None)  # AUD-091
+    if scopes is not None and privilege not in scopes:
+        return False
     role = get_role(session, tenant_id=user.tenant_id, role_id=user.role_id)
     return role is not None and privilege in role.privileges
 

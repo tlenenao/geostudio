@@ -48,6 +48,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
+from app.cell_safety import sanitize_cell
 from app.pipelines import egress
 from app.pipelines.errors import PipelineCancelledError, PipelineRuntimeError
 from app.pipelines.ops.operation_contract import OperationContract
@@ -862,7 +863,9 @@ def read_ftp(conn, *, session, tenant_id, node_id, params, view_name, user, base
 def _serialize(frame: pd.DataFrame, fmt: str) -> bytes:
     out = io.BytesIO()
     if fmt == "csv":
-        out.write(frame.to_csv(index=False).encode())
+        # AUD-152 : même neutralisation que les autres sorties CSV (cell_safety).
+        safe = frame.rename(columns=sanitize_cell).map(sanitize_cell)
+        out.write(safe.to_csv(index=False).encode())
     elif fmt == "jsonl":
         out.write(frame.to_json(orient="records", lines=True, date_format="iso").encode())
     else:

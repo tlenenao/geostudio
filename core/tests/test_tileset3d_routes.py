@@ -174,6 +174,9 @@ def test_presign_part_returns_upload_url(env):
     r = client.post(f"/v1/tileset3d/uploads/{job_id}/parts/1/presign")
     assert r.status_code == 200, r.text
     assert "uploadUrl" in r.json()
+    for bad in (0, 10_001):  # plafond S3 du multipart
+        r = client.post(f"/v1/tileset3d/uploads/{job_id}/parts/{bad}/presign")
+        assert r.status_code == 422, bad
 
 
 def test_presign_part_url_is_signed_on_the_public_host(env, monkeypatch):

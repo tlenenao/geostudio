@@ -18,6 +18,7 @@ from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig
 from app.db import Base, make_session_factory
 from app.items import repository as items_repo  # noqa: F401 -- registers Item on Base.metadata
+from app.job_errors import INTERNAL_ERROR_MESSAGE
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
@@ -532,7 +533,7 @@ def test_evaluate_alert_task_writes_audit_log_on_unexpected_error(env, monkeypat
             s, tenant_id=tenant.id, alert_rule_item_id=alert_item_id
         )
         assert latest.state == "error"
-        assert "boom" in latest.error
+        assert latest.error == INTERNAL_ERROR_MESSAGE
 
         rows = s.scalars(
             select(AuditLog).where(
@@ -540,7 +541,7 @@ def test_evaluate_alert_task_writes_audit_log_on_unexpected_error(env, monkeypat
             )
         ).all()
         assert len(rows) == 1
-        assert "boom" in rows[0].payload["error"]
+        assert rows[0].payload["error"] == INTERNAL_ERROR_MESSAGE
 
 
 def test_evaluate_alert_task_reports_an_undefined_aggregate_instead_of_an_internal_error(

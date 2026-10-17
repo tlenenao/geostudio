@@ -32,12 +32,15 @@ _CORS_CONFIGURATION = {
 
 def make_s3_client(*, endpoint_url: str, access_key: str, secret_key: str):
     import boto3
+    from botocore.config import Config
 
     return boto3.client(
         "s3",
         endpoint_url=endpoint_url,
         aws_access_key_id=access_key,
         aws_secret_access_key=secret_key,
+        # AUD-090 : SigV4, seule signature qui couvre Content-Length dans une URL présignée.
+        config=Config(signature_version="s3v4"),
     )
 
 
@@ -113,11 +116,17 @@ def generate_presigned_put_url(
     bucket: str,
     key: str,
     content_type: str,
+    content_length: int,
     expires_in: int = 900,
 ) -> str:
     return _signing_client(client).generate_presigned_url(
         "put_object",
-        Params={"Bucket": bucket, "Key": key, "ContentType": content_type},
+        Params={
+            "Bucket": bucket,
+            "Key": key,
+            "ContentType": content_type,
+            "ContentLength": content_length,
+        },
         ExpiresIn=expires_in,
     )
 

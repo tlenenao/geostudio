@@ -210,6 +210,9 @@ export type ApiKeySummary = {
   expiresAt: string;
   revokedAt: string | null;
   lastUsedAt: string | null;
+  /** AUD-091 : null = privilèges du créateur. */
+  scopes?: string[] | null;
+  readOnly?: boolean;
 };
 /** Seule réponse qui porte le secret (`token`), affiché une seule fois. */
 export type ApiKeyCreated = ApiKeySummary & { token: string };
@@ -808,7 +811,7 @@ export interface ItemClient {
     q?: string;
   }): Promise<{ users: UserSummary[]; total: number }>;
   updateUserRole(id: string, roleId: string): Promise<UserSummary>;
-  eraseUser(userId: string): Promise<void>;
+  eraseUser(userId: string, confirmUsername: string): Promise<void>;
   requestTenantPurge(tenantId: string, confirmSlug: string): Promise<{ jobId: string }>;
   getPurgeStatus(purgeId: string): Promise<PurgeReceipt | null>;
   listNotifications(params: {
@@ -823,7 +826,11 @@ export interface ItemClient {
     value: NotificationPreferenceValue,
   ): Promise<NotificationPreferenceValue>;
   listApiKeys(): Promise<ApiKeySummary[]>;
-  createApiKey(params: { name: string; expiresInDays: number }): Promise<ApiKeyCreated>;
+  createApiKey(params: {
+    name: string;
+    expiresInDays: number;
+    readOnly?: boolean;
+  }): Promise<ApiKeyCreated>;
   revokeApiKey(id: string): Promise<ApiKeySummary>;
   listUsageTasks(params: {
     page: number;
@@ -1056,7 +1063,8 @@ export interface ItemClient {
   presignAttachmentUpload(
     collectionId: string,
     fid: string,
-    input: { fieldKey: string; filename: string; contentType: string },
+    // AUD-090 : `size` (= file.size) est signé dans l'URL, S3 refuse toute autre taille.
+    input: { fieldKey: string; filename: string; contentType: string; size: number },
   ): Promise<{ uploadUrl: string; key: string }>;
   confirmAttachmentUpload(
     collectionId: string,
@@ -1126,7 +1134,11 @@ export interface ItemClient {
     geometry: unknown;
     etag: string | null;
   }>;
-  presignUpload(filename: string, contentType: string): Promise<{ uploadUrl: string; key: string }>;
+  presignUpload(
+    filename: string,
+    contentType: string,
+    size: number,
+  ): Promise<{ uploadUrl: string; key: string }>;
   uploadToPresignedUrl(url: string, file: File): Promise<void>;
   inspectUpload(input: { key: string; filename: string; layerName?: string }): Promise<{
     layers: { name: string; featureCount: number; geometryType: string }[];
@@ -1199,6 +1211,7 @@ export interface ItemClient {
   presignTerrain3DUpload(
     filename: string,
     contentType: string,
+    size: number,
   ): Promise<{ uploadUrl: string; key: string }>;
   createTerrain3DUpload(input: {
     key: string;
@@ -1215,6 +1228,7 @@ export interface ItemClient {
   presignRasterUpload(
     filename: string,
     contentType: string,
+    size: number,
   ): Promise<{ uploadUrl: string; key: string }>;
   createRasterUpload(input: {
     key: string;

@@ -4,6 +4,7 @@ déjà en base, pour construire une allowlist CSP calculée (SP-48/GAP-72,
 blocages 1/2/3). Aucune fonction ici ne fait d'I/O — la lecture DB vit
 dans app.security.service."""
 
+import re
 from collections.abc import Sequence
 from typing import Protocol
 from urllib.parse import urlparse
@@ -20,13 +21,24 @@ _HARVEST_TILE_TYPES = {"wms", "wmts"}
 _TILE_LAYER_KINDS = {"raster", "tiles3d"}
 
 
+_HOST_RE = re.compile(r"^[a-z0-9.-]+$")
+
+
 def _origin(url: str | None) -> str | None:
+    """Origine sûre à insérer dans la CSP, ou None (entrée ignorée, jamais levée :
+    un seul enregistrement piégé ne doit ni injecter de directive ni figer la CSP
+    de l'instance, AUD-089)."""
     if not url:
         return None
     parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-        return None  # URL relative (proxy interne) ou schéma non pertinent
-    return f"{parsed.scheme}://{parsed.hostname}" + (f":{parsed.port}" if parsed.port else "")
+    host = parsed.hostname
+    if parsed.scheme not in {"http", "https"} or not host or not _HOST_RE.fullmatch(host):
+        return None  # relative (proxy interne), schéma non pertinent ou hôte malformé
+    try:
+        port = parsed.port
+    except ValueError:
+        return None
+    return f"{parsed.scheme}://{host}" + (f":{port}" if port else "")
 
 
 class _HarvestSourceLike(Protocol):

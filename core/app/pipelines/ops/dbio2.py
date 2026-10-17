@@ -260,7 +260,7 @@ def read_mongodb(conn, *, session, tenant_id, node_id, params, view_name, user, 
     database = p.database or uri_db
     if not database:
         raise PipelineRuntimeError(f"{op}: no database (set it in the node or the URI)")
-    from bson import decode
+    from bson import decode, json_util
     from bson.raw_bson import RawBSONDocument
     from pymongo.errors import PyMongoError
 
@@ -270,10 +270,13 @@ def read_mongodb(conn, *, session, tenant_id, node_id, params, view_name, user, 
     rows: list[dict] = []
     total = 0
     client = None
+    # AUD-081 : Extended JSON ({"$oid": ..}, {"$date": ..}) -> types BSON ; sans cela un
+    # filtre sur _id ou une date ne correspond à rien. _check_filter a validé le JSON brut.
+    flt = json_util.loads(json.dumps(p.filter))
     try:
         client = MongoClient(document_class=RawBSONDocument, **kwargs)
         cursor = client[database][p.collection].find(
-            p.filter,
+            flt,
             projection=dict.fromkeys(p.projection, 1) if p.projection else None,
             limit=want + 1,
             max_time_ms=int(DEADLINE_S * 1000),

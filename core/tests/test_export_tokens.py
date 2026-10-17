@@ -23,7 +23,7 @@ def export_secret(monkeypatch):
 
 
 def test_mint_and_decode_round_trip():
-    token = mint_export_token(tenant_id="t1", user_id="u1", job_id="j1")
+    token = mint_export_token(tenant_id="t1", user_id="u1", job_id="j1", item_id="i1")
     claims = decode_export_token(token)
     assert claims.tenant_id == "t1"
     assert claims.user_id == "u1"
@@ -31,7 +31,7 @@ def test_mint_and_decode_round_trip():
 
 
 def test_is_export_token_true_for_export_token_false_for_rs256():
-    export_token = mint_export_token(tenant_id="t1", user_id="u1", job_id="j1")
+    export_token = mint_export_token(tenant_id="t1", user_id="u1", job_id="j1", item_id="i1")
     assert is_export_token(export_token) is True
     rs256_like = jwt.encode(
         {"sub": "x"},
@@ -43,13 +43,15 @@ def test_is_export_token_true_for_export_token_false_for_rs256():
 
 
 def test_decode_rejects_expired_token(monkeypatch):
-    token = mint_export_token(tenant_id="t1", user_id="u1", job_id="j1", ttl_seconds=-1)
+    token = mint_export_token(
+        tenant_id="t1", user_id="u1", job_id="j1", item_id="i1", ttl_seconds=-1
+    )
     with pytest.raises(ExportTokenError):
         decode_export_token(token)
 
 
 def test_decode_rejects_tampered_signature(monkeypatch):
-    token = mint_export_token(tenant_id="t1", user_id="u1", job_id="j1")
+    token = mint_export_token(tenant_id="t1", user_id="u1", job_id="j1", item_id="i1")
     monkeypatch.setenv("CORE_EXPORT_TOKEN_SECRET", "a-different-secret-padding-01234")
     with pytest.raises(ExportTokenError):
         decode_export_token(token)
@@ -92,3 +94,32 @@ def test_decode_raises_export_token_error_when_secret_unset(monkeypatch):
     )
     with pytest.raises(ExportTokenError):
         decode_export_token(forged)
+
+
+def test_token_carries_item_and_ttl_covers_the_render_budget():
+    from app.auth import export_tokens
+    from app.export.rendering import RENDER_TIMEOUT_MS
+
+    assert export_tokens.RENDER_TIMEOUT_MS == RENDER_TIMEOUT_MS  # miroir (contrat de couches)
+    tok = mint_export_token(tenant_id="t", user_id="u", job_id="j", item_id="i")
+    claims = jwt.decode(tok, _SECRET, algorithms=["HS256"])
+    assert claims["item_id"] == "i"
+    assert claims["exp"] - claims["iat"] >= RENDER_TIMEOUT_MS // 1000 + 60
+    assert decode_export_token(tok).item_id == "i"
+
+
+def test_decode_requires_exp():
+    tok = jwt.encode(
+        {
+            "typ": "export",
+            "tenant_id": "t",
+            "user_id": "u",
+            "job_id": "j",
+            "item_id": "i",
+            "iat": 1,
+        },
+        _SECRET,
+        algorithm="HS256",
+    )
+    with pytest.raises(ExportTokenError):
+        decode_export_token(tok)

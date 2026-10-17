@@ -13,6 +13,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import Protocol
 
+from fastapi import HTTPException
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.audit.writer import write_audit
@@ -22,6 +23,7 @@ from app.configs.pipeline_params import apply_params, resolve_params
 from app.configs.schemas import PipelinePayload, PipelineRetryPolicy
 from app.db import request_scoped_session
 from app.items.models import Item
+from app.job_errors import public_error
 from app.jobs import app
 from app.jobs.common import notify_best_effort, resolve_owner_user
 from app.jobs.common import session_factory as _session_factory
@@ -477,16 +479,18 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
             logger.info("pipeline run %s : notification ignorée (item inconnu)", run_id)
     except Exception as exc:  # toute erreur inattendue finit "failed", jamais zombie
         logger.exception("pipeline run %s : erreur inattendue", run_id)
+        # refus de privilège (HTTPException, detail rédigé par le cœur) : lisible
+        msg = public_error(exc, user_errors=(HTTPException,))  # AUD-100
         if _schedule_retry(
             factory,
             run_id=run_id,
             tenant_id=tenant_id,
             policy=retry_policy,
             attempt=attempt,
-            error=f"erreur interne : {exc}",
+            error=msg,
         ):
             return
-        tracker.mark_failed(f"erreur interne : {exc}")
+        tracker.mark_failed(msg)
         _flag_resumable(factory, run_id, root_id, tenant_id)
         if item_id is not None:
             _notify(
@@ -494,7 +498,7 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
                 tenant_id=tenant_id,
                 item_id=item_id,
                 status="failure",
-                error=f"erreur interne : {exc}",
+                error=msg,
             )
         else:
             logger.info("pipeline run %s : notification ignorée (item inconnu)", run_id)

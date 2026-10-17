@@ -372,7 +372,7 @@ export function ImportFileButton() {
     try {
       const { uploadUrl, key } = await at(
         "importFile.uploadError",
-        client.presignUpload(file.name, file.type || "application/octet-stream"),
+        client.presignUpload(file.name, file.type || "application/octet-stream", file.size),
       );
       await at("importFile.uploadError", client.uploadToPresignedUrl(uploadUrl, file));
       if (isLayeredFormat(file.name)) {

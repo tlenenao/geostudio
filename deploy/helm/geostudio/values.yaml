@@ -46,11 +46,13 @@ config:
   CORE_EMBEDDING_PROVIDER: "fake"
   CORE_ENV: ""
   CORE_ETL_ENABLED: "false"
+  CORE_EXPORT_EGRESS_ALLOWLIST: ""    # hôtes publics joignables par le Chromium d'export (vide = tous)
   CORE_EXPORT_ENABLED: "false"
   CORE_EXPORT_ITEMS_MAX: "100000"
   CORE_EXPORT_JOB_MAX: ""
   CORE_EXPORT_RUNNING_TIMEOUT_MINUTES: "60"
   CORE_EXPORT_SYNC_MAX: "100000"
+  CORE_EXPORT_TRUSTED_ORIGINS: ""     # origines jointes même sur IP privée (fonds de carte de LAN)
   CORE_GEOCODING_EGRESS_ALLOWLIST: "data.geopf.fr"
   CORE_GEOCODING_PROVIDER: "ban"
   CORE_GEOCODING_URL: "https://data.geopf.fr/geocodage/search"
@@ -92,6 +94,7 @@ config:
   CORE_PIPELINE_CHECKPOINT_RETENTION_HOURS: "24"
   CORE_PIPELINE_FILE_IO_ENABLED: "false"
   CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED: "false"   # op jamais rejouées sur service réel (lot 9)
+  CORE_PUBLIC_SUBMIT_TOKEN_HOURLY_LIMIT: ""   # vide = 1000 soumissions acceptées/h/formulaire
   CORE_QUOTAS_ENABLED: "false"
   CORE_QUOTA_MAX_COLLECTIONS_PER_TENANT: ""
   CORE_QUOTA_MAX_ITEMS_PER_TENANT: ""
@@ -115,6 +118,7 @@ config:
   CORE_TILESET3D_MAX_PROXY_READ_BYTES: "134217728"
   CORE_TILESET3D_MAX_TOTAL_BYTES: "21474836480"
   CORE_TILE_AGG_MAX_ZOOM: "7"
+  # AUD-101 : en production, restreindre au sous-réseau du reverse-proxy ; toute machine de cette plage peut forger X-Forwarded-For.
   CORE_TRUSTED_PROXIES: "127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7"
   CORE_UPLOAD_MAX_BYTES: ""
   HEALTHCHECK_QUEUE: "export"

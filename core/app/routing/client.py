@@ -21,6 +21,7 @@ from urllib.parse import urlparse
 
 import httpx
 
+from app.egress_guard import embedded_ipv4
 from app.net_pin import ValidatedIp, send_pinned
 from app.ratelimit.limiter import PgRateLimiter, make_rate_limiter
 
@@ -75,7 +76,7 @@ def assert_egress_allowed(url: str) -> ValidatedIp:
     if not addresses:
         raise _EgressBlocked(f"hôte non résoluble : {host!r}")
     for ip in addresses:
-        ip = getattr(ip, "ipv4_mapped", None) or ip  # ::ffff:169.254.169.254 = 169.254.169.254
+        ip = embedded_ipv4(ip) or ip  # mappée ET NAT64/6to4/::/96 (AUD-124)
         if ip.is_link_local or ip.is_multicast or ip.is_unspecified or ip.is_reserved:
             raise _EgressBlocked(f"adresse interdite : {ip}")
     return ValidatedIp(str(addresses[0]), [str(a) for a in addresses])

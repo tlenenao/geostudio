@@ -22,6 +22,7 @@ import { PageTitle } from "../ui/kit/PageTitle";
 
 function EraseUserSection() {
   const [userId, setUserId] = useState("");
+  const [confirmUsername, setConfirmUsername] = useState("");
   const [result, setResult] = useState<"idle" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
   const [confirming, setConfirming] = useState(false);
@@ -31,9 +32,10 @@ function EraseUserSection() {
     setConfirming(false);
     setResult("idle");
     try {
-      await eraseUser.mutateAsync(userId.trim());
+      await eraseUser.mutateAsync({ userId: userId.trim(), confirmUsername });
       setResult("success");
       setUserId("");
+      setConfirmUsername("");
     } catch (error) {
       setErrorMessage(eraseErrorMessage(error));
       setResult("error");
@@ -54,10 +56,20 @@ function EraseUserSection() {
           }}
         />
       </label>
+      <label className="flex flex-col gap-1 text-sm text-ink">
+        {t("compliance.confirmUsernameLabel")}
+        <Input
+          value={confirmUsername}
+          onChange={(e) => {
+            setConfirmUsername(e.target.value);
+            setResult("idle");
+          }}
+        />
+      </label>
       <Button
         size="sm"
         variant="outline"
-        disabled={!userId.trim() || eraseUser.isPending}
+        disabled={!userId.trim() || !confirmUsername || eraseUser.isPending}
         onClick={() => setConfirming(true)}
       >
         {t("compliance.eraseButton")}
