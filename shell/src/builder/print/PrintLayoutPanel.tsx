@@ -76,6 +76,19 @@ export function PrintLayoutPanel({
         </NativeSelect>
       </label>
       <label className="flex flex-col gap-1 text-sm">
+        {t("printLayout.dpiLabel")}
+        <NativeSelect
+          value={String(current.dpi ?? 150)}
+          onChange={(e) => patch({ dpi: Number(e.target.value) as PrintLayoutConfig["dpi"] })}
+        >
+          {[96, 150, 300, 600].map((d) => (
+            <option key={d} value={String(d)}>
+              {d} dpi
+            </option>
+          ))}
+        </NativeSelect>
+      </label>
+      <label className="flex flex-col gap-1 text-sm">
         {t("printLayout.titleLabel")}
         <Input
           type="text"

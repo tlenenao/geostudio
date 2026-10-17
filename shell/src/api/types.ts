@@ -551,6 +551,8 @@ export type PrintLayoutConfig = {
   // ARC-16 : éléments de gabarit (logo = data URI, jamais une URL).
   scaleBar?: boolean;
   northArrow?: boolean;
+  // AUD-058 : résolution de rendu de l'export (cœur : 150 par défaut).
+  dpi?: 96 | 150 | 300 | 600;
   freeText?: string | null;
   logo?: string | null;
   // ARC-30 : atlas = une page par entité de la source (apps/dashboards).
@@ -562,6 +564,8 @@ export type AtlasConfig = {
   titleTemplate?: string | null;
   fields: { label: string; template: string }[];
   maxPages: number;
+  // AUD-057 : `champ` ou `-champ` (décroissant) ; absent = ordre du cœur.
+  sortBy?: string | null;
 };
 
 export type PublicMapConfig = Pick<MapConfig, "basemap" | "view" | "layers" | "terrain">;
