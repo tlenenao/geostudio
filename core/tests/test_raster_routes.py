@@ -368,3 +368,22 @@ def test_presign_refuses_oversized_or_unsized_upload(env, monkeypatch):
     url = "/v1/raster/uploads/presign"
     assert env.client.post(url, json={"filename": "o.tif", "size": 101}).status_code == 413
     assert env.client.post(url, json={"filename": "o.tif"}).status_code == 422
+
+
+def test_zonal_stats_window_cap_and_busy_slots(env, monkeypatch):
+    # AUD-157 : fenêtre > 16 M px refusée (422) ; créneaux de calcul épuisés -> 503.
+    import threading
+
+    from app.raster import zonal
+
+    url = f"/v1/raster/{env.ids.raster}/zonal-stats"
+    body = {"geojson": _box(2.10, 48.80, 2.20, 48.90)}
+    monkeypatch.setattr(
+        zonal, "geometry_window", lambda ds, g: SimpleNamespace(width=5000, height=4000)
+    )
+    r = env.client.post(url, json=body)
+    assert r.status_code == 422 and "16 M" in r.json()["detail"]
+    monkeypatch.setattr(zonal, "_ZONAL_SLOTS", threading.BoundedSemaphore(1))
+    monkeypatch.setattr(zonal, "_ZONAL_WAIT_S", 0.01)
+    zonal._ZONAL_SLOTS.acquire()
+    assert env.client.post(url, json=body).status_code == 503

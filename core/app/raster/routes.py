@@ -309,6 +309,8 @@ def raster_zonal_stats(
     try:
         with opener(asset) as ds:
             stats = zonal.zonal_stats(ds, [g for _, g in polys], band=body.band, stats=body.stats)
+    except zonal.ZonalBusy as exc:  # AUD-157
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except zonal.ZonalError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     write_audit(
