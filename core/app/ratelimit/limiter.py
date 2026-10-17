@@ -74,6 +74,9 @@ _GEOCODE_RE = re.compile(r"^/v1/geocode(/batch|/reverse|/jobs)?$")
 # ponytail: 600/min par appelant tolère un panoramique rapide ; à resserrer si la
 # saturation est mesurée. Les tuiles vecteur du cœur restent hors budget (exclues à dessein).
 _OGC_READ_RE = re.compile(r"^/v1/ows/|^/v1/(raster|terrain3d)/[^/]+/tiles/")
+# AUD-095 : catalogues de découverte (STAC/DCAT/Records), lisibles en anonyme, qui scannent
+# chaque collection (ST_Extent) — budget propre, toute méthode (STAC /search accepte POST).
+_DISCOVERY_RE = re.compile(r"^/v1/(stac|dcat|records)(/|$)")
 # AUD-157 : calcul zonal (lecture raster en mémoire).
 _ZONAL_RE = re.compile(r"^/v1/raster/[^/]+/zonal-stats$")
 # AUD-154 : soumission publique anonyme — budget propre, indexé sur l'IP (/64 en
@@ -97,6 +100,7 @@ _BUDGETS = {
     "geocode": 60,
     "public-submit": 20,
     "ogc-read": 600,
+    "discovery": 120,
     "zonal": 10,
     # ARC-34 : compté par appel amont Valhalla (REST, MCP, ops de pipeline), pas par route ;
     # route_group ne le renvoie jamais, seul app.routing.client le consomme.
@@ -178,6 +182,8 @@ def route_group(
         return "geocode"
     if method == "GET" and _OGC_READ_RE.match(path):
         return "ogc-read"
+    if _DISCOVERY_RE.match(path):
+        return "discovery"
     if method == "POST" and _ZONAL_RE.match(path):
         return "zonal"
     if method == "POST" and _PUBLIC_SUBMIT_RE.match(path):
