@@ -730,6 +730,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/collections/{collection_id}/queryables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Queryables
+         * @description OGC API Features Part 3 (AUD-041) : propriétés filtrables (CQL2 / filtres simples),
+         *     même porte de lecture et même masquage que /items. Les colonnes list/unsupported
+         *     ne sont pas filtrables (_where les refuse) donc absentes.
+         */
+        get: operations["get_queryables_v1_collections__collection_id__queryables_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/collections/{collection_id}/relations": {
         parameters: {
             query?: never;
@@ -7699,6 +7721,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QualityReportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_queryables_v1_collections__collection_id__queryables_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+                "X-Share-Link-Token"?: string | null;
+            };
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

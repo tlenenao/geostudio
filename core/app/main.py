@@ -528,6 +528,7 @@ def create_app() -> FastAPI:
         v1_router.include_router(export_routes.router)
     if is_appexport_enabled():
         v1_router.include_router(appexport_routes.router)
+    app.state.ogc_tiles_enabled = ows_routes.is_ows_enabled()  # AUD-042 : /conformance
     if ows_routes.is_ows_enabled():  # ARC-11 : WFS + OGC API Tiles (ADR 0018)
         v1_router.include_router(ows_routes.router)
     if wms_routes.is_wms_enabled():  # ARC-20 : WMS 1.3.0 + WMTS 1.0.0 rendus par le cœur (ADR 0020)

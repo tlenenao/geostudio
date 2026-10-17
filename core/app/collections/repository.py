@@ -121,14 +121,7 @@ def create_collection(
     return col
 
 
-def list_visible_collections(
-    session: Session,
-    *,
-    tenant_id: str,
-    user_id: str | None,
-    can_see_all: bool,
-    q: str | None = None,
-) -> list[Collection]:
+def _visible_collections_stmt(*, tenant_id: str, user_id: str | None, can_see_all: bool):
     stmt = select(Collection).where(Collection.tenant_id == tenant_id)
     if not can_see_all:
         if user_id is None:
@@ -144,6 +137,18 @@ def list_visible_collections(
                 | (Collection.owner_id == user_id)
                 | Collection.id.in_(shared_ids)
             )
+    return stmt
+
+
+def list_visible_collections(
+    session: Session,
+    *,
+    tenant_id: str,
+    user_id: str | None,
+    can_see_all: bool,
+    q: str | None = None,
+) -> list[Collection]:
+    stmt = _visible_collections_stmt(tenant_id=tenant_id, user_id=user_id, can_see_all=can_see_all)
     # Filtre de visibilité posé AVANT toute recherche (spec §Recherche
     # hybride + permissions), comme pour list_items.
 
@@ -168,6 +173,31 @@ def list_visible_collections(
         stmt = stmt.where(or_(Collection.title.ilike(like), Collection.description.ilike(like)))
 
     return list(session.scalars(stmt.order_by(Collection.title)).all())
+
+
+def page_visible_collections(
+    session: Session,
+    *,
+    tenant_id: str,
+    user_id: str | None,
+    can_see_all: bool,
+    q: str | None,
+    limit: int,
+    offset: int,
+) -> tuple[list[Collection], int]:
+    """Page + total en SQL (AUD-044). Avec `q`, la recherche hybride est déjà bornée
+    à _RRF_CANDIDATE_LIMIT candidats : découpage en Python sur cette liste bornée."""
+    if q:
+        cols = list_visible_collections(
+            session, tenant_id=tenant_id, user_id=user_id, can_see_all=can_see_all, q=q
+        )
+        return cols[offset : offset + limit], len(cols)
+    stmt = _visible_collections_stmt(tenant_id=tenant_id, user_id=user_id, can_see_all=can_see_all)
+    total = session.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    page = session.scalars(
+        stmt.order_by(Collection.title, Collection.id).offset(offset).limit(limit)
+    ).all()
+    return list(page), total
 
 
 def delete_collection(session: Session, col: Collection) -> None:

@@ -90,6 +90,35 @@ def tile_bbox(z: int, col: int, row: int) -> tuple[float, float, float, float]:
     return minx, maxy - size, minx + size, maxy
 
 
+def tile_matrix_set_json() -> dict:
+    """WebMercatorQuad au format TMS 2.0 JSON (AUD-042)."""
+    matrices = []
+    for z in range(MAX_ZOOM + 1):
+        size, n = tile_matrix(z)
+        matrices.append(
+            {
+                "id": str(z),
+                "scaleDenominator": _SCALE0 / n,
+                "cellSize": size / 256,
+                "cornerOfOrigin": "topLeft",
+                "pointOfOrigin": [-TMS_ORIGIN, TMS_ORIGIN],
+                "tileWidth": 256,
+                "tileHeight": 256,
+                "matrixWidth": n,
+                "matrixHeight": n,
+            }
+        )
+    return {
+        "id": TMS,
+        "title": "Google Maps Compatible for the World",
+        "uri": "http://www.opengis.net/def/tilematrixset/OGC/1.0/WebMercatorQuad",
+        "crs": "http://www.opengis.net/def/crs/EPSG/0/3857",
+        "orderedAxes": ["E", "N"],
+        "wellKnownScaleSet": "http://www.opengis.net/def/wkss/OGC/1.0/GoogleMapsCompatible",
+        "tileMatrices": matrices,
+    }
+
+
 def wmts_capabilities(base: str, title: str, collections: list) -> str:
     def op(name: str) -> str:
         return (

@@ -12249,6 +12249,70 @@
         "summary": "Get Quality Check"
       }
     },
+    "/v1/collections/{collection_id}/queryables": {
+      "get": {
+        "description": "OGC API Features Part 3 (AUD-041) : propri\u00e9t\u00e9s filtrables (CQL2 / filtres simples),\nm\u00eame porte de lecture et m\u00eame masquage que /items. Les colonnes list/unsupported\nne sont pas filtrables (_where les refuse) donc absentes.",
+        "operationId": "get_queryables_v1_collections__collection_id__queryables_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Queryables"
+      }
+    },
     "/v1/collections/{collection_id}/relations": {
       "get": {
         "description": "Relations touchant la collection ; celles dont un autre c\u00f4t\u00e9 est illisible pour\nl'appelant sont omises (il n'en apprend pas l'existence).",
