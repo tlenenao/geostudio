@@ -3,6 +3,9 @@
 
 import json
 
+import pytest
+
+from app.cdc import consumer
 from app.cdc.consumer import decode_wal2json_message
 
 
@@ -69,3 +72,46 @@ def test_decode_accepts_an_already_decoded_message():
     from_str = decode_wal2json_message(_INSERT_PAYLOAD, lsn=100, collection_meta=_META)
     from_dict = decode_wal2json_message(json.loads(_INSERT_PAYLOAD), lsn=100, collection_meta=_META)
     assert from_dict == from_str
+
+
+class _FakeCur:
+    def __init__(self, calls):
+        self.calls = calls
+
+    def create_replication_slot(self, name, output_plugin):
+        self.calls.append(("create", name, output_plugin))
+
+    def close(self):
+        pass
+
+
+class _FakeConn:
+    def close(self):
+        pass
+
+
+def test_lost_slot_is_dropped_then_recreated(monkeypatch):
+    calls = []
+    monkeypatch.setattr(consumer, "slot_wal_status", lambda dsn: "lost")
+    monkeypatch.setattr(consumer, "_drop_slot", lambda dsn: calls.append("drop"))
+    monkeypatch.setattr(consumer, "_connect", lambda dsn: (_FakeConn(), _FakeCur(calls)))
+    assert consumer.ensure_replication_slot("dsn") is True
+    assert calls == ["drop", ("create", consumer.SLOT_NAME, "wal2json")]
+
+
+def test_healthy_slot_is_kept_without_replication_connection(monkeypatch):
+    monkeypatch.setattr(consumer, "slot_wal_status", lambda dsn: "reserved")
+
+    def _no_connect(dsn):
+        pytest.fail("aucune connexion de réplication attendue")
+
+    monkeypatch.setattr(consumer, "_connect", _no_connect)
+    assert consumer.ensure_replication_slot("dsn") is False
+
+
+def test_absent_slot_is_created(monkeypatch):
+    calls = []
+    monkeypatch.setattr(consumer, "slot_wal_status", lambda dsn: None)
+    monkeypatch.setattr(consumer, "_connect", lambda dsn: (_FakeConn(), _FakeCur(calls)))
+    assert consumer.ensure_replication_slot("dsn") is True
+    assert calls == [("create", consumer.SLOT_NAME, "wal2json")]

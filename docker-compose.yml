@@ -46,6 +46,7 @@ services:
         -c max_parallel_workers_per_gather=${PG_MAX_PARALLEL_WORKERS_PER_GATHER:-2}
         -c wal_level=logical
         -c output_plugin_libraries=wal2json,pgoutput,test_decoding
+        -c max_slot_wal_keep_size=${PG_MAX_SLOT_WAL_KEEP_SIZE:-10GB}
 
   pgbouncer:
     image: edoburu/pgbouncer:1.22.1-p0

@@ -10,8 +10,10 @@ from sqlalchemy import text
 from app.cdc import consumer
 from app.cdc.backfill import backfill_table
 from app.cdc.consumer import (
+    _drop_slot,
     decode_wal2json_message,
     ensure_replication_slot,
+    slot_wal_status,
     stream_changes,
 )
 
@@ -228,3 +230,12 @@ def test_live_v2_columns_match_backfill_representation(typed_table, pg_engine, p
         )
     assert live.columns == back.columns
     assert live.geometry_wkb_hex.lower() == back.geometry_wkb_hex.lower()
+
+
+def test_ensure_replication_slot_reports_creation_once(pg_engine):
+    raw_dsn = _raw_dsn()
+    if slot_wal_status(raw_dsn) is not None:
+        _drop_slot(raw_dsn)
+    assert ensure_replication_slot(raw_dsn) is True
+    assert slot_wal_status(raw_dsn) in ("reserved", "extended")
+    assert ensure_replication_slot(raw_dsn) is False

@@ -789,6 +789,16 @@ def test_postgis_memory_settings_are_tunable_and_fit_its_limit():
     assert "${PG_MAX_PARALLEL_WORKERS_PER_GATHER:-2}" in cmd
 
 
+def test_postgis_bounds_the_wal_a_replication_slot_can_retain():
+    """AUD-012 : sans max_slot_wal_keep_size, un cdc-worker arrêté retient le WAL sans
+    limite jusqu'à saturer pg-data. Valeur RÉSOLUE sans .env (piège n°2) + documentée."""
+    cmd = str(services(BASE)["postgis"]["command"])
+    match = re.search(r"-c max_slot_wal_keep_size=(\S+)", cmd)
+    assert match, "postgis sans max_slot_wal_keep_size"
+    assert _resolve_effective_value(match.group(1), "PG_MAX_SLOT_WAL_KEEP_SIZE") == "10GB"
+    assert "PG_MAX_SLOT_WAL_KEEP_SIZE" in documented_env_vars(include_commented=False)
+
+
 _UNITS = {"k": 2**10, "kb": 2**10, "m": 2**20, "mb": 2**20, "g": 2**30, "gb": 2**30}
 
 

@@ -18,6 +18,7 @@ from app import observability
 
 observability.setup()
 
+from app.analytics import lake_purge  # noqa: E402
 from app.cdc import (  # noqa: E402  (après setup(), même patron que app.jobs)
     backfill,
     consumer,
@@ -116,6 +117,18 @@ def _write_and_upload(
 _UNMANAGED_RECHECK_SECONDS = 60.0
 
 
+def _purge_lake(collection_meta: dict, *, s3_client, bucket: str) -> int:
+    """AUD-012 : slot recréé = changements de l'intervalle jamais vus (DELETE compris) ;
+    le lac de chaque collection est vidé, le backfill de démarrage le reconstruit.
+    ponytail: un cycle de snapshot (worker) en cours pendant la purge peut republier un
+    état antérieur ; fenêtre étroite (slot perdu + cycle horaire), rattrapée au
+    prochain slot perdu seulement — verrou partagé avec run_snapshot_cycle si observé."""
+    return sum(
+        lake_purge.purge_prefix(s3_client, bucket=bucket, prefix=lake_purge.lake_prefix(tid, cid))
+        for cid, tid, *_rest in collection_meta.values()
+    )
+
+
 def run() -> None:
     raw_dsn = os.environ["CDC_DATABASE_URL"]
     engine = make_engine(raw_dsn.replace("postgresql://", "postgresql+psycopg://"))
@@ -139,11 +152,13 @@ def run() -> None:
         return
     election.watch_leadership(election_guard)
 
-    consumer.ensure_replication_slot(raw_dsn)
+    slot_recreated = consumer.ensure_replication_slot(raw_dsn)
 
     buffer = CdcBufferManager()
     with session_factory() as session:
         collection_meta = _load_collection_meta(session)
+        if slot_recreated:
+            _purge_lake(collection_meta, s3_client=s3_client, bucket=s3_bucket)
         boundary_lsn = backfill.current_wal_lsn(session)
         for table_name, (_cid, _tid, geometry_column, _srid, pk_column) in collection_meta.items():
             rows = backfill.backfill_table(

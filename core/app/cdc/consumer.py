@@ -107,6 +107,7 @@ donnée dans l'intervalle (le slot de réplication retient tout jusqu'à
 l'ack, le buffer en mémoire n'est jamais vidé avant un flush réussi)."""
 
 import json
+import logging
 import select
 import time
 from dataclasses import dataclass
@@ -124,6 +125,8 @@ _RECONNECT_ATTEMPTS = 10
 _RECONNECT_BACKOFF_S = 0.3
 _SETTLE_S = 0.1
 
+logger = logging.getLogger(__name__)
+
 
 def _connect(raw_dsn: str):
     """Connexion de réplication logique forcée en UTC (REV-301) : PGTZ/rôle ne
@@ -137,17 +140,50 @@ def _connect(raw_dsn: str):
     return conn, cur
 
 
-def ensure_replication_slot(raw_dsn: str) -> None:
-    """Idempotent. Retry avec backoff sur ObjectInUse (cf. docstring module,
-    déviation 2) : peut se produire si un process précédent vient de libérer
-    ce même slot (redémarrage rapproché du worker)."""
+def slot_wal_status(raw_dsn: str) -> str | None:
+    """`wal_status` du slot CDC (reserved/extended/unreserved/lost), None s'il n'existe
+    pas. Connexion ordinaire (pas de réplication) : simple lecture de catalogue."""
+    conn = psycopg2.connect(raw_dsn)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT wal_status FROM pg_replication_slots WHERE slot_name = %s", (SLOT_NAME,)
+            )
+            row = cur.fetchone()
+            return row[0] if row else None
+    finally:
+        conn.close()
+
+
+def _drop_slot(raw_dsn: str) -> None:
+    conn = psycopg2.connect(raw_dsn)
+    conn.autocommit = True
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT pg_drop_replication_slot(%s)", (SLOT_NAME,))
+    finally:
+        conn.close()
+
+
+def ensure_replication_slot(raw_dsn: str) -> bool:
+    """Idempotent. Retourne True si le slot vient d'être (re)créé : l'appelant doit alors
+    reconstruire le lac (AUD-012 — un slot perdu ou absent n'a pas vu les DELETE de
+    l'intervalle). Un slot `lost` (WAL retenu au-delà de `max_slot_wal_keep_size`) ne
+    peut plus être lu : il est supprimé puis recréé. Retry avec backoff sur ObjectInUse
+    (cf. docstring module, déviation 2)."""
+    status = slot_wal_status(raw_dsn)
+    if status == "lost":
+        logger.warning("slot CDC %s perdu (WAL au-delà de la borne) : recréation", SLOT_NAME)
+        _drop_slot(raw_dsn)
+    elif status is not None:
+        return False
     for attempt in range(_RECONNECT_ATTEMPTS):
         conn, cur = _connect(raw_dsn)
         try:
             cur.create_replication_slot(SLOT_NAME, output_plugin=OUTPUT_PLUGIN)
-            return
+            return True
         except psycopg2.errors.DuplicateObject:
-            return
+            return False
         except psycopg2.errors.ObjectInUse:
             if attempt == _RECONNECT_ATTEMPTS - 1:
                 raise
@@ -155,6 +191,7 @@ def ensure_replication_slot(raw_dsn: str) -> None:
         finally:
             cur.close()
             conn.close()
+    raise AssertionError("unreachable")  # pragma: no cover
 
 
 @dataclass

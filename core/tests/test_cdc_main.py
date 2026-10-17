@@ -204,3 +204,25 @@ def test_write_and_upload_removes_temp_file_on_success(tmp_path):
         fake_upload.assert_called_once()
 
     assert os.path.exists(local_path) is False
+
+
+def test_purge_lake_empties_every_collection_prefix(monkeypatch):
+    from app.analytics import lake_purge
+    from app.cdc import main
+
+    seen = []
+
+    def fake_purge(client, *, bucket, prefix):
+        seen.append((bucket, prefix))
+        return 2
+
+    monkeypatch.setattr(lake_purge, "purge_prefix", fake_purge)
+    meta = {
+        "t_a": ("c1", "ten1", "geom", 4326, "id"),
+        "t_b": ("c2", "ten2", None, None, "id"),
+    }
+    assert main._purge_lake(meta, s3_client=object(), bucket="geostudio-cdc") == 4
+    assert seen == [
+        ("geostudio-cdc", "cdc/tenant_id=ten1/collection_id=c1/"),
+        ("geostudio-cdc", "cdc/tenant_id=ten2/collection_id=c2/"),
+    ]
