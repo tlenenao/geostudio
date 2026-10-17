@@ -531,6 +531,9 @@ services:
     # runs de pipeline) — sans elle un run lourd peut faire OOM-killer l'hôte.
     # À dimensionner avec CORE_WORKER_CONCURRENCY (~1 job lourd par unité).
     mem_limit: ${WORKER_MEM_LIMIT:-2g}
+    # AUD-027 : défaut Compose = 10 s puis SIGKILL d'un job long ; procrastinate
+    # attend --shutdown-graceful-timeout (< stop_grace_period, marge 30 s).
+    stop_grace_period: ${CORE_WORKER_STOP_GRACE:-300}s
     # `python -m procrastinate` (pas le script `procrastinate` du PATH) : ce
     # dernier ne met jamais le cwd (/app, où vit le paquet `app`) sur
     # sys.path — seule l'invocation via `-m` (comme `-c`) le fait. Sans ça,
@@ -542,7 +545,7 @@ services:
     # export-worker (j05b-006, test_sh_c_commands_have_no_orphan_option_line).
     command: >
       sh -c "python -m scripts.ensure_procrastinate_schema &&
-             python -m procrastinate --app app.jobs.app worker -c ${CORE_WORKER_CONCURRENCY:-4} -q ingestion,search,cdc,etl,tileset3d,terrain3d,raster,appexport,harvest,dataexport"
+             python -m procrastinate --app app.jobs.app worker -c ${CORE_WORKER_CONCURRENCY:-4} --shutdown-graceful-timeout ${CORE_WORKER_GRACEFUL:-270} -q ingestion,search,cdc,etl,tileset3d,terrain3d,raster,appexport,harvest,dataexport"
     environment:
       DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
       S3_ENDPOINT_URL: http://minio:9000
@@ -748,7 +751,9 @@ services:
       context: ./core
       dockerfile: ../deploy/export-worker/Dockerfile
     profiles: ["export"]
-    command: python -m procrastinate --app app.jobs.app worker -q export
+    # AUD-027 : SIGTERM = fin gracieuse (jobs en cours menés à terme) avant SIGKILL.
+    stop_grace_period: ${CORE_WORKER_STOP_GRACE:-300}s
+    command: python -m procrastinate --app app.jobs.app worker --shutdown-graceful-timeout ${CORE_WORKER_GRACEFUL:-270} -q export
     environment:
       DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
       S3_ENDPOINT_URL: http://minio:9000

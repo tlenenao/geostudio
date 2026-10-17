@@ -146,6 +146,8 @@ core:
 worker:
   replicas: 1
   concurrency: 4                    # CORE_WORKER_CONCURRENCY du compose
+  terminationGracePeriodSeconds: 300  # CORE_WORKER_STOP_GRACE du compose (AUD-027)
+  gracefulTimeoutSeconds: 270       # CORE_WORKER_GRACEFUL : --shutdown-graceful-timeout
   queues: [ingestion, search, cdc, etl, tileset3d, terrain3d, raster, appexport, harvest, dataexport]
   scratchSizeLimit: 5Gi             # emptyDir /scratch (volume etl-scratch du compose)
   resources: {requests: {cpu: 250m, memory: 512Mi}, limits: {memory: 2Gi}}  # WORKER_MEM_LIMIT=2g
@@ -162,6 +164,8 @@ cdcWorker:
 exportWorker:                       # profil compose « export » ; requiert config.CORE_EXPORT_ENABLED="true"
   enabled: false
   replicas: 1
+  terminationGracePeriodSeconds: 300
+  gracefulTimeoutSeconds: 270
   resources: {requests: {cpu: 250m, memory: 512Mi}, limits: {memory: 2Gi}}
   podSecurityUid: 999               # uid de l'utilisateur `app` de deploy/export-worker/Dockerfile (système, non fixé : à revérifier)
 

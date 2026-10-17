@@ -19,6 +19,7 @@ spec:
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
     spec:
+      terminationGracePeriodSeconds: {{ .Values.exportWorker.terminationGracePeriodSeconds }}
       {{- with .Values.image.pullSecrets }}
       imagePullSecrets: {{ toYaml . | nindent 8 }}
       {{- end }}
@@ -26,7 +27,7 @@ spec:
         - name: export-worker
           image: {{ include "geostudio.image" (dict "root" . "name" "export-worker") }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: ["python", "-m", "procrastinate", "--app", "app.jobs.app", "worker", "-q", "export"]
+          command: ["python", "-m", "procrastinate", "--app", "app.jobs.app", "worker", "--shutdown-graceful-timeout", "{{ .Values.exportWorker.gracefulTimeoutSeconds }}", "-q", "export"]
           envFrom:
             - configMapRef: {name: {{ $fn }}-config}
           env:

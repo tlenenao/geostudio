@@ -18,6 +18,7 @@ spec:
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
     spec:
+      terminationGracePeriodSeconds: {{ .Values.worker.terminationGracePeriodSeconds }}
       {{- with .Values.image.pullSecrets }}
       imagePullSecrets: {{ toYaml . | nindent 8 }}
       {{- end }}
@@ -28,7 +29,7 @@ spec:
           command:
             - sh
             - -c
-            - python -m scripts.ensure_procrastinate_schema && python -m procrastinate --app app.jobs.app worker -c {{ .Values.worker.concurrency }} -q {{ join "," .Values.worker.queues }}
+            - python -m scripts.ensure_procrastinate_schema && python -m procrastinate --app app.jobs.app worker -c {{ .Values.worker.concurrency }} --shutdown-graceful-timeout {{ .Values.worker.gracefulTimeoutSeconds }} -q {{ join "," .Values.worker.queues }}
           envFrom:
             - configMapRef: {name: {{ $fn }}-config}
           env:
@@ -55,3 +56,17 @@ spec:
       volumes:
         - name: scratch
           emptyDir: {sizeLimit: {{ .Values.worker.scratchSizeLimit }}}
+{{- if gt (int .Values.worker.replicas) 1 }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $fn }}-worker
+  labels:
+    {{- include "geostudio.labels" . | nindent 4 }}
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      {{- include "geostudio.selector" $sel | nindent 6 }}
+{{- end }}

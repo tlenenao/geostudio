@@ -2157,6 +2157,23 @@ def test_worker_runs_jobs_concurrently():
     assert re.search(r"worker\s+(-c|--concurrency)\s+\S+", command), "worker sans `-c`"
 
 
+@pytest.mark.parametrize("name", ["worker", "export-worker"])
+def test_workers_get_a_long_stop_grace_period_and_a_shorter_graceful_timeout(name):
+    """AUD-027 : le `stop_grace_period` par défaut de Compose (10 s) SIGKILL un
+    job long en plein SIGTERM. Valeur résolue (piège n°2), et le délai de
+    graceful de procrastinate reste sous la période de grâce du conteneur."""
+    svc = services(BASE)[name]
+    grace = re.sub(r"\$\{CORE_WORKER_STOP_GRACE:-(\d+)\}", r"\1", str(svc.get("stop_grace_period")))
+    assert grace.endswith("s") and int(grace[:-1]) >= 300, grace
+    cmd = svc["command"]
+    cmd = cmd if isinstance(cmd, str) else " ".join(cmd)
+    m = re.search(r"worker\s[^\n]*--shutdown-graceful-timeout\s+(\S+)", cmd)
+    assert m, f"{name}: worker sans --shutdown-graceful-timeout sur la ligne `worker`"
+    assert int(_resolve_effective_value(m.group(1), "CORE_WORKER_GRACEFUL")) < int(grace[:-1])
+    documented = documented_env_vars(include_commented=False)
+    assert {"CORE_WORKER_STOP_GRACE", "CORE_WORKER_GRACEFUL"} <= documented
+
+
 def test_periodic_tasks_carry_a_queueing_lock():
     """c09-002 : sans `queueing_lock`, un tick en retard s'empile derrière
     le précédent (les ticks périodiques s'accumulent sous charge)."""
