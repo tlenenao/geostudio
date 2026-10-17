@@ -76,6 +76,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Outbound security and tokens (SP-L2), breaking for `/v1` clients**:
+  `size` (bytes, >= 1) is now required on `POST /v1/uploads/presign`,
+  `/v1/raster/uploads/presign`, `/v1/terrain3d/uploads/presign` and the attachment presign
+  (413 above the cap); `partNumber` of a 3D tileset multipart upload must be 1-10000 (422);
+  zonal statistics refuse a window above 16 M pixels; failed jobs now expose a generic error
+  message (details stay in the logs, AUD-100), except readable business refusals such as
+  "géocodeur occupé". New settings: `CORE_PUBLIC_SUBMIT_TOKEN_HOURLY_LIMIT` (core, default
+  1000 accepted submissions per form token and hour), `CORE_EXPORT_TRUSTED_ORIGINS` and
+  `CORE_EXPORT_EGRESS_ALLOWLIST` (export-worker; the public S3 endpoint origin is always
+  allowed). Export tokens and read-only API keys can call read-only POST routes
+  (`aggregate`, STAC `search`).
 - **Memory bounds and Postgres tuning (AUD-031/184)**: compose services now carry a
   `mem_limit` (postgis 2g, core 1536m, export-worker 1g, keycloak 1536m, minio 512m,
   titiler 1g with 2 gunicorn workers and `GDAL_CACHEMAX=128`; cdc-worker unbounded by default,

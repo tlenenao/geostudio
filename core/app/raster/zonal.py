@@ -21,6 +21,8 @@ MAX_POLYGONS = 1_000
 MAX_WINDOW_PIXELS = 16_000_000
 _ZONAL_SLOTS = threading.BoundedSemaphore(2)
 _ZONAL_WAIT_S = 1.0
+# Côté worker (op de pipeline, `-c 4`) : un job attend son tour au lieu d'échouer.
+WORKER_WAIT_S = 600.0
 # Budget cumulé par requête (pixels lus, durée) : 1000 polygones x 50 M px ne doivent pas
 # immobiliser un thread de requête.
 MAX_TOTAL_PIXELS = 200_000_000
@@ -64,11 +66,12 @@ def zonal_stats(
     band: int = 1,
     stats: Sequence[str] = STATS,
     src_crs: str = "EPSG:4326",
+    wait_s: float | None = None,  # None = _ZONAL_WAIT_S (lu à l'appel)
 ) -> list[dict[str, float | int | None]]:
     """Une entrée par géométrie (GeoJSON dans `src_crs`, EPSG:4326 par défaut), dans l'ordre.
     Zone hors raster ou sans pixel valide : count = 0, autres statistiques None.
     Borné à `_ZONAL_SLOTS` calculs simultanés par process (REST, MCP, pipeline)."""
-    if not _ZONAL_SLOTS.acquire(timeout=_ZONAL_WAIT_S):
+    if not _ZONAL_SLOTS.acquire(timeout=_ZONAL_WAIT_S if wait_s is None else wait_s):
         raise ZonalBusy("calcul zonal saturé, réessayez")
     try:
         return _zonal_stats(ds, geometries, band=band, stats=stats, src_crs=src_crs)

@@ -148,8 +148,8 @@ def presign_tileset3d_part(
     s3=Depends(get_s3_client),
     bucket: str = Depends(get_tileset3d_bucket),
 ) -> Tileset3DPartPresignResponse:
-    if part_number < 1:
-        raise HTTPException(status_code=422, detail="partNumber must be >= 1")
+    if not 1 <= part_number <= 10_000:  # plafond S3 du multipart (revue SP-L2)
+        raise HTTPException(status_code=422, detail="partNumber must be between 1 and 10000")
     # REV-002 : cette route ne consultait jusqu'ici que get_current_user +
     # tenant — aucun privilège, aucune vérification que l'appelant est le
     # créateur du job — alors que create_tileset3d_upload/

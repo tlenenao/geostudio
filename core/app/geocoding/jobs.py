@@ -20,7 +20,7 @@ from app.db import request_scoped_session
 from app.geocoding.batch import BatchBusy, geocode_batch
 from app.geocoding.models import GeocodeJob, _now
 from app.geocoding.provider import get_geocoder
-from app.job_errors import INTERNAL_ERROR_MESSAGE
+from app.job_errors import public_error
 from app.jobs import app
 from app.jobs.engine import session_factory
 
@@ -33,6 +33,10 @@ STALE_MINUTES = 5
 # (les adresses sont une donnée personnelle potentielle).
 MAX_ACTIVE_JOBS_PER_USER = 3
 RETENTION_DAYS = 7
+
+
+class GeocoderBusy(RuntimeError):
+    """Refus métier lisible par l'utilisateur (le reste du catch-all est générique, AUD-100)."""
 
 
 def create_job(
@@ -112,7 +116,7 @@ def run_geocode_job(job_id: str, tenant_id: str) -> None:
                 except BatchBusy:
                     time.sleep(1)
             else:
-                raise RuntimeError("géocodeur occupé")
+                raise GeocoderBusy("géocodeur occupé, lot à relancer plus tard")
             done.extend(r.model_dump() for r in rows)
             # ponytail: réécrit tout `results` à chaque tranche (O(n²) borné par
             # MAX_JOB_ADDRESSES / CHUNK = 50 écritures) ; table de lignes si le plafond monte.
@@ -122,13 +126,17 @@ def run_geocode_job(job_id: str, tenant_id: str) -> None:
                     .where(GeocodeJob.id == job_id, GeocodeJob.status == "running")
                     .values(results=done, updated_at=_now())
                 )
-    except Exception:
+    except Exception as exc:
         logger.exception("geocode job %s : échec", job_id)
         with request_scoped_session(factory) as session:
             session.execute(
                 update(GeocodeJob)
                 .where(GeocodeJob.id == job_id, GeocodeJob.status == "running")
-                .values(status="failed", error=INTERNAL_ERROR_MESSAGE, updated_at=_now())
+                .values(
+                    status="failed",
+                    error=public_error(exc, user_errors=(GeocoderBusy,)),
+                    updated_at=_now(),
+                )
             )
         return
     with request_scoped_session(factory) as session:

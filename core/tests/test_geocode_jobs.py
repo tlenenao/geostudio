@@ -103,3 +103,29 @@ def test_purge_drops_only_old_finished_jobs(env):
         assert jobs.purge_finished_jobs(s, now=now) == 1
         s.commit()
         assert {j.id for j in s.query(GeocodeJob)} == {ids[1], ids[2]}
+
+
+def test_busy_geocoder_failure_stays_readable_other_errors_do_not(env, monkeypatch):
+    # AUD-100 + revue SP-L2 : « géocodeur occupé » est un refus métier lisible ; tout
+    # autre échec reste générique (le détail est dans les journaux).
+    from app.job_errors import INTERNAL_ERROR_MESSAGE
+
+    client, deferred, _geocoder, _ = env
+    monkeypatch.setattr(jobs.time, "sleep", lambda s: None)
+
+    def busy(geocoder, chunk):
+        raise jobs.BatchBusy()
+
+    def boom(geocoder, chunk):
+        raise RuntimeError("SELECT secret FROM interne")
+
+    errors = []
+    for failure in (busy, boom):
+        monkeypatch.setattr(jobs, "geocode_batch", failure)
+        r = client.post("/v1/geocode/jobs", json={"addresses": ["aaa 1"]})
+        assert r.status_code == 202, r.text
+        job_id = r.json()["id"]
+        jobs.run_geocode_job(**deferred[-1])
+        errors.append(client.get(f"/v1/geocode/jobs/{job_id}").json()["error"])
+    assert "occupé" in errors[0]
+    assert errors[1] == INTERNAL_ERROR_MESSAGE
