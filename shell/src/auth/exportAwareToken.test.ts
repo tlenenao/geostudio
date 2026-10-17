@@ -1,31 +1,31 @@
 // SPDX-License-Identifier: Apache-2.0
-import { buildExportAwareToken } from "./exportAwareToken";
+import {
+  buildExportAwareToken,
+  EXPORT_TOKEN_STORAGE_KEY,
+  readExportToken,
+} from "./exportAwareToken";
 
-// buildExportAwareToken reads `window.location.search` directly (see the
-// comment on the function for why: App.tsx's AppShell sits above the
-// BrowserRouter it renders, so no Router context is available where
-// `getToken` is constructed). Exercise it against real
-// `window.history.pushState` navigations rather than mocking
-// `window.location`, since jsdom supports pushState natively and it is the
-// same mechanism a real browser uses to change the URL without a full reload.
+// Exercised against real `window.history.pushState` navigations (jsdom supports
+// it natively) rather than mocking `window.location`.
 afterEach(() => {
+  window.sessionStorage.clear();
   window.history.pushState({}, "", "/");
 });
 
-test("prefers the exportToken query param over the normal access token when present", () => {
-  window.history.pushState({}, "", "/maps/1?exportToken=worker-token-abc");
-  const getAccessToken = () => "oidc-session-token";
-
-  const getToken = buildExportAwareToken(getAccessToken);
-
-  expect(getToken()).toBe("worker-token-abc");
+test("uses the worker-injected token only in export render mode", () => {
+  window.sessionStorage.setItem(EXPORT_TOKEN_STORAGE_KEY, "tok");
+  window.history.pushState({}, "", "/maps/x?exportRender=1");
+  expect(buildExportAwareToken(() => "oidc")()).toBe("tok");
 });
 
-test("falls back to the normal access token when exportToken is absent", () => {
-  window.history.pushState({}, "", "/maps/1");
-  const getAccessToken = () => "oidc-session-token";
+test("ignores an exportToken query param (no login-CSRF through a link)", () => {
+  window.history.pushState({}, "", "/maps/x?exportToken=attacker&exportRender=1");
+  expect(readExportToken()).toBeNull();
+  expect(buildExportAwareToken(() => "oidc")()).toBe("oidc");
+});
 
-  const getToken = buildExportAwareToken(getAccessToken);
-
-  expect(getToken()).toBe("oidc-session-token");
+test("ignores the stored token outside export render mode", () => {
+  window.sessionStorage.setItem(EXPORT_TOKEN_STORAGE_KEY, "tok");
+  window.history.pushState({}, "", "/maps/x");
+  expect(buildExportAwareToken(() => "oidc")()).toBe("oidc");
 });

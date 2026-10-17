@@ -67,9 +67,27 @@ test("renders an error and does not signIn when auth errored", () => {
   expectTokenizedClasses(container);
 });
 
-it("renders children without triggering signIn when exportToken is present, even though not authenticated", () => {
-  authState.isAuthenticated = false;
-  renderAt("/maps/1?exportToken=abc123", <div>contenu protégé</div>);
-  expect(screen.getByText("contenu protégé")).toBeInTheDocument();
-  expect(authState.signIn).not.toHaveBeenCalled();
+describe("export worker", () => {
+  // readExportToken lit window.location (AppShell est au-dessus du routeur).
+  afterEach(() => {
+    window.sessionStorage.clear();
+    window.history.pushState({}, "", "/");
+  });
+
+  it("renders children without triggering signIn when the worker injected its token, even though not authenticated", () => {
+    authState.isAuthenticated = false;
+    window.sessionStorage.setItem("gs_export_token", "t");
+    window.history.pushState({}, "", "/maps/1?exportRender=1");
+    renderAt("/maps/1?exportRender=1", <div>contenu protégé</div>);
+    expect(screen.getByText("contenu protégé")).toBeInTheDocument();
+    expect(authState.signIn).not.toHaveBeenCalled();
+  });
+
+  it("an ?exportToken= link alone does not bypass sign-in (AUD-024)", () => {
+    authState.isAuthenticated = false;
+    window.history.pushState({}, "", "/maps/1?exportToken=x&exportRender=1");
+    renderAt("/maps/1?exportToken=x&exportRender=1", <div>contenu protégé</div>);
+    expect(authState.signIn).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("contenu protégé")).not.toBeInTheDocument();
+  });
 });

@@ -8,7 +8,7 @@ import { loadRuntimeConfig } from "./config";
 import { ConfigProvider } from "./ConfigContext";
 import { AuthProvider } from "./auth/AuthProvider";
 import { useAuth } from "./auth/useAuth";
-import { buildExportAwareToken } from "./auth/exportAwareToken";
+import { buildExportAwareToken, readExportToken } from "./auth/exportAwareToken";
 import { createItemClient } from "./api/itemClient";
 import { ItemClientProvider } from "./api/ItemClientProvider";
 import { createAppRouter } from "./shell/routes";
@@ -45,10 +45,10 @@ function AppShell() {
         coreUrl: config.coreUrl,
         getToken: buildExportAwareToken(getAccessToken),
         // P07.06 : 401 -> renouvellement silencieux, sinon reconnexion.
-        // Jamais pour le worker d'export (jeton ?exportToken, pas de session).
+        // Jamais pour le worker d'export (jeton injecté, pas de session).
         onUnauthorized: renewToken
           ? async () => {
-              if (new URLSearchParams(window.location.search).has("exportToken")) return undefined;
+              if (readExportToken() !== null) return undefined;
               const fresh = await renewToken();
               if (!fresh) signIn();
               return fresh;
