@@ -75,7 +75,7 @@ def deliver_one(
             secrets_repo.get_secret_payload(
                 session, tenant_id=hook.tenant_id, name=hook.secret_name, user=owner
             )
-            if owner is not None
+            if owner is not None and owner.erased_at is None  # revue SP-L2 I3
             else None
         )
         if secret is None or secret.kind != "bearer_token":
