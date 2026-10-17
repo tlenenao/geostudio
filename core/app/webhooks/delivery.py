@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """Livraison de l'outbox (ARC4-F6, ADR 0027) : signature HMAC-SHA256, egress gardé (la
-session et la garde SSRF d'`app.alerts.egress` — redirections et épinglage DNS
-compris), retries exponentiels, 5 échecs consécutifs d'une destination = désactivation
+session et la garde SSRF d'`app.alerts.egress`, épinglage DNS compris ; une
+redirection n'est jamais suivie et compte comme un échec, AUD-169), retries
+exponentiels, 5 échecs consécutifs d'une destination = désactivation
 + notification de son créateur. Appelée par le balayage périodique (`app.webhooks.jobs`)."""
 
 import hashlib
@@ -52,7 +53,11 @@ def sign(body: bytes, key: str) -> str:
 
 def _http_post(url: str, body: bytes, headers: dict) -> None:
     try:
-        resp = build_guarded_session().post(url, data=body, headers=headers, timeout=_TIMEOUT_S)
+        resp = build_guarded_session().post(
+            url, data=body, headers=headers, timeout=_TIMEOUT_S, allow_redirects=False
+        )
+        if 300 <= resp.status_code < 400:  # AUD-169 : jamais suivie, jamais « delivered »
+            raise requests.HTTPError(f"redirection refusée ({resp.status_code})", response=resp)
         resp.raise_for_status()
     except EgressBlockedError as exc:
         raise DeliveryError(f"egress bloqué : {exc}") from exc

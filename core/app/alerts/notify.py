@@ -5,17 +5,11 @@ secret) — see Global Constraints in the plan for the trust-model
 rationale.
 
 Webhook delivery goes through `app.alerts.egress.build_guarded_session()`
-rather than a bare `requests.post()`: `requests` follows HTTP redirects by
-default, and a one-time `assert_egress_allowed()` check on the original
-URL does not cover any redirect hop — a webhook URL that looks public but
-302s to an internal target (e.g. the cloud metadata endpoint
-`http://169.254.169.254/...`) would pass the one-time check and then get
-followed anyway, defeating the guard. The guarded session's adapter
-re-checks egress on every hop `resolve_redirects()` sends through it (see
-`app/alerts/egress.py`), not just the first request, so the upfront check
-below (kept for a fast, clear failure before doing anything else) is
-belt-and-suspenders on top of the session-level guard that actually
-matters for redirects."""
+(egress guard + DNS pinning) and never follows redirects (AUD-169): a 3xx
+is a delivery failure, so a public-looking URL cannot bounce the POST — and
+its `X-GeoStudio-Signature` header, re-sent as-is on 307/308 — to another
+target. The upfront `assert_egress_allowed()` check gives a fast, clear
+failure before doing anything else."""
 
 import hashlib
 import hmac
@@ -87,11 +81,12 @@ def send_webhook(
 
     session_http = build_guarded_session()
     try:
-        resp = session_http.post(channel.url, timeout=10, **request_kwargs)
+        resp = session_http.post(channel.url, timeout=10, allow_redirects=False, **request_kwargs)
+        if 300 <= resp.status_code < 400:  # AUD-169 : jamais suivie, jamais « délivrée »
+            raise requests.HTTPError(f"redirect refused ({resp.status_code})", response=resp)
         resp.raise_for_status()
     except EgressBlockedError as exc:
-        # Raised by the guarded session's adapter on a redirect hop that
-        # resolves to an internal target — see module docstring.
+        # Raised by the guarded session's adapter (pinned connection re-check).
         raise NotifyError(f"webhook egress blocked: {exc}") from exc
     except requests.RequestException as exc:
         raise NotifyError(f"webhook delivery failed: {exc}") from exc
