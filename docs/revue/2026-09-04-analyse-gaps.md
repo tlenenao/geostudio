@@ -573,3 +573,9 @@ depuis un écran pertinent du domaine Analytique).
 - **État** : fermé (plan `docs/superpowers/plans/2026-09-24-vague-a-bloquants-decouvrabilite.md`,
   commit `de52497f` — `CatalogPage.tsx` porte un lien réel vers
   `/analytics/sql` ; filet anti-régression `4f411029`).
+
+---
+
+## Note SP-L0 (2026-10-16)
+
+Aucun `GAP-nn` n'est concerné : SP-L0 ferme douze constats `AUD-nnn` de `docs/revue/audit-2026-10-16/` (AUD-151/005/006/007/020/129/002/001/003/133/069/075). L'état et les reliquats sont consignés dans la section « SP-L0 » de `docs/revue/2026-09-04-backlog.md`.

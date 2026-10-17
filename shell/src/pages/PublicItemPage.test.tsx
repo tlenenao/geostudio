@@ -65,7 +65,7 @@ const config: AppConfig = {
 
 test("200: renders the published item's runtime layout via AppRenderer", async () => {
   renderPage({
-    getItem: vi.fn().mockResolvedValue(item),
+    getPublicItem: vi.fn().mockResolvedValue(item),
     getPublicAppConfig: vi.fn().mockResolvedValue(config),
   });
   expect(await screen.findByText("Detail de l'article")).toBeInTheDocument();
@@ -74,7 +74,7 @@ test("200: renders the published item's runtime layout via AppRenderer", async (
 
 test("REV-284(b) : un <h1> (sr-only) porte le titre de l'item", async () => {
   renderPage({
-    getItem: vi.fn().mockResolvedValue(item),
+    getPublicItem: vi.fn().mockResolvedValue(item),
     getPublicAppConfig: vi.fn().mockResolvedValue(config),
   });
   expect(
@@ -84,7 +84,7 @@ test("REV-284(b) : un <h1> (sr-only) porte le titre de l'item", async () => {
 
 test("D50 : pose document.title/meta description une fois l'item chargé", async () => {
   renderPage({
-    getItem: vi.fn().mockResolvedValue(item),
+    getPublicItem: vi.fn().mockResolvedValue(item),
     getPublicAppConfig: vi.fn().mockResolvedValue(config),
   });
   await screen.findByText("Detail de l'article");
@@ -97,7 +97,7 @@ test("D50 : pose document.title/meta description une fois l'item chargé", async
 
 test("shows the shared LoadingState (role=status, spinner) while the config is in flight", () => {
   renderPage({
-    getItem: vi.fn().mockResolvedValue(item),
+    getPublicItem: vi.fn().mockResolvedValue(item),
     getPublicAppConfig: vi.fn(() => new Promise<AppConfig>(() => {})),
   });
   const status = screen.getByRole("status");
@@ -112,7 +112,7 @@ test("fenêtre de titre obsolète : ne déclenche getPublicAppConfig qu'après l
   });
   const getPublicAppConfig = vi.fn().mockResolvedValue(config);
   renderPage({
-    getItem: vi.fn(() => itemPromise),
+    getPublicItem: vi.fn(() => itemPromise),
     getPublicAppConfig,
   });
 
@@ -144,7 +144,7 @@ test("fenêtre de titre obsolète : ne déclenche getPublicAppConfig qu'après l
 test("404: shows a not-found message without leaking whether the item exists", async () => {
   const { container } = renderPage(
     {
-      getItem: vi.fn().mockRejectedValue(new Error("404")),
+      getPublicItem: vi.fn().mockRejectedValue(new Error("404")),
       getPublicAppConfig: vi.fn().mockRejectedValue(new Error("404")),
     },
     "does-not-exist",

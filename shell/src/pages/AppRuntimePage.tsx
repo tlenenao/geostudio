@@ -18,7 +18,7 @@ import { Button } from "../ui/kit/Button";
 import { Dialog } from "../ui/kit/Dialog";
 import { Input } from "../ui/kit/Input";
 import { useIsExportRender } from "../shell/useIsExportRender";
-import { markExportReady } from "../shell/exportReady";
+import { useExportReadiness } from "../shell/exportReady";
 import { AtlasPages } from "../builder/print/AtlasPages";
 import { ExportPanel } from "../builder/print/ExportPanel";
 import { t } from "../i18n";
@@ -61,10 +61,8 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
   }, [extensionsQuery.isLoading, extensionsQuery.data]);
 
   // Export/print chrome (SP-17a Task 10): the Playwright worker (Task 6)
-  // navigates here with ?exportRender=1. Non-map apps/dashboards have no
-  // per-widget "fully rendered" signal yet (out of SP-17a scope, documented
-  // limitation) — the best real signal available is "the config request
-  // succeeded" plus one paint frame, not a fixed timer. `extensionsRegistered`
+  // navigates here with ?exportRender=1 (signal : cf. useExportReadiness
+  // ci-dessous). `extensionsRegistered`
   // must also be true (fix round, finding I3): without it, the page can still
   // be showing the "Chargement…" spinner below (gated on the same flag) while
   // query.isSuccess alone would already fire the ready signal — the worker
@@ -76,11 +74,9 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
     isExportRender &&
     !!query.data?.printLayout?.atlas &&
     (exportParams.get("atlas") === "1" || !!exportEntityId);
-  useEffect(() => {
-    if (isExportRender && !atlasMode && query.isSuccess && extensionsRegistered) {
-      requestAnimationFrame(() => markExportReady());
-    }
-  }, [isExportRender, atlasMode, query.isSuccess, extensionsRegistered]);
+  // AUD-001 : signal = config chargée + extensions + plus aucune requête en
+  // vol ni carte en cours de chargement. Le hook ne s'arme qu'en mode export.
+  useExportReadiness(isExportRender && !atlasMode && query.isSuccess && extensionsRegistered);
 
   const [searchParams, setSearchParams] = useSearchParams();
   // Read once at mount ("au montage" per spec) — this component itself
@@ -222,13 +218,19 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
     .filter((item) => item.widget === "map")
     .flatMap((item) => (item.props.layers as MapLayer[] | undefined) ?? [])
     .filter((layer) => layer.visible);
+  const exportCtx =
+    currentAnalyticsContext.timeRange ||
+    currentAnalyticsContext.extent ||
+    Object.keys(currentAnalyticsContext.crossFilter).length > 0
+      ? encodeAnalyticsContext(currentAnalyticsContext)
+      : undefined;
   return (
     <main className="relative flex h-full w-full flex-col">
       {/* REV-284 : repère <main> + h1 pour les lecteurs d'écran (route hors AppLayout). */}
       <h1 className="sr-only">{itemQuery.data?.title}</h1>
       {showActionBar && (
         <div className="flex justify-end gap-2 border-b border-rule p-2">
-          {exportEnabled && <ExportPanel itemId={pk} />}
+          {exportEnabled && <ExportPanel itemId={pk} ctx={exportCtx} />}
           {exportEnabled && query.data.printLayout?.atlas && (
             <ExportPanel itemId={pk} atlas label={t("atlas.exportPdf")} />
           )}

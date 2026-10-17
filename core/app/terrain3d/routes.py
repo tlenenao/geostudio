@@ -8,6 +8,7 @@ l'appelant)."""
 
 import logging
 import os
+import re
 import uuid
 from collections.abc import Callable
 
@@ -22,6 +23,7 @@ from app.configs.guest_access import GuestActor, can_read_item, get_share_link_a
 from app.db import get_session
 from app.ingestion.routes import get_s3_client
 from app.ingestion.storage import ensure_uploads_bucket, generate_presigned_put_url
+from app.jobs.defer import defer_resilient
 from app.quotas.service import enforce_storage_quota
 from app.roles.guards import has_privilege, require_privilege
 from app.roles.kind_registry import privilege_for_kind
@@ -49,7 +51,7 @@ def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests
     def deferrer(job_id: str, tenant_id: str) -> None:
         from app.terrain3d.jobs import convert_terrain3d_task
 
-        convert_terrain3d_task.defer(job_id=job_id, tenant_id=tenant_id)
+        defer_resilient(lambda: convert_terrain3d_task.defer(job_id=job_id, tenant_id=tenant_id))
 
     return deferrer
 
@@ -102,8 +104,14 @@ def create_terrain3d_upload(
     # Même garde confused-deputy que app.ingestion.routes.create_upload_job :
     # la clé est censée venir du présigné ci-dessus, toujours préfixée par le
     # tenant de l'appelant.
-    if not body.key.startswith(f"{user.tenant_id}/"):
+    # Forme imposée `{tenant}/{uuid hex}/{nom}` (celle du presign). `dem-cog.tif` est le nom
+    # des COG convertis : sinon un appelant ferait copier puis supprimer le DEM d'un tiers
+    # (jobs.py purge la source dans tous les cas). Même patron que raster/routes.py.
+    key_ok = re.fullmatch(rf"{re.escape(user.tenant_id)}/[0-9a-f]{{32}}/([^/]+)", body.key)
+    if key_ok is None or key_ok.group(1) in ("dem-cog.tif", "..") or ".." in key_ok.group(1):
         raise HTTPException(status_code=400, detail="invalid upload key")
+    if repo.key_in_use(session, tenant_id=user.tenant_id, key=body.key):
+        raise HTTPException(status_code=409, detail="upload key already used")
     # SP-58 Tâche 5 (GAP-73/GAP-11) : cette route ne connaissait jusqu'ici
     # pas la taille de l'objet déjà téléversé (upload direct présigné, pas
     # de s3=Depends ici avant cette tâche) — head_object est le seul moyen
@@ -130,7 +138,12 @@ def create_terrain3d_upload(
     )
     # Commit avant de déférer : même raison que app.ingestion.routes.create_upload_job.
     session.commit()
-    defer_task(job.id, user.tenant_id)
+    try:
+        defer_task(job.id, user.tenant_id)
+    except HTTPException:  # 503 : file indisponible, le job n'est pas laissé orphelin
+        repo.mark_enqueue_failed(session, job_id=job.id)
+        session.commit()
+        raise
     return Terrain3DUploadCreated(jobId=job.id)
 
 

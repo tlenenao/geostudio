@@ -549,3 +549,30 @@ test("features + sum reste inchangé (garde de non-régression) même avec resol
   );
   expect(screen.getByText("40")).toBeInTheDocument();
 });
+
+const featSrc = { id: "s", type: "features" as const, service: "core", layer: "c", query: {} };
+const hundred = Array.from({ length: 100 }, (_, i) => ({ id: i, properties: { v: 1 } }));
+
+test("count sur source features tronquée : affiche numberMatched, pas 100", () => {
+  renderIndicator(
+    { agg: "count", dataSourceId: "s" },
+    { data: state({ records: hundred, total: 5000, resolvedSource: featSrc }) },
+  );
+  expect(screen.getByText(/^5\s000$/)).toBeInTheDocument();
+});
+
+test("count sur source tronquée : pas de badge échantillon (valeur exacte)", () => {
+  renderIndicator(
+    { agg: "count", dataSourceId: "s" },
+    { data: state({ records: hundred, total: 5000, resolvedSource: featSrc }) },
+  );
+  expect(screen.queryByRole("status")).toBeNull();
+});
+
+test("sum sur source features tronquée : badge échantillon visible", () => {
+  renderIndicator(
+    { agg: "sum", field: "v", dataSourceId: "s" },
+    { data: state({ records: hundred, total: 5000, resolvedSource: featSrc }) },
+  );
+  expect(screen.getByRole("status")).toHaveTextContent("Échantillon : 100 sur 5000");
+});

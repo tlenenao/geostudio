@@ -23,6 +23,7 @@ import { ExplorerMenu } from "./ExplorerMenu";
 import type { DataRecord, DataSource, DatasetConfig } from "../../api/types";
 import { SourceMissing } from "./SourceMissing";
 import { t } from "../../i18n";
+import { SampleBadge } from "./SampleBadge";
 import { LoadingState } from "../../ui/kit/LoadingState";
 import "../../i18n/domains/widgets";
 
@@ -466,6 +467,7 @@ export function registerChartWidget(): void {
           >
             <EChart option={option} onClick={handleClick} />
           </Suspense>
+          <SampleBadge data={data} />
         </div>
       );
     },

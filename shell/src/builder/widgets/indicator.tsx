@@ -18,6 +18,7 @@ import type { DataSource, DataSourceState, DatasetConfig } from "../../api/types
 import { SourceMissing } from "./SourceMissing";
 import { t } from "../../i18n";
 import { formatNumber } from "../../lib/format";
+import { SampleBadge } from "./SampleBadge";
 import { LoadingState } from "../../ui/kit/LoadingState";
 import "../../i18n/domains/widgets";
 
@@ -161,7 +162,7 @@ function useKpiComparison(
 // Le comptage/somme côté client ne s'applique qu'aux sources `features`/
 // `static`, dont chaque ligne est une feature brute.
 function resolveFlatValue(
-  data: Pick<DataSourceState, "records" | "resolvedSource">,
+  data: Pick<DataSourceState, "records" | "resolvedSource" | "total">,
   agg: string,
   field: string,
 ): number | null {
@@ -183,9 +184,11 @@ function resolveFlatValue(
     // donc le premier groupe.
     return parseAggregateValue(data.records[0]?.properties.value);
   }
-  return agg === "sum"
-    ? data.records.reduce((acc, r) => acc + (Number(r.properties[field]) || 0), 0)
-    : data.records.length;
+  if (agg === "sum") {
+    return data.records.reduce((acc, r) => acc + (Number(r.properties[field]) || 0), 0);
+  }
+  // count : numberMatched du cœur est exact (filtres compris) ; la page ne l'est pas.
+  return data.total ?? data.records.length;
 }
 
 function displayValue(value: number | null | undefined): string {
@@ -396,6 +399,7 @@ export function registerIndicatorWidget(): void {
           </div>
           <span className="text-xs text-[var(--gs-color-muted)]">{String(props.label ?? "")}</span>
           {badge && <span className="text-xs text-[var(--gs-color-muted)]">{badge}</span>}
+          {agg !== "count" && <SampleBadge data={data} />}
           {sparklineEnabled && comparison.active && comparison.sparklinePoints.length > 0 && (
             <div className="h-8 w-full">
               <Suspense fallback={null}>

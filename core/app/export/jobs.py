@@ -129,34 +129,102 @@ def s3_client_from_env():
     )
 
 
-def core_unreachable_error(shell_base_url: str) -> str | None:
-    """Message explicite si le cœur que la page rendue appellera (VITE_CORE_URL
-    publié par le shell dans env-config.js) n'est pas joignable depuis ce
-    conteneur — sinon l'export attend 30 s puis échoue en `wait_for_selector`
-    (j05b-006). None = joignable, ou impossible à vérifier (le rendu tranchera)."""
+USER_EXPORT_INCOMPLETE = (
+    "L'export est incomplet : certaines données n'ont pas fini de se charger "
+    "avant le délai maximal. Réessayez plus tard."
+)
+
+USER_EXPORT_UNAVAILABLE = (
+    "L'export n'est pas disponible pour le moment (configuration du serveur). "
+    "Contactez l'administrateur."
+)
+
+
+def _published_core_url(shell_base_url: str) -> str | None:
+    """URL du cœur que la page rendue appellera (VITE_CORE_URL d'env-config.js)."""
     try:
         with urllib.request.urlopen(f"{shell_base_url}/env-config.js", timeout=5) as r:
             match = re.search(r'VITE_CORE_URL:\s*"([^"]+)"', r.read().decode())
     except (OSError, ValueError):
         return None
-    if not match:
-        return None
-    core_url = match.group(1).rstrip("/")
+    return match.group(1).rstrip("/") if match else None
+
+
+def _core_answers(core_url: str) -> bool | str:
+    """True si le cœur répond (même 404), sinon le texte de l'erreur réseau."""
     try:
         urllib.request.urlopen(f"{core_url}/health", timeout=5).close()
     except urllib.error.HTTPError as exc:
         exc.close()
-        return None  # le cœur a répondu : joignable
+        return True
     except (OSError, ValueError) as exc:
-        return (
-            f"le cœur ({core_url}), que la page d'export appelle (VITE_CORE_URL du shell), "
-            f"n'est pas joignable depuis export-worker : {exc}. Définir VITE_CORE_URL sur une "
-            "URL atteignable à la fois du navigateur et d'export-worker (cf. .env.example)."
-        )
-    return None
+        return str(exc)
+    return True
 
 
-def _launch_and_navigate(url: str, viewport: tuple[int, int] | None = None) -> RenderPage:
+def core_unreachable_error(shell_base_url: str) -> str | None:
+    """Message technique (journaux) si le cœur que la page rendue appellera n'est
+    pas joignable depuis ce conteneur (j05b-006). None = joignable, ou impossible
+    à vérifier (le rendu tranchera)."""
+    core_url = _published_core_url(shell_base_url)
+    if core_url is None:
+        return None
+    result = _core_answers(core_url)
+    if result is True:
+        return None
+    return (
+        f"le cœur ({core_url}), que la page d'export appelle (VITE_CORE_URL du shell), "
+        f"n'est pas joignable depuis export-worker : {result}. Définir VITE_CORE_URL sur une "
+        "URL atteignable à la fois du navigateur et d'export-worker, ou EXPORT_CORE_INTERNAL_URL "
+        "(cf. .env.example)."
+    )
+
+
+def core_bridge_target(shell_base_url: str) -> tuple[str, str] | None:
+    """AUD-133 : (url publique, url interne) du cœur quand le cœur publié (ex.
+    http://localhost:8200, le défaut du compose) est injoignable depuis le
+    Chromium du worker mais que `EXPORT_CORE_INTERNAL_URL` répond — la
+    navigation du worker est alors relayée vers le cœur interne. None = pas
+    besoin de pont, ou pont impossible."""
+    internal = os.environ.get("EXPORT_CORE_INTERNAL_URL", "").rstrip("/")
+    public = _published_core_url(shell_base_url)
+    if not internal or public is None or public == internal:
+        return None
+    if _core_answers(public) is True or _core_answers(internal) is not True:
+        return None
+    return public, internal
+
+
+_BRIDGE_ALLOW_HEADERS = "authorization,content-type,if-match,x-share-link-token"
+
+
+def _core_bridge_handler(public: str, internal: str):
+    """Handler `page.route` : relaie les appels de la page vers le cœur interne et
+    pose les en-têtes CORS (le shell, `shell:8300`, appelle un autre hôte).
+    Ne couvre QUE l'origine publique du cœur — aucun accès réseau élargi."""
+
+    def handler(route) -> None:
+        request = route.request
+        cors = {
+            "access-control-allow-origin": request.headers.get("origin", "*"),
+            "access-control-allow-headers": _BRIDGE_ALLOW_HEADERS,
+            "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+            "vary": "Origin",
+        }
+        if request.method == "OPTIONS":
+            route.fulfill(status=204, headers=cors)
+            return
+        response = route.fetch(url=internal + request.url[len(public) :])
+        route.fulfill(response=response, headers={**response.headers, **cors})
+
+    return handler
+
+
+def _launch_and_navigate(
+    url: str,
+    viewport: tuple[int, int] | None = None,
+    core_bridge: tuple[str, str] | None = None,
+) -> RenderPage:
     # Seule fonction de ce module qui a besoin d'un vrai Chromium — isolée
     # pour être monkeypatchée en test (cf. tests/test_export_jobs.py). La
     # tâche appelante ferme la page/le navigateur retournés dans un
@@ -185,6 +253,9 @@ def _launch_and_navigate(url: str, viewport: tuple[int, int] | None = None) -> R
             if viewport
             else browser.new_page()
         )
+        if core_bridge is not None:
+            public, internal = core_bridge
+            page.route(f"{public}/**", _core_bridge_handler(public, internal))
         page.goto(url, wait_until="load", timeout=remaining_ms())
         page.wait_for_selector(
             '[data-export-ready="true"]', timeout=remaining_ms(), state="attached"
@@ -262,21 +333,32 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
             base = f"{base}/{quote(page_id, safe='')}"
         target_url = f"{base}?exportToken={token}&exportRender=1"
         if ctx:
-            target_url = f"{target_url}&ctx={ctx}"
+            target_url = f"{target_url}&ctx={quote(ctx, safe='')}"
         if scope == "atlas":
             target_url = f"{target_url}&atlas=1"
         elif scope and scope.startswith("entity:"):
             target_url = f"{target_url}&entityId={quote(scope[7:], safe='')}"
 
-        if (reason := core_unreachable_error(os.environ["SHELL_BASE_URL"])) is not None:
-            raise RuntimeError(reason)
+        shell_base_url = os.environ["SHELL_BASE_URL"]
+        core_bridge = core_bridge_target(shell_base_url)
+        if core_bridge is None and (reason := core_unreachable_error(shell_base_url)) is not None:
+            # Détail d'exploitation dans les journaux ; l'utilisateur (barre,
+            # cloche) ne reçoit qu'un message sans variable d'environnement.
+            logger.error("export job %s : %s", job_id, reason)
+            raise RuntimeError(USER_EXPORT_UNAVAILABLE)
 
         # ARC-16 : annulation demandée pendant l'attente en file / le démarrage.
         if _cancelled(factory, job_id):
             return
 
-        browser_page = _launch_and_navigate(target_url, viewport=page_pixels(print_layout))
+        browser_page = _launch_and_navigate(
+            target_url, viewport=page_pixels(print_layout), core_bridge=core_bridge
+        )
         try:
+            # Le shell lève `data-export-incomplete` quand le délai de chargement est dépassé :
+            # ne jamais livrer en silence un PDF/PNG partiel.
+            if browser_page.evaluate("document.body.dataset.exportIncomplete") == "true":
+                raise RuntimeError(USER_EXPORT_INCOMPLETE)
             content = render_export(browser_page, format=export_format, print_layout=print_layout)
         finally:
             # See the comment in _launch_and_navigate: closing the browser

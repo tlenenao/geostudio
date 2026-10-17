@@ -38,6 +38,20 @@ def get_job(session: Session, *, tenant_id: str, job_id: str) -> Terrain3DJob | 
     )
 
 
+def key_in_use(session: Session, *, tenant_id: str, key: str) -> bool:
+    """La clé est déjà la source ou le COG converti d'un job : la ré-accepter
+    ferait copier puis supprimer l'objet d'un autre (AUD-151)."""
+    return (
+        session.scalar(
+            select(Terrain3DJob.id).where(
+                Terrain3DJob.tenant_id == tenant_id,
+                (Terrain3DJob.source_key == key) | (Terrain3DJob.converted_key == key),
+            )
+        )
+        is not None
+    )
+
+
 # mark_converting/mark_done/mark_error sont appelées depuis une route déjà
 # tenant-scopée (get_job en amont) ou depuis le worker (qui a déjà validé le
 # job via get_job(tenant_id=...) en tout début de tâche) — pas de
@@ -75,6 +89,18 @@ def mark_error(session: Session, *, job_id: str, error_message: str) -> None:
 
 # Seuil de reprise (minutes), > timeout de conversion (15 min) ; pas de variable d'env (YAGNI).
 RECLAIM_MINUTES = 60
+
+
+def mark_enqueue_failed(session: Session, *, job_id: str) -> bool:
+    """AUD-025 : mise en file définitivement impossible -> `uploaded -> error` tout de suite
+    (UPDATE conditionnel : un job déjà pris par un worker n'est jamais écrasé)."""
+    result = session.execute(
+        update(Terrain3DJob)
+        .where(Terrain3DJob.id == job_id, Terrain3DJob.status == "uploaded")
+        .values(status="error", error_message="mise en file impossible : file de jobs indisponible")
+    )
+    session.flush()
+    return bool(result.rowcount)  # type: ignore[attr-defined]
 
 
 def reclaim_stuck_jobs(

@@ -14,6 +14,7 @@ import tempfile
 
 from app.appexport import repository as appexport_repo
 from app.appexport.bundler import build_bundle_zip, build_standalone_bundle_zip
+from app.appexport.datasets import resolve_dataset_sources
 from app.appexport.freeze import freeze_config
 from app.appexport.guard import check_export_guard
 from app.appexport.models import AppExportJob
@@ -146,8 +147,11 @@ def build_app_export_task(job_id: str, tenant_id: str) -> None:
             )
             if not guard_result.allowed:
                 raise ValueError("; ".join(guard_result.reasons))
+            resolved, _ = resolve_dataset_sources(
+                session, tenant_id=tenant_id, config=config_read.config
+            )
             zip_bytes, export_warnings = _build_zip_bytes(
-                session, tenant_id=tenant_id, mode=mode, config=config_read.config
+                session, tenant_id=tenant_id, mode=mode, config=resolved
             )
 
         result_key = f"appexports/{job_id}.zip"

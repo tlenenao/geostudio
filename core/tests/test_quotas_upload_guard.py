@@ -331,7 +331,7 @@ def test_create_terrain3d_upload_rejects_when_it_would_exceed_storage_quota(monk
     api, tenant = _make_terrain3d_env(s3, monkeypatch)
     monkeypatch.setenv("CORE_QUOTAS_ENABLED", "true")
     monkeypatch.setenv("CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT", "1000")
-    key = f"{tenant.id}/{'x' * 8}/dem.tif"
+    key = f"{tenant.id}/{'a' * 32}/dem.tif"
     s3.heads[key] = {"ContentLength": 1001, "Bucket": "geostudio-terrain3d"}
 
     resp = api.post(
@@ -346,7 +346,7 @@ def test_create_terrain3d_upload_allows_when_under_storage_quota(monkeypatch):
     api, tenant = _make_terrain3d_env(s3, monkeypatch)
     monkeypatch.setenv("CORE_QUOTAS_ENABLED", "true")
     monkeypatch.setenv("CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT", "1000")
-    key = f"{tenant.id}/{'x' * 8}/dem.tif"
+    key = f"{tenant.id}/{'a' * 32}/dem.tif"
     s3.heads[key] = {"ContentLength": 500, "Bucket": "geostudio-terrain3d"}
 
     resp = api.post(
@@ -361,7 +361,7 @@ def test_create_terrain3d_upload_quota_guard_disappears_when_capacity_disabled(m
     api, tenant = _make_terrain3d_env(s3, monkeypatch)
     monkeypatch.setenv("CORE_QUOTAS_ENABLED", "false")
     monkeypatch.setenv("CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT", "1000")
-    key = f"{tenant.id}/{'x' * 8}/dem.tif"
+    key = f"{tenant.id}/{'a' * 32}/dem.tif"
     s3.heads[key] = {"ContentLength": 1001, "Bucket": "geostudio-terrain3d"}
 
     resp = api.post(

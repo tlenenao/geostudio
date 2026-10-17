@@ -97,6 +97,22 @@ def mark_error(session: Session, *, job_id: str, error: str) -> None:
     session.flush()
 
 
+def mark_enqueue_failed(session: Session, *, job_id: str) -> bool:
+    """AUD-025 : mise en file définitivement impossible -> `pending -> error` tout de suite
+    (UPDATE conditionnel : un job déjà pris par un worker n'est jamais écrasé)."""
+    result = session.execute(
+        update(AppExportJob)
+        .where(AppExportJob.id == job_id, AppExportJob.status == "pending")
+        .values(
+            status="error",
+            error="mise en file impossible : file de jobs indisponible",
+            finished_at=_now(),
+        )
+    )
+    session.flush()
+    return bool(result.rowcount)  # type: ignore[attr-defined]
+
+
 def reclaim_stuck_jobs(session: Session, *, older_than_minutes: int | None = None) -> list[str]:
     threshold = _now() - timedelta(minutes=older_than_minutes or running_reclaim_minutes())
     rows = (

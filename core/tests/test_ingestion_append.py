@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import text
 
 from app.collections import repository as collections_repo
+from app.collections.ddl import alter_geometry_column
 from app.db import Base, make_session_factory
 from app.features.rls import rls_scope
 from app.ingestion.importer import run_append, run_import
@@ -133,3 +134,86 @@ def test_append_all_rows_visible_through_rls(env):
     with Session() as s, rls_scope(s, tenant.id):
         n = s.execute(text(f"SELECT count(*) FROM public.{cid}")).scalar()
     assert n == 3
+
+
+def test_append_to_collection_stored_in_2154_reprojects(env, pg_engine):
+    """AUD-020 : l'ajout sur une collection hors 4326 est accepté et reprojeté."""
+    Session, tenant, user = env
+    cid = _seed(Session, tenant, user)
+    with Session() as s:
+        col = collections_repo.get_collection(s, tenant_id=tenant.id, collection_id=cid)
+        table = col.table_name
+        col.srid = 2154
+        s.commit()
+    with Session() as s:  # recrée aussi les policies geo_limit_* (geo-limit + 2154)
+        alter_geometry_column(s, table, geometry_type="Point", srid=2154)
+        s.commit()
+    with Session() as s:
+        run_append(
+            s,
+            tenant_id=tenant.id,
+            user=user,
+            collection_id=cid,
+            filename="more.csv",
+            content=b"nom,etat,largeur,lat,lon\nA,bon,3,48.1,2.1\n",
+            lat_field=None,
+            lon_field=None,
+        )
+        s.commit()
+    with Session() as s, rls_scope(s, tenant.id):
+        x, y = s.execute(
+            text(
+                f"SELECT ST_X(ST_Transform(geom, 4326)), ST_Y(ST_Transform(geom, 4326)) "
+                f"FROM public.{table} WHERE nom = 'A'"
+            )
+        ).one()
+    assert (round(x, 4), round(y, 4)) == (2.1, 48.1)
+
+
+def test_import_and_append_repair_invalid_polygon(env):
+    """AUD-129 : import ET ajout (même _load_rows) réparent un nœud papillon."""
+    import json
+
+    Session, tenant, user = env
+    bowtie = {
+        "type": "Polygon",
+        "coordinates": [[[0, 0], [2, 2], [2, 0], [0, 2], [0, 0]]],
+    }
+
+    def gj(name):
+        return json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [{"type": "Feature", "properties": {"nom": name}, "geometry": bowtie}],
+            }
+        ).encode()
+
+    with Session() as s:
+        res = run_import(
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            filename="p.geojson",
+            content=gj("seed"),
+            collection_title="Polys",
+            lat_field=None,
+            lon_field=None,
+        )
+        s.commit()
+        cid = res.collection_id
+    with Session() as s:
+        run_append(
+            s,
+            tenant_id=tenant.id,
+            user=user,
+            collection_id=cid,
+            filename="p2.geojson",
+            content=gj("more"),
+            lat_field=None,
+            lon_field=None,
+        )
+        s.commit()
+    with Session() as s, rls_scope(s, tenant.id):
+        rows = s.execute(text(f"SELECT ST_IsValid(geom), ST_Area(geom) FROM public.{cid}")).all()
+    assert len(rows) == 2
+    assert all(v and round(a, 6) == 2.0 for v, a in rows)

@@ -17,6 +17,27 @@ function renderPanel(overrides: Partial<ItemClient>) {
 }
 
 describe("ExportPanel", () => {
+  it("AUD-133 : transmet le contexte analytique courant à l'export", async () => {
+    const createExport = vi.fn().mockResolvedValue({ jobId: "job-1" });
+    const getExportJob = vi.fn().mockResolvedValue({
+      id: "job-1",
+      status: "done",
+      resultUrl: "https://m/x.pdf",
+      error: null,
+    });
+    const client = { createExport, getExportJob } as unknown as ItemClient;
+    render(
+      <ItemClientProvider client={client}>
+        <ExportPanel itemId="item-1" ctx="eyJhIjoxfQ" />
+      </ItemClientProvider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Exporter" }));
+    await userEvent.click(screen.getByRole("button", { name: "PDF" }));
+    await waitFor(() =>
+      expect(createExport).toHaveBeenCalledWith("item-1", "pdf", { ctx: "eyJhIjoxfQ" }),
+    );
+  });
+
   it("REV-216 : annonce l'état du job avec le vocabulaire partagé", async () => {
     const createExport = vi.fn().mockResolvedValue({ jobId: "job-1" });
     let call = 0;

@@ -643,3 +643,27 @@ test("handleClick uses resolveClickFilter — treemap click cross-filters on the
   // treePathInfo, so resolveClickFilter falls back to depth 0 → levels[0].
   expect(await screen.findByText("cf:region=Nord")).toBeInTheDocument();
 });
+
+const sampledRecords = Array.from({ length: 100 }, (_, i) => ({
+  id: i,
+  properties: { region: `r${i}`, "2025": i },
+}));
+const featSrc = { id: "s", type: "features" as const, service: "core", layer: "c", query: {} };
+
+test("échantillon features tronqué : badge visible", async () => {
+  renderChart(
+    { chartType: "bar", categoryField: "region" },
+    { data: state({ records: sampledRecords, total: 5000, resolvedSource: featSrc }) },
+  );
+  await screen.findByTestId("echart");
+  expect(screen.getByRole("status")).toHaveTextContent("Échantillon : 100 sur 5000");
+});
+
+test("source complète : pas de badge", async () => {
+  renderChart(
+    { chartType: "bar", categoryField: "region" },
+    { data: state({ records: sampledRecords, total: 100, resolvedSource: featSrc }) },
+  );
+  await screen.findByTestId("echart");
+  expect(screen.queryByRole("status")).toBeNull();
+});

@@ -3228,6 +3228,32 @@ test("getPublicAppConfig reads the wrapped ConfigRead shape (config.layout, not 
   expect(cfg.layout.items[0]).toMatchObject({ id: "w1", widget: "text" });
 });
 
+test("getPublicAppConfig (map publique) passe les couches par toFrontLayer", async () => {
+  server.use(
+    http.get("https://core.test/v1/public/configs/by-item/m1", () =>
+      HttpResponse.json({
+        id: "cfg-1",
+        itemId: "m1",
+        kind: "map",
+        config: {
+          kind: "map",
+          map: {
+            basemap: { style: "https://x.test/s.json" },
+            view: { center: [0, 0], zoom: 2 },
+            layers: [
+              { id: "l1", title: "L", visible: true, kind: "feature", url: null, paint: null },
+            ],
+          },
+        },
+      }),
+    ),
+  );
+  const cfg = await makeClient().getPublicAppConfig("m1");
+  const layer = (cfg.layout.items[0].props as { layers: Record<string, unknown>[] }).layers[0];
+  expect(layer.url).toBe("");
+  expect("paint" in layer).toBe(false);
+});
+
 test("getPublicAppConfig throws when the config has no layout", async () => {
   server.use(
     http.get("https://core.test/v1/public/configs/by-item/s1", () =>
@@ -3240,6 +3266,84 @@ test("getPublicAppConfig throws when the config has no layout", async () => {
     ),
   );
   await expect(makeClient().getPublicAppConfig("s1")).rejects.toThrow();
+});
+
+test("getPublicItem (AUD-075) lit /public/items/{id} sans passer par /items", async () => {
+  server.use(
+    http.get("https://core.test/v1/public/items/p1", () =>
+      HttpResponse.json({ pk: "p1", title: "Publié" }),
+    ),
+  );
+  expect(await makeClient().getPublicItem("p1")).toMatchObject({ pk: "p1" });
+});
+
+test("getPublicAppConfig (AUD-075) synthétise un AppConfig carte pour un item map publié", async () => {
+  server.use(
+    http.get("https://core.test/v1/public/configs/by-item/m1", () =>
+      HttpResponse.json({
+        id: "cfg-m",
+        itemId: "m1",
+        kind: "map",
+        version: 1,
+        config: {
+          kind: "map",
+          map: {
+            basemap: { style: "https://style.test/s.json" },
+            view: { center: [2.1, 48.8], zoom: 9 },
+            layers: [
+              {
+                id: "l1",
+                title: "Communes",
+                visible: true,
+                kind: "feature",
+                url: "https://core.test/v1/x",
+              },
+            ],
+          },
+        },
+      }),
+    ),
+  );
+  const cfg = await makeClient().getPublicAppConfig("m1");
+  const w = cfg.layout.items[0];
+  expect(w.widget).toBe("map");
+  expect(w.props).toMatchObject({
+    basemapStyle: "https://style.test/s.json",
+    center: [2.1, 48.8],
+    zoom: 9,
+  });
+  expect((w.props as { layers: unknown[] }).layers).toHaveLength(1);
+});
+
+test("getPublicAppConfig (AUD-075) synthétise carte+table pour un item dataset publié", async () => {
+  server.use(
+    http.get("https://core.test/v1/public/configs/by-item/d1", () =>
+      HttpResponse.json({
+        id: "cfg-d",
+        itemId: "d1",
+        kind: "dataset",
+        version: 1,
+        config: { kind: "dataset", dataset: { source: "collection", collectionId: "col-9" } },
+      }),
+    ),
+  );
+  const cfg = await makeClient().getPublicAppConfig("d1");
+  expect(cfg.dataSources[0]).toMatchObject({ type: "features", layer: "col-9" });
+  expect(cfg.layout.items.map((i) => i.widget)).toEqual(["map", "table"]);
+});
+
+test("getPublicAppConfig (AUD-075) refuse un dataset arcgis (pas de collection locale)", async () => {
+  server.use(
+    http.get("https://core.test/v1/public/configs/by-item/d2", () =>
+      HttpResponse.json({
+        id: "cfg-d2",
+        itemId: "d2",
+        kind: "dataset",
+        config: { kind: "dataset", dataset: { source: "arcgis", arcgisItemId: "x" } },
+      }),
+    ),
+  );
+  await expect(makeClient().getPublicAppConfig("d2")).rejects.toThrow();
 });
 
 test("createConfigItem transmits the slug in the POST body when given", async () => {

@@ -1,6 +1,7 @@
 {{- $cfg := deepCopy .Values.config -}}
 {{- $fn := include "geostudio.fullname" . -}}
 {{- if not $cfg.SHELL_BASE_URL }}{{- $_ := set $cfg "SHELL_BASE_URL" (printf "http://%s-shell:8300" $fn) }}{{- end }}
+{{- if not $cfg.EXPORT_CORE_INTERNAL_URL }}{{- $_ := set $cfg "EXPORT_CORE_INTERNAL_URL" (printf "http://%s-core:8200" $fn) }}{{- end }}
 {{- if and .Values.valhalla.enabled (not $cfg.CORE_ROUTING_URL) }}{{- $_ := set $cfg "CORE_ROUTING_URL" (printf "http://%s-valhalla:8002" $fn) }}{{- end }}
 {{- /* service.version des traces/logs (AUD-040) et tag des bundles autoportés = tag d'image du release */}}
 {{- $_ := set $cfg "GEOSTUDIO_VERSION" (.Values.image.tag | default .Chart.AppVersion | toString) }}

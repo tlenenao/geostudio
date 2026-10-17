@@ -15,7 +15,7 @@ export function PublicItemPage({ pk }: { pk: string }) {
   const client = useItemClient();
   const itemQuery = useQuery({
     queryKey: ["public-item", pk],
-    queryFn: () => client.getItem(pk),
+    queryFn: () => client.getPublicItem(pk),
     retry: false,
   });
   const configQuery = useQuery({
