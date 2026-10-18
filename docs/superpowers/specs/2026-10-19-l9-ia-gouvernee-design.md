@@ -41,3 +41,17 @@ toutes les preuves de d23 tiennent (ligne à ligne : `routes.py`, `harness.py`, 
 Toute garde posée sur `/copilot/turn` l'est aussi sur : les 4 générateurs MCP (appel LLM direct, donc quota
 + usage + fencing), `confirmWrite`, l'audit `mcp.tool_call`. La route REST `POST /v1/analytics/sql`
 n'appelle pas de LLM (rien à reporter).
+
+
+## Écarts constatés à l'exécution
+
+- D23-06 (contexte) : **non implémenté** — le plafond 422 à 64 000 caractères est conservé,
+  le shell compacte déjà l'historique ; pas de résumé côté cœur (partiel, reporté).
+- AUD-106/149 : l'UI shell d'usage/réglages n'est pas livrée (API seule :
+  `GET /v1/copilot/usage`, `GET/PUT/DELETE /v1/copilot/llm-settings`, privilège
+  `settings.instance.manage`) ; routes montées sans flag.
+- AUD-104 : le jeu d'évaluation hors ligne rejoue les garde-fous (SQL/CEL) sur des réponses
+  scriptées (29 cas, plancher 100 %) ; la qualité réelle du modèle n'est mesurée que par
+  `scripts/copilot_eval.py --live`. Il a révélé que `read_csv(...)` passait la validation
+  de brouillon : les fonctions de table sont désormais refusées.
+- `CORE_LLM_DAILY_TOKENS` câblé dans compose, `.env.example` et le chart Helm.
