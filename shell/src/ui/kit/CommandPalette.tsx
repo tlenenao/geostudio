@@ -7,7 +7,8 @@ import { navigableDomains, type Profile } from "../../auth/capabilities";
 import { DOMAIN_PATHS } from "../../shell/chrome/domainRoutes";
 import { SETTINGS_LINKS } from "../../shell/chrome/SettingsNav";
 import { holdsAnyPrivilege } from "../../auth/holdsAnyPrivilege";
-import { useMe } from "../../api/hooks";
+import { useItems, useMe } from "../../api/hooks";
+import { editorPath } from "../../shell/editorPath";
 import { t } from "../../i18n";
 
 type CommandItem = { id: string; label: string; run: () => void };
@@ -83,10 +84,28 @@ export function CommandPalette({
     return out;
   }, [profile, meQuery.data, navigate]);
 
-  const filtered = useMemo(
-    () => items.filter((i) => i.label.toLowerCase().includes(query.toLowerCase())),
-    [items, query],
+  // AUD-119 : recherche d'items du catalogue (serveur, `can()` appliqué), débattue.
+  const [debounced, setDebounced] = useState("");
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(query.trim()), 250);
+    return () => clearTimeout(id);
+  }, [query]);
+  const itemsQuery = useItems(
+    { q: debounced, pageSize: 5 },
+    { enabled: open && debounced.length >= 2 },
   );
+  const filtered = useMemo(() => {
+    const local = items.filter((i) => i.label.toLowerCase().includes(query.toLowerCase()));
+    const found: CommandItem[] =
+      debounced.length >= 2 && debounced === query.trim()
+        ? (itemsQuery.data?.items ?? []).map((it) => ({
+            id: `item:${it.pk}`,
+            label: it.title,
+            run: () => void navigate(editorPath(it.pk, it.resourceType, it)),
+          }))
+        : [];
+    return [...local, ...found];
+  }, [items, query, debounced, itemsQuery.data, navigate]);
 
   function commit(item: CommandItem) {
     item.run();
