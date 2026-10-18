@@ -696,7 +696,7 @@ class TransformSimplifyParams(BaseModel):
     """Réduit le nombre de sommets de la géométrie selon une tolérance spatiale.
     preserveTopology=True (défaut) évite l'auto-intersection de polygones simplifiés."""
 
-    tolerance: float
+    tolerance: float = Field(ge=0, allow_inf_nan=False)
     preserveTopology: bool = True
 
 

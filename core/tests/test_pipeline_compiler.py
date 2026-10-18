@@ -1160,6 +1160,16 @@ def test_snap_to_layer_tolerance_must_be_positive_and_finite(bad):
         TransformSnapToLayerParams(tolerance=bad)
 
 
+@pytest.mark.parametrize("bad", [-1, float("inf"), float("nan")])
+def test_simplify_tolerance_must_be_non_negative_and_finite(bad):
+    from pydantic import ValidationError
+
+    from app.pipelines.ops.schemas import TransformSimplifyParams
+
+    with pytest.raises(ValidationError):
+        TransformSimplifyParams(tolerance=bad)
+
+
 def test_compile_snap_to_layer_without_join_view_raises():
     with pytest.raises(AssertionError):
         compile_transform_sql(
