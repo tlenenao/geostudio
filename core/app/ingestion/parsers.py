@@ -435,9 +435,10 @@ def list_xlsx_sheets(content: bytes) -> list[LayerInfo]:
 # fichier sur disque (GDAL/pyogrio ne lisent pas depuis la mémoire) sont
 # connus, et une liste se relit sans avoir à raisonner sur une regex.
 _ALLOWED_TEMP_SUFFIXES = frozenset(
-    {".gpkg", ".zip", ".kml", ".kmz", ".parquet", ".gml", ".dxf", ".dgn"}
+    {".gpkg", ".zip", ".kml", ".kmz", ".parquet", ".gml", ".dxf", ".dgn", ".fgb"}
 )
 _SQLITE_MAGIC = b"SQLite format 3\x00"
+_FGB_MAGIC = b"fgb"  # AUD-143 : FlatGeobuf = « fgb » + version + « fgb » + 0
 _MAX_ZIP_UNCOMPRESSED = 2 * 1024**3  # garde anti zip-bomb (ARC-23)
 _GDB_DIR_RE = re.compile(r"^[\w. -]+\.gdb$")
 
@@ -449,6 +450,8 @@ def _reject_vrt_and_check_signature(content: bytes, suffix: str) -> None:
     if b"ogrvrtdatasource" in content[:4096].lower():
         raise IngestionParseError("fichier VRT refusé")
     if suffix == ".gpkg" and not content.startswith(_SQLITE_MAGIC):
+        raise IngestionParseError(_UNREADABLE)
+    if suffix == ".fgb" and not content.startswith(_FGB_MAGIC):
         raise IngestionParseError(_UNREADABLE)
     if suffix == ".zip":
         try:
@@ -625,6 +628,15 @@ def parse_gpkg(
     layer_name: str | None = None,
 ) -> Iterator[tuple[BaseGeometry, dict]]:
     with _temp_file(content, ".gpkg") as path:
+        yield from _read_features(path, layer_name)
+
+
+def parse_flatgeobuf(
+    content: bytes,
+    layer_name: str | None = None,
+) -> Iterator[tuple[BaseGeometry, dict]]:
+    """AUD-143 : FlatGeobuf (une seule couche, lue par le driver GDAL/pyogrio)."""
+    with _temp_file(content, ".fgb") as path:
         yield from _read_features(path, layer_name)
 
 
@@ -973,6 +985,8 @@ def list_layers(content: bytes, filename: str) -> list[LayerInfo]:
     lower = filename.lower()
     if lower.endswith(".gpkg"):
         suffix, wrap = ".gpkg", (lambda p: p)
+    elif lower.endswith(".fgb"):
+        suffix, wrap = ".fgb", (lambda p: p)
     elif lower.endswith(".zip"):
         suffix, wrap = ".zip", None
     elif lower.endswith((".dxf", ".dgn")):
