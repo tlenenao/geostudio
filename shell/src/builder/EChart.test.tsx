@@ -112,3 +112,24 @@ test("AUD-114 : rôle img + libellé, tableau alternatif et équivalent clavier 
   await userEvent.click(screen.getByRole("button", { name: "Filtrer sur Sud" }));
   expect(onClick).toHaveBeenCalledWith({ name: "Sud", dataType: "main" });
 });
+
+test("AUD-114 : tableau alternatif d'un graphique dataset + encode", async () => {
+  const { chartTable } = await import("./chartTable");
+  expect(
+    chartTable({
+      dataset: {
+        source: [
+          { r: "Nord", p: 10 },
+          { r: "Sud", p: 20 },
+        ],
+      },
+      series: [{ type: "bar", name: "p", encode: { x: "r", y: "p" } }],
+    } as never),
+  ).toEqual({
+    head: ["", "p"],
+    rows: [
+      ["Nord", "10"],
+      ["Sud", "20"],
+    ],
+  });
+});

@@ -6,7 +6,7 @@ import { formatNumber } from "../lib/format";
 
 export type ChartTable = { head: string[]; rows: string[][] };
 
-type Series = { name?: string; data?: unknown[] };
+type Series = { name?: string; data?: unknown[]; encode?: { x?: string; y?: string } };
 const MAX_ROWS = 200;
 
 function cell(v: unknown): string {
@@ -28,7 +28,22 @@ function categoryData(axis: unknown): unknown[] | null {
 export function chartTable(option: EChartsOption): ChartTable | null {
   const raw = option.series;
   const series = (Array.isArray(raw) ? raw : raw ? [raw] : []) as Series[];
-  if (series.length === 0 || series.some((s) => !Array.isArray(s.data))) return null;
+  if (series.length === 0) return null;
+  // bar/line/area : `dataset.source` + `encode` (une série par colonne).
+  const source = (option.dataset as { source?: unknown } | undefined)?.source;
+  if (Array.isArray(source) && series.every((s) => s.encode?.x && s.encode.y)) {
+    const rows = source as Record<string, unknown>[];
+    const x = series[0].encode!.x!;
+    if (series.every((s) => s.encode!.x === x)) {
+      return {
+        head: ["", ...series.map((s) => s.name ?? s.encode!.y!)],
+        rows: rows
+          .slice(0, MAX_ROWS)
+          .map((r) => [String(r[x] ?? ""), ...series.map((s) => cell(r[s.encode!.y!]))]),
+      };
+    }
+  }
+  if (series.some((s) => !Array.isArray(s.data))) return null;
   const cats = categoryData(option.xAxis) ?? categoryData(option.yAxis);
   if (cats) {
     return {
