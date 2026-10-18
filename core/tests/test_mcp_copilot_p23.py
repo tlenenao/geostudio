@@ -200,6 +200,10 @@ PARITY: dict[str, tuple[str, object]] = {
     "notifications": ("excluded", "boîte de réception personnelle, UI seulement"),
     "roles": ("excluded", "gouvernance des privilèges : humain uniquement"),
     "share-links": ("excluded", "liens publics : création humaine seulement"),
+    "copilot": (
+        "excluded",
+        "gouvernance LLM du tenant (quota, fournisseur) : administrateurs, UI/REST",
+    ),
     "usage": ("excluded", "consommation/audit : réservé aux administrateurs via l'UI"),
     "users": ("excluded", "annuaire et rôles : humain uniquement"),
     "v1": ("excluded", "racine de l'API"),
