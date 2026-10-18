@@ -25,9 +25,9 @@ class LlmUsage(Base):
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"))
     user_id: Mapped[str | None] = mapped_column(String, nullable=True)
     surface: Mapped[str] = mapped_column(String(32))
-    model: Mapped[str] = mapped_column(String(128), default="")
-    prompt_tokens: Mapped[int] = mapped_column(BigInteger, default=0)
-    completion_tokens: Mapped[int] = mapped_column(BigInteger, default=0)
+    model: Mapped[str] = mapped_column(String(128), default="", server_default="")
+    prompt_tokens: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
+    completion_tokens: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
