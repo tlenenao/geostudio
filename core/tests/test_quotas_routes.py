@@ -82,6 +82,8 @@ def test_get_usage_returns_snapshot_shape_for_privileged_admin(env):
         "maxItems",
         "maxCollections",
         "maxStorageBytes",
+        "maxUsers",
+        "maxActiveRuns",
     }
     # 2 utilisateurs déjà créés par le fixture (admin + regular).
     assert body["userCount"] == 2
@@ -95,12 +97,16 @@ def test_get_usage_includes_configured_limits(env, monkeypatch):
     _as(app, admin)
     monkeypatch.setenv("CORE_QUOTA_MAX_ITEMS_PER_TENANT", "500")
     monkeypatch.setenv("CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT", "1000000")
+    monkeypatch.setenv("CORE_QUOTA_MAX_USERS_PER_TENANT", "7")
+    monkeypatch.setenv("CORE_QUOTA_MAX_ACTIVE_RUNS_PER_TENANT", "3")
     resp = client.get("/v1/admin/usage")
     assert resp.status_code == 200
     body = resp.json()
     assert body["maxItems"] == 500
     assert body["maxCollections"] is None
     assert body["maxStorageBytes"] == 1000000
+    assert body["maxUsers"] == 7
+    assert body["maxActiveRuns"] == 3
 
 
 def test_get_usage_limits_are_null_when_unconfigured(env):

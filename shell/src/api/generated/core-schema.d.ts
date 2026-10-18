@@ -6128,12 +6128,16 @@ export interface components {
             collectionCount: number;
             /** Itemcount */
             itemCount: number;
+            /** Maxactiveruns */
+            maxActiveRuns: number | null;
             /** Maxcollections */
             maxCollections: number | null;
             /** Maxitems */
             maxItems: number | null;
             /** Maxstoragebytes */
             maxStorageBytes: number | null;
+            /** Maxusers */
+            maxUsers: number | null;
             /** Storagebytes */
             storageBytes: number;
             /** Usercount */

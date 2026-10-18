@@ -8674,6 +8674,17 @@
             "title": "Itemcount",
             "type": "integer"
           },
+          "maxActiveRuns": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxactiveruns"
+          },
           "maxCollections": {
             "anyOf": [
               {
@@ -8707,6 +8718,17 @@
             ],
             "title": "Maxstoragebytes"
           },
+          "maxUsers": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxusers"
+          },
           "storageBytes": {
             "title": "Storagebytes",
             "type": "integer"
@@ -8723,7 +8745,9 @@
           "storageBytes",
           "maxItems",
           "maxCollections",
-          "maxStorageBytes"
+          "maxStorageBytes",
+          "maxUsers",
+          "maxActiveRuns"
         ],
         "title": "UsageSnapshotResponse",
         "type": "object"
