@@ -31,14 +31,29 @@ function main(manifestPath, thresholdPath) {
   }
   const files = initialChunkFiles(manifest, entryKey);
   let totalBytes = 0;
+  const sizes = [];
   for (const file of files) {
-    totalBytes += readFileSync(join(distDir, file)).length;
+    const bytes = readFileSync(join(distDir, file)).length;
+    totalBytes += bytes;
+    sizes.push([file, bytes]);
   }
   const totalKb = totalBytes / 1024;
   const thresholdKb = Number(readFileSync(thresholdPath, "utf-8").trim());
   console.log(
     `Charge JS/CSS initiale mesurée : ${totalKb.toFixed(1)} Ko (seuil : ${thresholdKb} Ko)`,
   );
+  // AUD-138 : sans contributeurs nommés, un dépassement est un nombre sans piste ; la marge
+  // restante signale un seuil devenu fragile avant qu'il ne casse.
+  const top = sizes
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([f, b]) => `${(b / 1024).toFixed(1)} Ko ${f}`);
+  console.log(`Plus gros contributeurs :\n  ${top.join("\n  ")}`);
+  if (totalKb <= thresholdKb && thresholdKb - totalKb < thresholdKb * 0.03) {
+    console.warn(
+      `AVERTISSEMENT : marge de ${(thresholdKb - totalKb).toFixed(1)} Ko (< 3 %) — déplacer du code vers un import dynamique plutôt que relever le seuil.`,
+    );
+  }
   if (totalKb > thresholdKb) {
     console.error(`ÉCHEC : charge initiale ${totalKb.toFixed(1)} Ko > seuil ${thresholdKb} Ko`);
     process.exit(1);
