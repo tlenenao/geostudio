@@ -5079,6 +5079,66 @@
         "title": "LanguageCatalogEntry",
         "type": "object"
       },
+      "LayerFilterClause": {
+        "description": "AUD-051 : clause de filtre par couche (ET entre clauses), compil\u00e9e en filtre MapLibre.",
+        "properties": {
+          "field": {
+            "minLength": 1,
+            "title": "Field",
+            "type": "string"
+          },
+          "op": {
+            "enum": [
+              "eq",
+              "ne",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in"
+            ],
+            "title": "Op",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "type": "array"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "field",
+          "op",
+          "value"
+        ],
+        "title": "LayerFilterClause",
+        "type": "object"
+      },
       "LayerInfoOut": {
         "properties": {
           "featureCount": {
@@ -5548,6 +5608,20 @@
               }
             ],
             "title": "Decktype"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/LayerFilterClause"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filter"
           },
           "geometryKind": {
             "anyOf": [
@@ -6990,6 +7064,38 @@
           "dsn"
         ],
         "title": "PostgresDsnPayload",
+        "type": "object"
+      },
+      "PreferencesBody": {
+        "properties": {
+          "locale": {
+            "anyOf": [
+              {
+                "enum": [
+                  "fr",
+                  "en"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          }
+        },
+        "title": "PreferencesBody",
         "type": "object"
       },
       "PresignRequest": {
@@ -8656,6 +8762,73 @@
         "title": "Subtypes",
         "type": "object"
       },
+      "TenantLimitsBody": {
+        "description": "SP-L4 : plafonds propres au tenant ; `null` retombe sur la limite d'instance.",
+        "properties": {
+          "maxActiveRuns": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxactiveruns"
+          },
+          "maxCollections": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxcollections"
+          },
+          "maxItems": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxitems"
+          },
+          "maxStorageBytes": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxstoragebytes"
+          },
+          "maxUsers": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxusers"
+          }
+        },
+        "title": "TenantLimitsBody",
+        "type": "object"
+      },
       "Terrain3DPayload": {
         "properties": {
           "originalFilename": {
@@ -9573,6 +9746,60 @@
           }
         },
         "summary": "Get Usage",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/v1/admin/usage/limits": {
+      "put": {
+        "description": "Remplace les plafonds du tenant de l'appelant (PUT complet, audit\u00e9).",
+        "operationId": "put_tenant_limits_v1_admin_usage_limits_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantLimitsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantLimitsBody"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Tenant Limits",
         "tags": [
           "admin"
         ]
@@ -18781,6 +19008,101 @@
           }
         },
         "summary": "Get Me",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/v1/me/preferences": {
+      "get": {
+        "operationId": "get_preferences_v1_me_preferences_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferencesBody"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Preferences",
+        "tags": [
+          "me"
+        ]
+      },
+      "put": {
+        "description": "AUD-115 : langue et fuseau de l'utilisateur courant (null = d\u00e9faut d'instance / UTC).",
+        "operationId": "put_preferences_v1_me_preferences_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferencesBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferencesBody"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Preferences",
         "tags": [
           "me"
         ]

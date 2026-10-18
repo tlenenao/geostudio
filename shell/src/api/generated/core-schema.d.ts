@@ -89,6 +89,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/usage/limits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Tenant Limits
+         * @description Remplace les plafonds du tenant de l'appelant (PUT complet, audité).
+         */
+        put: operations["put_tenant_limits_v1_admin_usage_limits_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/alerts/{item_id}/evaluate": {
         parameters: {
             query?: never;
@@ -1987,6 +2007,27 @@ export interface paths {
         /** Get Me */
         get: operations["get_me_v1_me_get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Preferences */
+        get: operations["get_preferences_v1_me_preferences_get"];
+        /**
+         * Put Preferences
+         * @description AUD-115 : langue et fuseau de l'utilisateur courant (null = défaut d'instance / UTC).
+         */
+        put: operations["put_preferences_v1_me_preferences_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -4768,6 +4809,21 @@ export interface components {
             /** Label */
             label: string;
         };
+        /**
+         * LayerFilterClause
+         * @description AUD-051 : clause de filtre par couche (ET entre clauses), compilée en filtre MapLibre.
+         */
+        LayerFilterClause: {
+            /** Field */
+            field: string;
+            /**
+             * Op
+             * @enum {string}
+             */
+            op: "eq" | "ne" | "gt" | "gte" | "lt" | "lte" | "in";
+            /** Value */
+            value: string | number | boolean | (string | number | boolean)[];
+        };
         /** LayerInfoOut */
         LayerInfoOut: {
             /** Featurecount */
@@ -4918,6 +4974,8 @@ export interface components {
             dataUrl?: string | null;
             /** Decktype */
             deckType?: string | null;
+            /** Filter */
+            filter?: components["schemas"]["LayerFilterClause"][] | null;
             /** Geometrykind */
             geometryKind?: ("point" | "line" | "polygon") | null;
             /** Id */
@@ -5560,6 +5618,13 @@ export interface components {
              */
             kind: "postgres_dsn";
         };
+        /** PreferencesBody */
+        PreferencesBody: {
+            /** Locale */
+            locale?: ("fr" | "en") | null;
+            /** Timezone */
+            timezone?: string | null;
+        };
         /** PresignRequest */
         PresignRequest: {
             /** Contenttype */
@@ -6140,6 +6205,22 @@ export interface components {
             /** Items */
             items: components["schemas"]["SubtypeItem"][];
         };
+        /**
+         * TenantLimitsBody
+         * @description SP-L4 : plafonds propres au tenant ; `null` retombe sur la limite d'instance.
+         */
+        TenantLimitsBody: {
+            /** Maxactiveruns */
+            maxActiveRuns?: number | null;
+            /** Maxcollections */
+            maxCollections?: number | null;
+            /** Maxitems */
+            maxItems?: number | null;
+            /** Maxstoragebytes */
+            maxStorageBytes?: number | null;
+            /** Maxusers */
+            maxUsers?: number | null;
+        };
         /** Terrain3DPayload */
         Terrain3DPayload: {
             /** Originalfilename */
@@ -6491,6 +6572,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UsageSnapshotResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_tenant_limits_v1_admin_usage_limits_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TenantLimitsBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantLimitsBody"];
                 };
             };
             /** @description Validation Error */
@@ -11454,6 +11570,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_preferences_v1_me_preferences_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferencesBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_preferences_v1_me_preferences_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreferencesBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferencesBody"];
                 };
             };
             /** @description Validation Error */

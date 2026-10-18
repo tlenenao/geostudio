@@ -50,6 +50,7 @@ from app.raster.schemas import (
 from app.raster.service import open_asset, polygons_from_geojson, refuse_if_raster_geo_limited
 from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
+from app.tile_proxy import TileProxyBusyError, fetch_tile
 from app.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -255,17 +256,19 @@ def read_raster_tile(
     # (une rafale vers un TiTiler lent épuisait le pool).
     session.commit()
     try:
-        resp = httpx.get(
-            f"{titiler_url.rstrip('/')}/cog/tiles/{z}/{x}/{y}.png", params=params, timeout=10.0
-        )
+        status, content = fetch_tile(f"{titiler_url.rstrip('/')}/cog/tiles/{z}/{x}/{y}.png", params)
+    except TileProxyBusyError as exc:
+        raise HTTPException(
+            status_code=503, detail="raster tile service busy", headers={"Retry-After": "2"}
+        ) from exc
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail="raster tile service unavailable") from exc
-    if resp.status_code == 404:  # hors emprise : cas nominal d'une source raster MapLibre
+    if status == 404:  # hors emprise : cas nominal d'une source raster MapLibre
         raise HTTPException(status_code=404, detail="tile not found")
-    if resp.status_code != 200:
+    if status != 200:
         raise HTTPException(status_code=502, detail="raster tile service error")
     return Response(
-        content=resp.content,
+        content=content,
         media_type="image/png",
         headers={"Cache-Control": "private, max-age=300"},
     )

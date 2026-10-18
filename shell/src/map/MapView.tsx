@@ -19,6 +19,7 @@ import { MapLegend } from "./MapLegend";
 import { MapMeasureSketchToolbar } from "./MapMeasureSketchToolbar";
 import { MapPopup } from "./MapPopup";
 import { useMapPopup } from "./useMapPopup";
+import type { ExprContext } from "../builder/expr";
 import { resolvePopupContent } from "./popupContent";
 import { clearViewport, publishViewport } from "./viewportTiles";
 import { t } from "../i18n";
@@ -119,6 +120,8 @@ export const MapView = forwardRef<
     // REV-304 : fenêtre du contexte temps global, appliquée par setFilter aux
     // couches `vector` qui déclarent un `timeField` (sans les reconstruire).
     timeRange?: { from: string; to: string } | null;
+    // AUD-052 : variables d'app / utilisateur / contexte analytique exposés aux gabarits de popup.
+    popupContext?: Omit<ExprContext, "record">;
     // ARC-16 : échelle graphique MapLibre (mode export, `printLayout.scaleBar`).
     // Monté une fois ; la largeur affichée est calculée par MapLibre depuis la
     // résolution réelle au centre de la carte (mesurée en E2E à ±1 %).
@@ -145,6 +148,7 @@ export const MapView = forwardRef<
     getShareLinkToken,
     loadCustomIcon,
     timeRange,
+    popupContext,
     showScaleBar,
   },
   ref,
@@ -640,7 +644,7 @@ export const MapView = forwardRef<
       {!hideLegend && <MapLegend layers={config.layers} />}
       {popup && popupPoint && !toolsActive && (
         <MapPopup
-          content={resolvePopupContent(popupConfig, popup.properties, popupSchema)}
+          content={resolvePopupContent(popupConfig, popup.properties, popupSchema, popupContext)}
           x={popupPoint.x}
           y={popupPoint.y}
           onClose={() => setPopup(null)}

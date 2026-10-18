@@ -62,6 +62,7 @@ from app.geocoding import routes as geocoding_routes
 from app.harvest import dataset_validation as harvest_dataset_validation  # noqa: F401
 from app.harvest import routes as harvest_routes
 from app.history import routes as history_routes
+from app.i18n_core import error_code, negotiate_locale, translate_detail, translate_title
 from app.ingestion import routes as ingestion_routes
 from app.ingestion.storage import require_public_s3_endpoint
 from app.instance import routes as instance_routes
@@ -361,14 +362,20 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(StarletteHTTPException)
     async def _http_exception_handler(request: Request, exc: StarletteHTTPException):
+        # AUD-115 : `code` stable ; title/detail traduits seulement si Accept-Language le demande.
+        source = exc.detail if isinstance(exc.detail, str) else "request failed"
+        locale = negotiate_locale(request.headers.get("accept-language"))
         return JSONResponse(
             status_code=exc.status_code,
             media_type="application/problem+json",
             content={
                 "type": "about:blank",
-                "title": HTTPStatus(exc.status_code).phrase,
+                "title": translate_title(
+                    exc.status_code, HTTPStatus(exc.status_code).phrase, locale
+                ),
                 "status": exc.status_code,
-                "detail": exc.detail if isinstance(exc.detail, str) else "request failed",
+                "detail": translate_detail(source, locale),
+                "code": error_code(source),
             },
             # AUD-084 : les en-têtes de l'exception (Retry-After, WWW-Authenticate…) survivent.
             headers=getattr(exc, "headers", None),

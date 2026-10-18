@@ -518,6 +518,12 @@ export type PopupConfig = {
 // ARC-01 : regroupement de points d'une couche `feature` (MapLibre `cluster: true`).
 // Défauts côté rendu : radius 50, maxZoom 14, label vrai.
 export type ClusterConfig = { radius?: number; maxZoom?: number; label?: boolean };
+// AUD-051 : clause de filtre par couche (ET entre clauses) compilée en filtre MapLibre.
+export type LayerFilterClause = {
+  field: string;
+  op: "eq" | "ne" | "gt" | "gte" | "lt" | "lte" | "in";
+  value: string | number | boolean | Array<string | number | boolean>;
+};
 export type MapLayer =
   | {
       id: string;
@@ -529,6 +535,7 @@ export type MapLayer =
       // AUD-051 : plage d'échelle (zoom MapLibre) hors de laquelle la couche est masquée.
       minZoom?: number;
       maxZoom?: number;
+      filter?: LayerFilterClause[];
       // REV-304 : champ temporel filtré par le contexte temps global (widget carte).
       timeField?: string;
       paint?: Record<string, unknown>;
@@ -555,6 +562,7 @@ export type MapLayer =
       // AUD-051 : plage d'échelle (zoom MapLibre) hors de laquelle la couche est masquée.
       minZoom?: number;
       maxZoom?: number;
+      filter?: LayerFilterClause[];
       paint?: Record<string, unknown>;
       renderAs?: "fill" | "circle" | "line";
       cluster?: ClusterConfig;

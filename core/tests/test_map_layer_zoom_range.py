@@ -23,3 +23,11 @@ def test_zoom_range_round_trips_and_is_optional():
 def test_invalid_zoom_range_is_rejected(extra):
     with pytest.raises(ValidationError):
         MapLayer.model_validate(_layer(**extra))
+
+
+def test_layer_filter_round_trips_and_validates_value_shape():
+    f = [{"field": "pop", "op": "gte", "value": 10}, {"field": "t", "op": "in", "value": ["a"]}]
+    assert MapLayer.model_validate(_layer(filter=f)).model_dump()["filter"][1]["op"] == "in"
+    for bad in ({"field": "t", "op": "in", "value": "a"}, {"field": "t", "op": "eq", "value": [1]}):
+        with pytest.raises(ValidationError):
+            MapLayer.model_validate(_layer(filter=[bad]))

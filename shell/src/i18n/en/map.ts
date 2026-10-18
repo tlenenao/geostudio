@@ -287,6 +287,9 @@ export const mapEn: Record<keyof typeof map, string> = {
   "popupEditor.fieldsListButton": "Field list",
   "popupEditor.advancedButton": "Advanced (template)",
   "popupEditor.templateLabel": "Template",
+  "popupEditor.templateHelpAria": "Help on the popup template",
+  "popupEditor.templateHelpBody":
+    "Markdown text; each ${expression} is evaluated as CEL. Example: **${record.name}**: ${record.population} inhabitants. App variables are available as vars.name.",
   "popupEditor.exprHint":
     "Markdown; each ${expression} is evaluated on the clicked feature, for example ${record.name}.",
 
@@ -294,4 +297,17 @@ export const mapEn: Record<keyof typeof map, string> = {
   "thumbnailUpload.tooLargeError": "The image exceeds 2 MB.",
   "layersPanel.minZoom": "Min zoom",
   "layersPanel.maxZoom": "Max zoom",
+  "layersPanel.filter": "Layer filter",
+  "layersPanel.filterField": "Filter field",
+  "layersPanel.filterOp": "Filter operator",
+  "layersPanel.filterValue": "Filter value",
+  "layersPanel.filterAdd": "Add a condition",
+  "layersPanel.filterRemove": "Remove condition",
+  "layersPanel.filterOpEq": "=",
+  "layersPanel.filterOpNe": "≠",
+  "layersPanel.filterOpGt": ">",
+  "layersPanel.filterOpGte": "≥",
+  "layersPanel.filterOpLt": "<",
+  "layersPanel.filterOpLte": "≤",
+  "layersPanel.filterOpIn": "in list",
 };

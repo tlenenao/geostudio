@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 import { lazy, Suspense } from "react";
-import { HelpCircle } from "lucide-react";
 import type { DataSource, Theme, Variable, WidgetItem } from "../api/types";
 import { getWidget } from "./registry";
 import { validateExpression } from "./expr";
 import { formatCelError } from "./celError";
-import { IconButton } from "../ui/kit/IconButton";
-import { Popover } from "../ui/kit/Popover";
+import { HelpHint } from "../ui/kit/HelpHint";
 import { BindingEditor } from "./BindingEditor";
 import { t } from "../i18n";
 import "../i18n/domains/widgets";
@@ -52,18 +50,9 @@ export function PropsPanel({
       <label className="flex flex-col gap-1 text-sm">
         <span className="flex items-center gap-1">
           {t("propsPanel.visibleWhenLabel")}
-          <Popover
-            aria-label={t("propsPanel.visibleWhenHelpAria")}
-            trigger={
-              <IconButton
-                icon={<HelpCircle size={14} />}
-                aria-label={t("propsPanel.visibleWhenHelpAria")}
-                size="sm"
-              />
-            }
-          >
+          <HelpHint label={t("propsPanel.visibleWhenHelpAria")}>
             {t("propsPanel.visibleWhenHelpBody")}
-          </Popover>
+          </HelpHint>
         </span>
         {/* eslint-disable-next-line geostudio/label-no-aria-label -- le label englobe un bouton d'aide et une alerte : le nom accessible doit les exclure */}
         <textarea
