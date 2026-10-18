@@ -3266,6 +3266,8 @@ export interface components {
              * @default 50
              */
             maxPages: number;
+            /** Sortby */
+            sortBy?: string | null;
             /** Titletemplate */
             titleTemplate?: string | null;
         };
@@ -3593,6 +3595,10 @@ export interface components {
         BookmarkCrossFilterEntry: {
             /** Field */
             field: string;
+            /** Geometry */
+            geometry?: {
+                [key: string]: unknown;
+            } | null;
             /** Originsourceid */
             originSourceId: string;
             /** Value */
@@ -4788,6 +4794,10 @@ export interface components {
              * @enum {string}
              */
             kind: "vector" | "raster" | "feature" | "deck" | "tiles3d";
+            /** Maxzoom */
+            maxZoom?: number | null;
+            /** Minzoom */
+            minZoom?: number | null;
             /** Opacity */
             opacity?: number | null;
             /** Paint */
@@ -5438,6 +5448,12 @@ export interface components {
             atlas?: components["schemas"]["AtlasConfig"] | null;
             /** Cartouche */
             cartouche?: string | null;
+            /**
+             * Dpi
+             * @default 150
+             * @enum {integer}
+             */
+            dpi: 96 | 150 | 300 | 600;
             /** Freetext */
             freeText?: string | null;
             /** Logo */
@@ -5631,6 +5647,23 @@ export interface components {
             /** Name */
             name: string;
         };
+        /**
+         * ReportRetry
+         * @description AUD-058 : un rendu en erreur est rejoué (nouveau run) avant le prochain cron, puis
+         *     la panne est notifiée une seule fois, après le dernier essai.
+         */
+        ReportRetry: {
+            /**
+             * Delayminutes
+             * @default 15
+             */
+            delayMinutes: number;
+            /**
+             * Maxattempts
+             * @default 2
+             */
+            maxAttempts: number;
+        };
         /** ReportRunStatus */
         ReportRunStatus: {
             /** Createdat */
@@ -5652,7 +5685,14 @@ export interface components {
             bookmarkItemId: string;
             /** Channels */
             channels?: (components["schemas"]["AlertChannelWebhook"] | components["schemas"]["AlertChannelEmail"])[];
+            /**
+             * Format
+             * @default pdf
+             * @enum {string}
+             */
+            format: "pdf" | "png";
             refreshPolicy: components["schemas"]["PipelineRefreshPolicy"];
+            retry?: components["schemas"]["ReportRetry"] | null;
         };
         /** ResolvedShareLink */
         ResolvedShareLink: {

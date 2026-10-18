@@ -755,6 +755,19 @@
             "title": "Maxpages",
             "type": "integer"
           },
+          "sortBy": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "pattern": "^-?[A-Za-z_][A-Za-z0-9_]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sortby"
+          },
           "titleTemplate": {
             "anyOf": [
               {
@@ -1481,6 +1494,18 @@
           "field": {
             "title": "Field",
             "type": "string"
+          },
+          "geometry": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Geometry"
           },
           "originSourceId": {
             "title": "Originsourceid",
@@ -5297,6 +5322,32 @@
             "title": "Kind",
             "type": "string"
           },
+          "maxZoom": {
+            "anyOf": [
+              {
+                "maximum": 24.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxzoom"
+          },
+          "minZoom": {
+            "anyOf": [
+              {
+                "maximum": 24.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minzoom"
+          },
           "opacity": {
             "anyOf": [
               {
@@ -6750,6 +6801,17 @@
             ],
             "title": "Cartouche"
           },
+          "dpi": {
+            "default": 150,
+            "enum": [
+              96,
+              150,
+              300,
+              600
+            ],
+            "title": "Dpi",
+            "type": "integer"
+          },
           "freeText": {
             "anyOf": [
               {
@@ -7285,6 +7347,27 @@
         "title": "RenameGroupRequest",
         "type": "object"
       },
+      "ReportRetry": {
+        "description": "AUD-058 : un rendu en erreur est rejou\u00e9 (nouveau run) avant le prochain cron, puis\nla panne est notifi\u00e9e une seule fois, apr\u00e8s le dernier essai.",
+        "properties": {
+          "delayMinutes": {
+            "default": 15,
+            "maximum": 1440.0,
+            "minimum": 1.0,
+            "title": "Delayminutes",
+            "type": "integer"
+          },
+          "maxAttempts": {
+            "default": 2,
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Maxattempts",
+            "type": "integer"
+          }
+        },
+        "title": "ReportRetry",
+        "type": "object"
+      },
       "ReportRunStatus": {
         "properties": {
           "createdAt": {
@@ -7371,8 +7454,27 @@
             "title": "Channels",
             "type": "array"
           },
+          "format": {
+            "default": "pdf",
+            "enum": [
+              "pdf",
+              "png"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
           "refreshPolicy": {
             "$ref": "#/components/schemas/PipelineRefreshPolicy"
+          },
+          "retry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReportRetry"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -10863,6 +10965,7 @@
             "required": false,
             "schema": {
               "default": 0,
+              "maximum": 100000,
               "minimum": 0,
               "title": "Offset",
               "type": "integer"
