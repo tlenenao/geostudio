@@ -380,6 +380,7 @@ layers = [
     "app.mapicons",
     "app.admin_tools",
     "app.usage",
+    "app.saved_queries",
     "app.secrets",
     "app.cdc",
     # app.public_submit (ARC-10) : soumission publique modérée ; réutilise l'écriture de
@@ -553,6 +554,7 @@ ignore_imports = [
     "app.db -> app.sharing.models",
     "app.db -> app.ingestion.models",
     "app.db -> app.notifications.models",
+    "app.db -> app.saved_queries.models",
     "app.db -> app.apikeys.models",
     "app.db -> app.extensions.models",
     "app.db -> app.harvest.models",
@@ -654,6 +656,7 @@ forbidden_modules = [
     "app.stac",
     "app.styles",
     "app.tenants",
+    "app.saved_queries",
     "app.terrain3d",
     "app.tileset3d",
     "app.usage",

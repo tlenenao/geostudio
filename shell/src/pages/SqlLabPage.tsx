@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { HelpCircle } from "lucide-react";
+import { HelpCircle, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -10,7 +10,13 @@ import { acceptCompletion, autocompletion, completionKeymap } from "@codemirror/
 // alias, entre en collision de nom avec elle.
 import { sql as sqlLang, SQLite, type SQLNamespace } from "@codemirror/lang-sql";
 import { EditorView } from "@codemirror/view";
-import { useCollectionsAdmin, useInstanceInfo } from "../api/hooks";
+import {
+  useCollectionsAdmin,
+  useDeleteSavedSqlQuery,
+  useInstanceInfo,
+  useSavedSqlQueries,
+  useSaveSqlQuery,
+} from "../api/hooks";
 import { useItemClient } from "../api/ItemClientProvider";
 import {
   appendSqlHistory,
@@ -26,6 +32,7 @@ import { parseDuckDbError } from "../lib/parseDuckDbError";
 import { Banner } from "../ui/kit/Banner";
 import { Button } from "../ui/kit/Button";
 import { IconButton } from "../ui/kit/IconButton";
+import { Input } from "../ui/kit/Input";
 import { Popover } from "../ui/kit/Popover";
 import { Panel } from "../ui/kit/Panel";
 import { EmptyState } from "../ui/kit/EmptyState";
@@ -90,6 +97,11 @@ export function SqlLabPage() {
   const [schemaByCollection, setSchemaByCollection] = useState<Record<string, string[]>>({});
   const [history, setHistory] = useState<SqlHistoryEntry[]>(() => readSqlHistory());
   const [historyId, setHistoryId] = useUrlSyncedState<string>("historyId", null);
+  // AUD-062 : requêtes enregistrées côté cœur (privées à leur auteur).
+  const [saveName, setSaveName] = useState("");
+  const savedQueries = useSavedSqlQueries();
+  const saveQuery = useSaveSqlQuery();
+  const deleteSaved = useDeleteSavedSqlQuery();
   const instanceQuery = useInstanceInfo();
   const copilotEnabled = instanceQuery.data?.copilotEnabled === true;
   // D54 (Vague C) : la liste des collections alimente désormais aussi
@@ -274,6 +286,37 @@ export function SqlLabPage() {
               >
                 {t("sqlLab.runButton")}
               </Button>
+              <form
+                className="flex w-full max-w-md items-center gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  saveQuery.mutate(
+                    { name: saveName.trim(), sql },
+                    { onSuccess: () => setSaveName("") },
+                  );
+                }}
+              >
+                <Input
+                  value={saveName}
+                  maxLength={120}
+                  aria-label={t("sqlLab.saveNameLabel")}
+                  placeholder={t("sqlLab.saveNameLabel")}
+                  onChange={(event) => setSaveName(event.target.value)}
+                />
+                <Button
+                  type="submit"
+                  size="sm"
+                  variant="outline"
+                  disabled={!saveName.trim() || !sql.trim() || saveQuery.isPending}
+                >
+                  {t("sqlLab.saveButton")}
+                </Button>
+              </form>
+              {saveQuery.isError && (
+                <Banner variant="danger">
+                  {t("sqlLab.savedError", { message: (saveQuery.error as Error).message })}
+                </Banner>
+              )}
               {run.isError &&
                 (() => {
                   const parsed = parseDuckDbError((run.error as Error).message);
@@ -333,6 +376,34 @@ export function SqlLabPage() {
           label: t("sqlLab.historyLabel"),
           content: (
             <div className="flex flex-col gap-2 p-3">
+              <p className="text-xs font-medium text-ink-2">{t("sqlLab.savedHeading")}</p>
+              {(savedQueries.data ?? []).length === 0 ? (
+                <EmptyState title={t("sqlLab.savedEmpty")} />
+              ) : (
+                <ul className="flex flex-col gap-1">
+                  {(savedQueries.data ?? []).map((q) => (
+                    <li key={q.id} className="flex items-center gap-2 text-xs">
+                      <button
+                        type="button"
+                        aria-label={t("sqlLab.savedLoadAria", { name: q.name })}
+                        className="text-left text-ink hover:underline"
+                        onClick={() => setSql(q.sql)}
+                      >
+                        {q.name}
+                      </button>
+                      <IconButton
+                        icon={<Trash2 size={12} />}
+                        aria-label={t("sqlLab.savedDeleteAria", { name: q.name })}
+                        size="sm"
+                        onClick={() => deleteSaved.mutate(q.id)}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="border-t border-rule pt-3 text-xs font-medium text-ink-2">
+                {t("sqlLab.historyLabel")}
+              </p>
               {history.length === 0 ? (
                 <EmptyState title={t("sqlLab.emptyHistory")} />
               ) : (

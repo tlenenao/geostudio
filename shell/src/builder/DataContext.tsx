@@ -94,6 +94,9 @@ export function DataProvider({
       const merged = mergedQueryFor(s);
       return {
         queryKey: ["datasource", s.id, merged.query],
+        // AUD-131 (D7) : rafraîchissement planifié par source, sans flux. react-query le met en
+        // pause onglet masqué (refetchIntervalInBackground = false par défaut) ; borné à 5 s.
+        refetchInterval: s.refreshSeconds ? Math.max(5, s.refreshSeconds) * 1000 : false,
         queryFn: async () =>
           client.queryDataSourcePage
             ? client.queryDataSourcePage(merged)

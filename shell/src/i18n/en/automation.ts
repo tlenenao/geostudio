@@ -71,6 +71,13 @@ export const automationEn: Record<keyof typeof automation, string> = {
   "sqlLab.emptyHistory": "No query run yet.",
   "sqlLab.errorLineLabel": "Line {line}: ",
   "sqlLab.reloadQueryAria": "Reload query: {sql}",
+  "sqlLab.savedHeading": "Saved queries",
+  "sqlLab.savedEmpty": "No saved query.",
+  "sqlLab.saveNameLabel": "Name to save under",
+  "sqlLab.saveButton": "Save",
+  "sqlLab.savedLoadAria": "Load saved query “{name}”",
+  "sqlLab.savedDeleteAria": "Delete saved query “{name}”",
+  "sqlLab.savedError": "Could not save: {message}",
 
   "visualQuery.pipelineFailedError": "The pipeline run failed.",
   "visualQuery.notFound": "Query not found.",

@@ -40,6 +40,7 @@ from app.ingestion.parsers import (
     parse_dgn,
     parse_dxf,
     parse_filegdb_zip,
+    parse_flatgeobuf,
     parse_geojson,
     parse_geoparquet,
     parse_gml,
@@ -110,6 +111,8 @@ def _pick_format(filename: str) -> str:
         return "xlsx"
     if lower.endswith(".gpkg"):
         return "gpkg"
+    if lower.endswith(".fgb"):
+        return "flatgeobuf"
     if lower.endswith(".gdb.zip"):
         return "filegdb"
     if lower.endswith(".zip"):
@@ -291,6 +294,7 @@ def _open_rows(
             "csv": lambda: parse_csv_latlon(content, mode),
             "xlsx": lambda: parse_xlsx_sheet(content, layer_name, mode),
             "gpkg": lambda: parse_gpkg(content, layer_name),
+            "flatgeobuf": lambda: parse_flatgeobuf(content, layer_name),
             "shapefile": lambda: parse_shapefile_zip(content, layer_name),
             "filegdb": lambda: parse_filegdb_zip(content, layer_name),
             "dxf": lambda: parse_dxf(content, layer_name),

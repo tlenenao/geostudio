@@ -176,6 +176,14 @@ export type PurgeReceipt = {
   error?: string | null;
 };
 
+export type SavedSqlQuery = {
+  id: string;
+  name: string;
+  sql: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type NotificationSummary = {
   id: string;
   kind:
@@ -1215,6 +1223,11 @@ export interface ItemClient {
   runAnalyticsSql(
     sql: string,
   ): Promise<{ columns: string[]; rows: unknown[][]; truncated: boolean }>;
+  // AUD-062 : requêtes SQL Lab enregistrées, privées à leur auteur.
+  listSavedSqlQueries(): Promise<SavedSqlQuery[]>;
+  createSavedSqlQuery(body: { name: string; sql: string }): Promise<SavedSqlQuery>;
+  updateSavedSqlQuery(id: string, body: { name: string; sql: string }): Promise<SavedSqlQuery>;
+  deleteSavedSqlQuery(id: string): Promise<void>;
   // ARC-26/30 : `entityId` = fiche d'une entité, `atlas` = une page par entité.
   createExport(
     itemId: string,
@@ -1416,6 +1429,8 @@ export type DataSource = {
   layer: string; // résolu automatiquement si datasetId est présent
   datasetId?: string;
   query: Record<string, unknown>;
+  // AUD-131 : rafraîchissement planifié en secondes (5 à 3600), absent = jamais.
+  refreshSeconds?: number;
 };
 
 export type DatasetColumnMeta = {

@@ -22,6 +22,7 @@ function item(pk: string, type = "app", title = `Item ${pk}`) {
 }
 
 export const handlers = [
+  http.get(`${CORE}/analytics/sql/saved`, () => HttpResponse.json([])),
   http.get(`${CORE}/items`, () =>
     HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 }),
   ),

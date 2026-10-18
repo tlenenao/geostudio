@@ -639,7 +639,7 @@ export function ImportFileButton() {
               {t("importFile.fileToImport")}
               <input
                 type="file"
-                accept=".geojson,.json,.csv,.xlsx,.kml,.kmz,.gpkg,.zip,.parquet,.jsonl,.gml,.xml,.dxf,.dgn"
+                accept=".geojson,.json,.csv,.xlsx,.kml,.kmz,.gpkg,.zip,.parquet,.jsonl,.gml,.xml,.dxf,.dgn,.fgb"
                 onChange={(e) => void onFileChange(e)}
               />
             </label>

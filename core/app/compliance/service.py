@@ -33,6 +33,7 @@ from app.notifications.models import Notification
 from app.outbox.models import FileTrigger, OutboundWebhook
 from app.pipelines.models import PipelineWebhookToken
 from app.roles.repository import count_users_with_privileges, get_role
+from app.saved_queries.models import SavedQuery
 from app.sharing.models import GroupMember, ShareLink
 from app.sharing.models import _now as _share_link_now
 from app.users.models import User
@@ -113,6 +114,7 @@ def anonymize_user(
     revoke_all_for_user(session, tenant_id=tenant_id, user_id=user_id)
     session.execute(delete(Notification).where(Notification.recipient_user_id == user_id))
     session.execute(delete(GroupMember).where(GroupMember.user_id == user_id))
+    session.execute(delete(SavedQuery).where(SavedQuery.owner_id == user_id))  # AUD-062
     # AUD-094 : ni jeton webhook ni lien de partage ne survivent au compte.
     session.execute(
         delete(PipelineWebhookToken).where(

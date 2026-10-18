@@ -70,6 +70,15 @@ class RasterInfo(BaseModel):
     limitCollectionId: str | None
 
 
+class RasterPointValue(BaseModel):
+    """AUD-142 : valeur des bandes en un point (identify), `null` = nodata."""
+
+    lon: float
+    lat: float
+    values: list[float | None]
+    bandNames: list[str]
+
+
 class ZonalStatsRequest(BaseModel):
     # GeoJSON FeatureCollection / Feature / Polygon / MultiPolygon, OU une collection
     # (ses polygones lisibles par l'appelant) — exactement l'un des deux.

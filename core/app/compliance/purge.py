@@ -63,6 +63,7 @@ from app.raster.routes import get_raster_bucket
 from app.relations.models import CollectionRelation
 from app.reports.models import ReportRun
 from app.roles.models import Role
+from app.saved_queries.models import SavedQuery
 from app.secrets.models import ConnectorSecret
 from app.sharing.models import (
     CollectionGeoLimit,
@@ -321,6 +322,7 @@ def purge_tenant(
     counts["api_keys"] = _delete_all(session, ApiKey, tenant_id)
     counts["notifications"] = _delete_all(session, Notification, tenant_id)
     counts["notification_preferences"] = _delete_all(session, NotificationPreference, tenant_id)
+    counts["saved_queries"] = _delete_all(session, SavedQuery, tenant_id)  # AUD-062
     counts["connector_secrets"] = _delete_all(session, ConnectorSecret, tenant_id)
     counts["harvest_sources"] = _delete_all(session, HarvestSource, tenant_id)
     counts["map_icons"] = _delete_all(session, MapIcon, tenant_id)

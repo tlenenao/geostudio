@@ -79,6 +79,13 @@ export const automation = {
   "sqlLab.emptyHistory": "Aucune requête exécutée pour l'instant.",
   "sqlLab.errorLineLabel": "Ligne {line} : ",
   "sqlLab.reloadQueryAria": "Recharger la requête : {sql}",
+  "sqlLab.savedHeading": "Requêtes enregistrées",
+  "sqlLab.savedEmpty": "Aucune requête enregistrée.",
+  "sqlLab.saveNameLabel": "Nom d'enregistrement",
+  "sqlLab.saveButton": "Enregistrer",
+  "sqlLab.savedLoadAria": "Charger la requête enregistrée « {name} »",
+  "sqlLab.savedDeleteAria": "Supprimer la requête enregistrée « {name} »",
+  "sqlLab.savedError": "Enregistrement impossible : {message}",
 
   // VisualQueryWizardPage
   "visualQuery.pipelineFailedError": "L'exécution du pipeline a échoué.",

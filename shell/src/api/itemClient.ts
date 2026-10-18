@@ -22,6 +22,7 @@ import { createLayersMethods } from "./domains/layers";
 import { createApiKeysMethods } from "./domains/apiKeys";
 import { createLlmGovernanceMethods } from "./domains/llmGovernance";
 import { createNotificationsMethods } from "./domains/notifications";
+import { createSavedQueriesMethods } from "./domains/savedQueries";
 import { createPipelinesMethods } from "./domains/pipelines";
 import { createQuotaUsageMethods } from "./domains/quotaUsage";
 import { createReportsMethods } from "./domains/reports";
@@ -48,6 +49,7 @@ export function createItemClient(opts: {
     ...createApiKeysMethods(base),
     ...createLlmGovernanceMethods(base),
     ...createNotificationsMethods(base),
+    ...createSavedQueriesMethods(base),
     ...createItemsMethods(base),
     ...createCollectionsAdminMethods(base),
     ...createImpactMethods(base),

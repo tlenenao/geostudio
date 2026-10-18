@@ -70,6 +70,18 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async runAnalyticsSql(_sql: string) {
       return unsupported();
     },
+    async listSavedSqlQueries(..._args: unknown[]) {
+      return unsupported();
+    },
+    async createSavedSqlQuery(..._args: unknown[]) {
+      return unsupported();
+    },
+    async updateSavedSqlQuery(..._args: unknown[]) {
+      return unsupported();
+    },
+    async deleteSavedSqlQuery(..._args: unknown[]) {
+      return unsupported();
+    },
 
     // --- Reste de l'interface : aucun backend, rejet explicite ---
     async listItems(..._args: unknown[]) {
