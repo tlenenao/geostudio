@@ -3,6 +3,8 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { onlineManager, useQueryClient } from "@tanstack/react-query";
 import { CoreUnreachableError } from "../api/CoreUnreachableError";
 import { t } from "../i18n";
+import { useUnsentCount } from "../offline/useOutbox";
+import "../i18n/domains/misc";
 
 // Période du sondage tant que des requêtes sont en échec d'injoignabilité.
 export const CONNECTIVITY_POLL_MS = 5_000;
@@ -46,6 +48,7 @@ export function ConnectivityBanner() {
   const queryClient = useQueryClient();
   const [failed, setFailed] = useState<ReadonlySet<string>>(new Set());
   const online = useSyncExternalStore(subscribeOnline, isOnline, () => true);
+  const unsent = useUnsentCount();
 
   useEffect(() => {
     const unsubscribeQueries = queryClient.getQueryCache().subscribe((event) => {
@@ -95,6 +98,14 @@ export function ConnectivityBanner() {
   }, [unreachable, mutationDown, queryClient]);
 
   if (!online) {
+    // L8 : des saisies sont gardées sur l'appareil : message rassurant (pas une alerte).
+    if (unsent > 0) {
+      return (
+        <div role="status" className="w-full bg-sunken px-4 py-2 text-center text-sm text-ink">
+          {t("outbox.offlineBanner")}
+        </div>
+      );
+    }
     return (
       <div role="alert" className="w-full bg-danger-soft px-4 py-2 text-center text-sm text-danger">
         {t("connectivity.offline")}

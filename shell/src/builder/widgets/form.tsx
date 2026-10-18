@@ -27,6 +27,13 @@ import { LoadingState } from "../../ui/kit/LoadingState";
 import { evaluateExpression, type ExprContext } from "../expr";
 import { formatDateTime } from "../../lib/format";
 import "../../i18n/domains/widgets";
+import "../../i18n/domains/misc";
+import { CoreUnreachableError } from "../../api/CoreUnreachableError";
+import { OutboxLimitError, listBlobs } from "../../offline/outbox";
+import { blobToFile } from "../../offline/sync";
+import type { OutboxEntry } from "../../offline/db";
+import { OutboxList } from "../../offline/OutboxList";
+import { useOutbox } from "../../offline/useOutbox";
 
 export type FormField = {
   name: string;
@@ -787,6 +794,13 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
   const mobile = props.mobile === true;
   const showMyEntries = props.showMyEntries === true;
   const [pendingFiles, setPendingFiles] = useState<Record<string, File | null>>({});
+  // L8 : identité d'opération créée à l'ouverture du brouillon (= Idempotency-Key de la création,
+  // en ligne comme en file) ; renouvelée à chaque nouvelle saisie.
+  const opIdRef = useRef<string>(crypto.randomUUID());
+  // Saisie rouverte depuis la file : supprimée de la file quand l'envoi direct réussit.
+  const queuedRef = useRef<{ opId: string; createdAt: number } | null>(null);
+  const outbox = useOutbox();
+  const [queueNotice, setQueueNotice] = useState<string | null>(null);
   const [geoError, setGeoError] = useState(false);
   function locate() {
     setGeoError(false);
@@ -878,7 +892,9 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
         else await client.updateFeature(...args);
         fid = editingId;
       } else {
-        fid = (await client.createFeature(collectionId, feature)).id;
+        fid = (
+          await client.createFeature(collectionId, feature, { idempotencyKey: opIdRef.current })
+        ).id;
       }
       // Photos mises en file : envoyées une fois la saisie identifiée (création ou reprise après
       // échec). Un échec ne fait pas échouer la saisie déjà enregistrée ; il est remonté
@@ -971,6 +987,9 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     setSummaryNames(null);
     setPendingFiles({});
     setGeoError(false);
+    opIdRef.current = crypto.randomUUID();
+    queuedRef.current = null;
+    setQueueNotice(null);
     write.reset();
   }
   useBusAction(ctx.bus, ctx.widgetId, "reset", resetTo);
@@ -1009,6 +1028,62 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
       if (clientError) return clientError;
     }
     return serverErrors[field.name] ?? null;
+  }
+
+  async function queueEntry(properties: Record<string, unknown>, geometry: unknown) {
+    if (!outbox) return;
+    const blobs = Object.entries(pendingFiles)
+      .filter((kv): kv is [string, File] => kv[1] != null)
+      .map(([fieldKey, file]) => {
+        const f = allFields.find((x) => x.name === fieldKey);
+        return {
+          fieldKey,
+          kind: f?.kind ?? schemaKind(schemaQuery.data, fieldKey) ?? "image",
+          file,
+        };
+      });
+    try {
+      await outbox.enqueue(
+        { opId: opIdRef.current, collectionId, payload: { properties, geometry }, blobs },
+        queuedRef.current?.createdAt,
+      );
+    } catch (err) {
+      setGenericError(false);
+      setQueueNotice(
+        err instanceof OutboxLimitError
+          ? err.code === "entries"
+            ? t("outbox.limitEntries")
+            : err.code === "bytes"
+              ? t("outbox.limitBytes")
+              : t("outbox.limitPhotos")
+          : t("outbox.storageError"),
+      );
+      return; // le formulaire reste ouvert : rien n'est perdu
+    }
+    resetTo();
+    setQueueNotice(t("outbox.queuedNotice"));
+    ctx.bus?.emit(ctx.widgetId ?? "", "submitted", { properties });
+    // Demande de stockage persistant (best-effort) : évite l'éviction de la file par le navigateur.
+    void navigator.storage?.persist?.();
+  }
+
+  // Rouvre une saisie de la file (sans fiche serveur) : même opId, même horodatage d'origine.
+  async function handleEditQueued(entry: OutboxEntry) {
+    const stored = await listBlobs(entry.ownerKey, entry.opId);
+    resetTo();
+    opIdRef.current = entry.opId;
+    queuedRef.current = { opId: entry.opId, createdAt: entry.createdAt };
+    setValues({ ...entry.payload.properties });
+    const files: Record<string, File | null> = {};
+    for (const b of stored) files[b.fieldKey] = blobToFile(b);
+    setPendingFiles(files);
+    const g = entry.payload.geometry as { type?: string; coordinates?: number[] } | null;
+    setLoadedGeometry(g ?? null);
+    setGeomKey((k) => k + 1);
+    if (geometryType === "Point" && g?.type === "Point" && Array.isArray(g.coordinates)) {
+      setLon(String(g.coordinates[0]));
+      setLat(String(g.coordinates[1]));
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -1050,8 +1125,16 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     if (accuracy !== null && allFields.some((f) => f.name === "gps_accuracy"))
       properties.gps_accuracy = Math.round(accuracy);
     const geometry = geometryNow;
+    // L8 : hors réseau, une CRÉATION part dans la file locale (jamais une modification : elle
+    // exige l'ETag courant). Le formulaire n'est vidé qu'une fois l'écriture locale réussie.
+    const queueable = editingId === null && outbox !== null;
+    if (queueable && navigator.onLine === false) {
+      await queueEntry(properties, geometry);
+      return;
+    }
     try {
       const { fid, failed } = await write.mutateAsync({ properties, geometry });
+      if (queuedRef.current && outbox) await outbox.remove(queuedRef.current.opId);
       void queryClient.invalidateQueries({ queryKey: ["datasource"] });
       void queryClient.invalidateQueries({ queryKey: ["my-entries", collectionId] });
       ctx.bus?.emit(ctx.widgetId ?? "", "submitted", { properties });
@@ -1070,6 +1153,10 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
         void syncFromServer(editingId, false);
       }
     } catch (err) {
+      if (queueable && err instanceof CoreUnreachableError) {
+        await queueEntry(properties, geometry);
+        return;
+      }
       if (err instanceof ApiError && err.status === 412 && editingId !== null) {
         // ARC-04 : modifié ailleurs depuis la lecture — message + rechargement des valeurs.
         setConflict(true);
@@ -1373,6 +1460,18 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
           {t("widgetForm.reset")}
         </button>
       </div>
+      {queueNotice && (
+        <p role="status" className="text-xs text-ink-2">
+          {queueNotice}
+        </p>
+      )}
+      {outbox && collectionId !== "" && (
+        <OutboxList
+          api={outbox}
+          collectionId={collectionId}
+          onEdit={(entry) => void handleEditQueued(entry)}
+        />
+      )}
       {showMyEntries && collectionId !== "" && (
         <MyEntries client={client} collectionId={collectionId} />
       )}

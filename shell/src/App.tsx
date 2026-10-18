@@ -17,6 +17,7 @@ import { AppErrorBoundary } from "./AppErrorBoundary";
 // kit dans le chunk initial (revue finale Vague B, REV-253).
 import { ToastProvider } from "./ui/kit/ToastProvider";
 import { ConnectivityBanner } from "./shell/ConnectivityBanner";
+import { OutboxProvider } from "./offline/useOutbox";
 import { SessionExpiredBanner } from "./shell/SessionExpiredBanner";
 
 const config = loadRuntimeConfig();
@@ -59,7 +60,9 @@ function AppShell() {
   );
   return (
     <ItemClientProvider client={client}>
-      <RouterProvider router={router} useTransitions={false} />
+      <OutboxProvider>
+        <RouterProvider router={router} useTransitions={false} />
+      </OutboxProvider>
     </ItemClientProvider>
   );
 }

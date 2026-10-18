@@ -491,11 +491,15 @@ test("a valid submit calls createFeature with the bound collection and propertie
   await userEvent.selectOptions(screen.getByLabelText("Gravité"), "haute");
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   await waitFor(() =>
-    expect(client.createFeature).toHaveBeenCalledWith("incidents", {
-      type: "Feature",
-      properties: { titre: "Fuite d'eau", gravite: "haute" },
-      geometry: null,
-    }),
+    expect(client.createFeature).toHaveBeenCalledWith(
+      "incidents",
+      {
+        type: "Feature",
+        properties: { titre: "Fuite d'eau", gravite: "haute" },
+        geometry: null,
+      },
+      { idempotencyKey: expect.stringMatching(/^[0-9a-f-]{36}$/) },
+    ),
   );
 });
 
@@ -651,11 +655,15 @@ test("submitting with longitude/latitude filled sends a GeoJSON Point geometry",
   await userEvent.type(screen.getByLabelText("Latitude"), "48.85");
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   await waitFor(() =>
-    expect(client.createFeature).toHaveBeenCalledWith("incidents", {
-      type: "Feature",
-      properties: { titre: "Fuite d'eau", gravite: "haute" },
-      geometry: { type: "Point", coordinates: [2.35, 48.85] },
-    }),
+    expect(client.createFeature).toHaveBeenCalledWith(
+      "incidents",
+      {
+        type: "Feature",
+        properties: { titre: "Fuite d'eau", gravite: "haute" },
+        geometry: { type: "Point", coordinates: [2.35, 48.85] },
+      },
+      expect.anything(),
+    ),
   );
 });
 
@@ -668,6 +676,7 @@ test("submitting a Point collection with empty coordinates sends a null geometry
     expect(client.createFeature).toHaveBeenCalledWith(
       "incidents",
       expect.objectContaining({ geometry: null }),
+      expect.anything(),
     ),
   );
 });

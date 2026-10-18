@@ -23,6 +23,11 @@ import { t } from "../i18n";
 import { Button } from "../ui/kit/Button";
 import { LoadingState } from "../ui/kit/LoadingState";
 import "../i18n/domains/widgets";
+import "../i18n/domains/misc";
+import { OutboxLimitError } from "../offline/outbox";
+import { OutboxList } from "../offline/OutboxList";
+import { publicTransport } from "../offline/transport";
+import { useOutboxEngine, type OutboxApi } from "../offline/useOutbox";
 
 // Route publique hors `<ProtectedLayout>` : aucune session, la configuration est relue de
 // l'environnement comme pour EmbedPage.
@@ -78,6 +83,9 @@ export function CollectPage({ token }: { token: string }) {
     retry: false,
   });
   const kit = kitQuery.data?.kit ?? null;
+  // L8 : file locale propre à ce lien (jamais mêlée à celle d'un utilisateur connecté).
+  const transport = useMemo(() => publicTransport(coreV1, token), [token]);
+  const outbox = useOutboxEngine(`public:${token}`, transport);
   return (
     <main className="mx-auto flex max-w-xl flex-col gap-4 p-4">
       <h1 className="text-lg font-semibold text-ink">{kit?.title ?? t("docTitle.collect")}</h1>
@@ -97,12 +105,21 @@ export function CollectPage({ token }: { token: string }) {
           {t("collect.kitExpired")}
         </p>
       )}
-      {kit && <CollectForm key={token} kit={kit} token={token} />}
+      {kit && <CollectForm key={token} kit={kit} token={token} outbox={outbox} />}
+      {outbox && <OutboxList api={outbox} />}
     </main>
   );
 }
 
-function CollectForm({ kit, token }: { kit: CollectKit; token: string }) {
+function CollectForm({
+  kit,
+  token,
+  outbox,
+}: {
+  kit: CollectKit;
+  token: string;
+  outbox: OutboxApi | null;
+}) {
   const baseFields = useMemo(() => fieldsOf(kit), [kit]);
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [files, setFiles] = useState<Record<string, File | null>>({});
@@ -116,7 +133,7 @@ function CollectForm({ kit, token }: { kit: CollectKit; token: string }) {
   const [geomKey, setGeomKey] = useState(0);
   const [honeypot, setHoneypot] = useState("");
   const [sending, setSending] = useState(false);
-  const [done, setDone] = useState(false);
+  const [done, setDone] = useState<false | "sent" | "queued">(false);
   const [failure, setFailure] = useState<string | null>(null);
   // Un seul identifiant par saisie : un renvoi après coupure ne la compte pas deux fois.
   const opId = useRef(crypto.randomUUID());
@@ -179,18 +196,49 @@ function CollectForm({ kit, token }: { kit: CollectKit; token: string }) {
         properties[f.name] = values[f.name];
     if (accuracy !== null && fields.some((f) => f.name === "gps_accuracy"))
       properties.gps_accuracy = Math.round(accuracy);
+    const chosenFiles = Object.entries(files).filter((e): e is [string, File] => e[1] !== null);
+    // L8 : hors réseau, ou cœur injoignable en cours d'envoi, la saisie part dans la file locale
+    // (même opId : un envoi dont la réponse s'est perdue n'est jamais compté deux fois).
+    async function queue() {
+      if (!outbox) return false;
+      try {
+        await outbox.enqueue({
+          opId: opId.current,
+          collectionId: kit.collectionId ?? token,
+          payload: { properties, geometry: geometryNow },
+          blobs: chosenFiles.map(([fieldKey, file]) => ({
+            fieldKey,
+            kind: fields.find((f) => f.name === fieldKey)?.kind ?? "image",
+            file,
+          })),
+        });
+        void navigator.storage?.persist?.();
+        setDone("queued");
+      } catch (err) {
+        setFailure(
+          err instanceof OutboxLimitError
+            ? err.code === "entries"
+              ? t("outbox.limitEntries")
+              : err.code === "bytes"
+                ? t("outbox.limitBytes")
+                : t("outbox.limitPhotos")
+            : t("outbox.storageError"),
+        );
+      }
+      return true;
+    }
     setSending(true);
     try {
+      if (navigator.onLine === false && (await queue())) return;
       await submitPublic(coreV1, token, {
         feature: { type: "Feature", properties, geometry: geometryNow },
-        files: Object.entries(files)
-          .filter((e): e is [string, File] => e[1] !== null)
-          .map(([fieldKey, file]) => ({ fieldKey, file })),
+        files: chosenFiles.map(([fieldKey, file]) => ({ fieldKey, file })),
         clientOpId: opId.current,
         honeypot,
       });
-      setDone(true);
+      setDone("sent");
     } catch (err) {
+      if (err instanceof CoreUnreachableError && (await queue())) return;
       setFailure(sendErrorMessage(err));
     } finally {
       setSending(false);
@@ -216,7 +264,7 @@ function CollectForm({ kit, token }: { kit: CollectKit; token: string }) {
     return (
       <div className="flex flex-col gap-3">
         <p role="status" className="text-sm text-ink">
-          {t("collect.thanks")}
+          {done === "queued" ? t("outbox.queuedNotice") : t("collect.thanks")}
         </p>
         <Button type="button" variant="outline" className="self-start" onClick={another}>
           {t("collect.another")}

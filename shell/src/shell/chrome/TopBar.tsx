@@ -15,6 +15,7 @@ const Tileset3DUploadButton = lazy(() =>
 );
 import { AccountMenu } from "./AccountMenu";
 import { NotificationBell } from "./NotificationBell";
+import { SyncStatusPill } from "../../offline/SyncStatusPill";
 import { Kbd } from "../../ui/kit/Kbd";
 import { t } from "../../i18n";
 
@@ -68,6 +69,7 @@ export function TopBar({
         >
           <Menu aria-hidden className="size-4" />
         </button>
+        <SyncStatusPill />
         <NotificationBell />
         <AccountMenu />
       </div>

@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { ApiError } from "../api/ApiError";
 import type { CollectKit } from "../api/types";
+import { DB_NAME, closeDb } from "../offline/db";
 
 vi.mock("../config", () => ({ loadRuntimeConfig: () => ({ coreUrl: "http://core" }) }));
 const fetchPublicKit = vi.fn();
@@ -45,9 +46,14 @@ function renderPage() {
   );
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   fetchPublicKit.mockReset();
   submitPublic.mockReset();
+  await closeDb();
+  await new Promise<void>((res) => {
+    const r = indexedDB.deleteDatabase(DB_NAME);
+    r.onsuccess = () => res();
+  });
 });
 afterEach(cleanup);
 
@@ -139,4 +145,39 @@ test("le champ piège est rempli : transmis tel quel, le cœur l'écarte en sile
   await user.click(screen.getByRole("button", { name: "Envoyer" }));
   await waitFor(() => expect(submitPublic).toHaveBeenCalled());
   expect(submitPublic.mock.calls[0][2].honeypot).toBe("x");
+});
+
+test("hors réseau : la saisie est mise en file locale (même opId), puis envoyée au retour du réseau", async () => {
+  fetchPublicKit.mockResolvedValue(kit());
+  const online = vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+  const user = userEvent.setup();
+  renderPage();
+  await screen.findByLabelText(/^Nom/);
+  await user.type(screen.getByLabelText(/^Nom/), "Marie");
+  await user.click(screen.getByRole("button", { name: "Envoyer" }));
+  expect(await screen.findAllByText(/Hors-ligne : saisie enregistrée/)).toBeTruthy();
+  expect(submitPublic).not.toHaveBeenCalled();
+  expect(await screen.findByText("En attente d'envoi")).toBeTruthy();
+  online.mockReturnValue(true);
+  submitPublic.mockResolvedValue(undefined);
+  window.dispatchEvent(new Event("online"));
+  await waitFor(() => expect(submitPublic).toHaveBeenCalledTimes(1));
+  expect(submitPublic.mock.calls[0][2].feature.properties).toEqual({ nom: "Marie" });
+  expect(await screen.findByText("Envoyée")).toBeTruthy();
+  online.mockRestore();
+});
+
+test("cœur injoignable pendant l'envoi : mise en file avec le même clientOpId", async () => {
+  fetchPublicKit.mockResolvedValue(kit());
+  const { CoreUnreachableError } = await import("../api/CoreUnreachableError");
+  // Le passage de synchro qui suit échoue aussi (réseau toujours coupé) : la saisie reste en file.
+  submitPublic.mockRejectedValue(new CoreUnreachableError());
+  const user = userEvent.setup();
+  renderPage();
+  await screen.findByLabelText(/^Nom/);
+  await user.type(screen.getByLabelText(/^Nom/), "Marie");
+  await user.click(screen.getByRole("button", { name: "Envoyer" }));
+  expect(await screen.findAllByText(/Hors-ligne : saisie enregistrée/)).toBeTruthy();
+  await waitFor(() => expect(submitPublic.mock.calls.length).toBeGreaterThanOrEqual(2));
+  expect(submitPublic.mock.calls[1][2].clientOpId).toBe(submitPublic.mock.calls[0][2].clientOpId);
 });
