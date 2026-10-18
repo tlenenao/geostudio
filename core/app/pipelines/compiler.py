@@ -254,6 +254,16 @@ _VALID_T = "ST_MakeValid(t.geometry)"
 _VALID_O = "ST_MakeValid(o.geometry)"
 
 
+def _guarded(view: str, mode: str) -> str:
+    """Source d'une jointure selon `invalidGeometry` : `repair` = vue telle quelle."""
+    if mode == "repair":
+        return _qi(view)
+    ok = "ST_IsValid(geometry)"
+    if mode == "error":
+        ok = f"CASE WHEN {ok} THEN true ELSE error('géométrie invalide dans {view}')::BOOLEAN END"
+    return f"(SELECT * FROM {_qi(view)} WHERE {ok})"
+
+
 def _compile_intersection(
     params: dict,
     *,
@@ -269,7 +279,8 @@ def _compile_intersection(
     )
     return (
         f"SELECT t.* EXCLUDE (geometry), {geom_expr} AS geometry "
-        f"FROM {_qi(input_view)} t {join_kw} {_qi(join_view)} o "
+        f"FROM {_guarded(input_view, p.invalidGeometry)} t "
+        f"{join_kw} {_guarded(join_view, p.invalidGeometry)} o "
         f"ON ST_Intersects(t.geometry, o.geometry)"
     )
 
