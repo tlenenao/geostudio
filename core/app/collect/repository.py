@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 """Réservation d'une opération client dans la transaction de l'écriture (même rollback)."""
 
+import re
 from datetime import UTC, datetime, timedelta
 
+from fastapi import HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -10,6 +12,16 @@ from sqlalchemy.orm import Session
 from app.collect.models import CollectClientOp
 
 RETENTION_DAYS = 30
+_KEY_RE = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
+
+
+def parse_key(raw: str | None) -> str | None:
+    """Valide l'en-tête `Idempotency-Key` (UUID du client) ; absent = pas d'idempotence."""
+    if raw is None:
+        return None
+    if not _KEY_RE.match(raw):
+        raise HTTPException(status_code=400, detail="invalid Idempotency-Key")
+    return raw
 
 
 def claim(

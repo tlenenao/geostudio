@@ -7361,6 +7361,8 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "idempotency-key"?: string | null;
+                "x-gs-offline-created-at"?: string | null;
                 authorization?: string;
                 "X-Share-Link-Token"?: string | null;
             };
