@@ -138,3 +138,13 @@ def test_masked_role_filters_column_and_still_respects_tenant_isolation(
             # gis_rls (non masqué) voit toujours tout, comme avant ce chantier.
             row = session.execute(text("SELECT v, salary FROM t_scope_masked")).first()
             assert row == ("mine", 100)
+
+
+def test_scope_sets_then_restores_statement_timeout(pg_rls_table, pg_session_factory, monkeypatch):
+    """AUD-099 : plafond SQL actif dans le scope, rendu à la sortie."""
+    monkeypatch.setenv("CORE_DB_STATEMENT_TIMEOUT_MS", "4321")
+    with pg_session_factory() as session:
+        before = session.execute(text("SHOW statement_timeout")).scalar()
+        with rls_scope(session, "default"):
+            assert session.execute(text("SHOW statement_timeout")).scalar() == "4321ms"
+        assert session.execute(text("SHOW statement_timeout")).scalar() == before
